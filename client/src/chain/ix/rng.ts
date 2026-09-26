@@ -107,6 +107,41 @@ export function revealRandomnessIx(a: RevealArgs): TransactionInstruction {
  * pending pack / fusion is closed (battle resolved or cancelled). Rent → `owner` (SEC-M7).
  * `lutSlot` = `RandomnessAccountData.lut_slot` (readRandomness).
  */
+/**
+ * `close_randomness_lut(kind, nonce, lut_slot)` / `close_battle_randomness_lut(nonce, lut_slot)` —
+ * the SECOND half of a request's Switchboard rent (backlog #23): the lookup table (~0.0015 SOL) that
+ * `randomness_init` paid for. Callable once the randomness account is gone (Switchboard deactivates
+ * the table as it closes the account) and the ALT cooldown (~1 epoch) has passed; permissionless and
+ * idempotent, and the rent always goes to `owner`, never to the relayer.
+ *
+ * `lutSlot` = `RandomnessAccountData.lut_slot` — read it *before* calling `closeRandomnessIx`: the
+ * account that holds it is deleted by that call. The program re-derives the table address from the
+ * slot and requires the passed accounts to match, so a wrong slot fails closed instead of paying
+ * somebody else.
+ */
+export function closeRandomnessLutIx(a: RngAccounts & { payer: PublicKey; lutSlot: bigint }): TransactionInstruction {
+  const lutSigner = sbLutSignerPda(a.randomness)[0];
+  const pinned = a.kind === RNG_KIND.PACK ? pendingPackPda(a.owner, a.nonce)[0]
+    : a.kind === RNG_KIND.FUSION ? pendingFusionPda(a.owner, a.nonce)[0]
+    : a.kind === RNG_KIND.CLAIM_FUSION ? claimFusionPda(a.owner, a.nonce)[0]
+    : battlePda(a.owner, a.nonce)[0];
+  const keys = [
+    signer(a.payer),
+    rw(a.owner),
+    ro(a.randomness),
+    ro(pinned),
+    ro(lutSigner),
+    rw(sbLutPda(lutSigner, a.lutSlot)[0]),
+    ro(SWITCHBOARD_ON_DEMAND_ID),
+    ro(ADDRESS_LOOKUP_TABLE_PROGRAM_ID),
+    ro(SYSTEM_PROGRAM_ID),
+  ];
+  const data = a.kind === RNG_KIND.BATTLE
+    ? ixData('close_battle_randomness_lut', new BorshWriter().u64(a.nonce).u64(a.lutSlot).toBytes())
+    : ixData('close_randomness_lut', new BorshWriter().u8(a.kind).u64(a.nonce).u64(a.lutSlot).toBytes());
+  return new TransactionInstruction({ programId: programOf(a.kind), keys, data: Buffer.from(data) });
+}
+
 export function closeRandomnessIx(a: RngAccounts & { payer: PublicKey; lutSlot: bigint }): TransactionInstruction {
   const lutSigner = sbLutSignerPda(a.randomness)[0];
   const pinned = a.kind === RNG_KIND.PACK ? pendingPackPda(a.owner, a.nonce)[0]

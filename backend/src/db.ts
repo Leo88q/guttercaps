@@ -481,6 +481,8 @@ CREATE TABLE IF NOT EXISTS crank_jobs (
   reveal_sig  TEXT,
   settle_sigs TEXT    NOT NULL DEFAULT '[]',
   close_sig   TEXT,
+  lut_slot    INTEGER,                      -- backlog #23: Switchboard lookup-table slot of this request (randomness data)
+  lut_closed_at INTEGER,                    -- when close_randomness_lut landed (the second half of the rent)
   created_at  INTEGER NOT NULL,             -- unix ms
   updated_at  INTEGER NOT NULL
 );
@@ -763,6 +765,14 @@ export class Db {
         ) WHERE game_index IS NULL AND EXISTS (SELECT 1 FROM compressed_claims cc WHERE cc.asset = chips.asset AND cc.game_index IS NOT NULL)`);
     }
     if (!ch.has('index_attempts')) this.raw.exec(`ALTER TABLE chips ADD COLUMN index_attempts INTEGER NOT NULL DEFAULT 0`);
+    // backlog #23: the lookup-table half of the Switchboard rent. `lut_slot` rides along with the job
+    // (the randomness account is already gone when the table becomes closable), `lut_closed_at` marks
+    // the batch that reclaimed it — the crank only touches jobs that are `closed` and not yet flagged.
+    const cj = new Set((this.raw.prepare(`PRAGMA table_info(crank_jobs)`).all() as { name: string }[]).map((c) => c.name));
+    for (const name of ['lut_slot', 'lut_closed_at'] as const) {
+      if (!cj.has(name)) this.raw.exec(`ALTER TABLE crank_jobs ADD COLUMN ${name} INTEGER`);
+    }
+    this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_crank_lut_due ON crank_jobs(lut_closed_at)`);
     // the crank's index back-fill queue is game_index IS NULL AND burned_at IS NULL AND index_attempts < N
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_chips_index_pending ON chips(index_attempts) WHERE game_index IS NULL`);
     const ql = new Set((this.raw.prepare(`PRAGMA table_info(quest_logins)`).all() as { name: string }[]).map((c) => c.name));

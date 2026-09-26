@@ -26,13 +26,14 @@
 //!    in practice our crank, can land the reveal before the refund window.
 //!
 //! Switchboard's Rust crate (0.13.0) only ships a `randomness_commit` CPI
-//! helper, so the three instructions are built by hand from the program IDL
+//! helper, so these instructions are built by hand from the program IDL
 //! (`sb_on_demand`, discriminators = `sha256("global:<name>")[..8]`, pinned
 //! by `tests::discriminators_match_anchor_convention`).
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::instruction::{AccountMeta, Instruction};
 use anchor_lang::solana_program::program::invoke_signed;
+use anchor_lang::system_program;
 use switchboard_on_demand::accounts::RandomnessAccountData;
 
 use crate::economy::STALE_PACK_SLOTS;
@@ -77,6 +78,18 @@ pub const SLOT_HASHES_ID: Pubkey = pubkey!("SysvarS1otHashes11111111111111111111
 pub const ADDRESS_LOOKUP_TABLE_PROGRAM_ID: Pubkey =
     pubkey!("AddressLookupTab1e1111111111111111111111111");
 
+/// Who must OWN a lookup table before we hand it to Switchboard to close (backlog #23). Same id as
+/// above everywhere a real ALT program exists; under `--features localnet` the sb_mock stands in for
+/// it, exactly as it stands in for Switchboard itself: the harness cannot deploy the ALT program, and
+/// a program that does not own an account may neither debit its lamports nor reassign it, so the
+/// "close the table and pay the player" step has to be performed by the account's owner. Test-only:
+/// the id is only overridden when the localnet feature is on, and `tests/security/rent-lut.test.ts`
+/// fails if the check disappears.
+#[cfg(feature = "localnet")]
+pub const LUT_OWNER_PROGRAM_ID: Pubkey = SB_PROGRAM_ID;
+#[cfg(not(feature = "localnet"))]
+pub const LUT_OWNER_PROGRAM_ID: Pubkey = ADDRESS_LOOKUP_TABLE_PROGRAM_ID;
+
 /// `sha256("global:randomness_init")[..8]` — params `{ recent_slot: u64 }`.
 pub const SB_IX_RANDOMNESS_INIT: [u8; 8] = [9, 9, 204, 33, 50, 116, 113, 15];
 /// `sha256("global:randomness_commit")[..8]` — no params.
@@ -85,6 +98,35 @@ pub const SB_IX_RANDOMNESS_COMMIT: [u8; 8] = [52, 170, 152, 201, 179, 133, 242, 
 pub const SB_IX_RANDOMNESS_REVEAL: [u8; 8] = [197, 181, 187, 10, 30, 58, 20, 73];
 /// `sha256("global:randomness_close")[..8]` — no params; rent (account + wSOL escrow) goes to `authority`.
 pub const SB_IX_RANDOMNESS_CLOSE: [u8; 8] = [146, 101, 14, 74, 225, 246, 0, 156];
+/// `sha256("global:randomness_close_lut")[..8]` — params `{ lut_slot: u64 }`; closes the lookup table
+/// of a closed randomness account and pays its rent to `recipient` (backlog #23).
+///
+/// Account order and the `lut_slot` param are mirrored from the Switchboard On-Demand client we
+/// vendor (`node_modules/@switchboard-xyz/on-demand` → `Randomness.closeLutIx` /
+/// `utils/lookupTable.ts`): `randomness` (signer — the calling program signs its `["rng", …]` PDA),
+/// `lut`, `lut_signer`, `recipient`, `address_lookup_table_program`. The SDK builds it "without
+/// loading randomness data", i.e. after `randomness_close` has already removed the account — which
+/// is exactly when the ALT cooldown starts and this becomes callable.
+pub const SB_IX_RANDOMNESS_CLOSE_LUT: [u8; 8] = [234, 5, 133, 204, 55, 37, 85, 222];
+/// `["LutSigner", randomness]` under Switchboard: authority of the randomness' lookup table.
+pub const SB_LUT_SIGNER_SEED: &[u8] = b"LutSigner";
+
+/// The lookup-table signer PDA of `randomness` (Switchboard's own PDA — Switchboard signs for it
+/// inside `randomness_close_lut`; we only derive it to pin the account the caller passed).
+pub fn lut_signer_of(randomness: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(&[SB_LUT_SIGNER_SEED, randomness.as_ref()], &SB_PROGRAM_ID).0
+}
+
+/// `AddressLookupTableProgram.createLookupTable({ authority: lut_signer, recentSlot: lut_slot })`
+/// — the ALT address is `[authority, recent_slot]` of the ALT program, and `lut_slot` is what
+/// Switchboard stored in the randomness account at init.
+pub fn lut_of(lut_signer: &Pubkey, lut_slot: u64) -> Pubkey {
+    Pubkey::find_program_address(
+        &[lut_signer.as_ref(), &lut_slot.to_le_bytes()],
+        &ADDRESS_LOOKUP_TABLE_PROGRAM_ID,
+    )
+    .0
+}
 
 /// Snapshot of the fields we act on (copied out so callers don't hold a `Ref` across CPIs).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -463,6 +505,87 @@ pub fn close_owned<'info>(
     Ok(a.authority.lamports().saturating_sub(lamports_before))
 }
 
+/// Accounts of Switchboard `randomness_close_lut`. `recipient` is the only account that receives
+/// lamports, and every caller of this helper passes the player there — never the crank that relays
+/// the instruction (SEC-F07: the party paying the fee must not be the party collecting the rent).
+pub struct SbCloseLutAccounts<'info> {
+    pub randomness: AccountInfo<'info>,
+    pub lut: AccountInfo<'info>,
+    pub lut_signer: AccountInfo<'info>,
+    pub recipient: AccountInfo<'info>,
+    pub address_lookup_table_program: AccountInfo<'info>,
+}
+
+/// CPI `randomness_close_lut(lut_slot)`, signed by the (already closed) `["rng", …]` PDA and by
+/// our `["rng_auth"]` when the seeds carry it. Pins, before the CPI:
+///
+///  * `lut_signer == ["LutSigner", randomness]` of Switchboard and `lut == [lut_signer, lut_slot]`
+///    of the ALT program — so `lut_slot` is not a trusted parameter, it *selects* a table whose
+///    authority is this randomness, and a caller cannot point the CPI at somebody else's table;
+///  * `lut` is owned by the ALT program (a system account with the same address would be a no-op
+///    that still burned the fee);
+///  * the randomness account is gone: no data and system-owned (SEC-F8 — the same "gone" test the
+///    open/close paths use, deliberately without the lamport check, since anyone can donate SOL to
+///    a closed PDA address). Switchboard cannot read a departed account, so a table that is still
+///    in use can never be reached through this instruction.
+pub fn close_lut_owned<'info>(
+    switchboard: &AccountInfo<'info>,
+    a: &SbCloseLutAccounts<'info>,
+    lut_slot: u64,
+    seeds: &[&[&[u8]]],
+) -> Result<()> {
+    require_keys_eq!(
+        *switchboard.key,
+        SB_PROGRAM_ID,
+        ChipError::RandomnessMismatch
+    );
+    require!(
+        a.randomness.data_is_empty() && *a.randomness.owner == system_program::ID,
+        ChipError::RandomnessUsed
+    );
+    require_keys_eq!(
+        *a.lut_signer.key,
+        lut_signer_of(a.randomness.key),
+        ChipError::RandomnessMismatch
+    );
+    require_keys_eq!(
+        *a.lut.key,
+        lut_of(a.lut_signer.key, lut_slot),
+        ChipError::RandomnessMismatch
+    );
+    require_keys_eq!(
+        *a.lut.owner,
+        LUT_OWNER_PROGRAM_ID,
+        ChipError::RandomnessMismatch
+    );
+    let mut data = Vec::with_capacity(16);
+    data.extend_from_slice(&SB_IX_RANDOMNESS_CLOSE_LUT);
+    data.extend_from_slice(&lut_slot.to_le_bytes());
+    let ix = Instruction {
+        program_id: SB_PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(*a.randomness.key, true),
+            AccountMeta::new(*a.lut.key, false),
+            AccountMeta::new_readonly(*a.lut_signer.key, false),
+            AccountMeta::new(*a.recipient.key, false),
+            AccountMeta::new_readonly(*a.address_lookup_table_program.key, false),
+        ],
+        data,
+    };
+    invoke_signed(
+        &ix,
+        &[
+            a.randomness.clone(),
+            a.lut.clone(),
+            a.lut_signer.clone(),
+            a.recipient.clone(),
+            a.address_lookup_table_program.clone(),
+            switchboard.clone(),
+        ],
+        seeds,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -535,5 +658,6 @@ mod tests {
         assert_eq!(d("randomness_commit"), SB_IX_RANDOMNESS_COMMIT);
         assert_eq!(d("randomness_reveal"), SB_IX_RANDOMNESS_REVEAL);
         assert_eq!(d("randomness_close"), SB_IX_RANDOMNESS_CLOSE);
+        assert_eq!(d("randomness_close_lut"), SB_IX_RANDOMNESS_CLOSE_LUT);
     }
 }

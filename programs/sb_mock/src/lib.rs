@@ -69,6 +69,8 @@ pub enum MockError {
     AlreadyRevealed,
     #[msg("set_raw payload must be at most 472 bytes")]
     PayloadTooLong,
+    #[msg("the randomness account is still open — it must be closed before its lookup table")]
+    RandomnessNotClosed,
 }
 
 // ---------------------------------------------------------------------------
@@ -248,6 +250,29 @@ pub struct RandomnessClose<'info> {
     pub address_lookup_table_program: UncheckedAccount<'info>,
 }
 
+#[derive(Accounts)]
+pub struct RandomnessCloseLut<'info> {
+    /// CHECK: must be closed already (drained + reassigned to System by `randomness_close`); the mock
+    /// re-checks that below — a request that is still live must never reach a table payout.
+    #[account(mut)]
+    pub randomness: UncheckedAccount<'info>,
+    /// The lookup-table stand-in. In the localnet build `LUT_OWNER_PROGRAM_ID` IS this program (the
+    /// harness cannot deploy the Address Lookup Table program, and only an account's owner may debit
+    /// its lamports), so this program plays the ALT program's part: it pays the table's whole balance
+    /// to `recipient` and hands the account back to the System program — same effect as closing a
+    /// deactivated table, which the real ALT program performs because it owns the table.
+    /// CHECK: must be owned by this program; that ownership is the runtime-enforced right to debit it.
+    #[account(mut, owner = crate::ID @ MockError::InvalidAccount)]
+    pub lut: UncheckedAccount<'info>,
+    /// CHECK: `["LutSigner", randomness]` in the real program — the mock ignores it.
+    pub lut_signer: UncheckedAccount<'info>,
+    /// Receives the table's rent in the real program (Switchboard's `recipient`).
+    #[account(mut)]
+    pub recipient: UncheckedAccount<'info>,
+    /// CHECK: Address Lookup Table program — ignored.
+    pub address_lookup_table_program: UncheckedAccount<'info>,
+}
+
 /// Test-only escape hatch: overwrite the payload of any mock-owned randomness account
 /// (no authority check — this program never runs outside a local validator).
 #[derive(Accounts)]
@@ -372,7 +397,30 @@ pub mod sb_mock {
         Ok(())
     }
 
-    /// Test-only: overwrite bytes `[8, 8 + payload.len())` of a mock-owned account
+    /// Mirrors `sb_on_demand::randomness_close_lut(lut_slot)`: closes the (already deactivated)
+    /// lookup table of a closed randomness account and pays its rent to `recipient`.
+    pub fn randomness_close_lut(ctx: Context<RandomnessCloseLut>, _lut_slot: u64) -> Result<()> {
+        let lut = ctx.accounts.lut.to_account_info();
+        let lamports = lut.lamports();
+        // the real program only pays out a table that belongs to the (closed) randomness account: for
+        // the mock, "the account is gone" is the stand-in for that check.
+        let randomness = ctx.accounts.randomness.to_account_info();
+        require!(
+            randomness.data_is_empty() && *randomness.owner != crate::ID,
+            MockError::RandomnessNotClosed
+        );
+        **lut.try_borrow_mut_lamports()? = 0;
+        **ctx.accounts.recipient.try_borrow_mut_lamports()? += lamports;
+        {
+            let mut data = lut.try_borrow_mut_data()?;
+            data.fill(0);
+        }
+        lut.assign(&anchor_lang::system_program::ID);
+        lut.resize(0)?;
+        Ok(())
+    }
+
+    /// Test-only: overwrite bytes `[8, 8 + payload.len())` of a mock-owned randomness account
     /// (discriminator stays intact; pass 472 bytes to rewrite every field).
     pub fn set_raw(ctx: Context<SetRaw>, payload: Vec<u8>) -> Result<()> {
         require!(

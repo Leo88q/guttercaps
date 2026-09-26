@@ -301,6 +301,16 @@ pub mod chip_core {
     pub fn close_randomness(ctx: Context<CloseRandomness>, kind: u8, nonce: u64) -> Result<()> {
         instructions::close_randomness(ctx, kind, nonce)
     }
+    /// Permissionless, after the randomness account is closed and the ALT cooldown has passed:
+    /// the lookup table's rent (~0.0015 SOL/bundle, backlog #23) → player, never the caller.
+    pub fn close_randomness_lut(
+        ctx: Context<CloseRandomnessLut>,
+        kind: u8,
+        nonce: u64,
+        lut_slot: u64,
+    ) -> Result<()> {
+        instructions::close_randomness_lut(ctx, kind, nonce, lut_slot)
+    }
 
     // ----- paid services (handles, cosmetics, boosters, season pass) -----
     /// kind: economy::ServiceKind; currency as in buy_pack; $CG is burned, everything else → treasury.

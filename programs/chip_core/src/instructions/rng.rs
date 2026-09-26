@@ -13,9 +13,13 @@
 //! * `close_randomness(kind, nonce)` — permissionless; once the pending
 //!   pack/fusion that pinned the account is gone (opened or refunded), CPI
 //!   `randomness_close` returns the rent (account + wSOL escrow) to `rng_auth`,
-//!   and the instruction forwards every lamport to the player (SEC-M7). The
-//!   lookup table (`randomness_close_lut`, post-cooldown) is left to a later
-//!   release — its metas are not in the IDL copies we have.
+//!   and the instruction forwards every lamport to the player (SEC-M7).
+//! * `close_randomness_lut(kind, nonce, lut_slot)` — permissionless, callable once the randomness
+//!   account above is gone and the Address Lookup Table has finished its cooldown: CPI
+//!   `randomness_close_lut` returns the table's rent (~0.0015 SOL per bundle, backlog #23) straight
+//!   to the player. `lut_slot` is not trusted: the instruction derives `["LutSigner", randomness]`
+//!   and the ALT address from it and requires both accounts to match, so a caller cannot point the
+//!   CPI at somebody else's table, and the payer is pinned as Switchboard's `recipient`.
 //!
 //! Why PDAs and not a client keypair with `authority = rng_auth`? A keypair
 //! account would still let its creator pick *which* account a pending action
@@ -311,4 +315,111 @@ pub fn close_randomness(ctx: Context<CloseRandomness>, kind: u8, nonce: u64) -> 
         )?;
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// randomness_close_lut (backlog #23) — the lookup table's rent, after cooldown.
+// ---------------------------------------------------------------------------
+
+#[derive(Accounts)]
+#[instruction(kind: u8, nonce: u64, lut_slot: u64)]
+pub struct CloseRandomnessLut<'info> {
+    /// Permissionless (our crank batches these); the table's rent always goes to `owner`.
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    // sentio-ignore-next-line SW013
+    /// CHECK: the player who paid the table's rent. It is one of the randomness PDA seeds *and* the
+    /// account Switchboard pays (`recipient`), so a relayer cannot redirect the rent to itself.
+    #[account(mut)]
+    pub owner: UncheckedAccount<'info>,
+    // sentio-ignore-next-line SW013
+    /// CHECK: `["rng", kind, owner, nonce]` — must already be CLOSED (`randomness_close` deactivates
+    /// the table as it closes the account, and the ALT cooldown starts there). `close_lut_owned`
+    /// re-checks "gone" = no data + system-owned (SEC-F8). `mut` mirrors the SDK's metas (Switchboard
+    /// marks this account writable); the seeds below are what the CPI signs with.
+    #[account(
+        mut,
+        seeds = [RNG_SEED, &[kind], owner.key().as_ref(), &nonce.to_le_bytes()],
+        bump,
+        seeds::program = crate::ID,
+    )]
+    pub randomness: UncheckedAccount<'info>,
+    // sentio-ignore-next-line SW002
+    /// CHECK: `["pending", owner, nonce]` (kind 0) / `["fusion", owner, nonce]` (kind 1) /
+    /// `["claim_fusion", owner, nonce]` (kind 3) — must be closed (nothing may still pin the request).
+    pub pending: UncheckedAccount<'info>,
+    // sentio-ignore-next-line SW002
+    /// CHECK: Switchboard `["LutSigner", randomness]` — derived and checked in `close_lut_owned`.
+    pub lut_signer: UncheckedAccount<'info>,
+    // sentio-ignore-next-line SW002
+    /// CHECK: `AddressLookupTable.createLookupTable({authority: lut_signer, recentSlot: lut_slot})` —
+    /// derived from `lut_slot` and checked in `close_lut_owned`; Switchboard verifies it holds the
+    /// deactivated table, the ALT program enforces the cooldown.
+    #[account(mut)]
+    pub lut: UncheckedAccount<'info>,
+    /// CHECK: Switchboard On-Demand program for this cluster.
+    #[account(address = SB_PROGRAM_ID @ ChipError::RandomnessMismatch)]
+    pub switchboard_program: UncheckedAccount<'info>,
+    /// CHECK: Address Lookup Table program.
+    #[account(address = ADDRESS_LOOKUP_TABLE_PROGRAM_ID)]
+    pub address_lookup_table_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+/// Reclaim the lookup table of a finished request. Safe to call repeatedly: an already-closed table
+/// (or one still inside its cooldown) fails inside Switchboard/the ALT program and costs the caller
+/// only the fee.
+pub fn close_randomness_lut(
+    ctx: Context<CloseRandomnessLut>,
+    kind: u8,
+    nonce: u64,
+    lut_slot: u64,
+) -> Result<()> {
+    require!(
+        kind == RNG_KIND_PACK || kind == RNG_KIND_FUSION || kind == RNG_KIND_CLAIM_FUSION,
+        ChipError::RandomnessMismatch
+    );
+    // the same "nothing may still pin this request" rule as `close_randomness`
+    let owner = ctx.accounts.owner.key();
+    let nonce_le = nonce.to_le_bytes();
+    let pending_seed: &[u8] = if kind == RNG_KIND_PACK {
+        b"pending"
+    } else if kind == RNG_KIND_FUSION {
+        b"fusion"
+    } else {
+        b"claim_fusion"
+    };
+    let (exp_pending, _) =
+        Pubkey::find_program_address(&[pending_seed, owner.as_ref(), &nonce_le], ctx.program_id);
+    require_keys_eq!(
+        exp_pending,
+        ctx.accounts.pending.key(),
+        ChipError::RandomnessMismatch
+    );
+    let pending = &ctx.accounts.pending;
+    require!(
+        pending.data_is_empty() && *pending.owner == system_program::ID,
+        ChipError::InvalidChipState
+    );
+
+    let rng_seeds: &[&[u8]] = &[
+        RNG_SEED,
+        &[kind],
+        owner.as_ref(),
+        &nonce_le,
+        &[ctx.bumps.randomness],
+    ];
+    let a = randomness::SbCloseLutAccounts {
+        randomness: ctx.accounts.randomness.to_account_info(),
+        lut: ctx.accounts.lut.to_account_info(),
+        lut_signer: ctx.accounts.lut_signer.to_account_info(),
+        recipient: ctx.accounts.owner.to_account_info(),
+        address_lookup_table_program: ctx.accounts.address_lookup_table_program.to_account_info(),
+    };
+    randomness::close_lut_owned(
+        &ctx.accounts.switchboard_program.to_account_info(),
+        &a,
+        lut_slot,
+        &[rng_seeds],
+    )
 }

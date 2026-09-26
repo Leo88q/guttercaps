@@ -35,7 +35,17 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
 - Arena does not freeze chips during a wager battle (`SEC-L2`); squads are snapshotted.
 - Pyth SKR/USD feed is thin: ±2 % confidence guard, 1 % slippage, charge at `price − conf`; no EMA yet.
 - The treasury SKR wallet is currently a single-signer hardware key (migration to Squads before launch).
-- `randomness_close_lut` rent reclaim (`#23`) is unimplemented: ~0.0015 SOL of rent leaks per bundle.
+- **SEC-M8: closed (2026-09-27, backlog #23).** `randomness_close_lut` / `close_battle_randomness_lut` now
+  reclaim the request's Address Lookup Table rent (~0.0015 SOL per pack / fusion / battle) in both
+  programs. The instruction is permissionless but the rent is pinned to the player — Switchboard's
+  `recipient` is the owner (the challenger for a battle), the payer only pays the fee — and the table is
+  *derived* (`["LutSigner", randomness]` → the ALT address from the slot) and required to be ALT-owned, so
+  a caller cannot redirect somebody else's table into their own payout; the table of a live request is
+  unreachable because the randomness account must already be closed (no data, system-owned). The
+  ~1-epoch ALT cooldown is what makes this a separate, retryable step: the crank sweeps it
+  (`Crank.reclaimLuts`, `crank_jobs.lut_slot`/`lut_closed_at`), the player's "Reclaim rent" button tries
+  it after the first close, and `tests/security/rent-lut.test.ts` (with mutations) plus localnet C13b
+  (refused while pending → rent to the player → a forged slot fails → idempotent) hold the line.
 - **SEC-B4: closed (2026-09-26, self-host follow-up).** The landing and the app now render the same
   vendored woff2 files (`client/public/fonts`, 27 files / 503 KB, OFL-1.1 + Apache-2.0 with the licence
   text next to the bytes) and **no font is fetched from a third-party origin at all**: the app imports the

@@ -227,6 +227,11 @@ export const CRANK_INDEX_BATCH = Number(env.CRANK_INDEX_BATCH ?? 100);
 /** Attempts before a chip with no readable `ChipState` is parked (its `#N` stays unknown instead of retrying forever). */
 export const CRANK_INDEX_ATTEMPTS = Number(env.CRANK_INDEX_ATTEMPTS ?? 3);
 /** Stale (refund-window) jobs are re-checked this often so the rent reclaim still happens after the player's refund. */
+/** Backlog #23: how many lookup tables one sweep tries to close, and how long a job waits after
+ *  `close_randomness` before the first attempt (the ALT cooldown is ~1 epoch ≈ 2 days; a rejection
+ *  before that is expected and only re-queues the job). */
+export const CRANK_LUT_BATCH = Number(env.CRANK_LUT_BATCH ?? 25);
+export const CRANK_LUT_COOLDOWN_MS = Number(env.CRANK_LUT_COOLDOWN_MS ?? 43_200_000);
 export const CRANK_STALE_RECHECK_MS = Number(env.CRANK_STALE_RECHECK_MS ?? 10 * 60_000);
 /**
  * Our static Address Lookup Table(s) (docs/06 §4.2 вывод 3, backlog #13): `reveal + open_pack`

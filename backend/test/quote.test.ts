@@ -224,8 +224,11 @@ describe('POST /packs/quote', () => {
   it('503 price_unavailable when the on-chain price is stale, too close to expiry, or missing — never a made-up number', async () => {
     const c = new Client(); await signIn(c, alice);
     setFresh(61, 5);
+    // the age is computed from the wall clock at request time, so a second may tick between arming the
+    // fixture and the quote (this test used to demand exactly `61 s old` and failed on that boundary in
+    // CI): what has to be exact is the reason and the 503, the number just has to be the real age.
     let r = await c.post('/v1/packs/quote', { sku: 1, qty: 1, currency: 'SOL' });
-    expect(r.status).toBe(503); expect(r.json.code).toBe('price_unavailable'); expect(r.json.message).toMatch(/61 s old/);
+    expect(r.status).toBe(503); expect(r.json.code).toBe('price_unavailable'); expect(r.json.message).toMatch(/6[12] s old/);
     expect((await c.post('/v1/packs/quote', { sku: 1, qty: 1, currency: 'SKR' })).status).toBe(200); // the other rail is fine
     setFresh(PYTH_MAX_AGE_SECS - PYTH_PUSHER.quoteMinRemainingS + 1, 5); // 46 s: a buyer could not sign in time
     r = await c.post('/v1/packs/quote', { sku: 1, qty: 1, currency: 'SOL' });

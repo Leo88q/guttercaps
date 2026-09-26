@@ -25,6 +25,7 @@ SECURITY-SCAN-TRIAGE-2026-09-23) учтены; здесь — только но�
 | SEC-B11 | Info (остатки того же класса, что SEC-B3) | `backend/src/arena.ts` | Два места, где «не знаю» превращалось в конкретное значение: (1) запись матча отдавала синтетической ботовой фишке `index: 0` — тот же плейсхолдер, что и в маркете до shape #27 (`#0` это реальный первый чип округа); (2) `settleSeason` откладывал расчёт сезона, если над горизонтом финализации есть событие сезона, но событие, увиденное вебсокетом первым и ещё не «дочитанное» (`block_time IS NULL`), в окно сезона не попадало — пул из-за этого мог замёрзнуть по неполной сумме рейка (в меньшую сторону; деньги остаются в ончейн-пуле, но сезон рассчитывается по неполной сумме). | **Исправлено**: `index: null` в записи матча; `block_time IS NULL` теперь трактуется как «возможно, этот сезон» и расчёт переносится на следующий проход. Оба места закрыты тестами, проверенными мутациями |
 | SEC-B10 | Info (документация против кода) | `docs/06` §2.2, `programs/chip_core/src/lib.rs`, `backend/.env.example`, `ops/deploy/runbook.md` | Три расхождения: доки обещали свип 18×16×7, а он 19×15×7 (2 280 запросов); шапка `lib.rs` называла закоммиченные program id'ы плейсхолдерами (и намекала, что их можно править руками); после SEC-B5 прод с пустым `TURNSTILE_HOSTNAMES` не стартует, а `.env.example` и runbook об этом молчали. | **Исправлено**: числа приведены к факту и зафиксированы тестом; шапка `lib.rs` описывает церемонию `npm run program-ids -- apply`; обязательность `TURNSTILE_HOSTNAMES`/`ACTION` описана в `.env.example` и runbook §1.2 |
 | SEC-B12 | **High** (supply chain) | `package-lock.json`, `package.json` (+ backend/client), `scripts/lock-integrity.ts` (новый), `tests/security/supply-chain.test.ts` (новый) | В локе 705 из 1 097 registry-пакетов (включая `@solana/web3.js`) не было ни `resolved`, ни `integrity`: `npm ci` не проверял ни хост, ни байты, а диапазон `^1.95.3` по-прежнему допускал отозванные 1.95.6/1.95.7 | **Исправлено**: 1 097/1 097 узлов с sha512 и registry-хостом, диапазон поднят до `^1.99.0`, гейт из 8 правил + `npm run lock:integrity` (selftest в verify), доказано `rm -rf node_modules && npm ci` |
+| SEC-M8 | Low (утечка ренты) → закрыто | `programs/chip_core/src/randomness.rs`, `programs/{chip_core,arena}/src/lib.rs`, `programs/chip_core/src/instructions/rng.rs`, `programs/sb_mock/src/lib.rs`, `backend/src/{crank,chain,db,config}.ts`, `client/src/chain/{ix/rng,switchboard,flows/*}.ts`, `tests/security/rent-lut.test.ts` (новый), `tests/localnet/10-packs.spec.ts` | Бэклог #23: `randomness_init` платит за три аккаунта (randomness 480 B, wSOL reward-escrow и Address Lookup Table ≈ 0.0015 SOL); `close_randomness` возвращал два первых, а таблицу — нет: она освобождается только после ALT-cooldown (~1 эпоха) и адресуется слотом, который записан **только** в randomness-аккаунте, то есть теряется вместе с закрытием. Акцепт «утекает 0.0015 SOL» переставал быть приемлемым, как только выяснилось, что метас CPI есть в SDK. | **Исправлено**: `close_randomness_lut(kind, nonce, lut_slot)` / `close_battle_randomness_lut(nonce, lut_slot)` — permissionless CPI, рента идёт игроку (Switchboard `recipient` = owner / `battle.challenger`, плательщик платит только комиссию), таблица **выводится** (`["LutSigner", randomness]` → ALT-адрес по слоту) и обязана принадлежать ALT-программе, randomness-аккаунт обязан быть закрыт; кран запоминает слот (`crank_jobs.lut_slot`, `recordLutSlot`) и добирает таблицы (`reclaimLuts`, `lut_closed_at`), клиентское «Reclaim rent» пробует отдельной транзакцией после cooldown. Гейт `tests/security/rent-lut.test.ts` (3 теста, 6 мутаций), локальный сценарий C13b |
 
 Все находки этого прохода — **новые** (в отчёте 2026-09-25 их не было: тот проход смотрел программы и
 бэкенд-логику, но не границу параметров).
@@ -360,6 +361,53 @@ SEC-M5 (расчёт по нефинализированным данным), н
 **Проверка.** `rm -rf node_modules && npm ci` — exit 0: npm сам сверяет все 1 097 хешей, поэтому неверный
 пин валит установку. `npm run lock:integrity -- --selftest` (11 проверок) добавлен в `npm run verify`.
 
+## SEC-M8 · Low · рента Address Lookup Table (бэклог #23): остаток возврата после `close_randomness`
+
+`randomness_init` (Switchboard On-Demand) оплачивает три аккаунта: сам randomness-аккаунт (480 B),
+wSOL reward-escrow ATA и **Address Lookup Table** (`lut` + `lutSigner`, адрес выводится из
+`["LutSigner", randomness]` и слота). SEC-M7 закрыл два первых — `close_randomness` /
+`close_battle_randomness` возвращают игроку ренту аккаунта и эскроу. Таблица осталась «принятым
+риском» по двум причинам, обе снялись:
+
+* **ALT-cooldown.** Освободить таблицу можно только после деактивации ALT-программой (~1 эпоха ≈ 2 суток).
+  Это не блокирует возврат: инструкция идемпотентна и permissionless, поэтому её отправляет либо сам игрок
+  при следующем визите, либо кран — батчем, отдельной дешёвой транзакцией (`CU.CLOSE_LUT = 80 k`).
+* **Слот нигде не хранится.** `lut_slot` лежит только в randomness-аккаунте (`RandomnessAccountData.lut_slot`,
+  смещение в конце 480-байтовой структуры), а `close_randomness` этот аккаунт удаляет. Кран теперь
+  записывает слот, пока аккаунт ещё жив (`Crank.recordLutSlot` из `processPack`, плюс `closeStep`
+  непосредственно перед закрытием), в `crank_jobs.lut_slot`; для запросов, которые кран не видел живыми,
+  слот восстановить нечем — это логируется один раз (`randomness gone without a recorded lut_slot`), а
+  деньги остаются у Switchboard, а не уходят «в никуда».
+
+**Метас CPI** (из `@switchboard-xyz/on-demand`: `Randomness.closeLutIx`, `utils/lookupTable.js`):
+`randomness` (writable, signer — но подписывает наш PDA `["rng", …]` через `invoke_signed`),
+`lut` (writable), `lutSigner`, `recipient` (writable), `addressLookupTableProgram`; данные — только
+`lut_slot: u64`. Наша обёртка пинит **id Switchboard-программы** (не «любая программа с таким
+дискриминатором»), выводит `lutSigner` и `lut` сама и требует совпадения с переданными аккаунтами,
+требует `lut.owner == ALT-программа` и `data_is_empty() && owner == system_program::ID` у randomness —
+то есть таблица жёстко связана с закрытым запросом этого игрока, а не с произвольным аккаунтом,
+на который указал вызывающий. Рента приходит на `recipient`; у обеих программ это `owner`
+(в арене — `battle.challenger`, связанный `constraint`), поэтому permissionless-вызов не может
+перенаправить деньги релееру — подписант оплачивает только комиссию (SEC-F07 в силе).
+
+**Проверка.**
+
+* `tests/security/rent-lut.test.ts` — 3 теста: пины CPI-хелпера (вывод адресов, владелец таблицы,
+  «randomness закрыт»), пины выплаты (recipient = игрок, арена — `challenger`), наличие обеих инструкций
+  и мок-инструкции, синхронность билдеров клиента и крана, факт вызова из кран-свипа; +6 мутаций
+  (снять вывод `lutSigner`, снять проверку «закрыт», отдать ренту плательщику, развязать `challenger`,
+  подменить выводимую таблицу, выключить `reclaimLuts`), каждая валит свой тест.
+* `backend/test/crank.test.ts` — раскладка ix (ключи, флаги, discriminator, `nonce`+`slot` в данных),
+  `recordLutSlot` пишет слот и не падает на удалённом аккаунте, `reclaimLuts` берёт **только** готовые
+  job'ы (cooldown/`lut_slot IS NULL` пропускаются), идемпотентен, отказ ALT-программы не считается инцидентом,
+  свип вызывает проход.
+* `client/src/chain/chain.test.ts` — билдер для всех четырёх видов (PACK/FUSION/CLAIM_FUSION/BATTLE):
+  program id, выводимая таблица, ровно три writable (комиссия, рента, таблица), discriminator и payload.
+* `tests/localnet/10-packs.spec.ts` C13b (LiteSVM, sb_mock зеркалит инструкцию): отказ пока запрос
+  открыт → отказ до `cancel_stale` → `close_randomness` → рента таблицы приходит игроку (релеер только
+  платит комиссию) → подложенный слот не проходит (`RandomnessMismatch`) → повторный вызов ничего не платит.
+* Раскладка аккаунтов не изменилась (`state:layout` 29/29), новых аккаунтов нет.
+
 ## Проверено заново, без находок
 
 * **Периметр бэкенда.** `/healthz`, `/readyz`, `/metrics` регистрируются до лимитера (намеренно);
@@ -490,11 +538,11 @@ Cloudflare требует для виджета `script-src` + `frame-src` от 
 
 ## Что осталось открытым (осознанно)
 
-1. **`randomness_close_lut`** (#23) — возврат ренты ~0.0015 SOL за бандл (принят ранее, без изменений).
-2. **Rust-часть** (пункты 31–54 чек-листа, где нужен запуск на валидаторе): локально не проверяется —
+1. **Rust-часть** (пункты 31–54 чек-листа, где нужен запуск на валидаторе): локально не проверяется —
    см. `docs/06` §3.1 и зелёные джобы CI `programs`/`rust-lints`/`localnet`.
 
-Закрыто в этом проходе и убрано из списка: self-host шрифтов (SEC-B4 — 27 вендоренных woff2, сторонних
+Закрыто в этом проходе и убрано из списка: рента Address Lookup Table (SEC-M8 / бэклог #23 — две новые
+инструкции, добирающий кран и гейт `tests/security/rent-lut.test.ts`), self-host шрифтов (SEC-B4 — 27 вендоренных woff2, сторонних
 origin'ов у лендинга нет), прод-CSP против Turnstile/`wss:` (SEC-B9 — гейт `tests/security/csp.test.ts`),
 **проекция `game_index`** (SEC-B3 — колонка + два источника числа + дозаполнение краном; гейт
 `tests/security/api-input.test.ts`, поведение `backend/test/chip-index.test.ts`) и остатки того же класса
@@ -506,11 +554,11 @@ origin'ов у лендинга нет), прод-CSP против Turnstile/`ws
 
 Всё это — на одном дереве, `npm run verify` exit 0:
 
-* `npm --prefix backend test` — 23 файла, **397** тестов (+19 `params.test.ts`, +5 `verify.test.ts`, +1 сценарий SEC-B5 в `human.test.ts`, +14 `chip-index.test.ts` для shape #27, +2 сценария SEC-B11 в `game.test.ts`; три временных probe-файла удалены, когда их находки стали постоянными тестами).
-* `npm run security:static` — **65** проверок: 34 прежних + 6 SEC-B2/B3 + 4 SEC-B7 + 6 SEC-B8 + 7 SEC-B9 + 8 SEC-B12 (supply-chain: пины, хост, sha512, отозванные версии в дереве и в диапазонах, install-скрипты, лок↔манифесты).
+* `npm --prefix backend test` — 23 файла, **401** тест (+19 `params.test.ts`, +5 `verify.test.ts`, +1 сценарий SEC-B5 в `human.test.ts`, +14 `chip-index.test.ts` для shape #27, +2 сценария SEC-B11 в `game.test.ts`, +4 сценария SEC-M8 в `crank.test.ts`; три временных probe-файла удалены, когда их находки стали постоянными тестами).
+* `npm run security:static` — **69** проверок: 34 прежних + 6 SEC-B2/B3 + 4 SEC-B7 + 6 SEC-B8 + 7 SEC-B9 + 8 SEC-B12 (supply-chain: пины, хост, sha512, отозванные версии в дереве и в диапазонах, install-скрипты, лок↔манифесты) + 4 SEC-M8 (`rent-lut.test.ts`: пины CPI и выплаты, «cooldown — часть ALT-программы, а не наш Clock», 6 мутаций).
 * `npm run lock:integrity -- --selftest` — 11/11; сам лок: **1 097/1 097** registry-узлов с `resolved`+sha512, все — `registry.npmjs.org`; `npm ci` на пустом `node_modules` — exit 0 (npm сверил все хеши).
 * `npm run state:layout` — 29 аккаунтов совпадают с baseline (`--selftest` 10/10); гейт в `npm run verify` и в CI-джобе `economy`.
 * `npm run landing:check` (+ DOM-smoke) — зелёный, включая CSP/host-проверки и «каждый landing-шрифт вшит»; `guttercaps-landing.html` перегенерирован (2,78 МБ, 13 inlined woff2, 0 ссылок на Google Fonts).
 * `npm run fonts:check` — 27 файлов / 503 КБ, landing-поверхность 207 КБ, лицензии на месте, selftest 7/7; гейт в `npm run verify`.
-* `npm --prefix client test` — 155 (+4 `client/src/shared/ui/fonts.test.ts`); `typecheck` клиента и бэкенда — чисто; `npm run api:check` — 61 операция в синхроне; `npm run economy:check`, `npm run workflows:check` (4 файла, 138 шагов), `npm run docs:refs` (259 ссылок) — зелёные.
-* Rust не менялся: правки этого прохода не затрагивают `programs/**` (гейт лишь читает исходники), `Cargo.*`, `tests/localnet/**`. Компиляцию и `cargo test` по-прежнему делает CI (`programs`, `rust-lints`, `localnet`), в песочнице тулчейна нет.
+* `npm --prefix client test` — **156** (+4 `client/src/shared/ui/fonts.test.ts`, +1 раскладка `close_randomness_lut` в `chain.test.ts`); `typecheck` клиента и бэкенда — чисто; `npm run api:check` — 61 операция в синхроне; `npm run economy:check`, `npm run workflows:check` (4 файла, 139 шагов), `npm run docs:refs` (259 ссылок) — зелёные.
+* Rust менялся (SEC-M8): `programs/chip_core/src/{randomness.rs,lib.rs,instructions/rng.rs}`, `programs/arena/src/lib.rs`, `programs/sb_mock/src/lib.rs` — раскладок аккаунтов не меняют, новых аккаунтов и PDA нет; компиляцию и `cargo test` делает CI (`programs`, `rust-lints`, `localnet`). 

@@ -20,7 +20,7 @@ by reading `[workspace]`, and the monolith's dependency set is unresolvable on i
 **Written without a compiler; compiling green in CI since run 79 (2026-09-18).** The `programs` job runs
 `cargo fmt --check` + `anchor build` (including `--features localnet`) and uploads the SBF `.so` + IDL as
 artifacts; the `rust-lints` job runs `cargo clippy -- -D warnings` + `cargo test --workspace` (31 `#[test]` +
-`tests/golden.rs`); the `localnet · 91 scenarios` job runs the acceptance suite on those artifacts — all green,
+`tests/golden.rs`); the `localnet · 92 scenarios` job runs the acceptance suite on those artifacts — all green,
 most recently on run 36011382496 (2026-09-24). The authoring environment had no Rust/Solana toolchain and no
 network access to crates.io, so the code was written against the documented APIs of:
 
@@ -53,7 +53,7 @@ anchor keys sync                            # rewrites declare_id! + Anchor.toml
 
 cargo test --workspace                      # host unit tests incl. tests/golden.rs and sb_mock's layout tests
 
-# localnet acceptance suite (tests/localnet/README.md): 91 scenarios on the real client builders
+# localnet acceptance suite (tests/localnet/README.md): 92 scenarios on the real client builders
 npm run localnet:build                      # = scripts/anchor-build-localnet.sh: --features localnet, the pinned
                                             # sb_mock keypair, the solana-install → agave-install shim and the
                                             # solana_version check (a bare `anchor build` trips on all three)

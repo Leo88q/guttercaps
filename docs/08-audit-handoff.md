@@ -16,7 +16,7 @@
 | Поле | Значение |
 |---|---|
 | Репозиторий | `Leo88q/caps`, ветка `arena/01a09dab-caps` |
-| **Frozen commit** | заполняется на G-1 (`git rev-parse HEAD` после зелёного `npm run verify` + зелёной CI-джобы `localnet · 91 scenarios` на том же коммите); до этого аудитор работает с HEAD ветки и фиксирует хэш в отчёте |
+| **Frozen commit** | заполняется на G-1 (`git rev-parse HEAD` после зелёного `npm run verify` + зелёной CI-джобы `localnet · 92 scenarios` на том же коммите); до этого аудитор работает с HEAD ветки и фиксирует хэш в отчёте |
 | Тег | `audit-v1-<yyyymmdd>` (создаёт tech lead в момент заморозки; любые правки после тега — отдельный дифф в §6) |
 | Тулчейн | `Anchor.toml`: anchor 0.31.1, solana 2.1.0; `anchor-lang 0.31.1`, `anchor-spl`, `mpl-core 0.12.1`, `switchboard-on-demand 0.13.0`, `pyth-solana-receiver-sdk =1.0.1` (см. `programs/*/Cargo.toml`) |
 
@@ -57,7 +57,7 @@ anchor keys sync                             # затем сверить chip.rs
 cargo test --workspace                       # 31 #[test] + tests/golden.rs (64 golden-вектора: odds, pity, fusion, merkle)
 anchor build -- --features localnet          # сборка с sb_mock как SB_PROGRAM_ID
 
-# 3. Localnet-сюита (91 сценарий на LiteSVM + те же спеки против solana-test-validator)
+# 3. Localnet-сюита (92 сценария на LiteSVM + те же спеки против solana-test-validator)
 cp tests/localnet/fixtures/sb_mock-keypair.json target/deploy/
 npm run localnet:fixtures                    # пиновый mpl_core.so 0.12.0 + Pyth-дампы (git-ignored)
 npm test                                     # LiteSVM
@@ -67,7 +67,7 @@ npm run test:validator                       # = anchor test
 solana-verify build --library-name chip_core   # и market / staking / arena
 ```
 
-Что считать «сборка прошла»: `anchor build` без ошибок для 4 программ + `sb_mock`, `cargo test` зелёный, все 91 localnet-сценарий зелёные (CI-статус — джоба `localnet · 91 scenarios`; расхождения кодов ошибок — ожидаемые, см. §4.2), `npm run economy:check` подтверждает, что Rust-константы совпадают с `packages/economy` (`sync-check` сравнивает odds/pity/fusion/staking/rake/reserve/program-id из исходников Rust).
+Что считать «сборка прошла»: `anchor build` без ошибок для 4 программ + `sb_mock`, `cargo test` зелёный, все 92 localnet-сценария зелёные (CI-статус — джоба `localnet · 92 scenarios`; расхождения кодов ошибок — ожидаемые, см. §4.2), `npm run economy:check` подтверждает, что Rust-константы совпадают с `packages/economy` (`sync-check` сравнивает odds/pity/fusion/staking/rake/reserve/program-id из исходников Rust).
 
 ---
 
@@ -108,6 +108,7 @@ solana-verify build --library-name chip_core   # и market / staking / arena
 | SEC-B10 | Info | расхождения документации и кода: цитировался свип 18×16×7 вместо 19×15×7; шапка `lib.rs` называла закоммиченные program id'ы плейсхолдерами; после SEC-B5 отсутствие `TURNSTILE_HOSTNAMES` в `.env.example`/runbook делало прод-старт неочевидным | `docs/06` §2.2, `programs/chip_core/src/lib.rs`, `backend/.env.example`, `ops/deploy/runbook.md`, `backend/test/params.test.ts` | ✅ числа приведены к факту и зафиксированы тестом «the sweep shape…»; шапка `lib.rs` описывает церемонию `program-ids -- apply`; обязательность `TURNSTILE_HOSTNAMES`/`TURNSTILE_ACTION` описана в обоих файлах |
 | SEC-B11 | Info | арена: ботовая фишка в записи матча отдавалась с плейсхолдером `index: 0` (как маркет до shape #27 — `#0` это реальный чип); `settleSeason` не откладывался, если над горизонтом финализации есть событие сезона, увиденное вебсокетом первым (`block_time IS NULL`) — пул мог замёрзнуть по неполной сумме рейка | `backend/src/arena.ts`, `backend/test/game.test.ts` | ✅ `index: null` в записи матча; `block_time IS NULL` трактуется как «возможно, этот сезон» и расчёт переносится; два теста, проверены мутациями (вернуть `0` / вернуть `COALESCE(block_time, 0)` → по одному падению) |
 | SEC-B12 | High | supply chain: 705 из 1 097 registry-узлов лока без `resolved`/`integrity` (включая `@solana/web3.js`) — `npm ci` не сверял ни хост, ни байты; диапазоны `^1.95.3`/`^1.98.4` допускали отозванные 1.95.6/1.95.7 | `package-lock.json`, `package.json` (+backend/client), `scripts/lock-integrity.ts`, `tests/security/supply-chain.test.ts` | ✅ 1 097/1 097 с sha512 и официальным хостом без сдвига версий, диапазон `^1.99.0`, гейт 8 правил (6 мутаций), `npm ci` на пустом `node_modules` — exit 0 |
+| SEC-M8 | Low | рента Address Lookup Table (≈ 0.0015 SOL за пак/фьюжн/бой) оставалась у Switchboard: `close_randomness` возвращал randomness-аккаунт и wSOL-эскроу, а таблицу можно освободить только после ALT-cooldown, и её адрес (по слоту) записан только в удаляемом randomness-аккаунте — бэклог #23 | `programs/chip_core/src/{randomness.rs,lib.rs,instructions/rng.rs}`, `programs/arena/src/lib.rs`, `programs/sb_mock/src/lib.rs`, `backend/src/{crank,chain,db,config}.ts`, `client/src/chain/{ix/rng,switchboard,flows/*}.ts` | ✅ две новые инструкции (`close_randomness_lut` / `close_battle_randomness_lut`), рента пинится игроку (Switchboard `recipient` = owner / `battle.challenger`, плательщик платит только комиссию), таблица выводится из `["LutSigner", randomness]`+слота и обязана принадлежать ALT-программе, randomness обязан быть закрыт; кран помнит слот (`crank_jobs.lut_slot`) и добирает таблицы (`reclaimLuts`); гейт `tests/security/rent-lut.test.ts` (3 теста, 6 мутаций), сценарий localnet C13b, layout-тесты в `chain.test.ts`/`crank.test.ts` |
 Полные описания с атакующим сценарием и патчами — `docs/06` §2.2.
 
 ---
@@ -115,7 +116,7 @@ solana-verify build --library-name chip_core   # и market / staking / arena
 ## 4. Известные проблемы и то, чего мы сами не проверили
 
 ### 4.1 ~~⚠ Rust никогда не компилировался~~ → собран в CI с run 79 (обновлено 2026-09-24)
-**Статус: закрыто.** Все четыре программы + `sb_mock` собираются (`anchor build`, включая `--features localnet`), тесты зелёные в CI с run 79; свежий статус — джобы `programs` / `rust-lints` / `localnet · 91 scenarios`. Исходный текст этого пункта (2026-09-15, до первой сборки) оставлен ниже как история — в нём перечислены места, где правки компиляции действительно понадобились, и их стоит сверить с диффом runs 76–79:
+**Статус: закрыто.** Все четыре программы + `sb_mock` собираются (`anchor build`, включая `--features localnet`), тесты зелёные в CI с run 79; свежий статус — джобы `programs` / `rust-lints` / `localnet · 92 scenarios`. Исходный текст этого пункта (2026-09-15, до первой сборки) оставлен ниже как история — в нём перечислены места, где правки компиляции действительно понадобились, и их стоит сверить с диффом runs 76–79:
 Все четыре программы + `sb_mock` были написаны и многократно перечитаны, но ни разу не собирались. Реалистичные ожидания: ошибки borrow checker в `fusion.rs` (remaining_accounts × `Account::try_from` + `exit`), lifetimes в `randomness.rs` CPI-хелперах, `InitSpace` для массивов, feature-флаги `switchboard-on-demand/devnet`, версии `mpl-core 0.12.1` ↔ `anchor 0.31.1`.
 
 ### 4.2 Коды ошибок Anchor в спеках

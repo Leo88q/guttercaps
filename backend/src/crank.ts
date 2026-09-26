@@ -35,7 +35,7 @@ import { Connection, Keypair, PublicKey, type AddressLookupTableAccount, type Tr
 import { PACKS, STALE_PACK_SLOTS, expandRandomness, type PackDef as EconPackDef } from '@guttercaps/economy';
 import {
   CRANK_CONCURRENCY, CRANK_GATEWAY_RPC, CRANK_GATEWAY_TIMEOUT_MS, CRANK_HARD_FLOOR_SOL, CRANK_KEYPAIR, CRANK_MAX_ATTEMPTS, CRANK_MAX_BALANCE_SOL,
-  CRANK_INDEX_ATTEMPTS, CRANK_INDEX_BATCH,
+  CRANK_INDEX_ATTEMPTS, CRANK_INDEX_BATCH, CRANK_LUT_BATCH, CRANK_LUT_COOLDOWN_MS,
   CRANK_MIN_BALANCE_SOL, CRANK_POLL_MS, CRANK_STALE_RECHECK_MS, CRANK_SWEEP_MS, DAS_RPC_URL, DAS_TIMEOUT_MS, LOOKUP_TABLES, RPC_URL, SWITCHBOARD_PROGRAM_ID,
 } from './config.ts';
 import { db as sharedDb, type Db } from './db.ts';
@@ -44,7 +44,7 @@ import { base58Encode } from './base58.ts';
 import { crankStatus } from './queries.ts';
 import {
   ARENA_ID, BATTLE_STATUS, CHIP_CORE_ERR, CHIP_CORE_ID, RNG_KIND, accountDiscriminator, ata, battlePda, bubblegumTreeMetaPda, chipStatePda, claimFusionPda,
-  closeRandomnessIx, collectionMetaPda, compressedClaimNonce, compressedMintClaimPda, compressedSettlementPda, configPda, decodeBubblegumTreeMeta,
+  closeRandomnessIx, closeRandomnessLutIx, collectionMetaPda, compressedClaimNonce, compressedMintClaimPda, compressedSettlementPda, configPda, decodeBubblegumTreeMeta,
   decodeChipState, decodeCollectionMeta, decodeCompressedMintClaim, decodeCompressedPackSettlement, decodeGameConfig, decodeOracleGateway, decodePendingClaimFusion,
   decodePendingFusion, decodePendingPack, decodePlayerPity, createAtaIdempotentIx, decodeRandomness, decodeWagerBattle, finalizeCompressedPackIx, fuseClaimsRevealIx,
   fuseRevealIx, mintCompressedChipIx, openCompressedPackIx, packSeed, pendingFusionPda, pendingPackPda, pityPda, registerCompressedChipIx, revealRandomnessIx,
@@ -64,13 +64,15 @@ export const SKU_IDS = ['starter', 'standard', 'premium', 'limited'] as const;
  */
 export const CU = {
   OPEN_COMPRESSED: 800_000, MINT_COMPRESSED: 500_000, REGISTER_COMPRESSED: 600_000, FINALIZE_COMPRESSED: 300_000,
-  FUSE_REVEAL: 600_000, CLAIM_FUSION_REVEAL: 600_000, REVEAL_ONLY: 150_000, CLOSE: 150_000,
+  FUSE_REVEAL: 600_000, CLAIM_FUSION_REVEAL: 600_000, REVEAL_ONLY: 150_000, CLOSE: 150_000, CLOSE_LUT: 80_000,
 } as const;
 
 export type Phase = 'pending' | 'stale' | 'settled' | 'closed' | 'abandoned';
 export interface Job {
   key: string; kind: RngKind; owner: string; nonce: string; randomness: string; pinned: string; phase: Phase; commit_slot: number | null;
   attempts: number; next_at: number; last_error: string | null; reveal_sig: string | null; settle_sigs: string; close_sig: string | null; created_at: number; updated_at: number;
+  /** backlog #23: the request's Switchboard lookup-table slot (NULL for jobs discovered before the column existed) */
+  lut_slot: number | null; lut_closed_at: number | null;
 }
 export const jobKey = (kind: RngKind, owner: PublicKey | string, nonce: bigint | string) => `${kind}:${typeof owner === 'string' ? owner : owner.toBase58()}:${nonce.toString()}`;
 
@@ -155,7 +157,7 @@ export class Crank {
   private balance?: { lamports: number; at: number };
   private lastAlert = 0;
   private readonly das?: DasClient;
-  stats = { reveals: 0, opens: 0, mints: 0, registers: 0, finalizes: 0, fusions: 0, claimFusions: 0, closes: 0, errors: 0, gatewayErrors: 0 };
+  stats = { reveals: 0, opens: 0, mints: 0, registers: 0, finalizes: 0, fusions: 0, claimFusions: 0, closes: 0, lutCloses: 0, errors: 0, gatewayErrors: 0 };
 
   constructor(d: CrankDeps) {
     this.connection = d.connection; this.payer = d.payer; this.db = d.db;
@@ -196,6 +198,11 @@ export class Crank {
   // ---------------------------------------------------------------- discovery
   /** Fast path: purchases (and #28 quest chip vouchers) the indexer has seen but not (yet) opened. */
   discoverFromDb(): number {
+    // `lut_slot` (#23) is not in the projection: it only exists inside the randomness account, which
+    // `close_randomness` deletes. It is recorded the first time the crank reads that account
+    // (`recordLutSlot`) — in `processPack` while the request is live, or in `closeStep` just before it
+    // is closed. Requests whose account was already gone when the crank first saw the job cannot be
+    // reclaimed (the table address is underivable) and are logged once.
     const rows = this.db.all<{ buyer: string; nonce: string; randomness: string; slot: number; status: string }>(
       `SELECT p.buyer, p.nonce, p.randomness, p.slot, p.status FROM pack_purchases p WHERE NOT EXISTS (SELECT 1 FROM crank_jobs j WHERE j.key = '0:' || p.buyer || ':' || p.nonce)
        UNION ALL
@@ -236,14 +243,17 @@ export class Crank {
   }
 
   /** Insert a job if unknown; a closed/abandoned job is never resurrected here (the close step re-checks the chain itself). */
-  upsertJob(kind: RngKind, owner: PublicKey, nonce: bigint, randomness: PublicKey, pinned: PublicKey, phase: Phase, commitSlot: number | null): Job {
+  upsertJob(kind: RngKind, owner: PublicKey, nonce: bigint, randomness: PublicKey, pinned: PublicKey, phase: Phase, commitSlot: number | null, lutSlot: number | null = null): Job {
     const key = jobKey(kind, owner, nonce);
     const t = this.now();
     this.db.run(
-      `INSERT INTO crank_jobs (key, kind, owner, nonce, randomness, pinned, phase, commit_slot, attempts, next_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?) ON CONFLICT(key) DO NOTHING`,
-      key, kind, owner.toBase58(), nonce.toString(), randomness.toBase58(), pinned.toBase58(), phase, commitSlot, t, t,
+      `INSERT INTO crank_jobs (key, kind, owner, nonce, randomness, pinned, phase, commit_slot, lut_slot, attempts, next_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?) ON CONFLICT(key) DO NOTHING`,
+      key, kind, owner.toBase58(), nonce.toString(), randomness.toBase58(), pinned.toBase58(), phase, commitSlot, lutSlot, t, t,
     );
+    // A job the indexer saw before the randomness was read may be missing its table slot: fill it in
+    // when a later caller knows it, never overwrite a value that is already there.
+    if (lutSlot !== null) this.db.run(`UPDATE crank_jobs SET lut_slot = ?, updated_at = ? WHERE key = ? AND lut_slot IS NULL`, lutSlot, t, key);
     return this.job(key)!;
   }
   job(key: string): Job | undefined { return this.db.get<Job>(`SELECT * FROM crank_jobs WHERE key = ?`, key); }
@@ -398,6 +408,23 @@ export class Crank {
     return { value: r.value, ix: revealRandomnessIx({ kind, payer: this.payer.publicKey, randomness: randomnessKey, oracle: rnd.oracle, queue: rnd.queue, ...r }) };
   }
 
+  /**
+   * Persist the request's lookup-table slot while its randomness account still exists — the slot lives
+   * only there (`RandomnessAccountData.lut_slot`), and `close_randomness` deletes the account. Returns
+   * the slot when the account exists, else null. Cheap chain read, and only for jobs that lack it.
+   */
+  async recordLutSlot(job: Job): Promise<number | null> {
+    const owner = new PublicKey(job.owner), nonce = BigInt(job.nonce);
+    const [randomnessKey] = rngPda(job.kind as RngKind, owner, nonce);
+    try {
+      const rnd = await this.randomness(randomnessKey);
+      if (!rnd) return null;
+      const slot = Number(rnd.lutSlot);
+      if (job.lut_slot !== slot) this.db.run(`UPDATE crank_jobs SET lut_slot = ?, updated_at = ? WHERE key = ?`, slot, this.now(), job.key);
+      return slot;
+    } catch { return null; } // a failed read must never break settlement
+  }
+
   private async isStale(commitSlot: bigint): Promise<boolean> {
     const slot = BigInt(await this.connection.getSlot('confirmed'));
     return slot > commitSlot + BigInt(STALE_PACK_SLOTS);
@@ -409,6 +436,9 @@ export class Crank {
     const [pendingKey] = pendingPackPda(owner, nonce);
     const data = await this.account(pendingKey);
     if (!data) { this.setPhase(job, 'settled'); return this.closeStep({ ...job, phase: 'settled' }); }
+    // backlog #23: capture the lookup-table slot now — `close_randomness` deletes the only account that
+    // holds it, and the ALT rent can only be reclaimed if the slot was recorded first.
+    if (job.lut_slot === null) await this.recordLutSlot(job);
     let pending: PendingPack = decodePendingPack(data);
 
     let value: Uint8Array | null = pending.revealed ? pending.value : null;
@@ -701,13 +731,57 @@ export class Crank {
     const owner = new PublicKey(job.owner), nonce = BigInt(job.nonce);
     const [randomnessKey] = rngPda(job.kind, owner, nonce);
     const rnd = await this.randomness(randomnessKey);
-    if (!rnd) { this.setPhase(job, 'closed'); return; }
+    if (!rnd) {
+      // already closed (by the player's "Reclaim rent" button or an earlier pass) — but the table slot
+      // is only readable while the account exists, and it is what the post-cooldown reclaim needs.
+      // Record it now if this job still does not have it; no transaction, this is a chain read.
+      if (job.lut_slot === null && job.phase !== 'settled') this.log(`[crank] ${job.key}: randomness gone without a recorded lut_slot — its lookup-table rent (~0.0015 SOL) cannot be reclaimed`);
+      this.setPhase(job, 'closed');
+      return;
+    }
     const ix = closeRandomnessIx({ kind: job.kind, payer: this.payer.publicKey, owner, nonce, lutSlot: rnd.lutSlot });
     const { signature } = await sendAndConfirm(this.connection, this.payer, [ix], { cuLimit: CU.CLOSE, lookupTables: this.lookupTables });
     this.stats.closes++;
+    this.db.run(`UPDATE crank_jobs SET lut_slot = COALESCE(lut_slot, ?), updated_at = ? WHERE key = ?`, Number(rnd.lutSlot), this.now(), job.key);
     this.setPhase(job, 'closed', { close_sig: signature });
     this.log(`[crank] close_randomness ${job.key} ${signature}`);
   }
+
+  /**
+   * Backlog #23: the SECOND half of a request's Switchboard rent — the address lookup table
+   * (~0.0015 SOL), reclaimable only after `randomness_close` (Switchboard deactivates the table as it
+   * closes the account) plus the ALT cooldown (~1 epoch ≈ 2 days). `close_randomness_lut` is
+   * permissionless and pays the *player*; the crank only pays the fee, and only for jobs that carry a
+   * `lut_slot` and are `closed` without a `lut_closed_at` yet. Until the cooldown ends the ALT program
+   * rejects the close, so a failed attempt is expected and is retried on the next sweep.
+   */
+  async reclaimLuts(batch = CRANK_LUT_BATCH, cooldownMs = CRANK_LUT_COOLDOWN_MS): Promise<number> {
+    const rows = this.db.all<{ key: string; kind: number; owner: string; nonce: string; lut_slot: number; close_sig: string | null }>(
+      `SELECT key, kind, owner, nonce, lut_slot, close_sig FROM crank_jobs
+       WHERE phase = 'closed' AND lut_closed_at IS NULL AND lut_slot IS NOT NULL AND updated_at <= ?
+       ORDER BY updated_at ASC LIMIT ?`,
+      this.now() - cooldownMs, batch,
+    );
+    let done = 0;
+    for (const r of rows) {
+      if (!(await this.canSpend())) break;
+      const owner = new PublicKey(r.owner), nonce = BigInt(r.nonce);
+      try {
+        const ix = closeRandomnessLutIx({ kind: r.kind as RngKind, payer: this.payer.publicKey, owner, nonce, lutSlot: BigInt(r.lut_slot) });
+        await sendAndConfirm(this.connection, this.payer, [ix], { cuLimit: CU.CLOSE_LUT, lookupTables: this.lookupTables });
+        this.db.run(`UPDATE crank_jobs SET lut_closed_at = ?, updated_at = ? WHERE key = ?`, this.now(), this.now(), r.key);
+        this.stats.lutCloses++;
+        done++;
+      } catch (e) {
+        // cooldown still running (or the table is already gone): not an error the operator must see,
+        // just a retry — bump `updated_at` so the job goes to the back of the queue.
+        this.db.run(`UPDATE crank_jobs SET updated_at = ? WHERE key = ?`, this.now(), r.key);
+        this.log(`[crank] close_randomness_lut ${r.key} deferred: ${(e as Error).message.slice(0, 160)}`);
+      }
+    }
+    return done;
+  }
+
 
   // ---------------------------------------------------------------- scheduling
   async processJob(job: Job): Promise<void> {
@@ -744,6 +818,11 @@ export class Crank {
       // read per sweep; a failure here must not stop the queue, so it is reported and swallowed.
       try { await this.resolveChipIndexes(); }
       catch (e) { this.log(`[crank] chip index back-fill failed: ${(e as Error).message}`); }
+      // backlog #23: lookup-table rent, once the ALT cooldown has passed. Its own cadence (the cooldown
+      // is ~an epoch) and its own rate limit — it must not slow the queue down, and a cooldown rejection
+      // is not an incident.
+      try { const n = await this.reclaimLuts(); if (n) this.log(`[crank] reclaimed ${n} lookup table(s)`); }
+      catch (e) { this.log(`[crank] lookup-table reclaim failed: ${(e as Error).message}`); }
     }
     const due = this.dueJobs();
     await mapLimit(due, CRANK_CONCURRENCY, (j) => this.processJob(j));

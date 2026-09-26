@@ -981,6 +981,9 @@ model HandleReservation {
 /// Switchboard randomness account we shepherd. key = kind:owner:nonce.
 /// phase: pending → settled (pinned account gone) → closed (rent reclaimed); stale = refund
 /// window open with a silent oracle; abandoned = CRANK_MAX_ATTEMPTS exhausted (alert, hourly retry).
+/// `lut_slot` / `lut_closed_at` (SEC-M8, backlog #23): the request's Switchboard address lookup table,
+/// and when its rent was reclaimed — recorded while the randomness account still exists, because that
+/// account is the only place the slot is written.
 model CrankJob {
   key        String   @id
   kind       Int      // 0 pack | 1 fusion | 2 battle
@@ -996,6 +999,8 @@ model CrankJob {
   revealSig  String?  @map("reveal_sig")
   settleSigs Json     @default("[]") @map("settle_sigs")
   closeSig   String?  @map("close_sig")
+  lutSlot    BigInt?  @map("lut_slot")      // Switchboard lookup-table slot of this request (NULL = not recorded)
+  lutClosedAt DateTime? @map("lut_closed_at") // when close_randomness_lut landed (second half of the rent)
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
