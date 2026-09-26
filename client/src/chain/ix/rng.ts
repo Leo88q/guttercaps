@@ -128,7 +128,7 @@ export function closeRandomnessLutIx(a: RngAccounts & { payer: PublicKey; lutSlo
   const keys = [
     signer(a.payer),
     rw(a.owner),
-    ro(a.randomness),
+    rw(a.randomness), // Switchboard's metas mark the (closed) account writable, so the CPI needs it writable here
     ro(pinned),
     ro(lutSigner),
     rw(sbLutPda(lutSigner, a.lutSlot)[0]),

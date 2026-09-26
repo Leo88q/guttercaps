@@ -840,11 +840,12 @@ describe('H3 claim fusion (client mirror)', () => {
         ADDRESS_LOOKUP_TABLE_PROGRAM_ID.toBase58(),
       ]);
       expect(ix.keys[0].isSigner).toBe(true);
-      // exactly three writable accounts: the relayer (fee only), the owner (rent) and the table.
-      // The rent destination is Switchboard's `recipient`, pinned to `owner` by the program — the
-      // builder cannot redirect it, which is what the SEC-M8 gate keeps proving on the Rust side.
+      // writable: the relayer (fee only), the owner (rent), the already-closed randomness account
+      // (Switchboard marks it writable in its own metas, so the CPI requires it writable here) and the
+      // table. The rent destination is Switchboard's `recipient`, pinned to `owner` by the program —
+      // the builder cannot redirect it, which is what the SEC-M8 gate keeps proving on the Rust side.
       expect(ix.keys.filter((k) => k.isWritable).map((k) => k.pubkey.toBase58()))
-        .toEqual([payer.toBase58(), owner.toBase58(), sbLutPda(lutSigner, 77n)[0].toBase58()]);
+        .toEqual([payer.toBase58(), owner.toBase58(), acc.randomness.toBase58(), sbLutPda(lutSigner, 77n)[0].toBase58()]);
       const name = kind === RNG_KIND.BATTLE ? 'close_battle_randomness_lut' : 'close_randomness_lut';
       expect(hex(new Uint8Array(ix.data).slice(0, 8))).toBe(hex(ixDiscriminator(name)));
       const r = new BorshReader(new Uint8Array(ix.data), 8);

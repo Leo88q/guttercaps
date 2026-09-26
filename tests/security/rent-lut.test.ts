@@ -101,6 +101,10 @@ export function violations(files: Record<string, string>): string[] {
     if (!body) { bad.push(`${name}: closeRandomnessLutIx is gone`); continue; }
     if (!/signer\(a\.payer\)/.test(body)) bad.push(`${name}: the relayer is no longer a signer`);
     if (!/rw\(a\.owner\)/.test(body)) bad.push(`${name}: the payer's companion (rent recipient) is not writable / not the owner`);
+    // the CPI declares the closed randomness account writable (Switchboard's metas do), and Anchor
+    // enforces that the caller's account is writable too — a read-only meta fails the tx with
+    // ConstraintMut before the program body ever runs (that is exactly how localnet C13b found it).
+    if (!/rw\(a?\.?randomness\)/.test(body)) bad.push(`${name}: the randomness account is not writable (the CPI's metas require it)`);
     if (!/rw\(sbLutPda\(lutSigner,\s*a\.lutSlot\)\[0\]\)/.test(body)) bad.push(`${name}: the table account is not derived from the slot`);
     if (!/close_battle_randomness_lut/.test(body) || !/close_randomness_lut/.test(body)) bad.push(`${name}: one of the two instruction names is missing`);
   }
@@ -177,7 +181,9 @@ test('SEC-M8 mutation check: each pin fails the gate when removed', () => {
   assert.ok(violations(mutate('backend/src/chain.ts', /rw\(sbLutPda\(lutSigner,\s*a\.lutSlot\)\[0\]\)/, 'rw(a.payer)', 'closeRandomnessLutIx')).length > 0);
   // 6. the crank stops reclaiming
   assert.ok(violations(mutate('backend/src/crank.ts', /this\.reclaimLuts\(/g, 'this.reclaimLutsDisabled(')).length > 0);
-  // 7. the arena entry point stops reaching its handler — the recursion the first push shipped
+  // 7. the crank passes a read-only randomness account (ConstraintMut at the Anchor layer)
+  assert.ok(violations(mutate('backend/src/chain.ts', 'rw(randomness)', 'ro(randomness)', 'closeRandomnessLutIx')).length > 0);
+  // 8. the arena entry point stops reaching its handler — the recursion the first push shipped
   const recursive = { ...FILES };
   recursive['programs/arena/src/lib.rs'] = FILES['programs/arena/src/lib.rs'].replace('close_battle_randomness_lut_handler(ctx, nonce, lut_slot)', 'close_battle_randomness_lut(ctx, nonce, lut_slot)');
   assert.notEqual(recursive['programs/arena/src/lib.rs'], FILES['programs/arena/src/lib.rs']);
