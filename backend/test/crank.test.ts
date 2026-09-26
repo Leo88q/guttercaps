@@ -963,7 +963,7 @@ describe('crank · fusions and wagers', () => {
     expect(ix.keys.map((k) => k.pubkey.toBase58())).toEqual([
       payer.toBase58(), owner.toBase58(), randomness.toBase58(), pendingPackPda(owner, nonce)[0].toBase58(),
       lutSigner.toBase58(), sbLutPda(lutSigner, lutSlot)[0].toBase58(), SWITCHBOARD_PROGRAM_ID.toBase58(),
-      ADDRESS_LOOKUP_TABLE_PROGRAM_ID.toBase58(), SYSTEM_PROGRAM_ID.toBase58(),
+      ADDRESS_LOOKUP_TABLE_PROGRAM_ID.toBase58(),
     ]);
     expect(ix.keys[0].isSigner).toBe(true);
     // the only account that receives lamports on chain is `owner` (Switchboard's `recipient`)

@@ -837,7 +837,7 @@ describe('H3 claim fusion (client mirror)', () => {
         payer.toBase58(), owner.toBase58(), acc.randomness.toBase58(),
         (kind === RNG_KIND.PACK ? pendingPackPda(owner, 5n)[0] : kind === RNG_KIND.FUSION ? pendingFusionPda(owner, 5n)[0] : kind === RNG_KIND.CLAIM_FUSION ? claimFusionPda(owner, 5n)[0] : battlePda(owner, 5n)[0]).toBase58(),
         lutSigner.toBase58(), sbLutPda(lutSigner, 77n)[0].toBase58(), SWITCHBOARD_ON_DEMAND_ID.toBase58(),
-        ADDRESS_LOOKUP_TABLE_PROGRAM_ID.toBase58(), SYSTEM_PROGRAM_ID.toBase58(),
+        ADDRESS_LOOKUP_TABLE_PROGRAM_ID.toBase58(),
       ]);
       expect(ix.keys[0].isSigner).toBe(true);
       // exactly three writable accounts: the relayer (fee only), the owner (rent) and the table.

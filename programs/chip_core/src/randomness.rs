@@ -584,6 +584,9 @@ pub fn close_lut_owned<'info>(
         ],
         seeds,
     )
+    // `invoke_signed` hands back a `ProgramError`; the caller's `?` on the way out expects Anchor's
+    // `Error` (the sibling `close_owned` converts it with `?;` — this one returns the CPI directly).
+    .map_err(Into::into)
 }
 
 #[cfg(test)]

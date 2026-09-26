@@ -510,7 +510,7 @@ export function closeRandomnessLutIx(a: { kind: RngKind; payer: PublicKey; owner
   const pinned = a.kind === RNG_KIND.PACK ? pendingPackPda(a.owner, a.nonce)[0] : a.kind === RNG_KIND.FUSION ? pendingFusionPda(a.owner, a.nonce)[0] : a.kind === RNG_KIND.CLAIM_FUSION ? claimFusionPda(a.owner, a.nonce)[0] : battlePda(a.owner, a.nonce)[0];
   const keys = [
     signer(a.payer), rw(a.owner), ro(randomness), ro(pinned), ro(lutSigner), rw(sbLutPda(lutSigner, a.lutSlot)[0]),
-    ro(SWITCHBOARD_PROGRAM_ID), ro(ADDRESS_LOOKUP_TABLE_PROGRAM_ID), ro(SYSTEM_PROGRAM_ID),
+    ro(SWITCHBOARD_PROGRAM_ID), ro(ADDRESS_LOOKUP_TABLE_PROGRAM_ID),
   ];
   const data = a.kind === RNG_KIND.BATTLE
     ? ixData('close_battle_randomness_lut', new BorshWriter().u64(a.nonce).u64(a.lutSlot).toBytes())

@@ -363,7 +363,6 @@ pub struct CloseRandomnessLut<'info> {
     /// CHECK: Address Lookup Table program.
     #[account(address = ADDRESS_LOOKUP_TABLE_PROGRAM_ID)]
     pub address_lookup_table_program: UncheckedAccount<'info>,
-    pub system_program: Program<'info, System>,
 }
 
 /// Reclaim the lookup table of a finished request. Safe to call repeatedly: an already-closed table

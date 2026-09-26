@@ -134,7 +134,6 @@ export function closeRandomnessLutIx(a: RngAccounts & { payer: PublicKey; lutSlo
     rw(sbLutPda(lutSigner, a.lutSlot)[0]),
     ro(SWITCHBOARD_ON_DEMAND_ID),
     ro(ADDRESS_LOOKUP_TABLE_PROGRAM_ID),
-    ro(SYSTEM_PROGRAM_ID),
   ];
   const data = a.kind === RNG_KIND.BATTLE
     ? ixData('close_battle_randomness_lut', new BorshWriter().u64(a.nonce).u64(a.lutSlot).toBytes())
