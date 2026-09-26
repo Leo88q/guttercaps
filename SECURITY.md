@@ -122,6 +122,19 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   at the stake's opening. Pinned by `tests/security/time-heal.test.ts` (5 rules, 6 mutations) plus
   behavioural tests in `backend/test/projections.test.ts` and `backend/test/game.test.ts`.
 
+- **SEC-B14 (2026-09-27): closed — the right payment is spent, and it is spent once.** `findPayment`
+  returned the first *unconsumed* `ServicePaid` row of the requested kind, so a transaction carrying two
+  purchases of the same kind (two cap skins — each with its own `ref_hash`) made the second one
+  unclaimable for ever: the caller's `ref_hash` compare rejected the wrong row and the right one was never
+  read. It now takes the ref hash the caller is about to grant and prefers the matching row (fallback
+  order kept, so a genuine payload mismatch still answers `ref_hash_mismatch`), and both callers
+  (`claimHandle`, `claimService`) compute it before the lookup. `consume` was a plain UPDATE whose
+  "already used" check lived in the preceding SELECT — a check, not a lock — so two API replicas could
+  both read the row as free and grant two entitlements for one payment; it is now a single conditional
+  `UPDATE ... AND consumed_by IS NULL` that has to change exactly one row, otherwise `409 payment_consumed`.
+  Pinned by `tests/security/paid-claims.test.ts` (4 rules, 4 mutations) and two behavioural tests in
+  `backend/test/cosmetics.test.ts` (two same-kind purchases in one tx claimed in reverse order).
+
 ## Current exposure of this repository (from `docs/09-production-readiness.md`)
 
 `npm audit --omit=dev` reports one advisory chain in the production tree: `bigint-buffer`

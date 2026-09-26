@@ -27,6 +27,7 @@ SECURITY-SCAN-TRIAGE-2026-09-23) учтены; здесь — только но�
 | SEC-B12 | **High** (supply chain) | `package-lock.json`, `package.json` (+ backend/client), `scripts/lock-integrity.ts` (новый), `tests/security/supply-chain.test.ts` (новый) | В локе 705 из 1 097 registry-пакетов (включая `@solana/web3.js`) не было ни `resolved`, ни `integrity`: `npm ci` не проверял ни хост, ни байты, а диапазон `^1.95.3` по-прежнему допускал отозванные 1.95.6/1.95.7 | **Исправлено**: 1 097/1 097 узлов с sha512 и registry-хостом, диапазон поднят до `^1.99.0`, гейт из 8 правил + `npm run lock:integrity` (selftest в verify), доказано `rm -rf node_modules && npm ci` |
 | SEC-M8 | Low (утечка ренты) → закрыто | `programs/chip_core/src/randomness.rs`, `programs/{chip_core,arena}/src/lib.rs`, `programs/chip_core/src/instructions/rng.rs`, `programs/sb_mock/src/lib.rs`, `backend/src/{crank,chain,db,config}.ts`, `client/src/chain/{ix/rng,switchboard,flows/*}.ts`, `tests/security/rent-lut.test.ts` (новый), `tests/localnet/10-packs.spec.ts` | Бэклог #23: `randomness_init` платит за три аккаунта (randomness 480 B, wSOL reward-escrow и Address Lookup Table ≈ 0.0015 SOL); `close_randomness` возвращал два первых, а таблицу — нет: она освобождается только после ALT-cooldown (~1 эпоха) и адресуется слотом, который записан **только** в randomness-аккаунте, то есть теряется вместе с закрытием. Акцепт «утекает 0.0015 SOL» переставал быть приемлемым, как только выяснилось, что метас CPI есть в SDK. | **Исправлено**: `close_randomness_lut(kind, nonce, lut_slot)` / `close_battle_randomness_lut(nonce, lut_slot)` — permissionless CPI, рента идёт игроку (Switchboard `recipient` = owner / `battle.challenger`, плательщик платит только комиссию), таблица **выводится** (`["LutSigner", randomness]` → ALT-адрес по слоту) и обязана принадлежать ALT-программе, randomness-аккаунт обязан быть закрыт; кран запоминает слот (`crank_jobs.lut_slot`, `recordLutSlot`) и добирает таблицы (`reclaimLuts`, `lut_closed_at`), клиентское «Reclaim rent» пробует отдельной транзакцией после cooldown. Гейт `tests/security/rent-lut.test.ts` (3 теста, 6 мутаций), локальный сценарий C13b |
 | SEC-B13 | Medium (расхождение read-model ↔ чек) → закрыто | `backend/src/{ingest,listen,config,staking,db,server}.ts`, `backend/prisma/schema.prisma`, `backend/.env.example`, `tests/security/time-heal.test.ts` (новый), `backend/test/{projections,game}.test.ts` | `block_time` пишется из вебсокета как NULL (в `onLogs` времени нет) и «дочищается» только для последних `LISTEN_HEAL_DEPTH` (200) подписей. Всё, что старше, остаётся без даты **навсегда**: инкрементальный read-model начинает врать против `npm run rebuild` (спенд/выручка, дневные квесты, недельные квесты, активность antifraud молча теряют событие — 0 в отчёте при реальной покупке), а в `staking.me().pending` недатированный `Claimed` читался как «клейм в 1970» — то есть `MAX(COALESCE(block_time, 0))` **игнорировал свежий клейм** и продолжал начислять с прошлого: игрок видел больше, чем ему причитается. | **Исправлено**: (1) проход `healEventTimes` (`ingest.ts`) — пачками по `LISTEN_HEAL_TIMES_BATCH`, от старых к новым, `getTransaction` → `ingestTx` (правит и `events_raw`, и проекции через `patchLateTimes`), а если транзакция уже вне окна хранения RPC — фоллбэк на `getBlockTime(slot)`; попытки считаются (`events_raw.time_heal_attempts`, кап `LISTEN_HEAL_TIMES_MAX_ATTEMPTS`), поэтому вечно недоступная подпись паркуется и не съедает пачку; `listen` гоняет проход по своему таймеру и один раз при старте; `/health.untimedEvents` = `{pending, stuck, oldestSlot}`. (2) `accrualFrom` больше не читает NULL как эпоху: недатированный клейм останавливает окно начисления (недопоказ в UI до появления времени; платит всё равно цепочка). |
+| SEC-B14 | Medium (потеря оплаченной выгоды + двойная выдача при гонке) | `backend/src/services.ts`, `backend/test/cosmetics.test.ts`, `tests/security/paid-claims.test.ts` (новый) | Два дефекта на пути оплаченных сущностей (`findPayment` → `consume`). (1) **Выбор строки**: одна транзакция может нести несколько `buy_service` одного вида (два скина в одной tx — у каждого свой `ref_hash`), а поиск возвращал *первую несписанную* строку этого вида: сверка `ref_hash` в вызывающем коде отбраковывала не ту строку, а нужную никогда не читала — вторая покупка **не клеймилась никогда**, игрок платил и не получал ничего. (2) **Списание**: `consume` обновлял строку без условия `consumed_by IS NULL` и без проверки `changes`, а «свободна ли строка» решал предыдущий SELECT — то есть проверка, а не блокировка: две реплики API (или повтор запроса, гоняющий с первым) могли обе увидеть строку свободной и выдать по ней две сущности за один платёж. | **Исправлено**: `findPayment(..., expectedRefHash?)` предпочитает строку с ожидаемым `ref_hash` (порядок фоллбэка — «несписанная → любая», чтобы честная несовпадение полезной нагрузки по-прежнему выходило как `ref_hash_mismatch`, а не «платёж не найден»), оба вызывающих передают хеш того, что собираются выдать; `consume` — один условный `UPDATE ... AND consumed_by IS NULL` с проверкой «ровно одна строка», иначе `409 payment_consumed`. Плюс `ORDER BY event_index ASC` в выборке, чтобы порядок строк не зависел от плана запроса. |
 
 Все находки этого прохода — **новые** (в отчёте 2026-09-25 их не было: тот проход смотрел программы и
 бэкенд-логику, но не границу параметров).
@@ -407,6 +408,45 @@ SEC-M5 (расчёт по нефинализированным данным), н
 `COALESCE`-форму, снять кап попыток, снять фоллбэк) — каждая валит ровно своё правило. Мутация `accrualFrom`
 проверена и поведенчески: с прежней формулой падает тест в `game.test.ts`.
 
+## SEC-B14 · Medium · оплаченная сущность: не та строка платежа и списание без блокировки
+
+`ServicePaid` — это чек цепочки; `PUT /me/handle` и `POST /services/claim` пересчитывают `ref_hash` из
+полезной нагрузки и выдают сущность офчейн. На этом пути нашлись два дефекта.
+
+**1. Поиск строки платежа по «первой несписанной».** Одна транзакция законно несёт несколько
+`buy_service` одного вида — например, два скина для двух фишек в одной tx (каждый платёж со своим
+`ref_hash`). `findPayment` возвращал `rows.find(r => kinds.includes(r.kind) && !r.consumed_by)`, то есть
+**первую** несписанную строку этого вида; вызывающий код сверял её `ref_hash` с ожидаемым и падал с
+`ref_hash_mismatch`, если она относилась к другой покупке. Нужная строка при этом не читалась никогда:
+вторая (и любая последующая) покупка в такой транзакции **не клеймилась вообще** — игрок платил и не
+получал ничего, а несписанный платёж оставался в таблице навсегда.
+
+**2. Списание платежа без условия и без проверки результата.** `consume` делал
+`UPDATE service_payments SET consumed_by = ? ... WHERE signature = ? AND event_index = ?` — без
+`consumed_by IS NULL` и без проверки `changes`. «Свободна ли строка» решал предыдущий `SELECT`, то есть
+*проверка*, а не *блокировка*: два процесса API над одной базой (вторая реплика, ручной скрипт, повтор
+запроса, гоняющий с первым) могли оба увидеть строку свободной и выдать по одному платежу **две**
+сущности (например, два баннера округа за одни деньги).
+
+**Исправлено.** `findPayment(db, signature, buyer, kinds, expectedRefHash?)` предпочитает строку с
+ожидаемым `ref_hash` (фоллбэк «несписанная → любая» сохранён, поэтому настоящая несовпадение полезной
+нагрузки по-прежнему выходит как `ref_hash_mismatch`, а не «платёж не найден»); `claimHandle` и
+`claimService` считают ожидаемый хеш **до** поиска и передают его. `consume` стал одним условным
+`UPDATE ... AND consumed_by IS NULL` и требует ровно одну изменённую строку — иначе
+`409 payment_consumed`; строки читаются в порядке `event_index ASC`, чтобы порядок не зависел от плана
+запроса. Порядок «сначала подтверждение финализации, потом выдача» (SEC-M5) не тронут: `requireFinalized`
+вызывается для выбранной строки в любом случае.
+
+**Тесты:** `backend/test/cosmetics.test.ts` — две новые проверки: две покупки одного вида в одной tx
+клеймятся **в обратном** порядке событий (то есть «первая строка побеждает» такую проверку пройти не
+может) и обе строки уходят в `consumed_by`, а третий клейм той же tx получает `already_used`; списанный
+платёж повторно не выдаётся, число сущностей не растёт. Мутационная проверка: удаление предпочтения по
+`ref_hash` валит первый тест.
+**Гейт:** `tests/security/paid-claims.test.ts` — 4 правила (выбор строки, оба вызывающих передают хеш,
+одноразовое списание с проверкой `changes`, порядок фоллбэка) и 4 мутации. В отдельной части —
+исходный `findPayment` (фоллбэк без предпочтения) остаётся честным совпадением: он по-прежнему падает
+на настоящем расхождении полезной нагрузки.
+
 ## SEC-M8 · Low · рента Address Lookup Table (бэклог #23): остаток возврата после `close_randomness`
 
 `randomness_init` (Switchboard On-Demand) оплачивает три аккаунта: сам randomness-аккаунт (480 B),
@@ -600,8 +640,8 @@ origin'ов у лендинга нет), прод-CSP против Turnstile/`ws
 
 Всё это — на одном дереве, `npm run verify` exit 0:
 
-* `npm --prefix backend test` — 23 файла, **406** тест (+19 `params.test.ts`, +5 `verify.test.ts`, +1 сценарий SEC-B5 в `human.test.ts`, +14 `chip-index.test.ts` для shape #27, +2 сценария SEC-B11 в `game.test.ts`, +4 сценария SEC-M8 в `crank.test.ts`, +4 сценария SEC-B13 в `projections.test.ts`/`game.test.ts`; три временных probe-файла удалены, когда их находки стали постоянными тестами).
-* `npm run security:static` — **74** проверки: 34 прежних + 6 SEC-B2/B3 + 4 SEC-B7 + 6 SEC-B8 + 7 SEC-B9 + 8 SEC-B12 (supply-chain: пины, хост, sha512, отозванные версии в дереве и в диапазонах, install-скрипты, лок↔манифесты) + 4 SEC-M8 (`rent-lut.test.ts`: пины CPI и выплаты, «cooldown — часть ALT-программы, а не наш Clock», 6 мутаций) + 5 SEC-B13 (`time-heal.test.ts`: проход исцеления, провод в `listen`, попытки/парковка, фоллбэк по слоту, `accrualFrom`; 6 мутаций).
+* `npm --prefix backend test` — 23 файла, **408** тестов (+19 `params.test.ts`, +5 `verify.test.ts`, +1 сценарий SEC-B5 в `human.test.ts`, +14 `chip-index.test.ts` для shape #27, +2 сценария SEC-B11 в `game.test.ts`, +4 сценария SEC-M8 в `crank.test.ts`, +4 сценария SEC-B13 в `projections.test.ts`/`game.test.ts`, +2 сценария SEC-B14 в `cosmetics.test.ts`; три временных probe-файла удалены, когда их находки стали постоянными тестами).
+* `npm run security:static` — **78** проверок: 34 прежних + 6 SEC-B2/B3 + 4 SEC-B7 + 6 SEC-B8 + 7 SEC-B9 + 8 SEC-B12 (supply-chain: пины, хост, sha512, отозванные версии в дереве и в диапазонах, install-скрипты, лок↔манифесты) + 4 SEC-M8 (`rent-lut.test.ts`: пины CPI и выплаты, «cooldown — часть ALT-программы, а не наш Clock», 6 мутаций) + 5 SEC-B13 (`time-heal.test.ts`: проход исцеления, провод в `listen`, попытки/парковка, фоллбэк по слоту, `accrualFrom`; 6 мутаций) + 4 SEC-B14 (`paid-claims.test.ts`: выбор строки по `ref_hash`, оба вызывающих его передают, одноразовое списание одним условным UPDATE; 4 мутации).
 * `npm run lock:integrity -- --selftest` — 11/11; сам лок: **1 097/1 097** registry-узлов с `resolved`+sha512, все — `registry.npmjs.org`; `npm ci` на пустом `node_modules` — exit 0 (npm сверил все хеши).
 * `npm run state:layout` — 29 аккаунтов совпадают с baseline (`--selftest` 10/10); гейт в `npm run verify` и в CI-джобе `economy`.
 * `npm run landing:check` (+ DOM-smoke) — зелёный, включая CSP/host-проверки и «каждый landing-шрифт вшит»; `guttercaps-landing.html` перегенерирован (2,78 МБ, 13 inlined woff2, 0 ссылок на Google Fonts).
