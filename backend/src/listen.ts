@@ -6,9 +6,9 @@
 //
 // Production note (docs/03-architecture.md §3.1): the same `ingestTx` is the
 // handler for Helius enhanced webhooks — WS is the fallback path there.
-import { COMMITMENT, LISTEN_HEAL_DEPTH, LISTEN_HEAL_EVERY_MS, LISTEN_RECONNECT_MS, PROGRAMS, PROGRAM_NAMES, RPC_URL, type ProgramName } from './config.ts';
+import { COMMITMENT, LISTEN_HEAL_DEPTH, LISTEN_HEAL_EVERY_MS, LISTEN_HEAL_TIMES_BATCH, LISTEN_RECONNECT_MS, PROGRAMS, PROGRAM_NAMES, RPC_URL, type ProgramName } from './config.ts';
 import { backfillProgram } from './backfill.ts';
-import { getConnection, ingestSignatures, ingestTx, sleep } from './ingest.ts';
+import { getConnection, healEventTimes, ingestSignatures, ingestTx, sleep } from './ingest.ts';
 // sleep is re-used by the keep-alive loop at the bottom
 import { FINALITY_EVERY_MS, reconcileOnce } from './finality.ts';
 import { installShutdown } from './shutdown.ts';
@@ -62,8 +62,21 @@ export async function listen(log: (s: string) => void = console.log, opts: { sig
         log(`[heal:${p}] ${(e as Error).message}`);
       }
     }
+    // SEC-B13: the loop above only reaches back LISTEN_HEAL_DEPTH signatures, so anything a longer outage
+    // left undated stays undated — and every day-bucketed query (metrics, quests, accrual, the season
+    // slice) then disagrees with a rebuild. This drains that backlog, bounded per pass.
+    try {
+      const n = await healEventTimes(connection, undefined, LISTEN_HEAL_TIMES_BATCH);
+      if (n > 0) log(`[heal:times] filled block_time for ${n} stored event(s)`);
+    } catch (e) {
+      log(`[heal:times] ${(e as Error).message}`);
+    }
   };
   const timer = setInterval(() => void heal(), LISTEN_HEAL_EVERY_MS);
+  // kick once, not only after LISTEN_HEAL_EVERY_MS: a restart is exactly when a listener outage's undated
+  // backlog should drain (the first timer tick would otherwise leave the day-bucketed reads wrong for a
+  // whole interval). `heal` is idempotent, so the later tick re-runs it for free.
+  void heal();
 
   // 4. finality reconciler (SEC-M5): stamps finalized_at, evicts dropped transactions + rebuilds projections
   const finalize = async () => {

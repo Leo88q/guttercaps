@@ -54,3 +54,14 @@ This catalog defines all standard alerts, severities, trigger conditions, and au
   1. Check `scripts/watchtower_v3_server.py` process status.
   2. Verify no mutating routes or write handlers were inadvertently activated.
   3. Ensure server is strictly serving read-only projection views.
+
+---
+
+### ALERT-05: `UNTIMED_EVENTS_STUCK` (P3)
+- **Description**: Events whose block time could not be recovered: `GET /health.untimedEvents.stuck > 0` — indexed events exist with `block_time IS NULL` after the heal pass exhausted its attempts on them (the RPC serves neither the transaction nor the slot's time), so they are absent from every day-bucketed read (revenue/spend metrics, daily and weekly quest windows, antifraud activity).
+- **Threshold**: `stuck > 0` (any), `pending > 0` for more than 2 h is the softer WARN variant.
+- **Runbook**:
+  1. Confirm the counter: `curl -s $API/v1/health | jq .untimedEvents` (also on the watchtower surface alongside `/health.finality`).
+  2. Check how far back the queue reaches (`oldestSlot`) and compare with the RPC's retention: a provider that keeps signatures for a shorter window parks rows earlier. `npm run rebuild` re-derives projections from `events_raw`, but it cannot invent a date either.
+  3. Two repair paths, in order: (a) raise `LISTEN_HEAL_TIMES_MAX_ATTEMPTS` temporarily and point `RPC_URL` at a provider that still serves those slots, letting the next `heal` tick retry them; (b) if the chain no longer exposes them anywhere, treat the affected window as "possibly in-season" for reconciliation purposes (the same safe direction `settleSeason` takes — never freeze early) and record the episode in the incident log.
+  4. Do NOT zero or fabricate block times to clear the alert: a fabricated date is worse than a missing one (it moves the event into the wrong window instead of out of it).

@@ -26,6 +26,7 @@ SECURITY-SCAN-TRIAGE-2026-09-23) учтены; здесь — только но�
 | SEC-B10 | Info (документация против кода) | `docs/06` §2.2, `programs/chip_core/src/lib.rs`, `backend/.env.example`, `ops/deploy/runbook.md` | Три расхождения: доки обещали свип 18×16×7, а он 19×15×7 (2 280 запросов); шапка `lib.rs` называла закоммиченные program id'ы плейсхолдерами (и намекала, что их можно править руками); после SEC-B5 прод с пустым `TURNSTILE_HOSTNAMES` не стартует, а `.env.example` и runbook об этом молчали. | **Исправлено**: числа приведены к факту и зафиксированы тестом; шапка `lib.rs` описывает церемонию `npm run program-ids -- apply`; обязательность `TURNSTILE_HOSTNAMES`/`ACTION` описана в `.env.example` и runbook §1.2 |
 | SEC-B12 | **High** (supply chain) | `package-lock.json`, `package.json` (+ backend/client), `scripts/lock-integrity.ts` (новый), `tests/security/supply-chain.test.ts` (новый) | В локе 705 из 1 097 registry-пакетов (включая `@solana/web3.js`) не было ни `resolved`, ни `integrity`: `npm ci` не проверял ни хост, ни байты, а диапазон `^1.95.3` по-прежнему допускал отозванные 1.95.6/1.95.7 | **Исправлено**: 1 097/1 097 узлов с sha512 и registry-хостом, диапазон поднят до `^1.99.0`, гейт из 8 правил + `npm run lock:integrity` (selftest в verify), доказано `rm -rf node_modules && npm ci` |
 | SEC-M8 | Low (утечка ренты) → закрыто | `programs/chip_core/src/randomness.rs`, `programs/{chip_core,arena}/src/lib.rs`, `programs/chip_core/src/instructions/rng.rs`, `programs/sb_mock/src/lib.rs`, `backend/src/{crank,chain,db,config}.ts`, `client/src/chain/{ix/rng,switchboard,flows/*}.ts`, `tests/security/rent-lut.test.ts` (новый), `tests/localnet/10-packs.spec.ts` | Бэклог #23: `randomness_init` платит за три аккаунта (randomness 480 B, wSOL reward-escrow и Address Lookup Table ≈ 0.0015 SOL); `close_randomness` возвращал два первых, а таблицу — нет: она освобождается только после ALT-cooldown (~1 эпоха) и адресуется слотом, который записан **только** в randomness-аккаунте, то есть теряется вместе с закрытием. Акцепт «утекает 0.0015 SOL» переставал быть приемлемым, как только выяснилось, что метас CPI есть в SDK. | **Исправлено**: `close_randomness_lut(kind, nonce, lut_slot)` / `close_battle_randomness_lut(nonce, lut_slot)` — permissionless CPI, рента идёт игроку (Switchboard `recipient` = owner / `battle.challenger`, плательщик платит только комиссию), таблица **выводится** (`["LutSigner", randomness]` → ALT-адрес по слоту) и обязана принадлежать ALT-программе, randomness-аккаунт обязан быть закрыт; кран запоминает слот (`crank_jobs.lut_slot`, `recordLutSlot`) и добирает таблицы (`reclaimLuts`, `lut_closed_at`), клиентское «Reclaim rent» пробует отдельной транзакцией после cooldown. Гейт `tests/security/rent-lut.test.ts` (3 теста, 6 мутаций), локальный сценарий C13b |
+| SEC-B13 | Medium (расхождение read-model ↔ чек) → закрыто | `backend/src/{ingest,listen,config,staking,db,server}.ts`, `backend/prisma/schema.prisma`, `backend/.env.example`, `tests/security/time-heal.test.ts` (новый), `backend/test/{projections,game}.test.ts` | `block_time` пишется из вебсокета как NULL (в `onLogs` времени нет) и «дочищается» только для последних `LISTEN_HEAL_DEPTH` (200) подписей. Всё, что старше, остаётся без даты **навсегда**: инкрементальный read-model начинает врать против `npm run rebuild` (спенд/выручка, дневные квесты, недельные квесты, активность antifraud молча теряют событие — 0 в отчёте при реальной покупке), а в `staking.me().pending` недатированный `Claimed` читался как «клейм в 1970» — то есть `MAX(COALESCE(block_time, 0))` **игнорировал свежий клейм** и продолжал начислять с прошлого: игрок видел больше, чем ему причитается. | **Исправлено**: (1) проход `healEventTimes` (`ingest.ts`) — пачками по `LISTEN_HEAL_TIMES_BATCH`, от старых к новым, `getTransaction` → `ingestTx` (правит и `events_raw`, и проекции через `patchLateTimes`), а если транзакция уже вне окна хранения RPC — фоллбэк на `getBlockTime(slot)`; попытки считаются (`events_raw.time_heal_attempts`, кап `LISTEN_HEAL_TIMES_MAX_ATTEMPTS`), поэтому вечно недоступная подпись паркуется и не съедает пачку; `listen` гоняет проход по своему таймеру и один раз при старте; `/health.untimedEvents` = `{pending, stuck, oldestSlot}`. (2) `accrualFrom` больше не читает NULL как эпоху: недатированный клейм останавливает окно начисления (недопоказ в UI до появления времени; платит всё равно цепочка). |
 
 Все находки этого прохода — **новые** (в отчёте 2026-09-25 их не было: тот проход смотрел программы и
 бэкенд-логику, но не границу параметров).
@@ -361,6 +362,51 @@ SEC-M5 (расчёт по нефинализированным данным), н
 **Проверка.** `rm -rf node_modules && npm ci` — exit 0: npm сам сверяет все 1 097 хешей, поэтому неверный
 пин валит установку. `npm run lock:integrity -- --selftest` (11 проверок) добавлен в `npm run verify`.
 
+## SEC-B13 · Medium · «не знаю время» превращалось в 1970: вечно NULL `block_time` и начисление стейкинга
+
+Живая подписка (`onLogs`) не отдаёт время блока, поэтому событие, впервые увиденное вебсокетом, попадает в
+`events_raw` с `block_time IS NULL`; дату ему доставляет повторное чтение подписи. Единственный такой проход
+живёт в слушателе и пересканирует `LISTEN_HEAL_DEPTH` (200) последних подписей **на программу** — то есть
+лечит только свежий хвост. Всё, что осталось от более длинной остановки (рестарт, деплой, отвал RPC,
+пропущенная страница бэкфилла), остаётся без даты навсегда, и дальше расходятся два ответа на один вопрос —
+инкрементальный read-model и `npm run rebuild`:
+
+* выборки «за последние N» (`COALESCE(block_time, 0) >= t − N` в `admin.kpi`, `queries`, `quests`,
+  `antifraud`) строку с NULL **молча выбрасывают**: выручка/спенд/дневные и недельные квесты/активность
+  недосчитывают реальные события, и оператор видит меньшую цифру, чем есть;
+* `seasonSliceMicro` (закрыто в SEC-B11 на стороне «не морозить рано») всё ещё считает срез по дням,
+  которые сумел датировать;
+* `staking.accrualFrom` считал `MAX(COALESCE(block_time, 0))` по клеймам — недатированный `Claimed`
+  читался как «клейм в 1970», то есть **самый свежий клейм игнорировался** и начисление продолжалось с
+  предыдущего: игрок видел в UI больше, чем ему причитается.
+
+**Исправлено в трёх частях.**
+
+1. **Проход исцеления** (`backend/src/ingest.ts`, `healEventTimes`): очередь «`block_time IS NULL`»,
+   от старых к новым, пачками по `LISTEN_HEAL_TIMES_BATCH` (25) с ограниченным параллелизмом;
+   `getTransaction` → `ingestTx` (он же вызывает `patchLateTimes`, поэтому датируются и строки проекций,
+   записанные без времени, а не только `events_raw`). Если транзакция уже вне окна хранения RPC —
+   фоллбэк `getBlockTime(slot)`: слот сохранён у каждого события, а `patchLateTimes` большего и не требует.
+   Каждая попытка считается (`events_raw.time_heal_attempts`, миграция + Prisma-поле), по достижении
+   `LISTEN_HEAL_TIMES_MAX_ATTEMPTS` (5) строка паркуется — иначе горстка принципиально недостижимых
+   подписей занимала бы каждую пачку и «здоровые» NULL-строки не исцелялись бы никогда.
+   `listen` вызывает проход по своему таймеру (`LISTEN_HEAL_EVERY_MS`) и **один раз при старте** — рестарт
+   после отвала и есть тот момент, когда накопленный хвост надо разобрать.
+2. **Видимость** (`/health.untimedEvents`): `{ pending, stuck, oldestSlot }` — «ждёт прохода» отделено от
+   «RPC не отдаёт ни транзакцию, ни время слота, руками». Немая расхождение становится метрикой.
+3. **Честное направление в стейкинге** (`accrualFrom`): недатированный клейм останавливает окно начисления
+   (нулевой pending до появления времени), а не откатывает его к открытию стейка. Платит всё равно цепочка,
+   поэтому безопасное направление — недопоказать, а не показать лишнее.
+
+**Тесты:** `backend/test/projections.test.ts` (+4: исцеление строки и проекции, идемпотентность, фоллбэк по
+слоту, парковка после капа и «запаркованная не съедает пачку» с `untimedStatus`), `backend/test/game.test.ts`
+(+1: недатированный `Claimed` → `pending` = 0, после появления времени — то же значение, что у датированного).
+**Гейт:** `tests/security/time-heal.test.ts` — 5 правил (проход выбирает NULL и переигрывает через `ingestTx`;
+`listen` его вызывает; парковка по попыткам + фоллбэк по слоту + `/health`; `accrualFrom` не читает NULL как
+эпоху) и 6 мутаций (убрать вызов из таймера, убрать `ingestTx`, выбирать датированные строки, вернуть
+`COALESCE`-форму, снять кап попыток, снять фоллбэк) — каждая валит ровно своё правило. Мутация `accrualFrom`
+проверена и поведенчески: с прежней формулой падает тест в `game.test.ts`.
+
 ## SEC-M8 · Low · рента Address Lookup Table (бэклог #23): остаток возврата после `close_randomness`
 
 `randomness_init` (Switchboard On-Demand) оплачивает три аккаунта: сам randomness-аккаунт (480 B),
@@ -554,8 +600,8 @@ origin'ов у лендинга нет), прод-CSP против Turnstile/`ws
 
 Всё это — на одном дереве, `npm run verify` exit 0:
 
-* `npm --prefix backend test` — 23 файла, **401** тест (+19 `params.test.ts`, +5 `verify.test.ts`, +1 сценарий SEC-B5 в `human.test.ts`, +14 `chip-index.test.ts` для shape #27, +2 сценария SEC-B11 в `game.test.ts`, +4 сценария SEC-M8 в `crank.test.ts`; три временных probe-файла удалены, когда их находки стали постоянными тестами).
-* `npm run security:static` — **69** проверок: 34 прежних + 6 SEC-B2/B3 + 4 SEC-B7 + 6 SEC-B8 + 7 SEC-B9 + 8 SEC-B12 (supply-chain: пины, хост, sha512, отозванные версии в дереве и в диапазонах, install-скрипты, лок↔манифесты) + 4 SEC-M8 (`rent-lut.test.ts`: пины CPI и выплаты, «cooldown — часть ALT-программы, а не наш Clock», 6 мутаций).
+* `npm --prefix backend test` — 23 файла, **406** тест (+19 `params.test.ts`, +5 `verify.test.ts`, +1 сценарий SEC-B5 в `human.test.ts`, +14 `chip-index.test.ts` для shape #27, +2 сценария SEC-B11 в `game.test.ts`, +4 сценария SEC-M8 в `crank.test.ts`, +4 сценария SEC-B13 в `projections.test.ts`/`game.test.ts`; три временных probe-файла удалены, когда их находки стали постоянными тестами).
+* `npm run security:static` — **74** проверки: 34 прежних + 6 SEC-B2/B3 + 4 SEC-B7 + 6 SEC-B8 + 7 SEC-B9 + 8 SEC-B12 (supply-chain: пины, хост, sha512, отозванные версии в дереве и в диапазонах, install-скрипты, лок↔манифесты) + 4 SEC-M8 (`rent-lut.test.ts`: пины CPI и выплаты, «cooldown — часть ALT-программы, а не наш Clock», 6 мутаций) + 5 SEC-B13 (`time-heal.test.ts`: проход исцеления, провод в `listen`, попытки/парковка, фоллбэк по слоту, `accrualFrom`; 6 мутаций).
 * `npm run lock:integrity -- --selftest` — 11/11; сам лок: **1 097/1 097** registry-узлов с `resolved`+sha512, все — `registry.npmjs.org`; `npm ci` на пустом `node_modules` — exit 0 (npm сверил все хеши).
 * `npm run state:layout` — 29 аккаунтов совпадают с baseline (`--selftest` 10/10); гейт в `npm run verify` и в CI-джобе `economy`.
 * `npm run landing:check` (+ DOM-smoke) — зелёный, включая CSP/host-проверки и «каждый landing-шрифт вшит»; `guttercaps-landing.html` перегенерирован (2,78 МБ, 13 inlined woff2, 0 ссылок на Google Fonts).

@@ -184,6 +184,30 @@ describe('staking read-model', () => {
     expect(staking.me(db, owner.toBase58()).setBonus).toMatchObject({ onChainSets: 1, multBps: 11_200, syncPending: false });
   });
 
+  // SEC-B13: a `Claimed` first seen over the websocket has no block_time until the healer re-reads it.
+  // `MAX(COALESCE(block_time, 0))` read that as "claimed at the epoch" — i.e. it *ignored* the newer claim
+  // and accrued from the earlier one, over-stating the `pending` a player reads as money. The honest
+  // direction for an unknown time is to stop the accrual, not to extend it.
+  it('an undated claim stops the accrual instead of silently resetting it to the epoch', () => {
+    const owner = Keypair.generate().publicKey;
+    const wallet = owner.toBase58();
+    const t = Math.floor(Date.now() / 1000);
+    const key = staking.tokenStakePda(owner, 1).toBase58();
+    ingestTx(tx([{ program: 'staking', name: 'Staked', data: { owner: wallet, kind: 0, key, amount: '1000000000', weight: '1500000000', unlockAt: String(t + 30 * 86_400) } }], { blockTime: t - 3 * 86_400 }), db);
+    ingestTx(tx([{ program: 'staking', name: 'DayClosed', data: { dayIndex: 1, year: 0, scheduleCap: '271232876712', guarded: '100000000', burn7dAvg: '0', sliceBudget: ['0', '0', '0', '0', '0'] } }], { blockTime: t - 2 * 86_400 }), db);
+    const accrued = BigInt(staking.me(db, wallet).tokenStakes[0].pending);
+    expect(accrued).toBeGreaterThan(0n);
+    // the claim lands live: the row exists, the time does not (the healer fills it later)
+    ingestTx(tx([{ program: 'staking', name: 'Claimed', data: { owner: wallet, kind: 0, amount: accrued.toString() } }], { blockTime: null }), db);
+    expect(db.scalar(`SELECT COUNT(*) FROM claims WHERE owner = ? AND block_time IS NULL`, wallet)).toBe(1);
+    // old bug: accrual window back to the stake opening → the same `accrued` would be shown again, as if the
+    // claim never happened. It must be zero: nothing can have accrued after a claim whose time we do not know.
+    expect(staking.me(db, wallet).tokenStakes[0].pending).toBe('0');
+    // once the time is known (t, i.e. now) the conservative answer and the dated answer agree
+    db.run(`UPDATE claims SET block_time = ? WHERE owner = ?`, t, wallet);
+    expect(staking.me(db, wallet).tokenStakes[0].pending).toBe('0');
+  });
+
   it('estimate: validates tier/amount; APY falls as the amount grows (pro-rata pool); chip weight mirrors staking::chip_weight', () => {
     expect(err(() => staking.validateEstimate({ amountCgMicro: '1000000', tier: 4 })).code).toBe('bad_tier');
     expect(err(() => staking.validateEstimate({ amountCgMicro: 'abc', tier: 1 })).code).toBe('bad_amount');

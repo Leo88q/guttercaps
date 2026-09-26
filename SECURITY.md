@@ -106,6 +106,22 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   registry metadata) rather than from an independent third-party mirror, and `npm audit` still covers the
   production tree only — the build/test tree is guarded by the install-script allow-list in that test.
 
+- **SEC-B13 (2026-09-27): closed — "no block time yet" no longer means 1970.** The websocket subscription
+  delivers transaction logs without a block time, and the only pass that filled them re-scanned the last
+  `LISTEN_HEAL_DEPTH` (200) signatures per program — so anything a longer outage left behind stayed
+  undated for good. Every day-bucketed read then disagreed with a rebuild: revenue/spend metrics and the
+  daily/weekly quest windows dropped the events entirely, and `staking`'s pending estimate read an undated
+  `Claimed` as "claimed at the epoch", i.e. it ignored the newest claim and accrued from an older one —
+  showing the player more than they are owed. Three parts close it: a bounded heal pass
+  (`INGEST.healEventTimes`) that drains the NULL queue oldest-first through `ingestTx` (so `patchLateTimes`
+  re-dates the projection rows too), falling back to `getBlockTime(slot)` when the transaction has left the
+  RPC's retention window, with per-row attempt counting (`events_raw.time_heal_attempts`, cap
+  `LISTEN_HEAL_TIMES_MAX_ATTEMPTS`) so a permanently unservable signature is parked instead of blocking
+  every batch; `/health.untimedEvents` = `{pending, stuck, oldestSlot}` so a stuck row is visible rather
+  than silent; and `accrualFrom` now stops the accrual window at an undated claim instead of restarting it
+  at the stake's opening. Pinned by `tests/security/time-heal.test.ts` (5 rules, 6 mutations) plus
+  behavioural tests in `backend/test/projections.test.ts` and `backend/test/game.test.ts`.
+
 ## Current exposure of this repository (from `docs/09-production-readiness.md`)
 
 `npm audit --omit=dev` reports one advisory chain in the production tree: `bigint-buffer`
@@ -117,3 +133,4 @@ transitive through `jayson` (`uuid`, `stream-json`) and `toml` and are gone via 
 `package.json` (`jayson ^5`, `toml ^5`). The `security` CI job runs `npm run audit:gate`, which **fails**
 on any high/critical advisory outside that dated list — acceptance is re-decided when the entry expires,
 not forgotten.
+

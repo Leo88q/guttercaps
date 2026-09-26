@@ -32,6 +32,10 @@ model EventRaw {
   /// SEC-M5: set by the finality reconciler once the cluster reports the tx finalized; NULL = confirmed only.
   /// Value-bearing reads (paid services, quest roots, referrals) only trust rows with finalizedAt set.
   finalizedAt DateTime? @map("finalized_at")
+  /// SEC-B13: attempts made by `healEventTimes` to fill a NULL `blockTime` (retrieval attempt, not a count
+  /// of successes). Rows first seen over the websocket have no block time until a re-read heals them; a
+  /// signature the RPC no longer serves is parked at the cap instead of being retried for ever.
+  timeHealAttempts Int @default(0) @map("time_heal_attempts")
 
   /// idempotency is the triple's job, not the primary key's: `INSERT OR IGNORE` on
   /// (signature, ix_index, event_index) is what makes a re-scanned slot harmless.
@@ -39,6 +43,7 @@ model EventRaw {
   @@index([program, name, slot])
   @@index([processed, slot])
   @@index([finalizedAt, slot])
+  @@index([blockTime, slot])
   @@map("events_raw")
 }
 

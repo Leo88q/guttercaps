@@ -2,7 +2,7 @@
 // backfill.ts, listen.ts and rebuild.ts all funnel through `ingestTx`, so
 // there is exactly one place that decides what "indexed" means.
 import { Connection, type ConfirmedSignatureInfo, type VersionedTransactionResponse } from '@solana/web3.js';
-import { COMMITMENT, PROGRAMS, RPC_URL, RPC_WS_URL, type ProgramName } from './config.ts';
+import { COMMITMENT, LISTEN_HEAL_TIMES_MAX_ATTEMPTS, PROGRAMS, RPC_URL, RPC_WS_URL, type ProgramName } from './config.ts';
 import { db as sharedDb, type Db, now } from './db.ts';
 import { decodeLogs, type RawEvent } from './events.ts';
 import { wireEvent } from './wire.ts';
@@ -157,6 +157,82 @@ export async function ingestSignatures(connection: Connection, sigs: readonly Co
     events += r.events; inserted += r.inserted;
   }
   return { events, inserted };
+}
+
+/**
+ * Heal `block_time` of stored events that never got one (SEC-B13).
+ *
+ * The websocket subscription yields transaction logs without a block time, so a row first seen live sits
+ * with `block_time IS NULL` until something re-reads its signature; the live healer does that only for
+ * the last `LISTEN_HEAL_DEPTH` signatures, so a listener that was down for longer leaves NULLs behind
+ * for good. Every day-bucketed read then silently disagrees with a rebuild: spend/revenue metrics drop
+ * the row, a daily quest window misses it, `accrualFrom` starts an accrual too early and the season
+ * slice can be sized below its own days.
+ *
+ * This pass closes that hole for every consumer at once: oldest NULL signature first, bounded batch,
+ * `getTransaction` → `ingestTx`, which fills `events_raw` and re-runs `patchLateTimes` for the projection
+ * rows written from the untimed application. When the RPC no longer serves the transaction, the stored
+ * `slot` is tried (`getBlockTime`) — the slot is all a `patchLateTimes` needs. Each attempt is counted, so
+ * a row that can never be healed is parked at `LISTEN_HEAL_TIMES_MAX_ATTEMPTS` instead of occupying every
+ * batch for ever (see `untimedStatus` for the operator-visible count). Idempotent by construction: only
+ * missing events are inserted, only gaps are filled.
+ */
+export async function healEventTimes(connection: Connection, db: Db = sharedDb(), limit = 25, maxAttempts = LISTEN_HEAL_TIMES_MAX_ATTEMPTS): Promise<number> {
+  const rows = db.all<{ signature: string; slot: number }>(
+    `SELECT DISTINCT signature, MIN(slot) slot FROM events_raw WHERE block_time IS NULL AND time_heal_attempts < ? GROUP BY signature ORDER BY slot ASC LIMIT ?`,
+    maxAttempts, limit,
+  );
+  if (rows.length === 0) return 0;
+  const before = db.scalar(`SELECT COUNT(*) FROM events_raw WHERE block_time IS NULL`);
+  const healed = await mapLimit(rows, 4, async (r) => {
+    // Counted whether or not it succeeds: the counter is "we tried", which is what parks a dead signature.
+    db.run(`UPDATE events_raw SET time_heal_attempts = time_heal_attempts + 1 WHERE signature = ? AND block_time IS NULL`, r.signature);
+    try {
+      const t = await fetchTx(connection, r.signature);
+      if (t && t.blockTime !== null) { ingestTx(t, db); return true; }
+      // The transaction is gone from the RPC's retention window, but the slot's time may still be known —
+      // and the slot alone is enough for `patchLateTimes` (it fans out per stored event of the signature).
+      const bt = await connection.getBlockTime(r.slot);
+      if (bt === null || bt === undefined) return false;
+      return applyStoredTime(db, r.signature, bt);
+    } catch {
+      return false;
+    }
+  });
+  if (healed.some(Boolean)) log.info(`[heal:times] ${healed.filter(Boolean).length}/${rows.length} signature(s) healed`);
+  return Math.max(0, before - db.scalar(`SELECT COUNT(*) FROM events_raw WHERE block_time IS NULL`));
+}
+
+/**
+ * Date every stored event of one signature and re-run the timed projection patch for each of them. Shared
+ * by the slot-time fallback of `healEventTimes` (the transaction itself is no longer retrievable).
+ */
+function applyStoredTime(db: Db, signature: string, blockTime: number): boolean {
+  const rows = db.all<{ ix_index: number; event_index: number; program: ProgramName; name: string; data: string; slot: number }>(
+    `SELECT ix_index, event_index, program, name, data, slot FROM events_raw WHERE signature = ? AND block_time IS NULL`,
+    signature,
+  );
+  if (rows.length === 0) return false;
+  for (const r of rows) {
+    db.run(`UPDATE events_raw SET block_time = ? WHERE signature = ? AND ix_index = ? AND event_index = ? AND block_time IS NULL`, blockTime, signature, r.ix_index, r.event_index);
+    const e: RawEvent = { program: r.program, programId: PROGRAMS[r.program].toBase58(), name: r.name, data: JSON.parse(r.data), ixIndex: r.ix_index, eventIndex: r.event_index };
+    patchLateTimes(db, e, { signature, slot: r.slot, blockTime });
+  }
+  return true;
+}
+
+/**
+ * Operator-visible state of the time-healing (SEC-B13), reported in `/health.untimedEvents`: `pending` are
+ * rows still waiting for a time (any pass will pick them up), `stuck` are rows parked at the attempt cap —
+ * the RPC cannot serve their transaction *or* their slot, so those events stay out of every day-bucketed
+ * read until an operator repairs them (e.g. by re-running with a provider that still has them).
+ */
+export function untimedStatus(db: Db = sharedDb(), maxAttempts = LISTEN_HEAL_TIMES_MAX_ATTEMPTS): { pending: number; stuck: number; oldestSlot: number | null } {
+  return {
+    pending: db.scalar(`SELECT COUNT(*) FROM events_raw WHERE block_time IS NULL AND time_heal_attempts < ?`, maxAttempts),
+    stuck: db.scalar(`SELECT COUNT(*) FROM events_raw WHERE block_time IS NULL AND time_heal_attempts >= ?`, maxAttempts),
+    oldestSlot: db.get<{ s: number | null }>(`SELECT MIN(slot) s FROM events_raw WHERE block_time IS NULL`)?.s ?? null,
+  };
 }
 
 export const sleep = (ms: number) => new Promise((f) => setTimeout(f, ms));

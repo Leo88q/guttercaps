@@ -175,6 +175,12 @@ export const LISTEN_RECONNECT_MS = Number(env.LISTEN_RECONNECT_MS ?? 5_000);
 /** The listener periodically re-scans the last N signatures per program to heal gaps (WS drops). */
 export const LISTEN_HEAL_EVERY_MS = Number(env.LISTEN_HEAL_EVERY_MS ?? 60_000);
 export const LISTEN_HEAL_DEPTH = Number(env.LISTEN_HEAL_DEPTH ?? 200);
+/** SEC-B13: how many untimed stored events one heal pass re-reads (`healEventTimes`). The live healer
+ *  only covers the last `LISTEN_HEAL_DEPTH` signatures; this drains what a listener outage left behind. */
+export const LISTEN_HEAL_TIMES_BATCH = Number(env.LISTEN_HEAL_TIMES_BATCH ?? 25);
+/** SEC-B13: how many times one untimed row may be retried by `healEventTimes` before it is parked (an RPC
+ *  that no longer serves the signature cannot heal it, and retrying for ever would starve the batch). */
+export const LISTEN_HEAL_TIMES_MAX_ATTEMPTS = Number(env.LISTEN_HEAL_TIMES_MAX_ATTEMPTS ?? 5);
 
 /**
  * Pyth (owner decision Q7 — we run our own price pusher, ops/pyth-pusher/). The API quotes from

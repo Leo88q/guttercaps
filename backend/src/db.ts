@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS events_raw (
   block_time  INTEGER,                       -- unix seconds; NULL when first seen via websocket
   processed   INTEGER NOT NULL DEFAULT 0,    -- projections applied
   finalized_at INTEGER,                      -- SEC-M5: unix s when the finality reconciler saw the tx finalized; NULL = confirmed only
+  time_heal_attempts INTEGER NOT NULL DEFAULT 0, -- SEC-B13: how often healEventTimes tried to fill block_time for this row
   UNIQUE (signature, ix_index, event_index)
 );
 CREATE INDEX IF NOT EXISTS idx_events_name  ON events_raw(program, name);
@@ -749,7 +750,13 @@ export class Db {
     }
     const ev = new Set((this.raw.prepare(`PRAGMA table_info(events_raw)`).all() as { name: string }[]).map((c) => c.name));
     if (!ev.has('finalized_at')) this.raw.exec(`ALTER TABLE events_raw ADD COLUMN finalized_at INTEGER`);
+    // SEC-B13: `healEventTimes` drains rows whose block_time the websocket never delivered. A signature the
+    // RPC no longer serves (or whose slot time it no longer knows) can never be healed, so the pass counts
+    // its attempts and stops at the cap — otherwise a handful of permanent NULLs would occupy every batch
+    // for ever and starve the rows that *are* healable. `stuck` rows are surfaced in /health.
+    if (!ev.has('time_heal_attempts')) this.raw.exec(`ALTER TABLE events_raw ADD COLUMN time_heal_attempts INTEGER NOT NULL DEFAULT 0`);
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_events_unfinalized ON events_raw(finalized_at, slot)`);
+    this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_events_untimed ON events_raw(slot) WHERE block_time IS NULL`);
     const ch = new Set((this.raw.prepare(`PRAGMA table_info(chips)`).all() as { name: string }[]).map((c) => c.name));
     if (!ch.has('skin')) this.raw.exec(`ALTER TABLE chips ADD COLUMN skin TEXT`);
     // SEC-B3/shape #27: `chips.game_index` — the per-collection mint number the market's "Low #" sort and

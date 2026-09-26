@@ -19,7 +19,7 @@ import { POLICIES, createLimiter, type Limiter } from './ratelimit.ts';
 import { catalogue, checkHandle, claimHandle, claimService, myServices, ServiceError } from './services.ts';
 import { claimPassTier, passState } from './pass.ts';
 import { packQuote, validateRequest } from './quote.ts';
-import { getConnection } from './ingest.ts';
+import { getConnection, untimedStatus } from './ingest.ts';
 import { crankStatus, pauseStatus, priceStatus } from './queries.ts';
 import { burnOracleStatus } from './burn-oracle.ts';
 import { arenaOracleGauge, burnOracleGauges, rewardOracleGauges, unattributedResolves } from './oracle-metrics.ts';
@@ -231,7 +231,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   };
 
   // ------------------------------------------------------------ health / stats
-  v1.get('/health', (_req, res) => { res.json({ ok: true, lastSlot: db.scalar(`SELECT COALESCE(MAX(slot),0) FROM events_raw`), prices: priceStatus(db), crank: crankStatus(db), paused: pauseStatus(db), burnOracle: burnOracleStatus(db), finality: finalityStatus(db), rewardOracle: rewardOracleStatus(db), antifraud: antifraudStatus(db), arena: { queued: db.scalar(`SELECT COUNT(*) FROM arena_queue`), revealing: db.scalar(`SELECT COUNT(*) FROM matches WHERE status = 'revealing'`), unattributedResolves: unattributedResolves(db) } }); });
+  v1.get('/health', (_req, res) => { res.json({ ok: true, lastSlot: db.scalar(`SELECT COALESCE(MAX(slot),0) FROM events_raw`), prices: priceStatus(db), crank: crankStatus(db), paused: pauseStatus(db), burnOracle: burnOracleStatus(db), finality: finalityStatus(db), untimedEvents: untimedStatus(db), rewardOracle: rewardOracleStatus(db), antifraud: antifraudStatus(db), arena: { queued: db.scalar(`SELECT COUNT(*) FROM arena_queue`), revealing: db.scalar(`SELECT COUNT(*) FROM matches WHERE status = 'revealing'`), unattributedResolves: unattributedResolves(db) } }); });
   v1.get('/prices', (_req, res) => { res.json(priceStatus(db)); });
   v1.get('/stats', (_req, res) => { res.json(q.stats(db)); });
   v1.get('/rewards/skr-pool', (_req, res) => { res.json(q.skrPool(db)); });
