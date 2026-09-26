@@ -16,7 +16,7 @@ import { CleanZone, KV, Modal, Skeleton } from '@/shared/ui/primitives';
 import { CleanConfirmButton } from '@/shared/ui/buttons';
 import { chipLore, chipName, collectionName, rarityColor, rarityName, RARITY_PROFILES, ELEMENT_OF_COLLECTION, chipImageOf } from '@/shared/lib/rarity';
 import { ElementGlyph } from '@/shared/ui/element-icons';
-import { fmtAmount, fmtUsd, parseUnits, shortKey, timeAgo } from '@/shared/lib/format';
+import { chipIndexText, fmtAmount, fmtUsd, parseUnits, shortKey, timeAgo } from '@/shared/lib/format';
 import { useUiStore } from '@/app/store/ui';
 import { EXPLORER } from '@/app/config';
 import { isMock } from '@/api/client';
@@ -67,7 +67,7 @@ export default function ChipPage() {
         <div style={{ width: 'min(330px, 100%)', flex: '0 0 auto' }}><ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c, 512)} skin={c.skin} crimp={rarityColor(c.rarity!)} /></div>
         <div className="grow stack-sm" style={{ minWidth: 260 }}>
           <div className="tiny muted">{collectionName(c.collection!)} <ElementGlyph element={ELEMENT_OF_COLLECTION[c.collection!]} /> · <span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span></div>
-          <h1 className="page-title" style={{ margin: 0 }}>{chipName(c.collection!, c.rarity!)} <span className="muted mono" style={{ fontSize: 18 }}>#{c.index}</span></h1>
+          <h1 className="page-title" style={{ margin: 0 }}>{chipName(c.collection!, c.rarity!)} {chipIndexText(c.index) && <span className="muted mono" style={{ fontSize: 18 }}>{chipIndexText(c.index)}</span>}</h1>
           <p className="small" style={{ lineHeight: 1.5 }}>{chipLore(c.collection!, c.rarity!)}</p>
           <div className="grid-3">
             <div className="stat"><b className="mono">{c.power}</b><span>power</span></div>

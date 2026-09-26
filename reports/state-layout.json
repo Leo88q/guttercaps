@@ -1,0 +1,453 @@
+{
+  "version": 1,
+  "fingerprint": "6c642dc59e62ce1643024478c7e477358458880c254614aaf4d2c985fd847720",
+  "accounts": [
+    {
+      "program": "arena",
+      "name": "ArenaConfig",
+      "fields": [
+        "admin: Pubkey",
+        "battle_oracle: Pubkey",
+        "cg_mint: Pubkey",
+        "season_pool: Pubkey",
+        "treasury_cg: Pubkey",
+        "oracle_daily_cap: u64",
+        "oracle_paid_today: u64",
+        "oracle_day_start: i64",
+        "paused: bool",
+        "bump: u8",
+        "pauser: Pubkey"
+      ]
+    },
+    {
+      "program": "arena",
+      "name": "WagerBattle",
+      "fields": [
+        "challenger: Pubkey",
+        "opponent: Pubkey",
+        "wager: u64",
+        "squad_a: [Pubkey; SQUAD]",
+        "squad_b: [Pubkey; SQUAD]",
+        "power_a: u32",
+        "power_b: u32",
+        "randomness: Pubkey",
+        "commit_slot: u64",
+        "status: BattleStatus",
+        "created_at: i64",
+        "accepted_at: i64",
+        "winner: Pubkey",
+        "result_hash: [u8; 32]",
+        "nonce: u64",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "chip_core",
+      "name": "ServiceLedger",
+      "fields": [
+        "owner: Pubkey",
+        "day_start: i64",
+        "bought_today: [u8; 16]",
+        "spent_usd_cents_total: u64",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "chip_core",
+      "name": "GameConfig",
+      "fields": [
+        "admin: Pubkey",
+        "pending_admin: Pubkey",
+        "treasury: Pubkey",
+        "buyback_wallet: Pubkey",
+        "cg_mint: Pubkey",
+        "usdc_mint: Pubkey",
+        "skr_mint: Pubkey",
+        "staking_program: Pubkey",
+        "pyth_sol_usd_feed: Pubkey",
+        "pyth_skr_usd_feed: Pubkey",
+        "featured_collection: u8",
+        "paused: bool",
+        "packs: [PackDef; 4]",
+        "market_fee_bps: u16",
+        "skr_discount_bps: u16",
+        "collections_created: u8",
+        "params_version: u32",
+        "vault_bump: u8",
+        "bump: u8",
+        "pauser: Pubkey"
+      ]
+    },
+    {
+      "program": "chip_core",
+      "name": "VaultLedger",
+      "fields": [
+        "shard: u8",
+        "liab_lamports: u64",
+        "liab_usdc: u64",
+        "liab_cg: u64",
+        "liab_skr: u64",
+        "burned_total: u64",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "chip_core",
+      "name": "CollectionMeta",
+      "fields": [
+        "idx: u8",
+        "core_collection: Pubkey",
+        "#[max_len(16)] symbol: String",
+        "element: u8",
+        "minted: u64",
+        "minted_by_rarity: [u64; RARITY_COUNT]",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "chip_core",
+      "name": "BubblegumTreeMeta",
+      "fields": [
+        "collection_idx: u8",
+        "core_collection: Pubkey",
+        "merkle_tree: Pubkey",
+        "tree_config: Pubkey",
+        "tree_authority: Pubkey",
+        "max_depth: u8",
+        "canopy: u8",
+        "active: bool",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "chip_core",
+      "name": "CompressedChipState",
+      "fields": [
+        "asset: Pubkey",
+        "claim: Pubkey",
+        "collection_idx: u8",
+        "merkle_tree: Pubkey",
+        "leaf_index: u32",
+        "leaf_nonce: u64",
+        "data_hash: [u8; 32]",
+        "creator_hash: [u8; 32]",
+        "collection_hash: [u8; 32]",
+        "asset_data_hash: [u8; 32]",
+        "leaf_flags: u8",
+        "rarity: Rarity",
+        "level: u8",
+        "index: u64",
+        "flags: u8",
+        "lock_until: i64",
+        "minted_at: i64",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "chip_core",
+      "name": "CompressedMintClaim",
+      "fields": [
+        "buyer: Pubkey",
+        "collection_idx: u8",
+        "rarity: Rarity",
+        "level: u8",
+        "game_index: u64",
+        "expires_at: i64",
+        "settlement: Pubkey",
+        "index_reserved: bool",
+        "minted: bool",
+        "registered: bool",
+        "consumed: bool",
+        "listed: bool",
+        "bump: u8",
+        "staked: bool",
+        "origin: Pubkey",
+        "lock_until: i64"
+      ]
+    },
+    {
+      "program": "chip_core",
+      "name": "CompressedPackSettlement",
+      "fields": [
+        "buyer: Pubkey",
+        "pending: Pubkey",
+        "nonce: u64",
+        "total_claims: u16",
+        "registered_claims: u16",
+        "cancelled_claims: u16",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "chip_core",
+      "name": "ChipState",
+      "fields": [
+        "asset: Pubkey",
+        "collection_idx: u8",
+        "rarity: Rarity",
+        "level: u8",
+        "index: u64",
+        "flags: u8",
+        "lock_until: i64",
+        "minted_at: i64",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "chip_core",
+      "name": "PlayerPity",
+      "fields": [
+        "owner: Pubkey",
+        "counters: [u16; 4]",
+        "day_start: i64",
+        "bought_today: [u8; 4]",
+        "starter_claimed: bool",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "chip_core",
+      "name": "PendingPack",
+      "fields": [
+        "buyer: Pubkey",
+        "sku: u8",
+        "qty: u8",
+        "opened: u8",
+        "randomness: Pubkey",
+        "commit_slot: u64",
+        "paid_lamports: u64",
+        "paid_usdc: u64",
+        "paid_cg: u64",
+        "paid_skr: u64",
+        "pity_snapshot: u16",
+        "nonce: u64",
+        "bump: u8",
+        "revealed: bool",
+        "value: [u8; 32]",
+        "voucher: bool",
+        "voucher_odds: [u16; RARITY_COUNT]",
+        "soulbound_days: u8"
+      ]
+    },
+    {
+      "program": "chip_core",
+      "name": "PendingFusion",
+      "fields": [
+        "owner: Pubkey",
+        "recipe: u8",
+        "materials: [Pubkey; MATERIALS_PER_FUSION]",
+        "result_collection_idx: u8",
+        "boosted: bool",
+        "randomness: Pubkey",
+        "commit_slot: u64",
+        "nonce: u64",
+        "bump: u8",
+        "fee_escrowed: u64"
+      ]
+    },
+    {
+      "program": "chip_core",
+      "name": "PendingClaimFusion",
+      "fields": [
+        "owner: Pubkey",
+        "recipe: u8",
+        "materials: [Pubkey; MATERIALS_PER_FUSION]",
+        "result_collection_idx: u8",
+        "boosted: bool",
+        "randomness: Pubkey",
+        "commit_slot: u64",
+        "nonce: u64",
+        "bump: u8",
+        "fee_escrowed: u64"
+      ]
+    },
+    {
+      "program": "chip_core",
+      "name": "PlayerItems",
+      "fields": [
+        "owner: Pubkey",
+        "boosters: u16",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "market",
+      "name": "Listing",
+      "fields": [
+        "asset: Pubkey",
+        "seller: Pubkey",
+        "price: u64",
+        "currency: Currency",
+        "created_at: i64",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "market",
+      "name": "Offer",
+      "fields": [
+        "asset: Pubkey",
+        "bidder: Pubkey",
+        "amount_usdc: u64",
+        "expires_at: i64",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "market",
+      "name": "CompressedListing",
+      "fields": [
+        "claim: Pubkey",
+        "seller: Pubkey",
+        "price: u64",
+        "currency: Currency",
+        "created_at: i64",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "market",
+      "name": "CompressedAssetListing",
+      "fields": [
+        "asset: Pubkey",
+        "claim: Pubkey",
+        "seller: Pubkey",
+        "merkle_tree: Pubkey",
+        "tree_config: Pubkey",
+        "core_collection: Pubkey",
+        "collection_idx: u8",
+        "price: u64",
+        "currency: Currency",
+        "created_at: i64",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "staking",
+      "name": "EmissionState",
+      "fields": [
+        "admin: Pubkey",
+        "cg_mint: Pubkey",
+        "chip_core_program: Pubkey",
+        "market_program: Pubkey",
+        "arena_program: Pubkey",
+        "quest_oracle: Pubkey",
+        "season_oracle: Pubkey",
+        "set_oracle: Pubkey",
+        "genesis_ts: i64",
+        "day_index: u32",
+        "minted_total: u64",
+        "schedule_minted: [u64; 8]",
+        "burn_ring: [u64; 7]",
+        "burn_today: u64",
+        "split_bps: [u16; SPLIT_COUNT]",
+        "split_changed_at: i64",
+        "slice_budget: [u64; SPLIT_COUNT]",
+        "paused: bool",
+        "bump: u8",
+        "pauser: Pubkey",
+        "burn_oracle: Pubkey",
+        "recycled_total: u64",
+        "recycled_minted: u64"
+      ]
+    },
+    {
+      "program": "staking",
+      "name": "Pool",
+      "fields": [
+        "kind: u8",
+        "total_weight: u128",
+        "acc_reward_per_weight: u128",
+        "budget_per_sec: u64",
+        "budget_remaining: u64",
+        "last_update: i64",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "staking",
+      "name": "TokenStake",
+      "fields": [
+        "owner: Pubkey",
+        "tier: u8",
+        "amount: u64",
+        "weight: u128",
+        "reward_debt: u128",
+        "unlock_at: i64",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "staking",
+      "name": "ChipStake",
+      "fields": [
+        "owner: Pubkey",
+        "asset: Pubkey",
+        "weight: u128",
+        "reward_debt: u128",
+        "staked_at: i64",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "staking",
+      "name": "CompressedChipStake",
+      "fields": [
+        "owner: Pubkey",
+        "claim: Pubkey",
+        "weight: u128",
+        "reward_debt: u128",
+        "staked_at: i64",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "staking",
+      "name": "SetBonus",
+      "fields": [
+        "owner: Pubkey",
+        "completed_sets: u8",
+        "updated_at: i64",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "staking",
+      "name": "RewardRoot",
+      "fields": [
+        "kind: u8",
+        "epoch: u32",
+        "root: [u8; 32]",
+        "budget: u64",
+        "claimed: u64",
+        "published_at: i64",
+        "publisher: Pubkey",
+        "revoked: bool",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "staking",
+      "name": "ClaimReceipt",
+      "fields": [
+        "amount: u64",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "staking",
+      "name": "SkrPool",
+      "fields": [
+        "skr_mint: Pubkey",
+        "vault: Pubkey",
+        "budget: u64",
+        "reserved: u64",
+        "funded_total: u64",
+        "paid_total: u64",
+        "max_root_budget: u64",
+        "paused: bool",
+        "bump: u8"
+      ]
+    }
+  ]
+}

@@ -1,7 +1,8 @@
 // Read-model queries behind the REST routes. Everything here is a plain SQL
 // projection over the tables in db.ts; nothing touches the chain.
+import { clampInt } from './params.ts';
 import {
-  RARITY_PROFILES, levelMult, PACKS, BUNDLES, effectiveOdds, probabilityAtLeast, packExpectedValueMult, type PackId,
+  RARITY_PROFILES, levelMult, PACKS, BUNDLES, effectiveOdds, expandRandomness, probabilityAtLeast, packExpectedValueMult, type PackDef, type PackId,
   SKR_POOL_FUNDING, SKR_TREASURY_WALLET, skrPoolDueMicro, marketFeeTreasuryPartMicro,
   PYTH_MAX_AGE_SECS, PYTH_PUSHER, QUEST_CHIP_TEMPLATES, COLLECTIONS,
 } from '@guttercaps/economy';
@@ -21,6 +22,18 @@ export function priceStatus(db: Db) {
   return { maxAgeS: PYTH_MAX_AGE_SECS, alertAgeS: PYTH_PUSHER.alertAgeS, feeds };
 }
 
+/**
+ * Last line of defence for pagination (SEC-B2): SQLite reads a **negative** `LIMIT` as "no limit", so
+ * an unbounded value here means "return the whole table". Routers validate their parameters
+ * (`backend/src/params.ts`); this keeps a future caller from turning a clamp into a bypass.
+ */
+const page = (limit: number, max: number, def: number) => clampInt(Number.isFinite(limit) ? limit : def, 0, max);
+const offsetOf = (cursor: string | undefined) => {
+  if (!cursor) return 0;
+  const n = Number(cursor);
+  return Number.isSafeInteger(n) && n > 0 ? n : 0;
+};
+
 export const CURRENCY_SYMBOL = ['SOL', 'USDC', 'CG', 'SKR'] as const;
 export const iso = (s: number | null | undefined) => (s === null || s === undefined ? null : new Date(s * 1000).toISOString());
 
@@ -38,7 +51,21 @@ export function toUsd(amount: string, currency: number, px: { solUsd: number; sk
   }
 }
 
-export interface ChipRow { asset: string; owner: string; collection_idx: number; rarity: number; level: number; flags: number; lock_until: number; origin: string; origin_signature: string | null; skin: string | null; minted_at: number | null; burned_at: number | null }
+export interface ChipRow { asset: string; owner: string; collection_idx: number; rarity: number; level: number; flags: number; lock_until: number; origin: string; origin_signature: string | null; skin: string | null; minted_at: number | null; burned_at: number | null; game_index: string | null }
+
+/**
+ * `chips.game_index` is the per-collection mint number, stored as TEXT (u64, same convention as
+ * `compressed_claims.game_index`). `null` means *not resolved yet* — the compressed path writes it from
+ * `CompressedChipRegistered`, a core `open_pack` chip gets it from its `ChipState` account via
+ * `Crank.resolveChipIndexes`. It must never be faked with `0`: index 0 is the first chip ever minted in
+ * that collection, so a placeholder collides with a real chip ("#0" for everything, which is what this
+ * used to render). A value outside the safe-integer range is reported as `null` rather than rounded.
+ */
+export function chipIndexOf(v: string | null | undefined): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isSafeInteger(n) && n >= 0 ? n : null;
+}
 
 export function chipToApi(r: ChipRow) {
   const p = RARITY_PROFILES[r.rarity];
@@ -49,7 +76,7 @@ export function chipToApi(r: ChipRow) {
     collection: r.collection_idx,
     rarity: r.rarity,
     level: r.level,
-    index: 0,
+    index: chipIndexOf(r.game_index),
     flags: { staked: (r.flags & 1) !== 0, listed: (r.flags & 2) !== 0, fusing: (r.flags & 4) !== 0, soulbound: (r.flags & 8) !== 0 },
     lockUntil: r.lock_until > 0 ? iso(r.lock_until) : null,
     skin: r.skin ?? null,
@@ -71,11 +98,13 @@ export function myChips(db: Db, wallet: string, q: { collection?: number; rarity
     case 'fusing': where.push('(flags & 4) != 0'); break;
     case 'locked': where.push('lock_until > ?'); params.push(t); break;
   }
-  const limit = Math.min(q.limit ?? 200, 500);
-  const offset = q.cursor ? Number(q.cursor) || 0 : 0;
+  const limit = page(q.limit ?? 200, 500, 200);
+  const offset = offsetOf(q.cursor);
   const total = db.scalar(`SELECT COUNT(*) FROM chips WHERE ${where.join(' AND ')}`, ...params);
   const rows = db.all<ChipRow>(`SELECT * FROM chips WHERE ${where.join(' AND ')} ORDER BY rarity DESC, level DESC, minted_at DESC LIMIT ? OFFSET ?`, ...params, limit, offset);
-  return { items: rows.map(chipToApi), nextCursor: offset + rows.length < total ? String(offset + rows.length) : null, total };
+  // `limit > 0`: with `?limit=0` a non-null cursor would point at the same offset forever (a client
+  // following `nextCursor` would loop). No rows ⇒ no next page.
+  return { items: rows.map(chipToApi), nextCursor: limit > 0 && offset + rows.length < total ? String(offset + rows.length) : null, total };
 }
 
 /**
@@ -127,22 +156,23 @@ export function me(db: Db, wallet: string, geo?: { restricted: boolean; country:
 const ACTIVITY_OWNER_KEYS = ['buyer', 'owner', 'seller', 'winner', 'wallet'] as const;
 
 export function activity(db: Db, wallet: string, limit = 50, cursor?: string) {
-  const offset = cursor ? Number(cursor) || 0 : 0;
+  const lim = page(limit, 200, 50);
+  const offset = offsetOf(cursor);
   const rows = db.all<{ name: string; signature: string; block_time: number | null; data: string; program: string }>(
     `SELECT name, signature, block_time, data, program FROM events_raw
      WHERE name IN ('PackOpened','ChipFused','CompressedClaimsFused','ClaimFusionRevealed','ChipListed','ChipSold','BattleResolved','Claimed','RootClaimed','Staked','Unstaked','ServicePaid')
        AND (${ACTIVITY_OWNER_KEYS.map((k) => `${jsonAt('data', k)} = ?`).join(' OR ')})
      ORDER BY slot DESC, id DESC LIMIT ? OFFSET ?`,
-    wallet, wallet, wallet, wallet, wallet, limit + 1, offset,
+    wallet, wallet, wallet, wallet, wallet, lim + 1, offset,
   );
   const KIND: Record<string, string> = { PackOpened: 'pack_opened', ChipFused: 'fused', CompressedClaimsFused: 'fused', ClaimFusionRevealed: 'fused', ChipListed: 'listed', ChipSold: 'sold', BattleResolved: 'match_won', Claimed: 'claimed', RootClaimed: 'claimed', Staked: 'staked', Unstaked: 'unstaked', ServicePaid: 'service' };
-  const items = rows.slice(0, limit).map((r) => {
+  const items = rows.slice(0, lim).map((r) => {
     const d = JSON.parse(r.data) as Record<string, unknown>;
     let kind = KIND[r.name] ?? r.name;
     if (r.name === 'ChipSold' && d.buyer === wallet) kind = 'bought';
     return { kind, signature: r.signature, blockTime: iso(r.block_time) ?? new Date().toISOString(), payload: d };
   });
-  return { items, nextCursor: rows.length > limit ? String(offset + limit) : null };
+  return { items, nextCursor: rows.length > lim ? String(offset + lim) : null };
 }
 
 // ---------------------------------------------------------------- packs
@@ -186,6 +216,55 @@ export function packOpen(db: Db, signature: string) {
   };
 }
 
+/**
+ * SEC-B6 (2026-09-26): `/packs/verify` used to answer `matches: true` unconditionally — a verifier that
+ * always agrees is worse than none, because the page (and any third-party checker) shows a "verified"
+ * badge for a result nobody recomputed. Here the **rarity sequence** is recomputed from the randomness
+ * bytes the program emitted (`PackOpened.roll`, the per-pack seed) with the published economy table (or,
+ * for a quest voucher, its template odds) and compared with what the chain minted.
+ *
+ * What is deliberately *not* claimed: the district (`collection`) needs the live pool
+ * (`collections_created` / the featured district) which the read model does not hold, and the admin can
+ * change the pack table itself (`set_params` → `ParamsChanged`) — so a reproduction mismatch is reported
+ * with the reason, and `assumed.basis` says which table was used. The client verifier reads the live
+ * config from the chain and does check the districts.
+ */
+export function verifyPackOpen(db: Db, signature: string) {
+  const row = db.get<{ signature: string; buyer: string; sku: number; nonce: string; count: number; rarities: string; collections: string; roll_hex: string; pity_before: number; slot: number }>(
+    `SELECT signature, buyer, sku, nonce, count, rarities, collections, roll_hex, pity_before, slot FROM pack_opens WHERE signature = ?`, signature,
+  );
+  if (!row) return undefined;
+  const base = packOpen(db, signature);
+  if (!base) return undefined;
+  const template = row.sku === 0 ? QUEST_CHIP_TEMPLATES[db.get<{ template: number }>(`SELECT template FROM vouchers WHERE wallet = ? AND nonce = ?`, row.buyer, row.nonce)?.template ?? -1] : undefined;
+  // The voucher path mints exactly one chip with its TEMPLATE odds and no floor/pity (#28) — mirrors
+  // `voucherEconPack` in crank.ts and `PackDef::voucher` in chip_core. Only these fields are read by
+  // `expandRandomness`; the district pool is a separate, chain-only input.
+  const def: PackDef = template ? { ...PACKS.starter, chips: 1, oddsBps: [...template.odds], floor: 0, pity: null } : PACKS[SKUS[row.sku]];
+  const onChain = (JSON.parse(row.rarities) as number[]).slice(0, row.count).map((rarity, i) => ({ rarity, collection: (JSON.parse(row.collections) as number[])[i] }));
+  const bytes = /^[0-9a-fA-F]{64}$/.test(row.roll_hex) ? Uint8Array.from(Buffer.from(row.roll_hex, 'hex')) : undefined;
+  const paramsChangedBefore = db.scalar(`SELECT COUNT(*) FROM params_changes WHERE slot < ?`, row.slot) > 0;
+  const notes: string[] = [];
+  let recomputed: { rarity: number }[] = [];
+  let matches = false;
+  if (!bytes) {
+    notes.push('the indexed randomness is not 32 bytes — there is nothing to recompute');
+  } else if (def.chips !== row.count) {
+    notes.push(`the published ${def.id} table holds ${def.chips} chips but the event records ${row.count}`);
+  } else {
+    recomputed = expandRandomness(bytes, def, row.pity_before, 1).map((r) => ({ rarity: r.rarity }));
+    matches = recomputed.length === onChain.length && recomputed.every((r, i) => r.rarity === onChain[i].rarity);
+    if (!matches) {
+      notes.push(paramsChangedBefore
+        ? 'a ParamsChanged event predates this open, so the on-chain pack table may differ from the published one — check the live config (client verifier) before reading this as a fairness failure'
+        : 'the minted rarities do not follow from the randomness bytes under the published table — treat this as a fairness failure and report it');
+    } else if (paramsChangedBefore) {
+      notes.push('pack-table changes predate this open; the rarities still reproduce under the published table');
+    }
+  }
+  return { ...base, recomputed, matches, assumed: { basis: 'published-defaults', sku: row.sku, chips: def.chips, floor: def.floor, pity: def.pity, paramsChangedBefore }, ...(notes.length ? { note: notes.join('; ') } : {}) };
+}
+
 // ---------------------------------------------------------------- market
 export function listings(db: Db, q: Record<string, string | undefined>) {
   const px = prices(db);
@@ -195,6 +274,11 @@ export function listings(db: Db, q: Record<string, string | undefined>) {
   if (q.rarity) { where.push('c.rarity = ?'); params.push(Number(q.rarity)); }
   if (q.rarityMin) { where.push('c.rarity >= ?'); params.push(Number(q.rarityMin)); }
   if (q.levelMin) { where.push('c.level >= ?'); params.push(Number(q.levelMin)); }
+  // Mint-number range (SEC-B3 shape #27). Compared as integers, so a chip whose index is not resolved yet
+  // is *excluded* by a range filter instead of silently matching it — an unresolved chip has no number to
+  // compare, and pretending it is #0 would match the first chip of the collection.
+  if (q.indexMin) { where.push('CAST(c.game_index AS INTEGER) >= ?'); params.push(Number(q.indexMin)); }
+  if (q.indexMax) { where.push('CAST(c.game_index AS INTEGER) <= ?'); params.push(Number(q.indexMax)); }
   if (q.currency) { const code = CURRENCY_SYMBOL.indexOf(q.currency as never); if (code >= 0) { where.push('l.currency = ?'); params.push(code); } }
   const rows = db.all<ChipRow & { seller: string; price: string; currency: number; created_at: number | null }>(
     `SELECT c.*, l.seller, l.price, l.currency, l.created_at FROM listings l JOIN chips c ON c.asset = l.asset WHERE ${where.join(' AND ')}`, ...params,
@@ -202,15 +286,19 @@ export function listings(db: Db, q: Record<string, string | undefined>) {
   let items = rows.map((r) => ({ asset: r.asset, seller: r.seller, price: r.price, currency: CURRENCY_SYMBOL[r.currency] ?? 'SOL', priceUsd: Number(toUsd(r.price, r.currency, px).toFixed(2)), createdAt: iso(r.created_at) ?? new Date().toISOString(), chip: chipToApi(r) }));
   if (q.priceMaxUsd) items = items.filter((i) => i.priceUsd <= Number(q.priceMaxUsd));
   const sort = q.sort ?? 'price_asc';
+  // `index_asc` ("Low #"): unresolved chips sort last (they have no number) and ties fall back to price,
+  // so the page stays total and deterministic for the paginated cursor.
+  const byIndex = (i: number | null) => (i === null ? Number.MAX_SAFE_INTEGER : i);
   items.sort((a, b) =>
     sort === 'price_desc' ? b.priceUsd - a.priceUsd
     : sort === 'rarity_desc' ? b.chip.rarity - a.chip.rarity || a.priceUsd - b.priceUsd
     : sort === 'newest' ? b.createdAt.localeCompare(a.createdAt)
+    : sort === 'index_asc' ? byIndex(a.chip.index) - byIndex(b.chip.index) || a.priceUsd - b.priceUsd
     : a.priceUsd - b.priceUsd);
-  const offset = q.cursor ? Number(q.cursor) || 0 : 0;
-  const limit = Math.min(Number(q.limit) || 60, 200);
-  const page = items.slice(offset, offset + limit);
-  return { items: page, nextCursor: offset + limit < items.length ? String(offset + limit) : null, total: items.length };
+  const offset = offsetOf(q.cursor);
+  const limit = page(Number(q.limit), 200, 60);
+  const slice = items.slice(offset, offset + limit);
+  return { items: slice, nextCursor: limit > 0 && offset + limit < items.length ? String(offset + limit) : null, total: items.length };
 }
 
 export function floor(db: Db) {
@@ -238,7 +326,7 @@ export function history(db: Db, q: { asset?: string; collection?: string; rarity
   if (q.asset) { where.push('asset = ?'); params.push(q.asset); }
   if (q.collection) { where.push('collection_idx = ?'); params.push(Number(q.collection)); }
   if (q.rarity) { where.push('rarity = ?'); params.push(Number(q.rarity)); }
-  const offset = q.cursor ? Number(q.cursor) || 0 : 0;
+  const offset = offsetOf(q.cursor);
   const rows = db.all<{ asset: string; seller: string; buyer: string; price: string; currency: number; fee: string; royalty: string; signature: string; block_time: number | null; rarity: number | null }>(
     `SELECT * FROM sales WHERE ${where.join(' AND ')} ORDER BY slot DESC LIMIT 51 OFFSET ?`, ...params, offset,
   );
@@ -303,7 +391,8 @@ export function collections(db: Db) {
  * computed for them as if they were listed — a shadow ban must not be observable from the inside.
  */
 export function leaderboard(db: Db, board: string, limit = 50, cursor?: string, meWallet?: string, season?: number) {
-  const offset = cursor ? Number(cursor) || 0 : 0;
+  const lim = page(limit, 200, 50);
+  const offset = offsetOf(cursor);
   let sql: string;
   let seasonId = 0;
   const params: (string | number)[] = [];
@@ -324,8 +413,8 @@ export function leaderboard(db: Db, board: string, limit = 50, cursor?: string, 
     default: throw new Error('unknown board');
   }
   const visible = `SELECT t.wallet, t.value, t.league, w.handle FROM (${sql}) t LEFT JOIN wallets w ON w.address = t.wallet WHERE ${jsonFlagEq('w.flags', 'shadowBanned', false)}`;
-  const rows = db.all<{ wallet: string; value: number; league: number; handle: string | null }>(`${visible} ORDER BY t.value DESC, t.wallet ASC LIMIT ? OFFSET ?`, ...params, limit + 1, offset);
-  const items = rows.slice(0, limit).map((r, i) => ({ rank: offset + i + 1, wallet: r.wallet, handle: r.handle ?? '', value: Number(r.value), league: r.league, avatar: '' }));
+  const rows = db.all<{ wallet: string; value: number; league: number; handle: string | null }>(`${visible} ORDER BY t.value DESC, t.wallet ASC LIMIT ? OFFSET ?`, ...params, lim + 1, offset);
+  const items = rows.slice(0, lim).map((r, i) => ({ rank: offset + i + 1, wallet: r.wallet, handle: r.handle ?? '', value: Number(r.value), league: r.league, avatar: '' }));
   let me: { rank: number; value: number } | null = null;
   if (meWallet) {
     const mine = db.get<{ value: number }>(`SELECT value FROM (${sql}) WHERE wallet = ?`, ...params, meWallet);
@@ -335,7 +424,7 @@ export function leaderboard(db: Db, board: string, limit = 50, cursor?: string, 
       me = { rank: above + 1, value: Number(mine.value) };
     }
   }
-  return { board, season: seasonId, me, items, nextCursor: rows.length > limit ? String(offset + limit) : null };
+  return { board, season: seasonId, me, items, nextCursor: rows.length > lim ? String(offset + lim) : null };
 }
 
 // ---------------------------------------------------------------- stats (legacy /stats, kept for the landing page)
@@ -424,7 +513,7 @@ export function walletEvents(db: Db, wallet: string, limit = 50) {
     // rename here is invisible to typecheck because the row type below is a cast, not an inference.
     // The `LIKE` scan is the accepted cost of querying a JSON blob (docs/06 §4.1); a wallet column with
     // an index would be the fix, and it is deliberately not worth a migration for an events feed.
-    `SELECT name, data, block_time, signature FROM events_raw WHERE data LIKE '%' || ? || '%' ORDER BY slot DESC LIMIT ?`, wallet, Math.min(limit, 200),
+    `SELECT name, data, block_time, signature FROM events_raw WHERE data LIKE '%' || ? || '%' ORDER BY slot DESC LIMIT ?`, wallet, page(limit, 200, 50),
   );
 }
 

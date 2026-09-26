@@ -4,7 +4,7 @@
   --st-ink:#0d0d10; --st-paper:#e8e2d0; --st-panel:#1b1c22; --st-asphalt:#141519;
   --st-pink:#ff3d8b; --st-teal:#5eead4; --st-lime:#c8ff3d; --st-orange:#ff8a2b; --st-accent:var(--st-pink);
   --st-display:'Rubik Spray Paint','Permanent Marker',system-ui,sans-serif;
-  --st-drip:'Rubik Wet Paint','Rubik Spray Paint',system-ui,sans-serif;
+  --st-drip:'Rubik Wet Paint',system-ui,sans-serif; /* only Rubik Wet Paint is vendored — naming a family we do not ship only hides which face actually renders */
   --st-ui:'Inter',system-ui,sans-serif; --st-num:'JetBrains Mono',ui-monospace,monospace;
 }
 

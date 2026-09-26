@@ -6,10 +6,11 @@
 > (`chip_core`, `market`, `staking`, `arena`; см. `programs/README.md`), экономическая
 > модель-источник истины — `packages/economy`, бэкенд — `backend/` (README внутри),
 > клиент — `client/`, ops — `ops/pyth-pusher/` и `scripts/`. `npm run verify` прогоняет
-> все проверки локально — это 17 гейтов, а не «тесты» (см. `package.json` → `verify`): целостность lock-файла (install на любой ОС/CPU —
-> `lock:matrix`), инварианты экономики и golden-файлы, клиентские
-> 151 тест + typecheck + сборка, бюджет критического пути и «ничего не ходит за шрифтами вовне»
-> (`bundle:check`), 355 тестов бэкенда (включая LT-3-тир: live ⇄ rebuild на детерминированном корпусе, и скан SQL-диалекта),  контракт openapi ⇄ маршруты (`api:check`), контракт `.env.example`
+> все проверки локально — это 28 шагов, а не «тесты» (см. `package.json` → `verify`): целостность lock-файла с двух
+> сторон (install на любой ОС/`lock:matrix` и пины байтов — sha512 + официальный registry, `lock:integrity`, SEC-B12);
+> инварианты экономики и golden-файлы, клиентские
+> 156 тестов + typecheck + сборка, бюджет критического пути и «ничего не ходит за шрифтами вовне»
+> (`bundle:check`), 401 теста бэкенда (включая LT-3-тир: live ⇄ rebuild на детерминированном корпусе, и скан SQL-диалекта),  контракт openapi ⇄ маршруты (`api:check`), контракт `.env.example`
 > ⇄ код (`env:check`), сверка Prisma-схемы с DDL, который реально исполняется (`schema:check`), и
 > лендинг. `.github/workflows/ci.yml` — то же в CI плюс `anchor build` /
 > localnet-сюита на артефактах (docs/06 §3.1). Разделы ниже про «chip-game — Anchor program» и `client/src/lib/*`
@@ -273,7 +274,7 @@ npm run pyth-pusher -- set-params-args   # аргументы set_params { pyth_
 npm run create-lut -- create             # печатает LOOKUP_TABLE=… / VITE_LOOKUP_TABLE=…
 npm run create-lut -- extend <table>     # повторять после новых коллекций / set_params (идемпотентно)
 
-# 3e. Локальная приёмка программ (tests/localnet, 91 сценарий на реальных клиентских билдерах):
+# 3e. Локальная приёмка программ (tests/localnet, 92 сценария на реальных клиентских билдерах):
 npm run localnet:build                   # --features localnet; ставит пиновый sb_mock-keypair, шимит
                                          # solana-install → agave-install и сверяет solana_version с активным CLI
 npm run localnet:fixtures                # пиновый mpl_core.so 0.12.0 + Pyth-дампы (git-ignored)

@@ -75,6 +75,14 @@ Switchboard rent goes back to the player (SEC-M7).
   `PendingPack`, `PendingFusion`, `WagerBattle` (fusions have no commit event; the DB may lag).
   Jobs live in `crank_jobs` keyed `kind:owner:nonce` — several workers on one DB and restarts
   are safe.
+* **Chip numbers (SEC-B3 / shape #27)** — the same sweep also drains the market's index back-fill
+  queue (`chips.game_index IS NULL AND burned_at IS NULL AND index_attempts < CRANK_INDEX_ATTEMPTS`):
+  one batched `getMultipleAccountsInfo` of `CRANK_INDEX_BATCH` `ChipState` PDAs per pass, writing each
+  `index` (the per-collection mint number the API renders as `Name #N` and sorts/filters by). Read-only
+  and idempotent: a chip that already has a number is never in the queue, a burned one is skipped (the
+  fusion closed its `ChipState`), and an unreadable asset is parked after the attempt ceiling instead of
+  being retried forever. A chip whose number is still unknown is reported as `index: null` — never `#0`,
+  which is a real chip of that district.
 * **Reveal** — `POST {oracle.gateway_uri}/gateway/api/v1/randomness_reveal` (the same call the
   Switchboard SDK makes; the URI is read from the oracle account named in the randomness
   account) → signed payload → *our* `reveal_randomness` instruction (the account's authority is
@@ -108,7 +116,7 @@ Env: `CRANK_KEYPAIR` (required), `CRANK_POLL_MS` 2000, `CRANK_SWEEP_MS` 30000,
 `CRANK_CONCURRENCY` 4, `CRANK_MIN_BALANCE_SOL` 0.5, `CRANK_HARD_FLOOR_SOL` 0.05,
 `CRANK_MAX_BALANCE_SOL` 2, `CRANK_GATEWAY_TIMEOUT_MS` 10000, `CRANK_MAX_ATTEMPTS` 60,
 `CRANK_CU_PRICE_FLOOR` 1000, `CRANK_CU_PRICE_CAP` 200000, `CRANK_MAX_FEE_LAMPORTS` 1000000,
-`CRANK_STALE_RECHECK_MS` 600000, `CRANK_GATEWAY_RPC` (public RPC of the cluster — it is sent
+`CRANK_STALE_RECHECK_MS` 600000, `CRANK_INDEX_BATCH` 100, `CRANK_INDEX_ATTEMPTS` 3, `CRANK_GATEWAY_RPC` (public RPC of the cluster — it is sent
 to the oracle, never our keyed endpoint), `SWITCHBOARD_PROGRAM_ID` / `SWITCHBOARD_QUEUE`
 (per cluster; `sb_mock` id on localnet), `LOOKUP_TABLE` (from `npm run create-lut`).
 

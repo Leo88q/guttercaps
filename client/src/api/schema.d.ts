@@ -196,8 +196,9 @@ export interface paths {
                     collection?: number;
                     rarity?: number;
                     status?: "free" | "staked" | "listed" | "locked" | "fusing";
-                    /** @description opaque pagination cursor */
+                    /** @description opaque pagination cursor — a non-negative integer offset as a string; anything else is 400 bad_request (SEC-B2: it used to fall back to offset 0, i.e. page 1 forever) */
                     cursor?: components["parameters"]["cursor"];
+                    limit?: number;
                 };
                 header?: never;
                 path?: never;
@@ -214,6 +215,8 @@ export interface paths {
                         "application/json": components["schemas"]["ChipPage"];
                     };
                 };
+                /** @description bad_request — an unknown `status` used to be ignored (the unfiltered list came back), `collection`/`rarity` bound NaN into the WHERE clause (SEC-B2) */
+                400: components["responses"]["Error"];
             };
         };
         put?: never;
@@ -279,8 +282,9 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
-                    /** @description opaque pagination cursor */
+                    /** @description opaque pagination cursor — a non-negative integer offset as a string; anything else is 400 bad_request (SEC-B2: it used to fall back to offset 0, i.e. page 1 forever) */
                     cursor?: components["parameters"]["cursor"];
+                    limit?: number;
                 };
                 header?: never;
                 path?: never;
@@ -297,6 +301,8 @@ export interface paths {
                         "application/json": components["schemas"]["ActivityPage"];
                     };
                 };
+                /** @description bad_request — strict cursor/limit (SEC-B2) */
+                400: components["responses"]["Error"];
             };
         };
         put?: never;
@@ -657,6 +663,9 @@ export interface paths {
         /**
          * Verify a Turnstile token → 7-day pass
          * @description Rate limits: 6/min per session, 30/h per IP /24. Optionally re-sends the device fingerprint.
+         *     The siteverify answer is checked, not just `success` (SEC-B5): the challenge must have been solved on one of
+         *     `TURNSTILE_HOSTNAMES` and its `action` must equal `TURNSTILE_ACTION` (the widget sends `claim`), and a token
+         *     older than `TURNSTILE_MAX_AGE_S` is refused — a public sitekey means anyone can mint a token for their own page.
          */
         post: {
             parameters: {
@@ -1198,7 +1207,14 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description verification */
+                /**
+                 * @description `recomputed` is the rarity sequence the emitted randomness produces under the published economy
+                 *     table (`assumed` records which table, whether a `ParamsChanged` predates the open, and the pity
+                 *     state); `onChain` is what the program minted; `matches` compares the two. Districts are **not**
+                 *     recomputed here — the pool (`collections_created` / featured district) is live chain state the read
+                 *     model does not hold, so `onChain[i].collection` is reported as-is and the client verifier (which
+                 *     reads the config account) is what checks them. A `note` explains any mismatch.
+                 */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1215,9 +1231,13 @@ export interface paths {
                                 odds?: number[] | null;
                                 soulboundDays?: number | null;
                             } | null;
-                            recomputed?: components["schemas"]["RolledChip"][];
+                            recomputed?: components["schemas"]["RolledRarity"][];
                             onChain?: components["schemas"]["RolledChip"][];
+                            /** @description the minted RARITY sequence follows from the randomness bytes under `assumed` */
                             matches?: boolean;
+                            assumed?: components["schemas"]["PackVerificationBasis"];
+                            /** @description present when something needs saying: mismatch, table change, unverifiable input */
+                            note?: string;
                         };
                     };
                 };
@@ -1372,6 +1392,8 @@ export interface paths {
                         };
                     };
                 };
+                /** @description bad_request — `limit` is not a single non-negative integer (410-style silent coercion is gone) */
+                400: components["responses"]["Error"];
             };
         };
         put?: never;
@@ -1435,16 +1457,19 @@ export interface paths {
                     collection?: number;
                     rarity?: number;
                     rarityMin?: number;
-                    indexMin?: number;
-                    indexMax?: number;
                     levelMin?: number;
                     currency?: "SOL" | "USDC" | "SKR";
                     priceMaxUsd?: number;
                     /** @description auth required; only chips that complete one of my sets */
                     missingForMySet?: boolean;
+                    /** @description mint number lower bound (`Name #N`) */
+                    indexMin?: number;
+                    /** @description mint number upper bound */
+                    indexMax?: number;
                     sort?: "price_asc" | "price_desc" | "newest" | "rarity_desc" | "index_asc";
-                    /** @description opaque pagination cursor */
+                    /** @description opaque pagination cursor — a non-negative integer offset as a string; anything else is 400 bad_request (SEC-B2: it used to fall back to offset 0, i.e. page 1 forever) */
                     cursor?: components["parameters"]["cursor"];
+                    limit?: number;
                 };
                 header?: never;
                 path?: never;
@@ -1461,6 +1486,8 @@ export interface paths {
                         "application/json": components["schemas"]["ListingPage"];
                     };
                 };
+                /** @description bad_request / bad_sort / bad_currency — filters are integers in range, never silently ignored (SEC-B2/B3) */
+                400: components["responses"]["Error"];
             };
         };
         put?: never;
@@ -1529,7 +1556,7 @@ export interface paths {
                     asset?: components["schemas"]["Pubkey"];
                     collection?: number;
                     rarity?: number;
-                    /** @description opaque pagination cursor */
+                    /** @description opaque pagination cursor — a non-negative integer offset as a string; anything else is 400 bad_request (SEC-B2: it used to fall back to offset 0, i.e. page 1 forever) */
                     cursor?: components["parameters"]["cursor"];
                 };
                 header?: never;
@@ -1547,6 +1574,8 @@ export interface paths {
                         "application/json": components["schemas"]["SalePage"];
                     };
                 };
+                /** @description bad_request — filters must be integers in range (SEC-B2) */
+                400: components["responses"]["Error"];
             };
         };
         put?: never;
@@ -2432,8 +2461,9 @@ export interface paths {
                 query?: {
                     /** @description rating board only; other boards ignore it */
                     season?: number;
-                    /** @description opaque pagination cursor */
+                    /** @description opaque pagination cursor — a non-negative integer offset as a string; anything else is 400 bad_request (SEC-B2: it used to fall back to offset 0, i.e. page 1 forever) */
                     cursor?: components["parameters"]["cursor"];
+                    limit?: number;
                 };
                 header?: never;
                 path: {
@@ -2452,6 +2482,10 @@ export interface paths {
                         "application/json": components["schemas"]["LeaderboardPage"];
                     };
                 };
+                /** @description bad_season / bad_request — `season` and `cursor` are strict integers (SEC-B2) */
+                400: components["responses"]["Error"];
+                /** @description unknown_board */
+                404: components["responses"]["Error"];
             };
         };
         put?: never;
@@ -2963,7 +2997,8 @@ export interface components {
             collection?: number;
             rarity?: components["schemas"]["Rarity"];
             level?: number;
-            index?: number;
+            /** @description per-collection mint number (`Name #N`); null = not resolved on chain yet (core `open_pack` chips are back-filled by the crank within a sweep). Never a placeholder: #0 is a real chip */
+            index?: number | null;
             flags?: {
                 staked?: boolean;
                 listed?: boolean;
@@ -3118,6 +3153,25 @@ export interface components {
         RolledChip: {
             rarity?: components["schemas"]["Rarity"];
             collection?: number;
+        };
+        RolledRarity: {
+            rarity?: components["schemas"]["Rarity"];
+        };
+        /** @description what the recomputation assumed — the client verifier reads the live config instead of these defaults */
+        PackVerificationBasis: {
+            /** @enum {string} */
+            basis?: "published-defaults";
+            sku?: number;
+            chips?: number;
+            floor?: number;
+            pity?: {
+                tier?: number;
+                hardAt?: number;
+                softStart?: number;
+                softStepBps?: number;
+            } | null;
+            /** @description an admin ParamsChanged event precedes this open, so the on-chain table may differ from the published one */
+            paramsChangedBefore?: boolean;
         };
         Service: {
             id?: string;
@@ -3914,7 +3968,7 @@ export interface components {
         };
     };
     parameters: {
-        /** @description opaque pagination cursor */
+        /** @description opaque pagination cursor — a non-negative integer offset as a string; anything else is 400 bad_request (SEC-B2: it used to fall back to offset 0, i.e. page 1 forever) */
         cursor: string;
     };
     requestBodies: never;

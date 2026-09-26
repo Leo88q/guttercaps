@@ -4,7 +4,7 @@
 import { Connection, PublicKey } from '@solana/web3.js';
 import { DAS_RPC_URL } from '@/app/config';
 import { appLookupTables, fitsInTx, sendTx, TxError, type WalletLike } from '../tx';
-import { prepareClose, prepareRandomness, prepareReveal, readRandomness } from '../switchboard';
+import { prepareClose, prepareCloseLut, prepareRandomness, prepareReveal, readRandomness, sendCloseLut } from '../switchboard';
 import {
   cancelStaleClaimFusionIx, closeExpiredClaimIx, fuseClaimsCommitIx, fuseClaimsRevealIx, STALE_PACK_SLOTS,
 } from '../ix/chipCore';
@@ -154,9 +154,11 @@ export class ClaimFusionFlow {
   /** Rent reclaim (SEC-M7) once the PendingClaimFusion is closed (revealed or cancelled). */
   async reclaimRent(): Promise<string | null> {
     const { connection, wallet } = this.deps;
+    const lut = await prepareCloseLut(connection, wallet.publicKey, RNG_KIND.CLAIM_FUSION, wallet.publicKey, this.state.nonce);
     const ix = await prepareClose(connection, wallet.publicKey, RNG_KIND.CLAIM_FUSION, wallet.publicKey, this.state.nonce);
     if (!ix) return null;
     const { signature } = await sendTx(connection, wallet, [ix], { cuLimit: 120_000 });
+    await sendCloseLut(connection, wallet, lut);
     return signature;
   }
 

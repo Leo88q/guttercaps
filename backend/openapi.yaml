@@ -72,12 +72,14 @@ paths:
       tags: [me]
       summary: Inventory (projection of Core owner + ChipState)
       parameters:
-        - { in: query, name: collection, schema: { type: integer, minimum: 0, maximum: 9 } }
+        - { in: query, name: collection, schema: { type: integer, minimum: 0, maximum: 7 } }
         - { in: query, name: rarity, schema: { type: integer, minimum: 0, maximum: 8 } }
         - { in: query, name: status, schema: { type: string, enum: [free, staked, listed, locked, fusing] } }
         - { $ref: '#/components/parameters/cursor' }
+        - { in: query, name: limit, schema: { type: integer, minimum: 0, maximum: 500, default: 200 } }
       responses:
         '200': { description: chips, content: { application/json: { schema: { $ref: '#/components/schemas/ChipPage' } } } }
+        '400': { $ref: '#/components/responses/Error', description: 'bad_request — an unknown `status` used to be ignored (the unfiltered list came back), `collection`/`rarity` bound NaN into the WHERE clause (SEC-B2)' }
   /me/grid:
     get:
       tags: [me]
@@ -88,8 +90,12 @@ paths:
     get:
       tags: [me]
       summary: Unified activity feed (pack opens, fusions, sales, claims, matches)
-      parameters: [{ $ref: '#/components/parameters/cursor' }]
-      responses: { '200': { description: feed, content: { application/json: { schema: { $ref: '#/components/schemas/ActivityPage' } } } } }
+      parameters:
+        - { $ref: '#/components/parameters/cursor' }
+        - { in: query, name: limit, schema: { type: integer, minimum: 0, maximum: 200, default: 50 } }
+      responses:
+        '200': { description: feed, content: { application/json: { schema: { $ref: '#/components/schemas/ActivityPage' } } } }
+        '400': { $ref: '#/components/responses/Error', description: 'bad_request — strict cursor/limit (SEC-B2)' }
   /me/referrals:
     get:
       tags: [me]
@@ -157,7 +163,11 @@ paths:
     post:
       tags: [me]
       summary: Verify a Turnstile token → 7-day pass
-      description: 'Rate limits: 6/min per session, 30/h per IP /24. Optionally re-sends the device fingerprint.'
+      description: |
+        Rate limits: 6/min per session, 30/h per IP /24. Optionally re-sends the device fingerprint.
+        The siteverify answer is checked, not just `success` (SEC-B5): the challenge must have been solved on one of
+        `TURNSTILE_HOSTNAMES` and its `action` must equal `TURNSTILE_ACTION` (the widget sends `claim`), and a token
+        older than `TURNSTILE_MAX_AGE_S` is refused — a public sitekey means anyone can mint a token for their own page.
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [token], properties: { token: { type: string, maxLength: 2048 }, fingerprint: { type: string, minLength: 8, maxLength: 256 } } } } } }
       responses:
         '200': { description: verified, content: { application/json: { schema: { $ref: '#/components/schemas/HumanStatus' } } } }
@@ -307,7 +317,15 @@ paths:
       summary: Provably-fair verifier — recompute a pack result from its randomness bytes
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [signature], properties: { signature: { type: string } } } } } }
       responses:
-        '200': { description: verification, content: { application/json: { schema: { type: object, properties: { randomnessAccount: { $ref: '#/components/schemas/Pubkey' }, rollHex: { type: string }, pityBefore: { type: integer }, effectiveOddsBps: { type: array, items: { type: integer }, description: 'odds the roll was drawn with — the SKU table after pity, or the voucher TEMPLATE odds (#28)' }, voucher: { type: [object, 'null'], properties: { template: { type: integer }, odds: { type: [array, 'null'], items: { type: integer } }, soulboundDays: { type: [integer, 'null'] } } }, recomputed: { type: array, items: { $ref: '#/components/schemas/RolledChip' } }, onChain: { type: array, items: { $ref: '#/components/schemas/RolledChip' } }, matches: { type: boolean } } } } } }
+        '200':
+          description: |
+            `recomputed` is the rarity sequence the emitted randomness produces under the published economy
+            table (`assumed` records which table, whether a `ParamsChanged` predates the open, and the pity
+            state); `onChain` is what the program minted; `matches` compares the two. Districts are **not**
+            recomputed here — the pool (`collections_created` / featured district) is live chain state the read
+            model does not hold, so `onChain[i].collection` is reported as-is and the client verifier (which
+            reads the config account) is what checks them. A `note` explains any mismatch.
+          content: { application/json: { schema: { type: object, properties: { randomnessAccount: { $ref: '#/components/schemas/Pubkey' }, rollHex: { type: string }, pityBefore: { type: integer }, effectiveOddsBps: { type: array, items: { type: integer }, description: 'odds the roll was drawn with — the SKU table after pity, or the voucher TEMPLATE odds (#28)' }, voucher: { type: [object, 'null'], properties: { template: { type: integer }, odds: { type: [array, 'null'], items: { type: integer } }, soulboundDays: { type: [integer, 'null'] } } }, recomputed: { type: array, items: { $ref: '#/components/schemas/RolledRarity' } }, onChain: { type: array, items: { $ref: '#/components/schemas/RolledChip' } }, matches: { type: boolean, description: 'the minted RARITY sequence follows from the randomness bytes under `assumed`' }, assumed: { $ref: '#/components/schemas/PackVerificationBasis' }, note: { type: string, description: 'present when something needs saying: mismatch, table change, unverifiable input' } } } } } 
 
   # ------------------------------------------------------------------ collections
   /collections:
@@ -338,8 +356,12 @@ paths:
       summary: Raw indexed events mentioning a wallet (idempotent source-of-truth rows, newest first)
       parameters:
         - { in: path, name: address, required: true, schema: { $ref: '#/components/schemas/Pubkey' } }
-        - { in: query, name: limit, required: false, schema: { type: integer, maximum: 200 } }
-      responses: { '200': { description: events, content: { application/json: { schema: { type: object, properties: { events: { type: array, items: { $ref: '#/components/schemas/RawEvent' } } } } } } } }
+        # SEC-B2 (2026-09-26): a single decimal integer; `abc`/`1.5` used to reach SQL as a NULL LIMIT
+        # (HTTP 500) and `-1` bypassed the cap entirely (SQLite reads a negative LIMIT as "no limit").
+        - { in: query, name: limit, required: false, schema: { type: integer, minimum: 0, maximum: 200, default: 50 } }
+      responses:
+        '200': { description: events, content: { application/json: { schema: { type: object, properties: { events: { type: array, items: { $ref: '#/components/schemas/RawEvent' } } } } } } }
+        '400': { $ref: '#/components/responses/Error', description: bad_request — `limit` is not a single non-negative integer (410-style silent coercion is gone) }
   /chips/{asset}:
     get:
       tags: [collections]
@@ -358,15 +380,24 @@ paths:
         - { in: query, name: collection, schema: { type: integer } }
         - { in: query, name: rarity, schema: { type: integer } }
         - { in: query, name: rarityMin, schema: { type: integer } }
-        - { in: query, name: indexMin, schema: { type: integer } }
-        - { in: query, name: indexMax, schema: { type: integer } }
-        - { in: query, name: levelMin, schema: { type: integer } }
+        - { in: query, name: levelMin, schema: { type: integer, minimum: 0 } }
         - { in: query, name: currency, schema: { type: string, enum: [SOL, USDC, SKR] } }
-        - { in: query, name: priceMaxUsd, schema: { type: number } }
+        - { in: query, name: priceMaxUsd, schema: { type: number, minimum: 0 } }
         - { in: query, name: missingForMySet, schema: { type: boolean }, description: 'auth required; only chips that complete one of my sets' }
-        - { in: query, name: sort, schema: { type: string, enum: [price_asc, price_desc, newest, rarity_desc, index_asc] } }
+        # SEC-B3: `indexMin` / `indexMax` / `sort=index_asc` were documented and rendered in the UI
+        # ("Low #") while doing nothing — the `chips` projection had no game index. Shape #27 projected
+        # it (`chips.game_index`: compressed chips from `CompressedChipRegistered`, core `open_pack`
+        # chips back-filled from `ChipState` by the crank), so the three are back in the contract and
+        # are honoured. A chip whose number is not resolved yet (`index: null`) sorts last and is
+        # *excluded* by a range filter — never treated as #0, which is a real chip of that collection.
+        - { in: query, name: indexMin, schema: { type: integer, minimum: 0, maximum: 4294967295 }, description: 'mint number lower bound (`Name #N`)' }
+        - { in: query, name: indexMax, schema: { type: integer, minimum: 0, maximum: 4294967295 }, description: 'mint number upper bound' }
+        - { in: query, name: sort, schema: { type: string, enum: [price_asc, price_desc, newest, rarity_desc, index_asc], default: price_asc } }
         - { $ref: '#/components/parameters/cursor' }
-      responses: { '200': { description: listings, content: { application/json: { schema: { $ref: '#/components/schemas/ListingPage' } } } } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 0, maximum: 200, default: 60 } }
+      responses:
+        '200': { description: listings, content: { application/json: { schema: { $ref: '#/components/schemas/ListingPage' } } } }
+        '400': { $ref: '#/components/responses/Error', description: 'bad_request / bad_sort / bad_currency — filters are integers in range, never silently ignored (SEC-B2/B3)' }
   /market/floor:
     get:
       tags: [market]
@@ -380,10 +411,12 @@ paths:
       summary: Sales history (per chip, archetype, or global)
       parameters:
         - { in: query, name: asset, schema: { $ref: '#/components/schemas/Pubkey' } }
-        - { in: query, name: collection, schema: { type: integer } }
-        - { in: query, name: rarity, schema: { type: integer } }
+        - { in: query, name: collection, schema: { type: integer, minimum: 0, maximum: 9 } }
+        - { in: query, name: rarity, schema: { type: integer, minimum: 0, maximum: 8 } }
         - { $ref: '#/components/parameters/cursor' }
-      responses: { '200': { description: sales, content: { application/json: { schema: { $ref: '#/components/schemas/SalePage' } } } } }
+      responses:
+        '200': { description: sales, content: { application/json: { schema: { $ref: '#/components/schemas/SalePage' } } } }
+        '400': { $ref: '#/components/responses/Error', description: 'bad_request — filters must be integers in range (SEC-B2)' }
   /market/offers:
     get:
       tags: [market]
@@ -536,7 +569,11 @@ paths:
         - { in: path, name: board, required: true, schema: { type: string, enum: [rating, wins, collection, staking, fusion] } }
         - { in: query, name: season, schema: { type: integer, minimum: 0 }, description: rating board only; other boards ignore it }
         - { $ref: '#/components/parameters/cursor' }
-      responses: { '200': { description: rows, content: { application/json: { schema: { $ref: '#/components/schemas/LeaderboardPage' } } } } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 0, maximum: 200, default: 50 } }
+      responses:
+        '200': { description: rows, content: { application/json: { schema: { $ref: '#/components/schemas/LeaderboardPage' } } } }
+        '400': { $ref: '#/components/responses/Error', description: 'bad_season / bad_request — `season` and `cursor` are strict integers (SEC-B2)' }
+        '404': { $ref: '#/components/responses/Error', description: unknown_board }
 
   # ------------------------------------------------------------------ admin (backend/src/admin.ts — docs/03 §3.5, T-B-46)
   # Gate: SIWS session whose wallet ∈ ADMIN_WALLETS (env allowlist) + CSRF on mutations; every call is written to
@@ -595,7 +632,7 @@ components:
   securitySchemes:
     cookieAuth: { type: apiKey, in: cookie, name: gc_session }
   parameters:
-    cursor: { in: query, name: cursor, schema: { type: string }, description: opaque pagination cursor }
+    cursor: { in: query, name: cursor, schema: { type: string, pattern: '^[0-9]+$' }, description: 'opaque pagination cursor — a non-negative integer offset as a string; anything else is 400 bad_request (SEC-B2: it used to fall back to offset 0, i.e. page 1 forever)' }
   responses:
     Error:
       description: error
@@ -645,7 +682,7 @@ components:
         collection: { type: integer }
         rarity: { $ref: '#/components/schemas/Rarity' }
         level: { type: integer }
-        index: { type: integer }
+        index: { type: [integer, 'null'], description: 'per-collection mint number (`Name #N`); null = not resolved on chain yet (core `open_pack` chips are back-filled by the crank within a sweep). Never a placeholder: #0 is a real chip' }
         flags: { type: object, properties: { staked: { type: boolean }, listed: { type: boolean }, fusing: { type: boolean }, soulbound: { type: boolean } } }
         lockUntil: { type: [string, 'null'], format: date-time }
         power: { type: integer }
@@ -758,6 +795,17 @@ components:
         switchboardQueue: { $ref: '#/components/schemas/Pubkey' }
         expiresAt: { type: string, format: date-time }
     RolledChip: { type: object, properties: { rarity: { $ref: '#/components/schemas/Rarity' }, collection: { type: integer } } }
+    RolledRarity: { type: object, properties: { rarity: { $ref: '#/components/schemas/Rarity' } } }
+    PackVerificationBasis:
+      type: object
+      description: what the recomputation assumed — the client verifier reads the live config instead of these defaults
+      properties:
+        basis: { type: string, enum: [published-defaults] }
+        sku: { type: integer }
+        chips: { type: integer }
+        floor: { type: integer }
+        pity: { type: [object, 'null'], properties: { tier: { type: integer }, hardAt: { type: integer }, softStart: { type: integer }, softStepBps: { type: integer } } }
+        paramsChangedBefore: { type: boolean, description: 'an admin ParamsChanged event precedes this open, so the on-chain table may differ from the published one' }
     Service:
       type: object
       properties:

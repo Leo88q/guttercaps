@@ -108,6 +108,19 @@ export const RATE_LIMIT_ENABLED = (env.RATE_LIMIT ?? '1') !== '0';
 export const TURNSTILE_SECRET = env.TURNSTILE_SECRET ?? '';
 export const TURNSTILE_SITE_KEY = env.TURNSTILE_SITE_KEY ?? '';
 export const TURNSTILE_SITEVERIFY_URL = env.TURNSTILE_SITEVERIFY_URL ?? 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
+/**
+ * SEC-B5 (2026-09-26): a sitekey is public, so a token only proves *someone* solved a challenge
+ * somewhere — the siteverify response also carries WHERE and FOR WHAT (`hostname`/`action`), and
+ * Cloudflare's own guidance is to check both. Ignoring them means a farm can embed our sitekey on its
+ * own page, solve the challenge there and spend the token here (the pass then unlocks quest/SKR
+ * settlement). `TURNSTILE_HOSTNAMES` is a comma-separated allowlist (`app.guttercaps.gg,.guttercaps.gg`
+ * — a leading dot matches subdomains); production refuses to start with it empty. `TURNSTILE_ACTION`
+ * must equal what `HumanCheck.tsx` passes at render time; a token older than `TURNSTILE_MAX_AGE_S`
+ * (Cloudflare tokens live ~5 min) is refused even though siteverify already single-uses it.
+ */
+export const TURNSTILE_HOSTNAMES = (env.TURNSTILE_HOSTNAMES ?? '').split(',').map((v) => v.trim().toLowerCase()).filter(Boolean);
+export const TURNSTILE_ACTION = env.TURNSTILE_ACTION ?? 'claim';
+export const TURNSTILE_MAX_AGE_S = Number(env.TURNSTILE_MAX_AGE_S ?? 600);
 export const HUMAN_CHECK_OPT_OUT = (env.HUMAN_CHECK ?? '') === '0';
 export const HUMAN_CHECK_ENABLED = !HUMAN_CHECK_OPT_OUT && TURNSTILE_SECRET.length > 0;
 export const HUMAN_CHECK_TTL_S = Number(env.HUMAN_CHECK_TTL_S ?? 7 * 86_400);
@@ -130,6 +143,7 @@ export function assertProductionConfig(): void {
   if (SIWS_DOMAINS.length === 0) problems.push('SIWS_DOMAINS (or non-wildcard CORS_ORIGINS) is required');
   if (env.FINALITY_ASSUME === '1') problems.push('FINALITY_ASSUME=1 is a dev shortcut — paid services must wait for finalized transactions (SEC-M5)');
   if (!HUMAN_CHECK_OPT_OUT && TURNSTILE_SECRET.length === 0) problems.push('TURNSTILE_SECRET is required (proof of human on reward settlement) — or set HUMAN_CHECK=0 explicitly');
+  if (HUMAN_CHECK_ENABLED && TURNSTILE_HOSTNAMES.length === 0) problems.push('TURNSTILE_HOSTNAMES is required when Turnstile is enabled (a sitekey is public — without the hostname check any site can mint passes for our faucets)');
   if (!env.DB_PATH || DB_PATH === ':memory:') problems.push('DB_PATH must be explicit and persistent in production — an indexer restart would otherwise wipe or split projections');
   if (env.PRODUCTION_DB_MODE !== 'sqlite-single-instance') problems.push('the running backend uses node:sqlite; set PRODUCTION_DB_MODE=sqlite-single-instance only for one API/indexer instance with a persistent volume, or implement the Postgres adapter before scaling');
   if (EVENT_BUS === 'redis' && !REDIS_URL) problems.push('EVENT_BUS=redis requires REDIS_URL (otherwise the API process never sees events indexed by the listener process)');
@@ -208,7 +222,16 @@ export const CRANK_MAX_ATTEMPTS = Number(env.CRANK_MAX_ATTEMPTS ?? 60);
 export const CRANK_CU_PRICE_FLOOR = Number(env.CRANK_CU_PRICE_FLOOR ?? 1_000);
 export const CRANK_CU_PRICE_CAP = Number(env.CRANK_CU_PRICE_CAP ?? 200_000);
 export const CRANK_MAX_FEE_LAMPORTS = Number(env.CRANK_MAX_FEE_LAMPORTS ?? 1_000_000);
+/** How many chips one index back-fill pass reads (shape #27): `getMultipleAccountsInfo` on the pending rows. */
+export const CRANK_INDEX_BATCH = Number(env.CRANK_INDEX_BATCH ?? 100);
+/** Attempts before a chip with no readable `ChipState` is parked (its `#N` stays unknown instead of retrying forever). */
+export const CRANK_INDEX_ATTEMPTS = Number(env.CRANK_INDEX_ATTEMPTS ?? 3);
 /** Stale (refund-window) jobs are re-checked this often so the rent reclaim still happens after the player's refund. */
+/** Backlog #23: how many lookup tables one sweep tries to close, and how long a job waits after
+ *  `close_randomness` before the first attempt (the ALT cooldown is ~1 epoch ≈ 2 days; a rejection
+ *  before that is expected and only re-queues the job). */
+export const CRANK_LUT_BATCH = Number(env.CRANK_LUT_BATCH ?? 25);
+export const CRANK_LUT_COOLDOWN_MS = Number(env.CRANK_LUT_COOLDOWN_MS ?? 43_200_000);
 export const CRANK_STALE_RECHECK_MS = Number(env.CRANK_STALE_RECHECK_MS ?? 10 * 60_000);
 /**
  * Our static Address Lookup Table(s) (docs/06 §4.2 вывод 3, backlog #13): `reveal + open_pack`

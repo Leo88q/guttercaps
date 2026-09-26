@@ -51,6 +51,17 @@ type Handler = (db: Db, e: RawEvent, c: EventCtx) => void;
 const str = (v: unknown) => String(v);
 const num = (v: unknown) => Number(v);
 const j = (v: unknown) => JSON.stringify(v);
+/**
+ * Non-negative integer as a decimal string — event `u64`s arrive as decimal strings (`events.ts`), but a
+ * hand-built fixture may carry a number or a bigint. Returns null when the field is absent or unparsable,
+ * so a projection can skip the write instead of storing the string `"undefined"`.
+ */
+const numStr = (v: unknown): string | null => {
+  if (typeof v === 'string') return /^\d+$/.test(v) ? v : null;
+  if (typeof v === 'bigint') return v >= 0n ? v.toString() : null;
+  if (typeof v === 'number') return Number.isSafeInteger(v) && v >= 0 ? String(v) : null;
+  return null;
+};
 
 const CHIP_FLAG_STAKED = 1;
 const CHIP_FLAG_LISTED = 2;
@@ -192,6 +203,10 @@ const HANDLERS: Record<string, Handler> = {
       upsert('chips', COLS.chips, ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'level = excluded.level', 'flags = excluded.flags', 'lock_until = excluded.lock_until', 'updated_slot = excluded.updated_slot', 'origin_signature = excluded.origin_signature', 'minted_at = COALESCE(chips.minted_at, excluded.minted_at)']),
       str(d.asset), buyer, num(d.collectionIdx), num(d.rarity), num(d.level), num(d.flags), Number(d.lockUntil), 'compressed', c.signature, c.blockTime, c.slot,
     );
+    // The mint number (`{symbol} #{game_index}`, market "Low #" / `indexMin`/`indexMax`). A compressed chip's
+    // registration event carries it, so this row never enters the crank's back-fill queue.
+    const gameIndex = numStr(d.gameIndex);
+    if (gameIndex !== null) db.run(`UPDATE chips SET game_index = ? WHERE asset = ?`, gameIndex, str(d.asset));
   },
   CompressedPackSettled(db, e, c) {
     const d = e.data;

@@ -56,7 +56,9 @@ npx playwright test devnet-loop --headed --debug
 - **приложение ходило вовне**: `client/index.html` тянул Google Fonts (`fonts.googleapis.com` +
   `fonts.gstatic.com`). Под прод-CSP (`font-src 'self' data:`, `style-src 'self' 'unsafe-inline'`) эти
   файлы всё равно блокируются, то есть в проде шрифт не грузился никогда, а IP посетителя уходил на каждую
-  загрузку страницы — вопреки нашему же тексту в `/legal/privacy`. Убрано; рецепт self-host — `client/public/fonts/README.md`.
+  загрузку страницы — вопреки нашему же тексту в `/legal/privacy`. Убрано, шрифты доведены до self-host
+  (`client/public/fonts` + сгенерированный `client/src/shared/ui/fonts.css`, гейты `npm run fonts:check`
+  и `client/src/shared/ui/fonts.test.ts`); рецепт и разбор — `client/public/fonts/README.md`.
   Это теперь сторожат с двух сторон: `npm run bundle:check` отвергает off-origin ссылки в собранном
   `index.html` **и в собранных CSS/JS**, а здесь, в браузере, — утверждение «ни один запрос не уходит за
   пределы origin».

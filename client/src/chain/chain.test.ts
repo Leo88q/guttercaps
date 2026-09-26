@@ -7,19 +7,19 @@ import { accountDiscriminator, ixDiscriminator, eventsFromLogs, findEvent, optio
 import {
   decodeChipState, decodeGameConfig, decodePendingPack, decodePendingClaimFusion, decodePlayerPity, decodeListing, decodeTokenStake, decodeVaultLedger, decodeCompressedAssetListing, decodeCompressedPackSettlement, decodeCompressedMintClaim, sumLedgers, readPackOpened, readCompressedClaimsCreated, readCompressedPackSettled, readClaimFusionRevealed, chipIsFree, claimIsListable, CHIP_FLAG,
 } from './accounts';
-import { vaultPda, assetPda, chipStatePda, collectionMetaPda, configPda, pendingPackPda, claimFusionPda, compressedMintClaimPda, compressedSettlementPda, bubblegumTreeConfigPda, pityPda, ata, freshNonce, rewardRootPda, rewarderPda, playerItemsPda, skrPoolPda, emissionPda, seasonPoolAuthPda, RNG_KIND, rngAuthPda, rngPda, sbLutPda, sbLutSignerPda, sbStatePda, sbOracleStatsPda, sbRewardEscrow, LEDGER_SHARDS, allLedgerPdas, ledgerPda, ledgerPdaOf, ledgerShardOf } from './pdas';
+import { vaultPda, assetPda, chipStatePda, collectionMetaPda, configPda, pendingPackPda, claimFusionPda, compressedMintClaimPda, compressedSettlementPda, bubblegumTreeConfigPda, pityPda, pendingFusionPda, battlePda, ata, freshNonce, rewardRootPda, rewarderPda, playerItemsPda, skrPoolPda, emissionPda, seasonPoolAuthPda, RNG_KIND, rngAuthPda, rngPda, sbLutPda, sbLutSignerPda, sbStatePda, sbOracleStatsPda, sbRewardEscrow, LEDGER_SHARDS, allLedgerPdas, ledgerPda, ledgerPdaOf, ledgerShardOf } from './pdas';
 import { fitsInTx } from './tx';
 import { buyPackIx, openPackIx, payServiceIx, Currency, fuseIx, mintCompressedChipIx, createBubblegumTreeIx, openCompressedPackIx, registerCompressedChipIx, cancelCompressedClaimIx, finalizeCompressedPackIx, fuseClaimsCommitIx, fuseClaimsRevealIx, cancelStaleClaimFusionIx, closeExpiredClaimIx } from './ix/chipCore';
 import { v2LeafHash, foldCompressionProof, discoverLeafNonce, verifyBubblegumProofLocal } from './bubblegum';
 import { DasClient } from './das';
-import { initRandomnessIx, revealRandomnessIx, closeRandomnessIx, commitAccountMetas, rngAccounts } from './ix/rng';
+import { initRandomnessIx, revealRandomnessIx, closeRandomnessIx, closeRandomnessLutIx, commitAccountMetas, rngAccounts } from './ix/rng';
 import { createBattleIx } from './ix/arena';
 import { buyCompressedAssetIx, cancelCompressedAssetIx, listCompressedAssetIx, saleSplit } from './ix/market';
 import type { BubblegumProof } from './bubblegum';
 import { wagerSplit, leagueOf } from './ix/arena';
 import { unstakePenalty, claimRootIx, claimSkrRootIx, claimItemRootIx, claimChipRootIx, claimAnyRootIx, fundSliceIx, SLICE_PVP_SEASON } from './ix/staking';
 import { usdCentsToUnits, usdCentsToLamports, usdCentsToMicroSkr, priceUsd, assertFeed, pushOracleAccount, isFresh, priceAgeS, isConfident, PYTH_MAX_AGE_S, PYTH_MAX_CONF_BPS, PythConfidenceError } from './pyth';
-import { PYTH_SOL_USD_FEED_ID_HEX, PYTH_SKR_USD_FEED_ID_HEX, PYTH_SHARD_ID, PYTH_PRICE_ACCOUNTS, PYTH_SPONSORED_SOL_USD, SWITCHBOARD_PROGRAM_ID, SWITCHBOARD_ON_DEMAND_ID, ARENA_ID, SYSVAR_SLOT_HASHES_ID, WSOL_MINT, MPL_BUBBLEGUM_V2_ID, MPL_NOOP_ID, MPL_ACCOUNT_COMPRESSION_ID, MPL_CORE_ID, SYSTEM_PROGRAM_ID } from './ids';
+import { ADDRESS_LOOKUP_TABLE_PROGRAM_ID, PYTH_SOL_USD_FEED_ID_HEX, PYTH_SKR_USD_FEED_ID_HEX, PYTH_SHARD_ID, PYTH_PRICE_ACCOUNTS, PYTH_SPONSORED_SOL_USD, SWITCHBOARD_PROGRAM_ID, SWITCHBOARD_ON_DEMAND_ID, ARENA_ID, SYSVAR_SLOT_HASHES_ID, WSOL_MINT, MPL_BUBBLEGUM_V2_ID, MPL_NOOP_ID, MPL_ACCOUNT_COMPRESSION_ID, MPL_CORE_ID, SYSTEM_PROGRAM_ID } from './ids';
 import { packSeed } from './flows/packFlow';
 import { describeProgramError, humanizeTxError } from './errors';
 import { revealValueFromIx, revealPayloadFromIx } from './switchboard';
@@ -824,6 +824,33 @@ describe('H3 claim fusion (client mirror)', () => {
     expect(a.equals(b)).toBe(true);
     expect(a.equals(c)).toBe(false);
     expect(PublicKey.isOnCurve(a.toBytes())).toBe(false);
+  });
+
+  it('close_randomness_lut (backlog #23): derived table, rent to the owner, payer signs and only pays the fee', () => {
+    const payer = Keypair.generate().publicKey;
+    for (const kind of [RNG_KIND.PACK, RNG_KIND.FUSION, RNG_KIND.CLAIM_FUSION, RNG_KIND.BATTLE] as const) {
+      const acc = rngAccounts(kind, owner, 5n);
+      const ix = closeRandomnessLutIx({ ...acc, payer, lutSlot: 77n });
+      const lutSigner = sbLutSignerPda(acc.randomness)[0];
+      expect(ix.programId.equals(kind === RNG_KIND.BATTLE ? ARENA_ID : CHIP_CORE_ID)).toBe(true);
+      expect(ix.keys.map((k) => k.pubkey.toBase58())).toEqual([
+        payer.toBase58(), owner.toBase58(), acc.randomness.toBase58(),
+        (kind === RNG_KIND.PACK ? pendingPackPda(owner, 5n)[0] : kind === RNG_KIND.FUSION ? pendingFusionPda(owner, 5n)[0] : kind === RNG_KIND.CLAIM_FUSION ? claimFusionPda(owner, 5n)[0] : battlePda(owner, 5n)[0]).toBase58(),
+        lutSigner.toBase58(), sbLutPda(lutSigner, 77n)[0].toBase58(), SWITCHBOARD_ON_DEMAND_ID.toBase58(),
+        ADDRESS_LOOKUP_TABLE_PROGRAM_ID.toBase58(),
+      ]);
+      expect(ix.keys[0].isSigner).toBe(true);
+      // exactly three writable accounts: the relayer (fee only), the owner (rent) and the table.
+      // The rent destination is Switchboard's `recipient`, pinned to `owner` by the program — the
+      // builder cannot redirect it, which is what the SEC-M8 gate keeps proving on the Rust side.
+      expect(ix.keys.filter((k) => k.isWritable).map((k) => k.pubkey.toBase58()))
+        .toEqual([payer.toBase58(), owner.toBase58(), sbLutPda(lutSigner, 77n)[0].toBase58()]);
+      const name = kind === RNG_KIND.BATTLE ? 'close_battle_randomness_lut' : 'close_randomness_lut';
+      expect(hex(new Uint8Array(ix.data).slice(0, 8))).toBe(hex(ixDiscriminator(name)));
+      const r = new BorshReader(new Uint8Array(ix.data), 8);
+      if (kind !== RNG_KIND.BATTLE) expect(r.u8()).toBe(kind);
+      expect(r.u64()).toBe(5n); expect(r.u64()).toBe(77n); // nonce, then the slot the table is derived from
+    }
   });
 
   it('close_randomness kind 3 pins the claim_fusion PDA (rent still goes to the owner)', () => {

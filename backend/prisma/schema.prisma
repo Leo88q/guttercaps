@@ -142,7 +142,8 @@ model Chip {
   collectionIdx Int      @map("collection_idx")
   rarity        Int      // 0..8, ladder fixed
   level         Int      @default(1)
-  indexNo       BigInt   @map("index_no")
+  indexNo       BigInt   @map("index_no") // the game mint number (`Name #N`) — the SQLite indexer keeps it in `chips.game_index`
+  gameIndex     BigInt?  @map("game_index") // NULL = the number is not resolved on chain yet (the crank back-fills it from ChipState)
   flags         Int      @default(0) // bit0 staked, bit1 listed, bit2 fusing, bit3 soulbound
   lockUntil     DateTime? @map("lock_until")
   origin        String   @default("pack") // pack | fusion | reward
@@ -150,6 +151,7 @@ model Chip {
   mintedAt      DateTime @map("minted_at")
   burnedAt      DateTime? @map("burned_at")
   updatedSlot   BigInt   @map("updated_slot")
+  indexAttempts Int      @default(0) @map("index_attempts") // SQLite-only bookkeeping for the back-fill queue (parked at CRANK_INDEX_ATTEMPTS)
   w             Wallet   @relation(fields: [owner], references: [address])
   listing       Listing?
 
@@ -979,6 +981,9 @@ model HandleReservation {
 /// Switchboard randomness account we shepherd. key = kind:owner:nonce.
 /// phase: pending → settled (pinned account gone) → closed (rent reclaimed); stale = refund
 /// window open with a silent oracle; abandoned = CRANK_MAX_ATTEMPTS exhausted (alert, hourly retry).
+/// `lut_slot` / `lut_closed_at` (SEC-M8, backlog #23): the request's Switchboard address lookup table,
+/// and when its rent was reclaimed — recorded while the randomness account still exists, because that
+/// account is the only place the slot is written.
 model CrankJob {
   key        String   @id
   kind       Int      // 0 pack | 1 fusion | 2 battle
@@ -994,6 +999,8 @@ model CrankJob {
   revealSig  String?  @map("reveal_sig")
   settleSigs Json     @default("[]") @map("settle_sigs")
   closeSig   String?  @map("close_sig")
+  lutSlot    BigInt?  @map("lut_slot")      // Switchboard lookup-table slot of this request (NULL = not recorded)
+  lutClosedAt DateTime? @map("lut_closed_at") // when close_randomness_lut landed (second half of the rent)
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 

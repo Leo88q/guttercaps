@@ -956,6 +956,86 @@ pub fn close_battle_randomness_handler(
 }
 
 #[derive(Accounts)]
+#[instruction(nonce: u64, lut_slot: u64)]
+pub struct CloseBattleRandomnessLut<'info> {
+    /// Permissionless (our crank batches these); the table's rent always goes to the challenger.
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    /// CHECK: the player who paid the table's rent — pinned to `battle.challenger` below and paid by
+    /// Switchboard (`recipient`), so a relayer cannot redirect the rent to itself.
+    #[account(mut)]
+    pub challenger: UncheckedAccount<'info>,
+    // sentio-ignore-next-line SW013
+    /// CHECK: `["rng", 2, challenger, nonce]` — must already be CLOSED (`close_battle_randomness`
+    /// deactivates the table as it closes the account, and the ALT cooldown starts there);
+    /// `close_lut_owned` re-checks "gone" = no data + system-owned (SEC-F8). `mut` mirrors the SDK's
+    /// metas; the seeds below are what the CPI signs with.
+    #[account(
+        mut,
+        seeds = [randomness::RNG_SEED, &[randomness::RNG_KIND_BATTLE], challenger.key().as_ref(), &nonce.to_le_bytes()],
+        bump,
+        seeds::program = crate::ID,
+    )]
+    pub randomness: UncheckedAccount<'info>,
+    /// The battle that pinned this account must be settled (resolved or cancelled) — as in
+    /// `close_battle_randomness`, and the account pins the randomness and the recipient.
+    #[account(
+        seeds = [b"battle", challenger.key().as_ref(), &nonce.to_le_bytes()], bump = battle.bump,
+        constraint = battle.randomness == randomness.key() @ ArenaError::Randomness,
+        constraint = battle.status == BattleStatus::Resolved || battle.status == BattleStatus::Cancelled @ ArenaError::BadStatus,
+        constraint = battle.challenger == challenger.key() @ ArenaError::Unauthorized,
+    )]
+    pub battle: Account<'info, WagerBattle>,
+    // sentio-ignore-next-line SW002
+    /// CHECK: Switchboard `["LutSigner", randomness]` — derived and checked in `close_lut_owned`.
+    pub lut_signer: UncheckedAccount<'info>,
+    // sentio-ignore-next-line SW002
+    /// CHECK: `AddressLookupTable.createLookupTable({authority: lut_signer, recentSlot: lut_slot})` —
+    /// derived from `lut_slot` and checked in `close_lut_owned`; Switchboard verifies it holds the
+    /// deactivated table, the ALT program enforces the cooldown.
+    #[account(mut)]
+    pub lut: UncheckedAccount<'info>,
+    /// CHECK: Switchboard On-Demand program for this cluster.
+    #[account(address = randomness::SB_PROGRAM_ID @ ArenaError::Randomness)]
+    pub switchboard_program: UncheckedAccount<'info>,
+    /// CHECK: Address Lookup Table program.
+    #[account(address = randomness::ADDRESS_LOOKUP_TABLE_PROGRAM_ID)]
+    pub address_lookup_table_program: UncheckedAccount<'info>,
+}
+
+/// Reclaim the lookup table of a finished battle (backlog #23). Safe to call repeatedly: a table that
+/// is closed already, or still inside its cooldown, fails inside Switchboard/the ALT program and
+/// costs the caller only the fee.
+pub fn close_battle_randomness_lut(
+    ctx: Context<CloseBattleRandomnessLut>,
+    nonce: u64,
+    lut_slot: u64,
+) -> Result<()> {
+    let challenger = ctx.accounts.challenger.key();
+    let nonce_le = nonce.to_le_bytes();
+    let rng_seeds: &[&[u8]] = &[
+        randomness::RNG_SEED,
+        &[randomness::RNG_KIND_BATTLE],
+        challenger.as_ref(),
+        &nonce_le,
+        &[ctx.bumps.randomness],
+    ];
+    let a = randomness::SbCloseLutAccounts {
+        randomness: ctx.accounts.randomness.to_account_info(),
+        lut: ctx.accounts.lut.to_account_info(),
+        lut_signer: ctx.accounts.lut_signer.to_account_info(),
+        recipient: ctx.accounts.challenger.to_account_info(),
+        address_lookup_table_program: ctx.accounts.address_lookup_table_program.to_account_info(),
+    };
+    randomness::close_lut_owned(
+        &ctx.accounts.switchboard_program.to_account_info(),
+        &a,
+        lut_slot,
+        &[rng_seeds],
+    )
+}
+
+#[derive(Accounts)]
 pub struct AcceptBattle<'info> {
     #[account(mut)]
     pub opponent: Signer<'info>,
@@ -1380,6 +1460,16 @@ pub mod arena {
     }
     pub fn close_battle_randomness(ctx: Context<CloseBattleRandomness>, nonce: u64) -> Result<()> {
         close_battle_randomness_handler(ctx, nonce)
+    }
+
+    /// Permissionless, after the battle's randomness is closed and the ALT cooldown has passed:
+    /// the lookup table's rent (~0.0015 SOL/battle, backlog #23) → challenger, never the caller.
+    pub fn close_battle_randomness_lut(
+        ctx: Context<CloseBattleRandomnessLut>,
+        nonce: u64,
+        lut_slot: u64,
+    ) -> Result<()> {
+        close_battle_randomness_lut(ctx, nonce, lut_slot)
     }
     pub fn create_battle<'info>(
         ctx: Context<'_, '_, 'info, 'info, CreateBattle<'info>>,

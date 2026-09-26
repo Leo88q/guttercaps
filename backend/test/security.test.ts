@@ -151,7 +151,7 @@ describe('T-B-43 hardening', () => {
       vi.resetModules();
       process.env.NODE_ENV = 'production';
       delete process.env.CORS_ORIGINS; delete process.env.COOKIE_SECURE; delete process.env.SESSION_SECRET; delete process.env.SIWS_DOMAINS;
-      delete process.env.TURNSTILE_SECRET; delete process.env.HUMAN_CHECK; delete process.env.DB_PATH; delete process.env.PRODUCTION_DB_MODE;
+      delete process.env.TURNSTILE_SECRET; delete process.env.HUMAN_CHECK; delete process.env.TURNSTILE_HOSTNAMES; delete process.env.DB_PATH; delete process.env.PRODUCTION_DB_MODE;
       const weak = await import('../src/config.ts');
       expect(() => weak.assertProductionConfig()).toThrow(/CORS_ORIGINS[\s\S]*COOKIE_SECURE[\s\S]*SESSION_SECRET[\s\S]*SIWS_DOMAINS[\s\S]*TURNSTILE_SECRET/);
       vi.resetModules();
@@ -173,9 +173,15 @@ describe('T-B-43 hardening', () => {
       vi.resetModules();
       delete process.env.HUMAN_CHECK;
       process.env.TURNSTILE_SECRET = '0x' + 'a'.repeat(30);
+      const noHosts = await import('../src/config.ts');
+      // SEC-B5: a sitekey is public — without the hostname allowlist any site could mint passes for our faucets
+      expect(() => noHosts.assertProductionConfig()).toThrow(/TURNSTILE_HOSTNAMES/);
+      vi.resetModules();
+      process.env.TURNSTILE_HOSTNAMES = 'app.guttercaps.gg,.guttercaps.gg';
       const strong = await import('../src/config.ts');
       expect(() => strong.assertProductionConfig()).not.toThrow();
       expect(strong.HUMAN_CHECK_ENABLED).toBe(true);
+      expect(strong.TURNSTILE_HOSTNAMES).toEqual(['app.guttercaps.gg', '.guttercaps.gg']);
       expect(strong.SIWS_DOMAINS).toEqual(['app.guttercaps.gg']); // derived from CORS origins
       vi.resetModules();
       process.env.SIWS_DOMAINS = 'app.guttercaps.gg, staging.guttercaps.gg';

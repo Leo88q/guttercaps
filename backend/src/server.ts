@@ -35,8 +35,29 @@ import { referralSummary } from './referrals.ts';
 import { antifraudStatus } from './antifraud.ts';
 import * as admin from './admin.ts';
 import { clientIp, ipNet } from './ratelimit.ts';
+// SEC-B2 (2026-09-26): every numeric query parameter goes through here. `Number(v)` handed `NaN` /
+// fractions / negatives to SQL — a 500 (`datatype mismatch`) on a public read, and a negative LIMIT
+// that SQLite reads as "unlimited", i.e. the `Math.min(limit, N)` caps in queries.ts did nothing.
+import { cursorQuery, intQuery, limitQuery, numberQuery } from './params.ts';
 import { humanStatus, recordDevice, verifyHuman } from './human.ts';
-import { QUEST_CHIP_TEMPLATES } from '@guttercaps/economy';
+import { COLLECTIONS, QUEST_CHIP_TEMPLATES, RARITY_PROFILES } from '@guttercaps/economy';
+
+/**
+ * Filter domains for the query layer (SEC-B2). Mirrors the `chips` projection: 8 districts × 9
+ * rarities, and the five states `queries.myChips` understands. Kept next to the router so a new
+ * rarity/district materialises here as a validation bound instead of an out-of-range filter.
+ */
+const MAX_COLLECTION_IDX = COLLECTIONS.length - 1;
+const MAX_RARITY_IDX = RARITY_PROFILES.length - 1;
+/**
+ * Upper bound for the mint-number range filters. `chips.game_index` is a u64 on chain, so the true
+ * domain is 0…2^64-1; the filter is compared as an integer and a value past 2^32 is a client bug long
+ * before it is a legitimate chip number (the whole game will not mint four billion chips).
+ */
+const MAX_GAME_INDEX = 0xffff_ffff;
+const MY_CHIP_STATUSES = ['free', 'staked', 'listed', 'fusing', 'locked'] as const;
+/** Sorts `queries.listings` actually implements (its fallback branch is `price_asc`). */
+const LISTING_SORTS = ['price_asc', 'price_desc', 'rarity_desc', 'newest', 'index_asc'] as const;
 
 export interface AppOptions {
   connection?: () => Connection;
@@ -200,14 +221,21 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     Promise.resolve(fn(req, res)).catch(next);
   };
   const str = (v: unknown) => (typeof v === 'string' && v.length ? v : undefined);
-  const int = (v: unknown) => (typeof v === 'string' && v.length ? Number(v) : undefined);
+  /** `/me/chips?status=` — a typo used to be ignored, i.e. the caller got the unfiltered list. */
+  const myChipStatus = (v: unknown): string | undefined => {
+    if (v === undefined || v === '') return undefined;
+    if (typeof v !== 'string' || !MY_CHIP_STATUSES.includes(v as never)) {
+      throw new ServiceError(400, 'bad_request', `status must be one of ${MY_CHIP_STATUSES.join(' | ')}`);
+    }
+    return v;
+  };
 
   // ------------------------------------------------------------ health / stats
   v1.get('/health', (_req, res) => { res.json({ ok: true, lastSlot: db.scalar(`SELECT COALESCE(MAX(slot),0) FROM events_raw`), prices: priceStatus(db), crank: crankStatus(db), paused: pauseStatus(db), burnOracle: burnOracleStatus(db), finality: finalityStatus(db), rewardOracle: rewardOracleStatus(db), antifraud: antifraudStatus(db), arena: { queued: db.scalar(`SELECT COUNT(*) FROM arena_queue`), revealing: db.scalar(`SELECT COUNT(*) FROM matches WHERE status = 'revealing'`), unattributedResolves: unattributedResolves(db) } }); });
   v1.get('/prices', (_req, res) => { res.json(priceStatus(db)); });
   v1.get('/stats', (_req, res) => { res.json(q.stats(db)); });
   v1.get('/rewards/skr-pool', (_req, res) => { res.json(q.skrPool(db)); });
-  v1.get('/wallet/:address/events', (req, res) => { res.json({ events: q.walletEvents(db, req.params.address, int(req.query.limit) ?? 50) }); });
+  v1.get('/wallet/:address/events', (req, res) => { res.json({ events: q.walletEvents(db, req.params.address, limitQuery(req.query.limit, { max: 200, def: 50 })) }); });
 
   // ------------------------------------------------------------ auth
   const bodyAddress = (req: Request) => (typeof req.body?.address === 'string' ? (req.body.address as string) : undefined);
@@ -230,10 +258,18 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   // ------------------------------------------------------------ me
   v1.get('/me', requireAuth, (req, res) => { res.json({ ...q.me(db, req.session!.wallet, geoOf(req.headers)), isAdmin: admin.isAdminWallet(req.session!.wallet, adminWallets) }); });
   v1.get('/me/chips', requireAuth, (req, res) => {
-    res.json(q.myChips(db, req.session!.wallet, { collection: int(req.query.collection), rarity: int(req.query.rarity), status: str(req.query.status), cursor: str(req.query.cursor) }));
+    res.json(q.myChips(db, req.session!.wallet, {
+      collection: intQuery(req.query.collection, { name: 'collection', min: 0, max: MAX_COLLECTION_IDX }),
+      rarity: intQuery(req.query.rarity, { name: 'rarity', min: 0, max: MAX_RARITY_IDX }),
+      status: myChipStatus(req.query.status),
+      limit: limitQuery(req.query.limit, { max: 500, def: 200 }),
+      cursor: cursorQuery(req.query.cursor),
+    }));
   });
   v1.get('/me/grid', requireAuth, (req, res) => { res.json(q.myGrid(db, req.session!.wallet)); });
-  v1.get('/me/activity', requireAuth, (req, res) => { res.json(q.activity(db, req.session!.wallet, 50, str(req.query.cursor))); });
+  v1.get('/me/activity', requireAuth, (req, res) => {
+    res.json(q.activity(db, req.session!.wallet, limitQuery(req.query.limit, { max: 200, def: 50 }), cursorQuery(req.query.cursor)));
+  });
   v1.get('/me/referrals', requireAuth, (req, res) => { res.json(referralSummary(db, req.session!.wallet)); });
   v1.get('/me/pending', requireAuth, (req, res) => {
     const rows = db.all<{ nonce: string; sku: number; qty: number; opened: number; randomness: string; slot: number }>(`SELECT nonce, sku, qty, opened, randomness, slot FROM pack_purchases WHERE buyer = ? AND status = 'pending'`, req.session!.wallet);
@@ -291,17 +327,26 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     else res.status(404).json({ code: 'not_found', message: 'No pack open with that signature (yet)' });
   });
   v1.post('/packs/verify', (req, res) => {
-    const r = q.packOpen(db, String(req.body?.signature ?? ''));
+    // SEC-B6: the verifier recomputes the roll (rarities) from the emitted randomness and compares it
+    // with the chain — `matches` is an answer, never an assumption. Districts are not verified here:
+    // the pool is live chain state (see queries.verifyPackOpen).
+    const r = q.verifyPackOpen(db, String(req.body?.signature ?? ''));
     if (!r) { res.status(404).json({ code: 'not_found', message: 'Unknown signature' }); return; }
-    // Recompute happens client-side too (packages/economy expandRandomness); the API returns the on-chain facts.
-    res.json({ signature: r.signature, rollHex: r.rollHex, pityBefore: r.pityBefore, effectiveOddsBps: r.effectiveOddsBps, voucher: r.voucher, onChain: r.onChain, recomputed: r.onChain, matches: true });
+    res.json(r);
   });
 
   // ------------------------------------------------------------ collections / chips
   v1.get('/collections', (_req, res) => { res.json(q.collections(db)); });
   v1.get('/collections/:idx/chips/:rarity', (req, res) => {
-    const r = q.chipArchetype(db, Number(req.params.idx), Number(req.params.rarity));
-    if (!r) { res.status(404).json({ code: 'unknown_archetype', message: 'collection must be 0..9 and rarity 0..8' }); return; }
+    // A path parameter is user input too. `Number('abc')` is NaN, which used to fall through the
+    // lookup to a 404 — same answer, but 400 is the honest one for "not an archetype coordinate".
+    let idx: number | undefined; let rarity: number | undefined;
+    try {
+      idx = intQuery(req.params.idx, { name: 'idx', min: 0, max: 255 });
+      rarity = intQuery(req.params.rarity, { name: 'rarity', min: 0, max: 255 });
+    } catch { idx = rarity = undefined; }
+    const r = idx === undefined || rarity === undefined ? undefined : q.chipArchetype(db, idx, rarity);
+    if (!r) { res.status(404).json({ code: 'unknown_archetype', message: 'collection must be 0..7 and rarity 0..8' }); return; }
     res.json(r);
   });
   v1.get('/chips/:asset', (req, res) => {
@@ -325,9 +370,41 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   }));
 
   // ------------------------------------------------------------ market
-  v1.get('/market/listings', (req, res) => { res.json(q.listings(db, req.query as Record<string, string | undefined>)); });
+  v1.get('/market/listings', (req, res) => {
+    // SEC-B2: the filter values are validated as integers *here* — `?collection=abc` used to bind
+    // `NaN` in the WHERE clause, which SQLite evaluates as NULL, i.e. an empty page that looks like
+    // "no listings match" instead of a client error.
+    // `sort` and `currency` are enums: an unknown value used to be silently ignored (the list came
+    // back price-sorted / unfiltered), so the caller could not tell a typo or a stale bundle from a
+    // genuine result. `index_asc` ("Low #") and the `indexMin`/`indexMax` range are honoured again:
+    // SEC-B3 rejected them while `chips` had no game index, shape #27 projected it (compressed chips
+    // from `CompressedChipRegistered`, core chips back-filled from `ChipState` by the crank), so a chip
+    // without a resolved number now sorts last / is excluded instead of being answered with price order.
+    const sort = str(req.query.sort) ?? 'price_asc';
+    if (!LISTING_SORTS.includes(sort as never)) throw new ServiceError(400, 'bad_sort', `sort must be one of ${LISTING_SORTS.join(' | ')}`);
+    const currency = str(req.query.currency);
+    if (currency !== undefined && !q.CURRENCY_SYMBOL.includes(currency as never)) throw new ServiceError(400, 'bad_currency', `currency must be one of ${q.CURRENCY_SYMBOL.join(' | ')}`);
+    const filters: Record<string, string | undefined> = { sort, currency };
+    for (const [k, max] of [['collection', MAX_COLLECTION_IDX], ['rarity', MAX_RARITY_IDX], ['rarityMin', MAX_RARITY_IDX], ['indexMin', MAX_GAME_INDEX], ['indexMax', MAX_GAME_INDEX]] as const) {
+      const v = intQuery(req.query[k], { name: k, min: 0, max });
+      if (v !== undefined) filters[k] = String(v);
+    }
+    const priceMaxUsd = numberQuery(req.query.priceMaxUsd, { name: 'priceMaxUsd' });
+    if (priceMaxUsd !== undefined) filters.priceMaxUsd = String(priceMaxUsd);
+    filters.limit = String(limitQuery(req.query.limit, { max: 200, def: 60 }));
+    filters.cursor = cursorQuery(req.query.cursor);
+    res.json(q.listings(db, filters));
+  });
   v1.get('/market/floor', (_req, res) => { res.json(q.floor(db)); });
-  v1.get('/market/history', (req, res) => { res.json(q.history(db, req.query as Record<string, string | undefined>)); });
+  v1.get('/market/history', (req, res) => {
+    const filters: Record<string, string | undefined> = { asset: str(req.query.asset) };
+    for (const [k, max] of [['collection', MAX_COLLECTION_IDX], ['rarity', MAX_RARITY_IDX]] as const) {
+      const v = intQuery(req.query[k], { name: k, min: 0, max });
+      if (v !== undefined) filters[k] = String(v);
+    }
+    filters.cursor = cursorQuery(req.query.cursor);
+    res.json(q.history(db, filters));
+  });
   v1.get('/market/offers', requireAuth, (req, res) => {
     const w = req.session!.wallet;
     const made = req.query.direction !== 'received';
@@ -339,9 +416,16 @@ export function createApp(db: Db, deps: AppOptions = {}) {
 
   // ------------------------------------------------------------ leaderboard
   v1.get('/leaderboard/:board', (req, res) => {
-    const season = req.query.season !== undefined ? Number(req.query.season) : undefined;
-    if (season !== undefined && (!Number.isInteger(season) || season < 0)) { res.status(400).json({ error: 'bad_season' }); return; }
-    try { res.json(q.leaderboard(db, req.params.board, 50, str(req.query.cursor), req.session?.wallet, season)); }
+    // season: strict integer, 400 on anything else (`Number('1.5')` used to be a silent no-match, and
+    // a repeated `?season=1&season=2` reached the query layer as an array). Same rule as SEC-B2.
+    let season: number | undefined;
+    try { season = intQuery(req.query.season, { name: 'season', min: 0 }); }
+    catch (e) { res.status(400).json({ code: 'bad_season', message: (e as Error).message }); return; }
+    // Parameter validation happens OUTSIDE the try below: `q.leaderboard` throws only for an unknown
+    // board, and a 400 that the 404 branch swallowed was a real bug in the first version of this fix.
+    const limit = limitQuery(req.query.limit, { max: 200, def: 50 });
+    const cursor = cursorQuery(req.query.cursor);
+    try { res.json(q.leaderboard(db, req.params.board, limit, cursor, req.session?.wallet, season)); }
     catch { res.status(404).json({ code: 'unknown_board', message: 'rating | collection | staking | fusion' }); }
   });
 
@@ -416,13 +500,13 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     if (!p.ok) throw new ServiceError(422, 'bad_request', p.violations.map((v) => `${v.path}: ${v.message}`).join('; '), p);
     return p;
   }, (req) => (req.body as { program?: string })?.program));
-  v1.get('/admin/fraud', audited('fraud.queue', (req) => admin.fraud.queue(db, Math.min(500, int(req.query.limit) ?? 100))));
+  v1.get('/admin/fraud', audited('fraud.queue', (req) => admin.fraud.queue(db, limitQuery(req.query.limit, { max: 500, def: 100 }))));
   v1.post('/admin/fraud/:wallet', audited('fraud.resolve', (req) => {
     const body = req.body as { resolution: string; note?: string };
     return admin.fraud.resolve(db, req.params.wallet, body?.resolution, `admin:${req.session!.wallet}`, body?.note);
   }, (req) => req.params.wallet));
   v1.get('/admin/kpi', audited('kpi', () => admin.kpi(db)));
-  v1.get('/admin/audit', audited('audit.read', (req) => admin.auditLog(db, Math.min(1000, int(req.query.limit) ?? 100))));
+  v1.get('/admin/audit', audited('audit.read', (req) => admin.auditLog(db, limitQuery(req.query.limit, { max: 1000, def: 100 }))));
 
   app.use('/v1', v1);
   app.use('/', v1); // legacy paths (/leaderboard, /stats, /wallet/:address/events) keep working for the landing page

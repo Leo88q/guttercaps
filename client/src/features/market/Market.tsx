@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useListings, useFloor, useSales, type ListingFilter } from '@/api/hooks';
 import { COLLECTIONS } from '@/shared/lib/lore';
 import { RARITIES, RARITY_SHORT, chipName, collectionColor, rarityColor, rarityName, chipImageOf } from '@/shared/lib/rarity';
-import { fmtAmount, fmtUsd, timeAgo } from '@/shared/lib/format';
+import { chipIndexText, fmtAmount, fmtUsd, timeAgo } from '@/shared/lib/format';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { Empty, Pill, Skeleton } from '@/shared/ui/primitives';
 import { MARKET_FEE_BPS, ROYALTY_BPS } from '@/chain/ix/market';
@@ -11,21 +11,42 @@ import { useGameConfig } from '@/chain/hooks';
 import { useT } from '@/shared/i18n';
 
 const SORTS: { id: NonNullable<ListingFilter['sort']>; label: string }[] = [
-  { id: 'price_asc', label: 'Price ↑' }, { id: 'price_desc', label: 'Price ↓' }, { id: 'rarity_desc', label: 'Rarity' }, { id: 'newest', label: 'Newest' }, { id: 'index_asc', label: 'Low #' },
+  { id: 'price_asc', label: 'Price ↑' }, { id: 'price_desc', label: 'Price ↓' }, { id: 'rarity_desc', label: 'Rarity' },
+  { id: 'index_asc', label: 'Low #' }, { id: 'newest', label: 'Newest' },
 ];
+
+/**
+ * Filters live in the URL, so they are user input (a shared link, a hand-edited query string) and the
+ * API rejects anything that is not an integer in range (SEC-B2). `Number('abc')` used to be sent as
+ * `collection=NaN`, which the old API answered with an empty list — a broken filter that looked like
+ * "nothing for sale". Anything unparseable is dropped here, i.e. treated as "no filter".
+ */
+const intParam = (params: URLSearchParams, key: string, max: number): number | undefined => {
+  const raw = params.get(key);
+  if (!raw || !/^\d+$/.test(raw)) return undefined;
+  const n = Number(raw);
+  return n <= max ? n : undefined;
+};
 
 export default function Market() {
   const cfg = useGameConfig();
   const t = useT();
   const [params, setParams] = useSearchParams();
-  const filter: ListingFilter = useMemo(() => ({
-    collection: params.get('collection') ? Number(params.get('collection')) : undefined,
-    rarity: params.get('rarity') ? Number(params.get('rarity')) : undefined,
-    currency: (params.get('currency') as 'SOL' | 'USDC' | 'SKR' | null) ?? undefined,
-    missingForMySet: params.get('missing') === '1' || undefined,
-    levelMin: params.get('lvl') ? Number(params.get('lvl')) : undefined,
-    sort: (params.get('sort') as ListingFilter['sort']) ?? 'price_asc',
-  }), [params]);
+  const filter: ListingFilter = useMemo(() => {
+    const sort = params.get('sort');
+    const currency = params.get('currency');
+    return {
+      collection: intParam(params, 'collection', COLLECTIONS.length - 1),
+      rarity: intParam(params, 'rarity', RARITIES.length - 1),
+      currency: currency === 'SOL' || currency === 'USDC' || currency === 'SKR' ? currency : undefined,
+      missingForMySet: params.get('missing') === '1' || undefined,
+      levelMin: intParam(params, 'lvl', 9999),
+      // `?minidx=12&maxidx=99` — 0xffff_ffff is the API's ceiling for a u64 mint number (SEC-B2 range)
+      indexMin: intParam(params, 'minidx', 0xffff_ffff),
+      indexMax: intParam(params, 'maxidx', 0xffff_ffff),
+      sort: SORTS.some((s) => s.id === sort) ? (sort as ListingFilter['sort']) : 'price_asc',
+    };
+  }, [params]);
   const listings = useListings(filter);
   const floor = useFloor();
   const sales = useSales({});
@@ -78,7 +99,7 @@ export default function Market() {
               <Link key={l.asset} to={`/market/${l.asset}`} className="chip-card card card-hover" style={{ textDecoration: 'none' }}>
                 <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c, 512)} skin={c.skin} crimp={rarityColor(c.rarity!)} />
                 <div className="chip-name">{chipName(c.collection!, c.rarity!)}</div>
-                <div className="chip-meta"><span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span> · #{c.index} · L{c.level}</div>
+                <div className="chip-meta"><span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span>{chipIndexText(c.index) && <> · {chipIndexText(c.index)}</>} · L{c.level}</div>
                 <div className="cg-clean-zone" style={{ padding: '6px 8px' }}>
                   <div className="row between small"><b className="cg-accent">{fmtAmount(l.price!, l.currency!)}</b><span className="muted">{fmtUsd(l.priceUsd)}</span></div>
                   {vsFloor !== null && <div className="tiny" style={{ color: vsFloor <= 0 ? 'var(--cg-acid-green)' : 'var(--gc-muted)' }}>{vsFloor > 0 ? '+' : ''}{vsFloor}% vs floor</div>}

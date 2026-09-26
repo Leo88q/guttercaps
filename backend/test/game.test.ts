@@ -258,6 +258,19 @@ describe('arena — ranked commit/reveal', () => {
     expect(api.previous).toMatchObject({ id: s.id, settled: true, rakeMicro: '4000000', rakeFunded: false });
   });
 
+  it('a live-ingested BattleResolved (block_time still NULL) above the horizon postpones the settlement too', () => {
+    const s = arena.currentSeason(db, T);
+    // websocket-first ingestion: the event is in `events_raw` but the timed re-read has not healed its
+    // block_time yet. It *may* belong to the season (we cannot tell from a NULL), so freezing the pool
+    // now would price the season off an incomplete rake sum — the settlement must wait.
+    ingestTx(tx([{ program: 'arena', name: 'BattleResolved', data: { battle: kp(), winner: kp(), pot: '100000000', rakeBurn: '2000000', rakePool: '1000000', rakeTreasury: '2000000', resultHash: hex32(0x22), roll: hex32(0x33) } }], { blockTime: null }), db);
+    expect(arena.settleSeason(db, s.id, s.ends_at + 1)).toBeUndefined();
+    // once the timed re-read heals the time and the event is finalized, the season settles as before
+    db.run(`UPDATE events_raw SET block_time = ? WHERE name = 'BattleResolved'`, s.starts_at + 86_400);
+    finalizeAll(db);
+    expect(arena.settleSeason(db, s.id, s.ends_at + 1)).toBeDefined();
+  });
+
   it('queue validation mirrors validate_squad: 3 distinct owned chips, not listed/fusing, power ≥ 400, commit = 32-byte hex', () => {
     const c = commitFor(randomBytes(16));
     expect(err(() => arena.joinQueue(db, alice, { squad: sa.slice(0, 2), commit: c }, T)).code).toBe('bad_squad');
@@ -347,6 +360,9 @@ describe('arena — ranked commit/reveal', () => {
     expect(me.currentMatch?.opponent).toMatch(/^bot:/);
     const id = me.currentMatch!.id;
     const pre = arena.matchApi(db, id)!;
+    // a synthetic bot chip has no on-chain number: `index: null` (the UI drops the `#N`), never a
+    // placeholder `#0` — that is a real chip of the district (SEC-B3)
+    expect(pre.squadB.every((c) => c.index === null)).toBe(true);
     const botPower = onChainSquadPower(pre.squadB.map((c) => ({ asset: c.asset, collection: c.collection, rarity: c.rarity, level: c.level })));
     expect(Math.abs(botPower - pre.powerA) / pre.powerA).toBeLessThan(0.1);
     expect(arena.leagueOf(botPower)).toBe(arena.leagueOf(pre.powerA));

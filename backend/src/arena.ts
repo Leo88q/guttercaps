@@ -165,7 +165,11 @@ export function settleSeason(db: Db, seasonId: number, t = now(), horizon = fina
   const s = db.get<SeasonRow>(`SELECT * FROM seasons WHERE id = ?`, seasonId);
   if (!s || s.ends_at > t) return undefined;
   if (s.settled_at) return { season: s.id, participants: db.scalar(`SELECT COUNT(*) FROM season_payouts WHERE season = ?`, s.id), paidMicro: 0n, rows: 0, rakeMicro: BigInt(s.rake_micro ?? '0') };
-  if (db.scalar(`SELECT COUNT(*) FROM events_raw WHERE name IN ('DayClosed', 'BattleResolved') AND slot > ? AND COALESCE(block_time, 0) BETWEEN ? AND ?`, horizon, s.starts_at, s.ends_at) > 0) return undefined; // a season day / wager battle is still unfinalized — wait
+  // A season day / wager battle above the horizon means the pool is not final yet — wait for the next
+  // pass. A live-ingested event has no block_time until the timed re-read heals it (`patchLateTimes`):
+  // those are counted as "possibly in-season" too, because freezing the pool without them would price
+  // the season off an incomplete rake sum (the safe direction is to postpone, never to freeze early).
+  if (db.scalar(`SELECT COUNT(*) FROM events_raw WHERE name IN ('DayClosed', 'BattleResolved') AND slot > ? AND (block_time IS NULL OR block_time BETWEEN ? AND ?)`, horizon, s.starts_at, s.ends_at) > 0) return undefined;
   const ranked = rankedSeasonWallets(db, s);
   const rake = seasonRakeMicro(db, s, horizon);
   const pool = seasonSliceMicro(db, s, horizon) + rake;
@@ -440,7 +444,9 @@ export function matchApi(db: Db, id: string, viewer?: string) {
   const squadA = JSON.parse(m.squad_a) as FighterChip[], squadB = JSON.parse(m.squad_b) as FighterChip[];
   const toChip = (c: FighterChip) => {
     const row = db.get<ChipRow>(`SELECT * FROM chips WHERE asset = ?`, c.asset);
-    return row ? chipToApi(row) : { asset: c.asset, owner: isBot(c.asset.split('-')[0]) ? 'bot' : '', collection: c.collection, rarity: c.rarity, level: c.level, index: 0, flags: { staked: false, listed: false, fusing: false, soulbound: false }, lockUntil: null, power: onChainSquadPower([c]), stakeWeight: '0' };
+    // A chip the indexer does not know (a synthetic bot chip, or a match whose asset never landed here):
+    // the number is unknown, so it is `null` — never a placeholder `#0`, which is a real chip (SEC-B3).
+    return row ? chipToApi(row) : { asset: c.asset, owner: isBot(c.asset.split('-')[0]) ? 'bot' : '', collection: c.collection, rarity: c.rarity, level: c.level, index: null, flags: { staked: false, listed: false, fusing: false, soulbound: false }, lockUntil: null, power: onChainSquadPower([c]), stakeWeight: '0' };
   };
   const rounds = m.rounds ? (JSON.parse(m.rounds) as FightResult['rounds']).map((r) => ({ ...r, winner: r.winner === 'A' ? m.a : m.b })) : [];
   const done = m.status !== 'revealing';

@@ -2,7 +2,7 @@
 import { Connection, PublicKey } from '@solana/web3.js';
 import { FUSION_RECIPES, BOOSTER } from '@guttercaps/economy';
 import { appLookupTables, fitsInTx, sendTx, TxError, type WalletLike } from '../tx';
-import { prepareClose, prepareRandomness, prepareReveal, readRandomness } from '../switchboard';
+import { prepareClose, prepareCloseLut, prepareRandomness, prepareReveal, readRandomness, sendCloseLut } from '../switchboard';
 import { cancelStaleFusionIx, fuseIx, fuseRevealIx, STALE_PACK_SLOTS, type FuseMaterial } from '../ix/chipCore';
 import { RNG_KIND, freshNonce, pendingFusionPda } from '../pdas';
 import { decodePendingFusion, readChipFused, type ChipFusedEvent, type GameConfig } from '../accounts';
@@ -131,9 +131,11 @@ export class FusionFlow {
   /** Rent reclaim (SEC-M7) once PendingFusion is closed (revealed or cancelled). */
   async reclaimRent(): Promise<string | null> {
     const { connection, wallet } = this.deps;
+    const lut = await prepareCloseLut(connection, wallet.publicKey, RNG_KIND.FUSION, wallet.publicKey, this.state.nonce);
     const ix = await prepareClose(connection, wallet.publicKey, RNG_KIND.FUSION, wallet.publicKey, this.state.nonce);
     if (!ix) return null;
     const { signature } = await sendTx(connection, wallet, [ix], { cuLimit: 120_000 });
+    await sendCloseLut(connection, wallet, lut);
     return signature;
   }
 

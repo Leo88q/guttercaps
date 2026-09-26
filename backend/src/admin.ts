@@ -29,6 +29,7 @@ import {
 } from './chain.ts';
 import { ServiceError, prices } from './services.ts';
 import { antifraudStatus, fraudQueue, resolveWallet, type Resolution } from './antifraud.ts';
+import { clampInt } from './params.ts';
 import { emissionPda } from './burn-oracle.ts';
 import { arenaConfigPda } from './battle-resolver.ts';
 import { latestEmissionDay } from './staking.ts';
@@ -387,7 +388,10 @@ export function audit(db: Db, a: { wallet: string; action: string; target?: stri
   db.run(`INSERT INTO admin_audit (wallet, action, target, payload, ip, ok, ts) VALUES (?, ?, ?, ?, ?, ?, ?)`, a.wallet, a.action, a.target ?? null, a.payload === undefined ? null : JSON.stringify(a.payload), a.ip ?? null, a.ok ? 1 : 0, t);
 }
 export function auditLog(db: Db, limit = 100) {
-  return db.all<{ id: number; wallet: string; action: string; target: string | null; payload: string | null; ip: string | null; ok: number; ts: number }>(`SELECT * FROM admin_audit ORDER BY id DESC LIMIT ?`, limit)
+  // SEC-B2: clamp at the query layer too — `LIMIT -1` is "unlimited" to SQLite, and an audit dump is
+  // exactly the response an attacker would like unbounded.
+  const lim = clampInt(Number.isFinite(limit) ? limit : 100, 0, 1000);
+  return db.all<{ id: number; wallet: string; action: string; target: string | null; payload: string | null; ip: string | null; ok: number; ts: number }>(`SELECT * FROM admin_audit ORDER BY id DESC LIMIT ?`, lim)
     .map((r) => ({ ...r, ok: r.ok === 1, payload: r.payload ? (JSON.parse(r.payload) as unknown) : null }));
 }
 

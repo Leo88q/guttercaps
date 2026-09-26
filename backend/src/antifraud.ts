@@ -31,6 +31,7 @@
 // Scores are 0–100 heuristics; the queue shows the top of it. All queries are windowed
 // (`ANTIFRAUD_WINDOW_DAYS`, default 7) and cheap enough to run inside the reward-oracle cycle right
 // before settlement so the daily reward gate sees fresh evidence.
+import { clampInt } from './params.ts';
 import { db as sharedDb, type Db, now } from './db.ts';
 import { HUMAN, humanSummary } from './human.ts';
 import { jsonFlagEq } from './sql.ts';
@@ -274,8 +275,11 @@ function fingerprint(kind: string, evidence: string): string {
 
 /** Open queue for the admin service (`GET /admin/fraud`) — highest score first, with the wallet's current flags. */
 export function fraudQueue(db: Db, limit = 100) {
+  // SEC-B2: clamp here as well — a negative LIMIT is "no limit" to SQLite, so an `?limit=` that slips
+  // past a router must not be able to turn the fraud queue into an unbounded response.
+  const lim = clampInt(Number.isFinite(limit) ? limit : 100, 0, 500);
   return db.all<{ id: number; wallet: string; kind: string; score: number; evidence: string; ts: number; flags: string | null }>(
-    `SELECT f.id, f.wallet, f.kind, f.score, f.evidence, f.ts, w.flags FROM fraud_signals f LEFT JOIN wallets w ON w.address = f.wallet WHERE f.resolution IS NULL ORDER BY f.score DESC, f.ts DESC LIMIT ?`, limit,
+    `SELECT f.id, f.wallet, f.kind, f.score, f.evidence, f.ts, w.flags FROM fraud_signals f LEFT JOIN wallets w ON w.address = f.wallet WHERE f.resolution IS NULL ORDER BY f.score DESC, f.ts DESC LIMIT ?`, lim,
   ).map((r) => ({ id: r.id, wallet: r.wallet, kind: r.kind, score: r.score, evidence: JSON.parse(r.evidence) as unknown, ts: r.ts, flags: (() => { try { return JSON.parse(r.flags ?? '{}') as WalletFlags; } catch { return {}; } })() }));
 }
 

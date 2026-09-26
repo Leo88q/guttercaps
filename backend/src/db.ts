@@ -87,10 +87,16 @@ CREATE TABLE IF NOT EXISTS chips (
   skin             TEXT,                        -- cosmetic skin id from economy SKINS, NULL = none
   minted_at        INTEGER,
   burned_at        INTEGER,                      -- consumed by a fusion
-  updated_slot     INTEGER NOT NULL DEFAULT 0
+  updated_slot     INTEGER NOT NULL DEFAULT 0,
+  game_index       TEXT,                         -- per-collection mint number (Name #N, u64 as decimal); NULL = not resolved yet
+  index_attempts   INTEGER NOT NULL DEFAULT 0    -- back-fill attempts; the row is parked once it reaches INDEX_ATTEMPTS
 );
 CREATE INDEX IF NOT EXISTS idx_chips_owner ON chips(owner, burned_at);
 CREATE INDEX IF NOT EXISTS idx_chips_arch  ON chips(collection_idx, rarity, burned_at);
+-- NOTE: the game_index back-fill index (idx_chips_index_pending) is created in migrate(), not here:
+-- on a DB written before shape #27 the column does not exist yet, and SCHEMA is executed *before*
+-- migrate() — an index on a missing column would abort the whole new Db(path) with "no such column"
+-- (caught by backend/test/chip-index.test.ts, which upgrades a pre-#27 file in place).
 
 -- Arena spray-tags (kind-4 emote packs): cosmetic shouts on a match, no gameplay effect.
 CREATE TABLE IF NOT EXISTS match_emotes (
@@ -475,6 +481,8 @@ CREATE TABLE IF NOT EXISTS crank_jobs (
   reveal_sig  TEXT,
   settle_sigs TEXT    NOT NULL DEFAULT '[]',
   close_sig   TEXT,
+  lut_slot    INTEGER,                      -- backlog #23: Switchboard lookup-table slot of this request (randomness data)
+  lut_closed_at INTEGER,                    -- when close_randomness_lut landed (the second half of the rent)
   created_at  INTEGER NOT NULL,             -- unix ms
   updated_at  INTEGER NOT NULL
 );
@@ -744,6 +752,29 @@ export class Db {
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_events_unfinalized ON events_raw(finalized_at, slot)`);
     const ch = new Set((this.raw.prepare(`PRAGMA table_info(chips)`).all() as { name: string }[]).map((c) => c.name));
     if (!ch.has('skin')) this.raw.exec(`ALTER TABLE chips ADD COLUMN skin TEXT`);
+    // SEC-B3/shape #27: `chips.game_index` — the per-collection mint number the market's "Low #" sort and
+    // `indexMin`/`indexMax` filters need. The compressed path learns it from CompressedChipRegistered;
+    // a core `open_pack` chip only has it inside its `ChipState` account, so those rows are left NULL and
+    // resolved in batches by the crank (`Crank.resolveChipIndexes`). `index_attempts` parks an asset the
+    // chain has no index for after a few tries, so the queue drains instead of retrying it forever.
+    if (!ch.has('game_index')) {
+      this.raw.exec(`ALTER TABLE chips ADD COLUMN game_index TEXT`);
+      // heal what the compressed path already projected: `compressed_claims.game_index` is written at mint
+      this.raw.exec(`UPDATE chips SET game_index = (
+          SELECT cc.game_index FROM compressed_claims cc WHERE cc.asset = chips.asset AND cc.game_index IS NOT NULL
+        ) WHERE game_index IS NULL AND EXISTS (SELECT 1 FROM compressed_claims cc WHERE cc.asset = chips.asset AND cc.game_index IS NOT NULL)`);
+    }
+    if (!ch.has('index_attempts')) this.raw.exec(`ALTER TABLE chips ADD COLUMN index_attempts INTEGER NOT NULL DEFAULT 0`);
+    // backlog #23: the lookup-table half of the Switchboard rent. `lut_slot` rides along with the job
+    // (the randomness account is already gone when the table becomes closable), `lut_closed_at` marks
+    // the batch that reclaimed it — the crank only touches jobs that are `closed` and not yet flagged.
+    const cj = new Set((this.raw.prepare(`PRAGMA table_info(crank_jobs)`).all() as { name: string }[]).map((c) => c.name));
+    for (const name of ['lut_slot', 'lut_closed_at'] as const) {
+      if (!cj.has(name)) this.raw.exec(`ALTER TABLE crank_jobs ADD COLUMN ${name} INTEGER`);
+    }
+    this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_crank_lut_due ON crank_jobs(lut_closed_at)`);
+    // the crank's index back-fill queue is game_index IS NULL AND burned_at IS NULL AND index_attempts < N
+    this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_chips_index_pending ON chips(index_attempts) WHERE game_index IS NULL`);
     const ql = new Set((this.raw.prepare(`PRAGMA table_info(quest_logins)`).all() as { name: string }[]).map((c) => c.name));
     if (!ql.has('minute_of_day')) this.raw.exec(`ALTER TABLE quest_logins ADD COLUMN minute_of_day INTEGER`);
     const se = new Set((this.raw.prepare(`PRAGMA table_info(seasons)`).all() as { name: string }[]).map((c) => c.name));

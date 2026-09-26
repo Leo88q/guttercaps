@@ -16,12 +16,13 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
     <link rel="shortcut icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
-    <!-- No web-font link here, and that is not an oversight: ops/deploy/nginx.conf ships
+    <!-- No web-font link here, and that is not an oversight: `ops/deploy/nginx.conf` ships
          font-src 'self' data: and style-src 'self' 'unsafe-inline', so a Google Fonts <link> is a
          render-blocking request the production CSP blocks anyway — a third-party call carrying the
-         visitor's IP on every page load, in exchange for nothing. Self-host instead: the recipe (which
-         woff2 files, which subsets, the @font-face block) is client/public/fonts/README.md. Until then
-         theme.css falls back to cursive/sans/mono, i.e. exactly what prod was already rendering. -->
+         visitor's IP on every page load, in exchange for nothing. The fonts are self-hosted instead:
+         the woff2 files live in client/public/fonts (OFL-1.1 / Apache-2.0, licence texts next to the
+         bytes) and the generated client/src/shared/ui/fonts.css is imported by App.tsx; see
+         client/public/fonts/README.md. Nothing here needs to be added back. -->
   </head>
   <body style="background:#16151A; color:#D8D8DC; margin:0;">
     <div id="root"></div>

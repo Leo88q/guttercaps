@@ -79,8 +79,8 @@ export function encodePendingFusion(f: { owner: PublicKey; recipe: number; mater
   return w.u8(f.resultCollectionIdx).bool(false).pubkey(f.randomness).u64(f.commitSlot).u64(f.nonce).u8(254).u64(120_000_000n).toBytes(); // fee_escrowed (SEC-M3)
 }
 
-export function encodeChipState(asset: PublicKey, collectionIdx: number, rarity: number): Uint8Array {
-  return disc('ChipState').pubkey(asset).u8(collectionIdx).u8(rarity).u8(1).u64(1).u8(4).i64(0).i64(1_700_000_000).u8(255).toBytes();
+export function encodeChipState(asset: PublicKey, collectionIdx: number, rarity: number, index = 1n): Uint8Array {
+  return disc('ChipState').pubkey(asset).u8(collectionIdx).u8(rarity).u8(1).u64(index).u8(4).i64(0).i64(1_700_000_000).u8(255).toBytes();
 }
 
 export function encodePendingClaimFusion(f: { owner: PublicKey; recipe: number; materials: PublicKey[]; resultCollectionIdx: number; randomness: PublicKey; commitSlot: bigint; nonce: bigint }): Uint8Array {

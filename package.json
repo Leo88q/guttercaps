@@ -5,9 +5,10 @@
     "test": "vitest run --config tests/localnet/vitest.config.mts",
     "test:validator": "node --experimental-strip-types tests/localnet/run-validator.ts",
     "lock:matrix": "node --experimental-strip-types scripts/npm-lock-matrix.ts --selftest && node --experimental-strip-types scripts/npm-lock-matrix.ts",
+    "lock:integrity": "node --experimental-strip-types scripts/lock-integrity.ts",
     "localnet:build": "sh scripts/anchor-build-localnet.sh",
     "localnet:fixtures": "node --experimental-strip-types tests/localnet/fetch-fixtures.ts",
-    "verify": "npm run lock:matrix && npm run economy:check && npm run economy:test && npm run security:static && npm --prefix client run typecheck && npm --prefix client test && npm --prefix client run build && npm run bundle:check && npm --prefix backend run typecheck && npm run backend:test && npm run landing:check && npm run api:check && npm run program-ids -- status && npm run env:check && npm run schema:check && npm run ops:buildenv -- --selftest && npm run verify-deploy -- --selftest && npm run audit:gate -- --selftest && npm run workflows:check && npm run selftest:cargolock && npm run selftest:junit && npm run selftest:cu && npm run docs:refs",
+    "verify": "npm run lock:matrix && npm run lock:integrity -- --selftest && npm run lock:integrity && npm run economy:check && npm run economy:test && npm run security:static && npm --prefix client run typecheck && npm --prefix client test && npm --prefix client run build && npm run bundle:check && npm --prefix backend run typecheck && npm run backend:test && npm run landing:check && npm run api:check && npm run program-ids -- status && npm run env:check && npm run schema:check && npm run ops:buildenv -- --selftest && npm run verify-deploy -- --selftest && npm run audit:gate -- --selftest && npm run workflows:check && npm run selftest:cargolock && npm run selftest:junit && npm run selftest:cu && npm run state:layout && npm run state:layout -- --selftest && npm run fonts:check && npm run docs:refs",
     "setup": "node --experimental-strip-types scripts/setup.ts",
     "skr-pool": "node --experimental-strip-types scripts/skr-pool.ts",
     "pyth-pusher": "node --experimental-strip-types scripts/pyth-pusher.ts",
@@ -67,6 +68,9 @@
     "ops:backup-now": "RUN_ONCE=1 docker compose -f ops/deploy/docker-compose.yaml exec backup /bin/sh /backup/sqlite-backup.sh",
     "ops:prometheus": "docker compose -f ops/deploy/docker-compose.yaml --profile monitoring up -d prometheus",
     "schema:check": "node --experimental-strip-types scripts/schema-drift.ts --check",
+    "state:layout": "node --experimental-strip-types --no-warnings scripts/state-layout.ts",
+    "fonts:vendor": "node --experimental-strip-types --no-warnings scripts/vendor-fonts.ts --write",
+    "fonts:check": "node --experimental-strip-types --no-warnings scripts/vendor-fonts.ts --check && node --experimental-strip-types --no-warnings scripts/vendor-fonts.ts --selftest",
     "schema:drift": "node --experimental-strip-types scripts/schema-drift.ts --write",
     "selftest:cargolock": "sh scripts/selftest-cargo-lock.sh",
     "selftest:junit": "sh scripts/selftest-surface-junit.sh",
@@ -75,7 +79,7 @@
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",
     "@solana/spl-token": "^0.4.8",
-    "@solana/web3.js": "^1.95.3"
+    "@solana/web3.js": "^1.99.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.1",

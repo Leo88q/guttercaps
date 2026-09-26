@@ -493,6 +493,31 @@ export function closeRandomnessIx(a: { kind: RngKind; payer: PublicKey; owner: P
   return new TransactionInstruction({ programId: rngProgram(a.kind), keys, data });
 }
 
+/**
+ * `close_randomness_lut(kind, nonce, lut_slot)` (chip_core) / `close_battle_randomness_lut(nonce, lut_slot)`
+ * (arena) — backlog #23. Permissionless and idempotent: callable once the randomness account is gone
+ * (`close_randomness` deactivates the table as it closes the account, and the Address Lookup Table
+ * cooldown starts there) and pays the table's rent (~0.0015 SOL per bundle) to `owner`.
+ *
+ * `lutSlot` is not trusted: the program re-derives `["LutSigner", randomness]` and the table address
+ * from it and requires the passed accounts to match, so a caller cannot point the CPI at somebody
+ * else's table. `owner` is both a randomness PDA seed and Switchboard's `recipient` — a relayer
+ * therefore cannot redirect the rent to itself (SEC-F07).
+ */
+export function closeRandomnessLutIx(a: { kind: RngKind; payer: PublicKey; owner: PublicKey; nonce: bigint; lutSlot: bigint }): TransactionInstruction {
+  const randomness = rngPda(a.kind, a.owner, a.nonce)[0];
+  const lutSigner = sbLutSignerPda(randomness)[0];
+  const pinned = a.kind === RNG_KIND.PACK ? pendingPackPda(a.owner, a.nonce)[0] : a.kind === RNG_KIND.FUSION ? pendingFusionPda(a.owner, a.nonce)[0] : a.kind === RNG_KIND.CLAIM_FUSION ? claimFusionPda(a.owner, a.nonce)[0] : battlePda(a.owner, a.nonce)[0];
+  const keys = [
+    signer(a.payer), rw(a.owner), ro(randomness), ro(pinned), ro(lutSigner), rw(sbLutPda(lutSigner, a.lutSlot)[0]),
+    ro(SWITCHBOARD_PROGRAM_ID), ro(ADDRESS_LOOKUP_TABLE_PROGRAM_ID),
+  ];
+  const data = a.kind === RNG_KIND.BATTLE
+    ? ixData('close_battle_randomness_lut', new BorshWriter().u64(a.nonce).u64(a.lutSlot).toBytes())
+    : ixData('close_randomness_lut', new BorshWriter().u8(a.kind).u64(a.nonce).u64(a.lutSlot).toBytes());
+  return new TransactionInstruction({ programId: rngProgram(a.kind), keys, data });
+}
+
 export interface OpenPackArgs {
   payer: PublicKey; buyer: PublicKey; nonce: bigint; packNo: number; randomness: PublicKey;
   /** packs in the purchase — the last one settles and needs the buyer's ledger shard writable (#12); default 1 */

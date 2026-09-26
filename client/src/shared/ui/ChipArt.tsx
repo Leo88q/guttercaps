@@ -9,7 +9,8 @@ function hash(n: number) { let x = (n + 0x9e37) * 2654435761; x ^= x >>> 15; x =
 export interface ChipArtProps {
   collection: number;
   rarity: number;
-  index?: number;
+  /** mint number (`Name #N`) — `null`/absent while the API has not resolved it; the art seed falls back */
+  index?: number | null;
   level?: number;
   size?: number | string;
   imageUrl?: string;
@@ -27,7 +28,7 @@ export interface ChipArtProps {
   crimp?: string;
 }
 
-export const ChipArt = memo(function ChipArt({ collection, rarity, index = 0, level, size = '100%', imageUrl, fallbackUrl, selected, dim, badge, skin, onClick, title, className = '', crimp }: ChipArtProps) {
+export const ChipArt = memo(function ChipArt({ collection, rarity, index = null, level, size = '100%', imageUrl, fallbackUrl, selected, dim, badge, skin, onClick, title, className = '', crimp }: ChipArtProps) {
   const base = collectionColor(collection);
   const glow = rarityColor(rarity);
   // Final art is a static file that may not exist yet (art exports land per
@@ -36,7 +37,7 @@ export const ChipArt = memo(function ChipArt({ collection, rarity, index = 0, le
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const showImage = !!imageUrl && failedUrl !== imageUrl;
   const showFallback = !showImage && !!fallbackUrl && failedUrl !== fallbackUrl;
-  const seed = collection * 1000 + rarity * 37 + (index % 97);
+  const seed = collection * 1000 + rarity * 37 + ((index ?? 0) % 97);
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
   const gid = `g${seed}x${uid}`;
   const cid = `c${seed}x${uid}`;
