@@ -115,6 +115,11 @@ export function violations(files: Record<string, string>): string[] {
   return bad;
 }
 
+/** The arena entry point must reach a handler OUTSIDE the `#[program]` module: calling the
+ *  identically named entry point is unconditional recursion (clippy caught exactly that in CI). */
+const ARENA_WIRING = /pub fn close_battle_randomness_lut\(\s*ctx: Context<CloseBattleRandomnessLut>[\s\S]{0,200}?close_battle_randomness_lut_handler\(ctx, nonce, lut_slot\)/;
+const assertArenaWiring = (files: Record<string, string>) => assert.match(files['programs/arena/src/lib.rs'], ARENA_WIRING);
+
 test('SEC-M8 the lookup-table rent can only be paid to the player, through a derived table', () => {
   assert.deepEqual(violations(FILES), [], 'the lookup-table reclaim lost a pin — see the messages above');
 });
@@ -138,9 +143,9 @@ test('SEC-M8 the reclaim is a separate, permissionless step and never part of se
   const chip = FILES['programs/chip_core/src/randomness.rs'];
   const helper = chip.slice(chip.indexOf('pub fn close_lut_owned'), chip.indexOf('pub fn close_lut_owned') + 2600);
   assert.doesNotMatch(helper, /Clock::get|unix_timestamp|\.slot\b(?!_)/, 'close_lut_owned invented its own cooldown instead of letting the ALT program enforce it');
-  // the entry points exist in both programs (arena's handler is a free function in the same file)
+  // the entry points exist in both programs and reach their handlers
   assert.match(FILES['programs/chip_core/src/lib.rs'], /instructions::close_randomness_lut\(ctx, kind, nonce, lut_slot\)/);
-  assert.match(FILES['programs/arena/src/lib.rs'], /close_battle_randomness_lut\(ctx, nonce, lut_slot\)/);
+  assertArenaWiring(FILES);
   // chip_core's variant must not accept the battle kind (arena owns that one: different seeds, different PDA).
   const handler = FILES['programs/chip_core/src/instructions/rng.rs'];
   const body = handler.slice(handler.indexOf('pub fn close_randomness_lut'), handler.indexOf('pub fn close_randomness_lut') + 2000);
@@ -172,6 +177,11 @@ test('SEC-M8 mutation check: each pin fails the gate when removed', () => {
   assert.ok(violations(mutate('backend/src/chain.ts', /rw\(sbLutPda\(lutSigner,\s*a\.lutSlot\)\[0\]\)/, 'rw(a.payer)', 'closeRandomnessLutIx')).length > 0);
   // 6. the crank stops reclaiming
   assert.ok(violations(mutate('backend/src/crank.ts', /this\.reclaimLuts\(/g, 'this.reclaimLutsDisabled(')).length > 0);
+  // 7. the arena entry point stops reaching its handler — the recursion the first push shipped
+  const recursive = { ...FILES };
+  recursive['programs/arena/src/lib.rs'] = FILES['programs/arena/src/lib.rs'].replace('close_battle_randomness_lut_handler(ctx, nonce, lut_slot)', 'close_battle_randomness_lut(ctx, nonce, lut_slot)');
+  assert.notEqual(recursive['programs/arena/src/lib.rs'], FILES['programs/arena/src/lib.rs']);
+  assert.throws(() => assertArenaWiring(recursive), /close_battle_randomness_lut/);
   // and the unmutated map is clean
   assert.deepEqual(violations(FILES), []);
 });

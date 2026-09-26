@@ -256,17 +256,18 @@ pub struct RandomnessCloseLut<'info> {
     /// re-checks that below — a request that is still live must never reach a table payout.
     #[account(mut)]
     pub randomness: UncheckedAccount<'info>,
-    /// The lookup-table stand-in. In the localnet build `LUT_OWNER_PROGRAM_ID` IS this program (the
-    /// harness cannot deploy the Address Lookup Table program, and only an account's owner may debit
-    /// its lamports), so this program plays the ALT program's part: it pays the table's whole balance
-    /// to `recipient` and hands the account back to the System program — same effect as closing a
-    /// deactivated table, which the real ALT program performs because it owns the table.
-    /// CHECK: must be owned by this program; that ownership is the runtime-enforced right to debit it.
+    /// CHECK: the lookup-table stand-in. In the localnet build `LUT_OWNER_PROGRAM_ID` IS this program
+    /// (the harness cannot deploy the Address Lookup Table program, and only an account's owner may
+    /// debit its lamports), so this program plays the ALT program's part: it pays the table's whole
+    /// balance to `recipient` and hands the account back to the System program — the same effect as
+    /// closing a deactivated table, which the real ALT program performs because it owns it. The
+    /// `owner = crate::ID` constraint is the runtime-enforced right to debit these lamports.
     #[account(mut, owner = crate::ID @ MockError::InvalidAccount)]
     pub lut: UncheckedAccount<'info>,
     /// CHECK: `["LutSigner", randomness]` in the real program — the mock ignores it.
     pub lut_signer: UncheckedAccount<'info>,
-    /// Receives the table's rent in the real program (Switchboard's `recipient`).
+    /// CHECK: receives the table's rent in the real program (Switchboard's `recipient`); the caller
+    /// points it at the player, and this mock pays whoever it is given, as Switchboard does.
     #[account(mut)]
     pub recipient: UncheckedAccount<'info>,
     /// CHECK: Address Lookup Table program — ignored.

@@ -1006,7 +1006,7 @@ pub struct CloseBattleRandomnessLut<'info> {
 /// Reclaim the lookup table of a finished battle (backlog #23). Safe to call repeatedly: a table that
 /// is closed already, or still inside its cooldown, fails inside Switchboard/the ALT program and
 /// costs the caller only the fee.
-pub fn close_battle_randomness_lut(
+pub fn close_battle_randomness_lut_handler(
     ctx: Context<CloseBattleRandomnessLut>,
     nonce: u64,
     lut_slot: u64,
@@ -1469,7 +1469,7 @@ pub mod arena {
         nonce: u64,
         lut_slot: u64,
     ) -> Result<()> {
-        close_battle_randomness_lut(ctx, nonce, lut_slot)
+        close_battle_randomness_lut_handler(ctx, nonce, lut_slot)
     }
     pub fn create_battle<'info>(
         ctx: Context<'_, '_, 'info, 'info, CreateBattle<'info>>,
