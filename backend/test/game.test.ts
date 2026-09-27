@@ -517,6 +517,24 @@ describe('quests', () => {
   });
   const playMatch = (t: number) => { const { matchId, na, nb } = pair(db, { wallet: alice, squad: sa }, { wallet: bob, squad: sb }, t); arena.reveal(db, alice, matchId, { nonce: na.toString('hex') }, t); arena.reveal(db, bob, matchId, { nonce: nb.toString('hex') }, t); return arena.matchApi(db, matchId)!; };
 
+  // SEC-B16: `activeWallets` decides whom the oracle settles, and it only knew about players, traders,
+  // stakers and logins. Two wallets fall outside all of those: a referrer earns `referrals_paid` purely
+  // through someone else's purchase, and a pack buyer can complete `sets_done` without ever playing. A
+  // finished quest that is never settled is never paid — the `quest_completions` row is the only route.
+  it('activeWallets covers pack buyers and their referrers, not only players/traders/stakers', () => {
+    const referrer = kp();
+    const referee = kp();
+    db.run(`INSERT INTO wallets (address, referrer, first_seen) VALUES (?, ?, ?)`, referee, referrer, T - 30 * 86_400);
+    ingestTx(tx([{ program: 'chip_core', name: 'PackBought', data: { buyer: referee, sku: 1, qty: 1, currency: 0, amount: '33000000', nonce: '5', randomness: kp() } }], { blockTime: T }), db);
+    const active = quests.activeWallets(db, T - 8 * 86_400);
+    expect(active).toContain(referee);       // bought a pack, never logged in
+    expect(active).toContain(referrer);      // no activity of its own at all
+    // the window is the 8-day activity window, not "ever": an old purchase does not keep the pair queued
+    const later = quests.activeWallets(db, T + 9 * 86_400);
+    expect(later).not.toContain(referee);
+    expect(later).not.toContain(referrer);
+  });
+
   it('progress comes from events: login, matches, wins, fusions, trades; periods reset; permanent milestones accumulate', () => {
     const list0 = quests.list(db, alice, T);
     expect(list0).toHaveLength(DAILY_QUESTS.length + WEEKLY_QUESTS.length + 6);
