@@ -495,7 +495,14 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.post('/admin/kill-switch', audited('kill_switch', async (req) => {
     const body = req.body as { program: string; paused: boolean; reason?: string };
     const c = await admin.fetchChainParams(connection());
-    const authority = body?.program === 'staking' ? { admin: c.emission.admin, pauser: c.emission.pauser } : { admin: c.config.admin, pauser: c.config.pauser };
+    // SEC-B24: each program checks its *own* authority pair — the arena reads `ArenaConfig`, so handing it
+    // chip_core's admin/pauser produced a transaction that could only fail (on the incident path, of all).
+    const authority = body?.program === 'staking'
+      ? { admin: c.emission.admin, pauser: c.emission.pauser, current: c.emission.paused }
+      : body?.program === 'arena'
+        ? (c.arena ? { admin: c.arena.admin, pauser: c.arena.pauser, current: c.arena.paused } : null)
+        : { admin: c.config.admin, pauser: c.config.pauser, current: c.config.paused };
+    if (!authority) throw new ServiceError(503, 'arena_missing', 'ArenaConfig account not found on this cluster (run scripts/setup.ts) — the arena pause needs its own admin/pauser');
     const p = admin.killSwitch(body, authority);
     if (!p.ok) throw new ServiceError(422, 'bad_request', p.violations.map((v) => `${v.path}: ${v.message}`).join('; '), p);
     return p;

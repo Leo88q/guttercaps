@@ -35,6 +35,7 @@ SECURITY-SCAN-TRIAGE-2026-09-23) учтены; здесь — только но�
 | SEC-B19 | Low (латентный: сегодня держится случайно, ломается правкой одной константы) | `programs/chip_core/src/instructions/{compressed,packs}.rs`, `economy.rs` | Claim-nonce компресс-паков собирается как `nonce * COMPRESSED_CLAIM_PACK_STRIDE (128) + pack_no * MAX_CHIPS_PER_PACK (5) + chip_index`, а `pack_no < qty ≤ 25`. Максимум смещения 24×5+4 = **124 < 128** — то есть инъективность держится на том, что `MAX_PACK_QTY` и `MAX_CHIPS_PER_PACK` случайно подходят под stride, и нигде это не связано. Добавить 6-й чип в пак или разрешить qty=26 — и два разных (nonce, pack_no, chip) дадут одну и ту же PDA-претензию. Отказ при этом не «двойная выдача»: `open_compressed_pack` отвергает существующую претензию, поэтому **оплаченный пак становится неоткрываемым навсегда**, settlement никогда не дойдёт до `total_claims`, и `finalize_compressed_pack` (единственный путь снятия обязательства с волта и возврата отменённой доли) не выполнится — деньги покупателя остаются в волте. | **Исправлено**: `MAX_PACK_QTY: u8 = 25` вынесен в `economy.rs` (граница `buy_pack` теперь ссылается на него, а не на литерал) и добавлена **проверка временем компиляции** в `compressed.rs`: `const _: () = assert!(MAX_CHIPS_PER_PACK * (MAX_PACK_QTY as usize) <= COMPRESSED_CLAIM_PACK_STRIDE as usize)`. Плюс статический гейт в `tests/security/anchor-invariants.test.ts` вычитывает эти три константы и связывает их (и требует, чтобы `buy_pack` ограничивал qty именно константой) — с самотестами: уменьшенный stride и удалённый `assert!` валят правило. |
 | SEC-B22 | Low (наблюдаемость админских правок + нулевой адрес) | `programs/chip_core/src/instructions/{admin,state,errors}.rs`, `backend/src/{events,wire}.ts`, `client/src/chain/errors.ts` | `set_params` — единственная точка мутации `treasury`, `buyback_wallet`, обоих Pyth-фидов, минта SKR, таблицы паков, рыночной комиссии и SKR-скидки — эмитила `ParamsChanged { admin, version }`, то есть счётчик: по бампу версии видно, **что** что-то менялось, и никогда — **что именно**, так что подмена казны ончейн неотличима от правки комиссии (таймлок и публичный дифф живут только на мультисиге). Рядом — вторая дыра того же класса: адресные поля не отвергали `Pubkey::default()` (адрес system-программы, деньги ушли бы в никуда). | **Исправлено**: `require_non_default` в каждой из пяти адресных веток (`ChipError::InvalidConfigAddress`), рядом с `ParamsChanged` — `ParamsPatched` с новыми значениями и битовой маской затронутых полей (`PARAMS_FIELD_*`); `ParamsChanged` и его потребители (админ-лог, проекции `params_changes`, нота о честности) не тронуты; гейт `SEC-B22` + 2 самотеста в `anchor-invariants.test.ts` (статика 81 → 83), 2 Rust-теста |
 | SEC-B23 | Low (зеркало guard-rails админ-панели разошлось с цепочкой) | `backend/src/admin.ts`, `backend/test/admin.test.ts`, `tests/security/anchor-invariants.test.ts` | Панель админа только *кодирует* транзакцию для Squads (ключей у процесса нет), поэтому каждый rail `set_params` продублирован в TS руками — и зеркало разошлось: пять адресных полей принимали нулевой ключ (валидный base58, адрес system-программы — панель говорит ok, tx ревертнёт), `priceCgMicro` не проверялся вообще (отрицательный BigInt уезжал в Borsh u64 — 500 вместо 422), полоса SEC-F13 (кап 1 000 000 $CG + одноразовый ×½–2×) и потолок `params_version` (`Overflow`) не отражены. | **Исправлено**: `InvalidConfigAddress` на нулевой ключ, u64-диапазон + кап + полоса ×½–2× против живой строки пака (целочисленное деление, как в Rust), отказ при `paramsVersion >= 65 535`; BigInt-сравнения вынесены в `CG_PRICE_GUARD`, `GUARD` остаётся JSON-безопасным (BigInt в нём — 500 на `GET /admin/params`); гейт `SEC-B23` + самотест (статика 83 → 85), `backend/test/admin.test.ts` 10/10 |
+| SEC-B24 | Medium (аварийный путь: пауза не сработала бы) | `backend/src/{admin,server}.ts`, `backend/test/{admin.test.ts,chainFixtures.ts}`, `tests/security/anchor-invariants.test.ts` | `POST /admin/kill-switch` кодировал `pause` / `set_paused` / `set_arena` и **выбирал подписанта**: для всех программ, кроме staking, он брал admin/pauser из `GameConfig` chip_core. Арена проверяет свой `ArenaConfig` (`Pause` — admin или pauser, раз-пауза `set_arena` — `has_one = admin`), поэтому пауза арены уезжала под горячим ключом chip_core и могла только ревертнуть — ровно на аварийном пути; раз-пауза требовала арена-админа, которого панель не читала. Диффа показывала выдуманное «предыдущее» состояние (`!paused`). | **Исправлено**: `fetchChainParams` читает и декодирует `ArenaConfig` (`ChainParams.arena`), маршрут выбирает пару по программе и отвечает `503 arena_missing` без аккаунта, `GET /admin/params` публикует обе пары, диффа несёт живое `paused` и предупреждает о no-op. Гейт `SEC-B24` + самотест (статика 85 → 87), HTTP-тест с намеренно разными ключами арены |
 
 Все находки этого прохода — **новые** (в отчёте 2026-09-25 их не было: тот проход смотрел программы и
 бэкенд-логику, но не границу параметров).
@@ -690,6 +691,44 @@ BigInt в payload. Отдельная деталь: панель сканиру�
 проходит вхолостую (поймано при первом прогоне). Поведенчески три rail'а закрыты в
 `backend/test/admin.test.ts` (10/10).
 
+## SEC-B24 · Medium · kill-switch ставил арене ключи chip_core
+
+`POST /admin/kill-switch` — аварийный путь: пауза без таймлока, горячим паузером, и раз-пауза через
+мультисиг. Он кодирует `pause` для всех трёх программ, `set_paused(false)` для chip_core/staking и
+`set_arena(paused = Some(false))` для арены — и он же выбирает, *чей* ключ попадёт в транзакцию:
+
+```ts
+const authority = body?.program === 'staking'
+  ? { admin: c.emission.admin, pauser: c.emission.pauser }
+  : { admin: c.config.admin,  pauser: c.config.pauser };   // ← сюда попадала и арена
+```
+
+Полномочия арены живут в её собственном `ArenaConfig` (`seeds = [b"arena_config"]`): `Pause` принимает
+`config.admin || config.pauser`, `set_arena` — `has_one = admin`. То есть пауза арены уходила подписанной
+горячим паузером chip_core (или его админом, если паузер не задан), арена такой ключ не знает — и
+транзакция, которую оператор утвердил в инциденте, могла только ревертнуть. Раз-пауза дополнительно
+требовала арена-админа, которого панель не читала вовсе. Денег это не теряло (пауза — не денежный путь,
+эскроу и так возвращаются), но ломало именно тот сценарий, ради которого kill-switch существует. Заодно
+диффа ответа показывала `from: !paused` — выдуманное «предыдущее состояние» вместо живого.
+
+**Исправление.** `fetchChainParams` читает `arenaConfigPda()` и декодирует его (`decodeArenaConfig`),
+`ChainParams.arena` = `{ admin, pauser, paused } | null`; маршрут выбирает пару по программе
+(staking → `emission`, arena → `arena`, иначе `config`) и без арена-аккаунта отвечает
+`503 arena_missing` — панель не подписывает ключом, которого программа не знает. `GET /admin/params`
+публикует обе пары рядом, чтобы оператор видел, чей ключ поедет. `killSwitch` получает `current`
+и сообщает живое `paused` в диффе; запрос, который ничего не меняет (`already paused/running`),
+помечается предупреждением — транзакция всё ещё тратит подпись мультисига.
+
+**Тест.** Правило `SEC-B24` в `tests/security/anchor-invariants.test.ts` для каждой программы вычитывает
+`pub struct Pause<` (seeds + её собственные admin/pauser; `PauseChanged` рядом в arena/lib.rs — не
+поделка, якорь с угловой скобкой), требует, чтобы `PAUSABLE` писал PDA, собранный из тех же seeds
+(`config` / `emission` / `arena_config`), чтобы маршрут брал пару из аккаунта этой же программы, чтобы
+`ArenaAdmin` сохранял `has_one = admin`, а панель — гвард `arena_missing`; отдельно закрепляет «пауза —
+паузером, раз-пауза — админом» и живое `paused` в диффе. Самотест валит правило на подменённой паре, чужом
+PDA, снятом декодере и раз-паузе под горячим ключом. Поведенчески — `backend/test/admin.test.ts`:
+реальный HTTP-маршрут с намеренно разными ключами арены, `503 arena_missing` без аккаунта и публикация
+обеих пар в `GET /admin/params`.
+
 ## Проверено заново, без находок
 
 * **Периметр бэкенда.** `/healthz`, `/readyz`, `/metrics` регистрируются до лимитера (намеренно);
@@ -826,7 +865,7 @@ Cloudflare требует для виджета `script-src` + `frame-src` от 
    ни registrar lock, ни DNSSEC, ни CAA в репозитории не описаны (runbook §1.3 — только граница TLS).
    Принятый риск с владельцем ops и чек-листом до G-2, причина и границы — `SECURITY.md` / `docs/06` §2.2.
 3. **SEC-B21 · Trident-фаззинг** — цели и CI-джоба нет; класс закрыт `cargo test`, 92 сценариями localnet,
-   85 статическими гейтами и структурными инвариантами. Принятый риск с планом до mainnet, см. там же.
+   87 статическими гейтами и структурными инвариантами. Принятый риск с планом до mainnet, см. там же.
 4. **Диспозиция частей 1–2 чеклиста (31–70)** — вынесена в отдельный файл
    `SECURITY-AUDIT-2026-09-27-checklist.md`: строки по темам, у каждой — что защищает и чем доказано,
    плюс сводка принятых рисков (SEC-B20, SEC-B21, порог Squads, инсайдер) и ℹ️-пункты.
@@ -845,7 +884,7 @@ origin'ов у лендинга нет), прод-CSP против Turnstile/`ws
 Всё это — на одном дереве, `npm run verify` exit 0:
 
 * `npm --prefix backend test` — 23 файла, **411** тестов (+19 `params.test.ts`, +5 `verify.test.ts`, +1 сценарий SEC-B5 в `human.test.ts`, +14 `chip-index.test.ts` для shape #27, +2 сценария SEC-B11 в `game.test.ts`, +4 сценария SEC-M8 в `crank.test.ts`, +4 сценария SEC-B13 в `projections.test.ts`/`game.test.ts`, +2 сценария SEC-B14 в `cosmetics.test.ts`, +1 сценарий SEC-B16 в `game.test.ts`, +2 сценария SEC-B18 (api + security); три временных probe-файла удалены, когда их находки стали постоянными тестами).
-* `npm run security:static` — **85** проверок: 34 прежних + 6 SEC-B2/B3 + 4 SEC-B7 + 6 SEC-B8 + 7 SEC-B9 + 8 SEC-B12 (supply-chain: пины, хост, sha512, отозванные версии в дереве и в диапазонах, install-скрипты, лок↔манифесты) + 4 SEC-M8 (`rent-lut.test.ts`: пины CPI и выплаты, «cooldown — часть ALT-программы, а не наш Clock», 6 мутаций) + 5 SEC-B13 (`time-heal.test.ts`: проход исцеления, провод в `listen`, попытки/парковка, фоллбэк по слоту, `accrualFrom`; 6 мутаций) + 4 SEC-B14 (`paid-claims.test.ts`: выбор строки по `ref_hash`, оба вызывающих его передают, одноразовое списание одним условным UPDATE; 4 мутации) + 2 SEC-B18 (`api-input.test.ts`: маршрут `handle-check` и cap живых hold-ов до upsert-а, плюс self-test на пре-фиксный маршрут) + 1 SEC-B19 (`anchor-invariants.test.ts`: stride claim-nonce покрывает `MAX_PACK_QTY × MAX_CHIPS_PER_PACK`, `assert!` на месте, `buy_pack` связан с константой; 2 самотеста). + 2 SEC-B22 (`anchor-invariants.test.ts`: все пять адресных полей `set_params` проходят проверку на нулевой ключ, событие несёт новые значения, маска бит совпадает с числом полей, а порядок полей совпадает с кодеком бэкенда; самотест валит правило на снятой проверке и на «съехавшем» кодеке). + 2 SEC-B23 (`anchor-invariants.test.ts`: словарь `ChipError` из `set_params`/`require_non_default` закреплён и каждое имя обязано быть правилом панели, шесть констант `economy.rs` и пять литералов сверяются с `GUARD`, полоса ×½–2× — против живой строки, BigInt внутри `GUARD` запрещён; самотест валит правило на снятом правиле, «съехавшей» константе, новом `ChipError` и BigInt-payload).
+* `npm run security:static` — **87** проверок: 34 прежних + 6 SEC-B2/B3 + 4 SEC-B7 + 6 SEC-B8 + 7 SEC-B9 + 8 SEC-B12 (supply-chain: пины, хост, sha512, отозванные версии в дереве и в диапазонах, install-скрипты, лок↔манифесты) + 4 SEC-M8 (`rent-lut.test.ts`: пины CPI и выплаты, «cooldown — часть ALT-программы, а не наш Clock», 6 мутаций) + 5 SEC-B13 (`time-heal.test.ts`: проход исцеления, провод в `listen`, попытки/парковка, фоллбэк по слоту, `accrualFrom`; 6 мутаций) + 4 SEC-B14 (`paid-claims.test.ts`: выбор строки по `ref_hash`, оба вызывающих его передают, одноразовое списание одним условным UPDATE; 4 мутации) + 2 SEC-B18 (`api-input.test.ts`: маршрут `handle-check` и cap живых hold-ов до upsert-а, плюс self-test на пре-фиксный маршрут) + 1 SEC-B19 (`anchor-invariants.test.ts`: stride claim-nonce покрывает `MAX_PACK_QTY × MAX_CHIPS_PER_PACK`, `assert!` на месте, `buy_pack` связан с константой; 2 самотеста). + 2 SEC-B22 (`anchor-invariants.test.ts`: все пять адресных полей `set_params` проходят проверку на нулевой ключ, событие несёт новые значения, маска бит совпадает с числом полей, а порядок полей совпадает с кодеком бэкенда; самотест валит правило на снятой проверке и на «съехавшем» кодеке). + 2 SEC-B23 (`anchor-invariants.test.ts`: словарь `ChipError` из `set_params`/`require_non_default` закреплён и каждое имя обязано быть правилом панели, шесть констант `economy.rs` и пять литералов сверяются с `GUARD`, полоса ×½–2× — против живой строки, BigInt внутри `GUARD` запрещён; самотест валит правило на снятом правиле, «съехавшей» константе, новом `ChipError` и BigInt-payload). + 2 SEC-B24 (`anchor-invariants.test.ts`: `Pause` каждой программы связан со своим PDA и своей парой admin/pauser, «пауза — паузером, раз-пауза — админом», `has_one = admin` у `ArenaAdmin`, гвард `arena_missing`, живое `paused` в диффе; самотест валит правило на подменённой паре, чужом PDA, снятом декодере и раз-паузе под горячим ключом).
 * `npm run lock:integrity -- --selftest` — 11/11; сам лок: **1 097/1 097** registry-узлов с `resolved`+sha512, все — `registry.npmjs.org`; `npm ci` на пустом `node_modules` — exit 0 (npm сверил все хеши).
 * `npm run state:layout` — 29 аккаунтов совпадают с baseline (`--selftest` 10/10); гейт в `npm run verify` и в CI-джобе `economy`.
 * `npm run landing:check` (+ DOM-smoke) — зелёный, включая CSP/host-проверки и «каждый landing-шрифт вшит»; `guttercaps-landing.html` перегенерирован (2,78 МБ, 13 inlined woff2, 0 ссылок на Google Fonts).

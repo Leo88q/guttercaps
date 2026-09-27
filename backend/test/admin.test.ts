@@ -17,13 +17,16 @@ import { emissionPda } from '../src/burn-oracle.ts';
 import { arenaConfigPda } from '../src/battle-resolver.ts';
 import * as admin from '../src/admin.ts';
 import * as antifraud from '../src/antifraud.ts';
-import { DEFAULT_PACK, FakeConnection, encodeGameConfig, encodeVaultLedger, PREMIUM_PACK } from './chainFixtures.ts';
+import { DEFAULT_PACK, FakeConnection, encodeArenaConfig, encodeGameConfig, encodeVaultLedger, PREMIUM_PACK } from './chainFixtures.ts';
 import { world, tx, kp } from './fixtures.ts';
 
 const ADMIN = Keypair.generate();
 const PLAYER = Keypair.generate();
 const CHAIN_ADMIN = Keypair.generate().publicKey;
 const PAUSER = Keypair.generate().publicKey;
+// SEC-B24: the arena has its own admin/pauser in `ArenaConfig` — deliberately different from chip_core's.
+const ARENA_ADMIN = Keypair.generate().publicKey;
+const ARENA_PAUSER = Keypair.generate().publicKey;
 let db: Db; let server: Server; let base: string; let conn: FakeConnection;
 const T0 = Math.floor(Date.now() / 1000);
 
@@ -65,6 +68,7 @@ beforeAll(async () => {
   conn = new FakeConnection();
   conn.set(configPda()[0], encodeGameConfig({ treasury: Keypair.generate().publicKey, cgMint: Keypair.generate().publicKey, collectionsCreated: 10 }));
   conn.set(emissionPda()[0], encodeEmission({ splitChangedAt: T0 - 30 * 86_400 }), PROGRAMS.staking);
+  conn.set(arenaConfigPda()[0], encodeArenaConfig({ admin: ARENA_ADMIN, pauser: ARENA_PAUSER, paused: false }), PROGRAMS.arena);
   // #12: three of four ledger shards initialised — liabilities are summed, the missing one is reported
   conn.set(ledgerPda(0)[0], encodeVaultLedger({ shard: 0, liabLamports: 1_000n, liabCg: 5n, burnedTotal: 10n }));
   conn.set(ledgerPda(1)[0], encodeVaultLedger({ shard: 1, liabUsdc: 7n, burnedTotal: 20n }));
@@ -244,6 +248,26 @@ describe('kill switch, simulate, kpi, fraud', () => {
     expect(r.status).toBe(200);
     expect(r.json.instructions[0].accounts[0].pubkey).toBe(PAUSER.toBase58()); // staking pauser from EmissionState
     expect(admin.auditLog(db)[0]).toMatchObject({ action: 'kill_switch', target: 'staking', ok: true });
+    expect(r.json.diff['staking.paused']).toMatchObject({ from: false, to: true }); // live state, not `!paused`
+    // SEC-B24: the arena checks its own `ArenaConfig` — signing with chip_core's keys produced a tx that
+    // could only revert (on the incident path). `GET /admin/params` publishes both pairs.
+    const ap = await a.get('/v1/admin/params');
+    expect(ap.json.arena).toEqual({ admin: ARENA_ADMIN.toBase58(), pauser: ARENA_PAUSER.toBase58(), paused: false });
+    const arx = await a.post('/v1/admin/kill-switch', { program: 'arena', paused: true, reason: 'wager exploit' });
+    expect(arx.status).toBe(200);
+    expect(arx.json.instructions[0].accounts).toEqual([
+      { pubkey: ARENA_PAUSER.toBase58(), isSigner: true, isWritable: false },
+      { pubkey: arenaConfigPda()[0].toBase58(), isSigner: false, isWritable: true },
+    ]);
+    expect(arx.json.diff['arena.paused']).toMatchObject({ from: false, to: true });
+    const aux = await a.post('/v1/admin/kill-switch', { program: 'arena', paused: false }); // un-pause is admin-only
+    expect(aux.json.instructions[0].accounts[0].pubkey).toBe(ARENA_ADMIN.toBase58());
+    // ...and a cluster without `init_arena` says so instead of proposing the wrong signer
+    conn.del(arenaConfigPda()[0]);
+    const missing = await a.post('/v1/admin/kill-switch', { program: 'arena', paused: true, reason: 'no arena here' });
+    expect(missing.status).toBe(503);
+    expect(missing.json.code).toBe('arena_missing');
+    conn.set(arenaConfigPda()[0], encodeArenaConfig({ admin: ARENA_ADMIN, pauser: ARENA_PAUSER, paused: false }), PROGRAMS.arena);
   });
 
   it('simulate: baseline vs overridden assumptions, split slices, unknown keys rejected', async () => {

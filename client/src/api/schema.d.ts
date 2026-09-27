@@ -3747,6 +3747,12 @@ export interface components {
                 ledgerShardsMissing?: number;
                 ledgerShardCount?: number;
             };
+            /** @description SEC-B24: the arena has its own admin/pauser (ArenaConfig) — the kill switch signs with these, never with chip_core keys; null = init_arena has not run here */
+            arena?: {
+                admin?: string;
+                pauser?: string;
+                paused?: boolean;
+            } | null;
             emission?: {
                 admin?: string;
                 pauser?: string;

@@ -50,6 +50,13 @@ function makeChip(collection: number, rarity: number, owner = ME, opts: Partial<
   };
 }
 
+// SEC-B24: each program checks its own authority pair — the arena reads `ArenaConfig`, not chip_core's.
+const CHIP_ADMIN = 'HPMr5r9sS5ApWsPNJytZRLbm2jz1veFxTn1wepjAhtho';
+const CHIP_PAUSER = 'GCmockPau5erXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX';
+const STAKING_ADMIN = CHIP_ADMIN;
+const STAKING_PAUSER = 'GCmockStak1ngPau5erXXXXXXXXXXXXXXXXXXXXXXXX';
+const ARENA_ADMIN = 'GCmockArenaAdm1nXXXXXXXXXXXXXXXXXXXXXXXXXXX';
+const ARENA_PAUSER = 'GCmockArenaPau5erXXXXXXXXXXXXXXXXXXXXXXXXX';
 const chips: MockChip[] = [];
 // a believable mid-game inventory: lots of commons, a few epics, one legend
 const inventoryPlan: [number, number][] = [[0, 14], [1, 9], [2, 7], [3, 4], [4, 3], [5, 1], [6, 1]];
@@ -483,6 +490,8 @@ const adminParams = () => ({
     dayIndex: 41, paused: adminState.paused.staking, splitBps: [...adminState.splitBps], splitChangedAt: adminState.splitChangedAt, nextSplitChangeAt: adminState.splitChangedAt + GUARD.split.minIntervalS,
     mintedTotalMicro: '2818000000000', burnTodayMicro: '61200000000', burn7dAvgMicro: '58400000000', sliceBudgetMicro: ['0', '0', '9600000000', '14100000000', '8200000000'],
   },
+  // SEC-B24: the arena authority pair is its own account — `pause` / `set_arena` read these keys
+  arena: { admin: ARENA_ADMIN, pauser: ARENA_PAUSER, paused: adminState.paused.arena },
   guardRails: GUARD,
   history: [{ signature: fakeKey(), admin: 'HPMr5r9sS5ApWsPNJytZRLbm2jz1veFxTn1wepjAhtho', version: 3, slot: 311_900_000, blockTime: Math.floor(Date.now() / 1000) - 5 * 86_400 }, { signature: fakeKey(), admin: 'HPMr5r9sS5ApWsPNJytZRLbm2jz1veFxTn1wepjAhtho', version: 2, slot: 309_100_000, blockTime: Math.floor(Date.now() / 1000) - 19 * 86_400 }],
 });
@@ -528,12 +537,17 @@ on('post', '/admin/params', (o) => {
 });
 on('post', '/admin/kill-switch', (o) => {
   const b = (o.body ?? {}) as { program: 'chip_core' | 'staking' | 'arena'; paused: boolean; reason?: string };
+  const current = adminState.paused[b.program] ?? false;
+  const signer = b.paused
+    ? (b.program === 'arena' ? ARENA_PAUSER : b.program === 'staking' ? STAKING_PAUSER : CHIP_PAUSER)
+    : (b.program === 'arena' ? ARENA_ADMIN : b.program === 'staking' ? STAKING_ADMIN : CHIP_ADMIN);
   if (b.paused && !(b.reason && b.reason.trim().length >= 8)) throw new ApiError(422, 'bad_request', 'reason: a pause needs a ≥ 8-char incident note (goes to the audit log + status page)', { ok: false, violations: [{ path: 'reason', rule: 'required', message: 'a pause needs a ≥ 8-char incident note' }], warnings: [], instructions: [], diff: {} });
   auditPush('kill_switch', { body: b, result: { ok: true } }, b.program);
   return {
-    ok: true, violations: [], warnings: [b.paused ? 'pause blocks new purchases / listings / stakes / battles only — unstake, cancel, refund and withdraw keep working (docs/03 §2.5)' : 'un-pause is admin-only: this instruction needs the multisig (2/5 arena, 3/5 chip_core / staking)'],
-    instructions: [{ program: b.program, name: b.paused ? 'pause' : b.program === 'arena' ? 'set_arena' : 'set_paused', accounts: [{ pubkey: fakeKey('Pa'), isSigner: true, isWritable: false }, { pubkey: fakeKey('Cf'), isSigner: false, isWritable: true }], data: btoa(String.fromCharCode(...Array.from({ length: 9 }, () => Math.floor(rnd() * 256)))) }],
-    diff: { [`${b.program}.paused`]: { from: !b.paused, to: b.paused } },
+    ok: true, violations: [],
+    instructions: [{ program: b.program, name: b.paused ? 'pause' : b.program === 'arena' ? 'set_arena' : 'set_paused', accounts: [{ pubkey: signer, isSigner: true, isWritable: false }, { pubkey: b.program === 'arena' ? fakeKey('Ac') : fakeKey('Cf'), isSigner: false, isWritable: true }], data: btoa(String.fromCharCode(...Array.from({ length: 9 }, () => Math.floor(rnd() * 256)))) }],
+    warnings: [...(current === b.paused ? [`${b.program} is already ${b.paused ? 'paused' : 'running'} — this transaction changes nothing`] : []), b.paused ? 'pause blocks new purchases / listings / stakes / battles only — unstake, cancel, refund and withdraw keep working (docs/03 §2.5)' : 'un-pause is admin-only: this instruction needs the multisig (2/5 arena, 3/5 chip_core / staking)'],
+    diff: { [`${b.program}.paused`]: { from: current, to: b.paused } },
   };
 });
 on('post', '/admin/simulate', (o) => {

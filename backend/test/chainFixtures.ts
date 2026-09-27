@@ -43,6 +43,12 @@ export function encodeVaultLedger(o: { shard: number; liabLamports?: bigint; lia
   return disc('VaultLedger').u8(o.shard).u64(o.liabLamports ?? 0n).u64(o.liabUsdc ?? 0n).u64(o.liabCg ?? 0n).u64(o.liabSkr ?? 0n).u64(o.burnedTotal ?? 0n).u8(255).toBytes();
 }
 
+/** SEC-B24: `ArenaConfig` — the arena's own authority pair (admin, appended pauser) + paused flag. */
+export function encodeArenaConfig(o: { admin: PublicKey; pauser?: PublicKey; paused?: boolean }): Uint8Array {
+  return disc('ArenaConfig').pubkey(o.admin).pubkey(pk()).pubkey(pk()).pubkey(pk()).pubkey(pk())
+    .u64(0n).u64(0n).i64(0n).bool(o.paused ?? false).u8(255).pubkey(o.pauser ?? PublicKey.default).toBytes();
+}
+
 export function encodeCollectionMeta(idx: number, core: PublicKey): Uint8Array {
   const w = disc('CollectionMeta').u8(idx).pubkey(core);
   const sym = new TextEncoder().encode(`COL${idx}`);

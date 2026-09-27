@@ -203,7 +203,7 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
 - **SEC-B21 (2026-09-27): accepted risk — Trident fuzzing is not run.** There is no fuzz target and no CI job
   in the tree, which makes this the only part-1 checklist item with no artifact. The class it would cover is
   held today by `cargo test` (golden economy + unit/invariant tests, the `rust-lints` job), the 92 LiteSVM
-  scenarios (`localnet`), the 85 static gates with mutation self-tests (`security:static`) and the structural
+  scenarios (`localnet`), the 87 static gates with mutation self-tests (`security:static`) and the structural
   invariants in `tests/security/anchor-invariants.test.ts` (SEC-B19 is one of them). Owner: programs, before
   mainnet — targets on `buy_pack` / `fuse` / `market settle` asserting the same "Σ liabilities ≤ vault balance"
   rule the ledgers enforce on chain; until then a new constant or account layout is closed by a compile-time
@@ -250,6 +250,23 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   ceiling, and forbids a BigInt in `GUARD`; its self-test fails on a dropped rule, a drifted constant, a
   new `ChipError` in the program and a BigInt payload. `backend/test/admin.test.ts` covers all three rails
   behaviourally (10/10).
+
+- **SEC-B24 (2026-09-27): closed — the kill switch signs each program with that program's own authority.**
+  `POST /admin/kill-switch` encoded `pause` for all three programs but took the admin/pauser pair from
+  chip_core's `GameConfig` unless the target was staking: an arena pause went out signed by chip_core's
+  hot pauser, while the arena's `Pause` constraint checks `ArenaConfig.admin || ArenaConfig.pauser` —
+  so the transaction the operator approved during an incident could only revert, and the un-pause
+  (`set_arena`, `has_one = admin`) needed an arena admin the panel never read. No funds were at risk;
+  the emergency path was. Fixed: `fetchChainParams` reads and decodes `ArenaConfig`, `ChainParams.arena`
+  carries its admin/pauser/paused, the route picks the pair per program and answers `503 arena_missing`
+  when the account is absent (instead of silently signing with a key the program does not know), and
+  `GET /admin/params` publishes both pairs. The diff now reports the live `paused` value instead of a
+  fabricated `!paused`, and an already-satisfied request is flagged ("this transaction changes
+  nothing"). The new `SEC-B24` static rule binds each program's `Pause` struct (its seeds and its own
+  admin/pauser) to the PDA the panel writes and to the pair it signs with, pins "pauser for pause,
+  admin for un-pause", the `ArenaAdmin` `has_one = admin` rail and the arena-missing guard, and fails on
+  a swapped pair, a wrong PDA, a dropped decode or a pauser-signed un-pause; `backend/test/admin.test.ts`
+  drives the real HTTP route with deliberately different arena keys.
 
 ## Current exposure of this repository (from `docs/09-production-readiness.md`)
 

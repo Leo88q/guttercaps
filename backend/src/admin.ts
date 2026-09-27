@@ -31,7 +31,7 @@ import { ServiceError, prices } from './services.ts';
 import { antifraudStatus, fraudQueue, resolveWallet, type Resolution } from './antifraud.ts';
 import { clampInt } from './params.ts';
 import { emissionPda } from './burn-oracle.ts';
-import { arenaConfigPda } from './battle-resolver.ts';
+import { arenaConfigPda, decodeArenaConfig } from './battle-resolver.ts';
 import { latestEmissionDay } from './staking.ts';
 import { currentSeason, seasonPoolMicro } from './arena.ts';
 import { finalityStatus } from './finality.ts';
@@ -167,19 +167,28 @@ export function economyWarnings(sku: number, p: PackDef): string[] {
 
 export interface ChainParams {
   config: GameConfig; emission: EmissionState; fetchedSlot: number;
+  /** SEC-B24: the arena has its own admin/pauser (`ArenaConfig`), and `pause` / `set_arena` read *those* —
+   *  the kill switch must not hand the multisig chip_core's keys. `null` = arena not initialised here. */
+  arena: { admin: PublicKey; pauser: PublicKey; paused: boolean } | null;
   /** `VaultLedger` shards 0…N−1 (#12); `null` = shard not initialised yet (`setup --step ledgers`) */
   ledgers: (VaultLedger | null)[];
 }
 
 /** Read GameConfig + EmissionState + the ledger shards from the chain (the admin panel edits live values, never the TS defaults). */
 export async function fetchChainParams(connection: Connection): Promise<ChainParams> {
-  const [cfg, em, slot, ...shards] = await Promise.all([
+  const [cfg, em, slot, arena, ...shards] = await Promise.all([
     connection.getAccountInfo(configPda()[0]), connection.getAccountInfo(emissionPda()[0]), connection.getSlot(),
+    connection.getAccountInfo(arenaConfigPda()[0]),
     ...allLedgerPdas().map((k) => connection.getAccountInfo(k)),
   ]);
   if (!cfg) throw new ServiceError(503, 'config_missing', 'GameConfig account not found on this cluster (run scripts/setup.ts)');
   if (!em) throw new ServiceError(503, 'emission_missing', 'EmissionState account not found on this cluster');
-  return { config: decodeGameConfig(cfg.data), emission: decodeEmissionState(em.data), fetchedSlot: slot, ledgers: shards.map((a) => (a ? decodeVaultLedger(a.data) : null)) };
+  const ac = arena ? decodeArenaConfig(new Uint8Array(arena.data)) : null;
+  return {
+    config: decodeGameConfig(cfg.data), emission: decodeEmissionState(em.data), fetchedSlot: slot,
+    arena: ac ? { admin: ac.admin, pauser: ac.pauser, paused: ac.paused } : null,
+    ledgers: shards.map((a) => (a ? decodeVaultLedger(a.data) : null)),
+  };
 }
 
 const packApi = (p: PackDef, sku: number) => ({
@@ -208,6 +217,9 @@ export function paramsApi(db: Db, c: ChainParams) {
       ledgerShards: c.ledgers.map((l, shard) => l ? { shard, initialized: true, lamports: l.liabLamports.toString(), usdc: l.liabUsdc.toString(), cgMicro: l.liabCg.toString(), skr: l.liabSkr.toString(), burnedTotalMicro: l.burnedTotal.toString() } : { shard, initialized: false }),
       ledgerShardsMissing: c.ledgers.filter((l) => !l).length, ledgerShardCount: LEDGER_SHARDS,
     },
+    // SEC-B24: the arena authorities are a separate pair — the panel shows them so the operator can see
+    // which key a `pause` / `set_arena` will actually carry, instead of assuming chip_core's.
+    arena: c.arena ? { admin: c.arena.admin.toBase58(), pauser: c.arena.pauser.toBase58(), paused: c.arena.paused } : null,
     emission: {
       admin: c.emission.admin.toBase58(), pauser: c.emission.pauser.toBase58(), questOracle: c.emission.questOracle.toBase58(), seasonOracle: c.emission.seasonOracle.toBase58(), setOracle: c.emission.setOracle.toBase58(), burnOracle: c.emission.burnOracle.toBase58(),
       dayIndex: c.emission.dayIndex, paused: c.emission.paused, splitBps: c.emission.splitBps, splitChangedAt: Number(c.emission.splitChangedAt), nextSplitChangeAt: Number(c.emission.splitChangedAt) + GUARD.split.minIntervalS,
@@ -332,7 +344,7 @@ export const PAUSABLE: Record<PausableProgram, () => { programId: PublicKey; acc
  * pauser key, SEC-H2, no timelock); un-pausing is admin-only (`set_paused(false)` on chip_core /
  * staking, `set_arena(paused = Some(false))` on arena) and therefore goes to the multisig.
  */
-export function killSwitch(body: { program: string; paused: boolean; reason?: string }, authority: { admin: PublicKey; pauser: PublicKey }): Proposal {
+export function killSwitch(body: { program: string; paused: boolean; reason?: string }, authority: { admin: PublicKey; pauser: PublicKey; current?: boolean }): Proposal {
   const violations: Violation[] = [];
   if (!(body?.program in PAUSABLE)) violations.push({ path: 'program', rule: 'enum', message: 'chip_core | staking | arena' });
   if (typeof body?.paused !== 'boolean') violations.push({ path: 'paused', rule: 'bool', message: 'true = pause, false = un-pause' });
@@ -349,7 +361,14 @@ export function killSwitch(body: { program: string; paused: boolean; reason?: st
   const warnings = body.paused
     ? ['pause blocks new purchases / listings / stakes / battles only — unstake, cancel, refund and withdraw keep working (docs/03 §2.5)']
     : ['un-pause is admin-only: this instruction needs the multisig (2/5 arena, 3/5 chip_core / staking)'];
-  return { ok: true, violations: [], warnings, instructions: [ixApi(ix, body.program, body.paused ? 'pause' : body.program === 'arena' ? 'set_arena' : 'set_paused')], diff: { [`${body.program}.paused`]: { from: !body.paused, to: body.paused } } };
+  // SEC-B24: `from` used to be `!paused` — a fabricated "previous state". It is the live value now (or an
+  // honest unknown), and an already-satisfied request is flagged: the tx is a no-op that still costs a signature.
+  if (authority.current === body.paused) warnings.push(`${body.program} is already ${body.paused ? 'paused' : 'running'} — this transaction changes nothing`);
+  return {
+    ok: true, violations: [], warnings,
+    instructions: [ixApi(ix, body.program, body.paused ? 'pause' : body.program === 'arena' ? 'set_arena' : 'set_paused')],
+    diff: { [`${body.program}.paused`]: { from: authority.current, to: body.paused } },
+  };
 }
 
 // ------------------------------------------------------------------ simulate

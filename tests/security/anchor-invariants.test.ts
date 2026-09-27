@@ -460,6 +460,73 @@ test('SEC-B23 the admin panel mirrors set_params: same error vocabulary, same th
   assert.deepEqual(bad, []);
 });
 
+// SEC-B24: the kill switch encodes `pause` / `set_paused` / `set_arena` and *picks the signer*. Each
+// program validates that signer against its **own** config account (chip_core `config`, staking
+// `emission`, arena `arena_config`), so a panel that reads chip_core's pair for an arena pause hands the
+// multisig a transaction that can only revert — on the incident path, where it costs minutes. This rule
+// binds every `Pause` struct to the PDA the panel writes and to the authority pair it signs with.
+const secB24Violations = (srcs: { admin: string; server: string; chip: string; staking: string; arena: string }): string[] => {
+  const bad: string[] = [];
+  const norm = (t: string) => t.replace(/\s+/g, ' ');
+  const admin = norm(srcs.admin);
+  const server = norm(srcs.server);
+  const paStart = admin.indexOf('export const PAUSABLE');
+  const pa = admin.slice(paStart, admin.indexOf('};', paStart));
+  if (paStart < 0) return ['PAUSABLE is gone — the kill switch has no account map'];
+  // 1. Rust side: what each program's `Pause` is seeded from, and that it accepts its own admin/pauser
+  const pda: Record<string, string> = { config: 'configPda()', emission: 'emissionPda()', arena_config: 'arenaConfigPda()' };
+  const authority: Record<string, RegExp> = {
+    chip_core: /c\.config\.admin, pauser: c\.config\.pauser, current: c\.config\.paused/,
+    staking: /c\.emission\.admin, pauser: c\.emission\.pauser, current: c\.emission\.paused/,
+    arena: /c\.arena\.admin, pauser: c\.arena\.pauser, current: c\.arena\.paused/,
+  };
+  for (const [prog, file] of [['chip_core', srcs.chip], ['staking', srcs.staking], ['arena', srcs.arena]] as const) {
+    // NB: `pub struct Pause<` — a bare `pub struct Pause` also matches `pub struct PauseChanged` in arena/lib.rs.
+    const body = bodyOf(file, 'pub struct Pause<');
+    if (!body) { bad.push(`${prog}: no \`pub struct Pause\` — the panel encodes an instruction the program does not have`); continue; }
+    const seed = /seeds = \[b"(\w+)"/.exec(body)?.[1];
+    if (!seed || !pda[seed]) { bad.push(`${prog}: Pause PDA seed ${seed ?? '(none)'} is not one this rule knows — update the rule and PAUSABLE`); continue; }
+    const obj = prog === 'staking' ? 'emission' : 'config';
+    if (!body.includes(`${obj}.admin`) || !body.includes(`${obj}.pauser`)) bad.push(`${prog}: Pause does not accept its own admin *or* pauser`);
+    const want = pda[seed]!.replace(/[()]/g, '\\$&');
+    if (!new RegExp(`${prog}: \\(\\) => \\(\\{ programId: \\w+(?:\\.\\w+)?, account: ${want}\\[0\\] \\}\\)`).test(pa)) {
+      bad.push(`${prog}: the panel pauses the wrong account (Pause is seeded from b"${seed}" ⇒ ${pda[seed]})`);
+    }
+    // 2. TS side: the signer for that program must come from that program's own account
+    if (!authority[prog]!.test(server)) bad.push(`${prog}: the kill-switch route does not take the authority from ${prog}'s own account`);
+  }
+  // 3. arena un-pause goes through `set_arena` (ArenaAdmin: has_one = admin) — admin-only, and the panel
+  //    must not sign it with a pauser or with a missing arena.
+  const arena = norm(srcs.arena);
+  const adminStruct = arena.slice(arena.indexOf('pub struct ArenaAdmin'));
+  if (!/pub struct ArenaAdmin/.test(arena)) bad.push('arena: ArenaAdmin is gone — set_arena is the un-pause path');
+  else if (!/has_one = admin/.test(adminStruct.slice(0, 400))) bad.push('arena: ArenaAdmin no longer requires the admin — the un-pause rail moved');
+  if (!/arena_missing/.test(server)) bad.push('arena: a cluster without ArenaConfig is not reported (the panel would sign with a default key)');
+  // 4. the live state, and the "pause is admin-only to undo" rule
+  if (!/body\.paused && !authority\.pauser\.equals\(PublicKey\.default\) \? authority\.pauser : authority\.admin/.test(admin)) {
+    bad.push('killSwitch: the signer is not "pauser for pause, admin for un-pause" — an un-pause could go out signed by the hot key');
+  }
+  if (!/from: authority\.current/.test(admin)) bad.push('killSwitch: the diff no longer reports the live state');
+  // 5. the panel actually reads the arena account
+  if (!/getAccountInfo\(arenaConfigPda\(\)\[0\]\)/.test(admin)) bad.push('fetchChainParams does not read the ArenaConfig account');
+  if (!/decodeArenaConfig\(new Uint8Array\(arena\.data\)\)/.test(admin)) bad.push('the arena account is read but not decoded into admin/pauser/paused');
+  if (!/arena: c\.arena \? \{ admin: c\.arena\.admin\.toBase58\(\), pauser: c\.arena\.pauser\.toBase58\(\), paused: c\.arena\.paused \} : null/.test(admin)) {
+    bad.push('GET /admin/params does not publish the arena authority pair');
+  }
+  return bad;
+};
+
+test('SEC-B24 the kill switch signs each program with that program\'s own authority (arena ≠ chip_core)', () => {
+  const bad = secB24Violations({
+    admin: src('backend/src/admin.ts'),
+    server: src('backend/src/server.ts'),
+    chip: src('programs/chip_core/src/instructions/admin.rs'),
+    staking: src('programs/staking/src/instructions/emission.rs'),
+    arena: src('programs/arena/src/lib.rs'),
+  });
+  assert.deepEqual(bad, []);
+});
+
 // ---------------------------------------------------------------- rule self-tests
 
 const fake = (code: string, rel = 'programs/chip_core/src/instructions/fake.rs'): SourceFile => ({ path: rel, rel, program: 'chip_core', code: stripComments(code) });
@@ -612,6 +679,29 @@ test('self-test: SEC-B23 rule flags a dropped panel rule, a drifted threshold an
   const bigint = panel.replace('maxPackCgPriceMicro: 1_000_000_000_000,', 'maxPackCgPriceMicro: 1_000_000_000_000n,');
   assert.notEqual(bigint, panel);
   assert.ok(secB23Violations(rust, econ, bigint).some((v) => /BigInt/.test(v)));
+});
+
+test('self-test: SEC-B24 rule flags an arena pause signed with chip_core keys and a wrong PDA', () => {
+  const files = {
+    admin: src('backend/src/admin.ts'),
+    server: src('backend/src/server.ts'),
+    chip: src('programs/chip_core/src/instructions/admin.rs'),
+    staking: src('programs/staking/src/instructions/emission.rs'),
+    arena: src('programs/arena/src/lib.rs'),
+  };
+  assert.deepEqual(secB24Violations(files), []);
+  const wrongKeys = files.server.replace('c.arena.admin, pauser: c.arena.pauser, current: c.arena.paused', 'c.config.admin, pauser: c.config.pauser, current: c.config.paused');
+  assert.notEqual(wrongKeys, files.server);
+  assert.ok(secB24Violations({ ...files, server: wrongKeys }).some((v) => /arena: the kill-switch route/.test(v)));
+  const wrongPda = files.admin.replace('arena: () => ({ programId: ARENA_ID, account: arenaConfigPda()[0] })', 'arena: () => ({ programId: ARENA_ID, account: configPda()[0] })');
+  assert.notEqual(wrongPda, files.admin);
+  assert.ok(secB24Violations({ ...files, admin: wrongPda }).some((v) => /wrong account/.test(v)));
+  const noDecode = files.admin.replace('decodeArenaConfig(new Uint8Array(arena.data))', 'decodeGameConfig(arena.data)');
+  assert.notEqual(noDecode, files.admin);
+  assert.ok(secB24Violations({ ...files, admin: noDecode }).some((v) => /not decoded/.test(v)));
+  const hotUnpause = files.admin.replace('body.paused && !authority.pauser.equals(PublicKey.default) ? authority.pauser : authority.admin', 'authority.pauser');
+  assert.notEqual(hotUnpause, files.admin);
+  assert.ok(secB24Violations({ ...files, admin: hotUnpause }).some((v) => /hot key/.test(v)));
 });
 
 test('self-test: A2/A8 modulo rule flags a slot-modulo roll and a stripped rejection bound', () => {
