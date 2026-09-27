@@ -76,6 +76,23 @@ export const EVENT_SPECS: readonly EventSpec[] = [
   ]),
   spec('chip_core', 'ChipFlagsChanged', [['asset', 'pubkey'], ['flags', 'u8'], ['lockUntil', 'i64']]),
   spec('chip_core', 'ParamsChanged', [['admin', 'pubkey'], ['version', 'u32']]),
+  // SEC-B22: the descriptive companion to `ParamsChanged` — same `admin`/`version`, plus what moved.
+  // `changed` is the field bitmask from admin.rs (bit = field present in the patch); addresses whose
+  // bit is clear are the previous values, not "zeroed". Scalars only, so the codec needs no Option.
+  spec('chip_core', 'ParamsPatched', [
+    ['admin', 'pubkey'],
+    ['version', 'u32'],
+    ['changed', 'u16'],
+    ['treasury', 'pubkey'],
+    ['buybackWallet', 'pubkey'],
+    ['pythSolUsdFeed', 'pubkey'],
+    ['pythSkrUsdFeed', 'pubkey'],
+    ['skrMint', 'pubkey'],
+    ['marketFeeBps', 'u16'],
+    ['skrDiscountBps', 'u16'],
+    ['featuredCollection', 'u8'],
+    ['packs', 'bool'],
+  ]),
   spec('chip_core', 'PauseChanged', [['by', 'pubkey'], ['paused', 'bool']], ['staking', 'arena']), // SEC-H2 pauser audit trail
   // SEC-G05 governance audit trail: key rotations that were silent before (Watchtower SW027).
   spec('chip_core', 'PauserChanged', [['by', 'pubkey'], ['pauser', 'pubkey']], ['staking', 'arena']),

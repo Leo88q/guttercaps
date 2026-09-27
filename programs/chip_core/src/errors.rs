@@ -94,4 +94,6 @@ pub enum ChipError {
     CgPriceGuardRail,
     #[msg("Only the program upgrade authority may initialise (SEC-F7)")]
     NotUpgradeAuthority,
+    #[msg("Config address must not be the zero key (treasury / buyback / Pyth feeds / SKR mint)")]
+    InvalidConfigAddress,
 }

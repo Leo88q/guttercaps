@@ -203,7 +203,7 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
 - **SEC-B21 (2026-09-27): accepted risk — Trident fuzzing is not run.** There is no fuzz target and no CI job
   in the tree, which makes this the only part-1 checklist item with no artifact. The class it would cover is
   held today by `cargo test` (golden economy + unit/invariant tests, the `rust-lints` job), the 92 LiteSVM
-  scenarios (`localnet`), the 81 static gates with mutation self-tests (`security:static`) and the structural
+  scenarios (`localnet`), the 83 static gates with mutation self-tests (`security:static`) and the structural
   invariants in `tests/security/anchor-invariants.test.ts` (SEC-B19 is one of them). Owner: programs, before
   mainnet — targets on `buy_pack` / `fuse` / `market settle` asserting the same "Σ liabilities ≤ vault balance"
   rule the ledgers enforce on chain; until then a new constant or account layout is closed by a compile-time
@@ -213,6 +213,23 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   файл, потому что строки там идут по темам, а не по номерам: у каждого пункта указано, какой символ
   или гейт его закрывает, а пять пунктов, которые кодом не закрываются (SEC-B20, SEC-B21, порог
   Squads, инсайдер-процесс, ℹ️-неприменимые), вынесены в сводку принятых рисков с владельцами.
+
+- **SEC-B22 (2026-09-27): closed — an admin parameter change now says what it changed, and cannot zero a
+  money path.** `set_params` is the single mutation surface for `treasury`, `buyback_wallet`, both Pyth
+  feeds, the SKR mint, the pack table, the market fee and the SKR discount, and it emitted
+  `ParamsChanged { admin, version }` — a counter. The 48 h Squads timelock and the public diff live
+  off-chain, so the on-chain half of "auditable" was missing exactly where it matters: a version bump
+  proves *that* something moved, never *what*. An indexer, a watchtower or a user reading the log could
+  not tell a fee tweak from a treasury replacement. Two holes, one fix each: every address field is now
+  rejected when it is `Pubkey::default()` (the system-program address — a whole revenue path would go
+  somewhere unreachable), and `set_params` emits `ParamsPatched` next to `ParamsChanged` with the new
+  values plus a bitmask of which fields the patch actually touched (`PARAMS_FIELD_*`, absent fields carry
+  the previous value). `ParamsChanged` keeps its shape and its consumers — the admin audit log, the
+  `params_changes` projections and the fairness note in `queries.ts` all still read it. The event uses
+  scalars only, so the backend codec and the wire layer carry it with no new API type (it maps to the
+  existing `params_changed`), and the new `SEC-B22` static rule fails on an unguarded branch, on a missing
+  emission, on a bitmask that no longer covers every patch field, or on a codec that drifted from the Rust
+  field order — with its own mutation self-test.
 
 ## Current exposure of this repository (from `docs/09-production-readiness.md`)
 

@@ -37,6 +37,9 @@ export const WIRE_TYPE: Record<string, string> = {
   BattleCancelled: 'match_resolved',
   DayClosed: 'day_closed',
   ParamsChanged: 'params_changed',
+  // SEC-B22: same wire type as ParamsChanged (the client invalidates the same caches and the extra
+  // payload keys carry the diff) — no new event type for a client to learn, nothing to break.
+  ParamsPatched: 'params_changed',
   PauseChanged: 'params_changed',
   PauserChanged: 'params_changed',
   AdminProposed: 'params_changed',
@@ -105,6 +108,14 @@ export function wireEvent(db: Db, e: RawEvent, ctx: { slot?: number } = {}): Bus
     case 'RootClaimed': payload = { wallet: s_('wallet'), kind: n_('kind'), epoch: n_('epoch'), amount: s_('amount') }; break;
     case 'RootPublished': payload = { kind: n_('kind'), epoch: n_('epoch'), budget: s_('budget') }; break;
     case 'ParamsChanged': payload = { admin: s_('admin'), version: n_('version') }; break;
+    // SEC-B22: carries what changed, so the admin log channel can show the diff, not just the version.
+    case 'ParamsPatched': payload = {
+      admin: s_('admin'), version: n_('version'), changed: n_('changed'),
+      treasury: s_('treasury'), buybackWallet: s_('buybackWallet'),
+      pythSolUsdFeed: s_('pythSolUsdFeed'), pythSkrUsdFeed: s_('pythSkrUsdFeed'),
+      skrMint: s_('skrMint'), marketFeeBps: n_('marketFeeBps'), skrDiscountBps: n_('skrDiscountBps'),
+      featuredCollection: n_('featuredCollection'), packs: Boolean(d.packs),
+    }; break;
     case 'PauseChanged': payload = { by: s_('by'), paused: Boolean(d.paused) }; break;
     case 'DayClosed': payload = { dayIndex: n_('dayIndex'), year: n_('year'), guarded: s_('guarded') }; break;
     default: {

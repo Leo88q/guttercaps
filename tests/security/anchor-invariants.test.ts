@@ -28,6 +28,14 @@ const src = (rel: string) => readFileSync(join(REPO, rel), 'utf8');
 const where = (s: AccountsStruct, f?: Field) => `${s.file}:${f ? f.line : s.line} ${s.name}${f ? '.' + f.name : ''}`;
 const isInit = (f: Field) => f.constraints.includes('init') || f.constraints.includes('init_if_needed');
 const handlerBody = (s: AccountsStruct) => handlersFor(fns, s.name).map((h) => h.body).join('\n');
+/** Body of a `fn` / `struct` / `event` item: from its name to the first top-level `}` after it, with
+ *  comments stripped — a commented-out guard must not be able to satisfy a rule. */
+const bodyOf = (ts: string, name: string): string => {
+  const start = ts.indexOf(name);
+  if (start < 0) return '';
+  const end = ts.indexOf('\n}\n', start);
+  return stripComments(ts.slice(start, end < 0 ? start + 2400 : end));
+};
 
 test('sanity: the reader sees the whole program surface', () => {
   assert.ok(files.length >= 20, `rust files: ${files.length}`);
@@ -389,6 +397,64 @@ test('SEC-B19 the compressed claim-nonce stride covers the largest pack bundle (
 
 const fake = (code: string, rel = 'programs/chip_core/src/instructions/fake.rs'): SourceFile => ({ path: rel, rel, program: 'chip_core', code: stripComments(code) });
 
+test('SEC-B22 set_params: every money/feed address is validated and the change is described, not just counted', () => {
+  const admin = src('programs/chip_core/src/instructions/admin.rs');
+  const state = src('programs/chip_core/src/state.rs');
+  const events = src('backend/src/events.ts');
+  const bad: string[] = [];
+  const body = bodyOf(admin, 'pub fn set_params');
+  if (!body) bad.push('set_params is gone — the guard-rails this rule reads live in its body');
+  // 1. the five address fields must pass the non-default check before they reach GameConfig. Parsed
+  //    per branch on purpose: a rule that only asked "does require_non_default appear anywhere" would
+  //    pass with one guarded field and four open ones.
+  for (const [field, local] of [
+    ['treasury', 't'],
+    ['buyback_wallet', 'b'],
+    ['pyth_sol_usd_feed', 'p'],
+    ['pyth_skr_usd_feed', 'p'],
+    ['skr_mint', 'm'],
+  ] as const) {
+    const branch = new RegExp(`if let Some\\(${local}\\) = patch\\.${field}\\\s*\\{[\\s\\S]{0,120}?\\}\\s*`);
+    const m = branch.exec(body);
+    if (!m) bad.push(`${field}: branch not found (a field was renamed — update this rule with it)`);
+    else if (!/require_non_default\(/.test(m[0])) bad.push(`${field}: assigned without the zero-key check (SEC-B22)`);
+  }
+  // 2. the emitted description must carry the new values, and both events must be emitted (the old one
+  //    is what the admin log and the fairness note read).
+  const emit = body.slice(body.indexOf('emit!(ParamsChanged'));
+  if (!/emit!\(ParamsChanged\s*\{/.test(emit)) bad.push('ParamsChanged is no longer emitted (existing consumers read it)');
+  if (!/emit!\(ParamsPatched\s*\{/.test(emit)) bad.push('ParamsPatched is not emitted — the audit trail is back to a bare counter');
+  for (const f of ['treasury', 'buyback_wallet', 'pyth_sol_usd_feed', 'pyth_skr_usd_feed', 'skr_mint', 'market_fee_bps', 'skr_discount_bps', 'featured_collection']) {
+    if (!new RegExp(`${f}:\\s*c\\.${f}`).test(emit)) bad.push(`ParamsPatched does not carry ${f}`);
+  }
+  // 3. the bitmask must have one bit per patch field, and both halves have to agree about the count:
+  //    the struct's `Option` fields on one side, the `changed |=` sites on the other.
+  const patchFields = (bodyOf(admin, 'pub struct ParamsPatch').match(/pub \w+: Option</g) ?? []).length;
+  const setBits = (body.match(/changed \|= PARAMS_FIELD_/g) ?? []).length;
+  const constBits = new Set((admin.match(/pub const PARAMS_FIELD_\w+: u16 = 1 << \d+;/g) ?? []).map((l) => l.match(/1 << (\d+)/)![1]));
+  if (patchFields !== 9) bad.push(`ParamsPatch has ${patchFields} Option fields — one field per bit is the invariant`);
+  if (setBits !== patchFields) bad.push(`${setBits} \`changed |= …\` sites for ${patchFields} patch fields`);
+  if (constBits.size !== patchFields) bad.push(`${constBits.size} distinct PARAMS_FIELD_* bits for ${patchFields} fields`);
+  // 4. the program-side event and the backend codec must declare the same fields, in the same order —
+  //    a mismatch decodes the tail of the event as garbage instead of failing.
+  const rustEvent = bodyOf(state, 'pub struct ParamsPatched');
+  const rustFields = [...rustEvent.matchAll(/pub (\w+): (\w+),/g)].map((m) => m[1]);
+  const specMatch = /spec\('chip_core', 'ParamsPatched', \[([\s\S]*?)\]\)/.exec(events);
+  const specFields = specMatch ? [...specMatch[1].matchAll(/\['(\w+)',/g)].map((m) => m[1]) : [];
+  if (!rustEvent) bad.push('ParamsPatched is not declared in state.rs');
+  else if (!specMatch) bad.push('backend events.ts has no ParamsPatched spec — the event would land in events_raw undecoded');
+  else if (rustFields.length !== specFields.length) bad.push(`ParamsPatched: ${rustFields.length} Rust fields vs ${specFields.length} in the codec`);
+  else {
+    // the codec names its fields in camelCase (`lockUntil`, `refHash`): compare after normalising the
+    // Rust side, or every multi-word field would look like drift.
+    const toCamel = (w: string) => w.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+    for (let i = 0; i < rustFields.length; i++) {
+      if (toCamel(rustFields[i]!) !== specFields[i]) bad.push(`ParamsPatched field ${i}: Rust ${rustFields[i]} vs codec ${specFields[i]}`);
+    }
+  }
+  assert.deepEqual(bad, []);
+});
+
 test('self-test: E29 rule flags the pre-fix SEC-F2 fusion loop and accepts the fixed one', () => {
   const vulnerable = `
     pub fn fuse_compressed_claims_v0<'info>(ctx: Context<'_, '_, 'info, 'info, FuseCompressedClaims<'info>>) -> Result<()> {
@@ -428,6 +494,38 @@ test('self-test: the account reader extracts constraints, types and close target
   assert.equal(constraintValue(s.fields[2], 'close'), 'thief'); // ← no has_one ⇒ would fail E28
   assert.ok(!has(s.fields[0], /^mut$/)); // ← payer not mut ⇒ would fail A3
   assert.equal(coreType(s.fields[3].type).kind, 'UncheckedAccount'); // ← would fail A4
+});
+
+test('self-test: SEC-B22 rule flags an unguarded address and a codec that drifted from the event', () => {
+  const admin = src('programs/chip_core/src/instructions/admin.rs');
+  const events = src('backend/src/events.ts');
+  // re-render the rule against a mutated tree by re-reading the two files it depends on
+  const runRule = (next: { admin?: string; events?: string; state?: string }) => {
+    const files: Record<string, string> = {
+      'programs/chip_core/src/instructions/admin.rs': next.admin ?? admin,
+      'backend/src/events.ts': next.events ?? events,
+      'programs/chip_core/src/state.rs': next.state ?? src('programs/chip_core/src/state.rs'),
+    };
+    // the rule body above is a closure over `src`; the cheapest honest mutation check is to search the
+    // mutated text for the same two facts the rule asserts
+    const bad: string[] = [];
+    const body = bodyOf(files['programs/chip_core/src/instructions/admin.rs'], 'pub fn set_params');
+    const branch = /if let Some\(t\) = patch\.treasury\s*\{[\s\S]{0,120}?\}\s*/.exec(body);
+    if (!branch || !/require_non_default\(/.test(branch[0])) bad.push('treasury: assigned without the zero-key check (SEC-B22)');
+    const rustFields = [...bodyOf(files['programs/chip_core/src/state.rs'], 'pub struct ParamsPatched').matchAll(/pub (\w+): (\w+),/g)]
+      .map((m) => m[1]!.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase()));
+    const specMatch = /spec\('chip_core', 'ParamsPatched', \[([\s\S]*?)\]\)/.exec(files['backend/src/events.ts']);
+    const specFields = specMatch ? [...specMatch[1].matchAll(/\['(\w+)',/g)].map((m) => m[1]) : [];
+    if (rustFields.join(',') !== specFields.join(',')) bad.push('codec drifted');
+    return bad;
+  };
+  assert.deepEqual(runRule({}), []);
+  const unguarded = admin.replace(/    if let Some\(t\) = patch\.treasury \{\n        require_non_default\(t\)\?;/, '    if let Some(t) = patch.treasury {');
+  assert.notEqual(unguarded, admin);
+  assert.ok(runRule({ admin: unguarded }).some((v) => /treasury/.test(v)));
+  const drifted = events.replace("['treasury', 'pubkey'],", '');
+  assert.notEqual(drifted, events);
+  assert.ok(runRule({ events: drifted }).some((v) => /codec drifted/.test(v)));
 });
 
 test('self-test: A2/A8 modulo rule flags a slot-modulo roll and a stripped rejection bound', () => {
