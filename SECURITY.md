@@ -174,7 +174,7 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   expired) while paying nothing. `HANDLE_MAX_RESERVATIONS = 5` now caps the live holds: beyond it the check
   still answers honestly but takes no hold, and the handle stays free for others; claiming never needed the
   hold to exist. The route also carries its own session policy (`handle-check`, 30/min), and the spec's
-  `reason` enum now includes `invalid`, which the code always returned. Behavioural and static gates added;
+  `reason` enum now includes `invalid`, which the code always returned — and that type change exposed the client half of the same drift: the modal labels the reason as `profile.handle.reason.${reason}` and the `invalid` key was missing from every locale (a user typing a bad handle saw the raw key). All seven bundles now carry it. Behavioural and static gates added;
   both mutations (drop the cap, drop the route limiter) fail exactly the expected test.
 
 ## Current exposure of this repository (from `docs/09-production-readiness.md`)
