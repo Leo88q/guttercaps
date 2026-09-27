@@ -219,7 +219,7 @@ npm run backend:crank      # то же: отдельный запуск нуже
 | `ws_clients`, `ws_events_total`, `ws_dropped_total` | жив ли real-time; `ws_dropped_total` растёт = клиент не читает |
 | `metrics_series`, `process_open_handles`, `nodejs_heap_used_bytes` | метрика как источник аварии |
 | `process_crashes_total` | всё, что упало и было поднятo супервизором |
-| `burn_oracle_healthy`, `burn_oracle_report_age_seconds`, `burn_oracle_pending_cg` | питается ли emission-guard (SEC-F02): молчащий burn-oracle = эмиссия тихо падает к полу 30 % |
+| `burn_oracle_healthy`, `burn_oracle_report_age_seconds`, `burn_oracle_pending_cg`, `burn_oracle_deferred_cg` | питается ли emission-guard (SEC-F02): молчащий burn-oracle = эмиссия тихо падает к полу 30 % (`deferred` ненулевой при `pending_cg = 0` — это замёрший реконсайлер финализации, SEC-B29) |
 | `reward_oracle_healthy`, `reward_oracle_publish_age_seconds`, `reward_oracle_pending_batches`, `reward_oracle_unrooted_cg{kind}` | доходят ли награды до корней, которые можно заклеймить |
 | `arena_unattributed_resolves` | канарейка ключа battle_oracle (SEC-F06): `resolve_battle`, который отправлял не этот бэкенд |
 | `arena_oracle_cap_cg`, `arena_oracle_paid_today_cg`, `arena_oracle_cap_readable` | on-chain дневной предохранитель арены — сколько до `OracleCap` |

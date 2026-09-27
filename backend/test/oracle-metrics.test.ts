@@ -9,7 +9,7 @@ import { arenaConfigPda } from '../src/battle-resolver.ts';
 import { insertIgnore } from '../src/sql.ts';
 import { arenaOracleGauge, burnOracleGauges, resetArenaOracleGaugeForTests, rewardOracleGauges, unattributedResolves } from '../src/oracle-metrics.ts';
 import { FakeConnection } from './chainFixtures.ts';
-import { hex32, kp, tx } from './fixtures.ts';
+import { finalizeAll, hex32, kp, tx } from './fixtures.ts';
 
 const NOW = 1_800_000_000; // unix s, well after the fixtures' default block times (1.7e9 + slot)
 
@@ -50,10 +50,14 @@ describe('oracle metrics (SEC-F02 / SEC-F06)', () => {
     expect(unattributedResolves(db, NOW).count).toBe(1);
   });
 
-  it('burn_oracle_*: fresh DB is healthy with age -1; an unreported rake burn makes it unhealthy', () => {
-    expect(burnOracleGauges(db)).toEqual({ reportAgeS: -1, pendingCg: 0, healthy: 1 });
+  it('burn_oracle_*: fresh DB is healthy with age -1; a confirmed burn is deferred, a finalized one is pending', () => {
+    expect(burnOracleGauges(db)).toEqual({ reportAgeS: -1, pendingCg: 0, deferredCg: 0, healthy: 1 });
     ingestTx(resolved(kp()), db);
-    expect(burnOracleGauges(db)).toEqual({ reportAgeS: -1, pendingCg: 2, healthy: 0 });
+    // SEC-B29: nothing may be reported yet (a fork could still take this burn back), so `pending` stays 0 —
+    // the deferred series is what makes the stall visible, and material deferrals are not "healthy"
+    expect(burnOracleGauges(db)).toEqual({ reportAgeS: -1, pendingCg: 0, deferredCg: 2, healthy: 0 });
+    finalizeAll(db);
+    expect(burnOracleGauges(db)).toEqual({ reportAgeS: -1, pendingCg: 2, deferredCg: 0, healthy: 0 });
   });
 
   it('reward_oracle_*: pending batch age drives healthy; publish age comes from the newest published batch', () => {

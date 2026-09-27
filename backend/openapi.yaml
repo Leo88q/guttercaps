@@ -264,9 +264,11 @@ paths:
                       lastAmountMicro: { type: [string, 'null'] }
                       lastReportAgeS: { type: [integer, 'null'] }
                       reportedTotalMicro: { type: string }
-                      pendingMicro: { type: string, description: burns indexed but not yet reported }
+                      pendingMicro: { type: string, description: finalized burns indexed but not yet reported (SEC-B29) }
                       pendingRows: { type: integer }
-                      healthy: { type: boolean, description: reported within 3 intervals, or nothing material pending }
+                      deferredMicro: { type: string, description: SEC-B29 — burns indexed above the finalized horizon; not reportable yet because a dropped transaction would have to be un-reported }
+                      deferredRows: { type: integer }
+                      healthy: { type: boolean, description: nothing material waiting or stuck behind finality, or a report within the last 3 intervals }
                   rewardOracle:
                     type: object
                     description: keeper that turns quest completions / match rewards / season payouts / referrals into Merkle roots (kinds 2 / 3 / 4 in $CG, 5 / 6 in SKR from the prize pool, 8 = fusion boosters delivered by CPI into chip_core)

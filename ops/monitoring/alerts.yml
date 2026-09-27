@@ -112,8 +112,8 @@ groups:
         for: 30m
         labels: { severity: ticket }
         annotations:
-          summary: 'Burn oracle has not reported for 3 intervals while ≥ 1 $CG of burns is waiting'
-          description: 'Emission is being under-paid until this recovers (guard floor = 30 % of schedule). Check the `burn` worker log (`[burn-oracle]`), the BURN_ORACLE_KEYPAIR mount and its SOL. `burn_oracle_pending_cg` is what gets reported on recovery; if it is above BURN_ORACLE_MAX_REPORT (5 M $CG) the keeper is *refusing* on purpose — inspect the burns table before raising the cap.'
+          summary: 'Burn oracle has not reported for 3 intervals while ≥ 1 $CG of burns is waiting (or stuck behind finality)'
+          description: 'Emission is being under-paid until this recovers (guard floor = 30 % of schedule). Check the `burn` worker log (`[burn-oracle]`), the BURN_ORACLE_KEYPAIR mount and its SOL. `burn_oracle_pending_cg` is what gets reported on recovery; if it is above BURN_ORACLE_MAX_REPORT (5 M $CG) the keeper is *refusing* on purpose — inspect the burns table before raising the cap. When `burn_oracle_pending_cg` is 0 and this fires, the burns are not reportable yet: `burn_oracle_deferred_cg` is material and the finality reconciler is stuck (SEC-B29) — `/v1/health.finality` says for how long, and the reconciler will not report a burn the chain could still drop.'
 
       - alert: RewardOracleStale
         expr: reward_oracle_healthy == 0

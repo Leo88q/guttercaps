@@ -115,8 +115,10 @@ The pauser is meant to be a Squads 1/3 of on-call phones with no timelock, so th
 **Burn feed (SEC-M1).** In v1 none of chip_core / market / arena CPI `report_burn` (their burns are only
 events), so the indexer's keeper (`backend/src/burn-oracle.ts`, key = `EmissionState.burn_oracle`, set via
 `set_oracles`) sums `BurnReported` + listing fees + `BattleResolved.rake_burn` and calls `report_burn(delta)`
-hourly. The program clamps `burn_today` to `BURN_SANITY_MULT (3) × daily_schedule_cap`, so the oracle can only
-move the guard between the 30 % floor and 100 % of the schedule — it never mints and never exceeds the cap.
+hourly, counting only burns at or below the finalized horizon (SEC-B29: `report_burn` cannot be un-sent, and
+a fork can still drop a confirmed transaction). The program clamps `burn_today` to `BURN_SANITY_MULT (3) ×
+daily_schedule_cap`, so the oracle can only move the guard between the 30 % floor and 100 % of the schedule —
+it never mints and never exceeds the cap.
 Unstake penalties are recorded in-program (`record_internal_burn`) and are not reported again.
 
 Daily `tick_day` (permissionless): `budget = min(schedule(year), 0.30·schedule + 1.25·avg(burn_ring[7]))`, further capped by the year's remaining allowance. Pools receive `budget_per_sec` for the next 24 h; quests/PvP/events slices accumulate in `slice_budget` and are only released through `publish_root` (oracle-specific, ≤ slice budget, 1 h timelock, admin-revocable) → `claim_root` (Merkle leaf = `keccak(0x00‖wallet‖amount‖kind‖epoch)`). **All minting goes through `mint_to_user`, which enforces both the yearly cap and the cumulative cap.**

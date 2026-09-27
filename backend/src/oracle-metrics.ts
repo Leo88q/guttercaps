@@ -29,11 +29,13 @@ import { log, errFields } from './log.ts';
 const CG = 1_000_000; // micro-$CG per $CG (gauges are in whole $CG: a float is fine for a dashboard, a bigint is not)
 const cg = (micro: string | bigint | number): number => Number(BigInt(micro)) / CG;
 
-export interface BurnOracleGauges { reportAgeS: number; pendingCg: number; healthy: 0 | 1 }
+export interface BurnOracleGauges { reportAgeS: number; pendingCg: number; deferredCg: number; healthy: 0 | 1 }
 /** `burn_oracle_*` — age −1 = never reported since this DB was created. */
 export function burnOracleGauges(db: Db, nowMs = Date.now()): BurnOracleGauges {
   const s = burnOracleStatus(db, nowMs);
-  return { reportAgeS: s.lastReportAgeS ?? -1, pendingCg: cg(s.pendingMicro), healthy: s.healthy ? 1 : 0 };
+  // SEC-B29: `deferred` is what the indexer has seen but the reconciler has not finalized yet; it is a
+  // finality gauge, not a keeper gauge, and it is why `healthy` can be 0 while `pending` is 0.
+  return { reportAgeS: s.lastReportAgeS ?? -1, pendingCg: cg(s.pendingMicro), deferredCg: cg(s.deferredMicro), healthy: s.healthy ? 1 : 0 };
 }
 
 export interface RewardOracleGauges {

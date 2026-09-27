@@ -1044,10 +1044,13 @@ export interface paths {
                                 lastAmountMicro?: string | null;
                                 lastReportAgeS?: number | null;
                                 reportedTotalMicro?: string;
-                                /** @description burns indexed but not yet reported */
+                                /** @description finalized burns indexed but not yet reported (SEC-B29) */
                                 pendingMicro?: string;
                                 pendingRows?: number;
-                                /** @description reported within 3 intervals */
+                                /** @description SEC-B29 — burns indexed above the finalized horizon; not reportable yet because a dropped transaction would have to be un-reported */
+                                deferredMicro?: string;
+                                deferredRows?: number;
+                                /** @description nothing material waiting or stuck behind finality */
                                 healthy?: boolean;
                             };
                             /** @description keeper that turns quest completions / match rewards / season payouts / referrals into Merkle roots (kinds 2 / 3 / 4 in $CG, 5 / 6 in SKR from the prize pool, 8 = fusion boosters delivered by CPI into chip_core) */

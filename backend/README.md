@@ -165,11 +165,17 @@ keyed by `events_raw` rowid; staking's own early-exit rows are skipped because t
 counted them) and sends `staking.report_burn(delta)` signed by `BURN_ORACLE_KEYPAIR` — the key the
 admin designated with `set_oracles { burn_oracle }` (`npm run setup -- --step burn-oracle`). The
 cursor advances only after confirmation; a crash re-reports at most one interval and the on-chain
-clamp (`burn_today ≤ 3 × daily cap`) bounds any double count. Deltas under
+clamp (`burn_today ≤ 3 × daily cap`) bounds any double count.
+Only burns **at or below `finalizedHorizon`** are aggregated (SEC-B29): a confirmed transaction can be
+dropped by a fork, and `report_burn` cannot be un-sent — it would lift the 7-day ring the guard reads.
+The cursor also never steps over a burn indexed out of slot order (the programs are indexed by
+independent cursors, so ids are not ordered by slot); whatever is not countable yet is reported as
+`deferredMicro` instead of silently joining the report. Deltas under
 `BURN_ORACLE_MIN_REPORT_MICRO` (1 $CG) are carried over; anything above
 `BURN_ORACLE_MAX_REPORT_MICRO` (5 M $CG) is refused with an `ALERT` (indexer bug, not a tx).
-`GET /v1/health.burnOracle` shows the last report, its age, what is pending and `healthy`
-(reported within 3 × `BURN_ORACLE_INTERVAL_MS`, default 1 h, or nothing material waiting).
+`GET /v1/health.burnOracle` shows the last report, its age, what is pending, what is deferred behind
+finality and `healthy` (1 unless something material is waiting or deferred and nothing was reported
+within 3 × `BURN_ORACLE_INTERVAL_MS`, default 1 h).
 
 ### Finality (`src/finality.ts`, docs/06 SEC-M5)
 

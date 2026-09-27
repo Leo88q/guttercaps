@@ -203,7 +203,7 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
 - **SEC-B21 (2026-09-27): accepted risk — Trident fuzzing is not run.** There is no fuzz target and no CI job
   in the tree, which makes this the only part-1 checklist item with no artifact. The class it would cover is
   held today by `cargo test` (golden economy + unit/invariant tests, the `rust-lints` job), the 92 LiteSVM
-  scenarios (`localnet`), the 101 static gates with mutation self-tests (`security:static`) and the structural
+  scenarios (`localnet`), the 106 static gates with mutation self-tests (`security:static`) and the structural
   invariants in `tests/security/anchor-invariants.test.ts` (SEC-B19 is one of them). Owner: programs, before
   mainnet — targets on `buy_pack` / `fuse` / `market settle` asserting the same "Σ liabilities ≤ vault balance"
   rule the ledgers enforce on chain; until then a new constant or account layout is closed by a compile-time
@@ -287,6 +287,25 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   default, the `Secure` tie, `HttpOnly`/`Path=/`, the production guard and the docs — with a mutation
   self-test — while `backend/test/security.test.ts` asserts the real `Set-Cookie` header over HTTP.
 
+- **SEC-B29 (2026-09-27): closed — the burn oracle reported burns the chain could still take back.**
+  `report_burn` is irreversible: it adds to `burn_today` and to the 7-day ring the emission guard reads
+  (`0.30·cap + 1.25·burn7d`), and there is no "un-report". The indexer, meanwhile, explicitly accepts that
+  a *confirmed* transaction can be dropped by a fork — `finality.ts` deletes its raw events and rebuilds
+  the projections. The keeper aggregated every indexed burn since its cursor, so a burn that lived only in
+  a dropped fork was already on chain: up to a week of inflated emission allowance (bounded by the 3×
+  clamp, and silent). Every other value-bearing reader (quests, arena, referrals, reward-oracle) already
+  filtered on `finalizedHorizon`; the keeper now does too, and everything the reconciler may delete is by
+  construction *above* that horizon, so a reported burn is final. The durable cursor may also no longer
+  step over a burn it did not count: `events_raw.id` follows insertion order while slots do not (the four
+  programs are indexed by independent cursors), so a burn indexed out of slot order would have been skipped
+  forever — which holds emission at the 30 % floor. What cannot be reported yet is now visible instead of
+  silent: `/v1/health.burnOracle.deferredMicro`/`deferredRows` (finalized-pending stays `pendingMicro`) and
+  the `burn_oracle_deferred_cg` gauge; `healthy` is 0 when a material set is stuck behind finality and
+  nothing was reported for 3 intervals, so `BurnOracleStale` catches a frozen reconciler as well as a dead
+  keeper. Pinned by `tests/security/burn-report.test.ts` (four rules over the keeper, the reconciler and
+  the contract, seven mutations — including "everything is final" and "the cursor may jump") and by
+  `backend/test/burn-oracle.test.ts` (a dropped transaction's burn and an out-of-slot-order burn, against a
+  real database).
 - **SEC-B28 (2026-09-27): closed — the claim market listed in currencies it can only fail to settle.**
   `buy_compressed` / `buy_compressed_asset` pay the seller with `system_program::transfer` and answer
   `CompressedCurrencyMismatch` for anything else (the SPL legs of the legacy `buy` were never wired into

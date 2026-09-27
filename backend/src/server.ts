@@ -195,8 +195,9 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   // SEC-F02 / SEC-F06 follow-up: the three oracle keys (oracle-metrics.ts). DB-derived, so they are
   // right after a restart and independent of which WORKERS run in this process.
   registerScrape('burn_oracle_report_age_seconds', 'Seconds since the burn oracle last sent report_burn; -1 = never.', () => [{ value: burnOracleGauges(db).reportAgeS }]);
-  registerScrape('burn_oracle_pending_cg', 'Indexed burns ($CG) not yet reported to staking.report_burn.', () => [{ value: burnOracleGauges(db).pendingCg }]);
-  registerScrape('burn_oracle_healthy', '1 unless ≥ BURN_ORACLE_MIN_REPORT is waiting and nothing was reported for 3 intervals.', () => [{ value: burnOracleGauges(db).healthy }]);
+  registerScrape('burn_oracle_pending_cg', 'Finalized burns ($CG) not yet reported to staking.report_burn.', () => [{ value: burnOracleGauges(db).pendingCg }]);
+  registerScrape('burn_oracle_deferred_cg', 'Burns ($CG) indexed but above the finalized horizon — SEC-B29: not reportable yet, no report can be taken back.', () => [{ value: burnOracleGauges(db).deferredCg }]);
+  registerScrape('burn_oracle_healthy', '1 unless something material is waiting to be reported or stuck behind finality and nothing was reported for 3 intervals.', () => [{ value: burnOracleGauges(db).healthy }]);
   registerScrape('reward_oracle_publish_age_seconds', 'Seconds since the last published reward root; -1 = never.', () => [{ value: rewardOracleGauges(db).publishAgeS }]);
   registerScrape('reward_oracle_pending_batches', 'Reward batches built but not yet published.', () => [{ value: rewardOracleGauges(db).pendingBatches }]);
   registerScrape('reward_oracle_oldest_pending_age_seconds', 'Age of the oldest unpublished reward batch, seconds (0 = none).', () => [{ value: rewardOracleGauges(db).oldestPendingAgeS }]);
