@@ -312,9 +312,8 @@ pub(crate) fn ensure_distinct_material(previous: &[Pubkey], key: &Pubkey) -> Res
 /// rather than by this comment: bumping `MAX_CHIPS_PER_PACK` to 6, or `MAX_PACK_QTY` past 25, fails
 /// the build instead of silently making one paid pack in every 128 nonces unopenable.
 const COMPRESSED_CLAIM_PACK_STRIDE: u64 = 128;
-const _: () = assert!(
-    MAX_CHIPS_PER_PACK * (MAX_PACK_QTY as usize) <= COMPRESSED_CLAIM_PACK_STRIDE as usize
-);
+const _: () =
+    assert!(MAX_CHIPS_PER_PACK * (MAX_PACK_QTY as usize) <= COMPRESSED_CLAIM_PACK_STRIDE as usize);
 
 /// Refund the cancelled share of a pack without losing value to integer
 /// truncation. Rounding is upward for the buyer and the registered side gets

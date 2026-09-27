@@ -189,7 +189,10 @@ pub fn buy_pack(
     nonce: u64,
     max_lamports: u64,
 ) -> Result<()> {
-    require!((1..=MAX_PACK_QTY).contains(&qty), ChipError::InvalidQuantity);
+    require!(
+        (1..=MAX_PACK_QTY).contains(&qty),
+        ChipError::InvalidQuantity
+    );
     let sku_e = PackSku::from_u8(sku).ok_or(ChipError::InvalidSku)?;
     let def = ctx.accounts.config.packs[sku as usize];
     require!(def.enabled, ChipError::SkuDisabled);
