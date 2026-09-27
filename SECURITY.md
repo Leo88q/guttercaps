@@ -165,6 +165,18 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   the now-unreachable Postgres escape was removed so it cannot mask a loosened rule. Pinned by the rewritten
   test in `backend/test/sql.test.ts`.
 
+- **SEC-B18 (2026-09-27): closed — handle holds are bounded per wallet, and the check has its own budget.**
+  `GET /me/handle/check` is a write-on-read: it takes a 120 s hold that makes the handle read as
+  `reserved` for everyone else (that hold is what protects a buyer from paying for a handle someone else
+  claims first). Nothing bounded how many holds one wallet could take, and the only limiter was on the
+  wrong axis — the read budget is per IP while the hold is per wallet — so one bot could hold hundreds of
+  handles for free, refreshing every 2 minutes, and grow `handle_reservations` (rows are deleted only once
+  expired) while paying nothing. `HANDLE_MAX_RESERVATIONS = 5` now caps the live holds: beyond it the check
+  still answers honestly but takes no hold, and the handle stays free for others; claiming never needed the
+  hold to exist. The route also carries its own session policy (`handle-check`, 30/min), and the spec's
+  `reason` enum now includes `invalid`, which the code always returned. Behavioural and static gates added;
+  both mutations (drop the cap, drop the route limiter) fail exactly the expected test.
+
 ## Current exposure of this repository (from `docs/09-production-readiness.md`)
 
 `npm audit --omit=dev` reports one advisory chain in the production tree: `bigint-buffer`

@@ -114,10 +114,11 @@ paths:
       summary: Is this handle free? (also returns the ref_hash to commit on-chain)
       description: |
         ref_hash = keccak256(0x00 ‖ kind:u8 ‖ wallet:32 ‖ lowercase(handle) utf8). The client passes it to
-        chip_core::pay_service(kind=Handle|HandleChange, …). Reserved 120 s for the caller once checked.
+        chip_core::pay_service(kind=Handle|HandleChange, …). Reserved 120 s for the caller once checked, up
+        to 5 live reservations per wallet (SEC-B18: beyond that the check answers without taking a hold).
       parameters: [{ in: query, name: handle, required: true, schema: { type: string, pattern: '^[a-zA-Z0-9_]{3,16}$' } }]
       responses:
-        '200': { description: availability, content: { application/json: { schema: { type: object, properties: { available: { type: boolean }, reason: { type: string, enum: [taken, reserved, blocked, cooldown] }, kind: { type: integer, description: '0 first handle, 1 change' }, refHash: { type: string, description: 'hex, 32 bytes' }, priceUsdCents: { type: integer }, reservedUntil: { type: string, format: date-time } } } } } }
+        '200': { description: availability, content: { application/json: { schema: { type: object, properties: { available: { type: boolean }, reason: { type: string, enum: [taken, reserved, blocked, cooldown, invalid] }, kind: { type: integer, description: '0 first handle, 1 change' }, refHash: { type: string, description: 'hex, 32 bytes' }, priceUsdCents: { type: integer }, reservedUntil: { type: string, format: date-time } } } } } }
   /me/handle:
     put:
       tags: [me]

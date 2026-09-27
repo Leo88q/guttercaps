@@ -75,6 +75,28 @@ describe('T-B-40 rate limiting', () => {
     expect(read.status).toBe(200);
     expect(read.headers.get('ratelimit-limit')).toBe(String(POLICIES.read.limit));
   });
+  // SEC-B18: `/me/handle/check` mutates (it takes a 120 s hold) while being a GET, so the read budget
+  // was its only limiter — one wallet behind one IP could spend all 600/min on other people's future
+  // handles. The route now carries a session-scoped policy of its own.
+  it('SEC-B18 handle check: 30/min per session, not just the 600/min read budget per IP', async () => {
+    store.reset();
+    const kp = Keypair.generate();
+    const address = kp.publicKey.toBase58();
+    const { nonce } = await (await fetch(`${base}/v1/auth/siws/nonce`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address }) })).json() as { nonce: string };
+    const message = siwsMessage(address, nonce);
+    const verify = await fetch(`${base}/v1/auth/siws/verify`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address, message, signature: sign(kp, message) }) });
+    expect(verify.status).toBe(200);
+    const cookie = (verify.headers.get('set-cookie') ?? '').split(';')[0];
+    const check = (h: string) => fetch(`${base}/v1/me/handle/check?handle=${h}`, { headers: { Cookie: cookie } });
+    let last: Response | undefined;
+    for (let i = 0; i < POLICIES.handleCheck.limit; i++) last = await check(`hx${i}`);
+    expect(last!.status).toBe(200);
+    const blocked = await check('hx_overflow');
+    expect(blocked.status).toBe(429);
+    expect((await blocked.json() as { details: { policy: string } }).details.policy).toBe('handle-check');
+    expect(blocked.headers.get('retry-after')).toBeTruthy();
+  });
+
   it('bodies over 16 KB → 413, malformed JSON → 400', async () => {
     store.reset();
     const big = await fetch(`${base}/v1/auth/siws/nonce`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: 'x'.repeat(20_000) }) });

@@ -80,6 +80,29 @@ test('SEC-B2 every SQL LIMIT/OFFSET in the query layer is a clamped value', () =
   assert.deepEqual(bad, [], 'bind only clamped integers to LIMIT/OFFSET (see params.ts clampInt/page)');
 });
 
+test('SEC-B18 the write-on-read handle check is rate limited and its holds are capped per wallet', () => {
+  const server = src('backend/src/server.ts');
+  const services = src('backend/src/services.ts');
+  const limits = src('backend/src/ratelimit.ts');
+  // 1) the route carries a session policy of its own (the global read budget is per IP, and the hold it
+  //    takes is per wallet — one wallet behind one address could spend the whole budget on free holds)
+  assert.match(server, /v1\.get\('\/me\/handle\/check', requireAuth, rl\(POLICIES\.handleCheck\)/, 'the check route must be limited per session');
+  assert.match(limits, /handleCheck: \{ name: 'handle-check'/, 'the policy table must define handle-check');
+  // 2) the hold is capped, and the cap is enforced *before* the upsert — the whole finding is that the
+  //    hold is what makes a handle read as `reserved` for everyone else
+  const cap = /if \(!res && db\.scalar\(`SELECT COUNT\(\*\) FROM handle_reservations WHERE wallet = \?`, wallet\) >= HANDLE_MAX_RESERVATIONS\)/.exec(services);
+  assert.ok(cap, 'checkHandle must refuse to take more holds than HANDLE_MAX_RESERVATIONS');
+  assert.ok(cap.index < services.indexOf('INSERT INTO handle_reservations'), 'the cap must precede the reservation upsert');
+});
+
+test('self-test: the SEC-B18 rule rejects the pre-fix route and accepts the fixed one', () => {
+  const rule = /v1\.get\('\/me\/handle\/check', requireAuth, rl\(POLICIES\.handleCheck\)/;
+  const preFix = "  v1.get('/me/handle/check', requireAuth, (req, res) => { res.json(checkHandle(db, req.session!.wallet, String(req.query.handle ?? ''))); });";
+  const fixed = "  v1.get('/me/handle/check', requireAuth, rl(POLICIES.handleCheck), (req, res) => { res.json(checkHandle(db, req.session!.wallet, String(req.query.handle ?? ''))); });";
+  assert.ok(!rule.test(preFix), 'the pre-fix route must fail the rule');
+  assert.ok(rule.test(fixed), 'the fixed route must pass the rule');
+});
+
 test('SEC-B3 index filters are honoured end to end now that shape #27 projects the number', () => {
   const spec = src('backend/openapi.yaml');
   const server = src('backend/src/server.ts');

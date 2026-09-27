@@ -56,6 +56,8 @@ export const POLICIES = {
   claim: { name: 'claim', limit: 10, windowMs: 60_000, by: 'session' },
   /** Reward-ish mutations per network (T-B-49): 10 sessions × 10/min from one /24 is a farm, not a household. */
   claimNet: { name: 'claim-net', limit: 40, windowMs: 60_000, by: 'ipnet' },
+  /** SEC-B18: the handle check takes a 120 s hold, so it is a mutation wearing a GET — per session, not per IP. */
+  handleCheck: { name: 'handle-check', limit: 30, windowMs: 60_000, by: 'session' },
   arena: { name: 'arena', limit: 20, windowMs: 60_000, by: 'session' },
   /** Turnstile verification: each call may hit siteverify. */
   human: { name: 'human', limit: 6, windowMs: 60_000, by: 'session' },

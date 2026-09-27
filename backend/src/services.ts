@@ -9,7 +9,7 @@
 import { keccak_256 } from '@noble/hashes/sha3';
 import { PublicKey } from '@solana/web3.js';
 import { SERVICES, SERVICE_BY_KIND, SKIN_BY_ID, PROFILE_THEME_BY_ID, EMOTE_PACK_BY_ID, COLLECTIONS, type ServiceDef } from '@guttercaps/economy';
-import { HANDLE_BLOCKLIST, HANDLE_CHANGE_COOLDOWN_S, HANDLE_QUARANTINE_S, HANDLE_RE, HANDLE_RESERVE_MS, SKR_USD_FALLBACK, SOL_USD_FALLBACK } from './config.ts';
+import { HANDLE_BLOCKLIST, HANDLE_CHANGE_COOLDOWN_S, HANDLE_MAX_RESERVATIONS, HANDLE_QUARANTINE_S, HANDLE_RE, HANDLE_RESERVE_MS, SKR_USD_FALLBACK, SOL_USD_FALLBACK } from './config.ts';
 import { type Db, now } from './db.ts';
 import { FinalityError, requireFinalized } from './finality.ts';
 import { foldEq } from './sql.ts';
@@ -135,6 +135,15 @@ export function checkHandle(db: Db, wallet: string, raw: string): HandleCheck {
   db.run(`DELETE FROM handle_reservations WHERE expires_at < ?`, t);
   const res = db.get<{ wallet: string; expires_at: number }>(`SELECT wallet, expires_at FROM handle_reservations WHERE ${foldEq('handle', '?')}`, lower);
   if (res && res.wallet !== wallet) return { available: false, reason: 'reserved', ...base };
+  // SEC-B18: a hold is what makes the handle read as `reserved` for everyone else, and one wallet could
+  // take a hold on every handle it could ask about — unbounded `handle_reservations` growth with the
+  // IP-scoped read budget (600/min) as the only ceiling, plus squatting of the whole namespace by a bot
+  // that never pays. Cap the live holds per wallet. The answer stays honest; only the hold stops. A
+  // claim never needs the hold to exist: `claimHandle` re-checks availability inside its transaction and
+  // refuses with `handle_reserved` if someone else holds it, before the payment is consumed.
+  if (!res && db.scalar(`SELECT COUNT(*) FROM handle_reservations WHERE wallet = ?`, wallet) >= HANDLE_MAX_RESERVATIONS) {
+    return { available: true, ...base };
+  }
   const reservedUntil = t + Math.floor(HANDLE_RESERVE_MS / 1000);
   db.run(`INSERT INTO handle_reservations (handle, wallet, expires_at) VALUES (?, ?, ?) ON CONFLICT(handle) DO UPDATE SET wallet = excluded.wallet, expires_at = excluded.expires_at`, lower, wallet, reservedUntil);
   return { available: true, ...base, reservedUntil: new Date(reservedUntil * 1000).toISOString() };

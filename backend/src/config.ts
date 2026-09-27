@@ -164,6 +164,13 @@ import { geoMisconfiguration } from './geo.ts';
 
 export const HANDLE_RE = /^[a-zA-Z0-9_]{3,16}$/;
 export const HANDLE_RESERVE_MS = 120_000;
+/**
+ * SEC-B18: how many live handle holds one wallet may pile up. A hold is what makes a handle read as
+ * `reserved` for everyone else, so an uncapped one is namespace squatting: the check endpoint is a
+ * write-on-read and the only bound was the IP-scoped read budget (600/min), which a single wallet
+ * behind one address can spend entirely on other people's future handles.
+ */
+export const HANDLE_MAX_RESERVATIONS = 5;
 export const HANDLE_CHANGE_COOLDOWN_S = 30 * 86_400;
 export const HANDLE_QUARANTINE_S = 90 * 86_400;
 export const HANDLE_BLOCKLIST = new Set(['admin', 'administrator', 'guttercaps', 'gutter_caps', 'support', 'moderator', 'mod', 'treasury', 'solana', 'seeker', 'skr', 'official', 'team', 'root', 'system', 'null', 'undefined']);
