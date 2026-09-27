@@ -30,6 +30,19 @@ groups:
           summary: 'More than 2% of requests are 5xx'
           description: 'Every 500 has a request id and a matching log line; `grep ALERT` in the api logs first.'
 
+      # SEC-B40: the event bus degrades instead of blocking boot (a Redis that is down used to stop the API
+      # from ever reaching `server.listen`), and a degraded bus is invisible from the outside — this replica
+      # serves REST correctly and simply never receives another replica's frames, so players see a stale
+      # market until their own poll. The series exists only where EVENT_BUS=redis + REDIS_URL are configured,
+      # so `== 0` cannot fire on a deliberately single-process deployment.
+      - alert: EventBusDegraded
+        expr: event_bus_redis == 0
+        for: 5m
+        labels: { severity: warn }
+        annotations:
+          summary: 'EVENT_BUS=redis is configured but this API is on the in-process bus'
+          description: 'The initial SUBSCRIBE did not answer within EVENT_BUS_CONNECT_TIMEOUT_MS (default 3 s), so the process fell back: /ws only carries its own events, other replicas are unseen, and clients fall back to polling. Check `redis_error_total{purpose="bus"}` and the `redis bus …` warnings, then restart the API once Redis is healthy (the fallback is decided at boot and does not retry by design). If one replica is enough, set EVENT_BUS=inproc and this alert disappears with the configuration it describes.'
+
   - name: guttercaps.indexer
     rules:
       - alert: IngestLag
@@ -207,8 +220,12 @@ groups:
           summary: 'libuv handles grew by 50 in 30 minutes'
           description: 'The usual suspects are a setInterval started per request and websockets whose timers were not cleared on close (see attachWs).'
 
+      # The old expression hardcoded `ws_clients >= 480`, which is 96% of the *default* 500 and nothing of
+      # anything else: with WS_MAX_CLIENTS=2000 it fired at 24% of the cap (a warning that cries wolf), and
+      # with WS_MAX_CLIENTS=400 it stayed silent while every new socket was already being refused with 1013.
+      # Dividing by the exported cap keeps the rule true for every configuration (SEC-B41).
       - alert: WsSaturation
-        expr: ws_clients >= 480
+        expr: ws_clients / ws_max_clients >= 0.96
         for: 5m
         labels: { severity: warn }
         annotations:

@@ -35,6 +35,22 @@ beforeAll(async () => {
 });
 afterAll(() => new Promise<void>((f) => server.close(() => f())));
 
+describe('SEC-B44 response caching is never left to the cache', () => {
+  it('session-scoped and public reads both answer `private, no-store`, and an explicit handler still wins', async () => {
+    // Cookie authentication is not `Authorization`, so RFC 9111 does not stop a shared cache from storing
+    // `/v1/me` or the wallet feeds; with no Cache-Control at all it may also apply heuristic freshness.
+    // This deployment aims at a Cloudflare edge (GEO_GATE needs one), so the default has to be explicit.
+    const me = await fetch(`${base}/v1/me`);
+    expect(me.status).toBe(401); // no session — the header is there even on the error path
+    expect(me.headers.get('cache-control')).toBe('private, no-store');
+    const market = await fetch(`${base}/v1/market/listings`);
+    expect(market.status).toBe(200);
+    expect(market.headers.get('cache-control')).toBe('private, no-store');
+    // …and a handler with a reason to say something else overrides the default rather than being stuck with it
+    expect((await fetch(`${base}/healthz`)).headers.get('cache-control')).toBe('no-store');
+  });
+});
+
 describe('T-B-40 rate limiting', () => {
   it('nonce: 10/min per IP → 429 with Retry-After + RateLimit-* headers, window rollover resets', async () => {
     store.reset();
@@ -232,6 +248,19 @@ describe('T-B-43 hardening', () => {
       expect(() => unthrottled.assertProductionConfig()).toThrow(/RATE_LIMIT/);
       expect(unthrottled.RATE_LIMIT_ENABLED).toBe(false);
       delete process.env.RATE_LIMIT;
+      // SEC-B41: `Number('500x')` is NaN and every cap comparison against NaN is false, so a typo'd ws limit
+      // used to mean "no cap at all" while looking configured. Both bounds refuse instead of substituting.
+      vi.resetModules();
+      process.env.WS_MAX_CLIENTS = '500x';
+      const typoCap = await import('../src/config.ts');
+      expect(() => typoCap.assertProductionConfig()).toThrow(/WS_MAX_CLIENTS/);
+      vi.resetModules();
+      delete process.env.WS_MAX_CLIENTS;
+      process.env.WS_MAX_BACKLOG_BYTES = '512';
+      const tinyBacklog = await import('../src/config.ts');
+      expect(() => tinyBacklog.assertProductionConfig()).toThrow(/WS_MAX_BACKLOG_BYTES/);
+      vi.resetModules();
+      delete process.env.WS_MAX_BACKLOG_BYTES;
       vi.resetModules();
       const strong = await import('../src/config.ts');
       expect(() => strong.assertProductionConfig()).not.toThrow();

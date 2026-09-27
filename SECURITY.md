@@ -394,6 +394,103 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   against yet. Pinned by the `SEC-B32` rule in `tests/security/settle-once.test.ts` (no collection filter, the
   claim fallback, the join; two mutations) and by `backend/test/game.test.ts` (a Core pair and a claim pair at
   5 × the floor are both flagged with `priceOverFloorX: 5`, a never-registered claim's pair is not).
+- **SEC-B46 (2026-09-27): closed — `WS_MAX_CLIENTS` bounded the process, not a caller.** The hub's only admission
+control was `open >= maxClients`, and an upgrade never passes through the HTTP layer, so it is neither rate-
+limited nor attributed: one host with a loop took all 500 sockets and the players actually playing got 1013 — a
+capacity guard that protects the heap (its job) and hands the service to whoever arrives first with a `while
+(true)`. `WS_MAX_PER_IP` (default 32, `0` disables) now bounds the sockets *one client* holds, counted on the
+socket and given back on close (`terminate` included — a cap that only counts up ratchets down to zero), refused
+with the same 1013 the process-wide cap uses and visible as `ws_rejected_total{reason="per_ip"}`. The client IP
+comes from `upgradeIp`, which applies *the same* rule Express applies to HTTP (`trust proxy` = `TRUST_PROXY_HOPS`,
+now resolved once in `config.ts` and used by both): the socket peer, then `x-forwarded-for` walked right to left
+skipping the trusted hops — the upgrade cannot inherit `app.set('trust proxy')`, so the rule has to be written
+down somewhere both paths read. With the documented one hop in front, that is the rightmost entry, which nginx
+*appends* (`$proxy_add_x_forwarded_for`), so a caller's own header cannot move its bucket. Pinned by
+`backend/test/ops.test.ts` (a second socket from the same IP is refused with 1013 while another IP is served, a
+spoofed `1.2.3.4, <ip>` chain still lands in the same bucket, the slot comes back after a close) and by a case-by-
+case cross-check of `upgradeIp` against Express's own `req.ip` for the same header and hop count.
+- **SEC-B45 (2026-09-27): closed — an upgrade is not subject to CORS, and nothing else checked who was asking.**
+The REST layer refuses to hand a foreign page our data (CORS allowlist; `assertProductionConfig` rejects `*`), but
+a browser does not apply CORS to a socket, and `/ws` carried no `Origin` check: any page could open `wss://…/ws`,
+read the market frames cross-origin (data the REST layer would have refused it), subscribe to `?wallet=<anyone>` —
+no session required — to watch that wallet's activity in real time (pack opened, chip fused, chip sold), and take
+the whole `WS_MAX_CLIENTS` capacity from one tab. The upgrade now enforces the API's own allowlist
+(`CORS_ORIGINS`): a request *with* an `Origin` that is not on it gets `403` and no socket,
+`ws_rejected_total{reason="origin"}` counts every attempt and a throttled WARN names it — the metric must count
+all of them, the log line must not (one page in a loop is not allowed to fill a disk). A *missing* `Origin` is
+allowed on purpose: curl, a bot and a native client have none, and a non-browser client can lie about the header
+either way, so this is a control on browsers, not authentication. Pinned by `backend/test/ops.test.ts` (a foreign
+origin never opens, the allowed origin and a nameless client both do, and a spoofed `x-forwarded-for` does not
+smuggle an origin in).
+- **SEC-B44 (2026-09-27): closed — no API response said what a cache may do with it.** Four handlers set `Cache-
+Control` (`/healthz`, `/readyz`, `/metrics`, `/packs/quote`) and nothing else did, so `/v1/me`, `/v1/session` and
+the wallet feeds answered with no header at all. Cookie authentication is not `Authorization`, which is the only
+thing RFC 9111 uses to stop a shared cache from *storing* a response: a cache was free to store a session-scoped
+answer and apply its own heuristic freshness — the classic way one player's balance ends up in another player's
+browser. That is not hypothetical here: this deployment aims at a Cloudflare edge (`GEO_GATE` needs one —
+`ops/deploy/docker-compose.yaml`), and nginx has no `proxy_cache`, so the edge is exactly the layer that decides.
+The baseline-header middleware now sets `private, no-store` for every response that does not override it, and a
+handler with a reason to say something else still wins (`/packs/quote` and `/healthz` keep their own).
+Deliberately *not* `public, max-age=…` on the read-only market endpoints: the single-writer SQLite is the load
+that matters, the client already carries a per-hook `staleTime`, and a cache in front of a projection an indexer
+updates in place is a staleness bug waiting for a money screen. Pinned by `backend/test/security.test.ts` (a
+session-scoped 401 and a public 200 both answer `private, no-store`, an explicit handler still overrides it).
+- **SEC-B43 (2026-09-27): closed — the fan-out allowlist promised a frame nobody publishes and nobody reads.**
+`PUBLIC_TYPES` is the set that skips the wallet filter (`ws.ts`): a member is delivered to every socket, including
+anonymous ones. `price_update` was a member while `WIRE_TYPE` maps no event to it and `client/src/api/ws.ts` has
+no `INVALIDATE` key for it — a type with no publisher and no reader, i.e. the "looks configured, does nothing"
+shape this repo treats as a bug in alerts and metrics too. Removed, and the two-sided promise is now a gate: every
+member must be produced by the wire map *and* handled by the client's invalidation table. Pinned by the `SEC-B43`
+rule in `tests/security/events-coverage.test.ts` (plus two mutations — a member with no publisher, a member the
+client does not handle).
+- **SEC-B42 (2026-09-27): closed — the shared-Redis rate limit keyed one client as several.** `createRedisGuard`
+built its window key from the *text* of `req.ip` run through a character filter (`.replace(/[^0-9a-fA-F.:-]/g,
+'')`), so `::ffff:203.0.113.9` and `203.0.113.9` — one caller arriving over a v4 edge and a v6 one — were two
+buckets, and `2001:db8::5` / `2001:db8::6` were two more for a single /64. That is SEC-B38's defect in the layer
+that exists *because* per-process budgets do not aggregate across replicas: a caller who could alternate spellings
+reset the shared burst budget that the local, correctly keyed bucket had already spent. The guard now uses
+`clientIp` (the limiter's own key function): IPv4 as dotted text, a v4-mapped address as its dotted IPv4, IPv6 as
+its /64 — one client, one bucket, in both layers. Pinned by `backend/test/ops.test.ts` (the key is the canonical
+form; alternating spellings share one count and the third request is blocked) and by the `SEC-B42` half of the
+SEC-B38 rule in `tests/security/api-input.test.ts` (no rate-limit key may be built from the raw address text —
+with a self-test on the pre-fix line).
+- **SEC-B41 (2026-09-27): closed — the per-socket outbox cap could not bind, so a stalled client grew the heap.**
+`ws.ts` documents "a bounded per-socket outbox that drops a slow client instead of growing the heap" and tested it
+by comparing `socket.bufferedAmount + frame.length` against `WS_MAX_BACKLOG_BYTES`. But `drain()` awaits each
+`send` callback, so at most one frame is ever in flight and `bufferedAmount` stays near zero while `queue` grows:
+the check could only ever trip when a single frame was larger than the whole cap. Probed with 6000 × ~190 B frames
+to a client that read nothing: one send during the loop, `queue` ≈ 5999, `bufferedAmount` 0, `ws_dropped_total`
+empty — 1.1 MB held by the process per stalled socket, at 500 sockets per replica (and it drains afterwards, so
+nothing else notices). The bound is now the bytes the process is actually holding for that socket
+(`ClientState.queued`, incremented on push, released on send/clear/drop) plus `bufferedAmount`, and the single
+write path covers the pong reply and the greeting too — a client flooding `{"type":"ping"}` was able to make the
+server buffer replies with no cap at all. Pinned by `backend/test/ops.test.ts`: 200 × ~1 KB frames in one
+synchronous burst to a socket that has not drained (~1 KB per frame, far *below* the 2 KiB cap in the test, i.e.
+the exact shape the old arithmetic could never catch) → 1013/`terminate`, `ws_rejected_total{reason="backlog"}`
+moves, the hub drops the client; and a burst that stays under the cap is still delivered whole. The same edit made
+a typo'd `WS_MAX_CLIENTS=500x` (NaN — every comparison false, i.e. no cap while looking configured) fall back to
+the documented default in dev and refuse to start in production, and moved `ws_max_clients` onto the app so the
+saturation alert can divide by the configured cap instead of a hardcoded 480.
+- **SEC-B40 (2026-09-27): closed — a Redis that was down stopped the API from ever listening.** `serve.ts` awaits
+`installBus()` before `server.listen`, and `bus.ts` has always documented both Redis uses as optional ("a missing
+Redis costs the cross-process fan-out, and the client polls"). It was not optional in practice: `new Redis(url)`
+does not throw for `ECONNREFUSED` — ioredis retries — so the queued `SUBSCRIBE` never settled and `installBus`
+never returned. With `EVENT_BUS=redis` + `REDIS_URL` (the documented 2-replica mode) and Redis down, renamed or
+serving something else, the process never bound a port: no REST, no `/readyz`, no `/metrics`, a container in a
+restart loop, and a rollback blocked for as long as Redis was unwell. The initial subscribe is now bounded
+(`EVENT_BUS_CONNECT_TIMEOUT_MS`, default 3 s; the Redis clients are also closed on that path, so the abandoned
+sockets do not keep reconnecting), after which the bus falls back to in-process — the same degradation the
+missing-URL case always had, announced instead of hidden. Two side findings came with it: the bus clients had no
+`error` listener, so ioredis wrote `[ioredis] Unhandled error event:` straight to stderr outside the structured,
+redacted logger, and the `pub.on('error', () => {})` that *was* there made a Redis outage invisible in both logs
+and metrics — both clients now count `redis_error_total{purpose="bus"}` and warn once per 30 s. Because a replica
+on the in-process bus is invisible from the outside (it serves REST perfectly and simply misses other replicas'
+frames), `/metrics` exports `event_bus_redis` *only* where Redis was configured, with the new `EventBusDegraded`
+alert (`== 0`, warn) on it. Pinned by `backend/test/bus.test.ts` (a dead port falls back inside the timeout and
+the fallback bus still delivers; a peer that accepts and never answers `SUBSCRIBE` falls back and its sockets are
+released; the error counter moves instead of stderr; the missing-URL shortcut is unchanged; and the real
+`startServe` answers `/healthz` with `EVENT_BUS=redis` + a dead Redis) and by the alert-rule assertions in that
+file and in `backend/test/monitoring.test.ts`.
 - **SEC-B35 (2026-09-27): closed — a compressed trade reached the client under a name it does not handle.**
   `wire.ts` maps an on-chain event to the client's invalidation key, and its own header says why: a frame the
   client filters out is a cache that never updates, with no error anywhere. The two compressed markets

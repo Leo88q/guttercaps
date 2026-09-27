@@ -50,6 +50,16 @@ describe('monitoring contract: ops/monitoring/alerts.yml ⇄ the exported series
     }
   });
 
+  it('SEC-B41: the saturation alert scales with the configured cap instead of a hardcoded 480', async () => {
+    const yml = readFileSync(new URL('../../ops/monitoring/alerts.yml', import.meta.url), 'utf8');
+    const expr = /- alert: WsSaturation[\s\S]*?expr:\s*(.+)/.exec(yml)?.[1];
+    expect(expr, 'WsSaturation must exist').toBeTruthy();
+    // 480 is 96% of the *default* cap and wrong for every other value: at WS_MAX_CLIENTS=2000 it fires at
+    // 24% utilisation, at 400 it cannot fire before new sockets are already refused with 1013.
+    expect(expr).toContain('ws_max_clients');
+    expect(expr).not.toMatch(/\b\d{3}\b/);
+  });
+
   it('the prometheus scrape config targets the path the API serves', async () => {
     const { readFileSync } = await import('node:fs');
     const yml = readFileSync(new URL('../../ops/monitoring/prometheus.yml', import.meta.url), 'utf8');

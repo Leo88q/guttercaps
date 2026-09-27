@@ -43,6 +43,8 @@ const PRISMA = read('backend/prisma/schema.prisma');
 const WIRE = read('backend/src/wire.ts');
 /** The client's own invalidation table — the vocabulary a wire type has to match (SEC-B35). */
 const CLIENT_WS = read('client/src/api/ws.ts');
+/** The fan-out allowlist that bypasses the wallet filter (SEC-B43). */
+const WS_SRC = read('backend/src/ws.ts');
 
 /** `#[event] pub struct Name` in every program source: what the chain can actually emit, and where. */
 function rustEvents(files: SourceFile[]): Map<string, Set<string>> {
@@ -246,6 +248,26 @@ function ruleWire(events: string, wire: string, client: string) {
   }
 }
 
+/**
+ * 6. SEC-B43: `PUBLIC_TYPES` (`backend/src/ws.ts`) is the "reach every socket, wallet filter off" allowlist,
+ * and membership is a two-sided promise: the wire map has to be able to produce the type, and the client's
+ * invalidation table has to know it. Otherwise the frame is delivered, welcomed and dropped — the market's
+ * screen keeps its stale data while the socket looks perfectly healthy. `price_update` was exactly that: no
+ * publisher anywhere in the backend, no `INVALIDATE` key in the client.
+ */
+function rulePublicTypes(ws: string, wire: string, client: string) {
+  const set = /export const PUBLIC_TYPES = new Set\[?\]?\(\[([^\]]*)\]\)/.exec(ws);
+  assert.ok(set, 'PUBLIC_TYPES moved — this gate needs updating');
+  const members = [...set[1]!.matchAll(/'([\w]+)'/g)].map((m) => m[1]!);
+  assert.ok(members.length >= 3, `${members.length} PUBLIC_TYPES members parsed — the set moved`);
+  const published = new Set([...wire.matchAll(/^\s*\w+: '([\w]+)',$/gm)].map((m) => m[1]!));
+  const keys = new Set([...client.matchAll(/^  (\w+): \(qc[,)]/gm)].map((m) => m[1]!));
+  for (const type of members) {
+    assert.ok(published.has(type), `PUBLIC_TYPES has '${type}' but wire.ts maps no event to it — every socket would get a frame nothing publishes`);
+    assert.ok(keys.has(type), `PUBLIC_TYPES has '${type}' but client/src/api/ws.ts has no INVALIDATE entry — the frame invalidates nothing`);
+  }
+}
+
 const snakeCase = (name: string) => name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
 
 // ------------------------------------------------------------------- the tests
@@ -345,10 +367,21 @@ test('mutations: the gates above are wired to the code they claim to guard', () 
   // 15. a wire type the client does not implement (a typo in the invalidation key)
   const mistyped = mutate(WIRE, "CompressedClaimSold: 'sale',", "CompressedClaimSold: 'sale_changed',");
   assert.ok(fails(() => ruleWire(EVENTS, mistyped, CLIENT_WS)));
+
+  // 16. a broadcast-to-everyone type nobody publishes (the SEC-B43 shape: `price_update`)
+  const deadPublic = mutate(WS_SRC, "'params_changed', 'day_closed']", "'params_changed', 'day_closed', 'price_update']");
+  assert.ok(fails(() => rulePublicTypes(deadPublic, WIRE, CLIENT_WS)));
+  // 17. a broadcast-to-everyone type the client has no handler for
+  const clientBlind = mutate(CLIENT_WS, '  offer: (qc) =>', '  offer_v2: (qc) =>');
+  assert.ok(fails(() => rulePublicTypes(WS_SRC, WIRE, clientBlind)));
 });
 
 test('SEC-B35 every mapped event reaches an invalidation key the client actually implements', () => {
   ruleWire(EVENTS, WIRE, CLIENT_WS);
+});
+
+test('SEC-B43 every wallet-filter-free broadcast type is published and handled', () => {
+  rulePublicTypes(WS_SRC, WIRE, CLIENT_WS);
 });
 
 /** Apply a text mutation to one scanned program file (the shared scanner strips comments). */

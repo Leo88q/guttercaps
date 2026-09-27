@@ -172,6 +172,18 @@ test('SEC-B38 per-client rate-limit keys parse the address instead of slicing it
   assert.ok(sliceRule.test("  if (ip.includes(':')) return ip.split(':').slice(0, 4).join(':') + '::/64';"), 'the pre-fix key must fail the rule');
   assert.ok(!sliceRule.test("  return `${v6Groups(bytes).slice(0, 4).join(':')}::/64`;"), 'a parsed-bytes key must pass');
   assert.ok(!sliceRule.test("    const items = part.split(':');"), "the parser's group split must pass");
+
+  // SEC-B42: the shared-Redis guard (`createRedisGuard`) keys its window by the *same* function, or the two
+  // layers disagree about who a client is. It used `req.ip` run through a character filter, which kept
+  // `::ffff:203.0.113.9` and `203.0.113.9` apart — one caller, two cross-instance budgets, which is exactly
+  // the aggregation the guard exists to provide.
+  const guard = src('backend/src/redis.ts');
+  assert.match(guard, /const ip = clientIp\(req\);/, 'the shared guard must use the limiter’s own key function');
+  const textKey = /req\.ip\s*\?\?\s*req\.socket\.remoteAddress|replace\(\/\[\^0-9a-fA-F/;
+  const rawOffenders = guard.split('\n').filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line) && textKey.test(line));
+  assert.deepEqual(rawOffenders, [], 'no rate-limit key may be built from the raw address text');
+  assert.ok(textKey.test("  const ip = (req.ip ?? req.socket.remoteAddress ?? 'unknown').replace(/[^0-9a-fA-F.:-]/g, '');"), 'the pre-fix guard key must fail the rule');
+  assert.ok(!textKey.test("  const ip = clientIp(req);"), 'the fixed guard key must pass');
 });
 
 test('SEC-B3 index filters are honoured end to end now that shape #27 projects the number', () => {

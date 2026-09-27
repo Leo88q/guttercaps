@@ -17,7 +17,7 @@ import { wireEvent, WIRE_TYPE, snake } from '../src/wire.ts';
 import { readiness } from '../src/health.ts';
 import { createRedisGuard } from '../src/redis.ts';
 import type { RedisLike } from '../src/redis.ts';
-import { createWsHub, attachWs, PUBLIC_TYPES } from '../src/ws.ts';
+import { createWsHub, attachWs, PUBLIC_TYPES, wsConfigFromEnv, upgradeIp } from '../src/ws.ts';
 import { installShutdown } from '../src/shutdown.ts';
 import { ingestTx } from '../src/ingest.ts';
 import { tx, nextSig, hex32 } from './fixtures.ts';
@@ -345,10 +345,32 @@ describe('redis burst guard', () => {
     const keys: string[] = [];
     const guard = createRedisGuard({ client: fake(async (k) => { keys.push(k); return [1, 60_000]; }), limit: 5, windowMs: 60_000 });
     await hit(guard, '2001:db8::1');
-    expect(keys[0]).toMatch(/^rl:2001:db8::1:\d+$/);
+    // SEC-B42: the key is the canonical form the local limiter uses (`ipKey`), so an IPv6 client counts as
+    // its /64 — the raw text is never what goes into the key.
+    expect(keys[0]).toMatch(/^rl:2001:db8:0:0::\/64:\d+$/);
     const sameBucket = [...keys];
     await hit(guard, '2001:db8::1');
     expect(keys[1]).toBe(sameBucket[0]); // same minute → same key, so the counter actually accumulates
+  });
+
+  it('SEC-B42: one client is one bucket however the edge spells it (v4-mapped ≡ dotted, one /64 ≡ another)', async () => {
+    const keys: string[] = [];
+    const guard = createRedisGuard({ client: fake(async (k) => { keys.push(k); return [1, 60_000]; }), limit: 5, windowMs: 60_000 });
+    await hit(guard, '203.0.113.9');
+    await hit(guard, '::ffff:203.0.113.9');       // the same client arriving over a v6 edge
+    await hit(guard, '::FFFF:203.0.113.9');       // …however the proxy spelled it
+    expect(keys[1]).toBe(keys[0]);
+    expect(keys[2]).toBe(keys[0]);
+    await hit(guard, '2001:db8::5');              // two hosts of one /64
+    await hit(guard, '2001:0db8:0000:0000::6');   // …written out the long way
+    expect(keys[4]).toBe(keys[3]);
+    expect(keys[3]).not.toBe(keys[0]);
+    // and the count is what actually blocks: a caller that alternates spellings cannot reset its budget
+    let n = 0;
+    const sharing = createRedisGuard({ client: fake(async () => [++n, 60_000]), limit: 2, windowMs: 60_000 });
+    expect(await hit(sharing, '203.0.113.9')).toMatchObject({ next: true });
+    expect(await hit(sharing, '::ffff:203.0.113.9')).toMatchObject({ next: true });
+    expect((await hit(sharing, '203.0.113.9')).status).toBe(429);
   });
 
   it('connectRedis with no URL is a no-op handle, not a crash', async () => {
@@ -472,7 +494,7 @@ describe('websocket hub — isolated (backlog + capacity)', () => {
   // Own hub per case: both guards count live sockets, and the shared hub above has clients that other
   // tests closed only a moment ago — patching `wss.clients[0]` would then hit the wrong socket.
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-  const boot = async (opts: { maxClients?: number; maxBacklog?: number }) => {
+  const boot = async (opts: { maxClients?: number; maxBacklog?: number; allowedOrigins?: string[]; maxPerIp?: number; trustProxyHops?: number | true }) => {
     const db = new Db(':memory:');
     const server = http.createServer((_req, res) => { res.writeHead(404); res.end(); });
     const { hub, close } = attachWs(server, { db: () => db, pingMs: 0, ...opts });
@@ -483,6 +505,163 @@ describe('websocket hub — isolated (backlog + capacity)', () => {
       shutdown: async () => { await close(); await new Promise<void>((r) => server.close(() => r())); db.close(); },
     };
   };
+
+  /** Value of a counter over the current exposition text; `0` when the series does not exist yet. */
+  const counter = async (name: string, label: string): Promise<number> => {
+    const line = (await metrics.exposition()).split('\n').find((l) => l.startsWith(`${name}{`) && l.includes(`reason="${label}"`));
+    return Number(line?.trim().split(' ')[1] ?? 0);
+  };
+
+  it('SEC-B45 refuses a browser handshake from an origin the API does not serve, and lets a nameless client in', async () => {
+    // An upgrade is not subject to CORS, so this check is the only thing between a page on any origin and the
+    // /ws fan-out — the market frames the REST layer refuses it cross-origin, any wallet's activity in real
+    // time (`?wallet=` needs no session), and the whole WS_MAX_CLIENTS capacity.
+    const t = await boot({ allowedOrigins: ['https://app.guttercaps.gg'] });
+    try {
+      const handshake = (opts?: { origin?: string; headers?: Record<string, string> }) => new Promise<number>((res) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${t.port}/ws`, opts?.origin ? { origin: opts.origin } : opts?.headers ? { headers: opts.headers } : undefined);
+        ws.once('open', () => { ws.close(); res(1); });
+        ws.once('error', () => res(-1)); // a refused upgrade is an error, never an open socket
+        setTimeout(() => res(0), 2_000);
+      });
+      const before = await counter('ws_rejected_total', 'origin');
+      expect(await handshake({ origin: 'https://evil.example' })).toBe(-1);
+      expect(await counter('ws_rejected_total', 'origin')).toBe(before + 1);
+      expect(await handshake({ origin: 'https://app.guttercaps.gg' })).toBe(1);
+      expect(await handshake()).toBe(1); // no Origin: curl, a bot, a service — the header is a browser control
+      expect(await handshake({ headers: { 'x-forwarded-for': '203.0.113.9' } })).toBe(1); // and it is not an identity
+      expect(await counter('ws_rejected_total', 'origin')).toBe(before + 1); // nothing else was refused
+    } finally { await t.shutdown(); }
+  });
+
+  it('SEC-B46 caps concurrent sockets per client IP, gives the slot back, and ignores a spoofed chain', async () => {
+    const t = await boot({ maxPerIp: 1, trustProxyHops: 1 });
+    try {
+      const ip = '203.0.113.7';
+      // The refusal is a 1013 close *after* the handshake (the same shape as the process-wide capacity guard,
+      // which docs/09 §4.3 documents as "перебор → 1013"), so "accepted" means "still open a moment later".
+      const connect = (xff?: string) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${t.port}/ws`, xff ? { headers: { 'x-forwarded-for': xff } } : undefined);
+        const opened = new Promise<boolean>((res) => { ws.once('open', () => res(true)); ws.once('error', () => res(false)); setTimeout(() => res(false), 3_000); });
+        const closed = new Promise<number>((res) => { ws.once('close', (c) => res(c)); setTimeout(() => res(-1), 3_000); });
+        return { ws, opened, closed };
+      };
+      const a = connect(ip);
+      expect(await a.opened).toBe(true);
+      await sleep(150);
+      expect(t.hub.clients()).toBe(1); // a survived the grace period
+      const before = await counter('ws_rejected_total', 'per_ip');
+      const b = connect(ip);
+      expect(await b.closed).toBe(1013); // same IP → refused, the process-wide cap is not the only bound
+      expect(await counter('ws_rejected_total', 'per_ip')).toBe(before + 1);
+      // one trusted hop in front (nginx appends `$remote_addr`): the rightmost entry is the client, so a
+      // caller cannot spend another bucket by prefixing its own X-Forwarded-For
+      expect(await connect(`1.2.3.4, ${ip}`).closed).toBe(1013);
+      const other = connect('198.51.100.9');
+      expect(await other.opened).toBe(true);
+      expect(t.hub.clients()).toBe(2);
+      // the slot is given back when a socket closes (a ratcheting cap would refuse everyone eventually)
+      a.ws.close();
+      await sleep(150);
+      const again = connect(ip);
+      expect(await again.opened).toBe(true);
+      await sleep(100);
+      expect(t.hub.clients()).toBe(2);
+      other.ws.close(); again.ws.close();
+    } finally { await t.shutdown(); }
+  });
+
+  it('SEC-B46 the upgrade IP rule is Express’s `trust proxy` rule', async () => {
+    // Cross-checked against the library rather than against my own reading of the docs: an upgrade never
+    // reaches Express, so the two have to agree by hand — and a wrong answer here lumps every player behind
+    // the edge into one bucket (a self-inflicted outage), which is why it is pinned case by case.
+    const express = (await import('express')).default;
+    const cases: { xff?: string; hops: number | true }[] = [
+      { hops: 1 }, { hops: 2 }, { hops: true },
+      { xff: '203.0.113.9', hops: 1 },
+      { xff: '203.0.113.9', hops: 2 },                          // not enough hops → the leftmost entry
+      { xff: '198.51.100.7, 203.0.113.9', hops: 1 },            // the rightmost is what the edge appended
+      { xff: '198.51.100.7, 203.0.113.9', hops: 2 },
+      { xff: '198.51.100.7, 203.0.113.9', hops: true },         // trust everything → the caller's own claim
+      { xff: '  1.2.3.4 ,  5.6.7.8 ', hops: 2 },
+    ];
+    for (const c of cases) {
+      const app = express();
+      app.set('trust proxy', c.hops);
+      app.get('/', (req, res) => { res.json({ ip: req.ip }); });
+      const srv = http.createServer(app);
+      await new Promise<void>((r) => srv.listen(0, '127.0.0.1', () => r()));
+      try {
+        const url = `http://127.0.0.1:${(srv.address() as { port: number }).port}/`;
+        const { ip } = await (await fetch(url, { headers: c.xff ? { 'x-forwarded-for': c.xff } : {} })).json() as { ip: string };
+        expect(upgradeIp(c.xff, '127.0.0.1', c.hops), `xff=${c.xff ?? '(none)'} hops=${c.hops}`).toBe(ip);
+      } finally {
+        await new Promise<void>((r) => srv.close(() => r()));
+      }
+    }
+  });
+
+  it('SEC-B41: a typo\'d WS_* value falls back to the documented default instead of switching a guard off', () => {
+    const saved = { ...process.env };
+    try {
+      // `Number('500x')` is NaN, and `queued + buffered + bytes > NaN` is false — i.e. the outbox bound would
+      // simply not exist while WS_MAX_BACKLOG_BYTES looked set. Production refuses to start on these (config.ts);
+      // this is the dev path, and it has to land on the same numbers `/metrics` reports.
+      process.env.WS_MAX_CLIENTS = '500x'; process.env.WS_MAX_BACKLOG_BYTES = '0'; process.env.WS_PING_MS = 'NaN';
+      expect(wsConfigFromEnv()).toEqual({ maxClients: 500, pingMs: 30_000, maxBacklog: 1 << 20 });
+      process.env.WS_MAX_CLIENTS = '50'; process.env.WS_MAX_BACKLOG_BYTES = '4096'; process.env.WS_PING_MS = '0';
+      expect(wsConfigFromEnv()).toEqual({ maxClients: 50, pingMs: 0, maxBacklog: 4096 }); // 0 = liveness explicitly off
+    } finally {
+      for (const k of ['WS_MAX_CLIENTS', 'WS_MAX_BACKLOG_BYTES', 'WS_PING_MS']) delete process.env[k];
+      Object.assign(process.env, saved);
+    }
+  });
+
+  it('SEC-B41: drops a slow client on bytes actually queued, for frames far smaller than the cap', async () => {
+    // The shape that used to grow without bound: `drain` awaits each `send` callback, so at most one frame is
+    // ever in flight and `socket.bufferedAmount` stays near zero while the hub holds the rest in `queue`. The
+    // probe behind this test sent 6000 × 190 B frames to a client that read nothing: `bufferedAmount` 0,
+    // `queue` ≈ 5999, no drop — because the guard read `bufferedAmount + frame.length`. A ~1 KB frame is
+    // below this hub's 2 KiB cap on purpose: with the old arithmetic it could not trip either.
+    const t = await boot({ maxBacklog: 2048 });
+    try {
+      const w = Keypair.generate().publicKey.toBase58();
+      const ws = new WebSocket(`ws://127.0.0.1:${t.port}/ws?wallet=${w}`);
+      await new Promise<void>((res) => ws.once('open', () => res()));
+      await sleep(50);
+      const [sock] = [...t.hub.wss.clients];
+      expect(sock).toBeTruthy();
+      const closing = new Promise<number>((res) => { ws.once('close', (c) => res(c)); setTimeout(() => res(-1), 3_000); });
+      const before = await counter('ws_dropped_total', 'backlog');
+      // one synchronous burst, so nothing has been flushed yet: `queued` crosses the cap while bufferedAmount
+      // is still ~0
+      for (let i = 0; i < 200; i++) t.hub.broadcast({ wallets: [w], type: 'pack_opened', payload: { i, pad: 'x'.repeat(900) } });
+      expect(await closing).not.toBe(-1); // 1006: terminated, not buffered
+      expect(await counter('ws_dropped_total', 'backlog')).toBeGreaterThan(before);
+      await sleep(50);
+      expect(t.hub.clients()).toBe(0);
+      ws.close();
+    } finally { await t.shutdown(); }
+  });
+
+  it('SEC-B41: a burst that stays under the cap is still delivered whole', async () => {
+    // The other direction: the bound must not drop a client that is merely a little behind.
+    const t = await boot({ maxBacklog: 4096 });
+    try {
+      const w = Keypair.generate().publicKey.toBase58();
+      const ws = new WebSocket(`ws://127.0.0.1:${t.port}/ws?wallet=${w}`);
+      const frames: Record<string, unknown>[] = [];
+      ws.on('message', (raw: Buffer) => frames.push(JSON.parse(String(raw)) as Record<string, unknown>));
+      await new Promise<void>((res) => ws.once('open', () => res()));
+      const before = await counter('ws_dropped_total', 'backlog');
+      for (let i = 0; i < 3; i++) t.hub.broadcast({ wallets: [w], type: 'pack_opened', payload: { i, pad: 'x'.repeat(100) } });
+      await sleep(300);
+      expect(frames.filter((f) => f.type === 'pack_opened')).toHaveLength(3);
+      expect(await counter('ws_dropped_total', 'backlog')).toBe(before);
+      expect(t.hub.clients()).toBe(1);
+      ws.close();
+    } finally { await t.shutdown(); }
+  });
 
   it('drops a client whose send buffer is over the backlog limit instead of buffering it', async () => {
     const t = await boot({ maxBacklog: 1024 });

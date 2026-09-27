@@ -427,6 +427,14 @@ the chain's reason), `/fusion/suggest` (auth), `/staking/overview`, `/staking/me
   every 10 s (the pusher in `ops/pyth-pusher/` posts them); the `*_USD_FALLBACK` env values
   only cover a fresh dev database and are used for USD display, never for on-chain amounts —
   `/packs/quote` refuses (503) instead of guessing.
+* `/ws` fan-out (`src/ws.ts`): `WS_MAX_CLIENTS` bounds the **process**, `WS_MAX_PER_IP` (32) bounds **one
+  client IP** — both refuse with 1013 — `WS_MAX_BACKLOG_BYTES` bounds the bytes held for a socket (`ping`,
+  `{"type":"ping"}` replies and the greeting all go through it), `WS_PING_MS` is the liveness ping, and an
+  `Origin` that is not in `CORS_ORIGINS` is refused at the upgrade (a WebSocket is not subject to CORS; a
+  request without `Origin` — curl, a bot — is allowed). With `EVENT_BUS=redis`, a Redis that does not answer
+  `SUBSCRIBE` within `EVENT_BUS_CONNECT_TIMEOUT_MS` (3 s) does **not** block the boot: the fan-out degrades to
+  in-process, `/metrics` reports `event_bus_redis 0` and `EventBusDegraded` fires — restart `api` once Redis
+  is healthy, the decision is made at boot and is not retried.
 * Crank: run **two** replicas against the same DB (jobs are keyed and every send re-reads the
   chain, so duplicates only cost a failed simulation); one of them may live in another region.
   Alert on `/health.crank.healthy == false`, on the `ALERT` log lines (payer balance, abandoned
@@ -438,7 +446,7 @@ the chain's reason), `/fusion/suggest` (auth), `/staking/overview`, `/staking/me
 ## Tests
 
 ```bash
-npm test          # vitest: 456 tests — codec round-trips for all 56 events, CPI attribution,
+npm test          # vitest: 471 tests — codec round-trips for all 56 events, CPI attribution,
                   # idempotent ingest, rebuild equivalence, failed-fusion refunds, floors,
                   # SIWS (bad signature, nonce reuse, CSRF), handle lifecycle, service claims,
                   # Pyth PriceUpdateV2 decode/validate (owner, feed, verification, age),

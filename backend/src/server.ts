@@ -7,7 +7,9 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import type { Connection } from '@solana/web3.js';
 import cors from 'cors';
 import { isSolanaAddress } from './base58.ts';
-import { CORS_ORIGINS, CORS_ALLOW_CREDENTIALS, WS_PATH, assertProductionConfig } from './config.ts';
+import { CORS_ORIGINS, CORS_ALLOW_CREDENTIALS, WS_PATH, EVENT_BUS, REDIS_URL, TRUST_PROXY_HOPS, assertProductionConfig } from './config.ts';
+import { bus } from './bus.ts';
+import { wsConfigFromEnv } from './ws.ts';
 import { requestLogger, routePattern, log, errFields } from './log.ts';
 import { metrics, exposition, registerScrape } from './metrics.ts';
 import { geoOf } from './geo.ts';
@@ -95,8 +97,9 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   // Behind a CDN/LB `trust proxy` is what makes `req.ip` the client, not the edge. `true` trusts every
   // hop, which is right for compose/nginx and wrong for an open origin — the IP is a rate-limit key,
   // so a spoofable XFF is a free bypass. Set TRUST_PROXY_HOPS to a number in production.
-  const hops = Number(process.env.TRUST_PROXY_HOPS ?? (process.env.NODE_ENV === 'production' ? 1 : true));
-  app.set('trust proxy', Number.isFinite(hops) && hops > 0 ? hops : true);
+  // The value lives in `config.ts` because the `/ws` upgrade (SEC-B46) has to resolve the same client the
+  // same way: an upgrade never reaches Express, so it cannot inherit this setting.
+  app.set('trust proxy', TRUST_PROXY_HOPS);
   app.disable('x-powered-by');
   app.use(requestLogger({ logLines: deps.accessLog !== false }));
   app.use(cors({
@@ -115,6 +118,18 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), usb=()');
     res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    // SEC-B44: a default for the one thing an API must never leave to the cache's judgement. Cookie
+    // authentication is not `Authorization`, so RFC 9111's "a shared cache must not store an authorised
+    // response" does not cover `/v1/me`, `/v1/session` or the wallet feeds, and this deployment does aim at
+    // a Cloudflare edge (`GEO_GATE` needs one — see docker-compose). With no Cache-Control at all a
+    // cache is free to *store* those responses and to apply its own heuristic freshness, which is the
+    // classic way one player's balance ends up in another player's browser. `private` keeps even a
+    // correctly-configured shared cache out of it, `no-store` keeps it out of the disk cache.
+    // A handler that wants something else sets its own header and overrides this (`/packs/quote` below).
+    // Deliberately *not* `public, max-age=…` on the read-only market endpoints: the single-writer SQLite is
+    // the load we care about, the client already carries per-hook staleTime, and a cache in front of a
+    // projection that an indexer updates in place is a staleness bug waiting for a money screen.
+    res.setHeader('Cache-Control', 'private, no-store');
     next();
   });
   app.use((req, res, next) => {
@@ -186,6 +201,17 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   registerScrape('indexer_gaps_pending', 'Signatures the RPC has not served that a heal tick will retry (/health.indexerGaps).', () => [{ value: gapStatus(db).pending }]);
   registerScrape('indexer_gaps_parked', 'Signatures parked at the attempt cap: the provider no longer serves them — repair with `npm run backend:backfill -- --repair-gaps` against an archival RPC (/health.indexerGaps).', () => [{ value: gapStatus(db).parked }]);
   registerScrape('crank_pending_jobs', 'Crank jobs not yet settled.', async () => { const r = await ready(); return [{ value: r.crank.pending }]; });
+  // SEC-B40: `EVENT_BUS=redis` that fell back to the in-process bus is a degradation nobody can see from
+  // the outside — this replica serves REST perfectly and simply never receives another replica's frames
+  // (clients poll, so the UI is stale, not broken). The series exists **only** where Redis was asked for,
+  // so `event_bus_redis == 0` (see ops/monitoring/alerts.yml → EventBusDegraded) cannot fire on a
+  // deliberately single-process deployment.
+  // The denominator of the WsSaturation alert (SEC-B41). A scrape gauge, not a readiness-derived one: it is
+  // static configuration, and an alert whose denominator only appears after the first /readyz probe would be
+  // blind in exactly the window a restarting replica is being watched. It reports the *effective* cap
+  // (`wsConfigFromEnv`, i.e. the same clamped value the hub uses), never a raw `NaN` from a typo'd env.
+  registerScrape('ws_max_clients', 'Concurrent sockets this process accepts, as the hub reads WS_MAX_CLIENTS.', () => [{ value: wsConfigFromEnv().maxClients }]);
+  registerScrape('event_bus_redis', '1 when the cross-process Redis event bus is installed; 0 when EVENT_BUS=redis was configured but this process fell back to the in-process bus (absent when Redis is not configured).', () => (EVENT_BUS === 'redis' && REDIS_URL ? [{ value: bus().kind === 'redis' ? 1 : 0 }] : []));
   registerScrape('pyth_cache_age_seconds', 'Age of the freshest cached Pyth price, seconds.', async () => { const r = await ready(); return [{ value: r.prices.worstAgeS ?? -1 }]; });
   registerScrape('rng_queue_age_seconds', 'Age of the oldest pending randomness reveal.', () => {
     const s = q.crankStatus(db);

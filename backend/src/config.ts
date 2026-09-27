@@ -64,10 +64,22 @@ export const RATE_LIMIT_REDIS_WINDOW_MS = Number(env.RATE_LIMIT_REDIS_WINDOW_MS 
 /** `inproc` (single process, default) | `redis` (indexer and API in different containers) | `off`. */
 export const EVENT_BUS: 'off' | 'inproc' | 'redis' = (env.EVENT_BUS as 'off' | 'inproc' | 'redis') || 'inproc';
 export const EVENT_BUS_CHANNEL = env.EVENT_BUS_CHANNEL ?? 'chip:events';
+/**
+ * `trust proxy` for both the HTTP layer and the `/ws` upgrade: the number of hops from the edge to trust.
+ * `1` in production, `true` (trust everything) everywhere else — a dev box has no edge and a spoofable
+ * `X-Forwarded-For` there only breaks your own rate-limit keys. See `ws.ts::upgradeIp` for the rule itself.
+ */
+export const TRUST_PROXY_HOPS: number | true = (() => {
+  const n = Number(env.TRUST_PROXY_HOPS ?? (env.NODE_ENV === 'production' ? 1 : true));
+  return Number.isFinite(n) && n > 0 ? n : true;
+})();
+
 export const WS_PATH = env.WS_PATH ?? '/ws';
 export const WS_MAX_CLIENTS = Number(env.WS_MAX_CLIENTS ?? 500);
 export const WS_PING_MS = Number(env.WS_PING_MS ?? 30_000);
 export const WS_MAX_BACKLOG_BYTES = Number(env.WS_MAX_BACKLOG_BYTES ?? 1 << 20);
+/** SEC-B46: concurrent sockets one client IP may hold (0 = no per-IP cap). */
+export const WS_MAX_PER_IP = Number(env.WS_MAX_PER_IP ?? 32);
 /**
  * Run the on-chain indexer *inside* the API process (docs/09 §4.1). `1` (the default) is what makes
  * `/ws` work on a single box without Redis: the frames are produced by the same process that owns the
@@ -171,7 +183,13 @@ export function assertProductionConfig(): void {
   if (!API_INGEST && EVENT_BUS !== 'redis') problems.push('API_INGEST=0 with a non-redis event bus: nothing would ever reach /ws — either run the indexer in this process, or set EVENT_BUS=redis + REDIS_URL');
   if (!API_INGEST && !LISTEN_HEAL_EVERY_MS) problems.push('API_INGEST=0 assumes a separate `npm run listen` process is running (docs/09 §4.1) — if it is not, the projections never advance');
   if (EVENT_BUS === 'off' && !CORS_ORIGINS.includes('*')) problems.push('EVENT_BUS=off disables /ws fan-out: the client silently degrades to polling, which is a choice, not a default');
-  if (WS_MAX_CLIENTS <= 0) problems.push('WS_MAX_CLIENTS must be > 0 (0 means unbounded sockets per process)');
+  // SEC-B41. A NaN — a typo'd `WS_MAX_CLIENTS=500x` — passes `<= 0` and every cap comparison below is then
+  // false, i.e. the value looks configured and disables the guard. Same for the outbox: a backlog cap below
+  // one frame would drop every client at the greeting, and `WS_PING_MS=NaN` silently turns liveness off.
+  if (!Number.isFinite(WS_MAX_CLIENTS) || WS_MAX_CLIENTS <= 0) problems.push('WS_MAX_CLIENTS must be a number > 0 (0 or a typo like `500x` means unbounded sockets per process)');
+  if (!Number.isFinite(WS_MAX_BACKLOG_BYTES) || WS_MAX_BACKLOG_BYTES < 1024) problems.push('WS_MAX_BACKLOG_BYTES must be a number ≥ 1024 (the per-socket outbox bound; anything smaller refuses every frame)');
+  if (!Number.isFinite(WS_PING_MS) || WS_PING_MS < 0) problems.push('WS_PING_MS must be a number ≥ 0 (a typo turns the stalled-socket check off)');
+  if (!Number.isFinite(WS_MAX_PER_IP) || WS_MAX_PER_IP < 0) problems.push('WS_MAX_PER_IP must be a number ≥ 0 (0 disables the per-IP socket cap)');
   if (SHUTDOWN_TIMEOUT_MS <= 2_000) problems.push('SHUTDOWN_TIMEOUT_MS must leave room to drain in-flight requests and let the crank finish its current iteration');
   // A gate that is "on" but cannot see a country is worse than off: it produces a config that looks
   // compliant in review and sells to nobody/everybody depending on who reads the code first.
