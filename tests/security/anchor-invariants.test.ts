@@ -369,7 +369,9 @@ function claimNonceStrideViolations(srcOf: (rel: string) => string): string[] {
   if (!/\(pack_no as u64\)\s*\*\s*MAX_CHIPS_PER_PACK as u64/.test(compressed)) out.push('the per-pack factor changed — re-derive the bound');
   // the purchase bound must be the same constant the stride was sized for (a literal 25 could drift)
   const packs = stripComments(srcOf('programs/chip_core/src/instructions/packs.rs'));
-  if (!/require!\(\(1\.\.=MAX_PACK_QTY\)\.contains\(&qty\)/.test(packs)) out.push('buy_pack no longer bounds qty by MAX_PACK_QTY');
+  // whitespace-tolerant on purpose: rustfmt (the pinned image in CI) broke this `require!` across
+  // lines, and a gate that only matches the unformatted spelling fails on a formatting commit.
+  if (!/require!\(\s*\(1\.\.=MAX_PACK_QTY\)\.contains\(&qty\)/.test(packs)) out.push('buy_pack no longer bounds qty by MAX_PACK_QTY');
   return out;
 }
 
@@ -378,7 +380,8 @@ test('SEC-B19 the compressed claim-nonce stride covers the largest pack bundle (
   // the rule is not vacuous: shrinking the stride below MAX_PACK_QTY x MAX_CHIPS_PER_PACK must fail it
   const shrunk = (rel: string) => src(rel).replace('const COMPRESSED_CLAIM_PACK_STRIDE: u64 = 128;', 'const COMPRESSED_CLAIM_PACK_STRIDE: u64 = 64;');
   assert.ok(claimNonceStrideViolations(shrunk).some((v) => /claim PDAs collide/.test(v)), 'rule must fail on a stride below the bound');
-  const noAssert = (rel: string) => src(rel).replace(/const _: \(\) = assert!\s*\([\s\S]*?\);/, '');
+  // whitespace-tolerant again: `cargo fmt` writes `const _: () =` and `assert!(...)` on two lines
+  const noAssert = (rel: string) => src(rel).replace(/const _:\s*\(\)\s*=\s*assert!\s*\([\s\S]*?\);/, '');
   assert.ok(claimNonceStrideViolations(noAssert).some((v) => /compile-time stride assert/.test(v)), 'rule must notice a deleted const assert');
 });
 
