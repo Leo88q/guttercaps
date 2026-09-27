@@ -190,6 +190,25 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   as usize);` — a build failure instead of a silent one-in-128 bricked pack. Pinned in both directions by the
   new `SEC-B19` static rule (which also fails if the `assert!` is deleted or the stride shrinks).
 
+- **SEC-B20 (2026-09-27): accepted risk — a DNS/registrar hijack is the one class code cannot close.**
+  `ops/deploy/runbook.md` §1.3 fixes the TLS boundary only ("the certificate lives where the DNS lives");
+  registrar transfer-lock, DNSSEC and CAA appear nowhere in the repository and cannot be automated from it.
+  The Parcl precedent is the shape: take the apex record, serve your own front end from *our* origin, ask for a
+  signature. What is already in place is not a defence against that and should not be read as one: the landing
+  CSP (`default-src 'none'`, our own fonts — SEC-B4) and the app CSP without third-party script origins
+  (SEC-B9) describe the document *we* ship, not the one an attacker serves from our domain, and "the client
+  never signs a server-supplied transaction" (SEC-B6/B10) only means a hijacked bundle has to build the drain
+  itself. Owner: ops, before G-2 — registrar lock + 2FA, DNSSEC, CAA, short apex TTL, change monitoring, with
+  a `dig` transcript in the release checklist as the evidence.
+- **SEC-B21 (2026-09-27): accepted risk — Trident fuzzing is not run.** There is no fuzz target and no CI job
+  in the tree, which makes this the only part-1 checklist item with no artifact. The class it would cover is
+  held today by `cargo test` (golden economy + unit/invariant tests, the `rust-lints` job), the 92 LiteSVM
+  scenarios (`localnet`), the 81 static gates with mutation self-tests (`security:static`) and the structural
+  invariants in `tests/security/anchor-invariants.test.ts` (SEC-B19 is one of them). Owner: programs, before
+  mainnet — targets on `buy_pack` / `fuse` / `market settle` asserting the same "Σ liabilities ≤ vault balance"
+  rule the ledgers enforce on chain; until then a new constant or account layout is closed by a compile-time
+  `assert!` or a gate, not by hope.
+
 ## Current exposure of this repository (from `docs/09-production-readiness.md`)
 
 `npm audit --omit=dev` reports one advisory chain in the production tree: `bigint-buffer`
