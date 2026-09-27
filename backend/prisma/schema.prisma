@@ -32,6 +32,10 @@ model EventRaw {
   /// SEC-M5: set by the finality reconciler once the cluster reports the tx finalized; NULL = confirmed only.
   /// Value-bearing reads (paid services, quest roots, referrals) only trust rows with finalizedAt set.
   finalizedAt DateTime? @map("finalized_at")
+  /// SEC-B13: attempts made by `healEventTimes` to fill a NULL `blockTime` (retrieval attempt, not a count
+  /// of successes). Rows first seen over the websocket have no block time until a re-read heals them; a
+  /// signature the RPC no longer serves is parked at the cap instead of being retried for ever.
+  timeHealAttempts Int @default(0) @map("time_heal_attempts")
 
   /// idempotency is the triple's job, not the primary key's: `INSERT OR IGNORE` on
   /// (signature, ix_index, event_index) is what makes a re-scanned slot harmless.
@@ -39,6 +43,7 @@ model EventRaw {
   @@index([program, name, slot])
   @@index([processed, slot])
   @@index([finalizedAt, slot])
+  @@index([blockTime, slot])
   @@map("events_raw")
 }
 
@@ -47,14 +52,31 @@ model IndexerCursor {
   /// Column names are the indexer's, not the documentation's: ingest.ts upserts
   /// (program, newest_signature, newest_slot, history_complete, updated_at) — see backend/src/ingest.ts:96-105.
   /// A target table with `last_slot`/`last_sig` would ship a Postgres rollout whose very first write fails.
-  /// `history_complete` is the backfill flag (`npm run backend:backfill` sets it after a full walk); the
-  /// readyz probe reads it, so it cannot be an optional extra either.
+  /// `history_complete` is the backfill flag (`npm run backend:backfill` sets it after a full walk and
+  /// leaves it 0 when the walk could not fetch a signature it saw — SEC-B27); `/health.indexerGaps` and
+  /// `npm run backend:backfill -- --repair-gaps` are what read it back.
   newestSignature  String?  @map("newest_signature")
   newestSlot       BigInt?  @map("newest_slot")
   historyComplete  Boolean  @default(false) @map("history_complete")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
   @@map("indexer_cursor")
+}
+
+/// SEC-B27: one row per signature the history walk saw but could not fetch. Until these drain, the
+/// projections are missing whatever those transactions emitted — the reason `history_complete` is 0.
+model IndexerGap {
+  program     String
+  signature   String
+  slot        BigInt
+  firstSeen   DateTime  @map("first_seen")
+  /// Retry counter; at INDEXER_GAP_MAX_ATTEMPTS the row is parked for the operator instead of the ticks.
+  attempts    Int       @default(0)
+  lastAttempt DateTime? @map("last_attempt")
+
+  @@id([program, signature])
+  @@index([slot])
+  @@map("indexer_gaps")
 }
 
 // ---------------------------------------------------------------------------
@@ -142,7 +164,8 @@ model Chip {
   collectionIdx Int      @map("collection_idx")
   rarity        Int      // 0..8, ladder fixed
   level         Int      @default(1)
-  indexNo       BigInt   @map("index_no")
+  indexNo       BigInt   @map("index_no") // the game mint number (`Name #N`) — the SQLite indexer keeps it in `chips.game_index`
+  gameIndex     BigInt?  @map("game_index") // NULL = the number is not resolved on chain yet (the crank back-fills it from ChipState)
   flags         Int      @default(0) // bit0 staked, bit1 listed, bit2 fusing, bit3 soulbound
   lockUntil     DateTime? @map("lock_until")
   origin        String   @default("pack") // pack | fusion | reward
@@ -150,6 +173,7 @@ model Chip {
   mintedAt      DateTime @map("minted_at")
   burnedAt      DateTime? @map("burned_at")
   updatedSlot   BigInt   @map("updated_slot")
+  indexAttempts Int      @default(0) @map("index_attempts") // SQLite-only bookkeeping for the back-fill queue (parked at CRANK_INDEX_ATTEMPTS)
   w             Wallet   @relation(fields: [owner], references: [address])
   listing       Listing?
 
@@ -271,6 +295,12 @@ model CompressedClaim {
   rarity            Int?
   level             Int?
   gameIndex         BigInt? @map("game_index")
+  claim             String?
+  owner             String?
+  listed            Int     @default(0)
+  staked            Int     @default(0)
+  price             String?
+  currency          Int?
   mintSignature     String? @map("mint_signature")
   registerSignature String? @map("register_signature")
   slot              BigInt
@@ -280,6 +310,7 @@ model CompressedClaim {
   @@id([buyer, nonce, claimNonce])
   @@index([status, slot])
   @@index([asset])
+  @@index([claim])
   @@map("compressed_claims")
 }
 
@@ -979,6 +1010,9 @@ model HandleReservation {
 /// Switchboard randomness account we shepherd. key = kind:owner:nonce.
 /// phase: pending → settled (pinned account gone) → closed (rent reclaimed); stale = refund
 /// window open with a silent oracle; abandoned = CRANK_MAX_ATTEMPTS exhausted (alert, hourly retry).
+/// `lut_slot` / `lut_closed_at` (SEC-M8, backlog #23): the request's Switchboard address lookup table,
+/// and when its rent was reclaimed — recorded while the randomness account still exists, because that
+/// account is the only place the slot is written.
 model CrankJob {
   key        String   @id
   kind       Int      // 0 pack | 1 fusion | 2 battle
@@ -994,6 +1028,8 @@ model CrankJob {
   revealSig  String?  @map("reveal_sig")
   settleSigs Json     @default("[]") @map("settle_sigs")
   closeSig   String?  @map("close_sig")
+  lutSlot    BigInt?  @map("lut_slot")      // Switchboard lookup-table slot of this request (NULL = not recorded)
+  lutClosedAt DateTime? @map("lut_closed_at") // when close_randomness_lut landed (second half of the rent)
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 

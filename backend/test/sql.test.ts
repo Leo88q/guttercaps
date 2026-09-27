@@ -8,7 +8,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { foldEq, getDialect, insertIfAbsent, insertIgnore, jsonAt, jsonFlagEq, placeholders, setDialect, upsert } from '../src/sql.ts';
+import { foldEq, getDialect, insertIfAbsent, insertIgnore, jsonAt, jsonFlagEq, likeContains, likePattern, placeholders, setDialect, upsert } from '../src/sql.ts';
 
 const SRC_DIR = new URL('../src/', import.meta.url).pathname;
 afterEach(() => setDialect('sqlite'));
@@ -31,7 +31,16 @@ describe('builders', () => {
     expect(jsonAt('data', 'buyer')).toBe(`json_extract(data, '$.buyer')`);
     expect(jsonFlagEq('flags', 'shadowBanned', false)).toBe(`COALESCE(json_extract(flags, '$.shadowBanned'), 0) = 0`);
     expect(placeholders(4)).toBe('?, ?, ?, ?');
+    // SEC-B36: the LIKE pair, pinned as one contract. Escaping without `ESCAPE` is a literal backslash in
+    // SQLite (no default escape character) and an active escape in Postgres — the same source, two different
+    // queries; and without the escaping the bound value *is* a pattern.
+    expect(likeContains('data')).toBe(`data LIKE ? ESCAPE '\\'`);
+    expect(likePattern('5wfP')).toBe('%5wfP%');
+    expect(likePattern('%_\\')).toBe('%\\%\\_\\\\%');
+    expect(likePattern('')).toBe('%%');
   });
+
+
 
   it('swap only the clause, never the meaning, on Postgres', () => {
     setDialect('postgres');
@@ -67,10 +76,19 @@ describe('builders', () => {
     }
   });
 
-  it('escapes a key it is handed, because it inlines the key into the statement text', () => {
-    expect(jsonAt('data', "x'")).toBe(`json_extract(data, '$.x'')`);
-    setDialect('postgres');
-    expect(jsonAt('data', "x'")).toBe(`(data)::jsonb->>'x'''`);
+  // The key is inlined into the statement text, not bound, so the identifier rule is the defence — and it
+  // has to hold in both dialects: the Postgres branch escaped the quote and the SQLite one did not, which
+  // is exactly how a helper that is safe in one dialect becomes an injection in the other.
+  it('refuse a JSON key that is not an identifier (the key is interposed, never bound)', () => {
+    for (const bad of [`x'`, `a') OR 1=1 --`, 'x.y', '', 'a b', 'k'.repeat(65)]) {
+      for (const d of ['sqlite', 'postgres'] as const) {
+        setDialect(d);
+        expect(() => jsonAt('data', bad)).toThrow(/json key must be an identifier/);
+        expect(() => jsonFlagEq('flags', bad, true)).toThrow(/json key must be an identifier/);
+      }
+    }
+    setDialect('sqlite');
+    expect(jsonAt('data', 'shadowBanned')).toBe(`json_extract(data, '$.shadowBanned')`);
   });
 });
 

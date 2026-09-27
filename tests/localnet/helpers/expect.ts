@@ -11,7 +11,7 @@ const CHIP_CORE = [
   'RandomnessMismatch', 'NotStale', 'InvalidCollection', 'CollectionExists', 'NotAssetOwner', 'WrongCollection', 'ChipNotFree', 'InvalidChipState',
   'MaterialRarityMismatch', 'MaterialCollectionMismatch', 'DuplicateMaterial', 'NoRecipe', 'NoBooster', 'StillLocked', 'NotProgramCaller', 'InvalidElement',
   'InvalidService', 'ServiceDailyCap', 'RandomnessAuthority', 'RandomnessUsed', 'PriceUncertain', 'AccountNotWritable', 'InvalidShard', 'InvalidVoucher', 'InvalidBubblegumTree', 'InvalidBubblegumProof',
-  'CompressedMigrationRequired', 'CgPriceGuardRail', 'NotUpgradeAuthority',
+  'CompressedMigrationRequired', 'CgPriceGuardRail', 'NotUpgradeAuthority', 'InvalidConfigAddress',
 ] as const;
 const MARKET = ['PriceTooLow', 'NotOwner', 'NotSeller', 'CurrencyMismatch', 'OfferExpired', 'TtlTooLong', 'SelfTrade', 'Overflow', 'ChipLocked', 'MissingAccounts', 'CompressedClaimNotTradable', 'CompressedCurrencyMismatch', 'InvalidTreasury', 'InvalidBuyback', 'ListingPriceChanged'] as const;
 const STAKING = [

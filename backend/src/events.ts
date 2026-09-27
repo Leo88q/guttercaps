@@ -49,13 +49,33 @@ export const EVENT_SPECS: readonly EventSpec[] = [
   ]),
   spec('chip_core', 'CompressedClaimCancelled', [['buyer', 'pubkey'], ['nonce', 'u64'], ['claimNonce', 'u64']]),
   spec('chip_core', 'CompressedPackSettled', [['buyer', 'pubkey'], ['nonce', 'u64'], ['refunded', 'bool']]),
+  // SEC-B34: both carry the claim PDA as their last field. `buyer` / `owner` is the claim's *current*
+  // holder and the claim market changes it, while the read model's row is keyed by the immutable origin —
+  // without the PDA the two events had no join key at all, and a claim bought pre-mint registered into no
+  // `chips` row (see `resolveClaimPda` in projections.ts).
   spec('chip_core', 'CompressedChipMinted', [
     ['buyer', 'pubkey'], ['collectionIdx', 'u8'], ['claimNonce', 'u64'], ['rarity', 'u8'], ['level', 'u8'], ['gameIndex', 'u64'],
+    ['claim', 'pubkey'],
   ]),
   spec('chip_core', 'CompressedChipRegistered', [
     ['asset', 'pubkey'], ['claimNonce', 'u64'], ['collectionIdx', 'u8'], ['merkleTree', 'pubkey'], ['leafIndex', 'u32'], ['leafNonce', 'u64'],
     ['owner', 'pubkey'], ['delegate', 'pubkey'], ['rarity', 'u8'], ['level', 'u8'], ['gameIndex', 'u64'], ['flags', 'u8'], ['lockUntil', 'i64'],
+    ['claim', 'pubkey'],
   ]),
+  // SEC-F4: `stage_compressed_chip` is the one admin path that creates a settlement-free claim of any
+  // rarity out of thin air (fusable, listable, stakeable). It emitted nothing before 2026-09-25.
+  spec('chip_core', 'CompressedChipStaged', [
+    ['admin', 'pubkey'], ['buyer', 'pubkey'], ['claim', 'pubkey'], ['collectionIdx', 'u8'], ['rarity', 'u8'],
+    ['level', 'u8'], ['gameIndex', 'u64'], ['expiresAt', 'i64'],
+  ]),
+  // SEC-B31: the claim's own listed / staked / owner transitions. Emitted by chip_core through the
+  // market_auth / stake_auth CPIs, i.e. they are the *authoritative* claim state: a listing cancel emits
+  // only `CompressedClaimListedSet(false)` (the market has no cancel event for this path), and a transfer
+  // clears both flags. They also carry the claim PDA, which is what maps a claim to its registered asset
+  // (`compressed_claims.claim`) — without that the `Staked{key: claim}` row set no chip flag at all.
+  spec('chip_core', 'CompressedClaimListedSet', [['claim', 'pubkey'], ['buyer', 'pubkey'], ['listed', 'bool']]),
+  spec('chip_core', 'CompressedClaimStakedSet', [['claim', 'pubkey'], ['buyer', 'pubkey'], ['staked', 'bool']]),
+  spec('chip_core', 'CompressedClaimTransferred', [['claim', 'pubkey'], ['from', 'pubkey'], ['to', 'pubkey']]),
   spec('chip_core', 'VoucherIssued', [['wallet', 'pubkey'], ['nonce', 'u64'], ['template', 'u8'], ['randomness', 'pubkey']]),
   spec('chip_core', 'ChipFused', [
     ['owner', 'pubkey'], ['recipe', 'u8'], ['materials', ['pubkey', MATERIALS_PER_FUSION]], ['result', 'pubkey'],
@@ -76,6 +96,23 @@ export const EVENT_SPECS: readonly EventSpec[] = [
   ]),
   spec('chip_core', 'ChipFlagsChanged', [['asset', 'pubkey'], ['flags', 'u8'], ['lockUntil', 'i64']]),
   spec('chip_core', 'ParamsChanged', [['admin', 'pubkey'], ['version', 'u32']]),
+  // SEC-B22: the descriptive companion to `ParamsChanged` — same `admin`/`version`, plus what moved.
+  // `changed` is the field bitmask from admin.rs (bit = field present in the patch); addresses whose
+  // bit is clear are the previous values, not "zeroed". Scalars only, so the codec needs no Option.
+  spec('chip_core', 'ParamsPatched', [
+    ['admin', 'pubkey'],
+    ['version', 'u32'],
+    ['changed', 'u16'],
+    ['treasury', 'pubkey'],
+    ['buybackWallet', 'pubkey'],
+    ['pythSolUsdFeed', 'pubkey'],
+    ['pythSkrUsdFeed', 'pubkey'],
+    ['skrMint', 'pubkey'],
+    ['marketFeeBps', 'u16'],
+    ['skrDiscountBps', 'u16'],
+    ['featuredCollection', 'u8'],
+    ['packs', 'bool'],
+  ]),
   spec('chip_core', 'PauseChanged', [['by', 'pubkey'], ['paused', 'bool']], ['staking', 'arena']), // SEC-H2 pauser audit trail
   // SEC-G05 governance audit trail: key rotations that were silent before (Watchtower SW027).
   spec('chip_core', 'PauserChanged', [['by', 'pubkey'], ['pauser', 'pubkey']], ['staking', 'arena']),
@@ -90,6 +127,15 @@ export const EVENT_SPECS: readonly EventSpec[] = [
   spec('market', 'ChipSold', [['asset', 'pubkey'], ['seller', 'pubkey'], ['buyer', 'pubkey'], ['price', 'u64'], ['currency', 'u8'], ['fee', 'u64'], ['royalty', 'u64'], ['viaOffer', 'bool']]),
   spec('market', 'OfferMade', [['asset', 'pubkey'], ['bidder', 'pubkey'], ['amount', 'u64'], ['expiresAt', 'i64']]),
   spec('market', 'OfferCancelled', [['asset', 'pubkey'], ['bidder', 'pubkey']]),
+  // SEC-B31: the compressed market's own events. `list_compressed` / `buy_compressed` trade the pre-mint
+  // *claim* (keyed by the claim PDA), `list_compressed_asset` / `buy_compressed_asset` trade an already
+  // registered Bubblegum V2 leaf (keyed by the asset). Without a decoder the read model showed a chip the
+  // seller had sold as still owned and unlisted by them, and no sale of a compressed chip existed in
+  // `sales` / stats at all.
+  spec('market', 'CompressedClaimListed', [['claim', 'pubkey'], ['seller', 'pubkey'], ['price', 'u64'], ['currency', 'u8']]),
+  spec('market', 'CompressedClaimSold', [['claim', 'pubkey'], ['seller', 'pubkey'], ['buyer', 'pubkey'], ['price', 'u64'], ['fee', 'u64'], ['royalty', 'u64']]),
+  spec('market', 'CompressedAssetListed', [['asset', 'pubkey'], ['claim', 'pubkey'], ['seller', 'pubkey'], ['price', 'u64'], ['currency', 'u8']]),
+  spec('market', 'CompressedAssetSold', [['asset', 'pubkey'], ['claim', 'pubkey'], ['seller', 'pubkey'], ['buyer', 'pubkey'], ['price', 'u64'], ['fee', 'u64'], ['royalty', 'u64']]),
   // ---------------------------------------------------------------- arena
   spec('arena', 'BattleCreated', [['battle', 'pubkey'], ['challenger', 'pubkey'], ['wager', 'u64'], ['powerA', 'u32'], ['randomness', 'pubkey']]),
   spec('arena', 'BattleAccepted', [['battle', 'pubkey'], ['opponent', 'pubkey'], ['powerB', 'u32']]),

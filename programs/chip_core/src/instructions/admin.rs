@@ -403,6 +403,27 @@ pub struct ParamsPatch {
     pub skr_discount_bps: Option<u16>,
 }
 
+/// Bit per `ParamsPatch` field, carried in `ParamsPatched.changed` (SEC-B22). A field whose bit is
+/// clear was absent from the patch and keeps its current value in the emitted event.
+pub const PARAMS_FIELD_PACKS: u16 = 1 << 0;
+pub const PARAMS_FIELD_MARKET_FEE: u16 = 1 << 1;
+pub const PARAMS_FIELD_FEATURED: u16 = 1 << 2;
+pub const PARAMS_FIELD_TREASURY: u16 = 1 << 3;
+pub const PARAMS_FIELD_BUYBACK: u16 = 1 << 4;
+pub const PARAMS_FIELD_PYTH_SOL: u16 = 1 << 5;
+pub const PARAMS_FIELD_PYTH_SKR: u16 = 1 << 6;
+pub const PARAMS_FIELD_SKR_MINT: u16 = 1 << 7;
+pub const PARAMS_FIELD_SKR_DISCOUNT: u16 = 1 << 8;
+
+/// SEC-B22: every one of these addresses redirects money or a price source, and `Pubkey::default()` is
+/// never a valid destination — a set-to-zero would send a whole revenue path (or a treasury) to the
+/// system program's address, where those lamports are unreachable. Nothing upstream prevents it today:
+/// `set_params` takes any key the admin signs.
+fn require_non_default(key: Pubkey) -> Result<()> {
+    require!(key != Pubkey::default(), ChipError::InvalidConfigAddress);
+    Ok(())
+}
+
 /// Every edit is validated against economy guard-rails. These are the
 /// bounds inside which the live-ops admin panel may tune without a program
 /// upgrade; anything outside needs a new deploy (and therefore the 48 h
@@ -470,18 +491,23 @@ pub fn set_params(ctx: Context<AdminOnly>, patch: ParamsPatch) -> Result<()> {
         c.featured_collection = f;
     }
     if let Some(t) = patch.treasury {
+        require_non_default(t)?;
         c.treasury = t;
     }
     if let Some(b) = patch.buyback_wallet {
+        require_non_default(b)?;
         c.buyback_wallet = b;
     }
     if let Some(p) = patch.pyth_sol_usd_feed {
+        require_non_default(p)?;
         c.pyth_sol_usd_feed = p;
     }
     if let Some(p) = patch.pyth_skr_usd_feed {
+        require_non_default(p)?;
         c.pyth_skr_usd_feed = p;
     }
     if let Some(m) = patch.skr_mint {
+        require_non_default(m)?;
         c.skr_mint = m;
     }
     if let Some(d) = patch.skr_discount_bps {
@@ -492,6 +518,51 @@ pub fn set_params(ctx: Context<AdminOnly>, patch: ParamsPatch) -> Result<()> {
     emit!(ParamsChanged {
         admin: ctx.accounts.admin.key(),
         version: c.params_version
+    });
+    // SEC-B22: `ParamsChanged` says that something moved; this says what. Emitted next to it (not
+    // instead of it) so every existing consumer — the admin audit log, `params_changes` projections,
+    // the fairness note in `queries.ts` — keeps working untouched.
+    let mut changed: u16 = 0;
+    if patch.packs.is_some() {
+        changed |= PARAMS_FIELD_PACKS;
+    }
+    if patch.market_fee_bps.is_some() {
+        changed |= PARAMS_FIELD_MARKET_FEE;
+    }
+    if patch.featured_collection.is_some() {
+        changed |= PARAMS_FIELD_FEATURED;
+    }
+    if patch.treasury.is_some() {
+        changed |= PARAMS_FIELD_TREASURY;
+    }
+    if patch.buyback_wallet.is_some() {
+        changed |= PARAMS_FIELD_BUYBACK;
+    }
+    if patch.pyth_sol_usd_feed.is_some() {
+        changed |= PARAMS_FIELD_PYTH_SOL;
+    }
+    if patch.pyth_skr_usd_feed.is_some() {
+        changed |= PARAMS_FIELD_PYTH_SKR;
+    }
+    if patch.skr_mint.is_some() {
+        changed |= PARAMS_FIELD_SKR_MINT;
+    }
+    if patch.skr_discount_bps.is_some() {
+        changed |= PARAMS_FIELD_SKR_DISCOUNT;
+    }
+    emit!(ParamsPatched {
+        admin: ctx.accounts.admin.key(),
+        version: c.params_version,
+        changed,
+        treasury: c.treasury,
+        buyback_wallet: c.buyback_wallet,
+        pyth_sol_usd_feed: c.pyth_sol_usd_feed,
+        pyth_skr_usd_feed: c.pyth_skr_usd_feed,
+        skr_mint: c.skr_mint,
+        market_fee_bps: c.market_fee_bps,
+        skr_discount_bps: c.skr_discount_bps,
+        featured_collection: c.featured_collection,
+        packs: patch.packs.is_some(),
     });
     Ok(())
 }
@@ -609,4 +680,55 @@ pub fn grant_booster(ctx: Context<GrantBooster>, count: u16) -> Result<()> {
         .checked_add(count)
         .ok_or(ChipError::Overflow)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(byte: u8) -> Pubkey {
+        Pubkey::new_from_array([byte; 32])
+    }
+
+    /// SEC-B22: the zero key is not a destination. Every address in the patch that can move money or
+    /// choose a price source must be rejected before it reaches `GameConfig`.
+    #[test]
+    fn zero_addresses_are_rejected_for_every_money_or_feed_field() {
+        assert!(require_non_default(key(1)).is_ok());
+        let err = require_non_default(Pubkey::default()).expect_err("zero key must be rejected");
+        match err {
+            anchor_lang::error::Error::AnchorError(e) => {
+                assert_eq!(
+                    e.error_code_number,
+                    u32::from(ChipError::InvalidConfigAddress)
+                )
+            }
+            other => panic!("unexpected error {other:?}"),
+        }
+    }
+
+    /// The mask is the audit trail's index into the event: one bit per patch field, no bits shared.
+    #[test]
+    fn field_mask_bits_are_distinct_and_cover_every_patch_field() {
+        let bits = [
+            PARAMS_FIELD_PACKS,
+            PARAMS_FIELD_MARKET_FEE,
+            PARAMS_FIELD_FEATURED,
+            PARAMS_FIELD_TREASURY,
+            PARAMS_FIELD_BUYBACK,
+            PARAMS_FIELD_PYTH_SOL,
+            PARAMS_FIELD_PYTH_SKR,
+            PARAMS_FIELD_SKR_MINT,
+            PARAMS_FIELD_SKR_DISCOUNT,
+        ];
+        let mut union = 0u16;
+        for (i, b) in bits.iter().enumerate() {
+            assert_eq!(b.count_ones(), 1, "bit {i} is not a single bit");
+            assert_eq!(union & b, 0, "bit {i} collides with an earlier field");
+            union |= b;
+        }
+        // `ParamsPatch` has exactly these nine `Option` fields — a tenth field added without a bit
+        // would make the emitted `changed` mask lie by omission.
+        assert_eq!(bits.len(), 9);
+    }
 }

@@ -11,7 +11,7 @@ import { keccak_256 } from '@noble/hashes/sha3';
 import { PACKS, expandRandomness, type PackDef as EconPackDef } from '@guttercaps/economy';
 import { DAS_RPC_URL } from '@/app/config';
 import { appLookupTables, fitsInTx, sendTx, TxError, type WalletLike } from '../tx';
-import { prepareClose, prepareRandomness, prepareReveal, readRandomness } from '../switchboard';
+import { prepareClose, prepareCloseLut, prepareRandomness, prepareReveal, readRandomness, sendCloseLut } from '../switchboard';
 import {
   buyPackIx, cancelCompressedClaimIx, cancelStalePackIx, compressedClaimNonce, finalizeCompressedPackIx,
   openCompressedPackIx, payMintFor, Currency, RENT_RESERVE_PER_CHIP, STALE_PACK_SLOTS, type CurrencyCode,
@@ -375,9 +375,12 @@ export class PackFlow {
    */
   async reclaimRent(): Promise<string | null> {
     const { connection, wallet } = this.deps;
+    // the table half first: it can only be derived while the randomness account (which stores the slot) still exists
+    const lut = await prepareCloseLut(connection, wallet.publicKey, RNG_KIND.PACK, wallet.publicKey, this.state.nonce);
     const ix = await prepareClose(connection, wallet.publicKey, RNG_KIND.PACK, wallet.publicKey, this.state.nonce);
     if (!ix) return null;
     const { signature } = await sendTx(connection, wallet, [ix], { cuLimit: 120_000 });
+    await sendCloseLut(connection, wallet, lut);
     return signature;
   }
 

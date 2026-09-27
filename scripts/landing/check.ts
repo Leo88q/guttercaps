@@ -134,6 +134,53 @@ has('footer age badge', html, '18+');
   check("terms/privacy are not in the 'coming soon' group", /terms: '#'/.test(appjs) || /privacy: '#'/.test(appjs), false);
 }
 
+// ---- SEC-B4: the landing talks to one origin, and it is ours ----
+// The page used to pull its webfonts from fonts.googleapis.com: a third-party request that handed every
+// visitor's IP to Google while /legal/privacy promises no third-party analytics, and one the app's own
+// CSP (`font-src 'self' data:`) blocked in production anyway. The fonts are now vendored in the repo
+// (client/public/fonts, OFL — see scripts/vendor-fonts.ts) and inlined as data URIs, so the allowlist is
+// down to the stats endpoint. Anything that adds a request to a new origin fails here, in front of a
+// reviewer, instead of shipping silently to every visitor; the CSP meta is the runtime half of the same
+// rule for a static host whose response headers we do not control.
+{
+  const ALLOWED = [{ host: 'api.guttercaps.gg', why: 'GET /stats for the live counters' }];
+  const hosts = [...new Set(Array.from(html.matchAll(/https?:\/\/([a-zA-Z0-9.-]+)/g)).map((m) => m[1]))]
+    // JSON-LD contexts and the canonical/og/twitter URLs are strings, not fetches: `schema.org`,
+    // `www.w3.org`, the site's own domains and the app origin (used for links) are not requests.
+    .filter((h) => !['schema.org', 'www.w3.org', 'guttercaps.gg', 'app.guttercaps.gg'].includes(h))
+    .sort();
+  check('every third-party host in the landing is allowlisted', hosts, ALLOWED.map((a) => a.host).sort());
+  check('no Google Fonts reference', /fonts\.(googleapis|gstatic)\.com/.test(html), false);
+
+  const m = /<meta http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(html);
+  const csp = m ? m[1] : '';
+  check('CSP meta present', csp.length > 0, true);
+  check('CSP default-deny', /default-src 'none'/.test(csp), true);
+  // no off-origin script/style/font may be named, even additively: those three are the ones a careless
+  // edit reaches for, and `connect-src` already pins the only origin we do want
+  check('CSP allows no external script', /script-src[^;]*https?:\/\//.test(csp), false);
+  check('CSP allows no external style', /style-src[^;]*https?:\/\//.test(csp), false);
+  check('CSP allows no external font', /font-src[^;]*(https?:\/\/|[*])/.test(csp), false);
+  check('CSP keeps fonts self+data', /font-src 'self' data:/.test(csp), true);
+  check('CSP pins the stats endpoint', /connect-src 'self' https:\/\/api\.guttercaps\.gg(;|$)/.test(csp), true);
+  check('no-referrer meta', /<meta name="referrer" content="no-referrer"/.test(html), true);
+
+  // the fonts the landing needs must be *inside* the file, not merely named: the manifest marks the
+  // landing surface, and every one of those files has to be inlined (base64) or a visitor silently
+  // falls back to a system font — the same failure mode the app hit with un-ranged fontsource subsets
+  const manifest = JSON.parse(readFileSync(resolve(root, 'client/public/fonts/manifest.json'), 'utf8')) as {
+    files: { file: string; family: string; weight: number; surfaces: string[] }[];
+  };
+  const landingFiles = manifest.files.filter((f) => f.surfaces.includes('landing'));
+  const notInlined = landingFiles
+    .filter((f) => !html.includes(readFileSync(resolve(root, 'client/public/fonts', f.file)).toString('base64')))
+    .map((f) => f.file);
+  check('every landing-surface font is inlined', notInlined, []);
+  check('no extra font is inlined', Array.from(html.matchAll(/data:font\/woff2;base64,/g)).length, landingFiles.length);
+  const inlinedFaces = new Set(Array.from(html.matchAll(/@font-face\{font-family:'([^']+)';font-style:normal;font-display:swap;font-weight:(\d+);src:url\(data:font\/woff2;base64,[^)]+\) format\('woff2'\);unicode-range:U\+/g)).map((x) => `${x[1]}@${x[2]}`));
+  check('each inlined family/weight declares a unicode-range', inlinedFaces.size, new Set(landingFiles.map((f) => `${f.family}@${f.weight}`)).size);
+}
+
 // ---- i18n coverage: every EN key has a RU string, no empty strings ----
 const keys = Array.from(html.matchAll(/data-i18n(?:-html)?="([^"]+)"/g)).map((m) => m[1]);
 check('RU coverage', [...new Set(keys)].filter((k) => !RU[k] || !RU[k].trim()), []);

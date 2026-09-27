@@ -26,19 +26,19 @@ beforeEach(() => {
   );
 });
 
-/** A finalized ServicePaid for (buyer, kind, payload). */
-function pay(sig: string, buyer: string, kind: number, payload: Record<string, unknown>) {
+/** A finalized ServicePaid for (buyer, kind, payload). `eventIndex` lets one tx carry several payments. */
+function pay(sig: string, buyer: string, kind: number, payload: Record<string, unknown>, eventIndex = 0) {
   const ref = toHex(serviceRefHash(kind, buyer, payload));
   const t = now();
   db.run(
     `INSERT INTO service_payments (signature, event_index, buyer, kind, currency, amount, burned, ref_hash, slot, block_time)
-     VALUES (?, 0, ?, ?, 2, '100', '0', ?, 1, ?)`,
-    sig, buyer, kind, ref, t,
+     VALUES (?, ?, ?, ?, 2, '100', '0', ?, 1, ?)`,
+    sig, eventIndex, buyer, kind, ref, t,
   );
   db.run(
     `INSERT INTO events_raw (signature, ix_index, event_index, program, name, data, slot, finalized_at)
-     VALUES (?, 0, 0, 'services', 'ServicePaid', '{}', 1, ?)`,
-    sig, t,
+     VALUES (?, 0, ?, 'services', 'ServicePaid', '{}', 1, ?)`,
+    sig, eventIndex, t,
   );
 }
 
@@ -109,6 +109,39 @@ describe('variant-validated claims', () => {
     const sig = nextSig();
     pay(sig, alice, 2, { asset, skin: 'gold-rim' });
     expect(() => claimService(db, alice, sig, 2, { asset, skin: 'hologlow' })).toThrowError(/different payload/);
+  });
+
+  // SEC-B14: one transaction can carry two `buy_service` instructions of the SAME kind (two caps, two
+  // themes). Each payment has its own ref_hash, so the lookup must pick the row that matches what the
+  // caller is about to grant — picking "the first unconsumed row of that kind" made the second purchase
+  // unclaimable for ever: the ref_hash compare rejected the wrong row and the right one was never read.
+  it('both purchases of one transaction are claimable when the kind repeats (two cap skins in one tx)', () => {
+    const a = kp(), b = kp();
+    chip(a, alice, 0, 0); chip(b, alice, 0, 0);
+    const sig = nextSig();
+    pay(sig, alice, 2, { asset: a, skin: 'gold-rim' }, 0);
+    pay(sig, alice, 2, { asset: b, skin: 'hologlow' }, 1);
+    // claim in the reverse order of the events, so a "first row wins" lookup cannot pass by accident
+    expect(claimService(db, alice, sig, 2, { asset: b, skin: 'hologlow' }).payload).toEqual({ asset: b, skin: 'hologlow' });
+    expect(claimService(db, alice, sig, 2, { asset: a, skin: 'gold-rim' }).payload).toEqual({ asset: a, skin: 'gold-rim' });
+    expect(db.scalar(`SELECT COUNT(*) FROM service_payments WHERE consumed_by IS NULL`)).toBe(0);
+    // and a third claim of the same transaction finds nothing left
+    expect(() => claimService(db, alice, sig, 2, { asset: a, skin: 'gold-rim' })).toThrowError(/already used/);
+    // a payload nobody paid for is still a mismatch, not a silent grant
+    expect(() => claimService(db, alice, nextSig(), 2, { asset: a, skin: 'gold-rim' })).toThrowError(/No ServicePaid/);
+  });
+
+  // SEC-B14b: the row is spent by one conditional UPDATE, so a second reader that saw it free
+  // (another API replica, a retried request) changes no row and the claim fails closed.
+  it('a consumed payment cannot be spent twice, whatever the reader saw', () => {
+    const asset = kp();
+    chip(asset, alice, 0, 0);
+    const sig = nextSig();
+    pay(sig, alice, 2, { asset, skin: 'gold-rim' });
+    claimService(db, alice, sig, 2, { asset, skin: 'gold-rim' });
+    // the stale-reader shape: the row still looks generic (kind matches), only `consumed_by` forbids reuse
+    expect(() => claimService(db, alice, sig, 2, { asset, skin: 'gold-rim' })).toThrowError(/already used/);
+    expect(db.scalar(`SELECT COUNT(*) FROM entitlements WHERE wallet = ?`, alice)).toBe(1);
   });
 });
 

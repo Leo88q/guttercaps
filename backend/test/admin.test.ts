@@ -17,13 +17,16 @@ import { emissionPda } from '../src/burn-oracle.ts';
 import { arenaConfigPda } from '../src/battle-resolver.ts';
 import * as admin from '../src/admin.ts';
 import * as antifraud from '../src/antifraud.ts';
-import { DEFAULT_PACK, FakeConnection, encodeGameConfig, encodeVaultLedger, PREMIUM_PACK } from './chainFixtures.ts';
+import { DEFAULT_PACK, FakeConnection, encodeArenaConfig, encodeGameConfig, encodeVaultLedger, PREMIUM_PACK } from './chainFixtures.ts';
 import { world, tx, kp } from './fixtures.ts';
 
 const ADMIN = Keypair.generate();
 const PLAYER = Keypair.generate();
 const CHAIN_ADMIN = Keypair.generate().publicKey;
 const PAUSER = Keypair.generate().publicKey;
+// SEC-B24: the arena has its own admin/pauser in `ArenaConfig` — deliberately different from chip_core's.
+const ARENA_ADMIN = Keypair.generate().publicKey;
+const ARENA_PAUSER = Keypair.generate().publicKey;
 let db: Db; let server: Server; let base: string; let conn: FakeConnection;
 const T0 = Math.floor(Date.now() / 1000);
 
@@ -65,6 +68,7 @@ beforeAll(async () => {
   conn = new FakeConnection();
   conn.set(configPda()[0], encodeGameConfig({ treasury: Keypair.generate().publicKey, cgMint: Keypair.generate().publicKey, collectionsCreated: 10 }));
   conn.set(emissionPda()[0], encodeEmission({ splitChangedAt: T0 - 30 * 86_400 }), PROGRAMS.staking);
+  conn.set(arenaConfigPda()[0], encodeArenaConfig({ admin: ARENA_ADMIN, pauser: ARENA_PAUSER, paused: false }), PROGRAMS.arena);
   // #12: three of four ledger shards initialised — liabilities are summed, the missing one is reported
   conn.set(ledgerPda(0)[0], encodeVaultLedger({ shard: 0, liabLamports: 1_000n, liabCg: 5n, burnedTotal: 10n }));
   conn.set(ledgerPda(1)[0], encodeVaultLedger({ shard: 1, liabUsdc: 7n, burnedTotal: 20n }));
@@ -139,7 +143,7 @@ describe('params: read + propose', () => {
     expect(decodeEmissionState(conn.get(emissionPda()[0])!).splitBps[3]).toBe(2300);
   });
 
-  it('guard-rails: every program require! is mirrored (odds sum, Common ≥ 5 %, top-2 cap per sku, price band, pity shape, fee/discount caps, featured range) + economy warnings', async () => {
+  it('guard-rails: every set_params require! + error path is mirrored (odds sum, Common ≥ 5 %, top-2 cap per sku, price/pity bands, fee/discount caps, featured range, zero keys, $CG band, version ceiling) + economy warnings', async () => {
     const c = await admin.fetchChainParams(conn as unknown as Connection);
     const bad = admin.proposeParams(c, {
       packs: [
@@ -166,6 +170,28 @@ describe('params: read + propose', () => {
     expect(generous.warnings.join(' ')).toMatch(/EV\/price/);
     expect(admin.proposeParams(c, {}, T0).violations[0].rule).toBe('empty');
     expect(admin.proposeParams(c, { treasury: 'not-a-key' }, T0).violations[0]).toMatchObject({ path: 'treasury', rule: 'pubkey' });
+    // SEC-B23: the two requires the mirror was missing. `111…111` is valid base58 and is the system
+    // program's address — the program refuses it (SEC-B22), so the panel must not propose it.
+    const zero = admin.proposeParams(c, { treasury: '11111111111111111111111111111111' }, T0);
+    expect(zero.ok).toBe(false);
+    expect(zero.instructions).toEqual([]);
+    expect(zero.violations[0]).toMatchObject({ path: 'treasury', rule: 'InvalidConfigAddress' });
+    // $CG price: the hard cap, the ×½–2× one-shot band, and a negative value that used to reach the
+    // Borsh writer as a 500 instead of a 422.
+    const live = c.config.packs[1].priceCgMicro;              // live value, whatever the fixture installed it at
+    const cg = (micro: bigint) => admin.proposeParams(c, { packs: [{ sku: 1, priceCgMicro: micro.toString() }] }, T0);
+    expect(cg(1_000_000_000_001n).violations.map((v) => `${v.path}:${v.rule}`)).toContain('packs[0].priceCgMicro:CgPriceGuardRail');
+    expect(cg(-5n).violations.map((v) => `${v.path}:${v.rule}`)).toContain('packs[0].priceCgMicro:u64');
+    if (live > 0n) {
+      expect(cg(live * 3n).ok).toBe(false);                   // > 2× is a second change, not one
+      expect(cg(live * 2n).violations.filter((v) => v.path.endsWith('.priceCgMicro'))).toEqual([]); // exactly 2× passes
+      expect(cg(live / 2n).violations.filter((v) => v.path.endsWith('.priceCgMicro'))).toEqual([]);
+    }
+    // SEC-B23: `params_version` is bumped on chain with a checked_add — at the u16 ceiling the panel
+    // must refuse instead of encoding a transaction the program will revert.
+    const atCeiling = admin.proposeParams({ ...c, config: { ...c.config, paramsVersion: 65_535 } }, { marketFeeBps: 500 }, T0);
+    expect(atCeiling.ok).toBe(false);
+    expect(atCeiling.violations.map((v) => `${v.path}:${v.rule}`)).toContain('paramsVersion:Overflow');
   });
 
   it('set_split: sum 10000, ±1000 bps per slice, 7-day interval; encodes staking::set_split for the emission admin', async () => {
@@ -222,6 +248,26 @@ describe('kill switch, simulate, kpi, fraud', () => {
     expect(r.status).toBe(200);
     expect(r.json.instructions[0].accounts[0].pubkey).toBe(PAUSER.toBase58()); // staking pauser from EmissionState
     expect(admin.auditLog(db)[0]).toMatchObject({ action: 'kill_switch', target: 'staking', ok: true });
+    expect(r.json.diff['staking.paused']).toMatchObject({ from: false, to: true }); // live state, not `!paused`
+    // SEC-B24: the arena checks its own `ArenaConfig` — signing with chip_core's keys produced a tx that
+    // could only revert (on the incident path). `GET /admin/params` publishes both pairs.
+    const ap = await a.get('/v1/admin/params');
+    expect(ap.json.arena).toEqual({ admin: ARENA_ADMIN.toBase58(), pauser: ARENA_PAUSER.toBase58(), paused: false });
+    const arx = await a.post('/v1/admin/kill-switch', { program: 'arena', paused: true, reason: 'wager exploit' });
+    expect(arx.status).toBe(200);
+    expect(arx.json.instructions[0].accounts).toEqual([
+      { pubkey: ARENA_PAUSER.toBase58(), isSigner: true, isWritable: false },
+      { pubkey: arenaConfigPda()[0].toBase58(), isSigner: false, isWritable: true },
+    ]);
+    expect(arx.json.diff['arena.paused']).toMatchObject({ from: false, to: true });
+    const aux = await a.post('/v1/admin/kill-switch', { program: 'arena', paused: false }); // un-pause is admin-only
+    expect(aux.json.instructions[0].accounts[0].pubkey).toBe(ARENA_ADMIN.toBase58());
+    // ...and a cluster without `init_arena` says so instead of proposing the wrong signer
+    conn.del(arenaConfigPda()[0]);
+    const missing = await a.post('/v1/admin/kill-switch', { program: 'arena', paused: true, reason: 'no arena here' });
+    expect(missing.status).toBe(503);
+    expect(missing.json.code).toBe('arena_missing');
+    conn.set(arenaConfigPda()[0], encodeArenaConfig({ admin: ARENA_ADMIN, pauser: ARENA_PAUSER, paused: false }), PROGRAMS.arena);
   });
 
   it('simulate: baseline vs overridden assumptions, split slices, unknown keys rejected', async () => {

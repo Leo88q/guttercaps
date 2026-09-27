@@ -112,7 +112,7 @@ const id: PartialMessages = {
       rules: '3–16 karakter: huruf, angka, garis bawah. Tampil di peringkat, arena, dan profil publik Anda.',
       invalid: 'Gunakan 3–16 huruf, angka, atau _', available: 'Tersedia', cta: 'Bayar & klaim', claiming: 'Mengklaim…', saved: 'Handle disimpan', failed: 'Tidak bisa mengklaim handle',
       changeNote: 'Satu perubahan per 30 hari. Handle lama dilepas setelah 90 hari.',
-      reason: { taken: 'Sudah dipakai', reserved: 'Sedang dipesan orang lain — coba lagi dalam 2 menit', blocked: 'Tidak diizinkan', cooldown: 'Anda mengganti handle kurang dari 30 hari lalu' },
+      reason: { taken: 'Sudah dipakai', reserved: 'Sedang dipesan orang lain — coba lagi dalam 2 menit', blocked: 'Tidak diizinkan', cooldown: 'Anda mengganti handle kurang dari 30 hari lalu', invalid: 'Handle tidak valid' },
     },
   },
   pass: {

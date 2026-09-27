@@ -11,6 +11,7 @@ import { FEES, QUEST_CHIP_TEMPLATES } from '@guttercaps/economy';
 import type { Db } from './db.ts';
 import { rootCurrency, type EventData, type RawEvent } from './events.ts';
 import { insertIgnore, upsert } from './sql.ts';
+import { compressedMintClaimPda } from './chain.ts';
 
 /**
  * Column lists of the projection tables, spelled once. `sql.ts` builds `VALUES (?, ?, …)` from the length of
@@ -51,6 +52,17 @@ type Handler = (db: Db, e: RawEvent, c: EventCtx) => void;
 const str = (v: unknown) => String(v);
 const num = (v: unknown) => Number(v);
 const j = (v: unknown) => JSON.stringify(v);
+/**
+ * Non-negative integer as a decimal string — event `u64`s arrive as decimal strings (`events.ts`), but a
+ * hand-built fixture may carry a number or a bigint. Returns null when the field is absent or unparsable,
+ * so a projection can skip the write instead of storing the string `"undefined"`.
+ */
+const numStr = (v: unknown): string | null => {
+  if (typeof v === 'string') return /^\d+$/.test(v) ? v : null;
+  if (typeof v === 'bigint') return v >= 0n ? v.toString() : null;
+  if (typeof v === 'number') return Number.isSafeInteger(v) && v >= 0 ? String(v) : null;
+  return null;
+};
 
 const CHIP_FLAG_STAKED = 1;
 const CHIP_FLAG_LISTED = 2;
@@ -71,6 +83,85 @@ function touchWallet(db: Db, address: string, c: EventCtx) {
        wallets.first_seen, excluded.first_seen)`,
     address, c.blockTime,
   );
+}
+
+/**
+ * SEC-B31: map a claim PDA to the registered chip asset behind it — the claim PDA is what the claim's own
+ * events, the claim market and `Staked{kind:1,key}` carry, while every chip-keyed table and read-model flag
+ * is keyed by the asset. `compressed_claims.claim` is written at claim creation (from the immutable origin
+ * the seeds use), so this resolves a chip registered later as well.
+ */
+function chipBehindClaim(db: Db, claim: string): string | undefined {
+  return db.get<{ asset: string }>(
+    `SELECT asset FROM compressed_claims WHERE claim = ? AND status = 'registered' AND asset IS NOT NULL`,
+    claim,
+  )?.asset;
+}
+
+/**
+ * Same lookup, but only for the claim's *current* holder: the program refuses a state change from anyone
+ * else, so a stale or replayed event must not flag a chip its subject no longer owns. The invariant these
+ * projections keep is `chips.owner == compressed_claims.owner` for every registered claim.
+ */
+function chipOwnedByClaim(db: Db, claim: string, owner: string): string | undefined {
+  return db.get<{ asset: string }>(
+    `SELECT asset FROM compressed_claims WHERE claim = ? AND owner = ? AND status = 'registered' AND asset IS NOT NULL`,
+    claim, owner,
+  )?.asset;
+}
+
+/**
+ * SEC-B34: which `compressed_claims` row a mint / registration event is about.
+ *
+ * The two events used to be resolved by *holder* (`WHERE buyer = ? AND claim_nonce = ?`, `buyer` being the
+ * immutable origin and the event naming the current holder). That is only the same wallet until the claim
+ * market moves a pre-mint claim: `buy_compressed_claim` transfers the claim (the row's `owner` changes, the
+ * row's `buyer` does not), after which the buyer mints and registers — and both events named a wallet no
+ * row matched by `buyer`, so `register_compressed_chip` produced no `chips` row at all. Keying on the PDA
+ * the events now carry is exact; the holder-keyed lookup stays only as a fallback for a claim the read
+ * model resolved some other way (or a replayed log from a program build without the field).
+ */
+function resolveClaimPda(db: Db, claim: string | undefined, holder: string, claimNonce: string): string | undefined {
+  if (claim && db.get<{ claim: string }>(`SELECT claim FROM compressed_claims WHERE claim = ?`, claim)) return claim;
+  return db.get<{ claim: string }>(
+    `SELECT claim FROM compressed_claims WHERE (owner = ? OR buyer = ?) AND claim_nonce = ? ORDER BY (buyer = ?) DESC, claim ASC LIMIT 1`,
+    holder, holder, claimNonce, holder,
+  )?.claim;
+}
+
+/**
+ * SEC-B31: resolve whatever a staking event calls its key to the chip asset a read-model flag lives on.
+ * A Core chip stakes by asset; a compressed chip stakes by *claim* (`Staked{kind:1,key}` is the claim PDA —
+ * `c.claim` in the staking program), which is why the flag never landed before this column existed.
+ */
+function assetOfStakeKey(db: Db, key: string): string {
+  if (db.get<{ asset: string }>(`SELECT asset FROM chips WHERE asset = ?`, key)) return key;
+  return chipBehindClaim(db, key) ?? key;
+}
+
+/**
+ * SEC-B31: one row in `sales` for a compressed trade, in the same shape the Core `ChipSold` path writes.
+ * Lamports moved and an authorization changed hands, so both markets are volume/activity the read model must
+ * see. `currency` is SOL by construction (SEC-B28: the claim market settles in lamports only). A sale of an
+ * already-registered leaf carries its asset; a pre-mint claim has none *yet*, so the row is keyed by the
+ * claim PDA — the identity the market itself uses — and `compressed_claims.claim` resolves it to the asset
+ * the moment the leaf is registered. `collection_idx` / `rarity` stay NULL for such a row: the collection a
+ * claim will register into is not in the event, and guessing it would put a chip in the wrong collection's
+ * volume.
+ */
+function recordCompressedSale(
+  db: Db, e: RawEvent, c: { signature: string; slot: number; blockTime: number | null },
+  s: { claim: string; asset: string | null; seller: string; buyer: string; price: string; fee: string; royalty: string },
+) {
+  const asset = s.asset ?? chipBehindClaim(db, s.claim) ?? s.claim;
+  const chip = db.get<{ collection_idx: number; rarity: number }>(`SELECT collection_idx, rarity FROM chips WHERE asset = ?`, asset);
+  db.run(
+    insertIgnore('sales', COLS.sales),
+    c.signature, e.eventIndex, asset, s.seller, s.buyer, s.price, 0 /* SOL */, s.fee, s.royalty, 0, chip?.collection_idx ?? null, chip?.rarity ?? null, c.slot, c.blockTime,
+  );
+  db.run(`DELETE FROM listings WHERE asset = ?`, asset);
+  db.run(`DELETE FROM offers WHERE asset = ? AND bidder = ?`, asset, s.buyer);
+  db.run(`UPDATE chips SET owner = ?, flags = flags & ~?, updated_slot = ? WHERE asset = ?`, s.buyer, CHIP_FLAG_LISTED, c.slot, asset);
 }
 
 function setChipFlag(db: Db, asset: string, flag: number, on: boolean, slot: number) {
@@ -122,12 +213,16 @@ const HANDLERS: Record<string, Handler> = {
       buyer, nonce, c.signature, c.slot, c.blockTime,
     );
     for (let i = 0; i < count; i++) {
+      // SEC-B31: the claim PDA (seeds use the immutable `origin`, not the current buyer) is what the claim's
+      // own events carry — chip_core `CompressedClaimListedSet/StakedSet/Transferred`, and `Staked{key}` from
+      // staking. Storing it at creation is how a later state flip finds the chip row that owns the claim.
+      const claim = compressedMintClaimPda(new PublicKey(buyer), BigInt(claimNonces[i]!))[0].toBase58();
       db.run(
-        `INSERT INTO compressed_claims (buyer, nonce, claim_nonce, pack_no, slot, block_time)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(buyer, nonce, claim_nonce) DO UPDATE SET pack_no = excluded.pack_no,
+        `INSERT INTO compressed_claims (buyer, nonce, claim_nonce, claim, owner, pack_no, slot, block_time)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(buyer, nonce, claim_nonce) DO UPDATE SET claim = excluded.claim, pack_no = excluded.pack_no,
            slot = excluded.slot, block_time = COALESCE(excluded.block_time, compressed_claims.block_time)`,
-        buyer, nonce, claimNonces[i], num(d.packNo), c.slot, c.blockTime,
+        buyer, nonce, claimNonces[i], claim, buyer, num(d.packNo), c.slot, c.blockTime,
       );
     }
     db.run(
@@ -156,17 +251,77 @@ const HANDLERS: Record<string, Handler> = {
       db.run(`UPDATE compressed_settlements SET cancelled_claims = cancelled_claims + 1, last_signature = ?, last_slot = ?, block_time = COALESCE(?, block_time) WHERE buyer = ? AND nonce = ?`, c.signature, c.slot, c.blockTime, buyer, nonce);
     }
   },
+  // SEC-B31 -----------------------------------------------------------------
+  // The claim's own state transitions, emitted by chip_core through the market_auth / stake_auth CPIs. They
+  // are the authoritative word on `listed` / `staked` / owner, and before this the indexer dropped them:
+  //
+  //   * `ChipFlagsChanged` (the Core path) does not exist for claims, so an unlisted or staked compressed chip
+  //     kept its `listed` / `staked` flag in the read model — the chip looked tradable while the program
+  //     answers `InvalidChipState`, and the owner-facing grid drew a lock that was not there;
+  //   * cancelling a compressed listing emits no market event at all; this is the only signal;
+  //   * `Staked{kind:1}` from staking carries the *claim* as its key, not the registered asset, so the
+  //     `setChipFlag(key)` in the `Staked` handler missed the chip row entirely.
+  /**
+   * `stage_compressed_chip` is the admin half of the V2 migration: it authorizes one economic result
+   * (buyer, collection, rarity, level, mint number, deadline) before Bubblegum ever mints it. It is an
+   * admin-signed action with no read-model counterpart to update — the claim row is keyed by the settlement
+   * the event does not carry, and nothing product-facing may be shown from an *authorization* anyway (the
+   * claim becomes visible when `CompressedChipMinted` / `CompressedChipRegistered` lands). So this handler
+   * touches the buyer (the wallet is real and may be new) and nothing else: the audit trail is the decoded
+   * row in `events_raw`, which is what /admin and the ops queries read. Deliberately NOT `authority_changes`
+   * — that table feeds an `AuthorityChangeIndexed` page alert, and staging is a routine operation.
+   */
+  CompressedChipStaged(db, e, c) {
+    touchBySpec(db, e, c);
+  },
+  CompressedClaimListedSet(db, e, c) {
+    const d = e.data;
+    const listed = d.listed === true;
+    // the `buyer` in the payload is the claim's owner as the program saw it: a replayed or stale event must
+    // not flip a claim that has changed hands since (`chipOwnedByClaim` applies the same rule to the chip)
+    db.run(`UPDATE compressed_claims SET listed = ? WHERE claim = ? AND owner = ?`, listed ? 1 : 0, str(d.claim), str(d.buyer));
+    const chip = chipOwnedByClaim(db, str(d.claim), str(d.buyer));
+    if (chip) setChipFlag(db, chip, CHIP_FLAG_LISTED, listed, c.slot);
+  },
+  CompressedClaimStakedSet(db, e, c) {
+    const d = e.data;
+    const staked = d.staked === true;
+    db.run(`UPDATE compressed_claims SET staked = ? WHERE claim = ? AND owner = ?`, staked ? 1 : 0, str(d.claim), str(d.buyer));
+    const chip = chipOwnedByClaim(db, str(d.claim), str(d.buyer));
+    if (chip) setChipFlag(db, chip, CHIP_FLAG_STAKED, staked, c.slot);
+    // NB: the `stakes` row itself comes from the `Staked`/`Unstaked` event of the same transaction (the CPI
+    // is signed before the emit, so this event is seen first) — the claim event carries no weight or amount
+    // to write there, and `Staked{kind:1,key}` is the claim PDA, which is what `assetOfStakeKey` resolves.
+  },
+  CompressedClaimTransferred(db, e, c) {
+    const d = e.data;
+    touchBySpec(db, e, c);
+    const from = str(d.from);
+    const to = str(d.to);
+    const claim = str(d.claim);
+    // resolve the chip *before* the claim row changes hands: `chipOwnedByClaim` matches on the current owner
+    // as the program does, so the lookup has to happen while the row still names the sender
+    const chip = chipOwnedByClaim(db, claim, from);
+    // chip_core clears `listed` on transfer and refuses a staked claim, so the claim row loses both and the
+    // market's price is gone with the listing account
+    db.run(`UPDATE compressed_claims SET owner = ?, listed = 0, staked = 0, price = NULL, currency = NULL WHERE claim = ? AND owner = ?`, to, claim, from);
+    if (!chip) return;
+    db.run(`UPDATE chips SET owner = ?, flags = flags & ~?, updated_slot = ? WHERE asset = ?`, to, CHIP_FLAG_LISTED | CHIP_FLAG_STAKED, c.slot, chip);
+  },
   CompressedChipMinted(db, e, c) {
     const d = e.data;
     const buyer = str(d.buyer);
     const claimNonce = str(d.claimNonce);
     touchBySpec(db, e, c);
-    db.run(
+    // SEC-B34: keyed by the claim PDA (the event carries it), owner-guarded — `mint_compressed_chip` only
+    // mints for the claim's current holder, so a stale event must not mark someone else's claim minted.
+    const key = resolveClaimPda(db, typeof d.claim === 'string' ? d.claim : undefined, buyer, claimNonce);
+    if (key) db.run(
       `UPDATE compressed_claims SET status = CASE WHEN status IN ('registered', 'cancelled') THEN status ELSE 'minted' END,
          collection_idx = ?, rarity = ?, level = ?, game_index = ?, mint_signature = ?, slot = ?,
          block_time = COALESCE(?, block_time)
-       WHERE buyer = ? AND claim_nonce = ?`,
-      num(d.collectionIdx), num(d.rarity), num(d.level), str(d.gameIndex), c.signature, c.slot, c.blockTime, buyer, claimNonce,
+       WHERE claim = ? AND owner = ?`,
+      num(d.collectionIdx), num(d.rarity), num(d.level), str(d.gameIndex), c.signature, c.slot, c.blockTime, key, buyer,
     );
   },
   CompressedChipRegistered(db, e, c) {
@@ -174,24 +329,31 @@ const HANDLERS: Record<string, Handler> = {
     const buyer = str(d.owner);
     const claimNonce = str(d.claimNonce);
     touchBySpec(db, e, c);
-    const previous = db.get<{ status: string }>(
-      `SELECT status FROM compressed_claims WHERE buyer = ? AND claim_nonce = ?`,
-      buyer, claimNonce,
-    );
+    // SEC-B34: the claim PDA joins the event to its row (see `resolveClaimPda`); the owner guard is the
+    // program's own rule (`register_compressed_chip` requires `claim.buyer == owner`), so a replayed
+    // registration from a wallet that has since sold the claim cannot take the row over.
+    const key = resolveClaimPda(db, typeof d.claim === 'string' ? d.claim : undefined, buyer, claimNonce);
+    const previous = key ? db.get<{ status: string; nonce: string; buyer: string }>(`SELECT status, nonce, buyer FROM compressed_claims WHERE claim = ?`, key) : undefined;
     const wasRegistered = previous?.status === 'registered';
-    db.run(
+    const changed = key ? Number(db.run(
       `UPDATE compressed_claims SET status = CASE WHEN status = 'cancelled' THEN status ELSE 'registered' END, asset = ?, collection_idx = ?, rarity = ?, level = ?,
          register_signature = ?, slot = ?, block_time = COALESCE(?, block_time)
-       WHERE buyer = ? AND claim_nonce = ?`,
-      str(d.asset), num(d.collectionIdx), num(d.rarity), num(d.level), c.signature, c.slot, c.blockTime, buyer, claimNonce,
-    );
-    if (!wasRegistered && previous?.status !== 'cancelled') {
-      db.run(`UPDATE compressed_settlements SET registered_claims = registered_claims + 1, last_signature = ?, last_slot = ?, block_time = COALESCE(?, block_time) WHERE buyer = ? AND nonce = (SELECT nonce FROM compressed_claims WHERE buyer = ? AND claim_nonce = ?)`, c.signature, c.slot, c.blockTime, buyer, buyer, claimNonce);
+       WHERE claim = ? AND owner = ?`,
+      str(d.asset), num(d.collectionIdx), num(d.rarity), num(d.level), c.signature, c.slot, c.blockTime, key, buyer,
+    ).changes) : 0;
+    // the settlement counter follows the row that actually moved — and counts against the *origin* (`buyer`),
+    // which after a claim-market sale is no longer the wallet the event names
+    if (changed > 0 && !wasRegistered && previous?.status !== 'cancelled') {
+      db.run(`UPDATE compressed_settlements SET registered_claims = registered_claims + 1, last_signature = ?, last_slot = ?, block_time = COALESCE(?, block_time) WHERE buyer = ? AND nonce = ?`, c.signature, c.slot, c.blockTime, previous?.buyer ?? buyer, previous?.nonce ?? '');
     }
     db.run(
       upsert('chips', COLS.chips, ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'level = excluded.level', 'flags = excluded.flags', 'lock_until = excluded.lock_until', 'updated_slot = excluded.updated_slot', 'origin_signature = excluded.origin_signature', 'minted_at = COALESCE(chips.minted_at, excluded.minted_at)']),
       str(d.asset), buyer, num(d.collectionIdx), num(d.rarity), num(d.level), num(d.flags), Number(d.lockUntil), 'compressed', c.signature, c.blockTime, c.slot,
     );
+    // The mint number (`{symbol} #{game_index}`, market "Low #" / `indexMin`/`indexMax`). A compressed chip's
+    // registration event carries it, so this row never enters the crank's back-fill queue.
+    const gameIndex = numStr(d.gameIndex);
+    if (gameIndex !== null) db.run(`UPDATE chips SET game_index = ? WHERE asset = ?`, gameIndex, str(d.asset));
   },
   CompressedPackSettled(db, e, c) {
     const d = e.data;
@@ -387,6 +549,57 @@ const HANDLERS: Record<string, Handler> = {
     db.run(`DELETE FROM offers WHERE asset = ? AND bidder = ?`, asset, str(d.buyer));
     db.run(`UPDATE chips SET owner = ?, flags = flags & ~?, updated_slot = ? WHERE asset = ?`, str(d.buyer), CHIP_FLAG_LISTED, c.slot, asset);
   },
+  // SEC-B31: the compressed market's own events.
+  //
+  //  * the *claim* market trades a pre-mint authorization: no `chips` row exists yet, so the claim's own
+  //    listed/staked transitions (above) are what carry its state — but the money is real (the listing fee is
+  //    burned on list, the sale pays out on buy), so both land in `burns` / `sales` keyed by the claim PDA;
+  //  * `buy_compressed_asset` trades an already registered leaf: without a decoder the read model showed the
+  //    chip still owned by the seller, still listed, and recorded no sale at all (`sales`, the collection
+  //    volume and the burn stats were all short by every compressed V2 trade).
+  CompressedClaimListed(db, e, c) {
+    const d = e.data;
+    const claim = str(d.claim);
+    touchBySpec(db, e, c);
+    // the claim market is SOL-only by construction (SEC-B28) and pre-mint only (`list_compressed` requires
+    // `!claim.minted`), so the listing has no chip row to live in: `listings` is asset-keyed and every read
+    // of it joins `chips`. The claim's live price therefore lands on the claim row, which is also what the
+    // `listed` flag of the same transaction's `CompressedClaimListedSet` writes.
+    db.run(`UPDATE compressed_claims SET listed = 1, price = ?, currency = ? WHERE claim = ? AND owner = ?`, str(d.price), num(d.currency), claim, str(d.seller));
+    const chip = chipOwnedByClaim(db, claim, str(d.seller));
+    if (chip) setChipFlag(db, chip, CHIP_FLAG_LISTED, true, c.slot);
+  },
+  CompressedClaimSold(db, e, c) {
+    const d = e.data;
+    const claim = str(d.claim);
+    const buyer = str(d.buyer);
+    touchBySpec(db, e, c);
+    // the chip is resolved before the claim row changes hands (see CompressedClaimTransferred)
+    const chip = chipOwnedByClaim(db, claim, str(d.seller));
+    // a pre-mint claim changes holder here; `compressed_claims.buyer` is the *origin* (seeds, settlement,
+    // and the foreign key are all keyed by it) so the current holder is its own column
+    db.run(`UPDATE compressed_claims SET owner = ?, listed = 0, price = NULL, currency = NULL WHERE claim = ? AND owner = ?`, buyer, claim, str(d.seller));
+    if (chip) db.run(`UPDATE chips SET owner = ?, flags = flags & ~?, updated_slot = ? WHERE asset = ?`, buyer, CHIP_FLAG_LISTED, c.slot, chip);
+    recordCompressedSale(db, e, c, { claim, asset: chip ?? null, seller: str(d.seller), buyer, price: str(d.price), fee: str(d.fee), royalty: str(d.royalty) });
+  },
+  CompressedAssetListed(db, e, c) {
+    const d = e.data;
+    const asset = str(d.asset);
+    touchBySpec(db, e, c);
+    db.run(
+      upsert('listings', ['asset', 'seller', 'price', 'currency', 'created_at', 'slot', 'signature'], ['asset'], [
+        'seller = excluded.seller', 'price = excluded.price', 'currency = excluded.currency',
+        'created_at = excluded.created_at', 'slot = excluded.slot', 'signature = excluded.signature',
+      ]),
+      asset, str(d.seller), str(d.price), num(d.currency), c.blockTime, c.slot, c.signature,
+    );
+    setChipFlag(db, asset, CHIP_FLAG_LISTED, true, c.slot);
+  },
+  CompressedAssetSold(db, e, c) {
+    const d = e.data;
+    touchBySpec(db, e, c);
+    recordCompressedSale(db, e, c, { claim: str(d.claim), asset: str(d.asset), seller: str(d.seller), buyer: str(d.buyer), price: str(d.price), fee: str(d.fee), royalty: str(d.royalty) });
+  },
   OfferMade(db, e, c) {
     const d = e.data;
     touchBySpec(db, e, c);
@@ -458,13 +671,13 @@ const HANDLERS: Record<string, Handler> = {
       ]),
       str(d.key), owner, num(d.kind), str(d.amount), str(d.weight), Number(d.unlockAt), c.blockTime, c.slot, 1,
     );
-    if (num(d.kind) === 1) setChipFlag(db, str(d.key), CHIP_FLAG_STAKED, true, c.slot);
+    if (num(d.kind) === 1) setChipFlag(db, assetOfStakeKey(db, str(d.key)), CHIP_FLAG_STAKED, true, c.slot);
   },
   Unstaked(db, e, c) {
     const d = e.data;
     if (num(d.kind) === 1) {
       db.run(`UPDATE stakes SET active = 0, slot = ? WHERE key = ?`, c.slot, str(d.key));
-      setChipFlag(db, str(d.key), CHIP_FLAG_STAKED, false, c.slot);
+      setChipFlag(db, assetOfStakeKey(db, str(d.key)), CHIP_FLAG_STAKED, false, c.slot);
     } else {
       // token stake: partial unstake keeps the position; amounts are decimal strings → do the math in JS
       const row = db.get<{ amount: string }>(`SELECT amount FROM stakes WHERE key = ?`, str(d.key));
@@ -538,6 +751,10 @@ const HANDLERS: Record<string, Handler> = {
 export const WALLET_TOUCH_FIELDS: Record<string, readonly string[]> = {
   ServicePaid: ['buyer'], PackBought: ['buyer'], VoucherIssued: ['wallet'], PackOpened: ['buyer'],
   CompressedClaimsCreated: ['buyer'], CompressedClaimCancelled: ['buyer'], CompressedChipMinted: ['buyer'], CompressedPackSettled: ['buyer'],
+  // SEC-B31: the compressed claim/V2 market and its state events name a wallet that may be new to us — a
+  // buyer of a claim, a seller listing one, a chip's new owner after a transfer, an admin staging a claim.
+  CompressedChipStaged: ['buyer'], CompressedClaimTransferred: ['to'], CompressedClaimListed: ['seller'],
+  CompressedClaimSold: ['buyer'], CompressedAssetListed: ['seller'], CompressedAssetSold: ['buyer'],
   ChipFused: ['owner'], CompressedClaimsFused: ['owner'], ClaimFusionCommitted: ['owner'], ClaimFusionRevealed: ['owner'], CompressedChipRegistered: ['owner'], ChipListed: ['seller'], ChipSold: ['buyer'], OfferMade: ['bidder'],
   BattleCreated: ['challenger'], BattleAccepted: ['opponent'], RootClaimed: ['wallet'], Staked: ['owner'],
 };

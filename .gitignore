@@ -35,6 +35,16 @@ __pycache__/
 
 **/.DS_Store
 
+# ── Ops output that lives inside the tree by design (SEC-B47) ────────────────────────────────
+# compose bind-mounts `./backup` into the backup sidecar, so snapshots land in the repository working
+# directory. `*.sqlite` above matches neither `*.sqlite.gz` (what the script writes) nor `.CORRUPT`
+# (integrity failures kept for forensics), so `git add -A` during an incident — exactly when an operator
+# types it — would commit a gzip of production data (wallets, IP networks, device hashes, payment rows).
+# The whole directory, not just the default `out/` subdirectory: an operator who sets OUT_DIR=/backup (or
+# an older deployment that did) would otherwise be left with the same hole one level up. `.gitkeep` is the
+# placeholder compose binds against and stays tracked; `ops/deploy/secrets/` has its own nested ignore.
+ops/deploy/backup/**
+!ops/deploy/backup/.gitkeep
 # ── Secrets: by convention, not by luck (docs/09 §1.4, docs/07 §1.1) ─────────────────────────
 # `backend/.env` was the only env file ignored, so a `client/.env.local` with a DSN or a key, or a
 # `backend/.env.prod`, was one `git add -A` away from the public repo. Same for the cold keypairs

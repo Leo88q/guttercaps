@@ -96,12 +96,25 @@ export const foldEq = (column: string, param: string): SqlFragment =>
  * Postgres: `col->>'key'`, plus `jsonb_path_ops` GIN if it stays hot — the part of the memo that says the
  * read model gets faster on Postgres, not merely portable.
  */
+/**
+ * Keys reaching the two builders below are interpolated into the statement text, not bound — so they must
+ * be identifiers. Every caller today passes a literal (`wallets.flags`' flags, the activity feed's fixed
+ * key list), which is the *only* thing that makes them safe, and "callers pass a literal" is exactly the
+ * assumption a future edit breaks: `jsonAt('data', req.query.key)` would be an injection in the SQLite
+ * branch (the Postgres branch happens to escape the quote, the SQLite one does not — the two dialects
+ * differed on a security property, which is itself the bug this closes).
+ */
+const jsonKey = (key: string): string => {
+  if (!/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(key)) throw new Error(`json key must be an identifier, got ${JSON.stringify(key)}`);
+  return key;
+};
+
 export const jsonAt = (column: string, key: string): SqlFragment =>
   dialect === 'postgres'
     // the cast is load-bearing: the columns holding JSON are TEXT in both schemas (Prisma maps them to
     // `String`), and Postgres refuses `->>` on text
-    ? `(${column})::jsonb->>'${key.replace(/'/g, "''")}'`
-    : `json_extract(${column}, '$.${key}')`;
+    ? `(${column})::jsonb->>'${jsonKey(key)}'`
+    : `json_extract(${column}, '$.${jsonKey(key)}')`;
 
 /**
  * A boolean flag inside that JSON text (`wallets.flags` carries `shadowBanned` / `rewardsPaused`).
@@ -113,5 +126,25 @@ export const jsonAt = (column: string, key: string): SqlFragment =>
  */
 export const jsonFlagEq = (column: string, key: string, want: boolean): SqlFragment =>
   dialect === 'postgres'
-    ? `COALESCE((${column})::jsonb->>'${key}', 'false') IN ('true', '1') = ${want ? 'TRUE' : 'FALSE'}`
-    : `COALESCE(json_extract(${column}, '$.${key}'), 0) = ${want ? 1 : 0}`;
+    ? `COALESCE((${column})::jsonb->>'${jsonKey(key)}', 'false') IN ('true', '1') = ${want ? 'TRUE' : 'FALSE'}`
+    : `COALESCE(json_extract(${column}, '$.${jsonKey(key)}'), 0) = ${want ? 1 : 0}`;
+
+/**
+ * **SEC-B36.** `x LIKE '%value%'` for a *value* that came from the network: `likeContains` emits the clause,
+ * `likePattern` builds the argument, and the two live together because either one alone is a bug.
+ *
+ * The escaping is what makes the bound value a *literal* — `%`, `_` and the escape character itself (so it
+ * escapes its own output). `ESCAPE '\'` is what makes that escaping active: SQLite has no default escape
+ * character at all while Postgres has `\`, so a query that escapes without declaring the character matches a
+ * literal backslash in one dialect and a metacharacter in the other. A call site that writes
+ * `LIKE '%' || ? || '%'` and binds a raw value is not a *wrong query* — it is a different question, which is
+ * how `GET /v1/wallet/%/events` answered 200 with **every** event row in the database instead of an empty
+ * feed (the address was the only thing narrowing the scan).
+ *
+ * The column is interposed into the statement text (like `jsonAt`'s key) and is a literal at every call site;
+ * the value is always bound.
+ */
+export const likeContains = (column: string): SqlFragment => `${column} LIKE ? ESCAPE '\\'`;
+
+/** See `likeContains`: `%50%o_` → `%50\%o\_`, i.e. the value matches literally whatever it contains. */
+export const likePattern = (value: string): string => `%${value.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;

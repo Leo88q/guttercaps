@@ -28,6 +28,14 @@ const src = (rel: string) => readFileSync(join(REPO, rel), 'utf8');
 const where = (s: AccountsStruct, f?: Field) => `${s.file}:${f ? f.line : s.line} ${s.name}${f ? '.' + f.name : ''}`;
 const isInit = (f: Field) => f.constraints.includes('init') || f.constraints.includes('init_if_needed');
 const handlerBody = (s: AccountsStruct) => handlersFor(fns, s.name).map((h) => h.body).join('\n');
+/** Body of a `fn` / `struct` / `event` item: from its name to the first top-level `}` after it, with
+ *  comments stripped — a commented-out guard must not be able to satisfy a rule. */
+const bodyOf = (ts: string, name: string): string => {
+  const start = ts.indexOf(name);
+  if (start < 0) return '';
+  const end = ts.indexOf('\n}\n', start);
+  return stripComments(ts.slice(start, end < 0 ? start + 2400 : end));
+};
 
 test('sanity: the reader sees the whole program surface', () => {
   assert.ok(files.length >= 20, `rust files: ${files.length}`);
@@ -342,9 +350,352 @@ test('A2/A8 `%` only in reviewed functions; random draws keep rejection sampling
   for (const name of Object.keys(MODULO_ALLOW)) assert.ok(fns.some((f) => f.name === name), `stale allowlist entry ${name}`);
 });
 
+// SEC-B19: the compressed claim nonce is `nonce * STRIDE + pack_no * MAX_CHIPS_PER_PACK + chip_index`
+// (chip_core `open_compressed_pack`), so the stride has to cover the largest bundle a purchase may open.
+// Otherwise two different (nonce, pack_no, chip) triples derive the same claim PDA — the second pack
+// cannot be opened at all, its settlement never reaches `total_claims`, and the buyer's money stays in
+// the vault. The Rust side asserts this at compile time; this rule reads the three constants out of the
+// source so the *relation* is pinned too (a compile-time assert nobody can see is easy to delete).
+function claimNonceStrideViolations(srcOf: (rel: string) => string): string[] {
+  const num = (rel: string, re: RegExp): number | undefined => {
+    const m = re.exec(stripComments(srcOf(rel)));
+    return m ? Number(m[1]) : undefined;
+  };
+  const stride = num('programs/chip_core/src/instructions/compressed.rs', /const COMPRESSED_CLAIM_PACK_STRIDE:\s*u64\s*=\s*(\d+)/);
+  const perPack = num('programs/chip_core/src/economy.rs', /pub const MAX_CHIPS_PER_PACK:\s*usize\s*=\s*(\d+)/);
+  const qty = num('programs/chip_core/src/economy.rs', /pub const MAX_PACK_QTY:\s*u8\s*=\s*(\d+)/);
+  const out: string[] = [];
+  if (stride === undefined) out.push('COMPRESSED_CLAIM_PACK_STRIDE not found');
+  if (perPack === undefined) out.push('MAX_CHIPS_PER_PACK not found');
+  if (qty === undefined) out.push('MAX_PACK_QTY not found');
+  if (out.length) return out;
+  if (perPack! * qty! > stride!) out.push(`stride ${stride} < MAX_PACK_QTY ${qty} x MAX_CHIPS_PER_PACK ${perPack} — claim PDAs collide across nonces`);
+  const compressed = stripComments(srcOf('programs/chip_core/src/instructions/compressed.rs'));
+  if (!/const _:\s*\(\)\s*=\s*assert!/.test(compressed)) out.push('the compile-time stride assert is gone');
+  // the pack nonce really is built with that stride and that per-pack factor
+  if (!/COMPRESSED_CLAIM_PACK_STRIDE/.test(compressed)) out.push('the stride is no longer used to build the claim nonce');
+  if (!/\(pack_no as u64\)\s*\*\s*MAX_CHIPS_PER_PACK as u64/.test(compressed)) out.push('the per-pack factor changed — re-derive the bound');
+  // the purchase bound must be the same constant the stride was sized for (a literal 25 could drift)
+  const packs = stripComments(srcOf('programs/chip_core/src/instructions/packs.rs'));
+  // whitespace-tolerant on purpose: rustfmt (the pinned image in CI) broke this `require!` across
+  // lines, and a gate that only matches the unformatted spelling fails on a formatting commit.
+  if (!/require!\(\s*\(1\.\.=MAX_PACK_QTY\)\.contains\(&qty\)/.test(packs)) out.push('buy_pack no longer bounds qty by MAX_PACK_QTY');
+  return out;
+}
+
+test('SEC-B19 the compressed claim-nonce stride covers the largest pack bundle (or two packs collide)', () => {
+  assert.deepEqual(claimNonceStrideViolations(src), []);
+  // the rule is not vacuous: shrinking the stride below MAX_PACK_QTY x MAX_CHIPS_PER_PACK must fail it
+  const shrunk = (rel: string) => src(rel).replace('const COMPRESSED_CLAIM_PACK_STRIDE: u64 = 128;', 'const COMPRESSED_CLAIM_PACK_STRIDE: u64 = 64;');
+  assert.ok(claimNonceStrideViolations(shrunk).some((v) => /claim PDAs collide/.test(v)), 'rule must fail on a stride below the bound');
+  // whitespace-tolerant again: `cargo fmt` writes `const _: () =` and `assert!(...)` on two lines
+  const noAssert = (rel: string) => src(rel).replace(/const _:\s*\(\)\s*=\s*assert!\s*\([\s\S]*?\);/, '');
+  assert.ok(claimNonceStrideViolations(noAssert).some((v) => /compile-time stride assert/.test(v)), 'rule must notice a deleted const assert');
+});
+
+// SEC-B23: `backend/src/admin.ts` hand-mirrors the guard-rails of `set_params`, because the panel only
+// *encodes* a Squads transaction — a panel that says ok and a tx that fails on chain (or worse, a
+// BigInt that 500s `GET /admin/params`) is the failure mode this rule closes. Same error vocabulary,
+// same thresholds, JSON-safe payload.
+const secB23Violations = (rust: string, econ: string, panelRaw: string, stake = '', chain = ''): string[] => {
+  const srcs: Record<string, string> = { chain };
+  const bad: string[] = [];
+  const body = bodyOf(rust, 'pub fn set_params');
+  // NB: do *not* run the Rust comment stripper over TS — a `/*` inside a TS string opens a block comment
+  // there and swallows most of the file (the rule then "passes" by seeing nothing). Skip whole comment
+  // lines instead, so a commented-out guard cannot satisfy the rule either.
+  const panel = panelRaw.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  if (!body) return ['set_params body not found — the guard-rails this rule mirrors live in it'];
+  // 1. vocabulary: a new `require!(…, ChipError::X)` inside set_params must show up as a panel rule name
+  const raised = [...new Set([
+    ...[...body.matchAll(/ChipError::(\w+)/g)].map((m) => m[1]!),
+    ...[...bodyOf(rust, 'fn require_non_default').matchAll(/ChipError::(\w+)/g)].map((m) => m[1]!),
+  ])].sort();
+  const PINNED = ['CgPriceGuardRail', 'FeeTooHigh', 'InvalidCollection', 'InvalidConfigAddress', 'InvalidQuantity', 'OddsGuardRail', 'OddsSumInvalid', 'Overflow'];
+  if (raised.join(',') !== PINNED.join(',')) bad.push(`set_params raises {${raised.join(', ')}} — mirror it in the panel and extend this rule`);
+  for (const v of raised) if (!new RegExp(`rule: '${v}'`).test(panel)) bad.push(`${v}: the program can return it, the panel has no rule with that name`);
+  // 2. thresholds: every numeric rail must be the same number on both sides
+  const gn = (v: string | number) => Number(String(v).replace(/_/g, '')).toLocaleString('en-US').replace(/,/g, '_');
+  const guardStart = panel.indexOf('export const GUARD');
+  const guard = panel.slice(guardStart, panel.indexOf('} as const;', guardStart)).replace(/\s+/g, ' ');
+  const num = (re: RegExp, hay: string) => { const m = re.exec(hay); return m ? Number(m[1]!.replace(/_/g, '')) : NaN; };
+  for (const [konst, field] of [
+    ['BPS_DENOM', 'bpsDenom'], ['MAX_CHIPS_PER_PACK', 'maxChipsPerPack'], ['MAX_TOP2_BPS_STANDARD', 'maxTop2BpsStandard'],
+    ['MAX_MARKET_FEE_BPS', 'maxMarketFeeBps'], ['MAX_SKR_DISCOUNT_BPS', 'maxSkrDiscountBps'], ['MAX_PACK_CG_PRICE_MICRO', 'maxPackCgPriceMicro'],
+  ] as const) {
+    const v = num(new RegExp(`pub const ${konst}: \\w+ = ([\\d_]+);`), econ);
+    if (Number.isNaN(v)) bad.push(`${konst} is no longer a plain integer const — update this rule with it`);
+    else if (!new RegExp(`${field}: ${gn(v)}\\b`).test(guard)) bad.push(`GUARD.${field} ≠ ${konst} (${v}): the panel would propose what the program rejects`);
+  }
+  for (const [label, re, field] of [
+    ['Common floor', /odds_bps\[0\] >= ([\d_]+)/, 'minCommonBps'],
+    ['pity hard floor', /pity_hard_at >= ([\d_]+)/, 'minHardAt'],
+    ['pity soft-step cap', /pity_soft_step_bps <= ([\d_]+)/, 'maxSoftStepBps'],
+    ['$CG ×½–2× factor', /saturating_mul\((\d+)\)/, 'cgPriceMoveFactor'],
+  ] as const) {
+    const v = num(re, body);
+    if (Number.isNaN(v)) bad.push(`the ${label} literal is gone from set_params — update this rule`);
+    else if (!new RegExp(`${field}: ${gn(v)}\\b`).test(guard)) bad.push(`GUARD.${field} ≠ the ${label} literal (${v})`);
+  }
+  const price = /\((\d[\d_]*)\.\.=(\d[\d_]*)\)\.contains\(&p\.price_usd_cents\)/.exec(body);
+  if (!price) bad.push('the pack price band is no longer an explicit literal — update this rule');
+  else if (!guard.includes(`priceCentsRange: [${gn(price[1]!)}, ${gn(price[2]!)}]`)) bad.push(`GUARD.priceCentsRange ≠ the ${gn(price[1]!)}…${gn(price[2]!)} program band`);
+  if (!/old \/ 2/.test(body)) bad.push('the $CG band no longer uses `old / 2` — the panel mirrors integer division, keep them equal');
+  // 3. the panel side: same comparison sites, no second copy of a number, and a payload that can be JSON-serialised
+  if (!/priceCgMicro > CG_PRICE_GUARD\.maxMicro/.test(panel)) bad.push('the panel compares priceCgMicro against something other than CG_PRICE_GUARD.maxMicro');
+  if (!/maxMicro: BigInt\(GUARD\.maxPackCgPriceMicro\)/.test(panel)) bad.push('CG_PRICE_GUARD.maxMicro is not derived from GUARD.maxPackCgPriceMicro — two numbers can drift');
+  if (!/cur\.priceCgMicro \/ CG_PRICE_GUARD\.moveFactor/.test(panel) || !/cur\.priceCgMicro \* CG_PRICE_GUARD\.moveFactor/.test(panel)) bad.push('the one-shot ×½–2× band is missing from checkPackGuardRails');
+  if (/\b\d[\d_]*n\b/.test(guard)) bad.push('GUARD holds a BigInt literal — GET /admin/params returns guardRails verbatim and JSON.stringify throws on it');
+  if (!/k\.equals\(ZERO_KEY\)/.test(panel)) bad.push('the panel accepts 111…111 as a destination — the program refuses it (SEC-B22)');
+  if (!/cfg\.paramsVersion >= 65_535/.test(panel)) bad.push('the params_version ceiling (ChipError::Overflow) is not mirrored — the panel would encode a patch that reverts');
+  if (!/checkPackGuardRails\(patch\.sku, merged, violations, `packs\[\$\{i\}\]`, cfg\.packs\[patch\.sku\]\)/.test(panel)) bad.push('checkPackGuardRails is not given the live row — the ×½–2× band compares against nothing');
+  // 4. the same class for the staking mirror: `proposeParams` encodes `set_split` by hand too, so its
+  //    three rails (slice count, sum, ±delta, 7-day interval) must be the program's numbers.
+  if (stake) {
+    const splitBody = bodyOf(stake, 'pub fn set_split');
+    if (!splitBody) bad.push('staking::set_split is gone — the panel still encodes it');
+    else {
+      const konst = (name: string) => num(new RegExp(`pub const ${name}: \\w+ = ([\\d_]+|\\d+ \\* \\w+);`), stake);
+      const scalar = (m: RegExpExecArray | null) => (m ? m[1]!.trim() : '');
+      const count = konst('SPLIT_COUNT'), delta = konst('MAX_SPLIT_DELTA_BPS'), day = konst('DAY');
+      // `MIN_SPLIT_INTERVAL = 7 * DAY` — resolve the product rather than trusting a second literal
+      const minRaw = scalar(/pub const MIN_SPLIT_INTERVAL: i64 = (\d+ \* \w+);/.exec(stake));
+      const minInterval = minRaw && day ? Number(minRaw.split('*')[0]!.trim()) * day : NaN;
+      // `GUARD.split.count` is written as the imported `SPLIT_COUNT` (which the on-chain decoder also uses),
+      // so accept that identifier — but then the literal must not have drifted either.
+      if (!Number.isNaN(count) && !new RegExp(`count: (${count}\\b|SPLIT_COUNT,)`).test(guard)) bad.push(`GUARD.split.count ≠ SPLIT_COUNT (${count})`);
+      if (srcs.chain && !Number.isNaN(count) && !new RegExp(`export const SPLIT_COUNT = ${count};`).test(srcs.chain)) bad.push(`backend/src/chain.ts SPLIT_COUNT ≠ the program's ${count}`);
+      if (!Number.isNaN(delta) && !new RegExp(`maxDeltaBps: ${gn(delta)}\\b`).test(guard)) bad.push(`GUARD.split.maxDeltaBps ≠ MAX_SPLIT_DELTA_BPS (${delta})`);
+      // the panel writes the product (`7 * 86_400`), the program names a constant (`7 * DAY`): evaluate both
+      const panelInterval = (() => {
+        const m = /minIntervalS: ([0-9_*\s]+)/.exec(guard);
+        return m ? m[1]!.split('*').reduce((a, t) => a * Number(t.replace(/_/g, '').trim()), 1) : NaN;
+      })();
+      if (Number.isNaN(minInterval) || panelInterval !== minInterval) {
+        bad.push(`GUARD.split.minIntervalS ≠ MIN_SPLIT_INTERVAL (${minRaw || '?'} = ${minInterval}, panel = ${panelInterval})`);
+      }
+      const sum = scalar(/iter\(\)\.map\(\|&b\| b as u32\)\.sum::<u32>\(\) == ([\d_]+)/.exec(splitBody));
+      if (sum !== '10_000') bad.push(`set_split no longer checks sum == 10_000 (found ${sum || 'nothing'}) — the panel mirrors that literal`);
+      if (!/const sum = s\.reduce\(\(a, b\) => a \+ b, 0\);\s+if \(sum !== 10_000\)/.test(panel.replace(/\n/g, ' '))) bad.push('the panel does not compare the split sum against 10 000');
+      if (!/now - e\.split_changed_at >= MIN_SPLIT_INTERVAL/.test(splitBody)) bad.push('set_split no longer enforces the 7-day interval');
+      if (!/Number\(c\.emission\.splitChangedAt\) \+ GUARD\.split\.minIntervalS/.test(panel)) bad.push('the panel does not compare against the live split_changed_at');
+      if (!/Math\.abs\(v - cur\[i\]\) > GUARD\.split\.maxDeltaBps/.test(panel)) bad.push('the panel does not apply the ±delta rail per slice');
+    }
+  }
+  return bad;
+};
+
+test('SEC-B23 the admin panel mirrors set_params and set_split: same vocabulary, same thresholds, JSON-safe payload', () => {
+  const bad = secB23Violations(
+    src('programs/chip_core/src/instructions/admin.rs'),
+    src('programs/chip_core/src/economy.rs'),
+    src('backend/src/admin.ts'),
+    // the rails of set_split span two files: the instruction and the constants module
+    src('programs/staking/src/instructions/emission.rs') + '\n' + src('programs/staking/src/state.rs'),
+    src('backend/src/chain.ts'),
+  );
+  assert.deepEqual(bad, []);
+});
+
+// SEC-B24: the kill switch encodes `pause` / `set_paused` / `set_arena` and *picks the signer*. Each
+// program validates that signer against its **own** config account (chip_core `config`, staking
+// `emission`, arena `arena_config`), so a panel that reads chip_core's pair for an arena pause hands the
+// multisig a transaction that can only revert — on the incident path, where it costs minutes. This rule
+// binds every `Pause` struct to the PDA the panel writes and to the authority pair it signs with.
+const secB24Violations = (srcs: { admin: string; server: string; chip: string; staking: string; arena: string }): string[] => {
+  const bad: string[] = [];
+  const norm = (t: string) => t.replace(/\s+/g, ' ');
+  const admin = norm(srcs.admin);
+  const server = norm(srcs.server);
+  const paStart = admin.indexOf('export const PAUSABLE');
+  const pa = admin.slice(paStart, admin.indexOf('};', paStart));
+  if (paStart < 0) return ['PAUSABLE is gone — the kill switch has no account map'];
+  // 1. Rust side: what each program's `Pause` is seeded from, and that it accepts its own admin/pauser
+  const pda: Record<string, string> = { config: 'configPda()', emission: 'emissionPda()', arena_config: 'arenaConfigPda()' };
+  const authority: Record<string, RegExp> = {
+    chip_core: /c\.config\.admin, pauser: c\.config\.pauser, current: c\.config\.paused/,
+    staking: /c\.emission\.admin, pauser: c\.emission\.pauser, current: c\.emission\.paused/,
+    arena: /c\.arena\.admin, pauser: c\.arena\.pauser, current: c\.arena\.paused/,
+  };
+  for (const [prog, file] of [['chip_core', srcs.chip], ['staking', srcs.staking], ['arena', srcs.arena]] as const) {
+    // NB: `pub struct Pause<` — a bare `pub struct Pause` also matches `pub struct PauseChanged` in arena/lib.rs.
+    const body = bodyOf(file, 'pub struct Pause<');
+    if (!body) { bad.push(`${prog}: no \`pub struct Pause\` — the panel encodes an instruction the program does not have`); continue; }
+    const seed = /seeds = \[b"(\w+)"/.exec(body)?.[1];
+    if (!seed || !pda[seed]) { bad.push(`${prog}: Pause PDA seed ${seed ?? '(none)'} is not one this rule knows — update the rule and PAUSABLE`); continue; }
+    const obj = prog === 'staking' ? 'emission' : 'config';
+    if (!body.includes(`${obj}.admin`) || !body.includes(`${obj}.pauser`)) bad.push(`${prog}: Pause does not accept its own admin *or* pauser`);
+    const want = pda[seed]!.replace(/[()]/g, '\\$&');
+    if (!new RegExp(`${prog}: \\(\\) => \\(\\{ programId: \\w+(?:\\.\\w+)?, account: ${want}\\[0\\] \\}\\)`).test(pa)) {
+      bad.push(`${prog}: the panel pauses the wrong account (Pause is seeded from b"${seed}" ⇒ ${pda[seed]})`);
+    }
+    // 2. TS side: the signer for that program must come from that program's own account
+    if (!authority[prog]!.test(server)) bad.push(`${prog}: the kill-switch route does not take the authority from ${prog}'s own account`);
+  }
+  // 3. arena un-pause goes through `set_arena` (ArenaAdmin: has_one = admin) — admin-only, and the panel
+  //    must not sign it with a pauser or with a missing arena.
+  const arena = norm(srcs.arena);
+  const adminStruct = arena.slice(arena.indexOf('pub struct ArenaAdmin'));
+  if (!/pub struct ArenaAdmin/.test(arena)) bad.push('arena: ArenaAdmin is gone — set_arena is the un-pause path');
+  else if (!/has_one = admin/.test(adminStruct.slice(0, 400))) bad.push('arena: ArenaAdmin no longer requires the admin — the un-pause rail moved');
+  if (!/arena_missing/.test(server)) bad.push('arena: a cluster without ArenaConfig is not reported (the panel would sign with a default key)');
+  // 4. the live state, and the "pause is admin-only to undo" rule
+  if (!/body\.paused && !authority\.pauser\.equals\(PublicKey\.default\) \? authority\.pauser : authority\.admin/.test(admin)) {
+    bad.push('killSwitch: the signer is not "pauser for pause, admin for un-pause" — an un-pause could go out signed by the hot key');
+  }
+  if (!/from: authority\.current/.test(admin)) bad.push('killSwitch: the diff no longer reports the live state');
+  // 5. the panel actually reads the arena account
+  if (!/getAccountInfo\(arenaConfigPda\(\)\[0\]\)/.test(admin)) bad.push('fetchChainParams does not read the ArenaConfig account');
+  if (!/decodeArenaConfig\(new Uint8Array\(arena\.data\)\)/.test(admin)) bad.push('the arena account is read but not decoded into admin/pauser/paused');
+  if (!/arena: c\.arena \? \{ admin: c\.arena\.admin\.toBase58\(\), pauser: c\.arena\.pauser\.toBase58\(\), paused: c\.arena\.paused \} : null/.test(admin)) {
+    bad.push('GET /admin/params does not publish the arena authority pair');
+  }
+  return bad;
+};
+
+test('SEC-B24 the kill switch signs each program with that program\'s own authority (arena ≠ chip_core)', () => {
+  const bad = secB24Violations({
+    admin: src('backend/src/admin.ts'),
+    server: src('backend/src/server.ts'),
+    chip: src('programs/chip_core/src/instructions/admin.rs'),
+    staking: src('programs/staking/src/instructions/emission.rs'),
+    arena: src('programs/arena/src/lib.rs'),
+  });
+  assert.deepEqual(bad, []);
+});
+
+// ---------------------------------------------------------------- F. marketplace currency
+/**
+ * SEC-B28 — the claim market settles in SOL only, and the *listing* side has to know it.
+ *
+ * `buy_compressed` / `buy_compressed_asset` pay the seller with `system_program::transfer` and answer
+ * `CompressedCurrencyMismatch` for anything else, but `list_compressed*` accepted USDC/SKR anyway: the
+ * listing PDA was created and the claim was flagged `listed`, which closes that claim's mint and fusion
+ * paths in chip_core (`InvalidChipState`) until the seller cancels — an unfillable listing plus a
+ * self-lockout, from a UI that offered the currencies the docs listed. The guard is one shared helper
+ * (a third list path cannot be added without it), the buy-side check stays as defense in depth for a
+ * listing created before it, and the client builders refuse the currency before a wallet pays a fee.
+ */
+const secB28Violations = (srcs: { market: string; client: string }): string[] => {
+  const bad: string[] = [];
+  const bodyIn = (text: string, anchor: string) => bodyOf(text, anchor);
+  for (const handler of ['pub fn list_compressed_handler', 'pub fn list_compressed_asset_handler']) {
+    const body = bodyIn(srcs.market, handler);
+    if (!body) { bad.push(`${handler}: handler is gone — the rule no longer covers the listing side`); continue; }
+    if (!/require_sol_claim_market\(currency\)\?;/.test(body)) bad.push(`${handler}: lists a currency the claim market cannot settle (SEC-B28)`);
+  }
+  const helper = bodyIn(srcs.market, 'fn require_sol_claim_market');
+  if (!helper) bad.push('require_sol_claim_market is gone — the SOL-only rule has no single definition');
+  else {
+    if (!/currency == Currency::Sol/.test(helper)) bad.push('require_sol_claim_market no longer compares against Currency::Sol (an inverted comparison accepts USDC/SKR)');
+    if (!/MarketError::CompressedCurrencyMismatch/.test(helper)) bad.push('require_sol_claim_market answers a different error — the client table translates 6011 to "Compressed listing expects SOL"');
+  }
+  for (const handler of ['pub fn buy_compressed_handler', 'pub fn buy_compressed_asset_handler']) {
+    const body = bodyIn(srcs.market, handler);
+    if (!body) { bad.push(`${handler}: handler is gone`); continue; }
+    if (!/listing\.currency == Currency::Sol/.test(body) || !/MarketError::CompressedCurrencyMismatch/.test(body)) {
+      bad.push(`${handler}: dropped its own currency check — a listing created before SEC-B28 would be buyable`);
+    }
+  }
+  for (const builder of ['export function listCompressedIx', 'export function listCompressedAssetIx']) {
+    const body = bodyIn(srcs.client, builder);
+    if (!body) { bad.push(`${builder}: builder is gone — the client-side check is not covered`); continue; }
+    if (!/assertSolClaimListing\(a\.currency\);/.test(body)) bad.push(`${builder}: encodes a claim listing without the SOL-only check (the wallet pays for a guaranteed revert)`);
+  }
+  const assertFn = bodyIn(srcs.client, 'export function assertSolClaimListing');
+  if (!assertFn || !/currency !== MarketCurrency\.SOL/.test(assertFn)) bad.push('assertSolClaimListing no longer compares against MarketCurrency.SOL');
+  return bad;
+};
+
+test("SEC-B28 the claim market lists in SOL only: both list handlers, both buy handlers, both builders", () => {
+  const bad = secB28Violations({ market: src('programs/market/src/lib.rs'), client: src('client/src/chain/ix/market.ts') });
+  assert.deepEqual(bad, []);
+});
+
 // ---------------------------------------------------------------- rule self-tests
 
 const fake = (code: string, rel = 'programs/chip_core/src/instructions/fake.rs'): SourceFile => ({ path: rel, rel, program: 'chip_core', code: stripComments(code) });
+
+test('SEC-B22 set_params: every money/feed address is validated and the change is described, not just counted', () => {
+  const admin = src('programs/chip_core/src/instructions/admin.rs');
+  const state = src('programs/chip_core/src/state.rs');
+  const events = src('backend/src/events.ts');
+  const bad: string[] = [];
+  const body = bodyOf(admin, 'pub fn set_params');
+  if (!body) bad.push('set_params is gone — the guard-rails this rule reads live in its body');
+  // 1. the five address fields must pass the non-default check before they reach GameConfig. Parsed
+  //    per branch on purpose: a rule that only asked "does require_non_default appear anywhere" would
+  //    pass with one guarded field and four open ones.
+  for (const [field, local] of [
+    ['treasury', 't'],
+    ['buyback_wallet', 'b'],
+    ['pyth_sol_usd_feed', 'p'],
+    ['pyth_skr_usd_feed', 'p'],
+    ['skr_mint', 'm'],
+  ] as const) {
+    const branch = new RegExp(`if let Some\\(${local}\\) = patch\\.${field}\\\s*\\{[\\s\\S]{0,120}?\\}\\s*`);
+    const m = branch.exec(body);
+    if (!m) bad.push(`${field}: branch not found (a field was renamed — update this rule with it)`);
+    else if (!/require_non_default\(/.test(m[0])) bad.push(`${field}: assigned without the zero-key check (SEC-B22)`);
+  }
+  // 2. the emitted description must carry the new values, and both events must be emitted (the old one
+  //    is what the admin log and the fairness note read).
+  const emit = body.slice(body.indexOf('emit!(ParamsChanged'));
+  if (!/emit!\(ParamsChanged\s*\{/.test(emit)) bad.push('ParamsChanged is no longer emitted (existing consumers read it)');
+  if (!/emit!\(ParamsPatched\s*\{/.test(emit)) bad.push('ParamsPatched is not emitted — the audit trail is back to a bare counter');
+  for (const f of ['treasury', 'buyback_wallet', 'pyth_sol_usd_feed', 'pyth_skr_usd_feed', 'skr_mint', 'market_fee_bps', 'skr_discount_bps', 'featured_collection']) {
+    if (!new RegExp(`${f}:\\s*c\\.${f}`).test(emit)) bad.push(`ParamsPatched does not carry ${f}`);
+  }
+  // 3. the bitmask must have one bit per patch field, and both halves have to agree about the count:
+  //    the struct's `Option` fields on one side, the `changed |=` sites on the other.
+  const patchFields = (bodyOf(admin, 'pub struct ParamsPatch').match(/pub \w+: Option</g) ?? []).length;
+  const setBits = (body.match(/changed \|= PARAMS_FIELD_/g) ?? []).length;
+  const constBits = new Set((admin.match(/pub const PARAMS_FIELD_\w+: u16 = 1 << \d+;/g) ?? []).map((l) => l.match(/1 << (\d+)/)![1]));
+  if (patchFields !== 9) bad.push(`ParamsPatch has ${patchFields} Option fields — one field per bit is the invariant`);
+  if (setBits !== patchFields) bad.push(`${setBits} \`changed |= …\` sites for ${patchFields} patch fields`);
+  if (constBits.size !== patchFields) bad.push(`${constBits.size} distinct PARAMS_FIELD_* bits for ${patchFields} fields`);
+  // 4. the program-side event and the backend codec must declare the same fields, in the same order —
+  //    a mismatch decodes the tail of the event as garbage instead of failing.
+  const rustEvent = bodyOf(state, 'pub struct ParamsPatched');
+  const rustFields = [...rustEvent.matchAll(/pub (\w+): (\w+),/g)].map((m) => m[1]);
+  const specMatch = /spec\('chip_core', 'ParamsPatched', \[([\s\S]*?)\]\)/.exec(events);
+  const specFields = specMatch ? [...specMatch[1].matchAll(/\['(\w+)',/g)].map((m) => m[1]) : [];
+  if (!rustEvent) bad.push('ParamsPatched is not declared in state.rs');
+  else if (!specMatch) bad.push('backend events.ts has no ParamsPatched spec — the event would land in events_raw undecoded');
+  else if (rustFields.length !== specFields.length) bad.push(`ParamsPatched: ${rustFields.length} Rust fields vs ${specFields.length} in the codec`);
+  else {
+    // the codec names its fields in camelCase (`lockUntil`, `refHash`): compare after normalising the
+    // Rust side, or every multi-word field would look like drift.
+    const toCamel = (w: string) => w.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+    for (let i = 0; i < rustFields.length; i++) {
+      if (toCamel(rustFields[i]!) !== specFields[i]) bad.push(`ParamsPatched field ${i}: Rust ${rustFields[i]} vs codec ${specFields[i]}`);
+    }
+  }
+  assert.deepEqual(bad, []);
+});
+
+test('self-test: SEC-B28 rule flags a claim listing in USDC and a buy path that trusts it', () => {
+  const market = src('programs/market/src/lib.rs');
+  const client = src('client/src/chain/ix/market.ts');
+  const files = { market, client };
+  assert.deepEqual(secB28Violations(files), []);
+  // NB: both list handlers open with the same two requires, so the mutation is applied from the asset
+  // handler's own offset — a file-wide replace would mutate the pre-mint handler and the assertion below
+  // would pass while proving nothing about this one.
+  const assetAt = market.indexOf('pub fn list_compressed_asset_handler');
+  const usdcListed = market.slice(0, assetAt) + market.slice(assetAt).replace('require_sol_claim_market(currency)?;\n', '');
+  assert.notEqual(usdcListed, market, 'the mutation must match the asset list handler');
+  assert.ok(secB28Violations({ ...files, market: usdcListed }).some((v) => /list_compressed_asset_handler/.test(v)));
+  const inverted = market.replace('currency == Currency::Sol,', 'currency != Currency::Usdc,');
+  assert.notEqual(inverted, market);
+  assert.ok(secB28Violations({ ...files, market: inverted }).some((v) => /no longer compares against Currency::Sol/.test(v)));
+  const trustingBuy = market.replace('listing.currency == Currency::Sol,\n        MarketError::CompressedCurrencyMismatch', 'true,\n        MarketError::CompressedCurrencyMismatch');
+  assert.notEqual(trustingBuy, market);
+  assert.ok(secB28Violations({ ...files, market: trustingBuy }).some((v) => /dropped its own currency check/.test(v)));
+  const openBuilder = client.replace('  assertSolClaimListing(a.currency);\n  const [listing] = compressedAssetListingPda(a.asset);', '  const [listing] = compressedAssetListingPda(a.asset);');
+  assert.notEqual(openBuilder, client, 'the mutation must match the asset builder');
+  assert.ok(secB28Violations({ ...files, client: openBuilder }).some((v) => /listCompressedAssetIx/.test(v)));
+});
 
 test('self-test: E29 rule flags the pre-fix SEC-F2 fusion loop and accepts the fixed one', () => {
   const vulnerable = `
@@ -385,6 +736,84 @@ test('self-test: the account reader extracts constraints, types and close target
   assert.equal(constraintValue(s.fields[2], 'close'), 'thief'); // ← no has_one ⇒ would fail E28
   assert.ok(!has(s.fields[0], /^mut$/)); // ← payer not mut ⇒ would fail A3
   assert.equal(coreType(s.fields[3].type).kind, 'UncheckedAccount'); // ← would fail A4
+});
+
+test('self-test: SEC-B22 rule flags an unguarded address and a codec that drifted from the event', () => {
+  const admin = src('programs/chip_core/src/instructions/admin.rs');
+  const events = src('backend/src/events.ts');
+  // re-render the rule against a mutated tree by re-reading the two files it depends on
+  const runRule = (next: { admin?: string; events?: string; state?: string }) => {
+    const files: Record<string, string> = {
+      'programs/chip_core/src/instructions/admin.rs': next.admin ?? admin,
+      'backend/src/events.ts': next.events ?? events,
+      'programs/chip_core/src/state.rs': next.state ?? src('programs/chip_core/src/state.rs'),
+    };
+    // the rule body above is a closure over `src`; the cheapest honest mutation check is to search the
+    // mutated text for the same two facts the rule asserts
+    const bad: string[] = [];
+    const body = bodyOf(files['programs/chip_core/src/instructions/admin.rs'], 'pub fn set_params');
+    const branch = /if let Some\(t\) = patch\.treasury\s*\{[\s\S]{0,120}?\}\s*/.exec(body);
+    if (!branch || !/require_non_default\(/.test(branch[0])) bad.push('treasury: assigned without the zero-key check (SEC-B22)');
+    const rustFields = [...bodyOf(files['programs/chip_core/src/state.rs'], 'pub struct ParamsPatched').matchAll(/pub (\w+): (\w+),/g)]
+      .map((m) => m[1]!.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase()));
+    const specMatch = /spec\('chip_core', 'ParamsPatched', \[([\s\S]*?)\]\)/.exec(files['backend/src/events.ts']);
+    const specFields = specMatch ? [...specMatch[1].matchAll(/\['(\w+)',/g)].map((m) => m[1]) : [];
+    if (rustFields.join(',') !== specFields.join(',')) bad.push('codec drifted');
+    return bad;
+  };
+  assert.deepEqual(runRule({}), []);
+  const unguarded = admin.replace(/    if let Some\(t\) = patch\.treasury \{\n        require_non_default\(t\)\?;/, '    if let Some(t) = patch.treasury {');
+  assert.notEqual(unguarded, admin);
+  assert.ok(runRule({ admin: unguarded }).some((v) => /treasury/.test(v)));
+  const drifted = events.replace("['treasury', 'pubkey'],", '');
+  assert.notEqual(drifted, events);
+  assert.ok(runRule({ events: drifted }).some((v) => /codec drifted/.test(v)));
+});
+
+test('self-test: SEC-B23 rule flags a dropped panel rule, a drifted threshold and a BigInt payload', () => {
+  const rust = src('programs/chip_core/src/instructions/admin.rs');
+  const econ = src('programs/chip_core/src/economy.rs');
+  const panel = src('backend/src/admin.ts');
+  const stake = src('programs/staking/src/instructions/emission.rs') + '\n' + src('programs/staking/src/state.rs');
+  assert.deepEqual(secB23Violations(rust, econ, panel, stake), []);
+  const noCgRule = panel.replace(/rule: 'CgPriceGuardRail'/g, "rule: 'ok'");
+  assert.notEqual(noCgRule, panel);
+  assert.ok(secB23Violations(rust, econ, noCgRule, stake).some((v) => /CgPriceGuardRail/.test(v)));
+  const drift = econ.replace('pub const MAX_MARKET_FEE_BPS: u16 = 1_000;', 'pub const MAX_MARKET_FEE_BPS: u16 = 1_500;');
+  assert.notEqual(drift, econ);
+  assert.ok(secB23Violations(rust, drift, panel, stake).some((v) => /maxMarketFeeBps/.test(v)));
+  const newRequire = rust.replace('require!(fee <= MAX_MARKET_FEE_BPS, ChipError::FeeTooHigh);', 'require!(fee <= MAX_MARKET_FEE_BPS, ChipError::FeeTooHigh);\n        require!(fee != 999, ChipError::BrandNewRail);');
+  assert.notEqual(newRequire, rust);
+  assert.ok(secB23Violations(newRequire, econ, panel, stake).some((v) => /BrandNewRail/.test(v)));
+  const bigint = panel.replace('maxPackCgPriceMicro: 1_000_000_000_000,', 'maxPackCgPriceMicro: 1_000_000_000_000n,');
+  assert.notEqual(bigint, panel);
+  assert.ok(secB23Violations(rust, econ, bigint, stake).some((v) => /BigInt/.test(v)));
+  const looserSplit = stake.replace('pub const MAX_SPLIT_DELTA_BPS: u16 = 1_000;', 'pub const MAX_SPLIT_DELTA_BPS: u16 = 2_000;');
+  assert.notEqual(looserSplit, stake);
+  assert.ok(secB23Violations(rust, econ, panel, looserSplit).some((v) => /maxDeltaBps/.test(v)));
+});
+
+test('self-test: SEC-B24 rule flags an arena pause signed with chip_core keys and a wrong PDA', () => {
+  const files = {
+    admin: src('backend/src/admin.ts'),
+    server: src('backend/src/server.ts'),
+    chip: src('programs/chip_core/src/instructions/admin.rs'),
+    staking: src('programs/staking/src/instructions/emission.rs'),
+    arena: src('programs/arena/src/lib.rs'),
+  };
+  assert.deepEqual(secB24Violations(files), []);
+  const wrongKeys = files.server.replace('c.arena.admin, pauser: c.arena.pauser, current: c.arena.paused', 'c.config.admin, pauser: c.config.pauser, current: c.config.paused');
+  assert.notEqual(wrongKeys, files.server);
+  assert.ok(secB24Violations({ ...files, server: wrongKeys }).some((v) => /arena: the kill-switch route/.test(v)));
+  const wrongPda = files.admin.replace('arena: () => ({ programId: ARENA_ID, account: arenaConfigPda()[0] })', 'arena: () => ({ programId: ARENA_ID, account: configPda()[0] })');
+  assert.notEqual(wrongPda, files.admin);
+  assert.ok(secB24Violations({ ...files, admin: wrongPda }).some((v) => /wrong account/.test(v)));
+  const noDecode = files.admin.replace('decodeArenaConfig(new Uint8Array(arena.data))', 'decodeGameConfig(arena.data)');
+  assert.notEqual(noDecode, files.admin);
+  assert.ok(secB24Violations({ ...files, admin: noDecode }).some((v) => /not decoded/.test(v)));
+  const hotUnpause = files.admin.replace('body.paused && !authority.pauser.equals(PublicKey.default) ? authority.pauser : authority.admin', 'authority.pauser');
+  assert.notEqual(hotUnpause, files.admin);
+  assert.ok(secB24Violations({ ...files, admin: hotUnpause }).some((v) => /hot key/.test(v)));
 });
 
 test('self-test: A2/A8 modulo rule flags a slot-modulo roll and a stripped rejection bound', () => {

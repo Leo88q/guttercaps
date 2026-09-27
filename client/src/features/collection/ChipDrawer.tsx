@@ -20,7 +20,7 @@ import { ListModal } from '@/features/market/ListModal';
 import { useUiStore } from '@/app/store/ui';
 import { EXPLORER } from '@/app/config';
 import { isMock } from '@/api/client';
-import { timeAgo } from '@/shared/lib/format';
+import { chipIndexText, timeAgo } from '@/shared/lib/format';
 
 export function ChipDrawer({ chip, onClose }: { chip: Chip; onClose: () => void }) {
   const nav = useNavigate();
@@ -67,7 +67,7 @@ export function ChipDrawer({ chip, onClose }: { chip: Chip; onClose: () => void 
         <div style={{ width: 'min(198px, 100%)', flex: '0 0 auto' }}><ChipArt collection={chip.collection!} rarity={chip.rarity!} index={chip.index} level={chip.level} imageUrl={chipImageOf(chip, 512)} skin={chip.skin} crimp={rarityColor(chip.rarity!)} /></div>
         <div className="grow stack-sm">
           <div style={{ color: rarityColor(chip.rarity!) }} className="strong">{rarityName(chip.rarity!)} · {collectionName(chip.collection!)} <ElementGlyph element={ELEMENT_OF_COLLECTION[chip.collection!]} /></div>
-          <div className="small muted">#{chip.index} · level {chip.level}/{prof.maxLevel} · power {chip.power} · stake weight {chip.stakeWeight}</div>
+          <div className="small muted">{chipIndexText(chip.index) ?? 'unnumbered'} · level {chip.level}/{prof.maxLevel} · power {chip.power} · stake weight {chip.stakeWeight}</div>
           <div className="small" style={{ lineHeight: 1.45 }}>{chipLore(chip.collection!, chip.rarity!)}</div>
           <div className="tag-list">
             {chip.flags?.staked && <span className="pill">staked</span>}

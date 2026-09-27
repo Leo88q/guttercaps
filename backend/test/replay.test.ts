@@ -330,7 +330,8 @@ describe('LT-3 invariants: the projections agree with the raw log', () => {
   // Joined against events_raw rather than against the generator's counters: the raw log is what the product
   // claims the projections are a function of, and noise copies would skew a counter-based expectation.
   const parity: readonly [string, string, string | string[]][] = [
-    ['sales', 'sales', 'ChipSold'],
+    // SEC-B31: both compressed markets move lamports and change hands, so they are sales too — one row each
+    ['sales', 'sales', ['ChipSold', 'CompressedClaimSold', 'CompressedAssetSold']],
     ['pack_opens', 'pack_opens', 'PackOpened'],
     ['emission_days', 'emission_days', 'DayClosed'],
     ['fusions', 'fusions', ['ChipFused', 'CompressedClaimsFused', 'ClaimFusionRevealed']], // SEC-G04 + H3: every fusion path lands here
@@ -363,8 +364,17 @@ describe('LT-3 invariants: the projections agree with the raw log', () => {
   });
 
   it('staking positions and chip flags agree', () => {
+    // SEC-B31: a compressed chip stakes by *claim* (`Staked{kind:1,key}` is the claim PDA, `c.claim` in the
+    // staking program), so the key has to be resolved through `compressed_claims.claim` before a chip can be
+    // compared — the join used to silently skip every compressed position (a NULL on the left join is
+    // neither `= 1` nor `<> 1`), which is exactly how the chip flags stayed wrong for so long.
+    const resolve = `COALESCE((SELECT cc.asset FROM compressed_claims cc WHERE cc.claim = s.key AND cc.status = 'registered'), s.key)`;
     expect(live.scalar(`SELECT COUNT(*) FROM stakes s LEFT JOIN chips c ON c.asset = s.key WHERE s.kind = 1 AND s.active = 1 AND (c.flags & 1) <> 1`)).toBe(0);
     expect(live.scalar(`SELECT COUNT(*) FROM stakes s LEFT JOIN chips c ON c.asset = s.key WHERE s.kind = 1 AND s.active = 0 AND (c.flags & 1) = 1`)).toBe(0);
+    expect(live.scalar(`SELECT COUNT(*) FROM stakes s LEFT JOIN chips c ON c.asset = ${resolve} WHERE s.kind = 1 AND s.active = 1 AND (c.flags & 1) <> 1`)).toBe(0);
+    expect(live.scalar(`SELECT COUNT(*) FROM stakes s LEFT JOIN chips c ON c.asset = ${resolve} WHERE s.kind = 1 AND s.active = 0 AND (c.flags & 1) = 1`)).toBe(0);
+    // and a compressed position must actually exist in the corpus — otherwise the two lines above are vacuous
+    expect(live.scalar(`SELECT COUNT(*) FROM compressed_claims c JOIN stakes s ON s.key = c.claim WHERE s.kind = 1 AND c.asset IS NOT NULL`)).toBeGreaterThan(0);
   });
 
   it('a purchase never opens more packs than it bought', () => {

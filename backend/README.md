@@ -10,7 +10,7 @@ backend/
 ├─ prisma/schema.prisma    # production Postgres schema (same shapes as db.ts)
 ├─ src/
 │  ├─ config.ts            # program ids, RPC, DB path, cookie/handle rules (env-driven)
-│  ├─ events.ts            # Anchor-free event codec: 47 events × 4 programs (`EVENT_SPECS`), decode + encode + log walker
+│  ├─ events.ts            # Anchor-free event codec: 56 events × 4 programs (`EVENT_SPECS`), decode + encode + log walker
 │  ├─ borsh.ts             # tiny Borsh reader/writer
 │  ├─ db.ts                # node:sqlite store (events_raw + projections + api state)
 │  ├─ projections.ts       # event → chips / listings / sales / battles / stakes / burns / service_payments
@@ -75,6 +75,14 @@ Switchboard rent goes back to the player (SEC-M7).
   `PendingPack`, `PendingFusion`, `WagerBattle` (fusions have no commit event; the DB may lag).
   Jobs live in `crank_jobs` keyed `kind:owner:nonce` — several workers on one DB and restarts
   are safe.
+* **Chip numbers (SEC-B3 / shape #27)** — the same sweep also drains the market's index back-fill
+  queue (`chips.game_index IS NULL AND burned_at IS NULL AND index_attempts < CRANK_INDEX_ATTEMPTS`):
+  one batched `getMultipleAccountsInfo` of `CRANK_INDEX_BATCH` `ChipState` PDAs per pass, writing each
+  `index` (the per-collection mint number the API renders as `Name #N` and sorts/filters by). Read-only
+  and idempotent: a chip that already has a number is never in the queue, a burned one is skipped (the
+  fusion closed its `ChipState`), and an unreadable asset is parked after the attempt ceiling instead of
+  being retried forever. A chip whose number is still unknown is reported as `index: null` — never `#0`,
+  which is a real chip of that district.
 * **Reveal** — `POST {oracle.gateway_uri}/gateway/api/v1/randomness_reveal` (the same call the
   Switchboard SDK makes; the URI is read from the oracle account named in the randomness
   account) → signed payload → *our* `reveal_randomness` instruction (the account's authority is
@@ -108,7 +116,7 @@ Env: `CRANK_KEYPAIR` (required), `CRANK_POLL_MS` 2000, `CRANK_SWEEP_MS` 30000,
 `CRANK_CONCURRENCY` 4, `CRANK_MIN_BALANCE_SOL` 0.5, `CRANK_HARD_FLOOR_SOL` 0.05,
 `CRANK_MAX_BALANCE_SOL` 2, `CRANK_GATEWAY_TIMEOUT_MS` 10000, `CRANK_MAX_ATTEMPTS` 60,
 `CRANK_CU_PRICE_FLOOR` 1000, `CRANK_CU_PRICE_CAP` 200000, `CRANK_MAX_FEE_LAMPORTS` 1000000,
-`CRANK_STALE_RECHECK_MS` 600000, `CRANK_GATEWAY_RPC` (public RPC of the cluster — it is sent
+`CRANK_STALE_RECHECK_MS` 600000, `CRANK_INDEX_BATCH` 100, `CRANK_INDEX_ATTEMPTS` 3, `CRANK_GATEWAY_RPC` (public RPC of the cluster — it is sent
 to the oracle, never our keyed endpoint), `SWITCHBOARD_PROGRAM_ID` / `SWITCHBOARD_QUEUE`
 (per cluster; `sb_mock` id on localnet), `LOOKUP_TABLE` (from `npm run create-lut`).
 
@@ -157,11 +165,17 @@ keyed by `events_raw` rowid; staking's own early-exit rows are skipped because t
 counted them) and sends `staking.report_burn(delta)` signed by `BURN_ORACLE_KEYPAIR` — the key the
 admin designated with `set_oracles { burn_oracle }` (`npm run setup -- --step burn-oracle`). The
 cursor advances only after confirmation; a crash re-reports at most one interval and the on-chain
-clamp (`burn_today ≤ 3 × daily cap`) bounds any double count. Deltas under
+clamp (`burn_today ≤ 3 × daily cap`) bounds any double count.
+Only burns **at or below `finalizedHorizon`** are aggregated (SEC-B29): a confirmed transaction can be
+dropped by a fork, and `report_burn` cannot be un-sent — it would lift the 7-day ring the guard reads.
+The cursor also never steps over a burn indexed out of slot order (the programs are indexed by
+independent cursors, so ids are not ordered by slot); whatever is not countable yet is reported as
+`deferredMicro` instead of silently joining the report. Deltas under
 `BURN_ORACLE_MIN_REPORT_MICRO` (1 $CG) are carried over; anything above
 `BURN_ORACLE_MAX_REPORT_MICRO` (5 M $CG) is refused with an `ALERT` (indexer bug, not a tx).
-`GET /v1/health.burnOracle` shows the last report, its age, what is pending and `healthy`
-(reported within 3 × `BURN_ORACLE_INTERVAL_MS`, default 1 h, or nothing material waiting).
+`GET /v1/health.burnOracle` shows the last report, its age, what is pending, what is deferred behind
+finality and `healthy` (1 unless something material is waiting or deferred and nothing was reported
+within 3 × `BURN_ORACLE_INTERVAL_MS`, default 1 h).
 
 ### Finality (`src/finality.ts`, docs/06 SEC-M5)
 
@@ -337,9 +351,19 @@ soulbound for the template's days. `/me/pending` lists the voucher pending with 
 4. **Gaps heal themselves.** `listen.ts` re-scans the newest 200 signatures per
    program every minute; because ingestion is idempotent this is cheap and
    closes any websocket drop without an operator.
+5. **A page the RPC will not serve is recordable, not silent (SEC-B27).**
+   `getSignaturesForAddress` lists a signature, `getTransaction` is a second call
+   and may answer `null` (provider retention, or a transient answer). The walk
+   files those in `indexer_gaps` and keeps `indexer_cursor.history_complete = 0`
+   until they drain; the heal tick retries recent ones, and
+   `npm run backend:backfill -- --repair-gaps` (archival RPC) retries parked
+   ones. `GET /v1/health.indexerGaps` = `{pending, parked, oldestSlot}`. A
+   *throwing* fetch is not a gap — it aborts the page and the cursor stays put,
+   so the next run re-scans instead of advancing past an unread transaction.
 
 Cursor per program lives in `indexer_cursor`; backfill stops when it meets
-`newest_signature` and only advances it after a complete walk.
+`newest_signature` and only advances it after a complete walk (and only stamps
+`history_complete = 1` when every page of that walk was served).
 
 ## Paid services (handles, skins, passes)
 
@@ -403,6 +427,25 @@ the chain's reason), `/fusion/suggest` (auth), `/staking/overview`, `/staking/me
   every 10 s (the pusher in `ops/pyth-pusher/` posts them); the `*_USD_FALLBACK` env values
   only cover a fresh dev database and are used for USD display, never for on-chain amounts —
   `/packs/quote` refuses (503) instead of guessing.
+* `/ws` fan-out (`src/ws.ts`): `WS_MAX_CLIENTS` bounds the **process**, `WS_MAX_PER_IP` (32) bounds **one
+  client IP** — both refuse with 1013 — `WS_MAX_BACKLOG_BYTES` bounds the bytes held for a socket (`ping`,
+  `{"type":"ping"}` replies and the greeting all go through it), `WS_PING_MS` is the liveness ping, and an
+  `Origin` that is not in `CORS_ORIGINS` is refused at the upgrade (a WebSocket is not subject to CORS; a
+  request without `Origin` — curl, a bot — is allowed). With `EVENT_BUS=redis`, a Redis that does not answer
+  `SUBSCRIBE` within `EVENT_BUS_CONNECT_TIMEOUT_MS` (3 s) does **not** block the boot: the fan-out degrades to
+  in-process, `/metrics` reports `event_bus_redis 0` and `EventBusDegraded` fires — restart `api` once Redis
+  is healthy, the decision is made at boot and is not retried.
+* **Backups are monitored as data, not as log lines (SEC-B49).** `ops/backup/sqlite-backup.sh` writes a status
+  file next to the snapshots (`last_attempt_ts` / `last_success_ts` / `last_result` / `consecutive_failures`,
+  atomically, on every attempt); compose mounts that host directory read-only into the API as
+  `BACKUP_STATUS_FILE` and this process exports `backup_last_success_timestamp_seconds`,
+  `backup_consecutive_failures` and `backup_last_result_ok`. `ops/monitoring/alerts.yml` then pages on
+  `BackupStale` (nothing succeeded for 36 h — including "never succeeded", since `time() - 0` is stale rather
+  than silent) and tickets on `BackupFailing` (≥ 3 attempts in a row). Unset the variable and the series do
+  not exist at all: a deployment without the sidecar must not alert on itself. `npm run ops:backup-now` takes
+  one snapshot immediately and exits non-zero with the failing step named — it does not start the hourly loop
+  (SEC-B48: `docker compose exec` does not inherit a service's `environment:`, so the "once" flag travels as
+  an argument).
 * Crank: run **two** replicas against the same DB (jobs are keyed and every send re-reads the
   chain, so duplicates only cost a failed simulation); one of them may live in another region.
   Alert on `/health.crank.healthy == false`, on the `ALERT` log lines (payer balance, abandoned
@@ -414,7 +457,7 @@ the chain's reason), `/fusion/suggest` (auth), `/staking/overview`, `/staking/me
 ## Tests
 
 ```bash
-npm test          # vitest: 111 tests — codec round-trips for all 30 events, CPI attribution,
+npm test          # vitest: 480 tests — codec round-trips for all 56 events, CPI attribution,
                   # idempotent ingest, rebuild equivalence, failed-fusion refunds, floors,
                   # SIWS (bad signature, nonce reuse, CSRF), handle lifecycle, service claims,
                   # Pyth PriceUpdateV2 decode/validate (owner, feed, verification, age),

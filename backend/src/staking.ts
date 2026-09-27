@@ -80,10 +80,20 @@ export function poolEmitted(db: Db, splitPct: number, from: number, to: number):
   return out;
 }
 
-/** Start of the accrual window for a stake: the later of its opening and the owner's last claim of that kind. */
-function accrualFrom(db: Db, owner: string, kind: number, since: number | null): number {
-  const last = db.get<{ bt: number | null }>(`SELECT MAX(COALESCE(block_time, 0)) bt FROM claims WHERE owner = ? AND kind = ?`, owner, kind)?.bt ?? 0;
-  return Math.max(since ?? 0, last ?? 0);
+/**
+ * Start of the accrual window for a stake: the later of its opening and the owner's last claim of that kind.
+ *
+ * SEC-B13: a claim first seen over the websocket has no `block_time` until the healer re-reads its
+ * signature (`patchLateTimes`). `MAX(COALESCE(block_time, 0))` read that as "claimed at the epoch", i.e.
+ * it *ignored the newest claim* and accrued from an earlier one — over-stating `pending`, the number a
+ * player reads as money. An undated claim is by construction a recently ingested one, so the honest
+ * answer is the conservative one: accrue nothing from before it (the display under-states until the
+ * time lands, and the chain is the only thing that actually pays).
+ */
+function accrualFrom(db: Db, owner: string, kind: number, since: number | null, t = now()): number {
+  const r = db.get<{ bt: number | null; unknown: number }>(`SELECT MAX(COALESCE(block_time, 0)) bt, SUM(block_time IS NULL) unknown FROM claims WHERE owner = ? AND kind = ?`, owner, kind);
+  const last = !r ? 0 : r.unknown > 0 ? t : r.bt ?? 0;
+  return Math.max(since ?? 0, last);
 }
 
 export function me(db: Db, wallet: string) {
@@ -96,14 +106,14 @@ export function me(db: Db, wallet: string) {
 
   const tokenStakes = db.all<{ key: string; amount: string; weight: string; unlock_at: number; since: number | null }>(`SELECT key, amount, weight, unlock_at, since FROM stakes WHERE owner = ? AND kind = 0 AND active = 1`, wallet).map((r) => {
     const tier = tierByKey.get(r.key) ?? 0;
-    const pending = share(BigInt(r.weight), p.tokenWeight, poolEmitted(db, EMISSION_SPLIT.tokenStaking, accrualFrom(db, wallet, 0, r.since), t));
+    const pending = share(BigInt(r.weight), p.tokenWeight, poolEmitted(db, EMISSION_SPLIT.tokenStaking, accrualFrom(db, wallet, 0, r.since, t), t));
     total += pending;
     const penalty = r.unlock_at > t ? (BigInt(r.amount) * BigInt(LOCK_TIERS[TIERS[tier]].earlyExitPenaltyBps) + 9_999n) / 10_000n /* ceil, = on-chain early_exit_penalty (SEC-F3) */ : 0n;
     return { tier, amount: r.amount, weight: r.weight, pending: pending.toString(), unlockAt: iso(r.unlock_at) ?? new Date(0).toISOString(), earlyExitPenalty: penalty.toString() };
   });
 
   const chipStakes = db.all<ChipRow & { s_weight: string; since: number | null }>(`SELECT c.*, s.weight s_weight, s.since FROM stakes s JOIN chips c ON c.asset = s.key WHERE s.owner = ? AND s.kind = 1 AND s.active = 1 ORDER BY c.rarity DESC, c.level DESC`, wallet).map((r) => {
-    const pending = share(BigInt(r.s_weight), p.chipWeight, poolEmitted(db, EMISSION_SPLIT.chipStaking, accrualFrom(db, wallet, 1, r.since), t));
+    const pending = share(BigInt(r.s_weight), p.chipWeight, poolEmitted(db, EMISSION_SPLIT.chipStaking, accrualFrom(db, wallet, 1, r.since, t), t));
     total += pending;
     return { chip: chipToApi(r), weight: r.s_weight, pending: pending.toString(), since: iso(r.since) ?? new Date(0).toISOString() };
   });

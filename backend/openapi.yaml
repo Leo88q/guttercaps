@@ -72,12 +72,14 @@ paths:
       tags: [me]
       summary: Inventory (projection of Core owner + ChipState)
       parameters:
-        - { in: query, name: collection, schema: { type: integer, minimum: 0, maximum: 9 } }
+        - { in: query, name: collection, schema: { type: integer, minimum: 0, maximum: 7 } }
         - { in: query, name: rarity, schema: { type: integer, minimum: 0, maximum: 8 } }
         - { in: query, name: status, schema: { type: string, enum: [free, staked, listed, locked, fusing] } }
         - { $ref: '#/components/parameters/cursor' }
+        - { in: query, name: limit, schema: { type: integer, minimum: 0, maximum: 500, default: 200 } }
       responses:
         '200': { description: chips, content: { application/json: { schema: { $ref: '#/components/schemas/ChipPage' } } } }
+        '400': { $ref: '#/components/responses/Error', description: 'bad_request — an unknown `status` used to be ignored (the unfiltered list came back), `collection`/`rarity` bound NaN into the WHERE clause (SEC-B2)' }
   /me/grid:
     get:
       tags: [me]
@@ -88,8 +90,12 @@ paths:
     get:
       tags: [me]
       summary: Unified activity feed (pack opens, fusions, sales, claims, matches)
-      parameters: [{ $ref: '#/components/parameters/cursor' }]
-      responses: { '200': { description: feed, content: { application/json: { schema: { $ref: '#/components/schemas/ActivityPage' } } } } }
+      parameters:
+        - { $ref: '#/components/parameters/cursor' }
+        - { in: query, name: limit, schema: { type: integer, minimum: 0, maximum: 200, default: 50 } }
+      responses:
+        '200': { description: feed, content: { application/json: { schema: { $ref: '#/components/schemas/ActivityPage' } } } }
+        '400': { $ref: '#/components/responses/Error', description: 'bad_request — strict cursor/limit (SEC-B2)' }
   /me/referrals:
     get:
       tags: [me]
@@ -108,10 +114,11 @@ paths:
       summary: Is this handle free? (also returns the ref_hash to commit on-chain)
       description: |
         ref_hash = keccak256(0x00 ‖ kind:u8 ‖ wallet:32 ‖ lowercase(handle) utf8). The client passes it to
-        chip_core::pay_service(kind=Handle|HandleChange, …). Reserved 120 s for the caller once checked.
+        chip_core::pay_service(kind=Handle|HandleChange, …). Reserved 120 s for the caller once checked, up
+        to 5 live reservations per wallet (SEC-B18: beyond that the check answers without taking a hold).
       parameters: [{ in: query, name: handle, required: true, schema: { type: string, pattern: '^[a-zA-Z0-9_]{3,16}$' } }]
       responses:
-        '200': { description: availability, content: { application/json: { schema: { type: object, properties: { available: { type: boolean }, reason: { type: string, enum: [taken, reserved, blocked, cooldown] }, kind: { type: integer, description: '0 first handle, 1 change' }, refHash: { type: string, description: 'hex, 32 bytes' }, priceUsdCents: { type: integer }, reservedUntil: { type: string, format: date-time } } } } } }
+        '200': { description: availability, content: { application/json: { schema: { type: object, properties: { available: { type: boolean }, reason: { type: string, enum: [taken, reserved, blocked, cooldown, invalid] }, kind: { type: integer, description: '0 first handle, 1 change' }, refHash: { type: string, description: 'hex, 32 bytes' }, priceUsdCents: { type: integer }, reservedUntil: { type: string, format: date-time } } } } } }
   /me/handle:
     put:
       tags: [me]
@@ -157,7 +164,11 @@ paths:
     post:
       tags: [me]
       summary: Verify a Turnstile token → 7-day pass
-      description: 'Rate limits: 6/min per session, 30/h per IP /24. Optionally re-sends the device fingerprint.'
+      description: |
+        Rate limits: 6/min per session, 30/h per IP /24. Optionally re-sends the device fingerprint.
+        The siteverify answer is checked, not just `success` (SEC-B5): the challenge must have been solved on one of
+        `TURNSTILE_HOSTNAMES` and its `action` must equal `TURNSTILE_ACTION` (the widget sends `claim`), and a token
+        older than `TURNSTILE_MAX_AGE_S` is refused — a public sitekey means anyone can mint a token for their own page.
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [token], properties: { token: { type: string, maxLength: 2048 }, fingerprint: { type: string, minLength: 8, maxLength: 256 } } } } } }
       responses:
         '200': { description: verified, content: { application/json: { schema: { $ref: '#/components/schemas/HumanStatus' } } } }
@@ -253,9 +264,11 @@ paths:
                       lastAmountMicro: { type: [string, 'null'] }
                       lastReportAgeS: { type: [integer, 'null'] }
                       reportedTotalMicro: { type: string }
-                      pendingMicro: { type: string, description: burns indexed but not yet reported }
+                      pendingMicro: { type: string, description: finalized burns indexed but not yet reported (SEC-B29) }
                       pendingRows: { type: integer }
-                      healthy: { type: boolean, description: reported within 3 intervals, or nothing material pending }
+                      deferredMicro: { type: string, description: SEC-B29 — burns indexed above the finalized horizon; not reportable yet because a dropped transaction would have to be un-reported }
+                      deferredRows: { type: integer }
+                      healthy: { type: boolean, description: nothing material waiting or stuck behind finality, or a report within the last 3 intervals }
                   rewardOracle:
                     type: object
                     description: keeper that turns quest completions / match rewards / season payouts / referrals into Merkle roots (kinds 2 / 3 / 4 in $CG, 5 / 6 in SKR from the prize pool, 8 = fusion boosters delivered by CPI into chip_core)
@@ -307,7 +320,15 @@ paths:
       summary: Provably-fair verifier — recompute a pack result from its randomness bytes
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [signature], properties: { signature: { type: string } } } } } }
       responses:
-        '200': { description: verification, content: { application/json: { schema: { type: object, properties: { randomnessAccount: { $ref: '#/components/schemas/Pubkey' }, rollHex: { type: string }, pityBefore: { type: integer }, effectiveOddsBps: { type: array, items: { type: integer }, description: 'odds the roll was drawn with — the SKU table after pity, or the voucher TEMPLATE odds (#28)' }, voucher: { type: [object, 'null'], properties: { template: { type: integer }, odds: { type: [array, 'null'], items: { type: integer } }, soulboundDays: { type: [integer, 'null'] } } }, recomputed: { type: array, items: { $ref: '#/components/schemas/RolledChip' } }, onChain: { type: array, items: { $ref: '#/components/schemas/RolledChip' } }, matches: { type: boolean } } } } } }
+        '200':
+          description: |
+            `recomputed` is the rarity sequence the emitted randomness produces under the published economy
+            table (`assumed` records which table, whether a `ParamsChanged` predates the open, and the pity
+            state); `onChain` is what the program minted; `matches` compares the two. Districts are **not**
+            recomputed here — the pool (`collections_created` / featured district) is live chain state the read
+            model does not hold, so `onChain[i].collection` is reported as-is and the client verifier (which
+            reads the config account) is what checks them. A `note` explains any mismatch.
+          content: { application/json: { schema: { type: object, properties: { randomnessAccount: { $ref: '#/components/schemas/Pubkey' }, rollHex: { type: string }, pityBefore: { type: integer }, effectiveOddsBps: { type: array, items: { type: integer }, description: 'odds the roll was drawn with — the SKU table after pity, or the voucher TEMPLATE odds (#28)' }, voucher: { type: [object, 'null'], properties: { template: { type: integer }, odds: { type: [array, 'null'], items: { type: integer } }, soulboundDays: { type: [integer, 'null'] } } }, recomputed: { type: array, items: { $ref: '#/components/schemas/RolledRarity' } }, onChain: { type: array, items: { $ref: '#/components/schemas/RolledChip' } }, matches: { type: boolean, description: 'the minted RARITY sequence follows from the randomness bytes under `assumed`' }, assumed: { $ref: '#/components/schemas/PackVerificationBasis' }, note: { type: string, description: 'present when something needs saying: mismatch, table change, unverifiable input' } } } } } 
 
   # ------------------------------------------------------------------ collections
   /collections:
@@ -337,9 +358,16 @@ paths:
       security: []
       summary: Raw indexed events mentioning a wallet (idempotent source-of-truth rows, newest first)
       parameters:
-        - { in: path, name: address, required: true, schema: { $ref: '#/components/schemas/Pubkey' } }
-        - { in: query, name: limit, required: false, schema: { type: integer, maximum: 200 } }
-      responses: { '200': { description: events, content: { application/json: { schema: { type: object, properties: { events: { type: array, items: { $ref: '#/components/schemas/RawEvent' } } } } } } } }
+        # SEC-B36 (2026-09-27): the address is bound into a `LIKE` pattern in the query layer, so anything
+        # that is not exactly a 32-byte base58 key is a 400 rather than a pattern (`%` used to answer with the
+        # newest 200 events of the whole log, `_` made the feed a substring oracle, junk was a silent []).
+        - { in: path, name: address, required: true, schema: { $ref: '#/components/schemas/Pubkey' }, description: base58-encoded 32-byte public key; anything else answers 400 `bad_pubkey` }
+        # SEC-B2 (2026-09-26): a single decimal integer; `abc`/`1.5` used to reach SQL as a NULL LIMIT
+        # (HTTP 500) and `-1` bypassed the cap entirely (SQLite reads a negative LIMIT as "no limit").
+        - { in: query, name: limit, required: false, schema: { type: integer, minimum: 0, maximum: 200, default: 50 } }
+      responses:
+        '200': { description: events, content: { application/json: { schema: { type: object, properties: { events: { type: array, items: { $ref: '#/components/schemas/RawEvent' } } } } } } }
+        '400': { $ref: '#/components/responses/Error', description: 'bad_request — `limit` is not a single non-negative integer, or `address` is not a 32-byte base58 key (SEC-B2, SEC-B36)' }
   /chips/{asset}:
     get:
       tags: [collections]
@@ -358,15 +386,24 @@ paths:
         - { in: query, name: collection, schema: { type: integer } }
         - { in: query, name: rarity, schema: { type: integer } }
         - { in: query, name: rarityMin, schema: { type: integer } }
-        - { in: query, name: indexMin, schema: { type: integer } }
-        - { in: query, name: indexMax, schema: { type: integer } }
-        - { in: query, name: levelMin, schema: { type: integer } }
+        - { in: query, name: levelMin, schema: { type: integer, minimum: 0 } }
         - { in: query, name: currency, schema: { type: string, enum: [SOL, USDC, SKR] } }
-        - { in: query, name: priceMaxUsd, schema: { type: number } }
+        - { in: query, name: priceMaxUsd, schema: { type: number, minimum: 0 } }
         - { in: query, name: missingForMySet, schema: { type: boolean }, description: 'auth required; only chips that complete one of my sets' }
-        - { in: query, name: sort, schema: { type: string, enum: [price_asc, price_desc, newest, rarity_desc, index_asc] } }
+        # SEC-B3: `indexMin` / `indexMax` / `sort=index_asc` were documented and rendered in the UI
+        # ("Low #") while doing nothing — the `chips` projection had no game index. Shape #27 projected
+        # it (`chips.game_index`: compressed chips from `CompressedChipRegistered`, core `open_pack`
+        # chips back-filled from `ChipState` by the crank), so the three are back in the contract and
+        # are honoured. A chip whose number is not resolved yet (`index: null`) sorts last and is
+        # *excluded* by a range filter — never treated as #0, which is a real chip of that collection.
+        - { in: query, name: indexMin, schema: { type: integer, minimum: 0, maximum: 4294967295 }, description: 'mint number lower bound (`Name #N`)' }
+        - { in: query, name: indexMax, schema: { type: integer, minimum: 0, maximum: 4294967295 }, description: 'mint number upper bound' }
+        - { in: query, name: sort, schema: { type: string, enum: [price_asc, price_desc, newest, rarity_desc, index_asc], default: price_asc } }
         - { $ref: '#/components/parameters/cursor' }
-      responses: { '200': { description: listings, content: { application/json: { schema: { $ref: '#/components/schemas/ListingPage' } } } } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 0, maximum: 200, default: 60 } }
+      responses:
+        '200': { description: listings, content: { application/json: { schema: { $ref: '#/components/schemas/ListingPage' } } } }
+        '400': { $ref: '#/components/responses/Error', description: 'bad_request / bad_sort / bad_currency — filters are integers in range, never silently ignored (SEC-B2/B3)' }
   /market/floor:
     get:
       tags: [market]
@@ -380,10 +417,12 @@ paths:
       summary: Sales history (per chip, archetype, or global)
       parameters:
         - { in: query, name: asset, schema: { $ref: '#/components/schemas/Pubkey' } }
-        - { in: query, name: collection, schema: { type: integer } }
-        - { in: query, name: rarity, schema: { type: integer } }
+        - { in: query, name: collection, schema: { type: integer, minimum: 0, maximum: 9 } }
+        - { in: query, name: rarity, schema: { type: integer, minimum: 0, maximum: 8 } }
         - { $ref: '#/components/parameters/cursor' }
-      responses: { '200': { description: sales, content: { application/json: { schema: { $ref: '#/components/schemas/SalePage' } } } } }
+      responses:
+        '200': { description: sales, content: { application/json: { schema: { $ref: '#/components/schemas/SalePage' } } } }
+        '400': { $ref: '#/components/responses/Error', description: 'bad_request — filters must be integers in range (SEC-B2)' }
   /market/offers:
     get:
       tags: [market]
@@ -536,7 +575,11 @@ paths:
         - { in: path, name: board, required: true, schema: { type: string, enum: [rating, wins, collection, staking, fusion] } }
         - { in: query, name: season, schema: { type: integer, minimum: 0 }, description: rating board only; other boards ignore it }
         - { $ref: '#/components/parameters/cursor' }
-      responses: { '200': { description: rows, content: { application/json: { schema: { $ref: '#/components/schemas/LeaderboardPage' } } } } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 0, maximum: 200, default: 50 } }
+      responses:
+        '200': { description: rows, content: { application/json: { schema: { $ref: '#/components/schemas/LeaderboardPage' } } } }
+        '400': { $ref: '#/components/responses/Error', description: 'bad_season / bad_request — `season` and `cursor` are strict integers (SEC-B2)' }
+        '404': { $ref: '#/components/responses/Error', description: unknown_board }
 
   # ------------------------------------------------------------------ admin (backend/src/admin.ts — docs/03 §3.5, T-B-46)
   # Gate: SIWS session whose wallet ∈ ADMIN_WALLETS (env allowlist) + CSRF on mutations; every call is written to
@@ -595,7 +638,7 @@ components:
   securitySchemes:
     cookieAuth: { type: apiKey, in: cookie, name: gc_session }
   parameters:
-    cursor: { in: query, name: cursor, schema: { type: string }, description: opaque pagination cursor }
+    cursor: { in: query, name: cursor, schema: { type: string, pattern: '^[0-9]+$' }, description: 'opaque pagination cursor — a non-negative integer offset as a string; anything else is 400 bad_request (SEC-B2: it used to fall back to offset 0, i.e. page 1 forever)' }
   responses:
     Error:
       description: error
@@ -645,7 +688,7 @@ components:
         collection: { type: integer }
         rarity: { $ref: '#/components/schemas/Rarity' }
         level: { type: integer }
-        index: { type: integer }
+        index: { type: [integer, 'null'], description: 'per-collection mint number (`Name #N`); null = not resolved on chain yet (core `open_pack` chips are back-filled by the crank within a sweep). Never a placeholder: #0 is a real chip' }
         flags: { type: object, properties: { staked: { type: boolean }, listed: { type: boolean }, fusing: { type: boolean }, soulbound: { type: boolean } } }
         lockUntil: { type: [string, 'null'], format: date-time }
         power: { type: integer }
@@ -758,6 +801,17 @@ components:
         switchboardQueue: { $ref: '#/components/schemas/Pubkey' }
         expiresAt: { type: string, format: date-time }
     RolledChip: { type: object, properties: { rarity: { $ref: '#/components/schemas/Rarity' }, collection: { type: integer } } }
+    RolledRarity: { type: object, properties: { rarity: { $ref: '#/components/schemas/Rarity' } } }
+    PackVerificationBasis:
+      type: object
+      description: what the recomputation assumed — the client verifier reads the live config instead of these defaults
+      properties:
+        basis: { type: string, enum: [published-defaults] }
+        sku: { type: integer }
+        chips: { type: integer }
+        floor: { type: integer }
+        pity: { type: [object, 'null'], properties: { tier: { type: integer }, hardAt: { type: integer }, softStart: { type: integer }, softStepBps: { type: integer } } }
+        paramsChangedBefore: { type: boolean, description: 'an admin ParamsChanged event precedes this open, so the on-chain table may differ from the published one' }
     Service:
       type: object
       properties:
@@ -991,6 +1045,7 @@ components:
       properties:
         fetchedSlot: { type: integer }
         gameConfig: { type: object, properties: { admin: { type: string }, pendingAdmin: { type: string }, pauser: { type: string }, treasury: { type: string }, buybackWallet: { type: string }, cgMint: { type: string }, skrMint: { type: string }, pythSolUsdFeed: { type: string }, pythSkrUsdFeed: { type: string }, featuredCollection: { type: integer }, paused: { type: boolean }, marketFeeBps: { type: integer }, skrDiscountBps: { type: integer }, collectionsCreated: { type: integer }, paramsVersion: { type: integer }, packs: { type: array, items: { $ref: '#/components/schemas/AdminPack' } }, liabilities: { type: object, description: 'sum over the VaultLedger shards (#12)', properties: { lamports: { type: string }, usdc: { type: string }, cgMicro: { type: string }, skr: { type: string } } }, burnedTotalMicro: { type: string }, ledgerShards: { type: array, description: 'per-shard breakdown; initialized=false means init_ledger has not run for that shard (sweep_vault needs all of them)', items: { type: object, required: [shard, initialized], properties: { shard: { type: integer }, initialized: { type: boolean }, lamports: { type: string }, usdc: { type: string }, cgMicro: { type: string }, skr: { type: string }, burnedTotalMicro: { type: string } } } }, ledgerShardsMissing: { type: integer }, ledgerShardCount: { type: integer } } }
+        arena: { type: [object, 'null'], description: 'SEC-B24: the arena has its own admin/pauser (ArenaConfig) — the kill switch signs with these, never with chip_core keys; null = init_arena has not run here', properties: { admin: { type: string }, pauser: { type: string }, paused: { type: boolean } } }
         emission: { type: object, properties: { admin: { type: string }, pauser: { type: string }, questOracle: { type: string }, seasonOracle: { type: string }, setOracle: { type: string }, burnOracle: { type: string }, dayIndex: { type: integer }, paused: { type: boolean }, splitBps: { type: array, items: { type: integer } }, splitChangedAt: { type: integer }, nextSplitChangeAt: { type: integer }, mintedTotalMicro: { type: string }, burnTodayMicro: { type: string }, burn7dAvgMicro: { type: string }, sliceBudgetMicro: { type: array, items: { type: string } } } }
         guardRails: { $ref: '#/components/schemas/GuardRails' }
         history: { type: array, items: { type: object, properties: { signature: { type: string }, admin: { type: string }, version: { type: integer }, slot: { type: integer }, blockTime: { type: [integer, 'null'] } } } }
@@ -1010,6 +1065,8 @@ components:
         pity: { type: object, properties: { minHardAt: { type: integer }, maxSoftStepBps: { type: integer } } }
         maxMarketFeeBps: { type: integer }
         maxSkrDiscountBps: { type: integer }
+        maxPackCgPriceMicro: { type: integer, description: 'SEC-F13/SEC-B23: fat-finger cap on the $CG pack price (1 000 000 $CG) — the panel mirrors it so it never proposes what the program rejects' }
+        cgPriceMoveFactor: { type: integer, description: 'SEC-F13/SEC-B23: one-shot $CG price move is limited to old/F … old×F (integer division, as in Rust); 0 is free-form (sales off)' }
         split: { type: object, properties: { count: { type: integer }, maxDeltaBps: { type: integer }, minIntervalS: { type: integer } } }
         evRatioRange: { type: array, items: { type: number }, minItems: 2, maxItems: 2 }
     ParamsProposal:

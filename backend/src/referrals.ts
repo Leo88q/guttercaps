@@ -35,6 +35,8 @@ import { walletFlags } from './antifraud.ts';
 import { deviceLimited } from './human.ts';
 import { isBot } from './arena.ts';
 import { insertIgnore } from './sql.ts';
+import { isSolanaAddress } from './base58.ts';
+import { log } from './log.ts';
 
 export const KIND_REFERRALS = 4;
 export const WELCOME_NONCE = 'welcome';
@@ -100,6 +102,16 @@ export function settleReferrals(db: Db, t = now(), horizon = finalizedHorizon(db
         if (e.reason === 'human_check_required') { out.postponed++; continue; } // paid once the referrer passes the challenge
         reason = e.reason === 'device_limit' ? 'device_limit' : 'referrer_ineligible';
       }
+    }
+    // SEC-B53: a payee must be an address before it becomes a reward leaf. `eligibility()` happens to
+    // reject an unknown wallet, so today a junk referrer yields a zero row — but that is an unrelated
+    // rule holding the pipeline up: `buildRewardTree` parses every leaf wallet with `new PublicKey(...)`
+    // and throws, which fails the whole oracle cycle (every kind: quests, PvP, referrals, boosters, chip
+    // vouchers, SKR) once per interval until somebody deletes the row by hand. Refuse the payee here, at
+    // the only place that writes one, with the same reason an ineligible referrer gets.
+    if (reason === null && !isSolanaAddress(c.referrer)) {
+      reason = 'referrer_ineligible';
+      log.warn('referral payee is not an address: reward zeroed', { payee: c.referrer, referee: c.referee });
     }
     let amount = 0n;
     if (reason === null) {

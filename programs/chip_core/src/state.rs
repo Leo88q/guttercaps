@@ -531,6 +531,30 @@ pub struct ParamsChanged {
     pub admin: Pubkey,
     pub version: u32,
 }
+
+/// SEC-B22: what `set_params` actually changed — `ParamsChanged` only carries the new `version`, which
+/// is enough to see *that* something moved and useless for seeing *what* moved. Addresses that redirect
+/// money (`treasury`, `buyback_wallet`), the Pyth feeds and the SKR mint are separated out here.
+///
+/// `changed` is a bitmask of `PARAMS_FIELD_*` (admin.rs); fields whose bit is clear carry the default
+/// value and mean "untouched". The shape is scalars only on purpose: the backend event codec decodes it
+/// without an Option type, and the wire layer already exposes unknown events as a scalar map, so this
+/// event is visible in `events_raw` and in the admin panel without a new API surface.
+#[event]
+pub struct ParamsPatched {
+    pub admin: Pubkey,
+    pub version: u32,
+    pub changed: u16,
+    pub treasury: Pubkey,
+    pub buyback_wallet: Pubkey,
+    pub pyth_sol_usd_feed: Pubkey,
+    pub pyth_skr_usd_feed: Pubkey,
+    pub skr_mint: Pubkey,
+    pub market_fee_bps: u16,
+    pub skr_discount_bps: u16,
+    pub featured_collection: u8,
+    pub packs: bool,
+}
 /// `by` = the signer that flipped the switch (pauser or admin). Indexed for the admin audit log.
 #[event]
 pub struct PauseChanged {

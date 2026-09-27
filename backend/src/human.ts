@@ -22,7 +22,7 @@
 // (dev / tests / explicit `HUMAN_CHECK=0`); production refuses to start without one of the two
 // (config.ts). Tests configure the module through `configureHuman` (injected verifier + clock).
 import { createHash } from 'node:crypto';
-import { DEVICE_MAX_WALLETS, DEVICE_SALT, HUMAN_CHECK_ENABLED, HUMAN_CHECK_TTL_S, TURNSTILE_SECRET, TURNSTILE_SITEVERIFY_URL, TURNSTILE_SITE_KEY } from './config.ts';
+import { DEVICE_MAX_WALLETS, DEVICE_SALT, HUMAN_CHECK_ENABLED, HUMAN_CHECK_TTL_S, TURNSTILE_ACTION, TURNSTILE_HOSTNAMES, TURNSTILE_MAX_AGE_S, TURNSTILE_SECRET, TURNSTILE_SITEVERIFY_URL, TURNSTILE_SITE_KEY } from './config.ts';
 import { type Db, now } from './db.ts';
 import { ServiceError } from './services.ts';
 
@@ -48,6 +48,10 @@ export const HUMAN = {
   ttlS: HUMAN_CHECK_TTL_S,
   maxWalletsPerDevice: DEVICE_MAX_WALLETS,
   salt: DEVICE_SALT,
+  /** SEC-B5: where the pass may have been minted / which action it answers — see config.ts. */
+  hostnames: TURNSTILE_HOSTNAMES,
+  action: TURNSTILE_ACTION,
+  maxAgeS: TURNSTILE_MAX_AGE_S,
   verifier: undefined as TurnstileVerifier | undefined,
 };
 export function configureHuman(o: Partial<typeof HUMAN>): void { Object.assign(HUMAN, o); }
@@ -113,6 +117,26 @@ export async function verifyHuman(db: Db, wallet: string, body: unknown, ip: { i
     const verifier = HUMAN.verifier ?? createTurnstileVerifier();
     outcome = await verifier(token, ip.ip);
     if (!outcome.success) throw new ServiceError(400, 'turnstile_failed', `Turnstile rejected the token (${outcome.errorCodes.join(', ') || 'no error code'})`, { errorCodes: outcome.errorCodes });
+    // SEC-B5 — a pass is only ours if it was minted on our page and for our action. A sitekey is
+    // public: without these two checks a farm renders the same widget on its own domain, solves a
+    // challenge there and spends the token on our reward faucets (`/me/human` is the gate for quest
+    // and SKR settlement). `hostname` may be absent only when the allowlist is empty (dev/tests).
+    const hostname = (outcome.hostname ?? '').toLowerCase();
+    if (HUMAN.hostnames.length > 0 && !HUMAN.hostnames.some((h) => (h.startsWith('.') ? hostname === h.slice(1) || hostname.endsWith(h) : hostname === h))) {
+      throw new ServiceError(400, 'turnstile_failed', 'the challenge was solved on a different site', { hostname: outcome.hostname ?? null });
+    }
+    if (HUMAN.action && outcome.action !== HUMAN.action) {
+      throw new ServiceError(400, 'turnstile_failed', `the challenge answers a different action (${outcome.action ?? 'none'})`, { action: outcome.action ?? null });
+    }
+    // Single-use and ~5 min at Cloudflare; the age check is for a cached/leaked token, and a
+    // timestamp we cannot parse is a refusal, not a pass (fail closed).
+    if (outcome.challengeTs !== undefined && outcome.challengeTs !== '') {
+      const ts = Math.floor(Date.parse(outcome.challengeTs) / 1000);
+      // ≤ maxAgeS old (Cloudflare mints ~5 min tokens) and not from the future beyond clock skew.
+      if (!Number.isFinite(ts) || t - ts > HUMAN.maxAgeS || ts - t > 300) {
+        throw new ServiceError(400, 'turnstile_failed', 'the challenge token is stale or its timestamp is bogus — solve it again');
+      }
+    }
   }
   db.run(`INSERT INTO human_checks (wallet, verified_at, expires_at, ip_net, hostname, action) VALUES (?, ?, ?, ?, ?, ?)
           ON CONFLICT(wallet) DO UPDATE SET verified_at = excluded.verified_at, expires_at = excluded.expires_at, ip_net = excluded.ip_net, hostname = excluded.hostname, action = excluded.action`,

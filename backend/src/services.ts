@@ -9,7 +9,7 @@
 import { keccak_256 } from '@noble/hashes/sha3';
 import { PublicKey } from '@solana/web3.js';
 import { SERVICES, SERVICE_BY_KIND, SKIN_BY_ID, PROFILE_THEME_BY_ID, EMOTE_PACK_BY_ID, COLLECTIONS, type ServiceDef } from '@guttercaps/economy';
-import { HANDLE_BLOCKLIST, HANDLE_CHANGE_COOLDOWN_S, HANDLE_QUARANTINE_S, HANDLE_RE, HANDLE_RESERVE_MS, SKR_USD_FALLBACK, SOL_USD_FALLBACK } from './config.ts';
+import { HANDLE_BLOCKLIST, HANDLE_CHANGE_COOLDOWN_S, HANDLE_MAX_RESERVATIONS, HANDLE_QUARANTINE_S, HANDLE_RE, HANDLE_RESERVE_MS, SKR_USD_FALLBACK, SOL_USD_FALLBACK } from './config.ts';
 import { type Db, now } from './db.ts';
 import { FinalityError, requireFinalized } from './finality.ts';
 import { foldEq } from './sql.ts';
@@ -76,20 +76,41 @@ export function catalogue(db: Db) {
 // ---------------------------------------------------------------- payments
 export interface PaymentRow { signature: string; event_index: number; buyer: string; kind: number; currency: number; amount: string; burned: string; ref_hash: string; block_time: number | null; consumed_by: string | null }
 
-/** Find an unconsumed ServicePaid for (signature, buyer, kind). */
-export function findPayment(db: Db, signature: string, buyer: string, kinds: number[]): PaymentRow {
-  const rows = db.all<PaymentRow>(`SELECT * FROM service_payments WHERE signature = ? AND buyer = ?`, signature, buyer);
+/**
+ * Find an unconsumed ServicePaid for (signature, buyer, kind).
+ *
+ * `expectedRefHash` (hex, optional) is what the caller is about to grant: one transaction can carry
+ * several `buy_service` instructions of the SAME kind (a player buying two cap skins in one tx — each
+ * payment carries its own `ref_hash`). Without it the first unconsumed row of that kind was returned
+ * for every claim, so the second purchase could never be claimed at all: the `ref_hash` compare in the
+ * caller rejected the wrong row and the right one was never looked at (the player paid and got nothing).
+ * The match is preferred, not required — a real payload mismatch must still surface as `ref_hash_mismatch`
+ * in the caller, never as "payment not found".
+ *
+ * SEC-M5: an entitlement is value leaving the treasury — only a finalized payment can buy it.
+ */
+export function findPayment(db: Db, signature: string, buyer: string, kinds: number[], expectedRefHash?: string): PaymentRow {
+  const rows = db.all<PaymentRow>(`SELECT * FROM service_payments WHERE signature = ? AND buyer = ? ORDER BY event_index ASC`, signature, buyer);
   if (rows.length === 0) throw new ServiceError(402, 'payment_not_found', 'No ServicePaid event from this wallet in that transaction (indexer may still be catching up — retry in a few seconds)');
-  const match = rows.find((r) => kinds.includes(r.kind) && !r.consumed_by) ?? rows.find((r) => kinds.includes(r.kind));
+  const mine = rows.filter((r) => kinds.includes(r.kind));
+  const match =
+    (expectedRefHash ? mine.find((r) => !r.consumed_by && r.ref_hash === expectedRefHash) : undefined) ??
+    mine.find((r) => !r.consumed_by) ?? mine[0];
   if (!match) throw new ServiceError(402, 'payment_kind_mismatch', `Transaction paid for kind ${rows[0].kind}, expected ${kinds.join('/')}`);
   if (match.consumed_by) throw new ServiceError(402, 'payment_consumed', 'This payment was already used');
-  // SEC-M5: an entitlement is value leaving the treasury — only a finalized payment can buy it
   try { requireFinalized(db, signature); } catch (e) { if (e instanceof FinalityError) throw new ServiceError(409, e.code, e.message); throw e; }
   return match;
 }
 
+/**
+ * Spend a payment exactly once. The `consumed_by IS NULL` predicate is the guard, not the earlier
+ * SELECT: two API replicas (or a retried request racing the first) could both read the row as free and
+ * both grant an entitlement for one payment — the second UPDATE now changes no row and the claim fails
+ * with `payment_consumed`. One statement decides, and it decides in SQLite.
+ */
 function consume(db: Db, p: PaymentRow, by: string) {
-  db.run(`UPDATE service_payments SET consumed_by = ?, consumed_at = ? WHERE signature = ? AND event_index = ?`, by, now(), p.signature, p.event_index);
+  const r = db.run(`UPDATE service_payments SET consumed_by = ?, consumed_at = ? WHERE signature = ? AND event_index = ? AND consumed_by IS NULL`, by, now(), p.signature, p.event_index);
+  if (Number(r.changes) !== 1) throw new ServiceError(409, 'payment_consumed', 'This payment was already used');
 }
 
 // ---------------------------------------------------------------- handles
@@ -114,6 +135,15 @@ export function checkHandle(db: Db, wallet: string, raw: string): HandleCheck {
   db.run(`DELETE FROM handle_reservations WHERE expires_at < ?`, t);
   const res = db.get<{ wallet: string; expires_at: number }>(`SELECT wallet, expires_at FROM handle_reservations WHERE ${foldEq('handle', '?')}`, lower);
   if (res && res.wallet !== wallet) return { available: false, reason: 'reserved', ...base };
+  // SEC-B18: a hold is what makes the handle read as `reserved` for everyone else, and one wallet could
+  // take a hold on every handle it could ask about — unbounded `handle_reservations` growth with the
+  // IP-scoped read budget (600/min) as the only ceiling, plus squatting of the whole namespace by a bot
+  // that never pays. Cap the live holds per wallet. The answer stays honest; only the hold stops. A
+  // claim never needs the hold to exist: `claimHandle` re-checks availability inside its transaction and
+  // refuses with `handle_reserved` if someone else holds it, before the payment is consumed.
+  if (!res && db.scalar(`SELECT COUNT(*) FROM handle_reservations WHERE wallet = ?`, wallet) >= HANDLE_MAX_RESERVATIONS) {
+    return { available: true, ...base };
+  }
   const reservedUntil = t + Math.floor(HANDLE_RESERVE_MS / 1000);
   db.run(`INSERT INTO handle_reservations (handle, wallet, expires_at) VALUES (?, ?, ?) ON CONFLICT(handle) DO UPDATE SET wallet = excluded.wallet, expires_at = excluded.expires_at`, lower, wallet, reservedUntil);
   return { available: true, ...base, reservedUntil: new Date(reservedUntil * 1000).toISOString() };
@@ -131,8 +161,8 @@ export function claimHandle(db: Db, wallet: string, raw: string, signature: stri
     const check = checkHandle(db, wallet, handle);
     if (!check.available) throw new ServiceError(409, `handle_${check.reason}`, `Handle unavailable (${check.reason})`);
     // strict: first handle must be paid as kind 0 ($1.99), a change as kind 1 ($0.99)
-    const p = findPayment(db, signature, wallet, [kind]);
     const expected = toHex(handleRefHash(kind, wallet, handle));
+    const p = findPayment(db, signature, wallet, [kind], expected);
     if (p.ref_hash !== expected) throw new ServiceError(402, 'ref_hash_mismatch', 'Payment was committed for a different handle');
     if (kind === 1 && me?.handle_set_at && now() - me.handle_set_at < HANDLE_CHANGE_COOLDOWN_S) throw new ServiceError(409, 'handle_cooldown', 'Handle can change once per 30 days');
     if (me?.handle) db.run(`INSERT INTO handle_history (handle, wallet, released_at) VALUES (?, ?, ?)`, me.handle, wallet, now());
@@ -182,8 +212,8 @@ export function claimService(db: Db, wallet: string, signature: string, kind: nu
   const problem = PAYLOAD_RULES[s.id]?.(payload);
   if (problem) throw new ServiceError(400, 'bad_payload', problem);
   return db.tx(() => {
-    const p = findPayment(db, signature, wallet, [kind]);
     const expected = toHex(serviceRefHash(kind, wallet, payload));
+    const p = findPayment(db, signature, wallet, [kind], expected);
     if (p.ref_hash !== expected) throw new ServiceError(402, 'ref_hash_mismatch', 'Payment was committed for a different payload');
     if (s.id === 'capSkin') {
       const chip = db.get<{ owner: string }>(`SELECT owner FROM chips WHERE asset = ? AND burned_at IS NULL`, String(payload.asset));

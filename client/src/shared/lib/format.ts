@@ -70,3 +70,12 @@ export function parseUnits(input: string, decimals: number): bigint | null {
 }
 
 export const secondsToHuman = (sec: number) => (sec === 0 ? 'none' : sec < 3600 ? `${sec / 60} min` : sec < 86_400 ? `${sec / 3600} h` : `${sec / 86_400} d`);
+
+/**
+ * Mint number of a chip (`Name #N`). `chips.game_index` is resolved on chain — the API reports
+ * `index: null` until it is (see SEC-B3 / shape #27 in SECURITY-AUDIT-2026-09-26.md), and `#null`
+ * or a placeholder `#0` would both be lies: `#0` is the first chip ever minted in that district.
+ * Returns `null` so the caller can drop the fragment instead of rendering it.
+ */
+export const chipIndexText = (index: number | null | undefined): string | null =>
+  index === null || index === undefined ? null : `#${index}`;

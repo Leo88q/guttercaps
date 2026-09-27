@@ -14,8 +14,16 @@
    $$\text{State} = \mathcal{F}(\text{events\_raw})$$
 2. **Idempotent Application**:
    Duplicate raw events (e.g., overlapping replay or dual-head polling) are discarded via `INSERT ... ON CONFLICT DO NOTHING`.
-3. **Zero-Gap Ingestion**:
-   A sequence detector tracks slot intervals. Any detected gap triggers a backfill fetch via getSignaturesForAddress before updating the head cursor.
+3. **Zero-Gap Ingestion** (SEC-B27 — this is the mechanism that exists; an earlier version of this
+   section described a detector nobody implements, so the paragraph was rewritten to match the tree):
+   A gap is a signature the walk was told about but the RPC would not serve: `background/src/backfill.ts`
+   files it in `indexer_gaps` and leaves `indexer_cursor.history_complete = 0`, the listener's heal tick
+   re-fetches recent gaps every `LISTEN_HEAL_EVERY_MS`, and `npm run backend:backfill -- --repair-gaps`
+   drains the rest (parked rows included) — normally pointed at an archival RPC. `GET /v1/health`
+   (`indexerGaps = {pending, parked, oldestSlot}`, scraped as `indexer_gaps_pending`/`indexer_gaps_parked`)
+   is the operator-visible state; the head-lag half of detection is `ingest_lag_slots` / `/readyz`.
+   The cursor is advanced only after a page walk completes, and a page that could not be fetched aborts the
+   walk (the cursor then stays put and the next run re-scans).
 
 ---
 
@@ -23,8 +31,10 @@
 
 ### Phase 1: Database Provisioning & Schema Initialization
 ```bash
-# Provision a fresh SQLite / PostgreSQL storage target
-npm run db:migrate
+# SQLite: nothing to migrate — the file is created with its schema by the first `new Db(path)`
+# (backend/src/db.ts SCHEMA + migrate(), which is also what upgrades an older dev file in place).
+# Postgres: there is no adapter in this tree yet; the target shape is backend/prisma/schema.prisma and
+# the migration step belongs to `prisma migrate deploy` in that PR (docs/09 §4.1).
 ```
 
 ### Phase 2: Raw Event Log Recovery
@@ -36,7 +46,7 @@ aws s3 cp s3://guttercaps-backups/events_raw-latest.zst - | zstd -d | sqlite3 da
 ### Phase 3: Deterministic Projection Rebuild
 Execute full state replay:
 ```bash
-npm run rebuild
+npm run backend:rebuild
 ```
 Expected output:
 ```text

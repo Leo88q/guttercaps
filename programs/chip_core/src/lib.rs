@@ -4,7 +4,11 @@
 //! with pity, fusion, and the ChipState PDA that market/staking/arena rely
 //! on. See docs/03-architecture.md §2 for the design and threat model.
 //!
-//! Program IDs below are placeholders until first deploy (`anchor keys sync`).
+//! Program IDs are committed, not placeholders: every `declare_id!`, both `Anchor.toml` sections and the
+//! client/backend/scripts/CI copies agree — `npm run program-ids -- check` (part of `npm run verify`) and
+//! `packages/economy/scripts/sync-check.ts` fail on any drift. They are dev-derived keypairs, so the
+//! mainnet freeze is a single rewrite through `npm run program-ids -- apply --from <cold-dir>`
+//! (docs/09 §2), never a hand edit.
 
 #![allow(clippy::result_large_err)]
 // Anchor's generated instruction ABI wrappers mirror every handler argument, so the
@@ -296,6 +300,16 @@ pub mod chip_core {
     /// Permissionless; only after the pending pack/fusion is gone. Rent → player (SEC-M7).
     pub fn close_randomness(ctx: Context<CloseRandomness>, kind: u8, nonce: u64) -> Result<()> {
         instructions::close_randomness(ctx, kind, nonce)
+    }
+    /// Permissionless, after the randomness account is closed and the ALT cooldown has passed:
+    /// the lookup table's rent (~0.0015 SOL/bundle, backlog #23) → player, never the caller.
+    pub fn close_randomness_lut(
+        ctx: Context<CloseRandomnessLut>,
+        kind: u8,
+        nonce: u64,
+        lut_slot: u64,
+    ) -> Result<()> {
+        instructions::close_randomness_lut(ctx, kind, nonce, lut_slot)
     }
 
     // ----- paid services (handles, cosmetics, boosters, season pass) -----

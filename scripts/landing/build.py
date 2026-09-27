@@ -9,12 +9,40 @@ Inputs: content.py (EN/RU copy + tables), base.css (visual system of the
 original landing, kept verbatim), collections.js (8 districts × 9 caps).
 The page is a single self-contained HTML file: no build step at deploy time.
 """
-import json, html, pathlib
+import json, html, pathlib, base64
 from content import T, HOWTO, PACKS, FAQ, TIERS, SITE, TITLE, DESC
 
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 OUT = ROOT / 'guttercaps-landing.html'
+
+# ---------------------------------------------------------------------- fonts
+# SEC-B4 (SECURITY-AUDIT-2026-09-26.md): the landing used to load its webfonts from fonts.googleapis.com.
+# That was the page's only third-party request, it carried every visitor's IP (while /legal/privacy
+# promises no third-party analytics), and the app's own CSP (`font-src 'self' data:`, ops/deploy/nginx.conf)
+# blocked the same URL in production anyway. The fonts are now vendored in the repo
+# (client/public/fonts, see scripts/vendor-fonts.ts for the OFL sources) and inlined here as data URIs —
+# which keeps the "deploy = copy one HTML file" promise of this landing intact.
+# The manifest is the single source of truth: the files whose `surfaces` include "landing" are exactly the
+# subsets this page needs (latin + cyrillic — the landing is EN/RU, unlike the 7-language app).
+FONT_DIR = ROOT / 'client' / 'public' / 'fonts'
+FONT_MANIFEST = json.loads((FONT_DIR / 'manifest.json').read_text())
+
+def fonts_css() -> str:
+    """`@font-face` rules with the woff2 bytes inlined as base64 data URIs."""
+    out = []
+    for f in FONT_MANIFEST['files']:
+        if 'landing' not in f['surfaces']:
+            continue
+        data = base64.b64encode((FONT_DIR / f['file']).read_bytes()).decode('ascii')
+        out.append(
+            "@font-face{font-family:'%s';font-style:normal;font-display:swap;font-weight:%d;"
+            "src:url(data:font/woff2;base64,%s) format('woff2');unicode-range:%s}"
+            % (f['family'], f['weight'], data, f['unicodeRange'])
+        )
+    return '\n'.join(out)
+
+FONTS_CSS = fonts_css()
 OLD_CSS = (HERE / 'base.css').read_text()
 COLLECTIONS_JS = (HERE / 'collections.js').read_text()
 
@@ -22,7 +50,6 @@ COLLECTIONS_JS = (HERE / 'collections.js').read_text()
 # sheets cut from the real chip masters (district-*). Everything is inlined as
 # webp data URIs so the landing stays one self-contained file — the tradeoff is
 # roughly +1.1 MB of HTML, tracked in scripts/landing/README.
-import base64
 # Tile grid of the district contact sheets — MUST match the sheet generator
 # (TILE x TILE tiles, GUT gutter, PAD padding; see scripts/landing/README.md).
 # app.js uses it to sprite each chip's real art out of its district sheet.
@@ -212,9 +239,21 @@ HEAD = f'''<!doctype html>
 <meta name="twitter:title" content="{TITLE[0]}" />
 <meta name="twitter:description" content="{DESC[0]}" />
 <meta name="twitter:image" content="{SITE}/assets/og-guttercaps.png" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Rubik+Wet+Paint&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<!-- SEC-B4 (SECURITY-AUDIT-2026-09-26.md): the landing is served by a static host whose response
+     headers we do not control, so the only policy we can ship with the page is a meta tag. It blocks
+     everything and names what the page really needs — including its own inline styles and the one
+     endpoint the live counters read. There is no third-party origin left: the webfonts are inlined
+     below (vendored under client/public/fonts, OFL — see scripts/vendor-fonts.ts), which is also why
+     there is no `preconnect` and no `referrerpolicy` dance for a font CDN. `frame-ancestors`/HSTS
+     cannot be set from here (meta CSP ignores frame-ancestors by spec): the host has to add those
+     headers — ops/deploy/nginx.conf is the SPA's copy of the same policy.
+     `referrer` is a separate tag: `no-referrer` so the one remaining request (the stats call) and any
+     outbound click carry no path/query of the page the visitor came from. -->
+<meta name="referrer" content="no-referrer" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self' https://api.guttercaps.gg; media-src 'self'; manifest-src 'self'" />
+<style>
+{FONTS_CSS}
+</style>
 <script type="application/ld+json">
 {jsonld_game()}
 </script>

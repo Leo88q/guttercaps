@@ -524,12 +524,22 @@ export async function runOnce(d: OracleDeps, t = now()): Promise<{ settled: numb
   // The kind-3 batch is built even if the funding did not happen (no key / empty pool / tx error): the
   // slice usually has slack, and a `publish_root` that does hit BudgetExceeded simply stays pending and is
   // retried next cycle after the funding — never a double payment, only a delay (surfaced in /health).
+  // SEC-B53: one unbuildable batch must not stop the others. A builder throws only for a real defect
+  // (a leaf wallet that is not an address — `buildRewardTree` parses it with `new PublicKey` — or a batch
+  // above REWARD_ORACLE_MAX_BATCH_MICRO), and a throw used to abort `runOnce` before `publishPending`:
+  // *every* root of *every* kind stopped being published, once per interval, until a human cleaned the
+  // row. Each kind is now built in its own branch, and the failure names the kind, so the other four keep
+  // paying while the offending one is diagnosed. The gate for the settle-side cause is in `referrals.ts`.
   const built: Batch[] = [];
-  for (const kind of [KIND_QUESTS, KIND_PVP, KIND_REFERRALS]) { const b = buildBatch(d.db, kind, t, d.minBatchMicro ?? REWARD_ORACLE_MIN_BATCH_MICRO); if (b) built.push(b); }
+  const tryBuild = (what: string, fn: () => Batch | undefined) => {
+    try { const b = fn(); if (b) built.push(b); }
+    catch (e) { d.log?.(`[reward-oracle] ALERT batch build failed (${what}): ${(e as Error).message} — this kind publishes nothing until the offending rows are removed; the other kinds are unaffected`); }
+  };
+  for (const kind of [KIND_QUESTS, KIND_PVP, KIND_REFERRALS]) tryBuild(`kind ${kind}`, () => buildBatch(d.db, kind, t, d.minBatchMicro ?? REWARD_ORACLE_MIN_BATCH_MICRO));
   // item roots (kind 8, boosters) — no on-chain budget to read; capped per root / per leaf by the builder
-  { const b = buildItemBatch(d.db, t, d.minItemBatch ?? ITEM_MIN_BATCH); if (b) built.push(b); }
+  tryBuild('kind 8 boosters', () => buildItemBatch(d.db, t, d.minItemBatch ?? ITEM_MIN_BATCH));
   // chip voucher roots (kind 9, quest chips — #28): one leaf per wallet per epoch, weekly free-chip cap in the builder
-  { const b = buildChipBatch(d.db, t, d.minChipBatch ?? CHIP_MIN_BATCH); if (b) built.push(b); }
+  tryBuild('kind 9 quest chips', () => buildChipBatch(d.db, t, d.minChipBatch ?? CHIP_MIN_BATCH));
   // SKR prize pool (kinds 5 / 6): only when the pool exists on chain; sized from its live budget
   try {
     const pool = await readSkrPool(d.connection);

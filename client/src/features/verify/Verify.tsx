@@ -11,6 +11,8 @@ import { findEvent } from '@/chain/anchor';
 import { readPackOpened, type PackOpenedEvent } from '@/chain/accounts';
 import { toEconPack, voucherEconPack, fetchGameConfig } from '@/chain/flows/packFlow';
 import { RARITIES, chipName, rarityColor, rarityName, collectionName, chipImageOf } from '@/shared/lib/rarity';
+/** One row of the verification table: the API path fills `rarity` only, the chain path fills both (SEC-B6). */
+type RollRow = { rarity?: number; collection?: number };
 import { fmtPct, shortKey } from '@/shared/lib/format';
 import { EXPLORER } from '@/app/config';
 import { Skeleton } from '@/shared/ui/primitives';
@@ -75,6 +77,13 @@ export default function Verify() {
   } : null);
   const rollHex = chain.data ? hex(chain.data.ev.roll) : api.data?.rollHex;
   const pity = chain.data?.ev.pityBefore ?? api.data?.pityBefore;
+  /**
+   * SEC-B6: the API now recomputes the RARITY sequence (it used to echo `matches: true` unconditionally) but
+   * cannot recompute the district — the pool (`collections_created` / the featured district) is live chain
+   * state the indexer does not mirror. So a row's `collection` is optional: the chain path above fills it from
+   * the config account, the API path leaves it undefined and the row says who checked the district.
+   */
+  const rolls: RollRow[] = (data?.rolls ?? []) as RollRow[];
 
   return (
     <div className="page page-bg page-bg-verify stack">
@@ -115,13 +124,15 @@ export default function Verify() {
             <table className="table">
               <thead><tr><th>Slot</th><th>Recomputed here</th><th>On-chain event</th><th></th></tr></thead>
               <tbody>
-                {data.rolls.map((r, i) => {
+                {rolls.map((r, i) => {
                   const o = data.onChain[i];
-                  const ok = o && o.rarity === r.rarity && o.collection === r.collection;
+                  const rar = r.rarity ?? -1;
+                  const col = r.collection ?? o?.collection;
+                  const ok = !!o && o.rarity === rar && (r.collection === undefined || r.collection === o.collection);
                   return (
                     <tr key={i}>
                       <td className="mono">{i + 1}</td>
-                      <td><span className="row"><span style={{ width: 42 }}><ChipArt collection={r.collection!} rarity={r.rarity!} imageUrl={chipImageOf(r)} /></span><span style={{ color: rarityColor(r.rarity!) }}>{rarityName(r.rarity!)}</span> · {collectionName(r.collection!)}</span></td>
+                      <td><span className="row"><span style={{ width: 42 }}><ChipArt collection={col ?? 0} rarity={rar} imageUrl={chipImageOf({ collection: col, rarity: rar })} /></span><span style={{ color: rarityColor(rar) }}>{rarityName(rar)}</span>{r.collection === undefined ? <span className="tiny muted"> · district from the chain row</span> : <> · {collectionName(r.collection)}</>}</span></td>
                       <td>{o ? <><span style={{ color: rarityColor(o.rarity!) }}>{rarityName(o.rarity!)}</span> · {chipName(o.collection!, o.rarity!)}</> : '—'}</td>
                       <td style={{ color: ok ? 'var(--cg-acid-soft)' : 'var(--cg-magenta-soft)' }}>{ok ? <CheckIcon size={13} /> : <CrossIcon size={13} />}</td>
                     </tr>
@@ -130,6 +141,13 @@ export default function Verify() {
               </tbody>
             </table>
             </div>
+            {!chain.data && api.data && (
+              <div className="tiny muted">
+                Recomputed by the API from the emitted randomness with the published pack table — rarities only: the
+                district pool is live chain state, so read the on-chain column for districts. Open the transaction tab
+                below (or run the snippet) to recompute everything, districts included, against the live config.
+              </div>
+            )}
           </div>
 
           <details className="card">

@@ -1,14 +1,15 @@
 // T-L-C — packs: buy / reveal / open / refund / randomness PDA (docs/06 §3.5 "Паки").
 import { beforeAll, describe, expect, it } from 'vitest';
-import { Keypair, PublicKey } from '@solana/web3.js';
+import { Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
 import { PACKS, expandRandomness } from '@guttercaps/economy';
 import { decodeCollectionMeta, decodeCompressedMintClaim, decodeCompressedPackSettlement, readCompressedClaimsCreated } from '@/chain/accounts';
 import { buyPackIx, openCompressedPackIx } from '@/chain/ix/chipCore';
 import { findEvent } from '@/chain/anchor';
-import { closeRandomnessIx, initRandomnessIx, rngAccounts } from '@/chain/ix/rng';
+import { closeRandomnessIx, closeRandomnessLutIx, initRandomnessIx, rngAccounts } from '@/chain/ix/rng';
 import { LEDGER_SHARDS, RNG_KIND, compressedMintClaimPda, compressedSettlementPda, collectionMetaPda, ledgerShardOf, pendingPackPda, rngAuthPda } from '@/chain/pdas';
 import { packSeed, toEconPack } from '@/chain/flows/packFlow';
 import { PYTH_RECEIVER_ID } from '@/chain/ids';
+import { sbLutPda, sbLutSignerPda } from '@/chain/pdas';
 import { SB_MOCK_ID, SB_ORACLE, SB_QUEUE, TREASURY, binariesPresent, encodePacks, getEnv, setParamsIx, setPausedIx, tokenBalance, type Env } from './helpers/env';
 import { Err, expectAnyFail, expectFail, lamportsClose } from './helpers/expect';
 import { Currency, SKU, ataOf, buyPack, cancelStale, loadPending, loadPity, openCompressedPack, openCompressedPackInstruction, quoteUnits, revealAndOpenCompressedAll, revealPack, valueOf, vaultKey } from './helpers/flows';
@@ -343,6 +344,54 @@ suite('T-L-C packs', () => {
     await env.chain.send([closeRandomnessIx({ ...rngAccounts(RNG_KIND.PACK, buyer.publicKey, sol.nonce), payer: env.admin.publicKey, lutSlot: lut })], { signers: [env.admin] });
     expect(await env.chain.getAccount(sol.randomness)).toBeNull();
     expect((await env.chain.balance(buyer.publicKey)) - ownerBefore).toBe(await env.chain.rentExempt(480));
+  });
+
+  svmOnly('C13b close_randomness_lut (backlog #23): refused while the request is live, then pays the lookup table rent to the player, never to the relayer', async () => {
+    if (!warp()) return;
+    const buyer = await env.player({ usdc: 1_000_000_000n });
+    const b = await buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.USDC });
+    const rng = rngAccounts(RNG_KIND.PACK, buyer.publicKey, b.nonce);
+    // Read the slot BEFORE any close: the randomness account (the only record of it) is deleted by close_randomness.
+    const lutSlot = (await randomnessAccount(env.chain, b.randomness))!.lutSlot;
+    const lutSigner = sbLutSignerPda(rng.randomness)[0];
+    const lutKey = sbLutPda(lutSigner, lutSlot)[0];
+    // The harness cannot deploy the Address Lookup Table program, and only an account's OWNER may debit
+    // it — so in the localnet build `LUT_OWNER_PROGRAM_ID` is the sb_mock, exactly as `SB_PROGRAM_ID`
+    // already is (randomness.rs). The address itself stays the real ALT PDA derivation in every build.
+    const LUT_RENT = 1_500_000n;
+    const table = (owner: PublicKey = SB_MOCK_ID) => ({ owner, data: new Uint8Array(56), lamports: LUT_RENT });
+    await env.chain.setAccount(lutKey, table());
+    const lutIx = (payer: Keypair) => closeRandomnessLutIx({ ...rng, payer: payer.publicKey, lutSlot });
+    // 1. the request still pins the randomness → same rule as close_randomness
+    await expectFail(env.chain.send([lutIx(env.admin)], { signers: [env.admin] }), Err.chip('InvalidChipState'), 'pending still open');
+    // 2. unsettled → settle by refunding after the stale window
+    await env.chain.warpSlots(STALE + 1n);
+    await cancelStale(env, buyer, b, env.mints.usdc);
+    expect(await loadPending(env.chain, b.pending)).toBeNull();
+    // 3. close_randomness first: it deactivates the table (and deletes the account that names it)
+    await env.chain.send([closeRandomnessIx({ ...rng, payer: env.admin.publicKey, lutSlot })], { signers: [env.admin] });
+    expect(await env.chain.getAccount(rng.randomness)).toBeNull();
+    // 4. the relayer (admin) pays the fee; the PLAYER receives the table's rent
+    const playerBefore = await env.chain.balance(buyer.publicKey);
+    const relayerBefore = await env.chain.balance(env.admin.publicKey);
+    await env.chain.send([lutIx(env.admin)], { signers: [env.admin] });
+    expect(await env.chain.getAccount(lutKey)).toBeNull();
+    expect((await env.chain.balance(buyer.publicKey)) - playerBefore).toBe(LUT_RENT);
+    expect((await env.chain.balance(env.admin.publicKey)) - relayerBefore).toBeLessThan(0n); // fee only
+    // 5. the caller cannot aim the CPI at an account of its own: `lut` must be the derivation of
+    //    [lutSigner, lut_slot], and lut_signer must be the derivation of this randomness. Same
+    //    instruction, one key swapped — nothing is paid out.
+    const attackerLut = Keypair.generate().publicKey;
+    await env.chain.setAccount(attackerLut, table());
+    const good = lutIx(env.admin);
+    const keys = [...good.keys];
+    keys[5] = { pubkey: attackerLut, isSigner: false, isWritable: true };
+    const forged = new TransactionInstruction({ programId: good.programId, keys, data: good.data });
+    await expectFail(env.chain.send([forged], { signers: [env.admin] }), Err.chip('RandomnessMismatch'), 'caller-chosen table');
+    expect(await env.chain.balance(attackerLut)).toBe(LUT_RENT);
+    // 6. and a second run over the closed request fails closed: the table is gone (system-owned), so
+    //    the ownership pin rejects it before any CPI — nothing is sent to Switchboard twice
+    await expectFail(env.chain.send([lutIx(env.admin)], { signers: [env.admin] }), Err.chip('RandomnessMismatch'), 'already reclaimed');
   });
 
   it('C14 crank race: two open_compressed_pack calls for the same pack_no — the second fails and claims remain consistent', async () => {

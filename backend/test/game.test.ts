@@ -8,7 +8,7 @@ import { Db } from '../src/db.ts';
 import { ingestTx } from '../src/ingest.ts';
 import { ServiceError } from '../src/services.ts';
 import { PROGRAMS } from '../src/config.ts';
-import { ixDiscriminator } from '../src/chain.ts';
+import { compressedMintClaimPda, ixDiscriminator } from '../src/chain.ts';
 import * as fusion from '../src/fusion.ts';
 import * as staking from '../src/staking.ts';
 import * as arena from '../src/arena.ts';
@@ -184,6 +184,30 @@ describe('staking read-model', () => {
     expect(staking.me(db, owner.toBase58()).setBonus).toMatchObject({ onChainSets: 1, multBps: 11_200, syncPending: false });
   });
 
+  // SEC-B13: a `Claimed` first seen over the websocket has no block_time until the healer re-reads it.
+  // `MAX(COALESCE(block_time, 0))` read that as "claimed at the epoch" — i.e. it *ignored* the newer claim
+  // and accrued from the earlier one, over-stating the `pending` a player reads as money. The honest
+  // direction for an unknown time is to stop the accrual, not to extend it.
+  it('an undated claim stops the accrual instead of silently resetting it to the epoch', () => {
+    const owner = Keypair.generate().publicKey;
+    const wallet = owner.toBase58();
+    const t = Math.floor(Date.now() / 1000);
+    const key = staking.tokenStakePda(owner, 1).toBase58();
+    ingestTx(tx([{ program: 'staking', name: 'Staked', data: { owner: wallet, kind: 0, key, amount: '1000000000', weight: '1500000000', unlockAt: String(t + 30 * 86_400) } }], { blockTime: t - 3 * 86_400 }), db);
+    ingestTx(tx([{ program: 'staking', name: 'DayClosed', data: { dayIndex: 1, year: 0, scheduleCap: '271232876712', guarded: '100000000', burn7dAvg: '0', sliceBudget: ['0', '0', '0', '0', '0'] } }], { blockTime: t - 2 * 86_400 }), db);
+    const accrued = BigInt(staking.me(db, wallet).tokenStakes[0].pending);
+    expect(accrued).toBeGreaterThan(0n);
+    // the claim lands live: the row exists, the time does not (the healer fills it later)
+    ingestTx(tx([{ program: 'staking', name: 'Claimed', data: { owner: wallet, kind: 0, amount: accrued.toString() } }], { blockTime: null }), db);
+    expect(db.scalar(`SELECT COUNT(*) FROM claims WHERE owner = ? AND block_time IS NULL`, wallet)).toBe(1);
+    // old bug: accrual window back to the stake opening → the same `accrued` would be shown again, as if the
+    // claim never happened. It must be zero: nothing can have accrued after a claim whose time we do not know.
+    expect(staking.me(db, wallet).tokenStakes[0].pending).toBe('0');
+    // once the time is known (t, i.e. now) the conservative answer and the dated answer agree
+    db.run(`UPDATE claims SET block_time = ? WHERE owner = ?`, t, wallet);
+    expect(staking.me(db, wallet).tokenStakes[0].pending).toBe('0');
+  });
+
   it('estimate: validates tier/amount; APY falls as the amount grows (pro-rata pool); chip weight mirrors staking::chip_weight', () => {
     expect(err(() => staking.validateEstimate({ amountCgMicro: '1000000', tier: 4 })).code).toBe('bad_tier');
     expect(err(() => staking.validateEstimate({ amountCgMicro: 'abc', tier: 1 })).code).toBe('bad_amount');
@@ -258,6 +282,19 @@ describe('arena — ranked commit/reveal', () => {
     expect(api.previous).toMatchObject({ id: s.id, settled: true, rakeMicro: '4000000', rakeFunded: false });
   });
 
+  it('a live-ingested BattleResolved (block_time still NULL) above the horizon postpones the settlement too', () => {
+    const s = arena.currentSeason(db, T);
+    // websocket-first ingestion: the event is in `events_raw` but the timed re-read has not healed its
+    // block_time yet. It *may* belong to the season (we cannot tell from a NULL), so freezing the pool
+    // now would price the season off an incomplete rake sum — the settlement must wait.
+    ingestTx(tx([{ program: 'arena', name: 'BattleResolved', data: { battle: kp(), winner: kp(), pot: '100000000', rakeBurn: '2000000', rakePool: '1000000', rakeTreasury: '2000000', resultHash: hex32(0x22), roll: hex32(0x33) } }], { blockTime: null }), db);
+    expect(arena.settleSeason(db, s.id, s.ends_at + 1)).toBeUndefined();
+    // once the timed re-read heals the time and the event is finalized, the season settles as before
+    db.run(`UPDATE events_raw SET block_time = ? WHERE name = 'BattleResolved'`, s.starts_at + 86_400);
+    finalizeAll(db);
+    expect(arena.settleSeason(db, s.id, s.ends_at + 1)).toBeDefined();
+  });
+
   it('queue validation mirrors validate_squad: 3 distinct owned chips, not listed/fusing, power ≥ 400, commit = 32-byte hex', () => {
     const c = commitFor(randomBytes(16));
     expect(err(() => arena.joinQueue(db, alice, { squad: sa.slice(0, 2), commit: c }, T)).code).toBe('bad_squad');
@@ -325,6 +362,35 @@ describe('arena — ranked commit/reveal', () => {
     expect(arena.reveal(db, alice, id, { nonce: 'aa'.repeat(16) }, T)).toMatchObject({ resolved: true });
   });
 
+  // SEC-B33: `reveal` reads the match, then writes it. Two callers can hold a still-`revealing` row at the
+  // same time (a client retry, or a second API process behind the load balancer) and both would settle it:
+  // `applyRating` twice, pass XP twice — only `pvp_rewards` was idempotent, by primary key. The settle-once
+  // guard makes every write conditional on `status = 'revealing' AND seed IS NULL`, and re-reads the row for
+  // the answer, so the loser of the race reports what the winner recorded instead of the numbers it computed.
+  it('SEC-B33: a second settle with a stale row moves nothing and reports the recorded result', () => {
+    const { matchId, na, nb } = pair(db, { wallet: alice, squad: sa }, { wallet: bob, squad: sb }, T);
+    arena.reveal(db, alice, matchId, { nonce: na.toString('hex') }, T);
+    arena.reveal(db, bob, matchId, { nonce: nb.toString('hex') }, T);
+    const row = db.get<arena.MatchRow>(`SELECT * FROM matches WHERE id = ?`, matchId)!;
+    const before = {
+      alice: arena.rating(db, alice, row.season), bob: arena.rating(db, bob, row.season),
+      xp: db.scalar(`SELECT COALESCE(SUM(xp), 0) FROM pass_xp`), rewards: db.scalar(`SELECT COUNT(*) FROM pvp_rewards`),
+    };
+    expect(before.alice.games).toBe(1); // the first settle really did move the ratings — this test is not vacuous
+    // the concurrent caller still believes the match is unsettled
+    const again = arena.settleMatch(db, { ...row, status: 'revealing', seed: null }, T, T * 1000 + 5);
+    expect(db.get<{ status: string; winner: string }>(`SELECT status, winner FROM matches WHERE id = ?`, matchId)!).toMatchObject({ status: 'resolved', winner: row.winner });
+    expect(arena.rating(db, alice, row.season)).toEqual(before.alice);
+    expect(arena.rating(db, bob, row.season)).toEqual(before.bob);
+    expect(db.scalar(`SELECT COALESCE(SUM(xp), 0) FROM pass_xp`)).toBe(before.xp);
+    expect(db.scalar(`SELECT COUNT(*) FROM pvp_rewards`)).toBe(before.rewards);
+    // and the caller is told what the row says, not what its own fight computed
+    expect(`${again.rewardA}`).toBe(row.reward_a);
+    expect(`${again.rewardB}`).toBe(row.reward_b);
+    expect(again.winner).toBe(row.winner === alice ? 'A' : 'B');
+    expect(db.get<{ ended_at: number }>(`SELECT ended_at FROM matches WHERE id = ?`, matchId)!.ended_at).toBe(row.ended_at);
+  });
+
   it('pairing respects league bands and the rating spread widening over time', () => {
     const carol = kp();
     const strong = squadOf(mint(db, carol, [{ rarity: 6, collection: 0 }, { rarity: 6, collection: 1 }, { rarity: 6, collection: 2 }])); // 2790 → league 3
@@ -347,6 +413,9 @@ describe('arena — ranked commit/reveal', () => {
     expect(me.currentMatch?.opponent).toMatch(/^bot:/);
     const id = me.currentMatch!.id;
     const pre = arena.matchApi(db, id)!;
+    // a synthetic bot chip has no on-chain number: `index: null` (the UI drops the `#N`), never a
+    // placeholder `#0` — that is a real chip of the district (SEC-B3)
+    expect(pre.squadB.every((c) => c.index === null)).toBe(true);
     const botPower = onChainSquadPower(pre.squadB.map((c) => ({ asset: c.asset, collection: c.collection, rarity: c.rarity, level: c.level })));
     expect(Math.abs(botPower - pre.powerA) / pre.powerA).toBeLessThan(0.1);
     expect(arena.leagueOf(botPower)).toBe(arena.leagueOf(pre.powerA));
@@ -476,6 +545,24 @@ describe('quests', () => {
     sb = squadOf(mint(db, bob, [{ rarity: 2, collection: 3 }, { rarity: 1, collection: 4 }, { rarity: 2, collection: 5 }], { blockTime: T - 3 * 86_400 }));
   });
   const playMatch = (t: number) => { const { matchId, na, nb } = pair(db, { wallet: alice, squad: sa }, { wallet: bob, squad: sb }, t); arena.reveal(db, alice, matchId, { nonce: na.toString('hex') }, t); arena.reveal(db, bob, matchId, { nonce: nb.toString('hex') }, t); return arena.matchApi(db, matchId)!; };
+
+  // SEC-B16: `activeWallets` decides whom the oracle settles, and it only knew about players, traders,
+  // stakers and logins. Two wallets fall outside all of those: a referrer earns `referrals_paid` purely
+  // through someone else's purchase, and a pack buyer can complete `sets_done` without ever playing. A
+  // finished quest that is never settled is never paid — the `quest_completions` row is the only route.
+  it('activeWallets covers pack buyers and their referrers, not only players/traders/stakers', () => {
+    const referrer = kp();
+    const referee = kp();
+    db.run(`INSERT INTO wallets (address, referrer, first_seen) VALUES (?, ?, ?)`, referee, referrer, T - 30 * 86_400);
+    ingestTx(tx([{ program: 'chip_core', name: 'PackBought', data: { buyer: referee, sku: 1, qty: 1, currency: 0, amount: '33000000', nonce: '5', randomness: kp() } }], { blockTime: T }), db);
+    const active = quests.activeWallets(db, T - 8 * 86_400);
+    expect(active).toContain(referee);       // bought a pack, never logged in
+    expect(active).toContain(referrer);      // no activity of its own at all
+    // the window is the 8-day activity window, not "ever": an old purchase does not keep the pair queued
+    const later = quests.activeWallets(db, T + 9 * 86_400);
+    expect(later).not.toContain(referee);
+    expect(later).not.toContain(referrer);
+  });
 
   it('progress comes from events: login, matches, wins, fusions, trades; periods reset; permanent milestones accumulate', () => {
     const list0 = quests.list(db, alice, T);
@@ -769,6 +856,42 @@ describe('reward oracle', () => {
     expect(kinds).toEqual([4]);
     expect(quests.claims(db, alice, T + 8).filter((c) => c.kind === 4)).toHaveLength(1);
     expect(oracle.rewardOracleStatus(db).unrootedMicro.referrals).toBe('0');
+  });
+
+  it('SEC-B53: a referral payee that is not an address is zeroed at settlement, and one unbuildable kind cannot stop the others', async () => {
+    human.configureHuman({ enabled: false, maxWalletsPerDevice: 3, salt: 'test-salt' });
+    // The payee string used to come straight from the request body (`?ref=`), so `referral_rewards.wallet`
+    // could hold anything. `eligibility()` happens to reject an unknown wallet, which kept such a row at
+    // amount 0 — but that is an unrelated rule holding the reward pipeline up: the builder parses every leaf
+    // wallet with `new PublicKey(...)` and throws, and a throw inside `runOnce` used to abort the cycle
+    // before `publishPending`, stopping every kind (quests, PvP, referrals, boosters, vouchers, SKR) once
+    // per interval until someone deleted the row by hand.
+    const junkReferee = kp();
+    db.run(`INSERT INTO wallets (address, first_seen, referrer) VALUES (?, ?, ?)`, junkReferee, T - 2 * 86_400, 'not-a-solana-address');
+    mint(db, junkReferee, [{ rarity: 0, collection: 0 }], { sku: 2, nonce: '910', blockTime: T - 3000 });
+    finalizeAll(db);
+    // a zeroed row, recorded once (so it is never re-evaluated), with the referee's own welcome bonus intact
+    const settled = referrals.settleReferrals(db, T + 20);
+    expect(settled.rows).toBe(2);
+    expect(settled.paidMicro).toBe(0n);
+    expect(settled.welcomeMicro).toBe(149_000_000n);
+    expect(db.get<{ wallet: string; amount: string; reason: string }>(`SELECT wallet, amount, reason FROM referral_rewards WHERE referee = ? AND nonce = '910'`, junkReferee))
+      .toEqual({ wallet: 'not-a-solana-address', amount: '0', reason: 'referrer_ineligible' });
+    expect(db.scalar(`SELECT COUNT(*) FROM referral_rewards WHERE CAST(amount AS INTEGER) > 0 AND wallet NOT IN (SELECT address FROM wallets)`)).toBe(0);
+
+    // And the reader still cannot be poisoned by a row written some other way: a hand-inserted positive
+    // amount for a junk payee throws in the builder (fail loud, never a leaf for a wallet nobody can be),
+    // but the cycle isolates it — the other kinds still build and publish.
+    db.run(`INSERT INTO referral_rewards (referee, nonce, wallet, amount, spend_cents, created_at) VALUES (?, 'poison', 'still-not-an-address', 5000000, 100, ?)`, junkReferee, T);
+    expect(() => oracle.buildBatch(db, oracle.KIND_REFERRALS, T + 21, 1n)).toThrow();
+    const conn = new FakeConnection();
+    let published = 0;
+    conn.onTx = () => { published++; };
+    const r = await oracle.runOnce({ connection: asConn(conn), db, questOracle: Keypair.generate(), seasonOracle: Keypair.generate(), minBatchMicro: 1n }, T + 22);
+    expect(r.built.map((b) => b.kind)).not.toContain(oracle.KIND_REFERRALS); // the poisoned kind
+    expect(r.built.map((b) => b.kind)).toContain(oracle.KIND_QUESTS);        // everything else keeps paying
+    expect(r.published).toBeGreaterThan(0);
+    expect(published).toBeGreaterThan(0);
   });
 
   it('#27 item roots: booster completions → kind-8 leaves (unit count, ≤ 10 per wallet, ≤ 1 000 per root, carry-over), publish_item_root by the quest oracle, ITEM currency in /quests/claims', async () => {
@@ -1168,6 +1291,58 @@ describe('anti-fraud detectors', () => {
     expect(s.map((x) => x.wallet).sort()).toEqual([alice, bob].sort());
     expect(s[0]).toMatchObject({ kind: 'wash_trade', evidence: { asset, roundTrips: 2 } });
     expect(s[0].score).toBeGreaterThanOrEqual(80);
+  });
+
+  // SEC-B32: the second arm of `detectWashTrades` (price ≥ 3 × the archetype floor between the same pair,
+  // twice in the window) had no test at all — and its floor lookup could not see a compressed claim sold
+  // before its leaf existed: the projection keys such a sale row by the claim PDA and leaves the collection
+  // NULL (the collection is not in the event), and the old `s.collection_idx IS NOT NULL` filter dropped it.
+  // The archetype now comes from the chip the claim later registered into, and an unregistered claim keeps
+  // no floor — inventing one would flag a trade nothing can be compared against.
+  it('SEC-B32: an inflated one-way price is flagged on the Core and the claim path; an unregistered claim has no floor', () => {
+    // the archetype both paths price against: one listed Core chip (collection 7, rarity 1) at 0.001 SOL
+    const [floorChip] = mint(db, alice, [{ rarity: 1, collection: 7 }], { blockTime: T - 3600 });
+    ingestTx(tx([{ program: 'market', name: 'ChipListed', data: { asset: floorChip, seller: alice, price: '1000000', currency: 0 } }], { blockTime: T - 3600 }), db);
+    let t = T - 3000;
+    const sold = (asset: string, seller: string, buyer: string, price: string) =>
+      ingestTx(tx([{ program: 'market', name: 'ChipSold', data: { asset, seller, buyer, price, currency: 0, fee: '0', royalty: '0', viaOffer: false } }], { blockTime: t += 60 }), db);
+    // Core: two chips of the archetype sold alice → bob at 5× the floor (the arm the detector always had)
+    for (const asset of mint(db, alice, [{ rarity: 1, collection: 7 }, { rarity: 1, collection: 7 }], { blockTime: T - 3600 })) sold(asset, alice, bob, '5000000');
+
+    /** The claim market's own order: create → list → sell (pre-mint) → the buyer mints and registers. */
+    const preMintSale = (origin: string, buyer: string, register: boolean) => {
+      const nonce = String(900 + Math.floor(Math.random() * 99));
+      const claim = compressedMintClaimPda(new PublicKey(origin), BigInt(nonce))[0].toBase58();
+      ingestTx(tx([{ program: 'chip_core', name: 'CompressedClaimsCreated', data: { buyer: origin, nonce, packNo: 0, claimNonces: [nonce, '0', '0', '0', '0'], count: 1 } }], { blockTime: t += 60 }), db);
+      ingestTx(tx([
+        { program: 'chip_core', name: 'CompressedClaimListedSet', data: { claim, buyer: origin, listed: true } },
+        { program: 'market', name: 'CompressedClaimListed', data: { claim, seller: origin, price: '5000000', currency: 0 } },
+      ], { blockTime: t += 60, cpiFrom: 'market' }), db);
+      ingestTx(tx([
+        { program: 'chip_core', name: 'CompressedClaimTransferred', data: { claim, from: origin, to: buyer } },
+        { program: 'market', name: 'CompressedClaimSold', data: { claim, seller: origin, buyer, price: '5000000', fee: '0', royalty: '0' } },
+      ], { blockTime: t += 60, cpiFrom: 'market' }), db);
+      ingestTx(tx([{ program: 'chip_core', name: 'CompressedChipMinted', data: { buyer, collectionIdx: 7, claimNonce: nonce, rarity: 1, level: 1, gameIndex: '19', claim } }], { blockTime: t += 60 }), db);
+      // the leaf registers later (or never): only then does the claim-keyed sale row have an archetype
+      if (register) {
+        ingestTx(tx([{ program: 'chip_core', name: 'CompressedChipRegistered', data: { asset: kp(), claimNonce: nonce, collectionIdx: 7, merkleTree: kp(), leafIndex: 0, leafNonce: '0', owner: buyer, delegate: buyer, rarity: 1, level: 1, gameIndex: '19', flags: 0, lockUntil: '0', claim } }], { blockTime: t += 60 }), db);
+      }
+      return claim;
+    };
+    const x = kp(), y = kp();
+    // two claims of the archetype, both sold x → y before either leaf existed, one registered afterwards
+    const registered = preMintSale(x, y, true);
+    const pending = preMintSale(x, y, false);
+    // a third pair: sold twice, never registered — the sales are real, there is just nothing to price them against
+    const p = kp(), q = kp();
+    preMintSale(p, q, false); preMintSale(p, q, false);
+
+    const signals = antifraud.detectWashTrades(db, T);
+    const ev = (s: antifraud.Signal) => s.evidence as { priceOverFloorX?: number; repeatSales?: number };
+    expect(db.scalar(`SELECT COUNT(*) FROM sales WHERE asset IN (?, ?)`, registered, pending)).toBe(2);
+    expect([...new Set(signals.map((s) => s.wallet))].sort()).toEqual([alice, bob, x, y].sort());
+    expect(signals.every((s) => ev(s).priceOverFloorX === 5 && ev(s).repeatSales === 2)).toBe(true);
+    expect(signals.some((s) => s.wallet === p || s.wallet === q)).toBe(false);
   });
 
   it('quest bots: 25 logins at the same minute with no other activity; multi-account: a referrer with 5 starter-only siblings', () => {

@@ -5,6 +5,8 @@
 // strings (u64/u128 don't fit in SQLite's i64 nor in JS numbers).
 import type { DatabaseSync as DatabaseSyncT, StatementSync, SQLInputValue, SQLOutputValue } from 'node:sqlite';
 import { DB_PATH } from './config.ts';
+import { PublicKey } from '@solana/web3.js';
+import { compressedMintClaimPda } from './chain.ts';
 
 // `import { DatabaseSync } from 'node:sqlite'` breaks under vitest's module
 // resolver (it does not know the builtin yet); getBuiltinModule is the
@@ -36,6 +38,7 @@ CREATE TABLE IF NOT EXISTS events_raw (
   block_time  INTEGER,                       -- unix seconds; NULL when first seen via websocket
   processed   INTEGER NOT NULL DEFAULT 0,    -- projections applied
   finalized_at INTEGER,                      -- SEC-M5: unix s when the finality reconciler saw the tx finalized; NULL = confirmed only
+  time_heal_attempts INTEGER NOT NULL DEFAULT 0, -- SEC-B13: how often healEventTimes tried to fill block_time for this row
   UNIQUE (signature, ix_index, event_index)
 );
 CREATE INDEX IF NOT EXISTS idx_events_name  ON events_raw(program, name);
@@ -50,6 +53,24 @@ CREATE TABLE IF NOT EXISTS indexer_cursor (
   history_complete INTEGER NOT NULL DEFAULT 0,
   updated_at       INTEGER
 );
+
+-- SEC-B27: the transactions the historical walk SAW in getSignaturesForAddress but could not fetch.
+-- getTransaction answering null (outside the provider's retention window, or a transient RPC answer)
+-- used to be a silent skip: the page counted no event, the walk finished, and the cursor was stamped
+-- history_complete = 1 — so whatever that transaction emitted (a ServicePaid, a chip mint, a battle
+-- result) was missing for good with nothing anywhere saying so. A row here is the honest record;
+-- repairIndexerGaps is the retry path (heal tick, or the CLI flag --repair-gaps). attempts parks a
+-- signature the provider will never serve again, so it cannot occupy every batch for ever.
+CREATE TABLE IF NOT EXISTS indexer_gaps (
+  program      TEXT    NOT NULL,
+  signature    TEXT    NOT NULL,
+  slot         INTEGER NOT NULL,
+  first_seen   INTEGER NOT NULL,
+  attempts     INTEGER NOT NULL DEFAULT 0,
+  last_attempt INTEGER,
+  PRIMARY KEY (program, signature)
+);
+CREATE INDEX IF NOT EXISTS idx_indexer_gaps_slot ON indexer_gaps(slot);
 
 -- ------------------------------------------------------------ projections (rebuildable: npm run rebuild)
 CREATE TABLE IF NOT EXISTS wallets (
@@ -87,10 +108,16 @@ CREATE TABLE IF NOT EXISTS chips (
   skin             TEXT,                        -- cosmetic skin id from economy SKINS, NULL = none
   minted_at        INTEGER,
   burned_at        INTEGER,                      -- consumed by a fusion
-  updated_slot     INTEGER NOT NULL DEFAULT 0
+  updated_slot     INTEGER NOT NULL DEFAULT 0,
+  game_index       TEXT,                         -- per-collection mint number (Name #N, u64 as decimal); NULL = not resolved yet
+  index_attempts   INTEGER NOT NULL DEFAULT 0    -- back-fill attempts; the row is parked once it reaches INDEX_ATTEMPTS
 );
 CREATE INDEX IF NOT EXISTS idx_chips_owner ON chips(owner, burned_at);
 CREATE INDEX IF NOT EXISTS idx_chips_arch  ON chips(collection_idx, rarity, burned_at);
+-- NOTE: the game_index back-fill index (idx_chips_index_pending) is created in migrate(), not here:
+-- on a DB written before shape #27 the column does not exist yet, and SCHEMA is executed *before*
+-- migrate() — an index on a missing column would abort the whole new Db(path) with "no such column"
+-- (caught by backend/test/chip-index.test.ts, which upgrades a pre-#27 file in place).
 
 -- Arena spray-tags (kind-4 emote packs): cosmetic shouts on a match, no gameplay effect.
 CREATE TABLE IF NOT EXISTS match_emotes (
@@ -192,6 +219,12 @@ CREATE TABLE IF NOT EXISTS compressed_claims (
   rarity         INTEGER,
   level          INTEGER,
   game_index     TEXT,
+  claim          TEXT,                       -- SEC-B31: the claim PDA (compressed_claim seeds use the immutable origin)
+  owner          TEXT,                       -- SEC-B31: current holder (chip_core claim.buyer); buyer above is the origin
+  listed         INTEGER NOT NULL DEFAULT 0, -- SEC-B31: the claim account's own listed flag (market list/cancel)
+  staked         INTEGER NOT NULL DEFAULT 0, -- SEC-B31: the claim account's own staked flag (staking CPI)
+  price          TEXT,                       -- SEC-B31: live claim-market listing (SOL only, pre-mint); NULL when not listed
+  currency       INTEGER,
   mint_signature  TEXT,
   register_signature TEXT,
   slot           INTEGER NOT NULL,
@@ -201,6 +234,8 @@ CREATE TABLE IF NOT EXISTS compressed_claims (
 );
 CREATE INDEX IF NOT EXISTS idx_compressed_claims_status ON compressed_claims(status, slot);
 CREATE INDEX IF NOT EXISTS idx_compressed_claims_asset ON compressed_claims(asset);
+-- NOTE: the claim column (SEC-B31) is added by migrate() together with its index: an old DB has the
+-- table without the column, and an index on a missing column would abort the whole Db(path) constructor.
 
 CREATE TABLE IF NOT EXISTS fusions (
   signature     TEXT    NOT NULL,
@@ -475,6 +510,8 @@ CREATE TABLE IF NOT EXISTS crank_jobs (
   reveal_sig  TEXT,
   settle_sigs TEXT    NOT NULL DEFAULT '[]',
   close_sig   TEXT,
+  lut_slot    INTEGER,                      -- backlog #23: Switchboard lookup-table slot of this request (randomness data)
+  lut_closed_at INTEGER,                    -- when close_randomness_lut landed (the second half of the rent)
   created_at  INTEGER NOT NULL,             -- unix ms
   updated_at  INTEGER NOT NULL
 );
@@ -741,9 +778,38 @@ export class Db {
     }
     const ev = new Set((this.raw.prepare(`PRAGMA table_info(events_raw)`).all() as { name: string }[]).map((c) => c.name));
     if (!ev.has('finalized_at')) this.raw.exec(`ALTER TABLE events_raw ADD COLUMN finalized_at INTEGER`);
+    // SEC-B13: `healEventTimes` drains rows whose block_time the websocket never delivered. A signature the
+    // RPC no longer serves (or whose slot time it no longer knows) can never be healed, so the pass counts
+    // its attempts and stops at the cap — otherwise a handful of permanent NULLs would occupy every batch
+    // for ever and starve the rows that *are* healable. `stuck` rows are surfaced in /health.
+    if (!ev.has('time_heal_attempts')) this.raw.exec(`ALTER TABLE events_raw ADD COLUMN time_heal_attempts INTEGER NOT NULL DEFAULT 0`);
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_events_unfinalized ON events_raw(finalized_at, slot)`);
+    this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_events_untimed ON events_raw(slot) WHERE block_time IS NULL`);
     const ch = new Set((this.raw.prepare(`PRAGMA table_info(chips)`).all() as { name: string }[]).map((c) => c.name));
     if (!ch.has('skin')) this.raw.exec(`ALTER TABLE chips ADD COLUMN skin TEXT`);
+    // SEC-B3/shape #27: `chips.game_index` — the per-collection mint number the market's "Low #" sort and
+    // `indexMin`/`indexMax` filters need. The compressed path learns it from CompressedChipRegistered;
+    // a core `open_pack` chip only has it inside its `ChipState` account, so those rows are left NULL and
+    // resolved in batches by the crank (`Crank.resolveChipIndexes`). `index_attempts` parks an asset the
+    // chain has no index for after a few tries, so the queue drains instead of retrying it forever.
+    if (!ch.has('game_index')) {
+      this.raw.exec(`ALTER TABLE chips ADD COLUMN game_index TEXT`);
+      // heal what the compressed path already projected: `compressed_claims.game_index` is written at mint
+      this.raw.exec(`UPDATE chips SET game_index = (
+          SELECT cc.game_index FROM compressed_claims cc WHERE cc.asset = chips.asset AND cc.game_index IS NOT NULL
+        ) WHERE game_index IS NULL AND EXISTS (SELECT 1 FROM compressed_claims cc WHERE cc.asset = chips.asset AND cc.game_index IS NOT NULL)`);
+    }
+    if (!ch.has('index_attempts')) this.raw.exec(`ALTER TABLE chips ADD COLUMN index_attempts INTEGER NOT NULL DEFAULT 0`);
+    // backlog #23: the lookup-table half of the Switchboard rent. `lut_slot` rides along with the job
+    // (the randomness account is already gone when the table becomes closable), `lut_closed_at` marks
+    // the batch that reclaimed it — the crank only touches jobs that are `closed` and not yet flagged.
+    const cj = new Set((this.raw.prepare(`PRAGMA table_info(crank_jobs)`).all() as { name: string }[]).map((c) => c.name));
+    for (const name of ['lut_slot', 'lut_closed_at'] as const) {
+      if (!cj.has(name)) this.raw.exec(`ALTER TABLE crank_jobs ADD COLUMN ${name} INTEGER`);
+    }
+    this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_crank_lut_due ON crank_jobs(lut_closed_at)`);
+    // the crank's index back-fill queue is game_index IS NULL AND burned_at IS NULL AND index_attempts < N
+    this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_chips_index_pending ON chips(index_attempts) WHERE game_index IS NULL`);
     const ql = new Set((this.raw.prepare(`PRAGMA table_info(quest_logins)`).all() as { name: string }[]).map((c) => c.name));
     if (!ql.has('minute_of_day')) this.raw.exec(`ALTER TABLE quest_logins ADD COLUMN minute_of_day INTEGER`);
     const se = new Set((this.raw.prepare(`PRAGMA table_info(seasons)`).all() as { name: string }[]).map((c) => c.name));
@@ -761,6 +827,30 @@ export class Db {
       if (!qc.has(name)) this.raw.exec(`ALTER TABLE quest_completions ADD COLUMN ${name} INTEGER`);
     }
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_quest_completions_item_unrooted ON quest_completions(item_root_kind, wallet)`);
+    // SEC-B31: `compressed_claims.claim` — the claim PDA behind a compressed chip, so a state event that
+    // carries the claim (`CompressedClaimListedSet/StakedSet/Transferred`, `Staked{kind:1}`, the claim
+    // market's own events) can find the chip row it belongs to. The seeds use the *immutable origin*, which
+    // is exactly what `compressed_claims.buyer` holds, so an existing row can back-fill itself; the loop is
+    // once-only (guarded by the column check) and a single unparseable row must not stop startup.
+    const cc = new Set((this.raw.prepare(`PRAGMA table_info(compressed_claims)`).all() as { name: string }[]).map((c) => c.name));
+    for (const [name, type] of [['owner', 'TEXT'], ['listed', 'INTEGER NOT NULL DEFAULT 0'], ['staked', 'INTEGER NOT NULL DEFAULT 0'], ['price', 'TEXT'], ['currency', 'INTEGER']] as const) {
+      if (!cc.has(name)) this.raw.exec(`ALTER TABLE compressed_claims ADD COLUMN ${name} ${type}`);
+    }
+    // the claim's holder starts as its origin: chip_core sets `claim.origin = buyer` when the PDA is created
+    this.raw.exec(`UPDATE compressed_claims SET owner = buyer WHERE owner IS NULL`);
+    if (!cc.has('claim')) {
+      this.raw.exec(`ALTER TABLE compressed_claims ADD COLUMN claim TEXT`);
+      const rows = this.raw.prepare(`SELECT buyer, claim_nonce FROM compressed_claims`).all() as { buyer: string; claim_nonce: string }[];
+      const upd = this.raw.prepare(`UPDATE compressed_claims SET claim = ? WHERE buyer = ? AND claim_nonce = ?`);
+      for (const r of rows) {
+        try {
+          upd.run(compressedMintClaimPda(new PublicKey(r.buyer), BigInt(r.claim_nonce))[0].toBase58(), r.buyer, r.claim_nonce);
+        } catch {
+          // a row whose key cannot even be parsed has no PDA; leave it NULL (nothing can reference it)
+        }
+      }
+    }
+    this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_compressed_claims_claim ON compressed_claims(claim)`);
     // backlog #28: chip rewards get their own (kind 9) voucher leaf
     for (const name of ['chip_root_kind', 'chip_root_epoch'] as const) {
       if (!qc.has(name)) this.raw.exec(`ALTER TABLE quest_completions ADD COLUMN ${name} INTEGER`);

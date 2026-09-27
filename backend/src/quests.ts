@@ -280,6 +280,16 @@ export function activeWallets(db: Db, sinceS: number): string[] {
   for (const r of db.all<{ w: string }>(`SELECT owner w FROM fusions WHERE COALESCE(block_time, 0) >= ?`, sinceS)) set.add(r.w);
   for (const r of db.all<{ w: string }>(`SELECT seller w FROM sales WHERE COALESCE(block_time, 0) >= ? UNION SELECT buyer w FROM sales WHERE COALESCE(block_time, 0) >= ?`, sinceS, sinceS)) set.add(r.w);
   for (const r of db.all<{ w: string }>(`SELECT owner w FROM stakes WHERE active = 1 AND kind = 1`)) set.add(r.w);
+  // SEC-B16: a paid pack is an activity of its own. Its buyer can complete `sets_done` (a district set
+  // from pack opens alone) and unlock the rewards gate without ever logging in, playing, trading or
+  // staking — none of the sources above would ever settle them. Their REFERRER is the sharper case: the
+  // referrer earns `referrals_paid` purely through someone else's purchase, so a wallet that invited
+  // five friends and then went quiet was never settled at all and lost the milestone for good (the quest
+  // is permanent, but `quest_completions` is only written for wallets this function returns).
+  // Which quests those wallets actually finished is still decided inside `settleWallet` — by the metric
+  // windows, the finalized horizon and the caps; this only decides whom to look at.
+  for (const r of db.all<{ w: string }>(`SELECT buyer w FROM pack_purchases WHERE sku > 0 AND COALESCE(block_time, 0) >= ?`, sinceS)) set.add(r.w);
+  for (const r of db.all<{ w: string }>(`SELECT DISTINCT w.referrer w FROM wallets w JOIN pack_purchases p ON p.buyer = w.address AND p.sku > 0 AND COALESCE(p.block_time, 0) >= ? WHERE w.referrer IS NOT NULL`, sinceS)) set.add(r.w);
   for (const r of db.all<{ w: string }>(`SELECT DISTINCT wallet w FROM pvp_rewards WHERE root_kind IS NULL`)) set.add(r.w);
   return [...set].filter((w) => !isBot(w));
 }

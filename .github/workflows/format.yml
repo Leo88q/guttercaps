@@ -1,3 +1,14 @@
+# ── action pins (SEC-B50) ────────────────────────────────────────────────────────────────────────────
+# Every `uses:` in this file is a full commit SHA. A tag (`@v4`) is a ref the action's owner can
+# repoint at any commit they like — including one that reads `GITHUB_TOKEN` and the deploy secrets,
+# which is the shape of the `tj-actions/changed-files` compromise — and this repository pins npm
+# versions by `sha512`, base images by patch tag and Cargo deps by exact version precisely because
+# "whatever the ref means today" is not a pin. Updating one is a deliberate edit: resolve the new
+# tag, change the SHA *and* the inline comment, and `npm run workflows:check` will notice a
+# disagreement. The same mapping is asserted in `tests/security/deploy-artifacts.test.ts`.
+#   actions/checkout             v4.4.0   11d5960a326750d5838078e36cf38b85af677262 2026-07-16
+#   actions/download-artifact    v4.3.0   d3f86a106a0bac45b974a628896c90dbdf5c8093 2025-04-24
+#   actions/upload-artifact      v4.6.2   ea165f8d65b6e75b540449e92b4886f43607fa02 2025-03-19
 name: rustfmt
 
 # Why a bot formats this repo instead of a human: `cargo fmt` output is a function of the rustfmt version,
@@ -127,7 +138,7 @@ jobs:
       has_changes: ${{ steps.patch.outputs.has_changes }}
       files: ${{ steps.patch.outputs.files }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: format
         run: |
           # git in a container runs as a different uid than the checkout owner and refuses to touch the repo
@@ -152,7 +163,7 @@ jobs:
           fi
       # The patch travels as an artifact instead of being pushed by the same job: `apply + open a PR` needs
       # write tokens and node actions, which belong on a stock runner, not in the anchor image.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: steps.patch.outputs.has_changes == 'true'
         with:
           name: rustfmt-patch
@@ -182,8 +193,8 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: rustfmt-patch, path: /tmp }
       - name: apply
         run: |

@@ -15,6 +15,11 @@ use anchor_lang::prelude::*;
 pub const RARITY_COUNT: usize = 9;
 pub const BPS_DENOM: u32 = 10_000;
 pub const MAX_CHIPS_PER_PACK: usize = 5;
+/// Largest pack bundle one purchase may open (`buy_pack`). Not decorative: the compressed claim nonce is
+/// `nonce * COMPRESSED_CLAIM_PACK_STRIDE + pack_no * MAX_CHIPS_PER_PACK + chip_index`, so the stride must
+/// cover `MAX_PACK_QTY * MAX_CHIPS_PER_PACK` or two different (nonce, pack_no, chip) triples collide on the
+/// same claim PDA. `compressed.rs` asserts that relation at compile time.
+pub const MAX_PACK_QTY: u8 = 25;
 pub const MATERIALS_PER_FUSION: usize = 3;
 pub const COLLECTION_COUNT: u8 = 10;
 

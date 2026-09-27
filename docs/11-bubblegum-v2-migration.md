@@ -78,7 +78,7 @@ A registration delay leaves a minted claim recoverable and retryable but does no
 - **Ownership / arena:** use the leaf proof and current leaf owner; never parse `BaseAssetV1` or read a nonexistent cNFT account.
 - **Freeze / thaw:** call Bubblegum V2 freeze/thaw with the permanent collection delegate. Because this mutates the leaf, listing/staking/fusion transitions use a fresh proof on each transaction.
 - **Transfer:** custom market settlement uses Bubblegum `transferV2` under the configured permanent transfer delegate. The buyer receives the leaf; the indexer waits for DAS convergence before marking ownership final.
-- **Market:** the old one-transaction Core unfreeze + transfer flow is removed. Settlement becomes a two-phase state machine: reserve payment, perform Bubblegum transfer, then finalize only after the new owner/proof is observed. Expired or failed transfers are refundable by an explicit timeout policy.
+- **Market:** the claim and asset listings settle in **SOL only** until the settlement path grows SPL legs: `buy_compressed` / `buy_compressed_asset` pay the seller with lamport transfers and answer `CompressedCurrencyMismatch` for any other currency, and both `list_compressed*` handlers refuse a non-SOL currency before the listing exists (SEC-B28 — a listing the buyer can never fill would still flag the claim `listed` and close its mint/fusion paths in chip_core). The old one-transaction Core unfreeze + transfer flow is removed. Settlement becomes a two-phase state machine: reserve payment, perform Bubblegum transfer, then finalize only after the new owner/proof is observed. Expired or failed transfers are refundable by an explicit timeout policy.
 - **Staking:** compressed stake now carries the registered leaf location, owner/delegate, current V2 leaf commitments, and Account Compression proof nodes; reward accounting never trusts a stale owner supplied by the client. Unstake remains claim-bound because the market and stake flags block leaf ownership changes while staked.
 - **Fusion:** material proofs are fetched immediately before burn. A failed or stale proof aborts without consuming the material. Results are minted through the same register pipeline. Multiple-tree fusion is supported only after the proof/CU benchmark passes.
   **Claim-path invariant (SEC-G03):** `fuse_compressed_claims` (three claim PDAs in, one result claim out, no proofs) accepts only *settlement-free* materials — `claim.settlement == Pubkey::default()`, i.e. admin-staged claims and earlier fusion results. A pack claim still bound to a live `CompressedPackSettlement` is refused with `InvalidChipState`: the instruction consumes a material without closing it and never sees its settlement, so a consumed pack claim would have stayed cancellable after `expires_at` (`cancel_compressed_claim` now also requires `!consumed`) and `finalize_compressed_pack` would have refunded the pack's pro-rata price while the fusion result stayed with the buyer. Pack chips fuse only through mint + register and the proof-based path above. The instruction emits `CompressedClaimsFused` (SEC-G04) so quests, the activity feed and the websocket see claim-path fusions exactly like `ChipFused`. Regression test: `tests/localnet/60-cross.spec.ts` X11.
@@ -135,6 +135,32 @@ The backend now stores `compressed_settlements` and `compressed_claims` as
 rebuildable projections. They track claim-created, mint, registration,
 cancellation, and final-settlement events without treating DAS display data as
 authority.
+
+SEC-B31 widened that to the claim's *own* state: `compressed_claims.claim` holds
+the claim PDA (seeded `["compressed_claim", origin, nonce_le]`, so it resolves for
+a leaf registered later), and `owner` / `listed` / `staked` / `price` / `currency`
+carry what `CompressedClaimListedSet`, `CompressedClaimStakedSet`,
+`CompressedClaimTransferred` and the claim market's `CompressedClaimListed` /
+`CompressedClaimSold` say — the only source of that state, since a claim has no
+Core `ChipFlagsChanged`. The V2 asset market (`CompressedAssetListed` /
+`CompressedAssetSold`) writes the asset-keyed `listings` / `sales` rows the
+registered leaf trades through, and `Staked{kind:1}` — whose `key` is the claim
+PDA — is resolved to the chip its flag lives on. A pre-mint claim listing is the
+one thing that is not in `listings`: that table is asset-keyed and every read of it
+joins `chips`, so it lives on the claim row until the leaf exists.
+
+SEC-B34 added `claim: Pubkey` to `CompressedChipMinted` and `CompressedChipRegistered`
+(appended last — borsh is positional, so every earlier offset is unchanged). Those
+two events name the claim's *current holder*, and `buy_compressed_claim` changes it:
+a claim bought before its mint is minted and registered by the buyer, so with no PDA
+in the event the indexer had no join key back to its row (keyed by the immutable
+origin) and produced no `chips` row at all. `projections.ts` resolves the row through
+`resolveClaimPda` — PDA first, holder-keyed fallback for a log from an older build —
+and keeps the program's own owner guard (`register_compressed_chip` requires
+`claim.buyer == owner`). SEC-B35 wired both compressed markets and the claim's own
+flag flips onto the client's invalidation keys (`listing_changed` / `sale` /
+`stake_changed`); before that they shipped under their snake_case names, which the
+client's `INVALIDATE` table does not know, so a compressed trade refreshed nothing.
 
 Operational requirements before release:
 

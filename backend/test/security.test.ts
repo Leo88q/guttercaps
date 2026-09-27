@@ -6,7 +6,7 @@ import { ed25519 } from '@noble/curves/ed25519';
 import type { Server } from 'node:http';
 import { Db } from '../src/db.ts';
 import { createApp } from '../src/server.ts';
-import { AuthError, NONCES_PER_WALLET, issueNonce, verifySiws } from '../src/auth.ts';
+import { AuthError, NONCES_PER_WALLET, issueNonce, sessionCookieAttributes, verifySiws } from '../src/auth.ts';
 import { MemoryStore, POLICIES, createLimiter } from '../src/ratelimit.ts';
 import { base58Encode } from '../src/base58.ts';
 
@@ -34,6 +34,22 @@ beforeAll(async () => {
   base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 });
 afterAll(() => new Promise<void>((f) => server.close(() => f())));
+
+describe('SEC-B44 response caching is never left to the cache', () => {
+  it('session-scoped and public reads both answer `private, no-store`, and an explicit handler still wins', async () => {
+    // Cookie authentication is not `Authorization`, so RFC 9111 does not stop a shared cache from storing
+    // `/v1/me` or the wallet feeds; with no Cache-Control at all it may also apply heuristic freshness.
+    // This deployment aims at a Cloudflare edge (GEO_GATE needs one), so the default has to be explicit.
+    const me = await fetch(`${base}/v1/me`);
+    expect(me.status).toBe(401); // no session — the header is there even on the error path
+    expect(me.headers.get('cache-control')).toBe('private, no-store');
+    const market = await fetch(`${base}/v1/market/listings`);
+    expect(market.status).toBe(200);
+    expect(market.headers.get('cache-control')).toBe('private, no-store');
+    // …and a handler with a reason to say something else overrides the default rather than being stuck with it
+    expect((await fetch(`${base}/healthz`)).headers.get('cache-control')).toBe('no-store');
+  });
+});
 
 describe('T-B-40 rate limiting', () => {
   it('nonce: 10/min per IP → 429 with Retry-After + RateLimit-* headers, window rollover resets', async () => {
@@ -75,6 +91,52 @@ describe('T-B-40 rate limiting', () => {
     expect(read.status).toBe(200);
     expect(read.headers.get('ratelimit-limit')).toBe(String(POLICIES.read.limit));
   });
+  // SEC-B18: `/me/handle/check` mutates (it takes a 120 s hold) while being a GET, so the read budget
+  // was its only limiter — one wallet behind one IP could spend all 600/min on other people's future
+  // handles. The route now carries a session-scoped policy of its own.
+  it('SEC-B18 handle check: 30/min per session, not just the 600/min read budget per IP', async () => {
+    store.reset();
+    const kp = Keypair.generate();
+    const address = kp.publicKey.toBase58();
+    const { nonce } = await (await fetch(`${base}/v1/auth/siws/nonce`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address }) })).json() as { nonce: string };
+    const message = siwsMessage(address, nonce);
+    const verify = await fetch(`${base}/v1/auth/siws/verify`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address, message, signature: sign(kp, message) }) });
+    expect(verify.status).toBe(200);
+    const cookie = (verify.headers.get('set-cookie') ?? '').split(';')[0];
+    const check = (h: string) => fetch(`${base}/v1/me/handle/check?handle=${h}`, { headers: { Cookie: cookie } });
+    let last: Response | undefined;
+    for (let i = 0; i < POLICIES.handleCheck.limit; i++) last = await check(`hx${i}`);
+    expect(last!.status).toBe(200);
+    const blocked = await check('hx_overflow');
+    expect(blocked.status).toBe(429);
+    expect((await blocked.json() as { details: { policy: string } }).details.policy).toBe('handle-check');
+    expect(blocked.headers.get('retry-after')).toBeTruthy();
+  });
+
+  // SEC-B25: the browser-facing half of the auth contract. `SameSite=None` is what a cross-site deploy
+  // needs; this repository's nginx serves the client and `/v1/` from one origin, where `Lax` blocks the
+  // cross-site subresource requests outright (and the two GET routes that write side effects).
+  it('SEC-B25 session cookie: HttpOnly + SameSite=Lax by default; SameSite=None forces Secure', async () => {
+    store.reset();
+    const kp = Keypair.generate();
+    const address = kp.publicKey.toBase58();
+    const { json: nonceBody } = await post('/v1/auth/siws/nonce', { address });
+    const message = siwsMessage(address, (nonceBody as { nonce: string }).nonce);
+    const res = await post('/v1/auth/siws/verify', { address, message, signature: sign(kp, message) });
+    expect(res.status).toBe(200);
+    const attrs = res.headers.get('set-cookie') ?? '';
+    expect(attrs).toMatch(/HttpOnly/);
+    expect(attrs).toMatch(/SameSite=Lax/);
+    expect(attrs).not.toMatch(/SameSite=None/);
+    // the cross-site opt-in still carries the attribute a browser requires next to it
+    expect(sessionCookieAttributes('none', true).join('; ')).toContain('SameSite=None; Secure');
+    expect(sessionCookieAttributes('none', false).join('; ')).toContain('SameSite=None; Secure');
+    expect(sessionCookieAttributes('strict', true).join('; ')).toContain('SameSite=Strict; Secure');
+    expect(sessionCookieAttributes('lax', false).join('; ')).not.toContain('Secure');
+    // logout clears the cookie with the same attributes (a cookie cleared under a different policy survives)
+    expect(sessionCookieAttributes('lax', false).join('; ')).toContain('Path=/');
+  });
+
   it('bodies over 16 KB → 413, malformed JSON → 400', async () => {
     store.reset();
     const big = await fetch(`${base}/v1/auth/siws/nonce`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: 'x'.repeat(20_000) }) });
@@ -136,6 +198,46 @@ describe('T-B-41..42 SIWS domain + issuedAt', () => {
   });
 });
 
+describe('SEC-B53 the referral payee is checked at the ingress, not held up by an unrelated rule', () => {
+  // `?ref=` is user input that becomes a permanent column (`wallets.referrer`, COALESCE) and a payee.
+  // The endpoint now validates it like every other address the read model accepts, stores the encoding the
+  // server itself produces, and ignores (loudly) the values a sign-in cannot fix: junk, self, blank. A bad
+  // referrer must never reach `referral_rewards.wallet`, where the only thing keeping it out of a Merkle
+  // leaf was `eligibility()`'s unrelated "unknown wallet is ineligible" rule — and the builder throwing on
+  // it aborted every reward kind of the cycle (see the reader-side regression in game.test.ts).
+  const referrer = Keypair.generate().publicKey.toBase58();
+  const signInWith = async (kp: Keypair, referrer: string | undefined, fingerprint = 'fp-b53') => {
+    const address = kp.publicKey.toBase58();
+    const { json: n } = await post('/v1/auth/siws/nonce', { address });
+    const message = siwsMessage(address, n.nonce);
+    return (await post('/v1/auth/siws/verify', { address, message, signature: sign(kp, message), fingerprint, ...(referrer === undefined ? {} : { referrer }) })).status;
+  };
+  const stored = (kp: Keypair) => db.get<{ referrer: string | null }>(`SELECT referrer FROM wallets WHERE address = ?`, kp.publicKey.toBase58())?.referrer ?? null;
+
+  it('a valid `?ref=` is stored in the server\'s own encoding and never overwritten afterwards', async () => {
+    store.reset();
+    const aliceB53 = Keypair.generate();
+    expect(await signInWith(aliceB53, ` ${referrer} `)).toBe(200); // whitespace is accepted, trimmed, re-encoded
+    expect(stored(aliceB53)).toBe(referrer);
+    // COALESCE: the first referrer wins, a later one cannot rewrite attribution
+    expect(await signInWith(aliceB53, Keypair.generate().publicKey.toBase58(), 'fp-b53-2')).toBe(200);
+    expect(stored(aliceB53)).toBe(referrer);
+  });
+  it('junk, self-referral and blank referrers are ignored, not written', async () => {
+    store.reset();
+    for (const bad of ['not-a-solana-address', '0OIl'.repeat(8), referrer.slice(0, 20), `${referrer}x`]) {
+      const kp = Keypair.generate();
+      expect(await signInWith(kp, bad)).toBe(200); // a broken campaign link must not block the sign-in
+      expect(stored(kp)).toBeNull();
+    }
+    const self = Keypair.generate();
+    expect(await signInWith(self, self.publicKey.toBase58())).toBe(200);
+    expect(stored(self)).toBeNull();
+    const blank = Keypair.generate();
+    for (const v of ['', '   ']) { expect(await signInWith(blank, v)).toBe(200); expect(stored(blank)).toBeNull(); }
+  });
+});
+
 describe('T-B-43 hardening', () => {
   it(`a wallet holds at most ${NONCES_PER_WALLET} live nonces (flood protection)`, () => {
     const address = Keypair.generate().publicKey.toBase58();
@@ -151,7 +253,7 @@ describe('T-B-43 hardening', () => {
       vi.resetModules();
       process.env.NODE_ENV = 'production';
       delete process.env.CORS_ORIGINS; delete process.env.COOKIE_SECURE; delete process.env.SESSION_SECRET; delete process.env.SIWS_DOMAINS;
-      delete process.env.TURNSTILE_SECRET; delete process.env.HUMAN_CHECK; delete process.env.DB_PATH; delete process.env.PRODUCTION_DB_MODE;
+      delete process.env.TURNSTILE_SECRET; delete process.env.HUMAN_CHECK; delete process.env.TURNSTILE_HOSTNAMES; delete process.env.DB_PATH; delete process.env.PRODUCTION_DB_MODE;
       const weak = await import('../src/config.ts');
       expect(() => weak.assertProductionConfig()).toThrow(/CORS_ORIGINS[\s\S]*COOKIE_SECURE[\s\S]*SESSION_SECRET[\s\S]*SIWS_DOMAINS[\s\S]*TURNSTILE_SECRET/);
       vi.resetModules();
@@ -173,9 +275,37 @@ describe('T-B-43 hardening', () => {
       vi.resetModules();
       delete process.env.HUMAN_CHECK;
       process.env.TURNSTILE_SECRET = '0x' + 'a'.repeat(30);
+      const noHosts = await import('../src/config.ts');
+      // SEC-B5: a sitekey is public — without the hostname allowlist any site could mint passes for our faucets
+      expect(() => noHosts.assertProductionConfig()).toThrow(/TURNSTILE_HOSTNAMES/);
+      vi.resetModules();
+      process.env.TURNSTILE_HOSTNAMES = 'app.guttercaps.gg,.guttercaps.gg';
+      // SEC-B39: `RATE_LIMIT=0` is the local load-test switch, and it turns every abuse budget off at once —
+      // a deploy that inherited the line from a load-test box served unbounded traffic silently.
+      vi.resetModules();
+      process.env.RATE_LIMIT = '0';
+      const unthrottled = await import('../src/config.ts');
+      expect(() => unthrottled.assertProductionConfig()).toThrow(/RATE_LIMIT/);
+      expect(unthrottled.RATE_LIMIT_ENABLED).toBe(false);
+      delete process.env.RATE_LIMIT;
+      // SEC-B41: `Number('500x')` is NaN and every cap comparison against NaN is false, so a typo'd ws limit
+      // used to mean "no cap at all" while looking configured. Both bounds refuse instead of substituting.
+      vi.resetModules();
+      process.env.WS_MAX_CLIENTS = '500x';
+      const typoCap = await import('../src/config.ts');
+      expect(() => typoCap.assertProductionConfig()).toThrow(/WS_MAX_CLIENTS/);
+      vi.resetModules();
+      delete process.env.WS_MAX_CLIENTS;
+      process.env.WS_MAX_BACKLOG_BYTES = '512';
+      const tinyBacklog = await import('../src/config.ts');
+      expect(() => tinyBacklog.assertProductionConfig()).toThrow(/WS_MAX_BACKLOG_BYTES/);
+      vi.resetModules();
+      delete process.env.WS_MAX_BACKLOG_BYTES;
+      vi.resetModules();
       const strong = await import('../src/config.ts');
       expect(() => strong.assertProductionConfig()).not.toThrow();
       expect(strong.HUMAN_CHECK_ENABLED).toBe(true);
+      expect(strong.TURNSTILE_HOSTNAMES).toEqual(['app.guttercaps.gg', '.guttercaps.gg']);
       expect(strong.SIWS_DOMAINS).toEqual(['app.guttercaps.gg']); // derived from CORS origins
       vi.resetModules();
       process.env.SIWS_DOMAINS = 'app.guttercaps.gg, staging.guttercaps.gg';

@@ -16,6 +16,7 @@
 // up in milliseconds and hand the decision to the local bucket.
 import type { NextFunction, Request, Response } from 'express';
 import { log, errFields } from './log.ts';
+import { clientIp } from './ratelimit.ts';
 import { metrics } from './metrics.ts';
 
 export interface RedisLike {
@@ -50,7 +51,14 @@ export function createRedisGuard(opts: RedisGuardOptions) {
   const timeoutMs = opts.timeoutMs ?? 250;
   return function redisGuard(req: Request, res: Response, next: NextFunction) {
     const bucket = Math.floor(Date.now() / windowMs);
-    const ip = (req.ip ?? req.socket.remoteAddress ?? 'unknown').replace(/[^0-9a-fA-F.:-]/g, '');
+    // SEC-B42: `clientIp` — the same key function the local limiter uses (SEC-B38), not the raw address text
+    // run through a character filter. The old key kept one caller's spellings apart: a v4-mapped
+    // `::ffff:203.0.113.9` and a plain `203.0.113.9` were two shared-budget buckets (and `2001:db8::5` vs
+    // `2001:db8::6` were two more for one /64), so an attacker who can arrive over both edges — or who holds
+    // a /64 — got a fresh cross-instance budget per spelling, which is the aggregation this guard exists for.
+    // Both layers now count one client in one bucket: IPv4 as dotted text, a v4-mapped address as its dotted
+    // IPv4, IPv6 as its /64 prefix.
+    const ip = clientIp(req);
     const key = `${prefix}:${ip}:${bucket}`;
     let settled = false;
     const timer = setTimeout(() => {

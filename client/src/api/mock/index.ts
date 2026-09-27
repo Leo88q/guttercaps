@@ -27,7 +27,7 @@ let mockHandle = 'gutter_rat';
 
 // ------------------------------------------------------------- state
 interface MockChip {
-  asset: string; owner: string; collection: number; rarity: number; level: number; index: number;
+  asset: string; owner: string; collection: number; rarity: number; level: number; index: number | null;
   flags: { staked: boolean; listed: boolean; fusing: boolean; soulbound: boolean };
   lockUntil: string | null; power: number; stakeWeight: string;
   skin: string | null;
@@ -50,6 +50,13 @@ function makeChip(collection: number, rarity: number, owner = ME, opts: Partial<
   };
 }
 
+// SEC-B24: each program checks its own authority pair — the arena reads `ArenaConfig`, not chip_core's.
+const CHIP_ADMIN = 'HPMr5r9sS5ApWsPNJytZRLbm2jz1veFxTn1wepjAhtho';
+const CHIP_PAUSER = 'GCmockPau5erXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX';
+const STAKING_ADMIN = CHIP_ADMIN;
+const STAKING_PAUSER = 'GCmockStak1ngPau5erXXXXXXXXXXXXXXXXXXXXXXXX';
+const ARENA_ADMIN = 'GCmockArenaAdm1nXXXXXXXXXXXXXXXXXXXXXXXXXXX';
+const ARENA_PAUSER = 'GCmockArenaPau5erXXXXXXXXXXXXXXXXXXXXXXXXX';
 const chips: MockChip[] = [];
 // a believable mid-game inventory: lots of commons, a few epics, one legend
 const inventoryPlan: [number, number][] = [[0, 14], [1, 9], [2, 7], [3, 4], [4, 3], [5, 1], [6, 1]];
@@ -266,8 +273,16 @@ on('post', '/packs/quote', (o) => {
 on('post', '/packs/verify', (o) => {
   const { signature } = o.body as { signature: string };
   const roll = Array.from({ length: 32 }, () => Math.floor(rnd() * 256));
-  const recomputed = [{ rarity: 0, collection: 3 }, { rarity: 2, collection: 7 }, { rarity: 1, collection: 1 }];
-  return { signature, randomnessAccount: fakeKey('Rn'), rollHex: roll.map((b) => b.toString(16).padStart(2, '0')).join(''), pityBefore: 22, effectiveOddsBps: effectiveOdds(PACKS.standard, 22), recomputed, onChain: recomputed, matches: true };
+  // SEC-B6: the real endpoint recomputes RARITIES from the emitted bytes and compares them with the chain
+  // (`onChain` keeps the districts; the pool is live chain state the API does not mirror) — mirror that shape,
+  // so the mock cannot hide a regression in the verifier UI.
+  const onChain = [{ rarity: 0, collection: 3 }, { rarity: 2, collection: 7 }, { rarity: 1, collection: 1 }];
+  const recomputed = onChain.map((c) => ({ rarity: c.rarity }));
+  return {
+    signature, randomnessAccount: fakeKey('Rn'), rollHex: roll.map((b) => b.toString(16).padStart(2, '0')).join(''), pityBefore: 22,
+    effectiveOddsBps: effectiveOdds(PACKS.standard, 22), recomputed, onChain, matches: true,
+    assumed: { basis: 'published-defaults', sku: 1, chips: 3, floor: PACKS.standard.floor, pity: PACKS.standard.pity, paramsChangedBefore: false },
+  };
 });
 on('get', '/packs/opens/{signature}', (_o, p) => ({ signature: p.signature, sku: 1, chips: chips.slice(0, 3), rollHex: '00'.repeat(32), pityBefore: 22, pityAfter: 23, highlights: { bestRarity: 2, newForSet: [7], completedSet: null } }));
 
@@ -300,12 +315,21 @@ on('get', '/market/listings', (o) => {
     (q.rarityMin === undefined || c.rarity >= Number(q.rarityMin)) &&
     (q.currency === undefined || c.listing!.currency === q.currency) &&
     (q.levelMin === undefined || c.level >= Number(q.levelMin)) &&
+    // mint-number range, same rule as the API: a chip whose `#N` is not resolved (`index: null`) never
+    // matches a range filter (it has no number to compare — `#0` is a real chip)
+    (q.indexMin === undefined || (c.index !== null && c.index >= Number(q.indexMin))) &&
+    (q.indexMax === undefined || (c.index !== null && c.index <= Number(q.indexMax))) &&
     (q.priceMaxUsd === undefined || c.listing!.priceUsd <= Number(q.priceMaxUsd)),
   );
   if (q.missingForMySet) items = items.filter((c) => !chips.some((m) => m.collection === c.collection && m.rarity === c.rarity));
   const sort = String(q.sort ?? 'price_asc');
+  const byIndex = (i: number | null) => (i === null ? Number.MAX_SAFE_INTEGER : i); // unresolved sorts last, as on the API
   items = [...items].sort((a, b) =>
-    sort === 'price_desc' ? b.listing!.priceUsd - a.listing!.priceUsd : sort === 'rarity_desc' ? b.rarity - a.rarity || a.listing!.priceUsd - b.listing!.priceUsd : sort === 'newest' ? b.listing!.createdAt.localeCompare(a.listing!.createdAt) : sort === 'index_asc' ? a.index - b.index : a.listing!.priceUsd - b.listing!.priceUsd,
+    sort === 'price_desc' ? b.listing!.priceUsd - a.listing!.priceUsd
+    : sort === 'rarity_desc' ? b.rarity - a.rarity || a.listing!.priceUsd - b.listing!.priceUsd
+    : sort === 'newest' ? b.listing!.createdAt.localeCompare(a.listing!.createdAt)
+    : sort === 'index_asc' ? byIndex(a.index) - byIndex(b.index) || a.listing!.priceUsd - b.listing!.priceUsd
+    : a.listing!.priceUsd - b.listing!.priceUsd,
   );
   return { items: items.map((c) => ({ ...c.listing!, chip: c })), nextCursor: null, total: items.length };
 });
@@ -432,7 +456,7 @@ on('get', '/leaderboard/{board}', (_o, p) => ({
 }));
 
 // ------------------------------------------------------------- ops panel (/admin — mirrors backend/src/admin.ts; the same guard-rails, nothing is signed)
-const GUARD = { bpsDenom: 10_000, maxChipsPerPack: 5, minCommonBps: 500, maxTop2BpsStandard: 200, priceCentsRange: [50, 50_000], pity: { minHardAt: 10, maxSoftStepBps: 200 }, maxMarketFeeBps: 1_000, maxSkrDiscountBps: 1_500, split: { count: 5, maxDeltaBps: 1_000, minIntervalS: 7 * 86_400 }, evRatioRange: [0.55, 0.75] };
+const GUARD = { bpsDenom: 10_000, maxChipsPerPack: 5, minCommonBps: 500, maxTop2BpsStandard: 200, priceCentsRange: [50, 50_000], pity: { minHardAt: 10, maxSoftStepBps: 200 }, maxMarketFeeBps: 1_000, maxSkrDiscountBps: 1_500, maxPackCgPriceMicro: 1_000_000_000_000, cgPriceMoveFactor: 2, split: { count: 5, maxDeltaBps: 1_000, minIntervalS: 7 * 86_400 }, evRatioRange: [0.55, 0.75] };
 const adminState = {
   marketFeeBps: FEES.marketplaceFeeBps, skrDiscountBps: FEES.skrPackDiscountBps, featuredCollection: 4, paramsVersion: 3,
   splitBps: [3000, 1500, 1700, 2300, 1500], splitChangedAt: Math.floor(Date.now() / 1000) - 12 * 86_400, paused: { chip_core: false, staking: false, arena: false },
@@ -466,6 +490,8 @@ const adminParams = () => ({
     dayIndex: 41, paused: adminState.paused.staking, splitBps: [...adminState.splitBps], splitChangedAt: adminState.splitChangedAt, nextSplitChangeAt: adminState.splitChangedAt + GUARD.split.minIntervalS,
     mintedTotalMicro: '2818000000000', burnTodayMicro: '61200000000', burn7dAvgMicro: '58400000000', sliceBudgetMicro: ['0', '0', '9600000000', '14100000000', '8200000000'],
   },
+  // SEC-B24: the arena authority pair is its own account — `pause` / `set_arena` read these keys
+  arena: { admin: ARENA_ADMIN, pauser: ARENA_PAUSER, paused: adminState.paused.arena },
   guardRails: GUARD,
   history: [{ signature: fakeKey(), admin: 'HPMr5r9sS5ApWsPNJytZRLbm2jz1veFxTn1wepjAhtho', version: 3, slot: 311_900_000, blockTime: Math.floor(Date.now() / 1000) - 5 * 86_400 }, { signature: fakeKey(), admin: 'HPMr5r9sS5ApWsPNJytZRLbm2jz1veFxTn1wepjAhtho', version: 2, slot: 309_100_000, blockTime: Math.floor(Date.now() / 1000) - 19 * 86_400 }],
 });
@@ -511,12 +537,17 @@ on('post', '/admin/params', (o) => {
 });
 on('post', '/admin/kill-switch', (o) => {
   const b = (o.body ?? {}) as { program: 'chip_core' | 'staking' | 'arena'; paused: boolean; reason?: string };
+  const current = adminState.paused[b.program] ?? false;
+  const signer = b.paused
+    ? (b.program === 'arena' ? ARENA_PAUSER : b.program === 'staking' ? STAKING_PAUSER : CHIP_PAUSER)
+    : (b.program === 'arena' ? ARENA_ADMIN : b.program === 'staking' ? STAKING_ADMIN : CHIP_ADMIN);
   if (b.paused && !(b.reason && b.reason.trim().length >= 8)) throw new ApiError(422, 'bad_request', 'reason: a pause needs a ≥ 8-char incident note (goes to the audit log + status page)', { ok: false, violations: [{ path: 'reason', rule: 'required', message: 'a pause needs a ≥ 8-char incident note' }], warnings: [], instructions: [], diff: {} });
   auditPush('kill_switch', { body: b, result: { ok: true } }, b.program);
   return {
-    ok: true, violations: [], warnings: [b.paused ? 'pause blocks new purchases / listings / stakes / battles only — unstake, cancel, refund and withdraw keep working (docs/03 §2.5)' : 'un-pause is admin-only: this instruction needs the multisig (2/5 arena, 3/5 chip_core / staking)'],
-    instructions: [{ program: b.program, name: b.paused ? 'pause' : b.program === 'arena' ? 'set_arena' : 'set_paused', accounts: [{ pubkey: fakeKey('Pa'), isSigner: true, isWritable: false }, { pubkey: fakeKey('Cf'), isSigner: false, isWritable: true }], data: btoa(String.fromCharCode(...Array.from({ length: 9 }, () => Math.floor(rnd() * 256)))) }],
-    diff: { [`${b.program}.paused`]: { from: !b.paused, to: b.paused } },
+    ok: true, violations: [],
+    instructions: [{ program: b.program, name: b.paused ? 'pause' : b.program === 'arena' ? 'set_arena' : 'set_paused', accounts: [{ pubkey: signer, isSigner: true, isWritable: false }, { pubkey: b.program === 'arena' ? fakeKey('Ac') : fakeKey('Cf'), isSigner: false, isWritable: true }], data: btoa(String.fromCharCode(...Array.from({ length: 9 }, () => Math.floor(rnd() * 256)))) }],
+    warnings: [...(current === b.paused ? [`${b.program} is already ${b.paused ? 'paused' : 'running'} — this transaction changes nothing`] : []), b.paused ? 'pause blocks new purchases / listings / stakes / battles only — unstake, cancel, refund and withdraw keep working (docs/03 §2.5)' : 'un-pause is admin-only: this instruction needs the multisig (2/5 arena, 3/5 chip_core / staking)'],
+    diff: { [`${b.program}.paused`]: { from: current, to: b.paused } },
   };
 });
 on('post', '/admin/simulate', (o) => {

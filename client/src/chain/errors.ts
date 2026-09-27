@@ -21,6 +21,7 @@ const CHIP_CORE = [
   'Bubblegum V2 mint flow is required; the legacy MPL-Core pack path is disabled',
   '$CG pack price outside the allowed band (x1/2..x2 of current, hard cap 1 000 000 $CG)',
   'Only the program upgrade authority may initialise',
+  'Config address must not be the zero key (treasury / buyback / feeds / mint)',
 ];
 const MARKET = [
   'Price below minimum', 'Not the asset owner', 'Not the seller', 'Currency mismatch', 'Offer expired', 'Offer TTL too long',

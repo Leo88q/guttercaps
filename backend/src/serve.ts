@@ -8,11 +8,11 @@ import http from 'node:http';
 import type { Connection } from '@solana/web3.js';
 import {
   API_HOST, API_PORT, DB_PATH, EVENT_BUS, RPC_URL, REDIS_URL, SHUTDOWN_TIMEOUT_MS,
-  WS_MAX_CLIENTS, WS_PATH, RATE_LIMIT_REDIS_MAX, RATE_LIMIT_REDIS_WINDOW_MS, API_INGEST, assertProductionConfig,
+  WS_MAX_CLIENTS, WS_MAX_PER_IP, WS_PATH, TRUST_PROXY_HOPS, RATE_LIMIT_REDIS_MAX, RATE_LIMIT_REDIS_WINDOW_MS, API_INGEST, assertProductionConfig,
 } from './config.ts';
 import { db, type Db } from './db.ts';
 import { createApp } from './server.ts';
-import { installBus } from './bus.ts';
+import { bus, installBus } from './bus.ts';
 import { connectRedis, createRedisGuard } from './redis.ts';
 import { attachWs, type WsHub } from './ws.ts';
 import { installShutdown, type ShutdownStep } from './shutdown.ts';
@@ -46,6 +46,10 @@ export async function startServe(opts: ServeOptions = {}): Promise<ServeHandle> 
   const database = opts.db ?? db();
   const connection = opts.connection ?? (() => getConnection());
   const busKind = EVENT_BUS === 'redis' && !REDIS_URL ? 'inproc' : EVENT_BUS;
+  // SEC-B40: this await is bounded (bus.ts) — a Redis that is down must degrade the fan-out, not stop the
+  // API from ever reaching `server.listen`. `bus().kind` is what got installed, which is what the boot
+  // line has to report: an operator reading `bus: redis` on a process that fell back would be misled
+  // exactly as the alert `event_bus_redis == 0` exists to prevent.
   await installBus(busKind, REDIS_URL);
 
   let closing = false;
@@ -57,7 +61,7 @@ export async function startServe(opts: ServeOptions = {}): Promise<ServeHandle> 
     isClosing: () => closing,
   });
   const server = http.createServer(app);
-  const { hub, close: closeWs } = attachWs(server, { db: () => database, path: WS_PATH, maxClients: WS_MAX_CLIENTS });
+  const { hub, close: closeWs } = attachWs(server, { db: () => database, path: WS_PATH, maxClients: WS_MAX_CLIENTS, maxPerIp: WS_MAX_PER_IP, trustProxyHops: TRUST_PROXY_HOPS });
   let listenerInproc: { stop: () => Promise<void> } | undefined;
   if (opts.listenInproc ?? API_INGEST) {
     const { listen } = await import('./listen.ts');
@@ -72,9 +76,8 @@ export async function startServe(opts: ServeOptions = {}): Promise<ServeHandle> 
     server.listen(port, host, () => { server.off('error', rej); res(); });
   });
   const actual = (server.address() as { port: number }).port;
-  metrics.gauge('ws_max_clients', WS_MAX_CLIENTS);
-  metrics.gauge('process_started_at', Date.now());
-  log.info('api listening', { url: `http://${host}:${actual}/v1`, db: DB_PATH, rpc: RPC_URL, ws: WS_PATH, bus: busKind, redis: redis.client ? 'on' : 'off', shutdownMs: SHUTDOWN_TIMEOUT_MS });
+  metrics.gauge('process_started_at', Date.now()); // `ws_max_clients` is registered with the app (server.ts)
+  log.info('api listening', { url: `http://${host}:${actual}/v1`, db: DB_PATH, rpc: RPC_URL, ws: WS_PATH, bus: bus().kind, busConfigured: busKind, redis: redis.client ? 'on' : 'off', shutdownMs: SHUTDOWN_TIMEOUT_MS });
 
   // 5. flush + close (1..3 happen inside closeWs / server.close below, in that order)
   const steps: ShutdownStep[] = [

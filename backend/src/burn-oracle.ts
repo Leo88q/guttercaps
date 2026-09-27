@@ -10,12 +10,15 @@
  *   1. sums the burns the indexer has seen since the last report (`burns` rows written from
  *      chip_core `BurnReported`, market `ChipListed` (fixed listing fee) and arena
  *      `BattleResolved.rake_burn`; staking's own rows are skipped — `record_internal_burn`
- *      already counted them on-chain),
+ *      already counted them on-chain) **at or below the finalized horizon** (SEC-B29: a report
+ *      cannot be taken back, so a burn from a transaction the chain may still drop must not
+ *      enter the 7-day ring — see `pendingBurn`),
  *   2. sends `staking.report_burn(delta)` signed by the burn-oracle key (`EmissionState.burn_oracle`,
  *      set by the admin via `set_oracles`),
  *   3. advances a durable cursor (`burn_oracle_cursor`, keyed by events_raw rowid) only after the
  *      transaction confirmed — a crash between (2) and (3) re-reports at most one interval, and the
- *      on-chain clamp (3 × daily cap) bounds the damage of any double count.
+ *      on-chain clamp (3 × daily cap) bounds the damage of any double count. The cursor never steps
+ *      over a burn that was not counted in this report (SEC-B29).
  *
  * Safety: the oracle can only *raise* the guard from 30 % towards 100 % of the schedule — it can
  * never mint by itself, never exceed the schedule, and the admin can clear the key at any time.
@@ -26,6 +29,7 @@ import { BorshWriter } from './borsh.ts';
 import { PROGRAMS } from './config.ts';
 import { emissionPda, ixData, rw, signer } from './chain.ts';
 import { getConnection, sleep } from './ingest.ts';
+import { finalizedHorizon } from './finality.ts';
 import { loadKeypair } from './crank.ts';
 import { sendAndConfirm } from './tx.ts';
 
@@ -60,24 +64,43 @@ CREATE TABLE IF NOT EXISTS burn_oracle_cursor (
 INSERT OR IGNORE INTO burn_oracle_cursor (id) VALUES (1);
 `;
 
-export interface PendingBurn { amount: bigint; maxRowid: number; rows: number }
+export interface PendingBurn { amount: bigint; maxRowid: number; rows: number; deferredMicro: bigint; deferredRows: number }
 
 /**
  * Burns not yet reported: joins `burns` back to `events_raw` for a monotonic cursor (rowid) —
  * signatures/slots alone are not ordered in SQLite. Staking's own rows are excluded (counted on-chain).
+ *
+ * SEC-B29 — only burns at or below `finalizedHorizon` are aggregated. The reconciler *deletes* the events
+ * of a transaction the cluster dropped and rebuilds the projections (finality.ts), but an on-chain
+ * `report_burn` cannot be taken back: it adds to `burn_today` and the 7-day ring the emission guard reads,
+ * so a phantom burn would lift the cap for a week (bounded by the 3× clamp, but wrong and silent). Every
+ * row the reconciler deletes is selected from `finalized_at IS NULL`, i.e. it sits *above* the horizon, so
+ * anything counted here is final by construction and can never be retracted. The cost is latency: the
+ * report lags finalization by ~1 min, which an hourly keeper does not notice.
+ *
+ * The cursor may not step over a burn it did not count: `events_raw.id` follows *insertion* order, and the
+ * programs are indexed by independent cursors, so a lagging program can index a low-slot burn after another
+ * program indexed a later one. `maxRowid` therefore stops just before the first uncounted burn above the
+ * horizon (`deferredRows` says how much is waiting behind it) and a later pass picks those up — instead of
+ * a burn that never gets reported and an emission floor stuck at 30 %.
  */
-export function pendingBurn(db: Db, lastRowid: number): PendingBurn {
+export function pendingBurn(db: Db, lastRowid: number, horizon = finalizedHorizon(db)): PendingBurn {
   db.raw.exec(SCHEMA);
-  const rows = db.all<{ amount: string; id: number }>(
-    `SELECT b.amount AS amount, e.id AS id
+  const rows = db.all<{ amount: string; id: number; slot: number }>(
+    `SELECT b.amount AS amount, e.id AS id, e.slot AS slot
        FROM burns b JOIN events_raw e ON e.signature = b.signature AND e.event_index = b.event_index
       WHERE b.program <> 'staking' AND e.id > ?
       ORDER BY e.id ASC`,
     lastRowid,
   );
-  let amount = 0n, maxRowid = lastRowid;
-  for (const r of rows) { amount += BigInt(r.amount); if (r.id > maxRowid) maxRowid = r.id; }
-  return { amount, maxRowid, rows: rows.length };
+  const blocker = rows.find((r) => r.slot > horizon);
+  const cutoff = blocker ? blocker.id : Number.MAX_SAFE_INTEGER;
+  let amount = 0n, maxRowid = lastRowid, counted = 0, deferredMicro = 0n, deferredRows = 0;
+  for (const r of rows) {
+    if (r.id >= cutoff) { deferredMicro += BigInt(r.amount); deferredRows++; continue; }
+    amount += BigInt(r.amount); counted++; if (r.id > maxRowid) maxRowid = r.id;
+  }
+  return { amount, maxRowid, rows: counted, deferredMicro, deferredRows };
 }
 
 export interface Cursor { last_rowid: number; reported_total: string; last_signature: string | null; last_amount: string | null; updated_at: number | null }
@@ -114,16 +137,22 @@ export async function reportOnce(d: BurnOracleDeps): Promise<ReportResult> {
   return { kind: 'reported', amount: p.amount, signature, rows: p.rows };
 }
 
-/** `/health.burnOracle` — when it last reported and how much is waiting. */
+/** `/health.burnOracle` — when it last reported, how much is waiting, and how much is waiting on finality. */
 export function burnOracleStatus(db: Db, nowMs = Date.now()) {
   const c = cursor(db);
   const p = pendingBurn(db, c.last_rowid);
   const ageS = c.updated_at ? Math.floor((nowMs - c.updated_at) / 1000) : null;
+  const fresh = ageS !== null && ageS * 1000 < 3 * BURN_ORACLE_INTERVAL_MS;
+  const waiting = p.amount >= BURN_ORACLE_MIN_REPORT_MICRO;
+  const deferred = p.deferredMicro >= BURN_ORACLE_MIN_REPORT_MICRO;
   return {
     lastSignature: c.last_signature, lastAmountMicro: c.last_amount, lastReportAgeS: ageS,
     reportedTotalMicro: c.reported_total, pendingMicro: p.amount.toString(), pendingRows: p.rows,
-    // healthy = reported within 3 intervals, or nothing material is waiting
-    healthy: p.amount < BURN_ORACLE_MIN_REPORT_MICRO || (ageS !== null && ageS * 1000 < 3 * BURN_ORACLE_INTERVAL_MS),
+    // SEC-B29: burns the indexer has seen but cannot report yet (above the finalized horizon). Material
+    // deferred burns with a stale report mean the finality reconciler is stuck — the emission floor holds.
+    deferredMicro: p.deferredMicro.toString(), deferredRows: p.deferredRows,
+    // healthy = nothing material is waiting to be reported or stuck behind finality, or we reported recently
+    healthy: !(waiting || deferred) || fresh,
   };
 }
 

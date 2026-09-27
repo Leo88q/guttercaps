@@ -7,7 +7,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { api, isMock } from '@/api/client';
 import { useSessionStore } from './store/session';
 import { useUiStore } from './store/ui';
-import { APP_NAME } from './config';
+import { APP_NAME, SIWS_CHAIN_ID } from './config';
 import { base58Encode } from '@/shared/lib/base58';
 import { deviceFingerprint } from '@/shared/lib/fingerprint';
 
@@ -35,7 +35,7 @@ export function useSignIn() {
       let message: string;
       let signature: Uint8Array;
       if (signIn) {
-        const out = await signIn({ domain, address, statement: statement ?? `Sign in to ${APP_NAME}`, nonce, issuedAt, uri: window.location.origin, version: '1', chainId: 'solana:devnet' });
+        const out = await signIn({ domain, address, statement: statement ?? `Sign in to ${APP_NAME}`, nonce, issuedAt, uri: window.location.origin, version: '1', chainId: SIWS_CHAIN_ID });
         message = new TextDecoder().decode(out.signedMessage);
         signature = out.signature;
       } else {

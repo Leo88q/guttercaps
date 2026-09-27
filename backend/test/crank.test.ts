@@ -10,7 +10,7 @@ import {
 import {
   ARENA_ID, ASSOCIATED_TOKEN_PROGRAM_ID, CHIP_CORE_ID, MPL_ACCOUNT_COMPRESSION_ID, MPL_BUBBLEGUM_V2_ID, MPL_CORE_ID, MPL_NOOP_ID, RNG_KIND,
   SYSTEM_PROGRAM_ID, SYSVAR_SLOT_HASHES_ID, TOKEN_PROGRAM_ID, WSOL_MINT, assetPda, battlePda, bubblegumTreeMetaPda, chipStatePda, claimFusionPda,
-  closeRandomnessIx, collectionMetaPda, compressedClaimNonce, compressedMintClaimPda, compressedSettlementPda, configPda, decodeCompressedMintClaim,
+  ADDRESS_LOOKUP_TABLE_PROGRAM_ID, closeRandomnessIx, closeRandomnessLutIx, collectionMetaPda, compressedClaimNonce, compressedMintClaimPda, compressedSettlementPda, configPda, decodeCompressedMintClaim,
   decodeCompressedPackSettlement, decodeGameConfig, decodeOracleGateway, decodePendingPack, decodePlayerPity, decodeRandomness, finalizeCompressedPackIx, fuseClaimsRevealIx, fuseRevealIx,
   ixDiscriminator, mintCompressedChipIx, openCompressedPackIx, packSeed, pendingFusionPda, pendingPackPda, pityPda, registerCompressedChipIx,
   revealRandomnessIx, rngAuthPda, rngPda, sbLutPda, sbLutSignerPda, sbOracleStatsPda, sbRewardEscrow, sbStatePda, customErrorCode, vaultPda,
@@ -34,6 +34,7 @@ const D = {
   reveal: '1e8255dcd0501ca9', openC: '8272be34bdd75c5e', mint: 'e2086aa387b49dd4', register: '36687c0c79f6ba6f',
   finalize: '5971c36575c5a83e', close: 'f8105307bf85afac', fuse: '67b5437253112c85', fuseClaims: 'e7496af9fe07b8f5',
   revealB: 'b74978e7ef0abd5a', closeB: '1bd71150ab869e2e', legacyOpen: '4bcb90413ffd6755',
+  closeLut: '6d5639e87d8e7b31', closeLutB: '05b091cb8fe503c8',
 };
 
 // ------------------------------------------------------------------ fake oracle gateway
@@ -950,4 +951,100 @@ describe('crank · fusions and wagers', () => {
     expect(CU.CLAIM_FUSION_REVEAL).toBe(CU.FUSE_REVEAL);
     expect(CU.CLOSE).toBeLessThanOrEqual(200_000);
   });
+  // ------------------------------------------------------------------ backlog #23: the lookup-table half
+  it('close_randomness_lut: pins the LutSigner + ALT addresses, copies the slot into the data, keeps the payer out of the rent', () => {
+    const kind = RNG_KIND.PACK;
+    const player = pk(), payer = Keypair.generate().publicKey, owner = player, nonce = 5n;
+    const lutSlot = 77n;
+    const ix = closeRandomnessLutIx({ kind, payer, owner, nonce, lutSlot });
+    const randomness = rngPda(kind, owner, nonce)[0];
+    const lutSigner = sbLutSignerPda(randomness)[0];
+    expect(ix.programId.equals(CHIP_CORE_ID)).toBe(true);
+    expect(ix.keys.map((k) => k.pubkey.toBase58())).toEqual([
+      payer.toBase58(), owner.toBase58(), randomness.toBase58(), pendingPackPda(owner, nonce)[0].toBase58(),
+      lutSigner.toBase58(), sbLutPda(lutSigner, lutSlot)[0].toBase58(), SWITCHBOARD_PROGRAM_ID.toBase58(),
+      ADDRESS_LOOKUP_TABLE_PROGRAM_ID.toBase58(),
+    ]);
+    expect(ix.keys[0].isSigner).toBe(true);
+    // the only account that receives lamports on chain is `owner` (Switchboard's `recipient`)
+    expect(ix.keys[1].isWritable).toBe(true);
+    expect(ix.keys[5].isWritable).toBe(true); // the ALT (closed → rent to recipient)
+    expect(ix.keys[4].isWritable).toBe(false);
+    expect(hex(ix.data)).toBe(D.closeLut + '00' + '0500000000000000' + '4d00000000000000');
+    const battle = closeRandomnessLutIx({ kind: RNG_KIND.BATTLE, payer, owner, nonce, lutSlot });
+    expect(battle.programId.equals(ARENA_ID)).toBe(true);
+    expect(battle.keys[3].pubkey.equals(battlePda(owner, nonce)[0])).toBe(true); // arena pins the settled battle instead
+    expect(hex(battle.data)).toBe(D.closeLutB + '0500000000000000' + '4d00000000000000');
+    expect(() => closeRandomnessLutIx({ kind, payer, owner, nonce, lutSlot })).not.toThrow();
+  });
+
+  it('the crank records the lookup-table slot while the randomness account still exists', async () => {
+    const w = world();
+    runtime(w);
+    const c = new Crank({ connection: asConn(w.conn), payer: w.payer, db: w.db, fetch: gateway(), das: fakeDas().das });
+    c.upsertJob(RNG_KIND.PACK, w.buyer, w.nonce, w.randomness, w.pending, 'pending', Number(w.commitSlot));
+    expect(c.job(jobKey(RNG_KIND.PACK, w.buyer, w.nonce))!.lut_slot).toBeNull();
+    const expected = Number(w.commitSlot - 10n); // encodeRandomness defaults lutSlot = seedSlot − 10
+    expect(await c.recordLutSlot(c.job(jobKey(RNG_KIND.PACK, w.buyer, w.nonce))!)).toBe(expected);
+    expect(c.job(jobKey(RNG_KIND.PACK, w.buyer, w.nonce))!.lut_slot).toBe(expected);
+    // a request whose account is already gone records nothing (and must not throw)
+    w.conn.del(w.randomness);
+    const job = { ...c.job(jobKey(RNG_KIND.PACK, w.buyer, w.nonce))!, lut_slot: null };
+    expect(await c.recordLutSlot(job)).toBeNull();
+  });
+
+  it('reclaimLuts closes the table of finished jobs only: after the cooldown, once, and never for live work', async () => {
+    const w = world();
+    runtime(w);
+    let now = 1_000_000_000;
+    const c = new Crank({ connection: asConn(w.conn), payer: w.payer, db: w.db, fetch: gateway(), das: fakeDas().das, now: () => now, log: (s) => log.push(s) });
+    const log: string[] = [];
+    // three closed jobs: one old enough, one inside the cooldown, one without a recorded slot
+    const mk = (buyer: PublicKey, n: bigint, lutSlot: number | null, older: boolean) => {
+      c.upsertJob(RNG_KIND.PACK, buyer, n, pk(), pendingPackPda(buyer, n)[0], 'closed', 10, lutSlot);
+      if (older) w.db.run(`UPDATE crank_jobs SET updated_at = ? WHERE key = ?`, now - 90_000_000, jobKey(RNG_KIND.PACK, buyer, n));
+    };
+    const b1 = pk(), b2 = pk(), b3 = pk();
+    mk(b1, 1n, 9, true);
+    mk(b2, 2n, 9, false);   // just closed → cooldown not over
+    mk(b3, 3n, null, true); // slot unknown → nothing to close
+    const before = w.conn.sent.length;
+    expect(await c.reclaimLuts(25, 43_200_000)).toBe(1);
+    const sent = w.conn.sent.slice(before);
+    expect(sent.length).toBe(1);
+    const ix0 = sent[0].ixs.find((ix) => hex(ix.data.subarray(0, 8)) === D.closeLut)!;
+    expect(ix0).toBeDefined();
+    expect(ix0.keys[1].equals(b1)).toBe(true); // rent recipient = the player
+    const j1 = c.job(jobKey(RNG_KIND.PACK, b1, 1n))!;
+    expect(j1.lut_closed_at).toBe(now);
+    expect(c.job(jobKey(RNG_KIND.PACK, b2, 2n))!.lut_closed_at).toBeNull();
+    expect(c.job(jobKey(RNG_KIND.PACK, b3, 3n))!.lut_closed_at).toBeNull();
+    expect(c.stats.lutCloses).toBe(1);
+    // idempotent: the reclaimed job is never attempted again
+    expect(await c.reclaimLuts(25, 43_200_000)).toBe(0);
+    // a rejection (cooldown still running on the ALT) only re-queues the job
+    now += 90_000_000;
+    w.conn.onTx = (ixs) => { if (ixs.some((ix) => hex(ix.data.subarray(0, 8)) === D.closeLut)) throw new ProgramError(3005 /* ALT: slot still active */, 0); };
+    expect(await c.reclaimLuts(25, 43_200_000)).toBe(0);
+    expect(c.job(jobKey(RNG_KIND.PACK, b2, 2n))!.lut_closed_at).toBeNull();
+    expect(log.some((l) => l.includes('close_randomness_lut') && l.includes('deferred'))).toBe(true);
+  });
+
+  it('the sweep runs the reclaim pass alongside the rest of the maintenance work', async () => {
+    const w = world();
+    runtime(w);
+    let now = 1_000_000_000;
+    const log: string[] = [];
+    const c = new Crank({ connection: asConn(w.conn), payer: w.payer, db: w.db, fetch: gateway(), das: fakeDas().das, now: () => now, log: (s) => log.push(s) });
+    const b = pk();
+    c.upsertJob(RNG_KIND.PACK, b, 5n, pk(), pendingPackPda(b, 5n)[0], 'closed', 10, 12);
+    w.db.run(`UPDATE crank_jobs SET updated_at = ? WHERE key = ?`, now - 90_000_000, jobKey(RNG_KIND.PACK, b, 5n));
+    w.conn.set(configPda()[0], encodeGameConfig({ treasury: pk(), cgMint: pk(), collectionsCreated: 10 }));
+    await c.tick({ sweep: true });
+    const data = w.conn.sent.flatMap((t) => t.ixs.map((ix) => hex(ix.data.subarray(0, 8))));
+    expect(data).toContain(D.closeLut);
+    expect(log.some((l) => l.includes('reclaimed 1 lookup table'))).toBe(true);
+    now += 1_000;
+  });
+
 });

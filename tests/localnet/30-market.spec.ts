@@ -1,9 +1,13 @@
 // T-L-M — custom marketplace for Bubblegum V2 claim-bound chips.
 // The market never parses an MPL-Core asset and never invents a DAS id.
 import { beforeAll, describe, expect, it } from 'vitest';
-import { Keypair } from '@solana/web3.js';
+import { Keypair, TransactionInstruction } from '@solana/web3.js';
 import { decodeCompressedMintClaim } from '@/chain/accounts';
 import { buyCompressedSolIx, listCompressedIx, saleSplit, MarketCurrency } from '@/chain/ix/market';
+import { ixData, ro, rw, signer } from '@/chain/anchor';
+import { BorshWriter } from '@/chain/borsh';
+import { CHIP_CORE_ID, MARKET_ID, SYSTEM_PROGRAM_ID } from '@/chain/ids';
+import { marketAuthPda } from '@/chain/pdas';
 import { fuseCompressedClaimsIx, stageCompressedChipIx } from '@/chain/ix/chipCore';
 import { compressedListingPda, compressedMintClaimPda } from '@/chain/pdas';
 import { Err, expectFail } from './helpers/expect';
@@ -13,6 +17,19 @@ import { PublicKey } from '@solana/web3.js';
 const bins = binariesPresent();
 const suite = describe.skipIf(!bins.ok && !process.env.LOCALNET_RPC);
 const SOL = 1_000_000_000n;
+
+/**
+ * `list_compressed` with an arbitrary currency, byte-for-byte the accounts the program expects. The client
+ * builder refuses a non-SOL claim listing by design (SEC-B28) — what this test asks is what the *program*
+ * does when a hand-built or third-party client sends one anyway.
+ */
+function rawListCompressedIx(a: { seller: PublicKey; claim: PublicKey; price: bigint; currency: number }): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: MARKET_ID,
+    keys: [signer(a.seller), rw(compressedListingPda(a.claim)[0]), rw(a.claim), ro(marketAuthPda()[0]), ro(CHIP_CORE_ID), ro(SYSTEM_PROGRAM_ID)],
+    data: Buffer.from(ixData('list_compressed', new BorshWriter().u64(a.price).u8(a.currency).toBytes())),
+  });
+}
 
 async function stageClaim(env: Env, owner: Keypair, nonce: bigint, rarity = 0, collectionIdx = 0): Promise<PublicKey> {
   const claim = compressedMintClaimPda(owner.publicKey, nonce)[0];
@@ -79,6 +96,18 @@ suite('T-L-M compressed custom market', () => {
     await expectFail(env.chain.send([
       listCompressedIx({ seller: seller.publicKey, claim, price: 999_999n, currency: MarketCurrency.SOL }),
     ], { signers: [seller] }), Err.market('PriceTooLow'), 'compressed dust listing');
+
+    // SEC-B28: `buy_compressed` settles in lamports and rejects every other currency, so a USDC/SKR
+    // listing can never be bought — it would only create an unfillable listing and flag the claim
+    // `listed`, which closes the claim's mint and fusion paths in chip_core until a cancel. The program
+    // refuses the currency, the transaction reverts, and neither the listing PDA nor the flag exists.
+    for (const [currency, price] of [[1, 100_000n], [2, 5_000_000n]] as const) {
+      await expectFail(env.chain.send([
+        rawListCompressedIx({ seller: seller.publicKey, claim, price, currency }),
+      ], { signers: [seller] }), Err.market('CompressedCurrencyMismatch'), `claim listing in currency ${currency}`);
+      expect(await env.chain.getAccount(compressedListingPda(claim)[0])).toBeNull();
+      expect(decodeCompressedMintClaim((await env.chain.getAccount(claim))!.data).listed).toBe(false);
+    }
 
     const consumed = await stageClaim(env, seller, 60_102n, 0, 0);
     // A claim that is already consumed by fusion cannot enter the market.

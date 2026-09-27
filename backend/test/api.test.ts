@@ -8,6 +8,7 @@ import { markFinalized } from '../src/finality.ts';
 import { createApp } from '../src/server.ts';
 import { handleRefHash, serviceRefHash, toHex, canonicalJson } from '../src/services.ts';
 import { base58Encode } from '../src/base58.ts';
+import { HANDLE_MAX_RESERVATIONS } from '../src/config.ts';
 import { world, tx, kp, DEFAULT, hex32 } from './fixtures.ts';
 
 let db: Db;
@@ -268,6 +269,30 @@ describe('paid services', () => {
     expect(mine.json.entitlements[1]).toMatchObject({ kind: 0, payload: { handle: HANDLE } });
     expect(mine.json.dailyLeft['0']).toBe(0); // paid within the last 24 h → cap (1/day) exhausted
     expect(mine.json.dailyLeft['1']).toBe(1); // the change receipt in this test carries an old block time
+  });
+
+  // SEC-B18: the check endpoint is a write-on-read — it takes a 120 s hold that reads as `reserved`
+  // for everyone else — and nothing bounded how many holds one wallet could pile up. A bot that never
+  // pays could hold the whole namespace it could ask about (the IP-scoped read budget was the only
+  // ceiling) and grow `handle_reservations` for free.
+  it('SEC-B18: one wallet holds at most HANDLE_MAX_RESERVATIONS live reservations, and still gets an honest answer', async () => {
+    const c = new Client(base);
+    await signIn(c, Keypair.generate());
+    const other = new Client(base);
+    await signIn(other, Keypair.generate());
+    const names = Array.from({ length: HANDLE_MAX_RESERVATIONS }, (_, i) => `hold_${i + 1}`);
+    for (const h of names) expect((await c.get(`/v1/me/handle/check?handle=${h}`)).json.available).toBe(true);
+    for (const h of names) expect((await other.get(`/v1/me/handle/check?handle=${h}`)).json.reason).toBe('reserved');
+    // the cap is reached: the next check still answers honestly, it just takes no hold…
+    const last = await c.get('/v1/me/handle/check?handle=hold_overflow');
+    expect(last.json.available).toBe(true);
+    expect(last.json).not.toHaveProperty('reservedUntil');
+    // …so the handle stays free for everyone else instead of being squatted
+    const seen = await other.get('/v1/me/handle/check?handle=hold_overflow');
+    expect(seen.json.available).toBe(true);
+    expect(seen.json.reason).toBeUndefined();
+    // and re-checking a handle the wallet already holds is not a new hold (it must stay available)
+    expect((await c.get('/v1/me/handle/check?handle=hold_1')).json.available).toBe(true);
   });
 
   it('generic claim: ref_hash over canonical JSON, ownership check for cap skins', async () => {

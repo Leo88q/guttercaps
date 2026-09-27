@@ -9,13 +9,16 @@
 //   reveal → `reveal_randomness` / `reveal_battle_randomness` (permissionless relay of the
 //            oracle gateway response; CPI randomness_reveal, PDA-signed) — the crank or the player
 //   close  → `close_randomness` / `close_battle_randomness` (rent back to the player, SEC-M7)
+//   table  → `close_randomness_lut` / `close_battle_randomness_lut` (the Address Lookup Table's rent,
+//            one ALT deactivation cooldown later — backlog #23; also swept by our crank)
 // The SDK (~250 KB) is only used to pick a healthy oracle and to talk to the oracle gateway,
 // so it stays behind dynamic imports.
 import { Connection, PublicKey, type TransactionInstruction } from '@solana/web3.js';
 import { CLUSTER } from '@/app/config';
 import { SWITCHBOARD_ON_DEMAND_ID, SWITCHBOARD_QUEUE } from './ids';
-import { closeRandomnessIx, initRandomnessIx, revealRandomnessIx, rngAccounts, type RngAccounts } from './ix/rng';
+import { closeRandomnessIx, closeRandomnessLutIx, initRandomnessIx, revealRandomnessIx, rngAccounts, type RngAccounts } from './ix/rng';
 import type { RngKind } from './pdas';
+import { sendTx, type WalletLike } from './tx';
 
 type Sb = typeof import('@switchboard-xyz/on-demand');
 type SbProgram = Awaited<ReturnType<Sb['AnchorUtils']['loadProgramFromConnection']>>;
@@ -160,9 +163,13 @@ export async function readRandomness(connection: Connection, payer: PublicKey, r
 }
 
 /**
- * Rent reclaim (SEC-M7): after the pending pack / fusion is closed (battle settled), anyone can
- * close the randomness account; Switchboard pays the rent to `rng_auth` and the program forwards
- * it to the player. Returns null when the account is already gone.
+ * Rent reclaim, first half (SEC-M7): after the pending pack / fusion is closed (battle settled),
+ * anyone can close the randomness account; Switchboard pays the rent to `rng_auth` and the program
+ * forwards it to the player. Returns null when the account is already gone.
+ *
+ * It deletes the only account that records the request's lookup-table slot, so a caller that also
+ * wants the table's rent (≈ 0.0015 SOL) must grab the slot first — `prepareCloseLut` does that, and
+ * its instruction belongs in a *later, separate* transaction (see there).
  */
 export async function prepareClose(
   connection: Connection, payer: PublicKey, kind: RngKind, owner: PublicKey, nonce: bigint,
@@ -171,4 +178,42 @@ export async function prepareClose(
   const view = await readRandomness(connection, payer, acc.randomness);
   if (!view) return null;
   return closeRandomnessIx({ ...acc, payer, lutSlot: view.lutSlot });
+}
+
+/**
+ * Rent reclaim, second half (backlog #23): the request's Address Lookup Table, ≈ 0.0015 SOL, paid to
+ * the player by `close_randomness_lut` / `close_battle_randomness_lut`.
+ *
+ * Must be called BEFORE `prepareClose` deletes the randomness account (that account is the only place
+ * the table slot is written), and sent as its own transaction: the ALT program only releases a table
+ * after its deactivation cooldown (≈ 1 epoch), so this normally fails on the first visit — call it
+ * again later, or let the crank do it (it does, for every job it knows). Returns null when there is
+ * nothing to derive the table address from.
+ */
+export async function prepareCloseLut(
+  connection: Connection, payer: PublicKey, kind: RngKind, owner: PublicKey, nonce: bigint,
+): Promise<{ ix: TransactionInstruction; lutSlot: bigint } | null> {
+  const acc = rngAccounts(kind, owner, nonce);
+  const view = await readRandomness(connection, payer, acc.randomness);
+  if (!view) return null;
+  return { ix: closeRandomnessLutIx({ ...acc, payer, lutSlot: view.lutSlot }), lutSlot: view.lutSlot };
+}
+
+/**
+ * Send the optional table-close transaction from a user flow. Best effort BY DESIGN: the ALT program
+ * refuses until its deactivation cooldown (~1 epoch) has passed, and that refusal must never surface
+ * as "your rent reclaim failed" — the randomness rent (the larger half) has already been returned at
+ * that point, the fee is only spent when the instruction actually goes out, and the crank sweeps the
+ * same tables for players who never come back. Returns the signature when it landed.
+ */
+export async function sendCloseLut(
+  connection: Connection, wallet: WalletLike, lut: { ix: TransactionInstruction; lutSlot: bigint } | null,
+): Promise<string | null> {
+  if (!lut) return null;
+  try {
+    const { signature } = await sendTx(connection, wallet, [lut.ix], { cuLimit: 80_000 });
+    return signature;
+  } catch {
+    return null; // cooldown still running (or the table is already gone) — the crank retries
+  }
 }

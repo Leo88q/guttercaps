@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { PublicKey } from '@solana/web3.js';
 import { Db, PROJECTION_TABLES } from '../src/db.ts';
-import { ingestTx, replayStored } from '../src/ingest.ts';
+import { healEventTimes, ingestTx, replayStored, untimedStatus } from '../src/ingest.ts';
+import { compressedMintClaimPda } from '../src/chain.ts';
 import * as q from '../src/queries.ts';
 import { world, tx, kp, DEFAULT, hex32 } from './fixtures.ts';
 
@@ -57,11 +58,11 @@ describe('ingest + projections', () => {
     const nonce = '77';
     const claims = ['9856', '9857', '0', '0', '0'];
     ingestTx(tx([{ program: 'chip_core', name: 'CompressedClaimsCreated', data: { buyer, nonce, packNo: 0, claimNonces: claims, count: 2 } }]), db);
-    ingestTx(tx([{ program: 'chip_core', name: 'CompressedChipMinted', data: { buyer, collectionIdx: 2, claimNonce: claims[0], rarity: 3, level: 1, gameIndex: '19' } }]), db);
+    ingestTx(tx([{ program: 'chip_core', name: 'CompressedChipMinted', data: { buyer, collectionIdx: 2, claimNonce: claims[0], rarity: 3, level: 1, gameIndex: '19', claim: compressedMintClaimPda(new PublicKey(buyer), BigInt(claims[0]!))[0].toBase58() } }]), db);
     // H1: the register event carries the claim's soulbound window — a Starter lock lands on the chip row
     const t0 = Math.floor(Date.now() / 1000) - 60;
     const soulbound = kp();
-    ingestTx(tx([{ program: 'chip_core', name: 'CompressedChipRegistered', data: { asset: soulbound, claimNonce: claims[0], collectionIdx: 2, merkleTree: kp(), leafIndex: 4, leafNonce: '0', owner: buyer, delegate: buyer, rarity: 3, level: 1, gameIndex: '19', flags: 8, lockUntil: String(t0 + 7 * 86_400) } }], { blockTime: t0 }), db);
+    ingestTx(tx([{ program: 'chip_core', name: 'CompressedChipRegistered', data: { asset: soulbound, claimNonce: claims[0], claim: compressedMintClaimPda(new PublicKey(buyer), BigInt(claims[0]!))[0].toBase58(), collectionIdx: 2, merkleTree: kp(), leafIndex: 4, leafNonce: '0', owner: buyer, delegate: buyer, rarity: 3, level: 1, gameIndex: '19', flags: 8, lockUntil: String(t0 + 7 * 86_400) } }], { blockTime: t0 }), db);
     ingestTx(tx([{ program: 'chip_core', name: 'CompressedClaimCancelled', data: { buyer, nonce, claimNonce: claims[1] } }]), db);
     ingestTx(tx([{ program: 'chip_core', name: 'CompressedPackSettled', data: { buyer, nonce, refunded: true } }]), db);
     expect(db.scalar(`SELECT COUNT(*) FROM compressed_claims`)).toBe(2);
@@ -254,4 +255,70 @@ describe('ingest + projections', () => {
     ingestTx(tx([{ program: 'market' as never, name: 'PauseChanged', data: { by: admin, paused: true } }]), db);
     expect(db.scalar(`SELECT COUNT(*) FROM events_raw`)).toBe(before);
   });
+  // SEC-B13: a row the websocket delivered has no block_time, and only a re-read heals it. The live
+  // healer reaches back LISTEN_HEAL_DEPTH signatures, so an outage leaves gaps — and every day-bucketed
+  // query (metrics, quests, accrual, the season slice) then disagrees with a rebuild.
+  it('healEventTimes fills block_time of stored events AND the projection rows written untimed', async () => {
+    const w = world();
+    const db = new Db(':memory:');
+    // 1. the money event arrives over the websocket: no block time
+    const delayed = tx([{ program: 'chip_core', name: 'PackBought', data: { buyer: kp(), sku: 1, qty: 1, currency: 0, amount: '33000000', nonce: '5', randomness: kp() } }], { blockTime: null });
+    ingestTx(delayed, db);
+    expect(db.scalar(`SELECT COUNT(*) FROM events_raw WHERE block_time IS NULL`)).toBe(1);
+    expect(db.get<{ block_time: number | null }>(`SELECT block_time FROM pack_purchases`)!.block_time).toBeNull();
+    // the divergence: a day-bucketed consumer (here the admin revenue counter) cannot see the row,
+    // while a rebuild — which replays the stored event with its time — would count it
+    const payer = db.get<{ buyer: string }>(`SELECT buyer FROM pack_purchases LIMIT 1`)!.buyer;
+    const revenue30 = () => db.scalar(`SELECT COUNT(DISTINCT buyer) FROM pack_purchases WHERE sku > 0 AND buyer = ? AND COALESCE(block_time, 0) >= ?`, payer, 1_700_000_000 - 30 * 86_400);
+    expect(revenue30()).toBe(0);
+    // 2. the heal pass re-reads exactly that signature; the RPC now knows the time
+    const conn = { getTransaction: async () => ({ slot: delayed.slot, blockTime: 1_700_000_123, meta: { logMessages: delayed.logs, err: null } }) };
+    expect(await healEventTimes(conn as never, db, 25)).toBe(1);
+    expect(db.scalar(`SELECT COUNT(*) FROM events_raw WHERE block_time IS NULL`)).toBe(0);
+    expect(db.get<{ block_time: number | null }>(`SELECT block_time FROM pack_purchases`)!.block_time).toBe(1_700_000_123); // patchLateTimes ran, not just events_raw
+    expect(revenue30()).toBe(1); // and the day-bucketed consumer agrees with a rebuild now
+    // 3. idempotent: nothing left to heal, and a re-run changes nothing
+    expect(await healEventTimes(conn as never, db, 25)).toBe(0);
+    expect(db.scalar(`SELECT COUNT(*) FROM pack_purchases`)).toBe(1);
+  });
+
+  it('healEventTimes survives an RPC that no longer serves the signature (the row stays NULL, nothing throws)', async () => {
+    const db = new Db(':memory:');
+    ingestTx(tx([{ program: 'chip_core', name: 'PackBought', data: { buyer: kp(), sku: 1, qty: 1, currency: 0, amount: '33000000', nonce: '6', randomness: kp() } }], { blockTime: null }), db);
+    const gone = { getTransaction: async () => null };
+    expect(await healEventTimes(gone as never, db, 25)).toBe(0);
+    expect(db.scalar(`SELECT COUNT(*) FROM events_raw WHERE block_time IS NULL`)).toBe(1);
+  });
+
+  it('healEventTimes falls back to the slot time when the transaction itself is gone from the RPC', async () => {
+    const db = new Db(':memory:');
+    ingestTx(tx([{ program: 'chip_core', name: 'PackBought', data: { buyer: kp(), sku: 1, qty: 1, currency: 0, amount: '33000000', nonce: '6', randomness: kp() } }], { blockTime: null }), db);
+    const gone = { getTransaction: async () => null, getBlockTime: async () => 1_700_000_777 };
+    expect(await healEventTimes(gone as never, db, 25)).toBe(1);
+    expect(db.get<{ block_time: number | null }>(`SELECT block_time FROM events_raw`)!.block_time).toBe(1_700_000_777);
+    // the projection is patched too, not just the raw row (that is what `patchLateTimes` is for)
+    expect(db.get<{ block_time: number | null }>(`SELECT block_time FROM pack_purchases`)!.block_time).toBe(1_700_000_777);
+  });
+
+  it('an unhealable signature is parked after the attempt cap, so it cannot starve the rows that can be healed', async () => {
+    const db = new Db(':memory:');
+    const dead = (nonce: string) => tx([{ program: 'chip_core', name: 'PackBought', data: { buyer: kp(), sku: 1, qty: 1, currency: 0, amount: '11000000', nonce, randomness: kp() } }], { blockTime: null });
+    const a = dead('1'), b = dead('2'), live = dead('3');
+    for (const t of [a, b, live]) ingestTx(t, db);
+    const times = new Map([[live.signature, 1_700_000_999]]);
+    const conn = {
+      getTransaction: async (sig: string) => (times.has(sig) ? { slot: 1, blockTime: times.get(sig)!, meta: { logMessages: live.logs, err: null } } : null),
+      getBlockTime: async () => null, // the slot is gone too — this row can never be healed
+    };
+    // batch of 2, cap of 1 attempt: pass 1 spends itself on the two oldest (both dead), pass 2 reaches `live`
+    expect(await healEventTimes(conn as never, db, 2, 1)).toBe(0);
+    expect(db.all<{ signature: string }>(`SELECT signature FROM events_raw WHERE time_heal_attempts > 0`).map((r) => r.signature).sort()).toEqual([a.signature, b.signature].sort());
+    expect(await healEventTimes(conn as never, db, 2, 1)).toBe(1);
+    expect(times.size).toBe(1);
+    expect(db.scalar(`SELECT COUNT(*) FROM events_raw WHERE block_time IS NULL`)).toBe(2);
+    // and an operator can see the difference between "waiting" and "parked"
+    expect(untimedStatus(db, 1)).toEqual({ pending: 0, stuck: 2, oldestSlot: a.slot < b.slot ? a.slot : b.slot });
+    expect(untimedStatus(db, 99)).toEqual({ pending: 2, stuck: 0, oldestSlot: a.slot < b.slot ? a.slot : b.slot });
+  });
+
 });

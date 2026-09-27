@@ -43,6 +43,12 @@ export function encodeVaultLedger(o: { shard: number; liabLamports?: bigint; lia
   return disc('VaultLedger').u8(o.shard).u64(o.liabLamports ?? 0n).u64(o.liabUsdc ?? 0n).u64(o.liabCg ?? 0n).u64(o.liabSkr ?? 0n).u64(o.burnedTotal ?? 0n).u8(255).toBytes();
 }
 
+/** SEC-B24: `ArenaConfig` — the arena's own authority pair (admin, appended pauser) + paused flag. */
+export function encodeArenaConfig(o: { admin: PublicKey; pauser?: PublicKey; paused?: boolean; battleOracle?: PublicKey; cgMint?: PublicKey; seasonPool?: PublicKey; treasuryCg?: PublicKey }): Uint8Array {
+  return disc('ArenaConfig').pubkey(o.admin).pubkey(o.battleOracle ?? pk()).pubkey(o.cgMint ?? pk()).pubkey(o.seasonPool ?? pk()).pubkey(o.treasuryCg ?? pk())
+    .u64(0n).u64(0n).i64(0n).bool(o.paused ?? false).u8(255).pubkey(o.pauser ?? PublicKey.default).toBytes();
+}
+
 export function encodeCollectionMeta(idx: number, core: PublicKey): Uint8Array {
   const w = disc('CollectionMeta').u8(idx).pubkey(core);
   const sym = new TextEncoder().encode(`COL${idx}`);
@@ -79,8 +85,8 @@ export function encodePendingFusion(f: { owner: PublicKey; recipe: number; mater
   return w.u8(f.resultCollectionIdx).bool(false).pubkey(f.randomness).u64(f.commitSlot).u64(f.nonce).u8(254).u64(120_000_000n).toBytes(); // fee_escrowed (SEC-M3)
 }
 
-export function encodeChipState(asset: PublicKey, collectionIdx: number, rarity: number): Uint8Array {
-  return disc('ChipState').pubkey(asset).u8(collectionIdx).u8(rarity).u8(1).u64(1).u8(4).i64(0).i64(1_700_000_000).u8(255).toBytes();
+export function encodeChipState(asset: PublicKey, collectionIdx: number, rarity: number, index = 1n): Uint8Array {
+  return disc('ChipState').pubkey(asset).u8(collectionIdx).u8(rarity).u8(1).u64(index).u8(4).i64(0).i64(1_700_000_000).u8(255).toBytes();
 }
 
 export function encodePendingClaimFusion(f: { owner: PublicKey; recipe: number; materials: PublicKey[]; resultCollectionIdx: number; randomness: PublicKey; commitSlot: bigint; nonce: bigint }): Uint8Array {
@@ -109,10 +115,14 @@ export function encodeCompressedPackSettlement(s: { buyer: PublicKey; pending: P
   return disc('CompressedPackSettlement').pubkey(s.buyer).pubkey(s.pending).u64(s.nonce).u16(s.totalClaims).u16(s.registeredClaims ?? 0).u16(s.cancelledClaims ?? 0).u8(255).toBytes();
 }
 
-export function encodeWagerBattle(b: { challenger: PublicKey; opponent?: PublicKey; randomness: PublicKey; commitSlot: bigint; status: number; nonce: bigint }): Uint8Array {
+export function encodeWagerBattle(b: {
+  challenger: PublicKey; opponent?: PublicKey; randomness: PublicKey; commitSlot: bigint; status: number; nonce: bigint;
+  /** SEC-B30: the squads and the power the program recorded at accept time (random ones by default). */
+  squadA?: PublicKey[]; squadB?: PublicKey[]; powerA?: number; powerB?: number;
+}): Uint8Array {
   const w = disc('WagerBattle').pubkey(b.challenger).pubkey(b.opponent ?? PublicKey.default).u64(100_000_000n);
-  for (let i = 0; i < 6; i++) w.pubkey(pk());
-  return w.u32(1000).u32(1000).pubkey(b.randomness).u64(b.commitSlot).u8(b.status).i64(1_700_000_000).i64(1_700_000_100).pubkey(PublicKey.default).bytes(zero32).u64(b.nonce).u8(254).toBytes();
+  for (const s of [b.squadA, b.squadB]) for (let i = 0; i < 3; i++) w.pubkey(s?.[i] ?? pk());
+  return w.u32(b.powerA ?? 1000).u32(b.powerB ?? 1000).pubkey(b.randomness).u64(b.commitSlot).u8(b.status).i64(1_700_000_000).i64(1_700_000_100).pubkey(PublicKey.default).bytes(zero32).u64(b.nonce).u8(254).toBytes();
 }
 
 /** staking `EmissionState` (programs/staking/src/state.rs) — every field, in layout order; defaults are a healthy day-39 state. */

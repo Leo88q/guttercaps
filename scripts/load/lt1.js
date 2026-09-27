@@ -34,7 +34,7 @@ const READ_PATHS = [
   '/stats',
   '/packs',
   '/market/floor',
-  '/market/listings?limit=24&sort=price',
+  '/market/listings?limit=24&sort=price_asc', // `sort=price` is not a value LISTING_SORTS accepts: it answered 400 (api:check now pins this)
   '/leaderboard/rating',
   '/collections/0/chips/1',
   '/prices',

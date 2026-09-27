@@ -68,9 +68,22 @@ cp ../../backend/.env.example ../../backend/.env
 ```
 
 В `backend/.env` обязательно: `SESSION_SECRET` (≥ 32), `SIWS_DOMAINS`, `ADMIN_WALLETS`,
-`TURNSTILE_SECRET` (или явный `HUMAN_CHECK=0`), `SOLANA_RPC_URL` (для индексора — с рабочим
-websocket-эндпоинтом), четыре `PROGRAM_*`, минты. Остальное имеет дефолты в коде; `env:check`
-не даст списку разойтись.
+`TURNSTILE_SECRET` + `TURNSTILE_HOSTNAMES` (список доменов; sitekey публичен, поэтому без него любой
+сайт может выдать себе human-пасс — в проде с пустым списком процесс откажется стартовать; `HUMAN_CHECK=0`
+отключает гейт осознанно) и `TURNSTILE_ACTION=claim` (ровно то, что шлёт виджет), `SOLANA_RPC_URL` (для
+индексора — с рабочим websocket-эндпоинтом), четыре `PROGRAM_*`, минты. Остальное имеет дефолты в коде;
+`env:check` не даст списку разойтись.
+
+**RPC ↔ CSP (SEC-B9).** `SOLANA_RPC_URL` — переменная, а CSP — файл: `connect-src` в
+`ops/deploy/nginx.conf` перечисляет провайдеров поимённо (`*.solana.com`, `api.mainnet-beta.solana.com`,
+`*.helius-rpc.com`, `*.triton.one` — каждому https-хосту соответствует wss-двойник). Если указываете
+другого провайдера или свой RPC — **добавьте его в `connect-src` (и `wss://`) в том же PR**, иначе
+кошелёк будет падать в браузере с CSP-violation, которую легко принять за «RPC лежит». То же правило для
+`VITE_RPC_URL`/`VITE_RPC_WS_URL`/`VITE_DAS_RPC_URL` клиента (DAS-эндпоинт по умолчанию тот же RPC, но
+Helius/иной провайдер нужно назвать в CSP явно): `tests/security/csp.test.ts` держит список CSP и причины в
+синхроне, `npm run security:static` упадёт на неоговорённом origin'е. Turnstile
+(`challenges.cloudflare.com`) обязан оставаться в `script-src` + `frame-src` + `connect-src`: без
+`script-src` виджет proof-of-human не грузится, и верификацию не может пройти ни один игрок.
 
 Юридический гейт (продажа паков в BE/NL) по умолчанию выключен и включается **только** вместе с
 доверием к заголовку с страны: `GEO_GATE=shop` + `GEO_TRUST_HEADER=1` в `ops/deploy/.env`, при
@@ -117,9 +130,17 @@ wildcard-CORS, `COOKIE_SECURE` без https, `:memory:` в проде, `EVENT_BU
 * TLS на этом же хосте — тогда сертификат от ACME (certbot/caddy) монтируется в контейнер, и
   раскомментируется блок `listen 443 ssl` в конце `nginx.conf`.
 
-`COOKIE_SECURE`/`SameSite=None` и SIWS-домен впривязаны к https: `assertProductionConfig`
-откажется стартовать без них, поэтому «забыл TLS» превращается в отказ запуска, а не в сессию,
-которая живёт час и падает на мейне.
+`COOKIE_SECURE` и SIWS-домен привязаны к https: `assertProductionConfig` откажется стартовать без
+них, поэтому «забыл TLS» превращается в отказ запуска, а не в сессию, которая живёт час и падает на
+мейне.
+
+**Кука сессии и `COOKIE_SAMESITE` (SEC-B25).** По умолчанию — `Lax`: этот деплой отдаёт клиент и
+`/v1/` с одного origin, поэтому кросс-сайтовый запрос cookie просто не отправляет (и `Lax` уже
+блокирует кросс-сайтовые `<img>`/`fetch` на два GET-роута, которые пишут: `/me/handle/check` берёт
+hold, `/quests` пишет логин дня). `SameSite=None` нужен только если клиент живёт на другом хосте
+(`VITE_API_BASE` — абсолютный URL): тогда выставьте `COOKIE_SAMESITE=none`, `COOKIE_SECURE=1` и
+`CROSS_SITE_CLIENT=1` — без последнего флага `assertProductionConfig` не пустит процесс, потому что
+`None` ослабляет CSRF-защиту, и это должно быть решением, а не случайностью.
 
 ### 1.4 секреты контейнера
 
@@ -191,13 +212,14 @@ npm run backend:crank      # то же: отдельный запуск нуже
 | серия | вопрос, на который она отвечает |
 |---|---|
 | `ready`, `ingest_lag_slots`, `ingest_last_slot` | видит ли игрок свои события |
+| `indexer_gaps_pending`, `indexer_gaps_parked` | есть ли транзакции, которые цепь имеет, а read-model — нет (SEC-B27; `GET /v1/health.indexerGaps`, ремонт — `npm run backend:backfill -- --repair-gaps`, ALERT-06 в `docs/ALERT_CATALOG.md`) |
 | `crank_pending_jobs`, `crank_abandoned_jobs`, `crank_balance_sol`, `crank_balance_readable` | открываются ли паки и есть ли чем |
 | `pyth_cache_age_seconds` | можно ли честно оценить пак (StalePrice = отказы покупки) |
 | `http_requests_total{route,status}` , `http_request_duration_ms` | деградация API, а не «в целом плохо» |
 | `ws_clients`, `ws_events_total`, `ws_dropped_total` | жив ли real-time; `ws_dropped_total` растёт = клиент не читает |
 | `metrics_series`, `process_open_handles`, `nodejs_heap_used_bytes` | метрика как источник аварии |
 | `process_crashes_total` | всё, что упало и было поднятo супервизором |
-| `burn_oracle_healthy`, `burn_oracle_report_age_seconds`, `burn_oracle_pending_cg` | питается ли emission-guard (SEC-F02): молчащий burn-oracle = эмиссия тихо падает к полу 30 % |
+| `burn_oracle_healthy`, `burn_oracle_report_age_seconds`, `burn_oracle_pending_cg`, `burn_oracle_deferred_cg` | питается ли emission-guard (SEC-F02): молчащий burn-oracle = эмиссия тихо падает к полу 30 % (`deferred` ненулевой при `pending_cg = 0` — это замёрший реконсайлер финализации, SEC-B29) |
 | `reward_oracle_healthy`, `reward_oracle_publish_age_seconds`, `reward_oracle_pending_batches`, `reward_oracle_unrooted_cg{kind}` | доходят ли награды до корней, которые можно заклеймить |
 | `arena_unattributed_resolves` | канарейка ключа battle_oracle (SEC-F06): `resolve_battle`, который отправлял не этот бэкенд |
 | `arena_oracle_cap_cg`, `arena_oracle_paid_today_cg`, `arena_oracle_cap_readable` | on-chain дневной предохранитель арены — сколько до `OracleCap` |
@@ -230,6 +252,14 @@ Alertmanager пока не подключён (`alerting.alertmanagers: []` — 
 | `AuthorityChangeIndexed` (page) | индексатор записал событие ротации (`authority_changes` выросла) | тот же разбор; `authorityHistory` даёт сигнатуру, подписанта и новый ключ. Дублирует предыдущий алерт независимым путём — сработает и на боксе с `GOVERNANCE_WATCH=0` |
 | `GovernanceKeysUnreadable` (ticket, 15 мин) | опрос трёх конфиг-аккаунтов не читается 15 минут (`program_authority_readable = 0` при включённом `GOVERNANCE_WATCH`) | обычно RPC (§6.3); строка в логе api — `governance key read failed`. Пока красно, `ProgramAuthorityRotated` слеп (последние значения сохраняются — ложного «ротация» не будет), `AuthorityChangeIndexed` продолжает работать |
 
+Группа `guttercaps.backup` (SEC-B49) — два правила про то, что снимок вообще снимается. Они читают
+статус-файл сайдкара (`ops/deploy/backup/out/status` → `BACKUP_STATUS_FILE` → `/metrics`), а не логи:
+
+| алерт | что означает | что делать |
+|---|---|---|
+| `BackupStale` (page, 36 ч) | последнего успешного снимка не было 36 часов — или не было ни одного (`backup_last_success_timestamp_seconds == 0`: сайдкар не запускался, файл статуса удалён, том не смонтирован) | `npm run ops:backup-now` на хосте (вернёт ненулевой код и назовёт упавший шаг), затем `docker compose -f ops/deploy/docker-compose.yaml logs backup --tail 100`; проверить `df -h` и что каталог `ops/deploy/backup/` существует |
+| `BackupFailing` (ticket, ≥ 3 подряд) | три попытки подряд записали `backup_failed`/`integrity_failed` (`backup_consecutive_failures`) | смотреть `backup_last_result_ok` и лог: полный диск, нечитаемый `/data` или сломанные креды S3 — самые частые; `integrity_failed` оставляет `.CORRUPT`-файл для разбора и **не** перезаписывает прошлый успех |
+
 Перед плановой ротацией ключей заводится запись в журнале церемоний (кто, какая роль, ожидаемый новый
 ключ, окно); дежурный, получивший page, закрывает его только сверившись с этой записью. Silence в
 Prometheus на окно церемонии допустим для `ProgramAuthorityRotated`/`AuthorityChangeIndexed`, но не
@@ -248,12 +278,27 @@ SQLite, не Postgres, поэтому `litestream` здесь не при чём
 Хранение на хосте — `BACKUP_KEEP` снимков (72 × час = 3 дня).
 
 ```bash
-npm run ops:backup-now                                   # снимок вручную, прямо сейчас
+npm run ops:backup-now                                   # снимок вручную, прямо сейчас (exec -e RUN_ONCE=1 … --once)
 docker compose -f ops/deploy/docker-compose.yaml logs backup --since 1h | tail
+cat ops/deploy/backup/out/status                         # last_attempt_ts / last_success_ts / last_result / consecutive_failures
 ```
 
 `integrity_check FAILED` = `ALERT` в логах и файл с суффиксом `.CORRUPT`; loop продолжается,
-следующий час попробует снова.
+следующий час попробует снова. Тот же файл `status` читает API (`BACKUP_STATUS_FILE`, монтирование
+`./backup` → `/backup-status:ro`) и отдаёт тремя гейджами, на которых стоят `BackupStale`/`BackupFailing`
+(§3.2) — поэтому «бэкап не снимается» видно и без чтения логов, и узнаётся это до попытки восстановления,
+а не в её процессе. Логи остаются для причины: каждый шаг (`.backup`, `integrity_check`, `gzip`, `aws`)
+ветвится явно и называет себя, а не сваливает провал копирования на порчу базы (SEC-B48).
+
+Ручной запуск (`npm run ops:backup-now`) — та же функция, что у часового цикла, и он **возвращает
+ненулевой код при провале**: `docker compose exec` не наследует `environment:` сервиса, поэтому «один
+снимок» выбирается аргументом `--once` и `-e RUN_ONCE=1`, а не переменной сервиса (SEC-B48 — раньше
+команда молча уходила в бесконечный цикл).
+
+Сколько места это занимает: `BACKUP_KEEP` снимков `.sqlite.gz` (72 × час) плюс `BACKUP_KEEP_CORRUPT`
+(3) файлов `.CORRUPT` — они не покрыты первым ретеншеном, а переполненный диск это единственный отказ,
+которого однописательский SQLite не переживёт. Копии создаются `umask 077` и лежат `0640`: снимок — это
+полный дамп прод-данных.
 
 ### 4.2 восстановление (дрилл обязателен)
 
@@ -261,6 +306,9 @@ docker compose -f ops/deploy/docker-compose.yaml logs backup --since 1h | tail
 хосте, в отдельном томе:
 
 ```bash
+cat ops/deploy/backup/out/status                          # сначала — живые ли снимки: last_success_ts не старше часа,
+                                                          # consecutive_failures == 0; расхождение с тем, что вы видите
+                                                          # в каталоге, это отдельная находка, а не мелочь
 gunzip -c ops/deploy/backup/out/guttercaps-<ts>.sqlite.gz > /tmp/restore.sqlite
 sqlite3 /tmp/restore.sqlite 'PRAGMA integrity_check; SELECT COUNT(*) FROM events_raw; SELECT MAX(slot) FROM events_raw;'
 # затем: остановить api, подменить том, запустить — и дождаться, пока ingest_lag_slots уйдёт в 0
@@ -279,7 +327,13 @@ sqlite3 /tmp/restore.sqlite 'PRAGMA integrity_check; SELECT COUNT(*) FROM events
 Второй репликой API можно стать почти сразу — нужны только два условия:
 
 1. `EVENT_BUS=redis` + `REDIS_URL` (иначе `/ws` на второй реплике не увидит события, которые
-   записал индексор первой: inproc-шина живёт внутри процесса),
+   записал индексор первой: inproc-шина живёт внутри процесса). Учтите, что шина **решает это на
+   старте**: если Redis в момент запуска не ответил на `SUBSCRIBE` за `EVENT_BUS_CONNECT_TIMEOUT_MS`
+   (по умолчанию 3 с), процесс поднимается на внутрипроцессной шине (SEC-B40 — раньше он не поднимался
+   вообще) и снаружи это видно только по `event_bus_redis == 0` и алерту `EventBusDegraded`: REST
+   отвечает, а кадры других реплик не приходят. Лечится перезапуском `api` **после** того, как Redis
+   здоров, — сам по себе откат не переигрывается, поэтому `event_bus_redis 0` через пять минут после
+   восстановления Redis означает «пора рестартовать», а не «ещё немного подождать»,
 2. `API_INGEST=0` на репликах и один отдельный контейнер-индексор (иначе два индексора будут
    писать в один файл).
 
@@ -331,7 +385,10 @@ cost`), протух/отозван Hermes-ключ, `PYTH_SOL_ACCOUNT`/`PYTH_SK
 
 Симптом: `ingest_lag_slots` растёт, `crank_pending_jobs` растёт, API при этом полностью здоров.
 Ничего в коде менять не надо: `listen` имеет heal-цикл (`LISTEN_HEAL_DEPTH`), который добирает
-пропущенное сам, как только RPC вернётся. Если lag > 300 и RPC жив — смотреть, не сел ли websocket
+пропущенное сам, как только RPC вернётся. Если при этом выросли `indexer_gaps_pending`
+(`GET /v1/health.indexerGaps`), это подписи, которые провайдер перечислил и не отдал: свежие
+добирает тот же heal-тик, запаркованные — `npm run backend:backfill -- --repair-gaps` на архивном
+RPC (полный разбор — ALERT-06 в `docs/ALERT_CATALOG.md`). Если lag > 300 и RPC жив — смотреть, не сел ли websocket
 (web3.js переподключается сам, а вот подписка на `onLogs` после долгого простоя может и не
 вернуться → `docker compose restart api`, он догонит через backfill).
 

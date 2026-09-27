@@ -30,6 +30,19 @@ groups:
           summary: 'More than 2% of requests are 5xx'
           description: 'Every 500 has a request id and a matching log line; `grep ALERT` in the api logs first.'
 
+      # SEC-B40: the event bus degrades instead of blocking boot (a Redis that is down used to stop the API
+      # from ever reaching `server.listen`), and a degraded bus is invisible from the outside — this replica
+      # serves REST correctly and simply never receives another replica's frames, so players see a stale
+      # market until their own poll. The series exists only where EVENT_BUS=redis + REDIS_URL are configured,
+      # so `== 0` cannot fire on a deliberately single-process deployment.
+      - alert: EventBusDegraded
+        expr: event_bus_redis == 0
+        for: 5m
+        labels: { severity: warn }
+        annotations:
+          summary: 'EVENT_BUS=redis is configured but this API is on the in-process bus'
+          description: 'The initial SUBSCRIBE did not answer within EVENT_BUS_CONNECT_TIMEOUT_MS (default 3 s), so the process fell back: /ws only carries its own events, other replicas are unseen, and clients fall back to polling. Check `redis_error_total{purpose="bus"}` and the `redis bus …` warnings, then restart the API once Redis is healthy (the fallback is decided at boot and does not retry by design). If one replica is enough, set EVENT_BUS=inproc and this alert disappears with the configuration it describes.'
+
   - name: guttercaps.indexer
     rules:
       - alert: IngestLag
@@ -47,6 +60,18 @@ groups:
         annotations:
           summary: 'No new events for 10 minutes while the chain moved'
           description: 'The websocket subscription is probably dead and the heal loop is not covering it (it needs a working RPC). Restart the api container; it backfills on start.'
+
+      # SEC-B27: the other half of "the indexer is behind". Lag is transactions nobody read yet; a gap is
+      # a transaction the read model will *never* get from this provider — missing in silence unless
+      # someone reads the counter. `ticket`, not `page`: the read model is wrong, the chain is not, and the
+      # repair is a deliberate run (docs/ALERT_CATALOG.md ALERT-06).
+      - alert: IndexerGaps
+        expr: indexer_gaps_pending > 0 or indexer_gaps_parked > 0
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: '{{ $value }} transaction(s) the chain has and the read model does not'
+          description: '`curl -s $API/v1/health | jq .indexerGaps` for pending/parked/oldestSlot. Pending usually drains on its own (heal tick); parked means the configured RPC no longer serves those slots — point RPC_URL at an archival endpoint and run `npm run backend:backfill -- --repair-gaps`, then re-run the full walk: it stamps history_complete=1 only when every page was served.'
 
   - name: guttercaps.crank
     rules:
@@ -100,8 +125,8 @@ groups:
         for: 30m
         labels: { severity: ticket }
         annotations:
-          summary: 'Burn oracle has not reported for 3 intervals while ≥ 1 $CG of burns is waiting'
-          description: 'Emission is being under-paid until this recovers (guard floor = 30 % of schedule). Check the `burn` worker log (`[burn-oracle]`), the BURN_ORACLE_KEYPAIR mount and its SOL. `burn_oracle_pending_cg` is what gets reported on recovery; if it is above BURN_ORACLE_MAX_REPORT (5 M $CG) the keeper is *refusing* on purpose — inspect the burns table before raising the cap.'
+          summary: 'Burn oracle has not reported for 3 intervals while ≥ 1 $CG of burns is waiting (or stuck behind finality)'
+          description: 'Emission is being under-paid until this recovers (guard floor = 30 % of schedule). Check the `burn` worker log (`[burn-oracle]`), the BURN_ORACLE_KEYPAIR mount and its SOL. `burn_oracle_pending_cg` is what gets reported on recovery; if it is above BURN_ORACLE_MAX_REPORT (5 M $CG) the keeper is *refusing* on purpose — inspect the burns table before raising the cap. When `burn_oracle_pending_cg` is 0 and this fires, the burns are not reportable yet: `burn_oracle_deferred_cg` is material and the finality reconciler is stuck (SEC-B29) — `/v1/health.finality` says for how long, and the reconciler will not report a burn the chain could still drop.'
 
       - alert: RewardOracleStale
         expr: reward_oracle_healthy == 0
@@ -195,8 +220,12 @@ groups:
           summary: 'libuv handles grew by 50 in 30 minutes'
           description: 'The usual suspects are a setInterval started per request and websockets whose timers were not cleared on close (see attachWs).'
 
+      # The old expression hardcoded `ws_clients >= 480`, which is 96% of the *default* 500 and nothing of
+      # anything else: with WS_MAX_CLIENTS=2000 it fired at 24% of the cap (a warning that cries wolf), and
+      # with WS_MAX_CLIENTS=400 it stayed silent while every new socket was already being refused with 1013.
+      # Dividing by the exported cap keeps the rule true for every configuration (SEC-B41).
       - alert: WsSaturation
-        expr: ws_clients >= 480
+        expr: ws_clients / ws_max_clients >= 0.96
         for: 5m
         labels: { severity: warn }
         annotations:
@@ -218,3 +247,34 @@ groups:
         annotations:
           summary: 'The process crashed and restarted'
           description: 'shutdown.ts exits non-zero on an uncaught exception by design. The stack is in the previous container log (`docker compose logs api --previous`).'
+
+  # Backup freshness (SEC-B49). The sidecar announced a problem only by printing an `ALERT` line into
+  # `docker logs backup` — a service that stays up, healthy and silent while taking nothing, right up to
+  # the day a restore is attempted. The script now writes `last_success_ts` / `consecutive_failures` next
+  # to the snapshots (`ops/backup/sqlite-backup.sh`) and the API exports them as gauges
+  # (`backend/src/backup-status.ts`), so both rules read state instead of prose. Neither fires when
+  # `BACKUP_STATUS_FILE` is unset: a deployment without the sidecar has no backups to be stale about.
+  - name: guttercaps.backup
+    rules:
+      # 36 h = 36 missed hourly snapshots. Long enough that a rolling deploy, a disk hiccup or a slow S3
+      # upload is not an alert; short enough to be caught inside the retention window the restore drill
+      # (`ops/deploy/runbook.md` §4) is written against. `time() - 0` is true, so "never succeeded once"
+      # — a fresh deployment, a deleted status file, a sidecar that never started — is stale, not silent.
+      - alert: BackupStale
+        expr: time() - backup_last_success_timestamp_seconds > 36 * 3600
+        for: 15m
+        labels: { severity: page }
+        annotations:
+          summary: 'No successful database snapshot for over 36 hours'
+          description: 'On the host: `npm run ops:backup-now` for a manual snapshot (it exits non-zero and prints which step failed), then `docker compose logs backup --tail 100`. Page rather than ticket: the snapshot is the only copy that survives losing the volume, and `backup_last_result_ok` says whether the last attempt even ran.'
+
+      # Deliberately lower than BackupStale and at `for: 0m`, so the cause is on the dashboard while the last
+      # good snapshot is still recent. 3 rather than 1: one failed attempt is a restart or a locked database,
+      # and a rule that fires on a rolling deploy is a rule people learn to ignore.
+      - alert: BackupFailing
+        expr: backup_consecutive_failures >= 3
+        for: 0m
+        labels: { severity: ticket }
+        annotations:
+          summary: 'Three consecutive backup attempts failed'
+          description: '`backup_last_success_timestamp_seconds` shows how old the last good snapshot is; the backup container log names the failing step (.backup, integrity_check, gzip, s3). Usually a full disk (`df -h` on the host) or `/data` unreadable by the sidecar.'

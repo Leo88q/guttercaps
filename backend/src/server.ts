@@ -6,7 +6,11 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
 import type { Connection } from '@solana/web3.js';
 import cors from 'cors';
-import { CORS_ORIGINS, CORS_ALLOW_CREDENTIALS, WS_PATH, assertProductionConfig } from './config.ts';
+import { base58Decode, base58Encode, isSolanaAddress } from './base58.ts';
+import { CORS_ORIGINS, CORS_ALLOW_CREDENTIALS, WS_PATH, EVENT_BUS, REDIS_URL, TRUST_PROXY_HOPS, assertProductionConfig } from './config.ts';
+import { bus } from './bus.ts';
+import { wsConfigFromEnv } from './ws.ts';
+import { readBackupStatus } from './backup-status.ts';
 import { requestLogger, routePattern, log, errFields } from './log.ts';
 import { metrics, exposition, registerScrape } from './metrics.ts';
 import { geoOf } from './geo.ts';
@@ -19,7 +23,7 @@ import { POLICIES, createLimiter, type Limiter } from './ratelimit.ts';
 import { catalogue, checkHandle, claimHandle, claimService, myServices, ServiceError } from './services.ts';
 import { claimPassTier, passState } from './pass.ts';
 import { packQuote, validateRequest } from './quote.ts';
-import { getConnection } from './ingest.ts';
+import { gapStatus, getConnection, untimedStatus } from './ingest.ts';
 import { crankStatus, pauseStatus, priceStatus } from './queries.ts';
 import { burnOracleStatus } from './burn-oracle.ts';
 import { arenaOracleGauge, burnOracleGauges, rewardOracleGauges, unattributedResolves } from './oracle-metrics.ts';
@@ -35,8 +39,29 @@ import { referralSummary } from './referrals.ts';
 import { antifraudStatus } from './antifraud.ts';
 import * as admin from './admin.ts';
 import { clientIp, ipNet } from './ratelimit.ts';
+// SEC-B2 (2026-09-26): every numeric query parameter goes through here. `Number(v)` handed `NaN` /
+// fractions / negatives to SQL — a 500 (`datatype mismatch`) on a public read, and a negative LIMIT
+// that SQLite reads as "unlimited", i.e. the `Math.min(limit, N)` caps in queries.ts did nothing.
+import { cursorQuery, intQuery, limitQuery, numberQuery } from './params.ts';
 import { humanStatus, recordDevice, verifyHuman } from './human.ts';
-import { QUEST_CHIP_TEMPLATES } from '@guttercaps/economy';
+import { COLLECTIONS, QUEST_CHIP_TEMPLATES, RARITY_PROFILES } from '@guttercaps/economy';
+
+/**
+ * Filter domains for the query layer (SEC-B2). Mirrors the `chips` projection: 8 districts × 9
+ * rarities, and the five states `queries.myChips` understands. Kept next to the router so a new
+ * rarity/district materialises here as a validation bound instead of an out-of-range filter.
+ */
+const MAX_COLLECTION_IDX = COLLECTIONS.length - 1;
+const MAX_RARITY_IDX = RARITY_PROFILES.length - 1;
+/**
+ * Upper bound for the mint-number range filters. `chips.game_index` is a u64 on chain, so the true
+ * domain is 0…2^64-1; the filter is compared as an integer and a value past 2^32 is a client bug long
+ * before it is a legitimate chip number (the whole game will not mint four billion chips).
+ */
+const MAX_GAME_INDEX = 0xffff_ffff;
+const MY_CHIP_STATUSES = ['free', 'staked', 'listed', 'fusing', 'locked'] as const;
+/** Sorts `queries.listings` actually implements (its fallback branch is `price_asc`). */
+const LISTING_SORTS = ['price_asc', 'price_desc', 'rarity_desc', 'newest', 'index_asc'] as const;
 
 export interface AppOptions {
   connection?: () => Connection;
@@ -73,8 +98,9 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   // Behind a CDN/LB `trust proxy` is what makes `req.ip` the client, not the edge. `true` trusts every
   // hop, which is right for compose/nginx and wrong for an open origin — the IP is a rate-limit key,
   // so a spoofable XFF is a free bypass. Set TRUST_PROXY_HOPS to a number in production.
-  const hops = Number(process.env.TRUST_PROXY_HOPS ?? (process.env.NODE_ENV === 'production' ? 1 : true));
-  app.set('trust proxy', Number.isFinite(hops) && hops > 0 ? hops : true);
+  // The value lives in `config.ts` because the `/ws` upgrade (SEC-B46) has to resolve the same client the
+  // same way: an upgrade never reaches Express, so it cannot inherit this setting.
+  app.set('trust proxy', TRUST_PROXY_HOPS);
   app.disable('x-powered-by');
   app.use(requestLogger({ logLines: deps.accessLog !== false }));
   app.use(cors({
@@ -93,6 +119,18 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), usb=()');
     res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    // SEC-B44: a default for the one thing an API must never leave to the cache's judgement. Cookie
+    // authentication is not `Authorization`, so RFC 9111's "a shared cache must not store an authorised
+    // response" does not cover `/v1/me`, `/v1/session` or the wallet feeds, and this deployment does aim at
+    // a Cloudflare edge (`GEO_GATE` needs one — see docker-compose). With no Cache-Control at all a
+    // cache is free to *store* those responses and to apply its own heuristic freshness, which is the
+    // classic way one player's balance ends up in another player's browser. `private` keeps even a
+    // correctly-configured shared cache out of it, `no-store` keeps it out of the disk cache.
+    // A handler that wants something else sets its own header and overrides this (`/packs/quote` below).
+    // Deliberately *not* `public, max-age=…` on the read-only market endpoints: the single-writer SQLite is
+    // the load we care about, the client already carries per-hook staleTime, and a cache in front of a
+    // projection that an indexer updates in place is a staleness bug waiting for a money screen.
+    res.setHeader('Cache-Control', 'private, no-store');
     next();
   });
   app.use((req, res, next) => {
@@ -157,7 +195,30 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   // The alerting rules in ops/monitoring/alerts.yml scrape these names, so they are a contract with the
   // runbook: a renamed series is an alert that silently never fires. `api:check` does not see this file
   // pair, so keep the two in sync by hand (and the ops test pins the names).
+  // SEC-B27: the two halves of `indexer_gaps` — a signature the walk could not fetch, split into the rows
+  // a heal tick will still retry and the rows parked for an operator with an archival provider. The
+  // alert that reads them (`IndexerGaps`) is the only signal that the read model is missing a chain
+  // transaction, so the series must exist even on a healthy database (both 0, not absent).
+  registerScrape('indexer_gaps_pending', 'Signatures the RPC has not served that a heal tick will retry (/health.indexerGaps).', () => [{ value: gapStatus(db).pending }]);
+  registerScrape('indexer_gaps_parked', 'Signatures parked at the attempt cap: the provider no longer serves them — repair with `npm run backend:backfill -- --repair-gaps` against an archival RPC (/health.indexerGaps).', () => [{ value: gapStatus(db).parked }]);
   registerScrape('crank_pending_jobs', 'Crank jobs not yet settled.', async () => { const r = await ready(); return [{ value: r.crank.pending }]; });
+  // SEC-B40: `EVENT_BUS=redis` that fell back to the in-process bus is a degradation nobody can see from
+  // the outside — this replica serves REST perfectly and simply never receives another replica's frames
+  // (clients poll, so the UI is stale, not broken). The series exists **only** where Redis was asked for,
+  // so `event_bus_redis == 0` (see ops/monitoring/alerts.yml → EventBusDegraded) cannot fire on a
+  // deliberately single-process deployment.
+  // The denominator of the WsSaturation alert (SEC-B41). A scrape gauge, not a readiness-derived one: it is
+  // static configuration, and an alert whose denominator only appears after the first /readyz probe would be
+  // blind in exactly the window a restarting replica is being watched. It reports the *effective* cap
+  // (`wsConfigFromEnv`, i.e. the same clamped value the hub uses), never a raw `NaN` from a typo'd env.
+  // SEC-B49: the backup sidecar's status file (see `backup-status.ts`). Series exist only when
+  // `BACKUP_STATUS_FILE` is configured — a deployment without the sidecar is not "stale", it simply has no
+  // backups to be stale about, and the alert would be noise nobody can act on.
+  registerScrape('backup_last_success_timestamp_seconds', 'Epoch seconds of the last successful snapshot (0 = none recorded yet).', () => { const b = readBackupStatus(); return b ? [{ value: b.lastSuccess }] : []; });
+  registerScrape('backup_consecutive_failures', 'Consecutive failed snapshot attempts (0 on success).', () => { const b = readBackupStatus(); return b ? [{ value: b.consecutiveFailures }] : []; });
+  registerScrape('backup_last_result_ok', '1 when the last snapshot attempt succeeded, 0 otherwise.', () => { const b = readBackupStatus(); return b ? [{ value: b.lastResult === 'ok' ? 1 : 0 }] : []; });
+  registerScrape('ws_max_clients', 'Concurrent sockets this process accepts, as the hub reads WS_MAX_CLIENTS.', () => [{ value: wsConfigFromEnv().maxClients }]);
+  registerScrape('event_bus_redis', '1 when the cross-process Redis event bus is installed; 0 when EVENT_BUS=redis was configured but this process fell back to the in-process bus (absent when Redis is not configured).', () => (EVENT_BUS === 'redis' && REDIS_URL ? [{ value: bus().kind === 'redis' ? 1 : 0 }] : []));
   registerScrape('pyth_cache_age_seconds', 'Age of the freshest cached Pyth price, seconds.', async () => { const r = await ready(); return [{ value: r.prices.worstAgeS ?? -1 }]; });
   registerScrape('rng_queue_age_seconds', 'Age of the oldest pending randomness reveal.', () => {
     const s = q.crankStatus(db);
@@ -168,8 +229,9 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   // SEC-F02 / SEC-F06 follow-up: the three oracle keys (oracle-metrics.ts). DB-derived, so they are
   // right after a restart and independent of which WORKERS run in this process.
   registerScrape('burn_oracle_report_age_seconds', 'Seconds since the burn oracle last sent report_burn; -1 = never.', () => [{ value: burnOracleGauges(db).reportAgeS }]);
-  registerScrape('burn_oracle_pending_cg', 'Indexed burns ($CG) not yet reported to staking.report_burn.', () => [{ value: burnOracleGauges(db).pendingCg }]);
-  registerScrape('burn_oracle_healthy', '1 unless ≥ BURN_ORACLE_MIN_REPORT is waiting and nothing was reported for 3 intervals.', () => [{ value: burnOracleGauges(db).healthy }]);
+  registerScrape('burn_oracle_pending_cg', 'Finalized burns ($CG) not yet reported to staking.report_burn.', () => [{ value: burnOracleGauges(db).pendingCg }]);
+  registerScrape('burn_oracle_deferred_cg', 'Burns ($CG) indexed but above the finalized horizon — SEC-B29: not reportable yet, no report can be taken back.', () => [{ value: burnOracleGauges(db).deferredCg }]);
+  registerScrape('burn_oracle_healthy', '1 unless something material is waiting to be reported or stuck behind finality and nothing was reported for 3 intervals.', () => [{ value: burnOracleGauges(db).healthy }]);
   registerScrape('reward_oracle_publish_age_seconds', 'Seconds since the last published reward root; -1 = never.', () => [{ value: rewardOracleGauges(db).publishAgeS }]);
   registerScrape('reward_oracle_pending_batches', 'Reward batches built but not yet published.', () => [{ value: rewardOracleGauges(db).pendingBatches }]);
   registerScrape('reward_oracle_oldest_pending_age_seconds', 'Age of the oldest unpublished reward batch, seconds (0 = none).', () => [{ value: rewardOracleGauges(db).oldestPendingAgeS }]);
@@ -200,14 +262,35 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     Promise.resolve(fn(req, res)).catch(next);
   };
   const str = (v: unknown) => (typeof v === 'string' && v.length ? v : undefined);
-  const int = (v: unknown) => (typeof v === 'string' && v.length ? Number(v) : undefined);
+  /** `/me/chips?status=` — a typo used to be ignored, i.e. the caller got the unfiltered list. */
+  const myChipStatus = (v: unknown): string | undefined => {
+    if (v === undefined || v === '') return undefined;
+    if (typeof v !== 'string' || !MY_CHIP_STATUSES.includes(v as never)) {
+      throw new ServiceError(400, 'bad_request', `status must be one of ${MY_CHIP_STATUSES.join(' | ')}`);
+    }
+    return v;
+  };
 
   // ------------------------------------------------------------ health / stats
-  v1.get('/health', (_req, res) => { res.json({ ok: true, lastSlot: db.scalar(`SELECT COALESCE(MAX(slot),0) FROM events_raw`), prices: priceStatus(db), crank: crankStatus(db), paused: pauseStatus(db), burnOracle: burnOracleStatus(db), finality: finalityStatus(db), rewardOracle: rewardOracleStatus(db), antifraud: antifraudStatus(db), arena: { queued: db.scalar(`SELECT COUNT(*) FROM arena_queue`), revealing: db.scalar(`SELECT COUNT(*) FROM matches WHERE status = 'revealing'`), unattributedResolves: unattributedResolves(db) } }); });
+  v1.get('/health', (_req, res) => { res.json({ ok: true, lastSlot: db.scalar(`SELECT COALESCE(MAX(slot),0) FROM events_raw`), prices: priceStatus(db), crank: crankStatus(db), paused: pauseStatus(db), burnOracle: burnOracleStatus(db), finality: finalityStatus(db), untimedEvents: untimedStatus(db), indexerGaps: gapStatus(db), rewardOracle: rewardOracleStatus(db), antifraud: antifraudStatus(db), arena: { queued: db.scalar(`SELECT COUNT(*) FROM arena_queue`), revealing: db.scalar(`SELECT COUNT(*) FROM matches WHERE status = 'revealing'`), unattributedResolves: unattributedResolves(db) } }); });
   v1.get('/prices', (_req, res) => { res.json(priceStatus(db)); });
   v1.get('/stats', (_req, res) => { res.json(q.stats(db)); });
   v1.get('/rewards/skr-pool', (_req, res) => { res.json(q.skrPool(db)); });
-  v1.get('/wallet/:address/events', (req, res) => { res.json({ events: q.walletEvents(db, req.params.address, int(req.query.limit) ?? 50) }); });
+  v1.get('/wallet/:address/events', (req, res) => {
+    // SEC-B36: a path parameter is user input, and this one is bound into a `LIKE` *pattern* by the query
+    // layer (`data LIKE '%' || ? || '%'` — the feed is a scan of a JSON blob by design, docs/06 §4.1).
+    // Unvalidated, `%` was a pattern instead of an address: `GET /v1/wallet/%/events` answered 200 with the
+    // newest 200 raw events of the whole protocol, `_` made the feed a substring oracle over that blob, and
+    // junk like `abc` was a silent empty feed rather than a 400. The event log is public chain data, so this
+    // was a contract bug rather than a leak — but it is one edit from being a leak (the feed is the only
+    // reader of `events_raw.data`), and `walletEvents` now escapes the metacharacters as well, because the
+    // query layer must not depend on every caller remembering.
+    if (!isSolanaAddress(req.params.address)) {
+      res.status(400).json({ code: 'bad_pubkey', message: 'address must be a base58-encoded 32-byte public key' });
+      return;
+    }
+    res.json({ events: q.walletEvents(db, req.params.address, limitQuery(req.query.limit, { max: 200, def: 50 })) });
+  });
 
   // ------------------------------------------------------------ auth
   const bodyAddress = (req: Request) => (typeof req.body?.address === 'string' ? (req.body.address as string) : undefined);
@@ -216,7 +299,24 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     const body = req.body as { address: string; message: string; signature: string; referrer?: string; fingerprint?: string };
     const wallet = verifySiws(db, body);
     const s = createSession(db, wallet);
-    if (body.referrer && body.referrer !== wallet) db.run(`UPDATE wallets SET referrer = COALESCE(referrer, ?) WHERE address = ?`, body.referrer, wallet);
+    // SEC-B53: `referrer` arrives in a request body and is written into `wallets.referrer`, which is
+    // (a) permanent — `COALESCE` keeps the first value for ever — and (b) a *payee*: `settleReferrals`
+    // leaves the referral reward to that string, and the reward builder parses every leaf wallet with
+    // `new PublicKey(...)`. So a junk referrer is not cosmetic: it poisons the referral row, and the only
+    // thing that keeps it out of a batch today is `eligibility()`'s unrelated "an unknown wallet is
+    // ineligible" rule. Validate it exactly like every other address that reaches the read model
+    // (SEC-B36/B38), store the encoding this module produces rather than the string that arrived, and
+    // ignore an unusable value with a WARN instead of failing a sign-in the user cannot fix. Ignoring is
+    // visible on purpose: a broken campaign link silently credits nobody.
+    if (typeof body.referrer === 'string' && body.referrer.trim().length > 0) {
+      const ref = body.referrer.trim();
+      if (!isSolanaAddress(ref)) log.warn('referrer ignored: not an address', { referrer: ref, wallet });
+      else {
+        const canonical = base58Encode(base58Decode(ref));
+        if (canonical === wallet) log.warn('referrer ignored: self-referral', { wallet });
+        else db.run(`UPDATE wallets SET referrer = COALESCE(referrer, ?) WHERE address = ?`, canonical, wallet);
+      }
+    }
     recordDevice(db, wallet, body.fingerprint); // T-B-49 device dedupe (salted hash only — human.ts)
     setSessionCookie(res, s.cookie);
     res.json({ csrf: s.csrf, wallet: q.walletProfile(db, wallet) });
@@ -230,10 +330,18 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   // ------------------------------------------------------------ me
   v1.get('/me', requireAuth, (req, res) => { res.json({ ...q.me(db, req.session!.wallet, geoOf(req.headers)), isAdmin: admin.isAdminWallet(req.session!.wallet, adminWallets) }); });
   v1.get('/me/chips', requireAuth, (req, res) => {
-    res.json(q.myChips(db, req.session!.wallet, { collection: int(req.query.collection), rarity: int(req.query.rarity), status: str(req.query.status), cursor: str(req.query.cursor) }));
+    res.json(q.myChips(db, req.session!.wallet, {
+      collection: intQuery(req.query.collection, { name: 'collection', min: 0, max: MAX_COLLECTION_IDX }),
+      rarity: intQuery(req.query.rarity, { name: 'rarity', min: 0, max: MAX_RARITY_IDX }),
+      status: myChipStatus(req.query.status),
+      limit: limitQuery(req.query.limit, { max: 500, def: 200 }),
+      cursor: cursorQuery(req.query.cursor),
+    }));
   });
   v1.get('/me/grid', requireAuth, (req, res) => { res.json(q.myGrid(db, req.session!.wallet)); });
-  v1.get('/me/activity', requireAuth, (req, res) => { res.json(q.activity(db, req.session!.wallet, 50, str(req.query.cursor))); });
+  v1.get('/me/activity', requireAuth, (req, res) => {
+    res.json(q.activity(db, req.session!.wallet, limitQuery(req.query.limit, { max: 200, def: 50 }), cursorQuery(req.query.cursor)));
+  });
   v1.get('/me/referrals', requireAuth, (req, res) => { res.json(referralSummary(db, req.session!.wallet)); });
   v1.get('/me/pending', requireAuth, (req, res) => {
     const rows = db.all<{ nonce: string; sku: number; qty: number; opened: number; randomness: string; slot: number }>(`SELECT nonce, sku, qty, opened, randomness, slot FROM pack_purchases WHERE buyer = ? AND status = 'pending'`, req.session!.wallet);
@@ -257,7 +365,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
       fusions: [],
     });
   });
-  v1.get('/me/handle/check', requireAuth, (req, res) => { res.json(checkHandle(db, req.session!.wallet, String(req.query.handle ?? ''))); });
+  v1.get('/me/handle/check', requireAuth, rl(POLICIES.handleCheck), (req, res) => { res.json(checkHandle(db, req.session!.wallet, String(req.query.handle ?? ''))); });
   v1.put('/me/handle', requireAuth, rl(POLICIES.claim), rl(POLICIES.claimNet), (req, res) => {
     const b = req.body as { handle: string; signature: string };
     res.json(claimHandle(db, req.session!.wallet, String(b.handle ?? ''), String(b.signature ?? '')));
@@ -291,17 +399,26 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     else res.status(404).json({ code: 'not_found', message: 'No pack open with that signature (yet)' });
   });
   v1.post('/packs/verify', (req, res) => {
-    const r = q.packOpen(db, String(req.body?.signature ?? ''));
+    // SEC-B6: the verifier recomputes the roll (rarities) from the emitted randomness and compares it
+    // with the chain — `matches` is an answer, never an assumption. Districts are not verified here:
+    // the pool is live chain state (see queries.verifyPackOpen).
+    const r = q.verifyPackOpen(db, String(req.body?.signature ?? ''));
     if (!r) { res.status(404).json({ code: 'not_found', message: 'Unknown signature' }); return; }
-    // Recompute happens client-side too (packages/economy expandRandomness); the API returns the on-chain facts.
-    res.json({ signature: r.signature, rollHex: r.rollHex, pityBefore: r.pityBefore, effectiveOddsBps: r.effectiveOddsBps, voucher: r.voucher, onChain: r.onChain, recomputed: r.onChain, matches: true });
+    res.json(r);
   });
 
   // ------------------------------------------------------------ collections / chips
   v1.get('/collections', (_req, res) => { res.json(q.collections(db)); });
   v1.get('/collections/:idx/chips/:rarity', (req, res) => {
-    const r = q.chipArchetype(db, Number(req.params.idx), Number(req.params.rarity));
-    if (!r) { res.status(404).json({ code: 'unknown_archetype', message: 'collection must be 0..9 and rarity 0..8' }); return; }
+    // A path parameter is user input too. `Number('abc')` is NaN, which used to fall through the
+    // lookup to a 404 — same answer, but 400 is the honest one for "not an archetype coordinate".
+    let idx: number | undefined; let rarity: number | undefined;
+    try {
+      idx = intQuery(req.params.idx, { name: 'idx', min: 0, max: 255 });
+      rarity = intQuery(req.params.rarity, { name: 'rarity', min: 0, max: 255 });
+    } catch { idx = rarity = undefined; }
+    const r = idx === undefined || rarity === undefined ? undefined : q.chipArchetype(db, idx, rarity);
+    if (!r) { res.status(404).json({ code: 'unknown_archetype', message: 'collection must be 0..7 and rarity 0..8' }); return; }
     res.json(r);
   });
   v1.get('/chips/:asset', (req, res) => {
@@ -325,9 +442,41 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   }));
 
   // ------------------------------------------------------------ market
-  v1.get('/market/listings', (req, res) => { res.json(q.listings(db, req.query as Record<string, string | undefined>)); });
+  v1.get('/market/listings', (req, res) => {
+    // SEC-B2: the filter values are validated as integers *here* — `?collection=abc` used to bind
+    // `NaN` in the WHERE clause, which SQLite evaluates as NULL, i.e. an empty page that looks like
+    // "no listings match" instead of a client error.
+    // `sort` and `currency` are enums: an unknown value used to be silently ignored (the list came
+    // back price-sorted / unfiltered), so the caller could not tell a typo or a stale bundle from a
+    // genuine result. `index_asc` ("Low #") and the `indexMin`/`indexMax` range are honoured again:
+    // SEC-B3 rejected them while `chips` had no game index, shape #27 projected it (compressed chips
+    // from `CompressedChipRegistered`, core chips back-filled from `ChipState` by the crank), so a chip
+    // without a resolved number now sorts last / is excluded instead of being answered with price order.
+    const sort = str(req.query.sort) ?? 'price_asc';
+    if (!LISTING_SORTS.includes(sort as never)) throw new ServiceError(400, 'bad_sort', `sort must be one of ${LISTING_SORTS.join(' | ')}`);
+    const currency = str(req.query.currency);
+    if (currency !== undefined && !q.CURRENCY_SYMBOL.includes(currency as never)) throw new ServiceError(400, 'bad_currency', `currency must be one of ${q.CURRENCY_SYMBOL.join(' | ')}`);
+    const filters: Record<string, string | undefined> = { sort, currency };
+    for (const [k, max] of [['collection', MAX_COLLECTION_IDX], ['rarity', MAX_RARITY_IDX], ['rarityMin', MAX_RARITY_IDX], ['indexMin', MAX_GAME_INDEX], ['indexMax', MAX_GAME_INDEX]] as const) {
+      const v = intQuery(req.query[k], { name: k, min: 0, max });
+      if (v !== undefined) filters[k] = String(v);
+    }
+    const priceMaxUsd = numberQuery(req.query.priceMaxUsd, { name: 'priceMaxUsd' });
+    if (priceMaxUsd !== undefined) filters.priceMaxUsd = String(priceMaxUsd);
+    filters.limit = String(limitQuery(req.query.limit, { max: 200, def: 60 }));
+    filters.cursor = cursorQuery(req.query.cursor);
+    res.json(q.listings(db, filters));
+  });
   v1.get('/market/floor', (_req, res) => { res.json(q.floor(db)); });
-  v1.get('/market/history', (req, res) => { res.json(q.history(db, req.query as Record<string, string | undefined>)); });
+  v1.get('/market/history', (req, res) => {
+    const filters: Record<string, string | undefined> = { asset: str(req.query.asset) };
+    for (const [k, max] of [['collection', MAX_COLLECTION_IDX], ['rarity', MAX_RARITY_IDX]] as const) {
+      const v = intQuery(req.query[k], { name: k, min: 0, max });
+      if (v !== undefined) filters[k] = String(v);
+    }
+    filters.cursor = cursorQuery(req.query.cursor);
+    res.json(q.history(db, filters));
+  });
   v1.get('/market/offers', requireAuth, (req, res) => {
     const w = req.session!.wallet;
     const made = req.query.direction !== 'received';
@@ -339,9 +488,16 @@ export function createApp(db: Db, deps: AppOptions = {}) {
 
   // ------------------------------------------------------------ leaderboard
   v1.get('/leaderboard/:board', (req, res) => {
-    const season = req.query.season !== undefined ? Number(req.query.season) : undefined;
-    if (season !== undefined && (!Number.isInteger(season) || season < 0)) { res.status(400).json({ error: 'bad_season' }); return; }
-    try { res.json(q.leaderboard(db, req.params.board, 50, str(req.query.cursor), req.session?.wallet, season)); }
+    // season: strict integer, 400 on anything else (`Number('1.5')` used to be a silent no-match, and
+    // a repeated `?season=1&season=2` reached the query layer as an array). Same rule as SEC-B2.
+    let season: number | undefined;
+    try { season = intQuery(req.query.season, { name: 'season', min: 0 }); }
+    catch (e) { res.status(400).json({ code: 'bad_season', message: (e as Error).message }); return; }
+    // Parameter validation happens OUTSIDE the try below: `q.leaderboard` throws only for an unknown
+    // board, and a 400 that the 404 branch swallowed was a real bug in the first version of this fix.
+    const limit = limitQuery(req.query.limit, { max: 200, def: 50 });
+    const cursor = cursorQuery(req.query.cursor);
+    try { res.json(q.leaderboard(db, req.params.board, limit, cursor, req.session?.wallet, season)); }
     catch { res.status(404).json({ code: 'unknown_board', message: 'rating | collection | staking | fusion' }); }
   });
 
@@ -411,18 +567,25 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.post('/admin/kill-switch', audited('kill_switch', async (req) => {
     const body = req.body as { program: string; paused: boolean; reason?: string };
     const c = await admin.fetchChainParams(connection());
-    const authority = body?.program === 'staking' ? { admin: c.emission.admin, pauser: c.emission.pauser } : { admin: c.config.admin, pauser: c.config.pauser };
+    // SEC-B24: each program checks its *own* authority pair — the arena reads `ArenaConfig`, so handing it
+    // chip_core's admin/pauser produced a transaction that could only fail (on the incident path, of all).
+    const authority = body?.program === 'staking'
+      ? { admin: c.emission.admin, pauser: c.emission.pauser, current: c.emission.paused }
+      : body?.program === 'arena'
+        ? (c.arena ? { admin: c.arena.admin, pauser: c.arena.pauser, current: c.arena.paused } : null)
+        : { admin: c.config.admin, pauser: c.config.pauser, current: c.config.paused };
+    if (!authority) throw new ServiceError(503, 'arena_missing', 'ArenaConfig account not found on this cluster (run scripts/setup.ts) — the arena pause needs its own admin/pauser');
     const p = admin.killSwitch(body, authority);
     if (!p.ok) throw new ServiceError(422, 'bad_request', p.violations.map((v) => `${v.path}: ${v.message}`).join('; '), p);
     return p;
   }, (req) => (req.body as { program?: string })?.program));
-  v1.get('/admin/fraud', audited('fraud.queue', (req) => admin.fraud.queue(db, Math.min(500, int(req.query.limit) ?? 100))));
+  v1.get('/admin/fraud', audited('fraud.queue', (req) => admin.fraud.queue(db, limitQuery(req.query.limit, { max: 500, def: 100 }))));
   v1.post('/admin/fraud/:wallet', audited('fraud.resolve', (req) => {
     const body = req.body as { resolution: string; note?: string };
     return admin.fraud.resolve(db, req.params.wallet, body?.resolution, `admin:${req.session!.wallet}`, body?.note);
   }, (req) => req.params.wallet));
   v1.get('/admin/kpi', audited('kpi', () => admin.kpi(db)));
-  v1.get('/admin/audit', audited('audit.read', (req) => admin.auditLog(db, Math.min(1000, int(req.query.limit) ?? 100))));
+  v1.get('/admin/audit', audited('audit.read', (req) => admin.auditLog(db, limitQuery(req.query.limit, { max: 1000, def: 100 }))));
 
   app.use('/v1', v1);
   app.use('/', v1); // legacy paths (/leaderboard, /stats, /wallet/:address/events) keep working for the landing page
@@ -434,6 +597,17 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     if (/Invalid public key|Non-base58/.test(msg)) { res.status(400).json({ code: 'bad_pubkey', message: msg }); return; }
     if ((err as { type?: string })?.type === 'entity.too.large') { res.status(413).json({ code: 'payload_too_large', message: 'Body limit is 16 KB' }); return; }
     if ((err as { type?: string })?.type === 'entity.parse.failed') { res.status(400).json({ code: 'bad_json', message: 'Malformed JSON body' }); return; }
+    // SEC-B37: Express classifies a few input errors itself *before* any handler runs — the one that reaches
+    // here in practice is an undecodable path parameter (`GET /v1/wallet/%zz/events`: `decodeURIComponent`
+    // throws a URIError and the router marks it `status = 400`). Ignoring that field answered 500, logged
+    // `unhandled request error` and moved `http_errors_total{kind="unhandled"}` — i.e. a one-line URL let a
+    // client turn a client mistake into our alert. Only a 4xx is honoured: a *handler* throwing a plain
+    // `Error` is still a bug of ours and stays a 500.
+    const status = (err as { status?: unknown })?.status ?? (err as { statusCode?: unknown })?.statusCode;
+    if (typeof status === 'number' && status >= 400 && status < 500) {
+      res.status(status).json({ code: 'bad_request', message: 'Malformed request' });
+      return;
+    }
     // A 500 means *we* broke, and its message is ours to read: an SQL fragment, an RPC URL with a key
     // in it, or a file path. The client gets a code it can branch on plus the request id, and the same
     // request id is on the log line — which is the only way a support ticket maps to a stack trace.

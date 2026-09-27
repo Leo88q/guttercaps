@@ -13,7 +13,13 @@
 **/*.sqlite-shm
 **/*-keypair.json
 **/id.json
-**/.env
+# SEC-B55: `**/.env` is one name out of the five Vite reads — for `vite build` (mode production) it loads
+# `.env`, `.env.local`, `.env.production` and `.env.production.local` from the client root, and every one of
+# them can set any `VITE_*` name. process.env wins for the names the Dockerfile declares, so a stray
+# undeclared switch (VITE_API_MOCK, VITE_FLAG_DEBUG_PANEL, …) is copied in and baked into a production
+# bundle without appearing in any diff of the deploy artifacts. `client/.env.example` literally tells
+# developers to "copy to .env.local", so that file is expected to exist on a working machine.
+**/.env*
 !**/.env.example
 ops/deploy/secrets
 ops/deploy/backup/*

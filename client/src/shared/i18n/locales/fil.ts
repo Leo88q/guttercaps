@@ -112,7 +112,7 @@ const fil: PartialMessages = {
       rules: '3–16 character: letra, numero, underscore. Makikita sa leaderboard, arena, at public profile mo.',
       invalid: 'Gumamit ng 3–16 letra, numero, o _', available: 'Available', cta: 'Magbayad at i-claim', claiming: 'Kini-claim…', saved: 'Na-save ang handle', failed: 'Hindi ma-claim ang handle',
       changeNote: 'Isang palit bawat 30 araw. Malalaya ang lumang handle pagkalipas ng 90 araw.',
-      reason: { taken: 'Kuha na', reserved: 'May nagre-reserve ngayon — subukan ulit sa 2 minuto', blocked: 'Hindi pinapayagan', cooldown: 'Pinalitan mo ang handle mo wala pang 30 araw ang nakalipas' },
+      reason: { taken: 'Kuha na', reserved: 'May nagre-reserve ngayon — subukan ulit sa 2 minuto', blocked: 'Hindi pinapayagan', cooldown: 'Pinalitan mo ang handle mo wala pang 30 araw ang nakalipas', invalid: 'Hindi valid na handle' },
     },
   },
   pass: {

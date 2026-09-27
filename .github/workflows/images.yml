@@ -1,3 +1,14 @@
+# ── action pins (SEC-B50) ────────────────────────────────────────────────────────────────────────────
+# Every `uses:` in this file is a full commit SHA. A tag (`@v4`) is a ref the action's owner can
+# repoint at any commit they like — including one that reads `GITHUB_TOKEN` and the deploy secrets,
+# which is the shape of the `tj-actions/changed-files` compromise — and this repository pins npm
+# versions by `sha512`, base images by patch tag and Cargo deps by exact version precisely because
+# "whatever the ref means today" is not a pin. Updating one is a deliberate edit: resolve the new
+# tag, change the SHA *and* the inline comment, and `npm run workflows:check` will notice a
+# disagreement. The same mapping is asserted in `tests/security/deploy-artifacts.test.ts`.
+#   actions/checkout             v4.4.0   11d5960a326750d5838078e36cf38b85af677262 2026-07-16
+#   actions/setup-node           v4.4.0   49933ea5288caeca8642d1e84afbd3f7d6820020 2025-04-02
+#   actions/upload-artifact      v4.6.2   ea165f8d65b6e75b540449e92b4886f43607fa02 2025-03-19
 # Publishes the three deploy images to GHCR and pins what was published in ops/deploy/images.env
 # (ops/deploy/runbook.md §1.2, docs/09 §4.1 «registry»). ci.yml proves the code is correct; this workflow is
 # what makes it deployable: a host that has to `npm run ops:build` first is a host where the deploy and the
@@ -76,9 +87,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
       - run: npm ci
 
@@ -275,7 +286,7 @@ jobs:
             echo 'Deploy: `cat ops/deploy/images.env >> ops/deploy/.env && npm run ops:up` (runbook §1.2).'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: images-env-${{ github.sha }}

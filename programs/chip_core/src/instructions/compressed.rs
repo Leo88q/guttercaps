@@ -23,7 +23,7 @@ use crate::{
     },
     economy::{
         expand, recipe_for, success_threshold, uniform_bps, PackDef, Rarity, BPS_DENOM,
-        CG_PACK_BURN_BPS, MATERIALS_PER_FUSION, MAX_CHIPS_PER_PACK,
+        CG_PACK_BURN_BPS, MATERIALS_PER_FUSION, MAX_CHIPS_PER_PACK, MAX_PACK_QTY,
     },
     errors::ChipError,
     instructions::packs::{DAY, RENT_RESERVE_PER_CHIP},
@@ -301,7 +301,19 @@ pub(crate) fn ensure_distinct_material(previous: &[Pubkey], key: &Pubkey) -> Res
     Ok(())
 }
 
+/// Multiplier between pack nonces in the derived claim nonce:
+/// `claim_nonce = nonce * STRIDE + pack_no * MAX_CHIPS_PER_PACK + chip_index`.
+///
+/// Two different triples must never land on the same claim PDA. `open_compressed_pack` refuses an
+/// existing claim account, so a collision is not a double-mint — it is worse for the buyer: the pack
+/// can never be opened, the settlement never reaches `total_claims`, and `finalize_compressed_pack`
+/// (the only path that releases the vault liability and refunds a cancelled share) can never run.
+/// The requirement is `MAX_PACK_QTY * MAX_CHIPS_PER_PACK <= STRIDE`, and it is checked by the compiler
+/// rather than by this comment: bumping `MAX_CHIPS_PER_PACK` to 6, or `MAX_PACK_QTY` past 25, fails
+/// the build instead of silently making one paid pack in every 128 nonces unopenable.
 const COMPRESSED_CLAIM_PACK_STRIDE: u64 = 128;
+const _: () =
+    assert!(MAX_CHIPS_PER_PACK * (MAX_PACK_QTY as usize) <= COMPRESSED_CLAIM_PACK_STRIDE as usize);
 
 /// Refund the cancelled share of a pack without losing value to integer
 /// truncation. Rounding is upward for the buyer and the registered side gets
@@ -1909,6 +1921,7 @@ pub fn mint_compressed_chip(
         rarity,
         level: ctx.accounts.claim.level,
         game_index: ctx.accounts.claim.game_index,
+        claim: ctx.accounts.claim.key(),
     });
     Ok(())
 }
@@ -1921,6 +1934,12 @@ pub struct CompressedChipMinted {
     pub rarity: u8,
     pub level: u8,
     pub game_index: u64,
+    /// SEC-B34: the claim PDA itself, not just `(buyer, claim_nonce)`. `buyer` is the claim's *current*
+    /// holder, and the claim market (`buy_compressed_claim`) changes it: after A lists a pre-mint claim
+    /// and B buys it, this event names B while an indexer keyed by the origin A finds nothing. The PDA is
+    /// the identity the claim, the market and the programs all use. Appended last on purpose — borsh is
+    /// positional, so every field before it keeps its offset.
+    pub claim: Pubkey,
 }
 
 #[derive(Accounts)]
@@ -2172,6 +2191,8 @@ pub fn register_compressed_chip<'info>(
         // H1: the claim's soulbound window becomes the chip's — the indexer cannot
         // derive it (the claim account is not an event), so the event carries it.
         lock_until: chip.lock_until,
+        // SEC-B34: the join key back to the claim the indexer holds a row for.
+        claim: ctx.accounts.claim.key(),
     });
     Ok(())
 }
@@ -2191,6 +2212,10 @@ pub struct CompressedChipRegistered {
     pub game_index: u64,
     pub flags: u8,
     pub lock_until: i64,
+    /// SEC-B34, same reason as `CompressedChipMinted`: `owner` is the claim's current holder (and the
+    /// registration is only reachable by that holder), while the indexer's row is keyed by the immutable
+    /// origin — the claim PDA is what joins them.
+    pub claim: Pubkey,
 }
 
 #[cfg(test)]

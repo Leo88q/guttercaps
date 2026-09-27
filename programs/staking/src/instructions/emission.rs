@@ -406,7 +406,8 @@ pub fn mint_to_user_from<'info>(
 // SEC-M1, `emission.burn_oracle` — the indexer's keeper key, which sums the
 // $CG burned by those programs from their events (`BurnReported`,
 // `ChipListed` × listing fee, `BattleResolved.rake_burn`) and reports the
-// delta hourly (`backend/src/burn-oracle.ts`). Unstake penalties are recorded
+// delta hourly (`backend/src/burn-oracle.ts`), counting only burns at or below
+// the finalized horizon (SEC-B29: `report_burn` cannot be un-sent). Unstake penalties are recorded
 // in-program (`record_internal_burn`) and must not be reported again.
 //
 // `burn_today` is clamped to BURN_SANITY_MULT × today's schedule cap: the
