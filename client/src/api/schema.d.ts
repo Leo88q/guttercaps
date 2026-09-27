@@ -402,7 +402,8 @@ export interface paths {
         /**
          * Is this handle free? (also returns the ref_hash to commit on-chain)
          * @description ref_hash = keccak256(0x00 ‖ kind:u8 ‖ wallet:32 ‖ lowercase(handle) utf8). The client passes it to
-         *     chip_core::pay_service(kind=Handle|HandleChange, …). Reserved 120 s for the caller once checked.
+         *     chip_core::pay_service(kind=Handle|HandleChange, …). Reserved 120 s for the caller once checked, up
+         *     to 5 live reservations per wallet (SEC-B18: beyond that the check answers without taking a hold).
          */
         get: {
             parameters: {
@@ -424,7 +425,7 @@ export interface paths {
                         "application/json": {
                             available?: boolean;
                             /** @enum {string} */
-                            reason?: "taken" | "reserved" | "blocked" | "cooldown";
+                            reason?: "taken" | "reserved" | "blocked" | "cooldown" | "invalid";
                             /** @description 0 first handle, 1 change */
                             kind?: number;
                             /** @description hex, 32 bytes */
