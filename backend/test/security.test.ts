@@ -6,7 +6,7 @@ import { ed25519 } from '@noble/curves/ed25519';
 import type { Server } from 'node:http';
 import { Db } from '../src/db.ts';
 import { createApp } from '../src/server.ts';
-import { AuthError, NONCES_PER_WALLET, issueNonce, verifySiws } from '../src/auth.ts';
+import { AuthError, NONCES_PER_WALLET, issueNonce, sessionCookieAttributes, verifySiws } from '../src/auth.ts';
 import { MemoryStore, POLICIES, createLimiter } from '../src/ratelimit.ts';
 import { base58Encode } from '../src/base58.ts';
 
@@ -95,6 +95,30 @@ describe('T-B-40 rate limiting', () => {
     expect(blocked.status).toBe(429);
     expect((await blocked.json() as { details: { policy: string } }).details.policy).toBe('handle-check');
     expect(blocked.headers.get('retry-after')).toBeTruthy();
+  });
+
+  // SEC-B25: the browser-facing half of the auth contract. `SameSite=None` is what a cross-site deploy
+  // needs; this repository's nginx serves the client and `/v1/` from one origin, where `Lax` blocks the
+  // cross-site subresource requests outright (and the two GET routes that write side effects).
+  it('SEC-B25 session cookie: HttpOnly + SameSite=Lax by default; SameSite=None forces Secure', async () => {
+    store.reset();
+    const kp = Keypair.generate();
+    const address = kp.publicKey.toBase58();
+    const { json: nonceBody } = await post('/v1/auth/siws/nonce', { address });
+    const message = siwsMessage(address, (nonceBody as { nonce: string }).nonce);
+    const res = await post('/v1/auth/siws/verify', { address, message, signature: sign(kp, message) });
+    expect(res.status).toBe(200);
+    const attrs = res.headers.get('set-cookie') ?? '';
+    expect(attrs).toMatch(/HttpOnly/);
+    expect(attrs).toMatch(/SameSite=Lax/);
+    expect(attrs).not.toMatch(/SameSite=None/);
+    // the cross-site opt-in still carries the attribute a browser requires next to it
+    expect(sessionCookieAttributes('none', true).join('; ')).toContain('SameSite=None; Secure');
+    expect(sessionCookieAttributes('none', false).join('; ')).toContain('SameSite=None; Secure');
+    expect(sessionCookieAttributes('strict', true).join('; ')).toContain('SameSite=Strict; Secure');
+    expect(sessionCookieAttributes('lax', false).join('; ')).not.toContain('Secure');
+    // logout clears the cookie with the same attributes (a cookie cleared under a different policy survives)
+    expect(sessionCookieAttributes('lax', false).join('; ')).toContain('Path=/');
   });
 
   it('bodies over 16 KB → 413, malformed JSON → 400', async () => {

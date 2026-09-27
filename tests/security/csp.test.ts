@@ -17,6 +17,11 @@
 // So this file reads the CSP, reads the client sources, and fails when the two do not name the same
 // origins — in either direction. Adding a new third-party origin therefore means editing the CSP *and*
 // this allowlist, i.e. a reviewer sees it.
+//
+// SEC-B25 lives here too (the other half of the browser-facing auth contract): the session cookie's
+// attributes. `SameSite=None` is what a cross-site deployment needs and what a same-origin one does not —
+// and this repository's own nginx serves the client and `/v1/` from one origin, so the default has to be
+// `Lax` or every cross-site subresource request may *send* the cookie on the two GET routes that write.
 //   node --experimental-strip-types --test tests/security/*.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -187,4 +192,56 @@ test('SEC-B9 the deploy docs tell the operator to update connect-src when the RP
   // every wallet call dies in the browser — with a CSP violation nobody associates with "we changed RPC".
   const docs = src('ops/deploy/runbook.md') + src('docs/09-production-readiness.md');
   assert.match(docs, /connect-src/, 'the runbook/production-readiness doc must mention connect-src next to the RPC env vars');
+});
+
+// ------------------------------------------------------------------ SEC-B25 · session cookie posture
+const secB25Violations = (cfg: string, auth: string, env: string, ops: string, docs: string): string[] => {
+  const bad: string[] = [];
+  // 1. the default: `lax`, and the value is validated rather than interpolated
+  const defaults = /if \(v === 'none' \|\| v === 'strict' \|\| v === 'lax'\) return v;[\s\S]{0,120}?return 'lax';/.test(cfg);
+  if (!defaults) bad.push('COOKIE_SAMESITE no longer defaults to `lax` after validating the env value');
+  // 2. `none` cannot persist without `Secure` — the browser drops the cookie, so require it loudly
+  if (!/samesite === 'none' \? \['Secure'\]|secure \|\| samesite === 'none'/.test(auth)) bad.push('SameSite=none does not force Secure (browsers drop the cookie → sessions silently never persist)');
+  // anchored to the builder's `return [...]`, not to the file: `HttpOnly` also appears in the module's
+  // prose, and a rule that scans the whole file passes while the attribute itself is gone
+  if (!/return \['Path=\/', 'HttpOnly',/.test(auth)) bad.push('the session cookie no longer carries Path=/ + HttpOnly as the first attributes');
+  if (!/`SameSite=\$\{samesite\[0\]!\.toUpperCase\(\)\}\$\{samesite\.slice\(1\)\}`/.test(auth)) bad.push('the SameSite attribute is not built from the configured policy');
+  // 3. the production assertion: `none` is a deliberate cross-site choice, not a default
+  if (!/COOKIE_SAMESITE === 'none' && env\.CROSS_SITE_CLIENT !== '1'/.test(cfg)) bad.push('assertProductionConfig does not require CROSS_SITE_CLIENT=1 for SameSite=none');
+  if (!/COOKIE_SAMESITE === 'none' && !COOKIE_SECURE/.test(cfg)) bad.push('assertProductionConfig does not tie SameSite=none to COOKIE_SECURE');
+  if (!/COOKIE_SECURE=1 is required/.test(cfg)) bad.push('the https requirement for the cookie is gone');
+  // 4. the operator can find it: env template + runbook
+  for (const [what, text] of [['backend/.env.example', env], ['ops/deploy/runbook.md', ops], ['docs/06', docs]] as const) {
+    if (!/COOKIE_SAMESITE/.test(text)) bad.push(`${what} does not mention COOKIE_SAMESITE — the operator cannot discover the knob`);
+  }
+  return bad;
+};
+
+test('SEC-B25 the session cookie is HttpOnly + SameSite=Lax by default; SameSite=None is an explicit, https-only opt-in', () => {
+  const bad = secB25Violations(
+    src('backend/src/config.ts'), src('backend/src/auth.ts'),
+    src('backend/.env.example'), src('ops/deploy/runbook.md'), src('docs/06-acceptance-security-testing.md'),
+  );
+  assert.deepEqual(bad, []);
+});
+
+test('self-test: SEC-B25 flags a SameSite=None default and a cookie that loses HttpOnly', () => {
+  const files = {
+    cfg: src('backend/src/config.ts'), auth: src('backend/src/auth.ts'),
+    env: src('backend/.env.example'), ops: src('ops/deploy/runbook.md'), docs: src('docs/06-acceptance-security-testing.md'),
+  };
+  const run = (o: Partial<typeof files>) => secB25Violations(o.cfg ?? files.cfg, o.auth ?? files.auth, o.env ?? files.env, o.ops ?? files.ops, o.docs ?? files.docs);
+  assert.deepEqual(run({}), []);
+  const noneDefault = files.cfg.replace("return 'lax';", "return 'none';");
+  assert.notEqual(noneDefault, files.cfg);
+  assert.ok(run({ cfg: noneDefault }).some((v) => /defaults to `lax`/.test(v)));
+  const noHttpOnly = files.auth.replace("'Path=/', 'HttpOnly',", "'Path=/',");
+  assert.notEqual(noHttpOnly, files.auth);
+  assert.ok(run({ auth: noHttpOnly }).some((v) => /HttpOnly/.test(v)));
+  const noSecureTie = files.cfg.replace("if (COOKIE_SAMESITE === 'none' && !COOKIE_SECURE)", "if (false && !COOKIE_SECURE)");
+  assert.notEqual(noSecureTie, files.cfg);
+  assert.ok(run({ cfg: noSecureTie }).some((v) => /COOKIE_SECURE/.test(v)));
+  const undocumented = files.env.replace(/COOKIE_SAMESITE/g, 'COOKIE_X');
+  assert.notEqual(undocumented, files.env);
+  assert.ok(run({ env: undocumented }).some((v) => /backend\/.env.example/.test(v)));
 });

@@ -8,7 +8,7 @@ import { randomBytes, createHmac } from 'node:crypto';
 import type { Request, Response, NextFunction } from 'express';
 import { PublicKey } from '@solana/web3.js';
 import { base58Decode } from './base58.ts';
-import { COOKIE_NAME, COOKIE_SECURE, SESSION_SECRET, SESSION_TTL_S, SIWS_DOMAINS, SIWS_MAX_DRIFT_S } from './config.ts';
+import { COOKIE_NAME, COOKIE_SAMESITE, COOKIE_SECURE, SESSION_SECRET, SESSION_TTL_S, SIWS_DOMAINS, SIWS_MAX_DRIFT_S } from './config.ts';
 import { type Db, now } from './db.ts';
 
 const secret = SESSION_SECRET || randomBytes(32).toString('hex');
@@ -82,8 +82,18 @@ export function createSession(db: Db, wallet: string) {
   return { id, csrf, cookie: `${id}.${hmac(id)}` };
 }
 
-export function setSessionCookie(res: Response, cookie: string | null) {
-  const attrs = [`Path=/`, `HttpOnly`, COOKIE_SECURE ? 'SameSite=None; Secure' : 'SameSite=Lax'];
+/**
+ * The attributes every session cookie carries (SEC-B25). Exported so a test can pin them: `HttpOnly`
+ * always, `Secure` whenever the deployment is https (or the policy is `none`, where browsers would drop
+ * the cookie anyway), and `SameSite` from `COOKIE_SAMESITE` — `Lax` by default, because this repo's
+ * deploy serves the client and the API from one origin and a cross-site request then cannot even send
+ * the cookie. `'none'` is the explicit opt-in for a cross-site client (see config.ts).
+ */
+export function sessionCookieAttributes(samesite: 'lax' | 'strict' | 'none' = COOKIE_SAMESITE, secure = COOKIE_SECURE): string[] {
+  return ['Path=/', 'HttpOnly', `SameSite=${samesite[0]!.toUpperCase()}${samesite.slice(1)}`, ...(secure || samesite === 'none' ? ['Secure'] : [])];
+}
+
+export function setSessionCookie(res: Response, cookie: string | null, attrs = sessionCookieAttributes()) {
   if (cookie === null) res.append('Set-Cookie', `${COOKIE_NAME}=; ${attrs.join('; ')}; Max-Age=0`);
   else res.append('Set-Cookie', `${COOKIE_NAME}=${cookie}; ${attrs.join('; ')}; Max-Age=${SESSION_TTL_S}`);
 }

@@ -82,8 +82,22 @@ export const SHUTDOWN_TIMEOUT_MS = Number(env.SHUTDOWN_TIMEOUT_MS ?? 25_000);
 export const SESSION_SECRET = env.SESSION_SECRET ?? '';
 export const SESSION_TTL_S = Number(env.SESSION_TTL_S ?? 7 * 86_400);
 export const COOKIE_NAME = 'gc_session';
-/** Set when the API is served over https behind a proxy (secure cookies, SameSite=None). */
+/** Set when the API is served over https behind a proxy (secure cookies). */
 export const COOKIE_SECURE = (env.COOKIE_SECURE ?? '') === '1';
+/**
+ * SEC-B25: the session cookie's SameSite policy. `lax` (default) is the right answer for this
+ * repository's deployment — nginx serves the client and proxies `/v1/` on one origin, so the cookie
+ * never has to travel cross-site, and a cross-site `<img>`/`fetch` cannot even *send* it. `none` is an
+ * explicit opt-in for the other topology (client on a different host than the API, `VITE_API_BASE` an
+ * absolute URL): it is only accepted together with `secure`, since browsers drop `SameSite=None`
+ * without `Secure`. `strict` is offered for an operator who wants the stricter end of the scale.
+ */
+export const COOKIE_SAMESITE: 'lax' | 'strict' | 'none' = (() => {
+  const v = (env.COOKIE_SAMESITE ?? '').trim().toLowerCase();
+  if (v === 'none' || v === 'strict' || v === 'lax') return v;
+  if (v) throw new Error(`COOKIE_SAMESITE must be lax | strict | none (got "${v}")`);
+  return 'lax';
+})();
 /**
  * SIWS (SEC-M4): the `domain` of a sign-in message must be one of these (comma-separated hosts,
  * e.g. `app.guttercaps.gg,localhost:5173`). Empty → derived from CORS_ORIGINS' hosts; if that is
@@ -138,7 +152,9 @@ export function assertProductionConfig(): void {
   const problems: string[] = [];
   if (CORS_ORIGINS.includes('*')) problems.push('CORS_ORIGINS must be an explicit allowlist (no `*`)');
   if (!BUBBLEGUM_V2_ENABLED) problems.push('BUBBLEGUM_V2_ENABLED=1 is required after the Bubblegum V2 migration and its release gates are complete');
-  if (!COOKIE_SECURE) problems.push('COOKIE_SECURE=1 is required (https + SameSite=None)');
+  if (!COOKIE_SECURE) problems.push('COOKIE_SECURE=1 is required (https)');
+  if (COOKIE_SAMESITE === 'none' && !COOKIE_SECURE) problems.push('COOKIE_SAMESITE=none requires COOKIE_SECURE=1 — a browser drops a `SameSite=None` cookie without `Secure`, so sessions would silently never persist');
+  if (COOKIE_SAMESITE === 'none' && env.CROSS_SITE_CLIENT !== '1') problems.push('COOKIE_SAMESITE=none weakens CSRF defence to allow a cross-site client: set CROSS_SITE_CLIENT=1 to state that the API and the web client really are on different hosts (the default deploy serves both from one origin, where `lax` is strictly better)');
   if (SESSION_SECRET.length < 32) problems.push('SESSION_SECRET must be ≥ 32 chars (sessions would not survive a restart)');
   if (SIWS_DOMAINS.length === 0) problems.push('SIWS_DOMAINS (or non-wildcard CORS_ORIGINS) is required');
   if (env.FINALITY_ASSUME === '1') problems.push('FINALITY_ASSUME=1 is a dev shortcut — paid services must wait for finalized transactions (SEC-M5)');

@@ -203,7 +203,7 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
 - **SEC-B21 (2026-09-27): accepted risk — Trident fuzzing is not run.** There is no fuzz target and no CI job
   in the tree, which makes this the only part-1 checklist item with no artifact. The class it would cover is
   held today by `cargo test` (golden economy + unit/invariant tests, the `rust-lints` job), the 92 LiteSVM
-  scenarios (`localnet`), the 87 static gates with mutation self-tests (`security:static`) and the structural
+  scenarios (`localnet`), the 89 static gates with mutation self-tests (`security:static`) and the structural
   invariants in `tests/security/anchor-invariants.test.ts` (SEC-B19 is one of them). Owner: programs, before
   mainnet — targets on `buy_pack` / `fuse` / `market settle` asserting the same "Σ liabilities ≤ vault balance"
   rule the ledgers enforce on chain; until then a new constant or account layout is closed by a compile-time
@@ -269,6 +269,23 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   admin for un-pause", the `ArenaAdmin` `has_one = admin` rail and the arena-missing guard, and fails on
   a swapped pair, a wrong PDA, a dropped decode or a pauser-signed un-pause; `backend/test/admin.test.ts`
   drives the real HTTP route with deliberately different arena keys.
+
+- **SEC-B25 (2026-09-27): closed — the session cookie no longer defaults to `SameSite=None`.**
+  `setSessionCookie` attached `SameSite=None; Secure` whenever `COOKIE_SECURE=1`, i.e. in every
+  production deploy — and the deploy this repository ships is same-origin (nginx serves the client and
+  proxies `/v1/`). `None` is the *widest* setting there: any cross-site subresource request to the API
+  may carry the session cookie, and two GET routes write ( `/me/handle/check` takes a 120 s namespace
+  hold, `/quests` records the day's login), so a hostile page could reserve handles — or skip the
+  buy-to-settle gate behind `/quests/claims` (`eligibility` counts `quest_logins`) — with the victim's
+  own session and a plain `fetch`. No funds at risk, but it is exactly the "we're same-origin, why is the
+  cookie cross-site?" gap. Fixed: `COOKIE_SAMESITE` (lax | strict | none, default **lax**) is validated
+  at boot, the attribute builder forces `Secure` for `none` (a browser drops `SameSite=None` without it,
+  so the failure mode would be silent logout loops), and production refuses `none` unless the operator
+  also sets `CROSS_SITE_CLIENT=1` — the cross-site topology stays available, but as a decision. The
+  runbook explains which deployment needs which value, `.env.example` documents both keys, and the new
+  SEC-B25 rule in `tests/security/csp.test.ts` (the browser-facing half of the same file) pins the
+  default, the `Secure` tie, `HttpOnly`/`Path=/`, the production guard and the docs — with a mutation
+  self-test — while `backend/test/security.test.ts` asserts the real `Set-Cookie` header over HTTP.
 
 ## Current exposure of this repository (from `docs/09-production-readiness.md`)
 
