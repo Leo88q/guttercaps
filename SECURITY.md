@@ -287,6 +287,20 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   default, the `Secure` tie, `HttpOnly`/`Path=/`, the production guard and the docs — with a mutation
   self-test — while `backend/test/security.test.ts` asserts the real `Set-Cookie` header over HTTP.
 
+- **SEC-B30 (2026-09-27): closed — the wager resolver could settle a battle on a squad the opponent never
+  matched.** `resolve_battle` is server-authoritative: the program checks the winner is a party, the winner's
+  ATA owner, the revealed VRF and the daily cap, and pins `result_hash` for audits — it never re-simulates the
+  fight. The fight is computed off-chain from `chips` rows, which keep moving, while the battle account carries
+  the squad assets *and* the power the program computed from them at accept time (`accept_battle` matches the
+  opponent by league only). Nothing flags a chip that sits in an accepted battle, and a fusion only ever raises
+  a level, so a player could accept, then level a squad chip up and fight a squad stronger than the power that
+  was matched; a chip consumed by a fusion had no chip behind it at all. The resolver now refuses unless both
+  squads reproduce the recorded `power_a/b` and every squad chip is still live (`burned_at IS NULL`) — a
+  refusal is logged as an ALERT, sends nothing, and leaves the battle cancellable (`cancel_stale_battle`
+  refunds both wagers after `RESOLVE_TIMEOUT`), so the fail-closed direction costs nobody funds. Pinned by
+  `tests/security/battle-squad.test.ts` (four rules over the resolver and the arena commitment, six mutations)
+  and by `backend/test/battle-resolver.test.ts` (a levelled-up squad, a consumed chip, an unknown squad and a
+  non-accepted battle, all with no transaction sent).
 - **SEC-B29 (2026-09-27): closed — the burn oracle reported burns the chain could still take back.**
   `report_burn` is irreversible: it adds to `burn_today` and to the 7-day ring the emission guard reads
   (`0.30·cap + 1.25·burn7d`), and there is no "un-report". The indexer, meanwhile, explicitly accepts that

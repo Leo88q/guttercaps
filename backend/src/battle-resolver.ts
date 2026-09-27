@@ -12,9 +12,17 @@
 // Squads: `WagerBattle.squad_a/b` are asset keys; the fight needs (collection, rarity, level), read
 // from the `chips` projection (indexed at mint / fuse). Unknown assets → skip and retry later (the
 // indexer may be behind); after RESOLVE_TIMEOUT (30 min) either side can `cancel_stale_battle`.
+//
+// SEC-B30: the battle also commits `power_a/b` — the power the program computed from the chip state at
+// accept time (arena::validate_squad). The fight below is recomputed from the *current* rows, and nothing on
+// chain flags a chip that sits in an accepted battle, so a player could level a squad chip up by fusion
+// after the opponent matched and fight stronger than the power that was matched. Both squads must therefore
+// reproduce the recorded power (and no squad chip may have been consumed by a fusion) before the fight is
+// allowed to decide who gets the pot; a mismatch skips — the battle can then be cancelled, which refunds
+// both wagers — instead of settling on a squad nobody agreed to.
 import { createHash } from 'node:crypto';
 import { Connection, Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
-import { resolveFight, type FighterChip, type FightRound } from '@guttercaps/economy';
+import { onChainSquadPower, resolveFight, type FighterChip, type FightRound } from '@guttercaps/economy';
 import { db as sharedDb, type Db } from './db.ts';
 import { BorshWriter } from './borsh.ts';
 import { PROGRAMS } from './config.ts';
@@ -74,7 +82,9 @@ export function decodeArenaConfig(data: Uint8Array): ArenaConfig {
 export function squadFromDb(db: Db, assets: readonly PublicKey[]): FighterChip[] | undefined {
   const out: FighterChip[] = [];
   for (const a of assets) {
-    const r = db.get<ChipRow>(`SELECT * FROM chips WHERE asset = ?`, a.toBase58());
+    // SEC-B30: an asset consumed by a fusion is not a chip any more — its row is a tombstone for the audit
+    // trail, not an input for a fight that decides the pot.
+    const r = db.get<ChipRow>(`SELECT * FROM chips WHERE asset = ? AND burned_at IS NULL`, a.toBase58());
     if (!r) return undefined;
     out.push({ asset: r.asset, collection: r.collection_idx, rarity: r.rarity, level: r.level });
   }
@@ -95,7 +105,17 @@ export async function resolveOne(d: ResolverDeps, battleKey: PublicKey): Promise
   const rnd = decodeRandomness(new Uint8Array(rndInfo.data));
   if (rnd.seedSlot !== b.commitSlot || rnd.revealSlot === 0n) return { kind: 'skipped', reason: 'randomness not revealed yet' };
   const squadA = squadFromDb(d.db, b.squadA), squadB = squadFromDb(d.db, b.squadB);
-  if (!squadA || !squadB) return { kind: 'skipped', reason: 'squad chips not indexed yet' };
+  if (!squadA || !squadB) return { kind: 'skipped', reason: 'squad chips not indexed yet (or one was fused away since acceptance)' };
+  // SEC-B30: the fight must be computed from the squad the opponent matched. `accept_battle` verified the
+  // squads only against the power recorded in the battle account, and chip_core flags nothing while a chip
+  // sits in an accepted battle — so a fusion after acceptance could raise a level (and never lower one).
+  // Reproducing the recorded power is what makes the recomputed fight the committed one; a mismatch is a
+  // refusal, not a guess, and `cancel_stale_battle` refunds both sides after RESOLVE_TIMEOUT.
+  const powerA = onChainSquadPower(squadA), powerB = onChainSquadPower(squadB);
+  if (powerA !== b.powerA || powerB !== b.powerB) {
+    d.log?.(`[battle-resolver] ALERT ${battleKey.toBase58()} squad power ${powerA}/${powerB} does not match the recorded ${b.powerA}/${b.powerB} — refusing to resolve (a squad chip changed after acceptance); either side can cancel_stale_battle after RESOLVE_TIMEOUT`);
+    return { kind: 'skipped', reason: `squad power ${powerA}/${powerB} does not match the recorded ${b.powerA}/${b.powerB}` };
+  }
   const cfgInfo = await d.connection.getAccountInfo(arenaConfigPda()[0]);
   if (!cfgInfo) return { kind: 'skipped', reason: 'arena config missing' };
   const cfg = decodeArenaConfig(new Uint8Array(cfgInfo.data));
