@@ -33,6 +33,8 @@ describe('builders', () => {
     expect(placeholders(4)).toBe('?, ?, ?, ?');
   });
 
+
+
   it('swap only the clause, never the meaning, on Postgres', () => {
     setDialect('postgres');
     expect(insertIgnore('burns', ['signature', 'event_index', 'program'])).toBe(
@@ -67,10 +69,19 @@ describe('builders', () => {
     }
   });
 
-  it('escapes a key it is handed, because it inlines the key into the statement text', () => {
-    expect(jsonAt('data', "x'")).toBe(`json_extract(data, '$.x'')`);
-    setDialect('postgres');
-    expect(jsonAt('data', "x'")).toBe(`(data)::jsonb->>'x'''`);
+  // The key is inlined into the statement text, not bound, so the identifier rule is the defence — and it
+  // has to hold in both dialects: the Postgres branch escaped the quote and the SQLite one did not, which
+  // is exactly how a helper that is safe in one dialect becomes an injection in the other.
+  it('refuse a JSON key that is not an identifier (the key is interposed, never bound)', () => {
+    for (const bad of [`x'`, `a') OR 1=1 --`, 'x.y', '', 'a b', 'k'.repeat(65)]) {
+      for (const d of ['sqlite', 'postgres'] as const) {
+        setDialect(d);
+        expect(() => jsonAt('data', bad)).toThrow(/json key must be an identifier/);
+        expect(() => jsonFlagEq('flags', bad, true)).toThrow(/json key must be an identifier/);
+      }
+    }
+    setDialect('sqlite');
+    expect(jsonAt('data', 'shadowBanned')).toBe(`json_extract(data, '$.shadowBanned')`);
   });
 });
 
