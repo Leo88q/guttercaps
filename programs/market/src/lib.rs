@@ -210,6 +210,22 @@ fn split(price: u64, fee_bps: u16) -> Result<(u64, u64, u64, u64)> {
     Ok((seller, fee_buyback, fee_treasury, royalty))
 }
 
+/// The claim market settles in SOL only: `buy_compressed` / `buy_compressed_asset` pay the seller with
+/// `system_program::transfer`, and the generic SPL legs of the legacy `buy` were never wired into this
+/// path — so the buy side has always answered `CompressedCurrencyMismatch` for a USDC/SKR listing.
+/// Accepting such a listing anyway was worse than a rejected transaction: `list_compressed` created the
+/// listing PDA, flagged the claim `listed` (chip_core then refuses `mint_compressed_chip` and fusion for
+/// it with `InvalidChipState`) and left the claim flagged with an unfillable listing on chain — a
+/// self-inflicted lockout that a *seller* could trigger from any UI that offered the currencies the docs
+/// listed. The currency is now checked in both list handlers, and the buy side keeps its own check
+/// as defense in depth for a listing created before this guard (a failed transaction reverts, so a
+/// refused listing leaves neither the PDA nor the flag). Relaxing this is a feature: it needs the SPL
+/// legs in `buy_compressed*`, not just the removal of the check (SEC-B28).
+fn require_sol_claim_market(currency: Currency) -> Result<()> {
+    require!(currency == Currency::Sol, MarketError::CompressedCurrencyMismatch);
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Shared CPI helper: flag/unflag through chip_core
 // ---------------------------------------------------------------------------
@@ -955,6 +971,9 @@ pub fn list_compressed_handler(
     price: u64,
     currency: Currency,
 ) -> Result<()> {
+    // SEC-B28: the claim market is SOL-only. Checked before the price so a caller that lists in a
+    // currency this path cannot settle is told *that*, whatever price they sent.
+    require_sol_claim_market(currency)?;
     require!(price >= currency.min_price(), MarketError::PriceTooLow);
     let claim = &ctx.accounts.claim;
     require!(
@@ -1090,6 +1109,8 @@ pub struct BuyCompressed<'info> {
 
 pub fn buy_compressed_handler(ctx: Context<BuyCompressed>, expected_price: u64) -> Result<()> {
     let listing = &ctx.accounts.listing;
+    // Defense in depth (SEC-B28): `list_compressed` refuses a non-SOL currency now, so this can only
+    // fire for a listing that was created before that guard existed.
     require!(
         listing.currency == Currency::Sol,
         MarketError::CompressedCurrencyMismatch
@@ -1248,6 +1269,8 @@ pub fn list_compressed_asset_handler(
     price: u64,
     currency: Currency,
 ) -> Result<()> {
+    // SEC-B28: same rule as `list_compressed` — the V2 asset path is settled by lamport transfers too.
+    require_sol_claim_market(currency)?;
     require!(price >= currency.min_price(), MarketError::PriceTooLow);
     require!(
         ctx.accounts.claim.buyer == ctx.accounts.seller.key()
@@ -1435,6 +1458,7 @@ pub fn buy_compressed_asset_handler<'info>(
     expected_price: u64,
 ) -> Result<()> {
     let listing = &ctx.accounts.listing;
+    // Defense in depth (SEC-B28) — see `require_sol_claim_market`.
     require!(
         listing.currency == Currency::Sol,
         MarketError::CompressedCurrencyMismatch
@@ -1675,5 +1699,17 @@ mod tests {
         let (s, b, t, r) = split(10_000, 5_000).unwrap();
         assert_eq!((s, b, t, r), (8_750, 333, 667, 250));
         assert_eq!(b + t, chip_core::economy::MAX_MARKET_FEE_BPS as u64);
+    }
+
+    /// SEC-B28. Both directions are asserted: the claim market can only settle SOL, so `Usdc` and `Skr`
+    /// must be refused — and `Sol` must pass, which is what catches a guard whose comparison was inverted
+    /// (an `is_err()`-only test would pass for a `currency != Currency::Sol` typo in the other direction).
+    /// The localnet suite pins the code the caller sees (`CompressedCurrencyMismatch` = 6011), since the
+    /// error value is produced by `error!` and not compared here.
+    #[test]
+    fn claim_market_lists_only_in_sol() {
+        assert!(require_sol_claim_market(Currency::Sol).is_ok());
+        assert!(require_sol_claim_market(Currency::Usdc).is_err());
+        assert!(require_sol_claim_market(Currency::Skr).is_err());
     }
 }

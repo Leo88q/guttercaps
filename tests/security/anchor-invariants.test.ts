@@ -564,6 +564,54 @@ test('SEC-B24 the kill switch signs each program with that program\'s own author
   assert.deepEqual(bad, []);
 });
 
+// ---------------------------------------------------------------- F. marketplace currency
+/**
+ * SEC-B28 — the claim market settles in SOL only, and the *listing* side has to know it.
+ *
+ * `buy_compressed` / `buy_compressed_asset` pay the seller with `system_program::transfer` and answer
+ * `CompressedCurrencyMismatch` for anything else, but `list_compressed*` accepted USDC/SKR anyway: the
+ * listing PDA was created and the claim was flagged `listed`, which closes that claim's mint and fusion
+ * paths in chip_core (`InvalidChipState`) until the seller cancels — an unfillable listing plus a
+ * self-lockout, from a UI that offered the currencies the docs listed. The guard is one shared helper
+ * (a third list path cannot be added without it), the buy-side check stays as defense in depth for a
+ * listing created before it, and the client builders refuse the currency before a wallet pays a fee.
+ */
+const secB28Violations = (srcs: { market: string; client: string }): string[] => {
+  const bad: string[] = [];
+  const bodyIn = (text: string, anchor: string) => bodyOf(text, anchor);
+  for (const handler of ['pub fn list_compressed_handler', 'pub fn list_compressed_asset_handler']) {
+    const body = bodyIn(srcs.market, handler);
+    if (!body) { bad.push(`${handler}: handler is gone — the rule no longer covers the listing side`); continue; }
+    if (!/require_sol_claim_market\(currency\)\?;/.test(body)) bad.push(`${handler}: lists a currency the claim market cannot settle (SEC-B28)`);
+  }
+  const helper = bodyIn(srcs.market, 'fn require_sol_claim_market');
+  if (!helper) bad.push('require_sol_claim_market is gone — the SOL-only rule has no single definition');
+  else {
+    if (!/currency == Currency::Sol/.test(helper)) bad.push('require_sol_claim_market no longer compares against Currency::Sol (an inverted comparison accepts USDC/SKR)');
+    if (!/MarketError::CompressedCurrencyMismatch/.test(helper)) bad.push('require_sol_claim_market answers a different error — the client table translates 6011 to "Compressed listing expects SOL"');
+  }
+  for (const handler of ['pub fn buy_compressed_handler', 'pub fn buy_compressed_asset_handler']) {
+    const body = bodyIn(srcs.market, handler);
+    if (!body) { bad.push(`${handler}: handler is gone`); continue; }
+    if (!/listing\.currency == Currency::Sol/.test(body) || !/MarketError::CompressedCurrencyMismatch/.test(body)) {
+      bad.push(`${handler}: dropped its own currency check — a listing created before SEC-B28 would be buyable`);
+    }
+  }
+  for (const builder of ['export function listCompressedIx', 'export function listCompressedAssetIx']) {
+    const body = bodyIn(srcs.client, builder);
+    if (!body) { bad.push(`${builder}: builder is gone — the client-side check is not covered`); continue; }
+    if (!/assertSolClaimListing\(a\.currency\);/.test(body)) bad.push(`${builder}: encodes a claim listing without the SOL-only check (the wallet pays for a guaranteed revert)`);
+  }
+  const assertFn = bodyIn(srcs.client, 'export function assertSolClaimListing');
+  if (!assertFn || !/currency !== MarketCurrency\.SOL/.test(assertFn)) bad.push('assertSolClaimListing no longer compares against MarketCurrency.SOL');
+  return bad;
+};
+
+test("SEC-B28 the claim market lists in SOL only: both list handlers, both buy handlers, both builders", () => {
+  const bad = secB28Violations({ market: src('programs/market/src/lib.rs'), client: src('client/src/chain/ix/market.ts') });
+  assert.deepEqual(bad, []);
+});
+
 // ---------------------------------------------------------------- rule self-tests
 
 const fake = (code: string, rel = 'programs/chip_core/src/instructions/fake.rs'): SourceFile => ({ path: rel, rel, program: 'chip_core', code: stripComments(code) });
@@ -624,6 +672,29 @@ test('SEC-B22 set_params: every money/feed address is validated and the change i
     }
   }
   assert.deepEqual(bad, []);
+});
+
+test('self-test: SEC-B28 rule flags a claim listing in USDC and a buy path that trusts it', () => {
+  const market = src('programs/market/src/lib.rs');
+  const client = src('client/src/chain/ix/market.ts');
+  const files = { market, client };
+  assert.deepEqual(secB28Violations(files), []);
+  // NB: both list handlers open with the same two requires, so the mutation is applied from the asset
+  // handler's own offset — a file-wide replace would mutate the pre-mint handler and the assertion below
+  // would pass while proving nothing about this one.
+  const assetAt = market.indexOf('pub fn list_compressed_asset_handler');
+  const usdcListed = market.slice(0, assetAt) + market.slice(assetAt).replace('require_sol_claim_market(currency)?;\n', '');
+  assert.notEqual(usdcListed, market, 'the mutation must match the asset list handler');
+  assert.ok(secB28Violations({ ...files, market: usdcListed }).some((v) => /list_compressed_asset_handler/.test(v)));
+  const inverted = market.replace('currency == Currency::Sol,', 'currency != Currency::Usdc,');
+  assert.notEqual(inverted, market);
+  assert.ok(secB28Violations({ ...files, market: inverted }).some((v) => /no longer compares against Currency::Sol/.test(v)));
+  const trustingBuy = market.replace('listing.currency == Currency::Sol,\n        MarketError::CompressedCurrencyMismatch', 'true,\n        MarketError::CompressedCurrencyMismatch');
+  assert.notEqual(trustingBuy, market);
+  assert.ok(secB28Violations({ ...files, market: trustingBuy }).some((v) => /dropped its own currency check/.test(v)));
+  const openBuilder = client.replace('  assertSolClaimListing(a.currency);\n  const [listing] = compressedAssetListingPda(a.asset);', '  const [listing] = compressedAssetListingPda(a.asset);');
+  assert.notEqual(openBuilder, client, 'the mutation must match the asset builder');
+  assert.ok(secB28Violations({ ...files, client: openBuilder }).some((v) => /listCompressedAssetIx/.test(v)));
 });
 
 test('self-test: E29 rule flags the pre-fix SEC-F2 fusion loop and accepts the fixed one', () => {

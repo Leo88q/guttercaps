@@ -36,6 +36,18 @@ export const MIN_PRICE_SKR = 5_000_000n;
 export const minPriceFor = (c: MarketCurrencyCode) => (c === MarketCurrency.SOL ? MIN_PRICE_LAMPORTS : c === MarketCurrency.USDC ? MIN_PRICE_USDC : MIN_PRICE_SKR);
 export const marketMintFor = (c: MarketCurrencyCode, cfg: { usdcMint: PublicKey; skrMint?: PublicKey }) => (c === MarketCurrency.USDC ? cfg.usdcMint : c === MarketCurrency.SKR ? cfg.skrMint : undefined);
 
+/**
+ * SEC-B28: the *claim* market (both the pre-mint claim listing and the V2 asset listing) settles by
+ * lamport transfers — `buy_compressed` / `buy_compressed_asset` have no SPL legs — so a listing in USDC or
+ * SKR can never be bought. The program now refuses it at list time, and this refuses it before the wallet
+ * pays a fee. Refusing only in the program was not enough: the transaction reverts, but the user learns
+ * why only after paying, and any UI that offered the currencies the docs listed would build it anyway.
+ */
+const CLAIM_MARKET_SOL_ONLY = 'the claim market settles in SOL only — list the claim in SOL';
+export function assertSolClaimListing(currency: MarketCurrencyCode): void {
+  if (currency !== MarketCurrency.SOL) throw new Error(CLAIM_MARKET_SOL_ONLY);
+}
+
 interface ChipRef { asset: PublicKey; collectionIdx: number; coreCollection: PublicKey }
 
 export function listIx(a: ChipRef & { seller: PublicKey; price: bigint; currency: MarketCurrencyCode; cgMint: PublicKey }): TransactionInstruction {
@@ -199,6 +211,7 @@ export function saleSplit(price: bigint, feeBps: number = MARKET_FEE_BPS) {
 }
 
 export function listCompressedIx(a: { seller: PublicKey; claim: PublicKey; price: bigint; currency: MarketCurrencyCode }): TransactionInstruction {
+  assertSolClaimListing(a.currency);
   const [listing] = compressedListingPda(a.claim);
   const data = new BorshWriter().u64(a.price).u8(a.currency).toBytes();
   return new TransactionInstruction({
@@ -234,6 +247,7 @@ export function buyCompressedSolIx(a: { buyer: PublicKey; claim: PublicKey; sell
 
 /** Create a custom listing for the actual registered Bubblegum V2 leaf. */
 export function listCompressedAssetIx(a: { seller: PublicKey; asset: PublicKey; collectionIdx: number; claim: PublicKey; price: bigint; currency: MarketCurrencyCode }): TransactionInstruction {
+  assertSolClaimListing(a.currency);
   const [listing] = compressedAssetListingPda(a.asset);
   return new TransactionInstruction({
     programId: MARKET_ID,

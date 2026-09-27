@@ -203,7 +203,7 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
 - **SEC-B21 (2026-09-27): accepted risk — Trident fuzzing is not run.** There is no fuzz target and no CI job
   in the tree, which makes this the only part-1 checklist item with no artifact. The class it would cover is
   held today by `cargo test` (golden economy + unit/invariant tests, the `rust-lints` job), the 92 LiteSVM
-  scenarios (`localnet`), the 99 static gates with mutation self-tests (`security:static`) and the structural
+  scenarios (`localnet`), the 101 static gates with mutation self-tests (`security:static`) and the structural
   invariants in `tests/security/anchor-invariants.test.ts` (SEC-B19 is one of them). Owner: programs, before
   mainnet — targets on `buy_pack` / `fuse` / `market settle` asserting the same "Σ liabilities ≤ vault balance"
   rule the ledgers enforce on chain; until then a new constant or account layout is closed by a compile-time
@@ -287,6 +287,26 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   default, the `Secure` tie, `HttpOnly`/`Path=/`, the production guard and the docs — with a mutation
   self-test — while `backend/test/security.test.ts` asserts the real `Set-Cookie` header over HTTP.
 
+- **SEC-B28 (2026-09-27): closed — the claim market listed in currencies it can only fail to settle.**
+  `buy_compressed` / `buy_compressed_asset` pay the seller with `system_program::transfer` and answer
+  `CompressedCurrencyMismatch` for anything else (the SPL legs of the legacy `buy` were never wired into
+  this path) — but both `list_compressed*` handlers accepted a USDC or SKR listing. The transaction that
+  the buyer could never send was not the damage: the listing carried `init`, the claim was flagged
+  `listed` through the CPI, and chip_core then refuses `mint_compressed_chip`, `fuse_*` and staking for
+  that claim with `InvalidChipState` until the seller cancels — an unfillable listing on chain plus a
+  self-inflicted lockout, reachable from any UI that offered the currencies the docs listed, and paid for
+  by the seller. The currency is now checked in both list handlers through one shared
+  `require_sol_claim_market` (before the price, so the answer is about the currency), the buy side keeps
+  its own check as defense in depth for a listing created before the guard (a failed transaction
+  reverts, so a refused listing leaves neither the PDA nor the flag), and the client builders
+  (`listCompressedIx`, `listCompressedAssetIx`) refuse a non-SOL currency before the wallet pays a fee.
+  Relaxing this is a feature: it needs the SPL legs in `buy_compressed*`, not the removal of a check.
+  Pinned by the `SEC-B28` gate in `tests/security/anchor-invariants.test.ts` (one rule over all six points —
+  both list handlers, the shared guard's polarity and error code, both buy handlers, both client builders —
+  with four mutations), the Rust unit test
+  `claim_market_lists_only_in_sol`, the USDC/SKR assertions in the `30-market.spec.ts` listing scenario
+  (code 6011, no listing PDA, no `listed` flag) and the client tests for both builders and for the
+  API→wire currency translation (`marketCurrencyOfApi(3) === MarketCurrency.SKR === 2`).
 - **SEC-B27 (2026-09-27): closed — a transaction the RPC would not serve is recorded, not skipped, and the
   read model no longer claims a history it does not have.** `getSignaturesForAddress` lists signatures; the
   transaction is a second call and `getTransaction` legitimately answers `null` (provider retention, or a
@@ -306,7 +326,7 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   `{pending, parked, oldestSlot}` with the scrapes `indexer_gaps_pending`/`indexer_gaps_parked` and the
   `IndexerGaps` alert read them; the Postgres target carries the table too. The two runbooks were rewritten
   to the mechanism that exists, and the gate now checks every `npm run …` they quote against
-  `package.json`. Pinned by `tests/security/indexer-gaps.test.ts` (7 rules, 9 mutations) and
+  `package.json`. Pinned by `tests/security/indexer-gaps.test.ts` (7 rules, 10 mutations) and
   `backend/test/backfill.test.ts` (9 behavioural tests).
 - **SEC-B26 (2026-09-27): closed — credentials can no longer leave the process through the logs.**
   `backend/src/log.ts` had no redaction at all: `safeValue` copied every own property of every object it

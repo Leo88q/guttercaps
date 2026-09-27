@@ -14,7 +14,7 @@ import { v2LeafHash, foldCompressionProof, discoverLeafNonce, verifyBubblegumPro
 import { DasClient } from './das';
 import { initRandomnessIx, revealRandomnessIx, closeRandomnessIx, closeRandomnessLutIx, commitAccountMetas, rngAccounts } from './ix/rng';
 import { createBattleIx } from './ix/arena';
-import { buyCompressedAssetIx, cancelCompressedAssetIx, listCompressedAssetIx, saleSplit } from './ix/market';
+import { buyCompressedAssetIx, cancelCompressedAssetIx, listCompressedAssetIx, listCompressedIx, marketCurrencyOfApi, MarketCurrency, saleSplit } from './ix/market';
 import type { BubblegumProof } from './bubblegum';
 import { wagerSplit, leagueOf } from './ix/arena';
 import { unstakePenalty, claimRootIx, claimSkrRootIx, claimItemRootIx, claimChipRootIx, claimAnyRootIx, fundSliceIx, SLICE_PVP_SEASON } from './ix/staking';
@@ -552,6 +552,32 @@ describe('compressed Bubblegum V2 market builders', () => {
     const cancelled = cancelCompressedAssetIx({ seller, asset, claim });
     expect(cancelled.keys.map((k) => k.pubkey.toBase58()).slice(0, 3)).toEqual([seller.toBase58(), cancelled.keys[1].pubkey.toBase58(), claim.toBase58()]);
     expect(cancelled.data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('cancel_compressed_asset')));
+  });
+
+  it('SEC-B28 refuses a claim listing in a currency the claim market cannot settle', () => {
+    const seller = Keypair.generate().publicKey;
+    const claim = Keypair.generate().publicKey;
+    // `buy_compressed` / `buy_compressed_asset` pay the seller with lamport transfers — they have no SPL
+    // legs — so a USDC or SKR listing can never be bought. The program refuses it (and the failure is not
+    // free: the wallet paid for the transaction), so neither builder may encode one in the first place.
+    for (const currency of [MarketCurrency.USDC, MarketCurrency.SKR]) {
+      expect(() => listCompressedIx({ seller, claim, price: 100_000n, currency })).toThrow(/SOL only/);
+      expect(() => listCompressedAssetIx({ seller, asset: Keypair.generate().publicKey, collectionIdx: 0, claim, price: 100_000n, currency })).toThrow(/SOL only/);
+    }
+    expect(listCompressedIx({ seller, claim, price: 1_000_000n, currency: MarketCurrency.SOL }).data.subarray(0, 8))
+      .toEqual(Buffer.from(ixDiscriminator('list_compressed')));
+  });
+
+  it('translates the API currency code into the market wire enum (SKR: API 3, market 2)', () => {
+    // package `CURRENCIES` numbers $CG 2 and SKR 3; `market::Currency` is a three-variant enum and borsh
+    // puts the variant INDEX on the wire. Passing the API code through was a real defect (every SKR
+    // listing failed to deserialize), and this boundary is the only place the translation may live.
+    expect(marketCurrencyOfApi(0)).toBe(MarketCurrency.SOL);
+    expect(marketCurrencyOfApi(1)).toBe(MarketCurrency.USDC);
+    expect(marketCurrencyOfApi(3)).toBe(MarketCurrency.SKR);
+    expect(MarketCurrency.SKR).toBe(2);
+    expect(() => marketCurrencyOfApi(2)).toThrow(/not listable/);
+    expect(() => marketCurrencyOfApi(9)).toThrow(/not listable/);
   });
 
   it('fails closed when owner, delegate, or tree does not match the proof input', () => {

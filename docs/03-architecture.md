@@ -75,7 +75,7 @@
 | `rng_auth` | chip_core, arena (у каждой своя) | `["rng_auth"]` | 0 | Switchboard-`authority` всех randomness-аккаунтов программы: подписывает CPI `randomness_init/commit/reveal/close` (SEC-C3 ч. 2) |
 | randomness | chip_core, arena | `["rng", kind u8 (0 pack / 1 fusion / 2 battle), owner, nonce u64]` | 480 (владелец — Switchboard) | один аккаунт на покупку/фьюжн/бой; создаётся `init_randomness`, коммитится **внутри** `buy_pack`/`fuse`/`create_battle`, раскрывается permissionless `reveal_randomness`, закрывается `close_randomness` (рента → игроку) |
 | `PendingFusion` | chip_core | `["fusion", owner, nonce]` | 8+~140 | recipe, 3 материала, randomness, commit_slot, booster |
-| `Listing` | market | `["listing", asset]` (legacy Core) / `["compressed_listing", claim]` | 8+~90 | seller, price, currency (0 SOL / 1 USDC / 3 SKR), created_at |
+| `Listing` | market | `["listing", asset]` (legacy Core) / `["compressed_listing", claim]` | 8+~90 | seller, price, currency (wire-tag market: 0 SOL / 1 USDC / **2 SKR** — индекс варианта; API-код SKR = 3, трансляция `marketCurrencyOfApi`; у claim-листинга допускается только SOL, SEC-B28), created_at |
 | `ServiceLedger` | chip_core | `["services", wallet]` | 8+65 | дневные счётчики платных сервисов (`bought_today[16]`, `day_start`), `spent_usd_cents_total` |
 | `Offer` | market | `["offer", asset, bidder]` | 8+~80 | amount USDC в эскроу-ATA, expiry |
 | `EmissionState` | staking | `["emission"]` | 8+~216 | cap schedule, minted_total, day_index, burn ring[7], split bps, mint authority, `recycled_total/minted` (SEC-L5) |
@@ -139,9 +139,9 @@
 | `update_price(asset, price)` (legacy Core) | seller | |
 | `cancel(asset)` (legacy Core) | seller | unfreeze, close |
 | `buy(asset)` (legacy Core) | buyer | оплата: 90 % seller, fee `GameConfig.market_fee_bps` (default 7.5 %, cap 10 %; ⅓ buyback-burn wallet / ⅔ treasury), 2.5 % royalty; SOL — system transfers, USDC/SKR — generic `*_token` ATA (mint = listing.currency); unfreeze; `TransferV1` к покупателю; `ChipSold` |
-| `list_compressed(price, currency)` / `cancel_compressed` | seller | claim-листинг (`["compressed_listing", claim]`): buyer == seller, !minted/consumed/listed/staked, не экспайрен, `now ≥ lock_until`; флаг через CPI `set_compressed_claim_listed`; listing fee не берётся |
-| `buy_compressed(expected_price)` | buyer | тот же `split()` (90 % / fee / royalty), claim переходит покупателю, `listed` снят; `listing.price ≠ expected_price` → `ListingPriceChanged` (SEC-F5, защита от cancel+relist дороже в той же tx) |
-| `list_compressed_asset` / `buy_compressed_asset(…, expected_price)` (**draft**) | seller / buyer | сминченные cNFT: расчёт через `TransferV2` CPI с подписью маркета; гейты — docs/11 (компиляция CPI, localnet-прогон, recovery) |
+| `list_compressed(price, currency)` / `cancel_compressed` | seller | claim-листинг (`["compressed_listing", claim]`): **только SOL** (SEC-B28 — расчет claim-пути идёт переводами лампортов, USDC/SKR → `CompressedCurrencyMismatch`; тогда как листинг не создаётся и флаг `listed` не ставится), buyer == seller, !minted/consumed/listed/staked, не экспайрен, `now ≥ lock_until`; флаг через CPI `set_compressed_claim_listed`; listing fee не берётся |
+| `buy_compressed(expected_price)` | buyer | тот же `split()` (90 % / fee / royalty), claim переходит покупателю, `listed` снят; `listing.currency ≠ SOL` → `CompressedCurrencyMismatch` (свой чек как defense in depth — листинг, созданный до SEC-B28); `listing.price ≠ expected_price` → `ListingPriceChanged` (SEC-F5, защита от cancel+relist дороже в той же tx) |
+| `list_compressed_asset` / `buy_compressed_asset(…, expected_price)` (**draft**) | seller / buyer | сминченные cNFT: расчёт через `TransferV2` CPI с подписью маркета; **листинг тоже только SOL** (SEC-B28: покупка платит переводами лампортов); гейты — docs/11 (компиляция CPI, localnet-прогон, recovery) |
 | `make_offer(asset, amount, expiry)` / `accept_offer` / `cancel_offer` | bidder / seller | USDC-эскроу |
 
 #### staking
