@@ -435,6 +435,17 @@ the chain's reason), `/fusion/suggest` (auth), `/staking/overview`, `/staking/me
   `SUBSCRIBE` within `EVENT_BUS_CONNECT_TIMEOUT_MS` (3 s) does **not** block the boot: the fan-out degrades to
   in-process, `/metrics` reports `event_bus_redis 0` and `EventBusDegraded` fires — restart `api` once Redis
   is healthy, the decision is made at boot and is not retried.
+* **Backups are monitored as data, not as log lines (SEC-B49).** `ops/backup/sqlite-backup.sh` writes a status
+  file next to the snapshots (`last_attempt_ts` / `last_success_ts` / `last_result` / `consecutive_failures`,
+  atomically, on every attempt); compose mounts that host directory read-only into the API as
+  `BACKUP_STATUS_FILE` and this process exports `backup_last_success_timestamp_seconds`,
+  `backup_consecutive_failures` and `backup_last_result_ok`. `ops/monitoring/alerts.yml` then pages on
+  `BackupStale` (nothing succeeded for 36 h — including "never succeeded", since `time() - 0` is stale rather
+  than silent) and tickets on `BackupFailing` (≥ 3 attempts in a row). Unset the variable and the series do
+  not exist at all: a deployment without the sidecar must not alert on itself. `npm run ops:backup-now` takes
+  one snapshot immediately and exits non-zero with the failing step named — it does not start the hourly loop
+  (SEC-B48: `docker compose exec` does not inherit a service's `environment:`, so the "once" flag travels as
+  an argument).
 * Crank: run **two** replicas against the same DB (jobs are keyed and every send re-reads the
   chain, so duplicates only cost a failed simulation); one of them may live in another region.
   Alert on `/health.crank.healthy == false`, on the `ALERT` log lines (payer balance, abandoned
@@ -446,7 +457,7 @@ the chain's reason), `/fusion/suggest` (auth), `/staking/overview`, `/staking/me
 ## Tests
 
 ```bash
-npm test          # vitest: 471 tests — codec round-trips for all 56 events, CPI attribution,
+npm test          # vitest: 477 tests — codec round-trips for all 56 events, CPI attribution,
                   # idempotent ingest, rebuild equivalence, failed-fusion refunds, floors,
                   # SIWS (bad signature, nonce reuse, CSRF), handle lifecycle, service claims,
                   # Pyth PriceUpdateV2 decode/validate (owner, feed, verification, age),

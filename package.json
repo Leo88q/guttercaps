@@ -65,7 +65,7 @@
     "ops:down": "docker compose -f ops/deploy/docker-compose.yaml down",
     "ops:ps": "docker compose -f ops/deploy/docker-compose.yaml ps",
     "ops:config": "docker compose -f ops/deploy/docker-compose.yaml config -q && echo \"compose config ok\"",
-    "ops:backup-now": "RUN_ONCE=1 docker compose -f ops/deploy/docker-compose.yaml exec backup /bin/sh /backup/sqlite-backup.sh",
+    "ops:backup-now": "docker compose -f ops/deploy/docker-compose.yaml exec -e RUN_ONCE=1 backup sh /backup/sqlite-backup.sh --once",
     "ops:prometheus": "docker compose -f ops/deploy/docker-compose.yaml --profile monitoring up -d prometheus",
     "schema:check": "node --experimental-strip-types scripts/schema-drift.ts --check",
     "state:layout": "node --experimental-strip-types --no-warnings scripts/state-layout.ts",

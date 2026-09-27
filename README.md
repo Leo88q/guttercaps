@@ -10,9 +10,11 @@
 > сторон (install на любой ОС/`lock:matrix` и пины байтов — sha512 + официальный registry, `lock:integrity`, SEC-B12);
 > инварианты экономики и golden-файлы, клиентские
 > 158 тестов + typecheck + сборка, бюджет критического пути и «ничего не ходит за шрифтами вовне»
-> (`bundle:check`), 471 тест бэкенда (28 файлов) (включая LT-3-тир: live ⇄ rebuild на детерминированном корпусе, и скан SQL-диалекта),  контракт openapi ⇄ маршруты (`api:check`), контракт `.env.example`
+> (`bundle:check`), 477 тестов бэкенда (28 файлов) (включая LT-3-тир: live ⇄ rebuild на детерминированном корпусе, и скан SQL-диалекта),  контракт openapi ⇄ маршруты (`api:check`), контракт `.env.example`
 > ⇄ код (`env:check`), сверка Prisma-схемы с DDL, который реально исполняется (`schema:check`), и
-> лендинг. `.github/workflows/ci.yml` — то же в CI плюс `anchor build` /
+> лендинг. Деплой-поверхность тоже под гейтом: `security:static` (130 проверок) держит каталог снимков
+> некоммитабельным, пути отказа бэкапа честными и все `uses:` в workflow запинеными коммитами
+> (SEC-B47/B48/B50, `tests/security/deploy-artifacts.test.ts`). `.github/workflows/ci.yml` — то же в CI плюс `anchor build` /
 > localnet-сюита на артефактах (docs/06 §3.1). Разделы ниже про «chip-game — Anchor program» и `client/src/lib/*`
 > описывают **ранний скаффолд** и оставлены как история; там, где они расходятся с
 > `docs/`, правы `docs/`.

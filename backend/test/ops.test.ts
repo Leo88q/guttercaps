@@ -4,7 +4,9 @@
 // from the client — which is exactly why they need their own tests.
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import http, { type Server } from 'node:http';
-import { rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { WebSocket } from 'ws';
 import { Keypair } from '@solana/web3.js';
 import { Db } from '../src/db.ts';
@@ -19,6 +21,7 @@ import { createRedisGuard } from '../src/redis.ts';
 import type { RedisLike } from '../src/redis.ts';
 import { createWsHub, attachWs, PUBLIC_TYPES, wsConfigFromEnv, upgradeIp } from '../src/ws.ts';
 import { installShutdown } from '../src/shutdown.ts';
+import { parseBackupStatus, readBackupStatus } from '../src/backup-status.ts';
 import { ingestTx } from '../src/ingest.ts';
 import { tx, nextSig, hex32 } from './fixtures.ts';
 
@@ -134,6 +137,60 @@ describe('metrics exposition', () => {
     const text = await metrics.exposition();
     expect(text.match(/^x_gauge /gm)).toHaveLength(1);
     expect(text).toContain('x_gauge 2');
+  });
+});
+
+describe('backup status file (SEC-B49)', () => {
+  // The backup sidecar's only other output was an `ALERT` line in `docker logs backup`. These tests are the
+  // contract between the file it writes (`ops/backup/sqlite-backup.sh`, `write_status`) and what /metrics
+  // publishes; the alert rules on top of those series are checked in `monitoring.test.ts`.
+  const statusText = (o: Partial<Record<'last_attempt_ts' | 'last_success_ts' | 'last_result' | 'consecutive_failures', string>>) =>
+    ['last_attempt_ts', 'last_success_ts', 'last_result', 'consecutive_failures'].map((k) => `${k}=${o[k as never] ?? ''}`).join('\n') + '\n';
+
+  it('parses the four lines the script writes, in each of its three outcomes', () => {
+    const ok = parseBackupStatus(statusText({ last_attempt_ts: '1759000000', last_success_ts: '1759000000', last_result: 'ok', consecutive_failures: '0' }));
+    expect(ok).toEqual({ lastAttempt: 1759000000, lastSuccess: 1759000000, consecutiveFailures: 0, lastResult: 'ok' });
+    // A failure keeps the previous success — the script reads it back before overwriting, because resetting it
+    // to 0 would make a healthy deployment look like one that has never taken a snapshot.
+    const failed = parseBackupStatus(statusText({ last_attempt_ts: '1759003600', last_success_ts: '1759000000', last_result: 'backup_failed', consecutive_failures: '2' }));
+    expect(failed.lastSuccess).toBe(1759000000);
+    expect(failed.consecutiveFailures).toBe(2);
+    // A corrupt snapshot is a distinct outcome from a snapshot that was never taken: different answers.
+    expect(parseBackupStatus(statusText({ last_result: 'integrity_failed', consecutive_failures: '1' })).lastResult).toBe('integrity_failed');
+  });
+
+  it('a truncated, hand-edited or nonsensical file becomes a stale reading, never an exception', () => {
+    // A scrape reads this file three times; a throw from here would be reported as `metrics_scrape_error` and
+    // hide the staleness the series exists to surface.
+    for (const text of ['', '\n\n', 'garbage without an equals sign\n', 'last_success_ts=abc\nlast_result=whatever\n']) {
+      const st = parseBackupStatus(text);
+      expect(st.lastResult).toBe('unknown');
+      expect(st.lastSuccess).toBe(0);
+      expect(st.consecutiveFailures).toBe(0);
+    }
+    // A timestamp far in the future (a typo, a clock jump, a half-written line) must not read as fresh.
+    expect(parseBackupStatus(statusText({ last_success_ts: '99999999999', last_result: 'ok' })).lastSuccess).toBe(0);
+    // A negative or fractional count is clamped rather than exported as a gauge Prometheus cannot alert on.
+    expect(parseBackupStatus(statusText({ consecutive_failures: '-3' })).consecutiveFailures).toBe(0);
+    expect(parseBackupStatus(statusText({ consecutive_failures: '2.9' })).consecutiveFailures).toBe(2);
+    // Keys are matched exactly, so another file that happens to end in `_success_ts` cannot be mistaken for it.
+    expect(parseBackupStatus('not_last_success_ts=123\n').lastSuccess).toBe(0);
+  });
+
+  it('no BACKUP_STATUS_FILE means no series; a configured but missing file means "never succeeded"', () => {
+    const saved = process.env.BACKUP_STATUS_FILE;
+    try {
+      delete process.env.BACKUP_STATUS_FILE;
+      // A deployment without the sidecar exports nothing at all: an alert on a topology that never claimed to
+      // have backups is noise nobody can act on.
+      expect(readBackupStatus()).toBeUndefined();
+      process.env.BACKUP_STATUS_FILE = '/nonexistent/and/not/permission-checked/status';
+      // The dangerous direction: the file disappearing (a wiped volume, a renamed directory, a sidecar that
+      // never started) must read as "nothing has ever succeeded", which is what BackupStale fires on.
+      expect(readBackupStatus()).toEqual({ lastAttempt: 0, lastSuccess: 0, consecutiveFailures: 0, lastResult: 'unknown' });
+    } finally {
+      if (saved === undefined) delete process.env.BACKUP_STATUS_FILE; else process.env.BACKUP_STATUS_FILE = saved;
+    }
   });
 });
 
@@ -855,6 +912,47 @@ describe('ops endpoints on the real app', () => {
     expect(r.status).toBe(400);
     expect(r.json.code).toBe('bad_pubkey');
     expect(String(r.requestId)).toMatch(/^[A-Za-z0-9]{16}$/);
+  });
+
+  it('SEC-B49: /metrics republishes the backup status file on every scrape, without a restart', async () => {
+    // The sidecar rewrites this file each hour (and after `npm run ops:backup-now`); the API must read it at
+    // scrape time. Caching it at startup — or in the module's import side effects — would leave the alert
+    // looking at the state of the world from the last deploy, which is the failure mode this finding is about.
+    const dir = mkdtempSync(join(tmpdir(), 'gc-backup-status-'));
+    const file = join(dir, 'status');
+    const saved = process.env.BACKUP_STATUS_FILE;
+    try {
+      process.env.BACKUP_STATUS_FILE = file;
+      // Configured but absent: HELP/TYPE are declared and the value is 0, so `time() - 0 > 36h` fires on a
+      // sidecar that never wrote anything (and `backup_consecutive_failures` stays 0 — no false "failing").
+      const empty = await get('/metrics');
+      expect(empty.status).toBe(200);
+      expect(empty.text).toContain('# TYPE backup_last_success_timestamp_seconds gauge');
+      expect(empty.text).toMatch(/^backup_last_success_timestamp_seconds 0$/m);
+      expect(empty.text).toMatch(/^backup_consecutive_failures 0$/m);
+      expect(empty.text).toMatch(/^backup_last_result_ok 0$/m);
+
+      // Now the state the script leaves after a success, then after a failure.
+      const now = Math.floor(Date.now() / 1000);
+      writeFileSync(file, `last_attempt_ts=${now}\nlast_success_ts=${now}\nlast_result=ok\nconsecutive_failures=0\n`);
+      const ok = await get('/metrics');
+      expect(ok.text).toMatch(new RegExp(`^backup_last_success_timestamp_seconds ${now}$`, 'm'));
+      expect(ok.text).toContain('backup_last_result_ok 1');
+      expect(ok.text).toContain('backup_consecutive_failures 0');
+
+      writeFileSync(file, `last_attempt_ts=${now + 60}\nlast_success_ts=${now}\nlast_result=backup_failed\nconsecutive_failures=3\n`);
+      const bad = await get('/metrics');
+      // last_success_tz does not advance (a failure must not look like a fresh snapshot), the failure count
+      // does, and the boolean flips — the three series the rules in alerts.yml read.
+      expect(bad.text).toMatch(new RegExp(`^backup_last_success_timestamp_seconds ${now}$`, 'm'));
+      expect(bad.text).toContain('backup_consecutive_failures 3');
+      expect(bad.text).toContain('backup_last_result_ok 0');
+      // A wrong number, not a missing series or a scrape error.
+      expect(bad.text).not.toContain('metrics_scrape_error{name="backup_');
+    } finally {
+      if (saved === undefined) delete process.env.BACKUP_STATUS_FILE; else process.env.BACKUP_STATUS_FILE = saved;
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('the limiter cannot starve the scraper: /metrics is outside the read budget', async () => {

@@ -1,3 +1,17 @@
+# ── action pins (SEC-B50) ────────────────────────────────────────────────────────────────────────────
+# Every `uses:` in this file is a full commit SHA. A tag (`@v4`) is a ref the action's owner can
+# repoint at any commit they like — including one that reads `GITHUB_TOKEN` and the deploy secrets,
+# which is the shape of the `tj-actions/changed-files` compromise — and this repository pins npm
+# versions by `sha512`, base images by patch tag and Cargo deps by exact version precisely because
+# "whatever the ref means today" is not a pin. Updating one is a deliberate edit: resolve the new
+# tag, change the SHA *and* the inline comment, and `npm run workflows:check` will notice a
+# disagreement. The same mapping is asserted in `tests/security/deploy-artifacts.test.ts`.
+#   actions/cache                v4.3.0   0057852bfaa89a56745cba8c7296529d2fc39830 2025-09-24
+#   actions/checkout             v4.4.0   11d5960a326750d5838078e36cf38b85af677262 2026-07-16
+#   actions/download-artifact    v4.3.0   d3f86a106a0bac45b974a628896c90dbdf5c8093 2025-04-24
+#   actions/setup-node           v4.4.0   49933ea5288caeca8642d1e84afbd3f7d6820020 2025-04-02
+#   actions/setup-python         v5.6.0   a26af69be951a213d495a4c3e4e4022e16d87065 2025-04-24
+#   actions/upload-artifact      v4.6.2   ea165f8d65b6e75b540449e92b4886f43607fa02 2025-03-19
 # CI — docs/06 §3.1 pyramid, backlog #16.
 #
 # PR / push jobs (fast, no chain):
@@ -42,8 +56,8 @@ jobs:
     name: economy · invariants + golden + sync-check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
       - run: npm ci
       - name: the lock describes a tree that exists on every OS/CPU, not just this runner's
@@ -97,8 +111,8 @@ jobs:
     name: client · typecheck + test + build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
       - run: npm ci
       # the OpenAPI types must be in sync with backend/openapi.yaml (regenerate + diff)
@@ -111,7 +125,7 @@ jobs:
       - run: npm --prefix client run build
       # docs/06 §1.3 budget (≤ 350 KB gzip on the critical path) — a number with no owner drifted to 518 KB
       - run: npm run bundle:check
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with: { name: client-dist, path: client/dist, retention-days: 7 }
 
   e2e:
@@ -122,8 +136,8 @@ jobs:
       # step so the dependency install stays cacheable and the browser build is pinned by one command.
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
       - run: npm ci
       # The mock build is the point: the tier must exercise the *production bundle* (entry graph,
@@ -134,7 +148,7 @@ jobs:
       - run: npm run e2e:types
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test --project=desktop-chromium
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()
         with: { name: playwright-report, path: test-results/, retention-days: 7 }
 
@@ -142,8 +156,8 @@ jobs:
     name: backend · typecheck + test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
       - run: npm ci
       - run: npm --prefix backend run typecheck
@@ -175,10 +189,10 @@ jobs:
     name: landing · build + check + smoke
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with: { python-version: '3.12' }
       - run: npm ci
       - name: rebuild and diff the committed landing
@@ -200,11 +214,11 @@ jobs:
       # job reads as a slow build instead of a mis-set path. Pinning CARGO_HOME makes cache and build agree.
       CARGO_HOME: /root/.cargo
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: toolchain versions
         run: |
           rustc --version && cargo --version && solana --version && anchor --version
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             /root/.cargo/registry
@@ -351,7 +365,7 @@ jobs:
             echo "$p: $have (Anchor.toml $want)"
             if [ "$p" != "sb_mock" ] && [ "$have" != "$want" ]; then echo "::warning::$p keypair id != Anchor.toml (run anchor keys sync before deploying)"; fi
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: program-binaries
           retention-days: 7
@@ -380,7 +394,7 @@ jobs:
     env:
       CARGO_HOME: /usr/local/cargo
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: the image must contain what the steps call
         run: |
           bad=0
@@ -393,7 +407,7 @@ jobs:
             echo "::error::refusing to run lint steps against a toolchain that cannot answer"
             exit 1
           fi
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             # /usr/local/cargo is this image's CARGO_HOME — the clippy annotations in run 42 named paths
@@ -433,11 +447,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: programs
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
       - run: npm ci
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: program-binaries, path: target }
       # SEC-F19 on the real artifact: the localnet build must carry the sb_mock pin and neither the devnet
       # nor the mainnet Switchboard ids. This is the same command the runbook runs with `--cluster mainnet`
@@ -445,7 +459,7 @@ jobs:
       - name: deploy artifact carries exactly the localnet Switchboard pins (scripts/verify-deploy.ts)
         run: npm run verify-deploy -- artifact --cluster localnet
       - name: third-party fixtures (mpl-core pinned to release core@0.12.0, cached)
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         id: fixtures
         with:
           path: tests/localnet/fixtures/mpl_core.so
@@ -480,7 +494,7 @@ jobs:
           files=$(grep -c "<testsuite " "$f")
           echo "localnet: $tests tests in $files suites"
           if [ "${tests:-0}" -lt 92 ]; then echo "::error::expected >= 92 localnet scenarios, got ${tests:-0}"; exit 1; fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with: { name: localnet-junit, path: target/localnet-junit.xml, if-no-files-found: ignore, retention-days: 14 }
       - name: surface the failure without log access
@@ -503,7 +517,7 @@ jobs:
         # junit digest (see above), and CU numbers from a red run would be partial anyway.
         # Runs BEFORE the upload: it aggregates target/cu-log.jsonl into target/cu-summary.json.
         run: node --no-warnings=ExperimentalWarning --import tsx scripts/ci-surface-cu.ts target/cu-log.jsonl || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with: { name: cu-summary, path: target/cu-summary.json, if-no-files-found: ignore, retention-days: 14 }
 
@@ -516,8 +530,8 @@ jobs:
     runs-on: ubuntu-latest
     env: { PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1' }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
       - run: npm ci
       # lighthouserc.cjs measures what `vite preview` serves, so the build is part of the measurement —
@@ -529,15 +543,15 @@ jobs:
           if [ -z "$chrome" ]; then echo '::error::no Chrome on the runner — lighthouse cannot run here'; exit 1; fi
           echo "CHROME_PATH=$chrome" >> "$GITHUB_ENV"
       - run: npx lhci autorun
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with: { name: lighthouse, path: test-results/lighthouse, retention-days: 14, if-no-files-found: ignore }
 
   security:
     name: security · npm audit + secret scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
       - run: npm ci
       # Production tree, as a gate (SEC-F12): every high/critical advisory fails unless it is in the dated,
@@ -560,8 +574,8 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
       - run: npm ci
       - name: devnet reachability + program accounts (read-only; needs DEVNET_RPC_URL)
@@ -584,8 +598,8 @@ jobs:
     continue-on-error: true
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
       - run: npm ci --omit=dev
       - name: start the API (no chain, no ingest — LT-1 measures the read path)
@@ -608,7 +622,7 @@ jobs:
             -e K6_BASE_URL=http://127.0.0.1:8787/v1 -e K6_SESSION="$K6_SESSION" \
             -e K6_READ_RPS=500 -e K6_RAMP_S=20 -e K6_PLATEAU_S=180 \
             grafana/k6:latest run /s/scripts/load/lt1.js
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with: { name: k6-lt1, path: k6-lt1.json, retention-days: 14, if-no-files-found: ignore }
 
@@ -622,8 +636,8 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
       - run: npm ci
       - name: rebuild throughput + projection invariants on a synthetic history

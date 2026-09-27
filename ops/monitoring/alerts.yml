@@ -247,3 +247,34 @@ groups:
         annotations:
           summary: 'The process crashed and restarted'
           description: 'shutdown.ts exits non-zero on an uncaught exception by design. The stack is in the previous container log (`docker compose logs api --previous`).'
+
+  # Backup freshness (SEC-B49). The sidecar announced a problem only by printing an `ALERT` line into
+  # `docker logs backup` — a service that stays up, healthy and silent while taking nothing, right up to
+  # the day a restore is attempted. The script now writes `last_success_ts` / `consecutive_failures` next
+  # to the snapshots (`ops/backup/sqlite-backup.sh`) and the API exports them as gauges
+  # (`backend/src/backup-status.ts`), so both rules read state instead of prose. Neither fires when
+  # `BACKUP_STATUS_FILE` is unset: a deployment without the sidecar has no backups to be stale about.
+  - name: guttercaps.backup
+    rules:
+      # 36 h = 36 missed hourly snapshots. Long enough that a rolling deploy, a disk hiccup or a slow S3
+      # upload is not an alert; short enough to be caught inside the retention window the restore drill
+      # (`ops/deploy/runbook.md` §4) is written against. `time() - 0` is true, so "never succeeded once"
+      # — a fresh deployment, a deleted status file, a sidecar that never started — is stale, not silent.
+      - alert: BackupStale
+        expr: time() - backup_last_success_timestamp_seconds > 36 * 3600
+        for: 15m
+        labels: { severity: page }
+        annotations:
+          summary: 'No successful database snapshot for over 36 hours'
+          description: 'On the host: `npm run ops:backup-now` for a manual snapshot (it exits non-zero and prints which step failed), then `docker compose logs backup --tail 100`. Page rather than ticket: the snapshot is the only copy that survives losing the volume, and `backup_last_result_ok` says whether the last attempt even ran.'
+
+      # Deliberately lower than BackupStale and at `for: 0m`, so the cause is on the dashboard while the last
+      # good snapshot is still recent. 3 rather than 1: one failed attempt is a restart or a locked database,
+      # and a rule that fires on a rolling deploy is a rule people learn to ignore.
+      - alert: BackupFailing
+        expr: backup_consecutive_failures >= 3
+        for: 0m
+        labels: { severity: ticket }
+        annotations:
+          summary: 'Three consecutive backup attempts failed'
+          description: '`backup_last_success_timestamp_seconds` shows how old the last good snapshot is; the backup container log names the failing step (.backup, integrity_check, gzip, s3). Usually a full disk (`df -h` on the host) or `/data` unreadable by the sidecar.'

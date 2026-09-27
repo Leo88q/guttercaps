@@ -394,6 +394,121 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   against yet. Pinned by the `SEC-B32` rule in `tests/security/settle-once.test.ts` (no collection filter, the
   claim fallback, the join; two mutations) and by `backend/test/game.test.ts` (a Core pair and a claim pair at
   5 × the floor are both flagged with `priceOverFloorX: 5`, a never-registered claim's pair is not).
+- **SEC-B50 (2026-09-27): closed — every workflow ran on refs its owner could repoint.** 35 `uses:` lines
+  across the four workflows referenced `actions/checkout@v4` and five sibling actions by **tag**. A tag is a
+  mutable ref: whoever holds write access to the action's repository can point it at any commit, and the next
+  run of `ci.yml` then executes that commit with `GITHUB_TOKEN`, the deploy secrets and the release path in
+  reach — the `tj-actions/changed-files` compromise is exactly this, and it was read from the tags of
+  thousands of repositories at once. This repository pins npm versions by `sha512`, base images by patch tag
+  and Cargo dependencies to exact versions; the one supply-chain surface that decides *what code runs with
+  the widest privileges* was the one left on a moving name. All 35 references are now full 40-hex commit
+  SHAs, and each of the four workflows carries a mapping block (action → tag → SHA → the tag's date) so a pin
+  is reviewable rather than an opaque number. The gate is `tests/security/deploy-artifacts.test.ts`: it parses
+  every remote `uses:` (≥ 45 references, ≥ 6 actions — a parse slip fails instead of passing vacuously),
+  rejects a non-SHA ref, rejects a pin whose comment does not name its version, rejects one action pinned to
+  two different commits (a version skew nobody notices, since `v4` and `v4.2.2` are different code) and
+  requires every pin to appear in its file's mapping block; three mutations prove the rule rejects the
+  pre-fix shapes. All six actions are first-party (`actions/*`), so the blast radius of a compromise is a
+  single owner rather than a random maintainer. Residual, recorded as SEC-B52: the artifacts those actions
+  produce are not signed and carry no provenance attestation.
+- **SEC-B49 (2026-09-27): closed — a backup that had stopped working was invisible until the day it was
+  needed.** The sidecar's only announcement was an `ALERT` line in `docker logs backup`, which is a dead
+  channel: nobody tails the log of a service that has been healthy for months, and the failure mode of a
+  backup is not a crash (systemd/compose would notice) but a snapshot that quietly stops being taken —
+  `integrity_check` failing for weeks, a directory that no longer exists, a disk that filled, an `aws` upload
+  that has been failing since the credentials rotated. So the status is now *data*: `sqlite-backup.sh` writes
+  `last_attempt_ts`, `last_success_ts`, `last_result` (`ok` | `backup_failed` | `integrity_failed`) and
+  `consecutive_failures` next to the snapshots on **every** attempt, atomically (temp file + `rename`, because
+  a scrape reads the file three times), and preserves the previous success timestamp across a failure so a
+  failed run cannot make a healthy deployment look like one that never backed up. The API mounts the host
+  directory read-only and exports `backup_last_success_timestamp_seconds`, `backup_consecutive_failures` and
+  `backup_last_result_ok` (`backend/src/backup-status.ts`), and `ops/monitoring/alerts.yml` gained
+  `BackupStale` (`time() - … > 36 h`, severity `page`) and `BackupFailing` (`consecutive_failures >= 3`,
+  `ticket`). Both rules read state, not prose: `time() - 0` is true, so a sidecar that never started, a
+  deleted status file or a wiped volume reads as "never succeeded" instead of silence — the old expression
+  shape (`… > 0 and …`) would have been blind to exactly that case. Neither series exists unless
+  `BACKUP_STATUS_FILE` is configured, so a deployment without the sidecar does not alert on itself, and the
+  file is parsed defensively (a truncated or hand-edited line becomes a stale reading, never a
+  `metrics_scrape_error` that hides the staleness). Pinned by `backend/test/ops.test.ts` (the four keys, the
+  three outcomes, garbage/truncated/future values, env unset vs. missing file, and `/metrics` re-reading the
+  file on every scrape without a restart), `backend/test/monitoring.test.ts` (the rules reference the exported
+  series; the staleness window is a day-to-three-days range, not minutes; the failure rule needs ≥ 2
+  consecutive attempts and must not page) and the producer⇄consumer key parity in
+  `tests/security/deploy-artifacts.test.ts`. Producer and consumer are both pinned: a key renamed on one side
+  fails the build.
+- **SEC-B48 (2026-09-27): closed — `npm run ops:backup-now` took snapshots forever, and a snapshot that never
+  happened blamed corruption.** Three defects in the same path, all of them found by running the script
+  rather than reading it. (1) The npm script invoked `docker compose … exec backup sh /backup/sqlite-backup.sh`
+  with `RUN_ONCE=1` set in the *caller's* shell; `compose exec` does not inherit a service's `environment:`
+  block, so the flag never reached the process and the `ENTRYPOINT`-less exec ran the **infinite loop** — an
+  operator asking for a snapshot before a risky deploy got a command that never returns (the loop was killed
+  by the terminal, leaving a truncated file, or ran until the next `docker restart`). (2) `one()` was called as
+  `one || echo …`, and POSIX turns off `set -e` inside a function whose result is tested: a `.backup` that
+  failed (disk full, `/data` unreadable) therefore fell through to `PRAGMA integrity_check` on a file that did
+  not exist and reported **`ALERT … integrity_check FAILED for …sqlite: `** followed by a failed `mv` — the
+  one line an operator greps for in a suspected-corruption incident, pointing at corruption that was not
+  there, while the real failure (`sqlite3 .backup` could not read the database) was nowhere. Every step now
+  branches explicitly: the `.backup` exit status, a zero-byte or missing destination, `integrity_check`, and
+  `gzip` each report what failed and record the matching status. (3) Two snapshots inside the same second (an
+  operator running `ops:backup-now` right after a loop tick, or a restart) collided on the timestamped name,
+  and `gzip` refuses to overwrite: exit 2, no `ALERT`, no status line — the run appeared to succeed while
+  leaving the previous hour's `.gz` in place. The name now carries the pid unconditionally, and the
+  difference matters: uniqueness guessed from `[ -e "$tmp" ]` is a TOCTOU check, and running `--once` twice
+  concurrently (which is what `ops:backup-now` racing the hourly tick looks like — `compose exec` runs in the
+  same container) reproduced the *original* symptom one layer down, with each run testing before either
+  created the file: the slower run then `gzip`s a file the faster one already removed (`ALERT backup
+  compression failed`), or runs `PRAGMA integrity_check` on a missing file and reports `integrity_check
+  FAILED` and a `.CORRUPT` that never existed. With a name per process neither run can disturb the other:
+  two snapshots inside one second are a duplicate, not a fault, and both report success. Around it: `umask 077` (the
+  copy is a full dump of production data — wallets, IP networks, device hashes, payment rows — and the image
+  default `022` left it world-readable for the whole snapshot window), `.CORRUPT` files are `chmod 0640`
+  (they were never protected at all) and bounded by `BACKUP_KEEP_CORRUPT` (they are not covered by the
+  `.sqlite.gz` retention, and a full disk is the one failure a single-writer SQLite cannot absorb), and
+  retention uses `ls | sort -r | tail` because busybox `find` in the alpine backup image does not accept
+  `-maxdepth`. Pinned by the `SEC-B48` rules in `tests/security/deploy-artifacts.test.ts` (every outcome
+  writes a status line, the snapshot-failure branch exists and precedes the integrity branch, the `.backup`
+  call is checked, the status write is atomic, `umask 077`, the `.CORRUPT` bounds, and the mutations that
+  restore the old shapes) plus `backend/test/ops.test.ts` for the consuming end; each of the three defects was
+  reproduced against the pre-fix script before the fix.
+- **SEC-B47 (2026-09-27): closed — the snapshot directory was inside the working tree, and the ignore rule
+  did not cover what the script writes.** `docker-compose.yaml` bind-mounts `./backup` into the sidecar, so
+  `sqlite-backup.sh` writes into `ops/deploy/backup/out/` — inside the repository. `.gitignore` ignored
+  `*.sqlite`, which matches neither `*.sqlite.gz` (what a successful run produces), nor
+  `*.sqlite.CORRUPT` (an integrity failure kept for forensics), nor the `status` file this pass added: a
+  `git add -A` — the command an operator types when they are already mid-incident — would have staged a gzip
+  of production data (wallets, IP networks, device hashes, payment rows) and the next commit would publish it
+  to a public repository, where deleting the branch does not delete the object. `.gitignore` now ignores
+  `ops/deploy/backup/**` except the `.gitkeep` compose binds against — the whole directory rather than the
+  default `out/`, because an operator who sets `OUT_DIR=/backup` (or an older deployment that did) would
+  otherwise keep the same hole one level up — and `ops/deploy/.env.example` documents
+  `BACKUP_KEEP_CORRUPT`. The gate does not re-implement the globs: it asks `git check-ignore --no-index`
+  about the exact names the script can produce (timestamped, same-second `-pid`, `.CORRUPT`, `status`, its
+  temp sibling, and one at the directory root), requires `.gitkeep` to remain trackable, and asserts the
+  deploy really does write there — so a future edit that "simplifies" the block back to `*.sqlite`, or a
+  second output directory, fails the build instead of the review.
+- **SEC-B51 (2026-09-27): accepted risk — session tokens and SIWS nonces are stored in plaintext in SQLite.**
+  `sessions.token` is the cookie value and the lookup key (`WHERE token = ?`); `siws_nonces` holds the
+  challenge nonces. Anyone who can read the database file can therefore replay a live session without
+  cracking anything, and can read every unspent nonce. Recorded rather than fixed because hashing the token
+  (`sha256`, compare the digest) closes only the read-only-copy case, while the same threat model —
+  arbitrary access to the volume — also lets the attacker *write* a session row for any wallet, mint a nonce,
+  or rewrite projections and `events_raw` entirely: at that point the file is the security boundary, and the
+  mitigation is at the host (disk encryption, file mode, the `:ro` mounts the sidecar and the API already
+  use), not in the schema. It is also not what makes a stolen volume dangerous — the events themselves are
+  the PII. Revisit before mainnet, together with at-rest encryption of the volume; a token-hash migration
+  invalidates every live session (acceptable in a maintenance window, not at launch).
+- **SEC-B52 (2026-09-27): accepted risk — nothing this pipeline produces is signed or attested.** Images
+  published to GHCR (`guttercaps-{api,client,backup}`) carry no signature, no SBOM and no GitHub artifact
+  attestation — `.github/workflows/images.yml` says so in its header and points at `docs/09` §4.1 as the
+  remaining step — and the actions' outputs are not verified beyond their SHAs; a registry compromise or a
+  substituted digest would land in `ops/deploy/images.env` unnoticed by anything automated. Accepted, with
+  the reason: there is no release process yet to attach provenance to (no tagged releases, no prod deploy
+  workflow — §3.2 of `docs/09`), images are pinned by digest in the compose file, and the deploy is a
+  single-host `docker compose` pull reviewed by one operator. The prerequisite fixes that *do* exist are in
+  place: actions pinned to commit SHAs (SEC-B50), third-party images pinned by digest, base images pinned to
+  patch tags, `npm ci` against `sha512`-pinned tarballs, and `--frozen-lockfile`-equivalent checks in CI.
+  Trigger to close: the first tagged release, at which point `cosign sign` + `actions/attest-build-provenance`
+  on the `images` job and verification in the deploy runbook become mandatory.
 - **SEC-B46 (2026-09-27): closed — `WS_MAX_CLIENTS` bounded the process, not a caller.** The hub's only admission
 control was `open >= maxClients`, and an upgrade never passes through the HTTP layer, so it is neither rate-
 limited nor attributed: one host with a loop took all 500 sockets and the players actually playing got 1013 — a

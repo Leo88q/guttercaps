@@ -106,8 +106,14 @@ services:
       GEO_TRUST_HEADER: ${GEO_TRUST_HEADER:-0}
       GEO_RESTRICT_COUNTRIES: ${GEO_RESTRICT_COUNTRIES:-BE,NL}
       GEO_UNKNOWN: ${GEO_UNKNOWN:-allow}
+      # SEC-B49: the backup sidecar writes its status file into the host dir below, and the API scrapes it
+      # into /metrics (`backup_last_success_timestamp_seconds` and friends). Without this the only trace of a
+      # backup that stopped working is a line in `docker logs backup`, which nobody tails.
+      BACKUP_STATUS_FILE: /backup-status/out/status
     volumes:
       - dbdata:/data
+      # read-only: the API reports on the snapshots, it must not be able to touch them
+      - ./backup:/backup-status:ro
     # `start_period` is the backfill window: /readyz answers 503 until the indexer catches up, which is
     # correct for the LB and would otherwise restart a healthy-but-catching-up container forever.
     healthcheck:
@@ -162,6 +168,10 @@ services:
     environment:
       BACKUP_INTERVAL_S: ${BACKUP_INTERVAL_S:-3600}
       BACKUP_KEEP: ${BACKUP_KEEP:-72}
+      # Corrupt snapshots are kept for forensics, but bounded: they are never pruned by the `.sqlite.gz`
+      # retention above, and a disk that fills up is the one failure a single-writer SQLite cannot absorb.
+      BACKUP_KEEP_CORRUPT: ${BACKUP_KEEP_CORRUPT:-3}
+      BACKUP_STATUS_FILE: /backup/out/status
       DB_PATH: /data/guttercaps.sqlite
       S3_URI: ${BACKUP_S3_URI:-}
       AWS_ACCESS_KEY_ID: ${BACKUP_AWS_ACCESS_KEY_ID:-}

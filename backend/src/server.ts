@@ -10,6 +10,7 @@ import { isSolanaAddress } from './base58.ts';
 import { CORS_ORIGINS, CORS_ALLOW_CREDENTIALS, WS_PATH, EVENT_BUS, REDIS_URL, TRUST_PROXY_HOPS, assertProductionConfig } from './config.ts';
 import { bus } from './bus.ts';
 import { wsConfigFromEnv } from './ws.ts';
+import { readBackupStatus } from './backup-status.ts';
 import { requestLogger, routePattern, log, errFields } from './log.ts';
 import { metrics, exposition, registerScrape } from './metrics.ts';
 import { geoOf } from './geo.ts';
@@ -210,6 +211,12 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   // static configuration, and an alert whose denominator only appears after the first /readyz probe would be
   // blind in exactly the window a restarting replica is being watched. It reports the *effective* cap
   // (`wsConfigFromEnv`, i.e. the same clamped value the hub uses), never a raw `NaN` from a typo'd env.
+  // SEC-B49: the backup sidecar's status file (see `backup-status.ts`). Series exist only when
+  // `BACKUP_STATUS_FILE` is configured — a deployment without the sidecar is not "stale", it simply has no
+  // backups to be stale about, and the alert would be noise nobody can act on.
+  registerScrape('backup_last_success_timestamp_seconds', 'Epoch seconds of the last successful snapshot (0 = none recorded yet).', () => { const b = readBackupStatus(); return b ? [{ value: b.lastSuccess }] : []; });
+  registerScrape('backup_consecutive_failures', 'Consecutive failed snapshot attempts (0 on success).', () => { const b = readBackupStatus(); return b ? [{ value: b.consecutiveFailures }] : []; });
+  registerScrape('backup_last_result_ok', '1 when the last snapshot attempt succeeded, 0 otherwise.', () => { const b = readBackupStatus(); return b ? [{ value: b.lastResult === 'ok' ? 1 : 0 }] : []; });
   registerScrape('ws_max_clients', 'Concurrent sockets this process accepts, as the hub reads WS_MAX_CLIENTS.', () => [{ value: wsConfigFromEnv().maxClients }]);
   registerScrape('event_bus_redis', '1 when the cross-process Redis event bus is installed; 0 when EVENT_BUS=redis was configured but this process fell back to the in-process bus (absent when Redis is not configured).', () => (EVENT_BUS === 'redis' && REDIS_URL ? [{ value: bus().kind === 'redis' ? 1 : 0 }] : []));
   registerScrape('pyth_cache_age_seconds', 'Age of the freshest cached Pyth price, seconds.', async () => { const r = await ready(); return [{ value: r.prices.worstAgeS ?? -1 }]; });

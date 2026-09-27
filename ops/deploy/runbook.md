@@ -252,6 +252,14 @@ Alertmanager пока не подключён (`alerting.alertmanagers: []` — 
 | `AuthorityChangeIndexed` (page) | индексатор записал событие ротации (`authority_changes` выросла) | тот же разбор; `authorityHistory` даёт сигнатуру, подписанта и новый ключ. Дублирует предыдущий алерт независимым путём — сработает и на боксе с `GOVERNANCE_WATCH=0` |
 | `GovernanceKeysUnreadable` (ticket, 15 мин) | опрос трёх конфиг-аккаунтов не читается 15 минут (`program_authority_readable = 0` при включённом `GOVERNANCE_WATCH`) | обычно RPC (§6.3); строка в логе api — `governance key read failed`. Пока красно, `ProgramAuthorityRotated` слеп (последние значения сохраняются — ложного «ротация» не будет), `AuthorityChangeIndexed` продолжает работать |
 
+Группа `guttercaps.backup` (SEC-B49) — два правила про то, что снимок вообще снимается. Они читают
+статус-файл сайдкара (`ops/deploy/backup/out/status` → `BACKUP_STATUS_FILE` → `/metrics`), а не логи:
+
+| алерт | что означает | что делать |
+|---|---|---|
+| `BackupStale` (page, 36 ч) | последнего успешного снимка не было 36 часов — или не было ни одного (`backup_last_success_timestamp_seconds == 0`: сайдкар не запускался, файл статуса удалён, том не смонтирован) | `npm run ops:backup-now` на хосте (вернёт ненулевой код и назовёт упавший шаг), затем `docker compose -f ops/deploy/docker-compose.yaml logs backup --tail 100`; проверить `df -h` и что каталог `ops/deploy/backup/` существует |
+| `BackupFailing` (ticket, ≥ 3 подряд) | три попытки подряд записали `backup_failed`/`integrity_failed` (`backup_consecutive_failures`) | смотреть `backup_last_result_ok` и лог: полный диск, нечитаемый `/data` или сломанные креды S3 — самые частые; `integrity_failed` оставляет `.CORRUPT`-файл для разбора и **не** перезаписывает прошлый успех |
+
 Перед плановой ротацией ключей заводится запись в журнале церемоний (кто, какая роль, ожидаемый новый
 ключ, окно); дежурный, получивший page, закрывает его только сверившись с этой записью. Silence в
 Prometheus на окно церемонии допустим для `ProgramAuthorityRotated`/`AuthorityChangeIndexed`, но не
@@ -270,12 +278,27 @@ SQLite, не Postgres, поэтому `litestream` здесь не при чём
 Хранение на хосте — `BACKUP_KEEP` снимков (72 × час = 3 дня).
 
 ```bash
-npm run ops:backup-now                                   # снимок вручную, прямо сейчас
+npm run ops:backup-now                                   # снимок вручную, прямо сейчас (exec -e RUN_ONCE=1 … --once)
 docker compose -f ops/deploy/docker-compose.yaml logs backup --since 1h | tail
+cat ops/deploy/backup/out/status                         # last_attempt_ts / last_success_ts / last_result / consecutive_failures
 ```
 
 `integrity_check FAILED` = `ALERT` в логах и файл с суффиксом `.CORRUPT`; loop продолжается,
-следующий час попробует снова.
+следующий час попробует снова. Тот же файл `status` читает API (`BACKUP_STATUS_FILE`, монтирование
+`./backup` → `/backup-status:ro`) и отдаёт тремя гейджами, на которых стоят `BackupStale`/`BackupFailing`
+(§3.2) — поэтому «бэкап не снимается» видно и без чтения логов, и узнаётся это до попытки восстановления,
+а не в её процессе. Логи остаются для причины: каждый шаг (`.backup`, `integrity_check`, `gzip`, `aws`)
+ветвится явно и называет себя, а не сваливает провал копирования на порчу базы (SEC-B48).
+
+Ручной запуск (`npm run ops:backup-now`) — та же функция, что у часового цикла, и он **возвращает
+ненулевой код при провале**: `docker compose exec` не наследует `environment:` сервиса, поэтому «один
+снимок» выбирается аргументом `--once` и `-e RUN_ONCE=1`, а не переменной сервиса (SEC-B48 — раньше
+команда молча уходила в бесконечный цикл).
+
+Сколько места это занимает: `BACKUP_KEEP` снимков `.sqlite.gz` (72 × час) плюс `BACKUP_KEEP_CORRUPT`
+(3) файлов `.CORRUPT` — они не покрыты первым ретеншеном, а переполненный диск это единственный отказ,
+которого однописательский SQLite не переживёт. Копии создаются `umask 077` и лежат `0640`: снимок — это
+полный дамп прод-данных.
 
 ### 4.2 восстановление (дрилл обязателен)
 
@@ -283,6 +306,9 @@ docker compose -f ops/deploy/docker-compose.yaml logs backup --since 1h | tail
 хосте, в отдельном томе:
 
 ```bash
+cat ops/deploy/backup/out/status                          # сначала — живые ли снимки: last_success_ts не старше часа,
+                                                          # consecutive_failures == 0; расхождение с тем, что вы видите
+                                                          # в каталоге, это отдельная находка, а не мелочь
 gunzip -c ops/deploy/backup/out/guttercaps-<ts>.sqlite.gz > /tmp/restore.sqlite
 sqlite3 /tmp/restore.sqlite 'PRAGMA integrity_check; SELECT COUNT(*) FROM events_raw; SELECT MAX(slot) FROM events_raw;'
 # затем: остановить api, подменить том, запустить — и дождаться, пока ingest_lag_slots уйдёт в 0
