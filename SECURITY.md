@@ -209,6 +209,11 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   rule the ledgers enforce on chain; until then a new constant or account layout is closed by a compile-time
   `assert!` or a gate, not by hope.
 
+- **Части 1–2 чеклиста (31–70) разобраны по темам — `SECURITY-AUDIT-2026-09-27-checklist.md`.** Отдельный
+  файл, потому что строки там идут по темам, а не по номерам: у каждого пункта указано, какой символ
+  или гейт его закрывает, а пять пунктов, которые кодом не закрываются (SEC-B20, SEC-B21, порог
+  Squads, инсайдер-процесс, ℹ️-неприменимые), вынесены в сводку принятых рисков с владельцами.
+
 ## Current exposure of this repository (from `docs/09-production-readiness.md`)
 
 `npm audit --omit=dev` reports one advisory chain in the production tree: `bigint-buffer`
