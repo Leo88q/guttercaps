@@ -26,6 +26,14 @@ import { fileURLToPath } from 'node:url';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (rel: string) => readFileSync(join(REPO, rel), 'utf8');
+// The one Switchboard instruction this repo builds by hand (the Rust crate 0.13.0 has no
+// `randomness_close_lut`, so `close_lut_owned` does not go through an SDK CPI builder). Its metas are
+// therefore the only ones that can drift away from the program we call, and the SDK's own
+// `Randomness.closeLutIx` is the reference for what that program's IDL says. Read it here, in the same
+// map as the sources it must agree with, so rule 6 can compare the two instead of trusting a comment.
+// A missing copy is a violation, not a skip: metas that were never compared are not verified metas
+// (and in CI/`npm run verify` the tree is installed, so this is only ever seen on a bare checkout).
+const SB_SDK = 'node_modules/@switchboard-xyz/on-demand/dist/cjs/accounts/randomness.js';
 const RELEVANT = [
   'programs/chip_core/src/randomness.rs',
   'programs/chip_core/src/instructions/rng.rs',
@@ -37,6 +45,53 @@ const RELEVANT = [
   'backend/src/crank.ts',
 ] as const;
 const FILES: Record<string, string> = Object.fromEntries(RELEVANT.map((r) => [r, read(r)]));
+let sdkSource = '';
+try {
+  sdkSource = read(SB_SDK);
+} catch {
+  sdkSource = '';
+}
+FILES[SB_SDK] = sdkSource;
+
+/** `accounts: { … }` keys of the SDK's `randomnessCloseLut` builder, in order. */
+export function sdkCloseLutAccounts(src: string): string[] {
+  const i = src.indexOf('randomnessCloseLut(');
+  if (i < 0) return [];
+  const a = src.indexOf('accounts:', i);
+  if (a < 0) return [];
+  // start *after* the `accounts:` label, or the label itself counts as a key
+  const body = src.slice(a + 'accounts:'.length, src.indexOf('});', a));
+  return [...body.matchAll(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:/gm)].map((m) => m[1]);
+}
+
+/** The `AccountMeta` list of the hand-built instruction in `close_lut_owned`, in order. */
+export function rustCloseLutAccounts(src: string): string[] {
+  const fn = src.indexOf('pub fn close_lut_owned');
+  if (fn < 0) return [];
+  const vec = src.indexOf('accounts: vec![', fn);
+  if (vec < 0) return [];
+  return [
+    ...src
+      .slice(vec, src.indexOf(']', vec))
+      .matchAll(/AccountMeta::new(?:_readonly)?\(\*a\.([a-z_]+)\.key/g),
+  ].map((m) => m[1]);
+}
+
+/** The five accounts as the SDK names them; the Rust names map onto these one-for-one. */
+export const CLOSE_LUT_META_ORDER = [
+  'randomness',
+  'lut',
+  'lutSigner',
+  'recipient',
+  'addressLookupTableProgram',
+] as const;
+const RUST_TO_SDK: Record<string, string> = {
+  randomness: 'randomness',
+  lut: 'lut',
+  lut_signer: 'lutSigner',
+  recipient: 'recipient',
+  address_lookup_table_program: 'addressLookupTableProgram',
+};
 
 /** The source of one function: from its name to the first top-level `}` after it. Sized exactly, so a
  *  neighbouring function with the same account shape can neither rescue a mutated one nor fail a good one. */
@@ -116,6 +171,23 @@ export function violations(files: Record<string, string>): string[] {
     bad.push('crank: the lookup-table slot is never recorded — the table address cannot be derived later');
   if (!/lut_closed_at IS NULL/.test(crank)) bad.push('crank: reclaimed tables are not marked, so they would be re-sent forever');
 
+  // 6. G-0: the hand-built `randomness_close_lut` must carry exactly the SDK builder's accounts, in
+  //    the SDK's order. Our five are the only hand-assembled metas in the tree, so this is where an
+  //    SDK bump (rename, reorder, drop) has to fail — otherwise it surfaces as a devnet runtime error
+  //    in T-D-04, or worse, on mainnet.
+  const sdkNames = sdkCloseLutAccounts(files[SB_SDK] ?? '');
+  const rustNames = rustCloseLutAccounts(chip);
+  if (sdkNames.length === 0)
+    bad.push(`${SB_SDK}: no randomnessCloseLut accounts found — run \`npm ci\`, or the SDK builder moved`);
+  else if (sdkNames.join(',') !== CLOSE_LUT_META_ORDER.join(','))
+    bad.push(`SDK closeLutIx account order changed: ${sdkNames.join(', ')}`);
+  if (rustNames.length === 0) bad.push('randomness.rs: close_lut_owned no longer assembles an explicit accounts: vec![…]');
+  else {
+    const asSdk = rustNames.map((n) => RUST_TO_SDK[n] ?? `?${n}`);
+    if (asSdk.join(',') !== CLOSE_LUT_META_ORDER.join(','))
+      bad.push(`close_lut_owned diverges from the SDK builder: ${asSdk.join(', ')}`);
+  }
+
   return bad;
 }
 
@@ -188,6 +260,22 @@ test('SEC-M8 mutation check: each pin fails the gate when removed', () => {
   recursive['programs/arena/src/lib.rs'] = FILES['programs/arena/src/lib.rs'].replace('close_battle_randomness_lut_handler(ctx, nonce, lut_slot)', 'close_battle_randomness_lut(ctx, nonce, lut_slot)');
   assert.notEqual(recursive['programs/arena/src/lib.rs'], FILES['programs/arena/src/lib.rs']);
   assert.throws(() => assertArenaWiring(recursive), /close_battle_randomness_lut/);
+  // 9. G-0: the SDK's own builder reorders its accounts → our hand-built CPI would diverge silently
+  assert.ok(
+    violations(
+      mutate(SB_SDK, /randomness: params\.randomness,\s*lut: lutKey,/, 'lut: lutKey,\n                randomness: params.randomness,'),
+    ).length > 0,
+  );
+  // 10. …and our side is the one that reorders (the Rust vec is the thing we control)
+  assert.ok(
+    violations(
+      mutate(
+        'programs/chip_core/src/randomness.rs',
+        /AccountMeta::new\(\*a\.randomness\.key, true\),\s*\n\s*AccountMeta::new\(\*a\.lut\.key, false\),/,
+        'AccountMeta::new(*a.lut.key, false),\n            AccountMeta::new(*a.randomness.key, true),',
+      ),
+    ).length > 0,
+  );
   // and the unmutated map is clean
   assert.deepEqual(violations(FILES), []);
 });
