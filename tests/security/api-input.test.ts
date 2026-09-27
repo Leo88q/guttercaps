@@ -103,6 +103,77 @@ test('self-test: the SEC-B18 rule rejects the pre-fix route and accepts the fixe
   assert.ok(rule.test(fixed), 'the fixed route must pass the rule');
 });
 
+test('SEC-B36 an address bound into a LIKE pattern is validated, and the pattern is escaped where it is built', () => {
+  // The finding: `walletEvents` matches the caller's value inside `data LIKE '%' || ? || '%'` (an events feed
+  // over a JSON blob, docs/06 §4.1), and the route passed the raw path parameter. `GET /v1/wallet/%/events`
+  // therefore answered 200 with the newest 200 rows of the whole log, `_` made it a substring oracle, and
+  // `abc` was a silent empty feed. Base58 contains no metacharacter, so the fix is a validation *and* an
+  // escaping — the first answers the honest 400, the second keeps a future caller from re-opening it.
+  const server = src('backend/src/server.ts');
+  const queries = src('backend/src/queries.ts');
+  const sql = src('backend/src/sql.ts');
+  const base58 = src('backend/src/base58.ts');
+
+  assert.match(server, /if \(!isSolanaAddress\(req\.params\.address\)\)/, 'the wallet-events route must validate the address before the query layer sees it');
+  assert.match(base58, /export function isSolanaAddress\(s: string\): boolean/, 'the rule must be a named helper, not an inline regex');
+  assert.match(base58, /base58Decode\(s\)\.length === 32/, 'the address rule is "exactly 32 bytes", as `new PublicKey`');
+  assert.match(queries, /\$\{likeContains\('data'\)\}/, 'walletEvents must build the clause through sql.ts');
+  assert.match(queries, /likePattern\(wallet\)/, 'walletEvents must escape the value it binds');
+  assert.match(sql, /LIKE \? ESCAPE '\\\\'/, 'the clause must declare the escape character (SQLite has no default)');
+  assert.match(sql, /replace\(\/\[\\\\%_\]\/g/, 'the escaping must cover `%`, `_` and the escape character itself');
+  // The shape that produced the finding, anywhere in the query layer — `LIKE` with the value glued into the
+  // pattern text. `likeContains` is the only permitted spelling.
+  const glued = [...queries.matchAll(/LIKE\s*'%'\s*\|\|\s*\?/g)];
+  assert.deepEqual(glued.map((m) => m[0]), [], 'no query may concatenate a bound value into a LIKE pattern');
+});
+
+test('self-test: the SEC-B36 rule rejects the pre-fix route and the pre-fix query', () => {
+  const routeRule = /if \(!isSolanaAddress\(req\.params\.address\)\)/;
+  const preFixRoute = "  v1.get('/wallet/:address/events', (req, res) => { res.json({ events: q.walletEvents(db, req.params.address, limitQuery(req.query.limit, { max: 200, def: 50 })) }); });";
+  const fixedRoute = "    if (!isSolanaAddress(req.params.address)) {";
+  assert.ok(!routeRule.test(preFixRoute), 'the pre-fix route must fail the rule');
+  assert.ok(routeRule.test(fixedRoute), 'the fixed route must pass the rule');
+  const glued = /LIKE\s*'%'\s*\|\|\s*\?/;
+  assert.ok(glued.test("`SELECT name, data FROM events_raw WHERE data LIKE '%' || ? || '%' ORDER BY slot DESC LIMIT ?`"), 'the pre-fix query must fail the rule');
+  assert.ok(!glued.test("`SELECT name, data FROM events_raw WHERE ${likeContains('data')} ORDER BY slot DESC LIMIT ?`"), 'the fixed query must pass the rule');
+});
+
+test('SEC-B37 an input error Express classified as 4xx stays a 4xx (and a handler bug stays a 500)', () => {
+  // `GET /v1/wallet/%zz/events` made the router throw a URIError with `status = 400`; the error middleware
+  // ignored the field, answered 500 `internal`, logged `unhandled request error` and moved
+  // `http_errors_total{kind="unhandled"}`. The rule: the 4xx branch reads the status Express set *and comes
+  // before* the unhandled branch, which is what keeps a real handler bug a 500.
+  const server = src('backend/src/server.ts');
+  const statusRead = /const status = \(err as \{ status\?: unknown \}\)\?\.status \?\? \(err as \{ statusCode\?: unknown \}\)\?\.statusCode;/;
+  assert.match(server, statusRead, 'the handler must read the status Express put on the error');
+  assert.match(server, /if \(typeof status === 'number' && status >= 400 && status < 500\)/, 'only a 4xx is honoured');
+  const at = (re: RegExp) => { const m = re.exec(server); assert.ok(m, `${re} must exist`); return m!.index; };
+  assert.ok(at(statusRead) < at(/log\.error\('unhandled request error'/), 'the 4xx branch must precede the unhandled-error branch');
+  // and a plain `Error` from a handler is still ours: nothing in the middleware turns a bare throw into a 4xx
+  assert.ok(!/status\s*=\s*500|statusCode\s*\?\?\s*500/.test(server.slice(at(statusRead), at(/log\.error\('unhandled request error'/))), 'the branch must not invent a status');
+});
+
+test('SEC-B38 per-client rate-limit keys parse the address instead of slicing its text', () => {
+  // The /64 (and /48) aggregation was computed from the *text* of the address (`ip.split(':').slice(0, 4)`),
+  // which is a /64 only in the fully expanded spelling: `2001:db8::5` and `2001:db8::6` are one /64 but were
+  // two keys (`2001:db8::5::/64` — not even a prefix), so one attacker host rotating addresses inside its own
+  // /64 got a fresh budget each time. `ipKey`/`ipNet` must go through the byte parser.
+  const limits = src('backend/src/ratelimit.ts');
+  assert.match(limits, /export function ipKey\(ip: string\): string/, 'the per-client key must be one named function');
+  assert.match(limits, /const bytes = parseIpv6\(ip\);/, 'the key must be computed from parsed bytes');
+  assert.match(limits, /function parseIpv6\(ip: string\): Uint8Array \| null/, 'the parser must be explicit about failure');
+  assert.match(limits, /bytes\.slice\(0, 10\)\.every\(\(b\) => b === 0\) && bytes\[10\] === 0xff && bytes\[11\] === 0xff/, 'v4-mapped addresses must be recognised, not keyed as IPv6');
+  assert.match(limits, /head\.length \+ tail\.length > 7/, 'the parser must reject a `::` that stands for nothing rather than invent bytes');
+  // text → key by slicing the address string, on an executed line (comments describe the old bug)
+  const sliceRule = /split\(':([^)\n]*)\)\s*\.slice\(0, [34]\)/;
+  const offenders = limits.split('\n').filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line) && sliceRule.test(line));
+  assert.deepEqual(offenders, [], 'no key may be sliced out of the address text');
+  // self-test: the rule accepts a key built from parsed bytes and the parser's own `part.split(':')`
+  assert.ok(sliceRule.test("  if (ip.includes(':')) return ip.split(':').slice(0, 4).join(':') + '::/64';"), 'the pre-fix key must fail the rule');
+  assert.ok(!sliceRule.test("  return `${v6Groups(bytes).slice(0, 4).join(':')}::/64`;"), 'a parsed-bytes key must pass');
+  assert.ok(!sliceRule.test("    const items = part.split(':');"), "the parser's group split must pass");
+});
+
 test('SEC-B3 index filters are honoured end to end now that shape #27 projects the number', () => {
   const spec = src('backend/openapi.yaml');
   const server = src('backend/src/server.ts');

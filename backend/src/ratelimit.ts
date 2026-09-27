@@ -66,22 +66,90 @@ export const POLICIES = {
 
 export function clientIp(req: Request): string {
   // `trust proxy` is on, so express already resolved X-Forwarded-For left-most; fall back to socket.
-  const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
-  // IPv6 /64 and IPv4 exact: a home /64 counts as one client, a single IPv4 as one client.
-  if (ip.includes(':')) return ip.split(':').slice(0, 4).join(':') + '::/64';
-  return ip;
+  return ipKey(req.ip ?? req.socket.remoteAddress ?? 'unknown');
+}
+
+/**
+ * SEC-B38: the per-client key — IPv4 exact, IPv6 by /64 (SEC-H3: "a home /64 counts as one client").
+ *
+ * It used to slice the *text* of the address (`ip.split(':').slice(0, 4)`), which is only a /64 when the text
+ * happens to be the fully expanded form. `2001:db8::5` and `2001:db8::6` are one /64, but as text they are
+ * different keys (`2001:db8::5::/64` — not even a well-formed prefix), so an attacker holding a /64 whose
+ * first four groups contain the `::` collapse got a fresh 600-request budget per source address and the
+ * aggregation the limit exists for did nothing. A v4-mapped address (`::ffff:203.0.113.9`) was a third key
+ * for a client that also arrives as `203.0.113.9`. Parsing to bytes first makes equal networks equal keys,
+ * in one canonical spelling, whatever the edge wrote.
+ */
+export function ipKey(ip: string): string {
+  const bytes = parseIpv6(ip);
+  if (!bytes) return ip;                                        // IPv4 (or 'unknown'): already exact
+  if (isV4Mapped(bytes)) return v4FromMapped(bytes);
+  return `${v6Groups(bytes).slice(0, 4).join(':')}::/64`;
 }
 
 /** Network key for the /24-style limits and for `human_checks.ip_net`: IPv4 /24, IPv6 /48 (one ISP customer). */
 export function ipNet(req: Request): string {
   const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
-  if (ip.includes(':')) {
-    const v4 = /::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(ip)?.[1];
-    if (v4) return v4.split('.').slice(0, 3).join('.') + '.0/24';
-    return ip.split(':').slice(0, 3).join(':') + '::/48';
+  const bytes = parseIpv6(ip);
+  if (bytes) {
+    const v4 = isV4Mapped(bytes) ? v4FromMapped(bytes) : null;
+    return v4 ? `${v4.split('.').slice(0, 3).join('.')}.0/24` : `${v6Groups(bytes).slice(0, 3).join(':')}::/48`;
   }
   const parts = ip.split('.');
-  return parts.length === 4 ? parts.slice(0, 3).join('.') + '.0/24' : ip;
+  return parts.length === 4 ? `${parts.slice(0, 3).join('.')}.0/24` : ip;
+}
+
+/**
+ * IPv6 text → 16 bytes, or `null` when this is not one (IPv4 and anything unparseable). Handles the `::`
+ * collapse, upper case, leading zeros, one embedded dotted-quad tail (`::ffff:1.2.3.4`, the form an edge
+ * usually writes for an IPv4 client) and rejects everything else — `::1::2`, `1:2:3:4:5:6:7:8:9`, `12345::`.
+ */
+function parseIpv6(ip: string): Uint8Array | null {
+  const raw = ip.trim().toLowerCase();
+  if (!raw.includes(':')) return null;
+  const zone = raw.indexOf('%');                                // `fe80::1%eth0` — scope is not part of the key
+  const text = zone === -1 ? raw : raw.slice(0, zone);
+  const halves = text.split('::');
+  if (halves.length > 2) return null;
+  const groups = (part: string): number[] | null => {
+    if (part === '') return [];
+    const out: number[] = [];
+    const items = part.split(':');
+    for (const [i, item] of items.entries()) {
+      if (i === items.length - 1 && item.includes('.')) {        // dotted-quad tail: only as the last group
+        const quad = item.split('.').map(Number);
+        if (quad.length !== 4 || quad.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+        out.push(quad[0] * 256 + quad[1], quad[2] * 256 + quad[3]);
+        continue;
+      }
+      if (!/^[0-9a-f]{1,4}$/.test(item)) return null;
+      out.push(parseInt(item, 16));
+    }
+    return out;
+  };
+  const head = groups(halves[0]);
+  const tail = halves.length === 2 ? groups(halves[1]) : [];
+  if (!head || !tail) return null;
+  // No `::`: exactly 8 groups. With it: the collapse stands for at least one — `1:2:3:4:5:6:7:8` has none and
+  // `1:2:3:4:5:6:7::` is the same address as `1:2:3:4:5:6:7:0`, so a full-length left side is not a collapse.
+  const filled = halves.length === 1 ? head : [...head, ...Array(8 - head.length - tail.length).fill(0), ...tail];
+  if (filled.length !== 8 || (halves.length === 2 && head.length + tail.length > 7)) return null;
+  const bytes = new Uint8Array(16);
+  filled.forEach((g, i) => { bytes[i * 2] = g >> 8; bytes[i * 2 + 1] = g & 0xff; });
+  return bytes;
+}
+
+function v6Groups(bytes: Uint8Array): string[] {
+  return Array.from({ length: 8 }, (_, i) => ((bytes[i * 2] << 8) | bytes[i * 2 + 1]).toString(16));
+}
+
+/** `::ffff:a.b.c.d` — the IPv4-mapped range (both bytes of group 6 are the last two of the prefix). */
+function isV4Mapped(bytes: Uint8Array): boolean {
+  return bytes.slice(0, 10).every((b) => b === 0) && bytes[10] === 0xff && bytes[11] === 0xff;
+}
+
+function v4FromMapped(bytes: Uint8Array): string {
+  return `${bytes[12]}.${bytes[13]}.${bytes[14]}.${bytes[15]}`;
 }
 
 export function identityFor(req: Request, by: Policy['by'], walletFromBody?: (req: Request) => string | undefined): string {

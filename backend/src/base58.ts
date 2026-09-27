@@ -23,6 +23,21 @@ export function base58Encode(bytes: Uint8Array): string {
   return out;
 }
 
+/**
+ * SEC-B36: is this exactly a base58-encoded 32-byte public key? The same rule `new PublicKey(s)` applies to a
+ * string (the tests pin that agreement on the boundary cases), stated without pulling `@solana/web3.js` into
+ * the request path.
+ *
+ * It exists because "looks like an address" is a *boundary* decision: the byte length is the whole check, and
+ * an alphabet check is implied by the decode — which matters where a path parameter is bound into something
+ * that is not a plain comparison (a `LIKE` pattern, for instance: base58 has no `%` and no `_`, so a value
+ * that passes here cannot rewrite the pattern it is bound into).
+ */
+export function isSolanaAddress(s: string): boolean {
+  if (typeof s !== 'string' || s.length < 32 || s.length > 44) return false;
+  try { return base58Decode(s).length === 32; } catch { return false; }
+}
+
 export function base58Decode(s: string): Uint8Array {
   const bytes: number[] = []; // little-endian accumulator
   for (const ch of s) {

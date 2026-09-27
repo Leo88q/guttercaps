@@ -6,6 +6,7 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
 import type { Connection } from '@solana/web3.js';
 import cors from 'cors';
+import { isSolanaAddress } from './base58.ts';
 import { CORS_ORIGINS, CORS_ALLOW_CREDENTIALS, WS_PATH, assertProductionConfig } from './config.ts';
 import { requestLogger, routePattern, log, errFields } from './log.ts';
 import { metrics, exposition, registerScrape } from './metrics.ts';
@@ -242,7 +243,21 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.get('/prices', (_req, res) => { res.json(priceStatus(db)); });
   v1.get('/stats', (_req, res) => { res.json(q.stats(db)); });
   v1.get('/rewards/skr-pool', (_req, res) => { res.json(q.skrPool(db)); });
-  v1.get('/wallet/:address/events', (req, res) => { res.json({ events: q.walletEvents(db, req.params.address, limitQuery(req.query.limit, { max: 200, def: 50 })) }); });
+  v1.get('/wallet/:address/events', (req, res) => {
+    // SEC-B36: a path parameter is user input, and this one is bound into a `LIKE` *pattern* by the query
+    // layer (`data LIKE '%' || ? || '%'` — the feed is a scan of a JSON blob by design, docs/06 §4.1).
+    // Unvalidated, `%` was a pattern instead of an address: `GET /v1/wallet/%/events` answered 200 with the
+    // newest 200 raw events of the whole protocol, `_` made the feed a substring oracle over that blob, and
+    // junk like `abc` was a silent empty feed rather than a 400. The event log is public chain data, so this
+    // was a contract bug rather than a leak — but it is one edit from being a leak (the feed is the only
+    // reader of `events_raw.data`), and `walletEvents` now escapes the metacharacters as well, because the
+    // query layer must not depend on every caller remembering.
+    if (!isSolanaAddress(req.params.address)) {
+      res.status(400).json({ code: 'bad_pubkey', message: 'address must be a base58-encoded 32-byte public key' });
+      return;
+    }
+    res.json({ events: q.walletEvents(db, req.params.address, limitQuery(req.query.limit, { max: 200, def: 50 })) });
+  });
 
   // ------------------------------------------------------------ auth
   const bodyAddress = (req: Request) => (typeof req.body?.address === 'string' ? (req.body.address as string) : undefined);
@@ -532,6 +547,17 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     if (/Invalid public key|Non-base58/.test(msg)) { res.status(400).json({ code: 'bad_pubkey', message: msg }); return; }
     if ((err as { type?: string })?.type === 'entity.too.large') { res.status(413).json({ code: 'payload_too_large', message: 'Body limit is 16 KB' }); return; }
     if ((err as { type?: string })?.type === 'entity.parse.failed') { res.status(400).json({ code: 'bad_json', message: 'Malformed JSON body' }); return; }
+    // SEC-B37: Express classifies a few input errors itself *before* any handler runs — the one that reaches
+    // here in practice is an undecodable path parameter (`GET /v1/wallet/%zz/events`: `decodeURIComponent`
+    // throws a URIError and the router marks it `status = 400`). Ignoring that field answered 500, logged
+    // `unhandled request error` and moved `http_errors_total{kind="unhandled"}` — i.e. a one-line URL let a
+    // client turn a client mistake into our alert. Only a 4xx is honoured: a *handler* throwing a plain
+    // `Error` is still a bug of ours and stays a 500.
+    const status = (err as { status?: unknown })?.status ?? (err as { statusCode?: unknown })?.statusCode;
+    if (typeof status === 'number' && status >= 400 && status < 500) {
+      res.status(status).json({ code: 'bad_request', message: 'Malformed request' });
+      return;
+    }
     // A 500 means *we* broke, and its message is ours to read: an SQL fragment, an RPC URL with a key
     // in it, or a file path. The client gets a code it can branch on plus the request id, and the same
     // request id is on the log line — which is the only way a support ticket maps to a stack trace.

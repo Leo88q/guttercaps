@@ -224,6 +224,15 @@ describe('T-B-43 hardening', () => {
       expect(() => noHosts.assertProductionConfig()).toThrow(/TURNSTILE_HOSTNAMES/);
       vi.resetModules();
       process.env.TURNSTILE_HOSTNAMES = 'app.guttercaps.gg,.guttercaps.gg';
+      // SEC-B39: `RATE_LIMIT=0` is the local load-test switch, and it turns every abuse budget off at once —
+      // a deploy that inherited the line from a load-test box served unbounded traffic silently.
+      vi.resetModules();
+      process.env.RATE_LIMIT = '0';
+      const unthrottled = await import('../src/config.ts');
+      expect(() => unthrottled.assertProductionConfig()).toThrow(/RATE_LIMIT/);
+      expect(unthrottled.RATE_LIMIT_ENABLED).toBe(false);
+      delete process.env.RATE_LIMIT;
+      vi.resetModules();
       const strong = await import('../src/config.ts');
       expect(() => strong.assertProductionConfig()).not.toThrow();
       expect(strong.HUMAN_CHECK_ENABLED).toBe(true);

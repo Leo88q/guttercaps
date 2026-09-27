@@ -358,13 +358,16 @@ paths:
       security: []
       summary: Raw indexed events mentioning a wallet (idempotent source-of-truth rows, newest first)
       parameters:
-        - { in: path, name: address, required: true, schema: { $ref: '#/components/schemas/Pubkey' } }
+        # SEC-B36 (2026-09-27): the address is bound into a `LIKE` pattern in the query layer, so anything
+        # that is not exactly a 32-byte base58 key is a 400 rather than a pattern (`%` used to answer with the
+        # newest 200 events of the whole log, `_` made the feed a substring oracle, junk was a silent []).
+        - { in: path, name: address, required: true, schema: { $ref: '#/components/schemas/Pubkey' }, description: base58-encoded 32-byte public key; anything else answers 400 `bad_pubkey` }
         # SEC-B2 (2026-09-26): a single decimal integer; `abc`/`1.5` used to reach SQL as a NULL LIMIT
         # (HTTP 500) and `-1` bypassed the cap entirely (SQLite reads a negative LIMIT as "no limit").
         - { in: query, name: limit, required: false, schema: { type: integer, minimum: 0, maximum: 200, default: 50 } }
       responses:
         '200': { description: events, content: { application/json: { schema: { type: object, properties: { events: { type: array, items: { $ref: '#/components/schemas/RawEvent' } } } } } } }
-        '400': { $ref: '#/components/responses/Error', description: bad_request — `limit` is not a single non-negative integer (410-style silent coercion is gone) }
+        '400': { $ref: '#/components/responses/Error', description: 'bad_request — `limit` is not a single non-negative integer, or `address` is not a 32-byte base58 key (SEC-B2, SEC-B36)' }
   /chips/{asset}:
     get:
       tags: [collections]

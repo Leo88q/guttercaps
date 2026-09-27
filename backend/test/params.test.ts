@@ -21,7 +21,11 @@ import { ingestTx } from '../src/ingest.ts';
 import { createApp } from '../src/server.ts';
 import { MemoryStore, createLimiter } from '../src/ratelimit.ts';
 import { clampInt, cursorQuery, intQuery, limitQuery } from '../src/params.ts';
+import * as q from '../src/queries.ts';
+import { metrics } from '../src/metrics.ts';
 import { ServiceError } from '../src/services.ts';
+import { isSolanaAddress } from '../src/base58.ts';
+import { PublicKey } from '@solana/web3.js';
 import { world } from './fixtures.ts';
 
 let db: Db;
@@ -82,6 +86,33 @@ describe('params.ts — the parser contract', () => {
   });
 });
 
+describe('SEC-B36 isSolanaAddress — the boundary rule, cross-checked against the library', () => {
+  // The route refuses what this function refuses, so it has to be the rule the rest of the system uses:
+  // `new PublicKey(s)` is what every other place in this repo (and the client's transaction builders) means
+  // by "an address". If this helper were stricter, a request the chain accepts would be a 400; if it were
+  // looser, it would let a string through that cannot be a key — and, in this route, that the LIKE escaping
+  // then has to catch. Agreement is the contract, so it is asserted rather than assumed.
+  const libraryAccepts = (s: string): boolean => { try { void new PublicKey(s); return true; } catch { return false; } };
+
+  it('agrees with new PublicKey on valid addresses, hostile strings and the length boundaries', () => {
+    const cases = [
+      w.alice, w.bob, w.chips[0],                                        // real keys from the fixture world
+      '1'.repeat(32), 'A'.repeat(43), 'A'.repeat(44), 'A'.repeat(45),    // 44 chars is the base58 maximum for 32 bytes
+      '%', '_', 'abc', '', ' ', '1', 'O0Il', '0', 'l', '+', 'a/b',       // non-base58, too short, alphabet traps
+      'z'.repeat(44), '2'.repeat(44), 'so11111111111111111111111111111111111111112',
+    ];
+    for (const s of cases) expect(isSolanaAddress(s), JSON.stringify(s)).toBe(libraryAccepts(s));
+  });
+
+  it('accepts exactly the 32-byte keys and nothing else', () => {
+    expect(isSolanaAddress(w.alice)).toBe(true);
+    expect(isSolanaAddress('A'.repeat(44))).toBe(true);       // 32 zero bytes, a legal (if useless) key
+    expect(isSolanaAddress('A'.repeat(45))).toBe(false);      // 33 bytes
+    expect(isSolanaAddress('%')).toBe(false);
+    expect(isSolanaAddress('')).toBe(false);
+  });
+});
+
 describe('/v1/wallet/:address/events — the endpoint that produced both failures', () => {
   it('answers 200 for a valid limit and honours it', async () => {
     const res = await get(`/v1/wallet/${w.alice}/events?limit=1`);
@@ -114,6 +145,40 @@ describe('/v1/wallet/:address/events — the endpoint that produced both failure
     const res = await get(`/v1/wallet/${w.alice}/events?limit=0`);
     expect(res.status).toBe(200);
     expect((await res.json() as { events: unknown[] }).events).toHaveLength(0);
+  });
+
+  // SEC-B36: the address is not compared, it is a `LIKE` *pattern* argument — `data LIKE '%' || ? || '%'`
+  // is how this feed queries a JSON blob (docs/06 §4.1). So the path segment was a pattern language before
+  // this fix: `GET /v1/wallet/%/events` answered 200 with the newest 200 rows of `events_raw`, i.e. other
+  // wallets' events, `_` stood for "any character" (a substring oracle over the whole log), and `abc` was a
+  // silent empty feed. A Solana address is exactly 32 base58 bytes and base58 has no metacharacter, so the
+  // honest answer to every one of those is 400.
+  it('SEC-B36 rejects anything that is not a 32-byte base58 address instead of treating it as a pattern', async () => {
+    for (const addr of ['%', '_', '%%', 'abc', 'O0Il', 'a'.repeat(45), '1', ' ']) {
+      const res = await get(`/v1/wallet/${encodeURIComponent(addr)}/events?limit=200`);
+      expect(res.status, `address=${JSON.stringify(addr)}`).toBe(400);
+      expect((await res.json() as { code: string }).code, `address=${JSON.stringify(addr)}`).toBe('bad_pubkey');
+    }
+  });
+
+  it('SEC-B36 a wildcard cannot widen the feed to another wallet\'s events', async () => {
+    // the widening itself, i.e. the pre-fix behaviour, is what this pins: `%` must not answer with rows
+    expect((await get(`/v1/wallet/${encodeURIComponent('%')}/events?limit=200`)).status).toBe(400);
+    for (const wallet of [w.alice, w.bob]) {
+      const body = await (await get(`/v1/wallet/${wallet}/events?limit=200`)).json() as { events: { data: string }[] };
+      expect(body.events.length).toBeGreaterThan(0);
+      for (const e of body.events) expect(e.data).toContain(wallet);
+    }
+  });
+
+  it('SEC-B36 the query layer escapes a pattern it is handed (the route is not the only defence)', () => {
+    // `walletEvents` is a building block with more than one possible caller: with the value escaped, a raw
+    // `%` matches the *character* percent and finds nothing — before the fix it matched every row.
+    expect(db.scalar(`SELECT COUNT(*) FROM events_raw`)).toBeGreaterThan(0);
+    expect(q.walletEvents(db, '%', 200)).toEqual([]);
+    expect(q.walletEvents(db, '_', 200)).toEqual([]);
+    // and a valid address still matches its own rows (the escape changes nothing for base58)
+    expect(q.walletEvents(db, w.alice, 200).length).toBeGreaterThan(0);
   });
 });
 
@@ -217,4 +282,31 @@ describe('a 4xx is the whole contract — no route may answer 5xx on a hostile q
     expect(bad).toEqual([]);
   }, 60_000);
 
+});
+
+describe('SEC-B37: a path parameter that cannot be percent-decoded is a 4xx, never our 500', () => {
+  // The query-string sweep above cannot see this class: the failure happens *inside the router*, before any
+  // handler runs. Express decodes path parameters itself, marks the `URIError` `status = 400` and hands it to
+  // the error middleware — which only knew about `ServiceError`/`AuthError` and answered 500 `internal`,
+  // logged `unhandled request error` and moved `http_errors_total{kind="unhandled"}`. One URL was enough to
+  // write error-level log lines and drive the metric an operator alerts on.
+  const MALFORMED = ['/v1/wallet/%zz/events', '/v1/chips/%', '/v1/leaderboard/%zz', '/v1/collections/%zz/chips/1', '/v1/wallet/%e0%a4/events'];
+
+  it('answers 400 bad_request for an undecodable path segment', async () => {
+    for (const p of MALFORMED) {
+      const res = await get(p);
+      expect(res.status, p).toBe(400);
+      expect((await res.json() as { code: string }).code, p).toBe('bad_request');
+    }
+  });
+
+  it('and is not counted as an unhandled error (the series an operator alerts on)', async () => {
+    const unhandled = async (): Promise<number> => {
+      const line = (await metrics.exposition()).split('\n').find((l) => l.startsWith('http_errors_total{') && l.includes('unhandled'));
+      return Number(line?.trim().split(' ')[1] ?? 0);
+    };
+    const before = await unhandled();
+    for (const p of MALFORMED) await (await get(p)).arrayBuffer();
+    expect(await unhandled()).toBe(before);
+  });
 });

@@ -407,6 +407,59 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   invalidation key to route to. Pinned by the `SEC-B35` rule in `tests/security/events-coverage.test.ts`
   (every mapped wire type is a key the client actually implements; all six compressed events are mapped and
   decoded; two mutations) and by the wire test in `backend/test/ops.test.ts`.
+- **SEC-B39 (2026-09-27): closed — production could start with every rate limit switched off.** `RATE_LIMIT=0`
+  is the load-test switch (`config.ts`: "only for local load scripts") and it turns *all* budgets off at once:
+  per-IP reads, per-session mutations, quotes, claims, the per-/24 claim and per-hour human networks, the
+  arena. `assertProductionConfig` knew the other dev shortcuts (`FINALITY_ASSUME=1`, an insecure cookie, a
+  short session secret) and not this one, so an environment that inherited the line from a load-test box
+  served unbounded traffic — and a limit that is off does not look different in the logs from a limit nobody
+  reached. Production now refuses to start. Pinned by `backend/test/security.test.ts` (the hardened env passes
+  with `RATE_LIMIT` unset and throws on `RATE_LIMIT=0`).
+- **SEC-B38 (2026-09-27): closed — the /64 and /48 limiter keys were not prefixes.** `clientIp` built its key
+  by slicing the *text* of the address (`ip.split(':').slice(0, 4)`), which is a /64 only in the fully expanded
+  spelling. For an address whose text collapses groups 3–4 (`2001:db8::5`, one /64 with `2001:db8::6`) the key
+  came out as the address itself with `::/64` glued on — not a well-formed prefix — so every address inside
+  that /64 was its own bucket: one host rotating addresses inside its own /64 collected a fresh budget for
+  each, which is the one thing the aggregation exists to stop (the SEC-H3 rule "a home /64 is one client").
+  `2001:db8::5` and `2001:0db8:0000:…:0005` were two keys as well, and a v4-mapped `::ffff:203.0.113.9` was a
+  third key for a client that also arrives as `203.0.113.9`. The same slicing produced the strings stored in
+  `human_checks.ip_net`, i.e. the per-/24 accounting had the same defect. `ipKey`/`ipNet` now parse the address
+  to bytes first (`parseIpv6`: `::`, upper case, leading zeros, one dotted-quad tail, zone index) and build the
+  key from the parsed groups, converting a v4-mapped address to its dotted IPv4 form; anything unparseable
+  stays an opaque key of its own rather than being merged into someone else's bucket. Pinned by
+  `backend/test/human.test.ts` (every spelling of one /64 is one key, the neighbouring /64 is not, IPv4 and
+  v4-mapped agree, malformed literals stay distinct) and by the `SEC-B38` rule in
+  `tests/security/api-input.test.ts` (the key is built from parsed bytes, v4-mapped is recognised, nothing
+  slices a key out of the address text).
+- **SEC-B37 (2026-09-27): closed — a URL that cannot be percent-decoded was a 500 and an error log line.**
+  Express decodes path parameters before any handler runs and marks the resulting `URIError` with
+  `status = 400`; the error middleware recognised `ServiceError`, `AuthError`, `bad_pubkey` and the two
+  body-parser types, and everything else became 500 `internal`. `GET /v1/wallet/%zz/events` therefore answered
+  500, wrote an `unhandled request error` line and moved `http_errors_total{kind="unhandled"}` — the series an
+  operator alerts on. One URL was enough to write error-level logs and drive that metric, and a client typo
+  looked like a server fault. The middleware now honours a 4xx status Express itself set, and only a 4xx: a
+  handler throwing a plain `Error` is still a 500, which is what keeps the metric meaningful. Pinned by
+  `backend/test/params.test.ts` (five undecodable paths → 400 `bad_request`, and the unhandled counter does
+  not move) and by the `SEC-B37` rule in `tests/security/api-input.test.ts` (the branch exists, reads the
+  status, and precedes the unhandled branch).
+- **SEC-B36 (2026-09-27): closed — a wallet address was a LIKE pattern, so `%` was the whole event log.**
+  `GET /v1/wallet/:address/events` is public (`security: []`) and its only filter is `data LIKE '%' || ? || '%'`
+  — a scan of `events_raw`'s JSON blob, the accepted cost of an events feed over a blob (docs/06 §4.1,
+  `ops/deploy/data-layer.md`). The path parameter went in unvalidated, so it was not an address but a
+  *pattern*: `GET /v1/wallet/%/events` answered 200 with the newest 200 rows of the entire log, `_` made the
+  feed a substring oracle over every wallet's events, and junk (`abc`, a 45-character string) was a silent
+  empty feed instead of a 400. Nothing secret leaked — an `events_raw` row is a decoded *public* chain event
+  and the feed is documented as public — but the endpoint answered a different question than the one it
+  documents, and the pattern language is one edit away from the leak that would matter (this blob is the only
+  place those bytes are read, and the WS header's "everything here is already public in REST" argument depends
+  on the feed behaving like a read, not like a query engine). The route now refuses anything that is not
+  exactly a 32-byte base58 key with 400 `bad_pubkey` (`isSolanaAddress` — the rule `new PublicKey` applies to a
+  string, pinned against it on the boundary cases), and the query layer escapes `%`, `_` and the escape
+  character itself *and declares it* (`likeContains`/`likePattern` in `sql.ts`: SQLite has no default escape
+  character while Postgres has one, so an escape that is not declared is a different query per dialect). Pinned
+  by `backend/test/params.test.ts` (hostile addresses → 400 `bad_pubkey`; a wildcard returns nothing, `%` and
+  `_` alike; alice's feed contains only rows that mention alice), `backend/test/sql.test.ts` (the clause and the
+  escaping, character by character) and the `SEC-B36` rule + self-test in `tests/security/api-input.test.ts`.
 - **SEC-B28 (2026-09-27): closed — the claim market listed in currencies it can only fail to settle.**
   `buy_compressed` / `buy_compressed_asset` pay the seller with `system_program::transfer` and answer
   `CompressedCurrencyMismatch` for anything else (the SPL legs of the legacy `buy` were never wired into

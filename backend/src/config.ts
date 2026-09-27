@@ -158,6 +158,11 @@ export function assertProductionConfig(): void {
   if (SESSION_SECRET.length < 32) problems.push('SESSION_SECRET must be ≥ 32 chars (sessions would not survive a restart)');
   if (SIWS_DOMAINS.length === 0) problems.push('SIWS_DOMAINS (or non-wildcard CORS_ORIGINS) is required');
   if (env.FINALITY_ASSUME === '1') problems.push('FINALITY_ASSUME=1 is a dev shortcut — paid services must wait for finalized transactions (SEC-M5)');
+  // SEC-B39. `RATE_LIMIT=0` is documented as a load-test switch ("only for local load scripts"), and it turns
+  // *every* abuse budget off at once: per-IP reads, per-session mutations, quotes, claims, the /24 claim and
+  // /h human networks, the arena. A deploy that inherited the line from a load-test box served unbounded
+  // traffic with nothing in the logs to say so; refusing to start is the cheap direction.
+  if (!RATE_LIMIT_ENABLED) problems.push('RATE_LIMIT=0 disables every abuse budget (reads, mutations, quotes, claims, human checks) — it is a local load-test switch, not a deployment mode');
   if (!HUMAN_CHECK_OPT_OUT && TURNSTILE_SECRET.length === 0) problems.push('TURNSTILE_SECRET is required (proof of human on reward settlement) — or set HUMAN_CHECK=0 explicitly');
   if (HUMAN_CHECK_ENABLED && TURNSTILE_HOSTNAMES.length === 0) problems.push('TURNSTILE_HOSTNAMES is required when Turnstile is enabled (a sitekey is public — without the hostname check any site can mint passes for our faucets)');
   if (!env.DB_PATH || DB_PATH === ':memory:') problems.push('DB_PATH must be explicit and persistent in production — an indexer restart would otherwise wipe or split projections');

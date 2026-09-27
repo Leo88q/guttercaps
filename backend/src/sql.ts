@@ -128,3 +128,23 @@ export const jsonFlagEq = (column: string, key: string, want: boolean): SqlFragm
   dialect === 'postgres'
     ? `COALESCE((${column})::jsonb->>'${jsonKey(key)}', 'false') IN ('true', '1') = ${want ? 'TRUE' : 'FALSE'}`
     : `COALESCE(json_extract(${column}, '$.${jsonKey(key)}'), 0) = ${want ? 1 : 0}`;
+
+/**
+ * **SEC-B36.** `x LIKE '%value%'` for a *value* that came from the network: `likeContains` emits the clause,
+ * `likePattern` builds the argument, and the two live together because either one alone is a bug.
+ *
+ * The escaping is what makes the bound value a *literal* — `%`, `_` and the escape character itself (so it
+ * escapes its own output). `ESCAPE '\'` is what makes that escaping active: SQLite has no default escape
+ * character at all while Postgres has `\`, so a query that escapes without declaring the character matches a
+ * literal backslash in one dialect and a metacharacter in the other. A call site that writes
+ * `LIKE '%' || ? || '%'` and binds a raw value is not a *wrong query* — it is a different question, which is
+ * how `GET /v1/wallet/%/events` answered 200 with **every** event row in the database instead of an empty
+ * feed (the address was the only thing narrowing the scan).
+ *
+ * The column is interposed into the statement text (like `jsonAt`'s key) and is a literal at every call site;
+ * the value is always bound.
+ */
+export const likeContains = (column: string): SqlFragment => `${column} LIKE ? ESCAPE '\\'`;
+
+/** See `likeContains`: `%50%o_` → `%50\%o\_`, i.e. the value matches literally whatever it contains. */
+export const likePattern = (value: string): string => `%${value.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;

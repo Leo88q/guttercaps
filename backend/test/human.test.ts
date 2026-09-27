@@ -6,7 +6,7 @@ import { ed25519 } from '@noble/curves/ed25519';
 import type { Server } from 'node:http';
 import { Db } from '../src/db.ts';
 import { createApp } from '../src/server.ts';
-import { MemoryStore, POLICIES, createLimiter, ipNet } from '../src/ratelimit.ts';
+import { MemoryStore, POLICIES, clientIp, createLimiter, ipKey, ipNet } from '../src/ratelimit.ts';
 import { base58Encode } from '../src/base58.ts';
 import { ingestTx } from '../src/ingest.ts';
 import * as human from '../src/human.ts';
@@ -240,6 +240,40 @@ describe('T-B-49 HTTP: /me/human, fingerprint at sign-in, IP /24 budgets', () =>
     expect(ipNet(rq('203.0.113.77'))).toBe('203.0.113.0/24');
     expect(ipNet(rq('::ffff:203.0.113.77'))).toBe('203.0.113.0/24');
     expect(ipNet(rq('2001:db8:abcd:1234::1'))).toBe('2001:db8:abcd::/48');
+  });
+
+  // SEC-B38: the keys were sliced out of the address *text*, which is only a prefix when the text is the
+  // fully expanded form. `2001:db8::5` and `2001:db8::6` are one /64 (and one /48), but as text they produced
+  // `2001:db8::5::/64` and `2001:db8::6::/64` — not even well-formed prefixes, and distinct keys, so one host
+  // rotating addresses inside its own /64 collected a fresh per-IP budget for every address (the /64 rule is
+  // exactly what should have stopped that). Equal networks must be equal keys whatever the edge wrote.
+  it('SEC-B38 IP keys are canonical: every spelling of one network is one key', () => {
+    const rq = (ip: string) => ({ ip, socket: {} }) as never;
+    const same = (a: string, b: string) => expect(ipKey(a), `${a} vs ${b}`).toBe(ipKey(b));
+    // one /64, three spellings (compressed, expanded, upper case) — and it is a /64, not the address
+    same('2001:db8::5', '2001:db8::6');
+    same('2001:DB8::5', '2001:0db8:0000:0000:0000:0000:0000:0005');
+    expect(ipKey('2001:db8::5')).toBe('2001:db8:0:0::/64');
+    expect(ipKey('2001:db8:abcd:1234::1')).toBe('2001:db8:abcd:1234::/64');
+    // the neighboring /64 is a different key (the aggregation is not a blanket ban on an ISP's range)
+    expect(ipKey('2001:db8:0:1::5')).not.toBe(ipKey('2001:db8::5'));
+    // what `identityFor` keys on: the request path goes through the same function
+    expect(clientIp(rq('2001:db8::5'))).toBe(ipKey('2001:db8::5'));
+    // IPv4 keeps an exact key, and the v4-mapped spelling of it is the *same* client, not a third bucket
+    expect(ipKey('203.0.113.9')).toBe('203.0.113.9');
+    same('::ffff:203.0.113.9', '203.0.113.9');
+    same('::FFFF:203.0.113.9', '203.0.113.9');
+    expect(ipKey('unknown')).toBe('unknown');
+    // /48 side of the same rule: the malformed `2001:db8:::/48` must not exist any more
+    same('2001:db8::5', '2001:db8::6');
+    expect(ipNet(rq('2001:db8::5'))).toBe('2001:db8:0::/48');
+    expect(ipNet(rq('2001:db8::5'))).toBe(ipNet(rq('2001:0db8:0000:0000:0000:0000:0000:0006')));
+    expect(ipNet(rq('fe80::1%eth0'))).toBe('fe80:0:0::/48');            // a zone index is not part of the key
+    expect(ipNet(rq('::ffff:203.0.113.9'))).toBe('203.0.113.0/24');
+    // Anything the parser does not understand is an opaque key of its own (the pre-fix behaviour), never a
+    // *shared* one: collapsing two unknown clients into one bucket would throttle an innocent third party,
+    // which is worse than the bypass this fixes.
+    for (const junk of ['1:2:3:4:5:6:7:8:9', '::1::2', '12345::', 'g::1']) expect(ipKey(junk)).toBe(junk);
   });
 
   it('sign-in records the salted device hash; /me exposes human + deviceLimited; POST /me/human verifies and unlocks', async () => {

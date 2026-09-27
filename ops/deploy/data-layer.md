@@ -33,7 +33,7 @@
 | `COLLATE NOCASE` | 7 | `services.ts` 4, `db.ts` 3 | `citext` или `LOWER()` + выражения в индексах (handles: регистронезависимость — часть контракта uniqueness) |
 | `json_extract(` | 9 | `queries.ts` 6, `antifraud.ts` 3 | `->>`/`jsonb_path_query`; заодно TEXT-колонки с JSON становятся `jsonb` с GIN |
 | `AUTOINCREMENT` | 4 | `db.ts` | `BIGSERIAL`/`IDENTITY` (внимание: `events_raw.id` — порядок replay, `ORDER BY slot, id`) |
-| `strftime`, `json_valid`, `RETURNING`, `WITHOUT ROWID`, `fts5` | 0 | — | диалект не въелся туда, куда обычно въедается; поиск по `data LIKE '%' \|\| ? \|\| '%'` (`queries.ts:422`) — это отдельный разговор: в Postgres просится `pg_trgm`/`tsvector`, и это **улучшение**, а не перенос |
+| `strftime`, `json_valid`, `RETURNING`, `WITHOUT ROWID`, `fts5` | 0 | — | диалект не въелся туда, куда обычно въедается; поиск по `data LIKE '%' \|\| ? \|\| '%'` (`queries.ts::walletEvents`) — это отдельный разговор: в Postgres просится `pg_trgm`/`tsvector`, и это **улучшение**, а не перенос. Аргумент этого `LIKE` теперь собирается `likePattern` и клауза объявляет `ESCAPE` (SEC-B36): значение из сети не должно уметь писать в паттерн — до фикса `GET /v1/wallet/%/events` отдавал весь лог |
 | **итого мест, где SQL диалектен** | **77** | | |
 
 77 правок — это день-два с учётом тестов. Не они определяют цену.

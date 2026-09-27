@@ -1379,6 +1379,7 @@ export interface paths {
                 };
                 header?: never;
                 path: {
+                    /** @description base58-encoded 32-byte public key; anything else answers 400 `bad_pubkey` */
                     address: components["schemas"]["Pubkey"];
                 };
                 cookie?: never;
@@ -1396,7 +1397,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description bad_request — `limit` is not a single non-negative integer (410-style silent coercion is gone) */
+                /** @description bad_request — `limit` is not a single non-negative integer, or `address` is not a 32-byte base58 key (SEC-B2, SEC-B36) */
                 400: components["responses"]["Error"];
             };
         };

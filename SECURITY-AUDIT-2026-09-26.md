@@ -43,6 +43,10 @@ SECURITY-SCAN-TRIAGE-2026-09-23) учтены; здесь — только но�
 | SEC-B33 | Medium (игровой слой: двойной расчёт матча) | `backend/src/arena.ts` (`resolve` → `settleMatch`, guard `status = 'revealing' AND seed IS NULL`, выплаты за `applied === 0`, перечитывание строки; `forfeit` в обеих ветках), `backend/test/game.test.ts` | ✅ закрыто |
 | SEC-B32 | Low (антифрод: невидимая компресс-сделка) | `backend/src/antifraud.ts` (прайс-спайк-плечо: архетип из `compressed_claims.claim → chips`), `backend/test/game.test.ts` | ✅ закрыто |
 | SEC-B35 | Low (wire: кадр, которого клиент не знает) | `backend/src/wire.ts` (6 событий на ключи клиента `listing_changed`/`sale`/`stake_changed` + payload), `tests/security/events-coverage.test.ts`, `backend/test/ops.test.ts` | ✅ закрыто |
+| SEC-B39 | Low (прод-конфиг: все лимиты выключены) | `backend/src/config.ts` (отказ в `assertProductionConfig`), `backend/test/security.test.ts` | ✅ закрыто |
+| SEC-B38 | Low (лимиты по сети: ключ не префикс) | `backend/src/ratelimit.ts` (`ipKey`, `ipNet`, `parseIpv6` — байты, потом группы; v4-mapped → dotted IPv4), `backend/test/human.test.ts`, `tests/security/api-input.test.ts` | ✅ закрыто |
+| SEC-B37 | Low (HTTP: 5xx из-за неразбираемого URL) | `backend/src/server.ts` (ветка 4xx из `err.status` перед веткой unhandled), `backend/test/params.test.ts`, `tests/security/api-input.test.ts` | ✅ закрыто |
+| SEC-B36 | Low (контракт HTTP: адрес как LIKE-паттерн) | `backend/src/server.ts` (`isSolanaAddress` → 400), `backend/src/{base58,sql,queries}.ts` (`likeContains`/`likePattern`, объявленный `ESCAPE`), `backend/openapi.yaml`, `backend/test/{params,sql,human}.test.ts`, `tests/security/api-input.test.ts` | ✅ закрыто |
 | SEC-B30 | Medium (wager: бой считался по составу, который оппонент не согласовывал) | `backend/src/battle-resolver.ts` (`squadFromDb` без надгробий, сверка `onChainSquadPower` с записанной мощностью до расчёта и до отправки), `tests/security/battle-squad.test.ts`, `backend/test/battle-resolver.test.ts` | ✅ закрыто |
 | SEC-B29 | Medium (эмиссия: отчёт по burn, который форк мог отозвать) | `backend/src/burn-oracle.ts` (`pendingBurn`: фильтр `e.slot <= finalizedHorizon(db)`, watermark вместо «максимального id»), `backend/src/{oracle-metrics,server}.ts` (`burn_oracle_deferred_cg`, `healthy` учитывает deferred), `backend/openapi.yaml`, `tests/security/burn-report.test.ts`, `backend/test/burn-oracle.test.ts` | ✅ закрыто |
 | SEC-B27 | Medium (тихая потеря данных индексатора) | `backend/src/{ingest,backfill,listen,config}.ts`, `backend/src/db.ts`, `ops/monitoring/alerts.yml`, `docs/ALERT_CATALOG.md`, `docs/DISASTER_RECOVERY.md` | `getSignaturesForAddress` отдаёт подпись, `getTransaction` — второй вызов и может ответить `null` (окно хранения провайдера или транзиентный ответ). `ingestSignatures` на этом `null` делала `continue`: страница считалась обслуженной, обход завершался, курсор получал `history_complete = 1`. Read-model терял всё, что эмитила транзакция (`ServicePaid` → плательщику `payment_not_found`, минт фишки, результат боя), `rebuild` воспроизводил то же отсутствие, а сигнала не было ни одного. Документы при этом описывали несуществующее: `DISASTER_RECOVERY.md` §2.3 — «sequence detector», ALERT-02 — `npm run backfill -- --from-slot … --to-slot …` (корневого скрипта `backfill` нет, CLI отфильтровывал флаги и запускал полный обход вместо диапазона). | **Исправлено**: `ingestSignatures` возвращает `missing` (`{signature, slot}`); бросающий fetch по-прежнему валит страницу (курсор не двигается — fail-closed); обход пишет дыры в `indexer_gaps` и держит `history_complete = 0`; `repairIndexerGaps` добирает их через тот же `ingestTx` (heal-тик каждые `LISTEN_HEAL_EVERY_MS`, `--repair-gaps` — запаркованные, кап `INDEXER_GAP_MAX_ATTEMPTS`); `GET /v1/health.indexerGaps` + серии + алерт `IndexerGaps`; таблица и в Prisma-цели. Гейт `tests/security/indexer-gaps.test.ts` (7 правил, 10 мутаций), поведение `backend/test/backfill.test.ts` (9) |
@@ -1041,6 +1045,111 @@ Core-пути (`seller`/`buyer`/`price`/`currency`/`priceUsd`), `asset` — то
 продажи claim'а, отмены и стейка.
 
 
+## SEC-B39 · Low · прод мог стартовать со всеми выключенными лимитами
+
+**Что было.** `RATE_LIMIT=0` — это переключатель локальных нагрузочных прогонов (`backend/src/config.ts`:
+«only for local load scripts»), и он выключает все бюджеты разом: чтение по IP (`read`, 600/мин), мутации по
+сессии (`mutate`, 60/мин), `quote`, `claim`, `claimNet` по `/24`, `human`/`humanNet`, арену. `assertProductionConfig`
+перечислял остальные dev-шорткаты (`FINALITY_ASSUME=1`, незащищённая кука, короткий `SESSION_SECRET`) и про
+этот ключ молчал: стенд, чей `.env` вырос из нагрузочного прогона, обслуживал бы неограниченный трафик —
+а выключенный лимит в логах и метриках выглядит ровно как лимит, в который никто не попал. Найти это можно
+было только чтением конфига, то есть никак.
+
+**Исправление.** Прод отказывается стартовать при `RATE_LIMIT=0` — сообщение объясняет, что это
+нагрузочный шорткат, а не режим деплоя. Разрешения «сознательно без лимитов» нет намеренно: лимиты на
+периметре — отдельное решение (nginx/CF), и оно не должно наследоваться от строки в `.env`.
+
+**Тест.** `backend/test/security.test.ts`: закалённое окружение без `RATE_LIMIT` стартует, с `RATE_LIMIT=0`
+бросает с упоминанием ключа (проверка стоит рядом с `FINALITY_ASSUME`, чтобы шорткаты читались одним
+списком).
+
+
+## SEC-B38 · Low · ключи лимитов по /64 и /48 не были префиксами
+
+**Что было.** `clientIp` собирал ключ нарезкой **текста** адреса: `ip.split(':').slice(0, 4)`. Это /64
+ровно тогда, когда edge прислал полностью развёрнутую запись. Для адреса со сворачиванием групп 3–4
+(`2001:db8::5`) нарезка даёт `['2001','db8','','5']` и ключ `2001:db8::5::/64` — то есть сам адрес с
+приклеенным `::/64`: строку, которая префиксом не является, и **свою для каждого адреса** внутри одного /64. То есть
+хост, перебирающий адреса в своём /64 (а это его /64: `ip addr add`), получал свежий бюджет на каждый
+адрес, и правило SEC-H3 «домашний /64 — один клиент» не работало именно против того, против кого оно
+написано. Дополнительно: `2001:db8::5` и `2001:0db8:0000:0000:0000:0000:0000:0005` — два ключа на один
+адрес, `::ffff:203.0.113.9` — третий ключ для клиента, который приходит и как `203.0.113.9`, а `/48`-ключи
+той же нарезкой (`split(':'); slice(0, 3)`) попадали в `human_checks.ip_net`, откуда их читает учёт по
+`/24`-сетям.
+
+**Исправление.** `ipKey`/`ipNet` разбирают адрес в 16 байт (`parseIpv6`: `::`, верхний регистр, ведущие
+нули, один dotted-quad хвост, zone index после `%` отбрасывается) и только потом берут группы; v4-mapped
+(`::ffff:0:0/96`) переводится в dotted-IPv4, потому что это тот же клиент. Неразобранное (`1:2:3:4:5:6:7:8:9`,
+`::1::2`, `g::1`, произвольная строка) остаётся «непрозрачным» ключом само по себе: склеить двух
+неизвестных клиентов в одно ведро — это троттлить невиновного, что хуже обхода, который фикс закрывает.
+Ключи для полностью развёрнутых адресов не изменились (`2001:db8:abcd:1234::/64`, `2001:db8:abcd::/48`),
+поэтому уже записанные строки `human_checks` продолжают сравниваться с новыми.
+
+**Тест.** `backend/test/human.test.ts`: один /64 в трёх написаниях (сжатое, развёрнутое, `DB8`/`0db8`) —
+один ключ; соседний /64 — другой; IPv4 и его v4-mapped запись совпадают; `fe80::1%eth0` не тащит зону;
+мусорные литералы остаются сами собой; `clientIp(req)` (то, чем ключуется `identityFor`) идёт через тот же
+`ipKey`. Статическое правило `SEC-B38` в `tests/security/api-input.test.ts`: ключ строится из разобранных
+байт, v4-mapped распознаётся отдельно, ни одна исполняемая строка не нарезает ключ из текста адреса
+(самотест валит правило на пре-фиксной строке `ip.split(':').slice(0, 4)` и пропускает `part.split(':')`
+самого парсера).
+
+
+## SEC-B37 · Low · URL, который не декодируется, отвечал 500 и попадал в error-алерт
+
+**Что было.** Express декодирует path-параметры до всякого хендлера (`layer.js::decode_param`) и на
+`URIError` проставляет `err.status = err.statusCode = 400`. Middleware ошибок в `server.ts` знал
+`ServiceError`, `AuthError`, `bad_pubkey` и два типа body-parser, а всё остальное превращал в 500
+`internal` — вместе с этим терялось и поле `status`, которое Express уже поставил. `GET /v1/wallet/%zz/events`
+(или `/v1/chips/%`, `/v1/leaderboard/%zz`) отвечал 500, писал `unhandled request error` и двигал
+`http_errors_total{kind="unhandled"}` — серию, по которой настроен алерт. Одна ссылка = error-строка в логе
+и счётчик в метрике; опечатка клиента выглядела как отказ сервера. Свип `params.test.ts` этого класса не
+видел: он фаззит query-строку, а падение происходит внутри роутера.
+
+**Исправление.** Middleware уважает 4xx-статус, который поставил сам Express, и **только** 4xx: обычный
+`Error`, брошенный хендлером, остаётся 500 (`internal` + `requestId`), и именно это сохраняет смысл серии
+`unhandled`. Ветка стоит перед веткой unhandled-лога, порядок закреплён статическим правилом.
+
+**Тест.** `backend/test/params.test.ts`: пять неразбираемых путей → 400 `bad_request` (включая обрезанный
+UTF-8 `%e0%a4`); и `http_errors_total{kind="unhandled"}` до/после серии одинаков — читается через
+`metrics.exposition()`, то есть проверяется именно то, что увидит оператор. Правило `SEC-B37` в
+`tests/security/api-input.test.ts` (ветка есть, читает `status`, идёт до unhandled-ветки, ничего не
+додумывает).
+
+
+## SEC-B36 · Low · адрес кошелька был LIKE-паттерном, поэтому `%` — это весь лог событий
+
+**Что было.** `GET /v1/wallet/:address/events` публичен (`security: []`) и фильтрует единственным условием
+`data LIKE '%' || ? || '%'` — это скан JSON-блоба `events_raw`, принятая цена ленты событий поверх блоба
+(docs/06 §4.1, `ops/deploy/data-layer.md`: в Postgres тут просится `pg_trgm`/`tsvector`). Значением
+условия был path-параметр, и он не проверялся, то есть на входе был не адрес, а **паттерн**:
+
+* `GET /v1/wallet/%/events` → 200 и новейшие 200 строк **всего** лога (проверено до фикса: 15 из 15 строк в
+  фикстурном мире — чужие события, включая суммы, контрагентов и подписи);
+* `GET /v1/wallet/_/events` → то же самое (плюс `_` как «любой символ» делает ленту substring-оракулом);
+* `abc`, `O0Il`, строка из 45 символов → 200 и пустая лента вместо 400 (`new PublicKey` такие строки
+  отвергает, но до `PublicKey` дело не доходило).
+
+Утечки при этом нет: строка `events_raw` — раскодированное **публичное** ончейн-событие, публичность ленты
+задокументирована в шапке `ws.ts` («всё, что он несёт, уже публично в REST»). Дефект — контрактный:
+эндпоинт отвечал не на тот вопрос, который описывает, и «фильтр» был языком запросов, а не сравнением.
+Опасен он тем, что это единственное чтение этого блоба: достаточно одного будущего поля в `data`
+(или строки, которой на цепочке нет), чтобы тот же `%` вынес наружу уже не публичное.
+
+**Исправление.** (1) Маршрут валидирует адрес как **ровно 32 байта base58** (`isSolanaAddress` в
+`base58.ts`; тест сверяет его вердикт с `new PublicKey` на граничных строках) и отвечает 400 `bad_pubkey`,
+как и остальные места, где нужен ключ. (2) Слой запросов экранирует `%`, `_` и сам escape-символ **и
+объявляет его**: `likeContains('data')` → `data LIKE ? ESCAPE '\'`, `likePattern(value)` → `%…%` с
+экранированием (`sql.ts`). Вторая половина не декоративна: в SQLite escape-символа по умолчанию нет, а в
+Postgres он `\`, поэтому необъявленное экранирование — это два разных запроса в двух диалектах, и
+`sql.test.ts` держит обе строки посимвольно.
+
+**Тест.** `backend/test/params.test.ts`: враждебные адреса → 400 `bad_pubkey`; вайлдкард не расширяет ленту
+ни через маршрут, ни в обход него (`q.walletEvents(db, '%')` = `[]`, а каждая строка ленты alice содержит
+alice); `backend/test/sql.test.ts` — клауза и экранирование посимвольно, включая `likePattern('%_\\')` =
+`%\%\_\\%`; правило `SEC-B36` + самотест в `tests/security/api-input.test.ts` (валидация на маршруте,
+`likeContains`/`likePattern` в запросе, ни одного `LIKE '%' || ?` в слое запросов, `ESCAPE` объявлен).
+
+
 ## SEC-B30 · Medium · wager-резолвер мог рассчитать бой по составу, который оппонент не согласовывал
 
 **Что было.** `resolve_battle` — server-authoritative по построению: программа проверяет, что победитель
@@ -1349,7 +1458,7 @@ Cloudflare требует для виджета `script-src` + `frame-src` от 
    ни registrar lock, ни DNSSEC, ни CAA в репозитории не описаны (runbook §1.3 — только граница TLS).
    Принятый риск с владельцем ops и чек-листом до G-2, причина и границы — `SECURITY.md` / `docs/06` §2.2.
 3. **SEC-B21 · Trident-фаззинг** — цели и CI-джоба нет; класс закрыт `cargo test`, 92 сценариями localnet,
-   120 статическими гейтами и структурными инвариантами. Принятый риск с планом до mainnet, см. там же.
+   124 статическими гейтами и структурными инвариантами. Принятый риск с планом до mainnet, см. там же.
 4. **Диспозиция частей 1–2 чеклиста (31–70)** — вынесена в отдельный файл
    `SECURITY-AUDIT-2026-09-27-checklist.md`: строки по темам, у каждой — что защищает и чем доказано,
    плюс сводка принятых рисков (SEC-B20, SEC-B21, порог Squads, инсайдер) и ℹ️-пункты.
@@ -1367,8 +1476,8 @@ origin'ов у лендинга нет), прод-CSP против Turnstile/`ws
 
 Всё это — на одном дереве, `npm run verify` exit 0:
 
-* `npm --prefix backend test` — 27 файлов, **448** тестов (+2 `compressed-market.test.ts` SEC-B34, +1 `game.test.ts` SEC-B32, +1 `game.test.ts` SEC-B33, +1 `ops.test.ts` SEC-B35, +9 `compressed-market.test.ts` SEC-B31, +7 `battle-resolver.test.ts` SEC-B30, +19 `params.test.ts`, +5 `verify.test.ts`, +1 сценарий SEC-B5 в `human.test.ts`, +14 `chip-index.test.ts` для shape #27, +2 сценария SEC-B11 в `game.test.ts`, +4 сценария SEC-M8 в `crank.test.ts`, +4 сценария SEC-B13 в `projections.test.ts`/`game.test.ts`, +2 сценария SEC-B14 в `cosmetics.test.ts`, +1 сценарий SEC-B16 в `game.test.ts`, +2 сценария SEC-B18 (api + security); три временных probe-файла удалены, когда их находки стали постоянными тестами).
-* `npm run security:static` — **120** проверок: 34 прежних + 6 SEC-B2/B3 + 4 SEC-B7 + 6 SEC-B8 + 7 SEC-B9 + 8 SEC-B12 (supply-chain: пины, хост, sha512, отозванные версии в дереве и в диапазонах, install-скрипты, лок↔манифесты) + 4 SEC-M8 (`rent-lut.test.ts`: пины CPI и выплаты, «cooldown — часть ALT-программы, а не наш Clock», 6 мутаций) + 5 SEC-B13 (`time-heal.test.ts`: проход исцеления, провод в `listen`, попытки/парковка, фоллбэк по слоту, `accrualFrom`; 6 мутаций) + 4 SEC-B14 (`paid-claims.test.ts`: выбор строки по `ref_hash`, оба вызывающих его передают, одноразовое списание одним условным UPDATE; 4 мутации) + 2 SEC-B18 (`api-input.test.ts`: маршрут `handle-check` и cap живых hold-ов до upsert-а, плюс self-test на пре-фиксный маршрут) + 1 SEC-B19 (`anchor-invariants.test.ts`: stride claim-nonce покрывает `MAX_PACK_QTY × MAX_CHIPS_PER_PACK`, `assert!` на месте, `buy_pack` связан с константой; 2 самотеста). + 2 SEC-B22 (`anchor-invariants.test.ts`: все пять адресных полей `set_params` проходят проверку на нулевой ключ, событие несёт новые значения, маска бит совпадает с числом полей, а порядок полей совпадает с кодеком бэкенда; самотест валит правило на снятой проверке и на «съехавшем» кодеке). + 2 SEC-B23 (`anchor-invariants.test.ts`: словарь `ChipError` из `set_params`/`require_non_default` закреплён и каждое имя обязано быть правилом панели, шесть констант `economy.rs` и пять литералов сверяются с `GUARD`, полоса ×½–2× — против живой строки, BigInt внутри `GUARD` запрещён; самотест валит правило на снятом правиле, «съехавшей» константе, новом `ChipError` и BigInt-payload). + 2 SEC-B24 (`anchor-invariants.test.ts`: `Pause` каждой программы связан со своим PDA и своей парой admin/pauser, «пауза — паузером, раз-пауза — админом», `has_one = admin` у `ArenaAdmin`, гвард `arena_missing`, живое `paused` в диффе; самотест валит правило на подменённой паре, чужом PDA, снятом декодере и раз-паузе под горячим ключом). + 2 SEC-B25 (`csp.test.ts`: дефолт `Lax`, `HttpOnly`/`Path=/`, `none ⇒ Secure`, гвард `CROSS_SITE_CLIENT`, ключ задокументирован в `.env.example`/runbook/docs; самотест валит правило на дефолте `none`, куке без `HttpOnly`, снятой связке с `Secure` и недокументированном ключе). + 2 SEC-B26 (`logging.test.ts`: обе сети подключены в `safeValue`/`line`/`errFields`, скраб до обрезки, порядок правил `Bearer` → `key=value`, сьют поведения на месте; 4 мутационных самотеста). + 8 SEC-B27 (`indexer-gaps.test.ts`: страница отдаёт `missing` и не глотает исключение; обход пишет дыры и не штампует `history_complete`; таблица в DDL **и** в Prisma-цели; `repairIndexerGaps` — old-first, кап попыток, DELETE после ремонта, вызов из heal-тика и из CLI; `/health.indexerGaps` + обе серии + алерт; runbook'и описывают существующий механизм; каждая `npm run …`-команда в них есть в `package.json`; 10 мутаций). + 2 SEC-B28 (`anchor-invariants.test.ts`: оба листинговых хендлера claim-маркета вызывают одну общую `require_sol_claim_market`, сравнение — с `Currency::Sol`, ошибка — `CompressedCurrencyMismatch`; оба покупочных хендлера сохраняют свою проверку как defense in depth; оба клиентских билдера отклоняют не-SOL до кодирования; самотест — 4 мутации) + 5 SEC-B29 (`burn-report.test.ts`: только финализированные burns в отчёте, порядок «отправка → курсор», watermark против перескока, стык с реконсайлером и наблюдаемость deferred; 7 мутаций) + 5 SEC-B30 (`battle-squad.test.ts`: надгробия, сверка мощности до боя и до отправки, громкий отказ, ончейн-запись мощности; 6 мутаций) + 4 SEC-B31 (`events-coverage.test.ts`: паритет Rust `#[event]` ⇔ `EVENT_SPECS`, достижимость спеки хендлером или wire-only, claim→chip мэппинг с индексом/миграцией/owner-guard) + 1 паритет полей (там же: спеку и структуру сверяет одна функция, константы форм читаются из программ; 4 мутации) + 1 SEC-B35 (там же: каждый wire-тип — реализованный клиентом ключ, все шесть компресс-событий отображены; 2 мутации) + 3 SEC-B32/B33/B34 (`settle-once.test.ts`: guard в обоих писателях матча, архетип прайс-спайка через claim, claim PDA в минте/регистрации; 7 мутаций).
+* `npm --prefix backend test` — 27 файлов, **456** тестов (+7 `params.test.ts` SEC-B36/B37 — вайлдкард, неразбираемый URL и сверка `isSolanaAddress` с `new PublicKey`, +1 `human.test.ts` SEC-B38 — канонические ключи IP, +2 `compressed-market.test.ts` SEC-B34, +1 `game.test.ts` SEC-B32, +1 `game.test.ts` SEC-B33, +1 `ops.test.ts` SEC-B35, +9 `compressed-market.test.ts` SEC-B31, +7 `battle-resolver.test.ts` SEC-B30, +19 `params.test.ts`, +5 `verify.test.ts`, +1 сценарий SEC-B5 в `human.test.ts`, +14 `chip-index.test.ts` для shape #27, +2 сценария SEC-B11 в `game.test.ts`, +4 сценария SEC-M8 в `crank.test.ts`, +4 сценария SEC-B13 в `projections.test.ts`/`game.test.ts`, +2 сценария SEC-B14 в `cosmetics.test.ts`, +1 сценарий SEC-B16 в `game.test.ts`, +2 сценария SEC-B18 (api + security); три временных probe-файла удалены, когда их находки стали постоянными тестами).
+* `npm run security:static` — **120** проверок: 34 прежних + 6 SEC-B2/B3 + 4 SEC-B7 + 6 SEC-B8 + 7 SEC-B9 + 8 SEC-B12 (supply-chain: пины, хост, sha512, отозванные версии в дереве и в диапазонах, install-скрипты, лок↔манифесты) + 4 SEC-M8 (`rent-lut.test.ts`: пины CPI и выплаты, «cooldown — часть ALT-программы, а не наш Clock», 6 мутаций) + 5 SEC-B13 (`time-heal.test.ts`: проход исцеления, провод в `listen`, попытки/парковка, фоллбэк по слоту, `accrualFrom`; 6 мутаций) + 4 SEC-B14 (`paid-claims.test.ts`: выбор строки по `ref_hash`, оба вызывающих его передают, одноразовое списание одним условным UPDATE; 4 мутации) + 2 SEC-B18 (`api-input.test.ts`: маршрут `handle-check` и cap живых hold-ов до upsert-а, плюс self-test на пре-фиксный маршрут) + 1 SEC-B19 (`anchor-invariants.test.ts`: stride claim-nonce покрывает `MAX_PACK_QTY × MAX_CHIPS_PER_PACK`, `assert!` на месте, `buy_pack` связан с константой; 2 самотеста). + 2 SEC-B22 (`anchor-invariants.test.ts`: все пять адресных полей `set_params` проходят проверку на нулевой ключ, событие несёт новые значения, маска бит совпадает с числом полей, а порядок полей совпадает с кодеком бэкенда; самотест валит правило на снятой проверке и на «съехавшем» кодеке). + 2 SEC-B23 (`anchor-invariants.test.ts`: словарь `ChipError` из `set_params`/`require_non_default` закреплён и каждое имя обязано быть правилом панели, шесть констант `economy.rs` и пять литералов сверяются с `GUARD`, полоса ×½–2× — против живой строки, BigInt внутри `GUARD` запрещён; самотест валит правило на снятом правиле, «съехавшей» константе, новом `ChipError` и BigInt-payload). + 2 SEC-B24 (`anchor-invariants.test.ts`: `Pause` каждой программы связан со своим PDA и своей парой admin/pauser, «пауза — паузером, раз-пауза — админом», `has_one = admin` у `ArenaAdmin`, гвард `arena_missing`, живое `paused` в диффе; самотест валит правило на подменённой паре, чужом PDA, снятом декодере и раз-паузе под горячим ключом). + 2 SEC-B25 (`csp.test.ts`: дефолт `Lax`, `HttpOnly`/`Path=/`, `none ⇒ Secure`, гвард `CROSS_SITE_CLIENT`, ключ задокументирован в `.env.example`/runbook/docs; самотест валит правило на дефолте `none`, куке без `HttpOnly`, снятой связке с `Secure` и недокументированном ключе). + 2 SEC-B26 (`logging.test.ts`: обе сети подключены в `safeValue`/`line`/`errFields`, скраб до обрезки, порядок правил `Bearer` → `key=value`, сьют поведения на месте; 4 мутационных самотеста). + 8 SEC-B27 (`indexer-gaps.test.ts`: страница отдаёт `missing` и не глотает исключение; обход пишет дыры и не штампует `history_complete`; таблица в DDL **и** в Prisma-цели; `repairIndexerGaps` — old-first, кап попыток, DELETE после ремонта, вызов из heal-тика и из CLI; `/health.indexerGaps` + обе серии + алерт; runbook'и описывают существующий механизм; каждая `npm run …`-команда в них есть в `package.json`; 10 мутаций). + 2 SEC-B28 (`anchor-invariants.test.ts`: оба листинговых хендлера claim-маркета вызывают одну общую `require_sol_claim_market`, сравнение — с `Currency::Sol`, ошибка — `CompressedCurrencyMismatch`; оба покупочных хендлера сохраняют свою проверку как defense in depth; оба клиентских билдера отклоняют не-SOL до кодирования; самотест — 4 мутации) + 5 SEC-B29 (`burn-report.test.ts`: только финализированные burns в отчёте, порядок «отправка → курсор», watermark против перескока, стык с реконсайлером и наблюдаемость deferred; 7 мутаций) + 5 SEC-B30 (`battle-squad.test.ts`: надгробия, сверка мощности до боя и до отправки, громкий отказ, ончейн-запись мощности; 6 мутаций) + 4 SEC-B31 (`events-coverage.test.ts`: паритет Rust `#[event]` ⇔ `EVENT_SPECS`, достижимость спеки хендлером или wire-only, claim→chip мэппинг с индексом/миграцией/owner-guard) + 1 паритет полей (там же: спеку и структуру сверяет одна функция, константы форм читаются из программ; 4 мутации) + 1 SEC-B35 (там же: каждый wire-тип — реализованный клиентом ключ, все шесть компресс-событий отображены; 2 мутации) + 3 SEC-B32/B33/B34 (`settle-once.test.ts`: guard в обоих писателях матча, архетип прайс-спайка через claim, claim PDA в минте/регистрации; 7 мутаций) + 4 SEC-B36/B37/B38 (`api-input.test.ts`: адрес в LIKE-паттерне — валидация на маршруте, экранирование и объявленный `ESCAPE` в слое запросов (самотест на пре-фиксную строку); 4xx-статус от Express уважается и стоит перед веткой unhandled (только 4xx — иначе смысл серии теряется); ключи лимитов строятся из разобранных байт адреса, ни одной нарезки ключа из текста).
 * `npm run lock:integrity -- --selftest` — 11/11; сам лок: **1 097/1 097** registry-узлов с `resolved`+sha512, все — `registry.npmjs.org`; `npm ci` на пустом `node_modules` — exit 0 (npm сверил все хеши).
 * `npm run state:layout` — 29 аккаунтов совпадают с baseline (`--selftest` 10/10); гейт в `npm run verify` и в CI-джобе `economy`.
 * `npm run landing:check` (+ DOM-smoke) — зелёный, включая CSP/host-проверки и «каждый landing-шрифт вшит»; `guttercaps-landing.html` перегенерирован (2,78 МБ, 13 inlined woff2, 0 ссылок на Google Fonts).

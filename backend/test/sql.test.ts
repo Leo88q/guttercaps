@@ -8,7 +8,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { foldEq, getDialect, insertIfAbsent, insertIgnore, jsonAt, jsonFlagEq, placeholders, setDialect, upsert } from '../src/sql.ts';
+import { foldEq, getDialect, insertIfAbsent, insertIgnore, jsonAt, jsonFlagEq, likeContains, likePattern, placeholders, setDialect, upsert } from '../src/sql.ts';
 
 const SRC_DIR = new URL('../src/', import.meta.url).pathname;
 afterEach(() => setDialect('sqlite'));
@@ -31,6 +31,13 @@ describe('builders', () => {
     expect(jsonAt('data', 'buyer')).toBe(`json_extract(data, '$.buyer')`);
     expect(jsonFlagEq('flags', 'shadowBanned', false)).toBe(`COALESCE(json_extract(flags, '$.shadowBanned'), 0) = 0`);
     expect(placeholders(4)).toBe('?, ?, ?, ?');
+    // SEC-B36: the LIKE pair, pinned as one contract. Escaping without `ESCAPE` is a literal backslash in
+    // SQLite (no default escape character) and an active escape in Postgres — the same source, two different
+    // queries; and without the escaping the bound value *is* a pattern.
+    expect(likeContains('data')).toBe(`data LIKE ? ESCAPE '\\'`);
+    expect(likePattern('5wfP')).toBe('%5wfP%');
+    expect(likePattern('%_\\')).toBe('%\\%\\_\\\\%');
+    expect(likePattern('')).toBe('%%');
   });
 
 

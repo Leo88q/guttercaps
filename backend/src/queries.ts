@@ -9,7 +9,7 @@ import {
 import { type Db, now } from './db.ts';
 import { prices } from './services.ts';
 import { deviceStatus, humanStatus } from './human.ts';
-import { jsonAt, jsonFlagEq } from './sql.ts';
+import { jsonAt, jsonFlagEq, likeContains, likePattern } from './sql.ts';
 
 /** Oracle cache health for /health and /prices — what the pusher last posted and how old it is now. */
 export function priceStatus(db: Db) {
@@ -511,9 +511,13 @@ export function walletEvents(db: Db, wallet: string, limit = 50) {
   return db.all<{ name: string; data: string; block_time: number | null; signature: string }>(
     // `name`, unaliased: the openapi RawEvent schema (and the generated client type) say `name`, and a
     // rename here is invisible to typecheck because the row type below is a cast, not an inference.
-    // The `LIKE` scan is the accepted cost of querying a JSON blob (docs/06 §4.1); a wallet column with
-    // an index would be the fix, and it is deliberately not worth a migration for an events feed.
-    `SELECT name, data, block_time, signature FROM events_raw WHERE data LIKE '%' || ? || '%' ORDER BY slot DESC LIMIT ?`, wallet, page(limit, 200, 50),
+    // The `LIKE` scan is the accepted cost of querying a JSON blob (docs/06 §4.1, ops/deploy/data-layer.md
+    // — a Postgres port wants pg_trgm/tsvector); what it must not be is a *pattern* language the caller can
+    // write in (SEC-B36): the value goes through `likePattern` and the clause declares its escape character,
+    // so a `%` in the argument matches a percent sign — or, in the route, is refused outright — and never
+    // the whole table.
+    `SELECT name, data, block_time, signature FROM events_raw WHERE ${likeContains('data')} ORDER BY slot DESC LIMIT ?`,
+    likePattern(wallet), page(limit, 200, 50),
   );
 }
 
