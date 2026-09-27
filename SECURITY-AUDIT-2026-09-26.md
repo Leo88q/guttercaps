@@ -37,6 +37,8 @@ SECURITY-SCAN-TRIAGE-2026-09-23) учтены; здесь — только но�
 | SEC-B23 | Low (зеркало guard-rails админ-панели разошлось с цепочкой) | `backend/src/admin.ts`, `backend/test/admin.test.ts`, `tests/security/anchor-invariants.test.ts` | Панель админа только *кодирует* транзакцию для Squads (ключей у процесса нет), поэтому каждый rail `set_params` продублирован в TS руками — и зеркало разошлось: пять адресных полей принимали нулевой ключ (валидный base58, адрес system-программы — панель говорит ok, tx ревертнёт), `priceCgMicro` не проверялся вообще (отрицательный BigInt уезжал в Borsh u64 — 500 вместо 422), полоса SEC-F13 (кап 1 000 000 $CG + одноразовый ×½–2×) и потолок `params_version` (`Overflow`) не отражены. | **Исправлено**: `InvalidConfigAddress` на нулевой ключ, u64-диапазон + кап + полоса ×½–2× против живой строки пака (целочисленное деление, как в Rust), отказ при `paramsVersion >= 65 535`; BigInt-сравнения вынесены в `CG_PRICE_GUARD`, `GUARD` остаётся JSON-безопасным (BigInt в нём — 500 на `GET /admin/params`); гейт `SEC-B23` + самотест (статика 83 → 85), `backend/test/admin.test.ts` 10/10 |
 | SEC-B24 | Medium (аварийный путь: пауза не сработала бы) | `backend/src/{admin,server}.ts`, `backend/test/{admin.test.ts,chainFixtures.ts}`, `tests/security/anchor-invariants.test.ts` | `POST /admin/kill-switch` кодировал `pause` / `set_paused` / `set_arena` и **выбирал подписанта**: для всех программ, кроме staking, он брал admin/pauser из `GameConfig` chip_core. Арена проверяет свой `ArenaConfig` (`Pause` — admin или pauser, раз-пауза `set_arena` — `has_one = admin`), поэтому пауза арены уезжала под горячим ключом chip_core и могла только ревертнуть — ровно на аварийном пути; раз-пауза требовала арена-админа, которого панель не читала. Диффа показывала выдуманное «предыдущее» состояние (`!paused`). | **Исправлено**: `fetchChainParams` читает и декодирует `ArenaConfig` (`ChainParams.arena`), маршрут выбирает пару по программе и отвечает `503 arena_missing` без аккаунта, `GET /admin/params` публикует обе пары, диффа несёт живое `paused` и предупреждает о no-op. Гейт `SEC-B24` + самотест (статика 85 → 87), HTTP-тест с намеренно разными ключами арены |
 | SEC-B25 | Low (cookie posture: кросс-сайтовая отправка на двух GET-роутах, которые пишут) | `backend/src/{config,auth}.ts`, `backend/.env.example`, `ops/deploy/runbook.md`, `tests/security/csp.test.ts`, `backend/test/security.test.ts` | `setSessionCookie` ставила `SameSite=None; Secure` при `COOKIE_SECURE=1` — то есть в каждом продовом деплое, — а этот деплой same-origin: nginx отдаёт клиент и проксирует `/v1/`. `None` разрешает кросс-сайтовому запросу *отправить* сессионную куку, а два GET-роута пишут: `/me/handle/check` берёт 120-секундный hold на ник, `/quests` пишет логин дня (от него зависит `eligibility` перед `/quests/claims`). | **Исправлено**: `COOKIE_SAMESITE` (lax \| strict \| none, дефолт **lax**) валидируется на старте, `none` форсит `Secure` и в проде требует `CROSS_SITE_CLIENT=1`; runbook/`.env.example` объясняют выбор; гейт `SEC-B25` + самотест (статика 87 → 89), HTTP-тест `Set-Cookie` |
+| SEC-B26 | Low (утечка ключа через наблюдаемость — класс Slope / DEXX) | `backend/src/log.ts`, `backend/test/log.test.ts`, `tests/security/logging.test.ts` | Редакции не было вообще: `safeValue` копировал каждое собственное свойство любого объекта, поэтому любое будущее «залогируем конфиг / тело / объект с токеном» отправило бы живой секрет в лог-пайплайн (Loki/CloudWatch/Datadog). `errFields` нёс сообщение ошибки как есть, а сообщения fetch/RPC содержат endpoint вместе с `?api-key=…`. | **Исправлено**: сеть по имени поля (разделители снимаются ⇒ `TURNSTILE_SECRET`/`apiKey`/`api_key`/`sessionCookie`/`keypair`/`nonce`/`deviceSalt` матчатся одинаково) маскирует значение рекурсивно **до** его обхода; сеть по форме значения маскирует `?api-key=…`, `secret="…"`, `Bearer …` в свободном тексте, в сообщении строки и в `errFields`, всегда до обрезки на 2 000 символов. Кошелёк, подпись, слот, request id, статус остаются читаемыми. Гейт `SEC-B26` + 4 мутационных самотеста (статика 89 → 91), 4 бэкенд-теста |
+
 
 Все находки этого прохода — **новые** (в отчёте 2026-09-25 их не было: тот проход смотрел программы и
 бэкенд-логику, но не границу параметров).
@@ -772,6 +774,48 @@ const attrs = [`Path=/`, `HttpOnly`, COOKIE_SECURE ? 'SameSite=None; Secure' : '
 настоящий заголовок `Set-Cookie` после SIWS-входа (`HttpOnly`, `SameSite=Lax`, без `None`) плюс
 проверка билдера для `none`/`strict`.
 
+## SEC-B26 · Low · логи не редактировались
+
+Секреты в этом репозитории ищут правильно: кейпейры приходят файлами секретов, `log.ts` не печатает
+`process.env`, `errFields` не отдаёт стек в JSON. Но **редакции по содержимому не было вообще** —
+`safeValue` копировал каждое собственное свойство любого объекта, который ему передали:
+
+```ts
+for (const [k, x] of Object.entries(v as Record<string, unknown>)) { … out[k] = safeValue(x, depth + 1, seen); }
+```
+
+Значит, безопасность держалась на дисциплине вызывающих: одно будущее `log.info('cfg', cfg)` (например,
+диагностика конфигурации при старте), один `log.error('verify failed', { token, secret })`, одно
+`console.error('…', TURNSTILE_SECRET)` — и живой ключ уезжает в лог-пайплайн, где его прочитает
+сервис-третья сторона, а через него и кто угодно с доступом к индексу. Это ровно класс Slope и DEXX:
+ключ утекает через наблюдаемость, а не через цепь. Отдельно: `errFields` логирует `err.message`, а
+сообщение ошибки `fetch`/RPC несёт endpoint — вместе с ним и `?api-key=…` провайдера.
+
+**Исправление — две независимые сети, потому что одна всегда имеет дыру.**
+
+1. **По имени поля.** `isSecretKey()` снимает разделители (`_`, `-`, пробелы), поэтому `TURNSTILE_SECRET`,
+   `apiKey`, `api_key`, `api-key`, `sessionCookie`, `keypairPath`, `deviceSalt`, `nonce`, `fingerprint`
+   матчатся одинаково. Матч — значение заменяется целиком (`[redacted]`), рекурсивно, **до** обхода
+   значения: секрет не попадает даже в промежуточную структуру. Плюс `errFields` и `line(msg)`:
+   `console.error` кладёт секрет в *сообщение*, а не в поле.
+2. **По форме значения.** `Bearer <токен>`, `authorization: basic …`, `api-key=…`, `token: …`,
+   `secret="…"` — внутри свободного текста. Порядок правил значим и закреплён гейтом: если правило
+   `key=value` поставить раньше, `authorization: Bearer eyJ…` замаскируется как
+   `authorization: [redacted] eyJ…`, то есть «исправление» оставит токен в логе.
+
+Обе сети применяются **до** обрезки длинных строк на 2 000 символов (иначе секрет выживает, оказавшись
+за отсечкой). Маскируется только то, что похоже на креды: кошелёк, подпись транзакции, слот, request id,
+статус, маршрут и длительность остаются читаемыми — контроль защищает креды, а не улики, и «защитили так,
+что инцидент не разобрать» было бы своей собственной аварией.
+
+**Тест.** Гейт `SEC-B26` (`tests/security/logging.test.ts`): проверяет, что обе сети подключены в
+`safeValue` (и что скраб идёт до обрезки), что `line` скрабит сообщение, что `errFields` скрабит
+`err.message`, что правило `Bearer` стоит раньше `key=value`, что `REDACTED` на месте и что сьют
+поведения существует. Четыре мутационных самотеста: снятая проверка ключа в `safeValue`, снятый скраб
+сообщения, переставленные правила и невычищенное сообщение ошибки. Поведенчески — `backend/test/log.test.ts`
+(4 теста: маскировка на глубине и во всех написаниях, контрольная выборка «читаемого», свободный текст с
+URL/RPC-кредой и прозой, `errFields`).
+
 ## Проверено заново, без находок
 
 * **Периметр бэкенда.** `/healthz`, `/readyz`, `/metrics` регистрируются до лимитера (намеренно);
@@ -921,7 +965,7 @@ Cloudflare требует для виджета `script-src` + `frame-src` от 
    ни registrar lock, ни DNSSEC, ни CAA в репозитории не описаны (runbook §1.3 — только граница TLS).
    Принятый риск с владельцем ops и чек-листом до G-2, причина и границы — `SECURITY.md` / `docs/06` §2.2.
 3. **SEC-B21 · Trident-фаззинг** — цели и CI-джоба нет; класс закрыт `cargo test`, 92 сценариями localnet,
-   89 статическими гейтами и структурными инвариантами. Принятый риск с планом до mainnet, см. там же.
+   91 статическими гейтами и структурными инвариантами. Принятый риск с планом до mainnet, см. там же.
 4. **Диспозиция частей 1–2 чеклиста (31–70)** — вынесена в отдельный файл
    `SECURITY-AUDIT-2026-09-27-checklist.md`: строки по темам, у каждой — что защищает и чем доказано,
    плюс сводка принятых рисков (SEC-B20, SEC-B21, порог Squads, инсайдер) и ℹ️-пункты.
@@ -940,7 +984,7 @@ origin'ов у лендинга нет), прод-CSP против Turnstile/`ws
 Всё это — на одном дереве, `npm run verify` exit 0:
 
 * `npm --prefix backend test` — 23 файла, **411** тестов (+19 `params.test.ts`, +5 `verify.test.ts`, +1 сценарий SEC-B5 в `human.test.ts`, +14 `chip-index.test.ts` для shape #27, +2 сценария SEC-B11 в `game.test.ts`, +4 сценария SEC-M8 в `crank.test.ts`, +4 сценария SEC-B13 в `projections.test.ts`/`game.test.ts`, +2 сценария SEC-B14 в `cosmetics.test.ts`, +1 сценарий SEC-B16 в `game.test.ts`, +2 сценария SEC-B18 (api + security); три временных probe-файла удалены, когда их находки стали постоянными тестами).
-* `npm run security:static` — **89** проверок: 34 прежних + 6 SEC-B2/B3 + 4 SEC-B7 + 6 SEC-B8 + 7 SEC-B9 + 8 SEC-B12 (supply-chain: пины, хост, sha512, отозванные версии в дереве и в диапазонах, install-скрипты, лок↔манифесты) + 4 SEC-M8 (`rent-lut.test.ts`: пины CPI и выплаты, «cooldown — часть ALT-программы, а не наш Clock», 6 мутаций) + 5 SEC-B13 (`time-heal.test.ts`: проход исцеления, провод в `listen`, попытки/парковка, фоллбэк по слоту, `accrualFrom`; 6 мутаций) + 4 SEC-B14 (`paid-claims.test.ts`: выбор строки по `ref_hash`, оба вызывающих его передают, одноразовое списание одним условным UPDATE; 4 мутации) + 2 SEC-B18 (`api-input.test.ts`: маршрут `handle-check` и cap живых hold-ов до upsert-а, плюс self-test на пре-фиксный маршрут) + 1 SEC-B19 (`anchor-invariants.test.ts`: stride claim-nonce покрывает `MAX_PACK_QTY × MAX_CHIPS_PER_PACK`, `assert!` на месте, `buy_pack` связан с константой; 2 самотеста). + 2 SEC-B22 (`anchor-invariants.test.ts`: все пять адресных полей `set_params` проходят проверку на нулевой ключ, событие несёт новые значения, маска бит совпадает с числом полей, а порядок полей совпадает с кодеком бэкенда; самотест валит правило на снятой проверке и на «съехавшем» кодеке). + 2 SEC-B23 (`anchor-invariants.test.ts`: словарь `ChipError` из `set_params`/`require_non_default` закреплён и каждое имя обязано быть правилом панели, шесть констант `economy.rs` и пять литералов сверяются с `GUARD`, полоса ×½–2× — против живой строки, BigInt внутри `GUARD` запрещён; самотест валит правило на снятом правиле, «съехавшей» константе, новом `ChipError` и BigInt-payload). + 2 SEC-B24 (`anchor-invariants.test.ts`: `Pause` каждой программы связан со своим PDA и своей парой admin/pauser, «пауза — паузером, раз-пауза — админом», `has_one = admin` у `ArenaAdmin`, гвард `arena_missing`, живое `paused` в диффе; самотест валит правило на подменённой паре, чужом PDA, снятом декодере и раз-паузе под горячим ключом). + 2 SEC-B25 (`csp.test.ts`: дефолт `Lax`, `HttpOnly`/`Path=/`, `none ⇒ Secure`, гвард `CROSS_SITE_CLIENT`, ключ задокументирован в `.env.example`/runbook/docs; самотест валит правило на дефолте `none`, куке без `HttpOnly`, снятой связке с `Secure` и недокументированном ключе).
+* `npm run security:static` — **91** проверок: 34 прежних + 6 SEC-B2/B3 + 4 SEC-B7 + 6 SEC-B8 + 7 SEC-B9 + 8 SEC-B12 (supply-chain: пины, хост, sha512, отозванные версии в дереве и в диапазонах, install-скрипты, лок↔манифесты) + 4 SEC-M8 (`rent-lut.test.ts`: пины CPI и выплаты, «cooldown — часть ALT-программы, а не наш Clock», 6 мутаций) + 5 SEC-B13 (`time-heal.test.ts`: проход исцеления, провод в `listen`, попытки/парковка, фоллбэк по слоту, `accrualFrom`; 6 мутаций) + 4 SEC-B14 (`paid-claims.test.ts`: выбор строки по `ref_hash`, оба вызывающих его передают, одноразовое списание одним условным UPDATE; 4 мутации) + 2 SEC-B18 (`api-input.test.ts`: маршрут `handle-check` и cap живых hold-ов до upsert-а, плюс self-test на пре-фиксный маршрут) + 1 SEC-B19 (`anchor-invariants.test.ts`: stride claim-nonce покрывает `MAX_PACK_QTY × MAX_CHIPS_PER_PACK`, `assert!` на месте, `buy_pack` связан с константой; 2 самотеста). + 2 SEC-B22 (`anchor-invariants.test.ts`: все пять адресных полей `set_params` проходят проверку на нулевой ключ, событие несёт новые значения, маска бит совпадает с числом полей, а порядок полей совпадает с кодеком бэкенда; самотест валит правило на снятой проверке и на «съехавшем» кодеке). + 2 SEC-B23 (`anchor-invariants.test.ts`: словарь `ChipError` из `set_params`/`require_non_default` закреплён и каждое имя обязано быть правилом панели, шесть констант `economy.rs` и пять литералов сверяются с `GUARD`, полоса ×½–2× — против живой строки, BigInt внутри `GUARD` запрещён; самотест валит правило на снятом правиле, «съехавшей» константе, новом `ChipError` и BigInt-payload). + 2 SEC-B24 (`anchor-invariants.test.ts`: `Pause` каждой программы связан со своим PDA и своей парой admin/pauser, «пауза — паузером, раз-пауза — админом», `has_one = admin` у `ArenaAdmin`, гвард `arena_missing`, живое `paused` в диффе; самотест валит правило на подменённой паре, чужом PDA, снятом декодере и раз-паузе под горячим ключом). + 2 SEC-B25 (`csp.test.ts`: дефолт `Lax`, `HttpOnly`/`Path=/`, `none ⇒ Secure`, гвард `CROSS_SITE_CLIENT`, ключ задокументирован в `.env.example`/runbook/docs; самотест валит правило на дефолте `none`, куке без `HttpOnly`, снятой связке с `Secure` и недокументированном ключе). + 2 SEC-B26 (`logging.test.ts`: обе сети подключены в `safeValue`/`line`/`errFields`, скраб до обрезки, порядок правил `Bearer` → `key=value`, сьют поведения на месте; 4 мутационных самотеста).
 * `npm run lock:integrity -- --selftest` — 11/11; сам лок: **1 097/1 097** registry-узлов с `resolved`+sha512, все — `registry.npmjs.org`; `npm ci` на пустом `node_modules` — exit 0 (npm сверил все хеши).
 * `npm run state:layout` — 29 аккаунтов совпадают с baseline (`--selftest` 10/10); гейт в `npm run verify` и в CI-джобе `economy`.
 * `npm run landing:check` (+ DOM-smoke) — зелёный, включая CSP/host-проверки и «каждый landing-шрифт вшит»; `guttercaps-landing.html` перегенерирован (2,78 МБ, 13 inlined woff2, 0 ссылок на Google Fonts).

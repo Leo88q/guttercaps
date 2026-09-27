@@ -28,6 +28,34 @@ const ctx = new AsyncLocalStorage<LogContext>();
 export function logContext(): LogContext { return ctx.getStore() ?? {}; }
 export function runWithContext<T>(fields: LogContext, fn: () => T): T { return ctx.run({ ...logContext(), ...fields }, fn); }
 
+// ------------------------------------------------------------------ secret redaction (SEC-B26)
+// The log pipeline is a third-party service (Loki / CloudWatch / Datadog). Slope and DEXX both lost
+// user keys to *logs*, not to a chain bug, and this module had no redaction at all: `safeValue` copied
+// every own property of every object it was handed, so one future `log.info('cfg', cfg)` or
+// `log.error('verify failed', { token, secret })` would have shipped a live credential to a log index.
+// Two independent nets, because a single one always has a gap:
+//   1. by key name — anything whose key reads like a credential (separators stripped, so
+//      `TURNSTILE_SECRET`, `apiKey`, `session_cookie` all match) is replaced wholesale;
+//   2. by value shape — `?api-key=…`, `secret=…`, `Bearer …` inside a *string* (a URL in a fetch error,
+//      a thrown message) are masked, which also covers a secret that arrived as free text rather than
+//      as a field.
+// Masks are applied before truncation, and never to the log line's own `msg`-less scalars (status, dur):
+// a request id, a wallet, a transaction signature and a slot must stay readable — redacting those would
+// quietly break incident response, which is the other half of "protect us".
+export const REDACTED = '[redacted]';
+const SECRET_KEY = /(secret|token|password|passphrase|mnemonic|keypair|authorization|cookie|credential|privatekey|apikey|salt|fingerprint|nonce|seedphrase)/i;
+/** Does this field name read like a credential? Separators are stripped, so camel/snake/SCREAMING match alike. */
+export function isSecretKey(key: string): boolean { return SECRET_KEY.test(key.replace(/[\s_-]/g, '')); }
+const VALUE_PATTERNS: [RegExp, string][] = [
+  // Order matters: the scheme form first, or `authorization: Bearer eyJ…` would be masked as
+  // `authorization: [redacted] eyJ…` — the token itself surviving the "fix".
+  [/((?:bearer|basic)\s+)([A-Za-z0-9+/=_.:\-]{8,})/gi, `$1${REDACTED}`],
+  // `api-key=xxx`, `token: xxx`, `secret="xxx"` — bounded so prose ("the token was rejected") is untouched
+  [/((?:api[-_]?key|access[-_]?token|refresh[-_]?token|token|secret|password|authorization|passphrase)\s*[=:]\s*[\"']?)(?!bearer\b|basic\b)([A-Za-z0-9+/_.:\-]{6,})/gi, `$1${REDACTED}`],
+];
+/** Mask credential-shaped substrings inside free text (keeps the rest of the message readable). */
+export function scrubString(v: string): string { let out = v; for (const [re, to] of VALUE_PATTERNS) out = out.replace(re, to); return out; }
+
 /**
  * A logger that throws is worse than no logger: it turns a diagnostic into an outage. So values are
  * stringified defensively — cycles, BigInt, getters that throw, and 10 MB arrays all become a short
@@ -38,7 +66,8 @@ function safeValue(v: unknown, depth = 0, seen = new WeakSet<object>()): unknown
   const t = typeof v;
   if (t === 'bigint') return String(v);
   if (t === 'number' || t === 'boolean') return v;
-  if (t === 'string') return (v as string).length > 2_000 ? `${(v as string).slice(0, 2_000)}…+${(v as string).length - 2_000} chars` : v;
+  // scrub first, then truncate: a secret must not survive by sitting past the truncation point
+  if (t === 'string') { const sv = scrubString(v as string); return sv.length > 2_000 ? `${sv.slice(0, 2_000)}…+${sv.length - 2_000} chars` : sv; }
   if (t === 'function') return `[fn ${(v as { name?: string }).name ?? 'anonymous'}]`;
   if (t === 'symbol' || t === 'undefined') return String(v);
   if (t !== 'object') return String(v);
@@ -54,6 +83,7 @@ function safeValue(v: unknown, depth = 0, seen = new WeakSet<object>()): unknown
   let n = 0;
   for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
     if (n++ > 24) { out['…'] = 'truncated'; break; }
+    if (isSecretKey(k)) { out[k] = REDACTED; continue; }
     try { out[k] = safeValue(x, depth + 1, seen); } catch { out[k] = '[throw]'; }
   }
   return out;
@@ -66,6 +96,7 @@ export function safeJson(fields: LogFields): string {
 function line(level: Level, msg: string, fields?: LogFields): string | undefined {
   if (RANK[level] < RANK[MIN]) return undefined;
   const at = new Date().toISOString();
+  msg = scrubString(msg); // `console.error('…', TURNSTILE_SECRET)` is a message, not a field — item 2 of the net
   const merged = { at, level, msg, ...logContext(), ...(fields ?? {}), ...(fields?.pid ? {} : { pid: process.pid }) };
   if (JSON_OUT) return safeJson(merged);
   const kv = Object.entries(merged)
@@ -94,7 +125,7 @@ export const log = {
 export function errFields(e: unknown): LogFields {
   const err = e as (Error & { code?: string; cause?: Error }) | undefined;
   return {
-    err: err?.message ?? String(e),
+    err: scrubString(err?.message ?? String(e)),
     ...(err?.name && err.name !== 'Error' ? { errName: err.name } : {}),
     ...(err?.code ? { errCode: err.code } : {}),
     ...(process.env.LOG_LEVEL === 'debug' && err?.stack ? { stack: err.stack.split('\n').slice(0, 6).join(' | ') } : {}),

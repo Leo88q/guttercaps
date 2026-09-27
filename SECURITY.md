@@ -203,7 +203,7 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
 - **SEC-B21 (2026-09-27): accepted risk — Trident fuzzing is not run.** There is no fuzz target and no CI job
   in the tree, which makes this the only part-1 checklist item with no artifact. The class it would cover is
   held today by `cargo test` (golden economy + unit/invariant tests, the `rust-lints` job), the 92 LiteSVM
-  scenarios (`localnet`), the 89 static gates with mutation self-tests (`security:static`) and the structural
+  scenarios (`localnet`), the 91 static gates with mutation self-tests (`security:static`) and the structural
   invariants in `tests/security/anchor-invariants.test.ts` (SEC-B19 is one of them). Owner: programs, before
   mainnet — targets on `buy_pack` / `fuse` / `market settle` asserting the same "Σ liabilities ≤ vault balance"
   rule the ledgers enforce on chain; until then a new constant or account layout is closed by a compile-time
@@ -286,6 +286,24 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   SEC-B25 rule in `tests/security/csp.test.ts` (the browser-facing half of the same file) pins the
   default, the `Secure` tie, `HttpOnly`/`Path=/`, the production guard and the docs — with a mutation
   self-test — while `backend/test/security.test.ts` asserts the real `Set-Cookie` header over HTTP.
+
+- **SEC-B26 (2026-09-27): closed — credentials can no longer leave the process through the logs.**
+  `backend/src/log.ts` had no redaction at all: `safeValue` copied every own property of every object it
+  was handed, so a future `log.info('cfg', cfg)` or `log.error('verify failed', { token, secret })` would
+  have shipped a live credential to a log index (Loki/CloudWatch/Datadog) — the Slope and DEXX incident
+  class, where the key leaves through observability rather than through the chain. Two independent nets,
+  because one always has a gap: (1) by field name — a key whose separators-stripped form reads like a
+  credential (`TURNSTILE_SECRET`, `apiKey`, `api_key`, `sessionCookie`, `keypair`, `nonce`, `deviceSalt`,
+  `fingerprint`) is replaced wholesale, recursively, before its value is walked; (2) by value shape —
+  `?api-key=…`, `secret="…"`, `Bearer <token>` inside *free text* (a fetch/RPC error message carries the
+  endpoint, and endpoints carry query credentials) are masked, applied to the message and to
+  `errFields`, and always before the 2 000-char truncation so a secret cannot survive by sitting past the
+  cut. What incident response needs stays readable on purpose: wallet, transaction signature, slot,
+  request id, status, route, duration — the control protects the credentials, not the evidence. The new
+  gate in `tests/security/logging.test.ts` proves both nets are still wired into `safeValue`, `line` and
+  `errFields`, that the Bearer rule still precedes the `key=value` rule (reversed, `authorization: Bearer
+  <token>` masks the scheme word and keeps the token), and that the suite covering the behaviour exists —
+  with a mutation self-test for each of the four.
 
 ## Current exposure of this repository (from `docs/09-production-readiness.md`)
 
