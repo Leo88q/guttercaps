@@ -737,6 +737,19 @@ PDA, снятом декодере и раз-паузе под горячим к
   валидаторы (`quote.validateRequest`: sku 0..3, qty 1..25, starter=1, limited ≤ cap) на месте.
   `x-csrf-token` сравнивается с сессией на всех не-GET (`requireAuth`), сессия = HMAC-cookie,
   nonce расходуется атомарным `DELETE … AND expires_at >= now`.
+* **Арифметика денег и веса стейкинга.** `programs/staking/.../stake.rs` — единственное место, где
+  ещё оставались сырые `-=`: `unstake_cg` (`s.amount -= amount`, за `require!(amount <= s.amount,
+  StakeError::Overflow)`) и `unstake_chip` (`pool.total_weight -= c.weight`). Переполнение в релизе
+  невозможно (гейт C13/C14 держит `overflow-checks = true`, а инвариант `total_weight >= c.weight`
+  держится всеми тремя путями стакинга), но оба сайта всё равно приведены к checked-виду
+  (`checked_sub(...).ok_or(StakeError::Overflow)?`) — ровно так, как уже написаны `stake_cg` (стр. 96)
+  и компресс-путь (стр. 692): одна и та же операция в одном файле больше не полагается на профиль
+  сборки. Перевод байт-в-байт поведенчески нейтрален (та же ошибка, что уже отдаёт `require!` выше).
+  Остальные сырые `+=`/`-=` в программах разобраны по одному: `items.boosters -= 1` ×2 — за
+  `require!(boosters > 0, NoBooster)`, `pending.opened += 1` — счётчик закрывается на `opened == qty`,
+  `*slot += 1` — за `require!(*slot < daily_cap)`, `collections_created += 1` — за
+  `require!(idx == collections_created)`, лэмпортные `+=`/`-=` — перемещения ренты внутри одной
+  инструкции.
 * **Транзакционность.** `db.tx` = `BEGIN IMMEDIATE`; `settleReferrals`/`claimHandle`/`consume` не
   имеют `await` между чтением и записью (однопоточный Node + синхронный драйвер) — гонки
   off-chain (класс Aurory SyncSpace) не воспроизводятся.

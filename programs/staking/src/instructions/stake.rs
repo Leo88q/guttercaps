@@ -191,10 +191,14 @@ pub fn unstake_cg(ctx: Context<UnstakeCg>, tier: u8, amount: u64) -> Result<()> 
             ),
             amount - penalty,
         )?;
-        s.amount -= amount;
+        s.amount = s.amount.checked_sub(amount).ok_or(StakeError::Overflow)?;
     }
     let new_weight = s.amount as u128 * TIER_BOOST_BPS[tier as usize] as u128 / 10_000;
-    pool.total_weight = pool.total_weight - s.weight + new_weight;
+    pool.total_weight = pool
+        .total_weight
+        .checked_sub(s.weight)
+        .and_then(|w| w.checked_add(new_weight))
+        .ok_or(StakeError::Overflow)?;
     s.weight = new_weight;
     s.reward_debt = (new_weight * pool.acc_reward_per_weight) / ACC_PRECISION;
     emit!(Unstaked {
@@ -383,7 +387,10 @@ pub fn unstake_chip(ctx: Context<UnstakeChip>) -> Result<()> {
             amount: pending
         });
     }
-    pool.total_weight -= c.weight;
+    pool.total_weight = pool
+        .total_weight
+        .checked_sub(c.weight)
+        .ok_or(StakeError::Overflow)?;
     let seeds: &[&[u8]] = &[b"stake_auth", &[ctx.bumps.stake_auth]];
     chip_core::cpi::set_chip_flag(
         CpiContext::new_with_signer(
