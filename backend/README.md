@@ -345,9 +345,19 @@ soulbound for the template's days. `/me/pending` lists the voucher pending with 
 4. **Gaps heal themselves.** `listen.ts` re-scans the newest 200 signatures per
    program every minute; because ingestion is idempotent this is cheap and
    closes any websocket drop without an operator.
+5. **A page the RPC will not serve is recordable, not silent (SEC-B27).**
+   `getSignaturesForAddress` lists a signature, `getTransaction` is a second call
+   and may answer `null` (provider retention, or a transient answer). The walk
+   files those in `indexer_gaps` and keeps `indexer_cursor.history_complete = 0`
+   until they drain; the heal tick retries recent ones, and
+   `npm run backend:backfill -- --repair-gaps` (archival RPC) retries parked
+   ones. `GET /v1/health.indexerGaps` = `{pending, parked, oldestSlot}`. A
+   *throwing* fetch is not a gap — it aborts the page and the cursor stays put,
+   so the next run re-scans instead of advancing past an unread transaction.
 
 Cursor per program lives in `indexer_cursor`; backfill stops when it meets
-`newest_signature` and only advances it after a complete walk.
+`newest_signature` and only advances it after a complete walk (and only stamps
+`history_complete = 1` when every page of that walk was served).
 
 ## Paid services (handles, skins, passes)
 

@@ -1,8 +1,16 @@
 // Shared ingestion path: transaction logs → events_raw → projections.
 // backfill.ts, listen.ts and rebuild.ts all funnel through `ingestTx`, so
 // there is exactly one place that decides what "indexed" means.
-import { Connection, type ConfirmedSignatureInfo, type VersionedTransactionResponse } from '@solana/web3.js';
-import { COMMITMENT, LISTEN_HEAL_TIMES_MAX_ATTEMPTS, PROGRAMS, RPC_URL, RPC_WS_URL, type ProgramName } from './config.ts';
+//
+// SEC-B27: "indexed" is only honest if a transaction the RPC refuses to serve is *recorded*, not
+// skipped. `ingestSignatures` returns the signatures of a page it could not fetch (`missing`) and the
+// walk that saw them (a) refuses to stamp `history_complete = 1` and (b) files them in `indexer_gaps`
+// for `repairIndexerGaps` — the retrying half, run by the listener's heal tick and by
+// `npm run backend:backfill -- --repair-gaps`. Before this, `getTransaction → null` was a silent skip,
+// so the projections could be missing a ServicePaid / chip mint / battle result with a cursor that
+// said the history was complete.
+import { Connection, PublicKey, type ConfirmedSignatureInfo, type VersionedTransactionResponse } from '@solana/web3.js';
+import { COMMITMENT, INDEXER_GAP_MAX_ATTEMPTS, INDEXER_GAP_REPAIR_BATCH, LISTEN_HEAL_TIMES_MAX_ATTEMPTS, PROGRAMS, RPC_URL, RPC_WS_URL, type ProgramName } from './config.ts';
 import { db as sharedDb, type Db, now } from './db.ts';
 import { decodeLogs, type RawEvent } from './events.ts';
 import { wireEvent } from './wire.ts';
@@ -117,7 +125,22 @@ export function setCursor(program: ProgramName, c: Partial<Cursor>, db: Db = sha
 }
 
 // ---------------------------------------------------------------- fetching with bounded concurrency
-export async function fetchTx(connection: Connection, signature: string, retries = 5): Promise<TxLike | undefined> {
+/**
+ * The subset of `Connection` these read paths use. Narrowing it is what makes the walk testable with a
+ * fake (a provider that serves a page of signatures but answers `null` for one of them is the exact
+ * condition SEC-B27 is about); the real `Connection` satisfies it structurally.
+ */
+export interface TxSource {
+  getTransaction(signature: string, opts: { maxSupportedTransactionVersion: number; commitment: typeof COMMITMENT }): Promise<VersionedTransactionResponse | null>;
+  getBlockTime(slot: number): Promise<number | null>;
+}
+
+/** `TxSource` plus the signature walk — what `backfillProgram` needs, and all of it. */
+export interface SignatureSource extends TxSource {
+  getSignaturesForAddress(address: PublicKey, opts: { before?: string; limit: number }, commitment: typeof COMMITMENT): Promise<ConfirmedSignatureInfo[]>;
+}
+
+export async function fetchTx(connection: TxSource, signature: string, retries = 5): Promise<TxLike | undefined> {
   let delay = 400;
   for (let i = 0; ; i++) {
     try {
@@ -145,18 +168,110 @@ export async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (t:
   return out;
 }
 
-/** Fetch + ingest a page of signatures (oldest first so projections see events in order). */
-export async function ingestSignatures(connection: Connection, sigs: readonly ConfirmedSignatureInfo[], concurrency: number, db: Db = sharedDb()): Promise<IngestResult> {
+/** A signature the RPC listed for one of our programs but would not serve (`getTransaction` → null). */
+export interface MissingSignature { signature: string; slot: number }
+export interface SignaturesResult extends IngestResult { missing: MissingSignature[] }
+
+/**
+ * Fetch + ingest a page of signatures (`getSignaturesForAddress` order = newest first, so the page is
+ * applied oldest first and the projections see events in chain order). Failed transactions are dropped
+ * before the fetch: they emit nothing we trust.
+ *
+ * The returned `missing` are the signatures the provider answered `null` for — the caller records them
+ * (`recordGaps`) under the program they belong to, because the DB shape is not this function's business.
+ * A *throwing* fetch is deliberately not a gap: it aborts the page, so the caller's cursor stays where it
+ * was and the next run re-scans. Silent partial success is the failure mode this distinction avoids.
+ */
+export async function ingestSignatures(connection: TxSource, sigs: readonly ConfirmedSignatureInfo[], concurrency: number, db: Db = sharedDb()): Promise<SignaturesResult> {
   const ok = sigs.filter((s) => !s.err);
   const txs = await mapLimit(ok, concurrency, (s) => fetchTx(connection, s.signature));
   let events = 0, inserted = 0;
+  const missing: MissingSignature[] = [];
   for (let i = txs.length - 1; i >= 0; i--) {
     const t = txs[i];
-    if (!t) continue;
+    if (!t) {
+      const info = ok[i]!;
+      missing.push({ signature: info.signature, slot: info.slot });
+      continue;
+    }
     const r = ingestTx(t, db);
     events += r.events; inserted += r.inserted;
   }
-  return { events, inserted };
+  return { events, inserted, missing };
+}
+
+// ---------------------------------------------------------------- gaps (SEC-B27)
+/**
+ * File the signatures a walk could not fetch. Idempotent (`INSERT … ON CONFLICT DO NOTHING`): a row that
+ * is already known keeps its `first_seen` and its retry counter, so a page re-scanned after a restart does
+ * not reset the history of the gap. Returns how many rows are new.
+ */
+export function recordGaps(db: Db, program: ProgramName, missing: readonly MissingSignature[], at = now()): number {
+  if (missing.length === 0) return 0;
+  let fresh = 0;
+  db.tx(() => {
+    for (const m of missing) {
+      const r = db.run(
+        insertIfAbsent('indexer_gaps', ['program', 'signature', 'slot', 'first_seen', 'attempts', 'last_attempt'], ['program', 'signature']),
+        program, m.signature, m.slot, at, 0, null,
+      );
+      fresh += Number(r.changes);
+    }
+  });
+  return fresh;
+}
+
+export interface GapRepairResult { tried: number; healed: number; stillMissing: number; parked: number }
+
+/**
+ * Retry the recorded gaps, oldest slot first. A signature that now fetches is ingested through the same
+ * `ingestTx` as everything else (dedup and `patchLateTimes` included) and its row is deleted; one that
+ * still fails only counts an attempt, so `attempts >= maxAttempts` parks it and the ticks stop paying for
+ * it. `includeParked` is for the explicit operator run: a provider with a shorter retention window parks
+ * early, and pointing `RPC_URL` at an archival endpoint is exactly the moment those rows become fetchable.
+ */
+export async function repairIndexerGaps(
+  connection: TxSource,
+  db: Db = sharedDb(),
+  limit = INDEXER_GAP_REPAIR_BATCH,
+  maxAttempts = INDEXER_GAP_MAX_ATTEMPTS,
+  includeParked = false,
+): Promise<GapRepairResult> {
+  const rows = db.all<{ program: ProgramName; signature: string; slot: number; attempts: number }>(
+    `SELECT program, signature, slot, attempts FROM indexer_gaps ${includeParked ? '' : 'WHERE attempts < ?'} ORDER BY slot ASC LIMIT ?`,
+    ...(includeParked ? [limit] : [maxAttempts, limit]),
+  );
+  const out: GapRepairResult = { tried: rows.length, healed: 0, stillMissing: 0, parked: 0 };
+  if (rows.length === 0) return out;
+  await mapLimit(rows, 4, async (r) => {
+    let t: TxLike | undefined;
+    try { t = await fetchTx(connection, r.signature); } catch { t = undefined; }
+    if (t) {
+      ingestTx(t, db);
+      db.run(`DELETE FROM indexer_gaps WHERE program = ? AND signature = ?`, r.program, r.signature);
+      out.healed++;
+      return;
+    }
+    const attempts = r.attempts + 1;
+    db.run(`UPDATE indexer_gaps SET attempts = ?, last_attempt = ? WHERE program = ? AND signature = ?`, attempts, now(), r.program, r.signature);
+    out.stillMissing++;
+    if (attempts >= maxAttempts) out.parked++;
+  });
+  return out;
+}
+
+/**
+ * Operator-visible state of the recorded gaps, reported in `/health.indexerGaps`: `pending` are rows a
+ * heal tick will retry, `parked` are rows at the attempt cap — the provider no longer serves them, so the
+ * repair is a deliberate run against an archival RPC (or, if the fork dropped them, an explorer check
+ * followed by deleting the row). `oldestSlot` bounds how far back the loss reaches.
+ */
+export function gapStatus(db: Db = sharedDb(), maxAttempts = INDEXER_GAP_MAX_ATTEMPTS): { pending: number; parked: number; oldestSlot: number | null } {
+  return {
+    pending: db.scalar(`SELECT COUNT(*) FROM indexer_gaps WHERE attempts < ?`, maxAttempts),
+    parked: db.scalar(`SELECT COUNT(*) FROM indexer_gaps WHERE attempts >= ?`, maxAttempts),
+    oldestSlot: db.get<{ s: number | null }>(`SELECT MIN(slot) s FROM indexer_gaps`)?.s ?? null,
+  };
 }
 
 /**
@@ -177,7 +292,7 @@ export async function ingestSignatures(connection: Connection, sigs: readonly Co
  * batch for ever (see `untimedStatus` for the operator-visible count). Idempotent by construction: only
  * missing events are inserted, only gaps are filled.
  */
-export async function healEventTimes(connection: Connection, db: Db = sharedDb(), limit = 25, maxAttempts = LISTEN_HEAL_TIMES_MAX_ATTEMPTS): Promise<number> {
+export async function healEventTimes(connection: TxSource, db: Db = sharedDb(), limit = 25, maxAttempts = LISTEN_HEAL_TIMES_MAX_ATTEMPTS): Promise<number> {
   const rows = db.all<{ signature: string; slot: number }>(
     `SELECT DISTINCT signature, MIN(slot) slot FROM events_raw WHERE block_time IS NULL AND time_heal_attempts < ? GROUP BY signature ORDER BY slot ASC LIMIT ?`,
     maxAttempts, limit,

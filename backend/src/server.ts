@@ -19,7 +19,7 @@ import { POLICIES, createLimiter, type Limiter } from './ratelimit.ts';
 import { catalogue, checkHandle, claimHandle, claimService, myServices, ServiceError } from './services.ts';
 import { claimPassTier, passState } from './pass.ts';
 import { packQuote, validateRequest } from './quote.ts';
-import { getConnection, untimedStatus } from './ingest.ts';
+import { gapStatus, getConnection, untimedStatus } from './ingest.ts';
 import { crankStatus, pauseStatus, priceStatus } from './queries.ts';
 import { burnOracleStatus } from './burn-oracle.ts';
 import { arenaOracleGauge, burnOracleGauges, rewardOracleGauges, unattributedResolves } from './oracle-metrics.ts';
@@ -178,6 +178,12 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   // The alerting rules in ops/monitoring/alerts.yml scrape these names, so they are a contract with the
   // runbook: a renamed series is an alert that silently never fires. `api:check` does not see this file
   // pair, so keep the two in sync by hand (and the ops test pins the names).
+  // SEC-B27: the two halves of `indexer_gaps` — a signature the walk could not fetch, split into the rows
+  // a heal tick will still retry and the rows parked for an operator with an archival provider. The
+  // alert that reads them (`IndexerGaps`) is the only signal that the read model is missing a chain
+  // transaction, so the series must exist even on a healthy database (both 0, not absent).
+  registerScrape('indexer_gaps_pending', 'Signatures the RPC has not served that a heal tick will retry (/health.indexerGaps).', () => [{ value: gapStatus(db).pending }]);
+  registerScrape('indexer_gaps_parked', 'Signatures parked at the attempt cap: the provider no longer serves them — repair with `npm run backend:backfill -- --repair-gaps` against an archival RPC (/health.indexerGaps).', () => [{ value: gapStatus(db).parked }]);
   registerScrape('crank_pending_jobs', 'Crank jobs not yet settled.', async () => { const r = await ready(); return [{ value: r.crank.pending }]; });
   registerScrape('pyth_cache_age_seconds', 'Age of the freshest cached Pyth price, seconds.', async () => { const r = await ready(); return [{ value: r.prices.worstAgeS ?? -1 }]; });
   registerScrape('rng_queue_age_seconds', 'Age of the oldest pending randomness reveal.', () => {
@@ -231,7 +237,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   };
 
   // ------------------------------------------------------------ health / stats
-  v1.get('/health', (_req, res) => { res.json({ ok: true, lastSlot: db.scalar(`SELECT COALESCE(MAX(slot),0) FROM events_raw`), prices: priceStatus(db), crank: crankStatus(db), paused: pauseStatus(db), burnOracle: burnOracleStatus(db), finality: finalityStatus(db), untimedEvents: untimedStatus(db), rewardOracle: rewardOracleStatus(db), antifraud: antifraudStatus(db), arena: { queued: db.scalar(`SELECT COUNT(*) FROM arena_queue`), revealing: db.scalar(`SELECT COUNT(*) FROM matches WHERE status = 'revealing'`), unattributedResolves: unattributedResolves(db) } }); });
+  v1.get('/health', (_req, res) => { res.json({ ok: true, lastSlot: db.scalar(`SELECT COALESCE(MAX(slot),0) FROM events_raw`), prices: priceStatus(db), crank: crankStatus(db), paused: pauseStatus(db), burnOracle: burnOracleStatus(db), finality: finalityStatus(db), untimedEvents: untimedStatus(db), indexerGaps: gapStatus(db), rewardOracle: rewardOracleStatus(db), antifraud: antifraudStatus(db), arena: { queued: db.scalar(`SELECT COUNT(*) FROM arena_queue`), revealing: db.scalar(`SELECT COUNT(*) FROM matches WHERE status = 'revealing'`), unattributedResolves: unattributedResolves(db) } }); });
   v1.get('/prices', (_req, res) => { res.json(priceStatus(db)); });
   v1.get('/stats', (_req, res) => { res.json(q.stats(db)); });
   v1.get('/rewards/skr-pool', (_req, res) => { res.json(q.skrPool(db)); });

@@ -48,6 +48,18 @@ groups:
           summary: 'No new events for 10 minutes while the chain moved'
           description: 'The websocket subscription is probably dead and the heal loop is not covering it (it needs a working RPC). Restart the api container; it backfills on start.'
 
+      # SEC-B27: the other half of "the indexer is behind". Lag is transactions nobody read yet; a gap is
+      # a transaction the read model will *never* get from this provider — missing in silence unless
+      # someone reads the counter. `ticket`, not `page`: the read model is wrong, the chain is not, and the
+      # repair is a deliberate run (docs/ALERT_CATALOG.md ALERT-06).
+      - alert: IndexerGaps
+        expr: indexer_gaps_pending > 0 or indexer_gaps_parked > 0
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: '{{ $value }} transaction(s) the chain has and the read model does not'
+          description: '`curl -s $API/v1/health | jq .indexerGaps` for pending/parked/oldestSlot. Pending usually drains on its own (heal tick); parked means the configured RPC no longer serves those slots — point RPC_URL at an archival endpoint and run `npm run backend:backfill -- --repair-gaps`, then re-run the full walk: it stamps history_complete=1 only when every page was served.'
+
   - name: guttercaps.crank
     rules:
       - alert: CrankHeadStuck

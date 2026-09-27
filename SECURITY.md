@@ -203,7 +203,7 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
 - **SEC-B21 (2026-09-27): accepted risk — Trident fuzzing is not run.** There is no fuzz target and no CI job
   in the tree, which makes this the only part-1 checklist item with no artifact. The class it would cover is
   held today by `cargo test` (golden economy + unit/invariant tests, the `rust-lints` job), the 92 LiteSVM
-  scenarios (`localnet`), the 91 static gates with mutation self-tests (`security:static`) and the structural
+  scenarios (`localnet`), the 99 static gates with mutation self-tests (`security:static`) and the structural
   invariants in `tests/security/anchor-invariants.test.ts` (SEC-B19 is one of them). Owner: programs, before
   mainnet — targets on `buy_pack` / `fuse` / `market settle` asserting the same "Σ liabilities ≤ vault balance"
   rule the ledgers enforce on chain; until then a new constant or account layout is closed by a compile-time
@@ -287,6 +287,27 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   default, the `Secure` tie, `HttpOnly`/`Path=/`, the production guard and the docs — with a mutation
   self-test — while `backend/test/security.test.ts` asserts the real `Set-Cookie` header over HTTP.
 
+- **SEC-B27 (2026-09-27): closed — a transaction the RPC would not serve is recorded, not skipped, and the
+  read model no longer claims a history it does not have.** `getSignaturesForAddress` lists signatures; the
+  transaction is a second call and `getTransaction` legitimately answers `null` (provider retention, or a
+  transient answer). The page walk treated that as "nothing here": no event counted, the walk finished, and
+  `indexer_cursor.history_complete` was stamped `1` — so a lost `ServicePaid` showed up as a player who paid
+  and is told `payment_not_found`, a lost mint as an inventory the chain disagrees with, with nothing
+  anywhere saying a page had been short. The operational half was worse than missing: the
+  `docs/DISASTER_RECOVERY.md` invariant 3 (section 2) described a "sequence detector" no code implements, and ALERT-02 told the operator to run
+  `npm run backfill -- --from-slot … --to-slot …` — no such root script exists, and the CLI filtered both
+  flags away and ran a *full* walk while the reader believed a range had been re-indexed. The fix:
+  `ingestSignatures` returns the unfetched signatures (a *throwing* fetch still aborts the page, so the
+  cursor stays put — fail-closed, never a partial success); the walk files them in the new `indexer_gaps`
+  table and keeps `history_complete = 0` while the set is non-empty; `repairIndexerGaps` re-fetches them
+  through the same `ingestTx` (the listener's heal tick drains recent gaps, `npm run backend:backfill --
+  --repair-gaps` drains parked ones against an archival RPC, and `INDEXER_GAP_MAX_ATTEMPTS` parks a
+  signature the provider will never serve again); `GET /v1/health.indexerGaps` =
+  `{pending, parked, oldestSlot}` with the scrapes `indexer_gaps_pending`/`indexer_gaps_parked` and the
+  `IndexerGaps` alert read them; the Postgres target carries the table too. The two runbooks were rewritten
+  to the mechanism that exists, and the gate now checks every `npm run …` they quote against
+  `package.json`. Pinned by `tests/security/indexer-gaps.test.ts` (7 rules, 9 mutations) and
+  `backend/test/backfill.test.ts` (9 behavioural tests).
 - **SEC-B26 (2026-09-27): closed — credentials can no longer leave the process through the logs.**
   `backend/src/log.ts` had no redaction at all: `safeValue` copied every own property of every object it
   was handed, so a future `log.info('cfg', cfg)` or `log.error('verify failed', { token, secret })` would

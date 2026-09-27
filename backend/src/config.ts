@@ -204,6 +204,11 @@ export const LISTEN_HEAL_TIMES_BATCH = Number(env.LISTEN_HEAL_TIMES_BATCH ?? 25)
 /** SEC-B13: how many times one untimed row may be retried by `healEventTimes` before it is parked (an RPC
  *  that no longer serves the signature cannot heal it, and retrying for ever would starve the batch). */
 export const LISTEN_HEAL_TIMES_MAX_ATTEMPTS = Number(env.LISTEN_HEAL_TIMES_MAX_ATTEMPTS ?? 5);
+/** SEC-B27: how many recorded `indexer_gaps` rows one repair pass re-fetches (heal tick and CLI). A
+ *  signature `getTransaction` will not serve is retried at most INDEXER_GAP_MAX_ATTEMPTS times by the
+ *  ticks, then parked for the operator — the CLI (`--repair-gaps`) retries parked rows on purpose. */
+export const INDEXER_GAP_REPAIR_BATCH = Number(env.INDEXER_GAP_REPAIR_BATCH ?? 25);
+export const INDEXER_GAP_MAX_ATTEMPTS = Number(env.INDEXER_GAP_MAX_ATTEMPTS ?? 5);
 
 /**
  * Pyth (owner decision Q7 — we run our own price pusher, ops/pyth-pusher/). The API quotes from

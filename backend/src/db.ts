@@ -52,6 +52,24 @@ CREATE TABLE IF NOT EXISTS indexer_cursor (
   updated_at       INTEGER
 );
 
+-- SEC-B27: the transactions the historical walk SAW in getSignaturesForAddress but could not fetch.
+-- getTransaction answering null (outside the provider's retention window, or a transient RPC answer)
+-- used to be a silent skip: the page counted no event, the walk finished, and the cursor was stamped
+-- history_complete = 1 — so whatever that transaction emitted (a ServicePaid, a chip mint, a battle
+-- result) was missing for good with nothing anywhere saying so. A row here is the honest record;
+-- repairIndexerGaps is the retry path (heal tick, or the CLI flag --repair-gaps). attempts parks a
+-- signature the provider will never serve again, so it cannot occupy every batch for ever.
+CREATE TABLE IF NOT EXISTS indexer_gaps (
+  program      TEXT    NOT NULL,
+  signature    TEXT    NOT NULL,
+  slot         INTEGER NOT NULL,
+  first_seen   INTEGER NOT NULL,
+  attempts     INTEGER NOT NULL DEFAULT 0,
+  last_attempt INTEGER,
+  PRIMARY KEY (program, signature)
+);
+CREATE INDEX IF NOT EXISTS idx_indexer_gaps_slot ON indexer_gaps(slot);
+
 -- ------------------------------------------------------------ projections (rebuildable: npm run rebuild)
 CREATE TABLE IF NOT EXISTS wallets (
   address       TEXT PRIMARY KEY,

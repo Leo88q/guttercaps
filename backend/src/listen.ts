@@ -6,9 +6,10 @@
 //
 // Production note (docs/03-architecture.md §3.1): the same `ingestTx` is the
 // handler for Helius enhanced webhooks — WS is the fallback path there.
-import { COMMITMENT, LISTEN_HEAL_DEPTH, LISTEN_HEAL_EVERY_MS, LISTEN_HEAL_TIMES_BATCH, LISTEN_RECONNECT_MS, PROGRAMS, PROGRAM_NAMES, RPC_URL, type ProgramName } from './config.ts';
+import { COMMITMENT, INDEXER_GAP_REPAIR_BATCH, LISTEN_HEAL_DEPTH, LISTEN_HEAL_EVERY_MS, LISTEN_HEAL_TIMES_BATCH, LISTEN_RECONNECT_MS, PROGRAMS, PROGRAM_NAMES, RPC_URL, type ProgramName } from './config.ts';
 import { backfillProgram } from './backfill.ts';
-import { getConnection, healEventTimes, ingestSignatures, ingestTx, sleep } from './ingest.ts';
+import { db as sharedDb } from './db.ts';
+import { getConnection, healEventTimes, ingestSignatures, ingestTx, recordGaps, repairIndexerGaps, sleep } from './ingest.ts';
 // sleep is re-used by the keep-alive loop at the bottom
 import { FINALITY_EVERY_MS, reconcileOnce } from './finality.ts';
 import { installShutdown } from './shutdown.ts';
@@ -53,14 +54,31 @@ export async function listen(log: (s: string) => void = console.log, opts: { sig
 
   // 3. gap healer — cheap, idempotent, also fills block_time for rows first seen over WS
   const heal = async () => {
+    const db = sharedDb();
     for (const p of PROGRAM_NAMES) {
       try {
         const page = await connection.getSignaturesForAddress(PROGRAMS[p], { limit: LISTEN_HEAL_DEPTH }, 'confirmed');
         const r = await ingestSignatures(connection, page, 2);
         if (r.inserted > 0) log(`[heal:${p}] recovered ${r.inserted} missed events`);
+        // SEC-B27: a signature this pass was told about but could not fetch is written down, not skipped —
+        // it is the recent-transaction half of the same record `backfillProgram` keeps for the walk.
+        if (r.missing.length) {
+          const fresh = recordGaps(db, p, r.missing);
+          if (fresh > 0) log(`[heal:${p}] ${fresh} signature(s) the RPC did not serve — recorded as indexer gap(s)`);
+        }
       } catch (e) {
         log(`[heal:${p}] ${(e as Error).message}`);
       }
+    }
+    // SEC-B27: and the retry half — a gap recorded a minute ago is usually a transient RPC answer, so the
+    // next tick fetches it without an operator. Rows at the attempt cap are left to
+    // `npm run backend:backfill -- --repair-gaps` (an archival provider), so a permanently pruned
+    // signature cannot make every tick pay for it.
+    try {
+      const g = await repairIndexerGaps(connection, db, INDEXER_GAP_REPAIR_BATCH);
+      if (g.healed > 0) log(`[heal:gaps] recovered ${g.healed} previously unserved transaction(s)${g.parked ? ` · ${g.parked} parked` : ''}`);
+    } catch (e) {
+      log(`[heal:gaps] ${(e as Error).message}`);
     }
     // SEC-B13: the loop above only reaches back LISTEN_HEAL_DEPTH signatures, so anything a longer outage
     // left undated stays undated — and every day-bucketed query (metrics, quests, accrual, the season

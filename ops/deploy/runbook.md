@@ -212,6 +212,7 @@ npm run backend:crank      # то же: отдельный запуск нуже
 | серия | вопрос, на который она отвечает |
 |---|---|
 | `ready`, `ingest_lag_slots`, `ingest_last_slot` | видит ли игрок свои события |
+| `indexer_gaps_pending`, `indexer_gaps_parked` | есть ли транзакции, которые цепь имеет, а read-model — нет (SEC-B27; `GET /v1/health.indexerGaps`, ремонт — `npm run backend:backfill -- --repair-gaps`, ALERT-06 в `docs/ALERT_CATALOG.md`) |
 | `crank_pending_jobs`, `crank_abandoned_jobs`, `crank_balance_sol`, `crank_balance_readable` | открываются ли паки и есть ли чем |
 | `pyth_cache_age_seconds` | можно ли честно оценить пак (StalePrice = отказы покупки) |
 | `http_requests_total{route,status}` , `http_request_duration_ms` | деградация API, а не «в целом плохо» |
@@ -352,7 +353,10 @@ cost`), протух/отозван Hermes-ключ, `PYTH_SOL_ACCOUNT`/`PYTH_SK
 
 Симптом: `ingest_lag_slots` растёт, `crank_pending_jobs` растёт, API при этом полностью здоров.
 Ничего в коде менять не надо: `listen` имеет heal-цикл (`LISTEN_HEAL_DEPTH`), который добирает
-пропущенное сам, как только RPC вернётся. Если lag > 300 и RPC жив — смотреть, не сел ли websocket
+пропущенное сам, как только RPC вернётся. Если при этом выросли `indexer_gaps_pending`
+(`GET /v1/health.indexerGaps`), это подписи, которые провайдер перечислил и не отдал: свежие
+добирает тот же heal-тик, запаркованные — `npm run backend:backfill -- --repair-gaps` на архивном
+RPC (полный разбор — ALERT-06 в `docs/ALERT_CATALOG.md`). Если lag > 300 и RPC жив — смотреть, не сел ли websocket
 (web3.js переподключается сам, а вот подписка на `onLogs` после долгого простоя может и не
 вернуться → `docker compose restart api`, он догонит через backfill).
 

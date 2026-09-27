@@ -37,6 +37,7 @@ SECURITY-SCAN-TRIAGE-2026-09-23) учтены; здесь — только но�
 | SEC-B23 | Low (зеркало guard-rails админ-панели разошлось с цепочкой) | `backend/src/admin.ts`, `backend/test/admin.test.ts`, `tests/security/anchor-invariants.test.ts` | Панель админа только *кодирует* транзакцию для Squads (ключей у процесса нет), поэтому каждый rail `set_params` продублирован в TS руками — и зеркало разошлось: пять адресных полей принимали нулевой ключ (валидный base58, адрес system-программы — панель говорит ok, tx ревертнёт), `priceCgMicro` не проверялся вообще (отрицательный BigInt уезжал в Borsh u64 — 500 вместо 422), полоса SEC-F13 (кап 1 000 000 $CG + одноразовый ×½–2×) и потолок `params_version` (`Overflow`) не отражены. | **Исправлено**: `InvalidConfigAddress` на нулевой ключ, u64-диапазон + кап + полоса ×½–2× против живой строки пака (целочисленное деление, как в Rust), отказ при `paramsVersion >= 65 535`; BigInt-сравнения вынесены в `CG_PRICE_GUARD`, `GUARD` остаётся JSON-безопасным (BigInt в нём — 500 на `GET /admin/params`); гейт `SEC-B23` + самотест (статика 83 → 85), `backend/test/admin.test.ts` 10/10 |
 | SEC-B24 | Medium (аварийный путь: пауза не сработала бы) | `backend/src/{admin,server}.ts`, `backend/test/{admin.test.ts,chainFixtures.ts}`, `tests/security/anchor-invariants.test.ts` | `POST /admin/kill-switch` кодировал `pause` / `set_paused` / `set_arena` и **выбирал подписанта**: для всех программ, кроме staking, он брал admin/pauser из `GameConfig` chip_core. Арена проверяет свой `ArenaConfig` (`Pause` — admin или pauser, раз-пауза `set_arena` — `has_one = admin`), поэтому пауза арены уезжала под горячим ключом chip_core и могла только ревертнуть — ровно на аварийном пути; раз-пауза требовала арена-админа, которого панель не читала. Диффа показывала выдуманное «предыдущее» состояние (`!paused`). | **Исправлено**: `fetchChainParams` читает и декодирует `ArenaConfig` (`ChainParams.arena`), маршрут выбирает пару по программе и отвечает `503 arena_missing` без аккаунта, `GET /admin/params` публикует обе пары, диффа несёт живое `paused` и предупреждает о no-op. Гейт `SEC-B24` + самотест (статика 85 → 87), HTTP-тест с намеренно разными ключами арены |
 | SEC-B25 | Low (cookie posture: кросс-сайтовая отправка на двух GET-роутах, которые пишут) | `backend/src/{config,auth}.ts`, `backend/.env.example`, `ops/deploy/runbook.md`, `tests/security/csp.test.ts`, `backend/test/security.test.ts` | `setSessionCookie` ставила `SameSite=None; Secure` при `COOKIE_SECURE=1` — то есть в каждом продовом деплое, — а этот деплой same-origin: nginx отдаёт клиент и проксирует `/v1/`. `None` разрешает кросс-сайтовому запросу *отправить* сессионную куку, а два GET-роута пишут: `/me/handle/check` берёт 120-секундный hold на ник, `/quests` пишет логин дня (от него зависит `eligibility` перед `/quests/claims`). | **Исправлено**: `COOKIE_SAMESITE` (lax \| strict \| none, дефолт **lax**) валидируется на старте, `none` форсит `Secure` и в проде требует `CROSS_SITE_CLIENT=1`; runbook/`.env.example` объясняют выбор; гейт `SEC-B25` + самотест (статика 87 → 89), HTTP-тест `Set-Cookie` |
+| SEC-B27 | Medium (тихая потеря данных индексатора) | `backend/src/{ingest,backfill,listen,config}.ts`, `backend/src/db.ts`, `ops/monitoring/alerts.yml`, `docs/ALERT_CATALOG.md`, `docs/DISASTER_RECOVERY.md` | `getSignaturesForAddress` отдаёт подпись, `getTransaction` — второй вызов и может ответить `null` (окно хранения провайдера или транзиентный ответ). `ingestSignatures` на этом `null` делала `continue`: страница считалась обслуженной, обход завершался, курсор получал `history_complete = 1`. Read-model терял всё, что эмитила транзакция (`ServicePaid` → плательщику `payment_not_found`, минт фишки, результат боя), `rebuild` воспроизводил то же отсутствие, а сигнала не было ни одного. Документы при этом описывали несуществующее: `DISASTER_RECOVERY.md` §2.3 — «sequence detector», ALERT-02 — `npm run backfill -- --from-slot … --to-slot …` (корневого скрипта `backfill` нет, CLI отфильтровывал флаги и запускал полный обход вместо диапазона). | **Исправлено**: `ingestSignatures` возвращает `missing` (`{signature, slot}`); бросающий fetch по-прежнему валит страницу (курсор не двигается — fail-closed); обход пишет дыры в `indexer_gaps` и держит `history_complete = 0`; `repairIndexerGaps` добирает их через тот же `ingestTx` (heal-тик каждые `LISTEN_HEAL_EVERY_MS`, `--repair-gaps` — запаркованные, кап `INDEXER_GAP_MAX_ATTEMPTS`); `GET /v1/health.indexerGaps` + серии + алерт `IndexerGaps`; таблица и в Prisma-цели. Гейт `tests/security/indexer-gaps.test.ts` (7 правил, 9 мутаций), поведение `backend/test/backfill.test.ts` (9) |
 | SEC-B26 | Low (утечка ключа через наблюдаемость — класс Slope / DEXX) | `backend/src/log.ts`, `backend/test/log.test.ts`, `tests/security/logging.test.ts` | Редакции не было вообще: `safeValue` копировал каждое собственное свойство любого объекта, поэтому любое будущее «залогируем конфиг / тело / объект с токеном» отправило бы живой секрет в лог-пайплайн (Loki/CloudWatch/Datadog). `errFields` нёс сообщение ошибки как есть, а сообщения fetch/RPC содержат endpoint вместе с `?api-key=…`. | **Исправлено**: сеть по имени поля (разделители снимаются ⇒ `TURNSTILE_SECRET`/`apiKey`/`api_key`/`sessionCookie`/`keypair`/`nonce`/`deviceSalt` матчатся одинаково) маскирует значение рекурсивно **до** его обхода; сеть по форме значения маскирует `?api-key=…`, `secret="…"`, `Bearer …` в свободном тексте, в сообщении строки и в `errFields`, всегда до обрезки на 2 000 символов. Кошелёк, подпись, слот, request id, статус остаются читаемыми. Гейт `SEC-B26` + 4 мутационных самотеста (статика 89 → 91), 4 бэкенд-теста |
 
 
@@ -816,6 +817,73 @@ for (const [k, x] of Object.entries(v as Record<string, unknown>)) { … out[k] 
 (4 теста: маскировка на глубине и во всех написаниях, контрольная выборка «читаемого», свободный текст с
 URL/RPC-кредой и прозой, `errFields`).
 
+## SEC-B27 · Medium · пропущенная транзакция не записывалась, а история объявлялась полной
+
+`getSignaturesForAddress` перечисляет подписи, но **сама транзакция — отдельный вызов**, и
+`getTransaction` законно отвечает `null`: у провайдера кончилось окно хранения, либо это транзиентный
+ответ RPC. Страница обхода обрабатывала этот `null` как «здесь ничего нет»:
+
+```ts
+const t = txs[i];
+if (!t) continue;           // ← молчание: ни счётчика, ни строки, ни предупреждения
+```
+
+Дальше всё сходилось: обход заканчивался, `setCursor(program, { …, history_complete: 1 })` фиксировал
+«история полная», а из read-model пропадало всё, что эмитила недоступная транзакция. Последствия
+разные по классу, но одного корня: `ServicePaid` → игрок заплатил и получает `payment_not_found` (то
+есть платёж есть в цепи и «нет» в API); минт/регистрация фишки → инвентарь в API расходится с цепью,
+кошелёк видит меньше, чем у него есть; `BattleResolved` → сеттлмент и статистика без боя. `rebuild` тут
+не помогает по построению: проекции — функция `events_raw`, а пропуска **нет** в логе, поэтому пересборка
+воспроизводит то же отсутствие — «два ответа, один источник» здесь превращается в один неверный.
+
+Сигнала не было ни одного, и это вторая половина находки. `history_complete` никто не читает как
+алерт, а операционные документы обещали механизм, которого в дереве нет:
+
+* `docs/DISASTER_RECOVERY.md` (раздел 2, инвариант 3): «A sequence detector tracks slot intervals. Any detected gap
+  triggers a backfill fetch» — детектора нет ни в одном файле (живой heal-цикл перечитывает только
+  последние `LISTEN_HEAL_DEPTH` подписей, то есть дыры в середине истории не видит);
+* `docs/ALERT_CATALOG.md` ALERT-02: `npm run backfill -- --from-slot <slot_start> --to-slot <slot_end>` —
+  корневого скрипта `backfill` не существует вовсе, а CLI (`process.argv.slice(2).filter(isProgramName)`)
+  отфильтровывал оба флага и запускал **полный** обход всех четырёх программ. Оператор, читающий это под
+  аварией, получал либо `Missing script`, либо (если он сам поправит имя) длинный обход вместо диапазона.
+
+**Исправление.**
+
+1. **Запись, а не пропуск.** `ingestSignatures` возвращает `missing: {signature, slot}[]` — подписи,
+   которые RPC перечислил и не отдал. Бросающий fetch по-прежнему валит страницу целиком: это
+   fail-closed (курсор не двигается, следующий запуск перечитывает), а «частичный успех» был бы
+   неотличим от «обслужено, событий не было».
+2. **Честная полнота.** Обход (`backfillProgram`) складывает недоступные подписи в новую таблицу
+   `indexer_gaps` (PK `(program, signature)`, `first_seen`, `attempts`, `last_attempt`) и ставит
+   `history_complete = 1` только если множество пусто; иначе — громкая строка `INCOMPLETE` с числом и
+   самым старым слотом.
+3. **Путь возврата.** `repairIndexerGaps` тянет дыры от старых слотов к новым, ингестит найденное тем же
+   `ingestTx` (дедуп, `patchLateTimes`, проекции) и удаляет строку; неудача считает попытку, после
+   `INDEXER_GAP_MAX_ATTEMPTS` строка паркуется, чтобы недоступная навсегда подпись не занимала каждую
+   пачку. Вызывается из heal-тика слушателя (свежие дыры обычно транзиентны) и из
+   `npm run backend:backfill -- --repair-gaps`, который перебирает и запаркованные — это команда для
+   архивного RPC.
+4. **Видимость.** `GET /v1/health.indexerGaps = {pending, parked, oldestSlot}`, серии
+   `indexer_gaps_pending`/`indexer_gaps_parked` в `/metrics` и алерт `IndexerGaps` в
+   `ops/monitoring/alerts.yml` (порог `> 0` за 15 минут) — счётчик, который никто не читает, это не
+   сигнал.
+5. **Оба документа — на реальный механизм.** ALERT-02 переписан на `ingest_lag_slots` + heal-цикл +
+   `npm run backend:backfill`; добавлен ALERT-06 с разбором `pending`/`parked` и командой ремонта;
+   раздел 2 `DISASTER_RECOVERY.md` описывает `indexer_gaps` и `history_complete`. Схема `indexer_gaps` есть и
+   в Postgres-цели (`@@map("indexer_gaps")`), иначе `schema:check` падал бы на «модель без DDL».
+
+**Тест.** Гейт `SEC-B27` (`tests/security/indexer-gaps.test.ts`, 7 правил + 9 мутационных самотестов):
+тихий `continue`, проглоченный `catch` вокруг fetch, снова безусловный `history_complete`, потерянная
+Postgres-таблица, снятый кап попыток, слушатель без записи, снятый алерт, вернувшийся `--from-slot`,
+вернувшийся «sequence detector» и `npm run backfill` без скрипта — каждое валит своё правило. Отдельное
+правило (и его мутация) сверяет **каждую** `npm run …`-команду в `ALERT_CATALOG`/`DISASTER_RECOVERY` со
+списком скриптов `package.json`: runbook исполняют под давлением и из исходников не сверяют.
+Поведенчески — `backend/test/backfill.test.ts` (9 тестов) с фейковым RPC, который *перечисляет* подпись и
+отвечает `null` на неё: запись дыры и `history_complete = 0`, полностью обслуженный обход ⇒ 1, failed-tx
+дырой не считается, идемпотентность `first_seen`, продолжение с курсора, ремонт вместе с проекциями
+(фишки появляются), парковка после капа и `includeParked`, `--repair-gaps` считает остаток, rebuild
+совпадает с живым состоянием.
+
 ## Проверено заново, без находок
 
 * **Периметр бэкенда.** `/healthz`, `/readyz`, `/metrics` регистрируются до лимитера (намеренно);
@@ -965,7 +1033,7 @@ Cloudflare требует для виджета `script-src` + `frame-src` от 
    ни registrar lock, ни DNSSEC, ни CAA в репозитории не описаны (runbook §1.3 — только граница TLS).
    Принятый риск с владельцем ops и чек-листом до G-2, причина и границы — `SECURITY.md` / `docs/06` §2.2.
 3. **SEC-B21 · Trident-фаззинг** — цели и CI-джоба нет; класс закрыт `cargo test`, 92 сценариями localnet,
-   91 статическими гейтами и структурными инвариантами. Принятый риск с планом до mainnet, см. там же.
+   99 статическими гейтами и структурными инвариантами. Принятый риск с планом до mainnet, см. там же.
 4. **Диспозиция частей 1–2 чеклиста (31–70)** — вынесена в отдельный файл
    `SECURITY-AUDIT-2026-09-27-checklist.md`: строки по темам, у каждой — что защищает и чем доказано,
    плюс сводка принятых рисков (SEC-B20, SEC-B21, порог Squads, инсайдер) и ℹ️-пункты.
@@ -984,7 +1052,7 @@ origin'ов у лендинга нет), прод-CSP против Turnstile/`ws
 Всё это — на одном дереве, `npm run verify` exit 0:
 
 * `npm --prefix backend test` — 23 файла, **411** тестов (+19 `params.test.ts`, +5 `verify.test.ts`, +1 сценарий SEC-B5 в `human.test.ts`, +14 `chip-index.test.ts` для shape #27, +2 сценария SEC-B11 в `game.test.ts`, +4 сценария SEC-M8 в `crank.test.ts`, +4 сценария SEC-B13 в `projections.test.ts`/`game.test.ts`, +2 сценария SEC-B14 в `cosmetics.test.ts`, +1 сценарий SEC-B16 в `game.test.ts`, +2 сценария SEC-B18 (api + security); три временных probe-файла удалены, когда их находки стали постоянными тестами).
-* `npm run security:static` — **91** проверок: 34 прежних + 6 SEC-B2/B3 + 4 SEC-B7 + 6 SEC-B8 + 7 SEC-B9 + 8 SEC-B12 (supply-chain: пины, хост, sha512, отозванные версии в дереве и в диапазонах, install-скрипты, лок↔манифесты) + 4 SEC-M8 (`rent-lut.test.ts`: пины CPI и выплаты, «cooldown — часть ALT-программы, а не наш Clock», 6 мутаций) + 5 SEC-B13 (`time-heal.test.ts`: проход исцеления, провод в `listen`, попытки/парковка, фоллбэк по слоту, `accrualFrom`; 6 мутаций) + 4 SEC-B14 (`paid-claims.test.ts`: выбор строки по `ref_hash`, оба вызывающих его передают, одноразовое списание одним условным UPDATE; 4 мутации) + 2 SEC-B18 (`api-input.test.ts`: маршрут `handle-check` и cap живых hold-ов до upsert-а, плюс self-test на пре-фиксный маршрут) + 1 SEC-B19 (`anchor-invariants.test.ts`: stride claim-nonce покрывает `MAX_PACK_QTY × MAX_CHIPS_PER_PACK`, `assert!` на месте, `buy_pack` связан с константой; 2 самотеста). + 2 SEC-B22 (`anchor-invariants.test.ts`: все пять адресных полей `set_params` проходят проверку на нулевой ключ, событие несёт новые значения, маска бит совпадает с числом полей, а порядок полей совпадает с кодеком бэкенда; самотест валит правило на снятой проверке и на «съехавшем» кодеке). + 2 SEC-B23 (`anchor-invariants.test.ts`: словарь `ChipError` из `set_params`/`require_non_default` закреплён и каждое имя обязано быть правилом панели, шесть констант `economy.rs` и пять литералов сверяются с `GUARD`, полоса ×½–2× — против живой строки, BigInt внутри `GUARD` запрещён; самотест валит правило на снятом правиле, «съехавшей» константе, новом `ChipError` и BigInt-payload). + 2 SEC-B24 (`anchor-invariants.test.ts`: `Pause` каждой программы связан со своим PDA и своей парой admin/pauser, «пауза — паузером, раз-пауза — админом», `has_one = admin` у `ArenaAdmin`, гвард `arena_missing`, живое `paused` в диффе; самотест валит правило на подменённой паре, чужом PDA, снятом декодере и раз-паузе под горячим ключом). + 2 SEC-B25 (`csp.test.ts`: дефолт `Lax`, `HttpOnly`/`Path=/`, `none ⇒ Secure`, гвард `CROSS_SITE_CLIENT`, ключ задокументирован в `.env.example`/runbook/docs; самотест валит правило на дефолте `none`, куке без `HttpOnly`, снятой связке с `Secure` и недокументированном ключе). + 2 SEC-B26 (`logging.test.ts`: обе сети подключены в `safeValue`/`line`/`errFields`, скраб до обрезки, порядок правил `Bearer` → `key=value`, сьют поведения на месте; 4 мутационных самотеста).
+* `npm run security:static` — **99** проверок: 34 прежних + 6 SEC-B2/B3 + 4 SEC-B7 + 6 SEC-B8 + 7 SEC-B9 + 8 SEC-B12 (supply-chain: пины, хост, sha512, отозванные версии в дереве и в диапазонах, install-скрипты, лок↔манифесты) + 4 SEC-M8 (`rent-lut.test.ts`: пины CPI и выплаты, «cooldown — часть ALT-программы, а не наш Clock», 6 мутаций) + 5 SEC-B13 (`time-heal.test.ts`: проход исцеления, провод в `listen`, попытки/парковка, фоллбэк по слоту, `accrualFrom`; 6 мутаций) + 4 SEC-B14 (`paid-claims.test.ts`: выбор строки по `ref_hash`, оба вызывающих его передают, одноразовое списание одним условным UPDATE; 4 мутации) + 2 SEC-B18 (`api-input.test.ts`: маршрут `handle-check` и cap живых hold-ов до upsert-а, плюс self-test на пре-фиксный маршрут) + 1 SEC-B19 (`anchor-invariants.test.ts`: stride claim-nonce покрывает `MAX_PACK_QTY × MAX_CHIPS_PER_PACK`, `assert!` на месте, `buy_pack` связан с константой; 2 самотеста). + 2 SEC-B22 (`anchor-invariants.test.ts`: все пять адресных полей `set_params` проходят проверку на нулевой ключ, событие несёт новые значения, маска бит совпадает с числом полей, а порядок полей совпадает с кодеком бэкенда; самотест валит правило на снятой проверке и на «съехавшем» кодеке). + 2 SEC-B23 (`anchor-invariants.test.ts`: словарь `ChipError` из `set_params`/`require_non_default` закреплён и каждое имя обязано быть правилом панели, шесть констант `economy.rs` и пять литералов сверяются с `GUARD`, полоса ×½–2× — против живой строки, BigInt внутри `GUARD` запрещён; самотест валит правило на снятом правиле, «съехавшей» константе, новом `ChipError` и BigInt-payload). + 2 SEC-B24 (`anchor-invariants.test.ts`: `Pause` каждой программы связан со своим PDA и своей парой admin/pauser, «пауза — паузером, раз-пауза — админом», `has_one = admin` у `ArenaAdmin`, гвард `arena_missing`, живое `paused` в диффе; самотест валит правило на подменённой паре, чужом PDA, снятом декодере и раз-паузе под горячим ключом). + 2 SEC-B25 (`csp.test.ts`: дефолт `Lax`, `HttpOnly`/`Path=/`, `none ⇒ Secure`, гвард `CROSS_SITE_CLIENT`, ключ задокументирован в `.env.example`/runbook/docs; самотест валит правило на дефолте `none`, куке без `HttpOnly`, снятой связке с `Secure` и недокументированном ключе). + 2 SEC-B26 (`logging.test.ts`: обе сети подключены в `safeValue`/`line`/`errFields`, скраб до обрезки, порядок правил `Bearer` → `key=value`, сьют поведения на месте; 4 мутационных самотеста). + 8 SEC-B27 (`indexer-gaps.test.ts`: страница отдаёт `missing` и не глотает исключение; обход пишет дыры и не штампует `history_complete`; таблица в DDL **и** в Prisma-цели; `repairIndexerGaps` — old-first, кап попыток, DELETE после ремонта, вызов из heal-тика и из CLI; `/health.indexerGaps` + обе серии + алерт; runbook'и описывают существующий механизм; каждая `npm run …`-команда в них есть в `package.json`; 9 мутаций).
 * `npm run lock:integrity -- --selftest` — 11/11; сам лок: **1 097/1 097** registry-узлов с `resolved`+sha512, все — `registry.npmjs.org`; `npm ci` на пустом `node_modules` — exit 0 (npm сверил все хеши).
 * `npm run state:layout` — 29 аккаунтов совпадают с baseline (`--selftest` 10/10); гейт в `npm run verify` и в CI-джобе `economy`.
 * `npm run landing:check` (+ DOM-smoke) — зелёный, включая CSP/host-проверки и «каждый landing-шрифт вшит»; `guttercaps-landing.html` перегенерирован (2,78 МБ, 13 inlined woff2, 0 ссылок на Google Fonts).

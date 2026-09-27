@@ -52,14 +52,31 @@ model IndexerCursor {
   /// Column names are the indexer's, not the documentation's: ingest.ts upserts
   /// (program, newest_signature, newest_slot, history_complete, updated_at) — see backend/src/ingest.ts:96-105.
   /// A target table with `last_slot`/`last_sig` would ship a Postgres rollout whose very first write fails.
-  /// `history_complete` is the backfill flag (`npm run backend:backfill` sets it after a full walk); the
-  /// readyz probe reads it, so it cannot be an optional extra either.
+  /// `history_complete` is the backfill flag (`npm run backend:backfill` sets it after a full walk and
+  /// leaves it 0 when the walk could not fetch a signature it saw — SEC-B27); `/health.indexerGaps` and
+  /// `npm run backend:backfill -- --repair-gaps` are what read it back.
   newestSignature  String?  @map("newest_signature")
   newestSlot       BigInt?  @map("newest_slot")
   historyComplete  Boolean  @default(false) @map("history_complete")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
   @@map("indexer_cursor")
+}
+
+/// SEC-B27: one row per signature the history walk saw but could not fetch. Until these drain, the
+/// projections are missing whatever those transactions emitted — the reason `history_complete` is 0.
+model IndexerGap {
+  program     String
+  signature   String
+  slot        BigInt
+  firstSeen   DateTime  @map("first_seen")
+  /// Retry counter; at INDEXER_GAP_MAX_ATTEMPTS the row is parked for the operator instead of the ticks.
+  attempts    Int       @default(0)
+  lastAttempt DateTime? @map("last_attempt")
+
+  @@id([program, signature])
+  @@index([slot])
+  @@map("indexer_gaps")
 }
 
 // ---------------------------------------------------------------------------
