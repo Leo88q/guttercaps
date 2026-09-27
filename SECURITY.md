@@ -247,7 +247,9 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   a bug this fix would otherwise have introduced. The new `SEC-B23` static rule pins the `ChipError`
   vocabulary of `set_params` (+ `require_non_default`), cross-checks six `economy.rs` constants and five
   inline literals against `GUARD`, requires the live-row comparison, the zero-key check and the version
-  ceiling, and forbids a BigInt in `GUARD`; its self-test fails on a dropped rule, a drifted constant, a
+  ceiling, and forbids a BigInt in `GUARD`; the same rule covers the staking mirror — the panel encodes
+  `set_split` by hand too, so `GUARD.split` is checked against the program (`SPLIT_COUNT`, the 10 000 sum,
+  `MAX_SPLIT_DELTA_BPS`, `MIN_SPLIT_INTERVAL = 7 × DAY`) and against `backend/src/chain.ts`; its self-test fails on a dropped rule, a drifted constant, a
   new `ChipError` in the program and a BigInt payload. `backend/test/admin.test.ts` covers all three rails
   behaviourally (10/10).
 

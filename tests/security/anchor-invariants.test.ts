@@ -397,7 +397,8 @@ test('SEC-B19 the compressed claim-nonce stride covers the largest pack bundle (
 // *encodes* a Squads transaction — a panel that says ok and a tx that fails on chain (or worse, a
 // BigInt that 500s `GET /admin/params`) is the failure mode this rule closes. Same error vocabulary,
 // same thresholds, JSON-safe payload.
-const secB23Violations = (rust: string, econ: string, panelRaw: string): string[] => {
+const secB23Violations = (rust: string, econ: string, panelRaw: string, stake = '', chain = ''): string[] => {
+  const srcs: Record<string, string> = { chain };
   const bad: string[] = [];
   const body = bodyOf(rust, 'pub fn set_params');
   // NB: do *not* run the Rust comment stripper over TS — a `/*` inside a TS string opens a block comment
@@ -448,14 +449,50 @@ const secB23Violations = (rust: string, econ: string, panelRaw: string): string[
   if (!/k\.equals\(ZERO_KEY\)/.test(panel)) bad.push('the panel accepts 111…111 as a destination — the program refuses it (SEC-B22)');
   if (!/cfg\.paramsVersion >= 65_535/.test(panel)) bad.push('the params_version ceiling (ChipError::Overflow) is not mirrored — the panel would encode a patch that reverts');
   if (!/checkPackGuardRails\(patch\.sku, merged, violations, `packs\[\$\{i\}\]`, cfg\.packs\[patch\.sku\]\)/.test(panel)) bad.push('checkPackGuardRails is not given the live row — the ×½–2× band compares against nothing');
+  // 4. the same class for the staking mirror: `proposeParams` encodes `set_split` by hand too, so its
+  //    three rails (slice count, sum, ±delta, 7-day interval) must be the program's numbers.
+  if (stake) {
+    const splitBody = bodyOf(stake, 'pub fn set_split');
+    if (!splitBody) bad.push('staking::set_split is gone — the panel still encodes it');
+    else {
+      const konst = (name: string) => num(new RegExp(`pub const ${name}: \\w+ = ([\\d_]+|\\d+ \\* \\w+);`), stake);
+      const scalar = (m: RegExpExecArray | null) => (m ? m[1]!.trim() : '');
+      const count = konst('SPLIT_COUNT'), delta = konst('MAX_SPLIT_DELTA_BPS'), day = konst('DAY');
+      // `MIN_SPLIT_INTERVAL = 7 * DAY` — resolve the product rather than trusting a second literal
+      const minRaw = scalar(/pub const MIN_SPLIT_INTERVAL: i64 = (\d+ \* \w+);/.exec(stake));
+      const minInterval = minRaw && day ? Number(minRaw.split('*')[0]!.trim()) * day : NaN;
+      // `GUARD.split.count` is written as the imported `SPLIT_COUNT` (which the on-chain decoder also uses),
+      // so accept that identifier — but then the literal must not have drifted either.
+      if (!Number.isNaN(count) && !new RegExp(`count: (${count}\\b|SPLIT_COUNT,)`).test(guard)) bad.push(`GUARD.split.count ≠ SPLIT_COUNT (${count})`);
+      if (srcs.chain && !Number.isNaN(count) && !new RegExp(`export const SPLIT_COUNT = ${count};`).test(srcs.chain)) bad.push(`backend/src/chain.ts SPLIT_COUNT ≠ the program's ${count}`);
+      if (!Number.isNaN(delta) && !new RegExp(`maxDeltaBps: ${gn(delta)}\\b`).test(guard)) bad.push(`GUARD.split.maxDeltaBps ≠ MAX_SPLIT_DELTA_BPS (${delta})`);
+      // the panel writes the product (`7 * 86_400`), the program names a constant (`7 * DAY`): evaluate both
+      const panelInterval = (() => {
+        const m = /minIntervalS: ([0-9_*\s]+)/.exec(guard);
+        return m ? m[1]!.split('*').reduce((a, t) => a * Number(t.replace(/_/g, '').trim()), 1) : NaN;
+      })();
+      if (Number.isNaN(minInterval) || panelInterval !== minInterval) {
+        bad.push(`GUARD.split.minIntervalS ≠ MIN_SPLIT_INTERVAL (${minRaw || '?'} = ${minInterval}, panel = ${panelInterval})`);
+      }
+      const sum = scalar(/iter\(\)\.map\(\|&b\| b as u32\)\.sum::<u32>\(\) == ([\d_]+)/.exec(splitBody));
+      if (sum !== '10_000') bad.push(`set_split no longer checks sum == 10_000 (found ${sum || 'nothing'}) — the panel mirrors that literal`);
+      if (!/const sum = s\.reduce\(\(a, b\) => a \+ b, 0\);\s+if \(sum !== 10_000\)/.test(panel.replace(/\n/g, ' '))) bad.push('the panel does not compare the split sum against 10 000');
+      if (!/now - e\.split_changed_at >= MIN_SPLIT_INTERVAL/.test(splitBody)) bad.push('set_split no longer enforces the 7-day interval');
+      if (!/Number\(c\.emission\.splitChangedAt\) \+ GUARD\.split\.minIntervalS/.test(panel)) bad.push('the panel does not compare against the live split_changed_at');
+      if (!/Math\.abs\(v - cur\[i\]\) > GUARD\.split\.maxDeltaBps/.test(panel)) bad.push('the panel does not apply the ±delta rail per slice');
+    }
+  }
   return bad;
 };
 
-test('SEC-B23 the admin panel mirrors set_params: same error vocabulary, same thresholds, JSON-safe payload', () => {
+test('SEC-B23 the admin panel mirrors set_params and set_split: same vocabulary, same thresholds, JSON-safe payload', () => {
   const bad = secB23Violations(
     src('programs/chip_core/src/instructions/admin.rs'),
     src('programs/chip_core/src/economy.rs'),
     src('backend/src/admin.ts'),
+    // the rails of set_split span two files: the instruction and the constants module
+    src('programs/staking/src/instructions/emission.rs') + '\n' + src('programs/staking/src/state.rs'),
+    src('backend/src/chain.ts'),
   );
   assert.deepEqual(bad, []);
 });
@@ -666,19 +703,23 @@ test('self-test: SEC-B23 rule flags a dropped panel rule, a drifted threshold an
   const rust = src('programs/chip_core/src/instructions/admin.rs');
   const econ = src('programs/chip_core/src/economy.rs');
   const panel = src('backend/src/admin.ts');
-  assert.deepEqual(secB23Violations(rust, econ, panel), []);
+  const stake = src('programs/staking/src/instructions/emission.rs') + '\n' + src('programs/staking/src/state.rs');
+  assert.deepEqual(secB23Violations(rust, econ, panel, stake), []);
   const noCgRule = panel.replace(/rule: 'CgPriceGuardRail'/g, "rule: 'ok'");
   assert.notEqual(noCgRule, panel);
-  assert.ok(secB23Violations(rust, econ, noCgRule).some((v) => /CgPriceGuardRail/.test(v)));
+  assert.ok(secB23Violations(rust, econ, noCgRule, stake).some((v) => /CgPriceGuardRail/.test(v)));
   const drift = econ.replace('pub const MAX_MARKET_FEE_BPS: u16 = 1_000;', 'pub const MAX_MARKET_FEE_BPS: u16 = 1_500;');
   assert.notEqual(drift, econ);
-  assert.ok(secB23Violations(rust, drift, panel).some((v) => /maxMarketFeeBps/.test(v)));
+  assert.ok(secB23Violations(rust, drift, panel, stake).some((v) => /maxMarketFeeBps/.test(v)));
   const newRequire = rust.replace('require!(fee <= MAX_MARKET_FEE_BPS, ChipError::FeeTooHigh);', 'require!(fee <= MAX_MARKET_FEE_BPS, ChipError::FeeTooHigh);\n        require!(fee != 999, ChipError::BrandNewRail);');
   assert.notEqual(newRequire, rust);
-  assert.ok(secB23Violations(newRequire, econ, panel).some((v) => /BrandNewRail/.test(v)));
+  assert.ok(secB23Violations(newRequire, econ, panel, stake).some((v) => /BrandNewRail/.test(v)));
   const bigint = panel.replace('maxPackCgPriceMicro: 1_000_000_000_000,', 'maxPackCgPriceMicro: 1_000_000_000_000n,');
   assert.notEqual(bigint, panel);
-  assert.ok(secB23Violations(rust, econ, bigint).some((v) => /BigInt/.test(v)));
+  assert.ok(secB23Violations(rust, econ, bigint, stake).some((v) => /BigInt/.test(v)));
+  const looserSplit = stake.replace('pub const MAX_SPLIT_DELTA_BPS: u16 = 1_000;', 'pub const MAX_SPLIT_DELTA_BPS: u16 = 2_000;');
+  assert.notEqual(looserSplit, stake);
+  assert.ok(secB23Violations(rust, econ, panel, looserSplit).some((v) => /maxDeltaBps/.test(v)));
 });
 
 test('self-test: SEC-B24 rule flags an arena pause signed with chip_core keys and a wrong PDA', () => {

@@ -679,7 +679,10 @@ wSOL reward-escrow ATA и **Address Lookup Table** (`lut` + `lutSigner`, адр�
 а `GUARD` остаётся JSON-безопасным: `GET /admin/params` публикует `guardRails: GUARD` дословно, и BigInt
 внутри — это 500 на чтении (латентный баг, который фикс иначе бы внёс; типы его поймали на первом прогоне).
 
-**Тест.** Правило `SEC-B23` в `tests/security/anchor-invariants.test.ts`: вычитывает набор
+**Тест.** Правило `SEC-B23` в `tests/security/anchor-invariants.test.ts` покрывает и зеркало `set_split`
+(панель кодирует и его руками): `GUARD.split` сверяется с программой — `SPLIT_COUNT`, сумма 10 000,
+`MAX_SPLIT_DELTA_BPS`, `MIN_SPLIT_INTERVAL = 7 × DAY` (сравнивается значение, а не текст: панель пишет
+`7 * 86_400`), плюс `backend/src/chain.ts`; вычитывает набор
 `ChipError::*`, который `set_params` вместе с `require_non_default` способен вернуть, и требует, чтобы
 каждое имя было правилом панели; сверяет шесть констант `economy.rs` (`BPS_DENOM`, `MAX_CHIPS_PER_PACK`,
 `MAX_TOP2_BPS_STANDARD`, `MAX_MARKET_FEE_BPS`, `MAX_SKR_DISCOUNT_BPS`, `MAX_PACK_CG_PRICE_MICRO`) и пять
