@@ -31,6 +31,16 @@ export const RPC_URL: string =
 export const RPC_WS_URL: string | undefined =
   env.VITE_RPC_WS_URL && env.VITE_RPC_WS_URL.length > 0 ? env.VITE_RPC_WS_URL : undefined;
 
+/**
+ * SEC-B54: the chain id that goes into the SIWS message the user reads and signs, and into the wallet
+ * adapter's `chains`. Derived from `CLUSTER`, never written as a literal: it was hardcoded `solana:devnet`
+ * in `session.tsx` while `main.tsx` advertised `solana:mainnet` on mainnet, so the sign-in the wallet
+ * displays named the wrong network — the one sentence a user is being trained to read carefully — and a
+ * strict wallet could refuse the chain mismatch. One source, two consumers.
+ */
+export const SIWS_CHAIN_ID: 'solana:mainnet' | 'solana:devnet' | 'solana:localnet' =
+  CLUSTER === 'mainnet-beta' ? 'solana:mainnet' : CLUSTER === 'localnet' ? 'solana:localnet' : 'solana:devnet';
+
 export const API_BASE: string = env.VITE_API_BASE ?? '/v1';
 export const WS_BASE: string = env.VITE_WS_BASE ?? '/ws';
 

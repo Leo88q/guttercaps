@@ -858,6 +858,42 @@ describe('reward oracle', () => {
     expect(oracle.rewardOracleStatus(db).unrootedMicro.referrals).toBe('0');
   });
 
+  it('SEC-B53: a referral payee that is not an address is zeroed at settlement, and one unbuildable kind cannot stop the others', async () => {
+    human.configureHuman({ enabled: false, maxWalletsPerDevice: 3, salt: 'test-salt' });
+    // The payee string used to come straight from the request body (`?ref=`), so `referral_rewards.wallet`
+    // could hold anything. `eligibility()` happens to reject an unknown wallet, which kept such a row at
+    // amount 0 — but that is an unrelated rule holding the reward pipeline up: the builder parses every leaf
+    // wallet with `new PublicKey(...)` and throws, and a throw inside `runOnce` used to abort the cycle
+    // before `publishPending`, stopping every kind (quests, PvP, referrals, boosters, vouchers, SKR) once
+    // per interval until someone deleted the row by hand.
+    const junkReferee = kp();
+    db.run(`INSERT INTO wallets (address, first_seen, referrer) VALUES (?, ?, ?)`, junkReferee, T - 2 * 86_400, 'not-a-solana-address');
+    mint(db, junkReferee, [{ rarity: 0, collection: 0 }], { sku: 2, nonce: '910', blockTime: T - 3000 });
+    finalizeAll(db);
+    // a zeroed row, recorded once (so it is never re-evaluated), with the referee's own welcome bonus intact
+    const settled = referrals.settleReferrals(db, T + 20);
+    expect(settled.rows).toBe(2);
+    expect(settled.paidMicro).toBe(0n);
+    expect(settled.welcomeMicro).toBe(149_000_000n);
+    expect(db.get<{ wallet: string; amount: string; reason: string }>(`SELECT wallet, amount, reason FROM referral_rewards WHERE referee = ? AND nonce = '910'`, junkReferee))
+      .toEqual({ wallet: 'not-a-solana-address', amount: '0', reason: 'referrer_ineligible' });
+    expect(db.scalar(`SELECT COUNT(*) FROM referral_rewards WHERE CAST(amount AS INTEGER) > 0 AND wallet NOT IN (SELECT address FROM wallets)`)).toBe(0);
+
+    // And the reader still cannot be poisoned by a row written some other way: a hand-inserted positive
+    // amount for a junk payee throws in the builder (fail loud, never a leaf for a wallet nobody can be),
+    // but the cycle isolates it — the other kinds still build and publish.
+    db.run(`INSERT INTO referral_rewards (referee, nonce, wallet, amount, spend_cents, created_at) VALUES (?, 'poison', 'still-not-an-address', 5000000, 100, ?)`, junkReferee, T);
+    expect(() => oracle.buildBatch(db, oracle.KIND_REFERRALS, T + 21, 1n)).toThrow();
+    const conn = new FakeConnection();
+    let published = 0;
+    conn.onTx = () => { published++; };
+    const r = await oracle.runOnce({ connection: asConn(conn), db, questOracle: Keypair.generate(), seasonOracle: Keypair.generate(), minBatchMicro: 1n }, T + 22);
+    expect(r.built.map((b) => b.kind)).not.toContain(oracle.KIND_REFERRALS); // the poisoned kind
+    expect(r.built.map((b) => b.kind)).toContain(oracle.KIND_QUESTS);        // everything else keeps paying
+    expect(r.published).toBeGreaterThan(0);
+    expect(published).toBeGreaterThan(0);
+  });
+
   it('#27 item roots: booster completions → kind-8 leaves (unit count, ≤ 10 per wallet, ≤ 1 000 per root, carry-over), publish_item_root by the quest oracle, ITEM currency in /quests/claims', async () => {
     const T2 = T + 10;
     const day = quests.dayIndex(T2);

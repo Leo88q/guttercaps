@@ -29,6 +29,9 @@ ARG VITE_SKR_MINT
 ARG VITE_LOOKUP_TABLE
 ARG VITE_TURNSTILE_SITE_KEY
 ARG VITE_SENTRY_DSN
+# SEC-B55: declared purely so it can be *refused* below. The in-browser mock answers /v1 and /ws with
+# plausible data and "signs in" a wallet nobody owns; it must never be the backend of a deployed origin.
+ARG VITE_API_MOCK
 # ARG → ENV: this is the step people skip, and the only thing Vite reads is the environment.
 ENV VITE_CLUSTER=$VITE_CLUSTER VITE_SOLANA_RPC=$VITE_SOLANA_RPC VITE_SOLANA_WS=$VITE_SOLANA_WS \
     VITE_API_BASE=$VITE_API_BASE VITE_WS_BASE=$VITE_WS_BASE \
@@ -36,7 +39,7 @@ ENV VITE_CLUSTER=$VITE_CLUSTER VITE_SOLANA_RPC=$VITE_SOLANA_RPC VITE_SOLANA_WS=$
     VITE_PROGRAM_STAKING=$VITE_PROGRAM_STAKING VITE_PROGRAM_ARENA=$VITE_PROGRAM_ARENA \
     VITE_CG_MINT=$VITE_CG_MINT VITE_USDC_MINT=$VITE_USDC_MINT VITE_SKR_MINT=$VITE_SKR_MINT \
     VITE_LOOKUP_TABLE=$VITE_LOOKUP_TABLE VITE_TURNSTILE_SITE_KEY=$VITE_TURNSTILE_SITE_KEY \
-    VITE_SENTRY_DSN=$VITE_SENTRY_DSN
+    VITE_SENTRY_DSN=$VITE_SENTRY_DSN VITE_API_MOCK=$VITE_API_MOCK
 
 COPY package.json package-lock.json ./
 COPY client/package.json client/
@@ -58,6 +61,35 @@ if (need.VITE_CLUSTER === 'mainnet-beta') {
   if (stuck.length) { console.error('mainnet build with dev placeholder program id(s): ' + stuck.map(([k]) => k).join(', ') + ' — run npm run program-ids first'); process.exit(1); }
 }
 console.log('build args ok for cluster ' + need.VITE_CLUSTER);
+"
+
+# SEC-B55: the build context may not contribute a build-time switch this Dockerfile does not declare.
+# `vite build` loads `.env`, `.env.local`, `.env.production` and `.env.production.local` from the client root
+# and lets them set any `VITE_*` name; the ENV line above wins for the names it declares, so an *undeclared*
+# name in one of those files lands in the bundle silently — which is how `VITE_API_MOCK` (the in-browser
+# mock backend: fake balances, fake sign-in) or `VITE_FLAG_DEBUG_PANEL` could reach production from a
+# developer's `.env.local`, the file client/.env.example tells them to create. `.dockerignore` keeps those
+# files out of the context; this is the half that holds if the ignore list ever drifts.
+RUN node --input-type=module -e "
+import { existsSync, readFileSync } from 'node:fs';
+const DECLARED = new Set(['VITE_CLUSTER','VITE_SOLANA_RPC','VITE_SOLANA_WS','VITE_API_BASE','VITE_WS_BASE','VITE_PROGRAM_CHIP_CORE','VITE_PROGRAM_MARKET','VITE_PROGRAM_STAKING','VITE_PROGRAM_ARENA','VITE_CG_MINT','VITE_USDC_MINT','VITE_SKR_MINT','VITE_LOOKUP_TABLE','VITE_TURNSTILE_SITE_KEY','VITE_SENTRY_DSN','VITE_API_MOCK']);
+const files = ['client/.env','client/.env.local','client/.env.production','client/.env.production.local'];
+const strays = [];
+for (const f of files) {
+  if (!existsSync(f)) continue;
+  for (const line of readFileSync(f, 'utf8').split('\n')) {
+    if (/^\s*#/.test(line)) continue;
+    const m = /^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=/.exec(line);
+    if (m && m[1].startsWith('VITE_') && !DECLARED.has(m[1])) strays.push(f + ': ' + m[1]);
+  }
+}
+const mock = (process.env.VITE_API_MOCK || '').trim();
+if (mock && !/^(0|false)$/i.test(mock)) strays.push('VITE_API_MOCK=' + mock);
+if (strays.length) {
+  console.error('refusing to build — undeclared VITE_ switch visible at build time: ' + strays.join(', ') + '. The client bundle is baked here: remove the file, or declare the variable in this Dockerfile (and in compose) if it is meant to be deployable.');
+  process.exit(1);
+}
+console.log('no undeclared VITE_ switch in the build context (' + files.length + ' file names checked)');
 "
 
 RUN npm --prefix client run build \

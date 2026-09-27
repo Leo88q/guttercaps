@@ -731,6 +731,49 @@ file and in `backend/test/monitoring.test.ts`.
   <token>` masks the scheme word and keeps the token), and that the suite covering the behaviour exists —
   with a mutation self-test for each of the four.
 
+- **SEC-B53 (2026-09-28): closed — a referral link can no longer poison the reward pipeline.**
+  `POST /v1/auth/siws/verify` wrote `wallets.referrer = COALESCE(referrer, ?)` straight from the request
+  body: no shape check, no re-encoding, and only a self-comparison against the signing wallet. That column
+  is permanent (`COALESCE` keeps the first value for ever) and it is a *payee* — `settleReferrals` hands it
+  to `referral_rewards.wallet`, which the reward builder turns into a leaf, and `buildRewardTree` parses
+  every leaf wallet with `new PublicKey(...)`. The zeroing that kept junk out of a batch came from
+  `eligibility()`'s unrelated "an unknown wallet is ineligible" rule, so the real failure was on the reader
+  side: a `new PublicKey` throw inside `runOnce` aborted the cycle *before* `publishPending`, and every root
+  of every kind (quests, PvP, referrals, boosters, chip vouchers, SKR) stopped being published once per
+  interval until somebody deleted the row by hand. Both halves are fixed and deliberately different: the
+  ingress validates the address like every other address the read model accepts, stores the server's own
+  encoding (`base58Encode(base58Decode(...))`, so what is recorded is canonical) and **ignores** junk,
+  self-referral and blank with a WARN instead of failing a sign-in the user cannot fix (a broken campaign
+  link must not block login); the settlement path refuses a non-address payee with `referrer_ineligible`
+  before writing a row, and each builder in `runOnce` runs in its own branch so one unbuildable kind no
+  longer silences the other four. Tests: `backend/test/security.test.ts` (canonical storage, junk/self/blank
+  ignored, first referrer wins) and `backend/test/game.test.ts` (junk payee zeroed once with the referee's
+  welcome bonus intact; a hand-poisoned positive row still throws in `buildBatch` while `runOnce` publishes
+  the other kinds).
+- **SEC-B54 (2026-09-28): closed — the SIWS message names the chain the app actually runs on.**
+  `client/src/app/session.tsx` built the message the user reads and signs with a hardcoded
+  `chainId: 'solana:devnet'`, while `client/src/main.tsx` chose `'solana:mainnet'` from `CLUSTER`. On a
+  mainnet build the one sentence a user is trained to read carefully named the wrong network, and a strict
+  wallet could refuse the chain mismatch. `SIWS_CHAIN_ID` is now derived from `CLUSTER` in
+  `client/src/app/config.ts` and used by both the signed message and the wallet adapter's `chains` — one
+  source, two consumers. Gate `SEC-B54` in `tests/security/deploy-artifacts.test.ts` (with a mutation that
+  puts the literal back).
+- **SEC-B55 (2026-09-28): closed — a developer's `.env.local` can no longer configure a production bundle.**
+  `.dockerignore` excluded `**/.env` and nothing else, but `vite build` (mode production) loads four files
+  from `client/` — `.env`, `.env.local`, `.env.production`, `.env.production.local` — and
+  `client/.env.example` tells every developer to "copy to .env.local and adjust". That file is in
+  `.gitignore`, so it is invisible in review and absent from every diff of the deploy artifacts. Vite
+  applies dotenv files first and then overwrites with `process.env`, which protects only the names the
+  Dockerfile declares; an *undeclared* name from the file is baked into the bundle — `VITE_API_MOCK` would
+  have shipped the in-browser mock backend (fake balances, fake sign-in) to a real origin, and
+  `VITE_FLAG_DEBUG_PANEL` the debug panel. Fixed in two places: `.dockerignore` now excludes the whole
+  `**/.env*` family (keeping `!**/.env.example`), and `ops/deploy/Dockerfile.client` declares
+  `VITE_API_MOCK` and **fails the build** if the context exposes any `VITE_*` name it does not declare
+  (from a file or from the build arg), while requiring every declared name to be pinned by the `ENV` line —
+  because `process.env` only outranks a dotenv file for names that are actually present. Gate `SEC-B55` in
+  `tests/security/deploy-artifacts.test.ts` models the ignore syntax (`**/`, `*`, `!`, last match wins),
+  checks all four dotenv names, and re-checks the Dockerfile's list against its `ENV` line; two mutations.
+
 ## Current exposure of this repository (from `docs/09-production-readiness.md`)
 
 `npm audit --omit=dev` reports one advisory chain in the production tree: `bigint-buffer`

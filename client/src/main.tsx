@@ -3,7 +3,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { registerMwa, createDefaultAuthorizationCache, createDefaultChainSelector, createDefaultWalletNotFoundHandler } from '@solana-mobile/wallet-standard-mobile';
 import App from './app/App';
-import { APP_NAME, CLUSTER } from './app/config';
+import { APP_NAME, SIWS_CHAIN_ID } from './app/config';
 import { initI18n } from './shared/i18n';
 
 // web3.js / Anchor / Switchboard expect a global Buffer in the browser.
@@ -16,7 +16,7 @@ try {
   registerMwa({
     appIdentity: { name: APP_NAME, uri: window.location.origin, icon: 'icon-512.png' },
     authorizationCache: createDefaultAuthorizationCache(),
-    chains: [CLUSTER === 'mainnet-beta' ? 'solana:mainnet' : 'solana:devnet'],
+    chains: [SIWS_CHAIN_ID],
     chainSelector: createDefaultChainSelector(),
     onWalletNotFound: createDefaultWalletNotFoundHandler(),
   });

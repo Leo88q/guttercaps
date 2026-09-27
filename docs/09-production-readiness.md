@@ -57,7 +57,7 @@ Postgres-слой описан в `prisma/schema.prisma`, но в коде ег�
 Ставится так (всё офлайн, `npm ci && npm run verify` → exit 0):
 
 ```
-client 158 тестов (8 файлов) · backend 477 (28 файлов) · economy инварианты+золото · landing:check + smoke зелёные
+client 158 тестов (8 файлов) · backend 480 (28 файлов) · economy инварианты+золото · landing:check + smoke зелёные
 api:check    61 операция ⇄ 61 маршрут (ни одной декларации без реализации и наоборот)
 env:check    122/21/11/33 переменных, 0 дрейфа относительно .env.example
 schema:check prisma ⇄ DDL: 72 задокументированных расхождения, 0 новых (56 таблиц / 61 модель)

@@ -198,6 +198,46 @@ describe('T-B-41..42 SIWS domain + issuedAt', () => {
   });
 });
 
+describe('SEC-B53 the referral payee is checked at the ingress, not held up by an unrelated rule', () => {
+  // `?ref=` is user input that becomes a permanent column (`wallets.referrer`, COALESCE) and a payee.
+  // The endpoint now validates it like every other address the read model accepts, stores the encoding the
+  // server itself produces, and ignores (loudly) the values a sign-in cannot fix: junk, self, blank. A bad
+  // referrer must never reach `referral_rewards.wallet`, where the only thing keeping it out of a Merkle
+  // leaf was `eligibility()`'s unrelated "unknown wallet is ineligible" rule — and the builder throwing on
+  // it aborted every reward kind of the cycle (see the reader-side regression in game.test.ts).
+  const referrer = Keypair.generate().publicKey.toBase58();
+  const signInWith = async (kp: Keypair, referrer: string | undefined, fingerprint = 'fp-b53') => {
+    const address = kp.publicKey.toBase58();
+    const { json: n } = await post('/v1/auth/siws/nonce', { address });
+    const message = siwsMessage(address, n.nonce);
+    return (await post('/v1/auth/siws/verify', { address, message, signature: sign(kp, message), fingerprint, ...(referrer === undefined ? {} : { referrer }) })).status;
+  };
+  const stored = (kp: Keypair) => db.get<{ referrer: string | null }>(`SELECT referrer FROM wallets WHERE address = ?`, kp.publicKey.toBase58())?.referrer ?? null;
+
+  it('a valid `?ref=` is stored in the server\'s own encoding and never overwritten afterwards', async () => {
+    store.reset();
+    const aliceB53 = Keypair.generate();
+    expect(await signInWith(aliceB53, ` ${referrer} `)).toBe(200); // whitespace is accepted, trimmed, re-encoded
+    expect(stored(aliceB53)).toBe(referrer);
+    // COALESCE: the first referrer wins, a later one cannot rewrite attribution
+    expect(await signInWith(aliceB53, Keypair.generate().publicKey.toBase58(), 'fp-b53-2')).toBe(200);
+    expect(stored(aliceB53)).toBe(referrer);
+  });
+  it('junk, self-referral and blank referrers are ignored, not written', async () => {
+    store.reset();
+    for (const bad of ['not-a-solana-address', '0OIl'.repeat(8), referrer.slice(0, 20), `${referrer}x`]) {
+      const kp = Keypair.generate();
+      expect(await signInWith(kp, bad)).toBe(200); // a broken campaign link must not block the sign-in
+      expect(stored(kp)).toBeNull();
+    }
+    const self = Keypair.generate();
+    expect(await signInWith(self, self.publicKey.toBase58())).toBe(200);
+    expect(stored(self)).toBeNull();
+    const blank = Keypair.generate();
+    for (const v of ['', '   ']) { expect(await signInWith(blank, v)).toBe(200); expect(stored(blank)).toBeNull(); }
+  });
+});
+
 describe('T-B-43 hardening', () => {
   it(`a wallet holds at most ${NONCES_PER_WALLET} live nonces (flood protection)`, () => {
     const address = Keypair.generate().publicKey.toBase58();

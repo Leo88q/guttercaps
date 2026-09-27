@@ -6,7 +6,7 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
 import type { Connection } from '@solana/web3.js';
 import cors from 'cors';
-import { isSolanaAddress } from './base58.ts';
+import { base58Decode, base58Encode, isSolanaAddress } from './base58.ts';
 import { CORS_ORIGINS, CORS_ALLOW_CREDENTIALS, WS_PATH, EVENT_BUS, REDIS_URL, TRUST_PROXY_HOPS, assertProductionConfig } from './config.ts';
 import { bus } from './bus.ts';
 import { wsConfigFromEnv } from './ws.ts';
@@ -299,7 +299,24 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     const body = req.body as { address: string; message: string; signature: string; referrer?: string; fingerprint?: string };
     const wallet = verifySiws(db, body);
     const s = createSession(db, wallet);
-    if (body.referrer && body.referrer !== wallet) db.run(`UPDATE wallets SET referrer = COALESCE(referrer, ?) WHERE address = ?`, body.referrer, wallet);
+    // SEC-B53: `referrer` arrives in a request body and is written into `wallets.referrer`, which is
+    // (a) permanent — `COALESCE` keeps the first value for ever — and (b) a *payee*: `settleReferrals`
+    // leaves the referral reward to that string, and the reward builder parses every leaf wallet with
+    // `new PublicKey(...)`. So a junk referrer is not cosmetic: it poisons the referral row, and the only
+    // thing that keeps it out of a batch today is `eligibility()`'s unrelated "an unknown wallet is
+    // ineligible" rule. Validate it exactly like every other address that reaches the read model
+    // (SEC-B36/B38), store the encoding this module produces rather than the string that arrived, and
+    // ignore an unusable value with a WARN instead of failing a sign-in the user cannot fix. Ignoring is
+    // visible on purpose: a broken campaign link silently credits nobody.
+    if (typeof body.referrer === 'string' && body.referrer.trim().length > 0) {
+      const ref = body.referrer.trim();
+      if (!isSolanaAddress(ref)) log.warn('referrer ignored: not an address', { referrer: ref, wallet });
+      else {
+        const canonical = base58Encode(base58Decode(ref));
+        if (canonical === wallet) log.warn('referrer ignored: self-referral', { wallet });
+        else db.run(`UPDATE wallets SET referrer = COALESCE(referrer, ?) WHERE address = ?`, canonical, wallet);
+      }
+    }
     recordDevice(db, wallet, body.fingerprint); // T-B-49 device dedupe (salted hash only — human.ts)
     setSessionCookie(res, s.cookie);
     res.json({ csrf: s.csrf, wallet: q.walletProfile(db, wallet) });
