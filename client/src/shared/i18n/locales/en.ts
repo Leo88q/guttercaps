@@ -120,7 +120,7 @@ const en = {
       rules: '3–16 characters: letters, digits, underscore. Shown on leaderboards, arena and your public profile.',
       invalid: 'Use 3–16 letters, digits or _', available: 'Available', cta: 'Pay & claim', claiming: 'Claiming…', saved: 'Handle saved', failed: 'Could not claim handle',
       changeNote: 'One change per 30 days. Your old handle is released after 90 days.',
-      reason: { taken: 'Already taken', reserved: 'Reserved by someone right now — try again in 2 minutes', blocked: 'Not allowed', cooldown: 'You changed your handle less than 30 days ago' },
+      reason: { taken: 'Already taken', reserved: 'Reserved by someone right now — try again in 2 minutes', blocked: 'Not allowed', cooldown: 'You changed your handle less than 30 days ago', invalid: 'Not a valid handle' },
     },
   },
   pass: {

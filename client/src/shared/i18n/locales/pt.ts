@@ -112,7 +112,7 @@ const pt: PartialMessages = {
       rules: '3–16 caracteres: letras, dígitos, sublinhado. Aparece no ranking, na arena e no seu perfil público.',
       invalid: 'Use 3–16 letras, dígitos ou _', available: 'Disponível', cta: 'Pagar e garantir', claiming: 'Registrando…', saved: 'Handle salvo', failed: 'Não foi possível registrar o handle',
       changeNote: 'Uma troca a cada 30 dias. O handle antigo é liberado após 90 dias.',
-      reason: { taken: 'Já está em uso', reserved: 'Alguém está reservando agora — tente de novo em 2 minutos', blocked: 'Não permitido', cooldown: 'Você trocou o handle há menos de 30 dias' },
+      reason: { taken: 'Já está em uso', reserved: 'Alguém está reservando agora — tente de novo em 2 minutos', blocked: 'Não permitido', cooldown: 'Você trocou o handle há menos de 30 dias', invalid: 'Handle inválido' },
     },
   },
   pass: {

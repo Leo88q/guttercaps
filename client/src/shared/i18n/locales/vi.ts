@@ -112,7 +112,7 @@ const vi: PartialMessages = {
       rules: '3–16 ký tự: chữ, số, gạch dưới. Hiển thị trên bảng xếp hạng, đấu trường và hồ sơ công khai.',
       invalid: 'Dùng 3–16 chữ, số hoặc _', available: 'Còn trống', cta: 'Thanh toán & nhận', claiming: 'Đang đăng ký…', saved: 'Đã lưu handle', failed: 'Không thể nhận handle',
       changeNote: 'Đổi một lần mỗi 30 ngày. Handle cũ được giải phóng sau 90 ngày.',
-      reason: { taken: 'Đã có người dùng', reserved: 'Ai đó đang giữ chỗ — thử lại sau 2 phút', blocked: 'Không được phép', cooldown: 'Bạn đã đổi handle chưa đầy 30 ngày trước' },
+      reason: { taken: 'Đã có người dùng', reserved: 'Ai đó đang giữ chỗ — thử lại sau 2 phút', blocked: 'Không được phép', cooldown: 'Bạn đã đổi handle chưa đầy 30 ngày trước', invalid: 'Handle không hợp lệ' },
     },
   },
   pass: {
