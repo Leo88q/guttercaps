@@ -10,7 +10,7 @@ backend/
 ├─ prisma/schema.prisma    # production Postgres schema (same shapes as db.ts)
 ├─ src/
 │  ├─ config.ts            # program ids, RPC, DB path, cookie/handle rules (env-driven)
-│  ├─ events.ts            # Anchor-free event codec: 47 events × 4 programs (`EVENT_SPECS`), decode + encode + log walker
+│  ├─ events.ts            # Anchor-free event codec: 56 events × 4 programs (`EVENT_SPECS`), decode + encode + log walker
 │  ├─ borsh.ts             # tiny Borsh reader/writer
 │  ├─ db.ts                # node:sqlite store (events_raw + projections + api state)
 │  ├─ projections.ts       # event → chips / listings / sales / battles / stakes / burns / service_payments
@@ -438,7 +438,7 @@ the chain's reason), `/fusion/suggest` (auth), `/staking/overview`, `/staking/me
 ## Tests
 
 ```bash
-npm test          # vitest: 111 tests — codec round-trips for all 30 events, CPI attribution,
+npm test          # vitest: 443 tests — codec round-trips for all 56 events, CPI attribution,
                   # idempotent ingest, rebuild equivalence, failed-fusion refunds, floors,
                   # SIWS (bad signature, nonce reuse, CSRF), handle lifecycle, service claims,
                   # Pyth PriceUpdateV2 decode/validate (owner, feed, verification, age),

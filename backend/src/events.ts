@@ -56,6 +56,20 @@ export const EVENT_SPECS: readonly EventSpec[] = [
     ['asset', 'pubkey'], ['claimNonce', 'u64'], ['collectionIdx', 'u8'], ['merkleTree', 'pubkey'], ['leafIndex', 'u32'], ['leafNonce', 'u64'],
     ['owner', 'pubkey'], ['delegate', 'pubkey'], ['rarity', 'u8'], ['level', 'u8'], ['gameIndex', 'u64'], ['flags', 'u8'], ['lockUntil', 'i64'],
   ]),
+  // SEC-F4: `stage_compressed_chip` is the one admin path that creates a settlement-free claim of any
+  // rarity out of thin air (fusable, listable, stakeable). It emitted nothing before 2026-09-25.
+  spec('chip_core', 'CompressedChipStaged', [
+    ['admin', 'pubkey'], ['buyer', 'pubkey'], ['claim', 'pubkey'], ['collectionIdx', 'u8'], ['rarity', 'u8'],
+    ['level', 'u8'], ['gameIndex', 'u64'], ['expiresAt', 'i64'],
+  ]),
+  // SEC-B31: the claim's own listed / staked / owner transitions. Emitted by chip_core through the
+  // market_auth / stake_auth CPIs, i.e. they are the *authoritative* claim state: a listing cancel emits
+  // only `CompressedClaimListedSet(false)` (the market has no cancel event for this path), and a transfer
+  // clears both flags. They also carry the claim PDA, which is what maps a claim to its registered asset
+  // (`compressed_claims.claim`) — without that the `Staked{key: claim}` row set no chip flag at all.
+  spec('chip_core', 'CompressedClaimListedSet', [['claim', 'pubkey'], ['buyer', 'pubkey'], ['listed', 'bool']]),
+  spec('chip_core', 'CompressedClaimStakedSet', [['claim', 'pubkey'], ['buyer', 'pubkey'], ['staked', 'bool']]),
+  spec('chip_core', 'CompressedClaimTransferred', [['claim', 'pubkey'], ['from', 'pubkey'], ['to', 'pubkey']]),
   spec('chip_core', 'VoucherIssued', [['wallet', 'pubkey'], ['nonce', 'u64'], ['template', 'u8'], ['randomness', 'pubkey']]),
   spec('chip_core', 'ChipFused', [
     ['owner', 'pubkey'], ['recipe', 'u8'], ['materials', ['pubkey', MATERIALS_PER_FUSION]], ['result', 'pubkey'],
@@ -107,6 +121,15 @@ export const EVENT_SPECS: readonly EventSpec[] = [
   spec('market', 'ChipSold', [['asset', 'pubkey'], ['seller', 'pubkey'], ['buyer', 'pubkey'], ['price', 'u64'], ['currency', 'u8'], ['fee', 'u64'], ['royalty', 'u64'], ['viaOffer', 'bool']]),
   spec('market', 'OfferMade', [['asset', 'pubkey'], ['bidder', 'pubkey'], ['amount', 'u64'], ['expiresAt', 'i64']]),
   spec('market', 'OfferCancelled', [['asset', 'pubkey'], ['bidder', 'pubkey']]),
+  // SEC-B31: the compressed market's own events. `list_compressed` / `buy_compressed` trade the pre-mint
+  // *claim* (keyed by the claim PDA), `list_compressed_asset` / `buy_compressed_asset` trade an already
+  // registered Bubblegum V2 leaf (keyed by the asset). Without a decoder the read model showed a chip the
+  // seller had sold as still owned and unlisted by them, and no sale of a compressed chip existed in
+  // `sales` / stats at all.
+  spec('market', 'CompressedClaimListed', [['claim', 'pubkey'], ['seller', 'pubkey'], ['price', 'u64'], ['currency', 'u8']]),
+  spec('market', 'CompressedClaimSold', [['claim', 'pubkey'], ['seller', 'pubkey'], ['buyer', 'pubkey'], ['price', 'u64'], ['fee', 'u64'], ['royalty', 'u64']]),
+  spec('market', 'CompressedAssetListed', [['asset', 'pubkey'], ['claim', 'pubkey'], ['seller', 'pubkey'], ['price', 'u64'], ['currency', 'u8']]),
+  spec('market', 'CompressedAssetSold', [['asset', 'pubkey'], ['claim', 'pubkey'], ['seller', 'pubkey'], ['buyer', 'pubkey'], ['price', 'u64'], ['fee', 'u64'], ['royalty', 'u64']]),
   // ---------------------------------------------------------------- arena
   spec('arena', 'BattleCreated', [['battle', 'pubkey'], ['challenger', 'pubkey'], ['wager', 'u64'], ['powerA', 'u32'], ['randomness', 'pubkey']]),
   spec('arena', 'BattleAccepted', [['battle', 'pubkey'], ['opponent', 'pubkey'], ['powerB', 'u32']]),

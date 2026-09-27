@@ -320,6 +320,34 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   the contract, seven mutations — including "everything is final" and "the cursor may jump") and by
   `backend/test/burn-oracle.test.ts` (a dropped transaction's burn and an out-of-slot-order burn, against a
   real database).
+- **SEC-B31 (2026-09-27): closed — eight events the programs emit had no decoder, and with them the compressed
+  claim lost every state transition it has.** A transaction log the codec cannot read is not an error, it is
+  silence: `CompressedClaimListedSet`, `CompressedClaimStakedSet`, `CompressedClaimTransferred`,
+  `CompressedChipStaged` (chip_core) and `CompressedClaimListed`, `CompressedClaimSold`,
+  `CompressedAssetListed`, `CompressedAssetSold` (market) were emitted and dropped. The compressed claim is
+  the case where that hurts, because its own events are the *only* source of its state: the Core path's
+  `ChipFlagsChanged` does not exist for a claim, so a cancelled compressed listing left the chip `listed` in
+  the read model — the client offered a purchase the program answers `InvalidChipState` to — and
+  `Staked{kind:1, key}` names the *claim PDA* while every chip table and flag is keyed by the registered
+  asset, so a staked compressed chip carried no `staked` flag at all and looked free. The two compressed
+  markets (the claim market and the V2 asset market) left no `listings`/`sales` rows either: volume,
+  collection stats, the activity feed and the wash-trade heuristics were short by every compressed trade, and
+  a transfer or sale never moved `chips.owner`. Fixed by describing all eight events (48 → 56 specs) and
+  projecting them: a new `compressed_claims.claim` column maps the claim PDA to the registered asset (with
+  `owner`, `listed`, `staked`, `price`, `currency` carrying the claim's live state, all migrated in place for
+  an existing database), `chipBehindClaim`/`assetOfStakeKey` resolve a claim to its chip, every update that
+  addresses a claim by PDA is owner-guarded so a replayed event cannot move a claim that changed hands, and a
+  claim sale with no leaf yet is recorded in `sales` keyed by the claim (its collection is genuinely unknown
+  at that point — `list_compressed` is pre-mint by construction). Two deliberate boundaries: `CompressedChipStaged`
+  is decoded and touches its wallet but writes no read-model row (an admin authorization has nothing
+  product-facing behind it, and `authority_changes` feeds a page alert that a routine staging must not trip),
+  and a pre-mint claim listing lives on the claim row rather than in `listings`, which is asset-keyed and
+  always joined to `chips`. Pinned by the gate `tests/security/events-coverage.test.ts` (Rust `#[event]` ⇔
+  `EVENT_SPECS` parity in the declaring crate, spec ⇔ handler reachability with the one documented wire-only
+  event, and the claim mapping/index/migration/owner-guards — three rules, nine mutations) and by
+  `backend/test/compressed-market.test.ts` (nine tests: flags on list/cancel/sale/transfer, a claim-keyed
+  stake, the pre-mint claim market, and a rebuild that reproduces it all); the LT-3 corpus now emits every one
+  of the eight and its staking invariant resolves claim-keyed positions through the new column.
 - **SEC-B28 (2026-09-27): closed — the claim market listed in currencies it can only fail to settle.**
   `buy_compressed` / `buy_compressed_asset` pay the seller with `system_program::transfer` and answer
   `CompressedCurrencyMismatch` for anything else (the SPL legs of the legacy `buy` were never wired into

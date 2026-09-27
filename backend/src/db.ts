@@ -5,6 +5,8 @@
 // strings (u64/u128 don't fit in SQLite's i64 nor in JS numbers).
 import type { DatabaseSync as DatabaseSyncT, StatementSync, SQLInputValue, SQLOutputValue } from 'node:sqlite';
 import { DB_PATH } from './config.ts';
+import { PublicKey } from '@solana/web3.js';
+import { compressedMintClaimPda } from './chain.ts';
 
 // `import { DatabaseSync } from 'node:sqlite'` breaks under vitest's module
 // resolver (it does not know the builtin yet); getBuiltinModule is the
@@ -217,6 +219,12 @@ CREATE TABLE IF NOT EXISTS compressed_claims (
   rarity         INTEGER,
   level          INTEGER,
   game_index     TEXT,
+  claim          TEXT,                       -- SEC-B31: the claim PDA (compressed_claim seeds use the immutable origin)
+  owner          TEXT,                       -- SEC-B31: current holder (chip_core claim.buyer); buyer above is the origin
+  listed         INTEGER NOT NULL DEFAULT 0, -- SEC-B31: the claim account's own listed flag (market list/cancel)
+  staked         INTEGER NOT NULL DEFAULT 0, -- SEC-B31: the claim account's own staked flag (staking CPI)
+  price          TEXT,                       -- SEC-B31: live claim-market listing (SOL only, pre-mint); NULL when not listed
+  currency       INTEGER,
   mint_signature  TEXT,
   register_signature TEXT,
   slot           INTEGER NOT NULL,
@@ -226,6 +234,8 @@ CREATE TABLE IF NOT EXISTS compressed_claims (
 );
 CREATE INDEX IF NOT EXISTS idx_compressed_claims_status ON compressed_claims(status, slot);
 CREATE INDEX IF NOT EXISTS idx_compressed_claims_asset ON compressed_claims(asset);
+-- NOTE: the claim column (SEC-B31) is added by migrate() together with its index: an old DB has the
+-- table without the column, and an index on a missing column would abort the whole Db(path) constructor.
 
 CREATE TABLE IF NOT EXISTS fusions (
   signature     TEXT    NOT NULL,
@@ -817,6 +827,30 @@ export class Db {
       if (!qc.has(name)) this.raw.exec(`ALTER TABLE quest_completions ADD COLUMN ${name} INTEGER`);
     }
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_quest_completions_item_unrooted ON quest_completions(item_root_kind, wallet)`);
+    // SEC-B31: `compressed_claims.claim` — the claim PDA behind a compressed chip, so a state event that
+    // carries the claim (`CompressedClaimListedSet/StakedSet/Transferred`, `Staked{kind:1}`, the claim
+    // market's own events) can find the chip row it belongs to. The seeds use the *immutable origin*, which
+    // is exactly what `compressed_claims.buyer` holds, so an existing row can back-fill itself; the loop is
+    // once-only (guarded by the column check) and a single unparseable row must not stop startup.
+    const cc = new Set((this.raw.prepare(`PRAGMA table_info(compressed_claims)`).all() as { name: string }[]).map((c) => c.name));
+    for (const [name, type] of [['owner', 'TEXT'], ['listed', 'INTEGER NOT NULL DEFAULT 0'], ['staked', 'INTEGER NOT NULL DEFAULT 0'], ['price', 'TEXT'], ['currency', 'INTEGER']] as const) {
+      if (!cc.has(name)) this.raw.exec(`ALTER TABLE compressed_claims ADD COLUMN ${name} ${type}`);
+    }
+    // the claim's holder starts as its origin: chip_core sets `claim.origin = buyer` when the PDA is created
+    this.raw.exec(`UPDATE compressed_claims SET owner = buyer WHERE owner IS NULL`);
+    if (!cc.has('claim')) {
+      this.raw.exec(`ALTER TABLE compressed_claims ADD COLUMN claim TEXT`);
+      const rows = this.raw.prepare(`SELECT buyer, claim_nonce FROM compressed_claims`).all() as { buyer: string; claim_nonce: string }[];
+      const upd = this.raw.prepare(`UPDATE compressed_claims SET claim = ? WHERE buyer = ? AND claim_nonce = ?`);
+      for (const r of rows) {
+        try {
+          upd.run(compressedMintClaimPda(new PublicKey(r.buyer), BigInt(r.claim_nonce))[0].toBase58(), r.buyer, r.claim_nonce);
+        } catch {
+          // a row whose key cannot even be parsed has no PDA; leave it NULL (nothing can reference it)
+        }
+      }
+    }
+    this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_compressed_claims_claim ON compressed_claims(claim)`);
     // backlog #28: chip rewards get their own (kind 9) voucher leaf
     for (const name of ['chip_root_kind', 'chip_root_epoch'] as const) {
       if (!qc.has(name)) this.raw.exec(`ALTER TABLE quest_completions ADD COLUMN ${name} INTEGER`);

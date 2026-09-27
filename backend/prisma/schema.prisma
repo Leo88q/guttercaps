@@ -295,6 +295,12 @@ model CompressedClaim {
   rarity            Int?
   level             Int?
   gameIndex         BigInt? @map("game_index")
+  claim             String?
+  owner             String?
+  listed            Int     @default(0)
+  staked            Int     @default(0)
+  price             String?
+  currency          Int?
   mintSignature     String? @map("mint_signature")
   registerSignature String? @map("register_signature")
   slot              BigInt
@@ -304,6 +310,7 @@ model CompressedClaim {
   @@id([buyer, nonce, claimNonce])
   @@index([status, slot])
   @@index([asset])
+  @@index([claim])
   @@map("compressed_claims")
 }
 

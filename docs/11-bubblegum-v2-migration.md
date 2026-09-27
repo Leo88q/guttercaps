@@ -136,6 +136,19 @@ rebuildable projections. They track claim-created, mint, registration,
 cancellation, and final-settlement events without treating DAS display data as
 authority.
 
+SEC-B31 widened that to the claim's *own* state: `compressed_claims.claim` holds
+the claim PDA (seeded `["compressed_claim", origin, nonce_le]`, so it resolves for
+a leaf registered later), and `owner` / `listed` / `staked` / `price` / `currency`
+carry what `CompressedClaimListedSet`, `CompressedClaimStakedSet`,
+`CompressedClaimTransferred` and the claim market's `CompressedClaimListed` /
+`CompressedClaimSold` say — the only source of that state, since a claim has no
+Core `ChipFlagsChanged`. The V2 asset market (`CompressedAssetListed` /
+`CompressedAssetSold`) writes the asset-keyed `listings` / `sales` rows the
+registered leaf trades through, and `Staked{kind:1}` — whose `key` is the claim
+PDA — is resolved to the chip its flag lives on. A pre-mint claim listing is the
+one thing that is not in `listings`: that table is asset-keyed and every read of it
+joins `chips`, so it lives on the claim row until the leaf exists.
+
 Operational requirements before release:
 
 - monitor claims nearing expiry and submit cancellation/finalization transactions;

@@ -18,6 +18,7 @@
 import { createHash } from 'node:crypto';
 import { PublicKey } from '@solana/web3.js';
 import { fakeLogs, MAX_CHIPS_PER_PACK, type EventData } from '../src/events.ts';
+import { compressedMintClaimPda } from '../src/chain.ts';
 import type { ProgramName } from '../src/config.ts';
 import type { TxLike } from '../src/ingest.ts';
 
@@ -99,6 +100,14 @@ function cmpBase58(a: string, b: string): number {
 
 interface Chip { owner: string; collection: number; rarity: number; listed: boolean; staked: boolean; burned: boolean; price: string; soulbound: boolean }
 
+/**
+ * A compressed claim, as the simulator tracks it. `registered` claims have a `chips` row (the leaf was
+ * delivered and DAS-indexed) and trade in the V2 asset market; `staged` ones are admin authorizations with
+ * no settlement behind them (the claim-market-only shape), so the read model has no `compressed_claims` row
+ * for them at all — exactly the asymmetry the SEC-B31 projections have to survive.
+ */
+interface Claim { owner: string; asset: string | null; listed: boolean; staked: boolean; price: string; registered: boolean }
+
 /** recent transactions, kept so the noise pass can re-visit them the way a rescan of the last slots does */
 const RING = 4096;
 /** every Nth iteration the indexer sees the transaction "live" first (no block time), then via backfill */
@@ -132,6 +141,8 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
   const stats: HistoryStats = { txs: 0, events: 0, byName: {}, chipsMinted: 0, chipsBurned: 0, dupes: 0, lateBlockTimes: 0, failedTxs: 0, junkTxs: 0, deferred: 0 };
   const wallets = Array.from({ length: players }, (_, i) => fixtureAddr(seed, 'w', i));
   const chips = new Map<string, Chip>();
+  const claims = new Map<string, Claim>();
+  const claimPda = (owner: string, nonce: number) => compressedMintClaimPda(new PublicKey(owner), BigInt(nonce))[0].toBase58();
   const nonces = new Map<string, number>();
   const stakeKeys = new Map<string, { owner: string; amount: bigint }>();
   const stakedChips = new Map<string, string>(); // asset → owner, for the kind-1 unstake path
@@ -140,7 +151,7 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
   const ring: TxLike[] = [];
   const deferred: TxLike[] = [];
   let slot = startSlot;
-  let chipN = 0, battleN = 0, sigN = 0, dayIndex = 0, paramVersion = 0, iCur = -1;
+  let chipN = 0, battleN = 0, sigN = 0, dayIndex = 0, paramVersion = 0, iCur = -1, noiseI = -2;
   let firstCompressedEvents: { program: ProgramName; name: string; data: EventData }[] | undefined;
   let lastRoot: { kind: number; epoch: number } | undefined;
   const dayEvery = Math.max(25, Math.min(RESCAN_EVERY * 16, Math.floor(txsWanted / 8)));
@@ -179,6 +190,25 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
     ring.push(t);
     if (ring.length > RING) ring.shift();
     stats.txs++;
+    // (2)+(3) the rest of the noise, injected where *every* transaction passes: a branch that `continue`s
+    // used to skip it, so how much noise the corpus carried depended on which way the die fell. Once per
+    // iteration (a branch may emit several transactions).
+    if (!noise || noiseI === iCur) return;
+    noiseI = iCur;
+    if (iCur % RESCAN_EVERY === 3 && ring.length > 0) {
+      // a slot rescan re-visiting a recent transaction — dedup has to swallow it
+      stats.dupes++;
+      yield { ...pick(ring), slot: slot + 1_000 };
+    }
+    if (iCur % FAILED_EVERY === 11 && ring.length > 0) {
+      // failed transactions carry logs nobody may trust
+      const src = pick(ring);
+      stats.failedTxs++;
+      yield { ...src, signature: `${src.signature}!fail`, slot: src.slot, blockTime: src.blockTime, err: { InstructionError: [0, { Custom: 6000 }] } };
+    }
+    // every 60th iteration also releases one withheld tx mid-walk, so they interleave with fresh traffic
+    // instead of arriving as one clean tail block
+    if (iCur % DEFER_EVERY === 41 && deferred.length > 0) yield deferred.shift()!;
   }
   const nonceFor = (w: string) => { const n = (nonces.get(w) ?? 0) + 1; nonces.set(w, n); return n; };
   const mintChip = (owner: string, collection: number, rarity: number, soulbound: boolean): string => {
@@ -205,6 +235,10 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
       const compressedAsset = fixtureAddr(seed, 'compressed-asset', 0);
       const compressedNonce = '9001';
       const compressedClaimNonce = '128';
+      // the claim the read model derives from `CompressedClaimsCreated(buyer, claimNonces[0])` — the
+      // simulator tracks the same PDA, so every later state event on it resolves through
+      // `compressed_claims.claim` the way the chain's own seeds do
+      claims.set(claimPda(actor, Number(compressedClaimNonce)), { owner: actor, asset: compressedAsset, listed: false, staked: false, price: '0', registered: true });
       const compressedTree = fixtureAddr(seed, 'compressed-tree', 0);
       firstCompressedEvents = [
         {
@@ -414,7 +448,7 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
       yield* emit([{ program: 'staking', name: 'Staked', data: { owner: actor, kind: 0, key, amount: add.toString(), weight: String(add / 1_000_000n), unlockAt: String(blockTime() + 86_400 * (1 + Math.floor(rnd() * 30))) } }]);
       continue;
     }
-    if (roll < 0.86) {
+    if (roll < 0.84) {
       // arena: created → accepted → resolved, plus cancels and *orphan* resolves (the backfill-gap branch)
       if (openBattles.length > 0 && rnd() < 0.6) {
         const battle = pick(openBattles);
@@ -433,7 +467,130 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
       if (rnd() < 0.06) yield* emit([{ program: 'arena', name: 'BattleResolved', data: { battle: fixtureAddr(seed, 'battle', 1_000_000 + i), winner: actor, pot: usd(rnd, 1, 2), rakeBurn: usd(rnd, 0, 1), rakePool: usd(rnd, 1, 2), rakeTreasury: usd(rnd, 1, 2), resultHash: hex32(i), roll: hex32(i) } }]);
       continue;
     }
-    if (roll < 0.92) {
+    if (roll >= 0.88 && roll < 0.94) {
+      // SEC-B31: the compressed market. Two shapes, because the program has two:
+      //   * a *registered* claim (the leaf exists) trades in the V2 asset market — the seller must own the
+      //     chip, a cancel is a `set_compressed_claim_listed(false)` with **no market event at all**, and a
+      //     purchase transfers the claim and emits the sale;
+      //   * an admin-*staged* claim is pre-mint, claim-market-only, and has no `compressed_claims` row in the
+      //     read model (its settlement is the default pubkey), so its events must be harmless there.
+      // The market is global, so the claim picks the wallet that acts (a claim a *different* wallet owns must
+      // still be listed/cancelled/sold by its owner — that is the invariant the projections rely on).
+      const all = [...claims.entries()];
+      let registered = all.filter(([, c]) => c.registered && c.asset !== null);
+      const staged = all.filter(([, c]) => !c.registered);
+      if (registered.length === 0 || rnd() < 0.25) {
+        // the compressed pack path end to end: settlement → claim → Bubblegum mint → DAS registration. Three
+        // transactions, because that is how the product delivers a leaf (and because the claim row the read
+        // model keys everything off only exists once `CompressedClaimsCreated` has landed).
+        const owner = pick(wallets);
+        const settleNonce = String(500_000 + i);
+        const cn = String(200_000 + i);
+        const claim = claimPda(owner, Number(cn));
+        const asset = fixtureAddr(seed, 'compressed-asset', 1 + i);
+        const collection = Math.floor(rnd() * 8);
+        const rarity = Math.floor(rnd() * 5);
+        yield* emit([{ program: 'chip_core', name: 'CompressedClaimsCreated', data: {
+          buyer: owner, nonce: settleNonce, packNo: 0, claimNonces: pad5([cn], '0'), count: 1,
+        } }]);
+        yield* emit([{ program: 'chip_core', name: 'CompressedChipMinted', data: {
+          buyer: owner, collectionIdx: collection, claimNonce: cn, rarity, level: 1, gameIndex: String(cn),
+        } }]);
+        yield* emit([{ program: 'chip_core', name: 'CompressedChipRegistered', data: {
+          asset, claimNonce: cn, collectionIdx: collection, merkleTree: fixtureAddr(seed, 'compressed-tree', 1),
+          leafIndex: registered.length, leafNonce: '0', owner, delegate: owner, rarity, level: 1, gameIndex: String(cn), flags: 0, lockUntil: '0',
+        } }]);
+        chips.set(asset, { owner, collection, rarity, listed: false, staked: false, burned: false, price: '0', soulbound: false });
+        stats.chipsMinted++;
+        claims.set(claim, { owner, asset, listed: false, staked: false, price: '0', registered: true });
+        registered = [[claim, claims.get(claim)!]];
+      }
+      if (staged.length === 0 && rnd() < 0.5) {
+        // `stage_compressed_chip`: admin authorization, no settlement, nothing product-facing to project
+        const buyer = pick(wallets);
+        const nonce = 100_000 + i;
+        const claim = claimPda(buyer, nonce);
+        const collection = Math.floor(rnd() * 8);
+        const rarity = Math.floor(rnd() * 5);
+        claims.set(claim, { owner: buyer, asset: null, listed: false, staked: false, price: '0', registered: false });
+        yield* emit([{ program: 'chip_core', name: 'CompressedChipStaged', data: {
+          admin: wallets[0]!, buyer, claim, collectionIdx: collection, rarity, level: 1,
+          gameIndex: String(nonce), expiresAt: String(blockTime() + 86_400 * 5),
+        } }]);
+        continue;
+      }
+      const target = registered.length > 0 && (staged.length === 0 || rnd() < 0.65) ? registered : staged;
+      if (target.length === 0) continue;
+      const [claim, c] = pick(target);
+      if (c.listed) {
+        if (rnd() < 0.5) {
+          // `buy_compressed_asset` / `buy_compressed`: the CPI clears the listing flag and moves the owner,
+          // and the market's own event is the sale. Both events land in one transaction, CPI first.
+          const others = wallets.filter((w) => w !== c.owner);
+          if (others.length === 0) continue;
+          const buyer = pick(others);
+          const price = c.price;
+          const events: { program: ProgramName; name: string; data: EventData }[] = [
+            { program: 'chip_core', name: 'CompressedClaimTransferred', data: { claim, from: c.owner, to: buyer } },
+          ];
+          if (c.registered && c.asset) {
+            events.push({ program: 'market', name: 'CompressedAssetSold', data: { asset: c.asset, claim, seller: c.owner, buyer, price, fee: usd(rnd, 1, 40), royalty: usd(rnd, 0, 20) } });
+          } else {
+            events.push({ program: 'market', name: 'CompressedClaimSold', data: { claim, seller: c.owner, buyer, price, fee: usd(rnd, 1, 40), royalty: usd(rnd, 0, 20) } });
+          }
+          yield* emit(events, { cpiFrom: 'market' });
+          c.owner = buyer;
+          c.listed = false;
+          continue;
+        }
+        if (rnd() < 0.5) {
+          // cancel: chip_core's flag, and nothing else — the market has no event on this path
+          yield* emit([{ program: 'chip_core', name: 'CompressedClaimListedSet', data: { claim, buyer: c.owner, listed: false } }], { cpiFrom: 'market' });
+          c.listed = false;
+          continue;
+        }
+      }
+      if (c.staked) {
+        // the staking program's CPI arrives before its own `Unstaked` event
+        yield* emit([
+          { program: 'chip_core', name: 'CompressedClaimStakedSet', data: { claim, buyer: c.owner, staked: false } },
+          { program: 'staking', name: 'Unstaked', data: { owner: c.owner, kind: 1, key: claim, amount: '1', penaltyBurned: usd(rnd, 0, 5) } },
+        ], { cpiFrom: 'staking' });
+        c.staked = false;
+        continue;
+      }
+      const price = usd(rnd, 5, 500);
+      if (rnd() < 0.4) {
+        // stake a compressed chip: `Staked{kind:1,key}` is the *claim*, not the leaf's asset
+        yield* emit([
+          { program: 'chip_core', name: 'CompressedClaimStakedSet', data: { claim, buyer: c.owner, staked: true } },
+          { program: 'staking', name: 'Staked', data: { owner: c.owner, kind: 1, key: claim, amount: '1', weight: String(1000 + 500 * (chips.get(c.asset ?? '')?.rarity ?? 1)), unlockAt: '0' } },
+        ], { cpiFrom: 'staking' });
+        c.staked = true;
+        continue;
+      }
+      if (rnd() < 0.25) {
+        // a plain transfer between wallets: no market, no price, and both flags are cleared by chip_core
+        const others = wallets.filter((w) => w !== c.owner);
+        if (others.length === 0) continue;
+        const to = pick(others);
+        yield* emit([{ program: 'chip_core', name: 'CompressedClaimTransferred', data: { claim, from: c.owner, to } }]);
+        c.owner = to;
+        c.listed = false;
+        c.staked = false;
+        continue;
+      }
+      yield* emit([
+        { program: 'chip_core', name: 'CompressedClaimListedSet', data: { claim, buyer: c.owner, listed: true } },
+        c.registered && c.asset
+          ? { program: 'market', name: 'CompressedAssetListed', data: { asset: c.asset, claim, seller: c.owner, price, currency: 0 } }
+          : { program: 'market', name: 'CompressedClaimListed', data: { claim, seller: c.owner, price, currency: 0 } },
+      ], { cpiFrom: 'market' });
+      c.listed = true;
+      c.price = price;
+      continue;
+    }
+    if (roll < 0.88) {
       const kind = Math.floor(rnd() * 10);
       const epoch = epochs.get(kind);
       if (!epoch) continue;
@@ -466,22 +623,6 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
     if (rnd() < 0.15) yield* emit([{ program: 'arena', name: 'ArenaConfigChanged', data: { by: wallets[0]!, battleOracle: fixtureAddr(seed, 'oracle', 4), oracleDailyCap: usd(rnd, 100_000, 200_000), treasuryCg: fixtureAddr(seed, 'treasury', 0) } }]);
     if (rnd() < 0.1) yield* emit([{ program: 'chip_core', name: 'CollectionCreated', data: { by: wallets[0]!, idx: Math.floor(rnd() * 8), coreCollection: fixtureAddr(seed, 'collection', Math.floor(rnd() * 8)) } }]);
 
-    if (!noise) continue;
-    // every 60th iteration also releases one withheld tx mid-walk, so they interleave with fresh traffic
-    // instead of arriving as one clean tail block
-    if (i % DEFER_EVERY === 41 && deferred.length > 0) yield deferred.shift()!;
-    // (2) a slot rescan re-visiting a recent transaction — dedup has to swallow it
-    if (i % RESCAN_EVERY === 3 && ring.length > 0) {
-      stats.dupes++;
-      yield { ...pick(ring), slot: slot + 1_000 };
-    }
-    // (3) failed transactions carry logs nobody may trust
-    if (i % FAILED_EVERY === 11 && ring.length > 0) {
-      const src = pick(ring);
-      stats.failedTxs++;
-      // '!' is not a base58 character, so a test can identify these without colliding with a real key
-      yield { signature: `${src.signature}!fail`, slot: src.slot, blockTime: src.blockTime, logs: src.logs, err: { InstructionError: [0, { Custom: 6000 }] } };
-    }
   }
   // the rest of the missed transactions: out of slot order by construction
   if (gapFill) for (const t of deferred) yield t;
