@@ -698,7 +698,10 @@ mod tests {
         let err = require_non_default(Pubkey::default()).expect_err("zero key must be rejected");
         match err {
             anchor_lang::error::Error::AnchorError(e) => {
-                assert_eq!(e.error_code_number, u32::from(ChipError::InvalidConfigAddress))
+                assert_eq!(
+                    e.error_code_number,
+                    u32::from(ChipError::InvalidConfigAddress)
+                )
             }
             other => panic!("unexpected error {other:?}"),
         }
