@@ -82,7 +82,7 @@
     "@solana/web3.js": "^1.99.0"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.10.1",
+    "@axe-core/playwright": "^4.13.0",
     "@lhci/cli": "^0.14.0",
     "@playwright/test": "^1.50.1",
     "@types/node": "^22.1.0",
