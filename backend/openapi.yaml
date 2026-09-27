@@ -1059,6 +1059,8 @@ components:
         pity: { type: object, properties: { minHardAt: { type: integer }, maxSoftStepBps: { type: integer } } }
         maxMarketFeeBps: { type: integer }
         maxSkrDiscountBps: { type: integer }
+        maxPackCgPriceMicro: { type: integer, description: 'SEC-F13/SEC-B23: fat-finger cap on the $CG pack price (1 000 000 $CG) — the panel mirrors it so it never proposes what the program rejects' }
+        cgPriceMoveFactor: { type: integer, description: 'SEC-F13/SEC-B23: one-shot $CG price move is limited to old/F … old×F (integer division, as in Rust); 0 is free-form (sales off)' }
         split: { type: object, properties: { count: { type: integer }, maxDeltaBps: { type: integer }, minIntervalS: { type: integer } } }
         evRatioRange: { type: array, items: { type: number }, minItems: 2, maxItems: 2 }
     ParamsProposal:

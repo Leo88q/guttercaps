@@ -203,7 +203,7 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
 - **SEC-B21 (2026-09-27): accepted risk — Trident fuzzing is not run.** There is no fuzz target and no CI job
   in the tree, which makes this the only part-1 checklist item with no artifact. The class it would cover is
   held today by `cargo test` (golden economy + unit/invariant tests, the `rust-lints` job), the 92 LiteSVM
-  scenarios (`localnet`), the 83 static gates with mutation self-tests (`security:static`) and the structural
+  scenarios (`localnet`), the 85 static gates with mutation self-tests (`security:static`) and the structural
   invariants in `tests/security/anchor-invariants.test.ts` (SEC-B19 is one of them). Owner: programs, before
   mainnet — targets on `buy_pack` / `fuse` / `market settle` asserting the same "Σ liabilities ≤ vault balance"
   rule the ledgers enforce on chain; until then a new constant or account layout is closed by a compile-time
@@ -230,6 +230,26 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   existing `params_changed`), and the new `SEC-B22` static rule fails on an unguarded branch, on a missing
   emission, on a bitmask that no longer covers every patch field, or on a codec that drifted from the Rust
   field order — with its own mutation self-test.
+
+- **SEC-B23 (2026-09-27): closed — the admin panel enforces exactly the guard-rails the program does.**
+  `backend/src/admin.ts` only *encodes* a Squads transaction, so every rail of `set_params` is mirrored
+  by hand in TypeScript — and the mirror had drifted in three places. The five address fields accepted the
+  zero key (valid base58, the system program's address): the panel answered `ok`, a human approved the
+  multisig, and the transaction could only revert — the tool that exists to validate a treasury silently
+  "validated" one that cannot receive a lamport. `priceCgMicro` had no check at all: a negative `BigInt`
+  reached the Borsh `u64` writer (two's complement — a wildly different price, and a 500 instead of a
+  422), and the SEC-F13 band (the 1 000 000 $CG fat-finger cap and the one-shot ×½–2× move limit) was not
+  mirrored. The `params_version` `u16` ceiling (`ChipError::Overflow`) was missing too. Fixed:
+  `pubkeyOrBad` returns the `InvalidConfigAddress` violation, `checkPackGuardRails` takes the live row and
+  applies the u64 range, the hard cap and the ×½–2× band (integer division, as in Rust), and
+  `proposeParams` refuses at `paramsVersion >= 65_535`. The BigInt comparisons live in `CG_PRICE_GUARD`;
+  `GUARD` itself stays JSON-safe because `GET /admin/params` returns it verbatim — a BigInt there is a 500,
+  a bug this fix would otherwise have introduced. The new `SEC-B23` static rule pins the `ChipError`
+  vocabulary of `set_params` (+ `require_non_default`), cross-checks six `economy.rs` constants and five
+  inline literals against `GUARD`, requires the live-row comparison, the zero-key check and the version
+  ceiling, and forbids a BigInt in `GUARD`; its self-test fails on a dropped rule, a drifted constant, a
+  new `ChipError` in the program and a BigInt payload. `backend/test/admin.test.ts` covers all three rails
+  behaviourally (10/10).
 
 ## Current exposure of this repository (from `docs/09-production-readiness.md`)
 

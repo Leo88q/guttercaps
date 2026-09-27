@@ -3801,6 +3801,10 @@ export interface components {
             };
             maxMarketFeeBps?: number;
             maxSkrDiscountBps?: number;
+            /** @description SEC-F13/SEC-B23: fat-finger cap on the $CG pack price (1 000 000 $CG) — the panel mirrors it so it never proposes what the program rejects */
+            maxPackCgPriceMicro?: number;
+            /** @description SEC-F13/SEC-B23: one-shot $CG price move is limited to old/F … old×F (integer division, as in Rust); 0 is free-form (sales off) */
+            cgPriceMoveFactor?: number;
             split?: {
                 count?: number;
                 maxDeltaBps?: number;

@@ -449,7 +449,7 @@ on('get', '/leaderboard/{board}', (_o, p) => ({
 }));
 
 // ------------------------------------------------------------- ops panel (/admin — mirrors backend/src/admin.ts; the same guard-rails, nothing is signed)
-const GUARD = { bpsDenom: 10_000, maxChipsPerPack: 5, minCommonBps: 500, maxTop2BpsStandard: 200, priceCentsRange: [50, 50_000], pity: { minHardAt: 10, maxSoftStepBps: 200 }, maxMarketFeeBps: 1_000, maxSkrDiscountBps: 1_500, split: { count: 5, maxDeltaBps: 1_000, minIntervalS: 7 * 86_400 }, evRatioRange: [0.55, 0.75] };
+const GUARD = { bpsDenom: 10_000, maxChipsPerPack: 5, minCommonBps: 500, maxTop2BpsStandard: 200, priceCentsRange: [50, 50_000], pity: { minHardAt: 10, maxSoftStepBps: 200 }, maxMarketFeeBps: 1_000, maxSkrDiscountBps: 1_500, maxPackCgPriceMicro: 1_000_000_000_000, cgPriceMoveFactor: 2, split: { count: 5, maxDeltaBps: 1_000, minIntervalS: 7 * 86_400 }, evRatioRange: [0.55, 0.75] };
 const adminState = {
   marketFeeBps: FEES.marketplaceFeeBps, skrDiscountBps: FEES.skrPackDiscountBps, featuredCollection: 4, paramsVersion: 3,
   splitBps: [3000, 1500, 1700, 2300, 1500], splitChangedAt: Math.floor(Date.now() / 1000) - 12 * 86_400, paused: { chip_core: false, staking: false, arena: false },

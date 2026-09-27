@@ -393,6 +393,73 @@ test('SEC-B19 the compressed claim-nonce stride covers the largest pack bundle (
   assert.ok(claimNonceStrideViolations(noAssert).some((v) => /compile-time stride assert/.test(v)), 'rule must notice a deleted const assert');
 });
 
+// SEC-B23: `backend/src/admin.ts` hand-mirrors the guard-rails of `set_params`, because the panel only
+// *encodes* a Squads transaction — a panel that says ok and a tx that fails on chain (or worse, a
+// BigInt that 500s `GET /admin/params`) is the failure mode this rule closes. Same error vocabulary,
+// same thresholds, JSON-safe payload.
+const secB23Violations = (rust: string, econ: string, panelRaw: string): string[] => {
+  const bad: string[] = [];
+  const body = bodyOf(rust, 'pub fn set_params');
+  // NB: do *not* run the Rust comment stripper over TS — a `/*` inside a TS string opens a block comment
+  // there and swallows most of the file (the rule then "passes" by seeing nothing). Skip whole comment
+  // lines instead, so a commented-out guard cannot satisfy the rule either.
+  const panel = panelRaw.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  if (!body) return ['set_params body not found — the guard-rails this rule mirrors live in it'];
+  // 1. vocabulary: a new `require!(…, ChipError::X)` inside set_params must show up as a panel rule name
+  const raised = [...new Set([
+    ...[...body.matchAll(/ChipError::(\w+)/g)].map((m) => m[1]!),
+    ...[...bodyOf(rust, 'fn require_non_default').matchAll(/ChipError::(\w+)/g)].map((m) => m[1]!),
+  ])].sort();
+  const PINNED = ['CgPriceGuardRail', 'FeeTooHigh', 'InvalidCollection', 'InvalidConfigAddress', 'InvalidQuantity', 'OddsGuardRail', 'OddsSumInvalid', 'Overflow'];
+  if (raised.join(',') !== PINNED.join(',')) bad.push(`set_params raises {${raised.join(', ')}} — mirror it in the panel and extend this rule`);
+  for (const v of raised) if (!new RegExp(`rule: '${v}'`).test(panel)) bad.push(`${v}: the program can return it, the panel has no rule with that name`);
+  // 2. thresholds: every numeric rail must be the same number on both sides
+  const gn = (v: string | number) => Number(String(v).replace(/_/g, '')).toLocaleString('en-US').replace(/,/g, '_');
+  const guardStart = panel.indexOf('export const GUARD');
+  const guard = panel.slice(guardStart, panel.indexOf('} as const;', guardStart)).replace(/\s+/g, ' ');
+  const num = (re: RegExp, hay: string) => { const m = re.exec(hay); return m ? Number(m[1]!.replace(/_/g, '')) : NaN; };
+  for (const [konst, field] of [
+    ['BPS_DENOM', 'bpsDenom'], ['MAX_CHIPS_PER_PACK', 'maxChipsPerPack'], ['MAX_TOP2_BPS_STANDARD', 'maxTop2BpsStandard'],
+    ['MAX_MARKET_FEE_BPS', 'maxMarketFeeBps'], ['MAX_SKR_DISCOUNT_BPS', 'maxSkrDiscountBps'], ['MAX_PACK_CG_PRICE_MICRO', 'maxPackCgPriceMicro'],
+  ] as const) {
+    const v = num(new RegExp(`pub const ${konst}: \\w+ = ([\\d_]+);`), econ);
+    if (Number.isNaN(v)) bad.push(`${konst} is no longer a plain integer const — update this rule with it`);
+    else if (!new RegExp(`${field}: ${gn(v)}\\b`).test(guard)) bad.push(`GUARD.${field} ≠ ${konst} (${v}): the panel would propose what the program rejects`);
+  }
+  for (const [label, re, field] of [
+    ['Common floor', /odds_bps\[0\] >= ([\d_]+)/, 'minCommonBps'],
+    ['pity hard floor', /pity_hard_at >= ([\d_]+)/, 'minHardAt'],
+    ['pity soft-step cap', /pity_soft_step_bps <= ([\d_]+)/, 'maxSoftStepBps'],
+    ['$CG ×½–2× factor', /saturating_mul\((\d+)\)/, 'cgPriceMoveFactor'],
+  ] as const) {
+    const v = num(re, body);
+    if (Number.isNaN(v)) bad.push(`the ${label} literal is gone from set_params — update this rule`);
+    else if (!new RegExp(`${field}: ${gn(v)}\\b`).test(guard)) bad.push(`GUARD.${field} ≠ the ${label} literal (${v})`);
+  }
+  const price = /\((\d[\d_]*)\.\.=(\d[\d_]*)\)\.contains\(&p\.price_usd_cents\)/.exec(body);
+  if (!price) bad.push('the pack price band is no longer an explicit literal — update this rule');
+  else if (!guard.includes(`priceCentsRange: [${gn(price[1]!)}, ${gn(price[2]!)}]`)) bad.push(`GUARD.priceCentsRange ≠ the ${gn(price[1]!)}…${gn(price[2]!)} program band`);
+  if (!/old \/ 2/.test(body)) bad.push('the $CG band no longer uses `old / 2` — the panel mirrors integer division, keep them equal');
+  // 3. the panel side: same comparison sites, no second copy of a number, and a payload that can be JSON-serialised
+  if (!/priceCgMicro > CG_PRICE_GUARD\.maxMicro/.test(panel)) bad.push('the panel compares priceCgMicro against something other than CG_PRICE_GUARD.maxMicro');
+  if (!/maxMicro: BigInt\(GUARD\.maxPackCgPriceMicro\)/.test(panel)) bad.push('CG_PRICE_GUARD.maxMicro is not derived from GUARD.maxPackCgPriceMicro — two numbers can drift');
+  if (!/cur\.priceCgMicro \/ CG_PRICE_GUARD\.moveFactor/.test(panel) || !/cur\.priceCgMicro \* CG_PRICE_GUARD\.moveFactor/.test(panel)) bad.push('the one-shot ×½–2× band is missing from checkPackGuardRails');
+  if (/\b\d[\d_]*n\b/.test(guard)) bad.push('GUARD holds a BigInt literal — GET /admin/params returns guardRails verbatim and JSON.stringify throws on it');
+  if (!/k\.equals\(ZERO_KEY\)/.test(panel)) bad.push('the panel accepts 111…111 as a destination — the program refuses it (SEC-B22)');
+  if (!/cfg\.paramsVersion >= 65_535/.test(panel)) bad.push('the params_version ceiling (ChipError::Overflow) is not mirrored — the panel would encode a patch that reverts');
+  if (!/checkPackGuardRails\(patch\.sku, merged, violations, `packs\[\$\{i\}\]`, cfg\.packs\[patch\.sku\]\)/.test(panel)) bad.push('checkPackGuardRails is not given the live row — the ×½–2× band compares against nothing');
+  return bad;
+};
+
+test('SEC-B23 the admin panel mirrors set_params: same error vocabulary, same thresholds, JSON-safe payload', () => {
+  const bad = secB23Violations(
+    src('programs/chip_core/src/instructions/admin.rs'),
+    src('programs/chip_core/src/economy.rs'),
+    src('backend/src/admin.ts'),
+  );
+  assert.deepEqual(bad, []);
+});
+
 // ---------------------------------------------------------------- rule self-tests
 
 const fake = (code: string, rel = 'programs/chip_core/src/instructions/fake.rs'): SourceFile => ({ path: rel, rel, program: 'chip_core', code: stripComments(code) });
@@ -526,6 +593,25 @@ test('self-test: SEC-B22 rule flags an unguarded address and a codec that drifte
   const drifted = events.replace("['treasury', 'pubkey'],", '');
   assert.notEqual(drifted, events);
   assert.ok(runRule({ events: drifted }).some((v) => /codec drifted/.test(v)));
+});
+
+test('self-test: SEC-B23 rule flags a dropped panel rule, a drifted threshold and a BigInt payload', () => {
+  const rust = src('programs/chip_core/src/instructions/admin.rs');
+  const econ = src('programs/chip_core/src/economy.rs');
+  const panel = src('backend/src/admin.ts');
+  assert.deepEqual(secB23Violations(rust, econ, panel), []);
+  const noCgRule = panel.replace(/rule: 'CgPriceGuardRail'/g, "rule: 'ok'");
+  assert.notEqual(noCgRule, panel);
+  assert.ok(secB23Violations(rust, econ, noCgRule).some((v) => /CgPriceGuardRail/.test(v)));
+  const drift = econ.replace('pub const MAX_MARKET_FEE_BPS: u16 = 1_000;', 'pub const MAX_MARKET_FEE_BPS: u16 = 1_500;');
+  assert.notEqual(drift, econ);
+  assert.ok(secB23Violations(rust, drift, panel).some((v) => /maxMarketFeeBps/.test(v)));
+  const newRequire = rust.replace('require!(fee <= MAX_MARKET_FEE_BPS, ChipError::FeeTooHigh);', 'require!(fee <= MAX_MARKET_FEE_BPS, ChipError::FeeTooHigh);\n        require!(fee != 999, ChipError::BrandNewRail);');
+  assert.notEqual(newRequire, rust);
+  assert.ok(secB23Violations(newRequire, econ, panel).some((v) => /BrandNewRail/.test(v)));
+  const bigint = panel.replace('maxPackCgPriceMicro: 1_000_000_000_000,', 'maxPackCgPriceMicro: 1_000_000_000_000n,');
+  assert.notEqual(bigint, panel);
+  assert.ok(secB23Violations(rust, econ, bigint).some((v) => /BigInt/.test(v)));
 });
 
 test('self-test: A2/A8 modulo rule flags a slot-modulo roll and a stripped rejection bound', () => {

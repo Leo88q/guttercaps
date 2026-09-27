@@ -139,7 +139,7 @@ describe('params: read + propose', () => {
     expect(decodeEmissionState(conn.get(emissionPda()[0])!).splitBps[3]).toBe(2300);
   });
 
-  it('guard-rails: every program require! is mirrored (odds sum, Common ≥ 5 %, top-2 cap per sku, price band, pity shape, fee/discount caps, featured range) + economy warnings', async () => {
+  it('guard-rails: every set_params require! + error path is mirrored (odds sum, Common ≥ 5 %, top-2 cap per sku, price/pity bands, fee/discount caps, featured range, zero keys, $CG band, version ceiling) + economy warnings', async () => {
     const c = await admin.fetchChainParams(conn as unknown as Connection);
     const bad = admin.proposeParams(c, {
       packs: [
@@ -166,6 +166,28 @@ describe('params: read + propose', () => {
     expect(generous.warnings.join(' ')).toMatch(/EV\/price/);
     expect(admin.proposeParams(c, {}, T0).violations[0].rule).toBe('empty');
     expect(admin.proposeParams(c, { treasury: 'not-a-key' }, T0).violations[0]).toMatchObject({ path: 'treasury', rule: 'pubkey' });
+    // SEC-B23: the two requires the mirror was missing. `111…111` is valid base58 and is the system
+    // program's address — the program refuses it (SEC-B22), so the panel must not propose it.
+    const zero = admin.proposeParams(c, { treasury: '11111111111111111111111111111111' }, T0);
+    expect(zero.ok).toBe(false);
+    expect(zero.instructions).toEqual([]);
+    expect(zero.violations[0]).toMatchObject({ path: 'treasury', rule: 'InvalidConfigAddress' });
+    // $CG price: the hard cap, the ×½–2× one-shot band, and a negative value that used to reach the
+    // Borsh writer as a 500 instead of a 422.
+    const live = c.config.packs[1].priceCgMicro;              // live value, whatever the fixture installed it at
+    const cg = (micro: bigint) => admin.proposeParams(c, { packs: [{ sku: 1, priceCgMicro: micro.toString() }] }, T0);
+    expect(cg(1_000_000_000_001n).violations.map((v) => `${v.path}:${v.rule}`)).toContain('packs[0].priceCgMicro:CgPriceGuardRail');
+    expect(cg(-5n).violations.map((v) => `${v.path}:${v.rule}`)).toContain('packs[0].priceCgMicro:u64');
+    if (live > 0n) {
+      expect(cg(live * 3n).ok).toBe(false);                   // > 2× is a second change, not one
+      expect(cg(live * 2n).violations.filter((v) => v.path.endsWith('.priceCgMicro'))).toEqual([]); // exactly 2× passes
+      expect(cg(live / 2n).violations.filter((v) => v.path.endsWith('.priceCgMicro'))).toEqual([]);
+    }
+    // SEC-B23: `params_version` is bumped on chain with a checked_add — at the u16 ceiling the panel
+    // must refuse instead of encoding a transaction the program will revert.
+    const atCeiling = admin.proposeParams({ ...c, config: { ...c.config, paramsVersion: 65_535 } }, { marketFeeBps: 500 }, T0);
+    expect(atCeiling.ok).toBe(false);
+    expect(atCeiling.violations.map((v) => `${v.path}:${v.rule}`)).toContain('paramsVersion:Overflow');
   });
 
   it('set_split: sum 10000, ±1000 bps per slice, 7-day interval; encodes staking::set_split for the emission admin', async () => {

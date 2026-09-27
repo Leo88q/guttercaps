@@ -57,8 +57,22 @@ export const GUARD = {
   maxSkrDiscountBps: 1_500,
   // staking::instructions::emission::set_split
   split: { count: SPLIT_COUNT, maxDeltaBps: 1_000, minIntervalS: 7 * 86_400 },
+  // SEC-F13 on chain: the only admin price with no oracle — hard cap plus a one-shot ×½–2× move limit
+  // (0 stays free-form: it switches $CG sales off). Documented here as the JSON-safe number that
+  // `GET /admin/params` publishes; the BigInt comparisons live in CG_PRICE_GUARD below.
+  maxPackCgPriceMicro: 1_000_000_000_000,
+  cgPriceMoveFactor: 2,
   // packages/economy soft invariants (scripts/report.ts) — a patch that passes the program but breaks these is a bad idea
   evRatioRange: [0.55, 0.75] as const,
+} as const;
+
+/** BigInt form of the `priceCgMicro` rails. Separate from `GUARD` on purpose: `GET /admin/params` returns
+ *  `guardRails: GUARD` verbatim, and a BigInt in that object is a 500 (`JSON.stringify` refuses BigInt).
+ *  Keeping the numbers in one place and the comparison values in another is the price of that payload. */
+export const CG_PRICE_GUARD = {
+  maxMicro: BigInt(GUARD.maxPackCgPriceMicro),
+  moveFactor: BigInt(GUARD.cgPriceMoveFactor),
+  u64Max: 18_446_744_073_709_551_615n,
 } as const;
 
 export interface PackPatch {
@@ -74,9 +88,16 @@ export interface ParamsProposal {
 export interface Violation { path: string; rule: string; message: string }
 
 const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
+const ZERO_KEY = new PublicKey(new Uint8Array(32));
 const pubkeyOrBad = (v: unknown, path: string, out: Violation[]): PublicKey | undefined => {
   if (v === undefined) return undefined;
-  try { return new PublicKey(String(v)); } catch { out.push({ path, rule: 'pubkey', message: 'not a base58 public key' }); return undefined; }
+  let k: PublicKey;
+  try { k = new PublicKey(String(v)); } catch { out.push({ path, rule: 'pubkey', message: 'not a base58 public key' }); return undefined; }
+  // SEC-B23: `11111111111111111111111111111111` parses as a perfectly valid base58 key — and it is the
+  // system program's address, which the program now refuses for every money/feed field (SEC-B22). The
+  // panel has to refuse it too, or it proposes a Squads transaction that can only fail on chain.
+  if (k.equals(ZERO_KEY)) { out.push({ path, rule: 'InvalidConfigAddress', message: 'the zero key is not a destination (treasury / buyback / feed / mint must be a real wallet)' }); return undefined; }
+  return k;
 };
 
 /** Apply `patch` to the live pack row and return the merged 42-byte definition (or violations). */
@@ -102,7 +123,7 @@ function mergePack(cur: PackDef, patch: PackPatch, path: string, out: Violation[
 }
 
 /** The program's `set_params` checks, one violation per failed `require!`. */
-export function checkPackGuardRails(sku: number, p: PackDef, out: Violation[], path = `packs[${sku}]`) {
+export function checkPackGuardRails(sku: number, p: PackDef, out: Violation[], path = `packs[${sku}]`, cur?: PackDef) {
   const sum = p.oddsBps.reduce((a, b) => a + b, 0);
   if (sum !== GUARD.bpsDenom) out.push({ path: `${path}.oddsBps`, rule: 'OddsSumInvalid', message: `odds sum to ${sum}, must be 10000` });
   if (p.chips < 1 || p.chips > GUARD.maxChipsPerPack) out.push({ path: `${path}.chips`, rule: 'InvalidQuantity', message: `1..${GUARD.maxChipsPerPack} chips` });
@@ -115,6 +136,20 @@ export function checkPackGuardRails(sku: number, p: PackDef, out: Violation[], p
   if (p.priceUsdCents < GUARD.priceCentsRange[0] || p.priceUsdCents > GUARD.priceCentsRange[1]) out.push({ path: `${path}.priceUsdCents`, rule: 'OddsGuardRail', message: 'price must be $0.50 … $500' });
   if (p.pityTier > 0 && !(p.pityHardAt >= GUARD.pity.minHardAt && p.pitySoftStart <= p.pityHardAt && p.pitySoftStepBps <= GUARD.pity.maxSoftStepBps)) {
     out.push({ path: `${path}.pity`, rule: 'OddsGuardRail', message: 'hardAt ≥ 10, softStart ≤ hardAt, softStepBps ≤ 200' });
+  }
+  // SEC-B23: `priceCgMicro` was the one pack field with no check at all — a negative BigInt reached the
+  // Borsh writer (a 500 instead of a violation) and any value was proposed, including ones the program
+  // rejects. Mirror `set_params`: u64 range, the 1 000 000 $CG cap, and the ×½–2× one-shot move limit
+  // measured against the live value (integer division, like the Rust `old / 2`).
+  if (p.priceCgMicro < 0n || p.priceCgMicro > CG_PRICE_GUARD.u64Max) {
+    out.push({ path: `${path}.priceCgMicro`, rule: 'u64', message: 'decimal string for an unsigned 64-bit price' });
+  } else if (p.priceCgMicro > 0n) {
+    if (p.priceCgMicro > CG_PRICE_GUARD.maxMicro) {
+      out.push({ path: `${path}.priceCgMicro`, rule: 'CgPriceGuardRail', message: `$CG price is hard-capped at ${GUARD.maxPackCgPriceMicro} micro-$CG (1 000 000 $CG)` });
+    }
+    if (cur && cur.priceCgMicro > 0n && (p.priceCgMicro < cur.priceCgMicro / CG_PRICE_GUARD.moveFactor || p.priceCgMicro > cur.priceCgMicro * CG_PRICE_GUARD.moveFactor)) {
+      out.push({ path: `${path}.priceCgMicro`, rule: 'CgPriceGuardRail', message: `one-shot move is limited to ×½–2× of the live price (${cur.priceCgMicro} micro-$CG); a larger re-peg takes two changes (SEC-F13)` });
+    }
   }
 }
 
@@ -209,7 +244,7 @@ export function proposeParams(c: ChainParams, body: ParamsProposal, t = now()): 
       for (const [i, patch] of body.packs.entries()) {
         if (!isInt(patch?.sku) || patch.sku < 0 || patch.sku > 3) { violations.push({ path: `packs[${i}].sku`, rule: 'shape', message: 'sku 0..3' }); continue; }
         const merged = mergePack(packsPatched[patch.sku], patch, `packs[${i}]`, violations);
-        checkPackGuardRails(patch.sku, merged, violations, `packs[${i}]`);
+        checkPackGuardRails(patch.sku, merged, violations, `packs[${i}]`, cfg.packs[patch.sku]);
         warnings.push(...economyWarnings(patch.sku, merged).map((w) => `packs[${i}] (sku ${patch.sku}): ${w}`));
         diff[`packs[${patch.sku}]`] = { from: packApi(cfg.packs[patch.sku], patch.sku), to: packApi(merged, patch.sku) };
         packsPatched[patch.sku] = merged;
@@ -238,6 +273,11 @@ export function proposeParams(c: ChainParams, body: ParamsProposal, t = now()): 
   for (const [k, v] of Object.entries(keys)) if (v) { diff[k] = { from: (cfg as unknown as Record<string, PublicKey>)[k].toBase58(), to: v.toBase58() }; if (k === 'treasury' || k === 'buybackWallet') warnings.push(`${k} change: sweep_vault / fees will flow to the new account from the next tx — double-check it is a Squads vault`); }
 
   const touchesParams = packsPatched !== undefined || body.marketFeeBps !== undefined || body.featuredCollection !== undefined || body.skrDiscountBps !== undefined || Object.values(keys).some(Boolean);
+  // SEC-B23: `set_params` bumps `params_version` with `checked_add(1).ok_or(ChipError::Overflow)`. At the
+  // u16 ceiling every further patch reverts on chain, so the panel has to refuse before it encodes.
+  if (touchesParams && cfg.paramsVersion >= 65_535) {
+    violations.push({ path: 'paramsVersion', rule: 'Overflow', message: `on-chain params_version is ${cfg.paramsVersion} (u16 ceiling) — the next set_params reverts; bump the field's width first` });
+  }
   if (touchesParams && violations.length === 0) {
     const w = new BorshWriter();
     const opt = <T,>(v: T | undefined, f: (v: T) => void) => { if (v === undefined) w.u8(0); else { w.u8(1); f(v); } };
