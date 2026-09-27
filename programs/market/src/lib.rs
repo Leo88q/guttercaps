@@ -222,7 +222,10 @@ fn split(price: u64, fee_bps: u16) -> Result<(u64, u64, u64, u64)> {
 /// refused listing leaves neither the PDA nor the flag). Relaxing this is a feature: it needs the SPL
 /// legs in `buy_compressed*`, not just the removal of the check (SEC-B28).
 fn require_sol_claim_market(currency: Currency) -> Result<()> {
-    require!(currency == Currency::Sol, MarketError::CompressedCurrencyMismatch);
+    require!(
+        currency == Currency::Sol,
+        MarketError::CompressedCurrencyMismatch
+    );
     Ok(())
 }
 
