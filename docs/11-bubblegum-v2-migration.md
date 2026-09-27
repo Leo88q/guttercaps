@@ -149,6 +149,19 @@ PDA — is resolved to the chip its flag lives on. A pre-mint claim listing is t
 one thing that is not in `listings`: that table is asset-keyed and every read of it
 joins `chips`, so it lives on the claim row until the leaf exists.
 
+SEC-B34 added `claim: Pubkey` to `CompressedChipMinted` and `CompressedChipRegistered`
+(appended last — borsh is positional, so every earlier offset is unchanged). Those
+two events name the claim's *current holder*, and `buy_compressed_claim` changes it:
+a claim bought before its mint is minted and registered by the buyer, so with no PDA
+in the event the indexer had no join key back to its row (keyed by the immutable
+origin) and produced no `chips` row at all. `projections.ts` resolves the row through
+`resolveClaimPda` — PDA first, holder-keyed fallback for a log from an older build —
+and keeps the program's own owner guard (`register_compressed_chip` requires
+`claim.buyer == owner`). SEC-B35 wired both compressed markets and the claim's own
+flag flips onto the client's invalidation keys (`listing_changed` / `sale` /
+`stake_changed`); before that they shipped under their snake_case names, which the
+client's `INVALIDATE` table does not know, so a compressed trade refreshed nothing.
+
 Operational requirements before release:
 
 - monitor claims nearing expiry and submit cancellation/finalization transactions;

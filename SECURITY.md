@@ -348,6 +348,65 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   `backend/test/compressed-market.test.ts` (nine tests: flags on list/cancel/sale/transfer, a claim-keyed
   stake, the pre-mint claim market, and a rebuild that reproduces it all); the LT-3 corpus now emits every one
   of the eight and its staking invariant resolves claim-keyed positions through the new column.
+- **SEC-B34 (2026-09-27): closed — a claim bought before its mint registered into no chip at all.**
+  `CompressedChipMinted` and `CompressedChipRegistered` name the claim's *current holder*, and the read model
+  resolved both by holder (`WHERE buyer = ? AND claim_nonce = ?`, the row's `buyer` being the immutable origin
+  the claim PDA is derived from). The two agree only until the claim market moves an un-minted claim:
+  `buy_compressed_claim` transfers it (the row's `owner` changes, the origin does not), the buyer mints and
+  registers — and both events then named a wallet no row matched by `buyer`, so
+  `register_compressed_chip` produced no `chips` row. The consequence is the buyer's inventory: a registered,
+  paid-for compressed chip the indexer did not have (no owner, no collection volume, nothing to fight, stake
+  or sell), with the claim row stuck at `minted`. It was found by the SEC-B32 test, which needed exactly this
+  order — the claim market's own happy path. Both events now carry the claim PDA, *appended last* (borsh is
+  positional, so every earlier offset is unchanged — a devnet redeploy, not a data migration), and the
+  projection resolves the row through `resolveClaimPda` (PDA first, holder-keyed fallback for a log from an
+  older build) and updates it under the owner guard the program itself enforces
+  (`register_compressed_chip` requires `claim.buyer == owner`). The settlement counter now follows the row
+  that actually moved and counts against its origin — a buyer's registration increments the *seller's*
+  settlement, which is the account the claim was created in. Pinned by the `SEC-B34` rule in
+  `tests/security/settle-once.test.ts` (the field on both Rust structs, no holder-keyed claim update, both
+  handlers resolving through the PDA with the owner guard; three mutations) and by
+  `backend/test/compressed-market.test.ts` (the full create → list → sell → mint → register → sell order, and
+  a replayed registration from a wallet that no longer holds the claim).
+- **SEC-B33 (2026-09-27): closed — a match could be settled twice.** `reveal` reads the match row and then
+  writes it, and the writers of that row are not serialised: a client retry, or a second API process behind
+  the load balancer, can both hold a still-`revealing` match and both settle it. `pvp_rewards` is idempotent
+  by primary key `(match_id, wallet)`, so the reward rows were safe — the ratings were not (two
+  `applyRating` calls) and neither was the season-pass XP (`addPassXp` adds to `pass_xp.xp`). The settle-once
+  guard makes every write conditional on the state the writer believes it is acting on:
+  `… WHERE id = ? AND status = 'revealing' AND seed IS NULL` (the seed is written once and never cleared, so
+  it — not the status the reader saw — is the arbiter), every payout write (ratings, XP, rewards) sits behind
+  `if (applied === 0) return`, and the function re-reads the row and reports *its* winner and rewards instead
+  of the numbers it computed. The forfeit path is guarded the same way, in both branches. Nothing is spent
+  twice on chain from here — no transaction is sent — but a second settle silently rewrites the ladder and the
+  pass, which is exactly what the reward roots pay against. Pinned by the `SEC-B33` rule in
+  `tests/security/settle-once.test.ts` (both writers, the guard, the payouts behind it; two mutations) and by
+  `backend/test/game.test.ts` (a second settle with a stale row moves nothing and reports the recorded result).
+- **SEC-B32 (2026-09-27): closed — the wash-trade price-spike detector could not see a compressed trade.**
+  `detectWashTrades` has two arms: round trips between a pair, and a price ≥ 3 × the archetype floor between
+  the same pair twice inside the window. The second arm filtered `s.collection_idx IS NOT NULL` — and a
+  compressed claim sold before its leaf exists is recorded with exactly that NULL (SEC-B31: the collection is
+  not in the event, and guessing it would file the volume under the wrong district). A trade the first arm
+  already counted was therefore invisible to the one that prices it, and the value-transfer move this arm
+  exists to catch had no detector at all. The archetype now comes from the chip the claim-keyed row resolves
+  to (`compressed_claims.claim → chips`), the sale row's own values still taking precedence; a claim that never
+  registers keeps `floor = NULL` and is skipped, which is the honest answer — there is no floor to compare
+  against yet. Pinned by the `SEC-B32` rule in `tests/security/settle-once.test.ts` (no collection filter, the
+  claim fallback, the join; two mutations) and by `backend/test/game.test.ts` (a Core pair and a claim pair at
+  5 × the floor are both flagged with `priceOverFloorX: 5`, a never-registered claim's pair is not).
+- **SEC-B35 (2026-09-27): closed — a compressed trade reached the client under a name it does not handle.**
+  `wire.ts` maps an on-chain event to the client's invalidation key, and its own header says why: a frame the
+  client filters out is a cache that never updates, with no error anywhere. The two compressed markets
+  (`CompressedClaimListed`/`Sold`, `CompressedAssetListed`/`Sold`) and the claim's own flag flips shipped
+  under their snake_case names, which no `INVALIDATE` entry knows — a compressed listing, sale, cancel or
+  stake invalidated nothing, so the market page silently degraded to polling. They now map onto the same keys
+  the Core path uses (`listing_changed`, `sale`, `stake_changed`) with the payload shape the client already
+  reads (seller/buyer/price/`priceUsd`), `asset` only when the leaf exists — a pre-mint claim PDA is not a
+  chip route — and `claim` always, so a client can key its own cache by the identity the market uses.
+  `CompressedClaimTransferred` stays raw on purpose: an ownership move with no money has no client
+  invalidation key to route to. Pinned by the `SEC-B35` rule in `tests/security/events-coverage.test.ts`
+  (every mapped wire type is a key the client actually implements; all six compressed events are mapped and
+  decoded; two mutations) and by the wire test in `backend/test/ops.test.ts`.
 - **SEC-B28 (2026-09-27): closed — the claim market listed in currencies it can only fail to settle.**
   `buy_compressed` / `buy_compressed_asset` pay the seller with `system_program::transfer` and answer
   `CompressedCurrencyMismatch` for anything else (the SPL legs of the legacy `buy` were never wired into

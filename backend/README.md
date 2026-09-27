@@ -438,7 +438,7 @@ the chain's reason), `/fusion/suggest` (auth), `/staking/overview`, `/staking/me
 ## Tests
 
 ```bash
-npm test          # vitest: 443 tests — codec round-trips for all 56 events, CPI attribution,
+npm test          # vitest: 448 tests — codec round-trips for all 56 events, CPI attribution,
                   # idempotent ingest, rebuild equivalence, failed-fusion refunds, floors,
                   # SIWS (bad signature, nonce reuse, CSRF), handle lifecycle, service claims,
                   # Pyth PriceUpdateV2 decode/validate (owner, feed, verification, age),

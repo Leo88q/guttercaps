@@ -10,7 +10,7 @@
 > сторон (install на любой ОС/`lock:matrix` и пины байтов — sha512 + официальный registry, `lock:integrity`, SEC-B12);
 > инварианты экономики и golden-файлы, клиентские
 > 158 тестов + typecheck + сборка, бюджет критического пути и «ничего не ходит за шрифтами вовне»
-> (`bundle:check`), 443 тестов бэкенда (27 файлов) (включая LT-3-тир: live ⇄ rebuild на детерминированном корпусе, и скан SQL-диалекта),  контракт openapi ⇄ маршруты (`api:check`), контракт `.env.example`
+> (`bundle:check`), 448 тестов бэкенда (27 файлов) (включая LT-3-тир: live ⇄ rebuild на детерминированном корпусе, и скан SQL-диалекта),  контракт openapi ⇄ маршруты (`api:check`), контракт `.env.example`
 > ⇄ код (`env:check`), сверка Prisma-схемы с DDL, который реально исполняется (`schema:check`), и
 > лендинг. `.github/workflows/ci.yml` — то же в CI плюс `anchor build` /
 > localnet-сюита на артефактах (docs/06 §3.1). Разделы ниже про «chip-game — Anchor program» и `client/src/lib/*`

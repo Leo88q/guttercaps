@@ -39,6 +39,10 @@ SECURITY-SCAN-TRIAGE-2026-09-23) учтены; здесь — только но�
 | SEC-B25 | Low (cookie posture: кросс-сайтовая отправка на двух GET-роутах, которые пишут) | `backend/src/{config,auth}.ts`, `backend/.env.example`, `ops/deploy/runbook.md`, `tests/security/csp.test.ts`, `backend/test/security.test.ts` | `setSessionCookie` ставила `SameSite=None; Secure` при `COOKIE_SECURE=1` — то есть в каждом продовом деплое, — а этот деплой same-origin: nginx отдаёт клиент и проксирует `/v1/`. `None` разрешает кросс-сайтовому запросу *отправить* сессионную куку, а два GET-роута пишут: `/me/handle/check` берёт 120-секундный hold на ник, `/quests` пишет логин дня (от него зависит `eligibility` перед `/quests/claims`). | **Исправлено**: `COOKIE_SAMESITE` (lax \| strict \| none, дефолт **lax**) валидируется на старте, `none` форсит `Secure` и в проде требует `CROSS_SITE_CLIENT=1`; runbook/`.env.example` объясняют выбор; гейт `SEC-B25` + самотест (статика 87 → 89), HTTP-тест `Set-Cookie` |
 | SEC-B28 | Medium | claim-маркет листил в валюте, которой не может рассчитаться | `programs/market/src/lib.rs`, `client/src/chain/ix/market.ts`, `docs/02`/`docs/03`/`docs/11` | `buy_compressed`/`buy_compressed_asset` платят переводом лампортами и требуют `Currency::Sol`, а оба `list_compressed*` принимали USDC/SKR: листинг создавался и ставил claim'у флаг `listed`, после чего chip_core отказывает в минте/сплаве/стейкинге (`InvalidChipState`) до отмены — невыкупаемый листинг и самоблокировка, оплаченные продавцом; покрытия не было ни в одном тесте (все листинги в localnet — SOL) | **Исправлено**: общая `require_sol_claim_market` первой строкой обоих листинговых хендлеров; покупочные проверки сохранены как defense in depth; `assertSolClaimListing` в обоих клиентских билдерах; доки про claim-листинг и про два слоя кодов валют поправлены. Гейт `SEC-B28` (+4 мутации), Rust-юнит `claim_market_lists_only_in_sol`, сценарий `30-market.spec.ts`, 2 теста `chain.test.ts` |
 | SEC-B31 | Medium (индексатор: восемь эмитившихся событий не декодировались — claim терял состояние) | `backend/src/events.ts` (8 спек, 48 → 56), `backend/src/projections.ts` (8 хендлеров, `chipBehindClaim`/`assetOfStakeKey`, owner-guard), `backend/src/db.ts` + `backend/prisma/schema.prisma` (`compressed_claims.claim/owner/listed/staked/price/currency`, индекс в `migrate()`), `tests/security/events-coverage.test.ts`, `backend/test/{compressed-market,chainHistory,replay}.test.ts` | ✅ закрыто |
+| SEC-B34 | High (индексатор: claim-маркет) | `programs/chip_core/src/instructions/compressed.rs` (поле `claim` в `CompressedChipMinted`/`CompressedChipRegistered` и в обоих `emit!`), `backend/src/events.ts` (2 спеки), `backend/src/projections.ts` (`resolveClaimPda`, owner-guard, счётчик по origin'у), `backend/test/{compressed-market,game,chainHistory,chip-index,projections}.test.ts` | ✅ закрыто |
+| SEC-B33 | Medium (игровой слой: двойной расчёт матча) | `backend/src/arena.ts` (`resolve` → `settleMatch`, guard `status = 'revealing' AND seed IS NULL`, выплаты за `applied === 0`, перечитывание строки; `forfeit` в обеих ветках), `backend/test/game.test.ts` | ✅ закрыто |
+| SEC-B32 | Low (антифрод: невидимая компресс-сделка) | `backend/src/antifraud.ts` (прайс-спайк-плечо: архетип из `compressed_claims.claim → chips`), `backend/test/game.test.ts` | ✅ закрыто |
+| SEC-B35 | Low (wire: кадр, которого клиент не знает) | `backend/src/wire.ts` (6 событий на ключи клиента `listing_changed`/`sale`/`stake_changed` + payload), `tests/security/events-coverage.test.ts`, `backend/test/ops.test.ts` | ✅ закрыто |
 | SEC-B30 | Medium (wager: бой считался по составу, который оппонент не согласовывал) | `backend/src/battle-resolver.ts` (`squadFromDb` без надгробий, сверка `onChainSquadPower` с записанной мощностью до расчёта и до отправки), `tests/security/battle-squad.test.ts`, `backend/test/battle-resolver.test.ts` | ✅ закрыто |
 | SEC-B29 | Medium (эмиссия: отчёт по burn, который форк мог отозвать) | `backend/src/burn-oracle.ts` (`pendingBurn`: фильтр `e.slot <= finalizedHorizon(db)`, watermark вместо «максимального id»), `backend/src/{oracle-metrics,server}.ts` (`burn_oracle_deferred_cg`, `healthy` учитывает deferred), `backend/openapi.yaml`, `tests/security/burn-report.test.ts`, `backend/test/burn-oracle.test.ts` | ✅ закрыто |
 | SEC-B27 | Medium (тихая потеря данных индексатора) | `backend/src/{ingest,backfill,listen,config}.ts`, `backend/src/db.ts`, `ops/monitoring/alerts.yml`, `docs/ALERT_CATALOG.md`, `docs/DISASTER_RECOVERY.md` | `getSignaturesForAddress` отдаёт подпись, `getTransaction` — второй вызов и может ответить `null` (окно хранения провайдера или транзиентный ответ). `ingestSignatures` на этом `null` делала `continue`: страница считалась обслуженной, обход завершался, курсор получал `history_complete = 1`. Read-model терял всё, что эмитила транзакция (`ServicePaid` → плательщику `payment_not_found`, минт фишки, результат боя), `rebuild` воспроизводил то же отсутствие, а сигнала не было ни одного. Документы при этом описывали несуществующее: `DISASTER_RECOVERY.md` §2.3 — «sequence detector», ALERT-02 — `npm run backfill -- --from-slot … --to-slot …` (корневого скрипта `backfill` нет, CLI отфильтровывал флаги и запускал полный обход вместо диапазона). | **Исправлено**: `ingestSignatures` возвращает `missing` (`{signature, slot}`); бросающий fetch по-прежнему валит страницу (курсор не двигается — fail-closed); обход пишет дыры в `indexer_gaps` и держит `history_complete = 0`; `repairIndexerGaps` добирает их через тот же `ingestTx` (heal-тик каждые `LISTEN_HEAL_EVERY_MS`, `--repair-gaps` — запаркованные, кап `INDEXER_GAP_MAX_ATTEMPTS`); `GET /v1/health.indexerGaps` + серии + алерт `IndexerGaps`; таблица и в Prisma-цели. Гейт `tests/security/indexer-gaps.test.ts` (7 правил, 10 мутаций), поведение `backend/test/backfill.test.ts` (9) |
@@ -921,6 +925,122 @@ pre-mint claim-маркет без изобретённых строк, репл
 stake/transfer/buy), а его инвариант «`stakes.kind=1 active` ⇔ флаг чипа» резолвит claim-ключи через новую
 колонку — до этого правила молча пропускали такие строки (NULL на left join не бывает ни `= 1`, ни `<> 1`).
 
+
+## SEC-B34 · High · claim, купленный до минта, не становился чипом ни у кого
+
+**Что было.** `CompressedChipMinted` и `CompressedChipRegistered` несут **текущего держателя** claim'а
+(`buyer` / `owner`), а read-model резолвил их по держателю же: `WHERE buyer = ? AND claim_nonce = ?`, где
+`buyer` в строке — неизменяемый origin, от которого выведен PDA claim'а. Совпадают эти два кошелька ровно
+до первой сделки claim-маркета. `buy_compressed_claim` переводит claim — `claim.buyer` на цепочке и
+`compressed_claims.owner` в read-model меняются, origin остаётся прежним, — после чего покупатель минтит и
+регистрирует лист. Оба события называют **покупателя**, строки с таким `buyer` не существует, обновление
+не срабатывает: `register_compressed_chip` не создаёт строку `chips` вовсе.
+
+**Цена.** Оплаченный и зарегистрированный на цепочке компресс-чип отсутствует у индексатора: нет владельца,
+нет объёма по коллекции, ни боя, ни стейка, ни продажи (V2-маркет читает `chips`), строка claim'а застревает
+в `minted` — то есть клиент показывает claim вместо чипа, а `sales` не получает объёма. Это happy path
+claim-маркета, а не экзотика: pre-mint claim продаётся именно за тем, чтобы покупатель его заминтив.
+
+**Как нашлось.** На тесте SEC-B32, которому нужен ровно этот порядок (продажа до минта). Сначала это было
+похоже на «детектор не видит claim-сделку», но probe показал, что строки `sales` есть, а `collection_idx`
+у них NULL не из-за самого плеча детектора, а потому что claim не резолвится в чип — то есть сначала надо
+было починить резолв, потом детектор. Прежний комментарий в тесте (SEC-B31) утверждал, что события
+«называют другое лицо из-за гонки» — это было неверно: гонки в этом репозитории нет, есть перевод владения.
+
+**Исправление.**
+1. Оба события несут claim PDA **последним полем** (`pub claim: Pubkey`); borsh позиционен, поэтому все
+   прежние смещения не меняются — это redeploy devnet, а не миграция данных. `backend/src/events.ts`
+   дописывает `['claim','pubkey']` в обе спеки, а новое правило паритета полей в
+   `tests/security/events-coverage.test.ts` следит, чтобы порядок имён и типов совпадал со структурами.
+2. `resolveClaimPda(db, claim, holder, claimNonce)` резолвит строку по PDA, с holder-фоллбэком для лога
+   старой сборки (и для строки, найденной иначе).
+3. Оба хендлера обновляют строку под owner-guard'ом — тем же, что проверяет программа
+   (`register_compressed_chip` требует `claim.buyer == owner`), так что реплейная регистрация от кошелька,
+   который claim уже продал, ничего не двигает (`changes = 0`, статус не меняется).
+4. Счётчик `compressed_settlements.registered_claims` следует за строкой, которая реально сдвинулась, и
+   считается по **origin'у**: регистрация покупателем инкрементит settlement продавца, где claim и создавался.
+
+**Тест.** Правило `SEC-B34` в `tests/security/settle-once.test.ts`: поле в обеих Rust-структурах, ни одного
+обновления claim'а по держателю (`WHERE buyer = ? AND claim_nonce = ?` запрещён), оба хендлера вызывают
+`resolveClaimPda` и держат `WHERE claim = ? AND owner = ?`; три мутации (снятое поле, holder-keyed update,
+снятый резолвер). Поведенчески — `backend/test/compressed-market.test.ts`: полный порядок create → list →
+sell → mint → register → продажа по V2-маркету (проверяется и чип, и строка claim'а, и счётчик, и объём), и
+реплейная регистрация от прежнего владельца. Фикстуры (`chainHistory.ts`, `chip-index.test.ts`,
+`projections.test.ts`, `game.test.ts`) передают новое поле.
+
+## SEC-B33 · Medium · матч мог быть рассчитан дважды
+
+**Что было.** `reveal` читает строку матча, проверяет её и **затем** пишет: `UPDATE matches SET … WHERE id = ?`
+без условия на статус. Писателей у этой строки два и больше — retry клиента, повторный запрос и второй
+процесс API за балансировщиком: любой, кто прочитал матч в `revealing`, мог рассчитать его повторно.
+`pvp_rewards` идемпотентен по PK `(match_id, wallet)`, поэтому награды не удваивались, а вот рейтинги
+(`applyRating` — чтение + запись) и XP сезонного пропуска (`addPassXp` прибавляет к `pass_xp.xp`) — вполне.
+
+**Почему это важно.** Ончейн отсюда ничего не тратится (транзакция не отправляется), но рейтинг — это
+лестница сезона, а XP — пропуск; оба публикуются в reward-roots (`season_payouts`, `pass_xp`). Скрытое
+переписывание лестницы — это тихая экономическая ошибка, которую не видно ни в логах, ни в алертах.
+
+**Исправление.** Settle-once: `… WHERE id = ? AND status = 'revealing' AND seed IS NULL` (seed пишется один
+раз и никогда не очищается — он и есть арбитр, а не статус, который прочитал вызывающий), `applied =
+Number(db.run(...).changes)`, и **все** выплатные записи (рейтинги, `pvp_rewards`, `addPassXp`) стоят за
+`if (applied === 0) return`. Функция перечитывает строку и возвращает её победителя и её награды, а не свои.
+Путь форфейта получил тот же guard в обеих ветках (`cancelled` и `resolved`) — там `status = 'revealing'`
+и `seed IS NULL` тоже проверяются в самом UPDATE. Внутренняя `resolve` экспортирована как `settleMatch`,
+чтобы гарантию можно было тестировать напрямую.
+
+**Тест.** Правило `SEC-B33` в `tests/security/settle-once.test.ts`: каждый `UPDATE matches SET` несёт оба
+условия, хендлер ловит число изменённых строк и рано выходит, выплаты идут после guard'а, ответ
+перечитывается из строки; две мутации (снятый guard и guard, который не выходит). Поведенчески —
+`backend/test/game.test.ts`: матч доигран, зафиксированы рейтинги/XP/награды, затем `settleMatch` со
+устаревшей строкой (`status: 'revealing'`, `seed: null`) не двигает ничего и возвращает записанные награды,
+победителя и `ended_at`. Мутационная проверка (снятый guard + `if (false)`) валит этот тест.
+
+## SEC-B32 · Low · прайс-спайк-плечо wash-trade не видело компресс-сделку
+
+**Что было.** У `detectWashTrades` два плеча: round-trip'ы между парой (уже видели компресс-сделки — они
+пишутся в `sales`) и цена ≥ 3 × архетипного флора между той же парой дважды за окно. Второе плечо
+фильтровало `s.collection_idx IS NOT NULL`, а продажа claim'а до листа пишется ровно с NULL-коллекцией
+(SEC-B31: коллекции в событии физически нет, и угадывать её — значит записать объём не в тот дистрикт).
+Итог: сделка, которую первое плечо уже посчитало, была невидима тому, которое её **оценивает**, и
+value-transfer (fee farming / перевод стоимости) не имел детектора для компресс-пути.
+
+**Исправление.** Архетип берётся из чипа, в который резолвится claim-строка: `LEFT JOIN (SELECT cc.claim,
+c.collection_idx, c.rarity FROM compressed_claims cc JOIN chips c ON c.asset = cc.asset GROUP BY cc.claim) r
+ON r.claim = s.asset`, а сравнение — `COALESCE(s.collection_idx, r.collection_idx)` / `COALESCE(s.rarity,
+r.rarity)`: собственные значения строки продажи в приоритете, claim — фоллбэк. Claim, который так и не
+зарегистрировался, остаётся с `floor = NULL` и пропускается — честный ответ, флора против которого можно
+сравнивать, ещё не существует; изобрести его значило бы флагать то, с чем сравнивать нечего.
+
+**Тест.** Правило `SEC-B32` в `tests/security/settle-once.test.ts`: нет фильтра по коллекции, есть
+`COALESCE`-фоллбэк, есть join с `compressed_claims`; две мутации. Поведенчески — `backend/test/game.test.ts`:
+флор 0.001 SOL в коллекции 7, пары Core и claim'а продают по 5 × флора дважды, третья пара (claim'ы,
+которые так и не зарегистрировались) — нет; флагаются ровно четыре кошелька с `priceOverFloorX: 5`.
+
+## SEC-B35 · Low · компресс-сделка уходила клиенту под именем, которого он не знает
+
+**Что было.** `wire.ts` отображает ончейн-событие в ключ инвалидации клиента, и его собственный заголовок
+объясняет правило: кадр, который клиент отфильтровал, — это кэш, который не обновляется, и нигде об этом
+нет ошибки. Оба компресс-рынка (`CompressedClaimListed`/`Sold`, `CompressedAssetListed`/`Sold`) и
+флаговые события claim'а (`CompressedClaimListedSet`, `CompressedClaimStakedSet`) уходили под своими
+snake_case-именами, которых нет в клиентском `INVALIDATE`: листинг, продажа, отмена и стейк не
+инвалидировали ничего, и страница рынка молча деградировала до поллинга. Это ровно тот класс, из-за
+которого файл и существует (`SEC-B22`/`SEC-G04` уже мапили свои события).
+
+**Исправление.** Шесть событий отображены на те же ключи, что Core-путь: `CompressedClaimListed`,
+`CompressedAssetListed`, `CompressedClaimListedSet` → `listing_changed`; `CompressedClaimSold`,
+`CompressedAssetSold` → `sale`; `CompressedClaimStakedSet` → `stake_changed`. Payload повторяет shape
+Core-пути (`seller`/`buyer`/`price`/`currency`/`priceUsd`), `asset` — только когда лист существует
+(pre-mint claim PDA не является маршрутом чипа, и клиентский `qk.chip(a)` по нему не должен ходить),
+`claim` — всегда. `CompressedClaimTransferred` сознательно остаётся сырым: перемещение владения без денег
+не имеет клиентского ключа инвалидации.
+
+**Тест.** Правило `SEC-B35` в `tests/security/events-coverage.test.ts`: каждый wire-тип обязан быть
+реализованным клиентом ключом `INVALIDATE` (иначе кадр не инвалидирует ничего), и все шесть компресс-событий
+должны присутствовать в карте **и** быть декодированы; две мутации (снятая запись, опечатка в ключе).
+Поведенчески — `backend/test/ops.test.ts`: кадры для листинга, pre-mint листинга, продажи (с `priceUsd`),
+продажи claim'а, отмены и стейка.
+
+
 ## SEC-B30 · Medium · wager-резолвер мог рассчитать бой по составу, который оппонент не согласовывал
 
 **Что было.** `resolve_battle` — server-authoritative по построению: программа проверяет, что победитель
@@ -1229,7 +1349,7 @@ Cloudflare требует для виджета `script-src` + `frame-src` от 
    ни registrar lock, ни DNSSEC, ни CAA в репозитории не описаны (runbook §1.3 — только граница TLS).
    Принятый риск с владельцем ops и чек-листом до G-2, причина и границы — `SECURITY.md` / `docs/06` §2.2.
 3. **SEC-B21 · Trident-фаззинг** — цели и CI-джоба нет; класс закрыт `cargo test`, 92 сценариями localnet,
-   115 статическими гейтами и структурными инвариантами. Принятый риск с планом до mainnet, см. там же.
+   120 статическими гейтами и структурными инвариантами. Принятый риск с планом до mainnet, см. там же.
 4. **Диспозиция частей 1–2 чеклиста (31–70)** — вынесена в отдельный файл
    `SECURITY-AUDIT-2026-09-27-checklist.md`: строки по темам, у каждой — что защищает и чем доказано,
    плюс сводка принятых рисков (SEC-B20, SEC-B21, порог Squads, инсайдер) и ℹ️-пункты.
@@ -1247,8 +1367,8 @@ origin'ов у лендинга нет), прод-CSP против Turnstile/`ws
 
 Всё это — на одном дереве, `npm run verify` exit 0:
 
-* `npm --prefix backend test` — 27 файлов, **443** тестов (+9 `compressed-market.test.ts` SEC-B31, +7 `battle-resolver.test.ts` SEC-B30, +19 `params.test.ts`, +5 `verify.test.ts`, +1 сценарий SEC-B5 в `human.test.ts`, +14 `chip-index.test.ts` для shape #27, +2 сценария SEC-B11 в `game.test.ts`, +4 сценария SEC-M8 в `crank.test.ts`, +4 сценария SEC-B13 в `projections.test.ts`/`game.test.ts`, +2 сценария SEC-B14 в `cosmetics.test.ts`, +1 сценарий SEC-B16 в `game.test.ts`, +2 сценария SEC-B18 (api + security); три временных probe-файла удалены, когда их находки стали постоянными тестами).
-* `npm run security:static` — **115** проверок: 34 прежних + 6 SEC-B2/B3 + 4 SEC-B7 + 6 SEC-B8 + 7 SEC-B9 + 8 SEC-B12 (supply-chain: пины, хост, sha512, отозванные версии в дереве и в диапазонах, install-скрипты, лок↔манифесты) + 4 SEC-M8 (`rent-lut.test.ts`: пины CPI и выплаты, «cooldown — часть ALT-программы, а не наш Clock», 6 мутаций) + 5 SEC-B13 (`time-heal.test.ts`: проход исцеления, провод в `listen`, попытки/парковка, фоллбэк по слоту, `accrualFrom`; 6 мутаций) + 4 SEC-B14 (`paid-claims.test.ts`: выбор строки по `ref_hash`, оба вызывающих его передают, одноразовое списание одним условным UPDATE; 4 мутации) + 2 SEC-B18 (`api-input.test.ts`: маршрут `handle-check` и cap живых hold-ов до upsert-а, плюс self-test на пре-фиксный маршрут) + 1 SEC-B19 (`anchor-invariants.test.ts`: stride claim-nonce покрывает `MAX_PACK_QTY × MAX_CHIPS_PER_PACK`, `assert!` на месте, `buy_pack` связан с константой; 2 самотеста). + 2 SEC-B22 (`anchor-invariants.test.ts`: все пять адресных полей `set_params` проходят проверку на нулевой ключ, событие несёт новые значения, маска бит совпадает с числом полей, а порядок полей совпадает с кодеком бэкенда; самотест валит правило на снятой проверке и на «съехавшем» кодеке). + 2 SEC-B23 (`anchor-invariants.test.ts`: словарь `ChipError` из `set_params`/`require_non_default` закреплён и каждое имя обязано быть правилом панели, шесть констант `economy.rs` и пять литералов сверяются с `GUARD`, полоса ×½–2× — против живой строки, BigInt внутри `GUARD` запрещён; самотест валит правило на снятом правиле, «съехавшей» константе, новом `ChipError` и BigInt-payload). + 2 SEC-B24 (`anchor-invariants.test.ts`: `Pause` каждой программы связан со своим PDA и своей парой admin/pauser, «пауза — паузером, раз-пауза — админом», `has_one = admin` у `ArenaAdmin`, гвард `arena_missing`, живое `paused` в диффе; самотест валит правило на подменённой паре, чужом PDA, снятом декодере и раз-паузе под горячим ключом). + 2 SEC-B25 (`csp.test.ts`: дефолт `Lax`, `HttpOnly`/`Path=/`, `none ⇒ Secure`, гвард `CROSS_SITE_CLIENT`, ключ задокументирован в `.env.example`/runbook/docs; самотест валит правило на дефолте `none`, куке без `HttpOnly`, снятой связке с `Secure` и недокументированном ключе). + 2 SEC-B26 (`logging.test.ts`: обе сети подключены в `safeValue`/`line`/`errFields`, скраб до обрезки, порядок правил `Bearer` → `key=value`, сьют поведения на месте; 4 мутационных самотеста). + 8 SEC-B27 (`indexer-gaps.test.ts`: страница отдаёт `missing` и не глотает исключение; обход пишет дыры и не штампует `history_complete`; таблица в DDL **и** в Prisma-цели; `repairIndexerGaps` — old-first, кап попыток, DELETE после ремонта, вызов из heal-тика и из CLI; `/health.indexerGaps` + обе серии + алерт; runbook'и описывают существующий механизм; каждая `npm run …`-команда в них есть в `package.json`; 10 мутаций). + 2 SEC-B28 (`anchor-invariants.test.ts`: оба листинговых хендлера claim-маркета вызывают одну общую `require_sol_claim_market`, сравнение — с `Currency::Sol`, ошибка — `CompressedCurrencyMismatch`; оба покупочных хендлера сохраняют свою проверку как defense in depth; оба клиентских билдера отклоняют не-SOL до кодирования; самотест — 4 мутации) + 5 SEC-B29 (`burn-report.test.ts`: только финализированные burns в отчёте, порядок «отправка → курсор», watermark против перескока, стык с реконсайлером и наблюдаемость deferred; 7 мутаций) + 5 SEC-B30 (`battle-squad.test.ts`: надгробия, сверка мощности до боя и до отправки, громкий отказ, ончейн-запись мощности; 6 мутаций) + 4 SEC-B31 (`events-coverage.test.ts`: паритет Rust `#[event]` ⇔ `EVENT_SPECS`, достижимость спеки хендлером или wire-only, claim→chip мэппинг с индексом/миграцией/owner-guard; 9 мутаций).
+* `npm --prefix backend test` — 27 файлов, **448** тестов (+2 `compressed-market.test.ts` SEC-B34, +1 `game.test.ts` SEC-B32, +1 `game.test.ts` SEC-B33, +1 `ops.test.ts` SEC-B35, +9 `compressed-market.test.ts` SEC-B31, +7 `battle-resolver.test.ts` SEC-B30, +19 `params.test.ts`, +5 `verify.test.ts`, +1 сценарий SEC-B5 в `human.test.ts`, +14 `chip-index.test.ts` для shape #27, +2 сценария SEC-B11 в `game.test.ts`, +4 сценария SEC-M8 в `crank.test.ts`, +4 сценария SEC-B13 в `projections.test.ts`/`game.test.ts`, +2 сценария SEC-B14 в `cosmetics.test.ts`, +1 сценарий SEC-B16 в `game.test.ts`, +2 сценария SEC-B18 (api + security); три временных probe-файла удалены, когда их находки стали постоянными тестами).
+* `npm run security:static` — **120** проверок: 34 прежних + 6 SEC-B2/B3 + 4 SEC-B7 + 6 SEC-B8 + 7 SEC-B9 + 8 SEC-B12 (supply-chain: пины, хост, sha512, отозванные версии в дереве и в диапазонах, install-скрипты, лок↔манифесты) + 4 SEC-M8 (`rent-lut.test.ts`: пины CPI и выплаты, «cooldown — часть ALT-программы, а не наш Clock», 6 мутаций) + 5 SEC-B13 (`time-heal.test.ts`: проход исцеления, провод в `listen`, попытки/парковка, фоллбэк по слоту, `accrualFrom`; 6 мутаций) + 4 SEC-B14 (`paid-claims.test.ts`: выбор строки по `ref_hash`, оба вызывающих его передают, одноразовое списание одним условным UPDATE; 4 мутации) + 2 SEC-B18 (`api-input.test.ts`: маршрут `handle-check` и cap живых hold-ов до upsert-а, плюс self-test на пре-фиксный маршрут) + 1 SEC-B19 (`anchor-invariants.test.ts`: stride claim-nonce покрывает `MAX_PACK_QTY × MAX_CHIPS_PER_PACK`, `assert!` на месте, `buy_pack` связан с константой; 2 самотеста). + 2 SEC-B22 (`anchor-invariants.test.ts`: все пять адресных полей `set_params` проходят проверку на нулевой ключ, событие несёт новые значения, маска бит совпадает с числом полей, а порядок полей совпадает с кодеком бэкенда; самотест валит правило на снятой проверке и на «съехавшем» кодеке). + 2 SEC-B23 (`anchor-invariants.test.ts`: словарь `ChipError` из `set_params`/`require_non_default` закреплён и каждое имя обязано быть правилом панели, шесть констант `economy.rs` и пять литералов сверяются с `GUARD`, полоса ×½–2× — против живой строки, BigInt внутри `GUARD` запрещён; самотест валит правило на снятом правиле, «съехавшей» константе, новом `ChipError` и BigInt-payload). + 2 SEC-B24 (`anchor-invariants.test.ts`: `Pause` каждой программы связан со своим PDA и своей парой admin/pauser, «пауза — паузером, раз-пауза — админом», `has_one = admin` у `ArenaAdmin`, гвард `arena_missing`, живое `paused` в диффе; самотест валит правило на подменённой паре, чужом PDA, снятом декодере и раз-паузе под горячим ключом). + 2 SEC-B25 (`csp.test.ts`: дефолт `Lax`, `HttpOnly`/`Path=/`, `none ⇒ Secure`, гвард `CROSS_SITE_CLIENT`, ключ задокументирован в `.env.example`/runbook/docs; самотест валит правило на дефолте `none`, куке без `HttpOnly`, снятой связке с `Secure` и недокументированном ключе). + 2 SEC-B26 (`logging.test.ts`: обе сети подключены в `safeValue`/`line`/`errFields`, скраб до обрезки, порядок правил `Bearer` → `key=value`, сьют поведения на месте; 4 мутационных самотеста). + 8 SEC-B27 (`indexer-gaps.test.ts`: страница отдаёт `missing` и не глотает исключение; обход пишет дыры и не штампует `history_complete`; таблица в DDL **и** в Prisma-цели; `repairIndexerGaps` — old-first, кап попыток, DELETE после ремонта, вызов из heal-тика и из CLI; `/health.indexerGaps` + обе серии + алерт; runbook'и описывают существующий механизм; каждая `npm run …`-команда в них есть в `package.json`; 10 мутаций). + 2 SEC-B28 (`anchor-invariants.test.ts`: оба листинговых хендлера claim-маркета вызывают одну общую `require_sol_claim_market`, сравнение — с `Currency::Sol`, ошибка — `CompressedCurrencyMismatch`; оба покупочных хендлера сохраняют свою проверку как defense in depth; оба клиентских билдера отклоняют не-SOL до кодирования; самотест — 4 мутации) + 5 SEC-B29 (`burn-report.test.ts`: только финализированные burns в отчёте, порядок «отправка → курсор», watermark против перескока, стык с реконсайлером и наблюдаемость deferred; 7 мутаций) + 5 SEC-B30 (`battle-squad.test.ts`: надгробия, сверка мощности до боя и до отправки, громкий отказ, ончейн-запись мощности; 6 мутаций) + 4 SEC-B31 (`events-coverage.test.ts`: паритет Rust `#[event]` ⇔ `EVENT_SPECS`, достижимость спеки хендлером или wire-only, claim→chip мэппинг с индексом/миграцией/owner-guard) + 1 паритет полей (там же: спеку и структуру сверяет одна функция, константы форм читаются из программ; 4 мутации) + 1 SEC-B35 (там же: каждый wire-тип — реализованный клиентом ключ, все шесть компресс-событий отображены; 2 мутации) + 3 SEC-B32/B33/B34 (`settle-once.test.ts`: guard в обоих писателях матча, архетип прайс-спайка через claim, claim PDA в минте/регистрации; 7 мутаций).
 * `npm run lock:integrity -- --selftest` — 11/11; сам лок: **1 097/1 097** registry-узлов с `resolved`+sha512, все — `registry.npmjs.org`; `npm ci` на пустом `node_modules` — exit 0 (npm сверил все хеши).
 * `npm run state:layout` — 29 аккаунтов совпадают с baseline (`--selftest` 10/10); гейт в `npm run verify` и в CI-джобе `economy`.
 * `npm run landing:check` (+ DOM-smoke) — зелёный, включая CSP/host-проверки и «каждый landing-шрифт вшит»; `guttercaps-landing.html` перегенерирован (2,78 МБ, 13 inlined woff2, 0 ссылок на Google Fonts).

@@ -17,49 +17,68 @@
 //      client through `wire.ts` alone (there is exactly one, `ParamsPatched`, SEC-B22);
 //   3. the claim → chip mapping the compressed events depend on exists: the `claim` column, its index, the
 //      owner-guarded updates, and the resolver helpers. An unguarded claim update would let a replayed event
-//      move a claim that has changed hands (the row is keyed by the PDA, not by the event's sender).
+//      move a claim that has changed hands (the row is keyed by the PDA, not by the event's sender);
+//   4. field-level parity — the spec's field list is the struct's field list: same order, same shape, same
+//      names (snake_case in Rust, camelCase in the decoded JSON). Borsh is positional, so a field added,
+//      renamed, reordered or retyped in Rust does not fail anything — it silently reinterprets every event
+//      of that type (and every projection built from it). The shape constants (`MAX_CHIPS_PER_PACK`,
+//      `MATERIALS_PER_FUSION`, `SPLIT_COUNT`) are part of that contract: the array lengths a spec pins
+//      against are the Rust values, not a second copy that can drift.
 //   node --experimental-strip-types --test tests/security/*.test.ts      (npm run security:static)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadSources, parseAttributedStructs, type SourceFile } from './lib/rust-scan.ts';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (rel: string) => readFileSync(join(REPO, rel), 'utf8');
+const PROGRAMS = ['chip_core', 'market', 'staking', 'arena'] as const;
 
 const EVENTS = read('backend/src/events.ts');
 const PROJECTIONS = read('backend/src/projections.ts');
 const DB = read('backend/src/db.ts');
 const PRISMA = read('backend/prisma/schema.prisma');
 const WIRE = read('backend/src/wire.ts');
+/** The client's own invalidation table — the vocabulary a wire type has to match (SEC-B35). */
+const CLIENT_WS = read('client/src/api/ws.ts');
 
-/** Every `.rs` under `programs/<crate>/`, paired with its crate (the `Prog` in `PROGRAMS`). */
-function rustSources(rel = 'programs'): { crate: string; path: string; text: string }[] {
-  const out: { crate: string; path: string; text: string }[] = [];
-  const walk = (dir: string, crate: string) => {
-    for (const entry of readdirSync(join(REPO, dir))) {
-      if (entry === 'target' || entry === 'node_modules') continue;
-      const p = `${dir}/${entry}`;
-      if (statSync(join(REPO, p)).isDirectory()) walk(p, crate || entry);
-      else if (entry.endsWith('.rs')) out.push({ crate, path: p, text: read(p) });
-    }
-  };
-  walk(rel, '');
-  return out;
-}
-
-/** `#[event] pub struct Name` in every program source: what the chain can actually emit. */
-function rustEvents(sources: { crate: string; path: string; text: string }[]): Map<string, Set<string>> {
+/** `#[event] pub struct Name` in every program source: what the chain can actually emit, and where. */
+function rustEvents(files: SourceFile[]): Map<string, Set<string>> {
   const found = new Map<string, Set<string>>();
-  for (const { crate, text } of sources) {
-    for (const m of text.matchAll(/#\[event\]\s*\n\s*pub struct (\w+)/g)) {
-      const name = m[1]!;
-      if (!found.has(name)) found.set(name, new Set());
-      found.get(name)!.add(crate);
+  for (const file of files) {
+    for (const it of parseAttributedStructs(file, 'event')) {
+      if (!found.has(it.name)) found.set(it.name, new Set());
+      found.get(it.name)!.add(file.program);
     }
   }
   return found;
+}
+
+/** The declared struct behind one event, from the same scan (fields are `name: Type`). */
+function rustStruct(files: SourceFile[], name: string): { program: string; fields: { name: string; type: string }[] } | undefined {
+  for (const file of files) {
+    for (const it of parseAttributedStructs(file, 'event')) {
+      if (it.name !== name) continue;
+      const fields = it.fields.map((f) => {
+        const m = /^(\w+)\s*:\s*(.+)$/.exec(f);
+        assert.ok(m, `unparsed field of ${name}: ${f}`);
+        return { name: m![1]!, type: m![2]!.trim() };
+      });
+      return { program: file.program, fields };
+    }
+  }
+  return undefined;
+}
+
+/** The `usize` shape constants a spec's array lengths are written against, taken from the programs. */
+function rustConst(name: string, files: SourceFile[] = SOURCES): number {
+  for (const file of files) {
+    const m = new RegExp(`pub const ${name}: usize = (\\d+);`).exec(file.code);
+    if (m) return Number(m[1]);
+  }
+  throw new Error(`${name} not declared in the programs`);
 }
 
 /** `spec('crate', 'Name', …)` — one entry of the codec's contract with the programs. */
@@ -84,7 +103,7 @@ const WIRE_ONLY: Record<string, string> = {
 // ------------------------------------------------------------------- the rules
 
 /** 1. Parity: the codec describes every event the programs declare, in the crate that declares it. */
-function ruleParity(events: string, sources: { crate: string; path: string; text: string }[]) {
+function ruleParity(events: string, sources: SourceFile[]) {
   const declared = rustEvents(sources);
   assert.ok(declared.size > 40, `only ${declared.size} #[event] structs found — the Rust scan is broken`);
   const specs = [...events.matchAll(/spec\('(\w+)', '(\w+)',/g)].map((m) => ({ program: m[1]!, name: m[2]! }));
@@ -141,11 +160,112 @@ function ruleClaimMapping(projections: string, db: string, prisma: string) {
   }
 }
 
+/**
+ * 4. Field-level parity: for every spec, the struct's fields in order — names modulo the camelCase /
+ * snake_case convention, and shapes that must map exactly (`Pubkey` → `pubkey`, `[u8; 32]` → `bytes32`,
+ * `[T; N]` → `['t', N]`). The shape constants are read from the programs, so `MAX_CHIPS_PER_PACK` cannot
+ * mean 5 in a spec and 6 on chain.
+ */
+function ruleFields(events: string, files: SourceFile[], consts: Record<string, number>) {
+  const specs = [...events.matchAll(/spec\('(\w+)', '(\w+)',/g)].map((m) => ({ program: m[1]!, name: m[2]! }));
+  assert.ok(specs.length > 40, `${specs.length} specs parsed — the spec split in this gate is stale`);
+  const norm = (n: string) => n.replace(/_/g, '').toLowerCase();
+  const scalars = new Set(['u8', 'u16', 'u32', 'u64', 'u128', 'i64', 'bool']);
+  const mapType = (t: string): string | [string, number] | null => {
+    assert.ok(!/;\s*$/.test(t), `unparsed type ${t}`);
+    if (t === 'Pubkey') return 'pubkey';
+    if (t === '[u8; 32]') return 'bytes32';
+    if (scalars.has(t)) return t;
+    const arr = /^\[([A-Za-z_0-9]+);\s*([A-Za-z_0-9]+)\]$/.exec(t);
+    if (arr) {
+      const inner = mapType(arr[1]!);
+      const n = /^\d+$/.test(arr[2]!) ? Number(arr[2]) : consts[arr[2]!];
+      assert.ok(typeof inner === 'string' && typeof n === 'number', `array type ${t} cannot be mapped`);
+      return [inner, n];
+    }
+    return null;
+  };
+  for (const { name } of specs) {
+    const spec = specFields(events, name);
+    const rust = rustStruct(files, name);
+    assert.ok(spec.length > 0, `${name}: the spec field list did not parse — this rule would pass vacuously`);
+    assert.ok(rust, `${name}: no #[event] struct`);
+    assert.equal(spec.length, rust.fields.length, `${name}: ${spec.length} spec fields vs ${rust.fields.length} Rust fields (borsh is positional — an added field reinterprets everything after it)`);
+    spec.forEach((f, i) => {
+      const r = rust.fields[i]!;
+      assert.equal(norm(f.name), norm(r.name), `${name}[${i}]: spec ${f.name} vs Rust ${r.name} (a rename decodes into the wrong key)`);
+      const mapped = mapType(r.type);
+      assert.deepEqual(f.type, mapped, `${name}.${r.name}: spec type ${JSON.stringify(f.type)} vs Rust ${r.type}`);
+    });
+  }
+  // the constants are part of the contract, not a second copy
+  for (const [name, value] of Object.entries(consts)) assert.equal(value, consts[name], `${name} drifted`);
+}
+
+/** The one spec named `name`, as `[{name, type}]` — parsed from the source, so the gate sees the real table. */
+function specFields(events: string, name: string): { name: string; type: string | [string, number] }[] {
+  const at = events.indexOf(`'${name}',`);
+  assert.ok(at > 0, `spec ${name} not found`);
+  const open = events.indexOf('[', at);
+  let depth = 0, close = open;
+  for (let i = open; i < events.length; i++) {
+    if (events[i] === '[') depth++;
+    else if (events[i] === ']') { depth--; if (depth === 0) { close = i; break; } }
+  }
+  const inner = events.slice(open, close + 1);
+  const out: { name: string; type: string | [string, number] }[] = [];
+  for (const m of inner.matchAll(/\[\s*'([\w]+)'\s*,\s*(?:'([\w]+)'|\[\s*'([\w]+)'\s*,\s*([A-Za-z_0-9]+)\s*\])\s*\]/g)) {
+    if (m[2]) out.push({ name: m[1]!, type: m[2]! });
+    else out.push({ name: m[1]!, type: [m[3]!, Constants[m[4]!] ?? Number(m[4])] });
+  }
+  return out;
+}
+
+/**
+ * 5. SEC-B35: a decoded event still has to *arrive* somewhere the client looks. `wire.ts` maps an on-chain
+ * name to the client's invalidation key (`client/src/api/ws.ts` INVALIDATE); an event that ships under its
+ * own snake_case name matches no key, so the socket does nothing and the page degrades to polling — the
+ * exact failure `wire.ts`'s header describes. Two halves: every mapped type must be a key the client really
+ * has, and both compressed markets plus the claim's own flag flips must be mapped (they are the only source
+ * of a compressed trade, and the cancel has no market event at all).
+ */
+function ruleWire(events: string, wire: string, client: string) {
+  const wired = new Map([...wire.matchAll(/^  (\w+): '([\w]+)',$/gm)].map((m) => [m[1]!, m[2]!]));
+  assert.ok(wired.size > 20, `${wired.size} WIRE_TYPE entries parsed — the map split in this gate is stale`);
+  const keys = new Set([...client.matchAll(/^  (\w+): \(qc[,)]/gm)].map((m) => m[1]!));
+  assert.ok(keys.size > 8, `${keys.size} client INVALIDATE keys parsed — the client table moved`);
+  for (const [event, type] of wired) {
+    assert.ok(keys.has(type), `${event} ships as '${type}', which client/src/api/ws.ts does not handle — the frame invalidates nothing`);
+  }
+  for (const event of ['CompressedClaimListed', 'CompressedClaimSold', 'CompressedAssetListed', 'CompressedAssetSold', 'CompressedClaimListedSet', 'CompressedClaimStakedSet']) {
+    assert.ok(wired.has(event), `${event} is not in WIRE_TYPE — a compressed trade reaches the client as an unhandled ${snakeCase(event)} frame`);
+  }
+  // and each of those is decoded, not just named
+  for (const event of ['CompressedClaimListed', 'CompressedClaimSold', 'CompressedAssetListed', 'CompressedAssetSold', 'CompressedClaimListedSet', 'CompressedClaimStakedSet']) {
+    assert.ok(events.includes(`'${event}'`), `${event} is wired but not decoded`);
+  }
+}
+
+const snakeCase = (name: string) => name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+
 // ------------------------------------------------------------------- the tests
-const SOURCES = rustSources();
+const SOURCES = loadSources(REPO, [...PROGRAMS]);
+const Constants: Record<string, number> = {
+  MAX_CHIPS_PER_PACK: rustConst('MAX_CHIPS_PER_PACK'),
+  MATERIALS_PER_FUSION: rustConst('MATERIALS_PER_FUSION'),
+  SPLIT_COUNT: rustConst('SPLIT_COUNT'),
+};
 
 test('every event a program declares is decoded, in the crate that declares it', () => {
   ruleParity(EVENTS, SOURCES);
+});
+
+test('every spec mirrors its struct field for field, in order, with the programs\' own shape constants', () => {
+  // the spec's array lengths are written against the codec's own constants — the gate reads both sides
+  const specConsts = [...EVENTS.matchAll(/export const (MAX_CHIPS_PER_PACK|MATERIALS_PER_FUSION|SPLIT_COUNT) = (\d+);/g)];
+  assert.equal(specConsts.length, 3, 'the codec shape constants moved — this gate needs updating');
+  for (const [, name, value] of specConsts) assert.equal(Number(value), Constants[name!], `${name}: codec ${value} vs programs ${Constants[name!]}`);
+  ruleFields(EVENTS, SOURCES, Constants);
 });
 
 test('every decoded event reaches the read model or the documented wire-only list', () => {
@@ -171,7 +291,7 @@ test('mutations: the gates above are wired to the code they claim to guard', () 
   assert.ok(fails(() => ruleParity(dropped, SOURCES)));
 
   // 2. a program grows a new event nobody decodes — the exact SEC-B31 regression
-  const ghost = [...SOURCES, { crate: 'market', path: 'programs/market/src/ghost.rs', text: '#[event]\npub struct GhostSale { pub asset: Pubkey }\n' }];
+  const ghost: SourceFile[] = [...SOURCES, { path: 'programs/market/src/ghost.rs', rel: 'programs/market/src/ghost.rs', program: 'market', code: '#[event]\npub struct GhostSale {\n    pub asset: Pubkey,\n}\n' }];
   assert.ok(fails(() => ruleParity(EVENTS, ghost)));
 
   // 3. the spec is moved to the wrong crate
@@ -201,4 +321,61 @@ test('mutations: the gates above are wired to the code they claim to guard', () 
   // 9. the staking handler goes back to using the key as an asset: a compressed chip's stake sets no flag
   const asAsset = mutate(PROJECTIONS, 'setChipFlag(db, assetOfStakeKey(db, str(d.key)), CHIP_FLAG_STAKED, true', 'setChipFlag(db, str(d.key), CHIP_FLAG_STAKED, true');
   assert.ok(fails(() => ruleClaimMapping(asAsset, DB, PRISMA)));
+
+  // 10. a Rust field is renamed: the decoder keeps working and writes the value under a key nobody reads
+  const renamed = mutRustStruct(SOURCES, 'programs/chip_core/src/state.rs', 'CompressedChipStaged', /pub game_index: u64,/, 'pub pack_index: u64,');
+  assert.ok(fails(() => ruleFields(EVENTS, renamed, Constants)));
+
+  // 11. two fields are swapped: borsh is positional, so both values land in the wrong column
+  const swapped = mutRustStruct(SOURCES, 'programs/chip_core/src/state.rs', 'CompressedChipStaged', /pub rarity: u8,\n(\s*)pub level: u8,/, 'pub level: u8,\n$1pub rarity: u8,');
+  assert.ok(fails(() => ruleFields(EVENTS, swapped, Constants)));
+
+  // 12. a field is retyped on chain (u64 → u32): the decoder reads half the bytes and shifts everything
+  const retyped = mutRustStruct(SOURCES, 'programs/market/src/lib.rs', 'ChipSold', /pub fee: u64,/, 'pub fee: u32,');
+  assert.ok(fails(() => ruleFields(EVENTS, retyped, Constants)));
+
+  // 13. the on-chain pack size changes without the codec: every PackOpened array length is now a guess
+  const grown = mutRust(SOURCES, 'programs/chip_core/src/economy.rs', /pub const MAX_CHIPS_PER_PACK: usize = 5;/, 'pub const MAX_CHIPS_PER_PACK: usize = 6;');
+  const wider = { ...Constants, MAX_CHIPS_PER_PACK: rustConst('MAX_CHIPS_PER_PACK', grown) };
+  assert.ok(fails(() => ruleFields(EVENTS, grown, wider)));
+
+  // 14. the compressed sale loses its wire type: the client keeps its stale market instead of a frame
+  const unwired = mutate(WIRE, "CompressedAssetSold: 'sale',", '');
+  assert.ok(fails(() => ruleWire(EVENTS, unwired, CLIENT_WS)));
+  // 15. a wire type the client does not implement (a typo in the invalidation key)
+  const mistyped = mutate(WIRE, "CompressedClaimSold: 'sale',", "CompressedClaimSold: 'sale_changed',");
+  assert.ok(fails(() => ruleWire(EVENTS, mistyped, CLIENT_WS)));
 });
+
+test('SEC-B35 every mapped event reaches an invalidation key the client actually implements', () => {
+  ruleWire(EVENTS, WIRE, CLIENT_WS);
+});
+
+/** Apply a text mutation to one scanned program file (the shared scanner strips comments). */
+function mutRust(files: SourceFile[], rel: string, find: string | RegExp, to: string): SourceFile[] {
+  const at = files.findIndex((f) => f.rel === rel);
+  assert.ok(at >= 0, `${rel} is not in the scan`);
+  const before = files[at]!.code;
+  const after = before.replace(find, to);
+  assert.notStrictEqual(after, before, `rust mutation did not match in ${rel}: ${find}`);
+  return files.map((f, i) => (i === at ? { ...f, code: after } : f));
+}
+
+/**
+ * The same, but scoped to one struct's body: a field name like `game_index` also appears in the `#[account]`
+ * structs, and mutating one of those would change nothing this gate looks at (a mutation that flips nothing
+ * proves nothing).
+ */
+function mutRustStruct(files: SourceFile[], rel: string, struct: string, find: string | RegExp, to: string): SourceFile[] {
+  const at = files.findIndex((f) => f.rel === rel);
+  assert.ok(at >= 0, `${rel} is not in the scan`);
+  const code = files[at]!.code;
+  const head = code.indexOf(`pub struct ${struct} {`);
+  assert.ok(head > 0, `${struct} not found in ${rel}`);
+  const bodyEnd = code.indexOf('\n}', head);
+  assert.ok(bodyEnd > head, `${struct} has no terminator`);
+  const before = code.slice(head, bodyEnd);
+  const mutated = before.replace(find, to);
+  assert.notStrictEqual(mutated, before, `struct mutation did not match in ${rel}: ${find}`);
+  return files.map((f, i) => (i === at ? { ...f, code: code.slice(0, head) + mutated + code.slice(bodyEnd) } : f));
+}
