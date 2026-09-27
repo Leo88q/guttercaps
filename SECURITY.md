@@ -135,6 +135,36 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   Pinned by `tests/security/paid-claims.test.ts` (4 rules, 4 mutations) and two behavioural tests in
   `backend/test/cosmetics.test.ts` (two same-kind purchases in one tx claimed in reverse order).
 
+- **SEC-B15 (2026-09-27): closed — the load profile is checked against the contract.** LT-1 (the nightly
+  load smoke, the only p95 evidence for the public reads) asked for
+  `/market/listings?limit=24&sort=price`; `sort` is an enum in the API, so `price` is answered with
+  `400 bad_sort` — every iteration of that path measured an error, and the harness's own `read is 200`
+  check failed for it. Nothing tied the profile to the spec, so tightening parameter validation could
+  always turn the stand into an error generator. Fixed (`sort=price_asc`) and gated: `npm run api:check`
+  (the same check that pins spec ⇄ routes) now also requires every path in `scripts/load/lt1.js` to match a
+  documented GET, every query parameter to be documented for that operation, and enum-valued parameters to
+  use a documented value — mutation-verified by restoring `sort=price`.
+
+- **SEC-B16 (2026-09-27): closed — a finished quest is always settled, whoever finished it.** The oracle
+  settles the wallets `quests.activeWallets` names, built from logins, arena matches, fusions, sales and
+  chip stakes. Two kinds of wallet with a payout right appeared in none of those sources: a **referrer**
+  (its `referrals_paid` metric counts other people's purchases, and it may have no activity of its own at
+  all) and a **pack buyer** that completes a district set (`sets_done`) without ever playing. Their quest
+  completed in the UI but no `quest_completions` row was ever written — the only route to a Merkle root —
+  and for the permanent milestones (`p_referral5`, `p_set1`) that loss was final. `activeWallets` now also
+  names buyers of paid packs inside the activity window and the referrers of those buyers; what a wallet
+  actually completed is still decided inside `settleWallet` (metrics, period windows, finalized horizon,
+  caps). Pinned by the new test in `backend/test/game.test.ts`, mutation-verified by removing both sources.
+
+- **SEC-B17 (2026-09-27): closed — a JSON key is an identifier by construction.** `jsonAt`/`jsonFlagEq`
+  bind values but inline the *key* into the statement text, so their safety rested entirely on all call
+  sites passing a literal (hidden coupling that one `jsonAt('data', req.query.key)` would break), and the
+  two dialect branches disagreed on the security property itself: the Postgres branch escaped a quote in
+  the key, the SQLite branch did not, with the old test pinning the raw SQLite output as "escaping". Both
+  builders now accept only `^[A-Za-z_][A-Za-z0-9_]{0,63}$` keys and throw otherwise, in both dialects;
+  the now-unreachable Postgres escape was removed so it cannot mask a loosened rule. Pinned by the rewritten
+  test in `backend/test/sql.test.ts`.
+
 ## Current exposure of this repository (from `docs/09-production-readiness.md`)
 
 `npm audit --omit=dev` reports one advisory chain in the production tree: `bigint-buffer`
