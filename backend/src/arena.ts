@@ -365,7 +365,7 @@ export function reveal(db: Db, wallet: string, id: string, body: unknown, t = no
   if (already && already !== nonce.toLowerCase()) throw new ServiceError(409, 'already_revealed', 'a different nonce was already revealed');
   db.run(`UPDATE matches SET ${side === 'a' ? 'nonce_a' : 'nonce_b'} = ? WHERE id = ?`, nonce.toLowerCase(), id);
   const fresh = db.get<MatchRow>(`SELECT * FROM matches WHERE id = ?`, id)!;
-  if (fresh.nonce_a && fresh.nonce_b) { const r = resolve(db, fresh, t, nowMs); return { ok: true, status: 'resolved', matchId: id, resolved: true, winner: r.winner }; }
+  if (fresh.nonce_a && fresh.nonce_b) { const r = settleMatch(db, fresh, t, nowMs); return { ok: true, status: 'resolved', matchId: id, resolved: true, winner: r.winner }; }
   return { ok: true, status: 'revealing', matchId: id, resolved: false, waitingFor: side === 'a' ? 'b' : 'a' };
 }
 
@@ -376,7 +376,13 @@ export function matchSeed(id: string, nonceA: string, nonceB: string, serverSecr
 /** roll(lane, side) = first 4 bytes of sha256(seed ‖ lane ‖ side) / 2^32 — same derivation the replay verifier uses. */
 export const rollFromSeed = (seed: Uint8Array) => (lane: number, side: 0 | 1): number => sha256(seed, Uint8Array.of(lane, side)).readUInt32LE(0) / 2 ** 32;
 
-function resolve(db: Db, m: MatchRow, t: number, nowMs: number): FightResult & { rewardA: bigint; rewardB: bigint } {
+/**
+ * Settle a match whose two nonces are revealed: derive the seed, run the fight, pay the rewards, move the
+ * ratings. Exported because the settle-once guarantee (SEC-B33) is a property of this function on its own:
+ * every write it makes is conditional on the row still being unsettled, so a caller holding a stale row
+ * (another API process behind the load balancer, or a retry) cannot pay a match twice.
+ */
+export function settleMatch(db: Db, m: MatchRow, t: number, nowMs: number): FightResult & { rewardA: bigint; rewardB: bigint } {
   const s = db.get<SeasonRow>(`SELECT * FROM seasons WHERE id = ?`, m.season)!;
   const seed = matchSeed(m.id, m.nonce_a!, m.nonce_b!, s.server_secret);
   const squadA = JSON.parse(m.squad_a) as FighterChip[], squadB = JSON.parse(m.squad_b) as FighterChip[];
@@ -384,9 +390,20 @@ function resolve(db: Db, m: MatchRow, t: number, nowMs: number): FightResult & {
   const winner = fight.winner === 'A' ? m.a : m.b;
   const rewardA = matchReward(db, m, m.a, fight.winner === 'A', t);
   const rewardB = matchReward(db, m, m.b, fight.winner === 'B', t);
+  let applied = 0;
   db.tx(() => {
-    db.run(`UPDATE matches SET seed = ?, rounds = ?, winner = ?, status = 'resolved', ended_at = ?, rewarded = ?, reward_a = ?, reward_b = ? WHERE id = ?`,
-      hex(seed), JSON.stringify(fight.rounds), winner, nowMs, rewardA + rewardB > 0n ? 1 : 0, rewardA.toString(), rewardB.toString(), m.id);
+    // SEC-B33: settle exactly once. `reveal` reads the match, then writes it — and a second writer (a retry,
+    // or another API process behind the load balancer reading the row before the first one committed) sees a
+    // still-`revealing` match and would settle it again: two rating updates, two pass-XP grants (the reward
+    // rows are PRIMARY KEY (match_id, wallet), so only those are already idempotent). `seed` is written once
+    // and never cleared, so it — not the status the reader saw — is the arbiter: 0 rows changed means
+    // somebody else settled this match and its ratings/XP/rewards stand.
+    applied = Number(db.run(
+      `UPDATE matches SET seed = ?, rounds = ?, winner = ?, status = 'resolved', ended_at = ?, rewarded = ?, reward_a = ?, reward_b = ?
+        WHERE id = ? AND status = 'revealing' AND seed IS NULL`,
+      hex(seed), JSON.stringify(fight.rounds), winner, nowMs, rewardA + rewardB > 0n ? 1 : 0, rewardA.toString(), rewardB.toString(), m.id,
+    ).changes);
+    if (applied === 0) return; // already settled: keep the recorded result, ratings, XP and rewards
     const ra = isBot(m.a) ? BOT_RATING : rating(db, m.a, m.season).rating, rb = isBot(m.b) ? BOT_RATING : rating(db, m.b, m.season).rating;
     applyRating(db, m.a, m.season, rb, fight.winner === 'A', m.league, t);
     applyRating(db, m.b, m.season, ra, fight.winner === 'B', m.league, t);
@@ -395,7 +412,9 @@ function resolve(db: Db, m: MatchRow, t: number, nowMs: number): FightResult & {
     if (!isBot(m.a)) addPassXp(db, m.season, m.a, fight.winner === 'A' ? PASS_XP.matchWin : PASS_XP.matchLoss);
     if (!isBot(m.b)) addPassXp(db, m.season, m.b, fight.winner === 'B' ? PASS_XP.matchWin : PASS_XP.matchLoss);
   });
-  return { ...fight, rewardA, rewardB };
+  // the row is authoritative: either what this call just wrote or what the writer that won the race wrote
+  const settled = db.get<MatchRow>(`SELECT * FROM matches WHERE id = ?`, m.id)!;
+  return { ...fight, winner: settled.winner === m.a ? 'A' : 'B', rewardA: BigInt(settled.reward_a || '0'), rewardB: BigInt(settled.reward_b || '0') };
 }
 
 /**
@@ -426,10 +445,17 @@ export function matchReward(db: Db, m: MatchRow, wallet: string, won: boolean, t
 /** Neither/only one side revealed in time: the side that revealed wins by forfeit (no rewards); nobody revealed → cancelled. */
 function forfeit(db: Db, m: MatchRow, t: number, nowMs: number) {
   const aOk = !!m.nonce_a, bOk = !!m.nonce_b;
-  if (!aOk && !bOk) { db.run(`UPDATE matches SET status = 'cancelled', forfeit = 1, ended_at = ? WHERE id = ?`, nowMs, m.id); return; }
+  // SEC-B33: same settle-once rule as `resolve` — the sweep and a player's reveal can both hold this match.
+  // A forfeit is decided on `nonce_a|b` and `status`, and both writes say so in their WHERE clause, so the
+  // loser of that race settles nothing (no rating change, no pass XP).
+  if (!aOk && !bOk) {
+    db.run(`UPDATE matches SET status = 'cancelled', forfeit = 1, ended_at = ? WHERE id = ? AND status = 'revealing' AND seed IS NULL`, nowMs, m.id);
+    return;
+  }
   const winner = aOk ? m.a : m.b, loser = aOk ? m.b : m.a;
   db.tx(() => {
-    db.run(`UPDATE matches SET status = 'resolved', forfeit = 1, winner = ?, ended_at = ? WHERE id = ?`, winner, nowMs, m.id);
+    const applied = Number(db.run(`UPDATE matches SET status = 'resolved', forfeit = 1, winner = ?, ended_at = ? WHERE id = ? AND status = 'revealing' AND seed IS NULL`, winner, nowMs, m.id).changes);
+    if (applied === 0) return;
     const rw = isBot(winner) ? BOT_RATING : rating(db, winner, m.season).rating, rl = isBot(loser) ? BOT_RATING : rating(db, loser, m.season).rating;
     applyRating(db, winner, m.season, rl, true, m.league, t);
     applyRating(db, loser, m.season, rw, false, m.league, t);

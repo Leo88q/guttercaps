@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { PublicKey } from '@solana/web3.js';
 import { Db, PROJECTION_TABLES } from '../src/db.ts';
 import { healEventTimes, ingestTx, replayStored, untimedStatus } from '../src/ingest.ts';
+import { compressedMintClaimPda } from '../src/chain.ts';
 import * as q from '../src/queries.ts';
 import { world, tx, kp, DEFAULT, hex32 } from './fixtures.ts';
 
@@ -57,11 +58,11 @@ describe('ingest + projections', () => {
     const nonce = '77';
     const claims = ['9856', '9857', '0', '0', '0'];
     ingestTx(tx([{ program: 'chip_core', name: 'CompressedClaimsCreated', data: { buyer, nonce, packNo: 0, claimNonces: claims, count: 2 } }]), db);
-    ingestTx(tx([{ program: 'chip_core', name: 'CompressedChipMinted', data: { buyer, collectionIdx: 2, claimNonce: claims[0], rarity: 3, level: 1, gameIndex: '19' } }]), db);
+    ingestTx(tx([{ program: 'chip_core', name: 'CompressedChipMinted', data: { buyer, collectionIdx: 2, claimNonce: claims[0], rarity: 3, level: 1, gameIndex: '19', claim: compressedMintClaimPda(new PublicKey(buyer), BigInt(claims[0]!))[0].toBase58() } }]), db);
     // H1: the register event carries the claim's soulbound window — a Starter lock lands on the chip row
     const t0 = Math.floor(Date.now() / 1000) - 60;
     const soulbound = kp();
-    ingestTx(tx([{ program: 'chip_core', name: 'CompressedChipRegistered', data: { asset: soulbound, claimNonce: claims[0], collectionIdx: 2, merkleTree: kp(), leafIndex: 4, leafNonce: '0', owner: buyer, delegate: buyer, rarity: 3, level: 1, gameIndex: '19', flags: 8, lockUntil: String(t0 + 7 * 86_400) } }], { blockTime: t0 }), db);
+    ingestTx(tx([{ program: 'chip_core', name: 'CompressedChipRegistered', data: { asset: soulbound, claimNonce: claims[0], claim: compressedMintClaimPda(new PublicKey(buyer), BigInt(claims[0]!))[0].toBase58(), collectionIdx: 2, merkleTree: kp(), leafIndex: 4, leafNonce: '0', owner: buyer, delegate: buyer, rarity: 3, level: 1, gameIndex: '19', flags: 8, lockUntil: String(t0 + 7 * 86_400) } }], { blockTime: t0 }), db);
     ingestTx(tx([{ program: 'chip_core', name: 'CompressedClaimCancelled', data: { buyer, nonce, claimNonce: claims[1] } }]), db);
     ingestTx(tx([{ program: 'chip_core', name: 'CompressedPackSettled', data: { buyer, nonce, refunded: true } }]), db);
     expect(db.scalar(`SELECT COUNT(*) FROM compressed_claims`)).toBe(2);

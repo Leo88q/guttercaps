@@ -49,12 +49,18 @@ export const EVENT_SPECS: readonly EventSpec[] = [
   ]),
   spec('chip_core', 'CompressedClaimCancelled', [['buyer', 'pubkey'], ['nonce', 'u64'], ['claimNonce', 'u64']]),
   spec('chip_core', 'CompressedPackSettled', [['buyer', 'pubkey'], ['nonce', 'u64'], ['refunded', 'bool']]),
+  // SEC-B34: both carry the claim PDA as their last field. `buyer` / `owner` is the claim's *current*
+  // holder and the claim market changes it, while the read model's row is keyed by the immutable origin —
+  // without the PDA the two events had no join key at all, and a claim bought pre-mint registered into no
+  // `chips` row (see `resolveClaimPda` in projections.ts).
   spec('chip_core', 'CompressedChipMinted', [
     ['buyer', 'pubkey'], ['collectionIdx', 'u8'], ['claimNonce', 'u64'], ['rarity', 'u8'], ['level', 'u8'], ['gameIndex', 'u64'],
+    ['claim', 'pubkey'],
   ]),
   spec('chip_core', 'CompressedChipRegistered', [
     ['asset', 'pubkey'], ['claimNonce', 'u64'], ['collectionIdx', 'u8'], ['merkleTree', 'pubkey'], ['leafIndex', 'u32'], ['leafNonce', 'u64'],
     ['owner', 'pubkey'], ['delegate', 'pubkey'], ['rarity', 'u8'], ['level', 'u8'], ['gameIndex', 'u64'], ['flags', 'u8'], ['lockUntil', 'i64'],
+    ['claim', 'pubkey'],
   ]),
   // SEC-F4: `stage_compressed_chip` is the one admin path that creates a settlement-free claim of any
   // rarity out of thin air (fusable, listable, stakeable). It emitted nothing before 2026-09-25.

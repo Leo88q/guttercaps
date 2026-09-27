@@ -194,6 +194,42 @@ describe('wire: on-chain event → client frame', () => {
     } finally { d.close(); }
   });
 
+  // SEC-B35: the compressed markets must reach the client under a key it invalidates, not under their own
+  // snake_case name — a frame nobody handles is a market page that stops updating without an error. The
+  // cancel path is chip_core's `CompressedClaimListedSet(false)` (the market emits nothing on cancel), so
+  // it has to map to the listing cache as well.
+  it('SEC-B35: compressed listings, sales and claim flips map onto the client’s own wire types', () => {
+    const d = new Db(':memory:');
+    try {
+      d.run(`INSERT INTO oracle_prices (symbol, usd, updated_at, publish_time) VALUES ('SOL', 200, ?, ?)`, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000));
+      const seller = Keypair.generate().publicKey.toBase58();
+      const buyer = Keypair.generate().publicKey.toBase58();
+      const claim = Keypair.generate().publicKey.toBase58();
+      const asset = Keypair.generate().publicKey.toBase58();
+      const ev = (name: string, data: Record<string, unknown>) => wireEvent(d, { program: 'market', programId: 'x', name, ixIndex: 0, eventIndex: 0, data } as never)!;
+      const listed = ev('CompressedAssetListed', { asset, claim, seller, price: '1000000000', currency: 0 });
+      expect(listed.type).toBe('listing_changed');
+      expect(listed.payload).toMatchObject({ asset, claim, seller, price: '1000000000' });
+      // a pre-mint claim listing: no asset exists, so the frame carries the claim and the market price only
+      const preMint = ev('CompressedClaimListed', { claim, seller, price: '500000000', currency: 0 });
+      expect(preMint.type).toBe('listing_changed');
+      expect(preMint.payload.asset).toBeUndefined();
+      expect(preMint.payload.claim).toBe(claim);
+      const sold = ev('CompressedAssetSold', { asset, claim, seller, buyer, price: '1000000000', fee: '75000000', royalty: '25000000' });
+      expect(sold.type).toBe('sale');
+      expect(sold.wallets.sort()).toEqual([buyer, seller].sort());
+      expect(sold.payload).toMatchObject({ asset, seller, buyer, currency: 0 });
+      expect(sold.payload.priceUsd).toBe(200); // 1 SOL × $200, the same math as the Core sale path
+      const soldClaim = ev('CompressedClaimSold', { claim, seller, buyer, price: '500000000', fee: '0', royalty: '0' });
+      expect(soldClaim.type).toBe('sale');
+      expect(soldClaim.payload.asset).toBeUndefined();
+      expect(soldClaim.payload.priceUsd).toBe(100);
+      // the cancel is chip_core's flag event alone
+      expect(ev('CompressedClaimListedSet', { claim, buyer: seller, listed: false })).toMatchObject({ type: 'listing_changed', payload: { claim, listed: false } });
+      expect(ev('CompressedClaimStakedSet', { claim, buyer: seller, staked: true })).toMatchObject({ type: 'stake_changed', payload: { claim, staked: true } });
+    } finally { d.close(); }
+  });
+
   it('an unknown event ships scalars only', () => {
     const d = new Db(':memory:');
     try {

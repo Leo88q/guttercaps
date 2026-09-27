@@ -30,11 +30,11 @@ function registeredClaim(): { origin: string; claim: string; asset: string } {
     buyer: origin, nonce: ORIGIN_NONCE, packNo: 0, claimNonces: [CLAIM_NONCE, '0', '0', '0', '0'], count: 1,
   } }]), db);
   ingestTx(tx([{ program: 'chip_core', name: 'CompressedChipMinted', data: {
-    buyer: origin, collectionIdx: 2, claimNonce: CLAIM_NONCE, rarity: 3, level: 1, gameIndex: '19',
+    buyer: origin, collectionIdx: 2, claimNonce: CLAIM_NONCE, rarity: 3, level: 1, gameIndex: '19', claim,
   } }]), db);
   ingestTx(tx([{ program: 'chip_core', name: 'CompressedChipRegistered', data: {
     asset, claimNonce: CLAIM_NONCE, collectionIdx: 2, merkleTree: kp(), leafIndex: 0, leafNonce: '0',
-    owner: origin, delegate: origin, rarity: 3, level: 1, gameIndex: '19', flags: 0, lockUntil: '0',
+    owner: origin, delegate: origin, rarity: 3, level: 1, gameIndex: '19', flags: 0, lockUntil: '0', claim,
   } }]), db);
   return { origin, claim, asset };
 }
@@ -199,6 +199,83 @@ describe('SEC-B31: the pre-mint claim market', () => {
     ], { cpiFrom: 'market' }), db);
     expect(flags(asset).owner).toBe(buyer);
     expect(db.get<{ asset: string; collection_idx: number | null }>(`SELECT asset, collection_idx FROM sales`)!).toMatchObject({ asset, collection_idx: 2 });
+  });
+});
+
+describe('SEC-B34: a claim bought before its mint still registers into a chip', () => {
+  /**
+   * The full on-chain order for the claim market's main use case: A's pack creates a claim, A lists the
+   * *un-minted* claim, B buys it (`transfer_compressed_claim` moves `claim.buyer` to B), and only then does
+   * B mint and register. The mint/register events name B (the current holder) while the read model's row is
+   * keyed by the immutable origin A — before the events carried the claim PDA both were dropped, so the
+   * buyer's chip never existed here: no `chips` row, no collection volume, and a claim row stuck at
+   * 'created' whose later sale could not resolve to a chip.
+   */
+  it('the buyer mints and registers a claim it bought pre-mint', () => {
+    const origin = kp();
+    const buyer = kp();
+    const claimNonce = '9856';
+    const claim = compressedMintClaimPda(new PublicKey(origin), BigInt(claimNonce))[0].toBase58();
+    const asset = kp();
+    ingestTx(tx([{ program: 'chip_core', name: 'CompressedClaimsCreated', data: {
+      buyer: origin, nonce: '77', packNo: 0, claimNonces: [claimNonce, '0', '0', '0', '0'], count: 1,
+    } }]), db);
+    // A lists it, B buys it — no mint yet (a minted claim can no longer be transferred)
+    ingestTx(tx([
+      { program: 'chip_core', name: 'CompressedClaimListedSet', data: { claim, buyer: origin, listed: true } },
+      { program: 'market', name: 'CompressedClaimListed', data: { claim, seller: origin, price: '40000000', currency: 0 } },
+    ], { cpiFrom: 'market' }), db);
+    ingestTx(tx([
+      { program: 'chip_core', name: 'CompressedClaimTransferred', data: { claim, from: origin, to: buyer } },
+      { program: 'market', name: 'CompressedClaimSold', data: { claim, seller: origin, buyer, price: '40000000', fee: '3000000', royalty: '1000000' } },
+    ], { cpiFrom: 'market' }), db);
+    expect(claimRow(claim)).toMatchObject({ owner: buyer, listed: 0 });
+    // now B mints and registers: both events carry B and the claim PDA
+    ingestTx(tx([{ program: 'chip_core', name: 'CompressedChipMinted', data: {
+      buyer, collectionIdx: 5, claimNonce, rarity: 2, level: 1, gameIndex: '31', claim,
+    } }]), db);
+    expect(db.get<{ status: string; buyer: string }>(`SELECT status, buyer FROM compressed_claims WHERE claim = ?`, claim)!).toMatchObject({ status: 'minted', buyer: origin });
+    ingestTx(tx([{ program: 'chip_core', name: 'CompressedChipRegistered', data: {
+      asset, claimNonce, collectionIdx: 5, merkleTree: kp(), leafIndex: 1, leafNonce: '0',
+      owner: buyer, delegate: buyer, rarity: 2, level: 1, gameIndex: '31', flags: 0, lockUntil: '0', claim,
+    } }]), db);
+    // the chip exists, belongs to the buyer, and its claim row resolves claim → asset
+    expect(flags(asset)).toMatchObject({ owner: buyer });
+    expect(db.get<{ status: string; asset: string | null; collection_idx: number }>(`SELECT status, asset, collection_idx FROM compressed_claims WHERE claim = ?`, claim)!)
+      .toMatchObject({ status: 'registered', asset, collection_idx: 5 });
+    // ... which is what makes a later market sale of the claim move the chip (and record its volume)
+    const third = kp();
+    ingestTx(tx([
+      { program: 'chip_core', name: 'CompressedClaimTransferred', data: { claim, from: buyer, to: third } },
+      { program: 'market', name: 'CompressedAssetSold', data: { asset, claim, seller: buyer, buyer: third, price: '90000000', fee: '6750000', royalty: '2250000' } },
+    ], { cpiFrom: 'market' }), db);
+    expect(flags(asset).owner).toBe(third);
+    expect(db.get<{ asset: string; collection_idx: number | null }>(`SELECT asset, collection_idx FROM sales ORDER BY rowid DESC LIMIT 1`)!).toMatchObject({ asset, collection_idx: 5 });
+    // the settlement counter follows the row that moved, and it belongs to the *origin's* settlement
+    expect(db.get<{ registered_claims: number; total_claims: number }>(`SELECT registered_claims, total_claims FROM compressed_settlements`)!).toMatchObject({ total_claims: 1, registered_claims: 1 });
+  });
+
+  it('a stale registration from a wallet that no longer holds the claim changes nothing', () => {
+    const origin = kp();
+    const buyer = kp();
+    const claimNonce = '9857';
+    const claim = compressedMintClaimPda(new PublicKey(origin), BigInt(claimNonce))[0].toBase58();
+    ingestTx(tx([{ program: 'chip_core', name: 'CompressedClaimsCreated', data: {
+      buyer: origin, nonce: '78', packNo: 0, claimNonces: [claimNonce, '0', '0', '0', '0'], count: 1,
+    } }]), db);
+    ingestTx(tx([{ program: 'chip_core', name: 'CompressedClaimTransferred', data: { claim, from: origin, to: buyer } }]), db);
+    // a replayed registration naming the *old* holder: `register_compressed_chip` would have refused it,
+    // and with the owner guard the row keeps both its holder and its status
+    const stale = kp();
+    ingestTx(tx([{ program: 'chip_core', name: 'CompressedChipRegistered', data: {
+      asset: stale, claimNonce, collectionIdx: 5, merkleTree: kp(), leafIndex: 2, leafNonce: '0',
+      owner: origin, delegate: origin, rarity: 2, level: 1, gameIndex: '32', flags: 0, lockUntil: '0', claim,
+    } }]), db);
+    expect(claimRow(claim)).toMatchObject({ owner: buyer });
+    expect(db.get<{ status: string; asset: string | null }>(`SELECT status, asset FROM compressed_claims WHERE claim = ?`, claim)!).toMatchObject({ status: 'pending', asset: null });
+    // the chip row itself is the program's word and still lands (it is the registration event's own data)
+    expect(flags(stale).owner).toBe(origin);
+    expect(db.get<{ registered_claims: number }>(`SELECT registered_claims FROM compressed_settlements`)!.registered_claims).toBe(0);
   });
 });
 

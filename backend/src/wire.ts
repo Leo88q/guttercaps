@@ -25,6 +25,18 @@ export const WIRE_TYPE: Record<string, string> = {
   ListingUpdated: 'listing_changed',
   ListingCancelled: 'listing_changed',
   ChipSold: 'sale',
+  // SEC-B35: the two compressed markets, on the same client vocabulary as the Core path. They used to ship
+  // under their snake_case names, which no INVALIDATE entry knows: a compressed listing or sale invalidated
+  // nothing, so the market page silently degraded to polling exactly the way this file's header warns about.
+  // `CompressedClaimListedSet(false)` is the cancel (chip_core emits it and the market emits nothing), so it
+  // maps to the listing cache too; `CompressedClaimTransferred` deliberately stays raw — it is an ownership
+  // move with no money, and the client has no ownership invalidation key to route it to.
+  CompressedClaimListed: 'listing_changed',
+  CompressedAssetListed: 'listing_changed',
+  CompressedClaimListedSet: 'listing_changed',
+  CompressedClaimSold: 'sale',
+  CompressedAssetSold: 'sale',
+  CompressedClaimStakedSet: 'stake_changed',
   OfferMade: 'offer',
   Staked: 'stake_changed',
   Unstaked: 'stake_changed',
@@ -88,6 +100,28 @@ export function wireEvent(db: Db, e: RawEvent, ctx: { slot?: number } = {}): Bus
       }
       break;
     }
+    // SEC-B35: a compressed trade in the same shape as `ChipSold` (so the seller toast and the market /
+    // grid / balances invalidation are one client code path). `asset` is set only when the leaf exists —
+    // on the claim market `asset` is absent and the identity is the claim PDA, which is not a chip route
+    // the client can fetch; `claim` is always carried so a client can still key its own cache by it.
+    case 'CompressedClaimListed':
+    case 'CompressedAssetListed':
+      payload = { asset: s_('asset'), claim: s_('claim'), seller: s_('seller'), price: s_('price'), currency: n_('currency') ?? 0 };
+      break;
+    case 'CompressedClaimSold':
+    case 'CompressedAssetSold': {
+      const price = s_('price');
+      // the claim market settles in lamports only (SEC-B28), so the display price is SOL for both events
+      payload = { asset: s_('asset'), claim: s_('claim'), seller: s_('seller'), buyer: s_('buyer'), price, currency: 0 };
+      if (price !== undefined) {
+        try { payload.priceUsd = Number(toUsd(price, 0, prices(db)).toFixed(2)); } catch { /* no price cache yet → no USD in the toast */ }
+      }
+      break;
+    }
+    // the claim's own state flips: the cancel path has no market event at all, the staking CPI has no
+    // `Staked`/`Unstaked` row to hang a client refresh on when only the flag moved
+    case 'CompressedClaimListedSet': payload = { claim: s_('claim'), listed: Boolean(d.listed) }; break;
+    case 'CompressedClaimStakedSet': payload = { claim: s_('claim'), staked: Boolean(d.staked) }; break;
     case 'OfferMade': payload = { asset: s_('asset'), bidder: s_('bidder'), amount: s_('amount'), expiresAt: s_('expiresAt') }; break;
     case 'OfferCancelled': payload = { asset: s_('asset'), bidder: s_('bidder') }; break;
     case 'BattleCreated': payload = { id: s_('battle'), challenger: s_('challenger'), wager: s_('wager') }; break;

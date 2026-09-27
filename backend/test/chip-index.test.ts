@@ -43,7 +43,7 @@ beforeEach(() => { db = new Db(':memory:'); });
 
 /** `CompressedChipRegistered` for `asset` with an explicit `gameIndex` — the compressed path's source of truth. */
 const registerCompressed = (asset: string, gameIndex: string, owner = kp()) =>
-  tx([{ program: 'chip_core', name: 'CompressedChipRegistered', data: { asset, claimNonce: '1', collectionIdx: 3, merkleTree: kp(), leafIndex: 1, leafNonce: '0', owner, delegate: owner, rarity: 2, level: 1, gameIndex, flags: 0, lockUntil: '0' } }]);
+  tx([{ program: 'chip_core', name: 'CompressedChipRegistered', data: { asset, claimNonce: '1', collectionIdx: 3, merkleTree: kp(), leafIndex: 1, leafNonce: '0', owner, delegate: owner, rarity: 2, level: 1, gameIndex, flags: 0, lockUntil: '0', claim: kp() } }]);
 
 const ownerOf = (asset: string) => db.get<{ owner: string }>(`SELECT owner FROM chips WHERE asset = ?`, asset)!.owner;
 

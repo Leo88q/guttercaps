@@ -8,7 +8,7 @@ import { Db } from '../src/db.ts';
 import { ingestTx } from '../src/ingest.ts';
 import { ServiceError } from '../src/services.ts';
 import { PROGRAMS } from '../src/config.ts';
-import { ixDiscriminator } from '../src/chain.ts';
+import { compressedMintClaimPda, ixDiscriminator } from '../src/chain.ts';
 import * as fusion from '../src/fusion.ts';
 import * as staking from '../src/staking.ts';
 import * as arena from '../src/arena.ts';
@@ -360,6 +360,35 @@ describe('arena — ranked commit/reveal', () => {
     expect(q.leaderboard(db, 'rating', 10, undefined, undefined, season.id - 1).items).toEqual([]);
     // idempotent reveal after resolution
     expect(arena.reveal(db, alice, id, { nonce: 'aa'.repeat(16) }, T)).toMatchObject({ resolved: true });
+  });
+
+  // SEC-B33: `reveal` reads the match, then writes it. Two callers can hold a still-`revealing` row at the
+  // same time (a client retry, or a second API process behind the load balancer) and both would settle it:
+  // `applyRating` twice, pass XP twice — only `pvp_rewards` was idempotent, by primary key. The settle-once
+  // guard makes every write conditional on `status = 'revealing' AND seed IS NULL`, and re-reads the row for
+  // the answer, so the loser of the race reports what the winner recorded instead of the numbers it computed.
+  it('SEC-B33: a second settle with a stale row moves nothing and reports the recorded result', () => {
+    const { matchId, na, nb } = pair(db, { wallet: alice, squad: sa }, { wallet: bob, squad: sb }, T);
+    arena.reveal(db, alice, matchId, { nonce: na.toString('hex') }, T);
+    arena.reveal(db, bob, matchId, { nonce: nb.toString('hex') }, T);
+    const row = db.get<arena.MatchRow>(`SELECT * FROM matches WHERE id = ?`, matchId)!;
+    const before = {
+      alice: arena.rating(db, alice, row.season), bob: arena.rating(db, bob, row.season),
+      xp: db.scalar(`SELECT COALESCE(SUM(xp), 0) FROM pass_xp`), rewards: db.scalar(`SELECT COUNT(*) FROM pvp_rewards`),
+    };
+    expect(before.alice.games).toBe(1); // the first settle really did move the ratings — this test is not vacuous
+    // the concurrent caller still believes the match is unsettled
+    const again = arena.settleMatch(db, { ...row, status: 'revealing', seed: null }, T, T * 1000 + 5);
+    expect(db.get<{ status: string; winner: string }>(`SELECT status, winner FROM matches WHERE id = ?`, matchId)!).toMatchObject({ status: 'resolved', winner: row.winner });
+    expect(arena.rating(db, alice, row.season)).toEqual(before.alice);
+    expect(arena.rating(db, bob, row.season)).toEqual(before.bob);
+    expect(db.scalar(`SELECT COALESCE(SUM(xp), 0) FROM pass_xp`)).toBe(before.xp);
+    expect(db.scalar(`SELECT COUNT(*) FROM pvp_rewards`)).toBe(before.rewards);
+    // and the caller is told what the row says, not what its own fight computed
+    expect(`${again.rewardA}`).toBe(row.reward_a);
+    expect(`${again.rewardB}`).toBe(row.reward_b);
+    expect(again.winner).toBe(row.winner === alice ? 'A' : 'B');
+    expect(db.get<{ ended_at: number }>(`SELECT ended_at FROM matches WHERE id = ?`, matchId)!.ended_at).toBe(row.ended_at);
   });
 
   it('pairing respects league bands and the rating spread widening over time', () => {
@@ -1226,6 +1255,58 @@ describe('anti-fraud detectors', () => {
     expect(s.map((x) => x.wallet).sort()).toEqual([alice, bob].sort());
     expect(s[0]).toMatchObject({ kind: 'wash_trade', evidence: { asset, roundTrips: 2 } });
     expect(s[0].score).toBeGreaterThanOrEqual(80);
+  });
+
+  // SEC-B32: the second arm of `detectWashTrades` (price ≥ 3 × the archetype floor between the same pair,
+  // twice in the window) had no test at all — and its floor lookup could not see a compressed claim sold
+  // before its leaf existed: the projection keys such a sale row by the claim PDA and leaves the collection
+  // NULL (the collection is not in the event), and the old `s.collection_idx IS NOT NULL` filter dropped it.
+  // The archetype now comes from the chip the claim later registered into, and an unregistered claim keeps
+  // no floor — inventing one would flag a trade nothing can be compared against.
+  it('SEC-B32: an inflated one-way price is flagged on the Core and the claim path; an unregistered claim has no floor', () => {
+    // the archetype both paths price against: one listed Core chip (collection 7, rarity 1) at 0.001 SOL
+    const [floorChip] = mint(db, alice, [{ rarity: 1, collection: 7 }], { blockTime: T - 3600 });
+    ingestTx(tx([{ program: 'market', name: 'ChipListed', data: { asset: floorChip, seller: alice, price: '1000000', currency: 0 } }], { blockTime: T - 3600 }), db);
+    let t = T - 3000;
+    const sold = (asset: string, seller: string, buyer: string, price: string) =>
+      ingestTx(tx([{ program: 'market', name: 'ChipSold', data: { asset, seller, buyer, price, currency: 0, fee: '0', royalty: '0', viaOffer: false } }], { blockTime: t += 60 }), db);
+    // Core: two chips of the archetype sold alice → bob at 5× the floor (the arm the detector always had)
+    for (const asset of mint(db, alice, [{ rarity: 1, collection: 7 }, { rarity: 1, collection: 7 }], { blockTime: T - 3600 })) sold(asset, alice, bob, '5000000');
+
+    /** The claim market's own order: create → list → sell (pre-mint) → the buyer mints and registers. */
+    const preMintSale = (origin: string, buyer: string, register: boolean) => {
+      const nonce = String(900 + Math.floor(Math.random() * 99));
+      const claim = compressedMintClaimPda(new PublicKey(origin), BigInt(nonce))[0].toBase58();
+      ingestTx(tx([{ program: 'chip_core', name: 'CompressedClaimsCreated', data: { buyer: origin, nonce, packNo: 0, claimNonces: [nonce, '0', '0', '0', '0'], count: 1 } }], { blockTime: t += 60 }), db);
+      ingestTx(tx([
+        { program: 'chip_core', name: 'CompressedClaimListedSet', data: { claim, buyer: origin, listed: true } },
+        { program: 'market', name: 'CompressedClaimListed', data: { claim, seller: origin, price: '5000000', currency: 0 } },
+      ], { blockTime: t += 60, cpiFrom: 'market' }), db);
+      ingestTx(tx([
+        { program: 'chip_core', name: 'CompressedClaimTransferred', data: { claim, from: origin, to: buyer } },
+        { program: 'market', name: 'CompressedClaimSold', data: { claim, seller: origin, buyer, price: '5000000', fee: '0', royalty: '0' } },
+      ], { blockTime: t += 60, cpiFrom: 'market' }), db);
+      ingestTx(tx([{ program: 'chip_core', name: 'CompressedChipMinted', data: { buyer, collectionIdx: 7, claimNonce: nonce, rarity: 1, level: 1, gameIndex: '19', claim } }], { blockTime: t += 60 }), db);
+      // the leaf registers later (or never): only then does the claim-keyed sale row have an archetype
+      if (register) {
+        ingestTx(tx([{ program: 'chip_core', name: 'CompressedChipRegistered', data: { asset: kp(), claimNonce: nonce, collectionIdx: 7, merkleTree: kp(), leafIndex: 0, leafNonce: '0', owner: buyer, delegate: buyer, rarity: 1, level: 1, gameIndex: '19', flags: 0, lockUntil: '0', claim } }], { blockTime: t += 60 }), db);
+      }
+      return claim;
+    };
+    const x = kp(), y = kp();
+    // two claims of the archetype, both sold x → y before either leaf existed, one registered afterwards
+    const registered = preMintSale(x, y, true);
+    const pending = preMintSale(x, y, false);
+    // a third pair: sold twice, never registered — the sales are real, there is just nothing to price them against
+    const p = kp(), q = kp();
+    preMintSale(p, q, false); preMintSale(p, q, false);
+
+    const signals = antifraud.detectWashTrades(db, T);
+    const ev = (s: antifraud.Signal) => s.evidence as { priceOverFloorX?: number; repeatSales?: number };
+    expect(db.scalar(`SELECT COUNT(*) FROM sales WHERE asset IN (?, ?)`, registered, pending)).toBe(2);
+    expect([...new Set(signals.map((s) => s.wallet))].sort()).toEqual([alice, bob, x, y].sort());
+    expect(signals.every((s) => ev(s).priceOverFloorX === 5 && ev(s).repeatSales === 2)).toBe(true);
+    expect(signals.some((s) => s.wallet === p || s.wallet === q)).toBe(false);
   });
 
   it('quest bots: 25 logins at the same minute with no other activity; multi-account: a referrer with 5 starter-only siblings', () => {

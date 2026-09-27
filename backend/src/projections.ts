@@ -111,6 +111,25 @@ function chipOwnedByClaim(db: Db, claim: string, owner: string): string | undefi
 }
 
 /**
+ * SEC-B34: which `compressed_claims` row a mint / registration event is about.
+ *
+ * The two events used to be resolved by *holder* (`WHERE buyer = ? AND claim_nonce = ?`, `buyer` being the
+ * immutable origin and the event naming the current holder). That is only the same wallet until the claim
+ * market moves a pre-mint claim: `buy_compressed_claim` transfers the claim (the row's `owner` changes, the
+ * row's `buyer` does not), after which the buyer mints and registers — and both events named a wallet no
+ * row matched by `buyer`, so `register_compressed_chip` produced no `chips` row at all. Keying on the PDA
+ * the events now carry is exact; the holder-keyed lookup stays only as a fallback for a claim the read
+ * model resolved some other way (or a replayed log from a program build without the field).
+ */
+function resolveClaimPda(db: Db, claim: string | undefined, holder: string, claimNonce: string): string | undefined {
+  if (claim && db.get<{ claim: string }>(`SELECT claim FROM compressed_claims WHERE claim = ?`, claim)) return claim;
+  return db.get<{ claim: string }>(
+    `SELECT claim FROM compressed_claims WHERE (owner = ? OR buyer = ?) AND claim_nonce = ? ORDER BY (buyer = ?) DESC, claim ASC LIMIT 1`,
+    holder, holder, claimNonce, holder,
+  )?.claim;
+}
+
+/**
  * SEC-B31: resolve whatever a staking event calls its key to the chip asset a read-model flag lives on.
  * A Core chip stakes by asset; a compressed chip stakes by *claim* (`Staked{kind:1,key}` is the claim PDA —
  * `c.claim` in the staking program), which is why the flag never landed before this column existed.
@@ -294,12 +313,15 @@ const HANDLERS: Record<string, Handler> = {
     const buyer = str(d.buyer);
     const claimNonce = str(d.claimNonce);
     touchBySpec(db, e, c);
-    db.run(
+    // SEC-B34: keyed by the claim PDA (the event carries it), owner-guarded — `mint_compressed_chip` only
+    // mints for the claim's current holder, so a stale event must not mark someone else's claim minted.
+    const key = resolveClaimPda(db, typeof d.claim === 'string' ? d.claim : undefined, buyer, claimNonce);
+    if (key) db.run(
       `UPDATE compressed_claims SET status = CASE WHEN status IN ('registered', 'cancelled') THEN status ELSE 'minted' END,
          collection_idx = ?, rarity = ?, level = ?, game_index = ?, mint_signature = ?, slot = ?,
          block_time = COALESCE(?, block_time)
-       WHERE buyer = ? AND claim_nonce = ?`,
-      num(d.collectionIdx), num(d.rarity), num(d.level), str(d.gameIndex), c.signature, c.slot, c.blockTime, buyer, claimNonce,
+       WHERE claim = ? AND owner = ?`,
+      num(d.collectionIdx), num(d.rarity), num(d.level), str(d.gameIndex), c.signature, c.slot, c.blockTime, key, buyer,
     );
   },
   CompressedChipRegistered(db, e, c) {
@@ -307,19 +329,22 @@ const HANDLERS: Record<string, Handler> = {
     const buyer = str(d.owner);
     const claimNonce = str(d.claimNonce);
     touchBySpec(db, e, c);
-    const previous = db.get<{ status: string }>(
-      `SELECT status FROM compressed_claims WHERE buyer = ? AND claim_nonce = ?`,
-      buyer, claimNonce,
-    );
+    // SEC-B34: the claim PDA joins the event to its row (see `resolveClaimPda`); the owner guard is the
+    // program's own rule (`register_compressed_chip` requires `claim.buyer == owner`), so a replayed
+    // registration from a wallet that has since sold the claim cannot take the row over.
+    const key = resolveClaimPda(db, typeof d.claim === 'string' ? d.claim : undefined, buyer, claimNonce);
+    const previous = key ? db.get<{ status: string; nonce: string; buyer: string }>(`SELECT status, nonce, buyer FROM compressed_claims WHERE claim = ?`, key) : undefined;
     const wasRegistered = previous?.status === 'registered';
-    db.run(
+    const changed = key ? Number(db.run(
       `UPDATE compressed_claims SET status = CASE WHEN status = 'cancelled' THEN status ELSE 'registered' END, asset = ?, collection_idx = ?, rarity = ?, level = ?,
          register_signature = ?, slot = ?, block_time = COALESCE(?, block_time)
-       WHERE buyer = ? AND claim_nonce = ?`,
-      str(d.asset), num(d.collectionIdx), num(d.rarity), num(d.level), c.signature, c.slot, c.blockTime, buyer, claimNonce,
-    );
-    if (!wasRegistered && previous?.status !== 'cancelled') {
-      db.run(`UPDATE compressed_settlements SET registered_claims = registered_claims + 1, last_signature = ?, last_slot = ?, block_time = COALESCE(?, block_time) WHERE buyer = ? AND nonce = (SELECT nonce FROM compressed_claims WHERE buyer = ? AND claim_nonce = ?)`, c.signature, c.slot, c.blockTime, buyer, buyer, claimNonce);
+       WHERE claim = ? AND owner = ?`,
+      str(d.asset), num(d.collectionIdx), num(d.rarity), num(d.level), c.signature, c.slot, c.blockTime, key, buyer,
+    ).changes) : 0;
+    // the settlement counter follows the row that actually moved — and counts against the *origin* (`buyer`),
+    // which after a claim-market sale is no longer the wallet the event names
+    if (changed > 0 && !wasRegistered && previous?.status !== 'cancelled') {
+      db.run(`UPDATE compressed_settlements SET registered_claims = registered_claims + 1, last_signature = ?, last_slot = ?, block_time = COALESCE(?, block_time) WHERE buyer = ? AND nonce = ?`, c.signature, c.slot, c.blockTime, previous?.buyer ?? buyer, previous?.nonce ?? '');
     }
     db.run(
       upsert('chips', COLS.chips, ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'level = excluded.level', 'flags = excluded.flags', 'lock_until = excluded.lock_until', 'updated_slot = excluded.updated_slot', 'origin_signature = excluded.origin_signature', 'minted_at = COALESCE(chips.minted_at, excluded.minted_at)']),

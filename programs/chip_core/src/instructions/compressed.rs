@@ -1921,6 +1921,7 @@ pub fn mint_compressed_chip(
         rarity,
         level: ctx.accounts.claim.level,
         game_index: ctx.accounts.claim.game_index,
+        claim: ctx.accounts.claim.key(),
     });
     Ok(())
 }
@@ -1933,6 +1934,12 @@ pub struct CompressedChipMinted {
     pub rarity: u8,
     pub level: u8,
     pub game_index: u64,
+    /// SEC-B34: the claim PDA itself, not just `(buyer, claim_nonce)`. `buyer` is the claim's *current*
+    /// holder, and the claim market (`buy_compressed_claim`) changes it: after A lists a pre-mint claim
+    /// and B buys it, this event names B while an indexer keyed by the origin A finds nothing. The PDA is
+    /// the identity the claim, the market and the programs all use. Appended last on purpose — borsh is
+    /// positional, so every field before it keeps its offset.
+    pub claim: Pubkey,
 }
 
 #[derive(Accounts)]
@@ -2184,6 +2191,8 @@ pub fn register_compressed_chip<'info>(
         // H1: the claim's soulbound window becomes the chip's — the indexer cannot
         // derive it (the claim account is not an event), so the event carries it.
         lock_until: chip.lock_until,
+        // SEC-B34: the join key back to the claim the indexer holds a row for.
+        claim: ctx.accounts.claim.key(),
     });
     Ok(())
 }
@@ -2203,6 +2212,10 @@ pub struct CompressedChipRegistered {
     pub game_index: u64,
     pub flags: u8,
     pub lock_until: i64,
+    /// SEC-B34, same reason as `CompressedChipMinted`: `owner` is the claim's current holder (and the
+    /// registration is only reachable by that holder), while the indexer's row is keyed by the immutable
+    /// origin — the claim PDA is what joins them.
+    pub claim: Pubkey,
 }
 
 #[cfg(test)]

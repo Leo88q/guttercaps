@@ -172,12 +172,26 @@ export function detectWashTrades(db: Db, t = now(), windowDays = ANTIFRAUD_WINDO
     const evidence = { asset: tr.asset, pair: [tr.x, tr.y], roundTrips: n, volume: tr.volume, windowDays };
     out.push({ wallet: tr.x, kind: 'wash_trade', score, evidence }, { wallet: tr.y, kind: 'wash_trade', score, evidence });
   }
-  // sales far above the archetype floor between the same two wallets (fee farming / value transfer)
+  // Sales far above the archetype floor between the same two wallets (fee farming / value transfer).
+  //
+  // SEC-B32: the archetype is (collection, rarity) — taken from the sale row, or, for a *compressed claim*
+  // sold before its leaf existed, from the chip the claim later registered into (`compressed_claims.claim`
+  // resolves the claim-PDA-keyed row; the projection deliberately leaves such a row's collection NULL
+  // because the collection is not in the event). Those rows used to be filtered out here, so an inflated
+  // claim sale — the same value-transfer move this arm exists to catch — was invisible to it while the
+  // round-trip arm above already saw the trade. A row whose claim is still unregistered resolves to no
+  // archetype, gets `floor = NULL` and is skipped, which is the honest answer: there is no floor yet.
   const spikes = db.all<{ seller: string; buyer: string; asset: string; price: string; floor: number | null; n: number }>(
     `SELECT s.seller, s.buyer, s.asset, s.price,
-            (SELECT MIN(CAST(l.price AS REAL)) FROM listings l JOIN chips c2 ON c2.asset = l.asset WHERE c2.collection_idx = s.collection_idx AND c2.rarity = s.rarity AND l.currency = s.currency) floor,
+            (SELECT MIN(CAST(l.price AS REAL)) FROM listings l JOIN chips c2 ON c2.asset = l.asset
+              WHERE l.currency = s.currency
+                AND c2.collection_idx = COALESCE(s.collection_idx, r.collection_idx)
+                AND c2.rarity = COALESCE(s.rarity, r.rarity)) floor,
             (SELECT COUNT(*) FROM sales s3 WHERE s3.seller = s.seller AND s3.buyer = s.buyer AND COALESCE(s3.block_time, 0) >= ?) n
-       FROM sales s WHERE COALESCE(s.block_time, 0) >= ? AND s.collection_idx IS NOT NULL`, from, from,
+       FROM sales s
+       LEFT JOIN (SELECT cc.claim, c.collection_idx, c.rarity FROM compressed_claims cc JOIN chips c ON c.asset = cc.asset GROUP BY cc.claim) r
+              ON r.claim = s.asset
+      WHERE COALESCE(s.block_time, 0) >= ?`, from, from,
   );
   for (const sp of spikes) {
     if (sp.floor === null || sp.floor <= 0 || sp.n < 2) continue;

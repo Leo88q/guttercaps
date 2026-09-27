@@ -255,6 +255,7 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
         {
           program: 'chip_core', name: 'CompressedChipMinted', data: {
             buyer: actor, collectionIdx: 1, claimNonce: compressedClaimNonce, rarity: 2, level: 1, gameIndex: '1',
+            claim: claimPda(actor, Number(compressedClaimNonce)),
           },
         },
         {
@@ -262,6 +263,7 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
             asset: compressedAsset, claimNonce: compressedClaimNonce, collectionIdx: 1,
             merkleTree: compressedTree, leafIndex: 0, leafNonce: '0',
             owner: actor, delegate: actor, rarity: 2, level: 1, gameIndex: '1', flags: 0, lockUntil: '0',
+            claim: claimPda(actor, Number(compressedClaimNonce)),
           },
         },
         {
@@ -494,11 +496,11 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
           buyer: owner, nonce: settleNonce, packNo: 0, claimNonces: pad5([cn], '0'), count: 1,
         } }]);
         yield* emit([{ program: 'chip_core', name: 'CompressedChipMinted', data: {
-          buyer: owner, collectionIdx: collection, claimNonce: cn, rarity, level: 1, gameIndex: String(cn),
+          buyer: owner, collectionIdx: collection, claimNonce: cn, rarity, level: 1, gameIndex: String(cn), claim,
         } }]);
         yield* emit([{ program: 'chip_core', name: 'CompressedChipRegistered', data: {
           asset, claimNonce: cn, collectionIdx: collection, merkleTree: fixtureAddr(seed, 'compressed-tree', 1),
-          leafIndex: registered.length, leafNonce: '0', owner, delegate: owner, rarity, level: 1, gameIndex: String(cn), flags: 0, lockUntil: '0',
+          leafIndex: registered.length, leafNonce: '0', owner, delegate: owner, rarity, level: 1, gameIndex: String(cn), flags: 0, lockUntil: '0', claim,
         } }]);
         chips.set(asset, { owner, collection, rarity, listed: false, staked: false, burned: false, price: '0', soulbound: false });
         stats.chipsMinted++;
