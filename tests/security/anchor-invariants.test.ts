@@ -342,6 +342,46 @@ test('A2/A8 `%` only in reviewed functions; random draws keep rejection sampling
   for (const name of Object.keys(MODULO_ALLOW)) assert.ok(fns.some((f) => f.name === name), `stale allowlist entry ${name}`);
 });
 
+// SEC-B19: the compressed claim nonce is `nonce * STRIDE + pack_no * MAX_CHIPS_PER_PACK + chip_index`
+// (chip_core `open_compressed_pack`), so the stride has to cover the largest bundle a purchase may open.
+// Otherwise two different (nonce, pack_no, chip) triples derive the same claim PDA — the second pack
+// cannot be opened at all, its settlement never reaches `total_claims`, and the buyer's money stays in
+// the vault. The Rust side asserts this at compile time; this rule reads the three constants out of the
+// source so the *relation* is pinned too (a compile-time assert nobody can see is easy to delete).
+function claimNonceStrideViolations(srcOf: (rel: string) => string): string[] {
+  const num = (rel: string, re: RegExp): number | undefined => {
+    const m = re.exec(stripComments(srcOf(rel)));
+    return m ? Number(m[1]) : undefined;
+  };
+  const stride = num('programs/chip_core/src/instructions/compressed.rs', /const COMPRESSED_CLAIM_PACK_STRIDE:\s*u64\s*=\s*(\d+)/);
+  const perPack = num('programs/chip_core/src/economy.rs', /pub const MAX_CHIPS_PER_PACK:\s*usize\s*=\s*(\d+)/);
+  const qty = num('programs/chip_core/src/economy.rs', /pub const MAX_PACK_QTY:\s*u8\s*=\s*(\d+)/);
+  const out: string[] = [];
+  if (stride === undefined) out.push('COMPRESSED_CLAIM_PACK_STRIDE not found');
+  if (perPack === undefined) out.push('MAX_CHIPS_PER_PACK not found');
+  if (qty === undefined) out.push('MAX_PACK_QTY not found');
+  if (out.length) return out;
+  if (perPack! * qty! > stride!) out.push(`stride ${stride} < MAX_PACK_QTY ${qty} x MAX_CHIPS_PER_PACK ${perPack} — claim PDAs collide across nonces`);
+  const compressed = stripComments(srcOf('programs/chip_core/src/instructions/compressed.rs'));
+  if (!/const _:\s*\(\)\s*=\s*assert!/.test(compressed)) out.push('the compile-time stride assert is gone');
+  // the pack nonce really is built with that stride and that per-pack factor
+  if (!/COMPRESSED_CLAIM_PACK_STRIDE/.test(compressed)) out.push('the stride is no longer used to build the claim nonce');
+  if (!/\(pack_no as u64\)\s*\*\s*MAX_CHIPS_PER_PACK as u64/.test(compressed)) out.push('the per-pack factor changed — re-derive the bound');
+  // the purchase bound must be the same constant the stride was sized for (a literal 25 could drift)
+  const packs = stripComments(srcOf('programs/chip_core/src/instructions/packs.rs'));
+  if (!/require!\(\(1\.\.=MAX_PACK_QTY\)\.contains\(&qty\)/.test(packs)) out.push('buy_pack no longer bounds qty by MAX_PACK_QTY');
+  return out;
+}
+
+test('SEC-B19 the compressed claim-nonce stride covers the largest pack bundle (or two packs collide)', () => {
+  assert.deepEqual(claimNonceStrideViolations(src), []);
+  // the rule is not vacuous: shrinking the stride below MAX_PACK_QTY x MAX_CHIPS_PER_PACK must fail it
+  const shrunk = (rel: string) => src(rel).replace('const COMPRESSED_CLAIM_PACK_STRIDE: u64 = 128;', 'const COMPRESSED_CLAIM_PACK_STRIDE: u64 = 64;');
+  assert.ok(claimNonceStrideViolations(shrunk).some((v) => /claim PDAs collide/.test(v)), 'rule must fail on a stride below the bound');
+  const noAssert = (rel: string) => src(rel).replace(/const _: \(\) = assert!\s*\([\s\S]*?\);/, '');
+  assert.ok(claimNonceStrideViolations(noAssert).some((v) => /compile-time stride assert/.test(v)), 'rule must notice a deleted const assert');
+});
+
 // ---------------------------------------------------------------- rule self-tests
 
 const fake = (code: string, rel = 'programs/chip_core/src/instructions/fake.rs'): SourceFile => ({ path: rel, rel, program: 'chip_core', code: stripComments(code) });

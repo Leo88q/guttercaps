@@ -177,6 +177,19 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   `reason` enum now includes `invalid`, which the code always returned — and that type change exposed the client half of the same drift: the modal labels the reason as `profile.handle.reason.${reason}` and the `invalid` key was missing from every locale (a user typing a bad handle saw the raw key). All seven bundles now carry it. Behavioural and static gates added;
   both mutations (drop the cap, drop the route limiter) fail exactly the expected test.
 
+- **SEC-B19 (2026-09-27): closed — the compressed claim nonce is injective by construction.** A pack claim
+  is a PDA over `nonce * STRIDE + pack_no * MAX_CHIPS_PER_PACK + chip_index` with `STRIDE = 128`, and the
+  largest bundle a purchase may open keeps that offset at 124 — four short of the stride. Nothing tied the
+  three numbers together (128 in `compressed.rs`, 5 in `economy.rs`, a literal 25 in `packs.rs`), so a sixth
+  chip per pack or a 26-pack bundle would make two different `(nonce, pack_no, chip)` triples derive the same
+  claim PDA. The failure mode is not a double mint: `open_compressed_pack` refuses an account that already
+  exists, so one paid pack becomes permanently unopenable, its settlement never reaches `total_claims`, and
+  `finalize_compressed_pack` — the only path that releases the vault liability and refunds a cancelled share —
+  can never run. Now `MAX_PACK_QTY` lives in `economy.rs`, `buy_pack` bounds `qty` by it, and `compressed.rs`
+  carries `const _: () = assert!(MAX_CHIPS_PER_PACK * (MAX_PACK_QTY as usize) <= COMPRESSED_CLAIM_PACK_STRIDE
+  as usize);` — a build failure instead of a silent one-in-128 bricked pack. Pinned in both directions by the
+  new `SEC-B19` static rule (which also fails if the `assert!` is deleted or the stride shrinks).
+
 ## Current exposure of this repository (from `docs/09-production-readiness.md`)
 
 `npm audit --omit=dev` reports one advisory chain in the production tree: `bigint-buffer`
