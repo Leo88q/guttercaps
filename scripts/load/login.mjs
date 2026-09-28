@@ -66,6 +66,8 @@ if (!verify.res.ok) throw new Error(`verify failed (${verify.res.status}): ${JSO
 const cookie = (verify.res.headers.get('set-cookie') ?? '').split(';')[0];
 if (!cookie.startsWith('gc_session=')) throw new Error(`no session cookie in the response: ${verify.res.headers.get('set-cookie')}`);
 
-// csrf is only needed by the mutation scenarios; it is printed to stderr so stdout stays pipeable.
-process.stderr.write(`wallet ${address} · csrf ${verify.json?.csrf ?? '(none)'}\n`);
+// Machine-readable on purpose: the CI job (and any local run) greps this line to feed `K6_CSRF` into
+// k6 — the CSRF header is what turns /packs/quote from a correct-but-measurement-poisoning 403 into a
+// 200 under session. stdout stays pipeable (just the cookie).
+process.stderr.write(`wallet ${address}\nK6_CSRF=${verify.json?.csrf ?? ''}\n`);
 process.stdout.write(cookie + '\n');

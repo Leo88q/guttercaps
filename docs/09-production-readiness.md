@@ -540,6 +540,13 @@ GHCR — отдельная галочка, см. шапку workflow). `prisma 
 - Cloudflare Turnstile sitekey/secret; Sentry/uptime-мониторинг; домены `guttercaps.gg` / `app.guttercaps.gg`.
 - Юрзаключение (lootbox BE/NL/UK, 18+), текст ToS/Privacy, art-мастера 72 фишек, иконки/баннер/скриншоты для Publisher Portal.
 - Миграция казначейского SKR-кошелька `HPMr5r…` (сейчас single-signer — принятый риск) на мультисиг — **до** mainnet.
+- Branch protection `main` (включить владельцу; токеном интеграции это не проверить — API отвечает
+  `403 Resource not accessible by integration`, поэтому статус ниже — «не подтверждено», а не «выключено»):
+  required reviews ≥ 1 (сейчас PR сливается автором/агентом без чьего-либо одобрения — так был слит #33),
+  required status checks = блокирующие джобы `ci`, dismiss stale reviews при новом коммите. Токен
+  format/lockfile-бот-PR имеет `contents: write` — branch protection с required reviews их не сломает
+  (merge делает владелец/автомердж-правило), но **свободная запись в `main` у `images.yml`
+  (`images.env`) при этом обязана остаться исключением, осознанным и задокументированным.
 
 ## 8. Что я не смог проверить в этой среде (и почему)
 

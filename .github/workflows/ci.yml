@@ -174,6 +174,11 @@ jobs:
       # the compose build-arg gate's own cases (scripts/deploy-build-env.ts) — they read the real compose
       # file, so a required `${VAR:?}` that nothing documents fails here rather than in a docker layer
       - run: npm run ops:buildenv -- --selftest
+      # the restore drill's own cases (scripts/restore-drill.mjs): a synthetic snapshot round-trips,
+      # a corrupted payload is rejected, a lying status file (BackupFailing/BackupStale thresholds)
+      # fails the drill — runbook §4.2 "снятие без проверки на восстановление — это вера, а не план"
+      - name: restore drill selftest (runbook §4.2)
+        run: npm run ops:restore-drill -- --selftest
       # the deploy-artifact verifier's own cases (scripts/verify-deploy.ts, SEC-F19): the Switchboard pin
       # table against randomness.rs, the byte scan on synthetic binaries, the upgradeable-loader layout
       - run: npm run verify-deploy -- --selftest
@@ -604,7 +609,12 @@ jobs:
       - run: npm ci --omit=dev
       - name: start the API (no chain, no ingest — LT-1 measures the read path)
         run: |
-          PORT=8787 DB_PATH=$(mktemp -d)/lt.sqlite LOG_LEVEL=error API_INGEST=0 EVENT_BUS=off \
+          # RATE_LIMIT=0: the read budget is 600/min/IP (backend/src/ratelimit.ts), so 500 rps from this
+          # single runner address would answer a 429-storm — the limiter, not the read path, would be what
+          # the profile measures. 429 correctness itself is unit-gated (T-B-40 backend/test/security.test.ts)
+          # and assertProductionConfig() explicitly refuses RATE_LIMIT=0 outside a load stand; this job is
+          # that stand, not a deployment.
+          PORT=8787 DB_PATH=$(mktemp -d)/lt.sqlite LOG_LEVEL=error API_INGEST=0 EVENT_BUS=off RATE_LIMIT=0 \
             nohup node --no-warnings=ExperimentalWarning --import tsx backend/src/serve.ts > /tmp/api.log 2>&1 &
           for i in $(seq 1 60); do sleep 1; curl -sf http://127.0.0.1:8787/healthz >/dev/null && break; done
           # /healthz (process) is the gate, not /readyz: readiness asks for projections, a fresh Pyth cache
@@ -614,12 +624,18 @@ jobs:
           curl -sf http://127.0.0.1:8787/v1/packs | head -c 120 >/dev/null || { echo '::error::/v1/packs did not answer'; tail -40 /tmp/api.log; exit 1; }
       - name: session for the /me profile
         run: |
-          node scripts/load/login.mjs > /tmp/cookie
+          # stdout = the cookie, stderr = `K6_CSRF=` (login.mjs prints it there so pipes stay clean).
+          # The CSRF token goes to /packs/quote as X-CSRF-Token: without it the double-submit check
+          # (backend/src/auth.ts) answers 403 on every quote — a correct answer that still failed the
+          # built-in k6 threshold and was one of the three reasons LT-1 was red since 2026-09-19.
+          node scripts/load/login.mjs > /tmp/cookie 2> /tmp/login.err
+          cat /tmp/login.err
           echo "K6_SESSION=$(cat /tmp/cookie)" >> "$GITHUB_ENV"
+          echo "K6_CSRF=$(sed -n 's/^K6_CSRF=//p' /tmp/login.err)" >> "$GITHUB_ENV"
       - name: k6 LT-1 (10 % of the profile, 3 min plateau)
         run: |
           docker run --rm -i --network=host -v "$PWD:/s" \
-            -e K6_BASE_URL=http://127.0.0.1:8787/v1 -e K6_SESSION="$K6_SESSION" \
+            -e K6_BASE_URL=http://127.0.0.1:8787/v1 -e K6_SESSION="$K6_SESSION" -e K6_CSRF="$K6_CSRF" \
             -e K6_READ_RPS=500 -e K6_RAMP_S=20 -e K6_PLATEAU_S=180 \
             grafana/k6:latest run /s/scripts/load/lt1.js
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
