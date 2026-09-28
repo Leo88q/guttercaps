@@ -17,6 +17,12 @@ export type Row = Record<string, SQLOutputValue>;
 
 export const SCHEMA = `
 PRAGMA journal_mode = WAL;
+-- synchronous = NORMAL: осознанный прод-режим для WAL. Приложение переживает падение процесса
+-- (checkpoint пишется с fsync), ценой — возможная потеря последних коммитов при обрыве питания ОС.
+-- Источник истины — цепь: откатившиеся события доиндексируются (курсор откатится вместе с ними),
+-- остальное закрывает почасовой бэкап с дриллом (RPO ≤ 1 ч, runbook §4.2). FULL удвоил бы fsync
+-- каждой записи ради случая, который этот контур уже закрывает; p95 профильных чтений и так
+-- упирается в бюджет на 2 000 rps (ops/deploy/data-layer.md, раздел 8).
 PRAGMA synchronous = NORMAL;
 PRAGMA foreign_keys = ON;
 -- More than one process touches this file in the default deployment (the supervisor runs the API, the

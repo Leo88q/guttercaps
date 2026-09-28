@@ -11,20 +11,24 @@
 (`Retry-After`, никаких 5xx и никаких обрывов соединения).
 
 ```bash
-# 1. стенд: прод-топология из compose (nginx + api + redis), либо локально:
-npm run backend:start                       # или docker compose -f ops/deploy/docker-compose.yaml up -d
+# 1. стенд: прод-топология из compose (nginx + api + redis), либо локально.
+#    RATE_LIMIT=0 обязателен: бюджет чтения — 600 мин/IP (backend/src/ratelimit.ts), профиль на 500 rps
+#    с одного адреса упирается в 429, а не в читаемый путь; сама корректность 429 закрыта юнит-гейтом
+#    T-B-40 (backend/test/security.test.ts). В проде RATE_LIMIT=0 не стартует (assertProductionConfig).
+RATE_LIMIT=0 PORT=8787 npm run backend:start   # или docker compose -f ops/deploy/docker-compose.yaml up -d
 
 # 2. сессия для авторизованного сценария (иначе /me просто пропускается — см. ниже)
-LT1_BASE=http://127.0.0.1:8787 node scripts/load/login.mjs > /tmp/cookie
+#    stdout = cookie, stderr = строка K6_CSRF=… (токен для X-CSRF-Token на /packs/quote)
+LT1_BASE=http://127.0.0.1:8787 node scripts/load/login.mjs > /tmp/cookie 2> /tmp/login.err
 
 # 3. прогон (10 % профиля = 500 rps, 4 минуты плато)
 docker run --rm -i --network=host -v "$PWD:/s" -v /tmp:/tmp \
-  -e K6_SESSION="$(cat /tmp/cookie)" \
+  -e K6_SESSION="$(cat /tmp/cookie)" -e K6_CSRF="$(sed -n 's/^K6_CSRF=//p' /tmp/login.err)" \
   grafana/k6:latest run /s/scripts/load/lt1.js
 ```
 
 Переменные: `K6_BASE_URL` (по умолчанию `http://127.0.0.1:8787/v1`), `K6_READ_RPS`, `K6_ME_RPS`,
-`K6_RAMP_S`, `K6_PLATEAU_S`, `K6_ABUSE_VUS`, `K6_SESSION`, `LT1_KEYPAIR` (файл с JSON-массивом 32/64
+`K6_RAMP_S`, `K6_PLATEAU_S`, `K6_ABUSE_VUS`, `K6_SESSION`, `K6_CSRF`, `LT1_KEYPAIR` (файл с JSON-массивом 32/64
 байт — если нужен конкретный кошелёк, а не эфемерный).
 
 Три вещи, которые легко понять неверно:
@@ -34,7 +38,8 @@ docker run --rm -i --network=host -v "$PWD:/s" -v /tmp:/tmp \
   а не молча получает 401. Метрика «p95 авторизованного чтения» против 401 хуже, чем отсутствие метрики.
   Эфемерный кошелёк по умолчанию — не лень, а решение: нагрузочному профилю не нужны средства, а «тестовый
   сид» в репозитории — это способ потерять ключ.
-- **401/503 на `/packs/quote` засчитаны как правильный ответ.** Без Pyth-пушера в контуре 503
+- **401/403/503 на `/packs/quote` засчитаны как правильный ответ.** Без переданного `K6_CSRF` мутация
+  честно отвечает 403 (double-submit, `backend/src/auth.ts`), без Pyth-пушера в контуре 503
   `price_unavailable` — это то, что эндпоинт и должен делать (см. `backend/src/pyth.ts`); считать это
   «ошибкой под нагрузкой» значит получить красный ночной прогон по причине, к нагрузке не относящейся.
 - **один процесс API не выполнит профиль на 5 000 rps**, и это не баг скрипта: у цели 2 000 rps из

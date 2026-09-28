@@ -8,16 +8,20 @@
 // fail the rate thresholds, and that is information, not a bug in the script.
 //
 //   docker run --rm -i --network=host -v "$PWD:/s" grafana/k6:latest run /s/scripts/load/lt1.js \
-//     -e K6_BASE_URL=http://127.0.0.1:8787/v1 -e K6_SESSION='gc_session=…'
+//     -e K6_BASE_URL=http://127.0.0.1:8787/v1 -e K6_SESSION='gc_session=…' -e K6_CSRF='…'
 //
-// K6_SESSION comes from `node scripts/load/login.mjs`. Without it the authenticated scenarios are skipped
-// rather than faked: a /me measurement taken against a 401 is worse than no measurement.
+// K6_SESSION comes from `node scripts/load/login.mjs` (stdout → cookie, stderr → `K6_CSRF=` line).
+// Without them the authenticated scenarios are skipped rather than faked: a /me measurement taken
+// against a 401 is worse than no measurement. The stand itself must run with `RATE_LIMIT=0` — see the
+// README: the read budget is 600/min/IP, so a 500 rps profile from one address measures the limiter's
+// 429s, not the read path.
 import http from 'k6/http';
 import { check, group } from 'k6';
 import { Rate, Trend } from 'k6/metrics';
 
 const BASE = (String(__ENV.K6_BASE_URL || 'http://127.0.0.1:8787/v1')).replace(/\/$/, '');
 const SESSION = __ENV.K6_SESSION || '';
+const CSRF = __ENV.K6_CSRF || '';
 const RAMP = Number(__ENV.K6_RAMP_S || 60);
 const PLATEAU = Number(__ENV.K6_PLATEAU_S || 180);
 const READ_RATE = Number(__ENV.K6_READ_RPS || 500);            // 10 % of the 5 000 rps profile → nightly
@@ -29,6 +33,19 @@ const quoteWait = new Trend('quote_wait_ms');
 
 const HEADERS = { 'Content-Type': 'application/json' };
 const AUTH = SESSION ? { ...HEADERS, Cookie: SESSION } : null;
+// The mutation check on /packs/quote is a double-submit: cookie + `X-CSRF-Token` (backend/src/auth.ts).
+// Without the header every quote answers 403 — a *correct* answer that would still sink the built-in
+// http_req_failed threshold, because k6 counts anything outside 200–399 as failed by default.
+const QUOTE_HEADERS = AUTH && CSRF ? { ...AUTH, 'X-CSRF-Token': CSRF } : AUTH;
+
+// Teach k6's own http_req_failed the policy the checks below already declare. Default k6 marks only
+// 200–399 expected, so an honest 401 (no session), 429 (limiter) or 503 (price_unavailable) would be
+// counted as a request failure and the nightly would go red for a reason unrelated to performance
+// (this is exactly how LT-1 failed in CI before 2026-09-28). With these callbacks the built-in
+// threshold measures "answers outside each scenario's declared contract", and the custom http_failed
+// Rate below keeps the second, stricter count.
+const QUOTE_OK = http.expectedStatuses(200, 401, 403, 429, 503);
+const ABUSE_OK = http.expectedStatuses(200, 429);
 
 const READ_PATHS = [
   '/stats',
@@ -101,13 +118,15 @@ export default function () {
 
   group('quote', () => {
     const q = http.post(`${BASE}/packs/quote`, JSON.stringify({ sku: 1, qty: 1, currency: 'USDC' }), {
-      headers: AUTH || HEADERS,
+      headers: QUOTE_HEADERS || HEADERS,
+      responseCallback: QUOTE_OK,
       tags: { name: 'post:packs/quote' },
     });
-    // 401 (no session supplied) and 503 price_unavailable (no Pyth pusher in front of this stack) are both
-    // *correct* answers for this scenario; only an unexpected 5xx or a dropped connection is a failure.
-    // Counting a 401 as an error would make the nightly red for a reason unrelated to performance.
-    statuses.add(q.status >= 500 && q.status !== 503);
+    // 401 (no session supplied), 403 (csrf when K6_CSRF was not wired), 429 (limiter) and 503
+    // price_unavailable (no Pyth pusher in front of this stack) are all *correct* answers here; only an
+    // unexpected 5xx or a dropped connection (status 0) is a failure. Counting a correct 401 as an error
+    // is what made the nightly red for a reason unrelated to performance.
+    statuses.add(q.status === 0 || (q.status >= 500 && q.status !== 503));
     quoteWait.add(q.timings.waiting);
     check(q, { 'quote answers': (r) => [200, 401, 403, 429, 503].includes(r.status) });
   });
@@ -121,7 +140,11 @@ export default function () {
 
 /** The abuse profile: hammer one limiter key from many VUs and look at *how* it says no. */
 export function abuse() {
-  const res = http.get(`${BASE}/leaderboard/rating`, { headers: HEADERS, tags: { name: 'abuse:limit' } });
+  const res = http.get(`${BASE}/leaderboard/rating`, {
+    headers: HEADERS,
+    responseCallback: ABUSE_OK, // 429 is the *correct* answer under abuse — not a failed request
+    tags: { name: 'abuse:limit' },
+  });
   const limited = res.status === 429;
   check(res, {
     // Either served, or told to go away properly. A 5xx or a dropped socket is the failure this tracks.
@@ -134,10 +157,11 @@ export function abuse() {
 export function handleSummary(data) {
   const t = data.metrics?.http_req_duration?.values ?? {};
   const failed = data.metrics?.http_req_failed?.values?.value ?? 0;
+  const custom = data.metrics?.http_failed?.values?.value ?? 0;
   const lines = [
-    `LT-1 · ${READ_RATE} rps reads · ${AUTH ? `${ME_RATE} rps /me` : 'no session (/me skipped)'} · ${ABUSE_VUS} VUs abuse · ${RAMP + PLATEAU}s`,
+    `LT-1 · ${READ_RATE} rps reads · ${AUTH ? `${ME_RATE} rps /me${CSRF ? '' : ' (no K6_CSRF — quote may 403)'}` : 'no session (/me skipped)'} · ${ABUSE_VUS} VUs abuse · ${RAMP + PLATEAU}s`,
     `  p95 ${t['p(95)'] ?? '—'} ms · p99 ${t['p(99)'] ?? '—'} ms · max ${t.max ?? '—'} ms`,
-    `  unexpected failures ${(failed * 100).toFixed(3)} % (budget < 0.1 %)`,
+    `  unexpected failures ${(failed * 100).toFixed(3)} % · custom http_failed ${(custom * 100).toFixed(3)} % (budget < 0.1 %)`,
     `  /packs/quote server wait avg ${Math.round(data.metrics?.quote_wait_ms?.values?.avg ?? 0)} ms`,
   ];
   return { stdout: lines.join('\n') + '\n', 'k6-lt1.json': JSON.stringify(data) };
