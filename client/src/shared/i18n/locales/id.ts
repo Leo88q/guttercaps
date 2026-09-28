@@ -28,7 +28,7 @@ const id: PartialMessages = {
     solAtPyth: 'SOL via Pyth', skrAtPyth: 'SKR via Pyth', quoteUnavailable: 'kuotasi tidak tersedia — harga on-chain berlaku',
     priceAge: 'Usia harga', priceAgeValue: '{s} dtk (berlaku ≤ 60 dtk on-chain)', priceFeedDown: 'Feed harga sedang diperbarui — coba lagi beberapa detik lagi.', quoteFailed: 'Kuotasi tidak bisa diambil.',
     rentReserve: 'Cadangan rent (dikembalikan setelah dibuka)', oracleFees: 'Oracle + biaya jaringan (perkiraan)', maxSlippage: 'Maks (pelindung slippage 1%)',
-    oddsNow: 'Peluang Anda sekarang (pity {n})', oneSignature: 'Satu tanda tangan: membuat akun keacakan, berkomitmen ke slot berikutnya, dan membayar. Oracle menjawab dalam beberapa detik; lalu Anda menandatangani sekali lagi untuk mint. Oracle menjawab dalam hitungan detik dan crank kami membuka pack untuk Anda meski aplikasi ditutup; jika oracle tidak pernah menjawab, pengembalian penuh dari vault terbuka setelah jendela 1 jamnya berakhir (≈ 72 mnt).',
+    oddsNow: 'Peluang Anda sekarang (pity {n})', oneSignature: 'Satu tanda tangan: membuat akun keacakan, berkomitmen ke slot berikutnya, dan membayar. Oracle menjawab dalam hitungan detik; lalu Anda menandatangani sekali lagi untuk mint — atau crank kami membuka pack untuk Anda meski aplikasi ditutup. Jika oracle tidak pernah menjawab, pengembalian penuh dari vault terbuka setelah jendela 1 jamnya berakhir (≈ 72 mnt).',
     perPack: '{n, plural, other{# cap}} per pack', floor: 'floor {rarity}', starterOnce: 'sekali per dompet', dailyCap: 'batas {n}/hari',
     pityIn: '{rarity} dijamin dalam {n}', packDisabled: 'sedang dinonaktifkan', was: 'sebelumnya {price}',
     tabs: { packs: 'Pack', services: 'Ekstra' },
@@ -82,7 +82,7 @@ const id: PartialMessages = {
     chipLeaf: 'voucher cap ({odds})', chipLeaves: '{n} voucher cap', claimVoucher: 'Klaim voucher cap', voucherHint: 'Satu tanda tangan: klaim meminta keacakan Switchboard, lalu cap dicetak seperti pack (≈ 0,01 SOL rent, dikembalikan saat ditutup). Soulbound selama {days} hari.', voucherClaimed: 'Voucher diklaim', voucherClaimedBody: 'Menunggu oracle — cap kamu sedang diundi…', voucherClaimedMock: 'Voucher diklaim (mock)',
     freeCaps: 'Batas sumber gratis: {daily}/hari · {weekly}/minggu · {chips} cap gratis/minggu.',
     skrPool: 'Hadiah SKR berasal dari pool hadiah yang didanai pendapatan SKR (tidak pernah dicetak): ≤ {weekly} SKR/minggu dari misi, ≤ {season} SKR/musim; perlu ≥ 1 pack berbayar dan dompet berusia 7 hari.',
-    empty: 'Belum ada apa-apa.', capRoll: 'undian cap', booster: '{n} booster', resetsIn: 'reset dalam {time}', inNextRoot: 'di root berikutnya', done: 'selesai',
+    empty: 'Belum ada apa-apa.', capRoll: 'undian cap', booster: '{n, plural, other{# booster}}', resetsIn: 'reset dalam {time}', inNextRoot: 'di root berikutnya', done: 'selesai',
     antiFarm: 'Anti-farm: hadiah perlu ≥ 1 pack berbayar atau dompet berusia 24 jam dengan 10 pertandingan; dedupe perangkat/IP; maks {sameOpponent} pertandingan berhadiah melawan lawan yang sama per hari; pertandingan di bawah {minSec} dtk tidak dihadiahi.',
     reason: {
       account_too_new: 'dompet berumur kurang dari 24 jam — beli pack atau tunggu', play_10_matches_or_buy_a_pack: 'mainkan 10 pertandingan atau beli pack',

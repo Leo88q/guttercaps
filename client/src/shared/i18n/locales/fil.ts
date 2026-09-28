@@ -28,7 +28,7 @@ const fil: PartialMessages = {
     solAtPyth: 'SOL sa Pyth', skrAtPyth: 'SKR sa Pyth', quoteUnavailable: 'walang quote — on-chain na presyo ang gagamitin',
     priceAge: 'Edad ng presyo', priceAgeValue: '{s} s (valid ≤ 60 s on-chain)', priceFeedDown: 'Ina-update pa ang price feed — subukan ulit sa ilang segundo.', quoteFailed: 'Hindi makuha ang quote.',
     rentReserve: 'Rent reserve (ibabalik pagkabukas)', oracleFees: 'Oracle + network fees (tantiya)', maxSlippage: 'Max (1% slippage guard)',
-    oddsNow: 'Tsansa mo ngayon (pity {n})', oneSignature: 'Isang pirma: gagawa ng randomness account, magko-commit sa susunod na slot, at magbabayad. Sasagot ang oracle sa ilang segundo; pagkatapos ay pipirma ka ulit para mag-mint. Sumasagot ang oracle sa loob ng ilang segundo at binubuksan ng aming crank ang pack para sa iyo kahit isara mo ang app; kung hindi talaga sumagot ang oracle, magbubukas ang buong refund mula sa vault pagkatapos ng 1-oras na window nito (≈ 72 min).',
+    oddsNow: 'Tsansa mo ngayon (pity {n})', oneSignature: 'Isang pirma: gagawa ng randomness account, magko-commit sa susunod na slot, at magbabayad. Sasagot ang oracle sa loob ng ilang segundo; pagkatapos ay pipirma ka ulit para mag-mint — o binubuksan ng aming crank ang pack para sa iyo kahit isara mo ang app. Kung hindi talaga sumagot ang oracle, magbubukas ang buong refund mula sa vault pagkatapos ng 1-oras na window nito (≈ 72 min).',
     perPack: '{n, plural, one{# cap} other{# caps}} bawat pack', floor: 'floor {rarity}', starterOnce: 'isang beses bawat wallet', dailyCap: 'limit {n}/araw',
     pityIn: 'garantisadong {rarity} sa {n}', packDisabled: 'pansamantalang naka-off', was: 'dati {price}',
     tabs: { packs: 'Packs', services: 'Extras' },
@@ -82,7 +82,7 @@ const fil: PartialMessages = {
     chipLeaf: 'cap voucher ({odds})', chipLeaves: '{n} cap voucher', claimVoucher: 'I-claim ang cap voucher', voucherHint: 'Isang pirma: humihingi ang claim ng Switchboard randomness, tapos mimintahin ang cap gaya ng pack (≈ 0.01 SOL na rent, ibabalik kapag nagsara). Soulbound nang {days} araw.', voucherClaimed: 'Na-claim ang voucher', voucherClaimedBody: 'Hinihintay ang oracle — niro-roll na ang cap mo…', voucherClaimedMock: 'Na-claim ang voucher (mock)',
     freeCaps: 'Limitasyon ng libreng pinagmumulan: {daily}/araw · {weekly}/linggo · {chips} libreng cap/linggo.',
     skrPool: 'Ang mga gantimpalang SKR ay galing sa prize pool na pinopondohan ng kita sa SKR (hindi kailanman mini-mint): ≤ {weekly} SKR/linggo mula sa quests, ≤ {season} SKR/season; kailangan ng ≥ 1 bayad na pack at wallet na 7 araw na.',
-    empty: 'Wala pa rito.', capRoll: 'cap roll', booster: '{n} booster', resetsIn: 'magre-reset sa {time}', inNextRoot: 'sa susunod na root', done: 'tapos',
+    empty: 'Wala pa rito.', capRoll: 'cap roll', booster: '{n, plural, one{# booster} other{# boosters}}', resetsIn: 'magre-reset sa {time}', inNextRoot: 'sa susunod na root', done: 'tapos',
     antiFarm: 'Anti-farm: kailangan ng ≥ 1 bayad na pack o wallet na 24 oras na may 10 laban; dedupe ng device/IP; max {sameOpponent} may-gantimpalang laban kontra sa parehong kalaban bawat araw; hindi ginagantimpalaan ang laban na wala pang {minSec} s.',
     reason: {
       account_too_new: 'wallet na wala pang 24 oras — bumili ng pack o maghintay', play_10_matches_or_buy_a_pack: 'maglaro ng 10 laban o bumili ng pack',

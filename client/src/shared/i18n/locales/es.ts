@@ -28,7 +28,7 @@ const es: PartialMessages = {
     solAtPyth: 'SOL vía Pyth', skrAtPyth: 'SKR vía Pyth', quoteUnavailable: 'cotización no disponible — aplica el precio on-chain',
     priceAge: 'Antigüedad del precio', priceAgeValue: '{s} s (válido ≤ 60 s on-chain)', priceFeedDown: 'El feed de precios se está actualizando — reintenta en unos segundos.', quoteFailed: 'No se pudo obtener la cotización.',
     rentReserve: 'Reserva de rent (se devuelve al abrir)', oracleFees: 'Oráculo + comisiones de red (est.)', maxSlippage: 'Máximo (protección del 1%)',
-    oddsNow: 'Tus probabilidades ahora (pity {n})', oneSignature: 'Una firma: crea la cuenta de aleatoriedad, se compromete al siguiente slot y paga. El oráculo responde en segundos; luego firmas una vez más para mintear. El oráculo responde en segundos y nuestro crank abre el pack por ti aunque cierres la app; si el oráculo nunca responde, el reembolso completo de la bóveda se desbloquea al expirar su ventana de 1 hora (≈ 72 min).',
+    oddsNow: 'Tus probabilidades ahora (pity {n})', oneSignature: 'Una firma: crea la cuenta de aleatoriedad, se compromete al siguiente slot y paga. El oráculo responde en segundos; luego firmas una vez más para mintear — o nuestro crank abre el pack por ti aunque cierres la app. Si el oráculo nunca responde, el reembolso completo de la bóveda se desbloquea al expirar su ventana de 1 hora (≈ 72 min).',
     perPack: '{n, plural, one{# cap} other{# caps}} por sobre', floor: 'mínimo {rarity}', starterOnce: 'una vez por billetera', dailyCap: 'límite {n}/día',
     pityIn: '{rarity} garantizado en {n}', packDisabled: 'desactivado por ahora', was: 'antes {price}',
     tabs: { packs: 'Sobres', services: 'Extras' },
@@ -82,7 +82,7 @@ const es: PartialMessages = {
     chipLeaf: 'vale de cap ({odds})', chipLeaves: '{n, plural, one{# vale de cap} other{# vales de cap}}', claimVoucher: 'Canjear vale de cap', voucherHint: 'Una firma: el canje pide aleatoriedad a Switchboard y el cap se acuña como un sobre (≈ 0,01 SOL de rent, devuelto al cerrar). Soulbound durante {days} d.', voucherClaimed: 'Vale canjeado', voucherClaimedBody: 'Esperando al oráculo — tu cap se está sorteando…', voucherClaimedMock: 'Vale canjeado (mock)',
     freeCaps: 'Límites de fuentes gratuitas: {daily}/día · {weekly}/semana · {chips} caps gratis/semana.',
     skrPool: 'Las recompensas en SKR salen de un fondo de premios financiado con ingresos en SKR (nunca se acuñan): ≤ {weekly} SKR/semana por misiones, ≤ {season} SKR/temporada; requiere ≥ 1 pack pagado y una wallet de 7 días.',
-    empty: 'Nada por aquí todavía.', capRoll: 'tirada de cap', booster: '{n} booster', resetsIn: 'se reinicia en {time}', inNextRoot: 'en la próxima raíz', done: 'hecho',
+    empty: 'Nada por aquí todavía.', capRoll: 'tirada de cap', booster: '{n, plural, one{# booster} other{# boosters}}', resetsIn: 'se reinicia en {time}', inNextRoot: 'en la próxima raíz', done: 'hecho',
     antiFarm: 'Anti-farm: las recompensas requieren ≥ 1 pack pagado o una wallet de 24 h con 10 partidas; deduplicación por dispositivo/IP; máx. {sameOpponent} partidas premiadas contra el mismo rival al día; las partidas de menos de {minSec} s no se premian.',
     reason: {
       account_too_new: 'billetera con menos de 24 h — compra un sobre o espera', play_10_matches_or_buy_a_pack: 'juega 10 partidas o compra un sobre',

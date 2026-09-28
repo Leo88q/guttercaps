@@ -28,7 +28,7 @@ const vi: PartialMessages = {
     solAtPyth: 'SOL theo Pyth', skrAtPyth: 'SKR theo Pyth', quoteUnavailable: 'không có báo giá — áp dụng giá on-chain',
     priceAge: 'Tuổi giá', priceAgeValue: '{s} giây (hợp lệ ≤ 60 giây on-chain)', priceFeedDown: 'Nguồn giá đang cập nhật — thử lại sau vài giây.', quoteFailed: 'Không lấy được báo giá.',
     rentReserve: 'Tiền cọc rent (hoàn lại sau khi mở)', oracleFees: 'Oracle + phí mạng (ước tính)', maxSlippage: 'Tối đa (bảo vệ trượt giá 1%)',
-    oddsNow: 'Tỷ lệ của bạn lúc này (pity {n})', oneSignature: 'Một chữ ký: tạo tài khoản ngẫu nhiên, cam kết slot tiếp theo và thanh toán. Oracle trả lời sau vài giây; sau đó bạn ký thêm một lần để mint. Oracle trả lời trong vài giây và crank của chúng tôi sẽ mở gói cho bạn ngay cả khi bạn đóng ứng dụng; nếu oracle không bao giờ trả lời, khoản hoàn tiền đầy đủ từ kho sẽ mở sau khi cửa sổ 1 giờ của nó hết hạn (≈ 72 phút).',
+    oddsNow: 'Tỷ lệ của bạn lúc này (pity {n})', oneSignature: 'Một chữ ký: tạo tài khoản ngẫu nhiên, cam kết slot tiếp theo và thanh toán. Oracle trả lời sau vài giây; sau đó bạn ký thêm một lần để mint — hoặc crank của chúng tôi sẽ mở gói cho bạn ngay cả khi bạn đóng ứng dụng. Nếu oracle không bao giờ trả lời, khoản hoàn tiền đầy đủ từ kho sẽ mở sau khi cửa sổ 1 giờ của nó hết hạn (≈ 72 phút).',
     perPack: '{n, plural, other{# nắp}} mỗi gói', floor: 'sàn {rarity}', starterOnce: 'một lần mỗi ví', dailyCap: 'giới hạn {n}/ngày',
     pityIn: 'đảm bảo {rarity} sau {n}', packDisabled: 'tạm tắt', was: 'trước {price}',
     tabs: { packs: 'Gói', services: 'Thêm' },
@@ -82,7 +82,7 @@ const vi: PartialMessages = {
     chipLeaf: 'phiếu cap ({odds})', chipLeaves: '{n} phiếu cap', claimVoucher: 'Nhận phiếu cap', voucherHint: 'Một chữ ký: lệnh nhận yêu cầu số ngẫu nhiên Switchboard, rồi cap được đúc như một gói (≈ 0,01 SOL tiền rent, hoàn lại khi đóng). Soulbound trong {days} ngày.', voucherClaimed: 'Đã nhận phiếu', voucherClaimedBody: 'Đang chờ oracle — cap của bạn đang được quay…', voucherClaimedMock: 'Đã nhận phiếu (mock)',
     freeCaps: 'Giới hạn nguồn miễn phí: {daily}/ngày · {weekly}/tuần · {chips} nắp miễn phí/tuần.',
     skrPool: 'Thưởng SKR đến từ quỹ giải thưởng được cấp bằng doanh thu SKR (không bao giờ được phát hành thêm): ≤ {weekly} SKR/tuần từ nhiệm vụ, ≤ {season} SKR/mùa; cần ≥ 1 gói trả phí và ví đủ 7 ngày tuổi.',
-    empty: 'Chưa có gì ở đây.', capRoll: 'quay nắp', booster: '{n} booster', resetsIn: 'đặt lại sau {time}', inNextRoot: 'trong gốc kế tiếp', done: 'xong',
+    empty: 'Chưa có gì ở đây.', capRoll: 'quay nắp', booster: '{n, plural, other{# booster}}', resetsIn: 'đặt lại sau {time}', inNextRoot: 'trong gốc kế tiếp', done: 'xong',
     antiFarm: 'Chống cày: phần thưởng cần ≥ 1 gói trả phí hoặc ví 24 giờ tuổi với 10 trận; khử trùng lặp theo thiết bị/IP; tối đa {sameOpponent} trận có thưởng với cùng một đối thủ mỗi ngày; trận dưới {minSec} giây không được thưởng.',
     reason: {
       account_too_new: 'ví mới dưới 24 giờ — mua một gói hoặc chờ', play_10_matches_or_buy_a_pack: 'chơi 10 trận hoặc mua một gói',

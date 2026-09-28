@@ -28,7 +28,7 @@ const pt: PartialMessages = {
     solAtPyth: 'SOL via Pyth', skrAtPyth: 'SKR via Pyth', quoteUnavailable: 'cotação indisponível — vale o preço on-chain',
     priceAge: 'Idade do preço', priceAgeValue: '{s} s (válido ≤ 60 s on-chain)', priceFeedDown: 'O feed de preços está atualizando — tente de novo em alguns segundos.', quoteFailed: 'Não foi possível obter a cotação.',
     rentReserve: 'Reserva de rent (devolvida após abrir)', oracleFees: 'Oráculo + taxas de rede (est.)', maxSlippage: 'Máximo (proteção de 1%)',
-    oddsNow: 'Suas chances agora (pity {n})', oneSignature: 'Uma assinatura: cria a conta de aleatoriedade, compromete o próximo slot e paga. O oráculo responde em segundos; depois você assina mais uma vez para mintar. O oráculo responde em segundos e o nosso crank abre o pack por você mesmo se fechar o app; se o oráculo nunca responder, o reembolso total do cofre é liberado quando a janela de 1 hora expira (≈ 72 min).',
+    oddsNow: 'Suas chances agora (pity {n})', oneSignature: 'Uma assinatura: cria a conta de aleatoriedade, compromete o próximo slot e paga. O oráculo responde em segundos; depois você assina mais uma vez para mintar — ou o nosso crank abre o pack por você mesmo se fechar o app. Se o oráculo nunca responder, o reembolso total do cofre é liberado quando a janela de 1 hora expira (≈ 72 min).',
     perPack: '{n, plural, one{# cap} other{# caps}} por pacote', floor: 'piso {rarity}', starterOnce: 'uma vez por carteira', dailyCap: 'limite {n}/dia',
     pityIn: '{rarity} garantido em {n}', packDisabled: 'desativado no momento', was: 'antes {price}',
     tabs: { packs: 'Pacotes', services: 'Extras' },
@@ -82,7 +82,7 @@ const pt: PartialMessages = {
     chipLeaf: 'vale de cap ({odds})', chipLeaves: '{n, plural, one{# vale de cap} other{# vales de cap}}', claimVoucher: 'Resgatar vale de cap', voucherHint: 'Uma assinatura: o resgate pede aleatoriedade ao Switchboard e o cap é cunhado como um pacote (≈ 0,01 SOL de rent, devolvido ao fechar). Soulbound por {days} d.', voucherClaimed: 'Vale resgatado', voucherClaimedBody: 'Aguardando o oráculo — seu cap está sendo sorteado…', voucherClaimedMock: 'Vale resgatado (mock)',
     freeCaps: 'Limites de fontes gratuitas: {daily}/dia · {weekly}/semana · {chips} caps grátis/semana.',
     skrPool: 'Recompensas em SKR vêm de um fundo de prêmios financiado pela receita em SKR (nunca são emitidas): ≤ {weekly} SKR/semana em missões, ≤ {season} SKR/temporada; exige ≥ 1 pack pago e carteira com 7 dias.',
-    empty: 'Nada por aqui ainda.', capRoll: 'sorteio de cap', booster: '{n} booster', resetsIn: 'reinicia em {time}', inNextRoot: 'na próxima raiz', done: 'feito',
+    empty: 'Nada por aqui ainda.', capRoll: 'sorteio de cap', booster: '{n, plural, one{# booster} other{# boosters}}', resetsIn: 'reinicia em {time}', inNextRoot: 'na próxima raiz', done: 'feito',
     antiFarm: 'Anti-farm: recompensas exigem ≥ 1 pack pago ou carteira com 24 h e 10 partidas; deduplicação por dispositivo/IP; máx. {sameOpponent} partidas premiadas contra o mesmo oponente por dia; partidas com menos de {minSec} s não são premiadas.',
     reason: {
       account_too_new: 'carteira com menos de 24 h — compre um pacote ou aguarde', play_10_matches_or_buy_a_pack: 'jogue 10 partidas ou compre um pacote',
