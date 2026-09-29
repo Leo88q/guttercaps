@@ -102,6 +102,8 @@ services:
       # Legal gating of paid randomised packs stays off until counsel signs off (docs/09 §5.2 + §7).
       # It is here, and not in backend/.env, because turning it on is a deployment decision that needs the
       # edge to be Cloudflare: `GEO_GATE=shop` alone does nothing — see backend/src/geo.ts.
+      # Temporary owner-selected all-regions mode; keep both age/geo and legacy pack gate off.
+      COMPLIANCE_ENFORCE: ${COMPLIANCE_ENFORCE:-0}
       GEO_GATE: ${GEO_GATE:-off}
       GEO_TRUST_HEADER: ${GEO_TRUST_HEADER:-0}
       GEO_RESTRICT_COUNTRIES: ${GEO_RESTRICT_COUNTRIES:-BE,NL}

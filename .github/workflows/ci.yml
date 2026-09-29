@@ -129,7 +129,7 @@ jobs:
         with: { name: client-dist, path: client/dist, retention-days: 7 }
 
   e2e:
-    name: e2e · built app (mock API) + axe
+    name: e2e · built app + localized errors + axe
     runs-on: ubuntu-latest
     env:
       # Playwright's postinstall would download browsers during `npm ci`; the job installs them in its own
@@ -148,6 +148,9 @@ jobs:
       - run: npm run e2e:types
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test --project=desktop-chromium
+      # Separate bundle: apiMock bypasses wallet signing and cannot exercise these failures.
+      # Wallet/API/RPC/WS are intercepted; no funded wallet or live backend is used.
+      - run: npm run e2e:errors
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()
         with: { name: playwright-report, path: test-results/, retention-days: 7 }
@@ -173,6 +176,7 @@ jobs:
       - run: npm run schema:check
       # the compose build-arg gate's own cases (scripts/deploy-build-env.ts) — they read the real compose
       # file, so a required `${VAR:?}` that nothing documents fails here rather than in a docker layer
+      - run: npm run legal:test
       - run: npm run ops:buildenv -- --selftest
       # the restore drill's own cases (scripts/restore-drill.mjs): a synthetic snapshot round-trips,
       # a corrupted payload is rejected, a lying status file (BackupFailing/BackupStale thresholds)

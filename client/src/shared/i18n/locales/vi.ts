@@ -1,7 +1,19 @@
-import type { PartialMessages } from '../index';
+import rights from '../rights/vi.json';
+import failures from '../failures/vi.json';
+import diagnostics from '../diagnostics/vi.json';
+import screens from '../screens/vi';
+import catalog from '../catalog/vi';
+import ui from '../ui/vi';
+import type { Messages } from '../index';
 
 // Tiếng Việt. Không có dạng số nhiều — chỉ dùng nhánh `other`.
-const vi: PartialMessages = {
+const vi: Messages = {
+  rights,
+  failures,
+  diagnostics,
+  screens,
+  ui,
+  catalog,
   nav: { home: 'Trang chủ', caps: 'Nắp', shop: 'Cửa hàng', market: 'Chợ', arena: 'Đấu trường', stake: 'Stake', quests: 'Nhiệm vụ', leaderboard: 'Xếp hạng', profile: 'Hồ sơ', language: 'Ngôn ngữ', more: 'Thêm' },
   common: {
     connectWallet: 'Kết nối ví', connecting: 'Đang kết nối…', signedIn: 'Đã đăng nhập', signingIn: 'Đang đăng nhập…', signOut: 'Đăng xuất',
@@ -28,7 +40,7 @@ const vi: PartialMessages = {
     solAtPyth: 'SOL theo Pyth', skrAtPyth: 'SKR theo Pyth', quoteUnavailable: 'không có báo giá — áp dụng giá on-chain',
     priceAge: 'Tuổi giá', priceAgeValue: '{s} giây (hợp lệ ≤ 60 giây on-chain)', priceFeedDown: 'Nguồn giá đang cập nhật — thử lại sau vài giây.', quoteFailed: 'Không lấy được báo giá.',
     rentReserve: 'Tiền cọc rent (hoàn lại sau khi mở)', oracleFees: 'Oracle + phí mạng (ước tính)', maxSlippage: 'Tối đa (bảo vệ trượt giá 1%)',
-    oddsNow: 'Tỷ lệ của bạn lúc này (pity {n})', oneSignature: 'Một chữ ký: tạo tài khoản ngẫu nhiên, cam kết slot tiếp theo và thanh toán. Oracle trả lời sau vài giây; sau đó bạn ký thêm một lần để mint. Oracle trả lời trong vài giây và crank của chúng tôi sẽ mở gói cho bạn ngay cả khi bạn đóng ứng dụng; nếu oracle không bao giờ trả lời, khoản hoàn tiền đầy đủ từ kho sẽ mở sau khi cửa sổ 1 giờ của nó hết hạn (≈ 72 phút).',
+    oddsNow: 'Tỷ lệ của bạn lúc này (pity {n})', oneSignature: ui.packSignatures,
     perPack: '{n, plural, other{# nắp}} mỗi gói', floor: 'sàn {rarity}', starterOnce: 'một lần mỗi ví', dailyCap: 'giới hạn {n}/ngày',
     pityIn: 'đảm bảo {rarity} sau {n}', packDisabled: 'tạm tắt', was: 'trước {price}',
     tabs: { packs: 'Gói', services: 'Thêm' },
@@ -117,15 +129,15 @@ const vi: PartialMessages = {
   },
   pass: {
     title: 'Thẻ mùa giải', tier: 'Cấp {n}', xp: '{n} XP', claim: 'Nhận', claimed: 'Đã nhận',
-    noPass: 'Mua thẻ mùa giải để nhận thưởng', pickCap: 'Chọn một chiếc mũ để sơn',
+    noPass: 'Mua thẻ mùa giải để nhận thưởng', pickCap: 'Chọn một nắp chai để sơn',
   },
   services: {
-    title: 'Thêm', subtitle: 'Trang trí, danh tính và tiện ích. Không thứ gì ở đây thay đổi tỷ lệ, sức mạnh hay phần thưởng — không bao giờ.',
+    title: 'Thêm', subtitle: ui.extrasSubtitle,
     burned: 'đốt', toTreasury: 'vào ngân khố', noQuote: 'Chưa có giá cho tiền tệ này — chọn loại khác.', buy: 'Mua', owned: 'Đã sở hữu', active: 'Đang hoạt động',
     dailyLeft: 'còn {n} hôm nay', howItWorks: 'Một chữ ký thanh toán on-chain; $CG bị đốt, SOL/USDC/SKR vào ngân khố công khai. Giao dịch mua được gắn với ví này bằng hash trong giao dịch — không ai chuyển hướng được.',
     expires: 'hết hạn {date}', noPower: 'Không pay-to-win: kiểm chứng on-chain', boosterCap: 'Booster: tối đa 3 mỗi ngày', bought: 'Đã mua', buyFailed: 'Mua thất bại',
-    pickCap: 'Chọn một chiếc mũ để sơn', pickSkin: 'Chọn một skin', pickTheme: 'Chọn một chủ đề', pickPack: 'Chọn một gói', pickDistrict: 'Chọn một quận',
-    noFreeCaps: 'Chưa có mũ — hãy mở gói trước', noCompletedDistrict: 'Hoàn thành một quận (9/9) để mở biểu ngữ',
+    pickCap: 'Chọn một nắp chai để sơn', pickSkin: 'Chọn một skin', pickTheme: 'Chọn một chủ đề', pickPack: 'Chọn một gói', pickDistrict: 'Chọn một quận',
+    noFreeCaps: 'Chưa có nắp chai — hãy mở gói trước', noCompletedDistrict: 'Hoàn thành một quận (9/9) để mở biểu ngữ',
     names: { handle: '@handle', handleChange: 'Đổi handle', capSkin: 'Skin nắp', profileTheme: 'Giao diện hồ sơ', arenaEmotePack: 'Gói emote đấu trường', extraBenchSlots: '+2 ô lưu bàn hợp nhất', seasonPass: 'Vé mùa', booster: 'Booster hợp nhất', packSkipAnim: 'Lật ngay', districtBanner: 'Banner quận' },
     blurbs: {
       handle: 'Tên duy nhất trên bảng xếp hạng, đấu trường và URL hồ sơ.', handleChange: 'Đổi tên một lần mỗi 30 ngày. Handle cũ được giải phóng sau 90 ngày.',

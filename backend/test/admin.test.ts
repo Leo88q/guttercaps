@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import ts from 'typescript';
 // T-B-46 — admin service: allowlist + CSRF gate, audit log (incl. denials), set_params / set_split
 // encoding pinned to the program layout, guard-rails mirrored from admin.rs / emission.rs, kill
 // switch, economy simulator, KPI dashboard, fraud queue round-trip. Chain reads go through the
@@ -325,5 +327,78 @@ describe('kill switch, simulate, kpi, fraud', () => {
     expect(db.get<{ resolved_by: string }>(`SELECT resolved_by FROM fraud_signals WHERE wallet = ?`, suspect)!.resolved_by).toBe(`admin:${ADMIN.publicKey.toBase58()}`);
     expect(admin.auditLog(db)[0]).toMatchObject({ action: 'fraud.resolve', target: suspect, ok: true, payload: { result: { flags: { rewardsPaused: true } , closed: 1 } } });
     expect((await a.get('/v1/admin/audit?limit=5')).json).toHaveLength(5);
+  });
+});
+
+
+describe('localized admin diagnostic contract', () => {
+  const english = JSON.parse(readFileSync(new URL('../../client/src/shared/i18n/diagnostics/en.json', import.meta.url), 'utf8')) as Record<string, string>;
+  function check(d: admin.AdminDiagnostic | undefined) {
+    expect(d).toBeDefined();
+    expect(Object.hasOwn(english, d!.code), d!.code).toBe(true);
+    const vars = [...english[d!.code].matchAll(/\{(\w+)\}/g)].map(m => m[1]);
+    for (const key of vars) {
+      expect(d!.params, `${d!.code}.${key}`).toHaveProperty(key);
+      const value = d!.params![key];
+      expect(['number', 'string']).toContain(typeof value);
+      if (typeof value === 'number') expect(Number.isFinite(value)).toBe(true);
+    }
+  }
+
+  it('every server-owned violation site has a known stable code (new messages cannot silently bypass localization)', () => {
+    const text = readFileSync(new URL('../src/admin.ts', import.meta.url), 'utf8');
+    const source = ts.createSourceFile('admin.ts', text, ts.ScriptTarget.Latest, true);
+    let sites = 0;
+    function visit(node: ts.Node) {
+      if (ts.isObjectLiteralExpression(node)) {
+        const fields = node.properties.filter(ts.isPropertyAssignment);
+        if (fields.some(p => p.name.getText(source) === 'rule') && fields.some(p => p.name.getText(source) === 'message')) {
+          sites++;
+          const meta = fields.find(p => p.name.getText(source) === 'i18n');
+          expect(meta, node.getText(source)).toBeDefined();
+          const codes = [...meta!.getText(source).matchAll(/code: '([^']+)'/g)].map(m => m[1]);
+          expect(codes).toHaveLength(1);
+          expect(Object.hasOwn(english, codes[0])).toBe(true);
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(source);
+    expect(sites).toBe(36);
+  });
+
+  it('real proposal results preserve originals and carry all required variables, including exact micro amounts', async () => {
+    const chain = await admin.fetchChainParams(conn as unknown as Connection);
+    const cases: admin.ParamsProposal[] = [
+      {}, { marketFeeBps: 1001, skrDiscountBps: 1501 }, { marketFeeBps: 200 },
+      { treasury: 'invalid-key' }, { treasury: PublicKey.default.toBase58() },
+      { treasury: Keypair.generate().publicKey.toBase58() },
+      { featuredCollection: 100 }, { packs: [] }, { packs: [{ sku: 4 }] },
+      { packs: [{ sku: 1, chips: 1.5, floor: 9, dailyCap: 300, oddsBps: [1], priceUsdCents: 0 }] },
+      { packs: [{ sku: 1, chips: 6, priceCgMicro: '18446744073709551615', oddsBps: [100, 0, 0, 0, 0, 0, 0, 9900, 0] }] },
+      { packs: [{ sku: 1, pity: { tier: 9, hardAt: 1, softStart: 50, softStepBps: 999 }, priceCgMicro: '-1' }] },
+      { emissionSplitBps: [1] }, { emissionSplitBps: [1, 2, 3, 4, 5] },
+      { emissionSplitBps: [6000, 0, 0, 4000, 0] },
+    ];
+    for (const body of cases) {
+      const p = admin.proposeParams(chain, body, T0);
+      for (const v of p.violations) { expect(v.message.length).toBeGreaterThan(0); check(v.i18n); }
+      expect(p.warningDetails?.map(w => w.message)).toEqual(p.warnings);
+      for (const w of p.warningDetails ?? []) check(w);
+      if (!p.ok) expect(p.instructions).toEqual([]);
+      expect(() => JSON.stringify(p)).not.toThrow();
+    }
+  });
+
+  it('kill-switch warnings and rejections keep the legacy wire format and localized metadata', () => {
+    for (const paused of [true, false]) {
+      const p = admin.killSwitch({ program: 'arena', paused, reason: 'test incident' }, { admin: ARENA_ADMIN, pauser: ARENA_PAUSER, current: paused });
+      expect(p.warningDetails?.map(w => w.message)).toEqual(p.warnings);
+      for (const w of p.warningDetails ?? []) check(w);
+      expect(p.warningDetails?.map(w => w.code)).toContain(paused ? 'alreadyPaused' : 'alreadyRunning');
+    }
+    const p = admin.killSwitch({ program: 'arena', paused: true, reason: '' }, { admin: ARENA_ADMIN, pauser: ARENA_PAUSER });
+    expect(p.ok).toBe(false);
+    for (const v of p.violations) check(v.i18n);
   });
 });

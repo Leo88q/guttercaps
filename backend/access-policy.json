@@ -1,0 +1,17 @@
+{
+  "revision": "2026-09-29.1",
+  "minimumAge": 18,
+  "countryMinimumAge": {},
+  "declarationDays": 365,
+  "deniedRetryDays": 30,
+  "closedRequestRetentionDays": 180,
+  "features": {
+    "packs": { "allow": null, "deny": ["BE", "NL"] },
+    "market": { "allow": null, "deny": [] },
+    "staking": { "allow": null, "deny": [] },
+    "arena": { "allow": null, "deny": [] },
+    "rewards": { "allow": null, "deny": [] },
+    "services": { "allow": null, "deny": [] },
+    "fusion": { "allow": null, "deny": [] }
+  }
+}

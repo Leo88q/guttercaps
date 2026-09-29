@@ -1,3 +1,4 @@
+import { usdText } from '@/shared/i18n/message';
 // Indexer WebSocket → precise query invalidation. Falls back to polling
 // (each hook has its own staleTime) when the socket is down or in mock mode.
 import { useEffect } from 'react';
@@ -44,8 +45,8 @@ export function useIndexerSocket() {
         try {
           const e = JSON.parse(m.data as string) as Event;
           INVALIDATE[e.type]?.(qc, e);
-          if (e.type === 'match_found') toast({ kind: 'info', title: 'Opponent found', body: 'Head to the Arena to reveal your seed.' });
-          if (e.type === 'sale' && e.payload?.seller === publicKey.toBase58()) toast({ kind: 'money', title: 'Chip sold', body: `+${String(e.payload?.priceUsd ?? '')} USD` });
+          if (e.type === 'match_found') toast({ kind: 'info', title: { key: 'ui.opponentFound' }, body: { key: 'screens.revealInArena' } });
+          if (e.type === 'sale' && e.payload?.seller === publicKey.toBase58()) toast({ kind: 'money', title: { key: 'screens.capSold' }, body: usdText(e.payload?.priceUsd == null ? null : Number(e.payload.priceUsd)) });
         } catch { /* ignore */ }
       };
       ws.onclose = () => {

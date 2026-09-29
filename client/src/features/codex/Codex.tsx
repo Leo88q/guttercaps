@@ -1,6 +1,6 @@
-import { COLLECTIONS, RARITY_ORDER } from '@/shared/lib/lore';
+import { useCollections } from '@/shared/lib/lore';
 import { ChipArt } from '@/shared/ui/ChipArt';
-import { collectionColor } from '@/shared/lib/rarity';
+import { collectionColor, rarityName } from '@/shared/lib/rarity';
 import { useT } from '@/shared/i18n';
 
 // Mirrors the marketing site's "The eight districts" gallery inside the app
@@ -12,14 +12,14 @@ import { useT } from '@/shared/i18n';
 // which fits better as a filter on the Chips screen than duplicated here.
 
 export default function Codex() {
+  const COLLECTIONS = useCollections();
   const t = useT();
   return (
     <div className="page page-bg page-bg-codex">
       <div style={{ marginBottom: 16 }}>
         <h1 className="page-title">{t('codex.title')}</h1>
         <p style={{ fontSize: 12, color: '#888', margin: '4px 0 0' }}>
-          Every collection is a real district of Gutter City — its own scene, its own myth,
-          nine chips running from a first throw-up to a one-of-one.
+          {t('ui.codexIntro')}
         </p>
       </div>
 
@@ -35,9 +35,9 @@ export default function Codex() {
 
           <div className="codex-strip">
             {col.caps.map((cap, i) => (
-              <div key={cap.name} className="codex-slot" title={`${RARITY_ORDER[i]}: ${cap.desc}`}>
+              <div key={cap.name} className="codex-slot" title={`${rarityName(i)}: ${cap.desc}`}>
                 <div className="codex-chip"><ChipArt collection={ci} rarity={i} imageUrl={`/art/${col.num}-${i}-256.webp`} /></div>
-                <span className="codex-tier" style={{ color: '#888' }}>{RARITY_ORDER[i]}</span>
+                <span className="codex-tier" style={{ color: '#888' }}>{rarityName(i)}</span>
                 <div className="codex-cap" style={{ color: '#666' }}>{cap.name}</div>
               </div>
             ))}

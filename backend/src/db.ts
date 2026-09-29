@@ -748,6 +748,51 @@ CREATE TABLE IF NOT EXISTS wallet_devices (
   PRIMARY KEY (device_hash, wallet)
 );
 CREATE INDEX IF NOT EXISTS idx_wallet_devices_wallet ON wallet_devices(wallet, last_seen);
+-- ---- compliance: declarations are not independent age verification; DOB is never stored
+CREATE TABLE IF NOT EXISTS age_declarations (
+  wallet TEXT PRIMARY KEY,
+  passed INTEGER NOT NULL,
+  minimum_age INTEGER NOT NULL,
+  policy_revision TEXT NOT NULL,
+  declared_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS rights_requests (
+  id TEXT PRIMARY KEY,
+  wallet TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  body_hash TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  signature TEXT,
+  message TEXT NOT NULL,
+  locale TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  due_at INTEGER NOT NULL,
+  closed_at INTEGER,
+  hold_until INTEGER,
+  version INTEGER NOT NULL DEFAULT 1,
+  policy_revision TEXT NOT NULL,
+  UNIQUE(wallet, idempotency_key)
+);
+CREATE INDEX IF NOT EXISTS idx_rights_owner ON rights_requests(wallet, created_at);
+CREATE INDEX IF NOT EXISTS idx_rights_queue ON rights_requests(status, due_at);
+CREATE TABLE IF NOT EXISTS rights_messages (
+  id TEXT PRIMARY KEY,
+  request_id TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  message TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rights_messages ON rights_messages(request_id, created_at);
+CREATE TABLE IF NOT EXISTS privacy_restrictions (
+  wallet TEXT PRIMARY KEY,
+  request_id TEXT NOT NULL,
+  restricted_at INTEGER NOT NULL,
+  erased_at INTEGER,
+  resumed_at INTEGER
+);
 CREATE TABLE IF NOT EXISTS oracle_prices (
   symbol       TEXT PRIMARY KEY,           -- SOL | SKR
   usd          REAL    NOT NULL,
@@ -776,6 +821,8 @@ export class Db {
 
   /** Additive, idempotent column migrations for dev SQLite files created by older builds. */
   private migrate() {
+    const privacyCols = new Set((this.raw.prepare('PRAGMA table_info(privacy_restrictions)').all() as { name: string }[]).map(c => c.name));
+    if (!privacyCols.has('resumed_at')) this.raw.exec('ALTER TABLE privacy_restrictions ADD COLUMN resumed_at INTEGER');
     const nonces = new Set((this.raw.prepare(`PRAGMA table_info(siws_nonces)`).all() as { name: string }[]).map((c) => c.name));
     if (!nonces.has('consumed_at')) this.raw.exec(`ALTER TABLE siws_nonces ADD COLUMN consumed_at INTEGER`);
     const cols = new Set((this.raw.prepare(`PRAGMA table_info(oracle_prices)`).all() as { name: string }[]).map((c) => c.name));

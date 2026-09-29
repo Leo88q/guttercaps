@@ -88,3 +88,12 @@
   transition: background 0.15s ease, border-color 0.15s ease;
   backdrop-filter: blur(6px);
 }
+
+/* Honor both the OS preference and the in-game accessibility setting. */
+@media (prefers-reduced-motion: reduce) {
+  .chip-card, .chip-card-glow, .chip-card.chip-peeling { animation: none; transition: none; }
+}
+.reduced-motion .chip-card,
+.reduced-motion .chip-card-glow,
+.reduced-motion .chip-card.chip-peeling { animation: none; transition: none; }
+.chip-card[role="button"]:focus-visible { outline: 2px solid var(--cg-neon-cyan); outline-offset: 3px; }

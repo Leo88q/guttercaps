@@ -56,7 +56,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
   return (
     <div className="shell">
-      <nav className="shell-nav" aria-label="Primary">
+      <nav className="shell-nav" aria-label={t('ui.primaryNav')}>
         {NAV.map(({ to, key, Icon, gen, end }) => (
           <NavLink key={to} to={to} end={end} className={({ isActive }) => (isActive ? 'active' : '')} title={key === 'nav.language' ? LOCALE_META[locale].native : undefined}>
             {gen
@@ -68,7 +68,7 @@ export function Shell({ children }: { children: ReactNode }) {
       </nav>
       <div className="shell-body">
         <header className="shell-header">
-          <Link to="/" className="shell-brand"><img src="/favicon.svg" width={24} height={24} alt="" aria-hidden />GUTTERCAPS <small>GUTTER CITY</small></Link>
+          <Link to="/" className="shell-brand"><img src="/favicon.svg" width={24} height={24} alt="" aria-hidden />{t('home.heroTitle')} <small>GUTTER CITY</small></Link>
           <div className="row" style={{ gap: 8 }}>
             {connected && publicKey ? (
               <>

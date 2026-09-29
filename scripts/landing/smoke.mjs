@@ -1,5 +1,5 @@
 // DOM smoke test for the built landing: runs the inline script in happy-dom,
-// checks rendering in EN and RU, ld+json validity and i18n coverage.
+// checks rendering in seven languages, structured data, deep links and coverage.
 //   node scripts/landing/smoke.mjs
 import { Browser, BrowserErrorCaptureEnum } from 'happy-dom';
 import fs from 'node:fs';
@@ -51,6 +51,11 @@ report('EN (default)', 'en');
 qa('.lang-toggle button').find((b) => b.dataset.lang === 'ru').click();
 await page.waitUntilComplete();
 report('RU', 'ru');
+expect(text('.district-name') === 'Ночной мотылёк', 'RU district localized');
+expect(text('.chip-name') === 'Быстрый мотылёк', 'RU cap localized');
+expect(text('.chip-desc') === 'Грубый однослойный набросок, ещё мокрый по краям.', 'RU cap description localized');
+expect(text('.m-name') === 'Алмазная', 'RU rarity localized');
+expect(qa('[data-link="app"]').every((a) => a.href.includes('lang=ru')), 'app links preserve locale');
 console.log(' RU sample mech:', text('.mech-card h3'), '|', text('.mech-card p')?.slice(0, 50));
 console.log(' RU nav:', qa('.nav-links a').map((a) => a.textContent).join(' · '));
 console.log(' RU pressed:', qa('.lang-toggle button').map((b) => b.dataset.lang + '=' + b.getAttribute('aria-pressed')).join(' '));
@@ -59,13 +64,39 @@ expect(/Мир/.test(text('.nav-links a')), 'RU nav translated');
 qa('.lang-toggle button').find((b) => b.dataset.lang === 'en').click();
 await page.waitUntilComplete();
 report('EN again', 'en');
+expect(text('.district-name') === 'Night Moth', 'EN district restored');
+expect(text('.chip-name') === 'Quick Moth', 'EN cap restored');
+expect(text('.m-name') === 'Diamond', 'EN rarity restored');
 expect(text('.mech-card h3') === 'Fusion 3 → 1', 'EN restored after round-trip');
 for (const s of qa('script[type="application/ld+json"]')) { const j = JSON.parse(s.textContent); console.log(' ld+json:', j['@type'], j.mainEntity ? j.mainEntity.length + ' Q' : j.name); }
-const ruStart = html.indexOf('const RU = ') + 11; const RU = JSON.parse(html.slice(ruStart, html.indexOf(';\n', ruStart)));
-const keys = qa('[data-i18n],[data-i18n-html]').map((e) => e.dataset.i18n || e.dataset.i18nHtml);
-const missing = [...new Set(keys)].filter((k) => !(k in RU));
-console.log(' i18n keys in DOM:', new Set(keys).size, '| missing RU:', missing);
-expect(missing.length === 0, 'RU coverage');
+const table = (name) => {
+  const start = html.indexOf(`const ${name} = `) + name.length + 9;
+  return JSON.parse(html.slice(start, html.indexOf(';\n', start)));
+};
+const I18N = table('I18N'), tags = table('LANG_TAGS'), lore = table('LORE'), ui = table('UI');
+for (const [locale, bundle] of Object.entries(I18N)) {
+  qa('.lang-toggle button').find((b) => b.dataset.lang === locale).click();
+  await page.waitUntilComplete();
+  report(locale, tags[locale]);
+  expect(page.mainFrame.window.localStorage.getItem('gc.landing.lang') === locale, 'persists locale');
+  expect(new URL(page.mainFrame.window.location.href).searchParams.get('lang') === locale, 'query follows selection, so reload cannot reset it');
+  for (const el of qa('[data-i18n],[data-i18n-html]')) {
+    const key = el.dataset.i18n || el.dataset.i18nHtml;
+    const value = el.dataset.i18nHtml !== undefined ? el.innerHTML : el.textContent;
+    expect(value === bundle[key], `${locale}:${key} rendered text`);
+  }
+  expect(text('.chip-name') === lore[locale].c0r0.name, `${locale}: cap name`);
+  expect(text('.m-name') === ui[locale].rarity8, `${locale}: rarity`);
+  expect(text('.pack-name') === ui[locale].pack0, `${locale}: pack`);
+  expect(text('#howto h3') === bundle['how.0.h'], `${locale}: how to play`);
+  expect(text('[data-link="terms"]') === bundle['footer.terms'], `${locale}: legal link`);
+  expect(qa('[data-link="app"],[data-link="terms"],[data-link="privacy"]').every((el) => new URL(el.href).searchParams.get('lang') === locale), `${locale}: app hand-off`);
+  expect(qa('.lang-toggle [aria-pressed="true"]').length === 1, `${locale}: one selected language`);
+  const faq = qa('script[type="application/ld+json"]').map((s) => JSON.parse(s.textContent)).find((d) => d['@type'] === 'FAQPage');
+  expect(faq.mainEntity[0].acceptedAnswer.text === bundle['faq.a0'], `${locale}: structured FAQ`);
+  const body = document.body.cloneNode(true); body.querySelectorAll('script').forEach((n) => n.remove());
+  expect(!/\{(?:n|days|rarity|amount)\}/.test(body.textContent), `${locale}: interpolated placeholders`);
+}
 console.log('script errors:', errors);
 expect(errors.length === 0, 'no script errors');
 await browser.close();

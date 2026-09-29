@@ -209,7 +209,9 @@ for (const q of [...DAILY_QUESTS, ...WEEKLY_QUESTS, ...PERMANENT_QUESTS]) {
 // staking error table: localnet expect.ts + client errors.ts must list every StakeError variant in enum order
 const stakeErrs = Array.from(rs('programs/staking/src/errors.rs').matchAll(/#\[msg\("[^"]*"\)\]\s*(\w+)/g)).map((m) => m[1]);
 check('staking error names (localnet expect.ts)', Array.from(line(rs('tests/localnet/helpers/expect.ts'), /const STAKING = \[([\s\S]*?)\] as const;/).matchAll(/'(\w+)'/g)).map((m) => m[1]), stakeErrs);
-check('staking error count (client errors.ts)', Array.from(line(rs('client/src/chain/errors.ts'), /const STAKING = \[([\s\S]*?)\];/).matchAll(/'((?:[^'\\]|\\.)*)'/g)).length, stakeErrs.length);
+// Localization moved labels out of errors.ts; compare ordered variant names, not just a count.
+const clientErrors = JSON.parse(rs('client/src/chain/errorCatalog.json')) as { staking: { name: string }[] };
+check('staking error names (client errorCatalog.json)', clientErrors.staking.map(e => e.name), stakeErrs);
 
 // ---- market / arena ----
 check('market fee bps (default)', Number(line(market, /FEE_BPS: u16 = (\d+)/)), FEES.marketplaceFeeBps);

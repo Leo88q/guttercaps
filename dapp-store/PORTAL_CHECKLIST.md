@@ -1,3 +1,9 @@
+> **Legal review (2026-09-29): incomplete; technical deployment blocker removed by owner request.** See
+> [launch readiness](../docs/legal/LAUNCH-READINESS.md). A publisher/brand is not a substitute
+> for the actual legal operator. Submit truthful entity contacts; provide any required
+> director/beneficial-owner verification privately to the platform. Do not submit draft
+> policies as approved, a nonexistent licence, or a guessed legal address.
+
 # Publisher Portal submission notes
 
 The old CLI flow this file used to configure (`dapp-store create-publisher`
@@ -45,9 +51,8 @@ filling it in doesn't do anything by itself, unlike the old config.yaml.
 - [x] Banner 1200×600 PNG — `media/banner.png` (cropped from
       `art_drafts/site/banner-01.png`, Night Moth street scene)
 - [ ] Minimum 4 screenshots or videos, 1080p — the ONLY remaining media item.
-      The sandbox cannot run a browser (both playwright and puppeteer browser
-      CDNs are network-blocked), so these must come from the owner. Fastest
-      path, no device needed for a first pass: `npm run e2e:build` +
+      Browser-based QA is now available, but approved 1080p store captures
+      still need to be produced and checked. Fastest path for a first pass: `npm run e2e:build` +
       `npx vite preview` on client/dist, open Chrome devtools → device toolbar
       → 1080×1920 on `/`, `/shop`, `/codex`, `/market`, capture each
       (Ctrl+Shift+P → "Capture full size screenshot"). For submission,

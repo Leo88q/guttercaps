@@ -1,10 +1,12 @@
+import { checkTransactionAccess } from './access';
+import { errorSnapshot } from './errorSnapshot';
 // One pipeline for every transaction: compute budget → v0 message → wallet
 // signature (+ local partial signers) → send → confirm → decoded error.
 import {
   ComputeBudgetProgram, Connection, PublicKey, TransactionMessage, VersionedTransaction,
   type AddressLookupTableAccount, type Keypair, type TransactionInstruction, type TransactionSignature,
 } from '@solana/web3.js';
-import { humanizeTxError } from './errors';
+import { humanizeTxError, isBlockhashExpired } from './errors';
 import { base58Encode } from '@/shared/lib/base58';
 
 export interface WalletLike {
@@ -27,7 +29,7 @@ export interface SendOptions {
 
 export class TxError extends Error {
   constructor(public readonly cause: unknown, public readonly logs?: string[]) {
-    super(humanizeTxError(cause));
+    super(errorSnapshot(cause).message);
   }
 }
 
@@ -120,12 +122,14 @@ export async function sendTx(
   ixs: TransactionInstruction[],
   opts: SendOptions = {},
 ): Promise<{ signature: TransactionSignature; logs: string[] }> {
+  await checkTransactionAccess(wallet.publicKey.toBase58(), ixs);
   let attempt = 0;
   for (;;) {
     attempt++;
     try {
       const { tx, blockhash, lastValidBlockHeight } = await buildV0Tx(connection, wallet.publicKey, ixs, opts);
       if (opts.signers?.length) tx.sign(opts.signers);
+      await checkTransactionAccess(wallet.publicKey.toBase58(), ixs);
       const signed = await wallet.signTransaction(tx);
       const sigBytes = signed.signatures[0];
       const signature = base58Encode(sigBytes);
@@ -140,9 +144,8 @@ export async function sendTx(
       const txInfo = await connection.getTransaction(signature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
       return { signature, logs: txInfo?.meta?.logMessages ?? [] };
     } catch (e) {
-      const msg = String((e as Error)?.message ?? e);
       // one automatic rebuild on expired blockhash, never on user rejection / program error
-      if (attempt === 1 && /block height exceeded|Blockhash not found|expired/i.test(msg)) continue;
+      if (attempt === 1 && isBlockhashExpired(e)) continue;
       throw e instanceof TxError ? e : new TxError(e);
     }
   }

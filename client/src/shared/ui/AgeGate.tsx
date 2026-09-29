@@ -1,3 +1,6 @@
+// This legacy local confirmation is only UI. Runtime eligibility is separately checked by
+// backend/compliance and chain/access before new first-party transactions; it cannot satisfy
+// the server-side age declaration. See /account/rights. Existing exits do not depend on it.
 // The 18+ confirmation (PRD §7 "18+", docs/09 §5.2).
 //
 // Two things it deliberately is not:

@@ -76,45 +76,74 @@
 /*__STEP_ART__*/
 
   // ---------------------------------------------------------------------
-  // i18n — EN is inline in the markup, RU is a dictionary keyed by
-  // data-i18n. The other five app languages (PT/ES/VI/ID/FIL) land here
-  // after native review; the app itself already ships all seven.
-  // ---------------------------------------------------------------------
+  // All seven dictionaries are validated at build time. Query > saved > browser.
   let LANG = 'en';
-  const EN = {};
-  document.querySelectorAll('[data-i18n],[data-i18n-html]').forEach((el) => {
-    const k = el.dataset.i18n || el.dataset.i18nHtml;
-    EN[k] = el.dataset.i18nHtml !== undefined ? el.innerHTML : el.textContent;
-  });
-  EN['meta.title'] = document.title;
+  const financialCells = [...document.querySelectorAll('.legend b, .bar b, .fee-table .num')].map((el) => [el, el.textContent]);
   const metaDesc = document.querySelector('meta[name="description"]');
-  EN['meta.desc'] = metaDesc ? metaDesc.content : '';
-
-  function detectLang() {
-    const q = new URLSearchParams(location.search).get('lang');
-    if (q === 'ru' || q === 'en') return q;
-    try { const s = localStorage.getItem('gc.landing.lang'); if (s === 'ru' || s === 'en') return s; } catch (e) { /* private mode */ }
-    return (navigator.language || '').toLowerCase().startsWith('ru') ? 'ru' : 'en';
+  const isLang = (l) => typeof l === 'string' && Object.hasOwn(I18N, l);
+  function normalizeLang(l) {
+    const code = String(l || '').toLowerCase().split(/[-_]/)[0];
+    return code === 'tl' ? 'fil' : isLang(code) ? code : null;
   }
-
-  function tr(k) { return (LANG === 'ru' && RU[k] !== undefined) ? RU[k] : EN[k]; }
+  function detectLang() {
+    const query = normalizeLang(new URLSearchParams(location.search).get('lang'));
+    if (query) return query;
+    try { const saved = normalizeLang(localStorage.getItem('gc.landing.lang')); if (saved) return saved; } catch { /* private mode */ }
+    for (const lang of navigator.languages || [navigator.language]) {
+      const detected = normalizeLang(lang); if (detected) return detected;
+    }
+    return 'en';
+  }
+  function tr(k, vars = {}) {
+    return I18N[LANG][k].replace(/\{(\w+)\}/g, (whole, key) => Object.hasOwn(vars, key) ? String(vars[key]) : whole);
+  }
+  function num(n) { return new Intl.NumberFormat(LANG_TAGS[LANG]).format(n); }
+  function percent(value) { return new Intl.NumberFormat(LANG_TAGS[LANG], { style: 'percent', maximumFractionDigits: 2 }).format(value); }
+  function usd(value) { return new Intl.NumberFormat(LANG_TAGS[LANG], { style: 'currency', currency: 'USD' }).format(value); }
 
   function setLang(lang) {
-    LANG = lang === 'ru' ? 'ru' : 'en';
-    document.documentElement.lang = LANG;
+    LANG = normalizeLang(lang) || 'en';
+    document.documentElement.lang = LANG_TAGS[LANG];
+    document.documentElement.dataset.lang = LANG;
     document.querySelectorAll('[data-i18n],[data-i18n-html]').forEach((el) => {
       const k = el.dataset.i18n || el.dataset.i18nHtml;
       const v = tr(k);
       if (v === undefined) return;
       if (el.dataset.i18nHtml !== undefined) el.innerHTML = v; else el.textContent = v;
     });
+    document.querySelectorAll('[data-i18n-aria]').forEach((el) => el.setAttribute('aria-label', tr(el.dataset.i18nAria)));
     document.title = tr('meta.title');
+    for (const prefix of ['og', 'twitter']) {
+      const title = document.querySelector(`meta[property="${prefix}:title"],meta[name="${prefix}:title"]`);
+      const desc = document.querySelector(`meta[property="${prefix}:description"],meta[name="${prefix}:description"]`);
+      if (title) title.content = tr('meta.title');
+      if (desc) desc.content = tr('meta.desc');
+    }
+    document.querySelector('meta[property="og:locale"]').content = LANG_TAGS[LANG].replace('-', '_');
+    document.querySelectorAll('script[type="application/ld+json"]').forEach((el) => {
+      const data = JSON.parse(el.textContent);
+      if (data['@type'] === 'FAQPage') data.mainEntity.forEach((entry, i) => { entry.name = tr('faq.q' + i); entry.acceptedAnswer.text = tr('faq.a' + i); });
+      if (data['@type'] === 'VideoGame') data.description = tr('meta.desc');
+      el.textContent = JSON.stringify(data);
+    });
     if (metaDesc) metaDesc.content = tr('meta.desc');
     document.querySelectorAll('.lang-toggle button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lang === LANG)));
+    try { const url = new URL(location.href); url.searchParams.set('lang', LANG); history.replaceState(null, '', url.href); } catch { /* static file / restricted history */ }
     try { localStorage.setItem('gc.landing.lang', LANG); } catch (e) { /* ignore */ }
+    for (const [el, value] of financialCells) {
+      if (/^[−-]?[\d.]+\s*%$/.test(value)) el.textContent = percent(Number(value.replace('%', '').replace('−', '-')) / 100);
+      else if (value.endsWith('$CG')) el.textContent = num(Number(value.replace('$CG', '').trim())) + ' $CG';
+      else if (value.startsWith('$')) el.textContent = value.split(' – ').map((v) => usd(Number(v.replace('$', '')))).join(' – ');
+    }
     renderHowto();
     renderPacks();
     renderStats(lastStats);
+    renderDistricts();
+    renderTiers();
+    document.querySelectorAll('a[aria-disabled="true"]').forEach((a) => { a.title = UI[LANG].comingSoon; });
+    document.querySelector('nav').setAttribute('aria-label', UI[LANG].primaryNav);
+    document.querySelector('.lang-toggle').setAttribute('aria-label', tr('nav.language'));
+    document.querySelectorAll('[data-link="app"],[data-link="terms"],[data-link="privacy"]').forEach((a) => { const url = new URL(LINKS[a.dataset.link]); url.searchParams.set('lang', LANG); a.href = url.href; });
   }
   document.querySelectorAll('.lang-toggle button').forEach((b) => b.addEventListener('click', () => setLang(b.dataset.lang)));
 
@@ -128,7 +157,7 @@
   function renderHowto() {
     const wrap = document.getElementById('howto');
     wrap.innerHTML = HOWTO.map((s, i) => {
-      const [h, p, f] = s[LANG] || s.en;
+      const [h, p, f] = ['h', 'p', 'f'].map((part) => tr(`how.${i}.${part}`));
       const src = STEP_ART['step-' + STEP_KEYS[i]] || '';
       const photo = src ? '<img class="step-photo" src="' + src + '" alt="" aria-hidden="true" loading="lazy" decoding="async">' : '';
       return '<li class="step" style="--step-color:' + s.color + ';--step-glow:' + s.glow + '">' + photo +
@@ -138,19 +167,30 @@
 
   function renderPacks() {
     const wrap = document.getElementById('packs-grid');
-    wrap.innerHTML = PACKS.map((p) => {
-      const [name, tag, lines] = p[LANG] || p.en;
-      const alt = p.cg ? (LANG === 'ru' ? 'или ' : 'or ') + p.cg : '';
+    wrap.innerHTML = PACKS.map((p, i) => {
+      const name = UI[LANG]['pack' + i], tag = tr('pack.tag' + i);
+      const floor = p.floor, caps = p.chips;
+      const lines = [tr('pack.caps', { n: caps, rarity: tierName(floor) })];
+      if (i === 0) lines.push(tr('pack.lock', { days: 7 }), tr('pack.noPity'));
+      else {
+        lines.push(tr('pack.hard', { rarity: tierName(6), n: p.hardAt }));
+        lines.push(i === 3 ? tr('pack.limit', { n: p.dailyCap }) : tr('pack.soft', { n: p.softStart }));
+      }
+      lines.push(i === 3 ? tr('pack.pool') : 'SOL · USDC · SKR' + (p.cg ? ' · $CG' : ''));
+      const alt = p.cg ? tr('pack.or', { amount: num(Number(p.cg.replace(/[^0-9]/g, ''))) + ' $CG' }) : '';
       return '<div class="pack" style="--pack-color:' + p.color + ';--pack-glow:' + p.glow + '">' +
         '<span class="pack-tag">' + tag + '</span><span class="pack-name">' + name + '</span>' +
-        '<span class="pack-price">' + p.price + '<small>' + alt + '</small></span>' +
+        '<span class="pack-price">' + usd(Number(p.price.slice(1))) + '<small>' + alt + '</small></span>' +
         '<ul>' + lines.map((l) => '<li>' + l + '</li>').join('') + '</ul></div>';
     }).join('');
   }
 
-  // Charge meter — built top-down from Diamond to Common.
-  (function () {
+  function tierName(i) { return UI[LANG]['rarity' + i]; }
+
+  // Charge meter and permits re-render on every language change.
+  function renderTiers() {
     const wrap = document.getElementById('meterRows');
+    wrap.replaceChildren();
     [...TIERS].reverse().forEach((t, idx) => {
       const rank = TIERS.length - 1 - idx;
       const row = document.createElement('div');
@@ -160,38 +200,37 @@
       row.style.setProperty('--dot-glow', (5 + rank * 2.4) + 'px');
       row.innerHTML =
         '<span class="meter-dot"></span>' +
-        '<span class="m-name" style="font-size:' + (14 + rank * 1.7) + 'px">' + t.key + '</span>' +
-        '<span class="m-odds">' + t.odds + '</span>' +
-        '<span class="m-level">lvl ' + t.level + '<span class="m-power">⚡ ' + t.power + ' · ⚖ ' + t.weight + '</span></span>';
+        '<span class="m-name" style="font-size:' + (14 + rank * 1.7) + 'px">' + tierName(rank) + '</span>' +
+        '<span class="m-odds">' + percent(parseFloat(t.odds) / 100) + '</span>' +
+        '<span class="m-level">' + tr('level', { n: num(t.level) }) + '<span class="m-power">⚡ ' + t.power + ' · ⚖ ' + t.weight + '</span></span>';
       wrap.appendChild(row);
     });
-  })();
 
-  // Permit cards (rules section) — same TIERS table, no second source of truth.
-  (function () {
-    const wrap = document.getElementById('permitGrid');
-    TIERS.forEach((t) => {
+    // Same tier table, not a second source of truth.
+    const permits = document.getElementById('permitGrid');
+    permits.replaceChildren();
+    TIERS.forEach((t, i) => {
       const card = document.createElement('div');
       card.className = 'permit';
       card.style.setProperty('--p-color', t.color);
-      card.innerHTML = '<div class="p-tier">' + t.key + '</div><div class="p-odds">' + t.odds + '</div><div class="p-level">lvl ' + t.level + ' · ' + t.power + '⚡</div>';
-      wrap.appendChild(card);
+      card.innerHTML = '<div class="p-tier">' + tierName(i) + '</div><div class="p-odds">' + percent(parseFloat(t.odds) / 100) + '</div><div class="p-level">' + tr('level', { n: num(t.level) }) + ' · ' + t.power + '⚡</div>';
+      permits.appendChild(card);
     });
-  })();
+  }
 
   // Live counters from the indexer (backend GET /v1/stats). Never faked:
   // if the API is unreachable the section says so.
   let lastStats = null;
   function renderStats(s) {
     const status = document.getElementById('stats-status');
-    const loc = LANG === 'ru' ? 'ru-RU' : 'en-US';
+    const loc = LANG_TAGS[LANG];
     if (!s) { status.textContent = tr('stats.offline'); return; }
     document.querySelectorAll('[data-stat]').forEach((el) => {
       const v = s[el.dataset.stat];
       el.classList.remove('pending');
       el.textContent = typeof v === 'number' ? v.toLocaleString(loc) : '—';
     });
-    status.textContent = (LANG === 'ru' ? 'devnet · слот ' : 'devnet · slot ') + Number(s.lastSlot || 0).toLocaleString(loc);
+    status.textContent = tr('stats.slot', { n: num(Number(s.lastSlot || 0)) });
   }
   (function () {
     if (typeof fetch !== 'function' || typeof AbortController !== 'function') return;
@@ -208,9 +247,12 @@
   // ring; add an "img" field per cap when final art arrives.
   // ---------------------------------------------------------------------
 /*__COLLECTIONS__*/
-  (function () {
+  function renderDistricts() {
     const wrap = document.getElementById('districts');
-    COLLECTIONS.forEach((col) => {
+    const scrolls = [...wrap.querySelectorAll('.chip-row')].map((row) => row.scrollLeft);
+    wrap.replaceChildren();
+    COLLECTIONS.forEach((source, ci) => {
+      const col = LANG !== 'en' ? { ...source, ...LORE[LANG]['d' + ci], caps: source.caps.map((cap, ri) => ({ ...cap, ...LORE[LANG]['c' + ci + 'r' + ri] })) } : source;
       const div = document.createElement('div');
       div.className = 'district';
       div.style.setProperty('--district-color', col.color);
@@ -240,7 +282,7 @@
             : '<span class="chip-mono" style="font-size:' + Math.round(size * 0.32) + 'px;">' + col.name.charAt(0) + '</span>';
         row += '<div class="chip-slot' + (i === 8 ? ' chip-slot--diamond' : '') + '">' +
           '<div class="chip-circle" style="' + circleStyle + '">' + inner + '</div>' +
-          '<span class="chip-tier" style="color:' + t.color + '">' + t.key + '</span>' +
+          '<span class="chip-tier" style="color:' + t.color + '">' + tierName(i) + '</span>' +
           '<span class="chip-name">' + cap.name + '</span>' +
           '<span class="chip-desc">' + cap.desc + '</span></div>';
       });
@@ -253,8 +295,9 @@
         banner +
         '<p class="district-history">' + col.history + '</p><div class="chip-row">' + row + '</div>';
       wrap.appendChild(div);
+      div.querySelector('.chip-row').scrollLeft = scrolls[ci] || 0;
     });
-  })();
+  }
 
   // ---------------------------------------------------------------------
   // PHOTO WALLS — backdrop reveal on scroll + cursor light in the hero.

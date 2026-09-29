@@ -69,8 +69,8 @@ export function HumanCheck({ compact = false, always = false }: { compact?: bool
         size: compact ? 'compact' : 'flexible',
         callback: (token) => {
           verify.mutate({ token, fingerprint: deviceFingerprint() }, {
-            onSuccess: () => toast({ kind: 'success', title: t('human.verifiedToast') }),
-            onError: (e) => { toast({ kind: 'error', title: t('human.failedToast'), body: String((e as Error)?.message ?? e) }); try { ts.reset(widgetId.current); } catch { /* ignore */ } },
+            onSuccess: () => toast({ kind: 'success', title: { key: 'human.verifiedToast' } }),
+            onError: (e) => { toast({ kind: 'error', title: { key: 'human.failedToast' }, error: e }); try { ts.reset(widgetId.current); } catch { /* ignore */ } },
           });
         },
         'error-callback': () => setScriptError(true),
@@ -95,7 +95,7 @@ export function HumanCheck({ compact = false, always = false }: { compact?: bool
       </div>
       <div className="tiny muted">{verified ? t('human.validUntil', { date: st.expiresAt ? new Date(st.expiresAt).toLocaleDateString() : '—' }) : t('human.body')}</div>
       {!verified && (isMock() || !st.siteKey ? (
-        <button className="btn btn-sm" disabled={verify.isPending} onClick={() => verify.mutate({ token: 'mock-token', fingerprint: deviceFingerprint() }, { onSuccess: () => toast({ kind: 'success', title: t('human.verifiedToast') }) })}>
+        <button className="btn btn-sm" disabled={verify.isPending} onClick={() => verify.mutate({ token: 'mock-token', fingerprint: deviceFingerprint() }, { onSuccess: () => toast({ kind: 'success', title: { key: 'human.verifiedToast' } }) })}>
           {verify.isPending ? t('common.working') : t('human.verifyMock')}
         </button>
       ) : (

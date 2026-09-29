@@ -8,7 +8,7 @@
     "lock:integrity": "node --experimental-strip-types scripts/lock-integrity.ts",
     "localnet:build": "sh scripts/anchor-build-localnet.sh",
     "localnet:fixtures": "node --experimental-strip-types tests/localnet/fetch-fixtures.ts",
-    "verify": "npm run lock:matrix && npm run lock:integrity -- --selftest && npm run lock:integrity && npm run economy:check && npm run economy:test && npm run security:static && npm --prefix client run typecheck && npm --prefix client test && npm --prefix client run build && npm run bundle:check && npm --prefix backend run typecheck && npm run backend:test && npm run landing:check && npm run api:check && npm run program-ids -- status && npm run env:check && npm run schema:check && npm run ops:buildenv -- --selftest && npm run ops:restore-drill -- --selftest && npm run verify-deploy -- --selftest && npm run audit:gate -- --selftest && npm run workflows:check && npm run selftest:cargolock && npm run selftest:junit && npm run selftest:cu && npm run state:layout && npm run state:layout -- --selftest && npm run fonts:check && npm run docs:refs",
+    "verify": "npm run legal:test && npm run lock:matrix && npm run lock:integrity -- --selftest && npm run lock:integrity && npm run economy:check && npm run economy:test && npm run security:static && npm --prefix client run typecheck && npm --prefix client test && npm --prefix client run build && npm run bundle:check && npm --prefix backend run typecheck && npm run backend:test && npm run landing:check && npm run api:check && npm run program-ids -- status && npm run env:check && npm run schema:check && npm run ops:buildenv -- --selftest && npm run ops:restore-drill -- --selftest && npm run verify-deploy -- --selftest && npm run audit:gate -- --selftest && npm run workflows:check && npm run selftest:cargolock && npm run selftest:junit && npm run selftest:cu && npm run state:layout && npm run state:layout -- --selftest && npm run fonts:check && npm run docs:refs",
     "setup": "node --experimental-strip-types scripts/setup.ts",
     "skr-pool": "node --experimental-strip-types scripts/skr-pool.ts",
     "pyth-pusher": "node --experimental-strip-types scripts/pyth-pusher.ts",
@@ -28,7 +28,7 @@
     "backend:rebuild": "npm --prefix backend run rebuild",
     "backend:test": "npm --prefix backend test",
     "landing:build": "python3 scripts/landing/build.py",
-    "landing:check": "node --experimental-strip-types scripts/landing/check.ts && node scripts/landing/smoke.mjs",
+    "landing:check": "python3 -m unittest discover -s scripts/landing -p '*_test.py' && node --experimental-strip-types scripts/landing/check.ts && node scripts/landing/smoke.mjs",
     "assets:inventory": "python3 scripts/asset-inventory.py",
     "assets:qa": "python3 scripts/asset-visual-qa.py",
     "assets:pipeline": "node --experimental-strip-types scripts/art-pipeline.ts",
@@ -75,7 +75,13 @@
     "schema:drift": "node --experimental-strip-types scripts/schema-drift.ts --write",
     "selftest:cargolock": "sh scripts/selftest-cargo-lock.sh",
     "selftest:junit": "sh scripts/selftest-surface-junit.sh",
-    "selftest:cu": "sh scripts/selftest-surface-cu.sh"
+    "selftest:cu": "sh scripts/selftest-surface-cu.sh",
+    "e2e:errors": "VITE_API_MOCK=0 npm --prefix client run build -- --outDir ../.arena/error-client && E2E_REAL_ERRORS=1 playwright test --config playwright.errors.config.ts --project=desktop-chromium --workers=1",
+    "legal:check": "node scripts/legal-readiness.mjs",
+    "legal:test": "node --test tests/legal/*.test.mjs",
+    "ops:release": "docker compose -f ops/deploy/docker-compose.yaml pull && docker compose -f ops/deploy/docker-compose.yaml up -d",
+    "privacy:retention": "node --no-warnings=ExperimentalWarning --import tsx backend/src/privacy-maintenance.ts retention",
+    "privacy:reapply": "node --no-warnings=ExperimentalWarning --import tsx backend/src/privacy-maintenance.ts reapply-erasure"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",

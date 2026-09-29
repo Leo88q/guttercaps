@@ -1,3 +1,5 @@
+import { phaseLabel } from '@/shared/lib/presentation';
+import { skinText, emotePackName } from '@/shared/lib/cosmetics';
 import { useMemo, useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useMe, useActivity, useMyServices, useReferrals, useGrid, usePass, useClaimPassTier, useMyChips } from '@/api/hooks';
@@ -10,14 +12,14 @@ import { useSignIn } from '@/app/session';
 import { useUiStore } from '@/app/store/ui';
 import { useTxStore, useActiveOps } from '@/app/store/txs';
 import { CleanZone, KV, Modal, Stat, Skeleton, Empty, Pill, Progress } from '@/shared/ui/primitives';
-import { COLLECTIONS } from '@/shared/lib/lore';
+import { localizedCollection, useCollections } from '@/shared/lib/lore';
 import { collectionColor } from '@/shared/lib/rarity';
 import { KIND, PROFILE_THEMES, loadBanner, loadTheme, ownedBanners, ownedThemes, owns, saveBanner, saveTheme, themeById } from '@/shared/lib/cosmetics';
-import { EMOTE_PACK_BY_ID, PASS_TRACK, SKIN_BY_ID, type PassReward } from '@guttercaps/economy';
+import { PASS_TRACK, type PassReward } from '@guttercaps/economy';
 import { CapPicker } from '@/shared/ui/CapPicker';
 import { SprayCapToggle } from '@/shared/ui/buttons';
 import { HumanCheck } from '@/shared/ui/HumanCheck';
-import { shortKey, timeAgo, fmtUnits, fmtCg } from '@/shared/lib/format';
+import { shortKey, timeAgo, fmtUnits, fmtCg, fmtUsd, fmtDecimal } from '@/shared/lib/format';
 import { CLUSTER, EXPLORER, FLAGS, RPC_URL, PROGRAM_IDS } from '@/app/config';
 import { isMock, setMockMode } from '@/api/client';
 import { REFERRAL } from '@guttercaps/economy';
@@ -28,6 +30,7 @@ import { ChevronRightIcon as ChevronIcon, CopyIcon, ExternalIcon, LangIcon, Logo
 import { SoundIcon } from '@/shared/ui/icons';
 
 export default function Profile() {
+  const COLLECTIONS = useCollections();
   const { publicKey, wallet } = useWallet();
   const { signOut } = useSignIn();
   const me = useMe();
@@ -67,7 +70,7 @@ export default function Profile() {
             let best: [number, number] | null = null;
             cells?.forEach((row, ci) => row.forEach((n, ri) => { if (n > 0 && (!best || ri > best[1])) best = [ci, ri]; }));
             return best ? (
-              <span style={{ width: 64, flex: '0 0 auto', borderRadius: '50%', border: `2px solid ${rarityColor(best[1])}` }} title="Your rarest cap">
+              <span style={{ width: 64, flex: '0 0 auto', borderRadius: '50%', border: `2px solid ${rarityColor(best[1])}` }} title={t('ui.rarestCap')}>
                 <ChipArt collection={best[0]} rarity={best[1]} imageUrl={chipArtUrl(best[0], best[1])} crimp={rarityColor(best[1])} />
               </span>
             ) : null;
@@ -77,7 +80,7 @@ export default function Profile() {
             <p className="page-sub">{wallet?.adapter.name} · <a href={EXPLORER.account(addr)} target="_blank" rel="noreferrer" className="row" style={{ gap: 3, display: 'inline-flex' }}>{shortKey(addr, 8)} <ExternalIcon size={11} /></a> · {t('profile.playingSince', { date: me.data?.firstSeen ? fmtLocale.date(me.data.firstSeen, locale) : '—' })}</p>
           </div>
         </div>
-        <div className="row" style={{ gap: 8 }}>
+        <div className="row-wrap" style={{ gap: 8 }}>
           <button className="btn btn-sm" onClick={() => setHandleOpen(true)}>{me.data?.handle ? t('profile.handle.change') : t('profile.handle.get')}</button>
           <button className="btn btn-sm" onClick={() => void signOut()}><LogoutIcon size={14} /> {t('common.signOut')}</button>
         </div>
@@ -127,19 +130,19 @@ export default function Profile() {
 
       {(hasBanner || hasTheme) && (
         <div className="card stack-sm">
-          <div className="strong">Showcase</div>
+          <div className="strong">{t('ui.showcase')}</div>
           {hasBanner && (
             <div className="stack-sm">
-              <span className="label">District banner {completed.length === 0 && <span className="muted">— complete a district (9/9) to unlock</span>}</span>
+              <span className="label">{t('ui.banner')} {completed.length === 0 && <span className="muted">— {t('ui.bannerHint')}</span>}</span>
               <div className="tag-list">
-                <Pill active={banner === null} onClick={() => { setBannerState(null); saveBanner(addr, null); }}>Off</Pill>
+                <Pill active={banner === null} onClick={() => { setBannerState(null); saveBanner(addr, null); }}>{t('ui.off')}</Pill>
                 {bannersOwned.map((ci) => <Pill key={ci} active={banner === ci} onClick={() => { setBannerState(ci); saveBanner(addr, ci); }}><span style={{ width: 8, height: 8, borderRadius: 4, background: collectionColor(ci) }} />{COLLECTIONS[ci].name}</Pill>)}
               </div>
             </div>
           )}
           {hasTheme && (
             <div className="stack-sm">
-              <span className="label">Profile theme</span>
+              <span className="label">{t('ui.profileTheme')}</span>
               <div className="tag-list">
                 {PROFILE_THEMES.filter((th) => themesOwned.includes(th.id)).map((th) => <Pill key={th.id} active={theme === th.id} onClick={() => { setThemeState(th.id); saveTheme(addr, th.id); }}><span style={{ width: 8, height: 8, borderRadius: 4, background: th.hex }} />{th.label}</Pill>)}
               </div>
@@ -153,7 +156,7 @@ export default function Profile() {
       <div className="card stack-sm">
         <div className="strong">{t('profile.referrals')}</div>
         <div className="small muted">{t('profile.referralBody', { pct: REFERRAL.referrerRewardBps / 100, cap: REFERRAL.referrerCapCgPerRefereeMicro / 1e6, welcome: REFERRAL.refereeWelcomeCgMicro / 1e6 })}</div>
-        <div className="row"><input className="input mono" readOnly value={refLink} onFocus={(e) => e.currentTarget.select()} /><button className="btn" onClick={() => { void navigator.clipboard.writeText(refLink); ui.toast({ kind: 'success', title: t('common.copied') }); }}><CopyIcon size={14} /> {t('common.copy')}</button></div>
+        <div className="row"><input className="input mono" readOnly value={refLink} onFocus={(e) => e.currentTarget.select()} /><button className="btn" onClick={() => { void navigator.clipboard.writeText(refLink); ui.toast({ kind: 'success', title: { key: 'common.copied' } }); }}><CopyIcon size={14} /> {t('common.copy')}</button></div>
         {referrals.data && (
           <CleanZone className="stack-sm">
             <div className="grid-3">
@@ -166,7 +169,7 @@ export default function Profile() {
             {(referrals.data.referees ?? []).length === 0 && <div className="small muted">{t('profile.referralStats.none')}</div>}
             {(referrals.data.referees ?? []).map((r) => (
               <div key={r.wallet} className="row between small">
-                <span className="mono">{r.handle ? `@${r.handle}` : shortKey(r.wallet, 5)} <span className="muted">· {r.paidPurchases} × · ${r.spendUsd?.toFixed(2)}</span></span>
+                <span className="mono">{r.handle ? `@${r.handle}` : shortKey(r.wallet, 5)} <span className="muted">· {fmtDecimal(r.paidPurchases, 0)} × · {fmtUsd(r.spendUsd)}</span></span>
                 <span className="mono">{fmtCg(r.earnedCgMicro)} <span className="muted tiny">({t('profile.referralStats.capLeft')} {fmtCg(r.capLeftCgMicro, 0)})</span></span>
               </div>
             ))}
@@ -178,9 +181,10 @@ export default function Profile() {
         <div className="row" style={{ gap: 8 }}><ShieldIcon size={16} /><div className="strong">{t('profile.settings')}</div></div>
         <SprayCapToggle icon={<SoundIcon size={16} on={ui.sound} />} on={ui.sound} onChange={ui.setSound} label={t('profile.sound')} />
         <SprayCapToggle icon={<MotionIcon size={16} />} on={ui.reducedMotion} onChange={ui.setReducedMotion} label={t('profile.reducedMotion')} />
-        {hasSkip && <SprayCapToggle icon={<SparkIcon size={16} />} on={ui.instantReveal} onChange={ui.setInstantReveal} label="Instant reveal (skip the animation)" />}
+        {hasSkip && <SprayCapToggle icon={<SparkIcon size={16} />} on={ui.instantReveal} onChange={ui.setInstantReveal} label={t('ui.instantReveal')} />}
         <div className="row between small" style={{ marginTop: 4 }}>
           <span className="row" style={{ gap: 8 }}><LangIcon size={16} />{t('profile.language')}</span>
+          <Link to="/account/rights" className="btn btn-sm">{t('rights.title')}</Link>
           <Link to="/language" className="btn btn-sm">{LOCALE_META[locale].native}</Link>
         </div>
         {me.data?.isAdmin && (
@@ -191,15 +195,15 @@ export default function Profile() {
         )}
         <div className="stack-sm" style={{ marginTop: 8 }}>
           <span className="label row" style={{ gap: 6, display: 'inline-flex' }}><ServerIcon size={14} />{t('profile.rpc', { cluster: CLUSTER, url: RPC_URL })}</span>
-          <div className="row"><input className="input mono" placeholder="https://…" value={rpc} onChange={(e) => setRpc(e.target.value)} /><button className="btn" onClick={() => { ui.setRpcOverride(rpc || undefined); ui.toast({ kind: 'info', title: t('profile.rpcSaved'), body: t('profile.reload') }); }}>{t('common.save')}</button></div>
+          <div className="row"><input className="input mono" placeholder="https://…" value={rpc} onChange={(e) => setRpc(e.target.value)} /><button className="btn" onClick={() => { ui.setRpcOverride(rpc || undefined); ui.toast({ kind: 'info', title: { key: 'profile.rpcSaved' }, body: { key: 'profile.reload' } }); }}>{t('common.save')}</button></div>
         </div>
         {FLAGS.debugPanel && (
           <div className="stack-sm" style={{ marginTop: 8 }}>
-            <span className="label">Debug</span>
-            <SprayCapToggle on={isMock()} onChange={(v) => { setMockMode(v); window.location.reload(); }} label={`Mock API (${isMock() ? 'on' : 'off'})`} />
-            <div className="tiny mono muted">chip_core {PROGRAM_IDS.chipCore.toBase58()}<br />market {PROGRAM_IDS.market.toBase58()}<br />staking {PROGRAM_IDS.staking.toBase58()}<br />arena {PROGRAM_IDS.arena.toBase58()}</div>
-            {(active.packs.length > 0 || active.fusions.length > 0) && <div className="tiny">Unfinished: {active.packs.map((p) => <Link key={p.id} to={`/shop/opening/${p.nonce}`}>pack {p.nonce.slice(-6)} ({p.phase}) </Link>)}{active.fusions.map((f) => <span key={f.id}>fusion {f.nonce.slice(-6)} ({f.phase}) </span>)}</div>}
-            <button className="btn btn-sm" onClick={() => { Object.keys(txs.packs).forEach(txs.remove); Object.keys(txs.fusions).forEach(txs.remove); }}><TrashIcon size={14} /> Clear local tx history</button>
+            <span className="label">{t('ui.debug')}</span>
+            <SprayCapToggle on={isMock()} onChange={(v) => { setMockMode(v); window.location.reload(); }} label={t('screens.mockApi', { state: isMock() ? t('screens.enabled') : t('ui.off') })} />
+            <div className="tiny mono muted">chip_core {PROGRAM_IDS.chipCore.toBase58()}<br />{t('market.title')} {PROGRAM_IDS.market.toBase58()}<br />{t('leaderboard.boards.staking')} {PROGRAM_IDS.staking.toBase58()}<br />{t('admin.kpi.arena')} {PROGRAM_IDS.arena.toBase58()}</div>
+            {(active.packs.length > 0 || active.fusions.length > 0) && <div className="tiny">{t('ui.unfinished')}: {active.packs.map((p) => <Link key={p.id} to={`/shop/opening/${p.nonce}`}>{t('ui.pack')} {p.nonce.slice(-6)} ({phaseLabel(p.phase)}) </Link>)}{active.fusions.map((f) => <span key={f.id}>{t('ui.fusion')} {f.nonce.slice(-6)} ({phaseLabel(f.phase)}) </span>)}</div>}
+            <button className="btn btn-sm" onClick={() => { Object.keys(txs.packs).forEach(txs.remove); Object.keys(txs.fusions).forEach(txs.remove); }}><TrashIcon size={14} /> {t('ui.clearHistory')}</button>
           </div>
         )}
       </div>
@@ -210,7 +214,7 @@ export default function Profile() {
         {(activity.data?.pages.flatMap((p) => p.items ?? []) ?? []).map((a, i) => (
           <div key={`${a.signature}-${i}`} className="row between small">
             <span>{a.kind?.replace(/_/g, ' ')}</span>
-            <span className="muted">{a.blockTime ? timeAgo(a.blockTime) : ''} {a.signature && <a href={EXPLORER.tx(a.signature)} target="_blank" rel="noreferrer" aria-label="explorer"><ExternalIcon size={12} /></a>}</span>
+            <span className="muted">{a.blockTime ? timeAgo(a.blockTime) : ''} {a.signature && <a href={EXPLORER.tx(a.signature)} target="_blank" rel="noreferrer" aria-label={t('ui.explorer')}><ExternalIcon size={12} /></a>}</span>
           </div>
         ))}
         {activity.data && activity.data.pages[0]?.items?.length === 0 && <Empty>{t('profile.noActivity')}</Empty>}
@@ -220,10 +224,10 @@ export default function Profile() {
 }
 
 function rewardLabel(t: (k: 'services.names.packSkipAnim') => string, r: PassReward): string {
-  if (r.kind === 'skin') return SKIN_BY_ID[r.skin]?.name ?? r.skin;
+  if (r.kind === 'skin') return skinText(r.skin);
   if (r.kind === 'theme') return themeById(r.theme).label;
-  if (r.kind === 'emotes') return EMOTE_PACK_BY_ID[r.pack]?.name ?? r.pack;
-  if (r.kind === 'banner') return COLLECTIONS[r.collection]?.name ?? `#${r.collection}`;
+  if (r.kind === 'emotes') return emotePackName(r.pack);
+  if (r.kind === 'banner') return localizedCollection(r.collection)?.name ?? `#${r.collection}`;
   return t('services.names.packSkipAnim');
 }
 
@@ -244,8 +248,8 @@ function PassCard() {
   if (!d) return null;
   const next = PASS_TRACK.find((x) => x.xp > (d.xp ?? 0));
   const doClaim = (tier: number, asset?: string) => claim.mutate({ tier, asset }, {
-    onSuccess: () => { setSkinTier(null); toast({ kind: 'success', title: t('pass.claimed'), body: t('pass.tier', { n: tier }) }); },
-    onError: (e) => toast({ kind: 'error', title: t('pass.claim'), body: String((e as Error)?.message ?? e) }),
+    onSuccess: () => { setSkinTier(null); toast({ kind: 'success', title: { key: 'pass.claimed' }, body: { key: 'pass.tier', params: { n: tier } } }); },
+    onError: (e) => toast({ kind: 'error', title: { key: 'pass.claim' }, error: e }),
   });
   return (
     <div className="card stack-sm">

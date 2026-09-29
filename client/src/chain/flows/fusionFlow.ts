@@ -1,7 +1,8 @@
+import { errorSnapshot, type ErrorSnapshot } from '../errorSnapshot';
 // Fusion: atomic for 100 % recipes, commit-reveal for risky ones.
 import { Connection, PublicKey } from '@solana/web3.js';
 import { FUSION_RECIPES, BOOSTER } from '@guttercaps/economy';
-import { appLookupTables, fitsInTx, sendTx, TxError, type WalletLike } from '../tx';
+import { appLookupTables, fitsInTx, sendTx, type WalletLike } from '../tx';
 import { prepareClose, prepareCloseLut, prepareRandomness, prepareReveal, readRandomness, sendCloseLut } from '../switchboard';
 import { cancelStaleFusionIx, fuseIx, fuseRevealIx, STALE_PACK_SLOTS, type FuseMaterial } from '../ix/chipCore';
 import { RNG_KIND, freshNonce, pendingFusionPda } from '../pdas';
@@ -23,6 +24,7 @@ export interface FusionFlowState {
   signatures: string[];
   result?: ChipFusedEvent;
   error?: string;
+  errorDiagnostic?: ErrorSnapshot;
 }
 
 export function successBps(recipe: number, boosted: boolean): number {
@@ -44,7 +46,7 @@ export class FusionFlow {
   }
 
   private set(patch: Partial<FusionFlowState>) {
-    this.state = { ...this.state, ...patch };
+    this.state = { ...this.state, ...(patch.phase && patch.phase !== 'error' ? { error: undefined, errorDiagnostic: undefined } : {}), ...patch };
     this.deps.onState(this.state);
   }
 
@@ -77,7 +79,8 @@ export class FusionFlow {
         this.set({ phase: 'committed', signatures: [signature] });
       }
     } catch (e) {
-      this.set({ phase: 'error', error: e instanceof TxError ? e.message : String((e as Error)?.message ?? e) });
+      const diagnostic = errorSnapshot(e);
+      this.set({ phase: 'error', error: diagnostic.message, errorDiagnostic: diagnostic });
       throw e;
     }
   }
@@ -123,7 +126,8 @@ export class FusionFlow {
       const ev = findEvent(logs, 'ChipFused', readChipFused);
       this.set({ phase: 'done', signatures: [...this.state.signatures, signature], result: ev });
     } catch (e) {
-      this.set({ phase: 'error', error: e instanceof TxError ? e.message : String((e as Error)?.message ?? e) });
+      const diagnostic = errorSnapshot(e);
+      this.set({ phase: 'error', error: diagnostic.message, errorDiagnostic: diagnostic });
       throw e;
     }
   }

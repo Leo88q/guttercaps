@@ -12,8 +12,8 @@ import { useGameConfig, usePity } from '@/chain/hooks';
 import { toEconPack, rentReserve } from '@/chain/flows/packFlow';
 import { Currency, type CurrencyCode } from '@/chain/ix/chipCore';
 import { FLAGS, MINTS, ONRAMP_URL } from '@/app/config';
-import { fmtAmount, fmtCents, fmtPct, fmtProb, fmtSol } from '@/shared/lib/format';
-import { RARITIES, RARITY_SHORT, rarityColor } from '@/shared/lib/rarity';
+import { fmtAmount, fmtCents, fmtPct, fmtProb, fmtSol, fmtUsd } from '@/shared/lib/format';
+import { packName, rarityName, rarityColor } from '@/shared/lib/rarity';
 import { CleanZone, KV, Modal, Pill, Progress } from '@/shared/ui/primitives';
 import { SprayNozzleButton, CleanConfirmButton } from '@/shared/ui/buttons';
 import { ChipArt } from '@/shared/ui/ChipArt';
@@ -71,7 +71,7 @@ export default function Shop() {
   return (
     <div className="page page-bg page-bg-shop">
       <h1 className="page-title" id="shop-title">{tab === 'services' ? t('services.title') : t('shop.title')}</h1>
-      <p className="page-sub">{tab === 'services' ? t('services.subtitle') : t('shop.subtitle')}</p>
+      <p className="page-sub">{tab === 'services' ? t('ui.extrasSubtitle') : t('shop.subtitle')}</p>
 
       {/* Tabs, and they behave like tabs: role=tab + aria-selected + aria-controls to the panel that
           actually appears, roving tabIndex, Left/Right/Home/End. axe flagged the previous version
@@ -129,7 +129,7 @@ export default function Shop() {
       )}
       <AgeGateDeclined gate={age} />
       <AgeGateDialog gate={age} />
-      {cfg.data?.paused && <div className="danger" style={{ marginBottom: 16 }}>The game is paused by the operator. Purchases are disabled.</div>}
+      {cfg.data?.paused && <div className="danger" style={{ marginBottom: 16 }}>{t('ui.pausedShop')}</div>}
 
       <div className="grid-auto" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
         {packs.map(({ sku, id, econ, api, enabled }) => {
@@ -144,11 +144,11 @@ export default function Shop() {
             <div key={sku} className="card pack-card stack" style={{ ['--pack-glow' as string]: glow, opacity: enabled ? 1 : 0.55 }}>
               <div className="row between">
                 <div>
-                  <div className="cg-heading" style={{ fontSize: 22 }}>{econ.name}</div>
-                  <div className="muted small">{econ.chips} caps · floor {RARITIES[econ.floor]} · {econ.pool === 'featured' ? 'featured district only' : 'all 8 districts'}</div>
+                  <div className="cg-heading" style={{ fontSize: 22 }}>{packName(sku)}</div>
+                  <div className="muted small">{t('shop.perPack', { n: econ.chips })} · {t('shop.floor', { rarity: rarityName(econ.floor) })} · {t(econ.pool === 'featured' ? 'ui.featuredOnly' : 'ui.allEight')}</div>
                 </div>
-                {!enabled && <Pill>coming soon</Pill>}
-                {id === 'starter' && <Pill tone="ok">one per wallet</Pill>}
+                {!enabled && <Pill>{t('ui.comingSoon')}</Pill>}
+                {id === 'starter' && <Pill tone="ok">{t('shop.starterOnce')}</Pill>}
               </div>
 
               <div className="pack-fan" aria-hidden>
@@ -156,32 +156,32 @@ export default function Shop() {
                   <span key={r}><ChipArt collection={(sku * 2) % 8} rarity={r} imageUrl={chipArtUrl((sku * 2) % 8, r)} /></span>
                 ))}
               </div>
-              <div className="odds-bar" title="Per-slot odds">
+              <div className="odds-bar" title={t('ui.perSlotOdds')}>
                 {odds.map((bps, r) => bps > 0 && <i key={r} style={{ width: `${bps / 100}%`, background: rarityColor(r) }} />)}
               </div>
               <div className="odds-legend">
-                {odds.map((bps, r) => bps > 0 && <span key={r}><span style={{ color: rarityColor(r) }}>{RARITY_SHORT[r]}</span> {fmtPct(bps, bps < 100 ? 2 : 1)}</span>)}
+                {odds.map((bps, r) => bps > 0 && <span key={r}><span style={{ color: rarityColor(r) }}>{rarityName(r)}</span> {fmtPct(bps, bps < 100 ? 2 : 1)}</span>)}
               </div>
               <div className="row between small">
-                <span className="muted">≥ Legend per pack</span><b className="mono">{fmtProb(pLegend, 2)}</b>
+                <span className="muted">{t('ui.legendPack')}</span><b className="mono">{fmtProb(pLegend, 2)}</b>
               </div>
               {econ.pity && (
                 <div className="stack-sm">
-                  <div className="row between small"><span className="muted">Pity (≥ Legend guaranteed at {econ.pity.hardAt})</span><b className="mono">{counter}/{econ.pity.hardAt}</b></div>
+                  <div className="row between small"><span className="muted">{t('ui.pityAt', { n: econ.pity.hardAt })}</span><b className="mono">{counter}/{econ.pity.hardAt}</b></div>
                   <Progress value={counter} max={econ.pity.hardAt} tone={counter >= econ.pity.softStart ? 'orange' : undefined} />
-                  {counter >= econ.pity.softStart && <div className="tiny" style={{ color: 'var(--cg-orange-soft)' }}>Soft pity active: +{fmtPct(econ.pity.softStepBps * (counter - econ.pity.softStart + 1), 2)} to top tiers</div>}
+                  {counter >= econ.pity.softStart && <div className="tiny" style={{ color: 'var(--cg-orange-soft)' }}>{t('ui.softPity', { pct: fmtPct(econ.pity.softStepBps * (counter - econ.pity.softStart + 1), 2) })}</div>}
                 </div>
               )}
-              {capLeft !== null && <div className="tiny muted">Daily cap: {capLeft} left today</div>}
+              {capLeft !== null && <div className="tiny muted">{t('services.dailyLeft', { n: capLeft })}</div>}
 
               <CleanZone>
-                <KV k="Price" v={fmtCents(econ.priceUsdCents)} />
-                {econ.priceCgMicro && <KV k="or" v={fmtAmount(BigInt(econ.priceCgMicro), 'CG')} />}
-                {api?.evPct !== undefined && <KV k="Modelled floor value" v={`${api.evPct.toFixed(0)}% of price`} />}
+                <KV k={t('ui.price')} v={fmtCents(econ.priceUsdCents)} />
+                {econ.priceCgMicro && <KV k={t('ui.or')} v={fmtAmount(BigInt(econ.priceCgMicro), 'CG')} />}
+                {api?.evPct !== undefined && <KV k={t('ui.modelFloor')} v={t('ui.ofPrice', { pct: Math.round(api.evPct) })} />}
               </CleanZone>
 
               <SprayNozzleButton disabled={disabled} onClick={() => (connected ? setSel({ sku, qty: 1, currency: Currency.SOL }) : setVisible(true))}>
-                {starterGone ? 'Starter claimed' : capLeft === 0 ? 'Cap reached' : connected ? 'Buy' : 'Connect to buy'}
+                {starterGone ? t('ui.starterClaimed') : capLeft === 0 ? t('ui.capReached') : connected ? t('services.buy') : t('ui.connectBuy')}
               </SprayNozzleButton>
             </div>
           );
@@ -191,15 +191,14 @@ export default function Shop() {
       <div className="card" style={{ marginTop: 16 }}>
         <div className="row between">
           <div>
-            <div className="strong">Bundles</div>
-            <div className="muted small">Standard & Premium only. Each pack in a bundle is opened one by one with its own sub-seed.</div>
+            <div className="strong">{t('ui.bundles')}</div>
+            <div className="muted small">{t('ui.bundleHint')}</div>
           </div>
           <div className="tag-list">{BUNDLES.filter((b) => b.qty > 1).map((b) => <Pill key={b.qty}>×{b.qty} −{b.discountBps / 100}%</Pill>)}</div>
         </div>
       </div>
 
-      <p className="tiny muted" style={{ marginTop: 12 }}>
-        Crypto only. Need SOL? <a className="row" style={{ gap: 4, color: 'var(--cg-cyan-soft)', display: 'inline-flex' }} href={ONRAMP_URL} target="_blank" rel="noreferrer">Buy with card <ExternalIcon size={11} /></a> · Pack contents are digital collectibles with no guaranteed resale value.
+      <p className="tiny muted" style={{ marginTop: 12 }}> {t('ui.cryptoOnly')} <a className="row" style={{ gap: 4, color: 'var(--cg-cyan-soft)', display: 'inline-flex' }} href={ONRAMP_URL} target="_blank" rel="noreferrer">{t('ui.buyCard')} <ExternalIcon size={11} /></a> · {t('screens.collectibleRisk')}
       </p>
 
       {sel && (
@@ -260,12 +259,12 @@ function BuyModal({ sel, setSel, pack, counter, onConfirm }: {
   const canSign = !volatile || (!!quote.data?.priceUpdateAccount && !!quote.data?.maxLamports);
 
   return (
-    <Modal open onClose={() => setSel(null)} title={t('shop.buy', { name: econ.name })}>
+    <Modal open onClose={() => setSel(null)} title={t('shop.buy', { name: packName(sel.sku) })}>
       <div className="stack">
         {bundlesAllowed && (
           <div className="stack-sm">
             <span className="label">{t('shop.quantity')}</span>
-            <div className="tag-list">{BUNDLES.map((b) => <Pill key={b.qty} active={sel.qty === b.qty} onClick={() => setSel({ ...sel, qty: b.qty })}>×{b.qty}{b.discountBps ? ` −${b.discountBps / 100}%` : ''}</Pill>)}</div>
+            <div className="tag-list">{BUNDLES.map((b) => <Pill key={b.qty} active={sel.qty === b.qty} onClick={() => setSel({ ...sel, qty: b.qty })}>×{b.qty}{b.discountBps ? ` −${fmtPct(b.discountBps, 0)}` : ''}</Pill>)}</div>
           </div>
         )}
         <div className="stack-sm">
@@ -274,14 +273,14 @@ function BuyModal({ sel, setSel, pack, counter, onConfirm }: {
         </div>
 
         <CleanZone className="cg-clean-pulse">
-          <KV k={`${econ.name} × ${sel.qty}`} v={sel.currency === Currency.SKR && skrCents !== baseCents ? `${fmtCents(skrCents)} (${t('shop.was', { price: fmtCents(baseCents) })})` : fmtCents(cents)} />
-          {sel.currency === Currency.SOL && <KV k={t('shop.solAtPyth')} v={quote.isLoading ? '…' : quote.data ? `${fmtSol(amount!)} (1 SOL = $${quote.data.solUsd?.toFixed(2)})` : t('shop.quoteUnavailable')} />}
-          {sel.currency === Currency.SKR && <KV k={t('shop.skrAtPyth')} v={quote.isLoading ? '…' : quote.data?.amount ? `${fmtAmount(BigInt(quote.data.amount), 'SKR')} (1 SKR = $${quote.data.skrUsd?.toFixed(4) ?? '—'})` : t('shop.quoteUnavailable')} />}
+          <KV k={`${packName(sel.sku)} × ${sel.qty}`} v={sel.currency === Currency.SKR && skrCents !== baseCents ? `${fmtCents(skrCents)} (${t('shop.was', { price: fmtCents(baseCents) })})` : fmtCents(cents)} />
+          {sel.currency === Currency.SOL && <KV k={t('shop.solAtPyth')} v={quote.isLoading ? '…' : quote.data ? `${fmtSol(amount!)} (1 SOL = ${fmtUsd(quote.data.solUsd)})` : t('shop.quoteUnavailable')} />}
+          {sel.currency === Currency.SKR && <KV k={t('shop.skrAtPyth')} v={quote.isLoading ? '…' : quote.data?.amount ? `${fmtAmount(BigInt(quote.data.amount), 'SKR')} (1 SKR = ${fmtUsd(quote.data.skrUsd, 4)})` : t('shop.quoteUnavailable')} />}
           {volatile && quote.data?.priceAgeS !== undefined && <KV k={t('shop.priceAge')} v={t('shop.priceAgeValue', { s: quote.data.priceAgeS })} />}
           {sel.currency === Currency.USDC && <KV k="USDC" v={fmtAmount(BigInt(cents) * 10_000n, 'USDC')} />}
           {sel.currency === Currency.CG && econ.priceCgMicro && <KV k="$CG" v={fmtAmount(quote.data?.amount ?? BigInt(Math.round(econ.priceCgMicro * sel.qty)), 'CG')} />}
           <KV k={t('shop.rentReserve')} v={fmtSol(reserve)} />
-          <KV k={t('shop.oracleFees')} v="≈ 0.003 SOL" />
+          <KV k={t('shop.oracleFees')} v={`≈ ${fmtSol(3_000_000n)}`} />
           {(sel.currency === Currency.SOL || sel.currency === Currency.SKR) && quote.data?.maxLamports && <KV k={t('shop.maxSlippage')} v={fmtAmount(BigInt(quote.data.maxLamports), sel.currency === Currency.SOL ? 'SOL' : 'SKR')} />}
           <KV total k={t('common.youSign')} v={
             sel.currency === Currency.SOL ? (amount !== undefined ? fmtSol(amount + reserve) : '—')
@@ -292,10 +291,10 @@ function BuyModal({ sel, setSel, pack, counter, onConfirm }: {
 
         <div className="small">
           <div className="label" style={{ marginBottom: 4 }}>{t('shop.oddsNow', { n: counter })}</div>
-          <div className="odds-legend">{odds.map((bps, r) => bps > 0 && <span key={r}><span style={{ color: rarityColor(r) }}>{RARITIES[r]}</span> {fmtPct(bps, 2)}</span>)}</div>
+          <div className="odds-legend">{odds.map((bps, r) => bps > 0 && <span key={r}><span style={{ color: rarityColor(r) }}>{rarityName(r)}</span> {fmtPct(bps, 2)}</span>)}</div>
         </div>
 
-        <div className="tiny muted">{t('shop.oneSignature')}</div>
+        <div className="tiny muted">{t('ui.packSignatures')}</div>
         {priceDown && (
           <div className="tiny" role="status" style={{ color: 'var(--cg-electric-orange)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <span>{quoteErr?.code === 'price_unavailable' || quoteErr?.status === 503 ? t('shop.priceFeedDown') : t('shop.quoteFailed')}</span>

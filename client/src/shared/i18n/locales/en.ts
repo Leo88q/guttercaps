@@ -1,7 +1,19 @@
+import rights from '../rights/en.json';
+import failures from '../failures/en.json';
+import diagnostics from '../diagnostics/en.json';
+import screens from '../screens/en';
+import catalog from '../catalog/en';
+import ui from '../ui/en';
 // English — source of truth. Every other locale is typed against this object;
 // missing keys fall back to these strings. Keep copy short: PT/ES/FIL/RU run
 // 25–35 % longer, and the bottom nav has ~9 characters per tab on a 360 px phone.
 const en = {
+  rights,
+  failures,
+  diagnostics,
+  screens,
+  ui,
+  catalog,
   nav: {
     home: 'Home', caps: 'Caps', shop: 'Shop', market: 'Market', arena: 'Arena', stake: 'Stake',
     quests: 'Quests', leaderboard: 'Ranks', profile: 'Profile', language: 'Language', more: 'More',
@@ -33,7 +45,7 @@ const en = {
     solAtPyth: 'SOL @ Pyth', skrAtPyth: 'SKR @ Pyth', quoteUnavailable: 'quote unavailable — on-chain price applies',
     priceAge: 'Price age', priceAgeValue: '{s} s (valid ≤ 60 s on-chain)', priceFeedDown: 'Price feed is catching up — try again in a few seconds.', quoteFailed: 'Could not fetch a quote.',
     rentReserve: 'Rent reserve (returned after open)', oracleFees: 'Oracle + network fees (est.)', maxSlippage: 'Max (1% slippage guard)',
-    oddsNow: 'Your odds right now (pity {n})', oneSignature: 'One signature: creates a randomness account, commits to the next slot and pays. The oracle answers in a few seconds; then you sign once more to mint. The oracle answers in seconds and our crank opens the pack for you even if you close the app; if the oracle never answers, a full refund from the vault unlocks after its 1-hour window (≈ 72 min).',
+    oddsNow: 'Your odds right now (pity {n})', oneSignature: ui.packSignatures,
     perPack: '{n, plural, one{# cap} other{# caps}} per pack', floor: 'floor {rarity}', starterOnce: 'once per wallet', dailyCap: '{n}/day cap',
     pityIn: 'guaranteed {rarity} in {n}', packDisabled: 'currently disabled', was: 'was {price}',
     tabs: { packs: 'Packs', services: 'Extras' },
@@ -128,7 +140,7 @@ const en = {
     noPass: 'Get the season pass in Extras to claim track rewards', pickCap: 'Choose a cap to paint',
   },
   services: {
-    title: 'Extras', subtitle: 'Cosmetics, identity and convenience. Nothing here changes odds, power or rewards — ever.',
+    title: 'Extras', subtitle: ui.extrasSubtitle,
     burned: 'burned', toTreasury: 'to treasury', noQuote: 'No price for this currency yet — pick another.', buy: 'Buy', owned: 'Owned', active: 'Active',
     dailyLeft: '{n} left today', howItWorks: 'One signature pays on-chain; $CG is burned, SOL/USDC/SKR go to the public treasury. Your purchase is bound to this wallet by a hash in the transaction — no one can redirect it.',
     expires: 'expires {date}', noPower: 'No pay-to-win: verified on-chain', boosterCap: 'Boosters: max 3 per day', bought: 'Purchased', buyFailed: 'Purchase failed',

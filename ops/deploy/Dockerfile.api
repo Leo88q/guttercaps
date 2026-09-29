@@ -32,10 +32,12 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY backend/src backend/src
 COPY packages/economy/src packages/economy/src
 COPY backend/openapi.yaml backend/openapi.yaml
+COPY backend/access-policy.json backend/access-policy.json
 
 # Fail the build, not the deploy, if the runtime can't do what the code assumes.
+# Node 22.13 does not load .ts by default: use the same production tsx loader as the API.
 RUN node -e "const [maj,min]=process.versions.node.split('.').map(Number); if (maj!==22 || min<13) { console.error('node 22.13+ required (node:sqlite), got '+process.versions.node); process.exit(1) } if (typeof process.getBuiltinModule('node:sqlite').DatabaseSync !== 'function') { console.error('node:sqlite unavailable'); process.exit(1) }" \
- && node --input-type=module -e "import('@guttercaps/economy').then(m => { if (!m.PACKS || Object.keys(m.PACKS).length !== 4) { console.error('economy package did not resolve through the workspace symlink'); process.exit(1) } })"
+ && node --import tsx --input-type=module -e "import('@guttercaps/economy').then(m => { if (!m.PACKS || Object.keys(m.PACKS).length !== 4) { console.error('economy package did not resolve through the workspace symlink'); process.exit(1) } })"
 
 # The `node` user of the official image (uid 1000): never run the API as root — it holds a session
 # secret and, in the all-in-one topology, a crank keypair.

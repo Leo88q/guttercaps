@@ -35,3 +35,6 @@ playwright-report
 apps/
 dapp-store/
 guttercaps-landing.html
+
+# Privileged legal evidence and personal team records never belong in source/images.
+legal-private/

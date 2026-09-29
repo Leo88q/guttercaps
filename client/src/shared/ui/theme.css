@@ -277,7 +277,7 @@ h1, h2, .cg-heading { text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4); }
    Per-language design adaptation (docs/04-frontend.md §11)
    Permanent Marker has no Cyrillic and no Vietnamese diacritics — the browser
    would silently fall back to a random cursive. For RU/VI we swap the display
-   face to Rubik Wet Paint (Cyrillic + Vietnamese, same "dripping paint" energy)
+   face to Rubik Wet Paint for Cyrillic (Vietnamese uses Inter in layout.css)
    and give headings a little more line-height for stacked diacritics.
    --------------------------------------------------------------------------- */
 html.lang-alt-display { --cg-font-display: 'Rubik Wet Paint', 'Permanent Marker', cursive; }

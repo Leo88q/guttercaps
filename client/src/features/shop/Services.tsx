@@ -1,3 +1,4 @@
+import { skinText, emotePackName } from '@/shared/lib/cosmetics';
 // "Extras" tab — the voluntary-spend catalogue (cosmetics, identity,
 // convenience, boosters). Every card states what the money does (burn vs
 // treasury) and that nothing here buys power; the money UI lives in a clean zone.
@@ -15,11 +16,11 @@ import { Currency, type CurrencyCode } from '@/chain/ix/chipCore';
 import { payForService, quoteService, serviceRefHash } from '@/chain/flows/serviceFlow';
 import { useUiStore } from '@/app/store/ui';
 import { EXPLORER, MINTS } from '@/app/config';
-import { fmtAmount, fmtCents, CURRENCY_SYMBOLS } from '@/shared/lib/format';
+import { fmtAmount, fmtCents, fmtUsd, CURRENCY_SYMBOLS } from '@/shared/lib/format';
 import { CleanZone, KV, Modal, Pill } from '@/shared/ui/primitives';
 import { CapPicker } from '@/shared/ui/CapPicker';
 import { PROFILE_THEMES } from '@/shared/lib/cosmetics';
-import { COLLECTIONS } from '@/shared/lib/lore';
+import { useCollections } from '@/shared/lib/lore';
 import { CleanConfirmButton, SprayNozzleButton } from '@/shared/ui/buttons';
 import { useT, useLocale, fmtLocale } from '@/shared/i18n';
 import { ServiceGlyph } from '@/shared/ui/service-icons';
@@ -41,7 +42,7 @@ export function Services() {
       <div className="row between" style={{ alignItems: 'baseline' }}>
         <div>
           <div className="strong">{t('services.title')}</div>
-          <div className="small muted">{t('services.subtitle')}</div>
+          <div className="small muted">{t('ui.extrasSubtitle')}</div>
         </div>
         <Pill>{t('services.noPower')}</Pill>
       </div>
@@ -77,13 +78,14 @@ export function Services() {
       </div>
 
       <div className="tiny muted">{t('services.howItWorks')}</div>
-      {catalogue.data?.skrUsd !== undefined && <div className="tiny muted mono">1 SKR ≈ ${catalogue.data.skrUsd.toFixed(4)} · 1 SOL ≈ ${catalogue.data.solUsd?.toFixed(2)} · {fmtLocale.dateTime(Date.now(), locale)}</div>}
+      {catalogue.data?.skrUsd !== undefined && <div className="tiny muted mono">1 SKR ≈ {fmtUsd(catalogue.data.skrUsd, 4)} · 1 SOL ≈ {fmtUsd(catalogue.data.solUsd)} · {fmtLocale.dateTime(Date.now(), locale)}</div>}
       {sel && <ServiceModal service={sel} onClose={() => setSel(null)} />}
     </div>
   );
 }
 
 function ServiceModal({ service, onClose }: { service: ServiceDef; onClose: () => void }) {
+  const COLLECTIONS = useCollections();
   const t = useT();
   const { connection } = useConnection();
   const wallet = useWalletLike();
@@ -124,7 +126,7 @@ function ServiceModal({ service, onClose }: { service: ServiceDef; onClose: () =
     if (isMock()) {
       await api.post('/services/claim', { signature: `mock-${Date.now()}`, kind: service.kind, payload });
       await qc.invalidateQueries({ queryKey: ['me'] });
-      toast({ kind: 'money', title: t('services.bought'), body: t(`services.names.${service.id}`) });
+      toast({ kind: 'money', title: { key: 'services.bought' }, body: { key: `services.names.${service.id}` } });
       onClose();
       return;
     }
@@ -136,10 +138,10 @@ function ServiceModal({ service, onClose }: { service: ServiceDef; onClose: () =
       // entitlements are granted only on a finalized payment (SEC-M5) — retry through indexer lag + finality (≈ 1–2 min)
       if (service.fulfilment === 'entitlement') await claimWithRetry(() => api.post('/services/claim', { signature, kind: service.kind, payload }));
       await qc.invalidateQueries({ queryKey: ['me'] });
-      toast({ kind: 'money', title: t('services.bought'), body: t(`services.names.${service.id}`), href: EXPLORER.tx(signature) });
+      toast({ kind: 'money', title: { key: 'services.bought' }, body: { key: `services.names.${service.id}` }, href: EXPLORER.tx(signature) });
       onClose();
     } catch (e) {
-      toast({ kind: 'error', title: t('services.buyFailed'), body: String((e as Error)?.message ?? e) });
+      toast({ kind: 'error', title: { key: 'services.buyFailed' }, error: e });
     } finally {
       setBusy(false);
     }
@@ -161,8 +163,8 @@ function ServiceModal({ service, onClose }: { service: ServiceDef; onClose: () =
           <>
             <div className="stack-sm">
               <span className="label">{t('services.pickSkin')}</span>
-              <div className="tag-list">{SKINS.map((s) => <Pill key={s.id} active={skin === s.id} onClick={() => setSkin(s.id)}>{s.name}</Pill>)}</div>
-              <div className="tiny muted">{SKINS.find((s) => s.id === skin)?.blurb}</div>
+              <div className="tag-list">{SKINS.map((s) => <Pill key={s.id} active={skin === s.id} onClick={() => setSkin(s.id)}>{skinText(s.id)}</Pill>)}</div>
+              <div className="tiny muted">{skinText(skin, true)}</div>
             </div>
             <div className="stack-sm">
               <span className="label">{t('services.pickCap')}</span>
@@ -182,7 +184,7 @@ function ServiceModal({ service, onClose }: { service: ServiceDef; onClose: () =
         {service.id === 'arenaEmotePack' && (
           <div className="stack-sm">
             <span className="label">{t('services.pickPack')}</span>
-            <div className="tag-list">{EMOTE_PACKS.map((x) => <Pill key={x.id} active={pack === x.id} onClick={() => setPack(x.id)}>{x.name}</Pill>)}</div>
+            <div className="tag-list">{EMOTE_PACKS.map((x) => <Pill key={x.id} active={pack === x.id} onClick={() => setPack(x.id)}>{emotePackName(x.id)}</Pill>)}</div>
             <div className="tag-list">{EMOTE_PACKS.find((x) => x.id === pack)?.emotes.map((e) => <span key={e.id} className="spray-tag" style={{ color: e.color }}>{e.tag}</span>)}</div>
           </div>
         )}

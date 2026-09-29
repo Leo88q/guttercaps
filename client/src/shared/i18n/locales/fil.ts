@@ -1,7 +1,19 @@
-import type { PartialMessages } from '../index';
+import rights from '../rights/fil.json';
+import failures from '../failures/fil.json';
+import diagnostics from '../diagnostics/fil.json';
+import screens from '../screens/fil';
+import catalog from '../catalog/fil';
+import ui from '../ui/fil';
+import type { Messages } from '../index';
 
 // Filipino (Tagalog-based). Plural: one / other.
-const fil: PartialMessages = {
+const fil: Messages = {
+  rights,
+  failures,
+  diagnostics,
+  screens,
+  ui,
+  catalog,
   nav: { home: 'Home', caps: 'Caps', shop: 'Tindahan', market: 'Palengke', arena: 'Arena', stake: 'Stake', quests: 'Quests', leaderboard: 'Ranggo', profile: 'Profile', language: 'Wika', more: 'Iba pa' },
   common: {
     connectWallet: 'Ikonekta ang wallet', connecting: 'Kumokonekta…', signedIn: 'Naka-sign in', signingIn: 'Nagsa-sign in…', signOut: 'Mag-sign out',
@@ -28,7 +40,7 @@ const fil: PartialMessages = {
     solAtPyth: 'SOL sa Pyth', skrAtPyth: 'SKR sa Pyth', quoteUnavailable: 'walang quote — on-chain na presyo ang gagamitin',
     priceAge: 'Edad ng presyo', priceAgeValue: '{s} s (valid ≤ 60 s on-chain)', priceFeedDown: 'Ina-update pa ang price feed — subukan ulit sa ilang segundo.', quoteFailed: 'Hindi makuha ang quote.',
     rentReserve: 'Rent reserve (ibabalik pagkabukas)', oracleFees: 'Oracle + network fees (tantiya)', maxSlippage: 'Max (1% slippage guard)',
-    oddsNow: 'Tsansa mo ngayon (pity {n})', oneSignature: 'Isang pirma: gagawa ng randomness account, magko-commit sa susunod na slot, at magbabayad. Sasagot ang oracle sa ilang segundo; pagkatapos ay pipirma ka ulit para mag-mint. Sumasagot ang oracle sa loob ng ilang segundo at binubuksan ng aming crank ang pack para sa iyo kahit isara mo ang app; kung hindi talaga sumagot ang oracle, magbubukas ang buong refund mula sa vault pagkatapos ng 1-oras na window nito (≈ 72 min).',
+    oddsNow: 'Tsansa mo ngayon (pity {n})', oneSignature: ui.packSignatures,
     perPack: '{n, plural, one{# cap} other{# caps}} bawat pack', floor: 'floor {rarity}', starterOnce: 'isang beses bawat wallet', dailyCap: 'limit {n}/araw',
     pityIn: 'garantisadong {rarity} sa {n}', packDisabled: 'pansamantalang naka-off', was: 'dati {price}',
     tabs: { packs: 'Packs', services: 'Extras' },
@@ -120,7 +132,7 @@ const fil: PartialMessages = {
     noPass: 'Kumuha ng season pass para ma-claim ang rewards', pickCap: 'Pumili ng cap na pipintahan',
   },
   services: {
-    title: 'Extras', subtitle: 'Cosmetics, identity, at convenience. Walang dito ang nagbabago ng tsansa, power, o rewards — kailanman.',
+    title: 'Extras', subtitle: ui.extrasSubtitle,
     burned: 'sinusunog', toTreasury: 'sa treasury', noQuote: 'Wala pang presyo sa currency na ito — pumili ng iba.', buy: 'Bilhin', owned: 'Pagmamay-ari', active: 'Aktibo',
     dailyLeft: '{n} na lang ngayong araw', howItWorks: 'Isang pirma ang nagbabayad on-chain; sinusunog ang $CG, napupunta sa pampublikong treasury ang SOL/USDC/SKR. Nakatali ang pagbili sa wallet na ito sa pamamagitan ng hash sa transaksyon — walang makakapag-redirect nito.',
     expires: 'mag-e-expire {date}', noPower: 'Walang pay-to-win: na-verify on-chain', boosterCap: 'Boosters: max 3 bawat araw', bought: 'Nabili', buyFailed: 'Nabigo ang pagbili',

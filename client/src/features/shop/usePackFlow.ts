@@ -26,7 +26,7 @@ function toTracked(wallet: string, s: PackFlowState, prev?: TrackedPack): Tracke
   return {
     ...(prev ?? { id: packId(wallet, s.nonce), wallet, createdAt: Date.now(), updatedAt: Date.now() }),
     phase: s.phase, sku: s.sku, qty: s.qty, currency: s.currency, nonce: s.nonce.toString(), randomness: s.randomness?.toBase58(),
-    buySignature: s.buySignature, openSignatures: s.openSignatures, error: s.error, revealAttempt: s.revealAttempt, updatedAt: Date.now(),
+    buySignature: s.buySignature, openSignatures: s.openSignatures, error: s.error, errorDiagnostic: s.errorDiagnostic, revealAttempt: s.revealAttempt, updatedAt: Date.now(),
     opened: s.opened.map((o) => ({ assets: o.assets.map((a) => a.toBase58()), rarities: o.rarities, collections: o.collections, roll: hex(o.roll), pityBefore: o.pityBefore, pityAfter: o.pityAfter })),
   };
 }
@@ -62,7 +62,7 @@ export function usePackFlow() {
   /** Buy → open in one go (the common path). Returns the nonce for deep-linking. */
   const start = useCallback(async (args: StartArgs): Promise<bigint | undefined> => {
     if (isMock()) return mockRun(args);
-    if (!wallet) { toast({ kind: 'error', title: 'Connect a wallet first' }); return undefined; }
+    if (!wallet) { toast({ kind: 'error', title: { key: 'common.walletRequired' } }); return undefined; }
     const w = wallet.publicKey.toBase58();
     const flow = new PackFlow({
       connection, wallet, onState: bind(w), lookupTable: LOOKUP_TABLE,
@@ -75,14 +75,14 @@ export function usePackFlow() {
     flowRef.current = flow;
     try {
       await flow.buy();
-      toast({ kind: 'money', title: 'Paid & committed', body: 'Waiting for the Switchboard oracle…', href: flow.state.buySignature ? EXPLORER.tx(flow.state.buySignature) : undefined });
+      toast({ kind: 'money', title: { key: 'screens.paidCommitted' }, body: { key: 'screens.oracleWaiting' }, href: flow.state.buySignature ? EXPLORER.tx(flow.state.buySignature) : undefined });
       const before = flow.state.opened.length;
       await flow.open();
       pushReveals(flow.state, before);
       invalidate();
       return flow.state.nonce;
     } catch (e) {
-      toast({ kind: 'error', title: 'Pack flow stopped', body: String((e as Error)?.message ?? e) });
+      toast({ kind: 'error', title: { key: 'screens.packStopped' }, error: e });
       return flow.state.nonce;
     }
   }, [wallet, connection, bind, toast, pushReveals, invalidate]);
@@ -100,7 +100,7 @@ export function usePackFlow() {
       pushReveals(flow.state, before);
       invalidate();
     } catch (e) {
-      toast({ kind: 'error', title: 'Could not finish opening', body: String((e as Error)?.message ?? e) });
+      toast({ kind: 'error', title: { key: 'screens.packFinishFailed' }, error: e });
     }
   }, [wallet, connection, bind, toast, pushReveals, invalidate]);
 
@@ -109,24 +109,24 @@ export function usePackFlow() {
     if (!flow) return;
     try {
       const sig = await flow.refund();
-      toast({ kind: 'money', title: 'Refunded', body: '100 % returned from the vault', href: EXPLORER.tx(sig) });
+      toast({ kind: 'money', title: { key: 'screens.refunded' }, body: { key: 'screens.refundAll' }, href: EXPLORER.tx(sig) });
       invalidate();
     } catch (e) {
-      toast({ kind: 'error', title: 'Refund failed', body: String((e as Error)?.message ?? e) });
+      toast({ kind: 'error', title: { key: 'screens.refundFailed' }, error: e });
     }
   }, [toast, invalidate]);
 
   /** SEC-M7: give the randomness rent (≈ 0.006 SOL) back once the pack is opened / refunded. */
   const reclaimRent = useCallback(async () => {
-    if (isMock()) { toast({ kind: 'money', title: 'Rent reclaimed (mock)', body: '≈ 0.006 SOL back in your wallet' }); return; }
+    if (isMock()) { toast({ kind: 'money', title: { key: 'screens.rentDemo' }, body: { key: 'screens.rentDemoAmount' } }); return; }
     const flow = flowRef.current;
     if (!flow) return;
     try {
       const sig = await flow.reclaimRent();
-      if (!sig) { toast({ kind: 'info', title: 'Nothing to reclaim', body: 'The randomness account is already closed (our crank got there first).' }); return; }
-      toast({ kind: 'money', title: 'Rent reclaimed', body: 'Randomness account closed — SOL returned to your wallet', href: EXPLORER.tx(sig) });
+      if (!sig) { toast({ kind: 'info', title: { key: 'screens.nothingReclaim' }, body: { key: 'screens.rentAlreadyClosed' } }); return; }
+      toast({ kind: 'money', title: { key: 'screens.rentReclaimed' }, body: { key: 'screens.rentReturned' }, href: EXPLORER.tx(sig) });
     } catch (e) {
-      toast({ kind: 'error', title: 'Could not reclaim rent', body: String((e as Error)?.message ?? e) });
+      toast({ kind: 'error', title: { key: 'screens.rentFailed' }, error: e });
     }
   }, [toast]);
 

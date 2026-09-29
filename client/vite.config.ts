@@ -65,7 +65,7 @@ export default defineConfig({
   },
   build: {
     target: 'es2022',
-    sourcemap: true,
+    sourcemap: false, // do not publish source paths/source contents in any distributable build
     rollupOptions: {
       output: {
         manualChunks: {

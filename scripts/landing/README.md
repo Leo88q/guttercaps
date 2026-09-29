@@ -5,7 +5,7 @@
 
 ```bash
 npm run landing:build   # python3 scripts/landing/build.py  → ../..//guttercaps-landing.html
-npm run landing:check   # числа против packages/economy + DOM-smoke (happy-dom, EN/RU)
+npm run landing:check   # числа против packages/economy + DOM-smoke (happy-dom, все 7 языков)
 ```
 
 Оба шага входят в `npm run verify`.
@@ -14,14 +14,15 @@ npm run landing:check   # числа против packages/economy + DOM-smoke (
 
 | Файл | Роль |
 | --- | --- |
-| `content.py` | Весь копирайт EN/RU (`T`, `HOWTO`, `PACKS`, `FAQ`, `TIERS`, `TITLE`, `DESC`). 175+ i18n-ключей; каждый ключ обязан иметь RU-строку (`check.ts` падает, если нет). |
+| `content.py` | Канонические EN/RU тексты и числовые таблицы: 217 ключей. |
+| `locales/*.json`, `i18n.py` | PT/ES/VI/ID/FIL, строгая проверка ключей, переменных и допустимой разметки. `source.json` фиксирует SHA-256 английских строк и блокирует незаметное устаревание переводов. |
 | `collections.js` | Районы × фишки для секции «Районы». Имена сверяются с `packages/economy/src/lore.ts` (сейчас 8 коллекций × 9 = 72). |
 | `base.css` | Исходная визуальная система (`--wall-tint`, лампы; кирпичная текстура убрана — она прятала фоновые фото) — не редактируется без причины. |
 | `extra.css` | Всё добавленное поверх: фото-стены, световые эффекты, бейджи, районные арты. |
 | `app.js` | Рантайм: i18n, рендер районов/паков/тиров, счётчики, фото-reveal, курсорная лужа. `/*__DATA__*/` и `/*__COLLECTIONS__*/` заменяются при сборке. |
 | `build.py` | Сборка: инлайнит CSS/JS/данные, **все изображения как webp data-URI** и **шрифты как woff2 data-URI** из `client/public/fonts/manifest.json` (файл остаётся самодостаточным — деплой = скопировать один HTML). |
 | `check.ts` | Числа на странице против `packages/economy` (шансы, цены, комиссии, сплиты, имена) **плюс SEC-B4**: белый список сторонних origin'ов (сейчас один — `api.guttercaps.gg`), разбор meta-CSP и проверка, что каждый landing-шрифт из манифеста реально вшит как data-URI. |
-| `smoke.mjs` | DOM-тест собранного файла в happy-dom: рендер EN/RU, 8 районов / 72 фишки, ld+json, отсутствие ошибок. |
+| `smoke.mjs` | DOM-тест собранного файла в happy-dom: рендер 7 языков, 8 районов / 72 фишки, ld+json, отсутствие ошибок. |
 
 ## Фото-фоны (`assets/`)
 
@@ -47,7 +48,7 @@ npm run landing:check   # числа против packages/economy + DOM-smoke (
 
 Собранный HTML ≈ 2,78 МБ: ~2,4 МБ base64 изображений (бинарно ~1,8 МБ) + 207 КБ шрифтов
 (13 woff2: Inter и JetBrains Mono в latin+cyrillic, Permanent Marker latin — ровно те подмножества,
-которые нужны странице на EN/RU; `surfaces` в манифесте помечает их как `landing`, и
+для всех 7 языков, включая Vietnamese и Latin Extended; `surfaces` в манифесте помечает их как `landing`, и
 `npm run fonts:check` держит бюджет ≤ 420 КБ). latin-ext/vietnamese сознательно не инлайнятся: это +57 КБ
 на каждую загрузку ради языков, которых у лендинга нет.
 После визуального обновления это осознанный бюджет: `assets/*.webp` ≤ 1,9 МБ;
@@ -64,3 +65,15 @@ npm run landing:check   # числа против packages/economy + DOM-smoke (
    **Геометрия обязана совпадать** с константами `ART_TILE/ART_GUT/ART_PAD` в `build.py`
    (они попадают в рантайм как `DISTRICT_ART_GEO` и кормят спрайт-математику `app.js`).
 4. `npm run landing:build && npm run landing:check` — оба должны быть зелёными.
+
+
+## Изменение перевода
+
+1. EN/RU редактируются в `content.py`, остальные пять локалей — в `locales/<код>.json`.
+2. Сохраняйте имена переменных `{n}`, `{rarity}`, `{amount}` и смысл финансовых оговорок. Числа карточек паков общие для языков и проверяются против `packages/economy`.
+3. При изменении английского источника синхронизируйте все переводы, затем явно обновите соответствующий SHA-256 UTF-8 строки в `locales/source.json`. Сборка не обновляет его автоматически. Хеш защищает от дрейфа, но не заменяет вычитку носителем языка.
+4. `npm run landing:build && npm run landing:check` — обязательны. Браузерная проверка: `npx playwright test tests/e2e/landing-localization.spec.ts --project=desktop-chromium --workers=1`.
+
+Язык: `?lang=` → сохранённый выбор → языки браузера → EN. Поддерживаются теги `pt-BR`, `tl-PH` (Filipino); неизвестные значения не открывают доступ к свойствам прототипа словаря. Переключение обновляет URL и хранилище, ссылки в приложение передают язык. Текст, метаданные FAQ, aria-подписи, каталог и формат чисел обновляются вместе.
+
+Шрифты встроены, внешних запросов к Google Fonts нет. RU/VI используют Inter для заголовков; шрифт Permanent Marker не покрывает их алфавиты. Переводы подготовлены в рамках разработки и ещё требуют независимой редакторской вычитки.

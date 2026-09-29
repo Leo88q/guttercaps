@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
-import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
+import { WalletDialogProvider } from '@/shared/ui/WalletDialogProvider';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RPC_URL, RPC_WS_URL } from './config';
 import { useUiStore } from './store/ui';
@@ -31,11 +31,11 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <ConnectionProvider endpoint={endpoint} config={config}>
       <WalletProvider wallets={wallets} autoConnect>
-        <WalletModalProvider>
+        <WalletDialogProvider>
           <QueryClientProvider client={queryClient}>
             <SessionGate>{children}</SessionGate>
           </QueryClientProvider>
-        </WalletModalProvider>
+        </WalletDialogProvider>
       </WalletProvider>
     </ConnectionProvider>
   );

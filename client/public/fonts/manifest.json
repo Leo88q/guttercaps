@@ -46,7 +46,8 @@
       "bytes": 35000,
       "sha256": "6744a7f509ebc6ab220a6cd4ea77e898adf014f03d88dcda5d45d8a9feefb4e9",
       "surfaces": [
-        "client"
+        "client",
+        "landing"
       ]
     },
     {
@@ -71,7 +72,8 @@
       "bytes": 4972,
       "sha256": "547ad9fdaeb0ae43487f4b8a02e47c36553c0c0cb73c8aa98f93b7b615f6b55d",
       "surfaces": [
-        "client"
+        "client",
+        "landing"
       ]
     },
     {
@@ -96,7 +98,8 @@
       "bytes": 36024,
       "sha256": "2c6fbc42d315528beb06c1096df45487bf4186c4b78b8111d12c9c951f8acca2",
       "surfaces": [
-        "client"
+        "client",
+        "landing"
       ]
     },
     {
@@ -121,7 +124,8 @@
       "bytes": 5112,
       "sha256": "44e36aa5a8f12130029a29bb0e6695d0262b67446ce321e878b1fb56162b5de6",
       "surfaces": [
-        "client"
+        "client",
+        "landing"
       ]
     },
     {
@@ -146,7 +150,8 @@
       "bytes": 36260,
       "sha256": "e4bdf67b0cd15ca9e184509275be95db942195d3cc2b17f6a0452f2adf75d0bf",
       "surfaces": [
-        "client"
+        "client",
+        "landing"
       ]
     },
     {
@@ -171,7 +176,8 @@
       "bytes": 5100,
       "sha256": "1aeb94ae9db052a4a2fe6f3046f928cff1fdbd7abdf870a9a01c13cae6faeba5",
       "surfaces": [
-        "client"
+        "client",
+        "landing"
       ]
     },
     {
@@ -196,7 +202,8 @@
       "bytes": 36244,
       "sha256": "143f9504f1377012aa3e39c90c4354ef429cb0494b9ac0e1437f1a81e5412236",
       "surfaces": [
-        "client"
+        "client",
+        "landing"
       ]
     },
     {
@@ -221,7 +228,8 @@
       "bytes": 5104,
       "sha256": "5fafa3829a16d9ea5ac3a67c51e54186353122790b604a3e361f96cab188da8b",
       "surfaces": [
-        "client"
+        "client",
+        "landing"
       ]
     },
     {
@@ -246,7 +254,8 @@
       "bytes": 7336,
       "sha256": "505dfba8ecbe77e82765f36d317ed7ef4ac42719dc5f4ae68d1c483fd22d0d14",
       "surfaces": [
-        "client"
+        "client",
+        "landing"
       ]
     },
     {
@@ -271,7 +280,8 @@
       "bytes": 3924,
       "sha256": "efc9e0df126ca6dd1c37a022bfe1d664d23b3fcaa32979d2028ecb4c074306c8",
       "surfaces": [
-        "client"
+        "client",
+        "landing"
       ]
     },
     {
@@ -296,7 +306,8 @@
       "bytes": 7472,
       "sha256": "45a606d88f72bc0afae4d1a6988e3dba3a5e77ee51aa3b550e37c31c728f4d2d",
       "surfaces": [
-        "client"
+        "client",
+        "landing"
       ]
     },
     {
@@ -321,7 +332,8 @@
       "bytes": 3992,
       "sha256": "c95f3997692ba039a5d812313f82b832b3286d5f9de35a1695a2cc695548c44b",
       "surfaces": [
-        "client"
+        "client",
+        "landing"
       ]
     },
     {

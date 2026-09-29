@@ -4,10 +4,12 @@
 // (public routes) and, in a second pass, a fake wallet is injected via the
 // wallet-adapter context so the authenticated screens render too.
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { render, screen, waitFor, cleanup, fireEvent, within } from '@testing-library/react';
-import { createMemoryRouter, RouterProvider } from 'react-router-dom';
+import { render, screen, waitFor, cleanup, fireEvent, within, act } from '@testing-library/react';
+import { createMemoryRouter, RouterProvider, MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Keypair } from '@solana/web3.js';
+import { qk } from '@/api/keys';
+import type { AdminParams, AdminKpi, StakingOverview, Match, useReferrals } from '@/api/hooks';
 import { setMockMode } from '@/api/client';
 import { useSessionStore } from '@/app/store/session';
 
@@ -37,10 +39,11 @@ vi.mock('@solana-mobile/wallet-standard-mobile', () => ({ registerMwa: () => {},
 import { routes } from './router';
 import { SessionGate } from './session';
 
-function mount(path: string) {
+function mount(path: string, config?: { marketFeeBps: number }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  if (config) qc.setQueryData(['chain', 'config'], config);
   const router = createMemoryRouter(routes, { initialEntries: [path] });
-  return render(<QueryClientProvider client={qc}><SessionGate><RouterProvider router={router} /></SessionGate></QueryClientProvider>);
+  return { ...render(<QueryClientProvider client={qc}><SessionGate><RouterProvider router={router} /></SessionGate></QueryClientProvider>), qc, router };
 }
 
 beforeAll(() => {
@@ -72,7 +75,7 @@ describe('public routes (disconnected)', () => {
 
 const AUTHED: [string, RegExp][] = [
   ['/', /Yo, /], ['/collection', /archetypes/], ['/shop', /Pack shop/], ['/fusion', /Fusion bench/], ['/arena', /Your squad/], ['/market', /Market/],
-  ['/staking', /Staking/], ['/quests', /Quests/], ['/profile', /Referrals/], ['/leaderboard/collection', /Collectors/], ['/verify/abc', /Provably fair/], ['/admin', /Ops panel/], ['/admin?tab=kpi', /ARPPU 30d/], ['/admin?tab=fraud', /win_trading/],
+  ['/staking', /Staking/], ['/quests', /Quests/], ['/profile', /Referrals/], ['/leaderboard/collection', /Collectors/], ['/verify/abc', /Provably fair/], ['/admin', /Ops panel/], ['/admin?tab=kpi', /Revenue per payer/], ['/admin?tab=fraud', /Match-fixing signals/],
 ];
 
 describe('authenticated routes (fake wallet + mock SIWS)', () => {
@@ -131,7 +134,7 @@ describe('authenticated routes (fake wallet + mock SIWS)', () => {
   it('quests: a kind-9 cap voucher (#28) is listed with its template odds and claimed on its own button, separate from "Claim all"', async () => {
     mount('/quests');
     await waitFor(() => expect(screen.getByTestId('voucher-claim')).toBeTruthy(), { timeout: 6000 });
-    expect(screen.getAllByText(/Common 80%, Common\+ 18%, Rare 2%/).length).toBeGreaterThan(0); // QUEST_CHIP_TEMPLATES[0] (7-day streak)
+    expect(screen.getAllByText(/Common 80\.00% · Common\+ 18\.00% · Rare 2\.00%/).length).toBeGreaterThan(0); // QUEST_CHIP_TEMPLATES[0] (7-day streak)
     expect(screen.getAllByText(/1 cap voucher/).length).toBeGreaterThan(0);                     // totals line
     expect(screen.getAllByText(/Claim all \(3\)/).length).toBe(1);                              // $CG + SKR + booster leaves only
     expect(screen.getAllByText(/Claim cap voucher/).length).toBe(1);
@@ -169,7 +172,7 @@ describe('authenticated routes (fake wallet + mock SIWS)', () => {
     // fraud queue: resolving closes the wallet's signals and the row disappears
     mount('/admin?tab=fraud');
     await waitFor(() => expect(screen.getAllByTestId('fraud-row').length).toBe(4), { timeout: 6000 });
-    fireEvent.click(screen.getAllByText(/^shadow_ban$/)[0]);
+    fireEvent.click(screen.getAllByText(/^Hide from leaderboards$/)[0]);
     await waitFor(() => expect(screen.getAllByTestId('fraud-row').length).toBe(3), { timeout: 6000 });
     cleanup();
     // audit log lists the calls we just made
@@ -237,4 +240,199 @@ describe('shop tab strip (the axe aria-required-children regression, docs/09 §5
     expect(bundleRow!.querySelectorAll('span.pill').length).toBeGreaterThan(0);
     cleanup();
   });
+});
+
+describe('all locales, authenticated route matrix (mock only)', () => {
+  const matrix = ['/', '/collection', '/shop', '/shop?tab=services', '/fusion', '/arena', '/market', '/staking', '/quests', '/profile', '/leaderboard', '/codex', '/verify', '/admin', '/admin?tab=kpi', '/admin?tab=simulate', '/admin?tab=fraud', '/admin?tab=kill', '/admin?tab=audit'];
+  for (const locale of ['en', 'ru', 'pt', 'es', 'vi', 'id', 'fil'] as const) {
+    it(`${locale}: renders every player screen without missing keys or crashes`, async () => {
+      const { setLocale, t, LOCALE_META } = await import('@/shared/i18n');
+      connected = true;
+      await setLocale(locale);
+      const errors: unknown[] = [];
+      const spy = vi.spyOn(console, 'error').mockImplementation((...args) => {
+        if (!String(args).includes('act(') && !String(args).includes('Warning:')) errors.push(args);
+      });
+      try {
+        for (const path of matrix) {
+          mount(path);
+          await waitFor(() => expect(screen.getAllByRole('heading', { level: 1 }).length).toBeGreaterThan(0));
+          expect(document.documentElement.lang).toBe(LOCALE_META[locale].tag);
+          expect(document.body.textContent).not.toMatch(/screens\.\w+|market\.sort\.\w+|catalog\.c\d+r\d+|ui\.rarity\d|\{(?:name|amount|time)\}/);
+          if (path === '/codex') expect(screen.getByText(t('catalog.c0r0.name'))).toBeTruthy();
+          cleanup();
+        }
+        expect(errors).toEqual([]);
+      } finally {
+        cleanup();
+        spy.mockRestore();
+        await setLocale('en');
+      }
+    }, 30_000);
+  }
+});
+
+
+describe('localized controls and money disclosures (mock wallet/API)', () => {
+  for (const locale of ['en', 'ru', 'pt', 'es', 'vi', 'id', 'fil'] as const) {
+    it(`${locale}: market sort, live fees, staking dialog and simulator labels`, async () => {
+      const { setLocale, t } = await import('@/shared/i18n');
+      const { fmtPct } = await import('@/shared/lib/format');
+      const { tierName } = await import('@/shared/lib/presentation');
+      const { mockRequest } = await import('@/api/mock');
+      connected = true;
+      await setLocale(locale);
+      try {
+        mount('/market');
+        const sort = await screen.findByRole('button', { name: t('market.sort.newest') });
+        fireEvent.click(sort);
+        await waitFor(() => expect(sort.classList.contains('pill-active')).toBe(true));
+        expect(document.body.textContent).not.toMatch(/market\.sort\./);
+        cleanup();
+
+        const page = (await mockRequest('get', '/market/listings', {})) as { items: { asset: string }[] };
+        mount(`/market/${page.items[0].asset}`, { marketFeeBps: 1000 });
+        await screen.findByText(t('screens.sellerFees'));
+        expect(screen.getByText(`${fmtPct(1000)} + ${fmtPct(250)}`.replace(/\s/g, ' '))).toBeTruthy();
+        expect(document.body.textContent).not.toContain('5% + 2.5%');
+        cleanup();
+
+        mount('/staking');
+        await screen.findByText(t('ui.yourPositions'));
+        expect(screen.getByRole('button', { name: (name) => name.startsWith(tierName(1)) })).toBeTruthy();
+        fireEvent.click(screen.getAllByRole('button', { name: t('staking.unstake') })[0]);
+        const dialog = await screen.findByRole('dialog');
+        expect(dialog.textContent).toContain(t('staking.unstake'));
+        if (locale !== 'en') expect(dialog.textContent).not.toMatch(/Unstake ·|Early exit penalty/);
+        cleanup();
+
+        mount('/admin?tab=simulate');
+        await screen.findByText(t('screens.payingShare'));
+        expect(screen.getByText(t('screens.avgFusionFeeCg'))).toBeTruthy();
+        expect(document.body.textContent).not.toMatch(/payingShare|fusionsPerDauPerDay/);
+      } finally {
+        cleanup();
+        await setLocale('en');
+      }
+    }, 20_000);
+  }
+});
+
+
+describe('numeric presentation uses the selected language, not the host locale', () => {
+  for (const locale of ['en', 'ru', 'pt', 'es', 'vi', 'id', 'fil'] as const) {
+    it(`${locale}: APY, stake multipliers, referral USD, replay arithmetic and admin date keep their source values`, async () => {
+      const { setLocale, t, LOCALE_META } = await import('@/shared/i18n');
+      const { chipPower } = await import('@/shared/lib/rarity');
+      const { tierName } = await import('@/shared/lib/presentation');
+      const { ChipDrawer } = await import('@/features/collection/ChipDrawer');
+      const { LOCK_TIERS } = await import('@guttercaps/economy');
+      const tag = LOCALE_META[locale].tag;
+      const decimal = (n: number, digits = 2) => new Intl.NumberFormat(tag, { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
+      const percent = (ratio: number, digits = 1) => new Intl.NumberFormat(tag, { style: 'percent', minimumFractionDigits: digits, maximumFractionDigits: digits }).format(ratio);
+      const usd = (n: number, digits = 2) => new Intl.NumberFormat(tag, { style: 'currency', currency: 'USD', minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
+      const kv = (label: string) => screen.getByText(label, { exact: true }).closest('.kv')!.querySelector('b')!.textContent;
+      connected = true;
+      await act(() => setLocale(locale));
+      try {
+        // Older clients persisted an interrupted sign-in; recovery must work in every language.
+        sessionStorage.setItem('gc.session', JSON.stringify({ state: { status: 'signing' }, version: 0 }));
+        await useSessionStore.persist.rehydrate();
+        expect(useSessionStore.getState().status).toBe('anonymous');
+        const stake = mount('/staking');
+        await screen.findByText(t('ui.yourPositions'));
+        await waitFor(() => expect(stake.qc.getQueryData(qk.stakingOverview)).toBeDefined());
+        const overview = stake.qc.getQueryData<StakingOverview>(qk.stakingOverview)!;
+        await waitFor(() => expect(kv(t('ui.apyCurrent'))).toBe(percent(overview.tokenPool!.apyByTier![1] / 100)));
+        const original = JSON.stringify(overview);
+        fireEvent.click(screen.getByRole('button', { name: name => name.startsWith(tierName(3)) }));
+        expect(kv(t('ui.weightBoost'))).toBe('×' + new Intl.NumberFormat(tag).format(LOCK_TIERS.d180.boost));
+        expect(kv(t('ui.earlyPenalty'))).toBe(percent(LOCK_TIERS.d180.earlyExitPenaltyBps / 10000, 0));
+        const input = screen.getByRole('textbox') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: '1234,567890' } });
+        await act(() => setLocale(locale === 'en' ? 'ru' : 'en'));
+        expect(input.value).toBe('1234,567890'); // localized display never rewrites an editing value
+        expect(JSON.stringify(stake.qc.getQueryData(qk.stakingOverview))).toBe(original);
+        cleanup(); await act(() => setLocale(locale));
+
+        const profile = mount('/profile');
+        await screen.findByText('@rail_queen', { exact: false });
+        expect(document.body.textContent).toContain(usd(30.97));
+        expect(document.body.textContent).toContain(usd(0));
+        expect(document.body.textContent).not.toContain('$undefined');
+        const referrals = profile.qc.getQueryData<NonNullable<ReturnType<typeof useReferrals>['data']>>(qk.referrals)!;
+        const originalReferrals = JSON.stringify(referrals);
+        await act(() => { profile.qc.setQueryData(qk.referrals, { ...referrals, referees: referrals.referees!.map((r, i) => i ? r : { ...r, spendUsd: undefined, paidPurchases: undefined }) }); });
+        await waitFor(() => expect(screen.getByText('@rail_queen', { exact: false }).textContent).toContain('· — × · —'));
+        expect(JSON.stringify(referrals)).toBe(originalReferrals);
+        cleanup();
+
+        const drawerClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const chip = { asset: fakeKey.toBase58(), collection: 0, rarity: 0, level: 1, flags: { listed: true }, listing: { currency: 'SKR' as const, createdAt: '2026-09-29T12:00:00Z', priceUsd: 0 } };
+        const drawer = (priceUsd?: number) => <QueryClientProvider client={drawerClient}><MemoryRouter><ChipDrawer chip={{ ...chip, listing: { ...chip.listing, priceUsd } }} onClose={() => {}} /></MemoryRouter></QueryClientProvider>;
+        const rendered = render(drawer(0));
+        expect(kv(t('screens.listedAt'))).toBe(`${usd(0)} (SKR)`);
+        rendered.rerender(drawer(undefined));
+        expect(kv(t('screens.listedAt'))).toBe('— (SKR)');
+        rendered.rerender(drawer(1234.56));
+        expect(kv(t('screens.listedAt'))).toBe(`${usd(1234.56)} (SKR)`);
+        expect(chip.listing.priceUsd).toBe(0);
+        cleanup();
+
+        const replay = mount('/arena/match/demo');
+        await waitFor(() => expect(document.querySelector('.round .tiny.muted.mono')).toBeTruthy());
+        const match = replay.qc.getQueryData<Match>(qk.match('demo'))!;
+        const before = JSON.stringify(match);
+        match.rounds!.forEach((round, i) => {
+          const cap = match.squadA!.find(c => c.asset === round.attacker)!;
+          const power = chipPower(cap.rarity!, cap.level!);
+          const expected = `${decimal(power, 0)} × ${t('ui.edge')} ${decimal(1 + round.elementEdge!)} × ${t('ui.luck')} ${decimal(round.luckA!)} = ${decimal(power * (1 + round.elementEdge!) * round.luckA!, 0)}`;
+          expect(document.querySelectorAll('.round .tiny.muted.mono')[i * 2].textContent).toBe(expected);
+        });
+        await act(() => setLocale(locale === 'en' ? 'pt' : 'en'));
+        expect(JSON.stringify(replay.qc.getQueryData(qk.match('demo')))).toBe(before);
+        cleanup(); await act(() => setLocale(locale));
+
+        const admin = mount('/admin');
+        await screen.findByText(t('admin.params.globals'));
+        const params = admin.qc.getQueryData<AdminParams>(qk.adminParams)!;
+        const snapshot = JSON.stringify(params);
+        const expectedDate = new Intl.DateTimeFormat(tag, { dateStyle: 'short' }).format(params.emission!.nextSplitChangeAt! * 1000);
+        expect(document.body.textContent).toContain(t('admin.params.splitRule', { delta: params.guardRails!.split!.maxDeltaBps!, next: expectedDate }));
+        expect(JSON.stringify(admin.qc.getQueryData(qk.adminParams))).toBe(snapshot);
+        cleanup();
+
+        const kpi = mount('/admin?tab=kpi');
+        await screen.findByText(t('admin.kpi.usd30'));
+        const data = kpi.qc.getQueryData<AdminKpi>(qk.adminKpi)!;
+        expect(kv(t('admin.kpi.usd30'))).toBe(usd(data.revenue!.usd30d!, 0));
+        expect(kv(t('admin.kpi.marketVol7'))).toContain(usd(data.market!.volume7dUsd!, 0));
+        const originalKpi = JSON.stringify(data);
+        await act(() => { kpi.qc.setQueryData(qk.adminKpi, { ...data, revenue: { ...data.revenue, usd30d: 0 }, market: { ...data.market, volume7dUsd: undefined } }); });
+        await waitFor(() => expect(kv(t('admin.kpi.usd30'))).toBe(usd(0, 0)));
+        expect(kv(t('admin.kpi.marketVol7'))).toMatch(/^— · /);
+        expect(JSON.stringify(data)).toBe(originalKpi);
+      } finally { cleanup(); await act(() => setLocale('en')); }
+    }, 20_000);
+  }
+});
+
+
+it('wallet reconnect preserves the requested tab and fragment instead of opening default params', async () => {
+  const { setLocale, t } = await import('@/shared/i18n');
+  connected = false;
+  useSessionStore.getState().clear();
+  await act(() => setLocale('en'));
+  const view = mount('/admin?tab=kpi#metrics');
+  try {
+    await waitFor(() => expect(view.router.state.location.pathname).toBe('/'));
+    expect(new URLSearchParams(view.router.state.location.search).get('next')).toBe('/admin?tab=kpi#metrics');
+    connected = true;
+    await act(() => { view.rerender(<QueryClientProvider client={view.qc}><SessionGate><RouterProvider router={view.router} /></SessionGate></QueryClientProvider>); });
+    await act(() => setLocale('ru'));
+    await waitFor(() => expect(view.router.state.location.pathname).toBe('/admin'));
+    expect(view.router.state.location.search).toBe('?tab=kpi');
+    expect(view.router.state.location.hash).toBe('#metrics');
+    await screen.findByText(t('admin.kpi.usd30'));
+  } finally { cleanup(); connected = true; await act(() => setLocale('en')); }
 });

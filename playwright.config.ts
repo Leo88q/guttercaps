@@ -27,6 +27,10 @@ export default defineConfig({
     : [['list']],
   use: {
     baseURL: BASE,
+    ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { launchOptions: {
+      executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+      args: ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+    } } : {}),
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'off',
@@ -44,7 +48,7 @@ export default defineConfig({
   webServer: {
     // `vite preview` serves client/dist with the same /v1 + /ws proxy as `vite dev` (client/vite.config.ts
     // `preview.proxy`), which is what lets a production build run against a local backend or the mock.
-    command: `npm --prefix client run preview -- --host 127.0.0.1 --port ${PORT} --strictPort`,
+    command: `npm --prefix client run preview -- --host 0.0.0.0 --port ${PORT} --strictPort`,
     url: BASE,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

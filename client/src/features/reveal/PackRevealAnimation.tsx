@@ -1,3 +1,5 @@
+import { useT } from '@/shared/i18n';
+import { RARITIES, rarityName } from '@/shared/lib/rarity';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useUiStore } from '@/app/store/ui';
 import './reveal.css';
@@ -23,7 +25,7 @@ const TIER_CONFIG: Record<string, { holdMs: number; glow: string; particles: num
 type Phase = 'buildup' | 'burst' | 'reveal';
 
 interface Props {
-  rarity: string; // one of the 9 ladder names ('Common' … 'Diamond')
+  rarity: number; // protocol rarity index; never a translated display name
   chipName: string;
   /** final art: either a URL or a rendered node (procedural ChipArt) */
   chipImageUrl?: string;
@@ -35,8 +37,9 @@ interface Props {
 }
 
 export function PackRevealAnimation({ rarity, chipName, chipImageUrl, chipArt, isOnChain, remaining = 0, onDone }: Props) {
+  const t = useT();
   const [phase, setPhase] = useState<Phase>('buildup');
-  const config = TIER_CONFIG[rarity] ?? TIER_CONFIG.Common;
+  const config = TIER_CONFIG[RARITIES[rarity]] ?? TIER_CONFIG.Common;
   const sound = useUiStore((s) => s.sound);
 
   useEffect(() => {
@@ -94,9 +97,9 @@ export function PackRevealAnimation({ rarity, chipName, chipImageUrl, chipArt, i
             {isOnChain && <div className="reveal-onchain-badge">NFT</div>}
             <div className="reveal-chip-glow" />
             {chipArt ? <div className="reveal-chip-image">{chipArt}</div> : <img src={chipImageUrl} alt={chipName} className="reveal-chip-image" />}
-            <p className="reveal-chip-rarity" style={{ color: config.glow }}>{rarity}</p>
+            <p className="reveal-chip-rarity" style={{ color: config.glow }}>{rarityName(rarity)}</p>
             <p className="reveal-chip-name">{chipName}</p>
-            <p className="reveal-tap-hint">{remaining > 0 ? `Tap to continue · ${remaining} more` : 'Tap to continue'}</p>
+            <button type="button" className="reveal-tap-hint btn btn-ghost" onClick={(event) => { event.stopPropagation(); onDone(); }}>{t('ui.continue')}{remaining > 0 && <> · {remaining} {t('ui.more')}</>}</button>
           </div>
         )}
       </div>

@@ -1,3 +1,4 @@
+import { useT } from '@/shared/i18n';
 // Procedural chip art used until final assets land. District → palette +
 // pattern family, rarity → accent colour. Patterns are abstract geometry
 // (grids, arcs, stripes, dot fields, web-like radial lattices) — no third-party IP.
@@ -29,6 +30,7 @@ export interface ChipArtProps {
 }
 
 export const ChipArt = memo(function ChipArt({ collection, rarity, index = null, level, size = '100%', imageUrl, fallbackUrl, selected, dim, badge, skin, onClick, title, className = '', crimp }: ChipArtProps) {
+  const t = useT();
   const base = collectionColor(collection);
   const glow = rarityColor(rarity);
   // Final art is a static file that may not exist yet (art exports land per
@@ -93,7 +95,7 @@ export const ChipArt = memo(function ChipArt({ collection, rarity, index = null,
           </g>
         </svg>
       )}
-      {level !== undefined && <span className="chip-lvl">L{level}</span>}
+      {level !== undefined && <span className="chip-lvl">{t('screens.levelBadge', { n: level })}</span>}
       {badge && <span className="chip-badge">{badge}</span>}
     </div>
   );

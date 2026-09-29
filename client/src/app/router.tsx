@@ -21,6 +21,7 @@ const Codex = lazy(() => import('@/features/codex/Codex'));
 const Verify = lazy(() => import('@/features/verify/Verify'));
 const Admin = lazy(() => import('@/features/admin/Admin'));
 const Language = lazy(() => import('@/features/language/Language'));
+const Rights = lazy(() => import('@/features/rights/Rights'));
 const Legal = lazy(() => import('@/features/legal/Legal'));
 
 function Fallback() {
@@ -37,7 +38,7 @@ function RequireWallet({ children }: { children: ReactNode }) {
   const { connected, connecting } = useWallet();
   const loc = useLocation();
   if (connecting) return <Fallback />;
-  if (!connected) return <Navigate to={`/?connect=1&next=${encodeURIComponent(loc.pathname)}`} replace />;
+  if (!connected) return <Navigate to={`/?connect=1&next=${encodeURIComponent(loc.pathname + loc.search + loc.hash)}`} replace />;
   return <>{children}</>;
 }
 
@@ -68,6 +69,8 @@ export const routes: RouteObject[] = [
       { path: 'language', element: S(<Language />) },
       // Legal docs are reachable at three URLs on purpose: /legal/terms is the canonical one, and the two
       // short aliases are what a store listing, a receipt footer or a printed QR code will point at.
+      { path: 'account/rights', element: S(<Rights />) },
+      { path: 'admin/rights', element: S(<Rights staff />) },
       { path: 'legal', element: S(<Legal />) },
       { path: 'legal/:doc', element: S(<Legal />) },
       { path: 'terms', element: <Navigate to="/legal/terms" replace /> },

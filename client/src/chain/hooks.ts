@@ -1,4 +1,5 @@
 // React bindings for direct on-chain reads (no backend needed).
+import { isMock } from '@/api/client';
 import { useMemo } from 'react';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
@@ -35,6 +36,8 @@ export function useGameConfig() {
   const { connection } = useConnection();
   return useQuery({
     queryKey: chainKeys.config,
+    // Demo/E2E uses the published economy table; it must not reach a real RPC.
+    enabled: !isMock(),
     queryFn: async (): Promise<GameConfig | null> => {
       const info = await connection.getAccountInfo(configPda()[0], 'confirmed');
       return info ? decodeGameConfig(new Uint8Array(info.data)) : null;

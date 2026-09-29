@@ -1,3 +1,4 @@
+import { t, type MessageKey } from '@/shared/i18n';
 // Cosmetic ownership + display-choice helpers. Variants are bound at PURCHASE
 // time (the payload hashed into ref_hash): what you own is read from
 // entitlement payloads, and the wallet only chooses which owned variant to
@@ -37,7 +38,7 @@ export function ownedPacks(ents: EntitlementLike[] | undefined): string[] {
 }
 
 export interface ProfileTheme { id: string; label: string; desc: string; hex: string }
-export const PROFILE_THEMES: ProfileTheme[] = ECONOMY_THEMES.map((t) => ({ id: t.id, label: t.name, desc: t.blurb, hex: t.hex }));
+export const PROFILE_THEMES: ProfileTheme[] = ECONOMY_THEMES.map((t) => ({ id: t.id, get label() { return themeText(t.id); }, get desc() { return themeText(t.id, true); }, hex: t.hex }));
 export function themeById(id: string | null | undefined): ProfileTheme {
   return PROFILE_THEMES.find((t) => t.id === id) ?? PROFILE_THEMES[0];
 }
@@ -71,21 +72,28 @@ export function saveBanner(wallet: string | undefined, collection: number | null
 }
 
 // ------------------------------------------------------- fusion bench presets
-export interface FusionPreset { name: string; slots: (string | null)[]; resultCol: number | null; savedAt: number }
+export { loadPresets, savePresets, deletePreset, presetName, type FusionPreset } from './fusionPresets';
 export function benchSlots(ents: EntitlementLike[] | undefined): number {
   return owns(ents, KIND.bench) ? 3 : 1;
 }
-export function loadPresets(wallet: string | undefined): FusionPreset[] {
-  if (!wallet) return [];
-  try {
-    const raw = localStorage.getItem(`caps.presets.${wallet}`);
-    const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr.filter((p) => p && Array.isArray(p.slots)) : [];
-  } catch { return []; }
+
+
+const SKIN_KEYS: Record<string, MessageKey> = {
+  'gold-rim': 'ui.skinGold', 'spray-drip': 'ui.skinSpray', hologlow: 'ui.skinHolo',
+  'blood-drip': 'ui.skinBlood', 'frost-rim': 'ui.skinFrost', 'toxic-glow': 'ui.skinToxic',
+};
+const THEME_KEYS: Record<string, MessageKey> = { magenta: 'ui.themeMagenta', cyan: 'ui.themeCyan', acid: 'ui.themeAcid' };
+const EMOTE_KEYS: Record<string, MessageKey> = {
+  gg: 'ui.emoteGg', ez: 'ui.emoteEz', wow: 'ui.emoteWow', rip: 'ui.emoteRip', lit: 'ui.emoteLit', rekt: 'ui.emoteRekt',
+  ghost: 'ui.emoteGhost', vandal: 'ui.emoteVandal', midnite: 'ui.emoteMidnite', howl: 'ui.emoteHowl', fog: 'ui.emoteFog', zero: 'ui.emoteZero',
+};
+export function skinText(id: string, description = false): string {
+  const key = SKIN_KEYS[id];
+  return key ? t((description ? `${key}Desc` : key) as MessageKey) : t('common.unavailable');
 }
-export function savePresets(wallet: string | undefined, presets: FusionPreset[]) {
-  if (wallet) write(`caps.presets.${wallet}`, JSON.stringify(presets));
+export function themeText(id: string, description = false): string {
+  const key = THEME_KEYS[id];
+  return key ? t((description ? `${key}Desc` : key) as MessageKey) : t('common.unavailable');
 }
-export function deletePreset(wallet: string | undefined, name: string) {
-  if (wallet) savePresets(wallet, loadPresets(wallet).filter((p) => p.name !== name));
-}
+export const emotePackName = (id: string) => t(id === 'tags-v1' ? 'ui.streetTags' : id === 'tags-v2' ? 'ui.nightTags' : 'common.unavailable');
+export const emoteLabel = (id: string) => t(EMOTE_KEYS[id] ?? 'common.unavailable');
