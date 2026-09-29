@@ -204,26 +204,6 @@
     mix-blend-mode: screen;
   }
 
-  /* per-district contact sheet cut from the real chip masters */
-  .district-art {
-    float: right;
-    width: 132px;
-    border-radius: 10px;
-    border: 1px solid rgba(216,216,220,0.16);
-    margin: 4px 0 12px 18px;
-    display: block;
-    filter: saturate(1.05) contrast(1.03);
-    transition: border-color .3s ease, box-shadow .3s ease, transform .3s ease;
-  }
-  .district:hover .district-art {
-    border-color: var(--district-color, var(--chrome));
-    box-shadow: 0 0 26px -8px var(--district-color, var(--chrome));
-    transform: translateY(-2px);
-  }
-  @media (max-width: 640px) {
-    .district-art { float: none; width: 46%; max-width: 210px; margin: 10px auto 12px; }
-  }
-
   /* real chip art: each cap sprites its tile out of the district sheet */
   .chip-circle .chip-sprite {
     display: block;
@@ -254,7 +234,6 @@
   @media (prefers-reduced-motion: reduce) {
     .wall-photo { animation: none; transition: none; opacity: var(--photo-op, 0.75); }
     .wall-photo::before { animation: none; opacity: 0; }
-    .district-art { transition: none; }
   }
 
   /* =====================================================================
