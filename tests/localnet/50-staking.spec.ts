@@ -107,9 +107,9 @@ suite('T-L-S staking', () => {
     await env.chain.send([tickDayIx(env.admin.publicKey)], { signers: [env.admin] });
     const e1 = await emission();
     const cp = await pool('chip'); const tp = await pool('token');
-    // year 0: play bucket 550 M × 18 % / 365 = 271 232.876… $CG/day; guard with 0 burn → 30 % floor
+    // year 0: play bucket 550 M × 18 % / 365 = 271 232.876… $CG/day; guard with 0 burn → 10 % floor
     const dailyCap = (550_000_000n * CG * 18n) / 100n / 365n;
-    const guarded = (dailyCap * 3000n) / 10_000n;
+    const guarded = (dailyCap * 1000n) / 10_000n;
     expect(cp.budgetRemaining).toBe((guarded * BigInt(e0.splitBps[0])) / 10_000n);
     expect(tp.budgetRemaining).toBe((guarded * BigInt(e0.splitBps[1])) / 10_000n);
     expect(cp.budgetPerSec).toBe(cp.budgetRemaining / DAY);

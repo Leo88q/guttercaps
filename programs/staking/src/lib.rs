@@ -221,7 +221,7 @@ mod tests {
             schedule_minted: [0; 8],
             burn_ring: [0; 7],
             burn_today: 0,
-            split_bps: [3000, 1500, 1700, 2300, 1500],
+            split_bps: [2000, 1000, 2200, 3300, 1500],
             split_changed_at: 0,
             slice_budget: [0; 5],
             paused: false,
@@ -232,11 +232,11 @@ mod tests {
             recycled_minted: 0,
         };
         let cap = EmissionState::daily_schedule_cap(0);
-        assert_eq!(e.guarded_daily(0), cap * 3 / 10);
+        assert_eq!(e.guarded_daily(0), cap / 10);
         e.burn_ring = [cap; 7];
         assert_eq!(e.guarded_daily(0), cap);
         e.burn_ring = [117_433 * MICRO; 7]; // baseline burn from the TS report
-        assert_eq!(e.guarded_daily(0) / MICRO, 228_161);
+        assert_eq!(e.guarded_daily(0) / MICRO, 173_914); // 10 % floor + 1.25 × burn
     }
 
     #[test]

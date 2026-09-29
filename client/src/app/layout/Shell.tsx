@@ -2,7 +2,7 @@ import { useEffect, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
-import { LanguageIcon, SettingsIcon, QuestsIcon, FusionNavIcon } from '@/shared/ui/icons';
+import { LanguageIcon, SettingsIcon, QuestsIcon, FusionNavIcon, GuideNavIcon } from '@/shared/ui/icons';
 import { useT, useLocale, LOCALE_META, type MessageKey } from '@/shared/i18n';
 import { PaintTrail } from '@/shared/ui/PaintTrail';
 import { Toasts } from '@/shared/ui/primitives';
@@ -24,6 +24,7 @@ const NAV: { to: string; key: MessageKey; Icon?: React.ComponentType<{ size?: nu
   { to: '/arena', key: 'nav.arena', gen: '/icons/gen/nav-arena.webp' },
   { to: '/staking', key: 'nav.stake', gen: '/icons/gen/nav-stake.webp' },
   { to: '/quests', key: 'nav.quests', Icon: QuestsIcon },
+  { to: '/guide', key: 'nav.guide', Icon: GuideNavIcon },
   { to: '/language', key: 'nav.language', Icon: LanguageIcon },
 ];
 

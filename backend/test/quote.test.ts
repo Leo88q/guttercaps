@@ -143,14 +143,14 @@ describe('Pyth reader', () => {
 
 describe('priceCents (same integer math as buy_pack)', () => {
   it('bundles only on Standard/Premium; SKR promo stacks additively and caps at 30 %', () => {
-    expect(priceCents(1, 1, 'SOL')).toEqual({ cents: 499, discountBps: 0 });
-    expect(priceCents(1, 5, 'USDC')).toEqual({ cents: Math.floor((499 * 5 * 9_300) / 10_000), discountBps: 700 });
+    expect(priceCents(1, 1, 'SOL')).toEqual({ cents: 599, discountBps: 0 });
+    expect(priceCents(1, 5, 'USDC')).toEqual({ cents: Math.floor((599 * 5 * 9_300) / 10_000), discountBps: 700 });
     expect(priceCents(1, 25, 'SOL').discountBps).toBe(1_800);
     expect(priceCents(1, 25, 'SKR').discountBps).toBe(2_300);
-    expect(priceCents(2, 10, 'SKR')).toEqual({ cents: Math.floor((1299 * 10 * 8_300) / 10_000), discountBps: 1_700 });
-    expect(priceCents(3, 5, 'SOL')).toEqual({ cents: 2499 * 5, discountBps: 0 });      // Limited: no bundles
-    expect(priceCents(3, 5, 'SKR')).toEqual({ cents: Math.floor((2499 * 5 * 9_500) / 10_000), discountBps: 500 }); // …but the SKR promo applies
-    expect(priceCents(0, 1, 'SKR')).toEqual({ cents: Math.floor((149 * 9_500) / 10_000), discountBps: 500 });
+    expect(priceCents(2, 10, 'SKR')).toEqual({ cents: Math.floor((1499 * 10 * 8_300) / 10_000), discountBps: 1_700 });
+    expect(priceCents(3, 5, 'SOL')).toEqual({ cents: 2999 * 5, discountBps: 0 });      // Limited: no bundles
+    expect(priceCents(3, 5, 'SKR')).toEqual({ cents: Math.floor((2999 * 5 * 9_500) / 10_000), discountBps: 500 }); // …but the SKR promo applies
+    expect(priceCents(0, 1, 'SKR')).toEqual({ cents: Math.floor((199 * 9_500) / 10_000), discountBps: 500 });
     expect(priceCents(1, 25, 'SKR', 1_500).discountBps).toBe(3_000); // 18 % + 15 % → capped
   });
 });
@@ -202,7 +202,7 @@ describe('POST /packs/quote', () => {
     const r = await c.post('/v1/packs/quote', { sku: 1, qty: 1, currency: 'SOL' });
     expect(r.status).toBe(200);
     expect(r.headers.get('cache-control')).toBe('no-store');
-    expect(r.json).toMatchObject({ sku: 1, qty: 1, currency: 'SOL', amount: '33266666', maxLamports: '33599332', discountBps: 0, priceUsdCents: 499, priceUpdateAccount: SOL_ACC.toBase58(), rentReserveLamports: String(8_000_000 * 3), pityCounter: 0, hardPityIn: 60, pythUpdateData: [] });
+    expect(r.json).toMatchObject({ sku: 1, qty: 1, currency: 'SOL', amount: '39933333', maxLamports: '40332666', discountBps: 0, priceUsdCents: 599, priceUpdateAccount: SOL_ACC.toBase58(), rentReserveLamports: String(8_000_000 * 4), pityCounter: 0, hardPityIn: 60, pythUpdateData: [] });
     expect(r.json.solUsd).toBeCloseTo(150, 6); expect(r.json.skrUsd).toBeCloseTo(0.0174, 8);
     expect(r.json.effectiveOddsBps.reduce((a: number, b: number) => a + b, 0)).toBe(10_000);
     const validS = (Date.parse(r.json.expiresAt) - Date.now()) / 1000;
@@ -212,13 +212,13 @@ describe('POST /packs/quote', () => {
     const c = new Client(); await signIn(c, alice);
     const skr = await c.post('/v1/packs/quote', { sku: 2, qty: 5, currency: 'SKR' });
     expect(skr.status).toBe(200);
-    const cents = Math.floor((1299 * 5 * (10_000 - 1_200)) / 10_000);
+    const cents = Math.floor((1499 * 5 * (10_000 - 1_200)) / 10_000);
     expect(skr.json).toMatchObject({ discountBps: 1_200, priceUsdCents: cents, priceUpdateAccount: SKR_ACC.toBase58(), amount: String(unitsForCents(cents, 1_740_000n, -8, 6)) });
     fake.accounts.clear(); _resetQuoteCache(); // no oracle at all
     const usdc = await c.post('/v1/packs/quote', { sku: 1, qty: 10, currency: 'USDC' });
-    expect(usdc.status).toBe(200); expect(usdc.json.amount).toBe(String(Math.floor((499 * 10 * 8_800) / 10_000) * 10_000)); expect(usdc.json.priceUpdateAccount).toBeUndefined();
+    expect(usdc.status).toBe(200); expect(usdc.json.amount).toBe(String(Math.floor((599 * 10 * 8_800) / 10_000) * 10_000)); expect(usdc.json.priceUpdateAccount).toBeUndefined();
     const cg = await c.post('/v1/packs/quote', { sku: 1, qty: 1, currency: 'CG' });
-    expect(cg.json.amount).toBe('750000000');
+    expect(cg.json.amount).toBe('900000000');
     expect((await c.post('/v1/packs/quote', { sku: 0, qty: 1, currency: 'CG' })).json.code).toBe('currency_not_accepted');
   });
   it('503 price_unavailable when the on-chain price is stale, too close to expiry, or missing — never a made-up number', async () => {

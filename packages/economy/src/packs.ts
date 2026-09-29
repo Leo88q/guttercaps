@@ -9,7 +9,7 @@
 //    that paid packs produce per active player per week — see faucets.ts.
 //  * Pricing anchor: the STANDARD pack defines the Common floor. We set
 //    EV(standard) = 65% of its price → implied Common floor ≈ $0.0638
-//    at the $4.99 price (`impliedCommonFloorUsd()` is the exact value).
+//    at the $5.99 price (`impliedCommonFloorUsd()` is the exact value).
 //    Every other SKU is then priced
 //    so its EV/price sits in [55%, 75%]: the 25-45% gap is the standard
 //    gacha "entertainment + platform" margin; above ~80% pack-opening becomes
@@ -62,13 +62,15 @@ const STANDARD_ODDS = [4500, 2500, 1500, 800, 450, 180, 50, 18, 2] as const;
 // Premium shifts mass out of Common/Common+ into Rare/Rare+, raises
 // Legend/Legend+/Diamond odds ×1.4-2.5, floor Rare + 5 chips → no dead packs.
 // EV/price ≈ 63% (vs 65% Standard): you pay a small premium for consistency.
-const PREMIUM_ODDS = [2800, 2600, 2250, 1400, 600, 250, 70, 25, 5] as const;
+// 2026-09-29: price $12.99 → $14.99 at 5 chips (6 is impossible: MAX_CHIPS_PER_PACK = 5 is baked into
+// the compressed-claim stride and PackOpened layout) → mass moved from Common into Rare+..Legend to keep EV ≥ 55 %.
+const PREMIUM_ODDS = [2320, 2600, 2250, 1600, 800, 310, 90, 25, 5] as const;
 
-// Starter is deliberately +EV (floor Rare, 3 chips, $1.49) — it is a
+// Starter is deliberately +EV (floor Rare, 4 chips, $1.99) — it is a
 // customer-acquisition cost, not a product. One-per-wallet, and its chips
 // are non-tradeable for 7 days (soulbound window via the Metaplex Core
 // FreezeDelegate plugin) so sybil wallets cannot farm and dump them.
-const STARTER_ODDS = [3000, 3000, 2500, 1100, 350, 50, 0, 0, 0] as const;
+const STARTER_ODDS = [2900, 3000, 2500, 1200, 350, 50, 0, 0, 0] as const;
 
 // Limited event pack: only the featured (seasonal) collection, floor Rare+,
 // top-end odds ×2.4-15 vs standard, hard daily cap of 5 per wallet so the
@@ -77,27 +79,27 @@ const LIMITED_ODDS = [2200, 2400, 2400, 1600, 850, 350, 120, 50, 30] as const;
 
 export const PACKS: Record<PackId, PackDef> = {
   starter: {
-    id: 'starter', name: 'Starter Pack', chips: 3,
-    priceUsdCents: 149, priceCgMicro: null,
+    id: 'starter', name: 'Starter Pack', chips: 4,
+    priceUsdCents: 199, priceCgMicro: null,
     oddsBps: STARTER_ODDS, floor: 2, dailyCap: 1, pity: null, pool: 'all', purchasable: true,
   },
   standard: {
-    id: 'standard', name: 'Standard Pack', chips: 3,
-    priceUsdCents: 499, priceCgMicro: 750_000_000, // 750 $CG
+    id: 'standard', name: 'Standard Pack', chips: 4,
+    priceUsdCents: 599, priceCgMicro: 900_000_000, // 900 $CG
     oddsBps: STANDARD_ODDS, floor: 1, dailyCap: null,
     pity: { tier: 6 /* Legend */, hardAt: 60, softStart: 30, softStepBps: 25 },
     pool: 'all', purchasable: true,
   },
   premium: {
     id: 'premium', name: 'Premium Pack', chips: 5,
-    priceUsdCents: 1299, priceCgMicro: 1_950_000_000, // 1 950 $CG
+    priceUsdCents: 1499, priceCgMicro: 2_250_000_000, // 2 250 $CG
     oddsBps: PREMIUM_ODDS, floor: 2, dailyCap: null,
     pity: { tier: 6, hardAt: 40, softStart: 20, softStepBps: 40 },
     pool: 'all', purchasable: true,
   },
   limited: {
     id: 'limited', name: 'Limited Event Pack', chips: 5,
-    priceUsdCents: 2499, priceCgMicro: null, // event packs are SOL/USDC only → real revenue for prize pools
+    priceUsdCents: 2999, priceCgMicro: null, // event packs are SOL/USDC only → real revenue for prize pools
     oddsBps: LIMITED_ODDS, floor: 3, dailyCap: 5,
     pity: { tier: 6, hardAt: 25, softStart: 12, softStepBps: 60 },
     pool: 'featured', purchasable: true,

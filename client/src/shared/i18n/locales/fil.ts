@@ -14,7 +14,7 @@ const fil: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Home', caps: 'Caps', shop: 'Tindahan', market: 'Palengke', arena: 'Arena', stake: 'Stake', fusion: 'Fusion', quests: 'Quests', leaderboard: 'Ranggo', profile: 'Profile', language: 'Wika', more: 'Iba pa' },
+  nav: { home: 'Home', caps: 'Caps', shop: 'Tindahan', market: 'Palengke', arena: 'Arena', stake: 'Stake', fusion: 'Fusion', guide: 'Gabay', quests: 'Quests', leaderboard: 'Ranggo', profile: 'Profile', language: 'Wika', more: 'Iba pa' },
   common: {
     connectWallet: 'Ikonekta ang wallet', connecting: 'Kumokonekta…', signedIn: 'Naka-sign in', signingIn: 'Nagsa-sign in…', signOut: 'Mag-sign out',
     cancel: 'Kanselahin', confirm: 'Kumpirmahin', confirmSign: 'Kumpirmahin at pirmahan', close: 'Isara', save: 'I-save', copy: 'Kopyahin', copied: 'Nakopya',

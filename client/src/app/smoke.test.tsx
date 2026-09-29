@@ -74,7 +74,7 @@ describe('public routes (disconnected)', () => {
 });
 
 const AUTHED: [string, RegExp][] = [
-  ['/', /Yo, /], ['/collection', /archetypes/], ['/shop', /Pack shop/], ['/fusion', /Fusion bench/], ['/arena', /Your squad/], ['/market', /Market/],
+  ['/', /Yo, /], ['/collection', /archetypes/], ['/shop', /Pack shop/], ['/fusion', /Fusion bench/], ['/guide', /How the city works/], ['/arena', /Your squad/], ['/market', /Market/],
   ['/staking', /Staking/], ['/quests', /Quests/], ['/profile', /Referrals/], ['/leaderboard/collection', /Collectors/], ['/verify/abc', /Provably fair/], ['/admin', /Ops panel/], ['/admin?tab=kpi', /Revenue per payer/], ['/admin?tab=fraud', /Match-fixing signals/],
 ];
 

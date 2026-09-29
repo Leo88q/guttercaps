@@ -273,3 +273,19 @@ export function FusionNavIcon({ size = 26, onActivate }: IconProps) {
     </svg>
   );
 }
+
+/** Guide: a paste-up poster on a wall with three lines of text — "how the city works". */
+export function GuideNavIcon({ size = 26, onActivate }: IconProps) {
+  const { active, trigger } = useActivation(450);
+  return (
+    <svg
+      width={size} height={size} viewBox="0 0 32 32"
+      className={`wicon wicon-guide ${active ? 'wicon-active' : ''}`}
+      onClick={() => { trigger(); onActivate?.(); }}
+    >
+      <path d="M8 5 L24 6 L25 27 L7 26 Z" className="wicon-flyer" />
+      <path d="M11 11 H21 M11 15 H21 M11 19 H17" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+      <circle cx="16" cy="7" r="1" className="wicon-staple" />
+    </svg>
+  );
+}

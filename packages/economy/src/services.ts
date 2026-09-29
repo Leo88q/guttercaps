@@ -50,7 +50,7 @@ export const SERVICES: readonly ServiceDef[] = [
   { id: 'arenaEmotePack',  kind: 4, rustName: 'ArenaEmotePack',  priceUsdCents: 249, dailyCap: 10, fulfilment: 'entitlement', recurring: false, name: 'Arena emote pack',   blurb: '6 spray-tag emotes for Cap Slam replays.' },
   { id: 'extraBenchSlots', kind: 5, rustName: 'ExtraBenchSlots', priceUsdCents: 199, dailyCap: 10, fulfilment: 'entitlement', recurring: false, name: '+2 bench presets',   blurb: 'Save more fusion presets on the bench (convenience only).' },
   { id: 'seasonPass',      kind: 6, rustName: 'SeasonPass',      priceUsdCents: 999, dailyCap: 10, fulfilment: 'entitlement', recurring: true,  name: 'Season pass',        blurb: 'Cosmetic track for the 6-week season: 20 tiers of skins, banners, emotes. No odds, no power, no $CG.' },
-  { id: 'booster',         kind: 7, rustName: 'Booster',         priceUsdCents: 79,  dailyCap: 3,  fulfilment: 'chain',       recurring: false, name: 'Fusion booster',     blurb: '+15 pp success on one fusion (cap 95 %). Max 3 per day.' },
+  { id: 'booster',         kind: 7, rustName: 'Booster',         priceUsdCents: 79,  dailyCap: 0,  fulfilment: 'chain',       recurring: false, name: 'Fusion booster',     blurb: '+15 pp success on one fusion (cap 95 %). Earned from quests and PvP only — not sold.' },
   { id: 'packSkipAnim',    kind: 8, rustName: 'PackSkipAnim',    priceUsdCents: 99,  dailyCap: 10, fulfilment: 'entitlement', recurring: false, name: 'Instant reveal',     blurb: 'Permanent toggle to skip the reveal animation. Pure convenience.' },
   { id: 'districtBanner',  kind: 9, rustName: 'DistrictBanner',  priceUsdCents: 199, dailyCap: 10, fulfilment: 'entitlement', recurring: false, name: 'District banner',    blurb: 'Animated banner for a district you have completed.' },
 ] as const;
@@ -61,7 +61,7 @@ export const SERVICE_BY_KIND = Object.fromEntries(SERVICES.map((s) => [s.kind, s
 export const servicePriceCgMicro = (s: ServiceDef) => s.priceUsdCents * CG_MICRO_PER_CENT;
 
 /** Textual form of the Rust `daily_cap` match arm — checked by sync-check.ts. */
-export const SERVICES_DAILY_CAP_RUST = 'Self::Booster => 3, Self::Handle | Self::HandleChange => 1, _ => 10';
+export const SERVICES_DAILY_CAP_RUST = 'Self::Booster => 0, Self::Handle | Self::HandleChange => 1, _ => 10';
 
 /**
  * Revenue projection for services (monthly, USD) — used by docs/05 and the

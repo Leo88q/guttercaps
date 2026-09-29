@@ -63,14 +63,14 @@ describe('fusion planner', () => {
   it('recipes mirror packages/economy (8 steps, strings for u64)', () => {
     const r = fusion.recipes();
     expect(r).toHaveLength(8);
-    expect(r[0]).toMatchObject({ from: 'Common', to: 'Common+', rule: 'any', successBps: 10_000, feeCgMicro: '2500000', boosterBonusBps: 1500, boosterCapBps: 9500 });
+    expect(r[0]).toMatchObject({ from: 'Common', to: 'Common+', rule: 'any', successBps: 10_000, feeCgMicro: '5000000', boosterBonusBps: 1500, boosterCapBps: 9500 });
     expect(r[7]).toMatchObject({ from: 'Legend+', to: 'Diamond', rule: 'same-collection', successBps: 5_000, refundOnFail: 1, feeCgMicro: '6000000000' });
   });
 
-  it('plan: 3 owned free commons → Common+ (atomic, no randomness, fee 2.5 $CG, PDAs derived)', () => {
+  it('plan: 3 owned free commons → Common+ (atomic, no randomness, fee 5 $CG, PDAs derived)', () => {
     const assets = mint(db, w.bob, [{ rarity: 0, collection: 1 }, { rarity: 0, collection: 4 }, { rarity: 0, collection: 1 }]);
     const p = fusion.plan(db, w.bob, fusion.validatePlanRequest({ materials: assets, resultCollection: 4 }));
-    expect(p).toMatchObject({ resultRarity: 'Common+', resultCollection: 4, successBps: 10_000, feeCgMicro: '2500000', needsRandomness: false, breaksSet: false });
+    expect(p).toMatchObject({ resultRarity: 'Common+', resultCollection: 4, successBps: 10_000, feeCgMicro: '5000000', needsRandomness: false, breaksSet: false });
     expect(p.materials.map((m) => m.asset)).toEqual(assets);
     expect(p.accounts.randomness).toBeUndefined();
     expect(Object.keys(p.accounts)).toEqual(expect.arrayContaining(['config', 'vault', 'items', 'pending', 'resultMeta', 'material0', 'chipState2', 'collectionMeta1', 'collectionMeta4']));
@@ -143,14 +143,14 @@ describe('staking read-model', () => {
   let db: Db; let w: ReturnType<typeof world>;
   beforeEach(() => { db = new Db(':memory:'); w = world(); for (const t of w.txs) ingestTx(t, db); });
 
-  it('overview before the first tick_day: schedule floor (30 %), pool totals from Staked events, split 30/15/17/23/15', () => {
+  it('overview before the first tick_day: schedule floor (10 %), pool totals from Staked events, split 20/10/22/33/15', () => {
     const o = staking.overview(db);
     expect(o.emission.source).toBe('schedule');
-    expect(BigInt(o.emission.scheduleCapMicro) * 3n - BigInt(o.emission.guardedMicro) * 10n).toBeLessThan(10n); // floor(cap × 0.30)
-    expect(o.emission.splitBps).toEqual([3000, 1500, 1700, 2300, 1500]);
+    expect(BigInt(o.emission.scheduleCapMicro) - BigInt(o.emission.guardedMicro) * 10n).toBeLessThan(10n); // floor(cap × 0.10)
+    expect(o.emission.splitBps).toEqual([2000, 1000, 2200, 3300, 1500]);
     expect(o.tokenPool).toMatchObject({ tvlMicro: '500000000', totalWeight: '750000000' });
     expect(o.chipPool).toMatchObject({ stakedChips: 1, totalWeight: '2000' });
-    expect(BigInt(o.tokenPool.budgetTodayMicro)).toBe((BigInt(o.emission.guardedMicro) * 15n) / 100n);
+    expect(BigInt(o.tokenPool.budgetTodayMicro)).toBe((BigInt(o.emission.guardedMicro) * 10n) / 100n);
     expect(o.tokenPool.apyByTier).toHaveLength(4);
     expect(o.tokenPool.apyByTier[3]).toBeGreaterThan(o.tokenPool.apyByTier[0]);
   });
@@ -159,7 +159,7 @@ describe('staking read-model', () => {
     ingestTx(tx([{ program: 'staking', name: 'DayClosed', data: { dayIndex: 12, year: 0, scheduleCap: '271232876712', guarded: '150000000000', burn7dAvg: '40000000000', sliceBudget: ['0', '0', '1', '2', '3'] } }]), db);
     const o = staking.overview(db);
     expect(o.emission).toMatchObject({ dayIndex: 12, guardedMicro: '150000000000', burn7dAvgMicro: '40000000000', source: 'chain' });
-    expect(o.chipPool.budgetTodayMicro).toBe('45000000000');
+    expect(o.chipPool.budgetTodayMicro).toBe('30000000000');
   });
 
   it('me: token stake tier from the PDA, penalty while locked, pending = share of the emitted budget since the stake opened (0 before any DayClosed)', () => {
@@ -170,10 +170,10 @@ describe('staking read-model', () => {
     let m = staking.me(db, owner.toBase58());
     expect(m.tokenStakes[0]).toMatchObject({ tier: 2, amount: '1000000000', weight: '2200000000', earlyExitPenalty: '100000000', pending: '0' });
     expect(m.pendingEstimated).toBe(true);
-    // a day closed 2 days ago with a 100 $CG guarded budget → token pool got 15 $CG over 24 h; this stake holds 2.2e9 of 2.95e9 weight
+    // a day closed 2 days ago with a 100 $CG guarded budget → token pool got 10 $CG over 24 h; this stake holds 2.2e9 of 2.95e9 weight
     ingestTx(tx([{ program: 'staking', name: 'DayClosed', data: { dayIndex: 1, year: 0, scheduleCap: '271232876712', guarded: '100000000', burn7dAvg: '0', sliceBudget: ['0', '0', '0', '0', '0'] } }], { blockTime: t - 2 * 86_400 }), db);
     m = staking.me(db, owner.toBase58());
-    const expected = (2_200_000_000n * 15_000_000n) / 2_950_000_000n;
+    const expected = (2_200_000_000n * 10_000_000n) / 2_950_000_000n;
     expect(BigInt(m.tokenStakes[0].pending)).toBe(expected);
     expect(m.totalPendingMicro).toBe(expected.toString());
     // set bonus: on-chain 0 sets vs computed 0 → no sync pending; after a full set arrives it flips
@@ -244,13 +244,13 @@ describe('arena — ranked commit/reveal', () => {
     expect(next.previous).toMatchObject({ id: s.id, serverSecretHash: s.serverSecretHash, serverSecret: row.server_secret });
   });
 
-  it('season pool = 20 % rake from resolved wager battles + 40 % of each day\'s pvpSeason slice (guarded × 23 %), never the cumulative slice_budget', () => {
+  it('season pool = 20 % rake from resolved wager battles + 40 % of each day\'s pvpSeason slice (guarded × 33 %), never the cumulative slice_budget', () => {
     const s = arena.currentSeason(db, T);
     ingestTx(tx([{ program: 'staking', name: 'DayClosed', data: { dayIndex: 1, year: 0, scheduleCap: '271232876712', guarded: '100000000000', burn7dAvg: '0', sliceBudget: ['0', '0', '0', '999999999999', '0'] } }], { blockTime: s.starts_at + 86_400 }), db);
     ingestTx(tx([{ program: 'staking', name: 'DayClosed', data: { dayIndex: 2, year: 0, scheduleCap: '271232876712', guarded: '100000000000', burn7dAvg: '0', sliceBudget: ['0', '0', '0', '999999999999', '0'] } }], { blockTime: s.starts_at + 2 * 86_400 }), db);
     ingestTx(tx([{ program: 'arena', name: 'BattleResolved', data: { battle: kp(), winner: alice, pot: '100000000', rakeBurn: '2000000', rakePool: '1000000', rakeTreasury: '2000000', resultHash: hex32(0x22), roll: hex32(0x33) } }], { blockTime: s.starts_at + 3 * 86_400 }), db);
-    // 2 days × 100 $CG × 23 % × 40 % = 18.4 $CG + 1 $CG rake pool
-    expect(arena.seasonApi(db, T).poolCgMicro).toBe(String(2 * 9_200_000_000 + 1_000_000));
+    // 2 days × 100 $CG × 33 % × 40 % = 26.4 $CG + 1 $CG rake pool
+    expect(arena.seasonApi(db, T).poolCgMicro).toBe(String(2 * 13_200_000_000 + 1_000_000));
   });
 
   it('SEC-L5: settlement freezes the rake share (finalized battles of the season only) next to the emission share; an unfinalized BattleResolved postpones it', () => {
@@ -267,16 +267,16 @@ describe('arena — ranked commit/reveal', () => {
     ingestTx(tx([{ program: 'arena', name: 'BattleResolved', data: { battle: kp(), winner: alice, pot: '100000000', rakeBurn: '2000000', rakePool: '1000000', rakeTreasury: '2000000', resultHash: hex32(0x22), roll: hex32(0x33) } }], { blockTime: s.starts_at + 2 * 86_400 }), db);
     ingestTx(tx([{ program: 'arena', name: 'BattleResolved', data: { battle: kp(), winner: alice, pot: '300000000', rakeBurn: '6000000', rakePool: '3000000', rakeTreasury: '6000000', resultHash: hex32(0x22), roll: hex32(0x33) } }], { blockTime: s.starts_at + 3 * 86_400 }), db);
     ingestTx(tx([{ program: 'arena', name: 'BattleResolved', data: { battle: kp(), winner: alice, pot: '100000000', rakeBurn: '2000000', rakePool: '1000000', rakeTreasury: '2000000', resultHash: hex32(0x22), roll: hex32(0x33) } }], { blockTime: s.ends_at + 10 }), db);
-    expect(arena.seasonPoolMicro(db, s)).toBe(9_200_000_000n + 4_000_000n); // live estimate: 100 × 23 % × 40 % + 4 $CG rake
+    expect(arena.seasonPoolMicro(db, s)).toBe(13_200_000_000n + 4_000_000n); // live estimate: 100 × 33 % × 40 % + 4 $CG rake
     const end = s.ends_at + 1;
     expect(arena.settleSeason(db, s.id, end)).toBeUndefined(); // BattleResolved not finalized → wait
     finalizeAll(db);
     const r = arena.settleSeason(db, s.id, end)!;
     expect(r.rakeMicro).toBe(4_000_000n);
     const row = db.get<{ pool_micro: string; rake_micro: string; rake_funded_at: number | null }>(`SELECT pool_micro, rake_micro, rake_funded_at FROM seasons WHERE id = ?`, s.id)!;
-    expect(row).toMatchObject({ pool_micro: String(9_200_000_000 + 4_000_000), rake_micro: '4000000', rake_funded_at: null });
+    expect(row).toMatchObject({ pool_micro: String(13_200_000_000 + 4_000_000), rake_micro: '4000000', rake_funded_at: null });
     // 1 of 1000 → 1/1000 of the whole pool (rake included) goes to rank 1
-    expect(r.paidMicro).toBe((9_200_000_000n + 4_000_000n) / 1000n);
+    expect(r.paidMicro).toBe((13_200_000_000n + 4_000_000n) / 1000n);
     expect(oracle.unfundedRake(db)).toMatchObject({ targetMicro: 4_000_000n, seasons: [s.id] });
     const api = arena.seasonApi(db, end + 5);
     expect(api.previous).toMatchObject({ id: s.id, settled: true, rakeMicro: '4000000', rakeFunded: false });
@@ -511,12 +511,12 @@ describe('arena — ranked commit/reveal', () => {
     const r = arena.settleSeason(db, s.id, end)!;
     expect(r).toMatchObject({ season: s.id, participants: 1, rows: 1, rakeMicro: 0n });
     // 1 qualified of 1000 needed → pool × 1/1000 × 100 % (all bands roll up to rank 1)
-    expect(r.paidMicro).toBe((46_000_000_000n * 1n) / 1000n);
+    expect(r.paidMicro).toBe((66_000_000_000n * 1n) / 1000n);
     const row = db.get<{ wallet: string; rank: number; amount: string }>(`SELECT wallet, rank, amount FROM season_payouts WHERE season = ?`, s.id)!;
     expect(row).toMatchObject({ wallet: alice, rank: 1, amount: r.paidMicro.toString() });
     expect(arena.settleSeason(db, s.id, end + 5)!.rows).toBe(0); // idempotent
     expect(arena.unsettledSeasons(db, end)).toEqual([]);
-    expect(arena.seasonApi(db, end + arena.SEASON_SECONDS / 2).previous).toMatchObject({ id: s.id, settled: true, paidPoolMicro: '46000000000' });
+    expect(arena.seasonApi(db, end + arena.SEASON_SECONDS / 2).previous).toMatchObject({ id: s.id, settled: true, paidPoolMicro: '66000000000' });
     // the payout joins the next kind-3 batch together with match rewards
     const me = arena.arenaMe(db, alice, end);
     expect(BigInt(me.pendingRewardMicro)).toBe(r.paidMicro + BigInt(db.all<{ amount: string }>(`SELECT amount FROM pvp_rewards WHERE wallet = ?`, alice).reduce((a, x) => a + Number(x.amount), 0)));
@@ -800,15 +800,15 @@ describe('reward oracle', () => {
     expect(referrals.settleReferrals(db, T)).toEqual({ rows: 0, paidMicro: 0n, welcomeMicro: 0n, postponed: 0 });
     for (const nonce of ['901', '902']) ingestTx(tx([{ program: 'chip_core', name: 'PackOpened', data: { buyer: carol, sku: nonce === '901' ? 2 : 1, nonce, assets: [kp(), kp(), kp(), DEFAULT, DEFAULT], rarities: [0, 0, 1, 0, 0], collections: [1, 2, 3, 0, 0], count: 3, roll: hex32(0x42), pityBefore: 0, pityAfter: 1 } }], { blockTime: T - 3000 }), db);
     finalizeAll(db);
-    // Premium $12.99 × 5 × (1 − 7 %) = $60.40 → 6 040 ¢ → 5 % = 302 $CG, capped at 200 $CG; the $CG-paid Standard is not revenue
-    expect(referrals.countedSpendCents(2, 5, 0)).toBe(6040);
+    // Premium $14.99 × 5 × (1 − 7 %) = $69.70 → 6 970 ¢ → 5 % = 302 $CG, capped at 200 $CG; the $CG-paid Standard is not revenue
+    expect(referrals.countedSpendCents(2, 5, 0)).toBe(6970);
     expect(referrals.countedSpendCents(1, 1, 2)).toBe(0);
-    expect(referrals.countedSpendCents(1, 1, 3)).toBe(474); // $4.99 − 5 % SKR discount
+    expect(referrals.countedSpendCents(1, 1, 3)).toBe(569); // $5.99 − 5 % SKR discount
     const r = referrals.settleReferrals(db, T);
     expect(r).toEqual({ rows: 2, paidMicro: 200_000_000n, welcomeMicro: 149_000_000n, postponed: 0 });
     const rows = db.all<{ referee: string; nonce: string; wallet: string; amount: string; spend_cents: number; reason: string | null }>(`SELECT referee, nonce, wallet, amount, spend_cents, reason FROM referral_rewards ORDER BY nonce`);
     expect(rows).toEqual([
-      { referee: carol, nonce: '901', wallet: alice, amount: '200000000', spend_cents: 6040, reason: null },
+      { referee: carol, nonce: '901', wallet: alice, amount: '200000000', spend_cents: 6970, reason: null },
       { referee: carol, nonce: 'welcome', wallet: carol, amount: '149000000', spend_cents: 0, reason: null },
     ]);
     // idempotent; a later purchase of the same referee hits the lifetime cap → 0 with `cap_reached`
@@ -840,7 +840,7 @@ describe('reward oracle', () => {
     // dashboard
     const dash = referrals.referralSummary(db, alice, T + 5);
     expect(dash.totals).toEqual({ referees: 1, paying: 1, earnedCgMicro: '200000000', inRootsCgMicro: '0', awaitingRootCgMicro: '200000000', unsettledPurchases: 0 });
-    expect(dash.referees[0]).toMatchObject({ wallet: carol, paidPurchases: 2, spendUsd: 65.39, earnedCgMicro: '200000000', capLeftCgMicro: '0' });
+    expect(dash.referees[0]).toMatchObject({ wallet: carol, paidPurchases: 2, spendUsd: 75.69, earnedCgMicro: '200000000', capLeftCgMicro: '0' });
     expect(referrals.referralSummary(db, carol, T + 5).welcome).toEqual({ amountCgMicro: '149000000', inRoot: false });
     // kind-4 batch: only amount > 0 rows, leaves per wallet, sources marked; publish needs the season oracle
     const b = oracle.buildBatch(db, oracle.KIND_REFERRALS, T + 6, 1n)!;

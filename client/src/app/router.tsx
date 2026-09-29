@@ -23,6 +23,7 @@ const Verify = lazy(() => import('@/features/verify/Verify'));
 const Admin = lazy(() => import('@/features/admin/Admin'));
 const Language = lazy(() => import('@/features/language/Language'));
 const Rights = lazy(() => import('@/features/rights/Rights'));
+const Guide = lazy(() => import('@/features/guide/Guide'));
 const Legal = lazy(() => import('@/features/legal/Legal'));
 
 function Fallback() {
@@ -67,6 +68,7 @@ export const routes: RouteObject[] = [
       { path: 'profile', element: W(<Profile />) },
       { path: 'admin', element: W(<Admin />) }, // ops panel — shown only to `me.isAdmin`; the API enforces ADMIN_WALLETS
       { path: 'codex', element: S(<Codex />) },
+      { path: 'guide', element: S(<Guide />) },
       { path: 'verify/:signature?', element: S(<Verify />) },
       { path: 'language', element: S(<Language />) },
       // Legal docs are reachable at three URLs on purpose: /legal/terms is the canonical one, and the two

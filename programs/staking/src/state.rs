@@ -12,7 +12,7 @@ pub const ACC_PRECISION: u128 = 1_000_000_000_000; // 1e12
 pub const SPLIT_COUNT: usize = 5; // chip / token / quests / pvp / events
 pub const MAX_SPLIT_DELTA_BPS: u16 = 1_000; // ±10 pp per change
 pub const MIN_SPLIT_INTERVAL: i64 = 7 * DAY;
-pub const GUARD_FLOOR_BPS: u64 = 3_000; // 0.30 × cap
+pub const GUARD_FLOOR_BPS: u64 = 1_000; // 0.10 × cap
 pub const GUARD_BURN_MULT_BPS: u64 = 12_500; // 1.25 × trailing burn
 /// SEC-M1 sanity clamp for `report_burn`: `burn_today` never exceeds this multiple of the
 /// day's schedule cap. The guard saturates at `cap` once the 7-day average passes 0.56 × cap,
@@ -135,7 +135,7 @@ impl EmissionState {
         let s: u128 = self.burn_ring.iter().map(|&b| b as u128).sum();
         (s / 7) as u64
     }
-    /// min(cap, 0.30·cap + 1.25·burn7d)
+    /// min(cap, 0.10·cap + 1.25·burn7d)
     pub fn guarded_daily(&self, year: usize) -> u64 {
         let cap = Self::daily_schedule_cap(year) as u128;
         let g = cap * GUARD_FLOOR_BPS as u128 / 10_000

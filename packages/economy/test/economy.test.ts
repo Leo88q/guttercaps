@@ -70,10 +70,10 @@ test('expandRandomness is deterministic, honours floor and hard pity', () => {
   const a = expandRandomness(vrf, PACKS.standard, 0, 10);
   const b = expandRandomness(vrf, PACKS.standard, 0, 10);
   assert.deepEqual(a, b);
-  assert.equal(a.length, 3);
-  assert.equal(a[2].rarity, PACKS.standard.floor, 'last slot is lifted to the floor');
+  assert.equal(a.length, 4);
+  assert.equal(a[3].rarity, PACKS.standard.floor, 'last slot is lifted to the floor');
   const pity = expandRandomness(vrf, PACKS.standard, 59, 10);
-  assert.equal(pity[2].rarity, 6, 'hard pity forces Legend on the last slot');
+  assert.equal(pity[3].rarity, 6, 'hard pity forces Legend on the last slot');
 });
 
 test('fusion: 8 recipes chain 0→8, always 3 materials, alternating collection rule', () => {
@@ -87,9 +87,9 @@ test('fusion: 8 recipes chain 0→8, always 3 materials, alternating collection 
   assert.equal(+expectedBurn(FUSION_RECIPES[7]).toFixed(2), 5); // 50% with 1 refund
 });
 
-test('emission guard is a ceiling, floors at 30% of the schedule', () => {
+test('emission guard is a ceiling, floors at 10% of the schedule', () => {
   const cap = dailyEmission(0);
-  assert.equal(guardedEmission(cap, 0), 0.3 * cap);
+  assert.equal(guardedEmission(cap, 0), 0.1 * cap);
   assert.equal(guardedEmission(cap, cap * 10), cap);
 });
 
@@ -118,8 +118,8 @@ test('rarity ladder is strictly increasing in value, power and weight', () => {
 
 test('bundles never exceed 18% discount and are monotone', () => {
   const one = bundlePriceCents(PACKS.standard, 1);
-  assert.equal(one, 499);
-  assert.ok(bundlePriceCents(PACKS.standard, 25) >= 25 * 499 * 0.82 - 1);
+  assert.equal(one, 599);
+  assert.ok(bundlePriceCents(PACKS.standard, 25) >= 25 * 599 * 0.82 - 1);
 });
 
 test('SKR reward roots: kinds 5..7 pay SKR, everything below pays $CG', () => {
