@@ -14,7 +14,7 @@ const ru: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Главная', caps: 'Фишки', shop: 'Паки', market: 'Маркет', arena: 'Арена', stake: 'Стейк', quests: 'Квесты', leaderboard: 'Топ', profile: 'Профиль', language: 'Язык', more: 'Ещё' },
+  nav: { home: 'Главная', caps: 'Фишки', shop: 'Паки', market: 'Маркет', arena: 'Арена', stake: 'Стейк', fusion: 'Слияние', quests: 'Квесты', leaderboard: 'Топ', profile: 'Профиль', language: 'Язык', more: 'Ещё' },
   common: {
     connectWallet: 'Подключить кошелёк', connecting: 'Подключение…', signedIn: 'Вы вошли', signingIn: 'Вход…', signOut: 'Выйти',
     cancel: 'Отмена', confirm: 'Подтвердить', confirmSign: 'Подтвердить и подписать', close: 'Закрыть', save: 'Сохранить', copy: 'Копировать', copied: 'Скопировано',

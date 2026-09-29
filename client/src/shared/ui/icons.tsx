@@ -254,3 +254,22 @@ export function SoundIcon({ size = 26, on, onActivate }: IconProps & { on?: bool
     </svg>
   );
 }
+
+/** Fusion: three small caps drawn into one bigger cap — nav entry for the fusion bench. */
+export function FusionNavIcon({ size = 26, onActivate }: IconProps) {
+  const { active, trigger } = useActivation(500);
+  return (
+    <svg
+      width={size} height={size} viewBox="0 0 32 32"
+      className={`wicon wicon-fusion ${active ? 'wicon-active' : ''}`}
+      onClick={() => { trigger(); onActivate?.(); }}
+    >
+      <circle cx="7" cy="8" r="3.2" className="wicon-body" />
+      <circle cx="25" cy="8" r="3.2" className="wicon-body" />
+      <circle cx="16" cy="5" r="3.2" className="wicon-body" />
+      <path d="M9 11 L13.5 17 M23 11 L18.5 17 M16 8.5 L16 15" className="wicon-pole" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+      <circle cx="16" cy="23" r="6.5" className="wicon-cap" />
+      <circle cx="16" cy="23" r="2.2" className="wicon-drop" />
+    </svg>
+  );
+}

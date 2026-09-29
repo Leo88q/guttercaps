@@ -14,7 +14,7 @@ const pt: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Início', caps: 'Caps', shop: 'Loja', market: 'Mercado', arena: 'Arena', stake: 'Stake', quests: 'Missões', leaderboard: 'Ranking', profile: 'Perfil', language: 'Idioma', more: 'Mais' },
+  nav: { home: 'Início', caps: 'Caps', shop: 'Loja', market: 'Mercado', arena: 'Arena', stake: 'Stake', fusion: 'Fusão', quests: 'Missões', leaderboard: 'Ranking', profile: 'Perfil', language: 'Idioma', more: 'Mais' },
   common: {
     connectWallet: 'Conectar carteira', connecting: 'Conectando…', signedIn: 'Conectado', signingIn: 'Entrando…', signOut: 'Sair',
     cancel: 'Cancelar', confirm: 'Confirmar', confirmSign: 'Confirmar e assinar', close: 'Fechar', save: 'Salvar', copy: 'Copiar', copied: 'Copiado',

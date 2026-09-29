@@ -14,7 +14,7 @@ const id: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Beranda', caps: 'Caps', shop: 'Toko', market: 'Pasar', arena: 'Arena', stake: 'Stake', quests: 'Misi', leaderboard: 'Peringkat', profile: 'Profil', language: 'Bahasa', more: 'Lainnya' },
+  nav: { home: 'Beranda', caps: 'Caps', shop: 'Toko', market: 'Pasar', arena: 'Arena', stake: 'Stake', fusion: 'Fusi', quests: 'Misi', leaderboard: 'Peringkat', profile: 'Profil', language: 'Bahasa', more: 'Lainnya' },
   common: {
     connectWallet: 'Hubungkan dompet', connecting: 'Menghubungkan…', signedIn: 'Sudah masuk', signingIn: 'Sedang masuk…', signOut: 'Keluar',
     cancel: 'Batal', confirm: 'Konfirmasi', confirmSign: 'Konfirmasi & tanda tangani', close: 'Tutup', save: 'Simpan', copy: 'Salin', copied: 'Tersalin',

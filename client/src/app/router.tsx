@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate, Outlet, useLocation, type RouteObject } 
 import { useWallet } from '@solana/wallet-adapter-react';
 import { Shell } from './layout/Shell';
 import { Skeleton } from '@/shared/ui/primitives';
+import { RouteError } from './RouteError';
 
 const Home = lazy(() => import('@/features/home/Home'));
 const Collection = lazy(() => import('@/features/collection/Collection'));
@@ -49,6 +50,7 @@ export const routes: RouteObject[] = [
   {
     path: '/',
     element: <Shell><Outlet /></Shell>,
+    errorElement: <RouteError />,
     children: [
       { index: true, element: S(<Home />) },
       { path: 'collection', element: S(<Collection />) },
