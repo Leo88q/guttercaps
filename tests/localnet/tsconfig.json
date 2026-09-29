@@ -8,6 +8,10 @@
     "lib": ["ES2022", "DOM"],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    // Mirrors client/tsconfig.json: the specs import the client builders, and some of those reach
+    // `.tsx` files (e.g. api/mock/rights.ts ← features/rights/Rights.tsx) — without this flag tsc
+    // fails with TS6142 ("resolved to .tsx, but '--jsx' is not set") pointed at the .ts importer.
+    "jsx": "react-jsx",
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,

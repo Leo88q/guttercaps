@@ -572,9 +572,13 @@ jobs:
           npm run audit:gate -- --selftest
           npm run audit:gate
       - name: no committed keypairs outside tests/localnet/fixtures
+        # A bare `id.json` is also the Indonesian locale filename (client/src/shared/i18n/*/id.json,
+        # scripts/landing/locales/id.json) — the old `grep '(-keypair|keypair|id)\.json$'` burned on every
+        # one of them. The gate now keeps `*keypair*.json` name-flagged and decides `id.json` by content
+        # (a keypair is a JSON array of 64 uint8s); the predicates are in scripts/committed-keypairs.ts.
         run: |
-          hits=$(git ls-files | grep -E '(-keypair|keypair|id)\.json$' | grep -v '^tests/localnet/fixtures/' || true)
-          if [ -n "$hits" ]; then echo "::error::keypair files committed:"; echo "$hits"; exit 1; fi
+          npm run keypairs:scan -- --selftest
+          npm run keypairs:scan
 
   # ---------------------------------------------------------------- nightly / manual (need devnet keys — T-D-03/04)
   e2e-devnet:

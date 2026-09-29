@@ -59,6 +59,7 @@
     "program-ids": "node --experimental-strip-types scripts/program-ids.ts",
     "verify-deploy": "node --experimental-strip-types scripts/verify-deploy.ts",
     "audit:gate": "node --experimental-strip-types scripts/audit-gate.ts",
+    "keypairs:scan": "node --experimental-strip-types scripts/committed-keypairs.ts",
     "env:example": "node --experimental-strip-types scripts/env-doc.ts --write",
     "env:check": "node --experimental-strip-types scripts/env-doc.ts --check",
     "backend:start": "npm --prefix backend run start",
