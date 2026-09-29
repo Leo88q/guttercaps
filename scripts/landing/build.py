@@ -10,6 +10,7 @@ original landing, kept verbatim), collections.js (8 districts × 9 caps).
 The page is a single self-contained HTML file: no build step at deploy time.
 """
 import json, html, pathlib, base64
+from urllib.parse import quote
 from content import T, HOWTO, PACKS, FAQ, TIERS, SITE, TITLE, DESC
 from i18n import LOCALES, TAGS, NAMES, load_translations
 
@@ -142,10 +143,14 @@ LOGO_SVG = ('<svg class="sig-tag" width="20" height="20" viewBox="0 0 32 32" ari
             '<path d="M16 3 C22 12 25 16 25 20 A9 9 0 0 1 7 20 C7 16 10 12 16 3 Z" fill="var(--magenta)" opacity="0.6"/>'
             '<circle cx="16" cy="20" r="5.5" fill="var(--cyan)"/></svg>')
 
-FAVICON = ("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E"
-           "%3Ccircle cx='16' cy='16' r='14' fill='%2316151A' stroke='%23D8D8DC' stroke-width='2'/%3E"
-           "%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='%23FF2E8A' stroke-width='3'/%3E"
-           "%3Ccircle cx='16' cy='16' r='2.5' fill='%2316E5D9'/%3E%3C/svg%3E")
+# Browser tab icons, inlined so the "deploy = one file" promise holds. The hand-drawn SVG circle
+# that used to live here is unsupported by Safari (no SVG favicons in tabs) and nearly invisible
+# on dark tab bars anyway (a dark disc with a hairline ring). The real set ships with the client
+# (client/public): the SVG covers Chrome/Firefox/Edge, the PNG 16/32 fallbacks cover Safari.
+CLIENT_PUBLIC = ROOT / 'client' / 'public'
+FAVICON = 'data:image/svg+xml,' + quote((CLIENT_PUBLIC / 'favicon.svg').read_text())
+FAVICON_PNG_16 = 'data:image/png;base64,' + base64.b64encode((CLIENT_PUBLIC / 'favicon-16.png').read_bytes()).decode()
+FAVICON_PNG_32 = 'data:image/png;base64,' + base64.b64encode((CLIENT_PUBLIC / 'favicon-32.png').read_bytes()).decode()
 
 
 def faq_html():
@@ -236,7 +241,9 @@ HEAD = f'''<!doctype html>
 <link rel="alternate" hreflang="en" href="{SITE}/?lang=en" />
 <link rel="alternate" hreflang="ru" href="{SITE}/?lang=ru" />
 <link rel="alternate" hreflang="x-default" href="{SITE}/" />
-<link rel="icon" href="{FAVICON}" />
+<link rel="icon" type="image/svg+xml" href="{FAVICON}" />
+<link rel="icon" type="image/png" sizes="16x16" href="{FAVICON_PNG_16}" />
+<link rel="icon" type="image/png" sizes="32x32" href="{FAVICON_PNG_32}" />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="GUTTERCAPS" />
 <meta property="og:title" content="{TITLE[0]}" />
