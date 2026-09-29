@@ -36,7 +36,7 @@ suite('T-L-C packs', () => {
     await expectFail(buyPack(env, buyer, { sku: SKU.STARTER, currency: Currency.SOL }), Err.chip('StarterAlreadyClaimed'), 'second starter');
     await expectFail(buyPack(env, buyer, { sku: SKU.STARTER, qty: 2, currency: Currency.USDC }), Err.chip('StarterAlreadyClaimed'), 'starter qty 2');
     const [open] = await revealAndOpenCompressedAll(env, buyer, b, valueOf('C01'));
-    expect(open.event.count).toBe(3);
+    expect(open.event.count).toBe(4);
     const settlementKey = compressedSettlementPda(buyer.publicKey, b.nonce)[0];
     const now = await env.chain.now();
     for (let i = 0; i < open.event.count; i++) {
@@ -60,8 +60,8 @@ suite('T-L-C packs', () => {
     const b = await buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.SOL });
     const expected = quoteUnits(env, SKU.STANDARD, 1, Currency.SOL);
     // $4.99 at $150.00 with the fixture's 0.1 % conf → charged at $149.85 (price − conf): 0.033299966 SOL
-    expect(expected).toBe((499n * 1_000_000_000n * 100_000_000n) / 100n / (15_000_000_000n - 15_000_000n));
-    expect(expected).toBeGreaterThan((499n * 1_000_000_000n * 100_000_000n) / 100n / 15_000_000_000n); // the buyer never gets the optimistic edge
+    expect(expected).toBe((599n * 1_000_000_000n * 100_000_000n) / 100n / (15_000_000_000n - 15_000_000n));
+    expect(expected).toBeGreaterThan((599n * 1_000_000_000n * 100_000_000n) / 100n / 15_000_000_000n); // the buyer never gets the optimistic edge
     expect(lamportsClose(await env.chain.balance(vault), vaultBefore + expected, 1n)).toBe(true);
     const pending = (await loadPending(env.chain, b.pending))!;
     expect(pending.paidLamports).toBe(expected);
@@ -72,7 +72,7 @@ suite('T-L-C packs', () => {
       // SEC-M2: conf/price = 2 % + 1 unit → PriceUncertain; exactly 2 % → accepted (and priced at price − conf)
       await expectFail(buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.SOL, conf: { sol: 300_000_001n } }), Err.chip('PriceUncertain'), 'conf 2 % + 1');
       const wide = await buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.SOL, conf: { sol: 300_000_000n }, maxUnits: (expected * 105n) / 100n });
-      expect((await loadPending(env.chain, wide.pending))!.paidLamports).toBe((499n * 1_000_000_000n * 100_000_000n) / 100n / (15_000_000_000n - 300_000_000n));
+      expect((await loadPending(env.chain, wide.pending))!.paidLamports).toBe((599n * 1_000_000_000n * 100_000_000n) / 100n / (15_000_000_000n - 300_000_000n));
       const fake = await forgePriceAccount(env.chain, env.pyth.sol, Keypair.generate().publicKey);
       await expectFail(buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.SOL, priceUpdate: fake }), Err.chip('StalePrice'), 'foreign price owner');
       await refreshPyth(env.chain, env.pyth);
@@ -89,12 +89,12 @@ suite('T-L-C packs', () => {
     const shards0 = await Promise.all(Array.from({ length: LEDGER_SHARDS }, (_, i) => env.ledgerShard(i)));
     const before = { usdc: await tokenBalance(env.chain, env.mints.usdc, vault), cg: await tokenBalance(env.chain, env.mints.cg, vault), skr: await tokenBalance(env.chain, env.mints.skr, vault) };
     const u = await buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.USDC });
-    expect(u.paid).toBe(4_990_000n);
+    expect(u.paid).toBe(5_990_000n);
     const c = await buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.CG });
-    expect(c.paid).toBe(750_000_000n);
+    expect(c.paid).toBe(900_000_000n);
     const s = await buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.SKR });
-    // $4.99 − 5 % SKR promo = $4.7405 → 474 cents (integer) at $0.0174 − 0.1 % conf (SEC-M2: price − conf) → 272 686 479 micro-SKR
-    expect(s.paid).toBe((474n * 1_000_000n * 100_000_000n) / 100n / (1_740_000n - 1_740n));
+    // $5.99 − 5 % SKR promo = $5.6905 → 569 cents (integer) at $0.0174 − 0.1 % conf (SEC-M2: price − conf)
+    expect(s.paid).toBe((569n * 1_000_000n * 100_000_000n) / 100n / (1_740_000n - 1_740n));
     expect(s.paid).toBe(quoteUnits(env, SKU.STANDARD, 1, Currency.SKR));
     expect(await tokenBalance(env.chain, env.mints.usdc, vault)).toBe(before.usdc + u.paid);
     expect(await tokenBalance(env.chain, env.mints.cg, vault)).toBe(before.cg + c.paid);
@@ -128,12 +128,12 @@ suite('T-L-C packs', () => {
     const buyer = await env.player({ usdc: 10_000_000_000n });
     for (const [qty, disc] of [[5, 700], [10, 1200], [25, 1800]] as const) {
       const b = await buyPack(env, buyer, { sku: SKU.STANDARD, qty, currency: Currency.USDC });
-      const cents = (499n * BigInt(qty) * BigInt(10_000 - disc)) / 10_000n;
+      const cents = (599n * BigInt(qty) * BigInt(10_000 - disc)) / 10_000n;
       expect(b.paid).toBe(cents * 10_000n);
       const p = (await loadPending(env.chain, b.pending))!;
       expect(p.qty).toBe(qty);
       expect(p.opened).toBe(0);
-      expect(await env.chain.balance(b.pending)).toBeGreaterThanOrEqual(RENT_RESERVE_PER_CHIP * 3n * BigInt(qty));
+      expect(await env.chain.balance(b.pending)).toBeGreaterThanOrEqual(RENT_RESERVE_PER_CHIP * 4n * BigInt(qty));
     }
     await expectFail(buyPack(env, buyer, { sku: SKU.STANDARD, qty: 26, currency: Currency.USDC }), Err.chip('InvalidQuantity'), 'qty 26');
     await expectFail(buyPack(env, buyer, { sku: SKU.STANDARD, qty: 0, currency: Currency.USDC }), Err.chip('InvalidQuantity'), 'qty 0');
@@ -142,7 +142,7 @@ suite('T-L-C packs', () => {
     await env.chain.send([setParamsIx(env.admin.publicKey, { packs: encodePacks(env, { 3: { enabled: true } }) })], { signers: [env.admin] });
     env.config = await env.refreshConfig();
     const l = await buyPack(env, lim, { sku: SKU.LIMITED, qty: 5, currency: Currency.USDC });
-    expect(l.paid).toBe(2499n * 5n * 10_000n);
+    expect(l.paid).toBe(2999n * 5n * 10_000n);
   });
 
   it('C05 Limited: daily_cap 5 → the 6th of the day → DailyCapReached, resets after 24 h; disabled SKU → SkuDisabled', async () => {
@@ -170,10 +170,10 @@ suite('T-L-C packs', () => {
     try {
       await expectFail(buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.USDC }), Err.chip('Paused'));
       const [open] = await revealAndOpenCompressedAll(env, buyer, b, valueOf('C06'));
-      expect(open.event.count).toBe(3);
+      expect(open.event.count).toBe(4);
       expect((await loadPending(env.chain, b.pending))!.opened).toBe(1);
       const settlement = decodeCompressedPackSettlement((await env.chain.getAccount(compressedSettlementPda(buyer.publicKey, b.nonce)[0]))!.data);
-      expect(settlement.totalClaims).toBe(3);
+      expect(settlement.totalClaims).toBe(4);
     } finally {
       await env.chain.send([setPausedIx(env.admin.publicKey, false)], { signers: [env.admin] });
     }
@@ -190,7 +190,7 @@ suite('T-L-C packs', () => {
     const { ix, rolled } = await openCompressedPackInstruction(env, buyer.publicKey, b.nonce, 0, value, buyer.publicKey);
     const tx = await env.chain.send([revealIx({ kind: RNG_KIND.PACK, payer: buyer.publicKey, randomness: b.randomness, value }), ix], { signers: [buyer], label: 'reveal+open_compressed' });
     const ev = findEvent(tx.logs, 'CompressedClaimsCreated', readCompressedClaimsCreated)!;
-    expect(ev.count).toBe(3);
+    expect(ev.count).toBe(4);
     expect(rolled.map((r) => r.collectionIdx)).toEqual(expect.any(Array));
     expect((await loadPity(env.chain, buyer.publicKey))!.counters[SKU.STANDARD]).toBe(pityBefore + (rolled.some((r) => r.rarity >= 6) ? 0 : 1));
     for (let i = 0; i < ev.count; i++) {
@@ -206,7 +206,7 @@ suite('T-L-C packs', () => {
     rolled.forEach((r) => { delta[r.collectionIdx] -= 1n; });
     expect(delta.every((d) => d === 0n)).toBe(true);
     expect((await loadPending(env.chain, b.pending))!.opened).toBe(1);
-    expect(decodeCompressedPackSettlement((await env.chain.getAccount(compressedSettlementPda(buyer.publicKey, b.nonce)[0]))!.data).totalClaims).toBe(3);
+    expect(decodeCompressedPackSettlement((await env.chain.getAccount(compressedSettlementPda(buyer.publicKey, b.nonce)[0]))!.data).totalClaims).toBe(4);
     expect((await env.ledger()).liabUsdc).toBe(led.liabUsdc);
     const rnd = (await randomnessAccount(env.chain, b.randomness))!;
     expect(rnd.revealSlot).toBeGreaterThan(0n);
@@ -232,7 +232,7 @@ suite('T-L-C packs', () => {
       expect(p!.revealed).toBe(true);
       expect(Array.from(p!.value)).toEqual(Array.from(value));
       const settlement = decodeCompressedPackSettlement((await env.chain.getAccount(compressedSettlementPda(buyer.publicKey, b.nonce)[0]))!.data);
-      expect(settlement.totalClaims).toBe((packNo + 1) * 3);
+      expect(settlement.totalClaims).toBe((packNo + 1) * 4);
       for (const claimNonce of r.event.claimNonces) {
         const claim = decodeCompressedMintClaim((await env.chain.getAccount(compressedMintClaimPda(buyer.publicKey, claimNonce)[0]))!.data);
         expect(claim.settlement.equals(compressedSettlementPda(buyer.publicKey, b.nonce)[0])).toBe(true);
@@ -241,13 +241,13 @@ suite('T-L-C packs', () => {
     // Claims still await Bubblegum mint/DAS registration; the compressed path
     // must not close the paid purchase or release its liability early.
     expect(await loadPending(env.chain, b.pending)).not.toBeNull();
-    await expectAnyFail(env.chain.send([openCompressedPackIx({ payer: env.admin.publicKey, buyer: buyer.publicKey, nonce: b.nonce, packNo: 5, chips: 3, randomness: rngAccounts(RNG_KIND.PACK, buyer.publicKey, b.nonce).randomness, collectionIdx: [0, 0, 0] })], { signers: [env.admin] }), 'open after qty');
+    await expectAnyFail(env.chain.send([openCompressedPackIx({ payer: env.admin.publicKey, buyer: buyer.publicKey, nonce: b.nonce, packNo: 5, chips: 4, randomness: rngAccounts(RNG_KIND.PACK, buyer.publicKey, b.nonce).randomness, collectionIdx: [0, 0, 0, 0] })], { signers: [env.admin] }), 'open after qty');
   });
 
   it('C09 bundle ×25 Premium: 25 compressed opens, each ≤ 400 k CU, reserve remains until async settlement', async () => {
     const buyer = await env.player({ usdc: 10_000_000_000n });
     const b = await buyPack(env, buyer, { sku: SKU.PREMIUM, qty: 25, currency: Currency.USDC });
-    expect(b.paid).toBe(((1299n * 25n * 8200n) / 10_000n) * 10_000n);
+    expect(b.paid).toBe(((1499n * 25n * 8200n) / 10_000n) * 10_000n);
     const value = valueOf('C09');
     await revealPack(env, b, value);
     const cranker = await env.player();
@@ -281,7 +281,7 @@ suite('T-L-C packs', () => {
     // (b) at open: a legit purchase, but the pending account is pinned to ITS randomness — a forged revealed account elsewhere is rejected by the pin
     const b = await buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.USDC });
     const forged = await forgeRandomness(env.chain, { owner: Keypair.generate().publicKey, kind: RNG_KIND.PACK, seedSlot: (await loadPending(env.chain, b.pending))!.commitSlot, revealSlot: await env.chain.slot(), value: valueOf('C10') });
-    const { ix } = await openCompressedPackInstruction(env, buyer.publicKey, b.nonce, 0, valueOf('C10'), buyer.publicKey, { collectionOverride: [0, 0, 0] });
+    const { ix } = await openCompressedPackInstruction(env, buyer.publicKey, b.nonce, 0, valueOf('C10'), buyer.publicKey, { collectionOverride: [0, 0, 0, 0] });
     ix.keys[3] = { ...ix.keys[3], pubkey: forged };
     await expectFail(env.chain.send([ix], { signers: [buyer] }), Err.chip('RandomnessMismatch'), 'forged at open');
     // (c) even the REAL pinned address, if its owner were swapped, fails the owner check
@@ -309,7 +309,7 @@ suite('T-L-C packs', () => {
     await expectFail(cancelStale(env, buyer, b, env.mints.usdc), Err.chip('RandomnessAlreadyRevealed'), 'cancel after reveal');
     await env.chain.warpSlots(1_000n);
     const r = await openCompressedPack(env, buyer.publicKey, b.nonce, 0, valueOf('C12'));
-    expect(r.event.count).toBe(3);
+    expect(r.event.count).toBe(4);
     expect((await loadPending(env.chain, b.pending))!.opened).toBe(1);
   });
 
@@ -405,7 +405,7 @@ suite('T-L-C packs', () => {
     expect((await loadPending(env.chain, b.pending))!.opened).toBe(1);
     await openCompressedPack(env, buyer.publicKey, b.nonce, 1, value);
     expect((await loadPending(env.chain, b.pending))!.opened).toBe(2);
-    expect(decodeCompressedPackSettlement((await env.chain.getAccount(compressedSettlementPda(buyer.publicKey, b.nonce)[0]))!.data).totalClaims).toBe(6);
+    expect(decodeCompressedPackSettlement((await env.chain.getAccount(compressedSettlementPda(buyer.publicKey, b.nonce)[0]))!.data).totalClaims).toBe(8);
   });
 
   it('C15 wrong remaining_accounts: a collection/tree account that does not match the roll → InvalidCollection; wrong count → InvalidQuantity', async () => {
@@ -451,9 +451,9 @@ suite('T-L-C packs', () => {
     const b = await buyPack(env, buyer, { sku: SKU.STANDARD, qty: 1, currency: Currency.USDC });
     const v = noLegend(0);
     const raw = expandRandomness(v, { ...econ, pity: null }, 0, 10);
-    expect(raw[2].rarity).toBeLessThan(6);
+    expect(raw[3].rarity).toBeLessThan(6);
     const [r] = await revealAndOpenCompressedAll(env, buyer, b, v);
-    expect(r.rolled[2].rarity).toBeGreaterThanOrEqual(6);
+    expect(r.rolled[3].rarity).toBeGreaterThanOrEqual(6);
     expect((await loadPity(env.chain, buyer.publicKey))!.counters[SKU.STANDARD]).toBe(0);
     expect(PACKS.standard.pity?.hardAt).toBe(hardAt);
   }, 600_000);
@@ -512,7 +512,7 @@ suite('T-L-C packs', () => {
     expect(Array.from(rnd.value)).toEqual(Array.from(valueOf('C19')));
     await expectFail(revealPack(env, b, valueOf('other'), stranger), Err.chip('RandomnessAlreadyRevealed'), 'second reveal');
     const r = await openCompressedPack(env, buyer.publicKey, b.nonce, 0, valueOf('C19'), stranger);
-    expect(r.event.count).toBe(3);
+    expect(r.event.count).toBe(4);
     expect((await loadPending(env.chain, b.pending))!.opened).toBe(1);
     // a reveal for a never-committed account (init only) → RandomnessExpired (seed_slot == 0)
     const nonce = 4711n;

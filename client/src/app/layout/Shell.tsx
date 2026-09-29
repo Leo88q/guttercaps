@@ -2,7 +2,7 @@ import { useEffect, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
-import { LanguageIcon, SettingsIcon } from '@/shared/ui/icons';
+import { LanguageIcon, SettingsIcon, QuestsIcon, FusionNavIcon, GuideNavIcon } from '@/shared/ui/icons';
 import { useT, useLocale, LOCALE_META, type MessageKey } from '@/shared/i18n';
 import { PaintTrail } from '@/shared/ui/PaintTrail';
 import { Toasts } from '@/shared/ui/primitives';
@@ -19,9 +19,12 @@ const NAV: { to: string; key: MessageKey; Icon?: React.ComponentType<{ size?: nu
   { to: '/', key: 'nav.home', gen: '/icons/gen/nav-home.webp', end: true },
   { to: '/collection', key: 'nav.caps', gen: '/icons/gen/nav-caps.webp' },
   { to: '/shop', key: 'nav.shop', gen: '/icons/gen/nav-shop.webp' },
+  { to: '/fusion', key: 'nav.fusion', Icon: FusionNavIcon },
   { to: '/market', key: 'nav.market', gen: '/icons/gen/nav-market.webp' },
   { to: '/arena', key: 'nav.arena', gen: '/icons/gen/nav-arena.webp' },
   { to: '/staking', key: 'nav.stake', gen: '/icons/gen/nav-stake.webp' },
+  { to: '/quests', key: 'nav.quests', Icon: QuestsIcon },
+  { to: '/guide', key: 'nav.guide', Icon: GuideNavIcon },
   { to: '/language', key: 'nav.language', Icon: LanguageIcon },
 ];
 

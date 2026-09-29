@@ -1,3 +1,4 @@
+import { reloadOnceForStaleChunk, clearChunkReloadFlag } from './app/RouteError';
 import { Buffer } from 'buffer';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -26,6 +27,14 @@ try {
 
 // Resolve the UI language (persisted choice or device locale) before the first
 // paint so there is no English flash for PT/ES/VI/ID/FIL/RU players.
+// Stale tab after a redeploy: Vite fires this when a hashed chunk can't be loaded
+// (Cloudflare Pages' SPA fallback answers with index.html → MIME error). Reload once.
+window.addEventListener('vite:preloadError', (event) => {
+  event.preventDefault();
+  reloadOnceForStaleChunk();
+});
+window.setTimeout(clearChunkReloadFlag, 10_000);
+
 void initI18n().finally(() => {
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>

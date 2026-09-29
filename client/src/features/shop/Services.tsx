@@ -48,7 +48,7 @@ export function Services() {
       </div>
 
       <div className="grid-3">
-        {SERVICES.filter((s) => s.id !== 'handleChange').map((s) => {
+        {SERVICES.filter((s) => s.id !== 'handleChange' && s.dailyCap > 0).map((s) => {
           const isOwned = owned.has(s.kind) && !s.recurring && s.fulfilment === 'entitlement' && s.id !== 'capSkin';
           const left = dailyLeft[String(s.kind)];
           const passActive = s.id === 'seasonPass' && (mine.data?.entitlements ?? []).some((e) => e.kind === 6 && e.expiresAt && new Date(e.expiresAt).getTime() > Date.now());

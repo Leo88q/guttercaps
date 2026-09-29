@@ -72,8 +72,8 @@ suite('T-L-F compressed fusion', () => {
     expect(claim.indexReserved).toBe(false);
     expect(claim.minted).toBe(false);
     expect(claim.consumed).toBe(false);
-    expect(cgBefore - (await tokenBalance(env.chain, env.mints.cg, owner.publicKey))).toBe(2_500_000n);
-    expect((await env.ledger()).burnedTotal - burnedBefore).toBe(2_500_000n);
+    expect(cgBefore - (await tokenBalance(env.chain, env.mints.cg, owner.publicKey))).toBe(5_000_000n);
+    expect((await env.ledger()).burnedTotal - burnedBefore).toBe(5_000_000n);
     for (const material of materials) {
       expect(decodeCompressedMintClaim((await env.chain.getAccount(material))!.data).consumed).toBe(true);
     }

@@ -50,10 +50,10 @@ export interface FusionRecipe {
 const HOUR = 3600;
 
 export const FUSION_RECIPES: readonly FusionRecipe[] = [
-  { from: 0, to: 1, materials: 3, rule: 'any',             successBps: 10_000, refundOnFail: 0, feeCgMicro:     2_500_000, resultLockSeconds: 0 },
-  { from: 1, to: 2, materials: 3, rule: 'same-collection', successBps: 10_000, refundOnFail: 0, feeCgMicro:     6_000_000, resultLockSeconds: 0 },
-  { from: 2, to: 3, materials: 3, rule: 'any',             successBps: 10_000, refundOnFail: 0, feeCgMicro:    15_000_000, resultLockSeconds: 0 },
-  { from: 3, to: 4, materials: 3, rule: 'same-collection', successBps: 10_000, refundOnFail: 0, feeCgMicro:    40_000_000, resultLockSeconds: HOUR },
+  { from: 0, to: 1, materials: 3, rule: 'any',             successBps: 10_000, refundOnFail: 0, feeCgMicro:     5_000_000, resultLockSeconds: 0 },
+  { from: 1, to: 2, materials: 3, rule: 'same-collection', successBps: 10_000, refundOnFail: 0, feeCgMicro:    12_000_000, resultLockSeconds: 0 },
+  { from: 2, to: 3, materials: 3, rule: 'any',             successBps: 10_000, refundOnFail: 0, feeCgMicro:    30_000_000, resultLockSeconds: 0 },
+  { from: 3, to: 4, materials: 3, rule: 'same-collection', successBps: 10_000, refundOnFail: 0, feeCgMicro:    60_000_000, resultLockSeconds: HOUR },
   { from: 4, to: 5, materials: 3, rule: 'any',             successBps:  8_500, refundOnFail: 1, feeCgMicro:   120_000_000, resultLockSeconds: 6 * HOUR },
   { from: 5, to: 6, materials: 3, rule: 'same-collection', successBps:  7_500, refundOnFail: 1, feeCgMicro:   400_000_000, resultLockSeconds: 24 * HOUR },
   { from: 6, to: 7, materials: 3, rule: 'any',             successBps:  7_000, refundOnFail: 1, feeCgMicro: 1_400_000_000, resultLockSeconds: 48 * HOUR },

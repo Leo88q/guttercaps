@@ -14,7 +14,7 @@ const vi: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Trang chủ', caps: 'Nắp', shop: 'Cửa hàng', market: 'Chợ', arena: 'Đấu trường', stake: 'Stake', quests: 'Nhiệm vụ', leaderboard: 'Xếp hạng', profile: 'Hồ sơ', language: 'Ngôn ngữ', more: 'Thêm' },
+  nav: { home: 'Trang chủ', caps: 'Nắp', shop: 'Cửa hàng', market: 'Chợ', arena: 'Đấu trường', stake: 'Stake', fusion: 'Hợp nhất', guide: 'Hướng dẫn', quests: 'Nhiệm vụ', leaderboard: 'Xếp hạng', profile: 'Hồ sơ', language: 'Ngôn ngữ', more: 'Thêm' },
   common: {
     connectWallet: 'Kết nối ví', connecting: 'Đang kết nối…', signedIn: 'Đã đăng nhập', signingIn: 'Đang đăng nhập…', signOut: 'Đăng xuất',
     cancel: 'Hủy', confirm: 'Xác nhận', confirmSign: 'Xác nhận & ký', close: 'Đóng', save: 'Lưu', copy: 'Sao chép', copied: 'Đã sao chép',

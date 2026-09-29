@@ -193,10 +193,10 @@ pub const VOUCHER_DEFS: [VoucherDef; 4] = [
 
 pub const DEFAULT_PACKS: [PackDef; 4] = [
     PackDef {
-        chips: 3,
-        price_usd_cents: 149,
+        chips: 4,
+        price_usd_cents: 199,
         price_cg_micro: 0,
-        odds_bps: [3000, 3000, 2500, 1100, 350, 50, 0, 0, 0],
+        odds_bps: [2900, 3000, 2500, 1200, 350, 50, 0, 0, 0],
         floor: 2,
         daily_cap: 1,
         pity_tier: 0,
@@ -207,9 +207,9 @@ pub const DEFAULT_PACKS: [PackDef; 4] = [
         enabled: true,
     },
     PackDef {
-        chips: 3,
-        price_usd_cents: 499,
-        price_cg_micro: 750_000_000,
+        chips: 4,
+        price_usd_cents: 599,
+        price_cg_micro: 900_000_000,
         odds_bps: [4500, 2500, 1500, 800, 450, 180, 50, 18, 2],
         floor: 1,
         daily_cap: 0,
@@ -222,9 +222,9 @@ pub const DEFAULT_PACKS: [PackDef; 4] = [
     },
     PackDef {
         chips: 5,
-        price_usd_cents: 1299,
-        price_cg_micro: 1_950_000_000,
-        odds_bps: [2800, 2600, 2250, 1400, 600, 250, 70, 25, 5],
+        price_usd_cents: 1499,
+        price_cg_micro: 2_250_000_000,
+        odds_bps: [2320, 2600, 2250, 1600, 800, 310, 90, 25, 5],
         floor: 2,
         daily_cap: 0,
         pity_tier: 6,
@@ -236,7 +236,7 @@ pub const DEFAULT_PACKS: [PackDef; 4] = [
     },
     PackDef {
         chips: 5,
-        price_usd_cents: 2499,
+        price_usd_cents: 2999,
         price_cg_micro: 0,
         odds_bps: [2200, 2400, 2400, 1600, 850, 350, 120, 50, 30],
         floor: 3,
@@ -412,7 +412,7 @@ pub const FUSION_RECIPES: [FusionRecipe; 8] = [
         same_collection: false,
         success_bps: 10_000,
         refund_on_fail: 0,
-        fee_cg_micro: 2_500_000,
+        fee_cg_micro: 5_000_000,
         result_lock_secs: 0,
     },
     FusionRecipe {
@@ -420,7 +420,7 @@ pub const FUSION_RECIPES: [FusionRecipe; 8] = [
         same_collection: true,
         success_bps: 10_000,
         refund_on_fail: 0,
-        fee_cg_micro: 6_000_000,
+        fee_cg_micro: 12_000_000,
         result_lock_secs: 0,
     },
     FusionRecipe {
@@ -428,7 +428,7 @@ pub const FUSION_RECIPES: [FusionRecipe; 8] = [
         same_collection: false,
         success_bps: 10_000,
         refund_on_fail: 0,
-        fee_cg_micro: 15_000_000,
+        fee_cg_micro: 30_000_000,
         result_lock_secs: 0,
     },
     FusionRecipe {
@@ -436,7 +436,7 @@ pub const FUSION_RECIPES: [FusionRecipe; 8] = [
         same_collection: true,
         success_bps: 10_000,
         refund_on_fail: 0,
-        fee_cg_micro: 40_000_000,
+        fee_cg_micro: 60_000_000,
         result_lock_secs: H,
     },
     FusionRecipe {
@@ -565,9 +565,10 @@ impl ServiceKind {
     pub fn price_cg_micro(self) -> u64 {
         self.price_usd_cents() * CG_MICRO_PER_CENT
     }
+    /// Booster is quest/PvP-only since 2026-09-29 (cap 0 = not purchasable).
     pub fn daily_cap(self) -> u8 {
         match self {
-            Self::Booster => 3,
+            Self::Booster => 0,
             Self::Handle | Self::HandleChange => 1,
             _ => 10,
         }
@@ -633,10 +634,12 @@ mod tests {
         let bytes = [0u8; 32];
         let pool = [0u8, 1, 2];
         let r = expand(&bytes, &DEFAULT_PACKS[1], 0, &pool);
-        assert_eq!(r[2].unwrap().rarity, Rarity::CommonPlus);
-        assert!(r[3].is_none());
+        // Standard holds 4 chips since 2026-09-29: the floor lifts the last (4th) slot
+        assert_eq!(r[2].unwrap().rarity, Rarity::Common);
+        assert_eq!(r[3].unwrap().rarity, Rarity::CommonPlus);
+        assert!(r[4].is_none());
         let r = expand(&bytes, &DEFAULT_PACKS[1], 59, &pool);
-        assert_eq!(r[2].unwrap().rarity, Rarity::Legend);
+        assert_eq!(r[3].unwrap().rarity, Rarity::Legend);
     }
 
     #[test]

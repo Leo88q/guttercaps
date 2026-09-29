@@ -162,7 +162,7 @@ def jsonld_game():
         'description': DESC[0], 'genre': ['Collectible card game', 'Strategy'],
         'gamePlatform': ['Web', 'Android (Solana dApp Store)'], 'applicationCategory': 'Game', 'operatingSystem': 'Any',
         'inLanguage': ['en', 'pt-BR', 'es', 'vi', 'id', 'fil', 'ru'], 'contentRating': '18+',
-        'offers': {'@type': 'AggregateOffer', 'priceCurrency': 'USD', 'lowPrice': '1.49', 'highPrice': '24.99', 'offerCount': 4},
+        'offers': {'@type': 'AggregateOffer', 'priceCurrency': 'USD', 'lowPrice': '1.99', 'highPrice': '29.99', 'offerCount': 4},
         'publisher': {'@type': 'Organization', 'name': 'GUTTERCAPS', 'url': SITE + '/'},
     }, ensure_ascii=False, indent=1)
 
@@ -414,10 +414,10 @@ BODY = f'''
       <div class="eco-card clean-zone">
         <h3 data-i18n="eco.emission">{t('eco.emission')}</h3>
         <div class="bars">
-{bar('eco.e1', 30, '#16E5D9')}
-{bar('eco.e2', 15, '#2E8BFF')}
-{bar('eco.e3', 17, '#B6FF3C')}
-{bar('eco.e4', 23, '#FF2E8A')}
+{bar('eco.e1', 20, '#16E5D9')}
+{bar('eco.e2', 10, '#2E8BFF')}
+{bar('eco.e3', 22, '#B6FF3C')}
+{bar('eco.e4', 33, '#FF2E8A')}
 {bar('eco.e5', 15, '#FF7A1A')}
         </div>
         <h3 class="mt" data-i18n="eco.sinks">{t('eco.sinks')}</h3>
@@ -440,7 +440,7 @@ BODY = f'''
 {fee_row('eco.f2', '2.5 %')}
 {fee_row('eco.f3', '5 %')}
 {fee_row('eco.f4', '0.5 $CG')}
-{fee_row('eco.f5', '$0.79 – $9.99')}
+{fee_row('eco.f5', '$0.99 – $9.99')}
 {fee_row('eco.f6', '−5 %')}
           </tbody>
         </table>

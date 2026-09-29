@@ -29,7 +29,7 @@ const suite = describe.skipIf(!bins.ok && !process.env.LOCALNET_RPC);
 const litesvmOnly = !!process.env.LOCALNET_RPC;
 const SOL = 1_000_000_000n;
 const STALE_PACK_SLOTS = 10_800n;
-const USDC_STANDARD = 4_990_000n;
+const USDC_STANDARD = 5_990_000n;
 const SYSTEM_PROGRAM_ID = SystemProgram.programId;
 
 /** a USDC Standard pack purchase, exactly as the client sends it: [init_randomness, buy_pack] */

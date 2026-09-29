@@ -131,7 +131,7 @@ export default function Shop() {
       <AgeGateDialog gate={age} />
       {cfg.data?.paused && <div className="danger" style={{ marginBottom: 16 }}>{t('ui.pausedShop')}</div>}
 
-      <div className="grid-auto" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
+      <div className="grid-auto pack-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
         {packs.map(({ sku, id, econ, api, enabled }) => {
           const counter = counters[sku] ?? 0;
           const odds = effectiveOdds(econ, counter);
@@ -156,11 +156,20 @@ export default function Shop() {
                   <span key={r}><ChipArt collection={(sku * 2) % 8} rarity={r} imageUrl={chipArtUrl((sku * 2) % 8, r)} /></span>
                 ))}
               </div>
-              <div className="odds-bar" title={t('ui.perSlotOdds')}>
-                {odds.map((bps, r) => bps > 0 && <i key={r} style={{ width: `${bps / 100}%`, background: rarityColor(r) }} />)}
+              <div className="odds-shelf" title={t('ui.perSlotOdds')}>
+                <div className="odds-bar odds-bar-3d">
+                  {odds.map((bps, r) => bps > 0 && <i key={r} style={{ flexGrow: bps, ['--seg' as string]: rarityColor(r) }} />)}
+                </div>
               </div>
-              <div className="odds-legend">
-                {odds.map((bps, r) => bps > 0 && <span key={r}><span style={{ color: rarityColor(r) }}>{rarityName(r)}</span> {fmtPct(bps, bps < 100 ? 2 : 1)}</span>)}
+              <div className="odds-gems">
+                {odds.map((bps, r) => bps > 0 && (
+                  <span key={r} className="odds-gem" style={{ ['--gem' as string]: rarityColor(r) }}>
+                    <b className="odds-gem-dot" aria-hidden />
+                    <span className="odds-gem-name">{rarityName(r)}</span>
+                    <span className="odds-gem-pct">{fmtPct(bps, bps < 100 ? 2 : 1)}</span>
+                    <span className="odds-gem-meter" aria-hidden><i style={{ width: `${Math.max(6, Math.min(100, (Math.log10(bps) / Math.log10(5000)) * 100))}%` }} /></span>
+                  </span>
+                ))}
               </div>
               <div className="row between small">
                 <span className="muted">{t('ui.legendPack')}</span><b className="mono">{fmtProb(pLegend, 2)}</b>
@@ -174,6 +183,7 @@ export default function Shop() {
               )}
               {capLeft !== null && <div className="tiny muted">{t('services.dailyLeft', { n: capLeft })}</div>}
 
+              <div className="pack-card-foot stack">
               <CleanZone>
                 <KV k={t('ui.price')} v={fmtCents(econ.priceUsdCents)} />
                 {econ.priceCgMicro && <KV k={t('ui.or')} v={fmtAmount(BigInt(econ.priceCgMicro), 'CG')} />}
@@ -183,6 +193,7 @@ export default function Shop() {
               <SprayNozzleButton disabled={disabled} onClick={() => (connected ? setSel({ sku, qty: 1, currency: Currency.SOL }) : setVisible(true))}>
                 {starterGone ? t('ui.starterClaimed') : capLeft === 0 ? t('ui.capReached') : connected ? t('services.buy') : t('ui.connectBuy')}
               </SprayNozzleButton>
+              </div>
             </div>
           );
         })}

@@ -107,9 +107,9 @@ suite('T-L-S staking', () => {
     await env.chain.send([tickDayIx(env.admin.publicKey)], { signers: [env.admin] });
     const e1 = await emission();
     const cp = await pool('chip'); const tp = await pool('token');
-    // year 0: play bucket 550 M × 18 % / 365 = 271 232.876… $CG/day; guard with 0 burn → 30 % floor
+    // year 0: play bucket 550 M × 18 % / 365 = 271 232.876… $CG/day; guard with 0 burn → 10 % floor
     const dailyCap = (550_000_000n * CG * 18n) / 100n / 365n;
-    const guarded = (dailyCap * 3000n) / 10_000n;
+    const guarded = (dailyCap * 1000n) / 10_000n;
     expect(cp.budgetRemaining).toBe((guarded * BigInt(e0.splitBps[0])) / 10_000n);
     expect(tp.budgetRemaining).toBe((guarded * BigInt(e0.splitBps[1])) / 10_000n);
     expect(cp.budgetPerSec).toBe(cp.budgetRemaining / DAY);
@@ -185,20 +185,20 @@ suite('T-L-S staking', () => {
 
   it('S04 set_split: Δ > 10 pp or < 7 days since last change → SplitGuard; sum ≠ 10 000 → SplitSum; non-admin → has_one', async () => {
     const split = (v: number[]) => { const w = new BorshWriter(); for (const x of v) w.u16(x); return w.toBytes(); };
-    await expectFail(env.chain.send([emissionAdmin('set_split', env.admin.publicKey, split([3000, 1500, 1700, 2300, 1501]))], { signers: [env.admin] }), Err.staking('SplitSum'));
-    await expectFail(env.chain.send([emissionAdmin('set_split', env.admin.publicKey, split([4001, 499, 1700, 2300, 1500]))], { signers: [env.admin] }), Err.staking('SplitGuard'), 'Δ 1 001');
+    await expectFail(env.chain.send([emissionAdmin('set_split', env.admin.publicKey, split([2000, 1000, 2200, 3300, 1501]))], { signers: [env.admin] }), Err.staking('SplitSum'));
+    await expectFail(env.chain.send([emissionAdmin('set_split', env.admin.publicKey, split([3001, 1000, 1199, 3300, 1500]))], { signers: [env.admin] }), Err.staking('SplitGuard'), 'Δ 1 001');
     // within Δ but too soon after init (split_changed_at = init time)
     const e = await emission();
-    if ((await env.chain.now()) - e.splitChangedAt < 7n * DAY) await expectFail(env.chain.send([emissionAdmin('set_split', env.admin.publicKey, split([3100, 1400, 1700, 2300, 1500]))], { signers: [env.admin] }), Err.staking('SplitGuard'), 'too soon');
+    if ((await env.chain.now()) - e.splitChangedAt < 7n * DAY) await expectFail(env.chain.send([emissionAdmin('set_split', env.admin.publicKey, split([2100, 900, 2200, 3300, 1500]))], { signers: [env.admin] }), Err.staking('SplitGuard'), 'too soon');
     if (env.chain.canWarp) {
       await env.chain.warpSeconds(7n * DAY + 1n);
-      await env.chain.send([emissionAdmin('set_split', env.admin.publicKey, split([3100, 1400, 1700, 2300, 1500]))], { signers: [env.admin] });
-      expect((await emission()).splitBps).toEqual([3100, 1400, 1700, 2300, 1500]);
+      await env.chain.send([emissionAdmin('set_split', env.admin.publicKey, split([2100, 900, 2200, 3300, 1500]))], { signers: [env.admin] });
+      expect((await emission()).splitBps).toEqual([2100, 900, 2200, 3300, 1500]);
       await env.chain.warpSeconds(7n * DAY + 1n);
-      await env.chain.send([emissionAdmin('set_split', env.admin.publicKey, split([3000, 1500, 1700, 2300, 1500]))], { signers: [env.admin] });
+      await env.chain.send([emissionAdmin('set_split', env.admin.publicKey, split([2000, 1000, 2200, 3300, 1500]))], { signers: [env.admin] });
     }
     const stranger = await env.player();
-    await expectFail(env.chain.send([emissionAdmin('set_split', stranger.publicKey, split([3000, 1500, 1700, 2300, 1500]))], { signers: [stranger] }), Err.staking('Unauthorized'));
+    await expectFail(env.chain.send([emissionAdmin('set_split', stranger.publicKey, split([2000, 1000, 2200, 3300, 1500]))], { signers: [stranger] }), Err.staking('Unauthorized'));
   });
 
   it('S05 report_burn: a wallet → NotBurnReporter; SEC-M1 burn oracle (set_oracles) may report, clamped at 3 × daily cap; admin clears it; tick_day rolls burn_today into the ring and the guard grows', async () => {
@@ -232,10 +232,10 @@ suite('T-L-S staking', () => {
     expect(e2.burnToday).toBe(0n);
     expect(e2.burnRing.reduce((s, x) => s + x, 0n)).toBeGreaterThanOrEqual(e1.burnToday);
     const avg = e2.burnRing.reduce((s, x) => s + x, 0n) / 7n;
-    const guarded = (dailyCap * 3000n) / 10_000n + (avg * 12_500n) / 10_000n;
+    const guarded = (dailyCap * 1000n) / 10_000n + (avg * 12_500n) / 10_000n;
     const cp = await pool('chip');
-    // 3 × cap in one ring slot → 7-day average 0.43 × cap → guard = 0.30 + 1.25 × 0.43 ≈ 0.84 × cap (below the ceiling): the guard really moved off the floor
-    expect(guarded).toBeGreaterThan((dailyCap * 3000n) / 10_000n);
+    // 3 × cap in one ring slot → 7-day average 0.43 × cap → guard = 0.10 + 1.25 × 0.43 ≈ 0.64 × cap (below the ceiling): the guard really moved off the floor
+    expect(guarded).toBeGreaterThan((dailyCap * 1000n) / 10_000n);
     expect(cp.budgetRemaining).toBe(((guarded < dailyCap ? guarded : dailyCap) * BigInt(e2.splitBps[0])) / 10_000n);
   });
 

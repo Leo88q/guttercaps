@@ -279,7 +279,7 @@ describe('kill switch, simulate, kpi, fraud', () => {
     expect(s.delta.burnedCg).toBeCloseTo(s.scenario.burnedCg - s.baseline.burnedCg, 1);
     expect(s.slices.map((x) => x.name)).toEqual(['chipStaking', 'tokenStaking', 'quests', 'pvpSeason', 'eventsReserve']);
     expect(s.slices[2].cgPerDay).toBe(Math.round((s.scenario.emissionCg * 2000) / 10_000));
-    expect(s.guard.emissionAtZeroBurnCg).toBe(Math.round(s.scenario.scheduleCapCg * 0.3));
+    expect(s.guard.emissionAtZeroBurnCg).toBe(Math.round(s.scenario.scheduleCapCg * 0.1));
     expect(() => admin.simulate({ assumptions: { nope: 1 } as never })).toThrow(/unknown or non-numeric/);
     const a = new Client(); await signIn(a, ADMIN);
     expect((await a.post('/v1/admin/simulate', { assumptions: { payingShare: -1 } })).status).toBe(422);

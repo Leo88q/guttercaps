@@ -429,3 +429,49 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 @media (max-width: 480px) {
   .grid-3.admin-summary { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ---------- Pack shop: equal-height cards + gamified odds shelf ---------- */
+.pack-grid { align-items: stretch; }
+.pack-grid > .pack-card { display: flex; flex-direction: column; height: 100%; }
+.pack-card-foot { margin-top: auto; }
+.pity-none { opacity: .55; }
+
+/* the shelf: a recessed metal rail the coloured bar sits in */
+.odds-shelf { position: relative; padding: 4px; border-radius: 999px;
+  background: linear-gradient(180deg, #0b0a0e, #1c1a22);
+  box-shadow: inset 0 2px 4px rgba(0,0,0,.8), inset 0 -1px 0 rgba(255,255,255,.08), 0 1px 0 rgba(255,255,255,.05); }
+.odds-bar.odds-bar-3d { height: 16px; gap: 2px; background: transparent; overflow: visible; position: relative; }
+.odds-bar-3d i { flex-basis: 0; min-width: 5px; border-radius: 4px; position: relative;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.55) 0%, rgba(255,255,255,.12) 38%, rgba(0,0,0,0) 55%, rgba(0,0,0,.35) 100%),
+    var(--seg);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--seg) 55%, transparent), inset 0 -2px 0 rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.4);
+  transition: transform .18s ease, filter .18s ease; }
+.odds-bar-3d i:first-child { border-top-left-radius: 999px; border-bottom-left-radius: 999px; }
+.odds-bar-3d i:last-child { border-top-right-radius: 999px; border-bottom-right-radius: 999px; }
+.pack-card:hover .odds-bar-3d i { filter: saturate(1.25) brightness(1.08); }
+.odds-bar-3d i:hover { transform: translateY(-2px) scaleY(1.15); z-index: 1; }
+/* shimmer sweeping across the rail */
+.odds-bar-3d::after { content: ''; position: absolute; inset: 0; border-radius: 999px; pointer-events: none;
+  background: linear-gradient(100deg, transparent 0%, transparent 40%, rgba(255,255,255,.45) 50%, transparent 60%, transparent 100%);
+  background-size: 250% 100%; background-position: 120% 0; mix-blend-mode: overlay; }
+@media (prefers-reduced-motion: no-preference) {
+  .odds-bar-3d::after { animation: odds-shine 4.5s ease-in-out infinite; }
+}
+@keyframes odds-shine { 0%, 55% { background-position: 120% 0; } 100% { background-position: -120% 0; } }
+
+/* legend → collectible "gem" tiles with a mini meter (log scale so 0.02 % is still visible) */
+.odds-gems { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.odds-gem { position: relative; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto auto; column-gap: 6px; align-items: center;
+  padding: 5px 7px 6px; border-radius: 8px; font-family: var(--cg-font-mono); font-size: 11px; line-height: 1.15;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--gem) 16%, #16141b), #111015 70%);
+  border: 1px solid color-mix(in srgb, var(--gem) 38%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 2px 6px rgba(0,0,0,.35); }
+.odds-gem-dot { grid-row: 1 / span 2; width: 12px; height: 12px; transform: rotate(45deg); border-radius: 3px;
+  background: radial-gradient(circle at 30% 30%, #fff 0%, color-mix(in srgb, var(--gem) 70%, #fff) 25%, var(--gem) 60%, color-mix(in srgb, var(--gem) 55%, #000) 100%);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--gem) 70%, transparent); }
+.odds-gem-name { color: var(--gem); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.odds-gem-pct { color: #e8e8ec; font-variant-numeric: tabular-nums; }
+.odds-gem-meter { grid-column: 1 / -1; height: 3px; margin-top: 4px; border-radius: 3px; background: rgba(255,255,255,.07); overflow: hidden; }
+.odds-gem-meter i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, color-mix(in srgb, var(--gem) 60%, transparent), var(--gem)); box-shadow: 0 0 6px var(--gem); }
+@media (max-width: 380px) { .odds-gems { grid-template-columns: repeat(2, 1fr); } }

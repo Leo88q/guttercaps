@@ -40,7 +40,7 @@ export interface QuestDef {
 }
 
 // Daily: ~12 $CG total. No chip drop — dailies pay in $CG only, and the
-// $CG itself is the bridge to packs (750 $CG = one Standard pack ≈ 2 months
+// $CG itself is the bridge to packs (900 $CG = one Standard pack ≈ 2.5 months
 // of perfect dailies). A 7-day streak grants ONE Common-tier roll.
 export const DAILY_QUESTS: QuestDef[] = [
   { id: 'd_login',   period: 'daily', title: 'Check the drains (log in)',       metric: 'login',        target: 1, rewardCgMicro: 2_000_000 },
@@ -102,7 +102,7 @@ export const REFERRAL = {
   referrerCapCgPerRefereeMicro: 200_000_000, // 200 $CG per referee lifetime
   /** micro-$CG per USD cent of counted spend (1 ¢ ≙ 1 $CG — the services price-list convention) */
   cgMicroPerUsdCent: 1_000_000,
-  /** referee's one-off welcome bonus after the first counted purchase = Starter price ($1.49) in $CG */
+  /** referee's one-off welcome bonus after the first counted purchase (was the Starter price; kept at 149 $CG when Starter moved to $1.99) */
   refereeWelcomeCgMicro: 149_000_000,
   /** currency codes whose pack purchases count (0 SOL, 1 USDC, 3 SKR) — $CG (2) is a sink, excluded */
   countedCurrencies: [0, 1, 3],
@@ -144,7 +144,7 @@ export function freeValueReport(paidCommonsPerWeek: number, activeStakers = 5000
   // (8 rewarded matches/day at 50% WR: 4×2 + 4×0.5 = 10/day) ≈ 204 $CG/week
   // → 0.27 Standard packs/week when spent on packs.
   const cgPerWeek = (12 * 7) + 50 + (10 * 7);
-  const cgAsCommons = (cgPerWeek / 750) * paidCommonsPerWeek / 2; // /2: paid baseline is 2 packs
+  const cgAsCommons = (cgPerWeek / 900) * paidCommonsPerWeek / 2; // /2: paid baseline is 2 packs
   const freeCommonsPerWeek = streakChipEv + weeklyChipEv + jackpotEvPerWallet + cgAsCommons;
   return {
     streakChipEv: +streakChipEv.toFixed(2),

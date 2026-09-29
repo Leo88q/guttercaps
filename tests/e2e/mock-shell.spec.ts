@@ -32,7 +32,7 @@ test.describe('the built app boots', () => {
 
     await page.goto('/');
     await expect(page.locator('nav[aria-label="Primary"]')).toBeVisible();
-    await expect(page.locator('.shell-nav a')).toHaveCount(7);
+    await expect(page.locator('.shell-nav a')).toHaveCount(10);
     await expect(page.getByRole('link', { name: 'GUTTERCAPS' })).toBeVisible();
     // A production build must not discover its own API: /v1 is proxied by the same origin (vite preview
     // in CI, nginx in prod). Any other host here means a VITE_API_BASE baked for another deployment.

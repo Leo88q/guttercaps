@@ -460,7 +460,7 @@ describe('crank · instruction layouts (mirror programs/chip_core/src/instructio
     expect(e.oddsBps).toEqual([9_000, 1_000, 0, 0, 0, 0, 0, 0, 0]); expect(e.pity).toBeNull(); expect(e.id).toBe('standard');
     expect(toEconPack(2, DEFAULT_PACK).pity).toEqual({ tier: 6, hardAt: 60, softStart: 30, softStepBps: 25 });
     expect(toEconPack(0, { ...DEFAULT_PACK, dailyCap: 1 }).dailyCap).toBe(1);
-    expect(PACKS.standard.chips).toBe(3);
+    expect(PACKS.standard.chips).toBe(4);
   });
   it('customErrorCode parses messages, logs and confirmTransaction errors; clampCuPrice keeps fee ≤ 0.001 SOL', () => {
     expect(customErrorCode(new Error('failed: custom program error: 0x1775'))).toBe(6005);

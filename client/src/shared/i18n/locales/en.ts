@@ -16,7 +16,7 @@ const en = {
   catalog,
   nav: {
     home: 'Home', caps: 'Caps', shop: 'Shop', market: 'Market', arena: 'Arena', stake: 'Stake',
-    quests: 'Quests', leaderboard: 'Ranks', profile: 'Profile', language: 'Language', more: 'More',
+    fusion: 'Fusion', guide: 'Guide', quests: 'Quests', leaderboard: 'Ranks', profile: 'Profile', language: 'Language', more: 'More',
   },
   common: {
     connectWallet: 'Connect wallet', connecting: 'Connecting…', signedIn: 'Signed in', signingIn: 'Signing in…', signOut: 'Sign out',

@@ -61,10 +61,10 @@ describe('SEC-B6 pack verifier', () => {
     const r = await verify(sig);
     expect(r.status).toBe(200);
     expect(r.json.matches).toBe(true);
-    expect(r.json.recomputed).toHaveLength(3);
-    expect(r.json.assumed).toMatchObject({ basis: 'published-defaults', sku: 1, chips: 3, paramsChangedBefore: false });
+    expect(r.json.recomputed).toHaveLength(4);
+    expect(r.json.assumed).toMatchObject({ basis: 'published-defaults', sku: 1, chips: 4, paramsChangedBefore: false });
     // rarities are compared, districts are reported (the API cannot recompute the pool)
-    expect((r.json.onChain as { collection: number }[]).map((c) => c.collection)).toEqual([1, 2, 3]);
+    expect((r.json.onChain as { collection: number }[]).map((c) => c.collection)).toEqual([1, 2, 3, 4]);
     expect(r.json.recomputed).toEqual((r.json.onChain as { rarity: number }[]).map((c) => ({ rarity: c.rarity })));
     expect(r.json.effectiveOddsBps).toEqual(effectiveOdds(PACKS.standard, 0));
   });
@@ -85,10 +85,10 @@ describe('SEC-B6 pack verifier', () => {
   it('a chip count that contradicts the published table is reported instead of silently "matching"', async () => {
     const buyer = kp();
     const bytes = roll(0x22);
-    const sig = open(buyer, 1, bytes, [0], { count: 1 }); // standard packs hold 3 chips
+    const sig = open(buyer, 1, bytes, [0], { count: 1 }); // standard packs hold 4 chips
     const r = await verify(sig);
     expect(r.json.matches).toBe(false);
-    expect(String(r.json.note)).toMatch(/holds 3 chips but the event records 1/);
+    expect(String(r.json.note)).toMatch(/holds 4 chips but the event records 1/);
   });
 
   it('a quest voucher reproduces under its template odds (and without the voucher row the mismatch is explained)', async () => {
@@ -102,12 +102,12 @@ describe('SEC-B6 pack verifier', () => {
     expect(r.json.matches).toBe(true);
     expect(r.json.voucher).toMatchObject({ template: 2 });
     // a voucher open that the indexer has not seen (no VoucherIssued row) cannot be vouched for: the starter
-    // table has 3 chips, the event has 1 → reported as unverifiable, not as a match
+    // table has 4 chips, the event has 1 → reported as unverifiable, not as a match
     const other = kp();
     const sig2 = open(other, 0, bytes, rarities, { nonce: '10', count: 1 });
     const r2 = await verify(sig2);
     expect(r2.json.matches).toBe(false);
-    expect(String(r2.json.note)).toMatch(/holds 3 chips but the event records 1/);
+    expect(String(r2.json.note)).toMatch(/holds 4 chips but the event records 1/);
   });
 
   it('garbage input is refused, not "verified": unknown signature 404, non-hex roll → matches=false with a note', async () => {

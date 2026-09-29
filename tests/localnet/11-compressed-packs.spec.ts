@@ -46,8 +46,8 @@ suite('T-L-V Bubblegum V2 compressed pack settlement', () => {
       expect(opened.event.buyer.equals(buyer.publicKey)).toBe(true);
       expect(opened.event.nonce).toBe(purchase.nonce);
       expect(opened.event.packNo).toBe(0);
-      expect(opened.event.count).toBe(3);
-      expect(opened.event.claimNonces).toHaveLength(3);
+      expect(opened.event.count).toBe(4);
+      expect(opened.event.claimNonces).toHaveLength(4);
 
       const pending = await loadPending(env.chain, pendingPackPda(buyer.publicKey, purchase.nonce)[0]);
       expect(pending?.opened).toBe(1);
@@ -57,7 +57,7 @@ suite('T-L-V Bubblegum V2 compressed pack settlement', () => {
       expect(settlementAccount).not.toBeNull();
       const settlement = decodeCompressedPackSettlement(settlementAccount!.data);
       expect(settlement.buyer.equals(buyer.publicKey)).toBe(true);
-      expect(settlement.totalClaims).toBe(3);
+      expect(settlement.totalClaims).toBe(4);
       expect(settlement.registeredClaims).toBe(0);
       expect(settlement.cancelledClaims).toBe(0);
 

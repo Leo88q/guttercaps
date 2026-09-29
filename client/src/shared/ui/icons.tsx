@@ -254,3 +254,38 @@ export function SoundIcon({ size = 26, on, onActivate }: IconProps & { on?: bool
     </svg>
   );
 }
+
+/** Fusion: three small caps drawn into one bigger cap — nav entry for the fusion bench. */
+export function FusionNavIcon({ size = 26, onActivate }: IconProps) {
+  const { active, trigger } = useActivation(500);
+  return (
+    <svg
+      width={size} height={size} viewBox="0 0 32 32"
+      className={`wicon wicon-fusion ${active ? 'wicon-active' : ''}`}
+      onClick={() => { trigger(); onActivate?.(); }}
+    >
+      <circle cx="7" cy="8" r="3.2" className="wicon-body" />
+      <circle cx="25" cy="8" r="3.2" className="wicon-body" />
+      <circle cx="16" cy="5" r="3.2" className="wicon-body" />
+      <path d="M9 11 L13.5 17 M23 11 L18.5 17 M16 8.5 L16 15" className="wicon-pole" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+      <circle cx="16" cy="23" r="6.5" className="wicon-cap" />
+      <circle cx="16" cy="23" r="2.2" className="wicon-drop" />
+    </svg>
+  );
+}
+
+/** Guide: a paste-up poster on a wall with three lines of text — "how the city works". */
+export function GuideNavIcon({ size = 26, onActivate }: IconProps) {
+  const { active, trigger } = useActivation(450);
+  return (
+    <svg
+      width={size} height={size} viewBox="0 0 32 32"
+      className={`wicon wicon-guide ${active ? 'wicon-active' : ''}`}
+      onClick={() => { trigger(); onActivate?.(); }}
+    >
+      <path d="M8 5 L24 6 L25 27 L7 26 Z" className="wicon-flyer" />
+      <path d="M11 11 H21 M11 15 H21 M11 19 H17" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+      <circle cx="16" cy="7" r="1" className="wicon-staple" />
+    </svg>
+  );
+}
