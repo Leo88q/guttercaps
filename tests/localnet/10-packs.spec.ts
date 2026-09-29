@@ -93,8 +93,8 @@ suite('T-L-C packs', () => {
     const c = await buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.CG });
     expect(c.paid).toBe(900_000_000n);
     const s = await buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.SKR });
-    // $4.99 − 5 % SKR promo = $4.7405 → 474 cents (integer) at $0.0174 − 0.1 % conf (SEC-M2: price − conf) → 272 686 479 micro-SKR
-    expect(s.paid).toBe((474n * 1_000_000n * 100_000_000n) / 100n / (1_740_000n - 1_740n));
+    // $5.99 − 5 % SKR promo = $5.6905 → 569 cents (integer) at $0.0174 − 0.1 % conf (SEC-M2: price − conf)
+    expect(s.paid).toBe((569n * 1_000_000n * 100_000_000n) / 100n / (1_740_000n - 1_740n));
     expect(s.paid).toBe(quoteUnits(env, SKU.STANDARD, 1, Currency.SKR));
     expect(await tokenBalance(env.chain, env.mints.usdc, vault)).toBe(before.usdc + u.paid);
     expect(await tokenBalance(env.chain, env.mints.cg, vault)).toBe(before.cg + c.paid);
@@ -281,7 +281,7 @@ suite('T-L-C packs', () => {
     // (b) at open: a legit purchase, but the pending account is pinned to ITS randomness — a forged revealed account elsewhere is rejected by the pin
     const b = await buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.USDC });
     const forged = await forgeRandomness(env.chain, { owner: Keypair.generate().publicKey, kind: RNG_KIND.PACK, seedSlot: (await loadPending(env.chain, b.pending))!.commitSlot, revealSlot: await env.chain.slot(), value: valueOf('C10') });
-    const { ix } = await openCompressedPackInstruction(env, buyer.publicKey, b.nonce, 0, valueOf('C10'), buyer.publicKey, { collectionOverride: [0, 0, 0] });
+    const { ix } = await openCompressedPackInstruction(env, buyer.publicKey, b.nonce, 0, valueOf('C10'), buyer.publicKey, { collectionOverride: [0, 0, 0, 0] });
     ix.keys[3] = { ...ix.keys[3], pubkey: forged };
     await expectFail(env.chain.send([ix], { signers: [buyer] }), Err.chip('RandomnessMismatch'), 'forged at open');
     // (c) even the REAL pinned address, if its owner were swapped, fails the owner check
@@ -405,7 +405,7 @@ suite('T-L-C packs', () => {
     expect((await loadPending(env.chain, b.pending))!.opened).toBe(1);
     await openCompressedPack(env, buyer.publicKey, b.nonce, 1, value);
     expect((await loadPending(env.chain, b.pending))!.opened).toBe(2);
-    expect(decodeCompressedPackSettlement((await env.chain.getAccount(compressedSettlementPda(buyer.publicKey, b.nonce)[0]))!.data).totalClaims).toBe(6);
+    expect(decodeCompressedPackSettlement((await env.chain.getAccount(compressedSettlementPda(buyer.publicKey, b.nonce)[0]))!.data).totalClaims).toBe(8);
   });
 
   it('C15 wrong remaining_accounts: a collection/tree account that does not match the roll → InvalidCollection; wrong count → InvalidQuantity', async () => {
@@ -451,9 +451,9 @@ suite('T-L-C packs', () => {
     const b = await buyPack(env, buyer, { sku: SKU.STANDARD, qty: 1, currency: Currency.USDC });
     const v = noLegend(0);
     const raw = expandRandomness(v, { ...econ, pity: null }, 0, 10);
-    expect(raw[2].rarity).toBeLessThan(6);
+    expect(raw[3].rarity).toBeLessThan(6);
     const [r] = await revealAndOpenCompressedAll(env, buyer, b, v);
-    expect(r.rolled[2].rarity).toBeGreaterThanOrEqual(6);
+    expect(r.rolled[3].rarity).toBeGreaterThanOrEqual(6);
     expect((await loadPity(env.chain, buyer.publicKey))!.counters[SKU.STANDARD]).toBe(0);
     expect(PACKS.standard.pity?.hardAt).toBe(hardAt);
   }, 600_000);
