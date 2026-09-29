@@ -1,0 +1,458 @@
+{
+  "chip_core": [
+    {
+      "name": "Paused",
+      "key": "chip_core_Paused"
+    },
+    {
+      "name": "Unauthorized",
+      "key": "chip_core_Unauthorized"
+    },
+    {
+      "name": "Overflow",
+      "key": "chip_core_Overflow"
+    },
+    {
+      "name": "InvalidSku",
+      "key": "chip_core_InvalidSku"
+    },
+    {
+      "name": "SkuDisabled",
+      "key": "chip_core_SkuDisabled"
+    },
+    {
+      "name": "InvalidQuantity",
+      "key": "chip_core_InvalidQuantity"
+    },
+    {
+      "name": "DailyCapReached",
+      "key": "chip_core_DailyCapReached"
+    },
+    {
+      "name": "StarterAlreadyClaimed",
+      "key": "chip_core_StarterAlreadyClaimed"
+    },
+    {
+      "name": "CurrencyNotAccepted",
+      "key": "chip_core_CurrencyNotAccepted"
+    },
+    {
+      "name": "OddsSumInvalid",
+      "key": "chip_core_OddsSumInvalid"
+    },
+    {
+      "name": "OddsGuardRail",
+      "key": "chip_core_OddsGuardRail"
+    },
+    {
+      "name": "FeeTooHigh",
+      "key": "chip_core_FeeTooHigh"
+    },
+    {
+      "name": "StalePrice",
+      "key": "chip_core_StalePrice"
+    },
+    {
+      "name": "Slippage",
+      "key": "chip_core_Slippage"
+    },
+    {
+      "name": "RandomnessExpired",
+      "key": "chip_core_RandomnessExpired"
+    },
+    {
+      "name": "RandomnessAlreadyRevealed",
+      "key": "chip_core_RandomnessAlreadyRevealed"
+    },
+    {
+      "name": "RandomnessNotResolved",
+      "key": "chip_core_RandomnessNotResolved"
+    },
+    {
+      "name": "RandomnessMismatch",
+      "key": "chip_core_RandomnessMismatch"
+    },
+    {
+      "name": "NotStale",
+      "key": "chip_core_NotStale"
+    },
+    {
+      "name": "InvalidCollection",
+      "key": "chip_core_InvalidCollection"
+    },
+    {
+      "name": "CollectionExists",
+      "key": "chip_core_CollectionExists"
+    },
+    {
+      "name": "NotAssetOwner",
+      "key": "chip_core_NotAssetOwner"
+    },
+    {
+      "name": "WrongCollection",
+      "key": "chip_core_WrongCollection"
+    },
+    {
+      "name": "ChipNotFree",
+      "key": "chip_core_ChipNotFree"
+    },
+    {
+      "name": "InvalidChipState",
+      "key": "chip_core_InvalidChipState"
+    },
+    {
+      "name": "MaterialRarityMismatch",
+      "key": "chip_core_MaterialRarityMismatch"
+    },
+    {
+      "name": "MaterialCollectionMismatch",
+      "key": "chip_core_MaterialCollectionMismatch"
+    },
+    {
+      "name": "DuplicateMaterial",
+      "key": "chip_core_DuplicateMaterial"
+    },
+    {
+      "name": "NoRecipe",
+      "key": "chip_core_NoRecipe"
+    },
+    {
+      "name": "NoBooster",
+      "key": "chip_core_NoBooster"
+    },
+    {
+      "name": "StillLocked",
+      "key": "chip_core_StillLocked"
+    },
+    {
+      "name": "NotProgramCaller",
+      "key": "chip_core_NotProgramCaller"
+    },
+    {
+      "name": "InvalidElement",
+      "key": "chip_core_InvalidElement"
+    },
+    {
+      "name": "InvalidService",
+      "key": "chip_core_InvalidService"
+    },
+    {
+      "name": "ServiceDailyCap",
+      "key": "chip_core_ServiceDailyCap"
+    },
+    {
+      "name": "RandomnessAuthority",
+      "key": "chip_core_RandomnessAuthority"
+    },
+    {
+      "name": "RandomnessUsed",
+      "key": "chip_core_RandomnessUsed"
+    },
+    {
+      "name": "PriceUncertain",
+      "key": "chip_core_PriceUncertain"
+    },
+    {
+      "name": "AccountNotWritable",
+      "key": "chip_core_AccountNotWritable"
+    },
+    {
+      "name": "InvalidShard",
+      "key": "chip_core_InvalidShard"
+    },
+    {
+      "name": "InvalidVoucher",
+      "key": "chip_core_InvalidVoucher"
+    },
+    {
+      "name": "InvalidBubblegumTree",
+      "key": "chip_core_InvalidBubblegumTree"
+    },
+    {
+      "name": "InvalidBubblegumProof",
+      "key": "chip_core_InvalidBubblegumProof"
+    },
+    {
+      "name": "CompressedMigrationRequired",
+      "key": "chip_core_CompressedMigrationRequired"
+    },
+    {
+      "name": "CgPriceGuardRail",
+      "key": "chip_core_CgPriceGuardRail"
+    },
+    {
+      "name": "NotUpgradeAuthority",
+      "key": "chip_core_NotUpgradeAuthority"
+    },
+    {
+      "name": "InvalidConfigAddress",
+      "key": "chip_core_InvalidConfigAddress"
+    }
+  ],
+  "market": [
+    {
+      "name": "PriceTooLow",
+      "key": "market_PriceTooLow"
+    },
+    {
+      "name": "NotOwner",
+      "key": "market_NotOwner"
+    },
+    {
+      "name": "NotSeller",
+      "key": "market_NotSeller"
+    },
+    {
+      "name": "CurrencyMismatch",
+      "key": "market_CurrencyMismatch"
+    },
+    {
+      "name": "OfferExpired",
+      "key": "market_OfferExpired"
+    },
+    {
+      "name": "TtlTooLong",
+      "key": "market_TtlTooLong"
+    },
+    {
+      "name": "SelfTrade",
+      "key": "market_SelfTrade"
+    },
+    {
+      "name": "Overflow",
+      "key": "chip_core_Overflow"
+    },
+    {
+      "name": "ChipLocked",
+      "key": "market_ChipLocked"
+    },
+    {
+      "name": "MissingAccounts",
+      "key": "market_MissingAccounts"
+    },
+    {
+      "name": "CompressedClaimNotTradable",
+      "key": "market_CompressedClaimNotTradable"
+    },
+    {
+      "name": "CompressedCurrencyMismatch",
+      "key": "market_CompressedCurrencyMismatch"
+    },
+    {
+      "name": "InvalidTreasury",
+      "key": "market_InvalidTreasury"
+    },
+    {
+      "name": "InvalidBuyback",
+      "key": "market_InvalidBuyback"
+    },
+    {
+      "name": "ListingPriceChanged",
+      "key": "market_ListingPriceChanged"
+    }
+  ],
+  "staking": [
+    {
+      "name": "Paused",
+      "key": "staking_Paused"
+    },
+    {
+      "name": "Unauthorized",
+      "key": "chip_core_Unauthorized"
+    },
+    {
+      "name": "Overflow",
+      "key": "chip_core_Overflow"
+    },
+    {
+      "name": "SplitSum",
+      "key": "staking_SplitSum"
+    },
+    {
+      "name": "SplitGuard",
+      "key": "staking_SplitGuard"
+    },
+    {
+      "name": "DayAlreadyClosed",
+      "key": "staking_DayAlreadyClosed"
+    },
+    {
+      "name": "YearlyCap",
+      "key": "staking_YearlyCap"
+    },
+    {
+      "name": "InvalidTier",
+      "key": "staking_InvalidTier"
+    },
+    {
+      "name": "BelowMinimum",
+      "key": "staking_BelowMinimum"
+    },
+    {
+      "name": "NothingToClaim",
+      "key": "staking_NothingToClaim"
+    },
+    {
+      "name": "BudgetExceeded",
+      "key": "staking_BudgetExceeded"
+    },
+    {
+      "name": "RootTimelocked",
+      "key": "staking_RootTimelocked"
+    },
+    {
+      "name": "RootRevoked",
+      "key": "staking_RootRevoked"
+    },
+    {
+      "name": "BadProof",
+      "key": "staking_BadProof"
+    },
+    {
+      "name": "AlreadyClaimed",
+      "key": "staking_AlreadyClaimed"
+    },
+    {
+      "name": "RootBudgetExceeded",
+      "key": "staking_RootBudgetExceeded"
+    },
+    {
+      "name": "NotBurnReporter",
+      "key": "staking_NotBurnReporter"
+    },
+    {
+      "name": "NotOwner",
+      "key": "market_NotOwner"
+    },
+    {
+      "name": "ChipNotFree",
+      "key": "staking_ChipNotFree"
+    },
+    {
+      "name": "InvalidBubblegumProof",
+      "key": "staking_InvalidBubblegumProof"
+    },
+    {
+      "name": "BadOracle",
+      "key": "staking_BadOracle"
+    },
+    {
+      "name": "TooManySets",
+      "key": "staking_TooManySets"
+    },
+    {
+      "name": "WrongRootCurrency",
+      "key": "staking_WrongRootCurrency"
+    },
+    {
+      "name": "SkrPoolPaused",
+      "key": "staking_SkrPoolPaused"
+    },
+    {
+      "name": "SkrBudgetExceeded",
+      "key": "staking_SkrBudgetExceeded"
+    },
+    {
+      "name": "ZeroAmount",
+      "key": "staking_ZeroAmount"
+    },
+    {
+      "name": "WrongSlice",
+      "key": "staking_WrongSlice"
+    },
+    {
+      "name": "InsufficientPool",
+      "key": "staking_InsufficientPool"
+    },
+    {
+      "name": "ItemBudgetExceeded",
+      "key": "staking_ItemBudgetExceeded"
+    },
+    {
+      "name": "ChipBudgetExceeded",
+      "key": "staking_ChipBudgetExceeded"
+    },
+    {
+      "name": "ClaimExpired",
+      "key": "staking_ClaimExpired"
+    },
+    {
+      "name": "BeforeGenesis",
+      "key": "staking_BeforeGenesis"
+    },
+    {
+      "name": "BadMint",
+      "key": "staking_BadMint"
+    }
+  ],
+  "arena": [
+    {
+      "name": "Paused",
+      "key": "staking_Paused"
+    },
+    {
+      "name": "Unauthorized",
+      "key": "chip_core_Unauthorized"
+    },
+    {
+      "name": "WagerRange",
+      "key": "arena_WagerRange"
+    },
+    {
+      "name": "BadStatus",
+      "key": "arena_BadStatus"
+    },
+    {
+      "name": "NotOwner",
+      "key": "arena_NotOwner"
+    },
+    {
+      "name": "ChipBusy",
+      "key": "arena_ChipBusy"
+    },
+    {
+      "name": "InvalidBubblegumProof",
+      "key": "staking_InvalidBubblegumProof"
+    },
+    {
+      "name": "DuplicateChip",
+      "key": "arena_DuplicateChip"
+    },
+    {
+      "name": "SquadTooWeak",
+      "key": "arena_SquadTooWeak"
+    },
+    {
+      "name": "LeagueMismatch",
+      "key": "arena_LeagueMismatch"
+    },
+    {
+      "name": "BadWinner",
+      "key": "arena_BadWinner"
+    },
+    {
+      "name": "OracleCap",
+      "key": "arena_OracleCap"
+    },
+    {
+      "name": "NotStale",
+      "key": "arena_NotStale"
+    },
+    {
+      "name": "SelfBattle",
+      "key": "arena_SelfBattle"
+    },
+    {
+      "name": "Randomness",
+      "key": "arena_Randomness"
+    },
+    {
+      "name": "Overflow",
+      "key": "chip_core_Overflow"
+    },
+    {
+      "name": "NotUpgradeAuthority",
+      "key": "chip_core_NotUpgradeAuthority"
+    }
+  ]
+}

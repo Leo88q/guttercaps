@@ -1,3 +1,4 @@
+import type { UiText } from '@/shared/i18n/message';
 // Client-only UI state: sound, motion, reveal queue, toasts, modals.
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -16,8 +17,10 @@ export interface RevealItem {
 export interface Toast {
   id: string;
   kind: 'info' | 'success' | 'error' | 'money';
-  title: string;
-  body?: string;
+  title: UiText;
+  body?: UiText;
+  /** Original error, translated by ErrorNotice when rendered (not persisted). */
+  error?: unknown;
   href?: string;
   ttlMs?: number;
 }

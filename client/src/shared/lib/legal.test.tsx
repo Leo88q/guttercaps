@@ -8,10 +8,10 @@ import path from 'node:path';
 import { render, screen, cleanup } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import {
-  LEGAL_DOCS, LEGAL_IDS, LEGAL_EFFECTIVE, LEGAL_PATHS, RESTRICTED_REGIONS, AGE_MIN,
+  LEGAL_DOCS, LEGAL_IDS, LEGAL_EFFECTIVE, LEGAL_REVISION, LEGAL_VALUES, LEGAL_REVIEWED, LEGAL_PATHS, RESTRICTED_REGIONS, AGE_MIN,
   ageAcknowledged, acknowledgeAge, forgetAge, canonicalLegalUrl,
 } from './legal';
-import { FEES, PACKS } from '@guttercaps/economy';
+import { FEES, PACKS, STALE_PACK_MINUTES, STALE_PACK_SLOTS } from '@guttercaps/economy';
 import { LOCALES } from '@/shared/i18n';
 import en from '@/shared/i18n/locales/en';
 import pt from '@/shared/i18n/locales/pt';
@@ -73,9 +73,31 @@ describe('the documents', () => {
     expect(text).toMatch(/hard cap 10 %/);
   });
 
+  it('separately discloses the creator royalty and all three destinations of the arena rake', () => {
+    const fees = LEGAL_DOCS.terms.sections.find((s) => s.h.startsWith('4.'))!.p.join(' ');
+    expect(fees).toContain(`separate ${FEES.creatorRoyaltyBps / 100} % creator royalty`);
+    expect(fees).toContain(`${FEES.pvpRakeTreasuryShareBps / 100} % of the rake goes to the treasury`);
+    expect(fees).toContain(`${FEES.pvpRakePoolShareBps / 100} % funds the season prize pool`);
+    expect(fees).toContain(`remaining ${(10_000 - FEES.pvpRakeTreasuryShareBps - FEES.pvpRakePoolShareBps) / 100} % is burned`);
+    expect(LEGAL_REVIEWED).toBe(false);
+  });
+
   it('quotes the pack sizes from the same table the shop renders', () => {
     const text = LEGAL_DOCS.terms.sections.map((s) => s.p.join(' ')).join(' ');
     for (const p of Object.values(PACKS)) expect(text, p.name).toContain(`${p.chips} caps`);
+  });
+
+  it('discloses the real stale window and does not promise unconditional cancelled-drop refunds', () => {
+    const text = LEGAL_DOCS.terms.sections[4].p.join(' ');
+    expect(text).toContain(new Intl.NumberFormat('en').format(STALE_PACK_SLOTS));
+    expect(text).toContain(`${STALE_PACK_MINUTES} minutes`);
+    expect(text).toContain('request remains unrevealed');
+    expect(text).toContain('Network fees are not refunded');
+    expect(text).toContain('does not automatically');
+    expect(text).not.toContain('one hour');
+    const economy = readFileSync(repoFile('programs/chip_core/src/economy.rs'), 'utf8');
+    const cap = /MAX_MARKET_FEE_BPS: u16 = ([\d_]+)/.exec(economy);
+    expect(Number(cap?.[1].replaceAll('_', '')) / 100).toBe(LEGAL_VALUES.marketCap);
   });
 
   it('is dated, and every page shows that date', () => {
@@ -89,9 +111,9 @@ describe('the documents', () => {
     expect(canonicalLegalUrl('https://guttercaps.gg', 'privacy')).toBe('https://guttercaps.gg/legal/privacy');
   });
 
-  it('the region list is the same list the backend refuses sales for', () => {
-    // Cross-tree drift check: the client copy promises "no pack sales in BE / NL". The server-side gate
-    // (the one that actually blocks) has its own default. If those two diverge, the app lies.
+  it('the dormant region list matches the backend gate when explicitly enabled', () => {
+    // Cross-tree drift check for optional controls: the region footer only appears with geoGate.
+    // Both gates are off by default; their dormant region lists should still match.
     // import.meta.url under vite-node is a /@fs/… URL, not a filesystem one, so the backend file is
     // found by walking up from the cwd instead — that works from client/ (vitest default) and from the
     // repo root alike, and it fails loudly rather than reading the wrong tree.
@@ -148,9 +170,10 @@ describe('the age acknowledgement', () => {
     expect(ageAcknowledged()).toBe(true);
   });
 
-  it('is versioned by the effective date, so re-wording the terms re-asks', () => {
+  it('is versioned even for material corrections on the same date', () => {
     acknowledgeAge();
-    window.localStorage.setItem('gc.legal.ageOk', `${AGE_MIN}:2000-01-01`);
+    expect(window.localStorage.getItem('gc.legal.ageOk')).toBe(`${AGE_MIN}:${LEGAL_REVISION}`);
+    window.localStorage.setItem('gc.legal.ageOk', `${AGE_MIN}:${LEGAL_EFFECTIVE}`);
     expect(ageAcknowledged()).toBe(false);
   });
 
@@ -196,5 +219,30 @@ describe('the page', () => {
     expect(screen.getByText('404')).toBeTruthy();
     expect(screen.getAllByRole('link').length).toBeGreaterThanOrEqual(2);
     cleanup();
+  });
+});
+
+// Regression checks for specific misleading claims removed in revision .3. These are not legal review.
+describe('prelaunch factual/legal boundaries', () => {
+  it('does not equate irreversible draws with loss of mandatory remedies', () => {
+    expect(LEGAL_DOCS.terms.sections[4].p[0]).toContain('does not remove statutory');
+    expect(LEGAL_DOCS.terms.sections[4].p[3]).toContain('does not waive mandatory remedies');
+    expect(LEGAL_DOCS.terms.intro).toContain('Mandatory law prevails');
+  });
+  it('does not present pack-only geo blocking as whole-product clearance', () => {
+    expect(LEGAL_DOCS.terms.sections[1].p[1]).toContain('do not prevent direct on-chain calls');
+    expect(LEGAL_DOCS.terms.sections[1].p[1]).toContain('do not establish legal permission');
+  });
+  it('states the limited erasure scope and does not invent independent age verification or contacts', () => {
+    expect(LEGAL_DOCS.privacy.sections[2].p[1]).toContain('This is not full erasure');
+    expect(LEGAL_DOCS.privacy.sections[6].p[1]).toContain('still undesignated');
+    expect(LEGAL_DOCS.privacy.sections[6].p[2]).toContain('not independently verified');
+    expect(LEGAL_REVIEWED).toBe(false);
+  });
+  it('distinguishes pseudonymity, metadata and actual telemetry integration', () => {
+    expect(LEGAL_DOCS.privacy.intro).toContain('pseudonymous, not anonymous');
+    expect(LEGAL_DOCS.privacy.sections[5].p[1]).toContain('IP addresses');
+    expect(LEGAL_DOCS.privacy.sections[5].p[3]).toContain('does not integrate a Sentry SDK');
+    expect(LEGAL_DOCS.privacy.sections[4].p[1]).toContain('not blanket privacy consent');
   });
 });

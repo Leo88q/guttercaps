@@ -188,9 +188,9 @@ export function refreshQuestDay(db: Db, wallet: string, t = now(), horizon = fin
 }
 
 // ---------------------------------------------------------------- list
-export function list(db: Db, wallet: string, t = now()) {
+export function list(db: Db, wallet: string, t = now(), refresh = true) {
   const elig = eligibility(db, wallet, t);
-  refreshQuestDay(db, wallet, t);
+  if (refresh) refreshQuestDay(db, wallet, t);
   const completions = new Map(db.all<{ quest_id: string; period_key: string; amount: string; completed_at: number; root_kind: number | null; root_epoch: number | null; item_root_kind: number | null; chip_root_kind: number | null }>(`SELECT quest_id, period_key, amount, completed_at, root_kind, root_epoch, item_root_kind, chip_root_kind FROM quest_completions WHERE wallet = ?`, wallet).map((r) => [`${r.quest_id}:${r.period_key}`, r]));
   return ALL_QUESTS.map((q) => {
     const from = periodStart(q, t), to = q.period === 'permanent' ? NO_LIMIT : periodEnd(q, t);

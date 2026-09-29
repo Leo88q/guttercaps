@@ -1,3 +1,5 @@
+import type { MessageKey } from '@/shared/i18n';
+import { tierName } from '@/shared/lib/presentation';
 // $CG staking (4 lock tiers) + chip staking + set bonus + claims. Money UI → clean zone.
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -10,12 +12,12 @@ import { useGameConfig, useStakingChain, useWalletLike, useBalances } from '@/ch
 import { pendingReward } from '@/chain/accounts';
 import { sendTx } from '@/chain/tx';
 import { fetchCoreCollections } from '@/chain/flows/packFlow';
-import { stakeCgIx, unstakeCgIx, stakeChipIx, unstakeChipIx, claimChipIx, unstakePenalty, TIER_NAMES, MIN_STAKE_MICRO } from '@/chain/ix/staking';
+import { stakeCgIx, unstakeCgIx, stakeChipIx, unstakeChipIx, claimChipIx, unstakePenalty, MIN_STAKE_MICRO } from '@/chain/ix/staking';
 import { createAtaIdempotentIx } from '@/chain/ix/spl';
 import { CleanZone, KV, Modal, Pill, Stat, Skeleton, Empty } from '@/shared/ui/primitives';
 import { CleanConfirmButton } from '@/shared/ui/buttons';
 import { ChipArt } from '@/shared/ui/ChipArt';
-import { fmtCg, fmtUnits, parseUnits, countdown } from '@/shared/lib/format';
+import { fmtCg, fmtUnits, fmtDecimal, fmtPct, fmtProb, inputUnits, parseUnits, countdown, secondsToHuman } from '@/shared/lib/format';
 import { chipName, rarityColor, rarityName, chipImageOf } from '@/shared/lib/rarity';
 import { useUiStore } from '@/app/store/ui';
 import { isMock } from '@/api/client';
@@ -55,18 +57,18 @@ export default function Staking() {
   const sets = setBonus.data?.completedSets ?? meApi.data?.setBonus?.onChainSets ?? 0;
   const setMult = fullSetBonusMult(sets);
 
-  async function run(kind: string, build: () => Promise<import('@solana/web3.js').TransactionInstruction[]>) {
-    if (isMock()) { toast({ kind: 'money', title: `${kind} (mock)`, body: 'Transaction simulated' }); return; }
-    if (!wallet || !cgMint) { toast({ kind: 'error', title: '$CG mint not configured' }); return; }
+  async function run(kind: MessageKey, build: () => Promise<import('@solana/web3.js').TransactionInstruction[]>) {
+    if (isMock()) { toast({ kind: 'money', title: { key: 'screens.transactionDemo', params: { action: { key: kind } } }, body: { key: 'screens.simulated' } }); return; }
+    if (!wallet || !cgMint) { toast({ kind: 'error', title: { key: 'screens.cgNotConfigured' } }); return; }
     setBusy(true);
     try {
       const { signature } = await sendTx(connection, wallet, await build(), { cuLimit: 250_000 });
-      toast({ kind: 'money', title: `${kind} confirmed`, href: EXPLORER.tx(signature) });
+      toast({ kind: 'money', title: { key: 'screens.transactionDone', params: { action: { key: kind } } }, href: EXPLORER.tx(signature) });
       void qc.invalidateQueries({ queryKey: ['staking'] });
       void qc.invalidateQueries({ queryKey: ['chain'] });
       void qc.invalidateQueries({ queryKey: ['me'] });
     } catch (e) {
-      toast({ kind: 'error', title: `${kind} failed`, body: String((e as Error)?.message ?? e) });
+      toast({ kind: 'error', title: { key: 'screens.transactionFailed', params: { action: { key: kind } } }, error: e });
     } finally { setBusy(false); }
   }
   const ata = () => createAtaIdempotentIx(wallet!.publicKey, wallet!.publicKey, cgMint!);
@@ -92,43 +94,43 @@ export default function Staking() {
       </div>
 
       <div className="grid-3">
-        <div className="card"><Stat label="day / year" value={overview.isLoading ? <Skeleton h={22} w={60} /> : `${emission.data?.dayIndex ?? overview.data?.emission?.dayIndex ?? 0} / Y${(overview.data?.emission?.year ?? 0) + 1}`} /></div>
-        <div className="card"><Stat label="today's budget (guarded)" value={overview.data ? fmtCg(overview.data.emission?.guardedMicro, 0) : '—'} /></div>
-        <div className="card"><Stat label="7d avg burn" value={overview.data ? fmtCg(overview.data.emission?.burn7dAvgMicro, 0) : '—'} /></div>
+        <div className="card"><Stat label={t('ui.dayYear')} value={overview.isLoading ? <Skeleton h={22} w={60} /> : `${fmtDecimal(emission.data?.dayIndex ?? overview.data?.emission?.dayIndex ?? 0, 0)} / ${t('screens.year', { n: (overview.data?.emission?.year ?? 0) + 1 })}`} /></div>
+        <div className="card"><Stat label={t('ui.todayBudget')} value={overview.data ? fmtCg(overview.data.emission?.guardedMicro, 0) : '—'} /></div>
+        <div className="card"><Stat label={t('ui.burnAvg')} value={overview.data ? fmtCg(overview.data.emission?.burn7dAvgMicro, 0) : '—'} /></div>
       </div>
 
       {/* ---------- $CG ---------- */}
       <div className="card stack">
-        <div className="row between"><span className="strong">Stake $CG</span><span className="muted small">balance {fmtUnits(bal.data?.cg ?? 0n, 6, 0)} $CG</span></div>
+        <div className="row between"><span className="strong">{t('staking.stake')} $CG</span><span className="muted small">{t('ui.balance')} {fmtUnits(bal.data?.cg ?? 0n, 6, 0)} $CG</span></div>
         <div className="tag-list">
-          {TIER_IDS.map((id, i) => <Pill key={id} active={tier === i} onClick={() => setTier(i)}>{TIER_NAMES[i]} · ×{LOCK_TIERS[id].boost}</Pill>)}
+          {TIER_IDS.map((id, i) => <Pill key={id} active={tier === i} onClick={() => setTier(i)}>{tierName(i)} · ×{fmtDecimal(LOCK_TIERS[id].boost, 2, 0)}</Pill>)}
         </div>
         <CleanZone>
           <div className="row" style={{ gap: 8 }}>
-            <input className="input mono" inputMode="decimal" placeholder="min 10" value={amount} onChange={(e) => setAmount(e.target.value)} />
-            <button className="btn btn-sm" onClick={() => setAmount(fmtUnits(bal.data?.cg ?? 0n, 6, 6).replace(/,/g, ''))}>max</button>
+            <input className="input mono" inputMode="decimal" placeholder={t('screens.minimum', { n: 10 })} value={amount} onChange={(e) => setAmount(e.target.value)} />
+            <button className="btn btn-sm" onClick={() => setAmount(inputUnits(bal.data?.cg ?? 0n, 6))}>{t('ui.max')}</button>
           </div>
-          <KV k="Weight boost" v={`×${LOCK_TIERS[TIER_IDS[tier]].boost}`} />
-          <KV k="Lock" v={LOCK_TIERS[TIER_IDS[tier]].lockSeconds === 0 ? 'none (flex)' : `${LOCK_TIERS[TIER_IDS[tier]].lockSeconds / 86_400} days`} />
-          <KV k="Early exit penalty (burned)" v={`${LOCK_TIERS[TIER_IDS[tier]].earlyExitPenaltyBps / 100}%`} />
-          <KV k="Indicative APY at current pool" v={`${apy.toFixed(1)}%`} accent />
-          {amt !== null && amt > 0n && <KV k="≈ per day" v={fmtCg(BigInt(Math.round((Number(amt) * apy) / 100 / 365)))} />}
+          <KV k={t('ui.weightBoost')} v={`×${fmtDecimal(LOCK_TIERS[TIER_IDS[tier]].boost, 2, 0)}`} />
+          <KV k={t('ui.lock')} v={LOCK_TIERS[TIER_IDS[tier]].lockSeconds === 0 ? t('staking.flexible') : secondsToHuman(LOCK_TIERS[TIER_IDS[tier]].lockSeconds)} />
+          <KV k={t('ui.earlyPenalty')} v={`${fmtPct(LOCK_TIERS[TIER_IDS[tier]].earlyExitPenaltyBps, 0)}`} />
+          <KV k={t('ui.apyCurrent')} v={`${fmtProb(apy / 100, 1)}`} accent />
+          {amt !== null && amt > 0n && <KV k={t('ui.perDay')} v={fmtCg(BigInt(Math.round((Number(amt) * apy) / 100 / 365)))} />}
         </CleanZone>
-        {tier > 0 && positions.some((p) => p.tier === tier) && <div className="warn">Topping up a locked tier re-locks the whole position for the full period.</div>}
-        <CleanConfirmButton disabled={busy || !amt || amt < MIN_STAKE_MICRO} onClick={() => run('Stake', async () => [ata(), stakeCgIx({ owner: wallet!.publicKey, tier, amount: amt!, cgMint: cgMint! })])}>Stake {TIER_NAMES[tier]}</CleanConfirmButton>
+        {tier > 0 && positions.some((p) => p.tier === tier) && <div className="warn">{t('ui.topUpLock')}</div>}
+        <CleanConfirmButton disabled={busy || !amt || amt < MIN_STAKE_MICRO} onClick={() => run('staking.stake', async () => [ata(), stakeCgIx({ owner: wallet!.publicKey, tier, amount: amt!, cgMint: cgMint! })])}>{t('staking.stake')} {tierName(tier)}</CleanConfirmButton>
 
         {positions.length > 0 && (
           <div className="stack-sm">
-            <span className="label">Your positions</span>
+            <span className="label">{t('ui.yourPositions')}</span>
             {positions.map((p) => (
               <CleanZone key={p.tier} className="row between" style={{ padding: '8px 12px' }}>
                 <div>
-                  <div><b>{fmtCg(p.amount, 0)}</b> · {TIER_NAMES[p.tier]}</div>
-                  <div className="tiny muted">pending {fmtCg(p.pending, 3)} · {p.unlockAt > Date.now() ? `unlocks in ${countdown(p.unlockAt)}` : 'unlocked'}</div>
+                  <div><b>{fmtCg(p.amount, 0)}</b> · {tierName(p.tier)}</div>
+                  <div className="tiny muted">{t('ui.pending')} {fmtCg(p.pending, 3)} · {p.unlockAt > Date.now() ? t('ui.unlockIn', { time: countdown(p.unlockAt) }) : t('ui.unlocked')}</div>
                 </div>
                 <div className="row" style={{ gap: 6 }}>
-                  <button className="btn btn-sm" disabled={busy} onClick={() => run('Claim', async () => [ata(), unstakeCgIx({ owner: wallet!.publicKey, tier: p.tier, amount: 0n, cgMint: cgMint! })])}>Claim</button>
-                  <button className="btn btn-sm" onClick={() => { setUnstake({ tier: p.tier }); setUnAmount(''); }}>Unstake</button>
+                  <button className="btn btn-sm" disabled={busy} onClick={() => run('staking.claim', async () => [ata(), unstakeCgIx({ owner: wallet!.publicKey, tier: p.tier, amount: 0n, cgMint: cgMint! })])}>{t('pass.claim')}</button>
+                  <button className="btn btn-sm" onClick={() => { setUnstake({ tier: p.tier }); setUnAmount(''); }}>{t('staking.unstake')}</button>
                 </div>
               </CleanZone>
             ))}
@@ -139,23 +141,23 @@ export default function Staking() {
       {/* ---------- chips ---------- */}
       <div className="card stack">
         <div className="row between">
-          <div><div className="strong">Stake caps</div><div className="tiny muted">weight = rarity weight × level × set bonus · staked caps can still fight in the Arena</div></div>
-          <button className="btn btn-sm" onClick={() => setPickChip(true)} disabled={stakeable.length === 0}>+ Stake a cap</button>
+          <div><div className="strong">{t('ui.stakeCaps')}</div><div className="tiny muted">{t('ui.weightRule')}</div></div>
+          <button className="btn btn-sm" onClick={() => setPickChip(true)} disabled={stakeable.length === 0}>+ {t('ui.stakeCap')}</button>
         </div>
         <CleanZone className="row between" style={{ padding: '8px 12px' }}>
-          <span>Set bonus: <b className="cg-accent">×{setMult.toFixed(2)}</b> <span className="muted">({sets} complete district{sets === 1 ? '' : 's'})</span></span>
-          <Link to="/collection" className="tiny">complete more →</Link>
+          <span>{t('ui.setBonus')}: <b className="cg-accent">×{fmtDecimal(setMult)}</b> <span className="muted">({t('screens.setsCount', { n: sets })})</span></span>
+          <Link to="/collection" className="tiny">{t('screens.completeSets')}</Link>
         </CleanZone>
-        {staked.length === 0 ? <Empty>No caps staked. Staked caps earn from the chip pool ({overview.data ? fmtCg(overview.data.chipPool?.budgetTodayMicro, 0) : '—'}/day shared by {overview.data?.chipPool?.stakedChips ?? '—'} caps).</Empty> : (
+        {staked.length === 0 ? <Empty>{t('ui.noStaked', { amount: overview.data ? fmtCg(overview.data.chipPool?.budgetTodayMicro, 0) : '—', n: overview.data?.chipPool?.stakedChips ?? '—' })}</Empty> : (
           <div className="stack-sm">
             {staked.map((c) => {
               const api = meApi.data?.chipStakes?.find((s) => s.chip?.asset === c.asset);
               return (
                 <div key={c.asset} className="row between" style={{ flexWrap: 'wrap' }}>
-                  <div className="row"><span style={{ width: 60 }}><ChipArt collection={c.collection!} rarity={c.rarity!} imageUrl={chipImageOf(c)} skin={(c as { skin?: string | null }).skin} /></span><div><div className="small">{chipName(c.collection!, c.rarity!)} <span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span></div><div className="tiny muted mono">weight {c.stakeWeight} · pending {api ? fmtCg(api.pending, 3) : '…'}</div></div></div>
+                  <div className="row"><span style={{ width: 60 }}><ChipArt collection={c.collection!} rarity={c.rarity!} imageUrl={chipImageOf(c)} skin={(c as { skin?: string | null }).skin} /></span><div><div className="small">{chipName(c.collection!, c.rarity!)} <span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span></div><div className="tiny muted mono">{t('staking.weight')} {c.stakeWeight} · {t('ui.pending')} {api ? fmtCg(api.pending, 3) : '…'}</div></div></div>
                   <div className="row" style={{ gap: 6 }}>
-                    <button className="btn btn-sm" disabled={busy} onClick={() => run('Claim', async () => [ata(), claimChipIx({ owner: wallet!.publicKey, asset: new PublicKey(c.asset!), cgMint: cgMint! })])}>Claim</button>
-                    <button className="btn btn-sm" disabled={busy} onClick={() => run('Unstake', async () => { const cores = await fetchCoreCollections(connection, cfg.data!.collectionsCreated); return [ata(), unstakeChipIx({ owner: wallet!.publicKey, asset: new PublicKey(c.asset!), collectionIdx: c.collection!, coreCollection: cores.get(c.collection!)!, cgMint: cgMint! })]; })}>Unstake</button>
+                    <button className="btn btn-sm" disabled={busy} onClick={() => run('staking.claim', async () => [ata(), claimChipIx({ owner: wallet!.publicKey, asset: new PublicKey(c.asset!), cgMint: cgMint! })])}>{t('pass.claim')}</button>
+                    <button className="btn btn-sm" disabled={busy} onClick={() => run('staking.unstake', async () => { const cores = await fetchCoreCollections(connection, cfg.data!.collectionsCreated); return [ata(), unstakeChipIx({ owner: wallet!.publicKey, asset: new PublicKey(c.asset!), collectionIdx: c.collection!, coreCollection: cores.get(c.collection!)!, cgMint: cgMint! })]; })}>{t('staking.unstake')}</button>
                   </div>
                 </div>
               );
@@ -164,7 +166,7 @@ export default function Staking() {
         )}
       </div>
 
-      <Modal open={!!unstake} onClose={() => setUnstake(null)} title={`Unstake · ${unstake ? TIER_NAMES[unstake.tier] : ''}`}>
+      <Modal open={!!unstake} onClose={() => setUnstake(null)} title={`${t('staking.unstake')} · ${unstake ? tierName(unstake.tier) : ''}`}>
         {unstake && (() => {
           const p = positions.find((x) => x.tier === unstake.tier)!;
           const a = parseUnits(unAmount, 6) ?? 0n;
@@ -172,24 +174,24 @@ export default function Staking() {
           return (
             <div className="stack">
               <CleanZone>
-                <div className="row" style={{ gap: 8 }}><input className="input mono" inputMode="decimal" value={unAmount} onChange={(e) => setUnAmount(e.target.value)} placeholder="amount" /><button className="btn btn-sm" onClick={() => setUnAmount(fmtUnits(p.amount, 6, 6).replace(/,/g, ''))}>all</button></div>
-                <KV k="Pending rewards (auto-claimed)" v={fmtCg(p.pending, 3)} />
-                {pen > 0n && <KV k={`Early exit penalty ${unstakePenalty(10_000n, unstake.tier, 1n << 62n) / 100n}% (burned)`} v={`− ${fmtCg(pen)}`} />}
-                <KV k="You receive" v={fmtCg(a - pen)} total accent />
+                <div className="row" style={{ gap: 8 }}><input className="input mono" inputMode="decimal" aria-label={t('ui.amount')} value={unAmount} onChange={(e) => setUnAmount(e.target.value)} placeholder={t('ui.amount')} /><button className="btn btn-sm" onClick={() => setUnAmount(inputUnits(p.amount, 6))}>{t('ui.all')}</button></div>
+                <KV k={t('ui.autoRewards')} v={fmtCg(p.pending, 3)} />
+                {pen > 0n && <KV k={t('screens.penaltyBurn', { pct: unstakePenalty(10_000n, unstake.tier, 1n << 62n) / 100n })} v={`− ${fmtCg(pen)}`} />}
+                <KV k={t('market.youReceive')} v={fmtCg(a - pen)} total accent />
               </CleanZone>
-              {pen > 0n && <div className="danger">Position is still locked ({countdown(p.unlockAt)} left). Exiting now burns {fmtCg(pen)}.</div>}
-              <CleanConfirmButton disabled={busy || a <= 0n || a > p.amount} onClick={async () => { setUnstake(null); await run('Unstake', async () => [ata(), unstakeCgIx({ owner: wallet!.publicKey, tier: unstake.tier, amount: a, cgMint: cgMint! })]); }}>Unstake</CleanConfirmButton>
+              {pen > 0n && <div className="danger">{t('ui.exitWarning', { time: countdown(p.unlockAt), amount: fmtCg(pen) })}</div>}
+              <CleanConfirmButton disabled={busy || a <= 0n || a > p.amount} onClick={async () => { setUnstake(null); await run('staking.unstake', async () => [ata(), unstakeCgIx({ owner: wallet!.publicKey, tier: unstake.tier, amount: a, cgMint: cgMint! })]); }}>{t('staking.unstake')}</CleanConfirmButton>
             </div>
           );
         })()}
       </Modal>
 
-      <Modal open={pickChip} onClose={() => setPickChip(false)} title="Stake a cap" wide>
+      <Modal open={pickChip} onClose={() => setPickChip(false)} title={t('ui.stakeCap')} wide>
         <div className="grid-auto" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(144px, 47%), 1fr))' }}>
           {stakeable.map((c: Chip) => (
-            <div key={c.asset} className="chip-card" onClick={async () => { setPickChip(false); await run('Stake', async () => { const cores = await fetchCoreCollections(connection, cfg.data!.collectionsCreated); return [stakeChipIx({ owner: wallet!.publicKey, asset: new PublicKey(c.asset!), collectionIdx: c.collection!, coreCollection: cores.get(c.collection!)! })]; }); }}>
+            <div key={c.asset} className="chip-card" onClick={async () => { setPickChip(false); await run('staking.stake', async () => { const cores = await fetchCoreCollections(connection, cfg.data!.collectionsCreated); return [stakeChipIx({ owner: wallet!.publicKey, asset: new PublicKey(c.asset!), collectionIdx: c.collection!, coreCollection: cores.get(c.collection!)! })]; }); }}>
               <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c)} skin={(c as { skin?: string | null }).skin} />
-              <div className="chip-meta"><span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span> · w {c.stakeWeight}</div>
+              <div className="chip-meta"><span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span> · {t('staking.weight')} {c.stakeWeight}</div>
             </div>
           ))}
         </div>

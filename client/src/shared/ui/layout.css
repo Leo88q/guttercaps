@@ -381,3 +381,51 @@ html.lang-long .shell-nav a { font-size: 9.5px; letter-spacing: -0.01em; }
 .human-check-widget { display: flex; justify-content: center; align-items: center; min-height: 65px; }
 .human-check-widget iframe { max-width: 100%; border-radius: 6px; }
 .human-check-compact .human-check-widget { justify-content: flex-start; }
+
+/* Localization: let content determine height. Do not conceal overflowing text. */
+.page, .card, .chip-card, .modal, .stat, .step, .lang-card { min-width: 0; }
+.page-title, .modal-title, .chip-name, .codex-cap, .lang-native,
+.card p, .page-sub, .toast, .pill, .btn, .cg-btn-primary { overflow-wrap: anywhere; }
+.btn, .pill, [class*="cg-btn-"] { max-width: 100%; white-space: normal; height: auto; min-height: 36px; line-height: 1.3; }
+.row.between, .warn.row, .page > .row { flex-wrap: wrap; }
+.row > *, .row-wrap > * { min-width: 0; }
+.row > button, .row > .btn { flex-shrink: 0; }
+.grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cg-clean-zone .kv { flex-wrap: wrap; }
+.kv > :first-child { flex: 1 1 45%; overflow-wrap: anywhere; }
+.kv > b { min-width: 0; max-width: 100%; overflow-wrap: anywhere; text-align: end; }
+.shell-nav { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.shell-nav a { min-width: 0; text-align: center; }
+.shell-nav a span { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.15; }
+.codex-strip { align-items: start; }
+.codex-cap { white-space: normal; line-height: 1.4; }
+.cgrid .head { overflow-wrap: anywhere; line-height: 1.25; }
+.cgrid .cell { min-width: 0; }
+.cgrid .cell .tiny { overflow-wrap: anywhere; text-align: center; }
+.stepper .step { overflow-wrap: anywhere; }
+.modal { overscroll-behavior: contain; }
+/* Rubik Wet Paint has Cyrillic, but no Vietnamese subset. Use a fully covered face,
+   rather than mixing display glyphs and fallback diacritics within the same word. */
+html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
+@media (max-width: 600px) {
+  .grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .shell-header { flex-wrap: wrap; gap: 8px; }
+  .stepper { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 480px) {
+  .grid-2 { grid-template-columns: minmax(0, 1fr); }
+  .round { gap: 6px; }
+  .round > .row { flex-wrap: wrap; }
+}
+@media (min-width: 900px) {
+  .shell-nav { grid-template-columns: minmax(0, 1fr); flex-shrink: 0; }
+}
+
+/* Operator metrics and translated action groups must not compress into clipped columns. */
+.admin-tabs { flex-wrap: wrap; overflow: visible; }
+.grid-3 > * { min-width: 0; }
+.stat, .label { overflow-wrap: anywhere; }
+@media (max-width: 480px) {
+  .grid-3.admin-summary { grid-template-columns: minmax(0, 1fr); }
+}

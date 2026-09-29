@@ -46,8 +46,8 @@ interface FamilySpec {
   /** subsets the app needs (7 languages: en/pt/es/vi/id/fil/ru) */
   subsets: string[];
   /**
-   * Subsets the landing needs. The landing is EN/RU only (`scripts/landing/app.js` picks between exactly
-   * those two), and it inlines its fonts, so its budget is per-visitor: latin + cyrillic, nothing else.
+   * Subsets the landing needs. The seven-language landing inlines these subsets, so the byte budget is per visitor.
+   * Vietnamese uses Inter for headings; extended Latin covers PT/ES diacritics.
    */
   landingSubsets: string[];
   /** SPDX id of the upstream `LICENSE`; asserted against the text of the vendored copy by `fonts:check`. */
@@ -61,8 +61,8 @@ interface FamilySpec {
  * downloads it by default (that is why a 76 KB display face is acceptable here).
  */
 export const FAMILIES: FamilySpec[] = [
-  { packageName: '@fontsource/inter', family: 'Inter', slug: 'inter', weights: [400, 500, 600, 700], subsets: ['latin', 'latin-ext', 'cyrillic', 'vietnamese'], landingSubsets: ['latin', 'cyrillic'], license: 'OFL-1.1' },
-  { packageName: '@fontsource/jetbrains-mono', family: 'JetBrains Mono', slug: 'jetbrains-mono', weights: [400, 700], subsets: ['latin', 'latin-ext', 'cyrillic', 'vietnamese'], landingSubsets: ['latin', 'cyrillic'], license: 'OFL-1.1' },
+  { packageName: '@fontsource/inter', family: 'Inter', slug: 'inter', weights: [400, 500, 600, 700], subsets: ['latin', 'latin-ext', 'cyrillic', 'vietnamese'], landingSubsets: ['latin', 'latin-ext', 'cyrillic', 'vietnamese'], license: 'OFL-1.1' },
+  { packageName: '@fontsource/jetbrains-mono', family: 'JetBrains Mono', slug: 'jetbrains-mono', weights: [400, 700], subsets: ['latin', 'latin-ext', 'cyrillic', 'vietnamese'], landingSubsets: ['latin', 'latin-ext', 'cyrillic', 'vietnamese'], license: 'OFL-1.1' },
   { packageName: '@fontsource/permanent-marker', family: 'Permanent Marker', slug: 'permanent-marker', weights: [400], subsets: ['latin'], landingSubsets: ['latin'], license: 'Apache-2.0' },
   { packageName: '@fontsource/rubik-wet-paint', family: 'Rubik Wet Paint', slug: 'rubik-wet-paint', weights: [400], subsets: ['latin', 'cyrillic'], landingSubsets: [], license: 'OFL-1.1' },
 ];

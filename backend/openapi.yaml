@@ -634,6 +634,298 @@ paths:
       parameters: [{ in: query, name: limit, schema: { type: integer, maximum: 1000, default: 100 } }]
       responses: { '200': { description: rows, content: { application/json: { schema: { type: array, items: { type: object, properties: { id: { type: integer }, wallet: { $ref: '#/components/schemas/Pubkey' }, action: { type: string }, target: { type: [string, 'null'] }, payload: {}, ip: { type: [string, 'null'] }, ok: { type: boolean }, ts: { type: integer } } } } } } } }
 
+  /me/compliance:
+    get:
+      tags: [me]
+      summary: Current self-declaration, trusted-country and first-party service eligibility. Not verified identity.
+      responses:
+        '200':
+          description: Authenticated result; timestamps are Unix seconds. Financial references are not verified entitlement.
+          content:
+            application/json:
+              schema: {}
+        '400': { description: Invalid request or date }
+        '401': { description: SIWS sign-in required }
+        '403': { description: CSRF, access, wallet binding, fresh sign-in or administrator check failed }
+        '404': { description: Request not found for this owner }
+        '409': { description: Stale version, closed case or reused idempotency key }
+        '429': { description: Rate or case limit exceeded }
+  /me/compliance/age:
+    post:
+      tags: [me]
+      summary: Submit a date of birth and explicit acknowledgement; only the threshold result is stored. Bound to wallet and policy revision.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [wallet, birthDate, acknowledged, policyRevision]
+              properties:
+                wallet: { type: string }
+                birthDate: { type: string }
+                acknowledged: { type: boolean }
+                policyRevision: { type: string }
+      responses:
+        '200':
+          description: Authenticated result; timestamps are Unix seconds. Financial references are not verified entitlement.
+          content:
+            application/json:
+              schema: {}
+        '400': { description: Invalid request or date }
+        '401': { description: SIWS sign-in required }
+        '403': { description: CSRF, access, wallet binding, fresh sign-in or administrator check failed }
+        '404': { description: Request not found for this owner }
+        '409': { description: Stale version, closed case or reused idempotency key }
+        '429': { description: Rate or case limit exceeded }
+  /me/compliance/check:
+    post:
+      tags: [me]
+      summary: Check a feature for the authenticated transaction wallet. Does not issue an on-chain permit.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [wallet, feature]
+              properties:
+                wallet: { type: string }
+                feature: { type: string }
+      responses:
+        '200':
+          description: Authenticated result; timestamps are Unix seconds. Financial references are not verified entitlement.
+          content:
+            application/json:
+              schema: {}
+        '400': { description: Invalid request or date }
+        '401': { description: SIWS sign-in required }
+        '403': { description: CSRF, access, wallet binding, fresh sign-in or administrator check failed }
+        '404': { description: Request not found for this owner }
+        '409': { description: Stale version, closed case or reused idempotency key }
+        '429': { description: Rate or case limit exceeded }
+  /me/rights:
+    get:
+      tags: [me]
+      summary: Latest 100 requests owned by the current wallet.
+      responses:
+        '200':
+          description: Authenticated result; timestamps are Unix seconds. Financial references are not verified entitlement.
+          content:
+            application/json:
+              schema: {}
+        '400': { description: Invalid request or date }
+        '401': { description: SIWS sign-in required }
+        '403': { description: CSRF, access, wallet binding, fresh sign-in or administrator check failed }
+        '404': { description: Request not found for this owner }
+        '409': { description: Stale version, closed case or reused idempotency key }
+        '429': { description: Rate or case limit exceeded }
+    post:
+      tags: [me]
+      summary: Create a rights/refund/withdrawal request with wallet-scoped idempotency. No funds are moved. Returns downloadable receipt.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [wallet, idempotencyKey, kind, message, locale]
+              properties:
+                wallet: { type: string }
+                idempotencyKey: { type: string }
+                kind: { type: string }
+                message: { type: string }
+                locale: { type: string }
+                signature: { type: string }
+      responses:
+        '200':
+          description: Authenticated result; timestamps are Unix seconds. Financial references are not verified entitlement.
+          content:
+            application/json:
+              schema: {}
+        '400': { description: Invalid request or date }
+        '401': { description: SIWS sign-in required }
+        '403': { description: CSRF, access, wallet binding, fresh sign-in or administrator check failed }
+        '404': { description: Request not found for this owner }
+        '409': { description: Stale version, closed case or reused idempotency key }
+        '429': { description: Rate or case limit exceeded }
+  /me/rights/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [me]
+      summary: Read one owned request and its correspondence. Other wallets receive 404.
+      responses:
+        '200':
+          description: Authenticated result; timestamps are Unix seconds. Financial references are not verified entitlement.
+          content:
+            application/json:
+              schema: {}
+        '400': { description: Invalid request or date }
+        '401': { description: SIWS sign-in required }
+        '403': { description: CSRF, access, wallet binding, fresh sign-in or administrator check failed }
+        '404': { description: Request not found for this owner }
+        '409': { description: Stale version, closed case or reused idempotency key }
+        '429': { description: Rate or case limit exceeded }
+  /me/rights/{id}/messages:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [me]
+      summary: Add correspondence with optimistic version check. Cannot alter another wallet’s request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [wallet, version, message]
+              properties:
+                wallet: { type: string }
+                version: { type: integer }
+                message: { type: string }
+      responses:
+        '200':
+          description: Authenticated result; timestamps are Unix seconds. Financial references are not verified entitlement.
+          content:
+            application/json:
+              schema: {}
+        '400': { description: Invalid request or date }
+        '401': { description: SIWS sign-in required }
+        '403': { description: CSRF, access, wallet binding, fresh sign-in or administrator check failed }
+        '404': { description: Request not found for this owner }
+        '409': { description: Stale version, closed case or reused idempotency key }
+        '429': { description: Rate or case limit exceeded }
+  /me/rights/export:
+    post:
+      tags: [me]
+      summary: Export the self-service subset, excluding authentication secrets and other wallets. Requires login within the last 15 minutes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [wallet]
+              properties:
+                wallet: { type: string }
+      responses:
+        '200':
+          description: Authenticated result; timestamps are Unix seconds. Financial references are not verified entitlement.
+          content:
+            application/json:
+              schema: {}
+        '400': { description: Invalid request or date }
+        '401': { description: SIWS sign-in required }
+        '403': { description: CSRF, access, wallet binding, fresh sign-in or administrator check failed }
+        '404': { description: Request not found for this owner }
+        '409': { description: Stale version, closed case or reused idempotency key }
+        '429': { description: Rate or case limit exceeded }
+  /admin/rights:
+    get:
+      tags: [admin]
+      summary: Administrator-only queue, earliest response targets first; latest closed cases may be truncated at 200.
+      responses:
+        '200':
+          description: Authenticated result; timestamps are Unix seconds. Financial references are not verified entitlement.
+          content:
+            application/json:
+              schema: {}
+        '400': { description: Invalid request or date }
+        '401': { description: SIWS sign-in required }
+        '403': { description: CSRF, access, wallet binding, fresh sign-in or administrator check failed }
+        '404': { description: Request not found for this owner }
+        '409': { description: Stale version, closed case or reused idempotency key }
+        '429': { description: Rate or case limit exceeded }
+  /admin/rights/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [admin]
+      summary: Administrator response/status update with version check and optional legal hold. Public response is retained; raw text is not copied to admin_audit.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version, message, status]
+              properties:
+                version: { type: integer }
+                message: { type: string }
+                status: { type: string }
+                holdUntil: { type: integer }
+      responses:
+        '200':
+          description: Authenticated result; timestamps are Unix seconds. Financial references are not verified entitlement.
+          content:
+            application/json:
+              schema: {}
+        '400': { description: Invalid request or date }
+        '401': { description: SIWS sign-in required }
+        '403': { description: CSRF, access, wallet binding, fresh sign-in or administrator check failed }
+        '404': { description: Request not found for this owner }
+        '409': { description: Stale version, closed case or reused idempotency key }
+        '429': { description: Rate or case limit exceeded }
+  /admin/rights/{id}/erase-profile:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [admin]
+      summary: Explicitly erase an in-review privacy_erase case’s profile fields and sessions. Does not erase chain, financial records, all logs or backups.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version, message]
+              properties:
+                version: { type: integer }
+                message: { type: string }
+      responses:
+        '200':
+          description: Authenticated result; timestamps are Unix seconds. Financial references are not verified entitlement.
+          content:
+            application/json:
+              schema: {}
+        '400': { description: Invalid request or date }
+        '401': { description: SIWS sign-in required }
+        '403': { description: CSRF, access, wallet binding, fresh sign-in or administrator check failed }
+        '404': { description: Request not found for this owner }
+        '409': { description: Stale version, closed case or reused idempotency key }
+        '429': { description: Rate or case limit exceeded }
+  /admin/rights/{id}/correct-access:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [admin]
+      summary: After reviewing a privacy_correct case, reset the age declaration and/or resume processing. Never fabricates verified age.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version, message]
+              properties:
+                version: { type: integer }
+                message: { type: string }
+                resetAge: { type: boolean }
+                resumeProcessing: { type: boolean }
+      responses:
+        '200':
+          description: Authenticated result; timestamps are Unix seconds. Financial references are not verified entitlement.
+          content:
+            application/json:
+              schema: {}
+        '400': { description: Invalid request or date }
+        '401': { description: SIWS sign-in required }
+        '403': { description: CSRF, access, wallet binding, fresh sign-in or administrator check failed }
+        '404': { description: Request not found for this owner }
+        '409': { description: Stale version, closed case or reused idempotency key }
+        '429': { description: Rate or case limit exceeded }
+
 components:
   securitySchemes:
     cookieAuth: { type: apiKey, in: cookie, name: gc_session }
@@ -1084,11 +1376,26 @@ components:
         skrMint: { type: string }
         emissionSplitBps: { type: array, items: { type: integer }, minItems: 5, maxItems: 5, description: "staking::set_split — sum 10000, ±1000 bps per slice, ≥ 7 days apart" }
         note: { type: string }
+    AdminDiagnostic:
+      type: object
+      required: [code]
+      description: Stable localization code and scalar variables. Unknown codes must retain their original diagnostic text.
+      properties:
+        code: { type: string }
+        params:
+          type: object
+          additionalProperties:
+            oneOf:
+              - { type: string }
+              - { type: number }
+        message: { type: string, description: Original diagnostic for compatibility and support }
+        context: { type: string, description: Untranslated machine path or SKU context }
     Proposal:
       type: object
       properties:
         ok: { type: boolean }
-        violations: { type: array, items: { type: object, properties: { path: { type: string }, rule: { type: string, description: the program error the chain would raise (OddsGuardRail, FeeTooHigh, SplitGuard, …) or a shape rule }, message: { type: string } } } }
+        violations: { type: array, items: { type: object, properties: { path: { type: string }, rule: { type: string, description: the program error the chain would raise (OddsGuardRail, FeeTooHigh, SplitGuard, …) or a shape rule }, message: { type: string }, i18n: { $ref: '#/components/schemas/AdminDiagnostic' } } } }
+        warningDetails: { type: array, items: { $ref: '#/components/schemas/AdminDiagnostic' }, description: Structured warnings in the same order as warnings; the original message must match before localizing }
         warnings: { type: array, items: { type: string }, description: economy-model warnings that do not block (EV band, Legend faucet, treasury change) }
         instructions: { type: array, items: { type: object, properties: { program: { type: string }, name: { type: string }, accounts: { type: array, items: { type: object, properties: { pubkey: { type: string }, isSigner: { type: boolean }, isWritable: { type: boolean } } } }, data: { type: string, format: byte, description: base64 instruction data (discriminator + Borsh args) } } } }
         diff: { type: object, additionalProperties: { type: object, properties: { from: {}, to: {} } } }

@@ -1,5 +1,7 @@
+import { joinText, amountText } from '@/shared/i18n/message';
+import { chipNameText } from '@/shared/lib/rarity';
 // List a chip (freeze-in-place). Full money UI → clean zone, fee preview before signing.
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { PublicKey } from '@solana/web3.js';
@@ -10,11 +12,11 @@ import { sendTx } from '@/chain/tx';
 import { fetchCoreCollections } from '@/chain/flows/packFlow';
 import { listIx, saleSplit, minPriceFor, LISTING_FEE_CG, MARKET_FEE_BPS, ROYALTY_BPS, MarketCurrency, type MarketCurrencyCode } from '@/chain/ix/market';
 import { PublicKey as PK } from '@solana/web3.js';
-import { CURRENCY_SYMBOLS } from '@/shared/lib/format';
+import { marketPaymentByCode } from './payment';
 import { createAtaIdempotentIx } from '@/chain/ix/spl';
 import { CleanZone, KV, Modal, Pill } from '@/shared/ui/primitives';
 import { CleanConfirmButton } from '@/shared/ui/buttons';
-import { fmtAmount, fmtCg, fmtUsd, parseUnits } from '@/shared/lib/format';
+import { fmtAmount, fmtCg, fmtUsd, fmtDecimal, parseUnits } from '@/shared/lib/format';
 import { chipName } from '@/shared/lib/rarity';
 import { useUiStore } from '@/app/store/ui';
 import { EXPLORER } from '@/app/config';
@@ -23,6 +25,7 @@ import { useT } from '@/shared/i18n';
 
 export function ListModal({ chip, onClose }: { chip: Chip; onClose: () => void }) {
   const t = useT();
+  const priceId = useId();
   const { connection } = useConnection();
   const wallet = useWalletLike();
   const cfg = useGameConfig();
@@ -33,7 +36,7 @@ export function ListModal({ chip, onClose }: { chip: Chip; onClose: () => void }
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const sym = CURRENCY_SYMBOLS[currency];
+  const sym = marketPaymentByCode(currency)!.symbol;
   const skrEnabled = cfg.data ? !cfg.data.skrMint.equals(PK.default) : true;
   const decimals = currency === MarketCurrency.SOL ? 9 : 6;
   const price = parseUnits(input, decimals);
@@ -48,7 +51,7 @@ export function ListModal({ chip, onClose }: { chip: Chip; onClose: () => void }
 
   async function submit() {
     if (!valid || price === null) return;
-    if (isMock()) { toast({ kind: 'money', title: 'Listed (mock)', body: `${chipName(chip.collection!, chip.rarity!)} at ${fmtAmount(price, sym)}` }); onClose(); return; }
+    if (isMock()) { toast({ kind: 'money', title: { key: 'screens.listedDemo' }, body: joinText([chipNameText(chip.collection!, chip.rarity!), " · ", amountText(price, sym)]) }); onClose(); return; }
     if (!wallet || !cfg.data) return;
     setBusy(true);
     try {
@@ -58,12 +61,12 @@ export function ListModal({ chip, onClose }: { chip: Chip; onClose: () => void }
         listIx({ seller: wallet.publicKey, asset: new PublicKey(chip.asset!), collectionIdx: chip.collection!, coreCollection: cores.get(chip.collection!)!, price, currency, cgMint: cfg.data.cgMint }),
       ];
       const { signature } = await sendTx(connection, wallet, ixs, { cuLimit: 250_000 });
-      toast({ kind: 'money', title: t('market.listed'), body: `${fmtAmount(price, sym)} · ${t('market.feeBurned', { amount: fmtCg(LISTING_FEE_CG) })}`, href: EXPLORER.tx(signature) });
+      toast({ kind: 'money', title: { key: 'market.listed' }, body: joinText([amountText(price, sym), " · ", { key: 'market.feeBurned', params: { amount: amountText(LISTING_FEE_CG, 'CG') } }]), href: EXPLORER.tx(signature) });
       void qc.invalidateQueries({ queryKey: ['market'] });
       void qc.invalidateQueries({ queryKey: ['me'] });
       onClose();
     } catch (e) {
-      toast({ kind: 'error', title: t('market.listingFailed'), body: String((e as Error)?.message ?? e) });
+      toast({ kind: 'error', title: { key: 'market.listingFailed' }, error: e });
     } finally {
       setBusy(false);
     }
@@ -78,8 +81,8 @@ export function ListModal({ chip, onClose }: { chip: Chip; onClose: () => void }
           {skrEnabled && <Pill active={currency === MarketCurrency.SKR} onClick={() => setCurrency(MarketCurrency.SKR)}>SKR</Pill>}
         </div>
         <CleanZone>
-          <label className="label">{t('market.price', { currency: sym })}</label>
-          <input className="input mono" inputMode="decimal" placeholder={currency === MarketCurrency.SOL ? '0.25' : currency === MarketCurrency.SKR ? '650' : '12.00'} value={input} onChange={(e) => setInput(e.target.value)} style={{ margin: '6px 0 10px' }} />
+          <label className="label" htmlFor={priceId}>{t('market.price', { currency: sym })}</label>
+          <input id={priceId} className="input mono" inputMode="decimal" placeholder={currency === MarketCurrency.SOL ? fmtDecimal(0.25) : currency === MarketCurrency.SKR ? fmtDecimal(650, 0) : fmtDecimal(12)} value={input} onChange={(e) => setInput(e.target.value)} style={{ margin: '6px 0 10px' }} />
           <KV k={t('market.approxUsd')} v={fmtUsd(priceUsd)} />
           <KV k={t('market.floorFor')} v={fmtUsd(floorUsd)} />
           {priceUsd > 0 && floorUsd && priceUsd < floorUsd * 0.7 && <div className="warn" style={{ margin: '6px 0' }}>{t('market.belowFloor')}</div>}

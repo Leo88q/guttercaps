@@ -85,36 +85,40 @@ export interface ParamsProposal {
   emissionSplitBps?: number[];
   note?: string;
 }
-export interface Violation { path: string; rule: string; message: string }
+/** Stable message metadata; English diagnostics remain compatible with existing clients. */
+export interface AdminDiagnostic { code: string; params?: Record<string, string | number> }
+export interface AdminWarning extends AdminDiagnostic { message: string; context?: string }
+export interface Violation { path: string; rule: string; message: string; i18n?: AdminDiagnostic }
+const warning = (message: string, code: string, params?: AdminDiagnostic['params']): AdminWarning => ({ message, code, params });
 
 const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
 const ZERO_KEY = new PublicKey(new Uint8Array(32));
 const pubkeyOrBad = (v: unknown, path: string, out: Violation[]): PublicKey | undefined => {
   if (v === undefined) return undefined;
   let k: PublicKey;
-  try { k = new PublicKey(String(v)); } catch { out.push({ path, rule: 'pubkey', message: 'not a base58 public key' }); return undefined; }
+  try { k = new PublicKey(String(v)); } catch { out.push({ path, rule: 'pubkey', message: 'not a base58 public key', i18n: { code: 'pubkey' } }); return undefined; }
   // SEC-B23: `11111111111111111111111111111111` parses as a perfectly valid base58 key — and it is the
   // system program's address, which the program now refuses for every money/feed field (SEC-B22). The
   // panel has to refuse it too, or it proposes a Squads transaction that can only fail on chain.
-  if (k.equals(ZERO_KEY)) { out.push({ path, rule: 'InvalidConfigAddress', message: 'the zero key is not a destination (treasury / buyback / feed / mint must be a real wallet)' }); return undefined; }
+  if (k.equals(ZERO_KEY)) { out.push({ path, rule: 'InvalidConfigAddress', message: 'the zero key is not a destination (treasury / buyback / feed / mint must be a real wallet)', i18n: { code: 'zeroKey' } }); return undefined; }
   return k;
 };
 
 /** Apply `patch` to the live pack row and return the merged 42-byte definition (or violations). */
 function mergePack(cur: PackDef, patch: PackPatch, path: string, out: Violation[]): PackDef {
   const next: PackDef = { ...cur, oddsBps: [...cur.oddsBps] };
-  if (patch.chips !== undefined) { if (!isInt(patch.chips)) out.push({ path: `${path}.chips`, rule: 'int', message: 'integer expected' }); else next.chips = patch.chips; }
-  if (patch.priceUsdCents !== undefined) { if (!isInt(patch.priceUsdCents)) out.push({ path: `${path}.priceUsdCents`, rule: 'int', message: 'integer cents expected' }); else next.priceUsdCents = patch.priceUsdCents; }
-  if (patch.priceCgMicro !== undefined) { try { next.priceCgMicro = BigInt(patch.priceCgMicro); } catch { out.push({ path: `${path}.priceCgMicro`, rule: 'u64', message: 'decimal string expected' }); } }
+  if (patch.chips !== undefined) { if (!isInt(patch.chips)) out.push({ path: `${path}.chips`, rule: 'int', message: 'integer expected', i18n: { code: 'integer' } }); else next.chips = patch.chips; }
+  if (patch.priceUsdCents !== undefined) { if (!isInt(patch.priceUsdCents)) out.push({ path: `${path}.priceUsdCents`, rule: 'int', message: 'integer cents expected', i18n: { code: 'integer' } }); else next.priceUsdCents = patch.priceUsdCents; }
+  if (patch.priceCgMicro !== undefined) { try { next.priceCgMicro = BigInt(patch.priceCgMicro); } catch { out.push({ path: `${path}.priceCgMicro`, rule: 'u64', message: 'decimal string expected', i18n: { code: 'decimal' } }); } }
   if (patch.oddsBps !== undefined) {
-    if (!Array.isArray(patch.oddsBps) || patch.oddsBps.length !== RARITY_COUNT || !patch.oddsBps.every((o) => isInt(o) && o >= 0 && o <= 10_000)) out.push({ path: `${path}.oddsBps`, rule: 'shape', message: `${RARITY_COUNT} integers in 0..10000` });
+    if (!Array.isArray(patch.oddsBps) || patch.oddsBps.length !== RARITY_COUNT || !patch.oddsBps.every((o) => isInt(o) && o >= 0 && o <= 10_000)) out.push({ path: `${path}.oddsBps`, rule: 'shape', message: `${RARITY_COUNT} integers in 0..10000`, i18n: { code: 'oddsShape', params: { n: RARITY_COUNT } } });
     else next.oddsBps = [...patch.oddsBps];
   }
-  if (patch.floor !== undefined) { if (!isInt(patch.floor)) out.push({ path: `${path}.floor`, rule: 'int', message: 'rarity index expected' }); else next.floor = patch.floor; }
-  if (patch.dailyCap !== undefined) { if (!isInt(patch.dailyCap) || patch.dailyCap < 0 || patch.dailyCap > 255) out.push({ path: `${path}.dailyCap`, rule: 'u8', message: '0 (unlimited) … 255' }); else next.dailyCap = patch.dailyCap; }
+  if (patch.floor !== undefined) { if (!isInt(patch.floor)) out.push({ path: `${path}.floor`, rule: 'int', message: 'rarity index expected', i18n: { code: 'integer' } }); else next.floor = patch.floor; }
+  if (patch.dailyCap !== undefined) { if (!isInt(patch.dailyCap) || patch.dailyCap < 0 || patch.dailyCap > 255) out.push({ path: `${path}.dailyCap`, rule: 'u8', message: '0 (unlimited) … 255', i18n: { code: 'dailyCap' } }); else next.dailyCap = patch.dailyCap; }
   if (patch.pity !== undefined) {
     if (patch.pity === null) { next.pityTier = 0; next.pityHardAt = 0; next.pitySoftStart = 0; next.pitySoftStepBps = 0; }
-    else if (![patch.pity.tier, patch.pity.hardAt, patch.pity.softStart, patch.pity.softStepBps].every(isInt)) out.push({ path: `${path}.pity`, rule: 'shape', message: '{ tier, hardAt, softStart, softStepBps } integers or null' });
+    else if (![patch.pity.tier, patch.pity.hardAt, patch.pity.softStart, patch.pity.softStepBps].every(isInt)) out.push({ path: `${path}.pity`, rule: 'shape', message: '{ tier, hardAt, softStart, softStepBps } integers or null', i18n: { code: 'pityShape' } });
     else { next.pityTier = patch.pity.tier; next.pityHardAt = patch.pity.hardAt; next.pitySoftStart = patch.pity.softStart; next.pitySoftStepBps = patch.pity.softStepBps; }
   }
   if (patch.featuredOnly !== undefined) next.featuredOnly = !!patch.featuredOnly;
@@ -125,43 +129,46 @@ function mergePack(cur: PackDef, patch: PackPatch, path: string, out: Violation[
 /** The program's `set_params` checks, one violation per failed `require!`. */
 export function checkPackGuardRails(sku: number, p: PackDef, out: Violation[], path = `packs[${sku}]`, cur?: PackDef) {
   const sum = p.oddsBps.reduce((a, b) => a + b, 0);
-  if (sum !== GUARD.bpsDenom) out.push({ path: `${path}.oddsBps`, rule: 'OddsSumInvalid', message: `odds sum to ${sum}, must be 10000` });
-  if (p.chips < 1 || p.chips > GUARD.maxChipsPerPack) out.push({ path: `${path}.chips`, rule: 'InvalidQuantity', message: `1..${GUARD.maxChipsPerPack} chips` });
-  if (p.floor >= RARITY_COUNT) out.push({ path: `${path}.floor`, rule: 'OddsGuardRail', message: 'floor must be a rarity index 0..8' });
-  if (p.pityTier >= RARITY_COUNT) out.push({ path: `${path}.pity.tier`, rule: 'OddsGuardRail', message: 'pity tier must be a rarity index 0..8' });
-  if (p.oddsBps[0] < GUARD.minCommonBps) out.push({ path: `${path}.oddsBps[0]`, rule: 'OddsGuardRail', message: 'Common must stay ≥ 5 % (500 bps)' });
+  if (sum !== GUARD.bpsDenom) out.push({ path: `${path}.oddsBps`, rule: 'OddsSumInvalid', message: `odds sum to ${sum}, must be 10000`, i18n: { code: 'oddsSum', params: { sum } } });
+  if (p.chips < 1 || p.chips > GUARD.maxChipsPerPack) out.push({ path: `${path}.chips`, rule: 'InvalidQuantity', message: `1..${GUARD.maxChipsPerPack} chips`, i18n: { code: 'quantity', params: { max: GUARD.maxChipsPerPack } } });
+  if (p.floor >= RARITY_COUNT) out.push({ path: `${path}.floor`, rule: 'OddsGuardRail', message: 'floor must be a rarity index 0..8', i18n: { code: 'rarityRange', params: { max: RARITY_COUNT - 1 } } });
+  if (p.pityTier >= RARITY_COUNT) out.push({ path: `${path}.pity.tier`, rule: 'OddsGuardRail', message: 'pity tier must be a rarity index 0..8', i18n: { code: 'rarityRange', params: { max: RARITY_COUNT - 1 } } });
+  if (p.oddsBps[0] < GUARD.minCommonBps) out.push({ path: `${path}.oddsBps[0]`, rule: 'OddsGuardRail', message: 'Common must stay ≥ 5 % (500 bps)', i18n: { code: 'commonFloor', params: { min: GUARD.minCommonBps } } });
   const top2 = p.oddsBps[7] + p.oddsBps[8];
   const cap = sku <= 1 ? GUARD.maxTop2BpsStandard : 2 * GUARD.maxTop2BpsStandard;
-  if (top2 > cap) out.push({ path: `${path}.oddsBps`, rule: 'OddsGuardRail', message: `Legend+ + Diamond = ${top2} bps exceeds the ${cap} bps cap for sku ${sku}` });
-  if (p.priceUsdCents < GUARD.priceCentsRange[0] || p.priceUsdCents > GUARD.priceCentsRange[1]) out.push({ path: `${path}.priceUsdCents`, rule: 'OddsGuardRail', message: 'price must be $0.50 … $500' });
+  if (top2 > cap) out.push({ path: `${path}.oddsBps`, rule: 'OddsGuardRail', message: `Legend+ + Diamond = ${top2} bps exceeds the ${cap} bps cap for sku ${sku}`, i18n: { code: 'topOdds', params: { sum: top2, max: cap, sku } } });
+  if (p.priceUsdCents < GUARD.priceCentsRange[0] || p.priceUsdCents > GUARD.priceCentsRange[1]) out.push({ path: `${path}.priceUsdCents`, rule: 'OddsGuardRail', message: 'price must be $0.50 … $500', i18n: { code: 'usdRange', params: { min: GUARD.priceCentsRange[0] / 100, max: GUARD.priceCentsRange[1] / 100 } } });
   if (p.pityTier > 0 && !(p.pityHardAt >= GUARD.pity.minHardAt && p.pitySoftStart <= p.pityHardAt && p.pitySoftStepBps <= GUARD.pity.maxSoftStepBps)) {
-    out.push({ path: `${path}.pity`, rule: 'OddsGuardRail', message: 'hardAt ≥ 10, softStart ≤ hardAt, softStepBps ≤ 200' });
+    out.push({ path: `${path}.pity`, rule: 'OddsGuardRail', message: 'hardAt ≥ 10, softStart ≤ hardAt, softStepBps ≤ 200', i18n: { code: 'pityGuard', params: { minHard: GUARD.pity.minHardAt, maxStep: GUARD.pity.maxSoftStepBps } } });
   }
   // SEC-B23: `priceCgMicro` was the one pack field with no check at all — a negative BigInt reached the
   // Borsh writer (a 500 instead of a violation) and any value was proposed, including ones the program
   // rejects. Mirror `set_params`: u64 range, the 1 000 000 $CG cap, and the ×½–2× one-shot move limit
   // measured against the live value (integer division, like the Rust `old / 2`).
   if (p.priceCgMicro < 0n || p.priceCgMicro > CG_PRICE_GUARD.u64Max) {
-    out.push({ path: `${path}.priceCgMicro`, rule: 'u64', message: 'decimal string for an unsigned 64-bit price' });
+    out.push({ path: `${path}.priceCgMicro`, rule: 'u64', message: 'decimal string for an unsigned 64-bit price', i18n: { code: 'u64' } });
   } else if (p.priceCgMicro > 0n) {
     if (p.priceCgMicro > CG_PRICE_GUARD.maxMicro) {
-      out.push({ path: `${path}.priceCgMicro`, rule: 'CgPriceGuardRail', message: `$CG price is hard-capped at ${GUARD.maxPackCgPriceMicro} micro-$CG (1 000 000 $CG)` });
+      out.push({ path: `${path}.priceCgMicro`, rule: 'CgPriceGuardRail', message: `$CG price is hard-capped at ${GUARD.maxPackCgPriceMicro} micro-$CG (1 000 000 $CG)`, i18n: { code: 'cgCap', params: { maxMicro: String(GUARD.maxPackCgPriceMicro) } } });
     }
     if (cur && cur.priceCgMicro > 0n && (p.priceCgMicro < cur.priceCgMicro / CG_PRICE_GUARD.moveFactor || p.priceCgMicro > cur.priceCgMicro * CG_PRICE_GUARD.moveFactor)) {
-      out.push({ path: `${path}.priceCgMicro`, rule: 'CgPriceGuardRail', message: `one-shot move is limited to ×½–2× of the live price (${cur.priceCgMicro} micro-$CG); a larger re-peg takes two changes (SEC-F13)` });
+      out.push({ path: `${path}.priceCgMicro`, rule: 'CgPriceGuardRail', message: `one-shot move is limited to ×½–2× of the live price (${cur.priceCgMicro} micro-$CG); a larger re-peg takes two changes (SEC-F13)`, i18n: { code: 'cgMove', params: { currentMicro: cur.priceCgMicro.toString() } } });
     }
   }
 }
 
 /** Economy-model warnings (not enforced on chain): EV/price band, Legend+ faucet vs the anchor SKU. */
 export function economyWarnings(sku: number, p: PackDef): string[] {
-  const warn: string[] = [];
+  return economyWarningDetails(sku, p).map(w => w.message);
+}
+export function economyWarningDetails(sku: number, p: PackDef): AdminWarning[] {
+  const warn: AdminWarning[] = [];
   const model = { ...PACKS.standard, chips: p.chips, priceUsdCents: p.priceUsdCents, oddsBps: p.oddsBps, floor: Math.min(8, p.floor) as 0 };
   const ratio = (packExpectedValueMult(model) * impliedCommonFloorUsd()) / (p.priceUsdCents / 100);
-  if (sku !== 0 && (ratio < GUARD.evRatioRange[0] || ratio > GUARD.evRatioRange[1])) warn.push(`EV/price ${(ratio * 100).toFixed(0)} % is outside the ${GUARD.evRatioRange[0] * 100}–${GUARD.evRatioRange[1] * 100} % band the economy report enforces (Standard anchor = ${STANDARD_EV_TARGET * 100} %)`);
-  if (sku === 0 && ratio <= 1) warn.push(`Starter is meant to be +EV (acquisition cost); this patch makes it ${(ratio * 100).toFixed(0)} % of price`);
+  if (sku !== 0 && (ratio < GUARD.evRatioRange[0] || ratio > GUARD.evRatioRange[1])) warn.push(warning(`EV/price ${(ratio * 100).toFixed(0)} % is outside the ${GUARD.evRatioRange[0] * 100}–${GUARD.evRatioRange[1] * 100} % band the economy report enforces (Standard anchor = ${STANDARD_EV_TARGET * 100} %)`, 'evBand', { ratio: Number.isFinite(ratio) ? Math.round(ratio * 100) : '∞', min: GUARD.evRatioRange[0] * 100, max: GUARD.evRatioRange[1] * 100, anchor: STANDARD_EV_TARGET * 100 }));
+  if (sku === 0 && ratio <= 1) warn.push(warning(`Starter is meant to be +EV (acquisition cost); this patch makes it ${(ratio * 100).toFixed(0)} % of price`, 'starterEv', { ratio: Number.isFinite(ratio) ? Math.round(ratio * 100) : '∞' }));
   const pLegend = probabilityAtLeast(model, 6), anchor = probabilityAtLeast(PACKS.standard, 6);
-  if (sku <= 1 && pLegend > anchor * 1.5) warn.push(`P(≥ Legend) ${(pLegend * 100).toFixed(2)} % is > 1.5× the Standard anchor (${(anchor * 100).toFixed(2)} %) — Legend supply and the fusion parity table drift`);
+  if (sku <= 1 && pLegend > anchor * 1.5) warn.push(warning(`P(≥ Legend) ${(pLegend * 100).toFixed(2)} % is > 1.5× the Standard anchor (${(anchor * 100).toFixed(2)} %) — Legend supply and the fusion parity table drift`, 'legendSupply', { probability: Number((pLegend * 100).toFixed(2)), anchor: Number((anchor * 100).toFixed(2)) }));
   return warn;
 }
 
@@ -233,7 +240,7 @@ export function paramsApi(db: Db, c: ChainParams) {
 }
 
 export interface Proposal {
-  ok: boolean; violations: Violation[]; warnings: string[];
+  ok: boolean; violations: Violation[]; warnings: string[]; warningDetails?: AdminWarning[];
   /** instructions for the multisig, base64 data + account metas — nothing is signed here */
   instructions: { program: string; name: string; accounts: { pubkey: string; isSigner: boolean; isWritable: boolean }[]; data: string }[];
   diff: Record<string, { from: unknown; to: unknown }>;
@@ -242,7 +249,7 @@ export interface Proposal {
 /** `POST /admin/params` — validate, encode `set_params` (+ `set_split`), never send. */
 export function proposeParams(c: ChainParams, body: ParamsProposal, t = now()): Proposal {
   const violations: Violation[] = [];
-  const warnings: string[] = [];
+  const warnings: AdminWarning[] = [];
   const diff: Proposal['diff'] = {};
   const instructions: Proposal['instructions'] = [];
   const cfg = c.config;
@@ -250,45 +257,45 @@ export function proposeParams(c: ChainParams, body: ParamsProposal, t = now()): 
   // ---- chip_core::set_params(ParamsPatch)
   let packsPatched: PackDef[] | undefined;
   if (body.packs !== undefined) {
-    if (!Array.isArray(body.packs) || body.packs.length === 0) violations.push({ path: 'packs', rule: 'shape', message: 'array of { sku, …fields }' });
+    if (!Array.isArray(body.packs) || body.packs.length === 0) violations.push({ path: 'packs', rule: 'shape', message: 'array of { sku, …fields }', i18n: { code: 'packArray' } });
     else {
       packsPatched = cfg.packs.map((p) => ({ ...p, oddsBps: [...p.oddsBps] }));
       for (const [i, patch] of body.packs.entries()) {
-        if (!isInt(patch?.sku) || patch.sku < 0 || patch.sku > 3) { violations.push({ path: `packs[${i}].sku`, rule: 'shape', message: 'sku 0..3' }); continue; }
+        if (!isInt(patch?.sku) || patch.sku < 0 || patch.sku > 3) { violations.push({ path: `packs[${i}].sku`, rule: 'shape', message: 'sku 0..3', i18n: { code: 'sku' } }); continue; }
         const merged = mergePack(packsPatched[patch.sku], patch, `packs[${i}]`, violations);
         checkPackGuardRails(patch.sku, merged, violations, `packs[${i}]`, cfg.packs[patch.sku]);
-        warnings.push(...economyWarnings(patch.sku, merged).map((w) => `packs[${i}] (sku ${patch.sku}): ${w}`));
+        warnings.push(...economyWarningDetails(patch.sku, merged).map(w => ({ ...w, context: `packs[${i}] / SKU ${patch.sku}`, message: `packs[${i}] (sku ${patch.sku}): ${w.message}` })));
         diff[`packs[${patch.sku}]`] = { from: packApi(cfg.packs[patch.sku], patch.sku), to: packApi(merged, patch.sku) };
         packsPatched[patch.sku] = merged;
       }
     }
   }
   if (body.marketFeeBps !== undefined) {
-    if (!isInt(body.marketFeeBps) || body.marketFeeBps < 0) violations.push({ path: 'marketFeeBps', rule: 'int', message: 'integer bps' });
-    else if (body.marketFeeBps > GUARD.maxMarketFeeBps) violations.push({ path: 'marketFeeBps', rule: 'FeeTooHigh', message: `market fee is capped at ${GUARD.maxMarketFeeBps} bps (10 %)` });
+    if (!isInt(body.marketFeeBps) || body.marketFeeBps < 0) violations.push({ path: 'marketFeeBps', rule: 'int', message: 'integer bps', i18n: { code: 'integer' } });
+    else if (body.marketFeeBps > GUARD.maxMarketFeeBps) violations.push({ path: 'marketFeeBps', rule: 'FeeTooHigh', message: `market fee is capped at ${GUARD.maxMarketFeeBps} bps (10 %)`, i18n: { code: 'marketCap', params: { max: GUARD.maxMarketFeeBps } } });
     else diff.marketFeeBps = { from: cfg.marketFeeBps, to: body.marketFeeBps };
-    if (isInt(body.marketFeeBps) && body.marketFeeBps < FEES.marketplaceFeeBps) warnings.push(`market fee below the modelled ${FEES.marketplaceFeeBps} bps lowers treasury + buyback flow (docs/02 §6)`);
+    if (isInt(body.marketFeeBps) && body.marketFeeBps < FEES.marketplaceFeeBps) warnings.push(warning(`market fee below the modelled ${FEES.marketplaceFeeBps} bps lowers treasury + buyback flow (docs/02 §6)`, 'lowMarketFee', { bps: FEES.marketplaceFeeBps }));
   }
   if (body.featuredCollection !== undefined) {
-    if (!isInt(body.featuredCollection) || body.featuredCollection < 0 || body.featuredCollection >= cfg.collectionsCreated) violations.push({ path: 'featuredCollection', rule: 'InvalidCollection', message: `0..${cfg.collectionsCreated - 1}` });
+    if (!isInt(body.featuredCollection) || body.featuredCollection < 0 || body.featuredCollection >= cfg.collectionsCreated) violations.push({ path: 'featuredCollection', rule: 'InvalidCollection', message: `0..${cfg.collectionsCreated - 1}`, i18n: { code: 'collection', params: { max: cfg.collectionsCreated - 1 } } });
     else diff.featuredCollection = { from: cfg.featuredCollection, to: body.featuredCollection };
   }
   if (body.skrDiscountBps !== undefined) {
-    if (!isInt(body.skrDiscountBps) || body.skrDiscountBps < 0) violations.push({ path: 'skrDiscountBps', rule: 'int', message: 'integer bps' });
-    else if (body.skrDiscountBps > GUARD.maxSkrDiscountBps) violations.push({ path: 'skrDiscountBps', rule: 'FeeTooHigh', message: `SKR discount is capped at ${GUARD.maxSkrDiscountBps} bps (15 %)` });
+    if (!isInt(body.skrDiscountBps) || body.skrDiscountBps < 0) violations.push({ path: 'skrDiscountBps', rule: 'int', message: 'integer bps', i18n: { code: 'integer' } });
+    else if (body.skrDiscountBps > GUARD.maxSkrDiscountBps) violations.push({ path: 'skrDiscountBps', rule: 'FeeTooHigh', message: `SKR discount is capped at ${GUARD.maxSkrDiscountBps} bps (15 %)`, i18n: { code: 'skrCap', params: { max: GUARD.maxSkrDiscountBps } } });
     else diff.skrDiscountBps = { from: cfg.skrDiscountBps, to: body.skrDiscountBps };
   }
   const keys = {
     treasury: pubkeyOrBad(body.treasury, 'treasury', violations), buybackWallet: pubkeyOrBad(body.buybackWallet, 'buybackWallet', violations),
     pythSolUsdFeed: pubkeyOrBad(body.pythSolUsdFeed, 'pythSolUsdFeed', violations), pythSkrUsdFeed: pubkeyOrBad(body.pythSkrUsdFeed, 'pythSkrUsdFeed', violations), skrMint: pubkeyOrBad(body.skrMint, 'skrMint', violations),
   };
-  for (const [k, v] of Object.entries(keys)) if (v) { diff[k] = { from: (cfg as unknown as Record<string, PublicKey>)[k].toBase58(), to: v.toBase58() }; if (k === 'treasury' || k === 'buybackWallet') warnings.push(`${k} change: sweep_vault / fees will flow to the new account from the next tx — double-check it is a Squads vault`); }
+  for (const [k, v] of Object.entries(keys)) if (v) { diff[k] = { from: (cfg as unknown as Record<string, PublicKey>)[k].toBase58(), to: v.toBase58() }; if (k === 'treasury' || k === 'buybackWallet') warnings.push(warning(`${k} change: sweep_vault / fees will flow to the new account from the next tx — double-check it is a Squads vault`, 'destination', { field: k })); }
 
   const touchesParams = packsPatched !== undefined || body.marketFeeBps !== undefined || body.featuredCollection !== undefined || body.skrDiscountBps !== undefined || Object.values(keys).some(Boolean);
   // SEC-B23: `set_params` bumps `params_version` with `checked_add(1).ok_or(ChipError::Overflow)`. At the
   // u16 ceiling every further patch reverts on chain, so the panel has to refuse before it encodes.
   if (touchesParams && cfg.paramsVersion >= 65_535) {
-    violations.push({ path: 'paramsVersion', rule: 'Overflow', message: `on-chain params_version is ${cfg.paramsVersion} (u16 ceiling) — the next set_params reverts; bump the field's width first` });
+    violations.push({ path: 'paramsVersion', rule: 'Overflow', message: `on-chain params_version is ${cfg.paramsVersion} (u16 ceiling) — the next set_params reverts; bump the field's width first`, i18n: { code: 'versionOverflow', params: { version: cfg.paramsVersion } } });
   }
   if (touchesParams && violations.length === 0) {
     const w = new BorshWriter();
@@ -309,24 +316,24 @@ export function proposeParams(c: ChainParams, body: ParamsProposal, t = now()): 
   if (body.emissionSplitBps !== undefined) {
     const s = body.emissionSplitBps;
     const cur = c.emission.splitBps;
-    if (!Array.isArray(s) || s.length !== GUARD.split.count || !s.every((v) => isInt(v) && v >= 0)) violations.push({ path: 'emissionSplitBps', rule: 'shape', message: `${GUARD.split.count} integer bps (chip / token / quests / pvp / events)` });
+    if (!Array.isArray(s) || s.length !== GUARD.split.count || !s.every((v) => isInt(v) && v >= 0)) violations.push({ path: 'emissionSplitBps', rule: 'shape', message: `${GUARD.split.count} integer bps (chip / token / quests / pvp / events)`, i18n: { code: 'splitShape', params: { n: GUARD.split.count } } });
     else {
       const sum = s.reduce((a, b) => a + b, 0);
-      if (sum !== 10_000) violations.push({ path: 'emissionSplitBps', rule: 'SplitSum', message: `split sums to ${sum}, must be 10000` });
-      s.forEach((v, i) => { if (Math.abs(v - cur[i]) > GUARD.split.maxDeltaBps) violations.push({ path: `emissionSplitBps[${i}]`, rule: 'SplitGuard', message: `Δ ${v - cur[i]} bps exceeds ±${GUARD.split.maxDeltaBps} per change` }); });
+      if (sum !== 10_000) violations.push({ path: 'emissionSplitBps', rule: 'SplitSum', message: `split sums to ${sum}, must be 10000`, i18n: { code: 'splitSum', params: { sum } } });
+      s.forEach((v, i) => { if (Math.abs(v - cur[i]) > GUARD.split.maxDeltaBps) violations.push({ path: `emissionSplitBps[${i}]`, rule: 'SplitGuard', message: `Δ ${v - cur[i]} bps exceeds ±${GUARD.split.maxDeltaBps} per change`, i18n: { code: 'splitDelta', params: { delta: v - cur[i], max: GUARD.split.maxDeltaBps } } }); });
       const nextAllowed = Number(c.emission.splitChangedAt) + GUARD.split.minIntervalS;
-      if (t < nextAllowed) violations.push({ path: 'emissionSplitBps', rule: 'SplitGuard', message: `split was changed ${Math.round((t - Number(c.emission.splitChangedAt)) / 3600)} h ago; next change allowed at ${new Date(nextAllowed * 1000).toISOString()}` });
+      if (t < nextAllowed) violations.push({ path: 'emissionSplitBps', rule: 'SplitGuard', message: `split was changed ${Math.round((t - Number(c.emission.splitChangedAt)) / 3600)} h ago; next change allowed at ${new Date(nextAllowed * 1000).toISOString()}`, i18n: { code: 'splitCooldown', params: { hours: Math.round((t - Number(c.emission.splitChangedAt)) / 3600), nextAt: nextAllowed * 1000 } } });
       if (violations.every((v) => !v.path.startsWith('emissionSplitBps'))) {
         diff.emissionSplitBps = { from: cur, to: s };
-        if (s[3] < cur[3]) warnings.push('pvpSeason slice shrinks: the current season pool estimate (/arena/seasons/current) drops from the next DayClosed');
+        if (s[3] < cur[3]) warnings.push(warning('pvpSeason slice shrinks: the current season pool estimate (/arena/seasons/current) drops from the next DayClosed', 'seasonShrinks'));
         const w = new BorshWriter(); for (const v of s) w.u16(v);
         instructions.push(ixApi(new TransactionInstruction({ programId: PROGRAMS.staking, keys: [signer(c.emission.admin, false), rw(emissionPda()[0])], data: ixData('set_split', w.toBytes()) }), 'staking', 'set_split'));
       }
     }
   }
 
-  if (!touchesParams && body.emissionSplitBps === undefined) violations.push({ path: '', rule: 'empty', message: 'nothing to change' });
-  return { ok: violations.length === 0, violations, warnings, instructions: violations.length === 0 ? instructions : [], diff };
+  if (!touchesParams && body.emissionSplitBps === undefined) violations.push({ path: '', rule: 'empty', message: 'nothing to change', i18n: { code: 'empty' } });
+  return { ok: violations.length === 0, violations, warnings: warnings.map(w => w.message), warningDetails: warnings, instructions: violations.length === 0 ? instructions : [], diff };
 }
 
 const ixApi = (ix: TransactionInstruction, program: string, name: string) => ({ program, name, accounts: ix.keys.map((k) => ({ pubkey: k.pubkey.toBase58(), isSigner: k.isSigner, isWritable: k.isWritable })), data: Buffer.from(ix.data).toString('base64') });
@@ -346,9 +353,9 @@ export const PAUSABLE: Record<PausableProgram, () => { programId: PublicKey; acc
  */
 export function killSwitch(body: { program: string; paused: boolean; reason?: string }, authority: { admin: PublicKey; pauser: PublicKey; current?: boolean }): Proposal {
   const violations: Violation[] = [];
-  if (!(body?.program in PAUSABLE)) violations.push({ path: 'program', rule: 'enum', message: 'chip_core | staking | arena' });
-  if (typeof body?.paused !== 'boolean') violations.push({ path: 'paused', rule: 'bool', message: 'true = pause, false = un-pause' });
-  if (body?.paused && !(typeof body.reason === 'string' && body.reason.trim().length >= 8)) violations.push({ path: 'reason', rule: 'required', message: 'a pause needs a ≥ 8-char incident note (goes to the audit log + status page)' });
+  if (!(body?.program in PAUSABLE)) violations.push({ path: 'program', rule: 'enum', message: 'chip_core | staking | arena', i18n: { code: 'program' } });
+  if (typeof body?.paused !== 'boolean') violations.push({ path: 'paused', rule: 'bool', message: 'true = pause, false = un-pause', i18n: { code: 'boolean' } });
+  if (body?.paused && !(typeof body.reason === 'string' && body.reason.trim().length >= 8)) violations.push({ path: 'reason', rule: 'required', message: 'a pause needs a ≥ 8-char incident note (goes to the audit log + status page)', i18n: { code: 'incidentNote' } });
   if (violations.length) return { ok: false, violations, warnings: [], instructions: [], diff: {} };
   const t = PAUSABLE[body.program as PausableProgram]();
   const who = body.paused && !authority.pauser.equals(PublicKey.default) ? authority.pauser : authority.admin;
@@ -359,13 +366,13 @@ export function killSwitch(body: { program: string; paused: boolean; reason?: st
     ix = new TransactionInstruction({ programId: t.programId, keys: [signer(who, false), rw(t.account)], data: ixData('set_arena', new BorshWriter().u8(0).u8(0).u8(1).bool(false).u8(0).toBytes()) });
   } else ix = new TransactionInstruction({ programId: t.programId, keys: [signer(who, false), rw(t.account)], data: ixData('set_paused', new BorshWriter().bool(false).toBytes()) });
   const warnings = body.paused
-    ? ['pause blocks new purchases / listings / stakes / battles only — unstake, cancel, refund and withdraw keep working (docs/03 §2.5)']
-    : ['un-pause is admin-only: this instruction needs the multisig (2/5 arena, 3/5 chip_core / staking)'];
+    ? [warning('pause blocks new purchases / listings / stakes / battles only — unstake, cancel, refund and withdraw keep working (docs/03 §2.5)', 'pauseExits')]
+    : [warning('un-pause is admin-only: this instruction needs the multisig (2/5 arena, 3/5 chip_core / staking)', 'resumeMultisig')];
   // SEC-B24: `from` used to be `!paused` — a fabricated "previous state". It is the live value now (or an
   // honest unknown), and an already-satisfied request is flagged: the tx is a no-op that still costs a signature.
-  if (authority.current === body.paused) warnings.push(`${body.program} is already ${body.paused ? 'paused' : 'running'} — this transaction changes nothing`);
+  if (authority.current === body.paused) warnings.push(warning(`${body.program} is already ${body.paused ? 'paused' : 'running'} — this transaction changes nothing`, body.paused ? 'alreadyPaused' : 'alreadyRunning', { program: body.program }));
   return {
-    ok: true, violations: [], warnings,
+    ok: true, violations: [], warnings: warnings.map(w => w.message), warningDetails: warnings,
     instructions: [ixApi(ix, body.program, body.paused ? 'pause' : body.program === 'arena' ? 'set_arena' : 'set_paused')],
     diff: { [`${body.program}.paused`]: { from: authority.current, to: body.paused } },
   };

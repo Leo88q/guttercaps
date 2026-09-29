@@ -1,7 +1,19 @@
-import type { PartialMessages } from '../index';
+import rights from '../rights/pt.json';
+import failures from '../failures/pt.json';
+import diagnostics from '../diagnostics/pt.json';
+import screens from '../screens/pt';
+import catalog from '../catalog/pt';
+import ui from '../ui/pt';
+import type { Messages } from '../index';
 
 // Português (Brasil).
-const pt: PartialMessages = {
+const pt: Messages = {
+  rights,
+  failures,
+  diagnostics,
+  screens,
+  ui,
+  catalog,
   nav: { home: 'Início', caps: 'Caps', shop: 'Loja', market: 'Mercado', arena: 'Arena', stake: 'Stake', quests: 'Missões', leaderboard: 'Ranking', profile: 'Perfil', language: 'Idioma', more: 'Mais' },
   common: {
     connectWallet: 'Conectar carteira', connecting: 'Conectando…', signedIn: 'Conectado', signingIn: 'Entrando…', signOut: 'Sair',
@@ -28,7 +40,7 @@ const pt: PartialMessages = {
     solAtPyth: 'SOL via Pyth', skrAtPyth: 'SKR via Pyth', quoteUnavailable: 'cotação indisponível — vale o preço on-chain',
     priceAge: 'Idade do preço', priceAgeValue: '{s} s (válido ≤ 60 s on-chain)', priceFeedDown: 'O feed de preços está atualizando — tente de novo em alguns segundos.', quoteFailed: 'Não foi possível obter a cotação.',
     rentReserve: 'Reserva de rent (devolvida após abrir)', oracleFees: 'Oráculo + taxas de rede (est.)', maxSlippage: 'Máximo (proteção de 1%)',
-    oddsNow: 'Suas chances agora (pity {n})', oneSignature: 'Uma assinatura: cria a conta de aleatoriedade, compromete o próximo slot e paga. O oráculo responde em segundos; depois você assina mais uma vez para mintar. O oráculo responde em segundos e o nosso crank abre o pack por você mesmo se fechar o app; se o oráculo nunca responder, o reembolso total do cofre é liberado quando a janela de 1 hora expira (≈ 72 min).',
+    oddsNow: 'Suas chances agora (pity {n})', oneSignature: ui.packSignatures,
     perPack: '{n, plural, one{# cap} other{# caps}} por pacote', floor: 'piso {rarity}', starterOnce: 'uma vez por carteira', dailyCap: 'limite {n}/dia',
     pityIn: '{rarity} garantido em {n}', packDisabled: 'desativado no momento', was: 'antes {price}',
     tabs: { packs: 'Pacotes', services: 'Extras' },
@@ -117,15 +129,15 @@ const pt: PartialMessages = {
   },
   pass: {
     title: 'Passe de temporada', tier: 'Nível {n}', xp: '{n} XP', claim: 'Resgatar', claimed: 'Resgatado',
-    noPass: 'Obtém o passe de temporada para resgatar as recompensas', pickCap: 'Escolhe um boné para pintar',
+    noPass: 'Obtenha o passe de temporada para resgatar as recompensas', pickCap: 'Escolha uma tampinha para pintar',
   },
   services: {
-    title: 'Extras', subtitle: 'Cosméticos, identidade e conveniência. Nada aqui muda chances, poder ou recompensas — nunca.',
+    title: 'Extras', subtitle: ui.extrasSubtitle,
     burned: 'queimado', toTreasury: 'para a tesouraria', noQuote: 'Sem preço nesta moeda ainda — escolha outra.', buy: 'Comprar', owned: 'Adquirido', active: 'Ativo',
     dailyLeft: '{n} restante(s) hoje', howItWorks: 'Uma assinatura paga on-chain; $CG é queimado, SOL/USDC/SKR vão para a tesouraria pública. A compra fica vinculada a esta carteira por um hash na transação — ninguém pode redirecioná-la.',
     expires: 'expira em {date}', noPower: 'Sem pay-to-win: verificável on-chain', boosterCap: 'Boosters: máx. 3 por dia', bought: 'Comprado', buyFailed: 'Falha na compra',
-    pickCap: 'Escolhe um boné para pintar', pickSkin: 'Escolhe uma skin', pickTheme: 'Escolhe um tema', pickPack: 'Escolhe um pacote', pickDistrict: 'Escolhe um distrito',
-    noFreeCaps: 'Sem bonés ainda — abre um pacote primeiro', noCompletedDistrict: 'Completa um distrito (9/9) para desbloquear o estandarte',
+    pickCap: 'Escolha uma tampinha para pintar', pickSkin: 'Escolha uma skin', pickTheme: 'Escolha um tema', pickPack: 'Escolha um pacote', pickDistrict: 'Escolha um distrito',
+    noFreeCaps: 'Você ainda não tem tampinhas — abra um pacote primeiro', noCompletedDistrict: 'Complete um distrito (9/9) para desbloquear o estandarte',
     names: { handle: '@handle', handleChange: 'Troca de handle', capSkin: 'Skin de cap', profileTheme: 'Tema de perfil', arenaEmotePack: 'Pacote de emotes', extraBenchSlots: '+2 presets de bancada', seasonPass: 'Passe de temporada', booster: 'Booster de fusão', packSkipAnim: 'Revelação instantânea', districtBanner: 'Banner de distrito' },
     blurbs: {
       handle: 'Nome único no ranking, na arena e na URL do seu perfil.', handleChange: 'Renomeie uma vez a cada 30 dias. O handle antigo é liberado após 90 dias.',

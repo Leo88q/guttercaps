@@ -1,3 +1,4 @@
+import { isRightsPath, mockRights } from './rights';
 // Deterministic in-browser backend used when VITE_API_MOCK=true or when the
 // real API is unreachable in dev. Data is derived from @guttercaps/economy
 // and shared/lib/lore so what you see matches the modelled numbers.
@@ -498,40 +499,42 @@ const adminParams = () => ({
 on('get', '/admin/params', adminParams);
 on('post', '/admin/params', (o) => {
   const b = (o.body ?? {}) as { packs?: { sku: number; priceUsdCents?: number; oddsBps?: number[]; enabled?: boolean; dailyCap?: number }[]; marketFeeBps?: number; skrDiscountBps?: number; featuredCollection?: number; emissionSplitBps?: number[]; note?: string };
-  const violations: { path: string; rule: string; message: string }[] = [];
+  const violations: { path: string; rule: string; message: string; i18n?: { code: string; params?: Record<string, number | string> } }[] = [];
   const warnings: string[] = [];
+  const warningDetails: { code: string; params?: Record<string, number | string>; message: string; context?: string }[] = [];
+  const warn = (message: string, code: string, params?: Record<string, number | string>, context?: string) => { warnings.push(message); warningDetails.push({ message, code, params, context }); };
   const diff: Record<string, { from: unknown; to: unknown }> = {};
   const instructions: { program: string; name: string; accounts: { pubkey: string; isSigner: boolean; isWritable: boolean }[]; data: string }[] = [];
   for (const [i, patch] of (b.packs ?? []).entries()) {
     const cur = adminState.packs[patch.sku];
-    if (!cur) { violations.push({ path: `packs[${i}].sku`, rule: 'shape', message: 'sku 0..3' }); continue; }
+    if (!cur) { violations.push({ path: `packs[${i}].sku`, rule: 'shape', message: 'sku 0..3', i18n: { code: 'sku' } }); continue; }
     const next = { ...cur, ...patch, oddsBps: patch.oddsBps ?? cur.oddsBps };
     const sum = next.oddsBps.reduce((a, x) => a + x, 0);
-    if (sum !== GUARD.bpsDenom) violations.push({ path: `packs[${i}].oddsBps`, rule: 'OddsSumInvalid', message: `odds sum to ${sum}, must be 10000` });
-    if (next.oddsBps[0] < GUARD.minCommonBps) violations.push({ path: `packs[${i}].oddsBps[0]`, rule: 'OddsGuardRail', message: 'Common must stay ≥ 5 % (500 bps)' });
+    if (sum !== GUARD.bpsDenom) violations.push({ path: `packs[${i}].oddsBps`, rule: 'OddsSumInvalid', message: `odds sum to ${sum}, must be 10000`, i18n: { code: 'oddsSum', params: { sum } } });
+    if (next.oddsBps[0] < GUARD.minCommonBps) violations.push({ path: `packs[${i}].oddsBps[0]`, rule: 'OddsGuardRail', message: 'Common must stay ≥ 5 % (500 bps)', i18n: { code: 'commonFloor', params: { min: GUARD.minCommonBps } } });
     const top2 = next.oddsBps[7] + next.oddsBps[8], cap = patch.sku <= 1 ? GUARD.maxTop2BpsStandard : 2 * GUARD.maxTop2BpsStandard;
-    if (top2 > cap) violations.push({ path: `packs[${i}].oddsBps`, rule: 'OddsGuardRail', message: `Legend+ + Diamond = ${top2} bps exceeds the ${cap} bps cap for sku ${patch.sku}` });
-    if (next.priceUsdCents < GUARD.priceCentsRange[0] || next.priceUsdCents > GUARD.priceCentsRange[1]) violations.push({ path: `packs[${i}].priceUsdCents`, rule: 'OddsGuardRail', message: 'price must be $0.50 … $500' });
-    if (patch.sku !== 0 && next.priceUsdCents !== cur.priceUsdCents) { const ratio = (cur.priceUsdCents / next.priceUsdCents) * 0.65; if (ratio < GUARD.evRatioRange[0] || ratio > GUARD.evRatioRange[1]) warnings.push(`packs[${i}] (sku ${patch.sku}): EV/price ${(ratio * 100).toFixed(0)} % is outside the 55–75 % band the economy report enforces (Standard anchor = 65 %)`); }
+    if (top2 > cap) violations.push({ path: `packs[${i}].oddsBps`, rule: 'OddsGuardRail', message: `Legend+ + Diamond = ${top2} bps exceeds the ${cap} bps cap for sku ${patch.sku}`, i18n: { code: 'topOdds', params: { sum: top2, max: cap, sku: patch.sku } } });
+    if (next.priceUsdCents < GUARD.priceCentsRange[0] || next.priceUsdCents > GUARD.priceCentsRange[1]) violations.push({ path: `packs[${i}].priceUsdCents`, rule: 'OddsGuardRail', message: 'price must be $0.50 … $500', i18n: { code: 'usdRange', params: { min: GUARD.priceCentsRange[0] / 100, max: GUARD.priceCentsRange[1] / 100 } } });
+    if (patch.sku !== 0 && next.priceUsdCents !== cur.priceUsdCents) { const ratio = (cur.priceUsdCents / next.priceUsdCents) * 0.65; if (ratio < GUARD.evRatioRange[0] || ratio > GUARD.evRatioRange[1]) warn(`packs[${i}] (sku ${patch.sku}): EV/price ${(ratio * 100).toFixed(0)} % is outside the 55–75 % band the economy report enforces (Standard anchor = 65 %)`, 'evBand', { ratio: Number.isFinite(ratio) ? Math.round(ratio * 100) : '∞', min: 55, max: 75, anchor: 65 }, `packs[${i}] / SKU ${patch.sku}`); }
     diff[`packs[${patch.sku}]`] = { from: cur, to: next };
   }
-  if (b.marketFeeBps !== undefined) { if (b.marketFeeBps > GUARD.maxMarketFeeBps) violations.push({ path: 'marketFeeBps', rule: 'FeeTooHigh', message: 'market fee is capped at 1000 bps (10 %)' }); else diff.marketFeeBps = { from: adminState.marketFeeBps, to: b.marketFeeBps }; if (b.marketFeeBps < FEES.marketplaceFeeBps) warnings.push(`market fee below the modelled ${FEES.marketplaceFeeBps} bps lowers treasury + buyback flow (docs/02 §6)`); }
-  if (b.skrDiscountBps !== undefined) { if (b.skrDiscountBps > GUARD.maxSkrDiscountBps) violations.push({ path: 'skrDiscountBps', rule: 'FeeTooHigh', message: 'SKR discount is capped at 1500 bps (15 %)' }); else diff.skrDiscountBps = { from: adminState.skrDiscountBps, to: b.skrDiscountBps }; }
-  if (b.featuredCollection !== undefined) { if (b.featuredCollection < 0 || b.featuredCollection > 9) violations.push({ path: 'featuredCollection', rule: 'InvalidCollection', message: '0..9' }); else diff.featuredCollection = { from: adminState.featuredCollection, to: b.featuredCollection }; }
+  if (b.marketFeeBps !== undefined) { if (b.marketFeeBps > GUARD.maxMarketFeeBps) violations.push({ path: 'marketFeeBps', rule: 'FeeTooHigh', message: 'market fee is capped at 1000 bps (10 %)', i18n: { code: 'marketCap', params: { max: GUARD.maxMarketFeeBps } } }); else diff.marketFeeBps = { from: adminState.marketFeeBps, to: b.marketFeeBps }; if (b.marketFeeBps < FEES.marketplaceFeeBps) warn(`market fee below the modelled ${FEES.marketplaceFeeBps} bps lowers treasury + buyback flow (docs/02 §6)`, 'lowMarketFee', { bps: FEES.marketplaceFeeBps }); }
+  if (b.skrDiscountBps !== undefined) { if (b.skrDiscountBps > GUARD.maxSkrDiscountBps) violations.push({ path: 'skrDiscountBps', rule: 'FeeTooHigh', message: 'SKR discount is capped at 1500 bps (15 %)', i18n: { code: 'skrCap', params: { max: GUARD.maxSkrDiscountBps } } }); else diff.skrDiscountBps = { from: adminState.skrDiscountBps, to: b.skrDiscountBps }; }
+  if (b.featuredCollection !== undefined) { if (b.featuredCollection < 0 || b.featuredCollection > 9) violations.push({ path: 'featuredCollection', rule: 'InvalidCollection', message: '0..9', i18n: { code: 'collection', params: { max: 9 } } }); else diff.featuredCollection = { from: adminState.featuredCollection, to: b.featuredCollection }; }
   if (b.emissionSplitBps !== undefined) {
     const s = b.emissionSplitBps, sum = s.reduce((a, x) => a + x, 0);
-    if (s.length !== 5) violations.push({ path: 'emissionSplitBps', rule: 'shape', message: '5 integer bps (chip / token / quests / pvp / events)' });
-    else if (sum !== 10_000) violations.push({ path: 'emissionSplitBps', rule: 'SplitSum', message: `split sums to ${sum}, must be 10000` });
-    else { s.forEach((v, i) => { if (Math.abs(v - adminState.splitBps[i]) > GUARD.split.maxDeltaBps) violations.push({ path: `emissionSplitBps[${i}]`, rule: 'SplitGuard', message: `Δ ${v - adminState.splitBps[i]} bps exceeds ±1000 per change` }); }); if (!violations.some((v) => v.path.startsWith('emissionSplitBps'))) { diff.emissionSplitBps = { from: [...adminState.splitBps], to: s }; if (s[3] < adminState.splitBps[3]) warnings.push('pvpSeason slice shrinks: the current season pool estimate drops from the next DayClosed'); } }
+    if (s.length !== 5) violations.push({ path: 'emissionSplitBps', rule: 'shape', message: '5 integer bps (chip / token / quests / pvp / events)', i18n: { code: 'splitShape', params: { n: 5 } } });
+    else if (sum !== 10_000) violations.push({ path: 'emissionSplitBps', rule: 'SplitSum', message: `split sums to ${sum}, must be 10000`, i18n: { code: 'splitSum', params: { sum } } });
+    else { s.forEach((v, i) => { if (Math.abs(v - adminState.splitBps[i]) > GUARD.split.maxDeltaBps) violations.push({ path: `emissionSplitBps[${i}]`, rule: 'SplitGuard', message: `Δ ${v - adminState.splitBps[i]} bps exceeds ±1000 per change`, i18n: { code: 'splitDelta', params: { delta: v - adminState.splitBps[i], max: GUARD.split.maxDeltaBps } } }); }); if (!violations.some((v) => v.path.startsWith('emissionSplitBps'))) { diff.emissionSplitBps = { from: [...adminState.splitBps], to: s }; if (s[3] < adminState.splitBps[3]) warn('pvpSeason slice shrinks: the current season pool estimate drops from the next DayClosed', 'seasonShrinks'); } }
   }
-  if (Object.keys(diff).length === 0 && violations.length === 0) violations.push({ path: '', rule: 'empty', message: 'nothing to change' });
+  if (Object.keys(diff).length === 0 && violations.length === 0) violations.push({ path: '', rule: 'empty', message: 'nothing to change', i18n: { code: 'empty' } });
   const ok = violations.length === 0;
   if (ok) {
     if (Object.keys(diff).some((k) => k !== 'emissionSplitBps')) instructions.push({ program: 'chip_core', name: 'set_params', accounts: [{ pubkey: 'HPMr5r9sS5ApWsPNJytZRLbm2jz1veFxTn1wepjAhtho', isSigner: true, isWritable: false }, { pubkey: fakeKey('Cf'), isSigner: false, isWritable: true }], data: btoa(String.fromCharCode(...Array.from({ length: 40 }, () => Math.floor(rnd() * 256)))) });
     if (diff.emissionSplitBps) instructions.push({ program: 'staking', name: 'set_split', accounts: [{ pubkey: 'HPMr5r9sS5ApWsPNJytZRLbm2jz1veFxTn1wepjAhtho', isSigner: true, isWritable: false }, { pubkey: fakeKey('Em'), isSigner: false, isWritable: true }], data: btoa(String.fromCharCode(...Array.from({ length: 18 }, () => Math.floor(rnd() * 256)))) });
   }
   auditPush('params.propose', { body: b, result: { ok, violations: violations.length } });
-  const proposal = { ok, violations, warnings, instructions, diff };
+  const proposal = { ok, violations, warnings, warningDetails, instructions, diff };
   if (!ok) throw new ApiError(422, 'guard_rail', violations.map((v) => `${v.path}: ${v.message}`).join('; '), proposal);
   return proposal;
 });
@@ -541,12 +544,14 @@ on('post', '/admin/kill-switch', (o) => {
   const signer = b.paused
     ? (b.program === 'arena' ? ARENA_PAUSER : b.program === 'staking' ? STAKING_PAUSER : CHIP_PAUSER)
     : (b.program === 'arena' ? ARENA_ADMIN : b.program === 'staking' ? STAKING_ADMIN : CHIP_ADMIN);
-  if (b.paused && !(b.reason && b.reason.trim().length >= 8)) throw new ApiError(422, 'bad_request', 'reason: a pause needs a ≥ 8-char incident note (goes to the audit log + status page)', { ok: false, violations: [{ path: 'reason', rule: 'required', message: 'a pause needs a ≥ 8-char incident note' }], warnings: [], instructions: [], diff: {} });
+  if (b.paused && !(b.reason && b.reason.trim().length >= 8)) throw new ApiError(422, 'bad_request', 'reason: a pause needs a ≥ 8-char incident note (goes to the audit log + status page)', { ok: false, violations: [{ path: 'reason', rule: 'required', message: 'a pause needs a ≥ 8-char incident note', i18n: { code: 'incidentNote' } }], warnings: [], instructions: [], diff: {} });
   auditPush('kill_switch', { body: b, result: { ok: true } }, b.program);
+  const warnings = [...(current === b.paused ? [`${b.program} is already ${b.paused ? 'paused' : 'running'} — this transaction changes nothing`] : []), b.paused ? 'pause blocks new purchases / listings / stakes / battles only — unstake, cancel, refund and withdraw keep working (docs/03 §2.5)' : 'un-pause is admin-only: this instruction needs the multisig (2/5 arena, 3/5 chip_core / staking)'];
   return {
     ok: true, violations: [],
     instructions: [{ program: b.program, name: b.paused ? 'pause' : b.program === 'arena' ? 'set_arena' : 'set_paused', accounts: [{ pubkey: signer, isSigner: true, isWritable: false }, { pubkey: b.program === 'arena' ? fakeKey('Ac') : fakeKey('Cf'), isSigner: false, isWritable: true }], data: btoa(String.fromCharCode(...Array.from({ length: 9 }, () => Math.floor(rnd() * 256)))) }],
-    warnings: [...(current === b.paused ? [`${b.program} is already ${b.paused ? 'paused' : 'running'} — this transaction changes nothing`] : []), b.paused ? 'pause blocks new purchases / listings / stakes / battles only — unstake, cancel, refund and withdraw keep working (docs/03 §2.5)' : 'un-pause is admin-only: this instruction needs the multisig (2/5 arena, 3/5 chip_core / staking)'],
+    warnings,
+    warningDetails: warnings.map((message, i) => ({ message, code: current === b.paused && i === 0 ? (b.paused ? 'alreadyPaused' : 'alreadyRunning') : b.paused ? 'pauseExits' : 'resumeMultisig', params: { program: b.program } })),
     diff: { [`${b.program}.paused`]: { from: current, to: b.paused } },
   };
 });
@@ -599,6 +604,7 @@ export async function mockRequest(method: string, path: string, opts: RequestOpt
   await new Promise((f) => setTimeout(f, 80 + Math.random() * 160));
   let p = path;
   if (opts.path) for (const [k, v] of Object.entries(opts.path)) p = p.replace(`{${k}}`, String(v));
+  if (isRightsPath(p)) return mockRights(method, p, opts);
   for (const r of routes) {
     if (r.method !== method) continue;
     const m = r.pattern.exec(p);

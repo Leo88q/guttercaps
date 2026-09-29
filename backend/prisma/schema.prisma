@@ -1071,3 +1071,50 @@ model PassClaim {
   @@id([wallet, season, tier])
   @@map("pass_claims")
 }
+
+/// A self-declaration, NOT verified identity; no DOB is retained.
+model AgeDeclaration {
+  wallet String @id
+  passed Int
+  minimumAge Int @map("minimum_age")
+  policyRevision String @map("policy_revision")
+  declaredAt Int @map("declared_at")
+  expiresAt Int @map("expires_at")
+  @@map("age_declarations")
+}
+model RightsRequest {
+  id String @id
+  wallet String
+  idempotencyKey String @map("idempotency_key")
+  bodyHash String @map("body_hash")
+  kind String
+  signature String?
+  message String
+  locale String
+  status String
+  createdAt Int @map("created_at")
+  updatedAt Int @map("updated_at")
+  dueAt Int @map("due_at")
+  closedAt Int? @map("closed_at")
+  holdUntil Int? @map("hold_until")
+  version Int @default(1)
+  policyRevision String @map("policy_revision")
+  @@unique([wallet, idempotencyKey])
+  @@map("rights_requests")
+}
+model RightsMessage {
+  id String @id
+  requestId String @map("request_id")
+  actor String
+  message String
+  createdAt Int @map("created_at")
+  @@map("rights_messages")
+}
+model PrivacyRestriction {
+  wallet String @id
+  requestId String @map("request_id")
+  restrictedAt Int @map("restricted_at")
+  erasedAt Int? @map("erased_at")
+  resumedAt Int? @map("resumed_at")
+  @@map("privacy_restrictions")
+}

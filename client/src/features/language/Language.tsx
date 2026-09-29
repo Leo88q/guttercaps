@@ -28,12 +28,14 @@ export default function Language() {
   const detected = detectLocale();
 
   async function pick(l: Locale) {
-    if (l === locale) return;
+    if (l === locale && useUiStore.getState().localeExplicit) return;
     setBusy(l);
     try {
       await setLocale(l);
       // toast in the *new* language — read straight from the loaded bundle
       toast({ kind: 'success', title: LOCALE_META[l].native, body: undefined });
+    } catch {
+      toast({ kind: 'error', title: { key: 'errors.network' } });
     } finally {
       setBusy(null);
     }
@@ -43,7 +45,7 @@ export default function Language() {
     <div className="page stack page-bg page-bg-language">
       <div>
         <h1 className="page-title">{t('lang.title')}</h1>
-        <p className="page-sub">{t('lang.subtitle')}</p>
+        <p className="page-sub">{t('ui.languageHint')}</p>
       </div>
 
       <div className="lang-grid" role="radiogroup" aria-label={t('lang.title')}>
@@ -62,7 +64,7 @@ export default function Language() {
             >
               <LangTag code={m.code} />
               <span className="lang-native">{m.native}</span>
-              <span className="lang-english mono">{m.english}{l === detected ? ` · ${t('lang.auto', { name: '' }).replace(/\s*\(\)\s*$/, '')}` : ''}</span>
+              <span className="lang-english mono">{new Intl.DisplayNames([LOCALE_META[locale].tag], { type: 'language' }).of(m.tag) ?? m.native}{l === detected ? ` · ${t('lang.auto', { name: m.native })}` : ''}</span>
               {busy === l && <span className="lang-spinner" aria-hidden />}
             </button>
           );

@@ -1,21 +1,57 @@
-import { useEffect, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
+import { resolveUiText } from '@/shared/i18n/message';
+import { ErrorNotice } from './ErrorNotice';
+import { useT } from '@/shared/i18n';
+import { useEffect, useId, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { ExternalIcon } from '@/shared/ui/action-icons';
 import { createPortal } from 'react-dom';
 import { useUiStore } from '@/app/store/ui';
 
+// A nested dialog may close in the same commit as its parent. Restore scrolling
+// only after the last lock is released, regardless of cleanup order.
+let modalLocks = 0;
+let originalOverflow = '';
+
 export function Modal({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title?: string; children: ReactNode; wide?: boolean }) {
+  const titleId = useId();
+  const dialog = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const previous = document.activeElement as HTMLElement | null;
+    if (modalLocks++ === 0) originalOverflow = document.body.style.overflow;
+    const focusable = () => Array.from(dialog.current?.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]',
+    ) ?? []).filter((el) => el.getAttribute('aria-hidden') !== 'true');
+    const onKey = (event: KeyboardEvent) => {
+      const dialogs = document.querySelectorAll('[role="dialog"]');
+      if (dialogs[dialogs.length - 1] !== dialog.current) return;
+      if (event.key === 'Escape') { event.preventDefault(); close.current(); }
+      if (event.key !== 'Tab') return;
+      const elements = focusable();
+      const first = elements[0], last = elements[elements.length - 1];
+      if (!first) { event.preventDefault(); dialog.current?.focus(); return; }
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog.current)) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus();
+      }
+    };
     window.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
-    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
-  }, [open, onClose]);
+    (focusable()[0] ?? dialog.current)?.focus();
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      if (--modalLocks === 0) document.body.style.overflow = originalOverflow;
+      if (previous?.isConnected) previous.focus();
+    };
+  }, [open]);
   if (!open) return null;
   return createPortal(
     <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal" role="dialog" aria-modal="true" style={wide ? { maxWidth: 760 } : undefined}>
-        {title && <h3 className="modal-title">{title}</h3>}
+      <div ref={dialog} tabIndex={-1} className="modal" role="dialog" aria-modal="true" aria-labelledby={title ? titleId : undefined} style={wide ? { maxWidth: 760 } : undefined}>
+        {title && <h3 id={titleId} className="modal-title">{title}</h3>}
         {children}
       </div>
     </div>,
@@ -24,16 +60,23 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
 }
 
 export function Toasts() {
+  const translate = useT();
   const toasts = useUiStore((s) => s.toasts);
   const dismiss = useUiStore((s) => s.dismiss);
   if (!toasts.length) return null;
   return (
     <div className="toasts">
       {toasts.map((t) => (
-        <div key={t.id} className={`toast toast-${t.kind}`} onClick={() => dismiss(t.id)}>
-          <div className="strong">{t.title}</div>
-          {t.body && <div className="muted small" style={{ marginTop: 2 }}>{t.body}</div>}
-          {t.href && <a className="small row" style={{ gap: 4, color: 'var(--cg-cyan-soft)' }} href={t.href} target="_blank" rel="noreferrer">View in explorer <ExternalIcon size={11} /></a>}
+        <div key={t.id} className={`toast toast-${t.kind}`} style={{ minWidth: 0, overflowWrap: 'anywhere', cursor: 'auto' }}>
+          <div className="row between" style={{ gap: 8, alignItems: 'flex-start' }}>
+            <div className="strong" style={{ minWidth: 0 }}>{resolveUiText(t.title)}</div>
+            <button type="button" className="btn btn-sm" style={{ flexShrink: 0 }} aria-label={translate('common.close')} onClick={() => dismiss(t.id)}>×</button>
+          </div>
+          {t.body && <div className="muted small" style={{ marginTop: 2 }}>{resolveUiText(t.body)}</div>}
+          {t.error !== undefined && <ErrorNotice error={t.error} />}
+          {t.href && (t.href.startsWith('/') && !t.href.startsWith('//')
+            ? <Link className="small" to={t.href}>{translate('home.resume')}</Link>
+            : <a className="small row" style={{ gap: 4, color: 'var(--cg-cyan-soft)' }} href={t.href} target="_blank" rel="noreferrer">{translate('ui.explorer')} <ExternalIcon size={11} /></a>)}
         </div>
       ))}
     </div>

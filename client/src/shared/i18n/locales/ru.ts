@@ -1,7 +1,19 @@
-import type { PartialMessages } from '../index';
+import rights from '../rights/ru.json';
+import failures from '../failures/ru.json';
+import diagnostics from '../diagnostics/ru.json';
+import screens from '../screens/ru';
+import catalog from '../catalog/ru';
+import ui from '../ui/ru';
+import type { Messages } from '../index';
 
 // Русский. Плюрализация: one / few / many (Intl.PluralRules 'ru').
-const ru: PartialMessages = {
+const ru: Messages = {
+  rights,
+  failures,
+  diagnostics,
+  screens,
+  ui,
+  catalog,
   nav: { home: 'Главная', caps: 'Фишки', shop: 'Паки', market: 'Маркет', arena: 'Арена', stake: 'Стейк', quests: 'Квесты', leaderboard: 'Топ', profile: 'Профиль', language: 'Язык', more: 'Ещё' },
   common: {
     connectWallet: 'Подключить кошелёк', connecting: 'Подключение…', signedIn: 'Вы вошли', signingIn: 'Вход…', signOut: 'Выйти',
@@ -22,13 +34,13 @@ const ru: PartialMessages = {
     resume: 'Продолжить', dailyQuests: 'Дневные квесты', floorMoves: 'Движение флора', seasonRanks: 'Ранги сезона',
   },
   shop: {
-    geoBlocked: 'Паки со случайным содержимым в вашем регионе недоступны ({regions}). Конкретные чипы на маркете — по-прежнему для вас.',
+    geoBlocked: 'Паки со случайным содержимым в вашем регионе недоступны ({regions}). Отдельные фишки на маркете — по-прежнему для вас.',
     title: 'Магазин паков', subtitle: 'Каждый дроп — из случайности Switchboard, которую можно проверить. Шансы ниже — на слот; последний слот всегда не ниже флора.',
     buy: 'Купить {name}', quantity: 'Количество', payWith: 'Оплата', burned75: '75% сгорает', seekerDiscount: '−{pct}% Seeker',
     solAtPyth: 'SOL по Pyth', skrAtPyth: 'SKR по Pyth', quoteUnavailable: 'котировка недоступна — цена по ончейн-оракулу',
     priceAge: 'Возраст цены', priceAgeValue: '{s} с (ончейн-лимит 60 с)', priceFeedDown: 'Ценовой фид обновляется — повторите через несколько секунд.', quoteFailed: 'Не удалось получить котировку.',
     rentReserve: 'Резерв ренты (вернётся после открытия)', oracleFees: 'Оракул + сеть (оценка)', maxSlippage: 'Максимум (защита 1%)',
-    oddsNow: 'Ваши шансы сейчас (pity {n})', oneSignature: 'Одна подпись: создаётся аккаунт случайности, фиксируется следующий слот и проходит оплата. Оракул отвечает за несколько секунд; затем вы подписываете ещё раз, чтобы сминтить. Оракул отвечает за секунды, а наш crank вскроет пак за вас, даже если вы закроете приложение; если оракул так и не ответит, полный возврат из хранилища откроется после истечения его часового окна (≈ 72 мин).',
+    oddsNow: 'Ваши шансы сейчас (pity {n})', oneSignature: ui.packSignatures,
     perPack: '{n, plural, one{# фишка} few{# фишки} many{# фишек} other{# фишки}} в паке', floor: 'флор {rarity}', starterOnce: 'раз на кошелёк', dailyCap: 'лимит {n}/день',
     pityIn: 'гарантия {rarity} через {n}', packDisabled: 'временно отключён', was: 'было {price}',
     tabs: { packs: 'Паки', services: 'Дополнительно' },
@@ -49,7 +61,7 @@ const ru: PartialMessages = {
     fuse: 'Слить', lock: 'Результат заблокирован на {time}', success: 'Получилось!', failed: 'Неудача — одна фишка возвращена', boostersLeft: 'Осталось {n, plural, one{# бустер} few{# бустера} many{# бустеров} other{# бустера}}',
   },
   arena: {
-    title: 'Cap Slam', subtitle: '3 на 3 · до 2 побед · сила × преимущество стихии × удача. Считается сервером из сидов обоих игроков; ставки расчитываются в блокчейне.',
+    title: 'Cap Slam', subtitle: '3 на 3 · до 2 побед · сила × преимущество стихии × удача. Считается сервером из сидов обоих игроков; ставки рассчитываются в блокчейне.',
     findMatch: 'Найти матч', wager: 'Ставка ($CG)', createBattle: 'Создать бой на ставку', escrowNote: 'Обе ставки уходят в эскроу программы. Победитель забирает банк минус 5% рейка (40% казна · 40% сжигается · 20% сезонный пул). Фишки никогда не рискуют.', squadLocked: 'Состав зафиксирован при создании/принятии боя: сила и стихии заморожены для расчёта, а сами фишки тем временем можно продавать и стейкать.',
     pot: 'Банк', rake: 'Рейк 5% (казна / сжигание / сезонный пул)', payout: 'Победитель получает', squad: 'Ваш отряд', power: 'Сила', league: 'Лига',
     ring: 'Кольцо стихий: paint › steel › wheels › noise › shadow › paint (+15% / −13%). Пары одной стихии дают +8% синергии каждая. Удача — U[0.5, 1.5] на раунд из общего сида.',
@@ -117,15 +129,15 @@ const ru: PartialMessages = {
   },
   pass: {
     title: 'Сезонный пропуск', tier: 'Уровень {n}', xp: '{n} XP', claim: 'Забрать', claimed: 'Забрано',
-    noPass: 'Купи сезонный пропуск, чтобы забирать награды', pickCap: 'Выбери кепку для покраски',
+    noPass: 'Купите сезонный пропуск, чтобы забирать награды', pickCap: 'Выберите фишку для покраски',
   },
   services: {
-    title: 'Дополнительно', subtitle: 'Косметика, идентичность и удобство. Ничто здесь не меняет шансы, силу или награды — никогда.',
+    title: 'Дополнительно', subtitle: ui.extrasSubtitle,
     burned: 'сгорает', toTreasury: 'в казну', noQuote: 'Для этой валюты пока нет цены — выберите другую.', buy: 'Купить', owned: 'Куплено', active: 'Активно',
     dailyLeft: 'сегодня ещё {n}', howItWorks: 'Одна подпись — оплата ончейн; $CG сгорает, SOL/USDC/SKR идут в публичную казну. Покупка привязана к вашему кошельку хэшем в транзакции — перенаправить её нельзя.',
     expires: 'до {date}', noPower: 'Без pay-to-win: проверяемо ончейн', boosterCap: 'Бустеры: не более 3 в день', bought: 'Куплено', buyFailed: 'Покупка не удалась',
-    pickCap: 'Выбери кепку для покраски', pickSkin: 'Выбери скин', pickTheme: 'Выбери тему', pickPack: 'Выбери пак', pickDistrict: 'Выбери район',
-    noFreeCaps: 'Пока нет кепок — открой пак', noCompletedDistrict: 'Собери район целиком (9/9), чтобы открыть его баннер',
+    pickCap: 'Выберите фишку для покраски', pickSkin: 'Выберите скин', pickTheme: 'Выберите тему', pickPack: 'Выберите пак', pickDistrict: 'Выберите район',
+    noFreeCaps: 'Пока нет фишек — открой пак', noCompletedDistrict: 'Собери район целиком (9/9), чтобы открыть его баннер',
     names: { handle: '@хендл', handleChange: 'Смена хендла', capSkin: 'Скин фишки', profileTheme: 'Тема профиля', arenaEmotePack: 'Эмоции для арены', extraBenchSlots: '+2 пресета верстака', seasonPass: 'Сезонный пропуск', booster: 'Бустер слияния', packSkipAnim: 'Мгновенное раскрытие', districtBanner: 'Баннер района' },
     blurbs: {
       handle: 'Уникальное имя в топах, на арене и в ссылке на профиль.', handleChange: 'Переименование раз в 30 дней. Старый хендл освобождается через 90 дней.',

@@ -1,3 +1,4 @@
+import { phaseText } from '@/shared/lib/presentation';
 // On wallet connect: surface any interrupted pack/fusion (from the persisted
 // txs store OR from /me/pending) as a toast with a deep link. Actual resume
 // happens on /shop/opening/:nonce so the user sees the stepper.
@@ -16,7 +17,7 @@ export function useResumePending() {
     if (done.current === w) return;
     done.current = w;
     const { packs, fusions } = useTxStore.getState().activeFor(w);
-    for (const p of packs) toast({ kind: 'info', title: 'Unfinished pack', body: `Nonce ${p.nonce.slice(-6)} · phase: ${p.phase}`, href: `/shop/opening/${p.nonce}`, ttlMs: 12_000 });
-    for (const f of fusions) toast({ kind: 'info', title: 'Unfinished fusion', body: `Phase: ${f.phase} — open the Fusion bench to continue`, href: '/fusion', ttlMs: 12_000 });
+    for (const p of packs) toast({ kind: 'info', title: { key: 'screens.unfinishedPack' }, body: { key: 'screens.resumePack', params: { nonce: p.nonce.slice(-6), phase: phaseText(p.phase) } }, href: `/shop/opening/${p.nonce}`, ttlMs: 12_000 });
+    for (const f of fusions) toast({ kind: 'info', title: { key: 'screens.unfinishedFusion' }, body: { key: 'screens.resumeFusion', params: { phase: phaseText(f.phase) } }, href: '/fusion', ttlMs: 12_000 });
   }, [publicKey, toast]);
 }

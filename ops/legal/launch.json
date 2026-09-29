@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "status": "blocked",
+  "operator": {
+    "legalName": "",
+    "legalForm": "",
+    "country": "",
+    "registrationNumber": "",
+    "businessAddress": "",
+    "supportEmail": "",
+    "privacyEmail": "",
+    "legalNoticeUrl": ""
+  },
+  "review": {
+    "revision": "",
+    "documentsSha256": "",
+    "approvedAt": "",
+    "expiresAt": "",
+    "evidenceSha256": ""
+  },
+  "markets": [],
+  "controls": {
+    "operatorAndDisclosures": {
+      "status": "pending",
+      "evidenceSha256": ""
+    },
+    "jurisdictionAndLicensing": {
+      "status": "pending",
+      "evidenceSha256": ""
+    },
+    "cryptoClassification": {
+      "status": "pending",
+      "evidenceSha256": ""
+    },
+    "amlSanctionsAndAge": {
+      "status": "pending",
+      "evidenceSha256": ""
+    },
+    "consumerRightsAndComplaints": {
+      "status": "pending",
+      "evidenceSha256": ""
+    },
+    "privacyRightsAndRetention": {
+      "status": "pending",
+      "evidenceSha256": ""
+    },
+    "vendorsAndTransfers": {
+      "status": "pending",
+      "evidenceSha256": ""
+    },
+    "securityAndIncidents": {
+      "status": "pending",
+      "evidenceSha256": ""
+    },
+    "geoAndOnchainEnforcement": {
+      "status": "pending",
+      "evidenceSha256": ""
+    },
+    "taxAndAccounting": {
+      "status": "pending",
+      "evidenceSha256": ""
+    },
+    "ipAndDistribution": {
+      "status": "pending",
+      "evidenceSha256": ""
+    },
+    "sevenLanguageReview": {
+      "status": "pending",
+      "evidenceSha256": ""
+    }
+  }
+}

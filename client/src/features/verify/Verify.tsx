@@ -1,3 +1,4 @@
+import { ErrorNotice } from '@/shared/ui/ErrorNotice';
 // /verify/:signature — provably-fair verifier. Recomputes the pack roll
 // locally from the 32 randomness bytes with the SAME code the program uses
 // (golden-vector tested against the Rust implementation).
@@ -10,7 +11,7 @@ import { usePackVerify } from '@/api/hooks';
 import { findEvent } from '@/chain/anchor';
 import { readPackOpened, type PackOpenedEvent } from '@/chain/accounts';
 import { toEconPack, voucherEconPack, fetchGameConfig } from '@/chain/flows/packFlow';
-import { RARITIES, chipName, rarityColor, rarityName, collectionName, chipImageOf } from '@/shared/lib/rarity';
+import { chipName, rarityColor, rarityName, collectionName, chipImageOf } from '@/shared/lib/rarity';
 /** One row of the verification table: the API path fills `rarity` only, the chain path fills both (SEC-B6). */
 type RollRow = { rarity?: number; collection?: number };
 import { fmtPct, shortKey } from '@/shared/lib/format';
@@ -92,37 +93,37 @@ export default function Verify() {
         <p className="page-sub">{t('verify.subtitle')}</p>
       </div>
       <form className="row" onSubmit={(e) => { e.preventDefault(); nav(`/verify/${input.trim()}`); }}>
-        <input className="input mono" placeholder="transaction signature" value={input} onChange={(e) => setInput(e.target.value)} />
-        <button className="btn" type="submit">Verify</button>
+        <input className="input mono" placeholder={t('ui.signature')} value={input} onChange={(e) => setInput(e.target.value)} />
+        <button className="btn" type="submit">{t('ui.verify')}</button>
       </form>
 
       {signature && (chain.isLoading || api.isLoading) && <Skeleton h={200} />}
-      {signature && chain.error && api.error && <div className="danger">{String((chain.error as Error).message)} · backend: {String((api.error as Error).message)}</div>}
+      {signature && chain.error && api.error && <div className="danger"><ErrorNotice error={chain.error} /><div>{t('screens.backend')}:</div><ErrorNotice error={api.error} /></div>}
 
       {data && (
         <>
           <div className={data.matches ? 'ok' : 'danger'} style={{ fontSize: 15 }}>
-            {data.matches ? <> <CheckIcon size={13} /> Local recomputation matches the on-chain result.</> : <> <CrossIcon size={13} /> MISMATCH — the on-chain result does not follow from the randomness. Please report this.</>}
+            {data.matches ? <> <CheckIcon size={13} /> {t('ui.verifyMatch')}</> : <> <CrossIcon size={13} /> {t('ui.verifyMismatch')}</>}
           </div>
           <div className="card stack-sm">
-            <div className="row between small"><span className="muted">Transaction</span><a className="mono" href={EXPLORER.tx(signature)} target="_blank" rel="noreferrer">{shortKey(signature, 8)} ↗</a></div>
-            {chain.data && <div className="row between small"><span className="muted">Opened in slot</span><span className="mono">{chain.data.slot}</span></div>}
-            <div className="row between small"><span className="muted">Pity before</span><span className="mono">{pity}</span></div>
-            {data.voucher && <div className="row between small"><span className="muted">Quest cap voucher</span><span className="mono">template {data.voucher.template}{data.voucher.fromApi ? '' : ' (inferred)'} · no floor / pity</span></div>}
-            <div className="small muted">32 randomness bytes</div>
+            <div className="row between small"><span className="muted">{t('ui.transaction')}</span><a className="mono" href={EXPLORER.tx(signature)} target="_blank" rel="noreferrer">{shortKey(signature, 8)} ↗</a></div>
+            {chain.data && <div className="row between small"><span className="muted">{t('screens.openedSlot')}</span><span className="mono">{chain.data.slot}</span></div>}
+            <div className="row between small"><span className="muted">{t('screens.pityBefore')}</span><span className="mono">{pity}</span></div>
+            {data.voucher && <div className="row between small"><span className="muted">{t('screens.questVoucher')}</span><span className="mono">{t('screens.voucherTemplate', { n: data.voucher.template })}{data.voucher.fromApi ? '' : ` (${t('screens.inferred')})`}</span></div>}
+            <div className="small muted">{t('screens.randomnessBytes')}</div>
             <div className="verify-hex mono">{rollHex}</div>
           </div>
 
           <div className="card stack-sm">
-            <div className="strong">Effective odds at that moment (per slot)</div>
-            <div className="odds-legend">{data.odds.map((bps, r) => bps > 0 && <span key={r}><span style={{ color: rarityColor(r) }}>{RARITIES[r]}</span> {fmtPct(bps, 2)}</span>)}</div>
-            <div className="tiny muted">Slot i: rarity = rollRarity(uniformBps(bytes, i)); collection = pool[bytes[(5i+4) mod 32] mod |pool|]; last slot gets the SKU floor and hard pity.</div>
+            <div className="strong">{t('screens.oddsThen')}</div>
+            <div className="odds-legend">{data.odds.map((bps, r) => bps > 0 && <span key={r}><span style={{ color: rarityColor(r) }}>{rarityName(r)}</span> {fmtPct(bps, 2)}</span>)}</div>
+            <div className="tiny muted"><code>rarity = rollRarity(uniformBps(bytes, i)); collection = pool[bytes[(5i+4) mod 32] mod |pool|]</code>. {t('screens.lastSlotRule')}</div>
           </div>
 
           <div className="card">
             <div className="table-scroll">
             <table className="table">
-              <thead><tr><th>Slot</th><th>Recomputed here</th><th>On-chain event</th><th></th></tr></thead>
+              <thead><tr><th>{t('ui.slot')}</th><th>{t('ui.recomputed')}</th><th>{t('ui.chainEvent')}</th><th></th></tr></thead>
               <tbody>
                 {rolls.map((r, i) => {
                   const o = data.onChain[i];
@@ -132,7 +133,7 @@ export default function Verify() {
                   return (
                     <tr key={i}>
                       <td className="mono">{i + 1}</td>
-                      <td><span className="row"><span style={{ width: 42 }}><ChipArt collection={col ?? 0} rarity={rar} imageUrl={chipImageOf({ collection: col, rarity: rar })} /></span><span style={{ color: rarityColor(rar) }}>{rarityName(rar)}</span>{r.collection === undefined ? <span className="tiny muted"> · district from the chain row</span> : <> · {collectionName(r.collection)}</>}</span></td>
+                      <td><span className="row"><span style={{ width: 42 }}><ChipArt collection={col ?? 0} rarity={rar} imageUrl={chipImageOf({ collection: col, rarity: rar })} /></span><span style={{ color: rarityColor(rar) }}>{rarityName(rar)}</span>{r.collection === undefined ? <span className="tiny muted"> {t('screens.districtChain')}</span> : <> · {collectionName(r.collection)}</>}</span></td>
                       <td>{o ? <><span style={{ color: rarityColor(o.rarity!) }}>{rarityName(o.rarity!)}</span> · {chipName(o.collection!, o.rarity!)}</> : '—'}</td>
                       <td style={{ color: ok ? 'var(--cg-acid-soft)' : 'var(--cg-magenta-soft)' }}>{ok ? <CheckIcon size={13} /> : <CrossIcon size={13} />}</td>
                     </tr>
@@ -143,15 +144,13 @@ export default function Verify() {
             </div>
             {!chain.data && api.data && (
               <div className="tiny muted">
-                Recomputed by the API from the emitted randomness with the published pack table — rarities only: the
-                district pool is live chain state, so read the on-chain column for districts. Open the transaction tab
-                below (or run the snippet) to recompute everything, districts included, against the live config.
+                {t('screens.apiVerify')}
               </div>
             )}
           </div>
 
           <details className="card">
-            <summary className="small">Verify independently (Node.js)</summary>
+            <summary className="small">{t('screens.verifyNode')}</summary>
             <pre className="tiny mono" style={{ whiteSpace: 'pre-wrap' }}>{`git clone https://github.com/Leo88q/caps && cd caps/packages/economy && npm i
 node --experimental-strip-types -e "
 import('./src/index.ts').then(({ PACKS, expandRandomness }) => {

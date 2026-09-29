@@ -1,3 +1,4 @@
+import { useT } from '@/shared/i18n';
 // Global reveal overlay: plays the existing PackRevealAnimation for every
 // item in ui.revealQueue, one at a time. Fed by the pack flow, fusion flow
 // and quest chip rewards. Reduced-motion collapses to the final card.
@@ -9,6 +10,7 @@ import { ChipArt } from '@/shared/ui/ChipArt';
 import { rarityColor } from '@/shared/lib/rarity';
 
 export function RevealQueue() {
+  const t = useT();
   const queue = useUiStore((s) => s.revealQueue);
   const shift = useUiStore((s) => s.shiftReveal);
   const reduced = useUiStore((s) => s.reducedMotion);
@@ -23,8 +25,8 @@ export function RevealQueue() {
         <div className="modal center stack" onClick={(e) => e.stopPropagation()}>
           <div style={{ width: 270, margin: '0 auto' }}><ChipArt collection={head.collectionIdx} rarity={head.rarity} index={head.index} level={head.level} imageUrl={chipArtUrl(head.collectionIdx, head.rarity, 512)} crimp={rarityColor(head.rarity)} /></div>
           <div className="cg-heading" style={{ fontSize: 22 }}>{chipName(head.collectionIdx, head.rarity)}</div>
-          <div className="muted">{rarityName(head.rarity)}{head.fused ? ' · fused' : ''} · {queue.length - 1} more</div>
-          <button className="btn btn-block" onClick={done}>Next</button>
+          <div className="muted">{rarityName(head.rarity)}{head.fused ? ` · ${t('fusion.success')}` : ''} · {queue.length - 1} {t('ui.more')}</div>
+          <button className="btn btn-block" onClick={done}>{t('ui.next')}</button>
         </div>
       </div>
     );
@@ -33,7 +35,7 @@ export function RevealQueue() {
   return (
     <PackRevealAnimation
       key={head.id}
-      rarity={rarityName(head.rarity)}
+      rarity={head.rarity}
       chipName={chipName(head.collectionIdx, head.rarity)}
       chipArt={<ChipArt collection={head.collectionIdx} rarity={head.rarity} index={head.index} level={head.level} imageUrl={chipArtUrl(head.collectionIdx, head.rarity, 512)} crimp={rarityColor(head.rarity)} />}
       isOnChain

@@ -215,13 +215,20 @@ test('D26 client + test error tables match every #[error_code] enum (names and o
     ARENA: errorVariants(stripComments(src('programs/arena/src/lib.rs'))),
   };
   const expectTs = src('tests/localnet/helpers/expect.ts');
-  const clientTs = src('client/src/chain/errors.ts');
+  const clientCatalog = JSON.parse(src('client/src/chain/errorCatalog.json')) as Record<string, { name: string; key: string }[]>;
   for (const [name, variants] of Object.entries(rust)) {
     assert.ok(variants.length >= 10, `${name}: ${variants.length} variants`);
     const names = Array.from(listIn(expectTs, name).matchAll(/'(\w+)'/g)).map((m) => m[1]);
     assert.deepEqual(names, variants, `tests/localnet/helpers/expect.ts ${name}`);
-    const msgs = Array.from(listIn(clientTs, name).matchAll(/'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"/g));
-    assert.equal(msgs.length, variants.length, `client/src/chain/errors.ts ${name}: one message per variant`);
+    const entries = clientCatalog[name.toLowerCase()];
+    assert.ok(Array.isArray(entries), `client error catalog missing ${name}`);
+    assert.deepEqual(entries.map(e => e.name), variants, `client error catalog ${name}: names and order`);
+    // Identical errors intentionally share a translation key across programs.
+    for (const locale of ['en', 'ru', 'pt', 'es', 'vi', 'id', 'fil']) {
+      const messages = JSON.parse(src(`client/src/shared/i18n/failures/${locale}.json`)) as Record<string, string>;
+      for (const entry of entries) assert.ok(typeof messages[entry.key] === 'string' && messages[entry.key].trim(),
+        `${locale}/${name}/${entry.name}: missing localized message`);
+    }
   }
 });
 

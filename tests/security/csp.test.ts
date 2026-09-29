@@ -245,3 +245,32 @@ test('self-test: SEC-B25 flags a SameSite=None default and a cookie that loses H
   assert.notEqual(undocumented, files.env);
   assert.ok(run({ env: undocumented }).some((v) => /backend\/.env.example/.test(v)));
 });
+
+// nginx <=1.28 inherits add_header only when the child has no add_header of its own.
+// Checking the CSP string alone missed its loss on index.html and SPA deep links.
+function assertHeaderInheritance(conf: string) {
+  const clean = stripComments(conf);
+  const server = clean.slice(clean.indexOf('server {'));
+  let depth = 0, headers = 0;
+  for (const line of server.split('\n')) {
+    if (/^\s*add_header\s/.test(line)) {
+      headers++;
+      assert.equal(depth, 1, 'location-level add_header drops the inherited security headers');
+    }
+    depth += (line.match(/\{/g) ?? []).length - (line.match(/\}/g) ?? []).length;
+  }
+  assert.ok(headers >= 6, 'security headers must actually exist at server scope');
+}
+
+test('SPA cache policy does not remove inherited CSP and other security headers', () => {
+  assertHeaderInheritance(NGINX);
+  const conf = stripComments(NGINX);
+  assert.match(conf, /map\s+\$uri\s+\$app_cache_control\s*\{/);
+  assert.match(conf, /\/index\.html\s+"no-store, must-revalidate";/);
+  assert.match(conf, /add_header Cache-Control \$app_cache_control;/);
+  assert.match(conf, /location = \/index\.html\s*\{\s*try_files \$uri =404;/);
+  assert.throws(() => assertHeaderInheritance(NGINX.replace(
+    'location = /index.html {',
+    'location = /index.html {\n        add_header Cache-Control "no-store";'
+  )), /location-level add_header/);
+});

@@ -30,7 +30,9 @@ export type PendingOps = ResponseOf<'/me/pending', 'get'>;
 export type PassState = ResponseOf<'/me/pass', 'get'>;
 export type MatchEmote = NonNullable<Match['emotes']>[number];
 
-const authed = () => useSessionStore.getState().status === 'authenticated';
+// Subscribe in every consumer: an unrelated render or language switch must not be
+// required to start queries after SIWS completes. This is not an admin permission check.
+const useAuthenticated = () => useSessionStore((s) => s.status === 'authenticated');
 
 export function useMe() {
   const { publicKey } = useWallet();
@@ -74,7 +76,7 @@ export const usePackCatalog = () => useQuery({ queryKey: qk.packs, queryFn: () =
 export function useQuote(sku: number, qty: number, currency: 'SOL' | 'USDC' | 'CG' | 'SKR', enabled = true) {
   return useQuery({
     queryKey: qk.quote(sku, qty, currency),
-    enabled: enabled && authed(),
+    enabled: useAuthenticated() && enabled,
     queryFn: () => api.post('/packs/quote', { sku, qty, currency }),
     staleTime: 20_000,
     refetchInterval: 25_000,
@@ -83,10 +85,10 @@ export function useQuote(sku: number, qty: number, currency: 'SOL' | 'USDC' | 'C
 }
 
 export const useHandleCheck = (handle: string) =>
-  useQuery({ queryKey: ['me', 'handle', 'check', handle.toLowerCase()], queryFn: () => api.get('/me/handle/check', { query: { handle } }), enabled: /^[a-zA-Z0-9_]{3,16}$/.test(handle) && authed(), staleTime: 30_000, retry: false });
+  useQuery({ queryKey: ['me', 'handle', 'check', handle.toLowerCase()], queryFn: () => api.get('/me/handle/check', { query: { handle } }), enabled: useAuthenticated() && /^[a-zA-Z0-9_]{3,16}$/.test(handle), staleTime: 30_000, retry: false });
 export const useServices = () => useQuery({ queryKey: ['services'], queryFn: () => api.get('/services'), staleTime: 60_000 });
-export const useMyServices = () => useQuery({ queryKey: ['me', 'services'], queryFn: () => api.get('/me/services'), enabled: authed(), staleTime: 15_000 });
-export const usePass = () => useQuery({ queryKey: qk.pass, queryFn: () => api.get('/me/pass'), enabled: authed(), staleTime: 15_000 });
+export const useMyServices = () => useQuery({ queryKey: ['me', 'services'], queryFn: () => api.get('/me/services'), enabled: useAuthenticated(), staleTime: 15_000 });
+export const usePass = () => useQuery({ queryKey: qk.pass, queryFn: () => api.get('/me/pass'), enabled: useAuthenticated(), staleTime: 15_000 });
 export function useClaimPassTier() {
   const qc = useQueryClient();
   return useMutation({
@@ -127,17 +129,17 @@ export const useFloor = () => useQuery({ queryKey: qk.floor, queryFn: () => api.
 export const useSales = (f: { asset?: string; collection?: number; rarity?: number } = {}) =>
   useQuery({ queryKey: qk.history(f), queryFn: () => api.get('/market/history', { query: f }), staleTime: 30_000 });
 export const useOffers = (direction: 'made' | 'received') =>
-  useQuery({ queryKey: qk.offers(direction), queryFn: () => api.get('/market/offers', { query: { direction } }), enabled: authed() });
+  useQuery({ queryKey: qk.offers(direction), queryFn: () => api.get('/market/offers', { query: { direction } }), enabled: useAuthenticated() });
 
 export const useRecipes = () => useQuery({ queryKey: qk.recipes, queryFn: () => api.get('/fusion/recipes'), staleTime: 10 * 60_000 });
 export const useFusionSuggest = (protectSets = true) =>
-  useQuery({ queryKey: qk.suggest(protectSets), queryFn: () => api.get('/fusion/suggest', { query: { protectSets } }), enabled: authed(), staleTime: 15_000 });
+  useQuery({ queryKey: qk.suggest(protectSets), queryFn: () => api.get('/fusion/suggest', { query: { protectSets } }), enabled: useAuthenticated(), staleTime: 15_000 });
 export const useFusionPlan = () =>
   useMutation({ mutationFn: (b: { materials: string[]; resultCollection?: number; useBooster?: boolean }) => api.post('/fusion/plan', b) });
 
 /** Polls faster while the player is queued or a match awaits a reveal (the WS `match_found` event also invalidates). */
 export const useArenaMe = () => useQuery({
-  queryKey: qk.arenaMe, queryFn: () => api.get('/arena/me'), enabled: authed(), staleTime: 10_000,
+  queryKey: qk.arenaMe, queryFn: () => api.get('/arena/me'), enabled: useAuthenticated(), staleTime: 10_000,
   refetchInterval: (q) => (q.state.data?.queue || q.state.data?.currentMatch ? 3_000 : false),
 });
 export const useSeason = () => useQuery({ queryKey: qk.season, queryFn: () => api.get('/arena/seasons/current'), staleTime: 60_000 });
@@ -167,12 +169,12 @@ export const useRevealNonce = () => {
 };
 
 export const useStakingOverview = () => useQuery({ queryKey: qk.stakingOverview, queryFn: () => api.get('/staking/overview'), staleTime: 30_000 });
-export const useStakingMe = () => useQuery({ queryKey: qk.stakingMe, queryFn: () => api.get('/staking/me'), enabled: authed(), staleTime: 15_000 });
+export const useStakingMe = () => useQuery({ queryKey: qk.stakingMe, queryFn: () => api.get('/staking/me'), enabled: useAuthenticated(), staleTime: 15_000 });
 export const useStakingEstimate = () => useMutation({ mutationFn: (b: { amountCgMicro: string; tier: number }) => api.post('/staking/estimate', b) });
 
-export const useQuests = () => useQuery({ queryKey: qk.quests, queryFn: () => api.get('/quests'), enabled: authed(), staleTime: 30_000 });
+export const useQuests = () => useQuery({ queryKey: qk.quests, queryFn: () => api.get('/quests'), enabled: useAuthenticated(), staleTime: 30_000 });
 /** Proof-of-human pass (Turnstile, T-B-49) — quest / SKR settlement waits until it is verified. */
-export const useHuman = () => useQuery({ queryKey: qk.human, queryFn: () => api.get('/me/human'), enabled: authed(), staleTime: 60_000 });
+export const useHuman = () => useQuery({ queryKey: qk.human, queryFn: () => api.get('/me/human'), enabled: useAuthenticated(), staleTime: 60_000 });
 export function useVerifyHuman() {
   const qc = useQueryClient();
   return useMutation({
@@ -180,13 +182,13 @@ export function useVerifyHuman() {
     onSuccess: () => { void qc.invalidateQueries({ queryKey: qk.human }); void qc.invalidateQueries({ queryKey: qk.me }); void qc.invalidateQueries({ queryKey: qk.quests }); },
   });
 }
-export const useClaims = () => useQuery({ queryKey: qk.claims, queryFn: () => api.get('/quests/claims'), enabled: authed(), staleTime: 30_000 });
-export const useStreak = () => useQuery({ queryKey: qk.streak, queryFn: () => api.get('/quests/streak'), enabled: authed(), staleTime: 60_000 });
+export const useClaims = () => useQuery({ queryKey: qk.claims, queryFn: () => api.get('/quests/claims'), enabled: useAuthenticated(), staleTime: 30_000 });
+export const useStreak = () => useQuery({ queryKey: qk.streak, queryFn: () => api.get('/quests/streak'), enabled: useAuthenticated(), staleTime: 60_000 });
 
 export const useLeaderboard = (board: 'rating' | 'wins' | 'collection' | 'staking' | 'fusion', season?: number) =>
   useQuery({ queryKey: qk.leaderboard(board, season), queryFn: () => api.get('/leaderboard/{board}', { path: { board }, query: { season } }), staleTime: 60_000 });
 
-export const useReferrals = () => useQuery({ queryKey: qk.referrals, queryFn: () => api.get('/me/referrals'), enabled: authed(), staleTime: 60_000 });
+export const useReferrals = () => useQuery({ queryKey: qk.referrals, queryFn: () => api.get('/me/referrals'), enabled: useAuthenticated(), staleTime: 60_000 });
 
 // ---------------------------------------------------------------- ops panel (/admin — docs/03 §3.5; the API gate is ADMIN_WALLETS + CSRF, the client only hides the entry)
 export type AdminParams = ResponseOf<'/admin/params', 'get'>;
@@ -196,11 +198,10 @@ export type ParamsProposal = BodyOf<'/admin/params', 'post'>;
 export type FraudSignal = ResponseOf<'/admin/fraud', 'get'>[number];
 export type AuditRow = ResponseOf<'/admin/audit', 'get'>[number];
 export type SimulateReport = ResponseOf<'/admin/simulate', 'post'>;
-const isAdmin = () => useSessionStore.getState().status === 'authenticated';
-export const useAdminParams = (enabled = true) => useQuery({ queryKey: qk.adminParams, queryFn: () => api.get('/admin/params'), enabled: enabled && isAdmin(), staleTime: 20_000, retry: false });
-export const useAdminKpi = (enabled = true) => useQuery({ queryKey: qk.adminKpi, queryFn: () => api.get('/admin/kpi'), enabled: enabled && isAdmin(), staleTime: 60_000, retry: false });
-export const useAdminFraud = (enabled = true) => useQuery({ queryKey: qk.adminFraud, queryFn: () => api.get('/admin/fraud', { query: { limit: 100 } }), enabled: enabled && isAdmin(), staleTime: 15_000, retry: false });
-export const useAdminAudit = (enabled = true) => useQuery({ queryKey: qk.adminAudit, queryFn: () => api.get('/admin/audit', { query: { limit: 100 } }), enabled: enabled && isAdmin(), staleTime: 15_000, retry: false });
+export const useAdminParams = (enabled = true) => useQuery({ queryKey: qk.adminParams, queryFn: () => api.get('/admin/params'), enabled: useAuthenticated() && enabled, staleTime: 20_000, retry: false });
+export const useAdminKpi = (enabled = true) => useQuery({ queryKey: qk.adminKpi, queryFn: () => api.get('/admin/kpi'), enabled: useAuthenticated() && enabled, staleTime: 60_000, retry: false });
+export const useAdminFraud = (enabled = true) => useQuery({ queryKey: qk.adminFraud, queryFn: () => api.get('/admin/fraud', { query: { limit: 100 } }), enabled: useAuthenticated() && enabled, staleTime: 15_000, retry: false });
+export const useAdminAudit = (enabled = true) => useQuery({ queryKey: qk.adminAudit, queryFn: () => api.get('/admin/audit', { query: { limit: 100 } }), enabled: useAuthenticated() && enabled, staleTime: 15_000, retry: false });
 /** Validate + encode `set_params` / `set_split` for the multisig — nothing is sent by the API. A 422 carries the full Proposal in `details`. */
 export const useProposeParams = () => useMutation({ mutationFn: (b: ParamsProposal) => api.post('/admin/params', b) });
 export const useKillSwitch = () => useMutation({ mutationFn: (b: { program: 'chip_core' | 'staking' | 'arena'; paused: boolean; reason?: string }) => api.post('/admin/kill-switch', b) });

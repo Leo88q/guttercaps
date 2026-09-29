@@ -1,13 +1,14 @@
-// /legal/:doc — the two static documents (terms, privacy) whose text lives in shared/lib/legal.ts.
+// /legal/:doc — canonical documents plus six locally bundled convenience translations.
 //
-// Kept deliberately dumb: no data fetching, no wallet, no query client. A legal page that needs an RPC
+// No API data fetching, wallet or query client. Only local translation chunks are loaded. A legal page that needs an RPC
 // to render is a legal page that fails in the exact regions where someone most needs to read it, and it
 // is the page a regulator, a store reviewer and a journalist open first.
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
-import { legalDoc, LEGAL_IDS, LEGAL_EFFECTIVE, LEGAL_REVIEWED, RESTRICTED_REGIONS, AGE_MIN, type LegalDoc } from '@/shared/lib/legal';
-import { useT, useLocale } from '@/shared/i18n';
-import { APP_NAME } from '@/app/config';
+import { legalDoc, LEGAL_IDS, LEGAL_EFFECTIVE, LEGAL_REVIEWED, RESTRICTED_REGIONS, type LegalDoc, type LegalCopy } from '@/shared/lib/legal';
+import { useT, useLocale, fmtLocale, type Locale } from '@/shared/i18n';
+import { loadLegalCopy } from '@/shared/lib/legalCopy';
+import { APP_NAME, FLAGS } from '@/app/config';
 
 export default function Legal() {
   const { doc } = useParams();
@@ -20,13 +21,30 @@ export default function Legal() {
 
 function Document({ doc }: { doc: LegalDoc }) {
   const t = useT();
-  const { locale } = useLocale();
+  const { locale, meta, setLocale } = useLocale();
+  const [copy, setCopy] = useState<{ locale: Locale; docs?: LegalCopy; failed?: boolean }>();
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (locale === 'en') return;
+    let current = true;
+    setCopy({ locale });
+    loadLegalCopy(locale).then(
+      docs => { if (current) setCopy({ locale, docs }); },
+      () => { if (current) setCopy({ locale, failed: true }); },
+    );
+    return () => { current = false; };
+  }, [locale, attempt]);
+  // Never show a stale async response or label English paragraphs as the selected language.
+  const localized = locale === 'en' ? doc : copy?.locale === locale ? copy.docs?.[doc.slug] : undefined;
+  const failed = copy?.locale === locale && copy.failed;
 
-  useEffect(() => { document.title = `${doc.title} · ${APP_NAME}`; }, [doc.title]);
+  const title = t(doc.slug === 'terms' ? 'legal.terms' : 'legal.privacy');
+  useEffect(() => { document.title = `${title} · ${APP_NAME}`; }, [title]);
 
   return (
-    <div className="page stack" style={{ maxWidth: 760 }}>
-      <nav className="row" style={{ gap: 12 }} aria-label={t('legal.title')}>
+    <div className="page stack" style={{ maxWidth: 760, minWidth: 0, overflowWrap: 'anywhere' }}>
+      <nav className="row" style={{ gap: 12, flexWrap: 'wrap' }} aria-label={t('legal.title')}>
+        <Link to="/account/rights">{t('rights.title')}</Link>
         {LEGAL_IDS.map((id) => (
           <Link key={id} to={`/legal/${id}`} aria-current={id === doc.slug ? 'page' : undefined} className={id === doc.slug ? 'active' : ''}>
             {t(id === 'terms' ? 'legal.terms' : 'legal.privacy')}
@@ -34,8 +52,8 @@ function Document({ doc }: { doc: LegalDoc }) {
         ))}
       </nav>
 
-      <h1 className="page-title">{doc.title}</h1>
-      <p className="muted small">{t('legal.updated', { date: LEGAL_EFFECTIVE })} · {locale.toUpperCase()}</p>
+      <h1 className="page-title">{title}</h1>
+      <p className="muted small">{t('legal.updated', { date: fmtLocale.date(LEGAL_EFFECTIVE, locale, { dateStyle: 'medium', timeZone: 'UTC' }) })} · {meta.native}</p>
 
       {!LEGAL_REVIEWED && (
         <div className="warn" role="note">
@@ -44,19 +62,32 @@ function Document({ doc }: { doc: LegalDoc }) {
         </div>
       )}
 
-      <p>{doc.intro}</p>
-
-      {doc.sections.map((s) => (
-        <section key={s.h} className="card stack">
-          <h2 style={{ fontSize: 18, margin: 0 }}>{s.h}</h2>
-          {s.p.map((paragraph, i) => <p key={i} style={{ margin: 0 }}>{paragraph}</p>)}
-        </section>
-      ))}
+      {locale !== 'en' && (
+        <button type="button" className="btn" style={{ alignSelf: 'flex-start', whiteSpace: 'normal' }} onClick={() => void setLocale('en')}>
+          {t('ui.englishDocument')}
+        </button>
+      )}
+      {localized ? (
+        <article className="stack legal-body" lang={meta.tag} aria-label={title}>
+          <p>{localized.intro}</p>
+          {localized.sections.map((s, index) => (
+            <section key={index} className="card stack" style={{ minWidth: 0 }}>
+              <h2 style={{ fontSize: 18, margin: 0 }}>{s.h}</h2>
+              {s.p.map((paragraph, i) => <p key={i} style={{ margin: 0 }}>{paragraph}</p>)}
+            </section>
+          ))}
+        </article>
+      ) : failed ? (
+        <div role="alert" className="card stack">
+          <p>{t('errors.network')}</p>
+          <button type="button" className="btn" onClick={() => setAttempt(n => n + 1)}>{t('common.retry')}</button>
+        </div>
+      ) : <p role="status">{t('common.loading')}</p>}
 
       <div className="card stack muted small">
         <p style={{ margin: 0 }}>{t('legal.canonical')}</p>
         <p style={{ margin: 0 }}>
-          {t('legal.ages')} {AGE_MIN}+ · {t('legal.noSaleIn')} {RESTRICTED_REGIONS.join(', ')} · <Link to="/verify">{t('legal.verify')}</Link>
+          {t('legal.ages')}{FLAGS.geoGate && <> · {t('legal.noSaleIn')} {RESTRICTED_REGIONS.join(', ')}</>} · <Link to="/verify">{t('legal.verify')}</Link>
         </p>
       </div>
     </div>
@@ -69,7 +100,7 @@ function Unknown() {
     <div className="page stack" style={{ maxWidth: 560 }}>
       <h1 className="page-title">404</h1>
       <p className="page-sub">{t('legal.notFound')}</p>
-      <p>{LEGAL_IDS.map((id) => <Link key={id} to={`/legal/${id}`} style={{ marginRight: 12 }}>{id}</Link>)}</p>
+      <p>{LEGAL_IDS.map((id) => <Link key={id} to={`/legal/${id}`} style={{ marginRight: 12 }}>{t(id === 'terms' ? 'legal.terms' : 'legal.privacy')}</Link>)}</p>
     </div>
   );
 }

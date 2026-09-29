@@ -1,3 +1,4 @@
+import { errorSnapshot, type ErrorSnapshot } from '../errorSnapshot';
 // Commit → reveal → open → settle state machine for packs. Pure orchestration: no
 // React here; the UI subscribes through the `txs` store callbacks.
 //
@@ -10,7 +11,7 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import { keccak_256 } from '@noble/hashes/sha3';
 import { PACKS, expandRandomness, type PackDef as EconPackDef } from '@guttercaps/economy';
 import { DAS_RPC_URL } from '@/app/config';
-import { appLookupTables, fitsInTx, sendTx, TxError, type WalletLike } from '../tx';
+import { appLookupTables, fitsInTx, sendTx, type WalletLike } from '../tx';
 import { prepareClose, prepareCloseLut, prepareRandomness, prepareReveal, readRandomness, sendCloseLut } from '../switchboard';
 import {
   buyPackIx, cancelCompressedClaimIx, cancelStalePackIx, compressedClaimNonce, finalizeCompressedPackIx,
@@ -43,6 +44,7 @@ export interface PackFlowState {
   openSignatures: string[];
   opened: PackOpenedEvent[];
   error?: string;
+  errorDiagnostic?: ErrorSnapshot;
   revealAttempt?: number;
 }
 
@@ -143,7 +145,7 @@ export class PackFlow {
   }
 
   private set(patch: Partial<PackFlowState>) {
-    this.state = { ...this.state, ...patch };
+    this.state = { ...this.state, ...(patch.phase && patch.phase !== 'error' ? { error: undefined, errorDiagnostic: undefined } : {}), ...patch };
     this.deps.onState(this.state);
   }
 
@@ -190,7 +192,8 @@ export class PackFlow {
       });
       this.set({ phase: 'committed', buySignature: signature });
     } catch (e) {
-      this.set({ phase: 'error', error: e instanceof TxError ? e.message : String((e as Error)?.message ?? e) });
+      const diagnostic = errorSnapshot(e);
+      this.set({ phase: 'error', error: diagnostic.message, errorDiagnostic: diagnostic });
       throw e;
     }
   }
@@ -292,7 +295,8 @@ export class PackFlow {
       await this.finalizePack(ctx);
       this.set({ phase: 'done' });
     } catch (e) {
-      this.set({ phase: 'error', error: e instanceof TxError ? e.message : String((e as Error)?.message ?? e) });
+      const diagnostic = errorSnapshot(e);
+      this.set({ phase: 'error', error: diagnostic.message, errorDiagnostic: diagnostic });
       throw e;
     }
   }

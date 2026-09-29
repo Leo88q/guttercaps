@@ -1,0 +1,143 @@
+{
+  "terms": {
+    "slug": "terms",
+    "title": "Terms of Service",
+    "intro": "These draft terms describe GUTTERCAPS and its on-chain mechanics. Code determines transaction execution, not the legal rights of consumers. Mandatory law prevails over conflicting terms or program behaviour. The operator and approved launch markets have not yet been designated; this text is not clearance for a paid public launch.",
+    "sections": [
+      {
+        "h": "1. What this is",
+        "p": [
+          "A browser game on Solana. You buy packs of collectible chips; the chip you get is drawn at random from a published distribution. Caps are wallet-controlled Solana assets (including the Bubblegum V2 compressed-asset path and legacy Metaplex Core assets). We do not hold your wallet keys or operate a custodial deposit or withdrawal service.",
+          "Packs are a paid randomised item. We do not claim otherwise, we do not call it a purchase of guaranteed value, and the region restrictions in §2 exist because several regulators treat this mechanic as gambling."
+        ]
+      },
+      {
+        "h": "2. Who may play, and where packs are not sold",
+        "p": [
+          "You must be at least {age} and meet any higher local or configured threshold. The rights centre accepts a birth-date declaration; the server calculates eligibility without storing the date. This is self-declaration, not verified age or identity. Production access checks can require a current declaration before new activities.",
+          "Age and geographic checks are currently disabled by default; a deployment can explicitly re-enable them. When enabled, the legacy pack quote gate restricts detected regions {regions}; configurable per-feature rules and trusted-country detection also cover selected API actions and transaction signing through our client. Unknown countries are refused when enforcement is enabled. These controls do not prevent direct on-chain calls and do not establish legal permission in other countries.",
+          "Country detection uses network metadata at the edge and can be inaccurate. Using a VPN for privacy is not itself prohibited, but you must not misrepresent eligibility or circumvent applicable legal restrictions. A VPN does not change the law that applies to you."
+        ]
+      },
+      {
+        "h": "3. Odds, pity and verifiable randomness",
+        "p": [
+          "Every pack's rarity distribution, floor guarantee and pity counter is published in the shop UI and defined in code (packages/economy PACKS; Starter Pack: {starterCaps} caps; Standard Pack: {standardCaps} caps; Premium Pack: {premiumCaps} caps; Limited Event Pack: {limitedCaps} caps). The on-chain program enforces the same table, including the hard caps on the top two tiers.",
+          "Draws use a commit–reveal randomness beacon (Switchboard on-demand). The commitment and the reveal are both on-chain, so a past result can be re-derived: the verify screen takes an open transaction and replays the expansion the program performed. An unresponsive oracle never burns your payment silently — see §5.",
+          "Pity counters are per wallet, per SKU and stored on-chain. They are not a promise about a specific draw; they bound the worst run."
+        ]
+      },
+      {
+        "h": "4. Price, fees and what is burned",
+        "p": [
+          "Packs cost fiat-equivalent value paid in SOL, USDC, $CG or SKR. Prices are set by the operator and change with the game config; the quote you signed is the price you pay.",
+          "Marketplace sales deduct a configurable protocol fee (default {marketFee} %, on-chain hard cap {marketCap} %) and a separate {royalty} % creator royalty from the seller. Approximately {buyback} % of the protocol fee goes to buyback-and-burn; the rest and the creator royalty go to the treasury. Creating a listing also burns {listingBurn} $CG. The current fee is shown before signing.",
+          "Arena wagers take a {arenaRake} % rake of the pot: {arenaTreasury} % of the rake goes to the treasury, {arenaPool} % funds the season prize pool, and the remaining {arenaBurn} % is burned.",
+          "Packs paid in $CG burn {cgBurn} % of the price. Packs paid in SKR get a {skrDiscount} % discount.",
+          "Network fees (Solana transaction fees, rent for the accounts a pack opens) are yours, not ours. Rent reserved while a pack is in flight is returned when it closes."
+        ]
+      },
+      {
+        "h": "5. Refunds, stuck packs and cancellations",
+        "p": [
+          "An opened pack's draw cannot be reversed by the program. This does not remove statutory cancellation, withdrawal, refund or conformity rights. Whether an exception for digital content or services applies requires a market-specific assessment and any legally required express consent and acknowledgement before purchase.",
+          "If the randomness reveal never lands, the pack stays unopened. A full refund of the purchase payment from the vault becomes available only after the oracle window has expired and the request remains unrevealed: {staleSlots} slots (approximately {staleMinutes} minutes at 400 ms per slot; actual timing varies). You need not ask support, but must sign the cancellation. Network fees are not refunded.",
+          "If we stop selling a drop because of a defective configuration, compromised key or regulatory request, that does not automatically make all earlier purchases refundable. Paid pending packs can use the same program refund path only when its conditions are met. Refunds return the currency used for the purchase.",
+          "Blockchain payments have no built-in card chargeback and this does not waive mandatory remedies. The rights centre records refund and contract-withdrawal requests, provides downloadable receipts and shows operator replies. Submission does not approve or execute a payment. The stale-pack cancellation flow remains separate; statutory remedies require operator assessment and any applicable additional process."
+        ]
+      },
+      {
+        "h": "6. Fair play, devices and what we may pause",
+        "p": [
+          "Rewards for quests, PvP and seasons are limited per device (three wallets; a fourth on the same device keeps playing but earns no rewards) and are checked against win-trading, wash-trade and bot signals. A signal we can verify gets resolved by an operator, and every operator action on your account is written to an audit log we are willing to show you.",
+          "The operator can pause new purchases, listings, stakes and battles for an incident. Unstaking, cancelling, refunding and withdrawing keep working while paused — a pause is never used to freeze your assets.",
+          "Abuse of the pity system, the oracle, or a bug in this software to extract value is a breach of these terms; we may reverse the affected transactions in-game and, for on-chain value, only through the programs' own mechanisms."
+        ]
+      },
+      {
+        "h": "7. Your side of the machine",
+        "p": [
+          "You are responsible for your wallet, its seed phrase, and every transaction you sign. We never ask for a seed phrase, never send a \"claim\" link that needs one, and cannot undo a signature.",
+          "You need a Solana wallet that lets you inspect the instruction you are approving. If a signature request shows an unfamiliar program or an unexpected amount, do not sign it."
+        ]
+      },
+      {
+        "h": "8. No financial advice, no investment, no guarantee",
+        "p": [
+          "$CG is intended for in-game use. That description does not determine whether a token, reward, staking arrangement or marketplace activity is regulated. There is no guaranteed price, liquidity, profit or return. Jurisdiction-specific classification and permissions remain launch conditions.",
+          "The software is provided as-is, without warranty of any kind, to the maximum extent the law where you live allows. Where a liability cap is not allowed, it does not apply to you.",
+          "Our aggregate liability for a purchase is capped at the amount you paid for the affected pack(s). This does not limit rights that cannot be limited, including consumer rights that apply despite this clause and any warranty we are required to give."
+        ]
+      },
+      {
+        "h": "9. Changes, and which text wins",
+        "p": [
+          "Prices, odds, fees and pity parameters can change within program limits. Current transaction conditions must be shown before signing. A material change may require notice or renewed agreement under applicable law; a configuration update cannot override mandatory rights.",
+          "Material amendments require a new effective date or revision and an accessible change notice. Obtain renewed agreement where required by law; continued play alone is not treated as sufficient consent in every market. Preserve available unstaking, cancellation and withdrawal paths.",
+          "English is the drafting source; translations are provided for accessibility. English precedence applies only where lawful and does not remove rights arising from mandatory local-language, disclosure or consumer-protection rules. Report discrepancies to the operator once its contacts are published."
+        ]
+      }
+    ]
+  },
+  "privacy": {
+    "slug": "privacy",
+    "title": "Privacy",
+    "intro": "Wallet sign-in is pseudonymous, not anonymous: addresses, transactions, device signals and network metadata may identify a person when combined. This draft describes current data flows. The controller, working contacts and market-specific disclosures must be settled before paid public launch.",
+    "sections": [
+      {
+        "h": "1. What we collect",
+        "p": [
+          "Your Solana address, from the signature you provide when you sign in. An HttpOnly session cookie named gc_session lets the app show your state. The default session lifetime is 7 days and SameSite defaults to Lax; deployment settings can change these. Cross-site SameSite=None requires Secure over HTTPS.",
+          "Game records tied to that address: purchases, pack opens and their drawn rarities, listings and offers, staking positions, arena matches, quest claims, referral links, the daily caps and pity counters, and — for operators only — the audit log of actions taken on your account.",
+          "Anti-fraud signals: a salted hash of a device fingerprint (used to enforce the per-device wallet limit and deduplicate farming) and a \"proof of human\" flag from Cloudflare Turnstile. We do not store a raw fingerprint, and we do not collect the battery, fonts, canvas or sensor data that a fingerprint is often built from.",
+          "Rate limiting temporarily stores counters keyed by IP address or network prefix, wallet or session. Windows depend on the endpoint: commonly 60 seconds, with some one-hour limits. These are not anonymous counters; IP-derived keys are processed as part of abuse prevention."
+        ]
+      },
+      {
+        "h": "2. Data minimisation",
+        "p": [
+          "Wallet sign-in does not ask for a name, email, phone or identity document. The optional age-declaration form sends a birth date for a transient server-side calculation; only the threshold result, policy version and timestamps are stored. Support messages can contain personal data. Do not send identity documents, seed phrases or private keys.",
+          "No payment card data — payments are transactions you sign in your wallet.",
+          "No advertising or analytics SDKs, no session replay, no pixel. If that changes, this page changes first."
+        ]
+      },
+      {
+        "h": "3. The part a deletion request cannot fix",
+        "p": [
+          "Anything the game writes to Solana is public, permanent and readable by anyone: your address, which packs you opened, which chips you own and traded, your staking and arena history. That is not our database and not our server — it is the chain, and no request to us can remove it.",
+          "Deleting an off-chain record does not erase the chain. A reviewed erasure request can remove profile handle/country, handle history/reservations and authentication sessions/nonces; it restricts new activities and leaves a marker for reapplying that profile erasure. This is not full erasure: chain projections, financial/fraud records, declarations, rights cases, external logs and backups require separate assessment. Restores require the latest privacy ledger and reapplication before reopening service."
+        ]
+      },
+      {
+        "h": "4. Cookies and local storage",
+        "p": [
+          "The app uses a session cookie and browser storage for language, theme, motion, age acknowledgement and transaction state. Wallet and verification integrations may use additional storage. Clearing browser data does not erase server or chain records. The deployed cookie and storage inventory must be reviewed before launch."
+        ]
+      },
+      {
+        "h": "5. Legal basis and retention",
+        "p": [
+          "The maintenance command removes closed rights cases after the configured period, except active holds or restriction evidence, and removes eligible expired declarations and authentication records. It must be scheduled by the operator; implementing a command does not mean it is running. Other game, anti-fraud, audit and backup categories still need approved retention criteria. Open cases and required evidence must not be silently purged.",
+          "The controller must document a lawful basis for each processing purpose and, where relevant, a legitimate-interest assessment. Connecting a wallet or accepting terms is not blanket privacy consent. Turnstile is used in anti-abuse flows, not represented here as an optional consent-based feature; applicable consent and notice requirements must be assessed before launch."
+        ]
+      },
+      {
+        "h": "6. Who else sees it",
+        "p": [
+          "Cloudflare (CDN/WAF, Turnstile challenge, the country code used by the region gate) sees request metadata. We read its country header for region detection. IP-derived rate-limiting keys are also processed as described in §1.",
+          "Solana RPC providers relay reads and transactions and may receive IP addresses, request timing, wallet identifiers and other connection metadata, not only public chain data. Actual providers, contractual roles and international transfers must be identified for the deployed service.",
+          "Price and randomness services include Pyth, Hermes and Switchboard. On-chain events are public; service requests may also expose network metadata to infrastructure providers. The operator must verify the actual data flows rather than promise that providers see only a transaction.",
+          "This version does not integrate a Sentry SDK; a configured DSN alone does not establish error reporting or wallet truncation. Any future telemetry needs a verified data inventory, recipients, lawful basis and any required consent before activation. Operational server logs may contain wallet identifiers and must be covered by retention and access controls."
+        ]
+      },
+      {
+        "h": "7. Your rights, and how to reach us",
+        "p": [
+          "Access, rectification, erasure, objection, portability, and complaint to your supervisory authority — including the request \"delete what is in your database\". Where a right collides with the chain (see §3), we will tell you which part we can and cannot do rather than pretend.",
+          "Support and privacy requests can be filed in the rights centre after wallet sign-in, even when age or region checks block new activities. Receipts, correspondence and a limited self-service data export are available; wider access can be requested. Operator/controller identity and external contacts are still undesignated and must be published, including an alternative for people unable to use wallet sign-in. Never provide a seed phrase or private key.",
+          "The product is for adults ({age}+). Age results are self-declared, not independently verified. A denied declaration has a cooldown; a correction request can be reviewed by an operator before a new declaration is allowed. This does not establish a complete child-protection or legally sufficient age-assurance programme."
+        ]
+      }
+    ]
+  }
+}

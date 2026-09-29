@@ -5,12 +5,15 @@
   python3 scripts/landing/build.py          # write the landing
   node --experimental-strip-types scripts/landing/check.ts # verify numbers vs packages/economy
 
-Inputs: content.py (EN/RU copy + tables), base.css (visual system of the
+Inputs: content.py + locales/*.json (seven-language copy + tables), base.css (visual system of the
 original landing, kept verbatim), collections.js (8 districts × 9 caps).
 The page is a single self-contained HTML file: no build step at deploy time.
 """
 import json, html, pathlib, base64
 from content import T, HOWTO, PACKS, FAQ, TIERS, SITE, TITLE, DESC
+from i18n import LOCALES, TAGS, NAMES, load_translations
+
+TRANSLATIONS = load_translations(T)
 
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -24,7 +27,7 @@ OUT = ROOT / 'guttercaps-landing.html'
 # (client/public/fonts, see scripts/vendor-fonts.ts for the OFL sources) and inlined here as data URIs —
 # which keeps the "deploy = copy one HTML file" promise of this landing intact.
 # The manifest is the single source of truth: the files whose `surfaces` include "landing" are exactly the
-# subsets this page needs (latin + cyrillic — the landing is EN/RU, unlike the 7-language app).
+# subsets this seven-language page needs, including Vietnamese and extended Latin.
 FONT_DIR = ROOT / 'client' / 'public' / 'fonts'
 FONT_MANIFEST = json.loads((FONT_DIR / 'manifest.json').read_text())
 
@@ -45,6 +48,15 @@ def fonts_css() -> str:
 FONTS_CSS = fonts_css()
 OLD_CSS = (HERE / 'base.css').read_text()
 COLLECTIONS_JS = (HERE / 'collections.js').read_text()
+# Reuse the game's shared presentation catalogs; canonical mint metadata stays English.
+def client_catalog(folder, locale):
+    source = (ROOT / 'client/src/shared/i18n' / folder / (locale + '.ts')).read_text()
+    payload = source.split('const ' + ('ui' if folder == 'ui' else 'catalog') + ' = ', 1)[1]
+    return json.JSONDecoder().raw_decode(payload)[0]
+
+LANDING_CATALOG = {l: client_catalog('catalog', l) for l in LOCALES}
+LANDING_UI = {l: {k: v for k, v in client_catalog('ui', l).items() if k.startswith(('pack', 'rarity')) or k in ('comingSoon', 'primaryNav')} for l in LOCALES}
+
 
 # Embedded imagery: AI street-art backdrops (bg-*) and per-district contact
 # sheets cut from the real chip masters (district-*). Everything is inlined as
@@ -112,10 +124,10 @@ def donut_svg():
         out.append(f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="{sw}" '
                    f'stroke-dasharray="{dash:.2f} {circ - dash:.2f}" stroke-dashoffset="{-off:.2f}" transform="rotate(-90 {cx} {cy})"/>')
         off += dash
-    return ('<svg viewBox="0 0 170 170" role="img" aria-label="$CG allocation: 55% play, 15% ecosystem, 15% team, 10% treasury, 5% airdrops">'
+    return ('<svg viewBox="0 0 170 170" role="img" data-i18n-aria="allocation.label" aria-label="$CG allocation: 55% play, 15% ecosystem, 15% team, 10% treasury, 5% airdrops">'
             + ''.join(out)
-            + '<text x="85" y="80" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="15" font-weight="700" fill="#D8D8DC">1 B</text>'
-            + '<text x="85" y="98" text-anchor="middle" font-family="Inter, sans-serif" font-size="10" fill="rgba(216,216,220,0.6)">hard cap</text></svg>')
+            + '<text x="85" y="80" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="15" font-weight="700" fill="#D8D8DC" data-i18n="allocation.billion">1 billion</text>'
+            + '<text x="85" y="98" text-anchor="middle" font-family="Inter, sans-serif" font-size="10" fill="rgba(216,216,220,0.6)" data-i18n="allocation.cap">hard cap</text></svg>')
 
 
 ICON = {
@@ -206,6 +218,7 @@ def community_links(with_icons):
     out = []
     for key, label in (('telegram', 'Telegram'), ('x', 'X'), ('discord', 'Discord'), ('docs', 'Docs'), ('github', 'GitHub')):
         icon = ICON[key] if with_icons else ''
+        if key == 'docs': label = '<span data-i18n="community.docs">Documentation</span>'
         out.append(f'      <a data-link="{key}" href="#" rel="noopener" target="_blank">{icon}{label}</a>')
     return '\n'.join(out)
 
@@ -286,8 +299,7 @@ BODY = f'''
   </div>
   <div class="nav-right">
     <div class="lang-toggle" role="group" aria-label="Language">
-      <button type="button" data-lang="en" aria-pressed="true" lang="en">EN</button>
-      <button type="button" data-lang="ru" aria-pressed="false" lang="ru">RU</button>
+      {''.join(f'<button type="button" data-lang="{l}" aria-pressed="{str(l == "en").lower()}" aria-label="{NAMES[l]}" title="{NAMES[l]}" lang="{TAGS[l]}">{l.upper()}</button>' for l in LOCALES)}
     </div>
     <a class="btn-spray" data-link="app" href="#" onclick="fireSpray(this)"><span class="mist-puff"></span><span data-i18n="nav.open">{t('nav.open')}</span></a>
   </div>
@@ -436,8 +448,8 @@ BODY = f'''
       <div class="eco-card clean-zone skr-card span-2">
         <h3 data-i18n="eco.skr.h">{t('eco.skr.h')}</h3>
         <p class="m0" data-i18n="eco.skr.p">{t('eco.skr.p')}</p>
-        <div class="mint"><b>SKR mint</b> SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3 · 6 decimals · Token Program · <b>Pyth</b> Crypto.SKR/USD</div>
-        <div class="mint"><b>Treasury (SKR)</b> HPMr5r9sS5ApWsPNJytZRLbm2jz1veFxTn1wepjAhtho · funds the prize pool weekly · ledger: /v1/rewards/skr-pool</div>
+        <div class="mint"><b data-i18n="skr.mint">SKR mint</b> SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3 · <span data-i18n="skr.decimals">6 decimals</span> · Token Program · <b>Pyth</b> Crypto.SKR/USD</div>
+        <div class="mint"><b data-i18n="skr.treasury">Treasury (SKR)</b> HPMr5r9sS5ApWsPNJytZRLbm2jz1veFxTn1wepjAhtho · <span data-i18n="skr.funding">Funds the prize pool weekly · ledger:</span> /v1/rewards/skr-pool</div>
       </div>
     </div>
   </div>
@@ -542,8 +554,8 @@ BODY = f'''
   </div>
   <p class="fine-print foot-legal">
     <span class="age-badge" title="18+">18+</span>
-    <a data-link="terms" href="#" rel="noopener">Terms</a>
-    <a data-link="privacy" href="#" rel="noopener">Privacy</a>
+    <a data-link="terms" href="#" rel="noopener" data-i18n="footer.terms">Terms</a>
+    <a data-link="privacy" href="#" rel="noopener" data-i18n="footer.privacy">Privacy</a>
   </p>
   <p class="fine-print">{LOGO_SVG} <span data-i18n="foot.fine">{t('foot.fine')}</span></p>
 </footer>
@@ -552,6 +564,10 @@ BODY = f'''
 RU = {k: v[1] for k, v in T.items()}
 DATA_JS = (
     'const RU = ' + json.dumps(RU, ensure_ascii=False) + ';\n'
+    + '  const I18N = ' + json.dumps(TRANSLATIONS, ensure_ascii=False) + ';\n'
+    + '  const LANG_TAGS = ' + json.dumps(TAGS, ensure_ascii=False) + ';\n'
+    + '  const LORE = ' + json.dumps(LANDING_CATALOG, ensure_ascii=False) + ';\n'
+    + '  const UI = ' + json.dumps(LANDING_UI, ensure_ascii=False) + ';\n'
     + '  const DISTRICT_ART = ' + json.dumps(DISTRICT_ART) + ';\n'
     + '  const DISTRICT_ART_GEO = ' + json.dumps({'tile': ART_TILE, 'gut': ART_GUT, 'pad': ART_PAD}) + ';\n'
     + '  const TIERS = ' + json.dumps([{'key': k, 'color': c, 'odds': o, 'power': p, 'level': l, 'weight': w} for k, c, o, p, l, w in TIERS], ensure_ascii=False) + ';\n'

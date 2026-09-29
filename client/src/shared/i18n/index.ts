@@ -53,8 +53,9 @@ type Leaves<T, P extends string = ''> = T extends string
   ? P
   : { [K in keyof T & string]: Leaves<T[K], P extends '' ? K : `${P}.${K}`> }[keyof T & string];
 export type MessageKey = Leaves<typeof en>;
-export type Messages = typeof en;
-/** Other locales may be partial at any depth — EN fills the gaps. Excess keys are a type error (typo guard). */
+export type Messages = { [K in keyof typeof en]: Widen<(typeof en)[K]> };
+type Widen<T> = T extends string ? string : { [K in keyof T]: Widen<T[K]> };
+/** Runtime fallback shape for loading/recovery. Authored locale bundles use the complete Messages type. */
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends string ? string : DeepPartial<T[K]> };
 export type PartialMessages = DeepPartial<Messages>;
 
@@ -68,15 +69,22 @@ const loaders: Record<Locale, () => Promise<{ default: PartialMessages }>> = {
   ru: () => import('./locales/ru'),
 };
 
+const loading = new Map<Locale, Promise<void>>();
 const loaded: Partial<Record<Locale, PartialMessages>> = { en };
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 
 export async function loadLocale(l: Locale): Promise<void> {
   if (loaded[l]) return;
-  const mod = await loaders[l]();
-  loaded[l] = mod.default;
-  notify();
+  let pending = loading.get(l);
+  if (!pending) {
+    pending = loaders[l]().then((mod) => {
+      loaded[l] = mod.default;
+      notify();
+    }).finally(() => { loading.delete(l); });
+    loading.set(l, pending);
+  }
+  await pending;
 }
 
 function lookup(obj: unknown, path: string): string | undefined {
@@ -108,11 +116,11 @@ export type Vars = Record<string, string | number | bigint | undefined>;
 export function interpolate(template: string, vars: Vars, tag: string): string {
   const pr = new Intl.PluralRules(tag);
   const nf = new Intl.NumberFormat(tag);
-  let out = template.replace(/\{(\w+),\s*plural,\s*((?:\s*\w+\s*\{[^{}]*\})+)\s*\}/g, (_m, name: string, branches: string) => {
+  let out = template.replace(/\{(\w+),\s*plural,\s*((?:\s*(?:=\d+|\w+)\s*\{[^{}]*\})+)\s*\}/g, (_m, name: string, branches: string) => {
     const v = vars[name];
     const n = typeof v === 'bigint' ? Number(v) : Number(v ?? 0);
     const forms: Record<string, string> = {};
-    for (const b of branches.matchAll(/(\w+)\s*\{([^{}]*)\}/g)) forms[b[1]] = b[2];
+    for (const b of branches.matchAll(/(=\d+|\w+)\s*\{([^{}]*)\}/g)) forms[b[1]] = b[2];
     const picked = forms[`=${n}`] ?? forms[pr.select(n)] ?? forms.other ?? '';
     return picked.replace(/#/g, nf.format(n));
   });
@@ -137,11 +145,21 @@ export function detectLocale(): Locale {
 }
 
 export function getLocale(): Locale {
-  return useUiStore.getState().locale;
+  const locale = useUiStore.getState().locale;
+  return isLocale(locale) ? locale : 'en';
 }
 
+export function isLocale(value: unknown): value is Locale {
+  return typeof value === 'string' && (LOCALES as readonly string[]).includes(value);
+}
+
+let selection = 0;
 export async function setLocale(l: Locale): Promise<void> {
+  if (!isLocale(l)) return;
+  const request = ++selection;
   await loadLocale(l);
+  // A slow import must never overwrite a more recent language selection.
+  if (request !== selection) return;
   useUiStore.getState().setLocale(l);
   applyDocumentLocale(l);
 }
@@ -166,17 +184,17 @@ export type TFn = (key: MessageKey, vars?: Vars) => string;
 
 /** Translator bound to the current locale; re-renders on locale change and on lazy locale load. */
 export function useT(): TFn {
-  const locale = useUiStore((s) => s.locale);
-  useSyncExternalStore(subscribe, () => version.n, () => 0);
+  const locale = useUiStore((s) => isLocale(s.locale) ? s.locale : 'en');
+  const revision = useSyncExternalStore(subscribe, () => version.n, () => 0);
   const tag = LOCALE_META[locale].tag;
   return useCallback<TFn>((key, vars) => {
     const tpl = raw(locale, key);
     return vars ? interpolate(tpl, vars, tag) : tpl;
-  }, [locale, tag]);
+  }, [locale, tag, revision]);
 }
 
 export function useLocale(): { locale: Locale; meta: LocaleMeta; setLocale: (l: Locale) => Promise<void> } {
-  const locale = useUiStore((s) => s.locale);
+  const locale = useUiStore((s) => isLocale(s.locale) ? s.locale : 'en');
   return { locale, meta: LOCALE_META[locale], setLocale };
 }
 
@@ -208,8 +226,10 @@ export const fmtLocale = {
 /** Boot: pick persisted/detected locale, load it, apply to <html>. Call once from main.tsx. */
 export async function initI18n(): Promise<Locale> {
   const st = useUiStore.getState();
-  const l = st.localeExplicit ? st.locale : detectLocale();
-  if (!st.localeExplicit && l !== st.locale) useUiStore.setState({ locale: l });
+  const query = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('lang');
+  const l = isLocale(query) ? query : st.localeExplicit && isLocale(st.locale) ? st.locale : detectLocale();
+  if (isLocale(query)) st.setLocale(query);
+  if (l !== st.locale) useUiStore.setState({ locale: l });
   await loadLocale(l);
   applyDocumentLocale(l);
   return l;

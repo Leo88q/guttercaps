@@ -4,8 +4,8 @@ import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useGrid, useMyChips, useFloor, type Chip } from '@/api/hooks';
-import { COLLECTIONS } from '@/shared/lib/lore';
-import { RARITIES, RARITY_SHORT, collectionColor, rarityColor, chipName, rarityName, ELEMENT_OF_COLLECTION, chipArtUrl, chipImageOf } from '@/shared/lib/rarity';
+import { useCollections } from '@/shared/lib/lore';
+import { RARITIES, collectionColor, rarityColor, chipName, rarityName, ELEMENT_OF_COLLECTION, chipArtUrl, chipImageOf } from '@/shared/lib/rarity';
 import { ElementGlyph } from '@/shared/ui/element-icons';
 import { CloseIcon } from '@/shared/ui/action-icons';
 import { chipIndexText, fmtUsd } from '@/shared/lib/format';
@@ -19,6 +19,7 @@ import { useT } from '@/shared/i18n';
 type Status = 'all' | 'free' | 'staked' | 'listed' | 'locked';
 
 export default function Collection() {
+  const COLLECTIONS = useCollections();
   const t = useT();
   const { connected } = useWallet();
   const [params, setParams] = useSearchParams();
@@ -46,7 +47,7 @@ export default function Collection() {
       <div className="page page-bg page-bg-collection stack">
         <h1 className="page-title">{t('collection.title')}</h1>
         <ShowcaseStrip items={[[2, 7], [0, 8], [4, 6]]} size={84} />
-        <Empty>Connect a wallet to see your grid. Meanwhile, <Link to="/codex">read the district lore</Link> or <Link to="/market">browse the market</Link>.</Empty>
+        <Empty>{t('ui.connectGrid')} <Link to="/codex">{t('ui.readLore')}</Link> {t('ui.or')} <Link to="/market">{t('home.heroSecondary')}</Link>.</Empty>
       </div>
     );
   }
@@ -61,14 +62,14 @@ export default function Collection() {
           <h1 className="page-title">{t('collection.title')}</h1>
           <p className="page-sub">{t('collection.subtitle', { owned: totalOwned, sets: grid.data?.completedSets ?? 0 })}</p>
         </div>
-        <Link to="/codex" className="btn btn-sm">Lore</Link>
+        <Link to="/codex" className="btn btn-sm">{t('ui.lore')}</Link>
       </div>
 
       <div className="cgrid-wrap card">
         {grid.isLoading || !cells ? <Skeleton h={320} /> : (
           <div className="cgrid">
             <div />
-            {RARITIES.map((r, i) => <div key={r} className="head" style={{ color: rarityColor(i) }}>{RARITY_SHORT[i]}</div>)}
+            {RARITIES.map((r, i) => <div key={r} className="head" style={{ color: rarityColor(i) }}>{rarityName(i)}</div>)}
             {COLLECTIONS.map((c, ci) => {
               const have = cells[ci].filter((n) => n > 0).length;
               return (
@@ -81,11 +82,11 @@ export default function Collection() {
 
       {grid.data?.missingForSet && grid.data.missingForSet.length > 0 && (
         <div className="card stack-sm">
-          <div className="strong">Close to a full district</div>
+          <div className="strong">{t('ui.closeDistrict')}</div>
           {grid.data.missingForSet.map((m) => (
             <div key={m.collection} className="row between small">
-              <span><span style={{ color: collectionColor(m.collection!) }}>●</span> {COLLECTIONS[m.collection!].name} — missing {m.rarities!.map((r) => rarityName(r)).join(', ')}</span>
-              <Link to={`/market?collection=${m.collection}&missing=1`} className="btn btn-sm">Find on market</Link>
+              <span><span style={{ color: collectionColor(m.collection!) }}>●</span> {COLLECTIONS[m.collection!].name} — {t('ui.missing')} {m.rarities!.map((r) => rarityName(r)).join(', ')}</span>
+              <Link to={`/market?collection=${m.collection}&missing=1`} className="btn btn-sm">{t('ui.findMarket')}</Link>
             </div>
           ))}
         </div>
@@ -93,33 +94,33 @@ export default function Collection() {
 
       <div className="row-wrap">
         <div className="tabs">
-          {(['all', 'free', 'staked', 'listed', 'locked'] as Status[]).map((s) => <Pill key={s} active={status === s} onClick={() => set('s', s === 'all' ? undefined : s)}>{s}</Pill>)}
+          {(['all', 'free', 'staked', 'listed', 'locked'] as Status[]).map((s) => <Pill key={s} active={status === s} onClick={() => set('s', s === 'all' ? undefined : s)}>{t(`collection.filters.${s}`)}</Pill>)}
         </div>
         {(col !== undefined || rar !== undefined) && (
-          <button className="btn btn-sm btn-ghost" onClick={() => { set('c', undefined); set('r', undefined); }}>
-            clear {col !== undefined ? COLLECTIONS[col].name : ''} {rar !== undefined ? rarityName(rar) : ''} <CloseIcon size={11} />
+          <button className="btn btn-sm btn-ghost" onClick={() => { set('c', undefined); set('r', undefined); }}> {t('ui.clear')} {col !== undefined ? COLLECTIONS[col].name : ''} {rar !== undefined ? rarityName(rar) : ''} <CloseIcon size={11} />
           </button>
         )}
       </div>
 
       {chips.isLoading ? <div className="grid-auto">{Array.from({ length: 8 }, (_, i) => <Skeleton key={i} h={190} />)}</div> : items.length === 0 ? (
-        <Empty>No caps match. <Link to="/shop">Open a pack</Link> or <Link to="/market">buy one</Link>.</Empty>
+        <Empty>{t('ui.noCapsMatch')} <Link to="/shop">{t('ui.openPack')}</Link> {t('ui.or')} <Link to="/market">{t('ui.buyOne')}</Link>.</Empty>
       ) : (
         <div className="grid-auto" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(195px, 47%), 1fr))' }}>
           {items.map((c) => (
-            <div key={c.asset} className="chip-card card-hover" onClick={() => setOpen(c)}>
+            <div key={c.asset} className="chip-card card-hover" role="button" tabIndex={0}
+              onClick={() => setOpen(c)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(c); } }}>
               <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c, 512)} skin={c.skin} crimp={rarityColor(c.rarity!)}
-                badge={c.flags?.staked ? 'staked' : c.flags?.listed ? 'listed' : c.flags?.fusing ? 'fusing' : c.flags?.soulbound || c.lockUntil ? 'locked' : undefined} />
+                badge={c.flags?.staked ? t('collection.filters.staked') : c.flags?.listed ? t('collection.filters.listed') : c.flags?.fusing ? t('ui.inFusion') : c.flags?.soulbound || c.lockUntil ? t('collection.filters.locked') : undefined} />
               <div className="chip-name">{chipName(c.collection!, c.rarity!)}</div>
               <div className="chip-meta">
-                <span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span>{chipIndexText(c.index) && <> · {chipIndexText(c.index)}</>} · <ElementGlyph element={ELEMENT_OF_COLLECTION[c.collection!]} /> {c.power} pw
+                <span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span>{chipIndexText(c.index) && <> · {chipIndexText(c.index)}</>} · <ElementGlyph element={ELEMENT_OF_COLLECTION[c.collection!]} /> {c.power} {t('ui.power')}
               </div>
-              <div className="chip-meta mono">floor {fmtUsd(floor.data?.floors?.[c.collection!]?.[c.rarity!] ?? null)}</div>
+              <div className="chip-meta mono">{t('market.floor')} {fmtUsd(floor.data?.floors?.[c.collection!]?.[c.rarity!] ?? null)}</div>
             </div>
           ))}
         </div>
       )}
-      {chips.hasNextPage && <button className="btn" onClick={() => chips.fetchNextPage()} disabled={chips.isFetchingNextPage}>Load more</button>}
+      {chips.hasNextPage && <button className="btn" onClick={() => chips.fetchNextPage()} disabled={chips.isFetchingNextPage}>{t('ui.loadMore')}</button>}
 
       <Modal open={!!open} onClose={() => setOpen(null)} title={open ? chipName(open.collection!, open.rarity!) : ''}>
         {open && <ChipDrawer chip={open} onClose={() => setOpen(null)} />}
@@ -129,6 +130,8 @@ export default function Collection() {
 }
 
 function RowFrag({ ci, have, cells, active, activeR, onRow, onCell }: { ci: number; have: number; cells: number[]; active: boolean; activeR?: number; onRow: () => void; onCell: (r: number) => void }) {
+  const COLLECTIONS = useCollections();
+  const t = useT();
   const c = COLLECTIONS[ci];
   const color = collectionColor(ci);
   return (
@@ -139,8 +142,8 @@ function RowFrag({ ci, have, cells, active, activeR, onRow, onCell }: { ci: numb
         <Progress value={have} max={9} tone={have === 9 ? 'acid' : undefined} />
       </div>
       {cells.map((n, ri) => (
-        <div key={ri} className={`cell ${n > 0 ? 'owned' : 'missing'}`} style={{ borderColor: n > 0 ? rarityColor(ri) : undefined, outline: active && activeR === ri ? `2px solid ${color}` : undefined }} onClick={() => onCell(ri)} title={`${c.caps[ri].name} · ${RARITIES[ri]} · ${n} owned`}>
-          {n > 0 ? <ChipArt collection={ci} rarity={ri} size="100%" imageUrl={chipArtUrl(ci, ri)} /> : <span className="tiny muted">{RARITY_SHORT[ri]}</span>}
+        <div key={ri} className={`cell ${n > 0 ? 'owned' : 'missing'}`} style={{ borderColor: n > 0 ? rarityColor(ri) : undefined, outline: active && activeR === ri ? `2px solid ${color}` : undefined }} onClick={() => onCell(ri)} title={`${chipName(ci, ri)} · ${rarityName(ri)} · ${t('ui.ownedCount', { n })}`}>
+          {n > 0 ? <ChipArt collection={ci} rarity={ri} size="100%" imageUrl={chipArtUrl(ci, ri)} /> : <span className="tiny muted">{rarityName(ri)}</span>}
           {n > 0 && <span className={`count ${n > 1 ? 'multi' : ''}`}>{n}</span>}
         </div>
       ))}

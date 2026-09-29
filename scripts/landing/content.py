@@ -129,8 +129,8 @@ T = {
               'Аварийная пауза блокирует новые покупки, листинги и стейки во время инцидента. Она никогда не замораживает то, чем вы уже владеете: анстейк, отмена и вывод продолжают работать.'),
   'rules.7': ('Every action emits an event. Our backend is a cache over those events, not a source of truth — anyone can re-index the four programs and get the same leaderboards.',
               'Каждое действие публикует событие. Наш бэкенд — кэш над этими событиями, а не источник истины: любой может переиндексировать четыре программы и получить те же лидерборды.'),
-  'rules.disclaimer': ('GUTTERCAPS is a collectible game with chance-based mechanics that use real funds. Secondary-market cap value is not guaranteed and can drop to zero. $CG is a utility token for in-game use, not an investment product; nothing here is financial advice. 18+ only. Availability may be restricted in some jurisdictions. Only play with funds you can afford to lose.',
-                       'GUTTERCAPS — коллекционная игра с элементами случайности, в которой используются реальные средства. Стоимость фишек на вторичном рынке не гарантируется и может упасть до нуля. $CG — утилитарный токен для использования в игре, а не инвестиционный продукт; ничто здесь не является финансовым советом. Только 18+. В некоторых юрисдикциях доступ может быть ограничен. Играйте только на средства, которые можете позволить себе потерять.'),
+  'rules.disclaimer': ('GUTTERCAPS is a collectible game with chance-based mechanics that use real funds. Secondary-market cap value is not guaranteed and can drop to zero. $CG is intended for in-game use; its legal classification depends on the applicable law. No return is guaranteed and nothing here is financial advice. 18+ only. Availability may be restricted in some jurisdictions. Only play with funds you can afford to lose.',
+                       'GUTTERCAPS — коллекционная игра с элементами случайности, в которой используются реальные средства. Стоимость фишек на вторичном рынке не гарантируется и может упасть до нуля. $CG предназначен для использования в игре; его правовая классификация зависит от применимого закона. Доходность не гарантируется; это не финансовый совет. Только 18+. В некоторых юрисдикциях доступ может быть ограничен. Играйте только на средства, которые можете позволить себе потерять.'),
 
   'road.h': ('Roadmap: <span class="tag-accent">layers of paint</span>', 'Роадмап: <span class="tag-accent">слои краски</span>'),
   'road.p': ('A mural gets painted in layers — primer, base colours, detail, clear coat. No fixed dates, a clear order, and a rule: nothing touches mainnet before an independent audit.',
@@ -256,3 +256,84 @@ DESC = ('GUTTERCAPS: 72 street-art bottle caps on Solana. Provably-fair packs (S
         'GUTTERCAPS: 72 стрит-арт крышек на Solana. Доказуемо честные паки (Switchboard VRF, on-chain pity), фьюжн 3→1, ставки Cap Slam 3 на 3, эскроу-маркет, стейкинг $CG. Оплата в SOL, USDC или SKR. Для Seeker, на 7 языках.')
 T['meta.title'] = TITLE
 T['meta.desc'] = DESC
+
+# Shared keys for dynamic and accessible text, not just static paragraphs.
+for _i, _step in enumerate(HOWTO):
+    for _j, _part in enumerate(('h', 'p', 'f')):
+        T[f'how.{_i}.{_part}'] = (_step['en'][_j], _step['ru'][_j])
+T.update({
+    'pack.tag0': ('once per wallet', 'один раз на кошелёк'),
+    'pack.tag1': ('the daily driver', 'на каждый день'),
+    'pack.tag2': ('five at once', 'пять за раз'),
+    'pack.tag3': ('featured district only', 'только избранный район'),
+    'pack.caps': ('{n} caps · floor {rarity}', 'Фишек: {n} · минимум {rarity}'),
+    'pack.lock': ('Transfer-locked for {days} days', 'Передача заблокирована на {days} дней'),
+    'pack.noPity': ('No pity counter', 'Без счётчика гаранта'),
+    'pack.hard': ('{rarity} guaranteed by pack {n}', '{rarity} гарантирована к паку {n}'),
+    'pack.soft': ('Soft pity from pack {n}', 'Шансы растут с пака {n}'),
+    'pack.limit': ('Max {n} per wallet per day', 'Не более {n} на кошелёк в день'),
+    'pack.pool': ('SOL · USDC · SKR — funds the season pool', 'SOL · USDC · SKR — пополняет призовой фонд сезона'),
+    'pack.or': ('or {amount}', 'или {amount}'),
+    'level': ('Lv {n}', 'Ур. {n}'),
+    'stats.slot': ('devnet · slot {n}', 'devnet · слот {n}'),
+    'footer.terms': ('Terms', 'Условия'),
+    'footer.privacy': ('Privacy', 'Конфиденциальность'),
+    'nav.language': ('Language', 'Язык'),
+    'community.docs': ('Documentation', 'Документация'),
+    'allocation.label': ('$CG: 55% play, 15% ecosystem, 15% team, 10% treasury, 5% airdrops', '$CG: 55% игра, 15% экосистема, 15% команда, 10% казна, 5% эйрдропы'),
+    'allocation.cap': ('hard cap', 'жёсткий лимит'),
+    'allocation.billion': ('1 billion', '1 миллиард'),
+    'skr.mint': ('SKR mint', 'Mint SKR'),
+    'skr.decimals': ('6 decimals', '6 знаков после запятой'),
+})
+
+# Correct factual ambiguities before translating them. Offers settle in USDC;
+# market listings freeze the cap in place; the SKR discount is not phone-gated.
+T['rules.2'] = (
+    'Odds, floors, pity and prices live in one on-chain config. Changes require the responsible multisig, emit a versioned event and are validated against the open economy package invariants before signing.',
+    'Шансы, минимальная редкость, гарант и цены хранятся в единой конфигурации в блокчейне. Изменения требуют подписи уполномоченного мультисига, выпускают событие с номером версии и перед подписанием проверяются по инвариантам открытого пакета экономики.',
+)
+T['mech.4p'] = (
+    'List in SOL, USDC or SKR; the cap stays frozen in your wallet until sold or cancelled, and payment goes directly to you. Offers in USDC. Floors per district × tier are tracked live; minimum prices stop dust listings.',
+    'Выставляйте за SOL, USDC или SKR: фишка заморожена в вашем кошельке до продажи или отмены, а оплата идёт напрямую вам. Предложения покупки — в USDC. Минимальные цены отслеживаются по району и редкости; нижний порог защищает от пылевых объявлений.',
+)
+T['eco.skr.p'] = (
+    'Packs, market sales and extras accept SKR; offers use USDC. For converted purchases the program checks the Pyth SKR/USD feed and slippage cap in the same transaction. Only the genuine mint below is accepted, never a symbol lookup. The game cannot mint SKR: its prize pool is funded weekly from the public treasury with 15 % of SKR pack revenue, 10 % of SKR market fees and 5 % of SKR extras. Seeker quests, seasons and tournaments use Merkle claims capped per wallet. Wagers, fusion and staking stay in $CG.',
+    'Паки, продажи на маркете и дополнения принимают SKR; предложения покупки — в USDC. При конвертации программа проверяет фид Pyth SKR/USD и лимит проскальзывания в той же транзакции. Принимается только подлинный mint ниже, а не совпадение символа. Игра не выпускает SKR: призовой пул пополняется еженедельно из публичной казны — 15 % выручки паков SKR, 10 % комиссий маркета SKR и 5 % дополнений SKR. Квесты Seeker, сезоны и турниры используют Merkle-выплаты с лимитом на кошелёк. Ставки, слияние и стейкинг остаются в $CG.',
+)
+T['faq.a1'] = (
+    'SOL, USDC and SKR for packs and extras; market sales in those three currencies, offers in USDC. $CG buys Standard and Premium packs (75 % burned). SOL/SKR conversions use Pyth in the same transaction, with a slippage cap.',
+    'SOL, USDC и SKR — для паков и дополнений; продажи на маркете — в этих трёх валютах, предложения покупки — в USDC. $CG оплачивает обычные и премиум-паки (75 % сжигается). SOL/SKR конвертируются по Pyth в той же транзакции с лимитом проскальзывания.',
+)
+T['faq.a2'] = (
+    'SKR is the Solana Mobile Seeker ecosystem token. Any Solana wallet works; no Seeker phone is required. Packs paid in SKR get a 5 % discount; Seeker supports installation through the dApp Store. Only the genuine SKR mint is accepted; the game never mints or burns SKR.',
+    'SKR — токен экосистемы Solana Mobile Seeker. Подойдёт любой Solana-кошелёк, телефон Seeker не обязателен. Паки за SKR дешевле на 5 %; на Seeker доступна установка через dApp Store. Принимается только подлинный mint SKR; игра не выпускает и не сжигает SKR.',
+)
+for _i, (_q, _a, _qr, _ar) in enumerate(FAQ):
+    FAQ[_i] = (T[f'faq.q{_i}'][0], T[f'faq.a{_i}'][0], T[f'faq.q{_i}'][1], T[f'faq.a{_i}'][1])
+T.update({
+    'skr.treasury': ('Treasury (SKR)', 'Казна (SKR)'),
+    'skr.funding': ('Funds the prize pool weekly · ledger:', 'Пополняет призовой пул еженедельно · реестр:'),
+})
+# Rendering metadata is language-independent and checked against economy by check.ts.
+for _p, _m in zip(PACKS, [
+    {'chips': 3, 'floor': 2, 'hardAt': None, 'softStart': None, 'dailyCap': 1},
+    {'chips': 3, 'floor': 1, 'hardAt': 60, 'softStart': 30, 'dailyCap': None},
+    {'chips': 5, 'floor': 2, 'hardAt': 40, 'softStart': 20, 'dailyCap': None},
+    {'chips': 5, 'floor': 3, 'hardAt': 25, 'softStart': 12, 'dailyCap': 5},
+]):
+    _p.update(_m)
+T['faq.a4'] = (
+    'The background worker can open the pack even while the app is closed. If the oracle does not answer, the pending pack stays on your Home screen. After 10 800 slots (about 72 minutes), you can cancel; the program refunds the payment, without relying on support.',
+    'Фоновый обработчик может открыть пак, даже когда приложение закрыто. Если оракул не отвечает, незавершённый пак остаётся на главной странице. После 10 800 слотов (около 72 минут) его можно отменить; программа вернёт оплату без обращения в поддержку.',
+)
+T['faq.a7'] = (
+    'English, Português, Español, Tiếng Việt, Bahasa Indonesia, Filipino and Русский. Choose your language in the app; numbers, dates and amounts follow local formatting without changing token values.',
+    'English, Português, Español, Tiếng Việt, Bahasa Indonesia, Filipino и Русский. Выберите язык в приложении: числа, даты и суммы получат местный формат, но значения токенов не изменятся.',
+)
+T['foot.p'] = (
+    'Open the app and connect a Solana wallet. The Starter pack costs $1.49; opening begins after purchase.',
+    'Откройте приложение и подключите Solana-кошелёк. Стартовый пак стоит $1.49; открытие начинается после покупки.',
+)
+for _i, (_q, _a, _qr, _ar) in enumerate(FAQ):
+    FAQ[_i] = (T[f'faq.q{_i}'][0], T[f'faq.a{_i}'][0], T[f'faq.q{_i}'][1], T[f'faq.a{_i}'][1])

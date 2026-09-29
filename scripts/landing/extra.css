@@ -1,7 +1,6 @@
 
   /* ================= Phase 5 additions (on top of base.css) ================= */
-  /* RU display face: Permanent Marker has no Cyrillic → Rubik Wet Paint (see docs/04 §10a). */
-  html[lang="ru"] { --display: 'Rubik Wet Paint', 'Permanent Marker', cursive; }
+  /* Cyrillic/Vietnamese use the fully vendored Inter face (see locale rules below). */
   html[lang="ru"] .hero-title { font-size: clamp(36px, 7.5vw, 84px); }
   :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   .skip { position: absolute; left: -9999px; top: 8px; z-index: 100; background: var(--asphalt); color: var(--chrome); padding: 8px 12px; border-radius: 8px; }
@@ -304,3 +303,32 @@
     margin: 0 0 14px; box-shadow: 0 10px 26px rgba(0,0,0,.4); }
   @media (max-width: 900px) { .step-photo { max-width: none; } }
   @media (prefers-reduced-motion: reduce) { .step-photo { transition: none; } }
+
+/* Translated district names and rarity labels must expand, not overlap the odds. */
+.district-head > div { min-width: 0; }
+.district-name, .chip-name, .chip-desc, .pack-name, .m-name, .p-tier { overflow-wrap: anywhere; }
+.meter-row { min-height: 54px; height: auto; }
+.m-name { line-height: 1.25; }
+.permit { min-width: 0; }
+.permit .p-tier { line-height: 1.3; }
+@media (max-width: 480px) {
+  .district-head { gap: 10px; }
+  .meter-row .m-name { font-size: 16px !important; }
+}
+
+/* Seven-language navigation and fonts: labels may grow; never crop text. */
+html[data-lang="vi"], html[data-lang="ru"] { --display: 'Inter', sans-serif; }
+.nav-right, .lang-toggle { flex-wrap: wrap; min-width: 0; }
+.lang-toggle { max-width: 100%; border-radius: 16px; }
+.lang-toggle button { min-width: 36px; min-height: 36px; padding: 7px 8px; }
+.btn-spray, .pack-tag, .step-fact, .mech-fact, .nav-links a { white-space: normal; overflow-wrap: anywhere; }
+.pack, .step, .eco-card, .mech-card, .layer, .section-head { min-width: 0; }
+.pack-price, .p-tier, .m-level, .m-odds { overflow-wrap: anywhere; }
+.m-level { min-width: 0; }
+@media (max-width: 720px) {
+  .nav-right { max-width: 100%; gap: 8px; }
+  .lang-toggle { width: 100%; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-title .spray-letter { animation: none; animation-delay: 0s !important; opacity: 1; filter: none; }
+}

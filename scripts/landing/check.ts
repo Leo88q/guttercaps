@@ -21,7 +21,8 @@ const html = readFileSync(resolve(root, 'guttercaps-landing.html'), 'utf8');
 const table = (name: string) => { const i = html.indexOf(`const ${name} = `) + name.length + 9; return JSON.parse(html.slice(i, html.indexOf(';\n', i))); };
 const TIERS = table('TIERS') as { key: string; odds: string; power: number; level: number; weight: number }[];
 const RU = table('RU') as Record<string, string>;
-const PACKS_L = table('PACKS') as { price: string; cg: string | null; en: [string, string, string[]] }[];
+const I18N = table('I18N') as Record<string, Record<string, string>>;
+const PACKS_L = table('PACKS') as { price: string; cg: string | null; en: [string, string, string[]]; chips: number; floor: number; hardAt: number | null; softStart: number | null; dailyCap: number | null }[];
 
 let failures = 0;
 const check = (name: string, actual: unknown, expected: unknown) => {
@@ -61,6 +62,7 @@ check('pack prices', PACKS_L.map((p) => p.price), skus.map((k) => usd(PACKS[k].p
 check('pack $CG prices', PACKS_L.map((p) => p.cg), skus.map((k) => PACKS[k].priceCgMicro == null ? null : `${(PACKS[k].priceCgMicro! / 1e6).toLocaleString('en-US').replace(',', ' ')} $CG`));
 skus.forEach((k, i) => {
   const lines = PACKS_L[i].en[2].join(' | ');
+  check(`${k} localized rendering metadata`, [PACKS_L[i].chips, PACKS_L[i].floor, PACKS_L[i].hardAt, PACKS_L[i].softStart, PACKS_L[i].dailyCap], [PACKS[k].chips, PACKS[k].floor, PACKS[k].pity?.hardAt ?? null, PACKS[k].pity?.softStart ?? null, PACKS[k].dailyCap]);
   has(`${k} chips`, lines, `${PACKS[k].chips} caps`);
   has(`${k} floor`, lines, `floor ${RARITY_PROFILES[PACKS[k].floor].name}`);
   if (PACKS[k].pity) { has(`${k} hard pity`, lines, `by pack ${PACKS[k].pity!.hardAt}`); }
@@ -183,6 +185,13 @@ has('footer age badge', html, '18+');
 
 // ---- i18n coverage: every EN key has a RU string, no empty strings ----
 const keys = Array.from(html.matchAll(/data-i18n(?:-html)?="([^"]+)"/g)).map((m) => m[1]);
+for (const locale of ['en', 'ru', 'pt', 'es', 'vi', 'id', 'fil']) {
+  check(`${locale} keys`, Object.keys(I18N[locale]).sort(), Object.keys(I18N.en).sort());
+  for (const [key, value] of Object.entries(I18N.en)) {
+    const fields = (s: string) => (s.match(/\{\w+\}/g) ?? []).sort().join(',');
+    if (!I18N[locale][key]?.trim() || fields(I18N[locale][key]) !== fields(value)) { failures++; console.error(`invalid ${locale}:${key}`); }
+  }
+}
 check('RU coverage', [...new Set(keys)].filter((k) => !RU[k] || !RU[k].trim()), []);
 
 console.log(failures ? `\n${failures} landing/economy mismatch(es)` : '\nlanding matches the economy model');

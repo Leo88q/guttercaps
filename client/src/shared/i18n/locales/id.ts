@@ -1,7 +1,19 @@
-import type { PartialMessages } from '../index';
+import rights from '../rights/id.json';
+import failures from '../failures/id.json';
+import diagnostics from '../diagnostics/id.json';
+import screens from '../screens/id';
+import catalog from '../catalog/id';
+import ui from '../ui/id';
+import type { Messages } from '../index';
 
 // Bahasa Indonesia. Tanpa bentuk jamak — hanya cabang `other`.
-const id: PartialMessages = {
+const id: Messages = {
+  rights,
+  failures,
+  diagnostics,
+  screens,
+  ui,
+  catalog,
   nav: { home: 'Beranda', caps: 'Caps', shop: 'Toko', market: 'Pasar', arena: 'Arena', stake: 'Stake', quests: 'Misi', leaderboard: 'Peringkat', profile: 'Profil', language: 'Bahasa', more: 'Lainnya' },
   common: {
     connectWallet: 'Hubungkan dompet', connecting: 'Menghubungkan…', signedIn: 'Sudah masuk', signingIn: 'Sedang masuk…', signOut: 'Keluar',
@@ -28,7 +40,7 @@ const id: PartialMessages = {
     solAtPyth: 'SOL via Pyth', skrAtPyth: 'SKR via Pyth', quoteUnavailable: 'kuotasi tidak tersedia — harga on-chain berlaku',
     priceAge: 'Usia harga', priceAgeValue: '{s} dtk (berlaku ≤ 60 dtk on-chain)', priceFeedDown: 'Feed harga sedang diperbarui — coba lagi beberapa detik lagi.', quoteFailed: 'Kuotasi tidak bisa diambil.',
     rentReserve: 'Cadangan rent (dikembalikan setelah dibuka)', oracleFees: 'Oracle + biaya jaringan (perkiraan)', maxSlippage: 'Maks (pelindung slippage 1%)',
-    oddsNow: 'Peluang Anda sekarang (pity {n})', oneSignature: 'Satu tanda tangan: membuat akun keacakan, berkomitmen ke slot berikutnya, dan membayar. Oracle menjawab dalam beberapa detik; lalu Anda menandatangani sekali lagi untuk mint. Oracle menjawab dalam hitungan detik dan crank kami membuka pack untuk Anda meski aplikasi ditutup; jika oracle tidak pernah menjawab, pengembalian penuh dari vault terbuka setelah jendela 1 jamnya berakhir (≈ 72 mnt).',
+    oddsNow: 'Peluang Anda sekarang (pity {n})', oneSignature: ui.packSignatures,
     perPack: '{n, plural, other{# cap}} per pack', floor: 'floor {rarity}', starterOnce: 'sekali per dompet', dailyCap: 'batas {n}/hari',
     pityIn: '{rarity} dijamin dalam {n}', packDisabled: 'sedang dinonaktifkan', was: 'sebelumnya {price}',
     tabs: { packs: 'Pack', services: 'Ekstra' },
@@ -117,15 +129,15 @@ const id: PartialMessages = {
   },
   pass: {
     title: 'Pass musim', tier: 'Tingkat {n}', xp: '{n} XP', claim: 'Klaim', claimed: 'Diklaim',
-    noPass: 'Dapatkan pass musim untuk mengklaim hadiah', pickCap: 'Pilih topi untuk dicat',
+    noPass: 'Dapatkan pass musim untuk mengklaim hadiah', pickCap: 'Pilih tutup botol untuk dicat',
   },
   services: {
-    title: 'Ekstra', subtitle: 'Kosmetik, identitas, dan kenyamanan. Tidak ada di sini yang mengubah peluang, kekuatan, atau reward — tidak pernah.',
+    title: 'Ekstra', subtitle: ui.extrasSubtitle,
     burned: 'dibakar', toTreasury: 'ke kas', noQuote: 'Belum ada harga untuk mata uang ini — pilih yang lain.', buy: 'Beli', owned: 'Dimiliki', active: 'Aktif',
     dailyLeft: 'tersisa {n} hari ini', howItWorks: 'Satu tanda tangan membayar on-chain; $CG dibakar, SOL/USDC/SKR masuk ke kas publik. Pembelian terikat ke dompet ini lewat hash di transaksi — tidak ada yang bisa mengalihkannya.',
     expires: 'berakhir {date}', noPower: 'Tanpa pay-to-win: terverifikasi on-chain', boosterCap: 'Booster: maks 3 per hari', bought: 'Dibeli', buyFailed: 'Pembelian gagal',
-    pickCap: 'Pilih topi untuk dicat', pickSkin: 'Pilih skin', pickTheme: 'Pilih tema', pickPack: 'Pilih pak', pickDistrict: 'Pilih distrik',
-    noFreeCaps: 'Belum punya topi — buka pak dulu', noCompletedDistrict: 'Lengkapi satu distrik (9/9) untuk membuka bannernya',
+    pickCap: 'Pilih tutup botol untuk dicat', pickSkin: 'Pilih skin', pickTheme: 'Pilih tema', pickPack: 'Pilih pak', pickDistrict: 'Pilih distrik',
+    noFreeCaps: 'Belum punya tutup botol — buka pak dulu', noCompletedDistrict: 'Lengkapi satu distrik (9/9) untuk membuka bannernya',
     names: { handle: '@handle', handleChange: 'Ganti handle', capSkin: 'Skin cap', profileTheme: 'Tema profil', arenaEmotePack: 'Paket emote arena', extraBenchSlots: '+2 preset meja', seasonPass: 'Season pass', booster: 'Booster fusi', packSkipAnim: 'Reveal instan', districtBanner: 'Banner distrik' },
     blurbs: {
       handle: 'Nama unik di peringkat, arena, dan URL profil Anda.', handleChange: 'Ganti nama sekali per 30 hari. Handle lama dilepas setelah 90 hari.',

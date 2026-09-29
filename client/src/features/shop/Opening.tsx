@@ -40,7 +40,7 @@ export default function Opening() {
   const live: PackFlowState | null = flow.state ?? (tracked ? {
     phase: tracked.phase, nonce: nonce ?? 0n, sku: tracked.sku, qty: tracked.qty, currency: tracked.currency as CurrencyCode,
     randomness: tracked.randomness ? new PublicKey(tracked.randomness) : undefined, buySignature: tracked.buySignature,
-    openSignatures: tracked.openSignatures, error: tracked.error, revealAttempt: tracked.revealAttempt,
+    openSignatures: tracked.openSignatures, error: tracked.error, errorDiagnostic: tracked.errorDiagnostic, revealAttempt: tracked.revealAttempt,
     opened: tracked.opened.map((o) => ({ buyer: PublicKey.default, sku: tracked.sku, nonce: nonce ?? 0n, count: o.assets.length, assets: o.assets.map((a) => new PublicKey(a)), rarities: o.rarities, collections: o.collections, roll: Uint8Array.from(o.roll.match(/.{2}/g)!.map((h) => parseInt(h, 16))), pityBefore: o.pityBefore, pityAfter: o.pityAfter })),
   } : null);
 
@@ -48,7 +48,7 @@ export default function Opening() {
     return (
       <div className="page page-bg page-bg-shop">
         <h1 className="page-title">{t('opening.title')}</h1>
-        <div className="empty">No record of this purchase on this device.{pending.data ? ' The pack exists on-chain — reconnect with the buying wallet to continue.' : ''} <Link to="/shop">Back to shop</Link></div>
+        <div className="empty">{t('ui.noPurchase')}{pending.data ? ` ${t('screens.reconnectPackBuyer')}` : ''} <Link to="/shop">{t('ui.backShop')}</Link></div>
       </div>
     );
   }
@@ -67,8 +67,8 @@ export default function Opening() {
       {chips.length > 0 && (
         <div className="card stack">
           <div className="row between">
-            <div className="strong">Result{best >= 0 && <span style={{ color: rarityColor(best), marginLeft: 8 }}>best: {rarityName(best)}</span>}</div>
-            <button className="btn btn-sm" onClick={() => enqueue(chips.map((c) => ({ id: `${c.asset}-replay`, asset: c.asset, rarity: c.rarity, collectionIdx: c.collection })))}>Replay reveal</button>
+            <div className="strong">{t('ui.result')}{best >= 0 && <span style={{ color: rarityColor(best), marginLeft: 8 }}>{t('ui.best')}: {rarityName(best)}</span>}</div>
+            <button className="btn btn-sm" onClick={() => enqueue(chips.map((c) => ({ id: `${c.asset}-replay`, asset: c.asset, rarity: c.rarity, collectionIdx: c.collection })))}>{t('ui.replayReveal')}</button>
           </div>
           <div className="grid-auto" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(165px, 47%), 1fr))' }}>
             {chips.map((c) => (
@@ -80,14 +80,14 @@ export default function Opening() {
             ))}
           </div>
           {live.openSignatures[0] && (
-            <Link to={`/verify/${live.openSignatures[0]}`} className="btn btn-sm row" style={{ gap: 6, alignSelf: 'flex-start' }}>Verify this roll (provably fair) <ChevronRightIcon size={13} /></Link>
+            <Link to={`/verify/${live.openSignatures[0]}`} className="btn btn-sm row" style={{ gap: 6, alignSelf: 'flex-start' }}>{t('ui.verifyReveal')} <ChevronRightIcon size={13} /></Link>
           )}
         </div>
       )}
 
       <div className="row-wrap">
-        <Link to="/shop" className="btn">Buy another</Link>
-        <Link to="/collection" className="btn">Go to collection</Link>
+        <Link to="/shop" className="btn">{t('ui.buyAnother')}</Link>
+        <Link to="/collection" className="btn">{t('ui.goCollection')}</Link>
       </div>
     </div>
   );

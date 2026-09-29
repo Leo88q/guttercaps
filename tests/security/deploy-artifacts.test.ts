@@ -370,3 +370,18 @@ test('each deploy-surface rule fails on a deliberately broken input', () => {
   assert.notEqual(unpinned, DOCKERFILE_CLIENT, 'the ENV mutation must actually apply');
   assert.ok(clientDockerfileProblems(unpinned).some((p) => p.includes('VITE_API_MOCK')), 'the rule must reject a mock switch that is not pinned by ENV');
 });
+
+
+test('API Docker build smoke imports TypeScript with its production loader on Node 22.13', () => {
+  const dockerfile = read('ops/deploy/Dockerfile.api');
+  const check = (text: string) => {
+    const command = text.split('\n').find(line => line.includes("import('@guttercaps/economy')"));
+    assert.ok(command, 'economy workspace import smoke must remain in the image build');
+    assert.match(command, /node --import tsx --input-type=module/, 'Node 22.13 needs the TypeScript loader');
+  };
+  check(dockerfile);
+  const backend = JSON.parse(read('backend/package.json'));
+  assert.ok(backend.dependencies.tsx, 'tsx must survive npm ci --omit=dev');
+  assert.throws(() => check(dockerfile.replace('--import tsx --input-type=module', '--input-type=module')),
+    /TypeScript loader/);
+});

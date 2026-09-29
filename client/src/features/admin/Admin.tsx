@@ -1,3 +1,5 @@
+import { ErrorNotice } from '@/shared/ui/ErrorNotice';
+import { diagnosticText, warningText, fraudSignalLabel } from '@/shared/lib/diagnostic';
 // Ops panel (docs/03 §3.5) — live economy tuning without a redeploy.
 //
 // The API (`/v1/admin/*`, backend/src/admin.ts) is gated by ADMIN_WALLETS + CSRF and NEVER signs:
@@ -8,8 +10,8 @@
 // the daily-flow simulator, the PRD KPI dashboard, the anti-fraud queue and the audit log.
 // Money-like numbers (fees, prices, liabilities) live inside CleanZone per the design system.
 import { useMemo, useState, type ReactNode } from 'react';
-import { Navigate, useSearchParams } from 'react-router-dom';
-import { COLLECTIONS } from '@/shared/lib/lore';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import { useCollections } from '@/shared/lib/lore';
 import {
   useAdminAudit, useAdminFraud, useAdminKpi, useAdminParams, useAdminSimulate, useKillSwitch, useMe, useProposeParams, useResolveFraud,
   type AdminParams, type ParamsProposal, type Proposal, type SimulateReport,
@@ -18,16 +20,16 @@ import { ApiError } from '@/api/client';
 import { CleanZone, Empty, KV, Pill, Skeleton, Stat } from '@/shared/ui/primitives';
 import { AlertIcon, CheckIcon, CrossIcon, ExternalIcon } from '@/shared/ui/action-icons';
 import { CleanConfirmButton } from '@/shared/ui/buttons';
-import { fmtCents, fmtPct, fmtUnits, shortKey, timeAgo } from '@/shared/lib/format';
-import { RARITY_SHORT } from '@/shared/lib/rarity';
+import { fmtCents, fmtPct, fmtUnits, fmtUsd, shortKey, timeAgo } from '@/shared/lib/format';
+import { RARITIES, rarityName, packName } from '@/shared/lib/rarity';
 import { useUiStore } from '@/app/store/ui';
 import { EXPLORER } from '@/app/config';
-import { useT, type MessageKey } from '@/shared/i18n';
+import { t, useT, fmtLocale, getLocale, LOCALE_META, type MessageKey } from '@/shared/i18n';
 
 type Tab = 'params' | 'kill' | 'simulate' | 'kpi' | 'fraud' | 'audit';
 const TABS: Tab[] = ['params', 'kill', 'simulate', 'kpi', 'fraud', 'audit'];
 const SLICES = ['chipStaking', 'tokenStaking', 'quests', 'pvpSeason', 'eventsReserve'] as const;
-const SKU_NAMES = ['Starter', 'Standard', 'Premium', 'Limited'];
+const sliceLabel = (name: string) => name === 'quests' ? t('quests.title') : SLICES.includes(name as typeof SLICES[number]) ? t(`screens.${name}` as MessageKey) : name;
 type Pack = NonNullable<NonNullable<AdminParams['gameConfig']>['packs']>[number];
 
 /** Turn the API's `Proposal` (200) or the 422 `details` into one shape the UI renders. */
@@ -47,9 +49,10 @@ export default function Admin() {
     <div className="page stack">
       <div>
         <h1 className="page-title">{t('admin.title')}</h1>
+        <Link to="/admin/rights">{t('rights.staff')}</Link>
         <p className="page-sub">{t('admin.subtitle')}</p>
       </div>
-      <div className="tabs">
+      <div className="tabs admin-tabs">
         {TABS.map((x) => <Pill key={x} active={x === tab} onClick={() => setParams(x === 'params' ? {} : { tab: x }, { replace: true })}>{t(`admin.tabs.${x}` as MessageKey)}</Pill>)}
       </div>
       {me.isLoading && <Skeleton h={200} />}
@@ -61,11 +64,12 @@ export default function Admin() {
 }
 
 // ------------------------------------------------------------------ shared: proposal result (diff, violations, warnings, instruction bytes)
-function ProposalView({ p, onReset }: { p: Proposal; onReset?: () => void }) {
+type ProposalResult = Proposal & { error?: unknown };
+export function ProposalView({ p, onReset }: { p: ProposalResult; onReset?: () => void }) {
   const t = useT();
   const toast = useUiStore((s) => s.toast);
   const json = JSON.stringify(p.instructions, null, 2);
-  const copy = () => { void navigator.clipboard.writeText(json); toast({ kind: 'success', title: t('common.copied') }); };
+  const copy = () => { void navigator.clipboard.writeText(json); toast({ kind: 'success', title: { key: 'common.copied' } }); };
   const download = () => {
     const blob = new Blob([json], { type: 'application/json' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `guttercaps-proposal-${Date.now()}.json`; a.click(); URL.revokeObjectURL(a.href);
@@ -76,8 +80,9 @@ function ProposalView({ p, onReset }: { p: Proposal; onReset?: () => void }) {
         <div className="strong">{p.ok ? t('admin.proposal.ok') : t('admin.proposal.rejected')}</div>
         {onReset && <button className="btn btn-sm" onClick={onReset}>{t('admin.proposal.reset')}</button>}
       </div>
-      {p.violations?.map((v, i) => <div key={i} className="warn"><span className="mono">{v.rule}</span> · <span className="mono">{v.path || '—'}</span>: {v.message}</div>)}
-      {p.warnings?.map((w, i) => <div key={i} className="small muted row" style={{ gap: 5 }}><AlertIcon size={12} /> {w}</div>)}
+      {p.error !== undefined && <div className="warn"><ErrorNotice error={p.error} /></div>}
+      {p.violations?.map((v, i) => <div key={i} className="warn" style={{ overflowWrap: 'anywhere' }}><span className="mono">{v.rule}</span> · <span className="mono">{v.path || '—'}</span>: {diagnosticText(v.i18n, v.message ?? v.rule ?? '—')}</div>)}
+      {p.warnings?.map((w, i) => <div key={i} className="small muted row" style={{ gap: 5, flexWrap: 'wrap', overflowWrap: 'anywhere' }}><AlertIcon size={12} /> {warningText(w, p.warningDetails?.[i])}</div>)}
       {p.diff && Object.keys(p.diff).length > 0 && (
         <CleanZone className="stack-sm">
           <div className="label">{t('admin.proposal.diff')}</div>
@@ -92,7 +97,7 @@ function ProposalView({ p, onReset }: { p: Proposal; onReset?: () => void }) {
           {p.instructions.map((ix, i) => (
             <div key={i} className="small stack-sm" style={{ borderLeft: '3px solid var(--cg-neon-cyan)', paddingLeft: 10 }}>
               <div><span className="mono">{ix.program}.{ix.name}</span> · {t('admin.proposal.signer')} <span className="mono">{shortKey(ix.accounts?.find((a) => a.isSigner)?.pubkey, 6)}</span></div>
-              <div className="tiny mono muted" style={{ wordBreak: 'break-all' }}>data(base64) {ix.data}</div>
+              <div className="tiny mono muted" style={{ wordBreak: 'break-all' }}>{t('screens.dataBase64')} {ix.data}</div>
             </div>
           ))}
           <div className="row">
@@ -109,10 +114,11 @@ const fmtDiff = (v: unknown): string => (v === null || v === undefined ? '—' :
 
 // ------------------------------------------------------------------ params
 function ParamsTab() {
+  const COLLECTIONS = useCollections();
   const t = useT();
   const q = useAdminParams();
   const propose = useProposeParams();
-  const [result, setResult] = useState<Proposal | undefined>();
+  const [result, setResult] = useState<ProposalResult | undefined>();
   const [draft, setDraft] = useState<{ marketFeeBps?: string; skrDiscountBps?: string; featuredCollection?: string; split?: string[]; packs: Record<number, { priceUsdCents?: string; oddsBps?: string[]; dailyCap?: string; enabled?: boolean }>; note: string }>({ packs: {}, note: '' });
   const cfg = q.data?.gameConfig;
   const em = q.data?.emission;
@@ -137,19 +143,19 @@ function ParamsTab() {
   }, [draft, cfg, em]);
   const touched = Object.keys(body).filter((k) => k !== 'note').length > 0;
   const submit = async () => {
-    try { setResult(await propose.mutateAsync(body)); } catch (e) { const p = proposalOf(e); if (p) setResult(p); else setResult({ ok: false, violations: [{ path: '', rule: 'error', message: String((e as Error)?.message ?? e) }], warnings: [], instructions: [], diff: {} }); }
+    try { setResult(await propose.mutateAsync(body)); } catch (e) { const p = proposalOf(e); if (p) setResult(p); else setResult({ ok: false, error: e, violations: [], warnings: [], instructions: [], diff: {} }); }
   };
   const setPack = (sku: number, patch: Partial<{ priceUsdCents: string; oddsBps: string[]; dailyCap: string; enabled: boolean }>) => setDraft((d) => ({ ...d, packs: { ...d.packs, [sku]: { ...d.packs[sku], ...patch } } }));
   if (q.isLoading) return <Skeleton h={400} />;
-  if (q.error || !cfg || !em) return <div className="warn">{t('admin.params.unavailable', { error: String((q.error as Error)?.message ?? '') })}</div>;
+  if (q.error || !cfg || !em) return <div className="warn">{t('admin.params.unavailable', { error: '' })}{q.error && <ErrorNotice error={q.error} />}</div>;
   const gr = q.data?.guardRails ?? {};
   const liab = cfg.liabilities ?? {};
   return (
     <div className="stack">
-      <div className="grid-3">
+      <div className="grid-3 admin-summary">
         <div className="card"><Stat label={t('admin.params.version')} value={cfg.paramsVersion ?? 0} /></div>
-        <div className="card"><Stat label={t('admin.params.slot')} value={q.data?.fetchedSlot?.toLocaleString('en-US') ?? '—'} /></div>
-        <div className="card"><Stat label={t('admin.params.paused')} value={<span style={{ color: cfg.paused || em.paused ? 'var(--cg-electric-orange)' : 'var(--cg-acid-green)' }}>{[cfg.paused ? 'chip_core' : null, em.paused ? 'staking' : null].filter(Boolean).join(' + ') || 'none'}</span>} mono={false} /></div>
+        <div className="card"><Stat label={t('admin.params.slot')} value={q.data?.fetchedSlot?.toLocaleString(LOCALE_META[getLocale()].tag) ?? '—'} /></div>
+        <div className="card"><Stat label={t('admin.params.paused')} value={<span style={{ color: cfg.paused || em.paused ? 'var(--cg-electric-orange)' : 'var(--cg-acid-green)' }}>{[cfg.paused ? 'chip_core' : null, em.paused ? 'staking' : null].filter(Boolean).join(' + ') || t('common.none')}</span>} mono={false} /></div>
       </div>
 
       <CleanZone className="stack-sm">
@@ -181,11 +187,11 @@ function ParamsTab() {
       <div className="card stack-sm">
         <div className="row between">
           <div className="strong">{t('admin.params.split')}</div>
-          <span className="tiny muted">{t('admin.params.splitRule', { delta: gr.split?.maxDeltaBps ?? 1000, next: em.nextSplitChangeAt ? new Date(em.nextSplitChangeAt * 1000).toLocaleDateString() : '—' })}</span>
+          <span className="tiny muted">{t('admin.params.splitRule', { delta: gr.split?.maxDeltaBps ?? 1000, next: em.nextSplitChangeAt ? fmtLocale.date(em.nextSplitChangeAt * 1000, getLocale(), { dateStyle: 'short' }) : '—' })}</span>
         </div>
         <div className="grid-3">
           {SLICES.map((name, i) => (
-            <Field key={name} label={`${name} (${fmtPct(em.splitBps?.[i] ?? 0, 0)} · ${t('admin.params.sliceBudget')} ${fmtUnits(em.sliceBudgetMicro?.[i], 6, 0)} $CG)`} value={draft.split?.[i] ?? ''} placeholder={String(em.splitBps?.[i] ?? 0)} onChange={(v) => { const s = [...(draft.split ?? ['', '', '', '', ''])]; s[i] = v; setDraft({ ...draft, split: s }); }} />
+            <Field key={name} label={`${sliceLabel(name)} (${fmtPct(em.splitBps?.[i] ?? 0, 0)} · ${t('admin.params.sliceBudget')} ${fmtUnits(em.sliceBudgetMicro?.[i], 6, 0)} $CG)`} value={draft.split?.[i] ?? ''} placeholder={String(em.splitBps?.[i] ?? 0)} onChange={(v) => { const s = [...(draft.split ?? ['', '', '', '', ''])]; s[i] = v; setDraft({ ...draft, split: s }); }} />
           ))}
         </div>
       </div>
@@ -195,7 +201,7 @@ function ParamsTab() {
         <div className="tiny muted">{t('admin.params.packsRule', { common: (gr.minCommonBps ?? 500) / 100, top2: (gr.maxTop2BpsStandard ?? 200) / 100 })}</div>
         <div style={{ overflowX: 'auto' }}>
           <table className="table">
-            <thead><tr><th>SKU</th><th>{t('admin.params.price')}</th>{RARITY_SHORT.map((r) => <th key={r} style={{ textAlign: 'right' }}>{r}</th>)}<th>Σ</th><th>cap/d</th><th>on</th></tr></thead>
+            <thead><tr><th>SKU</th><th>{t('admin.params.price')}</th>{RARITIES.map((r, i) => <th key={r} style={{ textAlign: 'right' }}>{rarityName(i)}</th>)}<th>Σ</th><th>{t('screens.dailyLimit')}</th><th>{t('screens.enabled')}</th></tr></thead>
             <tbody>
               {(cfg.packs ?? []).map((p: Pack) => {
                 const d = draft.packs[p.sku ?? 0] ?? {};
@@ -203,14 +209,14 @@ function ParamsTab() {
                 const sum = odds.reduce((a, b) => a + b, 0);
                 return (
                   <tr key={p.sku}>
-                    <td><b>{SKU_NAMES[p.sku ?? 0]}</b><div className="tiny muted">{p.chips} chips · pity {p.pity ? `${RARITY_SHORT[p.pity.tier ?? 0]}@${p.pity.hardAt}` : '—'}</div></td>
+                    <td><b>{packName(p.sku ?? 0)}</b><div className="tiny muted">{t('screens.capsPity', { n: p.chips ?? 0, pity: p.pity ? `${rarityName(p.pity.tier ?? 0)}@${p.pity.hardAt}` : '—' })}</div></td>
                     <td><input className="input mono" style={{ width: 90, minHeight: 32 }} placeholder={String(p.priceUsdCents)} value={d.priceUsdCents ?? ''} onChange={(e) => setPack(p.sku ?? 0, { priceUsdCents: e.target.value })} /><div className="tiny muted">{fmtCents(p.priceUsdCents ?? 0)}</div></td>
-                    {RARITY_SHORT.map((_, i) => (
+                    {RARITIES.map((_, i) => (
                       <td key={i}><input className="input mono" style={{ width: 62, minHeight: 32, textAlign: 'right' }} placeholder={String(p.oddsBps?.[i] ?? 0)} value={d.oddsBps?.[i] ?? ''} onChange={(e) => { const o = [...(d.oddsBps ?? Array(9).fill(''))]; o[i] = e.target.value; setPack(p.sku ?? 0, { oddsBps: o }); }} /></td>
                     ))}
                     <td className="mono" style={{ color: sum === 10_000 ? undefined : 'var(--cg-electric-orange)' }}>{sum}</td>
                     <td><input className="input mono" style={{ width: 60, minHeight: 32 }} placeholder={String(p.dailyCap ?? 0)} value={d.dailyCap ?? ''} onChange={(e) => setPack(p.sku ?? 0, { dailyCap: e.target.value })} /></td>
-                    <td><input type="checkbox" checked={d.enabled ?? p.enabled ?? false} onChange={(e) => setPack(p.sku ?? 0, { enabled: e.target.checked })} aria-label={`${SKU_NAMES[p.sku ?? 0]} enabled`} /></td>
+                    <td><input type="checkbox" checked={d.enabled ?? p.enabled ?? false} onChange={(e) => setPack(p.sku ?? 0, { enabled: e.target.checked })} aria-label={`${packName(p.sku ?? 0)} · ${t('screens.enabled')}`} /></td>
                   </tr>
                 );
               })}
@@ -220,8 +226,8 @@ function ParamsTab() {
       </div>
 
       <div className="card stack-sm">
-        <Field label={t('admin.params.note')} value={draft.note} placeholder="Q4 pricing — see notion/…" onChange={(v) => setDraft({ ...draft, note: v })} />
-        <div className="row">
+        <Field label={t('admin.params.note')} value={draft.note} placeholder={t('screens.pricingNote')} onChange={(v) => setDraft({ ...draft, note: v })} />
+        <div className="row-wrap">
           <CleanConfirmButton onClick={() => void submit()} disabled={!touched || propose.isPending}>{propose.isPending ? t('admin.params.checking') : t('admin.params.propose')}</CleanConfirmButton>
           <button className="btn" onClick={() => { setDraft({ packs: {}, note: '' }); setResult(undefined); }}>{t('admin.params.clear')}</button>
           <span className="tiny muted">{t('admin.params.nothingSent')}</span>
@@ -234,11 +240,11 @@ function ParamsTab() {
         {(q.data?.history ?? []).length === 0 && <div className="small muted">{t('admin.params.noHistory')}</div>}
         {(q.data?.history ?? []).map((h) => (
           <div key={h.signature} className="row between small">
-            <span>v{h.version} · <span className="mono">{shortKey(h.admin, 6)}</span></span>
-            <span className="muted">{h.blockTime ? timeAgo(h.blockTime * 1000) : `slot ${h.slot}`} {h.signature && <a href={EXPLORER.tx(h.signature)} target="_blank" rel="noreferrer" aria-label="explorer"><ExternalIcon size={12} /></a>}</span>
+            <span>{t('screens.version')} {h.version} · <span className="mono">{shortKey(h.admin, 6)}</span></span>
+            <span className="muted">{h.blockTime ? timeAgo(h.blockTime * 1000) : `${t('ui.slot')} ${h.slot}`} {h.signature && <a href={EXPLORER.tx(h.signature)} target="_blank" rel="noreferrer" aria-label={t('ui.explorer')}><ExternalIcon size={12} /></a>}</span>
           </div>
         ))}
-        <div className="tiny muted mono">admin {shortKey(cfg.admin, 6)} · pauser {shortKey(cfg.pauser, 6)} · treasury {shortKey(cfg.treasury, 6)} · quest/season/set/burn oracles {shortKey(em.questOracle)} / {shortKey(em.seasonOracle)} / {shortKey(em.setOracle)} / {shortKey(em.burnOracle)}</div>
+        <div className="tiny muted mono">{t('screens.adminRole')} {shortKey(cfg.admin, 6)} · {t('screens.pauserRole')} {shortKey(cfg.pauser, 6)} · {t('common.treasury')} {shortKey(cfg.treasury, 6)} · {t('screens.oracleRoles')} {shortKey(em.questOracle)} / {shortKey(em.seasonOracle)} / {shortKey(em.setOracle)} / {shortKey(em.burnOracle)}</div>
       </div>
     </div>
   );
@@ -261,9 +267,9 @@ function KillSwitchTab() {
   const [program, setProgram] = useState<'chip_core' | 'staking' | 'arena'>('chip_core');
   const [paused, setPaused] = useState(true);
   const [reason, setReason] = useState('');
-  const [result, setResult] = useState<Proposal | undefined>();
+  const [result, setResult] = useState<ProposalResult | undefined>();
   const submit = async () => {
-    try { setResult(await kill.mutateAsync({ program, paused, reason: paused ? reason : undefined })); } catch (e) { setResult(proposalOf(e) ?? { ok: false, violations: [{ path: '', rule: 'error', message: String((e as Error)?.message ?? e) }], warnings: [], instructions: [], diff: {} }); }
+    try { setResult(await kill.mutateAsync({ program, paused, reason: paused ? reason : undefined })); } catch (e) { setResult(proposalOf(e) ?? { ok: false, error: e, violations: [], warnings: [], instructions: [], diff: {} }); }
   };
   return (
     <div className="stack">
@@ -276,8 +282,8 @@ function KillSwitchTab() {
           <Pill active={paused} tone="danger" onClick={() => setPaused(true)}>{t('admin.kill.pause')}</Pill>
           <Pill active={!paused} tone="ok" onClick={() => setPaused(false)}>{t('admin.kill.unpause')}</Pill>
         </div>
-        {paused && <Field label={t('admin.kill.reason')} value={reason} placeholder="oracle incident #…" onChange={setReason} />}
-        <div className="row">
+        {paused && <Field label={t('admin.kill.reason')} value={reason} placeholder={t('screens.incidentNote')} onChange={setReason} />}
+        <div className="row-wrap">
           <CleanConfirmButton onClick={() => void submit()} disabled={kill.isPending || (paused && reason.trim().length < 8)}>{t('admin.kill.encode')}</CleanConfirmButton>
           <span className="tiny muted">{paused ? t('admin.kill.pauserNote') : t('admin.kill.adminNote')}</span>
         </div>
@@ -308,11 +314,11 @@ function SimulateTab() {
       <div className="small muted">{t('admin.sim.explainer')}</div>
       <div className="card stack-sm">
         <div className="grid-3">
-          {ASSUMPTION_KEYS.map((k) => <Field key={k} label={k} value={over[k] ?? ''} placeholder={report ? String((report.assumptions as Record<string, number> | undefined)?.[k] ?? '') : t('admin.sim.baseline')} onChange={(v) => setOver({ ...over, [k]: v })} />)}
+          {ASSUMPTION_KEYS.map((k) => <Field key={k} label={t(`screens.${k}`)} value={over[k] ?? ''} placeholder={report ? String((report.assumptions as Record<string, number> | undefined)?.[k] ?? '') : t('admin.sim.baseline')} onChange={(v) => setOver({ ...over, [k]: v })} />)}
         </div>
         <div className="grid-3">
-          <label className="stack-sm small"><span className="label">{t('admin.sim.year')}</span><select className="input select" value={year} onChange={(e) => setYear(Number(e.target.value))}>{[0, 1, 2, 3, 4, 5, 6, 7].map((y) => <option key={y} value={y}>Y{y + 1}</option>)}</select></label>
-          {SLICES.map((name, i) => <Field key={name} label={`split ${name} (bps)`} value={split[i]} placeholder={t('admin.sim.live')} onChange={(v) => { const s = [...split]; s[i] = v; setSplit(s); }} />)}
+          <label className="stack-sm small"><span className="label">{t('admin.sim.year')}</span><select className="input select" value={year} onChange={(e) => setYear(Number(e.target.value))}>{[0, 1, 2, 3, 4, 5, 6, 7].map((y) => <option key={y} value={y}>{t('screens.year', { n: y + 1 })}</option>)}</select></label>
+          {SLICES.map((name, i) => <Field key={name} label={`${t('screens.slice')} · ${sliceLabel(name)} (bps)`} value={split[i]} placeholder={t('admin.sim.live')} onChange={(v) => { const s = [...split]; s[i] = v; setSplit(s); }} />)}
         </div>
         <div className="row"><CleanConfirmButton onClick={() => void run()} disabled={sim.isPending}>{t('admin.sim.run')}</CleanConfirmButton></div>
       </div>
@@ -323,9 +329,9 @@ function SimulateTab() {
             <thead><tr><th>{t('admin.sim.metric')}</th><th style={{ textAlign: 'right' }}>{t('admin.sim.baselineCol')}</th><th style={{ textAlign: 'right' }}>{t('admin.sim.scenario')}</th><th style={{ textAlign: 'right' }}>Δ</th></tr></thead>
             <tbody>
               {rows.map((k) => (
-                <tr key={k}><td>{k}</td><td className="mono" style={{ textAlign: 'right' }}>{fmtNum(report.baseline?.[k])}</td><td className="mono" style={{ textAlign: 'right' }}>{fmtNum(report.scenario?.[k])}</td><td className="mono" style={{ textAlign: 'right', color: ((report.delta as Record<string, number> | undefined)?.[k] ?? 0) > 0 ? 'var(--cg-acid-green)' : 'var(--gc-muted)' }}>{fmtNum((report.delta as Record<string, number> | undefined)?.[k])}</td></tr>
+                <tr key={k}><td>{t(`screens.${k}`)}</td><td className="mono" style={{ textAlign: 'right' }}>{fmtNum(report.baseline?.[k])}</td><td className="mono" style={{ textAlign: 'right' }}>{fmtNum(report.scenario?.[k])}</td><td className="mono" style={{ textAlign: 'right', color: ((report.delta as Record<string, number> | undefined)?.[k] ?? 0) > 0 ? 'var(--cg-acid-green)' : 'var(--gc-muted)' }}>{fmtNum((report.delta as Record<string, number> | undefined)?.[k])}</td></tr>
               ))}
-              {(report.slices ?? []).map((s) => <tr key={s.name}><td className="muted">slice · {s.name}</td><td className="mono muted" style={{ textAlign: 'right' }}>{fmtPct(s.bps ?? 0, 0)}</td><td className="mono" style={{ textAlign: 'right' }}>{fmtNum(s.cgPerDay)} $CG/d</td><td /></tr>)}
+              {(report.slices ?? []).map((s) => <tr key={s.name}><td className="muted">{t('screens.slice')} · {sliceLabel(s.name ?? '')}</td><td className="mono muted" style={{ textAlign: 'right' }}>{fmtPct(s.bps ?? 0, 0)}</td><td className="mono" style={{ textAlign: 'right' }}>{t('screens.perDayAmount', { amount: `${fmtNum(s.cgPerDay)} $CG` })}</td><td /></tr>)}
             </tbody>
           </table>
           </div>
@@ -335,63 +341,63 @@ function SimulateTab() {
     </div>
   );
 }
-const fmtNum = (v: number | undefined | null) => (v === undefined || v === null ? '—' : Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('en-US') : String(v));
+const fmtNum = (v: number | undefined | null) => (v === undefined || v === null ? '—' : new Intl.NumberFormat(LOCALE_META[getLocale()].tag, { maximumFractionDigits: Math.abs(v) >= 1000 ? 0 : 3 }).format(v));
 
 // ------------------------------------------------------------------ KPI
 function KpiTab() {
   const t = useT();
   const q = useAdminKpi();
   if (q.isLoading) return <Skeleton h={400} />;
-  if (!q.data) return <div className="warn">{t('admin.params.unavailable', { error: String((q.error as Error)?.message ?? '') })}</div>;
+  if (!q.data) return <div className="warn">{t('admin.params.unavailable', { error: '' })}{q.error && <ErrorNotice error={q.error} />}</div>;
   const k = q.data;
-  const pct = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${(v * 100).toFixed(1)}%`);
+  const pct = (v: number | null | undefined) => (v === null || v === undefined ? '—' : new Intl.NumberFormat(LOCALE_META[getLocale()].tag, { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(v));
   const fraud = (k.fraud ?? {}) as { openSignals?: Record<string, number>; paused?: number; shadowBanned?: number; trusted?: number };
   const fin = (k.finality ?? {}) as { lagSlots?: number; horizonSlot?: number; consumedAlerts?: number };
   return (
     <div className="stack">
       <div className="tiny muted">{t('admin.kpi.asOf', { time: k.asOf ? timeAgo(k.asOf) : '—' })}</div>
-      <div className="grid-3">
-        <div className="card"><Stat label="DAU" value={k.players?.dau?.toLocaleString('en-US') ?? '—'} /></div>
-        <div className="card"><Stat label={t('admin.kpi.wallets')} value={k.players?.wallets?.toLocaleString('en-US') ?? '—'} /></div>
-        <div className="card"><Stat label={t('admin.kpi.payers30')} value={k.players?.payers30d?.toLocaleString('en-US') ?? '—'} /></div>
-        <div className="card"><Stat label="D1" value={pct(k.retention?.d1?.rate)} /></div>
-        <div className="card"><Stat label="D7" value={pct(k.retention?.d7?.rate)} /></div>
-        <div className="card"><Stat label="D30" value={pct(k.retention?.d30?.rate)} /></div>
+      <div className="grid-3 admin-summary">
+        <div className="card"><Stat label={t('screens.dau')} value={k.players?.dau?.toLocaleString(LOCALE_META[getLocale()].tag) ?? '—'} /></div>
+        <div className="card"><Stat label={t('admin.kpi.wallets')} value={k.players?.wallets?.toLocaleString(LOCALE_META[getLocale()].tag) ?? '—'} /></div>
+        <div className="card"><Stat label={t('admin.kpi.payers30')} value={k.players?.payers30d?.toLocaleString(LOCALE_META[getLocale()].tag) ?? '—'} /></div>
+        <div className="card"><Stat label={t('screens.retention', { n: 1 })} value={pct(k.retention?.d1?.rate)} /></div>
+        <div className="card"><Stat label={t('screens.retention', { n: 7 })} value={pct(k.retention?.d7?.rate)} /></div>
+        <div className="card"><Stat label={t('screens.retention', { n: 30 })} value={pct(k.retention?.d30?.rate)} /></div>
         <div className="card"><Stat label={t('admin.kpi.conversion')} value={pct(k.players?.conversionToFirstPack)} /></div>
         <div className="card"><Stat label={t('admin.kpi.starterToPaid')} value={pct(k.players?.starterToPaidConversion)} /></div>
-        <div className="card"><Stat label="ARPPU 30d" value={k.revenue?.arppu30d != null ? `$${k.revenue.arppu30d.toFixed(2)}` : '—'} /></div>
+        <div className="card"><Stat label={t('screens.arppu')} value={k.revenue?.arppu30d != null ? new Intl.NumberFormat(LOCALE_META[getLocale()].tag, { style: 'currency', currency: 'USD' }).format(k.revenue.arppu30d) : '—'} /></div>
       </div>
       <CleanZone className="stack-sm">
         <div className="label">{t('admin.kpi.revenue')}</div>
-        <KV k={t('admin.kpi.usd30')} v={`$${(k.revenue?.usd30d ?? 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`} accent />
-        <KV k={t('admin.kpi.packs30')} v={k.revenue?.packs30d?.toLocaleString('en-US') ?? '—'} />
-        <KV k={t('admin.kpi.services30')} v={k.revenue?.services30d?.toLocaleString('en-US') ?? '—'} />
-        <KV k={t('admin.kpi.marketVol7')} v={`$${(k.market?.volume7dUsd ?? 0).toLocaleString('en-US', { maximumFractionDigits: 0 })} · ${k.market?.listings ?? 0} listings`} />
+        <KV k={t('admin.kpi.usd30')} v={fmtUsd(k.revenue?.usd30d, 0)} accent />
+        <KV k={t('admin.kpi.packs30')} v={k.revenue?.packs30d?.toLocaleString(LOCALE_META[getLocale()].tag) ?? '—'} />
+        <KV k={t('admin.kpi.services30')} v={k.revenue?.services30d?.toLocaleString(LOCALE_META[getLocale()].tag) ?? '—'} />
+        <KV k={t('admin.kpi.marketVol7')} v={`${fmtUsd(k.market?.volume7dUsd, 0)} · ${t('screens.listingsCount', { n: k.market?.listings ?? 0 })}`} />
       </CleanZone>
       <CleanZone className="stack-sm">
         <div className="label">{t('admin.kpi.economy')}</div>
         <KV k={t('admin.kpi.burned7')} v={`${fmtUnits(k.economy?.burned7dMicro, 6, 0)} $CG`} />
         <KV k={t('admin.kpi.emitted7')} v={`${fmtUnits(k.economy?.emitted7dMicro, 6, 0)} $CG`} />
-        <KV k={t('admin.kpi.sinkRatio')} v={k.economy?.sinkRatio7d != null ? k.economy.sinkRatio7d.toFixed(2) : '—'} accent />
-        <KV k={t('admin.kpi.guarded')} v={`${fmtUnits(k.economy?.guardedDailyMicro, 6, 0)} $CG/d (${k.economy?.guardSource ?? '—'})`} />
-        <KV k={t('admin.kpi.floorIndex')} v={k.economy?.floorIndexUsdPerCommonEq != null ? `$${k.economy.floorIndexUsdPerCommonEq.toFixed(3)}` : '—'} />
-        <div className="row-wrap tiny mono muted">{(k.economy?.floorsByRarityUsd ?? []).map((f) => <span key={f.rarity}>{RARITY_SHORT[f.rarity ?? 0]} {f.usd != null ? `$${f.usd.toFixed(2)}` : '—'}</span>)}</div>
+        <KV k={t('admin.kpi.sinkRatio')} v={k.economy?.sinkRatio7d != null ? new Intl.NumberFormat(LOCALE_META[getLocale()].tag, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(k.economy.sinkRatio7d) : '—'} accent />
+        <KV k={t('admin.kpi.guarded')} v={`${t('screens.perDayAmount', { amount: `${fmtUnits(k.economy?.guardedDailyMicro, 6, 0)} $CG` })} (${k.economy?.guardSource ?? '—'})`} />
+        <KV k={t('admin.kpi.floorIndex')} v={k.economy?.floorIndexUsdPerCommonEq != null ? new Intl.NumberFormat(LOCALE_META[getLocale()].tag, { style: 'currency', currency: 'USD', minimumFractionDigits: 3, maximumFractionDigits: 3 }).format(k.economy.floorIndexUsdPerCommonEq) : '—'} />
+        <div className="row-wrap tiny mono muted">{(k.economy?.floorsByRarityUsd ?? []).map((f) => <span key={f.rarity}>{rarityName(f.rarity ?? 0)} {f.usd != null ? new Intl.NumberFormat(LOCALE_META[getLocale()].tag, { style: 'currency', currency: 'USD' }).format(f.usd) : '—'}</span>)}</div>
       </CleanZone>
       <div className="grid-3">
         <div className="card stack-sm">
           <div className="strong">{t('admin.kpi.arena')}</div>
-          <div className="small">S{k.arena?.season} · {t('admin.kpi.matches7')} {k.arena?.matches7d?.toLocaleString('en-US')} · bots {pct(k.arena?.botShare7d)}</div>
-          <div className="small muted">pool {fmtUnits(k.arena?.poolCgMicro, 6, 0)} $CG · wagers {k.arena?.wagerBattles7d}</div>
+          <div className="small">{t('common.season', { id: k.arena?.season ?? '—' })} · {t('admin.kpi.matches7')} {k.arena?.matches7d?.toLocaleString(LOCALE_META[getLocale()].tag)} · {t('screens.bots')} {pct(k.arena?.botShare7d)}</div>
+          <div className="small muted">{t('ui.pool')} {fmtUnits(k.arena?.poolCgMicro, 6, 0)} $CG · {t('screens.wagers')} {k.arena?.wagerBattles7d}</div>
         </div>
         <div className="card stack-sm">
           <div className="strong">{t('admin.kpi.fraud')}</div>
-          <div className="small">{Object.entries(fraud.openSignals ?? {}).map(([kind, n]) => `${kind} ${n}`).join(' · ') || t('admin.fraud.empty')}</div>
-          <div className="small muted">paused {fraud.paused ?? 0} · shadow {fraud.shadowBanned ?? 0} · trusted {fraud.trusted ?? 0}</div>
+          <div className="small">{Object.entries(fraud.openSignals ?? {}).map(([kind, n]) => `${fraudSignalLabel(kind)} ${fmtNum(n)}`).join(' · ') || t('admin.fraud.empty')}</div>
+          <div className="small muted">{t('admin.params.paused')} {fraud.paused ?? 0} · {t('ui.shadow')} {fraud.shadowBanned ?? 0} · {t('screens.trusted')} {fraud.trusted ?? 0}</div>
         </div>
         <div className="card stack-sm">
           <div className="strong">{t('admin.kpi.finality')}</div>
-          <div className="small">lag {fin.lagSlots ?? '—'} slots · horizon {fin.horizonSlot?.toLocaleString('en-US') ?? '—'}</div>
-          <div className="small" style={{ color: (fin.consumedAlerts ?? 0) > 0 ? 'var(--cg-electric-orange)' : undefined }}>consumed alerts {fin.consumedAlerts ?? 0}</div>
+          <div className="small">{t('screens.finalityLag', { lag: fin.lagSlots ?? '—', slot: fin.horizonSlot?.toLocaleString(LOCALE_META[getLocale()].tag) ?? '—' })}</div>
+          <div className="small" style={{ color: (fin.consumedAlerts ?? 0) > 0 ? 'var(--cg-electric-orange)' : undefined }}>{t('screens.consumedAlerts')} {fin.consumedAlerts ?? 0}</div>
         </div>
       </div>
     </div>
@@ -407,8 +413,8 @@ function FraudTab() {
   const toast = useUiStore((s) => s.toast);
   const [note, setNote] = useState<Record<string, string>>({});
   const act = async (wallet: string, resolution: (typeof RESOLUTIONS)[number]) => {
-    try { const r = await resolve.mutateAsync({ wallet, resolution, note: note[wallet] }); toast({ kind: 'success', title: t('admin.fraud.resolved', { n: r.closed ?? 0 }) }); }
-    catch (e) { toast({ kind: 'error', title: t('admin.fraud.failed'), body: String((e as Error)?.message ?? e) }); }
+    try { const r = await resolve.mutateAsync({ wallet, resolution, note: note[wallet] }); toast({ kind: 'success', title: { key: 'admin.fraud.resolved', params: { n: r.closed ?? 0 } } }); }
+    catch (e) { toast({ kind: 'error', title: { key: 'admin.fraud.failed' }, error: e }); }
   };
   if (q.isLoading) return <Skeleton h={300} />;
   const rows = q.data ?? [];
@@ -419,13 +425,13 @@ function FraudTab() {
       {rows.map((s) => (
         <div key={s.id} className="card stack-sm" data-testid="fraud-row">
           <div className="row between">
-            <div><b className="mono">{s.kind}</b> · <span className="mono">{shortKey(s.wallet, 6)}</span> {s.flags?.rewardsPaused && <Pill tone="danger">rewards paused</Pill>} {s.flags?.shadowBanned && <Pill tone="danger">shadow</Pill>} {s.flags?.trusted && <Pill tone="ok">trusted</Pill>}</div>
+            <div><b title={s.kind}>{fraudSignalLabel(s.kind ?? '—')}</b> · <span className="mono">{shortKey(s.wallet, 6)}</span> {s.flags?.rewardsPaused && <Pill tone="danger">{t('screens.rewardsPaused')}</Pill>} {s.flags?.shadowBanned && <Pill tone="danger">{t('ui.shadow')}</Pill>} {s.flags?.trusted && <Pill tone="ok">{t('screens.trusted')}</Pill>}</div>
             <span className="mono" style={{ color: (s.score ?? 0) >= 75 ? 'var(--cg-electric-orange)' : undefined }}>{s.score}/100 · {s.ts ? timeAgo(s.ts * 1000) : ''}</span>
           </div>
           <div className="tiny mono muted" style={{ wordBreak: 'break-all' }}>{JSON.stringify(s.evidence)}</div>
           <div className="row-wrap">
             <input className="input" style={{ minHeight: 34, maxWidth: 320 }} placeholder={t('admin.fraud.note')} value={note[s.wallet ?? ''] ?? ''} onChange={(e) => setNote({ ...note, [s.wallet ?? '']: e.target.value })} />
-            {RESOLUTIONS.map((r) => <Pill key={r} tone={r === 'ban' || r === 'shadow_ban' ? 'danger' : r === 'trust' ? 'ok' : undefined} onClick={() => void act(s.wallet ?? '', r)}>{r}</Pill>)}
+            {RESOLUTIONS.map((r) => <Pill key={r} tone={r === 'ban' || r === 'shadow_ban' ? 'danger' : r === 'trust' ? 'ok' : undefined} onClick={() => void act(s.wallet ?? '', r)}>{t(`screens.${r}`)}</Pill>)}
           </div>
         </div>
       ))}
@@ -443,7 +449,7 @@ function AuditTab() {
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
       <div className="table-scroll">
       <table className="table">
-        <thead><tr><th>{t('admin.audit.when')}</th><th>{t('admin.audit.who')}</th><th>{t('admin.audit.action')}</th><th>{t('admin.audit.target')}</th><th>ok</th></tr></thead>
+        <thead><tr><th>{t('admin.audit.when')}</th><th>{t('admin.audit.who')}</th><th>{t('admin.audit.action')}</th><th>{t('admin.audit.target')}</th><th>{t('ui.success')}</th></tr></thead>
         <tbody>
           {rows.length === 0 && <tr><td colSpan={5} className="muted">{t('admin.audit.empty')}</td></tr>}
           {rows.map((r) => (

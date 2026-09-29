@@ -99,28 +99,25 @@ export function findEvent<T>(logs: readonly string[], name: string, decode: (r: 
  * code and (best effort) which program index in the tx raised it.
  */
 export function parseCustomError(err: unknown): { code: number; programId?: string } | undefined {
-  const msg = String((err as { message?: string })?.message ?? err ?? '');
-  const m = /custom program error: (0x[0-9a-fA-F]+|\d+)/.exec(msg);
-  if (!m) {
-    const logs: string[] | undefined = (err as { logs?: string[] })?.logs;
-    if (logs) {
-      for (const l of logs) {
-        const mm = /Program (\w+) failed: custom program error: (0x[0-9a-fA-F]+)/.exec(l);
-        if (mm) return { code: Number(mm[2]), programId: mm[1] };
-      }
-    }
-    return undefined;
-  }
-  const code = m[1].startsWith('0x') ? parseInt(m[1], 16) : Number(m[1]);
-  const logs: string[] | undefined = (err as { logs?: string[] })?.logs;
-  let programId: string | undefined;
-  if (logs) {
-    // innermost failure wins: a CPI error is logged by the inner program first and re-logged by every
-    // caller with the same code — the inner program's error table is the one that describes it
-    for (const l of logs) {
-      const mm = /Program (\w+) failed: custom program error/.exec(l);
-      if (mm) { programId = mm[1]; break; }
+  const e = err as { message?: string; logs?: unknown; programId?: string } | undefined;
+  const msg = String(e?.message ?? err ?? '');
+  const validCode = (value: string) => {
+    const n = Number(value);
+    return Number.isSafeInteger(n) && n >= 0 ? n : undefined;
+  };
+  // First (innermost) runtime failure wins, not a contract's "Program log:" imitation.
+  // Match both decimal and hex and take its OWN code.
+  const lines = Array.isArray(e?.logs) ? e.logs.filter((v): v is string => typeof v === 'string') : [];
+  for (const line of [...lines, msg]) {
+    const m = /^Program ([1-9A-HJ-NP-Za-km-z]+) failed: custom program error: (0x[0-9a-fA-F]+|\d+)\b/.exec(line);
+    if (m) {
+      const code = validCode(m[2]);
+      if (code !== undefined) return { code, programId: m[1] };
     }
   }
-  return { code, programId };
+  const m = /custom program error: (0x[0-9a-fA-F]+|\d+)\b/.exec(msg)
+    ?? /"Custom"\s*:\s*(\d+)\b/.exec(msg);
+  if (!m) return undefined;
+  const code = validCode(m[1]);
+  return code === undefined ? undefined : { code, programId: e?.programId };
 }

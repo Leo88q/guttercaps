@@ -38,6 +38,7 @@ import { rewardOracleStatus } from './reward-oracle.ts';
 import { referralSummary } from './referrals.ts';
 import { antifraudStatus } from './antifraud.ts';
 import * as admin from './admin.ts';
+import * as compliance from './compliance.ts';
 import { clientIp, ipNet } from './ratelimit.ts';
 // SEC-B2 (2026-09-26): every numeric query parameter goes through here. `Number(v)` handed `NaN` /
 // fractions / negatives to SQL — a 500 (`datatype mismatch`) on a public read, and a negative LIMIT
@@ -65,6 +66,8 @@ const LISTING_SORTS = ['price_asc', 'price_desc', 'rarity_desc', 'newest', 'inde
 
 export interface AppOptions {
   connection?: () => Connection;
+  compliancePolicy?: compliance.AccessPolicy;
+  complianceEnforce?: boolean;
   limiter?: Limiter;
   /** Arena sweep (pairing, bot fill, forfeits) interval; 0 disables the timer (tests call `arena.sweep` directly). */
   arenaSweepMs?: number;
@@ -90,6 +93,12 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   const rl = limiter.use.bind(limiter);
   const adminWallets = deps.adminWallets ?? admin.ADMIN_WALLETS; // ADMIN_WALLETS allowlist — gates /admin/* and the `isAdmin` flag on /me
   const app = express();
+  const accessPolicy = compliance.validatePolicy(deps.compliancePolicy ?? compliance.loadPolicy());
+  const accessEnabled = deps.complianceEnforce ?? compliance.enforcementEnabled();
+  const accessGate = (feature: compliance.Feature): RequestHandler => (req, _res, next) => {
+    try { compliance.requireFeature(db, req.session!.wallet, feature, compliance.detectedCountry(req.headers), accessPolicy, accessEnabled); next(); }
+    catch (e) { next(e); }
+  };
   const sweepMs = deps.arenaSweepMs ?? Number(process.env.ARENA_SWEEP_MS ?? 3_000);
   if (sweepMs > 0) {
     const timer = setInterval(() => { try { arena.sweep(db); } catch (e) { console.error('[arena] sweep failed:', (e as Error).message); } }, sweepMs);
@@ -271,6 +280,13 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     return v;
   };
 
+  v1.use((req, _res, next) => {
+    if (req.session && ['POST', 'PUT'].includes(req.method) && ['/me/handle', '/me/human'].includes(req.path)
+      && db.get('SELECT wallet FROM privacy_restrictions WHERE wallet = ? AND resumed_at IS NULL', req.session.wallet)) {
+      next(new ServiceError(403, 'privacy_restricted', 'Personal profile processing is restricted; contact the rights centre'));
+    } else next();
+  });
+
   // ------------------------------------------------------------ health / stats
   v1.get('/health', (_req, res) => { res.json({ ok: true, lastSlot: db.scalar(`SELECT COALESCE(MAX(slot),0) FROM events_raw`), prices: priceStatus(db), crank: crankStatus(db), paused: pauseStatus(db), burnOracle: burnOracleStatus(db), finality: finalityStatus(db), untimedEvents: untimedStatus(db), indexerGaps: gapStatus(db), rewardOracle: rewardOracleStatus(db), antifraud: antifraudStatus(db), arena: { queued: db.scalar(`SELECT COUNT(*) FROM arena_queue`), revealing: db.scalar(`SELECT COUNT(*) FROM matches WHERE status = 'revealing'`), unattributedResolves: unattributedResolves(db) } }); });
   v1.get('/prices', (_req, res) => { res.json(priceStatus(db)); });
@@ -317,7 +333,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
         else db.run(`UPDATE wallets SET referrer = COALESCE(referrer, ?) WHERE address = ?`, canonical, wallet);
       }
     }
-    recordDevice(db, wallet, body.fingerprint); // T-B-49 device dedupe (salted hash only — human.ts)
+    if (!db.get('SELECT wallet FROM privacy_restrictions WHERE wallet = ? AND resumed_at IS NULL', wallet)) recordDevice(db, wallet, body.fingerprint); // T-B-49 device dedupe (salted hash only — human.ts)
     setSessionCookie(res, s.cookie);
     res.json({ csrf: s.csrf, wallet: q.walletProfile(db, wallet) });
   }));
@@ -325,6 +341,40 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     if (req.session) destroySession(db, req.session);
     setSessionCookie(res, null);
     res.status(204).end();
+  });
+
+  const rightsWallet: RequestHandler = (req, _res, next) => {
+    if (req.body?.wallet !== req.session!.wallet) next(new ServiceError(403, 'forbidden', 'Session and intended wallet differ'));
+    else next();
+  };
+  // Rights/age endpoints remain available regardless of age, country or processing restriction.
+  v1.get('/me/compliance', requireAuth, (req, res) => {
+    res.json(compliance.accessState(db, req.session!.wallet, compliance.detectedCountry(req.headers), accessPolicy, accessEnabled));
+  });
+  v1.post('/me/compliance/age', requireAuth, rightsWallet, (req, res) => {
+    compliance.declareAge(db, req.session!.wallet, req.body, compliance.detectedCountry(req.headers), accessPolicy);
+    res.json(compliance.accessState(db, req.session!.wallet, compliance.detectedCountry(req.headers), accessPolicy, accessEnabled));
+  });
+  v1.post('/me/compliance/check', requireAuth, (req, res) => {
+    if (req.body?.wallet !== req.session!.wallet) throw new ServiceError(403, 'forbidden', 'Session and transaction wallet differ');
+    res.json(compliance.requireFeature(db, req.session!.wallet, req.body?.feature, compliance.detectedCountry(req.headers), accessPolicy, accessEnabled));
+  });
+  v1.get('/me/rights', requireAuth, (req, res) => {
+    res.json(db.all<compliance.RightsRequest>("SELECT * FROM rights_requests WHERE wallet = ? ORDER BY CASE WHEN status = 'closed' THEN 1 ELSE 0 END, created_at DESC LIMIT 100", req.session!.wallet).map(r => compliance.requestView(db, r)));
+  });
+  v1.post('/me/rights', requireAuth, rightsWallet, (req, res) => {
+    res.json(compliance.createRequest(db, req.session!.wallet, req.body, accessPolicy));
+  });
+  v1.get('/me/rights/:id', requireAuth, (req, res) => {
+    res.json(compliance.requestView(db, compliance.ownedRequest(db, req.session!.wallet, req.params.id)));
+  });
+  v1.post('/me/rights/:id/messages', requireAuth, rightsWallet, (req, res) => {
+    res.json(compliance.updateRequest(db, req.params.id, req.body, 'user', req.session!.wallet));
+  });
+  v1.post('/me/rights/export', requireAuth, rightsWallet, (req, res) => {
+    const created = db.scalar('SELECT created_at FROM sessions WHERE id = ?', req.session!.id);
+    if (Date.now() / 1000 - created > 900) throw new ServiceError(403, 'reauth_required', 'Sign in again before exporting personal data');
+    res.json(compliance.exportData(db, req.session!.wallet));
   });
 
   // ------------------------------------------------------------ me
@@ -428,7 +478,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   });
 
   // ------------------------------------------------------------ packs: quote (Pyth, our own pusher — docs/03 §2.9)
-  v1.post('/packs/quote', requireAuth, rl(POLICIES.quote), wrap(async (req, res) => {
+  v1.post('/packs/quote', requireAuth, accessGate('packs'), rl(POLICIES.quote), wrap(async (req, res) => {
     // The legal gate lives here, not in the UI: `me().flags.geoRestricted` only changes the copy, and a
     // buyer who wants a pack will not be stopped by a disabled button (docs/09 §5.2 — "блок покупки, не блок игры").
     const geo = geoOf(req.headers);
@@ -515,7 +565,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.get('/arena/seasons/current', (_req, res) => { res.json(arena.seasonApi(db)); });
   v1.post('/arena/simulate', (req, res) => { res.json(arena.simulate(db, req.body)); });
   v1.get('/arena/me', requireAuth, (req, res) => { res.json(arena.arenaMe(db, req.session!.wallet)); });
-  v1.post('/arena/queue', requireAuth, rl(POLICIES.arena), rl(POLICIES.claimNet), (req, res) => { res.json(arena.joinQueue(db, req.session!.wallet, req.body)); });
+  v1.post('/arena/queue', requireAuth, accessGate('arena'), rl(POLICIES.arena), rl(POLICIES.claimNet), (req, res) => { res.json(arena.joinQueue(db, req.session!.wallet, req.body)); });
   v1.delete('/arena/queue', requireAuth, (req, res) => { arena.leaveQueue(db, req.session!.wallet); res.status(204).end(); });
   v1.post('/arena/matches/:id/emotes', requireAuth, rl(POLICIES.arena), (req, res) => { res.json(arena.postEmote(db, req.session!.wallet, req.params.id, req.body)); });
   v1.post('/arena/matches/:id/reveal', requireAuth, rl(POLICIES.arena), (req, res) => { res.json(arena.reveal(db, req.session!.wallet, req.params.id, req.body)); });
@@ -526,10 +576,10 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   });
 
   // ------------------------------------------------------------ quests + Merkle claims
-  v1.get('/quests', requireAuth, (req, res) => { quests.recordLogin(db, req.session!.wallet); res.json(quests.list(db, req.session!.wallet)); });
+  v1.get('/quests', requireAuth, (req, res) => { const allowed = compliance.accessState(db, req.session!.wallet, compliance.detectedCountry(req.headers), accessPolicy, accessEnabled).features.rewards.allowed; if (allowed) quests.recordLogin(db, req.session!.wallet); res.json(quests.list(db, req.session!.wallet, undefined, allowed)); });
   v1.get('/quests/claims', requireAuth, (req, res) => { res.json(quests.claims(db, req.session!.wallet)); });
-  v1.get('/quests/streak', requireAuth, (req, res) => { quests.refreshQuestDay(db, req.session!.wallet); res.json(quests.streak(db, req.session!.wallet)); });
-  v1.post('/quests/login', requireAuth, (req, res) => { res.json(quests.recordLogin(db, req.session!.wallet)); });
+  v1.get('/quests/streak', requireAuth, (req, res) => { if (compliance.accessState(db, req.session!.wallet, compliance.detectedCountry(req.headers), accessPolicy, accessEnabled).features.rewards.allowed) quests.refreshQuestDay(db, req.session!.wallet); res.json(quests.streak(db, req.session!.wallet)); });
+  v1.post('/quests/login', requireAuth, accessGate('rewards'), (req, res) => { res.json(quests.recordLogin(db, req.session!.wallet)); });
 
   // ------------------------------------------------------------ admin (docs/03 §3.5, T-B-46): SIWS session ∈ ADMIN_WALLETS, every call audited,
   // on-chain changes are only *encoded* for the Squads multisig — this process holds no admin key.
@@ -557,6 +607,21 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   });
   const summarize = (out: unknown) => { const o = out as { ok?: boolean; violations?: unknown[]; flags?: unknown; closed?: number } | null; return o && typeof o === 'object' ? { ok: o.ok, violations: o.violations?.length, flags: o.flags, closed: o.closed } : undefined; };
   v1.use('/admin', adminGate);
+  const rightsAudited = (action: string, fn: (req: Request) => unknown) => wrap((req, _res) => {
+    try {
+      const out = fn(req);
+      admin.audit(db, { wallet: req.session!.wallet, action, target: req.params.id, payload: { version: req.body?.version }, ip: clientIp(req), ok: true });
+      _res.json(out);
+    } catch (e) {
+      admin.audit(db, { wallet: req.session!.wallet, action, target: req.params.id, ip: clientIp(req), ok: false });
+      throw e;
+    }
+  });
+  v1.get('/admin/rights', rightsAudited('rights.queue', () => db.all<compliance.RightsRequest>("SELECT * FROM rights_requests ORDER BY CASE WHEN status = 'closed' THEN 1 ELSE 0 END, due_at LIMIT 200").map(r => compliance.requestView(db, r))));
+  v1.post('/admin/rights/:id', rightsAudited('rights.reply', req => compliance.updateRequest(db, req.params.id, req.body, 'operator')));
+  v1.post('/admin/rights/:id/correct-access', rightsAudited('rights.correct_access', req => compliance.correctAccess(db, req.params.id, req.body)));
+  v1.post('/admin/rights/:id/erase-profile', rightsAudited('rights.erase_profile', req => compliance.eraseProfile(db, req.params.id, req.body?.version, req.body?.message)));
+
   v1.get('/admin/params', audited('params.get', async () => admin.paramsApi(db, await admin.fetchChainParams(connection()))));
   v1.post('/admin/params', audited('params.propose', async (req) => {
     const p = admin.proposeParams(await admin.fetchChainParams(connection()), req.body as admin.ParamsProposal);

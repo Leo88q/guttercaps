@@ -1,9 +1,10 @@
+import { errorSnapshot, type ErrorSnapshot } from '../errorSnapshot';
 // H3 claim fusion: commit 3 material claims + escrow the $CG fee (randomness
 // kind 3) → reveal → settle the result claim (mint → DAS → register).
 // Pure orchestration: no React here; the UI subscribes through onState.
 import { Connection, PublicKey } from '@solana/web3.js';
 import { DAS_RPC_URL } from '@/app/config';
-import { appLookupTables, fitsInTx, sendTx, TxError, type WalletLike } from '../tx';
+import { appLookupTables, fitsInTx, sendTx, type WalletLike } from '../tx';
 import { prepareClose, prepareCloseLut, prepareRandomness, prepareReveal, readRandomness, sendCloseLut } from '../switchboard';
 import {
   cancelStaleClaimFusionIx, closeExpiredClaimIx, fuseClaimsCommitIx, fuseClaimsRevealIx, STALE_PACK_SLOTS,
@@ -35,6 +36,7 @@ export interface ClaimFusionFlowState {
   settledAsset?: PublicKey;
   settledRarity?: number;
   error?: string;
+  errorDiagnostic?: ErrorSnapshot;
 }
 
 export interface ClaimFusionDeps {
@@ -55,7 +57,7 @@ export class ClaimFusionFlow {
   }
 
   private set(patch: Partial<ClaimFusionFlowState>) {
-    this.state = { ...this.state, ...patch };
+    this.state = { ...this.state, ...(patch.phase && patch.phase !== 'error' ? { error: undefined, errorDiagnostic: undefined } : {}), ...patch };
     this.deps.onState(this.state);
   }
 
@@ -84,7 +86,8 @@ export class ClaimFusionFlow {
       if (!ev) throw new Error('commit transaction landed without a ClaimFusionCommitted event');
       this.set({ phase: 'committed', signatures: [signature] });
     } catch (e) {
-      this.set({ phase: 'error', error: e instanceof TxError ? e.message : String((e as Error)?.message ?? e) });
+      const diagnostic = errorSnapshot(e);
+      this.set({ phase: 'error', error: diagnostic.message, errorDiagnostic: diagnostic });
       throw e;
     }
   }
@@ -146,7 +149,8 @@ export class ClaimFusionFlow {
       }
       this.set({ phase: 'done' });
     } catch (e) {
-      this.set({ phase: 'error', error: e instanceof TxError ? e.message : String((e as Error)?.message ?? e) });
+      const diagnostic = errorSnapshot(e);
+      this.set({ phase: 'error', error: diagnostic.message, errorDiagnostic: diagnostic });
       throw e;
     }
   }

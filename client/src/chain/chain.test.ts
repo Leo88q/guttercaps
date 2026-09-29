@@ -68,9 +68,9 @@ describe('anchor conventions', () => {
     const cpiLogs = [`Program ${MARKET_ID.toBase58()} invoke [1]`, `Program ${CHIP_CORE_ID.toBase58()} invoke [2]`, `Program ${CHIP_CORE_ID.toBase58()} failed: custom program error: 0x1777`, `Program ${MARKET_ID.toBase58()} failed: custom program error: 0x1777`];
     expect(parseCustomError({ message: 'custom program error: 0x1777', logs: cpiLogs })?.programId).toBe(CHIP_CORE_ID.toBase58());
     expect(humanizeTxError({ message: 'custom program error: 0x1777', logs: cpiLogs })).toMatch(/^chip_core: /);
-    expect(describeProgramError(6006, CHIP_CORE_ID.toBase58())).toBe('chip_core: Daily purchase cap reached for this SKU');
-    expect(humanizeTxError({ message: 'custom program error: 0x1770', logs })).toBe('chip_core: Game is paused');
-    expect(humanizeTxError(new Error('User rejected the request.'))).toBe('Signature rejected in wallet');
+    expect(describeProgramError(6006, CHIP_CORE_ID.toBase58())).toBe('chip_core: Daily purchase cap reached for this SKU [6006 · DailyCapReached]');
+    expect(humanizeTxError({ message: 'custom program error: 0x1770', logs })).toBe('chip_core: Game is paused [6000 · Paused]');
+    expect(humanizeTxError(new Error('User rejected the request.'))).toBe('You rejected the signature');
   });
   it('extracts events from logs and decodes PackOpened', () => {
     const buyer = Keypair.generate().publicKey;

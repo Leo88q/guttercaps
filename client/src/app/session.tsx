@@ -50,7 +50,7 @@ export function useSignIn() {
       void qc.invalidateQueries();
     } catch (e) {
       setSession({ status: 'anonymous' });
-      toast({ kind: 'error', title: 'Sign-in failed', body: String((e as Error)?.message ?? e) });
+      toast({ kind: 'error', title: { key: 'screens.signInFailed' }, error: e });
     }
   }, [publicKey, signIn, signMessage, setSession, toast, qc]);
 
