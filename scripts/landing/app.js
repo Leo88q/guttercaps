@@ -265,7 +265,7 @@
         const size = 138, glow = 6 + i * 3, rim = i === 8 ? 3 : 4;
         const circleStyle = 'width:' + size + 'px;height:' + size + 'px;--tier-color:' + t.color + ';--tier-bg:' + hexToRgba(t.color, 0.18) + ';--tier-glow:' + hexToRgba(t.color, 0.5) + ';--rim-w:' + rim + 'px;--glow:' + glow + 'px;';
         // real art: sprite this cap's tile out of the district contact sheet
-        // (zero extra bytes — the sheet is already inlined for the district card)
+        // (zero extra bytes — the sheet is already inlined for the chip sprites)
         let sprite = '';
         if (art) {
           const scale = size / geo.tile;
@@ -286,13 +286,9 @@
           '<span class="chip-name">' + cap.name + '</span>' +
           '<span class="chip-desc">' + cap.desc + '</span></div>';
       });
-      const banner = art
-        ? '<img class="district-art" src="' + art + '" alt="" aria-hidden="true" loading="lazy" decoding="async" width="528" height="528">'
-        : '';
       div.innerHTML =
         '<div class="district-head"><span class="district-num">' + col.num + '</span>' +
         '<div><h3 class="district-name">' + col.name + '</h3><span class="district-meta">' + col.district + ' · ' + col.theme + '</span></div></div>' +
-        banner +
         '<p class="district-history">' + col.history + '</p><div class="chip-row">' + row + '</div>';
       wrap.appendChild(div);
       div.querySelector('.chip-row').scrollLeft = scrolls[ci] || 0;

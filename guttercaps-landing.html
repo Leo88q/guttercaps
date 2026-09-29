@@ -782,26 +782,6 @@
     mix-blend-mode: screen;
   }
 
-  /* per-district contact sheet cut from the real chip masters */
-  .district-art {
-    float: right;
-    width: 132px;
-    border-radius: 10px;
-    border: 1px solid rgba(216,216,220,0.16);
-    margin: 4px 0 12px 18px;
-    display: block;
-    filter: saturate(1.05) contrast(1.03);
-    transition: border-color .3s ease, box-shadow .3s ease, transform .3s ease;
-  }
-  .district:hover .district-art {
-    border-color: var(--district-color, var(--chrome));
-    box-shadow: 0 0 26px -8px var(--district-color, var(--chrome));
-    transform: translateY(-2px);
-  }
-  @media (max-width: 640px) {
-    .district-art { float: none; width: 46%; max-width: 210px; margin: 10px auto 12px; }
-  }
-
   /* real chip art: each cap sprites its tile out of the district sheet */
   .chip-circle .chip-sprite {
     display: block;
@@ -832,7 +812,6 @@
   @media (prefers-reduced-motion: reduce) {
     .wall-photo { animation: none; transition: none; opacity: var(--photo-op, 0.75); }
     .wall-photo::before { animation: none; opacity: 0; }
-    .district-art { transition: none; }
   }
 
   /* =====================================================================
@@ -1728,7 +1707,7 @@ const RU = {"nav.world": "Мир", "nav.how": "Как играть", "nav.distri
         const size = 138, glow = 6 + i * 3, rim = i === 8 ? 3 : 4;
         const circleStyle = 'width:' + size + 'px;height:' + size + 'px;--tier-color:' + t.color + ';--tier-bg:' + hexToRgba(t.color, 0.18) + ';--tier-glow:' + hexToRgba(t.color, 0.5) + ';--rim-w:' + rim + 'px;--glow:' + glow + 'px;';
         // real art: sprite this cap's tile out of the district contact sheet
-        // (zero extra bytes — the sheet is already inlined for the district card)
+        // (zero extra bytes — the sheet is already inlined for the chip sprites)
         let sprite = '';
         if (art) {
           const scale = size / geo.tile;
@@ -1749,13 +1728,9 @@ const RU = {"nav.world": "Мир", "nav.how": "Как играть", "nav.distri
           '<span class="chip-name">' + cap.name + '</span>' +
           '<span class="chip-desc">' + cap.desc + '</span></div>';
       });
-      const banner = art
-        ? '<img class="district-art" src="' + art + '" alt="" aria-hidden="true" loading="lazy" decoding="async" width="528" height="528">'
-        : '';
       div.innerHTML =
         '<div class="district-head"><span class="district-num">' + col.num + '</span>' +
         '<div><h3 class="district-name">' + col.name + '</h3><span class="district-meta">' + col.district + ' · ' + col.theme + '</span></div></div>' +
-        banner +
         '<p class="district-history">' + col.history + '</p><div class="chip-row">' + row + '</div>';
       wrap.appendChild(div);
       div.querySelector('.chip-row').scrollLeft = scrolls[ci] || 0;
