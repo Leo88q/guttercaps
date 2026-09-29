@@ -36,7 +36,7 @@ suite('T-L-C packs', () => {
     await expectFail(buyPack(env, buyer, { sku: SKU.STARTER, currency: Currency.SOL }), Err.chip('StarterAlreadyClaimed'), 'second starter');
     await expectFail(buyPack(env, buyer, { sku: SKU.STARTER, qty: 2, currency: Currency.USDC }), Err.chip('StarterAlreadyClaimed'), 'starter qty 2');
     const [open] = await revealAndOpenCompressedAll(env, buyer, b, valueOf('C01'));
-    expect(open.event.count).toBe(3);
+    expect(open.event.count).toBe(4);
     const settlementKey = compressedSettlementPda(buyer.publicKey, b.nonce)[0];
     const now = await env.chain.now();
     for (let i = 0; i < open.event.count; i++) {
@@ -170,10 +170,10 @@ suite('T-L-C packs', () => {
     try {
       await expectFail(buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.USDC }), Err.chip('Paused'));
       const [open] = await revealAndOpenCompressedAll(env, buyer, b, valueOf('C06'));
-      expect(open.event.count).toBe(3);
+      expect(open.event.count).toBe(4);
       expect((await loadPending(env.chain, b.pending))!.opened).toBe(1);
       const settlement = decodeCompressedPackSettlement((await env.chain.getAccount(compressedSettlementPda(buyer.publicKey, b.nonce)[0]))!.data);
-      expect(settlement.totalClaims).toBe(3);
+      expect(settlement.totalClaims).toBe(4);
     } finally {
       await env.chain.send([setPausedIx(env.admin.publicKey, false)], { signers: [env.admin] });
     }
@@ -190,7 +190,7 @@ suite('T-L-C packs', () => {
     const { ix, rolled } = await openCompressedPackInstruction(env, buyer.publicKey, b.nonce, 0, value, buyer.publicKey);
     const tx = await env.chain.send([revealIx({ kind: RNG_KIND.PACK, payer: buyer.publicKey, randomness: b.randomness, value }), ix], { signers: [buyer], label: 'reveal+open_compressed' });
     const ev = findEvent(tx.logs, 'CompressedClaimsCreated', readCompressedClaimsCreated)!;
-    expect(ev.count).toBe(3);
+    expect(ev.count).toBe(4);
     expect(rolled.map((r) => r.collectionIdx)).toEqual(expect.any(Array));
     expect((await loadPity(env.chain, buyer.publicKey))!.counters[SKU.STANDARD]).toBe(pityBefore + (rolled.some((r) => r.rarity >= 6) ? 0 : 1));
     for (let i = 0; i < ev.count; i++) {
@@ -206,7 +206,7 @@ suite('T-L-C packs', () => {
     rolled.forEach((r) => { delta[r.collectionIdx] -= 1n; });
     expect(delta.every((d) => d === 0n)).toBe(true);
     expect((await loadPending(env.chain, b.pending))!.opened).toBe(1);
-    expect(decodeCompressedPackSettlement((await env.chain.getAccount(compressedSettlementPda(buyer.publicKey, b.nonce)[0]))!.data).totalClaims).toBe(3);
+    expect(decodeCompressedPackSettlement((await env.chain.getAccount(compressedSettlementPda(buyer.publicKey, b.nonce)[0]))!.data).totalClaims).toBe(4);
     expect((await env.ledger()).liabUsdc).toBe(led.liabUsdc);
     const rnd = (await randomnessAccount(env.chain, b.randomness))!;
     expect(rnd.revealSlot).toBeGreaterThan(0n);
@@ -309,7 +309,7 @@ suite('T-L-C packs', () => {
     await expectFail(cancelStale(env, buyer, b, env.mints.usdc), Err.chip('RandomnessAlreadyRevealed'), 'cancel after reveal');
     await env.chain.warpSlots(1_000n);
     const r = await openCompressedPack(env, buyer.publicKey, b.nonce, 0, valueOf('C12'));
-    expect(r.event.count).toBe(3);
+    expect(r.event.count).toBe(4);
     expect((await loadPending(env.chain, b.pending))!.opened).toBe(1);
   });
 
@@ -512,7 +512,7 @@ suite('T-L-C packs', () => {
     expect(Array.from(rnd.value)).toEqual(Array.from(valueOf('C19')));
     await expectFail(revealPack(env, b, valueOf('other'), stranger), Err.chip('RandomnessAlreadyRevealed'), 'second reveal');
     const r = await openCompressedPack(env, buyer.publicKey, b.nonce, 0, valueOf('C19'), stranger);
-    expect(r.event.count).toBe(3);
+    expect(r.event.count).toBe(4);
     expect((await loadPending(env.chain, b.pending))!.opened).toBe(1);
     // a reveal for a never-committed account (init only) → RandomnessExpired (seed_slot == 0)
     const nonce = 4711n;

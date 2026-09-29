@@ -634,10 +634,12 @@ mod tests {
         let bytes = [0u8; 32];
         let pool = [0u8, 1, 2];
         let r = expand(&bytes, &DEFAULT_PACKS[1], 0, &pool);
-        assert_eq!(r[2].unwrap().rarity, Rarity::CommonPlus);
-        assert!(r[3].is_none());
+        // Standard holds 4 chips since 2026-09-29: the floor lifts the last (4th) slot
+        assert_eq!(r[2].unwrap().rarity, Rarity::Common);
+        assert_eq!(r[3].unwrap().rarity, Rarity::CommonPlus);
+        assert!(r[4].is_none());
         let r = expand(&bytes, &DEFAULT_PACKS[1], 59, &pool);
-        assert_eq!(r[2].unwrap().rarity, Rarity::Legend);
+        assert_eq!(r[3].unwrap().rarity, Rarity::Legend);
     }
 
     #[test]

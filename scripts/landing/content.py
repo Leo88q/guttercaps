@@ -19,7 +19,7 @@ T = {
   'hero.p4': ('3 → 1 fusion', 'Фьюжн 3 → 1'),
   'hero.p5': ('Cap Slam 3-v-3', 'Cap Slam 3 на 3'),
   'hero.cta': ('Open the app', 'Открыть игру'),
-  'hero.cta2': ('Starter pack — $1.49', 'Стартовый пак — $1.49'),
+  'hero.cta2': ('Starter pack — $1.99', 'Стартовый пак — $1.99'),
   'hero.note': ('Works with Phantom, Solflare, Backpack and the Seeker wallet. Every pack paid in SKR is 5 % cheaper.',
                 'Работает с Phantom, Solflare, Backpack и кошельком Seeker. Любой пак, оплаченный в SKR, на 5 % дешевле.'),
 
@@ -65,8 +65,8 @@ T = {
   'eco.emission': ("Where each day's emission goes", 'Куда уходит дневная эмиссия'),
   'eco.e1': ('Cap staking', 'Стейкинг фишек'), 'eco.e2': ('$CG staking', 'Стейкинг $CG'), 'eco.e3': ('Quests', 'Квесты'),
   'eco.e4': ('PvP season & matches', 'PvP: сезон и матчи'), 'eco.e5': ('Events, referrals, jackpots', 'Ивенты, рефералы, джекпоты'),
-  'eco.guard': ('Emission guard: the program mints at most min(schedule, 30 % of schedule + 1.25 × the trailing 7-day burn). If players stop burning, emission slows down by itself.',
-                'Предохранитель эмиссии: программа выпускает не больше min(график, 30 % графика + 1,25 × средний burn за 7 дней). Если игроки перестают сжигать, эмиссия замедляется сама.'),
+  'eco.guard': ('Emission guard: the program mints at most min(schedule, 10 % of schedule + 1.25 × the trailing 7-day burn). If players stop burning, emission slows down by itself.',
+                'Предохранитель эмиссии: программа выпускает не больше min(график, 10 % графика + 1,25 × средний burn за 7 дней). Если игроки перестают сжигать, эмиссия замедляется сама.'),
   'eco.sinks': ('Sinks — where $CG leaves circulation', 'Sinks — где $CG уходит из оборота'),
   'eco.s1': ('Fusion fees', 'Комиссии фьюжна'), 'eco.s2': ('Packs bought with $CG', 'Паки за $CG'), 'eco.s3': ('Early-unstake penalty', 'Штраф за ранний анстейк'),
   'eco.s4': ('PvP rake', 'Рейк PvP'), 'eco.s5': ('Market fee → weekly buyback', 'Комиссия маркета → еженедельный выкуп'), 'eco.s6': ('Extras paid in $CG', 'Экстры за $CG'),
@@ -109,7 +109,7 @@ T = {
   'mech.6h': ('Extras', 'Экстры'),
   'mech.6p': ('An @handle for $1.99, cap skins, profile themes, arena emotes, instant reveal, a $9.99 cosmetic season pass. None of it touches odds, power or yield — it is how the studio earns without selling advantage.',
               '@хэндл за $1.99, скины фишек, темы профиля, эмоции арены, мгновенное вскрытие, косметический сезонный пропуск за $9.99. Ничто из этого не влияет на шансы, силу или доход — так студия зарабатывает, не продавая преимущество.'),
-  'mech.6f': ('$0.79 – $9.99 · SOL / USDC / SKR / $CG', '$0.79 – $9.99 · SOL / USDC / SKR / $CG'),
+  'mech.6f': ('$0.99 – $9.99 · SOL / USDC / SKR / $CG', '$0.99 – $9.99 · SOL / USDC / SKR / $CG'),
   'mech.badge': ('live on devnet', 'живьём на devnet'),
 
   'rules.h': ('Rules &amp; <span class="tag-accent">fairness</span>', 'Правила и <span class="tag-accent">честность</span>'),
@@ -175,7 +175,7 @@ T = {
   'community.p': ('Drops, season schedules and audits are announced here first.', 'Дропы, расписание сезонов и аудиты объявляются здесь первыми.'),
 
   'foot.h': ('The wall is waiting for <span class="tag-accent">your tag</span>', 'Стена ждёт <span class="tag-accent">твой тег</span>'),
-  'foot.p': ('Open the app, connect any Solana wallet — the Starter pack is $1.49 and opens right away.', 'Откройте игру, подключите любой Solana-кошелёк — стартовый пак стоит $1.49 и вскрывается сразу.'),
+  'foot.p': ('Open the app, connect any Solana wallet — the Starter pack is $1.99 and opens right away.', 'Откройте игру, подключите любой Solana-кошелёк — стартовый пак стоит $1.99 и вскрывается сразу.'),
   'foot.cta': ('Open the app', 'Открыть игру'),
   'foot.fine': ('GUTTERCAPS © 2026. All characters, districts and names are fictional and original. Not affiliated with Solana Mobile; Seeker and SKR belong to their respective owners. Contract addresses and audits are listed in the docs — verify before you pay.',
                 'GUTTERCAPS © 2026. Все персонажи, районы и названия вымышлены и оригинальны. Не аффилировано с Solana Mobile; Seeker и SKR принадлежат их владельцам. Адреса контрактов и аудиты перечислены в документации — проверяйте перед оплатой.'),
@@ -186,8 +186,8 @@ HOWTO = [
    'en': ('Connect', 'Any Solana wallet — Phantom, Solflare, Backpack or the Seeker wallet. Sign-in is a signed message: no e-mail, no password, no custody.', 'sign-in with Solana'),
    'ru': ('Подключиться', 'Любой Solana-кошелёк — Phantom, Solflare, Backpack или кошелёк Seeker. Вход — подписанное сообщение: без e-mail, пароля и кастодиала.', 'вход через Solana')},
   {'color': 'var(--magenta-soft)', 'glow': 'rgba(255,46,138,0.35)',
-   'en': ('Buy a pack', 'Starter $1.49 once, Standard $4.99, Premium $12.99, Limited $24.99. Pay in SOL, USDC or SKR (−5 %). The same transaction commits a Switchboard randomness request.', 'payment + VRF commit in one tx'),
-   'ru': ('Купить пак', 'Starter $1.49 один раз, Standard $4.99, Premium $12.99, Limited $24.99. Оплата в SOL, USDC или SKR (−5 %). Та же транзакция фиксирует запрос случайности Switchboard.', 'оплата + VRF-коммит в одной tx')},
+   'en': ('Buy a pack', 'Starter $1.99 once, Standard $5.99, Premium $14.99, Limited $29.99. Pay in SOL, USDC or SKR (−5 %). The same transaction commits a Switchboard randomness request.', 'payment + VRF commit in one tx'),
+   'ru': ('Купить пак', 'Starter $1.99 один раз, Standard $5.99, Premium $14.99, Limited $29.99. Оплата в SOL, USDC или SKR (−5 %). Та же транзакция фиксирует запрос случайности Switchboard.', 'оплата + VRF-коммит в одной tx')},
   {'color': 'var(--acid-soft)', 'glow': 'rgba(182,255,60,0.35)',
    'en': ('Reveal', 'The oracle reveals 32 bytes nobody knew when you paid; the program expands them into tiers and districts. The Verify page recomputes your roll from those bytes.', 'provably fair'),
    'ru': ('Вскрыть', 'Оракул раскрывает 32 байта, которых никто не знал в момент оплаты; программа разворачивает их в тиры и районы. Страница проверки пересчитывает ваш ролл из этих байтов.', 'доказуемо честно')},
@@ -200,16 +200,16 @@ HOWTO = [
 ]
 
 PACKS = [
-  {'color': 'var(--chrome)', 'glow': 'rgba(216,216,220,0.35)', 'price': '$1.49', 'cg': None,
-   'en': ('Starter', 'once per wallet', ['3 caps · floor Rare', 'Caps are soulbound for 7 days', 'No pity — it is a gift, not a grind', 'SOL · USDC · SKR']),
-   'ru': ('Starter', 'один раз на кошелёк', ['3 фишки · флор Rare', 'Фишки soulbound 7 дней', 'Без pity — это подарок, а не гринд', 'SOL · USDC · SKR'])},
-  {'color': 'var(--cyan-soft)', 'glow': 'rgba(22,229,217,0.35)', 'price': '$4.99', 'cg': '750 $CG',
-   'en': ('Standard', 'the daily driver', ['3 caps · floor Common+', 'Legend guaranteed by pack 60', 'Soft pity from pack 30', 'SOL · USDC · SKR · $CG']),
-   'ru': ('Standard', 'рабочая лошадка', ['3 фишки · флор Common+', 'Legend гарантирован к 60-му паку', 'Мягкий pity с 30-го пака', 'SOL · USDC · SKR · $CG'])},
-  {'color': 'var(--magenta-soft)', 'glow': 'rgba(255,46,138,0.35)', 'price': '$12.99', 'cg': '1 950 $CG',
+  {'color': 'var(--chrome)', 'glow': 'rgba(216,216,220,0.35)', 'price': '$1.99', 'cg': None,
+   'en': ('Starter', 'once per wallet', ['4 caps · floor Rare', 'Caps are soulbound for 7 days', 'No pity — it is a gift, not a grind', 'SOL · USDC · SKR']),
+   'ru': ('Starter', 'один раз на кошелёк', ['4 фишки · флор Rare', 'Фишки soulbound 7 дней', 'Без pity — это подарок, а не гринд', 'SOL · USDC · SKR'])},
+  {'color': 'var(--cyan-soft)', 'glow': 'rgba(22,229,217,0.35)', 'price': '$5.99', 'cg': '900 $CG',
+   'en': ('Standard', 'the daily driver', ['4 caps · floor Common+', 'Legend guaranteed by pack 60', 'Soft pity from pack 30', 'SOL · USDC · SKR · $CG']),
+   'ru': ('Standard', 'рабочая лошадка', ['4 фишки · флор Common+', 'Legend гарантирован к 60-му паку', 'Мягкий pity с 30-го пака', 'SOL · USDC · SKR · $CG'])},
+  {'color': 'var(--magenta-soft)', 'glow': 'rgba(255,46,138,0.35)', 'price': '$14.99', 'cg': '2 250 $CG',
    'en': ('Premium', 'five at once', ['5 caps · floor Rare', 'Legend guaranteed by pack 40', 'Soft pity from pack 20', 'SOL · USDC · SKR · $CG']),
    'ru': ('Premium', 'пять за раз', ['5 фишек · флор Rare', 'Legend гарантирован к 40-му паку', 'Мягкий pity с 20-го пака', 'SOL · USDC · SKR · $CG'])},
-  {'color': 'var(--orange-soft)', 'glow': 'rgba(255,122,26,0.35)', 'price': '$24.99', 'cg': None,
+  {'color': 'var(--orange-soft)', 'glow': 'rgba(255,122,26,0.35)', 'price': '$29.99', 'cg': None,
    'en': ('Limited', 'featured district only', ['5 caps · floor Rare+', 'Legend guaranteed by pack 25', 'Max 5 per wallet per day', 'SOL · USDC · SKR — funds the season pool']),
    'ru': ('Limited', 'только избранный район', ['5 фишек · флор Rare+', 'Legend гарантирован к 25-му паку', 'Не более 5 на кошелёк в день', 'SOL · USDC · SKR — питает призовой фонд сезона'])},
 ]
@@ -317,8 +317,8 @@ T.update({
 })
 # Rendering metadata is language-independent and checked against economy by check.ts.
 for _p, _m in zip(PACKS, [
-    {'chips': 3, 'floor': 2, 'hardAt': None, 'softStart': None, 'dailyCap': 1},
-    {'chips': 3, 'floor': 1, 'hardAt': 60, 'softStart': 30, 'dailyCap': None},
+    {'chips': 4, 'floor': 2, 'hardAt': None, 'softStart': None, 'dailyCap': 1},
+    {'chips': 4, 'floor': 1, 'hardAt': 60, 'softStart': 30, 'dailyCap': None},
     {'chips': 5, 'floor': 2, 'hardAt': 40, 'softStart': 20, 'dailyCap': None},
     {'chips': 5, 'floor': 3, 'hardAt': 25, 'softStart': 12, 'dailyCap': 5},
 ]):
@@ -332,8 +332,8 @@ T['faq.a7'] = (
     'English, Português, Español, Tiếng Việt, Bahasa Indonesia, Filipino и Русский. Выберите язык в приложении: числа, даты и суммы получат местный формат, но значения токенов не изменятся.',
 )
 T['foot.p'] = (
-    'Open the app and connect a Solana wallet. The Starter pack costs $1.49; opening begins after purchase.',
-    'Откройте приложение и подключите Solana-кошелёк. Стартовый пак стоит $1.49; открытие начинается после покупки.',
+    'Open the app and connect a Solana wallet. The Starter pack costs $1.99; opening begins after purchase.',
+    'Откройте приложение и подключите Solana-кошелёк. Стартовый пак стоит $1.99; открытие начинается после покупки.',
 )
 for _i, (_q, _a, _qr, _ar) in enumerate(FAQ):
     FAQ[_i] = (T[f'faq.q{_i}'][0], T[f'faq.a{_i}'][0], T[f'faq.q{_i}'][1], T[f'faq.a{_i}'][1])

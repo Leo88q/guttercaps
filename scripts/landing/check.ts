@@ -92,9 +92,11 @@ const sinkByName = (re: RegExp) => (SINKS as { source: string; burnPct: number }
 check('sink burn shares', sinkBars, [sinkByName(/fusion/i), sinkByName(/pack purchase/i), sinkByName(/unstake|penalt/i), sinkByName(/pvp|rake/i), sinkByName(/marketplace/i), sinkByName(/cosmetic|handle/i)]);
 
 // ---- fee schedule ----
+// services with dailyCap 0 (the fusion booster since 2026-09-29) are not for sale → not in the price range
+const SOLD = (SERVICES as { priceUsdCents: number; dailyCap: number }[]).filter((s) => s.dailyCap > 0);
 const feeCells = Array.from(html.matchAll(/<td class="num">([^<]+)<\/td>/g)).map((m) => m[1]);
 check('fee table', feeCells, [`${pct(FEES.marketplaceFeeBps)} %`, `${pct(FEES.creatorRoyaltyBps)} %`, `${pct(WAGER.rakeBps)} %`, `${FEES.listingFeeCgMicro / 1e6} $CG`,
-  `${usd(Math.min(...SERVICES.map((s: { priceUsdCents: number }) => s.priceUsdCents)))} – ${usd(Math.max(...SERVICES.map((s: { priceUsdCents: number }) => s.priceUsdCents)))}`, `−${pct(FEES.skrPackDiscountBps)} %`]);
+  `${usd(Math.min(...SOLD.map((s) => s.priceUsdCents)))} – ${usd(Math.max(...SOLD.map((s) => s.priceUsdCents)))}`, `−${pct(FEES.skrPackDiscountBps)} %`]);
 has('SKR mint on page', html, SKR.mint);
 has('market fact', en('mech.4f'), `${pct(FEES.marketplaceFeeBps)} % + ${pct(FEES.creatorRoyaltyBps)} % royalty`);
 
