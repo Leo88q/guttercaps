@@ -24,7 +24,7 @@ codegen-units = 1
 # SBF size experiment (see reports/SBF-SIZE-*.md): opt-level "s" trades a little speed for ELF size, and
 # ProgramData rent is paid per byte, so this is the one profile knob with a direct SOL cost. Measured on the
 # pinned CI toolchain, not assumed; overflow-checks stays on because it is a security property.
-opt-level = "s"
+opt-level = "z"
 
 [profile.release.build-override]
 opt-level = 3
