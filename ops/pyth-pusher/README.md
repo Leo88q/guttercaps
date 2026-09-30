@@ -37,6 +37,8 @@ The accounts are created by the **first push** (rent ≈ 0.0019 SOL each, paid b
 
 ```bash
 # 0. Pyth API key (mandatory for Hermes since the 2026-08-26 Core upgrade) — https://pythdata.app/signup
+#    The image must be >= v10.5.0: that release added `--hermes-access-token`, the only way to hand the key to the
+#    pusher. `.env.example` pins v13.0.0 (the old v9.3.0 has no such flag and would get 401 from Hermes).
 # 1. payer keypair — dedicated hot wallet, SOL only, no authority over anything else
 solana-keygen new -o ops/pyth-pusher/payer.json --no-bip39-passphrase
 solana transfer <payer> 6 --allow-unfunded-recipient          # ≈ 3 months (≈ 2 SOL / month)
@@ -60,7 +62,8 @@ into `oracle_prices` (USD display prices for `/services`, `/market/floor`,
 ## Devnet
 
 Same image, same shard, `SOLANA_RPC_URL=https://api.devnet.solana.com`, a devnet
-payer. Hermes serves the same feed ids for devnet (`hermes.pyth.network`, not
+payer (on a MacBook all of this is automated: `bash scripts/mac-devnet.sh --only pyth`, then `run` keeps the pusher up
+while the app is open — `docs/MAC-DEVNET.md`). Hermes serves the same feed ids for devnet (`hermes.pyth.network`, not
 `hermes-beta`, because the Solana devnet receiver verifies mainnet Wormhole
 guardians for Pyth stable feeds).
 

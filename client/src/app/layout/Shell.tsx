@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
@@ -54,10 +54,27 @@ export function Shell({ children }: { children: ReactNode }) {
     document.documentElement.classList.toggle('reduced-motion', reducedMotion);
   }, [reducedMotion]);
 
+  // Toasts hang just under the header, and the header's height is not constant: it wraps to two or three
+  // rows on a phone (language + balance + wallet next to the brand), longer in ru/fil. Publish the real
+  // height as --gc-header-h so the toast stack never lands on the controls it would otherwise cover.
+  const shellRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const shell = shellRef.current;
+    const header = headerRef.current;
+    if (!shell || !header) return;
+    const sync = () => shell.style.setProperty('--gc-header-h', `${Math.ceil(header.getBoundingClientRect().height)}px`);
+    sync();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(sync);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
+
   useEffect(() => { window.scrollTo({ top: 0 }); }, [loc.pathname]);
 
   return (
-    <div className="shell">
+    <div className="shell" ref={shellRef}>
       <nav className="shell-nav" aria-label={t('ui.primaryNav')}>
         {NAV.map(({ to, key, Icon, gen, end }) => (
           <NavLink key={to} to={to} end={end} className={({ isActive }) => (isActive ? 'active' : '')}>
@@ -69,7 +86,7 @@ export function Shell({ children }: { children: ReactNode }) {
         ))}
       </nav>
       <div className="shell-body">
-        <header className="shell-header">
+        <header className="shell-header" ref={headerRef}>
           <Link to="/" className="shell-brand"><img src="/favicon.svg" width={24} height={24} alt="" aria-hidden />{t('home.heroTitle')} <small>GUTTER CITY</small></Link>
           <div className="row" style={{ gap: 8 }}>
             {/* The language picker sits in the header beside the balance, not in the tab bar:
