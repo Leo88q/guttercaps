@@ -4,11 +4,12 @@
 #   docker compose up -d            # two replicas against two RPCs (same payer ⇒ no double spend)
 #   curl -s localhost:9091/metrics | grep pyth_price_last_published_time
 #
-# Image tags: https://gallery.ecr.aws/pyth-network/xc-price-pusher (no :latest — pin a version).
+# Image tags: https://gallery.ecr.aws/pyth-network/xc-price-pusher (no :latest — pin a version; >= v10.5.0, the
+# release that added --hermes-access-token, which every Hermes request needs since 2026-08-26).
 # The payer keypair (./payer.json) needs SOL only: ≈ 2 SOL / month (base fees of ≈ 2 800 pushes/day),
 # see `npm run pyth-pusher -- cost`. Top it up when pyth_wallet_balance < 0.5.
 x-pusher: &pusher
-  image: public.ecr.aws/pyth-network/xc-price-pusher:${PUSHER_VERSION:-v9.3.0}
+  image: public.ecr.aws/pyth-network/xc-price-pusher:${PUSHER_VERSION:-v13.0.0}
   restart: unless-stopped
   env_file: .env
   volumes:
