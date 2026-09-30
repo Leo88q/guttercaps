@@ -207,13 +207,59 @@ FAKE
 chmod +x "$sbx/bin/curl"
 
 # ---------------------------------------------------------------- scenarios
+run_with_timeout() { # <seconds> <command> [args...]
+  timeout_seconds=$1; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$timeout_seconds" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$timeout_seconds" "$@"
+  else
+    # macOS has no GNU `timeout`. Keep the same bound there with Python and a fresh process group so a timed-out
+    # shell cannot leave its fake cargo/curl children running in the background.
+    python3 - "$timeout_seconds" "$@" <<'PY'
+import os
+import signal
+import subprocess
+import sys
+
+seconds = float(sys.argv[1])
+command = sys.argv[2:]
+try:
+    process = subprocess.Popen(command, start_new_session=True)
+except OSError as error:
+    print(f"could not start {command[0]}: {error}", file=sys.stderr)
+    sys.exit(127)
+
+try:
+    result = process.wait(timeout=seconds)
+except subprocess.TimeoutExpired:
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+    print(f"command timed out after {seconds:g}s: {' '.join(command)}", file=sys.stderr)
+    sys.exit(124)
+
+sys.exit(result if result >= 0 else 128 - result)
+PY
+  fi
+}
+
 run() { # <scenario-name> [VAR=val ...]
   scen=$1; shift
   rm -f "$rep/Cargo.lock" "$sbx/state/mid_moved"
   : >"$log"
-  ( cd "$rep" && env SBX="$sbx" PATH="$sbx/bin:$faux/bin:$PATH" GITHUB_REF=refs/heads/arena/selftest \
+  ( cd "$rep" && run_with_timeout 60 env SBX="$sbx" PATH="$sbx/bin:$faux/bin:$PATH" GITHUB_REF=refs/heads/arena/selftest \
       GITHUB_ENV=/dev/null GITHUB_STEP_SUMMARY="$sbx/summary" "$@" \
-      timeout 60 sh "$rep/scripts/ci-cargo-lock.sh" ) >"$log" 2>&1
+      sh "$rep/scripts/ci-cargo-lock.sh" ) >"$log" 2>&1
   rc=$?
   printf '\n=== сценарий %s (rc %s)\n' "$scen" "$rc"
 }
