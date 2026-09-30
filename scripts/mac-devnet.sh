@@ -83,7 +83,8 @@ init_path() {
   path_add "$HOME/.avm/bin"; path_add "$HOME/.cargo/bin"
 }
 
-sha256_of() { if have shasum; then shasum -a 256 "$1" | cut -d' ' -f1; else sha256sum "$1" | cut -d' ' -f1; fi; }
+sha256_stdin() { if have shasum; then shasum -a 256 | cut -d' ' -f1; else sha256sum | cut -d' ' -f1; fi; }
+sha256_of() { sha256_stdin < "$1"; }
 file_len()  { wc -c < "$1" | tr -d ' '; }
 
 STATE="" # set once REPO is known
@@ -619,7 +620,8 @@ deploy_program() { # $1 = program
     # identical bytes already on chain (a re-run, or a program this change did not touch): nothing to upload
     local dump
     dump=$(mktemp "${TMPDIR:-/tmp}/mac-devnet-dump.XXXXXX")
-    if solana program dump "$id" "$dump" -u "$RPC_URL" >/dev/null 2>&1 && [ "$(file_len "$dump")" -ge "$len" ] && cmp -s -n "$len" "$so" "$dump"; then
+    if solana program dump "$id" "$dump" -u "$RPC_URL" >/dev/null 2>&1 && [ "$(file_len "$dump")" -ge "$len" ] \
+       && [ "$(head -c "$len" "$dump" | sha256_stdin)" = "$(sha256_of "$so")" ]; then  # BSD cmp (macOS) has no -n
       rm -f "$dump"
       ok "$p: в devnet уже лежат ровно эти байты — деплой пропускаю (https://explorer.solana.com/address/$id?cluster=devnet)"
       return 0
