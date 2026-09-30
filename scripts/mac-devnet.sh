@@ -578,7 +578,7 @@ program_show_field() { # $1 = show output, $2 = field
 keypair_dir() { local d; d=$(state_get PROGRAM_KEYS_DIR_USED); [ -n "$d" ] || d="${PROGRAM_KEYS_DIR:-$KEYS_DIR/programs}"; echo "$d"; }
 
 ensure_funds() { # $1 = lamports needed
-  local need=$1 bal tries=0
+  local need=$1 bal tries=0 a=""
   bal=$(balance_lamports "$WALLET_PUB"); bal=${bal:-0}
   while [ "$bal" -lt "$need" ] && [ "$tries" -lt 3 ]; do
     tries=$((tries + 1))
@@ -589,13 +589,15 @@ ensure_funds() { # $1 = lamports needed
   done
   [ "$bal" -ge "$need" ] && return 0
   bad "на кошельке $WALLET_PUB не хватает SOL: есть $(sol "$bal"), нужно $(sol "$need")"
-  info "публичный airdrop ограничен по частоте. Пополните адрес вручную: https://faucet.solana.com (сеть Devnet)"
+  info "публичный airdrop ограничен по частоте. Пополните адрес вручную: https://faucet.solana.com (сеть Devnet; за один заход выдают немного, заходов может понадобиться несколько)"
   info "адрес: $WALLET_PUB"
   if [ -t 0 ] && [ "$ASSUME_YES" = 0 ]; then
-    local a=""
-    read -r -p "  Пополнили? Нажмите Enter для проверки баланса (или q + Enter, чтобы выйти) " a || true
-    [ "$a" = q ] && die "остановлено: нужно пополнить кошелёк"
-    bal=$(balance_lamports "$WALLET_PUB"); bal=${bal:-0}
+    while [ "$bal" -lt "$need" ]; do
+      read -r -p "  Пополнили? Enter — проверить баланс, q + Enter — выйти " a || break
+      [ "$a" = q ] && break
+      bal=$(balance_lamports "$WALLET_PUB"); bal=${bal:-0}
+      [ "$bal" -lt "$need" ] && say "  пока $(sol "$bal") SOL из $(sol "$need")"
+    done
     [ "$bal" -ge "$need" ] && return 0
   fi
   die "SOL не хватает. Пополните кошелёк и продолжите: bash scripts/mac-devnet.sh --from deploy"
@@ -614,6 +616,15 @@ deploy_program() { # $1 = program
       say "  новая версия больше ($len > $cap): расширяю программу на $grow байт"
       run solana program extend "$id" "$grow" -u "$RPC_URL" -k "$WALLET"
     fi
+    # identical bytes already on chain (a re-run, or a program this change did not touch): nothing to upload
+    local dump
+    dump=$(mktemp "${TMPDIR:-/tmp}/mac-devnet-dump.XXXXXX")
+    if solana program dump "$id" "$dump" -u "$RPC_URL" >/dev/null 2>&1 && [ "$(file_len "$dump")" -ge "$len" ] && cmp -s -n "$len" "$so" "$dump"; then
+      rm -f "$dump"
+      ok "$p: в devnet уже лежат ровно эти байты — деплой пропускаю (https://explorer.solana.com/address/$id?cluster=devnet)"
+      return 0
+    fi
+    rm -f "$dump"
     say "  программа уже есть на devnet — обновляю (upgrade)"
   fi
   # A resumable buffer: the keypair file is named after the binary's hash, so a retry (or a re-run) continues
@@ -640,7 +651,7 @@ stage_deploy() {
   [ -f target/deploy/chip_core.so ] || die "нет target/deploy/*.so — сначала этап build"
   ensure_wallet
   ensure_devnet
-  local p kp id len show cap need=0 peak=0 fee=50000000 prog_rent data_rent buf_rent dir
+  local p kp id len show cap need=0 peak=0 fee=2000000000 prog_rent data_rent buf_rent dir
   dir=$(keypair_dir)
   # Safety: every keypair must derive the id that is compiled into the binary (declare_id!), else the deployed address is not the one the client uses.
   for p in $PROGRAMS; do
@@ -660,7 +671,7 @@ stage_deploy() {
     [ "$buf_rent" -gt "$peak" ] && peak=$buf_rent
   done
   need=$((need + peak + fee))
-  say "  нужно на кошельке для деплоя: $(sol "$need") SOL (новые программы + самый большой буфер, он возвращается, + запас на комиссии)"
+  say "  нужно на кошельке для деплоя: $(sol "$need") SOL (новые программы + самый большой буфер, он возвращается, + 2 SOL на setup, lookup table и crank)"
   ensure_funds "$need"
   for p in $PROGRAMS; do deploy_program "$p"; done
   step "проверка on-chain: байты == локальный .so, upgrade authority, пины Switchboard"
