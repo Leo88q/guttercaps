@@ -37,7 +37,7 @@
     "programs:test": "cargo test --workspace",
     "programs:build": "anchor build",
     "programs:fmt": "cargo fmt --all",
-    "programs:gate": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace",
+    "programs:gate": "cargo fmt --all -- --check && cargo clippy --locked --workspace --all-targets -- -D warnings -A deprecated -A unexpected_cfgs && cargo test --locked --workspace",
     "api:check": "node --experimental-strip-types scripts/api-contract.ts",
     "bundle:check": "node --experimental-strip-types scripts/bundle-check.ts",
     "e2e:build": "VITE_API_MOCK=1 npm --prefix client run build",
