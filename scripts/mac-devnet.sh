@@ -62,7 +62,12 @@ FAUCET_TARGET=""; FAUCET_SOL=2; FAUCET_SKR=1000
 ORIG_ARGS=("$@")
 
 usage() { # the leading comment block, whatever its length
-  awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "${BASH_SOURCE[0]:-$0}" 2>/dev/null || true
+  local f="${BASH_SOURCE[0]:-$0}"
+  if [ -f "$f" ] && [ -r "$f" ]; then
+    awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$f"
+  else # started as `bash <(git show …)`: the script text is a consumed pipe, there is nothing to re-read
+    echo "Справка: docs/MAC-DEVNET.md, или из папки репозитория: bash scripts/mac-devnet.sh --help"
+  fi
 }
 
 # ------------------------------------------------------------------ small helpers
