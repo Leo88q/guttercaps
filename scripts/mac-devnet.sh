@@ -265,7 +265,11 @@ stage_update() {
       run git reset --hard "$tip"
     fi
   else
-    run git checkout -b "$BRANCH" --track "$REMOTE/$BRANCH"
+    # No `--track`: in a single-branch / shallow clone (fetch refspec covers only one branch) git refuses it with
+    # "starting point is not a branch". Create the branch at the fetched tip and record the upstream by hand.
+    run git checkout -b "$BRANCH" "$tip"
+    git config "branch.$BRANCH.remote" "$REMOTE"
+    git config "branch.$BRANCH.merge" "refs/heads/$BRANCH"
   fi
   ok "$(git log -1 --format='%h %s' | cut -c1-100)"
 

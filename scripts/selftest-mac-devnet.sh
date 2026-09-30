@@ -103,6 +103,20 @@ check update-diverged "a backup branch holds the local commit" test "$(git -C "$
 check update-diverged "main now equals origin/main" test "$(git -C "$work" rev-parse HEAD)" = "$(git -C "$work" rev-parse origin/main)"
 check update-diverged "the backup still has the commit" test "$(git -C "$work" log -1 --format=%s "$(git -C "$work" branch --list 'backup/before-update-*' | tr -d ' *')")" = "local only"
 
+# ---------------------------------------------------------------- 4b. a single-branch clone that has never seen the branch
+# (what `git clone --depth 1` / `--single-branch` leaves: the fetch refspec covers one branch, and `checkout --track`
+# on anything else fails with "starting point is not a branch" — found against the real GitHub, not by a fake one)
+g -C "$tmp/dev" checkout -q -b feature-x && printf 'x\n' > "$tmp/dev/feature.txt" && g -C "$tmp/dev" add -A \
+  && g -C "$tmp/dev" commit -q -m "feature tip" && g -C "$tmp/dev" push -q origin feature-x
+git clone -q --single-branch --branch main "$origin" "$tmp/single"
+log="$tmp/single.log"
+( cd "$tmp/single" && HOME="$tmp/home" REPO_DIR="$tmp/single" BRANCH=feature-x bash scripts/mac-devnet.sh --only update,doctor ) > "$log" 2>&1; rc=$?
+check update-single-branch "exit 0" test "$rc" -eq 0
+check update-single-branch "switched to the new branch at the fetched tip" test "$(git -C "$tmp/single" rev-parse --abbrev-ref HEAD)" = feature-x
+check update-single-branch "…whose HEAD is the GitHub tip" test "$(git -C "$tmp/single" rev-parse HEAD)" = "$(git -C "$tmp/single" rev-parse refs/remotes/origin/feature-x)"
+check update-single-branch "upstream is recorded" test "$(git -C "$tmp/single" config branch.feature-x.merge)" = refs/heads/feature-x
+expect update-single-branch "этап doctor" "$log"
+
 # ---------------------------------------------------------------- 5. argument validation
 log="$tmp/args.log"
 ( cd "$work" && HOME="$tmp/home" REPO_DIR="$work" bash scripts/mac-devnet.sh --only nonsense ) > "$log" 2>&1; rc=$?
