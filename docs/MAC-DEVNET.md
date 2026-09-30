@@ -32,7 +32,7 @@ origin <ветка>` и в `BRANCH=<ветка>`.
 | `doctor` | что установлено, чего не хватает | ничего не меняет |
 | `toolchain` | Node 22, Rust 1.89.0, solana CLI 2.1.0 (Agave), Anchor 0.31.1, `npm ci` | перед каждой установкой спрашивает `[y/N]`; версии берутся из `Anchor.toml`, `rust-toolchain.toml`, `.nvmrc` |
 | `verify` | `npm run verify` — 28 проверок Node/Python, как в CI | около 3 минут |
-| `rust` | `npm run programs:gate` — `cargo fmt --check`, `clippy -D warnings`, `cargo test` | самый долгий из «лёгких» этапов: первая компиляция всех зависимостей |
+| `rust` | `npm run programs:gate` — `cargo fmt --check`, `clippy -D warnings`, `cargo test`; clippy и тесты с `--locked` | как в CI: только `deprecated` / `unexpected_cfgs` из макросов Anchor разрешены; первая компиляция всех зависимостей долгая |
 | `localnet` | сборка `--features localnet` + 92 сценария LiteSVM (`npm test`) | нужен `sb_mock` (подставной Switchboard); эти `.so` на devnet никогда не попадают |
 | `ids` | ключи программ и `declare_id!` (см. раздел 6) | |
 | `build` | сборка `--features devnet` + `verify-deploy artifact --cluster devnet` | `chip_core.so` и `arena.so` обязаны нести пины devnet-Switchboard и не нести ни `sb_mock`, ни mainnet |
@@ -174,6 +174,8 @@ USDC берётся на <https://faucet.circle.com> (Solana Devnet). $CG выд
 | симптом | что делать |
 |---|---|
 | `toolchain '1.89.0' is not installed` | `rustup toolchain install 1.89.0`, затем `--from rust` |
+| `rust` падает на `unexpected_cfgs` / `deprecated` из `#[program]` | обновите репозиторий: `programs:gate` должен использовать те же два исключения, что CI (`-D warnings -A deprecated -A unexpected_cfgs`), затем `--from rust`. Остальные предупреждения по-прежнему считаются ошибками |
+| в конце лога только `non-local impl definition` / `mpl-core (lib) generated 12 warnings` | это предупреждения старого derive-макроса зависимости, не причина остановки. Ищите первую строку `error:` / `error[E…]:` выше в логе; не обновляйте `Cargo.lock` и не пропускайте `rust` только из-за этого warning |
 | `Failed to list installed solana versions` при сборке | `scripts/anchor-build-localnet.sh` чинит это сам; если остаётся — `solana --version` должен быть **2.1.0** (`which -a solana`), см. `tests/localnet/README.md` |
 | `Max retries exceeded` / `Blockhash expired` / `write transactions failed` при деплое | публичный devnet теряет транзакции. Повторите `--from deploy` — загрузка продолжится с сохранённого буфера, SOL не пропадают. Помогает свой devnet RPC: `DEVNET_RPC_URL=https://… bash scripts/mac-devnet.sh --from deploy` |
 | `insufficient funds` / «не хватает SOL» | пополните кошелёк на <https://faucet.solana.com> (Devnet) и `--from deploy` |
