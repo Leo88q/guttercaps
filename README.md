@@ -232,6 +232,10 @@ dapp-store/             — PORTAL_CHECKLIST.md + медиа для Publisher Po
 
 ## Порядок запуска с нуля
 
+> **MacBook + devnet одной командой** (обновление из GitHub → инструменты → тесты → сборка → деплой → setup):
+> [`docs/MAC-DEVNET.md`](docs/MAC-DEVNET.md), скрипт `scripts/mac-devnet.sh` (`npm run mac:devnet`).
+> Ниже — то же по шагам вручную.
+
 ```bash
 # 0. Зависимости — строго по коммитнутому lock-файлу: `npm ci` из корня (workspaces покрывают
 #    client/, backend/, packages/) — одинаково под npm 10 (CI, node 22) и npm 11 (машина разработчика).
