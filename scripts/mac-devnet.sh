@@ -34,6 +34,9 @@
 # Portable on purpose: macOS ships bash 3.2 — no associative arrays, mapfile, ${var,,}, `sed -i`.
 # No `set -u`/`set -e`: every step checks its own result so the failure names the stage and the fix.
 
+# `sh scripts/mac-devnet.sh` / `zsh scripts/mac-devnet.sh` would die on the first array: hand over to bash, which macOS has.
+[ -n "${BASH_VERSION:-}" ] || exec bash "$0" "$@"
+
 set -o pipefail
 
 ALL_STAGES="update doctor toolchain verify rust localnet ids build deploy setup env"

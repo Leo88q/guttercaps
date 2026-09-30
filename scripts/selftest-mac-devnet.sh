@@ -123,6 +123,12 @@ log="$tmp/args.log"
 check args "unknown stage -> non-zero" test "$rc" -ne 0
 expect args "неизвестный этап 'nonsense'" "$log"
 
+# `sh scripts/mac-devnet.sh` (dash here, bash-in-posix-mode on a Mac) must hand over to bash instead of dying on the first array
+log="$tmp/sh.log"
+( cd "$work" && HOME="$tmp/home" REPO_DIR="$work" sh scripts/mac-devnet.sh --help ) > "$log" 2>&1; rc=$?
+check args "run through sh -> exit 0" test "$rc" -eq 0
+expect args "Stages (the order is load-bearing" "$log"
+
 # ---------------------------------------------------------------- 6. the devnet guard: a mainnet RPC stops the deploy before any transaction
 bin="$tmp/bin"; mkdir -p "$bin" "$work/target/deploy"
 printf 'fake elf\n' > "$work/target/deploy/chip_core.so"
