@@ -36,14 +36,22 @@ img { max-width: 100%; display: block; }
   background-size: cover; background-position: center top; background-repeat: no-repeat;
 }
 .shell-nav {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: grid; grid-template-columns: repeat(7, 1fr);
+  /* One column per tab, and the bar is a fixed-height single row — so this number has to equal the
+     NAV length in Shell.tsx. It drifted once already: 7 here against 10 tabs, which silently wrapped
+     into a second row that overflowed the 64px box and pushed half the bar off the screen. Bumping a
+     tab means bumping this; `smoke.test.tsx` fails if they disagree. The language picker used to be
+     the 10th entry and now lives in the header next to the balance. */
+  --gc-nav-tabs: 9;
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: grid;
+  grid-template-columns: repeat(var(--gc-nav-tabs), minmax(0, 1fr));
   height: calc(var(--gc-nav-h) + var(--gc-safe-b)); padding-bottom: var(--gc-safe-b);
   background: rgba(22, 21, 26, 0.96); border-top: 1px solid var(--gc-line);
 }
 .shell-nav a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-decoration: none; color: var(--gc-muted); font-size: 10.5px; min-height: 44px; }
 .shell-nav a span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
-/* long-text locales: tighter label under the icon so 7 tabs still fit on 360 px */
-html.lang-long .shell-nav a { font-size: 9.5px; letter-spacing: -0.01em; }
+/* 9 tabs at 360px is 40px each: long labels and long locales both need the tighter face, and the
+   word-break rules further down turn "Collection" into two lines rather than a clipped one. */
+.shell-nav a { font-size: 9.5px; letter-spacing: -0.01em; }
 .shell-nav a.active { color: var(--cg-chrome); }
 .shell-nav a.active svg { filter: drop-shadow(0 0 6px var(--cg-neon-magenta)); }
 /* generated spray badges: dim until the tab is yours */
@@ -135,6 +143,13 @@ html.lang-long .shell-nav a { font-size: 9.5px; letter-spacing: -0.01em; }
 .cg-clean-zone .cg-accent { color: var(--cg-trust-blue); }
 .balance-chip { display: inline-flex; gap: 10px; align-items: center; font-family: var(--cg-font-mono); font-size: 12.5px; padding: 6px 10px; }
 .balance-chip b { color: var(--cg-trust-soft); font-weight: 600; }
+/* Language switch: a header control next to the balance, deliberately not a tab. It shows the
+   active locale as a two-letter code (and the native name on hover) so it reads as state, not
+   as another destination — the picker behind it is still a full screen. */
+.lang-btn { padding: 0 10px; gap: 6px; }
+.lang-btn .wicon { flex: none; }
+.lang-btn.active { border-color: var(--cg-neon-magenta); color: var(--cg-chrome); }
+.lang-btn.active svg { filter: drop-shadow(0 0 6px var(--cg-neon-magenta)); }
 
 /* ---------- modal / drawer ---------- */
 /* frosted veil: the page behind stays faintly visible (blurred) so a modal
@@ -395,7 +410,7 @@ html.lang-long .shell-nav a { font-size: 9.5px; letter-spacing: -0.01em; }
 .cg-clean-zone .kv { flex-wrap: wrap; }
 .kv > :first-child { flex: 1 1 45%; overflow-wrap: anywhere; }
 .kv > b { min-width: 0; max-width: 100%; overflow-wrap: anywhere; text-align: end; }
-.shell-nav { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.shell-nav { grid-template-columns: repeat(var(--gc-nav-tabs), minmax(0, 1fr)); }
 .shell-nav a { min-width: 0; text-align: center; }
 .shell-nav a span { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.15; }
 .codex-strip { align-items: start; }
@@ -432,9 +447,23 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 
 /* ---------- Pack shop: equal-height cards + gamified odds shelf ---------- */
 .pack-grid { align-items: stretch; }
-.pack-grid > .pack-card { display: flex; flex-direction: column; height: 100%; }
+/* min-width:0 — a grid item's automatic minimum is its min-content (the long localized
+   pack title), which would push tracks wider than the page; the card clips instead. */
+.pack-grid > .pack-card { display: flex; flex-direction: column; height: 100%; min-width: 0; }
 .pack-card-foot { margin-top: auto; }
 .pity-none { opacity: .55; }
+/* One row of four identical frames: every card reserves the same vertical zones, so the
+   sections below — gems, legend %, pity, cap line, price, button — share one baseline
+   across the row regardless of how many gems/pity lines the SKU actually has. */
+.pack-head { min-width: 0; }
+.pack-card .cg-heading { hyphens: auto; overflow-wrap: break-word; }
+/* subtitle = exactly 2 lines (clamped): 1-line and 2-line descriptions keep the same height */
+.pack-grid .pack-sub { min-height: calc(2 * 1.35em); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+/* the gems grid is always 3 rows tall: Starter rolls 6 gems over the same 3×3 grid as the
+   9-gem packs, so the legend-% row below never starts one row higher on one card */
+.pack-grid .odds-gems { grid-template-rows: repeat(3, minmax(48px, auto)); }
+/* packs without pity reserve the pity zone (row + progress bar ≈ 17 + 6 + 8 px) */
+.pack-grid .pack-pity-spacer { min-height: 31px; }
 
 /* the shelf: a recessed metal rail the coloured bar sits in */
 .odds-shelf { position: relative; padding: 4px; border-radius: 999px;

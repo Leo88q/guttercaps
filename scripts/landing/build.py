@@ -131,13 +131,39 @@ def donut_svg():
             + '<text x="85" y="98" text-anchor="middle" font-family="Inter, sans-serif" font-size="10" fill="rgba(216,216,220,0.6)" data-i18n="allocation.cap">hard cap</text></svg>')
 
 
-ICON = {
-  'telegram': '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9.6 15.5l-.4 5c.6 0 .8-.3 1.1-.6l2.7-2.5 5.5 4c1 .6 1.7.3 2-.9l3.6-17c.3-1.5-.6-2.1-1.6-1.7L1.4 9.9C0 10.5 0 11.3 1.2 11.6l5.4 1.7L19.2 5.4c.6-.4 1.1-.2.7.2z"/></svg>',
-  'x': '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.2 2h3.4l-7.4 8.5L23 22h-6.8l-5.3-7-6.1 7H1.4l7.9-9.1L1 2h7l4.8 6.4L18.2 2zm-1.2 18h1.9L7.1 3.9H5.1L17 20z"/></svg>',
-  'discord': '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.5 5.3A17 17 0 0 0 15.3 4l-.5 1a16 16 0 0 0-5.6 0l-.5-1a17 17 0 0 0-4.2 1.3C1.8 9.3 1.1 13.2 1.5 17a17 17 0 0 0 5.2 2.6l1.1-1.8a11 11 0 0 1-1.8-.9l.4-.3a12 12 0 0 0 11.2 0l.4.3-1.8.9 1.1 1.8a17 17 0 0 0 5.2-2.6c.5-4.4-.8-8.3-3-11.7zM8.7 14.6c-1 0-1.9-1-1.9-2.1s.8-2.1 1.9-2.1 1.9 1 1.9 2.1-.9 2.1-1.9 2.1zm6.6 0c-1 0-1.9-1-1.9-2.1s.8-2.1 1.9-2.1 1.9 1 1.9 2.1-.8 2.1-1.9 2.1z"/></svg>',
-  'docs': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 3h9l5 5v13H6z"/><path d="M15 3v5h5M9 13h6M9 17h6"/></svg>',
-  'github': '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5A12 12 0 0 0 8.2 23.9c.6.1.8-.3.8-.6v-2.2c-3.3.7-4-1.4-4-1.4-.6-1.4-1.4-1.8-1.4-1.8-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.3 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .5z"/></svg>',
-}
+# -------------------------------------------------------------------- channels
+# The community channels are ONE list, and it is this one. The same five networks used to be
+# written out three times with nothing comparing them: the (key, label) tuple inside
+# `community_links`, the ICON map keyed by those same five names, and the `LINKS` object in
+# app.js that the `data-link` resolver reads at runtime. Nothing broke when they agreed, and
+# nothing caught it when they did not — add a channel to the tuple and forget app.js, and the
+# anchor still ships: `LINKS[key]` is undefined, so app.js leaves `href="#"` and paints the
+# "coming soon" treatment over a link that was supposed to be live. Order, label, icon and URL
+# therefore travel together here, and the `LINKS` half of app.js is generated from this list
+# (the `/*__CHANNELS__*/` placeholder) — a channel cannot be rendered without a URL slot.
+#
+# `url` stays '#' until we own the handle; app.js turns that into a visibly disabled link
+# rather than a link to nothing. To go live: put the URL here and rebuild. Add a channel by
+# appending one record — there is no second list left to keep in step.
+#
+# `i18n` is optional and only set where the visible label is a translated word rather than a
+# proper noun (Telegram / X / Discord / GitHub are brand names and are never translated).
+CHANNELS = [
+  {'key': 'telegram', 'label': 'Telegram', 'url': '#',
+   'icon': '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9.6 15.5l-.4 5c.6 0 .8-.3 1.1-.6l2.7-2.5 5.5 4c1 .6 1.7.3 2-.9l3.6-17c.3-1.5-.6-2.1-1.6-1.7L1.4 9.9C0 10.5 0 11.3 1.2 11.6l5.4 1.7L19.2 5.4c.6-.4 1.1-.2.7.2z"/></svg>'},
+  {'key': 'x', 'label': 'X', 'url': '#',
+   'icon': '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.2 2h3.4l-7.4 8.5L23 22h-6.8l-5.3-7-6.1 7H1.4l7.9-9.1L1 2h7l4.8 6.4L18.2 2zm-1.2 18h1.9L7.1 3.9H5.1L17 20z"/></svg>'},
+  {'key': 'discord', 'label': 'Discord', 'url': '#',
+   'icon': '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.5 5.3A17 17 0 0 0 15.3 4l-.5 1a16 16 0 0 0-5.6 0l-.5-1a17 17 0 0 0-4.2 1.3C1.8 9.3 1.1 13.2 1.5 17a17 17 0 0 0 5.2 2.6l1.1-1.8a11 11 0 0 1-1.8-.9l.4-.3a12 12 0 0 0 11.2 0l.4.3-1.8.9 1.1 1.8a17 17 0 0 0 5.2-2.6c.5-4.4-.8-8.3-3-11.7zM8.7 14.6c-1 0-1.9-1-1.9-2.1s.8-2.1 1.9-2.1 1.9 1 1.9 2.1-.9 2.1-1.9 2.1zm6.6 0c-1 0-1.9-1-1.9-2.1s.8-2.1 1.9-2.1 1.9 1 1.9 2.1-.8 2.1-1.9 2.1z"/></svg>'},
+  {'key': 'docs', 'label': 'Docs', 'i18n': 'community.docs', 'url': '#',
+   'icon': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 3h9l5 5v13H6z"/><path d="M15 3v5h5M9 13h6M9 17h6"/></svg>'},
+  {'key': 'github', 'label': 'GitHub', 'url': '#',
+   'icon': '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5A12 12 0 0 0 8.2 23.9c.6.1.8-.3.8-.6v-2.2c-3.3.7-4-1.4-4-1.4-.6-1.4-1.4-1.8-1.4-1.8-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.3 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .5z"/></svg>'},
+]
+
+# The `LINKS` entries app.js needs for the above, as one object literal fragment. Generated, not
+# hand-written, so the two halves cannot drift; app.js splices this into its `LINKS` object.
+CHANNELS_LINKS_JS = ',\n'.join(f'    {c["key"]}: {json.dumps(c["url"])}' for c in CHANNELS)
 
 LOGO_SVG = ('<svg class="sig-tag" width="20" height="20" viewBox="0 0 32 32" aria-hidden="true">'
             '<path d="M16 3 C22 12 25 16 25 20 A9 9 0 0 1 7 20 C7 16 10 12 16 3 Z" fill="var(--magenta)" opacity="0.6"/>'
@@ -221,10 +247,10 @@ def fee_row(k, rate):
 
 def community_links(with_icons):
     out = []
-    for key, label in (('telegram', 'Telegram'), ('x', 'X'), ('discord', 'Discord'), ('docs', 'Docs'), ('github', 'GitHub')):
-        icon = ICON[key] if with_icons else ''
-        if key == 'docs': label = '<span data-i18n="community.docs">Documentation</span>'
-        out.append(f'      <a data-link="{key}" href="#" rel="noopener" target="_blank">{icon}{label}</a>')
+    for c in CHANNELS:
+        icon = c['icon'] if with_icons else ''
+        label = f'<span data-i18n="{c["i18n"]}">{t(c["i18n"])}</span>' if 'i18n' in c else c['label']
+        out.append(f'      <a data-link="{c["key"]}" href="#" rel="noopener" target="_blank">{icon}{label}</a>')
     return '\n'.join(out)
 
 
@@ -585,8 +611,13 @@ DATA_JS = (
 
 SCRIPT = (HERE / 'app.js').read_text()
 SCRIPT = (SCRIPT.replace('/*__DATA__*/', DATA_JS)
+               .replace('/*__CHANNELS__*/', CHANNELS_LINKS_JS)
                .replace('/*__STEP_ART__*/', '')
                .replace('/*__COLLECTIONS__*/', COLLECTIONS_JS.rstrip() + '\n'))
+# Every placeholder must have been filled. A `/*__X__*/` surviving into the page would ship
+# as literal text in the script, and the failure would be silent and confusing: a renamed
+# placeholder compiles fine, the built file looks fine, the feature is just gone.
+assert '/*__' not in SCRIPT, f'unfilled build placeholder in app.js: {SCRIPT[SCRIPT.index("/*__"):][:40]}'
 
 out = HEAD + BODY + '\n<script>\n' + SCRIPT.rstrip() + '\n</script>\n</body>\n</html>\n'
 # `</script>` inside JSON would end the ld+json block early

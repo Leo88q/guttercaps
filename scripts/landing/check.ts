@@ -136,6 +136,39 @@ has('footer age badge', html, '18+');
   // The social handles stay '#' until they exist (that is the documented convention in the file), but a
   // legal URL must not be in that group — it has a real destination today.
   check("terms/privacy are not in the 'coming soon' group", /terms: '#'/.test(appjs) || /privacy: '#'/.test(appjs), false);
+
+  // ---- the social channels are one list, not three ----
+  // Which networks the page talks about used to be written out three times: the (key, label)
+  // tuple in community_links, the ICON map keyed by the same names, and the LINKS object in
+  // app.js. Nothing compared them, so adding a channel to the markup without adding it to
+  // LINKS shipped a silently dead button — app.js left href="#" and the "coming soon"
+  // styling made an omission indistinguishable from a handle we do not own yet. build.py now
+  // owns the list and generates the LINKS half; the checks below are the tripwire for anyone
+  // who reintroduces a second copy, and they are read off the *built* file, so they fail on
+  // what actually ships rather than on what the source intends.
+  const linkKeys = new Set(
+    Array.from(/const LINKS = \{([\s\S]*?)\n {2}\};/.exec(html)?.[1].matchAll(/^\s{4}(\w+):/gm) ?? [], (m) => m[1]),
+  );
+  // `api` is the stats fetch, not an anchor; terms/privacy are the derived legal pair, added to
+  // LINKS by the loop above rather than written into the literal. Everything else must line up.
+  const NOT_AN_ANCHOR = ['api'];
+  const DERIVED_AT_RUNTIME = ['terms', 'privacy'];
+  const rendered = new Set(Array.from(html.matchAll(/data-link="([\w-]+)"/g), (m) => m[1]));
+  check(
+    'every rendered link has a LINKS entry',
+    [...rendered].filter((k) => !linkKeys.has(k) && !DERIVED_AT_RUNTIME.includes(k)),
+    [],
+  );
+  check('every unused LINKS entry is a known non-anchor',
+    [...linkKeys].filter((k) => !rendered.has(k) && !NOT_AN_ANCHOR.includes(k)), []);
+  // The build generates each channel twice — community section and footer — so a channel cannot
+  // quietly appear in one place only.
+  const channelKeys = [...rendered].filter((k) => k !== 'app' && !DERIVED_AT_RUNTIME.includes(k));
+  check('each channel appears in both the community section and the footer',
+    channelKeys.filter((k) => (html.match(new RegExp(`data-link="${k}"`, 'g')) ?? []).length !== 2), []);
+  // app.js must carry the build marker, not a hand-written roster: a roster here is the
+  // duplication this section exists to prevent.
+  check('app.js sources its channels from the build', [appjs.includes('/*__CHANNELS__*/'), /telegram\s*:/.test(appjs)], [true, false]);
 }
 
 // ---- SEC-B4: the landing talks to one origin, and it is ours ----

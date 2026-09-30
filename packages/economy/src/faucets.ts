@@ -39,9 +39,18 @@ export interface QuestDef {
   rewardItem?: 'booster' | 'ticket' | null;
 }
 
-// Daily: ~12 $CG total. No chip drop — dailies pay in $CG only, and the
+// Daily: ~14 $CG total (cap 15). No chip drop — dailies pay in $CG only, and the
 // $CG itself is the bridge to packs (900 $CG = one Standard pack ≈ 2.5 months
 // of perfect dailies). A 7-day streak grants ONE Common-tier roll.
+// ORDER MATTERS: the streak / weekly-meta math below reads DAILY_QUESTS[4] and
+// WEEKLY_QUESTS[4] — the meta quests must stay at index 4, new entries go after.
+//
+// Cross-game check-ins: NeuroForge (age of intelligence) and ARES-1 are separate
+// apps, so the only server-side evidence of a visit is an explicit ping — the same
+// trust level as the daily login (quest_logins), the same eligibility gate and the
+// same daily/weekly caps at settlement. They are deliberately EXCLUDED from the
+// streak: the streak tracks core in-game dailies, and a week shouldn't be lost
+// because a partner site was down.
 export const DAILY_QUESTS: QuestDef[] = [
   { id: 'd_login',   period: 'daily', title: 'Check the drains (log in)',       metric: 'login',        target: 1, rewardCgMicro: 2_000_000 },
   { id: 'd_pvp3',    period: 'daily', title: 'Play 3 Cap Slam matches',         metric: 'pvp_played',   target: 3, rewardCgMicro: 4_000_000 },
@@ -49,16 +58,21 @@ export const DAILY_QUESTS: QuestDef[] = [
   { id: 'd_fuse1',   period: 'daily', title: 'Fuse once',                       metric: 'fusions',      target: 1, rewardCgMicro: 3_000_000 },
   { id: 'd_streak7', period: 'daily', title: '7-day streak (all dailies)',      metric: 'streak_days',  target: 7, rewardCgMicro: 0,
     rewardChip: voucher(0) },
+  { id: 'd_visit_neuroforge', period: 'daily', title: 'Visit NeuroForge (our 2nd game)', metric: 'visit_neuroforge', target: 1, rewardCgMicro: 1_000_000 },
+  { id: 'd_visit_ares1',      period: 'daily', title: 'Visit ARES-1 (our 3rd game)',     metric: 'visit_ares1',      target: 1, rewardCgMicro: 1_000_000 },
 ];
 
-// Weekly: ~50 $CG + one Common+/Rare roll + 1 booster.
+// Weekly: ~70 $CG + one Common+/Rare roll + 1 booster (cap 120 $CG/week).
+// The two partner weeklies count distinct visit DAYS (the daily ping above feeds them).
 export const WEEKLY_QUESTS: QuestDef[] = [
   { id: 'w_pvp20',   period: 'weekly', title: 'Play 20 matches',                metric: 'pvp_played',   target: 20, rewardCgMicro: 15_000_000 },
   { id: 'w_win8',    period: 'weekly', title: 'Win 8 matches',                  metric: 'pvp_won',      target: 8,  rewardCgMicro: 15_000_000 },
   { id: 'w_trade',   period: 'weekly', title: 'Complete a marketplace trade',   metric: 'trades',       target: 1,  rewardCgMicro: 10_000_000 },
   { id: 'w_stake',   period: 'weekly', title: 'Keep ≥ 3 chips staked 5 days',   metric: 'stake_days',   target: 5,  rewardCgMicro: 10_000_000, rewardItem: 'booster' },
-  { id: 'w_all',     period: 'weekly', title: 'All weeklies done',              metric: 'weeklies_done',target: 4,  rewardCgMicro: 0,
+  { id: 'w_all',     period: 'weekly', title: 'All weeklies done',              metric: 'weeklies_done',target: 6,  rewardCgMicro: 0,
     rewardChip: voucher(1) },
+  { id: 'w_visit_neuroforge', period: 'weekly', title: 'Visit NeuroForge on 3 days', metric: 'visit_neuroforge', target: 3, rewardCgMicro: 10_000_000 },
+  { id: 'w_visit_ares1',      period: 'weekly', title: 'Visit ARES-1 on 3 days',     metric: 'visit_ares1',      target: 3, rewardCgMicro: 10_000_000 },
 ];
 
 // Permanent (one-time milestones): the only free route to Epic — soulbound 30 days.
@@ -71,6 +85,10 @@ export const PERMANENT_QUESTS: QuestDef[] = [
   { id: 'p_diamond_hand', period: 'permanent', title: 'Hold any chip staked 90 days', metric: 'max_stake_days', target: 90, rewardCgMicro: 60_000_000 },
   { id: 'p_referral5',    period: 'permanent', title: 'Refer 5 players who buy a pack', metric: 'referrals_paid', target: 5, rewardCgMicro: 100_000_000,
     rewardChip: voucher(3) },
+  { id: 'p_visit_neuroforge', period: 'permanent', title: 'First visit to NeuroForge', metric: 'visit_neuroforge', target: 1, rewardCgMicro: 10_000_000 },
+  { id: 'p_visit_ares1',      period: 'permanent', title: 'First visit to ARES-1',     metric: 'visit_ares1',      target: 1, rewardCgMicro: 10_000_000 },
+  { id: 'p_stake30',          period: 'permanent', title: 'Keep a chip staked for 30 days', metric: 'max_stake_days', target: 30, rewardCgMicro: 30_000_000 },
+  { id: 'p_trades5',          period: 'permanent', title: 'Complete 5 marketplace trades',  metric: 'trades',       target: 5,  rewardCgMicro: 25_000_000 },
 ];
 
 /**

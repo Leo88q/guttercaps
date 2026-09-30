@@ -14,7 +14,7 @@ const pt: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Início', caps: 'Caps', shop: 'Loja', market: 'Mercado', arena: 'Arena', stake: 'Stake', fusion: 'Fusão', guide: 'Guia', quests: 'Missões', leaderboard: 'Ranking', profile: 'Perfil', language: 'Idioma', more: 'Mais' },
+  nav: { home: 'Início', caps: 'Caps', shop: 'Loja', market: 'Mercado', arena: 'Arena', stake: 'Stake', fusion: 'Fusão', guide: 'Guia', quests: 'Missões', leaderboard: 'Ranking', profile: 'Perfil', more: 'Mais' },
   common: {
     connectWallet: 'Conectar carteira', connecting: 'Conectando…', signedIn: 'Conectado', signingIn: 'Entrando…', signOut: 'Sair',
     cancel: 'Cancelar', confirm: 'Confirmar', confirmSign: 'Confirmar e assinar', close: 'Fechar', save: 'Salvar', copy: 'Copiar', copied: 'Copiado',
@@ -37,6 +37,9 @@ const pt: Messages = {
     geoBlocked: 'Pacotes aleatórios não estão disponíveis na sua região ({regions}). Chapas específicas no Mercado continuam para você.',
     title: 'Loja de pacotes', subtitle: 'Cada drop é sorteado com aleatoriedade Switchboard que você pode verificar. As chances abaixo são por slot; o último slot sempre respeita o piso.',
     buy: 'Comprar {name}', quantity: 'Quantidade', payWith: 'Pagar com', burned75: '75% queimado', seekerDiscount: '−{pct}% Seeker',
+    skrNoMint: 'não ativado neste cluster',
+    cgLimitedOnly: 'pack de evento — só SOL/USDC',
+    cgStarterOnly: 'não vendido por $CG',
     solAtPyth: 'SOL via Pyth', skrAtPyth: 'SKR via Pyth', quoteUnavailable: 'cotação indisponível — vale o preço on-chain',
     priceAge: 'Idade do preço', priceAgeValue: '{s} s (válido ≤ 60 s on-chain)', priceFeedDown: 'O feed de preços está atualizando — tente de novo em alguns segundos.', quoteFailed: 'Não foi possível obter a cotação.',
     rentReserve: 'Reserva de rent (devolvida após abrir)', oracleFees: 'Oráculo + taxas de rede (est.)', maxSlippage: 'Máximo (proteção de 1%)',
@@ -84,6 +87,7 @@ const pt: Messages = {
     setBonus: 'Bônus de set ×{mult}', weight: 'Peso', pending: 'Recompensas pendentes', apyBand: 'Faixa de APY', flexible: 'Flexível', days: '{n} dias',
   },
   quests: {
+    visitGame: 'Abrir o jogo',
     title: 'Missões', subtitle: 'As recompensas são publicadas como raízes Merkle uma vez por época (timelock de 1 h) e resgatadas on-chain — o servidor nunca segura seu $CG.',
     daily: 'Diárias', weekly: 'Semanais', permanent: 'Permanentes', claim: 'Resgatar', claimed: 'Resgatado', claimable: 'Pronto para resgatar', progress: '{done}/{total}',
     streak: 'Sequência', streakHint: 'O dia 7 dá uma cap Common/Common+/Rare (soulbound 3 d) · reinicia em {time}',

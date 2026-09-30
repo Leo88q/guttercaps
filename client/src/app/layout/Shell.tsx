@@ -25,7 +25,6 @@ const NAV: { to: string; key: MessageKey; Icon?: React.ComponentType<{ size?: nu
   { to: '/staking', key: 'nav.stake', gen: '/icons/gen/nav-stake.webp' },
   { to: '/quests', key: 'nav.quests', Icon: QuestsIcon },
   { to: '/guide', key: 'nav.guide', Icon: GuideNavIcon },
-  { to: '/language', key: 'nav.language', Icon: LanguageIcon },
 ];
 
 export function Shell({ children }: { children: ReactNode }) {
@@ -61,11 +60,11 @@ export function Shell({ children }: { children: ReactNode }) {
     <div className="shell">
       <nav className="shell-nav" aria-label={t('ui.primaryNav')}>
         {NAV.map(({ to, key, Icon, gen, end }) => (
-          <NavLink key={to} to={to} end={end} className={({ isActive }) => (isActive ? 'active' : '')} title={key === 'nav.language' ? LOCALE_META[locale].native : undefined}>
+          <NavLink key={to} to={to} end={end} className={({ isActive }) => (isActive ? 'active' : '')}>
             {gen
               ? <img src={gen} width={24} height={24} alt="" aria-hidden loading="eager" decoding="async" className="nav-img" />
               : Icon ? <Icon size={24} /> : null}
-            <span>{key === 'nav.language' ? LOCALE_META[locale].code.toUpperCase() : t(key)}</span>
+            <span>{t(key)}</span>
           </NavLink>
         ))}
       </nav>
@@ -73,6 +72,20 @@ export function Shell({ children }: { children: ReactNode }) {
         <header className="shell-header">
           <Link to="/" className="shell-brand"><img src="/favicon.svg" width={24} height={24} alt="" aria-hidden />{t('home.heroTitle')} <small>GUTTER CITY</small></Link>
           <div className="row" style={{ gap: 8 }}>
+            {/* The language picker sits in the header beside the balance, not in the tab bar:
+                the tab bar is a map of the game, and this is a setting that gates whether you can
+                read the map at all. It stays outside the connected branch on purpose — a Seeker can
+                boot into a system locale the player does not read, and gating that behind "connect
+                wallet" would strand exactly the players the picker exists for. */}
+            <NavLink
+              to="/language"
+              className={({ isActive }) => `btn btn-sm mono lang-btn${isActive ? ' active' : ''}`}
+              title={LOCALE_META[locale].native}
+              aria-label={t('lang.title')}
+            >
+              <LanguageIcon size={16} />
+              {LOCALE_META[locale].code.toUpperCase()}
+            </NavLink>
             {connected && publicKey ? (
               <>
                 <BalanceChip />

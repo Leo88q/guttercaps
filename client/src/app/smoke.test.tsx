@@ -8,6 +8,8 @@ import { render, screen, waitFor, cleanup, fireEvent, within, act } from '@testi
 import { createMemoryRouter, RouterProvider, MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Keypair } from '@solana/web3.js';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { qk } from '@/api/keys';
 import type { AdminParams, AdminKpi, StakingOverview, Match, useReferrals } from '@/api/hooks';
 import { setMockMode } from '@/api/client';
@@ -141,6 +143,17 @@ describe('authenticated routes (fake wallet + mock SIWS)', () => {
     expect(screen.getAllByText(/Soulbound for 3 d/).length).toBe(1);
     cleanup();
   });
+  it('quests: the partner check-ins link out to NeuroForge and ARES-1 (our other games)', async () => {
+    mount('/quests');
+    await waitFor(() => expect(screen.getAllByText(/Visit NeuroForge/).length).toBeGreaterThan(0), { timeout: 6000 });
+    // daily tab (the default): both partner rows, each anchored to its own game in a new tab
+    const nf = screen.getByTestId('partner-link-d_visit_neuroforge');
+    expect(nf.getAttribute('href')).toBe('https://aof.pages.dev/site/home');
+    expect(nf.getAttribute('target')).toBe('_blank');
+    const ares = screen.getByTestId('partner-link-d_visit_ares1');
+    expect(ares.getAttribute('href')).toBe('https://ares1-7e1.pages.dev/#hero');
+    cleanup();
+  });
   it('profile: the referral dashboard (kind-4 accrual) renders from /me/referrals', async () => {
     mount('/profile');
     await waitFor(() => expect(screen.getAllByText(/@rail_queen/).length).toBeGreaterThan(0), { timeout: 6000 });
@@ -185,6 +198,110 @@ describe('authenticated routes (fake wallet + mock SIWS)', () => {
     const page = (await mockRequest('get', '/market/listings', {})) as { items: { asset: string }[] };
     mount(`/market/${page.items[0].asset}`);
     await waitFor(() => expect(screen.getByText(/Buy for/)).toBeTruthy(), { timeout: 6000 });
+    cleanup();
+  });
+});
+
+describe('the language picker is a header control, not a tab (placement regression)', () => {
+  // The tab bar is a map of the game; a language setting is not a destination, and leaving it in
+  // the bar is also what pushed the bar to 10 items in a 7-column grid — a second row that
+  // overflowed the fixed 64px nav. Moving it next to the balance is only worth keeping if it stays
+  // moved, so this pins both halves: gone from the bar, present in the header, and reachable while
+  // disconnected (a Seeker can boot into a system locale the player does not read).
+  it('lives in the header, survives a disconnected wallet, and leaves the bar with 9 tabs', async () => {
+    // The authenticated suite above flips this shared flag; the interesting half of this test is
+    // the disconnected state, so set it rather than inheriting whatever ran before.
+    connected = false;
+    const { container } = mount('/');
+    await waitFor(() => expect(screen.getAllByText(/GUTTERCAPS/i).length).toBeGreaterThan(0), { timeout: 6000 });
+
+    const header = container.querySelector('.shell-header')!;
+    const link = header.querySelector<HTMLAnchorElement>('a[href="/language"]');
+    expect(link, 'the language control must be in the header even with no wallet').not.toBeNull();
+    // It shows the active locale as a code, and names it in the native language on hover.
+    expect(link!.textContent?.trim()).toMatch(/^[A-Z]{2}$/);
+    expect(link!.getAttribute('title')).toBeTruthy();
+
+    const bar = container.querySelector('.shell-nav')!;
+    expect(bar.querySelector('a[href="/language"]'), 'the bar must not also carry it').toBeNull();
+    // The bar is a fixed-height single row: one grid column per tab, or the overflow spills off
+    // screen. This has drifted before (7 columns against 10 tabs), so the coupling is pinned here.
+    const tabs = bar.querySelectorAll('a').length;
+    expect(tabs).toBe(9);
+    const css = readFileSync(resolve(import.meta.dirname, '../shared/ui/layout.css'), 'utf8');
+    const columns = Number(/--gc-nav-tabs:\s*(\d+)/.exec(css)?.[1]);
+    expect(columns, 'layout.css must declare one grid column per tab').toBe(tabs);
+
+    // It is a real route, still a full screen — this is a placement change, not a redesign.
+    cleanup();
+    mount('/language');
+    await waitFor(() => expect(screen.getAllByText(/Tiếng Việt/).length).toBeGreaterThan(0), { timeout: 6000 });
+    cleanup();
+  });
+});
+
+describe('payment rails: SKR is offered, and a rail that is off says why', () => {
+  // SKR disappeared from packs *and* cosmetics and nothing said why. The gate that decided it lived
+  // in two files and consulted only two of the three sources that can name a SKR mint — it skipped
+  // the mock universe, and `useGameConfig` is `enabled: !isMock()`, so in demo/E2E nothing ever
+  // resolved and the rail silently vanished. This pins both halves of the fix: the rail is offered,
+  // and $CG is never quietly dropped from a pack that does not sell for it.
+  const cardPrice = (c: HTMLElement, name: RegExp) => {
+    const card = [...c.querySelectorAll('.pack-card')].find((el) => el.querySelector('.cg-heading')?.textContent?.match(name));
+    expect(card, `no pack card matching ${name}`).toBeTruthy();
+    return card!.textContent!;
+  };
+
+  it('offers SKR for packs and for cosmetics', async () => {
+    connected = true; // the buy button is "Connect to buy" until a wallet is attached
+    mount('/shop');
+    await waitFor(() => expect(screen.getAllByText(/Pack shop/).length).toBeGreaterThan(0), { timeout: 6000 });
+    await fireEvent.click(screen.getAllByRole('button', { name: 'Buy' })[0]!);
+    const modal = await screen.findByRole('dialog');
+    // The rail, with the discount that makes it worth choosing.
+    expect(within(modal).getByText(/SKR · −\d+(\.\d+)?% Seeker/)).toBeTruthy();
+    cleanup();
+
+    mount('/shop?tab=services');
+    await waitFor(() => expect(screen.getAllByText(/Season pass/).length).toBeGreaterThan(0), { timeout: 6000 });
+    await fireEvent.click(screen.getAllByRole('button', { name: 'Buy' }).at(-1)!);
+    const svcModal = await screen.findByRole('dialog');
+    expect(within(svcModal).getByText(/^SKR/)).toBeTruthy();
+    connected = false;
+    cleanup();
+  });
+
+  it('states why a rail is unavailable instead of omitting it', async () => {
+    const { container } = mount('/shop');
+    await waitFor(() => expect(screen.getAllByText(/Pack shop/).length).toBeGreaterThan(0), { timeout: 6000 });
+    // Starter and Limited have `priceCgMicro: null` (packs.ts). The card must say so, not just
+    // render a shorter price block and let the player conclude the game refuses $CG.
+    expect(cardPrice(container, /^Starter$/)).toMatch(/not sold for \$CG/);
+    expect(cardPrice(container, /^Limited$/)).toMatch(/event pack/);
+    // ...while the packs that do sell for $CG still show the amount and no excuse.
+    expect(cardPrice(container, /^Standard$/)).toMatch(/\$CG/);
+    expect(cardPrice(container, /^Standard$/)).not.toMatch(/not sold|event pack/);
+    cleanup();
+  });
+
+  it('ships all four packs unlocked — Limited is a real card, not a coming-soon shell', async () => {
+    // Limited was default-disabled whenever neither GameConfig nor the API catalog answered
+    // (the exact state of any deployment without a backend), so it sat dimmed behind a
+    // "coming soon" pill while packs.ts had it purchasable: true all along.
+    const { container } = mount('/shop');
+    await waitFor(() => expect(screen.getAllByText(/Pack shop/).length).toBeGreaterThan(0), { timeout: 6000 });
+    const cards = [...container.querySelectorAll('.pack-card')];
+    expect(cards).toHaveLength(4);
+    for (const card of cards) {
+      expect((card as HTMLElement).style.opacity, (card as HTMLElement).textContent?.slice(0, 40)).toBe('1');
+      expect(card.textContent).not.toMatch(/coming soon/i);
+    }
+    // the row also keeps its aligned rhythm: a pity zone on every card (Starter reserves an
+    // empty one) and the 3-row gems grid the layout pins in CSS
+    expect(container.querySelector('.pack-pity-spacer')).toBeTruthy();
+    const css = readFileSync(resolve(import.meta.dirname, '../shared/ui/layout.css'), 'utf8');
+    expect(css).toMatch(/\.pack-grid \.odds-gems \{ grid-template-rows: repeat\(3/);
+    expect(css).toMatch(/\.pack-grid \.pack-pity-spacer \{ min-height/);
     cleanup();
   });
 });

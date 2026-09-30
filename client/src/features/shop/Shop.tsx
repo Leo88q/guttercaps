@@ -2,16 +2,16 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
-import { PublicKey } from '@solana/web3.js';
 import { ExternalIcon } from '@/shared/ui/action-icons';
-import { PACKS, BUNDLES, FEES, bundlePriceCents, effectiveOdds, probabilityAtLeast, type PackId } from '@guttercaps/economy';
+import { PACKS, BUNDLES, bundlePriceCents, effectiveOdds, probabilityAtLeast, type PackId } from '@guttercaps/economy';
 import { useMe, usePackCatalog, useQuote, type PackSku } from '@/api/hooks';
 import type { components } from '@/api/schema';
 type PackQuote = components['schemas']['PackQuote'];
 import { useGameConfig, usePity } from '@/chain/hooks';
+import { usePaymentRails } from '@/chain/rails';
 import { toEconPack, rentReserve } from '@/chain/flows/packFlow';
 import { Currency, type CurrencyCode } from '@/chain/ix/chipCore';
-import { FLAGS, MINTS, ONRAMP_URL } from '@/app/config';
+import { FLAGS, ONRAMP_URL } from '@/app/config';
 import { fmtAmount, fmtCents, fmtPct, fmtProb, fmtSol, fmtUsd } from '@/shared/lib/format';
 import { packName, rarityName, rarityColor } from '@/shared/lib/rarity';
 import { CleanZone, KV, Modal, Pill, Progress } from '@/shared/ui/primitives';
@@ -51,7 +51,12 @@ export default function Shop() {
     return SKU_IDS.map((id, sku) => {
       const econ = cfg.data ? toEconPack(sku, cfg.data.packs[sku]) : PACKS[id];
       const api = catalog.data?.packs?.find((p: PackSku) => p.sku === sku);
-      const enabled = cfg.data ? cfg.data.packs[sku].enabled : api?.enabled ?? id !== 'limited';
+      // Default-on when nothing says otherwise: on-chain GameConfig is authoritative when it loads,
+      // the API catalog is authoritative when it answers, and with neither (offline demo, API down)
+      // the UI shows every SKU — the quote/purchase endpoints stay the real gate (same stance as
+      // geo/age above). Limited was default-OFF here, which greyed it out on any deployment without
+      // a backend even though packs.ts has it purchasable: true.
+      const enabled = cfg.data ? cfg.data.packs[sku].enabled : api?.enabled ?? true;
       return { sku, id, econ, api, enabled: enabled || (id === 'limited' && FLAGS.limitedPackPreview) };
     });
   }, [cfg.data, catalog.data]);
@@ -131,7 +136,7 @@ export default function Shop() {
       <AgeGateDialog gate={age} />
       {cfg.data?.paused && <div className="danger" style={{ marginBottom: 16 }}>{t('ui.pausedShop')}</div>}
 
-      <div className="grid-auto pack-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+      <div className="grid-auto pack-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))' }}>
         {packs.map(({ sku, id, econ, api, enabled }) => {
           const counter = counters[sku] ?? 0;
           const odds = effectiveOdds(econ, counter);
@@ -143,9 +148,9 @@ export default function Shop() {
           return (
             <div key={sku} className="card pack-card stack" style={{ ['--pack-glow' as string]: glow, opacity: enabled ? 1 : 0.55 }}>
               <div className="row between">
-                <div>
+                <div className="pack-head">
                   <div className="cg-heading" style={{ fontSize: 22 }}>{packName(sku)}</div>
-                  <div className="muted small">{t('shop.perPack', { n: econ.chips })} · {t('shop.floor', { rarity: rarityName(econ.floor) })} · {t(econ.pool === 'featured' ? 'ui.featuredOnly' : 'ui.allEight')}</div>
+                  <div className="muted small pack-sub">{t('shop.perPack', { n: econ.chips })} · {t('shop.floor', { rarity: rarityName(econ.floor) })} · {t(econ.pool === 'featured' ? 'ui.featuredOnly' : 'ui.allEight')}</div>
                 </div>
                 {!enabled && <Pill>{t('ui.comingSoon')}</Pill>}
                 {id === 'starter' && <Pill tone="ok">{t('shop.starterOnce')}</Pill>}
@@ -174,19 +179,26 @@ export default function Shop() {
               <div className="row between small">
                 <span className="muted">{t('ui.legendPack')}</span><b className="mono">{fmtProb(pLegend, 2)}</b>
               </div>
-              {econ.pity && (
+              {/* The pity zone keeps the same height on every card (Starter rolls without pity): the
+                  rows below — cap line, price, button — then land on the same baseline across the row. */}
+              {econ.pity ? (
                 <div className="stack-sm">
                   <div className="row between small"><span className="muted">{t('ui.pityAt', { n: econ.pity.hardAt })}</span><b className="mono">{counter}/{econ.pity.hardAt}</b></div>
                   <Progress value={counter} max={econ.pity.hardAt} tone={counter >= econ.pity.softStart ? 'orange' : undefined} />
                   {counter >= econ.pity.softStart && <div className="tiny" style={{ color: 'var(--cg-orange-soft)' }}>{t('ui.softPity', { pct: fmtPct(econ.pity.softStepBps * (counter - econ.pity.softStart + 1), 2) })}</div>}
                 </div>
-              )}
+              ) : <div className="pack-pity-spacer" aria-hidden />}
               {capLeft !== null && <div className="tiny muted">{t('services.dailyLeft', { n: capLeft })}</div>}
 
               <div className="pack-card-foot stack">
               <CleanZone>
                 <KV k={t('ui.price')} v={fmtCents(econ.priceUsdCents)} />
-                {econ.priceCgMicro && <KV k={t('ui.or')} v={fmtAmount(BigInt(econ.priceCgMicro), 'CG')} />}
+                {econ.priceCgMicro
+                  ? <KV k={t('ui.or')} v={fmtAmount(BigInt(econ.priceCgMicro), 'CG')} />
+                  : /* Two packs are deliberately SOL/USDC-only (see packs.ts). Saying so is the
+                       difference between "the game will not let me" and "this product has no $CG
+                       price" — the old code just dropped the row and let the player guess. */
+                    <KV k={t('ui.or')} v={t(id === 'limited' ? 'shop.cgLimitedOnly' : 'shop.cgStarterOnly')} />}
                 {api?.evPct !== undefined && <KV k={t('ui.modelFloor')} v={t('ui.ofPrice', { pct: Math.round(api.evPct) })} />}
               </CleanZone>
 
@@ -248,9 +260,8 @@ function BuyModal({ sel, setSel, pack, counter, onConfirm }: {
   const { econ, id } = pack;
   const t = useT();
   const bundlesAllowed = id === 'standard' || id === 'premium';
-  const cfg = useGameConfig();
-  const skrEnabled = !!MINTS.skr || (cfg.data ? !cfg.data.skrMint.equals(PublicKey.default) : false);
-  const skrDiscountBps = cfg.data?.skrDiscountBps ?? FEES.skrPackDiscountBps;
+  const rails = usePaymentRails();
+  const { skr: skrEnabled, skrDiscountBps, skrWhy } = rails;
   const currencies: CurrencyCode[] = [Currency.SOL, Currency.USDC, ...(econ.priceCgMicro ? [Currency.CG] : []), ...(skrEnabled ? [Currency.SKR] : [])];
   const quote = useQuote(sel.sku, sel.qty, CUR_LABEL[sel.currency]);
   const baseCents = bundlePriceCents(econ, sel.qty);
@@ -281,6 +292,11 @@ function BuyModal({ sel, setSel, pack, counter, onConfirm }: {
         <div className="stack-sm">
           <span className="label">{t('shop.payWith')}</span>
           <div className="tag-list">{currencies.map((c) => <Pill key={c} active={sel.currency === c} onClick={() => setSel({ ...sel, currency: c })}>{CUR_LABEL[c]}{c === Currency.CG ? ` · ${t('shop.burned75')}` : c === Currency.SKR ? ` · ${t('shop.seekerDiscount', { pct: skrDiscountBps / 100 })}` : ''}</Pill>)}</div>
+          {/* Rails that exist but cannot be settled here are named, not omitted: a player holding
+              SKR should be able to learn the rail is coming rather than conclude it does not exist.
+              A Pill with no onClick renders a <span>, so this is a label and not a dead tab stop. */}
+          {!skrEnabled && <div className="tag-list"><Pill tone="danger">{`SKR · ${t(skrWhy!)}`}</Pill></div>}
+          {!econ.priceCgMicro && <div className="tag-list"><Pill tone="danger">{`$CG · ${t(id === 'limited' ? 'shop.cgLimitedOnly' : 'shop.cgStarterOnly')}`}</Pill></div>}
         </div>
 
         <CleanZone className="cg-clean-pulse">

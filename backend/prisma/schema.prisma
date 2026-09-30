@@ -701,7 +701,8 @@ model PvpReward {
 // ---------------------------------------------------------------------------
 // Quests (backend/src/quests.ts) + reward oracle (backend/src/reward-oracle.ts)
 // ---------------------------------------------------------------------------
-// The only client-driven quest metric: one row per (wallet, day) behind the eligibility gate.
+// Client-driven quest metrics behind the eligibility gate: the daily login — one row per
+// (wallet, day) — and the partner-game check-ins — one row per (wallet, metric, day).
 model QuestLogin {
   wallet      String
   day         Int
@@ -709,6 +710,16 @@ model QuestLogin {
 
   @@id([wallet, day])
   @@map("quest_logins")
+}
+
+// Partner-game check-ins (NeuroForge / ARES-1): POST /quests/visit, whitelisted metric values.
+model QuestVisit {
+  wallet String
+  metric String // visit_neuroforge | visit_ares1
+  day    Int
+
+  @@id([wallet, metric, day])
+  @@map("quest_visits")
 }
 
 // "All four $CG dailies done that day" — streak input, maintained from FINALIZED events only.

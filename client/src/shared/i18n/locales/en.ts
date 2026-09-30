@@ -16,7 +16,7 @@ const en = {
   catalog,
   nav: {
     home: 'Home', caps: 'Caps', shop: 'Shop', market: 'Market', arena: 'Arena', stake: 'Stake',
-    fusion: 'Fusion', guide: 'Guide', quests: 'Quests', leaderboard: 'Ranks', profile: 'Profile', language: 'Language', more: 'More',
+    fusion: 'Fusion', guide: 'Guide', quests: 'Quests', leaderboard: 'Ranks', profile: 'Profile', more: 'More',
   },
   common: {
     connectWallet: 'Connect wallet', connecting: 'Connecting…', signedIn: 'Signed in', signingIn: 'Signing in…', signOut: 'Sign out',
@@ -42,6 +42,9 @@ const en = {
     geoBlocked: 'Randomised packs are not available in your region ({regions}). Specific caps on the Market are still for you.',
     title: 'Pack shop', subtitle: 'Every drop is rolled from Switchboard randomness you can verify. Odds below are per cap slot; the last slot always meets the floor.',
     buy: 'Buy {name}', quantity: 'Quantity', payWith: 'Pay with', burned75: '75% burned', seekerDiscount: '−{pct}% Seeker',
+    skrNoMint: 'not enabled on this cluster',
+    cgLimitedOnly: 'event pack — SOL/USDC only',
+    cgStarterOnly: 'not sold for $CG',
     solAtPyth: 'SOL @ Pyth', skrAtPyth: 'SKR @ Pyth', quoteUnavailable: 'quote unavailable — on-chain price applies',
     priceAge: 'Price age', priceAgeValue: '{s} s (valid ≤ 60 s on-chain)', priceFeedDown: 'Price feed is catching up — try again in a few seconds.', quoteFailed: 'Could not fetch a quote.',
     rentReserve: 'Rent reserve (returned after open)', oracleFees: 'Oracle + network fees (est.)', maxSlippage: 'Max (1% slippage guard)',
@@ -89,6 +92,7 @@ const en = {
     setBonus: 'Set bonus ×{mult}', weight: 'Weight', pending: 'Pending rewards', apyBand: 'APY band', flexible: 'Flexible', days: '{n} days',
   },
   quests: {
+    visitGame: 'Open the game',
     title: 'Quests', subtitle: 'Rewards are published as Merkle roots once per epoch (1 h timelock) and claimed on-chain — the server never holds your $CG.',
     daily: 'Daily', weekly: 'Weekly', permanent: 'Permanent', claim: 'Claim', claimed: 'Claimed', claimable: 'Ready to claim', progress: '{done}/{total}',
     streak: 'Streak', streakHint: 'Day 7 drops a Common/Common+/Rare cap (soulbound 3 d) · resets in {time}',

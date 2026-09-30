@@ -235,8 +235,9 @@ function applySkrCaps(db: Db, kind: number, wallet: string, want: bigint, period
 }
 
 /**
- * "Seeker week" (kind 5): every wallet that completed ALL four $CG weeklies of a finished week
- * (`quest_completions.w_all`, i.e. `weeklies_done ≥ 4`, settled from finalized events) and passes the
+ * "Seeker week" (kind 5): every wallet that completed ALL $CG weeklies of a finished week
+ * (`quest_completions.w_all`, i.e. `weeklies_done ≥ 6` — the target mirrors WEEKLY_QUESTS minus the
+ * meta quest itself, settled from finalized events) and passes the
  * SKR eligibility shares the week's quest slice of the pool equally, capped at 25 SKR each. Weekly
  * slice = pool.budget × 25 % / weeks left in the funding cadence — the pool is funded weekly, so the
  * quest slice is simply 25 % of what is available now (never more than `max_root_budget`).

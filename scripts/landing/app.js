@@ -1,11 +1,19 @@
   // ---------------------------------------------------------------------
   // LINKS — the only place to edit before launch. '#' renders as a dead,
   // visibly disabled link on purpose: no handle is linked before we own it.
+  //
+  // The social/community channels are NOT listed here: which networks the page
+  // talks about lives in one place, the CHANNELS list in scripts/landing/build.py,
+  // because the same list also renders the anchors this resolver reads. A second
+  // hand-written copy of those names is exactly what used to live on this line,
+  // and the two could disagree invisibly — a channel rendered without a LINKS
+  // entry kept href="#" and looked, to a reviewer, like a link still coming.
+  // build.py splices the generated entries in at the marker below.
   // ---------------------------------------------------------------------
   const LINKS = {
     app: 'https://app.guttercaps.gg',
     api: 'https://api.guttercaps.gg/v1',
-    telegram: '#', x: '#', discord: '#', docs: '#', github: '#',
+/*__CHANNELS__*/
   };
   // The legal documents are served by the app itself (client/src/features/legal/), so they are derived
   // from `app` rather than written out again: at launch the domain changes in exactly one place, and a

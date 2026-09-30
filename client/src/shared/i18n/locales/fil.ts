@@ -14,7 +14,7 @@ const fil: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Home', caps: 'Caps', shop: 'Tindahan', market: 'Palengke', arena: 'Arena', stake: 'Stake', fusion: 'Fusion', guide: 'Gabay', quests: 'Quests', leaderboard: 'Ranggo', profile: 'Profile', language: 'Wika', more: 'Iba pa' },
+  nav: { home: 'Home', caps: 'Caps', shop: 'Tindahan', market: 'Palengke', arena: 'Arena', stake: 'Stake', fusion: 'Fusion', guide: 'Gabay', quests: 'Quests', leaderboard: 'Ranggo', profile: 'Profile', more: 'Iba pa' },
   common: {
     connectWallet: 'Ikonekta ang wallet', connecting: 'Kumokonekta…', signedIn: 'Naka-sign in', signingIn: 'Nagsa-sign in…', signOut: 'Mag-sign out',
     cancel: 'Kanselahin', confirm: 'Kumpirmahin', confirmSign: 'Kumpirmahin at pirmahan', close: 'Isara', save: 'I-save', copy: 'Kopyahin', copied: 'Nakopya',
@@ -37,6 +37,9 @@ const fil: Messages = {
     geoBlocked: 'Hindi available sa rehiyon mo ang mga random na pack ({regions}). Nananatiling para sa iyo ang mga tiyak na cap sa Merkado.',
     title: 'Tindahan ng pack', subtitle: 'Bawat drop ay galing sa Switchboard randomness na puwede mong i-verify. Ang tsansa sa ibaba ay bawat slot; laging umaabot sa floor ang huling slot.',
     buy: 'Bilhin ang {name}', quantity: 'Dami', payWith: 'Bayaran gamit ang', burned75: '75% sinusunog', seekerDiscount: '−{pct}% Seeker',
+    skrNoMint: 'hindi pa-activate sa cluster na ito',
+    cgLimitedOnly: 'event pack — SOL/USDC lang',
+    cgStarterOnly: 'hindi ibinebenta sa $CG',
     solAtPyth: 'SOL sa Pyth', skrAtPyth: 'SKR sa Pyth', quoteUnavailable: 'walang quote — on-chain na presyo ang gagamitin',
     priceAge: 'Edad ng presyo', priceAgeValue: '{s} s (valid ≤ 60 s on-chain)', priceFeedDown: 'Ina-update pa ang price feed — subukan ulit sa ilang segundo.', quoteFailed: 'Hindi makuha ang quote.',
     rentReserve: 'Rent reserve (ibabalik pagkabukas)', oracleFees: 'Oracle + network fees (tantiya)', maxSlippage: 'Max (1% slippage guard)',
@@ -84,6 +87,7 @@ const fil: Messages = {
     setBonus: 'Set bonus ×{mult}', weight: 'Weight', pending: 'Nakabinbing rewards', apyBand: 'APY band', flexible: 'Flexible', days: '{n} araw',
   },
   quests: {
+    visitGame: 'Buksan ang laro',
     title: 'Quests', subtitle: 'Inilalathala ang rewards bilang Merkle roots isang beses bawat epoch (1 oras na timelock) at kini-claim on-chain — hindi kailanman hawak ng server ang $CG mo.',
     daily: 'Araw-araw', weekly: 'Lingguhan', permanent: 'Permanente', claim: 'I-claim', claimed: 'Na-claim', claimable: 'Puwede nang i-claim', progress: '{done}/{total}',
     streak: 'Streak', streakHint: 'Sa ika-7 araw may Common/Common+/Rare na cap (soulbound 3 araw) · magre-reset sa {time}',

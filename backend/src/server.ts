@@ -580,6 +580,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.get('/quests/claims', requireAuth, (req, res) => { res.json(quests.claims(db, req.session!.wallet)); });
   v1.get('/quests/streak', requireAuth, (req, res) => { if (compliance.accessState(db, req.session!.wallet, compliance.detectedCountry(req.headers), accessPolicy, accessEnabled).features.rewards.allowed) quests.refreshQuestDay(db, req.session!.wallet); res.json(quests.streak(db, req.session!.wallet)); });
   v1.post('/quests/login', requireAuth, accessGate('rewards'), (req, res) => { res.json(quests.recordLogin(db, req.session!.wallet)); });
+  v1.post('/quests/visit', requireAuth, accessGate('rewards'), (req, res) => { res.json(quests.recordVisit(db, req.session!.wallet, String((req.body as { metric?: unknown } | undefined)?.metric ?? ''))); });
 
   // ------------------------------------------------------------ admin (docs/03 §3.5, T-B-46): SIWS session ∈ ADMIN_WALLETS, every call audited,
   // on-chain changes are only *encoded* for the Squads multisig — this process holds no admin key.

@@ -547,6 +547,23 @@ paths:
       tags: [quests]
       summary: Record today's login explicitly (idempotent; `GET /quests` does it too)
       responses: { '200': { description: ok, content: { application/json: { schema: { type: object, properties: { day: { type: integer }, inserted: { type: boolean } } } } } } }
+  /quests/visit:
+    post:
+      tags: [quests]
+      summary: Record a partner-game check-in (NeuroForge / ARES-1 — separate apps, so the ping is the only evidence). Idempotent per day; whitelisted metrics only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [metric]
+              properties:
+                metric:
+                  type: string
+                  enum: [visit_neuroforge, visit_ares1]
+                  description: which partner game was visited (one row per wallet/metric/day)
+      responses: { '200': { description: ok, content: { application/json: { schema: { type: object, properties: { day: { type: integer }, inserted: { type: boolean } } } } } } }
   /quests/claims:
     get:
       tags: [quests]

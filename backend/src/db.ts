@@ -624,6 +624,14 @@ CREATE TABLE IF NOT EXISTS quest_logins (
   minute_of_day INTEGER,                  -- first login of the day (UTC minute) — quest-bot detector input
   PRIMARY KEY (wallet, day)
 );
+-- Partner-game check-ins (NeuroForge / ARES-1): a client-driven ping at the same trust level as
+-- quest_logins — POST /quests/visit, one row per (wallet, metric, day); feeds the visit_* metrics.
+CREATE TABLE IF NOT EXISTS quest_visits (
+  wallet TEXT    NOT NULL,
+  metric TEXT    NOT NULL,                -- visit_neuroforge | visit_ares1 (whitelisted in quests.ts)
+  day    INTEGER NOT NULL,
+  PRIMARY KEY (wallet, metric, day)
+);
 CREATE TABLE IF NOT EXISTS quest_days (
   wallet       TEXT    NOT NULL,
   day          INTEGER NOT NULL,
