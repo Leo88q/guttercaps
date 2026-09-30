@@ -72,7 +72,7 @@ chain/
   tx.ts                   сборка v0-транзакции (compute budget, LUT), отправка через адаптер, подтверждение, ретраи
   ix/{chipCore,market,staking,arena}.ts   билдеры инструкций (точный порядок аккаунтов = #[derive(Accounts)])
   flows/{packFlow,claimSettle,fusionFlow,claimFusionFlow}.ts   commit→reveal→open→settle (V2, `packFlow`+`claimSettle`) / commit→reveal (`fusionFlow` — legacy `fuse`; `claimFusionFlow` написан, но UI не переключено)
-  hooks.ts                useChain (клиент), useGameConfig, usePity, useChipStates (getMultipleAccounts)
+  hooks.ts                useChain (клиент), useGameConfig, usePity, usePendingPack
 features/
   home/ collection/ shop/ reveal/ fusion/ arena/ market/ staking/ quests/ profile/ leaderboard/ codex/ verify/
 shared/
@@ -197,7 +197,7 @@ Anchor `Option<Account>`: отсутствующий аккаунт переда
 ## 8. Дизайн-система в коде
 
 - Токены и шрифты — `shared/ui/theme.css` (существующий файл; палитра не менялась). Новые утилиты — `layout.css` (`.stack`, `.row`, `.grid-auto`, `.muted`, `.mono`, `.pill`).
-- Редкость читается цветом/ободком/свечением, **не размером**: `shared/lib/rarity.ts` → `rimClass`, `glow`, `vfxTier`; `ChipCard` использует процедурный SVG-арт (район → палитра/паттерн, редкость → ободок) до появления финальных ассетов — абстрактные геометрические «сети», без сторонних IP.
+- Редкость читается цветом/ободком/свечением, **не размером**: `shared/lib/rarity.ts` → `rarityColor`, `glow`, `vfxTier`; `ChipCard` использует процедурный SVG-арт (район → палитра/паттерн, редкость → ободок) до появления финальных ассетов — абстрактные геометрические «сети», без сторонних IP.
 - Clean-zone чек-лист (CI-линт по классам не делаем; ревью по таблице §4): шапка-баланс, PackCard цена/итого, ListModal, Buy-подтверждение, Staking-формы, Quest-награда, Arena-ставка.
 - Motion: `prefers-reduced-motion` и переключатель в настройках → reveal-анимация сокращается до 1 фазы, `PaintTrail` отключается.
 - Тап-цели ≥ 44 px, нижняя навигация с safe-area, шрифт ≥ 12 px в clean zone.

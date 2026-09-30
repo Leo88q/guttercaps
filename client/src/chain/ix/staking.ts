@@ -15,7 +15,6 @@ export const TIER_LOCK_SECS = [0, 30 * 86_400, 90 * 86_400, 180 * 86_400] as con
 export const TIER_BOOST_BPS = [10_000, 15_000, 22_000, 30_000] as const;
 export const TIER_PENALTY_BPS = [0, 500, 1_000, 1_500] as const;
 export const MIN_STAKE_MICRO = 10_000_000n;
-export const TIER_NAMES = ['Flex', '30 days', '90 days', '180 days'] as const;
 
 export function stakeCgIx(a: { owner: PublicKey; tier: number; amount: bigint; cgMint: PublicKey }): TransactionInstruction {
   const [emission] = emissionPda();

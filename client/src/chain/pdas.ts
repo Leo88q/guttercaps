@@ -93,7 +93,6 @@ export const rewardRootPda = (kind: number, epoch: number) => find([enc('root'),
 export const claimReceiptPda = (root: PublicKey, wallet: PublicKey) => find([enc('claim'), root.toBytes(), wallet.toBytes()], STAKING_ID);
 /** SKR prize pool (reward currency #2) — vault = ata(skrMint, skrPool). */
 export const skrPoolPda = () => find([enc('skr_pool')], STAKING_ID);
-export const burnReporterPda = (program: PublicKey) => find([enc('burn_reporter')], program);
 
 // ---------------------------------------------------------------- arena
 export const arenaConfigPda = () => find([enc('arena_config')], ARENA_ID);

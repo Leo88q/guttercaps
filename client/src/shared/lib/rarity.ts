@@ -8,8 +8,6 @@ import { COLLECTIONS } from './lore';
 export { RARITIES, RARITY_PROFILES };
 export type { RarityIndex };
 
-export const RARITY_SHORT = ['C', 'C+', 'R', 'R+', 'E', 'E+', 'L', 'L+', 'D'] as const;
-
 /** Glow / accent per tier — reuses the fixed palette (no new colours).
  *  Values are the *soft* variants (see theme.css): rarity names render as
  *  coloured text in grids and drawers, and the raw neon hexes vibrated on
@@ -31,8 +29,6 @@ export const RARITY_COLOR = [
 
 export const rarityName = (r: number) => r >= 0 && r <= 8 ? t(`ui.rarity${r}` as MessageKey) : `T${r}`;
 export const rarityColor = (r: number) => RARITY_COLOR[r] ?? RARITY_COLOR[0];
-// Kept for compatibility (CSS classes are no-ops now — no rings around chips).
-export const rimClass = (r: number) => `rim-${RARITY_PROFILES[r]?.rim ?? 'zinc-scratched'}`;
 export const vfxTier = (r: number) => RARITY_PROFILES[r]?.vfxTier ?? 0;
 
 /** Collection colour tokens map to the real palette values (lore.ts uses site var names). */

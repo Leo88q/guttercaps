@@ -14,7 +14,6 @@ export const RAKE_TREASURY_BPS = 4_000;
 export const RAKE_POOL_BPS = 2_000;
 export const MIN_SQUAD_POWER = 400;
 export const LEAGUE_UPPER = [800, 1400, 2400, 4000, 7000, Infinity] as const;
-export const LEAGUE_NAMES = ['Curb', 'Alley', 'Block', 'District', 'Skyline', 'Rooftop'] as const;
 export const leagueOf = (power: number) => LEAGUE_UPPER.findIndex((u) => power < u);
 
 export function createBattleIx(a: { challenger: PublicKey; nonce: bigint; wager: bigint; randomness: PublicKey; queue: PublicKey; oracle: PublicKey; squad: PublicKey[]; cgMint: PublicKey }): TransactionInstruction {

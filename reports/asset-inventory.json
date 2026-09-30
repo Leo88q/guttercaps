@@ -5986,8 +5986,8 @@
    },
    "icon-192.png": {
     "file": "client/public/icon-192.png",
-    "bytes": 79347,
-    "kb": 77.5,
+    "bytes": 69680,
+    "kb": 68.0,
     "mode": "RGB",
     "fmt": "PNG",
     "w": 192,
@@ -5996,8 +5996,8 @@
    },
    "icon-512.png": {
     "file": "client/public/icon-512.png",
-    "bytes": 537619,
-    "kb": 525.0,
+    "bytes": 493708,
+    "kb": 482.1,
     "mode": "RGB",
     "fmt": "PNG",
     "w": 512,

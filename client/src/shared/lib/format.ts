@@ -30,8 +30,6 @@ export const fmtSkr = (micro: bigint | string | number | undefined | null, maxFr
 export type CurrencySymbol = 'SOL' | 'USDC' | 'CG' | 'SKR';
 /** Currency codes shared with the programs: 0 SOL · 1 USDC · 2 CG · 3 SKR. */
 export const CURRENCY_SYMBOLS: Record<number, CurrencySymbol> = { 0: 'SOL', 1: 'USDC', 2: 'CG', 3: 'SKR' };
-export const CURRENCY_CODES: Record<CurrencySymbol, number> = { SOL: 0, USDC: 1, CG: 2, SKR: 3 };
-export const CURRENCY_DECIMALS: Record<CurrencySymbol, number> = { SOL: 9, USDC: 6, CG: 6, SKR: 6 };
 /** Display-only decimal metrics (multipliers, power, counts). Never use this to build an instruction. */
 export const fmtDecimal = (value: number | undefined | null, maxFrac = 2, minFrac = maxFrac): string =>
   value == null || !Number.isFinite(value) ? '—' : new Intl.NumberFormat(localeTag(), {

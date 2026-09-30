@@ -5,11 +5,11 @@ import { useQuery, useQueries } from '@tanstack/react-query';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { PublicKey } from '@solana/web3.js';
 import {
-  chipStatePda, configPda, emissionPda, pendingPackPda, pityPda, playerItemsPda, tokenStakePda, tokenPoolPda, chipPoolPda, setBonusPda, ata,
+  configPda, emissionPda, pendingPackPda, pityPda, playerItemsPda, tokenStakePda, tokenPoolPda, chipPoolPda, setBonusPda, ata,
 } from './pdas';
 import {
-  decodeChipState, decodeEmissionState, decodeGameConfig, decodePendingPack, decodePlayerItems, decodePlayerPity, decodePool, decodeSetBonus,
-  decodeTokenAmount, decodeTokenStake, type ChipState, type GameConfig,
+  decodeEmissionState, decodeGameConfig, decodePendingPack, decodePlayerItems, decodePlayerPity, decodePool, decodeSetBonus,
+  decodeTokenAmount, decodeTokenStake, type GameConfig,
 } from './accounts';
 import type { WalletLike } from './tx';
 
@@ -86,26 +86,6 @@ export function usePendingPack(nonce: bigint | undefined, poll = false) {
       return info ? decodePendingPack(new Uint8Array(info.data)) : null;
     },
     refetchInterval: poll ? 2_000 : false,
-  });
-}
-
-/** Batch-read ChipState for a list of assets (≤ 100 per RPC call). */
-export function useChipStates(assets: PublicKey[]) {
-  const { connection } = useConnection();
-  const keys = assets.map((a) => a.toBase58());
-  return useQuery({
-    queryKey: chainKeys.chipStates(keys),
-    enabled: assets.length > 0,
-    queryFn: async () => {
-      const out = new Map<string, ChipState>();
-      for (let i = 0; i < assets.length; i += 100) {
-        const slice = assets.slice(i, i + 100);
-        const infos = await connection.getMultipleAccountsInfo(slice.map((a) => chipStatePda(a)[0]), 'confirmed');
-        infos.forEach((info, j) => { if (info) out.set(slice[j].toBase58(), decodeChipState(new Uint8Array(info.data))); });
-      }
-      return out;
-    },
-    staleTime: 15_000,
   });
 }
 

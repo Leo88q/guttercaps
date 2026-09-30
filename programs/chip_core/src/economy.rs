@@ -253,7 +253,6 @@ pub const DEFAULT_PACKS: [PackDef; 4] = [
 /// Guard-rails for admin edits: no SKU may be turned into a Legend+ faucet.
 pub const MAX_TOP2_BPS_STANDARD: u16 = 200; // Legend+ + Diamond ≤ 2 % per slot on Standard
 pub const BUNDLE_DISCOUNT_BPS: [(u8, u16); 4] = [(1, 0), (5, 700), (10, 1200), (25, 1800)];
-pub const MAX_BUNDLE_DISCOUNT_BPS: u16 = 1800;
 
 pub fn bundle_discount_bps(qty: u8) -> u16 {
     let mut d = 0;

@@ -7,12 +7,10 @@ import { useSessionStore } from '@/app/store/session';
 
 export type Me = ResponseOf<'/me', 'get'>;
 export type Chip = NonNullable<ResponseOf<'/me/chips', 'get'>['items']>[number];
-export type Grid = ResponseOf<'/me/grid', 'get'>;
 export type PackCatalog = ResponseOf<'/packs', 'get'>;
 export type PackSku = NonNullable<PackCatalog['packs']>[number];
 export type PackQuote = ResponseOf<'/packs/quote', 'post'>;
 export type Collection = ResponseOf<'/collections', 'get'>[number];
-export type ListingRow = NonNullable<ResponseOf<'/market/listings', 'get'>['items']>[number];
 export type Floor = ResponseOf<'/market/floor', 'get'>;
 export type Recipe = ResponseOf<'/fusion/recipes', 'get'>[number];
 export type FusionPlan = ResponseOf<'/fusion/plan', 'post'>;
@@ -25,8 +23,6 @@ export type Quest = ResponseOf<'/quests', 'get'>[number];
 export type ClaimLeaf = ResponseOf<'/quests/claims', 'get'>[number];
 export type LeaderboardPage = ResponseOf<'/leaderboard/{board}', 'get'>;
 export type ChipDetail = ResponseOf<'/chips/{asset}', 'get'>;
-export type PackVerify = ResponseOf<'/packs/verify', 'post'>;
-export type PendingOps = ResponseOf<'/me/pending', 'get'>;
 export type PassState = ResponseOf<'/me/pass', 'get'>;
 export type MatchEmote = NonNullable<Match['emotes']>[number];
 
@@ -131,11 +127,8 @@ export const useSales = (f: { asset?: string; collection?: number; rarity?: numb
 export const useOffers = (direction: 'made' | 'received') =>
   useQuery({ queryKey: qk.offers(direction), queryFn: () => api.get('/market/offers', { query: { direction } }), enabled: useAuthenticated() });
 
-export const useRecipes = () => useQuery({ queryKey: qk.recipes, queryFn: () => api.get('/fusion/recipes'), staleTime: 10 * 60_000 });
 export const useFusionSuggest = (protectSets = true) =>
   useQuery({ queryKey: qk.suggest(protectSets), queryFn: () => api.get('/fusion/suggest', { query: { protectSets } }), enabled: useAuthenticated(), staleTime: 15_000 });
-export const useFusionPlan = () =>
-  useMutation({ mutationFn: (b: { materials: string[]; resultCollection?: number; useBooster?: boolean }) => api.post('/fusion/plan', b) });
 
 /** Polls faster while the player is queued or a match awaits a reveal (the WS `match_found` event also invalidates). */
 export const useArenaMe = () => useQuery({
@@ -144,7 +137,6 @@ export const useArenaMe = () => useQuery({
 });
 export const useSeason = () => useQuery({ queryKey: qk.season, queryFn: () => api.get('/arena/seasons/current'), staleTime: 60_000 });
 export const useMatch = (id: string) => useQuery({ queryKey: qk.match(id), queryFn: () => api.get('/arena/matches/{id}', { path: { id } }), enabled: !!id });
-export const useSimulate = () => useMutation({ mutationFn: (b: { squadA: string[]; squadB: string[] }) => api.post('/arena/simulate', b) });
 export const useQueueArena = () => {
   const qc = useQueryClient();
   return useMutation({
@@ -170,7 +162,6 @@ export const useRevealNonce = () => {
 
 export const useStakingOverview = () => useQuery({ queryKey: qk.stakingOverview, queryFn: () => api.get('/staking/overview'), staleTime: 30_000 });
 export const useStakingMe = () => useQuery({ queryKey: qk.stakingMe, queryFn: () => api.get('/staking/me'), enabled: useAuthenticated(), staleTime: 15_000 });
-export const useStakingEstimate = () => useMutation({ mutationFn: (b: { amountCgMicro: string; tier: number }) => api.post('/staking/estimate', b) });
 
 export const useQuests = () => useQuery({ queryKey: qk.quests, queryFn: () => api.get('/quests'), enabled: useAuthenticated(), staleTime: 30_000 });
 /** Proof-of-human pass (Turnstile, T-B-49) — quest / SKR settlement waits until it is verified. */
@@ -196,7 +187,6 @@ export type AdminKpi = ResponseOf<'/admin/kpi', 'get'>;
 export type Proposal = ResponseOf<'/admin/params', 'post'>;
 export type ParamsProposal = BodyOf<'/admin/params', 'post'>;
 export type FraudSignal = ResponseOf<'/admin/fraud', 'get'>[number];
-export type AuditRow = ResponseOf<'/admin/audit', 'get'>[number];
 export type SimulateReport = ResponseOf<'/admin/simulate', 'post'>;
 export const useAdminParams = (enabled = true) => useQuery({ queryKey: qk.adminParams, queryFn: () => api.get('/admin/params'), enabled: useAuthenticated() && enabled, staleTime: 20_000, retry: false });
 export const useAdminKpi = (enabled = true) => useQuery({ queryKey: qk.adminKpi, queryFn: () => api.get('/admin/kpi'), enabled: useAuthenticated() && enabled, staleTime: 60_000, retry: false });

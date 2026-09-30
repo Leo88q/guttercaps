@@ -6,7 +6,7 @@ import {
   ComputeBudgetProgram, Connection, PublicKey, TransactionMessage, VersionedTransaction,
   type AddressLookupTableAccount, type Keypair, type TransactionInstruction, type TransactionSignature,
 } from '@solana/web3.js';
-import { humanizeTxError, isBlockhashExpired } from './errors';
+import { isBlockhashExpired } from './errors';
 import { base58Encode } from '@/shared/lib/base58';
 
 export interface WalletLike {
@@ -149,35 +149,4 @@ export async function sendTx(
       throw e instanceof TxError ? e : new TxError(e);
     }
   }
-}
-
-/** Dry-run helper for the confirmation modal: SOL / token deltas for the signer. */
-export async function previewBalanceDelta(
-  connection: Connection,
-  payer: PublicKey,
-  ixs: TransactionInstruction[],
-  watchTokenAccounts: PublicKey[] = [],
-): Promise<{ lamports: bigint; tokens: Record<string, bigint>; unitsConsumed: number; err?: string }> {
-  const { blockhash } = await connection.getLatestBlockhash('confirmed');
-  const msg = new TransactionMessage({ payerKey: payer, recentBlockhash: blockhash, instructions: ixs }).compileToV0Message();
-  const tx = new VersionedTransaction(msg);
-  const before = await connection.getMultipleAccountsInfo([payer, ...watchTokenAccounts]);
-  const sim = await connection.simulateTransaction(tx, {
-    sigVerify: false, replaceRecentBlockhash: true,
-    accounts: { encoding: 'base64', addresses: [payer, ...watchTokenAccounts].map((k) => k.toBase58()) },
-  });
-  const out: { lamports: bigint; tokens: Record<string, bigint>; unitsConsumed: number; err?: string } = { lamports: 0n, tokens: {}, unitsConsumed: sim.value.unitsConsumed ?? 0 };
-  if (sim.value.err) out.err = humanizeTxError({ message: JSON.stringify(sim.value.err), logs: sim.value.logs });
-  const after = sim.value.accounts ?? [];
-  const lamBefore = BigInt(before[0]?.lamports ?? 0);
-  const lamAfter = BigInt(after[0]?.lamports ?? Number(lamBefore));
-  out.lamports = lamAfter - lamBefore;
-  watchTokenAccounts.forEach((k, i) => {
-    const b = before[i + 1]?.data;
-    const a = after[i + 1]?.data?.[0];
-    const amt = (buf: Uint8Array | undefined) => (buf && buf.length >= 72 ? new DataView(buf.buffer, buf.byteOffset).getBigUint64(64, true) : 0n);
-    const aBuf = a ? Uint8Array.from(atob(a), (c) => c.charCodeAt(0)) : undefined;
-    out.tokens[k.toBase58()] = amt(aBuf) - amt(b ? new Uint8Array(b) : undefined);
-  });
-  return out;
 }
