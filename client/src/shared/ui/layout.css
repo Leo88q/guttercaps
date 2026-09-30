@@ -143,6 +143,10 @@ img { max-width: 100%; display: block; }
 .cg-clean-zone .cg-accent { color: var(--cg-trust-blue); }
 .balance-chip { display: inline-flex; gap: 10px; align-items: center; font-family: var(--cg-font-mono); font-size: 12.5px; padding: 6px 10px; }
 .balance-chip b { color: var(--cg-trust-soft); font-weight: 600; }
+/* The header's action cluster (language + balance / wallet) wraps rather than overflowing: on a 360px phone the
+   ru / fil "connect wallet" button alone is ~275px, and `.row > button { flex-shrink: 0 }` would push the page
+   18–30px sideways next to the language button. */
+.shell-header > .row { flex-wrap: wrap; justify-content: flex-end; min-width: 0; max-width: 100%; }
 /* Language switch: a header control next to the balance, deliberately not a tab. It shows the
    active locale as a two-letter code (and the native name on hover) so it reads as state, not
    as another destination — the picker behind it is still a full screen. */
@@ -163,7 +167,10 @@ img { max-width: 100%; display: block; }
 .modal-title { font-family: var(--cg-font-display); font-size: 22px; margin: 0 0 10px; }
 
 /* ---------- toasts ---------- */
-.toasts { position: fixed; top: 64px; right: 12px; left: 12px; z-index: 80; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+/* top = the real header height (Shell.tsx keeps --gc-header-h in sync). A hard-coded 64px only holds while the
+   header is one row; on a phone it wraps to two, and a toast then sat on the language / balance / wallet row —
+   the controls it should never cover. 64px stays as the pre-measurement fallback. */
+.toasts { position: fixed; top: calc(var(--gc-header-h, 56px) + 8px); right: 12px; left: 12px; z-index: 80; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
 @media (min-width: 700px) { .toasts { left: auto; width: 360px; } }
 .toast { pointer-events: auto; background: var(--gc-bg-2); border: 1px solid var(--gc-line-strong); border-left-width: 4px; border-radius: 10px; padding: 10px 12px; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
 .toast-info { border-left-color: var(--cg-neon-cyan); }
