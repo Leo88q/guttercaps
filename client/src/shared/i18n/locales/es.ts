@@ -14,7 +14,7 @@ const es: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Inicio', caps: 'Caps', shop: 'Tienda', market: 'Mercado', arena: 'Arena', stake: 'Stake', fusion: 'Fusión', guide: 'Guía', quests: 'Misiones', leaderboard: 'Ranking', profile: 'Perfil', language: 'Idioma', more: 'Más' },
+  nav: { home: 'Inicio', caps: 'Caps', shop: 'Tienda', market: 'Mercado', arena: 'Arena', stake: 'Stake', fusion: 'Fusión', guide: 'Guía', quests: 'Misiones', leaderboard: 'Ranking', profile: 'Perfil', more: 'Más' },
   common: {
     connectWallet: 'Conectar billetera', connecting: 'Conectando…', signedIn: 'Sesión iniciada', signingIn: 'Iniciando…', signOut: 'Salir',
     cancel: 'Cancelar', confirm: 'Confirmar', confirmSign: 'Confirmar y firmar', close: 'Cerrar', save: 'Guardar', copy: 'Copiar', copied: 'Copiado',
@@ -37,6 +37,9 @@ const es: Messages = {
     geoBlocked: 'Los sobres aleatorios no están disponibles en tu región ({regions}). Las chapas concretas del Mercado siguen siendo para ti.',
     title: 'Tienda de sobres', subtitle: 'Cada drop se sortea con aleatoriedad de Switchboard que puedes verificar. Las probabilidades son por ranura; la última siempre cumple el mínimo.',
     buy: 'Comprar {name}', quantity: 'Cantidad', payWith: 'Pagar con', burned75: '75% quemado', seekerDiscount: '−{pct}% Seeker',
+    skrNoMint: 'no activado en este clúster',
+    cgLimitedOnly: 'pack de evento — solo SOL/USDC',
+    cgStarterOnly: 'no se vende por $CG',
     solAtPyth: 'SOL vía Pyth', skrAtPyth: 'SKR vía Pyth', quoteUnavailable: 'cotización no disponible — aplica el precio on-chain',
     priceAge: 'Antigüedad del precio', priceAgeValue: '{s} s (válido ≤ 60 s on-chain)', priceFeedDown: 'El feed de precios se está actualizando — reintenta en unos segundos.', quoteFailed: 'No se pudo obtener la cotización.',
     rentReserve: 'Reserva de rent (se devuelve al abrir)', oracleFees: 'Oráculo + comisiones de red (est.)', maxSlippage: 'Máximo (protección del 1%)',
@@ -84,6 +87,7 @@ const es: Messages = {
     setBonus: 'Bono de set ×{mult}', weight: 'Peso', pending: 'Recompensas pendientes', apyBand: 'Rango de APY', flexible: 'Flexible', days: '{n} días',
   },
   quests: {
+    visitGame: 'Abrir el juego',
     title: 'Misiones', subtitle: 'Las recompensas se publican como raíces Merkle una vez por época (timelock de 1 h) y se reclaman on-chain — el servidor nunca retiene tu $CG.',
     daily: 'Diarias', weekly: 'Semanales', permanent: 'Permanentes', claim: 'Reclamar', claimed: 'Reclamado', claimable: 'Listo para reclamar', progress: '{done}/{total}',
     streak: 'Racha', streakHint: 'El día 7 da una cap Common/Common+/Rare (soulbound 3 d) · se reinicia en {time}',

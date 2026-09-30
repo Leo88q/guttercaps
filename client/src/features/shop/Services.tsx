@@ -7,15 +7,15 @@ import { Link } from 'react-router-dom';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { useQueryClient } from '@tanstack/react-query';
-import { PublicKey } from '@solana/web3.js';
 import { EMOTE_PACKS, SERVICES, SKINS, type ServiceDef } from '@guttercaps/economy';
 import { claimWithRetry, api, isMock } from '@/api/client';
 import { useFloor, useGrid, useMyChips, useMyServices, useServices } from '@/api/hooks';
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
+import { usePaymentRails } from '@/chain/rails';
 import { Currency, type CurrencyCode } from '@/chain/ix/chipCore';
 import { payForService, quoteService, serviceRefHash } from '@/chain/flows/serviceFlow';
 import { useUiStore } from '@/app/store/ui';
-import { EXPLORER, MINTS } from '@/app/config';
+import { EXPLORER } from '@/app/config';
 import { fmtAmount, fmtCents, fmtUsd, CURRENCY_SYMBOLS } from '@/shared/lib/format';
 import { CleanZone, KV, Modal, Pill } from '@/shared/ui/primitives';
 import { CapPicker } from '@/shared/ui/CapPicker';
@@ -115,7 +115,10 @@ function ServiceModal({ service, onClose }: { service: ServiceDef; onClose: () =
     }
   }, [service.id, asset, skin, theme, pack, collection]);
 
-  const skrEnabled = !!MINTS.skr || (cfg.data ? !cfg.data.skrMint.equals(PublicKey.default) : false);
+  // Same gate as the pack shop — one implementation, so the two catalogues cannot disagree about
+  // which rails exist. Cosmetics are the case this bit hardest: the rail vanished and a player with
+  // SKR in their wallet saw only CG/SOL/USDC with no hint that SKR was ever an option here.
+  const { skr: skrEnabled, skrWhy } = usePaymentRails();
   const currencies: CurrencyCode[] = [Currency.CG, Currency.SOL, Currency.USDC, ...(skrEnabled ? [Currency.SKR] : [])];
   const quote = useMemo(() => {
     try { return quoteService(service.id, currency, { solUsd: floor.data?.solUsd, skrUsd: floor.data?.skrUsd }); } catch { return null; }
@@ -157,6 +160,8 @@ function ServiceModal({ service, onClose }: { service: ServiceDef; onClose: () =
             {currencies.map((c) => (
               <Pill key={c} active={currency === c} onClick={() => setCurrency(c)}>{CURRENCY_SYMBOLS[c]} · {c === Currency.CG ? t('services.burned') : t('services.toTreasury')}</Pill>
             ))}
+            {/* Named, not omitted — see the note in Shop.tsx. */}
+            {!skrEnabled && <Pill tone="danger">{`SKR · ${t(skrWhy!)}`}</Pill>}
           </div>
         </div>
         {service.id === 'capSkin' && (

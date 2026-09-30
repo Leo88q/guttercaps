@@ -241,7 +241,7 @@ on('get', '/packs', () => ({
     return {
       sku, name: p.name, chips: p.chips, priceUsdCents: p.priceUsdCents, priceCgMicro: p.priceCgMicro === null ? null : String(p.priceCgMicro),
       currencies: p.priceCgMicro ? ['SOL', 'USDC', 'CG'] : ['SOL', 'USDC'], oddsBps: [...p.oddsBps], floor: p.floor, dailyCap: p.dailyCap,
-      pity: p.pity ? { ...p.pity } : null, pool: p.pool, enabled: id !== 'limited', pAtLeastLegend: probabilityAtLeast(p, 6), evPct: Number(ev.toFixed(1)),
+      pity: p.pity ? { ...p.pity } : null, pool: p.pool, enabled: true, pAtLeastLegend: probabilityAtLeast(p, 6), evPct: Number(ev.toFixed(1)),
     };
   }),
   featuredCollection: 4,
@@ -448,6 +448,7 @@ on('get', '/quests/claims', () => [
 ]);
 on('get', '/quests/streak', () => ({ days: 4, total: 11, nextChipAt: 7, resetsAt: iso(9 * 3_600_000), todayDone: false }));
 on('post', '/quests/login', () => ({ day: Math.floor(Date.now() / 86_400_000), inserted: false }));
+on('post', '/quests/visit', () => ({ day: Math.floor(Date.now() / 86_400_000), inserted: true }));
 
 on('get', '/leaderboard/{board}', (_o, p) => ({
   board: p.board, season: 3,
@@ -461,7 +462,7 @@ const GUARD = { bpsDenom: 10_000, maxChipsPerPack: 5, minCommonBps: 500, maxTop2
 const adminState = {
   marketFeeBps: FEES.marketplaceFeeBps, skrDiscountBps: FEES.skrPackDiscountBps, featuredCollection: 4, paramsVersion: 3,
   splitBps: [3000, 1500, 1700, 2300, 1500], splitChangedAt: Math.floor(Date.now() / 1000) - 12 * 86_400, paused: { chip_core: false, staking: false, arena: false },
-  packs: SKUS.map((id, sku) => { const p = PACKS[id]; return { sku, chips: p.chips, priceUsdCents: p.priceUsdCents, priceCgMicro: String(p.priceCgMicro ?? 0), oddsBps: [...p.oddsBps], floor: p.floor, dailyCap: p.dailyCap ?? 0, pity: p.pity ? { ...p.pity } : null, featuredOnly: p.pool === 'featured', enabled: id !== 'limited' }; }),
+  packs: SKUS.map((id, sku) => { const p = PACKS[id]; return { sku, chips: p.chips, priceUsdCents: p.priceUsdCents, priceCgMicro: String(p.priceCgMicro ?? 0), oddsBps: [...p.oddsBps], floor: p.floor, dailyCap: p.dailyCap ?? 0, pity: p.pity ? { ...p.pity } : null, featuredOnly: p.pool === 'featured', enabled: true }; }),
 };
 const auditRows: { id: number; wallet: string; action: string; target: string | null; payload: unknown; ip: string | null; ok: boolean; ts: number }[] = [
   { id: 3, wallet: ME, action: 'params.propose', target: null, payload: { body: { marketFeeBps: 750 }, result: { ok: true, violations: 0 } }, ip: '10.0.0.7', ok: true, ts: Math.floor(Date.now() / 1000) - 3_600 },

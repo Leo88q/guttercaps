@@ -2333,6 +2333,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/quests/visit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a partner-game check-in (NeuroForge / ARES-1 — separate apps, so the ping is the only evidence). Idempotent per day; whitelisted metrics only. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /**
+                         * @description which partner game was visited (one row per wallet/metric/day)
+                         * @enum {string}
+                         */
+                        metric: "visit_neuroforge" | "visit_ares1";
+                    };
+                };
+            };
+            responses: {
+                /** @description ok */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            day?: number;
+                            inserted?: boolean;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/quests/claims": {
         parameters: {
             query?: never;

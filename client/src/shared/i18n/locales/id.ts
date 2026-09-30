@@ -14,7 +14,7 @@ const id: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Beranda', caps: 'Caps', shop: 'Toko', market: 'Pasar', arena: 'Arena', stake: 'Stake', fusion: 'Fusi', guide: 'Panduan', quests: 'Misi', leaderboard: 'Peringkat', profile: 'Profil', language: 'Bahasa', more: 'Lainnya' },
+  nav: { home: 'Beranda', caps: 'Caps', shop: 'Toko', market: 'Pasar', arena: 'Arena', stake: 'Stake', fusion: 'Fusi', guide: 'Panduan', quests: 'Misi', leaderboard: 'Peringkat', profile: 'Profil', more: 'Lainnya' },
   common: {
     connectWallet: 'Hubungkan dompet', connecting: 'Menghubungkan…', signedIn: 'Sudah masuk', signingIn: 'Sedang masuk…', signOut: 'Keluar',
     cancel: 'Batal', confirm: 'Konfirmasi', confirmSign: 'Konfirmasi & tanda tangani', close: 'Tutup', save: 'Simpan', copy: 'Salin', copied: 'Tersalin',
@@ -37,6 +37,9 @@ const id: Messages = {
     geoBlocked: 'Pack acak tidak tersedia di wilayah Anda ({regions}). Cap tertentu di Pasar tetap untuk Anda.',
     title: 'Toko pack', subtitle: 'Setiap drop diundi dari keacakan Switchboard yang bisa Anda verifikasi. Peluang di bawah per slot; slot terakhir selalu memenuhi floor.',
     buy: 'Beli {name}', quantity: 'Jumlah', payWith: 'Bayar dengan', burned75: '75% dibakar', seekerDiscount: '−{pct}% Seeker',
+    skrNoMint: 'belum aktif di cluster ini',
+    cgLimitedOnly: 'pack acara — hanya SOL/USDC',
+    cgStarterOnly: 'tidak dijual dengan $CG',
     solAtPyth: 'SOL via Pyth', skrAtPyth: 'SKR via Pyth', quoteUnavailable: 'kuotasi tidak tersedia — harga on-chain berlaku',
     priceAge: 'Usia harga', priceAgeValue: '{s} dtk (berlaku ≤ 60 dtk on-chain)', priceFeedDown: 'Feed harga sedang diperbarui — coba lagi beberapa detik lagi.', quoteFailed: 'Kuotasi tidak bisa diambil.',
     rentReserve: 'Cadangan rent (dikembalikan setelah dibuka)', oracleFees: 'Oracle + biaya jaringan (perkiraan)', maxSlippage: 'Maks (pelindung slippage 1%)',
@@ -84,6 +87,7 @@ const id: Messages = {
     setBonus: 'Bonus set ×{mult}', weight: 'Bobot', pending: 'Reward tertunda', apyBand: 'Rentang APY', flexible: 'Fleksibel', days: '{n} hari',
   },
   quests: {
+    visitGame: 'Buka gim',
     title: 'Misi', subtitle: 'Reward dipublikasikan sebagai Merkle root sekali per epoch (timelock 1 jam) dan diklaim on-chain — server tidak pernah memegang $CG Anda.',
     daily: 'Harian', weekly: 'Mingguan', permanent: 'Permanen', claim: 'Klaim', claimed: 'Diklaim', claimable: 'Siap diklaim', progress: '{done}/{total}',
     streak: 'Runtutan', streakHint: 'Hari ke-7 memberi cap Common/Common+/Rare (soulbound 3 hr) · reset dalam {time}',

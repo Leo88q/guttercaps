@@ -69,7 +69,7 @@ for (const [locale, tag, native, claimed, fuse, boosters] of locales) {
     await expect(receipt).toContainText('Claimed (mock)');
     await expect(receipt).toContainText('9 $CG + 12.5 SKR + 2 boosters');
     const sameNode = await receipt.elementHandle();
-    await page.locator('.shell-nav a[href="/language"]').click();
+    await page.locator('.shell-header a[href="/language"]').click();
     await page.getByRole('radio', { name: new RegExp(native) }).click();
     await expect(page.locator('html')).toHaveAttribute('lang', tag);
     await expect(receipt).toContainText(claimed);
@@ -127,7 +127,7 @@ for (const [locale, tag, native, claimed, fuse, boosters] of locales) {
     await page.reload();
     await expect(rows).toHaveCount(3);
     await expect(rows.nth(2)).toContainText(`${ui.rarity0} ×3`);
-    await page.locator('.shell-nav a[href="/language"]').click();
+    await page.locator('.shell-header a[href="/language"]').click();
     await page.getByRole('radio', { name: /English/ }).click();
     await page.goBack();
     await expect(rows.nth(2)).toContainText('Common ×3');

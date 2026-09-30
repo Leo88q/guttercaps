@@ -3,7 +3,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createHash, randomBytes } from 'node:crypto';
 import { Connection, Keypair, PublicKey } from '@solana/web3.js';
-import { ANTI_FARM, DAILY_QUESTS, FUSION_RECIPES, MATCH_REWARDS, MATCHMAKING, QUEST_CHIP_TEMPLATES, WEEKLY_QUESTS, resolveFight, onChainSquadPower, type FighterChip } from '@guttercaps/economy';
+import { ANTI_FARM, DAILY_QUESTS, FUSION_RECIPES, MATCH_REWARDS, MATCHMAKING, PERMANENT_QUESTS, QUEST_CHIP_TEMPLATES, WEEKLY_QUESTS, resolveFight, onChainSquadPower, type FighterChip } from '@guttercaps/economy';
 import { Db } from '../src/db.ts';
 import { ingestTx } from '../src/ingest.ts';
 import { ServiceError } from '../src/services.ts';
@@ -550,6 +550,30 @@ describe('quests', () => {
   // stakers and logins. Two wallets fall outside all of those: a referrer earns `referrals_paid` purely
   // through someone else's purchase, and a pack buyer can complete `sets_done` without ever playing. A
   // finished quest that is never settled is never paid — the `quest_completions` row is the only route.
+  it('partner visits (NeuroForge / ARES-1): whitelisted pings count as visit days, feed the daily/weekly/permanent quests, and never feed the streak', () => {
+    expect(() => quests.recordVisit(db, alice, 'pvp_won')).toThrow(ServiceError); // not a visit metric
+    expect(quests.recordVisit(db, alice, 'visit_neuroforge', T)).toMatchObject({ inserted: true });
+    expect(quests.recordVisit(db, alice, 'visit_neuroforge', T).inserted).toBe(false); // idempotent per day
+    quests.recordLogin(db, alice, T);
+    const l = quests.list(db, alice, T);
+    expect(l.find((q) => q.id === 'd_visit_neuroforge')).toMatchObject({ value: 1, claimable: true });
+    expect(l.find((q) => q.id === 'p_visit_neuroforge')).toMatchObject({ value: 1, claimable: true });
+    expect(l.find((q) => q.id === 'w_visit_neuroforge')!.value).toBe(1); // 1 of 3 distinct visit days
+    // the streak tracks the four core in-game dailies only — a partner ping alone never marks the day done
+    expect(quests.streak(db, alice, T).todayDone).toBe(false);
+    // a visit-only wallet still reaches the oracle through activeWallets
+    const visitor = kp();
+    db.run(`INSERT INTO wallets (address, first_seen) VALUES (?, ?)`, visitor, T - 86_400);
+    quests.recordVisit(db, visitor, 'visit_ares1', T);
+    expect(quests.activeWallets(db, T - 8 * 86_400)).toContain(visitor);
+    // settlement writes the completion row like any other quest (amount follows eligibility + caps);
+    // finalize first so the horizon covers the fixture's own events (same flow as the caps test)
+    finalizeAll(db);
+    expect(quests.settleWallet(db, alice, T)).toBeGreaterThan(0);
+    const row = db.get<{ amount: string }>(`SELECT amount FROM quest_completions WHERE wallet = ? AND quest_id = ?`, alice, 'd_visit_neuroforge');
+    expect(row).toBeTruthy();
+  });
+
   it('activeWallets covers pack buyers and their referrers, not only players/traders/stakers', () => {
     const referrer = kp();
     const referee = kp();
@@ -566,7 +590,7 @@ describe('quests', () => {
 
   it('progress comes from events: login, matches, wins, fusions, trades; periods reset; permanent milestones accumulate', () => {
     const list0 = quests.list(db, alice, T);
-    expect(list0).toHaveLength(DAILY_QUESTS.length + WEEKLY_QUESTS.length + 6);
+    expect(list0).toHaveLength(DAILY_QUESTS.length + WEEKLY_QUESTS.length + PERMANENT_QUESTS.length);
     expect(list0.find((q) => q.id === 'd_login')).toMatchObject({ value: 0, claimable: false, ineligibleReason: null }); // paid pack (sku 1) → eligible
     quests.recordLogin(db, alice, T);
     expect(quests.list(db, alice, T).find((q) => q.id === 'd_login')).toMatchObject({ value: 1, claimable: true });

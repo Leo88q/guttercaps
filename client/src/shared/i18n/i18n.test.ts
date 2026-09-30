@@ -70,8 +70,14 @@ describe('locale bundles', () => {
         expect(dst.length, `${l}:${k} empty`).toBeGreaterThan(0);
       }
     });
-    it(`${l}: nav labels fit the 7-tab bar (≤ 10 chars)`, () => {
-      for (const [k, v] of Object.entries(b.nav ?? {})) if (k !== 'language') expect((v as string).length, `${l}:nav.${k}`).toBeLessThanOrEqual(10);
+    // Every nav label must fit the bar: 9 tabs across 360 px is 40 px each, and the mobile rules
+    // let a label wrap to two lines but not grow. Swept over the whole `nav` block, not just the
+    // nine entries Shell.tsx currently mounts, so a label added for a future tab is checked before
+    // it is wired up. It used to say "7-tab bar" and exempt `nav.language` — both stale: the bar
+    // has nine tabs, and the language label moved to the header (where it renders as a 2-letter
+    // code, not this word), so the key is gone rather than exempted.
+    it(`${l}: nav labels fit the tab bar (≤ 10 chars)`, () => {
+      for (const [k, v] of Object.entries(b.nav ?? {})) expect((v as string).length, `${l}:nav.${k}`).toBeLessThanOrEqual(10);
     });
   }
   it('locale meta is complete and Cyrillic/Vietnamese use the alt display font', () => {

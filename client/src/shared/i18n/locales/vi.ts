@@ -14,7 +14,7 @@ const vi: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Trang chủ', caps: 'Nắp', shop: 'Cửa hàng', market: 'Chợ', arena: 'Đấu trường', stake: 'Stake', fusion: 'Hợp nhất', guide: 'Hướng dẫn', quests: 'Nhiệm vụ', leaderboard: 'Xếp hạng', profile: 'Hồ sơ', language: 'Ngôn ngữ', more: 'Thêm' },
+  nav: { home: 'Trang chủ', caps: 'Nắp', shop: 'Cửa hàng', market: 'Chợ', arena: 'Đấu trường', stake: 'Stake', fusion: 'Hợp nhất', guide: 'Hướng dẫn', quests: 'Nhiệm vụ', leaderboard: 'Xếp hạng', profile: 'Hồ sơ', more: 'Thêm' },
   common: {
     connectWallet: 'Kết nối ví', connecting: 'Đang kết nối…', signedIn: 'Đã đăng nhập', signingIn: 'Đang đăng nhập…', signOut: 'Đăng xuất',
     cancel: 'Hủy', confirm: 'Xác nhận', confirmSign: 'Xác nhận & ký', close: 'Đóng', save: 'Lưu', copy: 'Sao chép', copied: 'Đã sao chép',
@@ -37,6 +37,9 @@ const vi: Messages = {
     geoBlocked: 'Gói ngẫu nhiên không khả dụng ở khu vực của bạn ({regions}). Các chip cụ thể trên Chợ vẫn dành cho bạn.',
     title: 'Cửa hàng gói', subtitle: 'Mỗi lượt rơi được quay từ ngẫu nhiên Switchboard mà bạn có thể kiểm chứng. Tỷ lệ bên dưới tính theo ô; ô cuối luôn đạt mức sàn.',
     buy: 'Mua {name}', quantity: 'Số lượng', payWith: 'Thanh toán bằng', burned75: 'đốt 75%', seekerDiscount: '−{pct}% Seeker',
+    skrNoMint: 'chưa bật trên cụm này',
+    cgLimitedOnly: 'gói sự kiện — chỉ SOL/USDC',
+    cgStarterOnly: 'không bán bằng $CG',
     solAtPyth: 'SOL theo Pyth', skrAtPyth: 'SKR theo Pyth', quoteUnavailable: 'không có báo giá — áp dụng giá on-chain',
     priceAge: 'Tuổi giá', priceAgeValue: '{s} giây (hợp lệ ≤ 60 giây on-chain)', priceFeedDown: 'Nguồn giá đang cập nhật — thử lại sau vài giây.', quoteFailed: 'Không lấy được báo giá.',
     rentReserve: 'Tiền cọc rent (hoàn lại sau khi mở)', oracleFees: 'Oracle + phí mạng (ước tính)', maxSlippage: 'Tối đa (bảo vệ trượt giá 1%)',
@@ -84,6 +87,7 @@ const vi: Messages = {
     setBonus: 'Thưởng bộ ×{mult}', weight: 'Trọng số', pending: 'Thưởng chờ nhận', apyBand: 'Dải APY', flexible: 'Linh hoạt', days: '{n} ngày',
   },
   quests: {
+    visitGame: 'Mở trò chơi',
     title: 'Nhiệm vụ', subtitle: 'Phần thưởng được công bố dưới dạng Merkle root mỗi epoch (khóa 1 giờ) và nhận on-chain — máy chủ không bao giờ giữ $CG của bạn.',
     daily: 'Ngày', weekly: 'Tuần', permanent: 'Vĩnh viễn', claim: 'Nhận', claimed: 'Đã nhận', claimable: 'Sẵn sàng nhận', progress: '{done}/{total}',
     streak: 'Chuỗi ngày', streakHint: 'Ngày 7 tặng nắp Common/Common+/Rare (soulbound 3 ngày) · đặt lại sau {time}',

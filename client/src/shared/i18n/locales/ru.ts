@@ -14,7 +14,7 @@ const ru: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Главная', caps: 'Фишки', shop: 'Паки', market: 'Маркет', arena: 'Арена', stake: 'Стейк', fusion: 'Слияние', guide: 'Гайд', quests: 'Квесты', leaderboard: 'Топ', profile: 'Профиль', language: 'Язык', more: 'Ещё' },
+  nav: { home: 'Главная', caps: 'Фишки', shop: 'Паки', market: 'Маркет', arena: 'Арена', stake: 'Стейк', fusion: 'Слияние', guide: 'Гайд', quests: 'Квесты', leaderboard: 'Топ', profile: 'Профиль', more: 'Ещё' },
   common: {
     connectWallet: 'Подключить кошелёк', connecting: 'Подключение…', signedIn: 'Вы вошли', signingIn: 'Вход…', signOut: 'Выйти',
     cancel: 'Отмена', confirm: 'Подтвердить', confirmSign: 'Подтвердить и подписать', close: 'Закрыть', save: 'Сохранить', copy: 'Копировать', copied: 'Скопировано',
@@ -37,6 +37,9 @@ const ru: Messages = {
     geoBlocked: 'Паки со случайным содержимым в вашем регионе недоступны ({regions}). Отдельные фишки на маркете — по-прежнему для вас.',
     title: 'Магазин паков', subtitle: 'Каждый дроп — из случайности Switchboard, которую можно проверить. Шансы ниже — на слот; последний слот всегда не ниже флора.',
     buy: 'Купить {name}', quantity: 'Количество', payWith: 'Оплата', burned75: '75% сгорает', seekerDiscount: '−{pct}% Seeker',
+    skrNoMint: 'не включён в этом кластере',
+    cgLimitedOnly: 'ивент-пак — только SOL/USDC',
+    cgStarterOnly: 'не продаётся за $CG',
     solAtPyth: 'SOL по Pyth', skrAtPyth: 'SKR по Pyth', quoteUnavailable: 'котировка недоступна — цена по ончейн-оракулу',
     priceAge: 'Возраст цены', priceAgeValue: '{s} с (ончейн-лимит 60 с)', priceFeedDown: 'Ценовой фид обновляется — повторите через несколько секунд.', quoteFailed: 'Не удалось получить котировку.',
     rentReserve: 'Резерв ренты (вернётся после открытия)', oracleFees: 'Оракул + сеть (оценка)', maxSlippage: 'Максимум (защита 1%)',
@@ -84,6 +87,7 @@ const ru: Messages = {
     setBonus: 'Бонус за сеты ×{mult}', weight: 'Вес', pending: 'Накоплено', apyBand: 'Диапазон APY', flexible: 'Гибкий', days: '{n} дн.',
   },
   quests: {
+    visitGame: 'Открыть игру',
     title: 'Квесты', subtitle: 'Награды публикуются как Merkle-корни раз в эпоху (таймлок 1 ч) и забираются ончейн — сервер никогда не держит ваши $CG.',
     daily: 'Дневные', weekly: 'Недельные', permanent: 'Постоянные', claim: 'Забрать', claimed: 'Получено', claimable: 'Можно забрать', progress: '{done}/{total}',
     streak: 'Серия', streakHint: 'День 7 даёт фишку Common/Common+/Rare (soulbound 3 д) · сброс через {time}',

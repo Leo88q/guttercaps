@@ -4,8 +4,10 @@
 // the arena's resolved matches (+ on-chain wager battles), `fusions` from the `fusions` projection
 // (ChipFused + CompressedClaimsFused + ClaimFusionRevealed — every fusion path writes one row there), `trades` from
 // ChipSold, `stake_days` / `max_stake_days` from the `stakes` projection, `sets_done` from the grid,
-// `referrals_paid` from wallets.referrer × pack_purchases. The only client-driven metric is the
-// daily login (`quest_logins`), and it is worth 2 $CG/day behind the eligibility gate.
+// `referrals_paid` from wallets.referrer × pack_purchases. The client-driven metrics are the daily
+// login (`quest_logins`, worth 2 $CG/day behind the eligibility gate) and the partner-game check-ins
+// (`quest_visits` — NeuroForge / ARES-1 are separate apps, so an explicit ping is the only evidence
+// they can produce; same gate, same caps as the login).
 //
 // Eligibility (ANTI_FARM.minAccountAgeForRewardsSec): a wallet earns quest $CG once it has bought a
 // paid pack OR is ≥ 24 h old with ≥ 10 arena matches; wallets with `rewards_paused` in
@@ -107,6 +109,10 @@ export function metricValue(db: Db, wallet: string, metric: string, from: number
   switch (metric) {
     case 'login':
       return db.scalar(`SELECT COUNT(*) FROM quest_logins WHERE wallet = ? AND day >= ? AND day < ?`, wallet, dayIndex(from), dayIndex(Math.max(from, to - 1)) + 1);
+    case 'visit_neuroforge':
+    case 'visit_ares1':
+      // distinct visit days inside the window — the same day-bounding as the login metric
+      return db.scalar(`SELECT COUNT(*) FROM quest_visits WHERE wallet = ? AND metric = ? AND day >= ? AND day < ?`, wallet, metric, dayIndex(from), dayIndex(Math.max(from, to - 1)) + 1);
     case 'pvp_played': {
       const ranked = db.scalar(`SELECT COUNT(*) FROM matches WHERE (a = ? OR b = ?) AND status = 'resolved' AND forfeit = 0 AND ended_at >= ? AND ended_at < ?`, wallet, wallet, ms(from), ms(to));
       const wagers = db.scalar(`SELECT COUNT(*) FROM battles WHERE (challenger = ? OR opponent = ?) AND status = 'resolved' AND slot <= ? AND COALESCE(resolved_at, created_at, 0) >= ? AND COALESCE(resolved_at, created_at, 0) < ?`, wallet, wallet, maxSlot, from, to);
@@ -155,6 +161,15 @@ export function recordLogin(db: Db, wallet: string, t = now()): { day: number; i
   return { day, inserted };
 }
 
+/** Partner-game check-ins (NeuroForge / ARES-1) — client-driven like the login, whitelisted metrics only. */
+export const VISIT_METRICS = new Set(['visit_neuroforge', 'visit_ares1']);
+export function recordVisit(db: Db, wallet: string, metric: string, t = now()): { day: number; inserted: boolean } {
+  if (!VISIT_METRICS.has(metric)) throw new ServiceError(422, 'bad_request', `metric: unknown visit metric "${metric}"`);
+  const day = dayIndex(t);
+  const inserted = Number(db.run(insertIgnore('quest_visits', ['wallet', 'metric', 'day']), wallet, metric, day).changes) > 0;
+  return { day, inserted };
+}
+
 /** Consecutive completed days ending exactly on `day` (0 when `day` itself is not done). Bounded to 400 days. */
 export function streakEndingOn(db: Db, wallet: string, day: number): number {
   const rows = db.all<{ day: number }>(`SELECT day FROM quest_days WHERE wallet = ? AND dailies_done = 1 AND day <= ? AND day > ? ORDER BY day DESC`, wallet, day, day - 400);
@@ -178,9 +193,12 @@ export function streak(db: Db, wallet: string, t = now()) {
 /**
  * Recompute "all dailies done" for the day containing `t` — from FINALIZED events only (the row is
  * the streak input, i.e. it pays a chip), so a dropped fusion can never complete a day.
+ * Partner visit dailies are NOT part of the streak: the streak must be achievable from in-game
+ * actions alone (a partner site being down should not reset it), which is also what the
+ * `quest_days` schema comment and the "all four $CG dailies" UI copy promise.
  */
 export function refreshQuestDay(db: Db, wallet: string, t = now(), horizon = finalizedHorizon(db)) {
-  const dailies = DAILY_QUESTS.filter((q) => q.rewardCgMicro > 0);
+  const dailies = DAILY_QUESTS.filter((q) => q.rewardCgMicro > 0 && !q.metric.startsWith('visit_'));
   const from = dayIndex(t) * DAY;
   const done = dailies.every((q) => metricValue(db, wallet, q.metric, from, from + DAY, t, horizon) >= q.target);
   db.run(`INSERT INTO quest_days (wallet, day, dailies_done) VALUES (?, ?, ?) ON CONFLICT(wallet, day) DO UPDATE SET dailies_done = excluded.dailies_done`, wallet, dayIndex(t), done ? 1 : 0);
@@ -276,6 +294,7 @@ function sumPeriodicAmounts(db: Db, wallet: string, fromDay: number, toDay: numb
 export function activeWallets(db: Db, sinceS: number): string[] {
   const set = new Set<string>();
   for (const r of db.all<{ w: string }>(`SELECT wallet w FROM quest_logins WHERE day >= ?`, dayIndex(sinceS))) set.add(r.w);
+  for (const r of db.all<{ w: string }>(`SELECT wallet w FROM quest_visits WHERE day >= ?`, dayIndex(sinceS))) set.add(r.w);
   for (const r of db.all<{ w: string }>(`SELECT a w FROM matches WHERE ended_at >= ? UNION SELECT b w FROM matches WHERE ended_at >= ?`, sinceS * 1000, sinceS * 1000)) set.add(r.w);
   for (const r of db.all<{ w: string }>(`SELECT owner w FROM fusions WHERE COALESCE(block_time, 0) >= ?`, sinceS)) set.add(r.w);
   for (const r of db.all<{ w: string }>(`SELECT seller w FROM sales WHERE COALESCE(block_time, 0) >= ? UNION SELECT buyer w FROM sales WHERE COALESCE(block_time, 0) >= ?`, sinceS, sinceS)) set.add(r.w);

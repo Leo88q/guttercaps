@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { api } from '@/api/client';
 import { useQuests, useClaims, useStreak, useMe, type ClaimLeaf } from '@/api/hooks';
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
 import { sendTx } from '@/chain/tx';
@@ -26,11 +27,27 @@ import { EXPLORER, MINTS } from '@/app/config';
 import { ANTI_FARM, QUEST_CHIP_TEMPLATES, SKR_ANTI_FARM, isChipRootKind, isItemRootKind, isSkrRootKind } from '@guttercaps/economy';
 import { useT, type MessageKey } from '@/shared/i18n';
 import { RewardGlyph, type RewardKind, CgCoinIcon, SkrTokenIcon, BoosterIcon, VoucherIcon, StreakIcon, StashIcon } from '@/shared/ui/reward-icons';
+import { ExternalIcon } from '@/shared/ui/action-icons';
 
 const QUEST_KEYS: Record<string, MessageKey> = Object.fromEntries(
-  ['d_login', 'd_pvp3', 'd_win1', 'd_fuse1', 'd_streak7', 'w_pvp20', 'w_win8', 'w_trade', 'w_stake', 'w_all', 'p_first_fusion', 'p_win50', 'p_win500', 'p_set1', 'p_diamond_hand', 'p_referral5']
+  ['d_login', 'd_pvp3', 'd_win1', 'd_fuse1', 'd_streak7', 'd_visit_neuroforge', 'd_visit_ares1', 'w_pvp20', 'w_win8', 'w_trade', 'w_stake', 'w_all', 'w_visit_neuroforge', 'w_visit_ares1', 'p_first_fusion', 'p_win50', 'p_win500', 'p_set1', 'p_diamond_hand', 'p_referral5', 'p_visit_neuroforge', 'p_visit_ares1', 'p_stake30', 'p_trades5']
     .map((id) => [id, `ui.${id}` as MessageKey]),
 );
+
+/**
+ * Cross-promo destinations: our other games. The anchor opens the partner game in a new tab, and the
+ * click also pings `POST /quests/visit` — for two separate apps that ping is the only server-side
+ * evidence of a visit, so it sits at the same trust level as the daily login (whitelisted metric,
+ * eligibility gate and daily/weekly caps all apply on the backend side).
+ */
+const PARTNER_LINKS: Record<string, string> = {
+  d_visit_neuroforge: 'https://aof.pages.dev/site/home',
+  w_visit_neuroforge: 'https://aof.pages.dev/site/home',
+  p_visit_neuroforge: 'https://aof.pages.dev/site/home',
+  d_visit_ares1: 'https://ares1-7e1.pages.dev/#hero',
+  w_visit_ares1: 'https://ares1-7e1.pages.dev/#hero',
+  p_visit_ares1: 'https://ares1-7e1.pages.dev/#hero',
+};
 
 type Cadence = 'daily' | 'weekly' | 'permanent';
 
@@ -201,6 +218,27 @@ export default function Quests() {
                     {q.resetsAt && tab !== 'permanent' && <span>· {t('quests.resetsIn', { time: countdown(q.resetsAt) })}</span>}
                     {q.ineligibleReason && <span style={{ color: 'var(--cg-orange-soft)' }}> · {reasonText(q.ineligibleReason)}</span>}
                   </div>
+                  {PARTNER_LINKS[q.id ?? ''] && (
+                    <div>
+                      <a
+                        className="pill pill-ok"
+                        href={PARTNER_LINKS[q.id ?? '']}
+                        target="_blank"
+                        rel="noreferrer"
+                        data-testid={`partner-link-${q.id}`}
+                        onClick={() => {
+                          // the ping IS the metric — no match on the partner side can ever report back
+                          const metric = q.metric;
+                          if (metric !== 'visit_neuroforge' && metric !== 'visit_ares1') return;
+                          void api.post('/quests/visit', { metric })
+                            .then(() => qc.invalidateQueries({ queryKey: ['quests'] }))
+                            .catch(() => undefined);
+                        }}
+                      >
+                        {t('quests.visitGame')} <ExternalIcon size={11} />
+                      </a>
+                    </div>
+                  )}
                 </div>
                 {q.claimable ? <span className="pill pill-ok">{t('quests.inNextRoot')}</span> : done ? <span className="pill">{t('quests.done')}</span> : null}
               </div>
