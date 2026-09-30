@@ -806,7 +806,9 @@ stage_run() {
   ok "бэкенд запущен (pid $BACKEND_PID), http://127.0.0.1:8787"
   ( sleep 6; is_macos && open "http://localhost:5173" ) >/dev/null 2>&1 &
   say "  клиент: http://localhost:5173 (Ctrl+C остановит всё). Кошелёк в браузере переключите на Devnet."
-  npm --prefix client run dev -- --host 127.0.0.1 --port 5173
+  # the client's own `dev` script already passes --host; do not repeat it (two different values become an array).
+  # --strictPort: SIWS_DOMAINS in backend/.env names :5173, so a silent hop to :5174 would break sign-in.
+  npm --prefix client run dev -- --port 5173 --strictPort
 }
 
 # ================================================================== main
