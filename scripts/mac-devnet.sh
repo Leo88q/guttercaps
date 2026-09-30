@@ -485,10 +485,11 @@ wallet_preflight() { # informational only
   pub=$(solana-keygen pubkey "$WALLET" 2>/dev/null) || return 0
   bal=$(solana balance "$pub" -u "$RPC_URL" 2>/dev/null | head -1)
   ok "кошелёк деплоя: $pub  (devnet: ${bal:-баланс недоступен})"
-  # A first deploy of the four CI-sized binaries is ~21 SOL of devnet: ~18 SOL of permanent ProgramData rent
+  # A first deploy of the four CI-sized binaries is ~24 SOL of devnet: ~18.1 SOL of permanent ProgramData rent
   # (because `--max-len` is the exact ELF length, not the CLI's default 2x), the biggest upload buffer at its
-  # peak (~7.4 SOL, returned when the loader drains it), a few hundredths of a SOL of fees and the operational
-  # reserve. The stage prints the exact split after the build, from the cluster's own rent rate.
+  # peak (~7.4 SOL, returned when the loader drains it — only one buffer is ever alive, so the wallet is funded
+  # for the tightest step, ~21 SOL, not for all four buffers at once), a few hundredths of a SOL of fees and the
+  # operational reserve. The stage prints the exact split after the build, from the cluster's own rent rate.
   info "для деплоя 4 программ понадобится порядка 20-25 SOL devnet (точную разбивку скрипт посчитает после сборки, по rent-ставке кластера)."
   info "пока идёт сборка, можно пополнить кошелёк: https://faucet.solana.com (сеть Devnet)."
 }
@@ -654,7 +655,7 @@ LOADER_BUFFER_HEADER=37       # Buffer { authority: Option<Pubkey> }            
 # given it uses **twice** the .so length ("By default, programs are deployed to accounts that are twice the
 # size of the original deployment … leaves room for program growth"). For the four CI binaries that doubling
 # is 36.3 SOL of permanent rent deposit instead of 18.1 — it is the single biggest line of a first deploy and
-# the reason a fresh wallet needs ~38 SOL, not the ~18 the old `rent(45 + len)` estimate printed.
+# the reason a fresh wallet once needed ~38 SOL, not the ~18 the old `rent(45 + len)` estimate printed.
 # So the exact length is passed, and the budget is computed from the very same number, which makes it
 # impossible for the estimate to disagree with what the CLI is about to allocate. Growth headroom is opt-in:
 # a later, larger binary is handled by the `program extend` path that deploy_program already has.
@@ -811,6 +812,13 @@ deploy_program() { # $1 = program
 #                  extend transactions. Estimated from the bytes, not padded.
 #   4. reserve   — operational SOL for what follows (setup, lookup table, crank, Pyth pusher). Not a network
 #                  cost; it is a number the owner controls, printed on its own line.
+#
+# The wallet is funded for the *tightest step*, not for the sum of the four lines. The programs are deployed
+# one after another and the loader drains a buffer as soon as it deploys from it, so at most one upload
+# buffer is ever alive: the money needed at step k is "deposits of programs 1..k + buffer of k + fees of 1..k".
+# Adding the largest buffer to *all* deposits (the conservative bound, printed below for reference) assumes
+# four buffers are alive at once, which cannot happen in this script's own loop. Funding the real peak is what
+# takes a first devnet deploy from ~28.6 SOL to ~24.1 SOL on the four measured binaries.
 OPS_RESERVE_SOL=${MAC_DEVNET_OPS_RESERVE_SOL:-3}
 WRITE_CHUNK_BYTES=900      # the CLI fills a buffer with ~900 B of ELF per `write` transaction
 FEE_PER_TX_LAMPORTS=10000  # 5000 per signature, 2 signatures per write tx — deliberately rounded up
@@ -827,6 +835,7 @@ require_program_keys() { # every keypair must derive the id compiled into the bi
 deploy_plan() { # fills DEPOSIT / PEAK / FEES / RESERVE (lamports) and prints the table; 1 = the RPC would not answer
   local p kp id len state authority cap maxlen prog_rent data_rent buf_rent buf_need buf_extra buf_have
   local deposit=0 peak=0 fees=0 rate per_byte txs bufaddr bufkey sha
+  local run_dep=0 run_fees=0 step_need peak_seq=0 peak_seq_at= deposit_delta=0
   local sol_prog sol_data sol_delta sol_buf what
   rate=$(rent_lamports 1000) || return 1
   # The rate is printed for the human only; every number below is a real `solana rent` answer for that size.
@@ -839,9 +848,10 @@ deploy_plan() { # fills DEPOSIT / PEAK / FEES / RESERVE (lamports) and prints th
     data_rent=$(rent_lamports $((LOADER_PROGRAMDATA_HEADER + maxlen))) || return 1
     buf_rent=$(rent_lamports $((LOADER_BUFFER_HEADER + len))) || return 1
     state=$(program_state "$id") || return 1
+    deposit_delta=0   # what THIS iteration adds to the permanent deposit; the peak needs the step, not the sum
     case "$state" in
       absent*)
-        deposit=$((deposit + prog_rent + data_rent))
+        deposit=$((deposit + prog_rent + data_rent)); deposit_delta=$((prog_rent + data_rent))
         sol_data=$(sol $((prog_rent + data_rent)))
         info "  $p: новый деплой, ProgramData $((LOADER_PROGRAMDATA_HEADER + maxlen)) байт (--max-len $maxlen) — залог $sol_data SOL"
         txs=$(( len / WRITE_CHUNK_BYTES + 3 )) ;;
@@ -854,7 +864,7 @@ deploy_plan() { # fills DEPOSIT / PEAK / FEES / RESERVE (lamports) and prints th
         if [ "$maxlen" -gt "$cap" ]; then
           buf_need=$(rent_lamports $((LOADER_PROGRAMDATA_HEADER + cap))) || return 1
           sol_delta=$(sol $((data_rent - buf_need)))
-          deposit=$((deposit + data_rent - buf_need))
+          deposit=$((deposit + data_rent - buf_need)); deposit_delta=$((data_rent - buf_need))
           info "  $p: ProgramData расширяется $cap -> $maxlen байт — доплата $sol_delta SOL"
         else
           info "  $p: уже на цепи (Data Length $cap байт >= $maxlen) — постоянный залог не растёт"
@@ -883,17 +893,25 @@ deploy_plan() { # fills DEPOSIT / PEAK / FEES / RESERVE (lamports) and prints th
     fi
     [ "$buf_rent" -gt "$peak" ] && peak=$buf_rent
     fees=$((fees + txs * FEE_PER_TX_LAMPORTS))
+    # The running totals this loop is also the deploy order: the wallet must survive each step, not the sum.
+    run_dep=$((run_dep + deposit_delta))
+    run_fees=$((run_fees + txs * FEE_PER_TX_LAMPORTS))
+    step_need=$((run_dep + buf_rent + run_fees))
+    if [ "$step_need" -gt "$peak_seq" ]; then peak_seq=$step_need; peak_seq_at=$p; fi
   done
-  DEPOSIT=$deposit; PEAK=$peak; FEES=$fees
+  DEPOSIT=$deposit; PEAK=$peak; FEES=$fees; PEAK_SEQ=$peak_seq
   RESERVE=$(awk -v s="$OPS_RESERVE_SOL" 'BEGIN { printf "%.0f", (s * 1000000000) + 0.5 }')
-  NEED=$((DEPOSIT + PEAK + FEES + RESERVE))
+  NEED=$((PEAK_SEQ + RESERVE))
   say "  ─────────────────────────────────────────────────────────────"
   say "  арендный залог (постоянный: Program + ProgramData) : $(sol "$DEPOSIT") SOL"
   say "  временный пик (самый большой буфер, возвращается)  : $(sol "$PEAK") SOL"
   say "  сетевые комиссии (оценка по байтам загрузки)       : $(sol "$FEES") SOL"
   say "  резерв на setup / lookup table / crank / pusher    : $(sol "$RESERVE") SOL   (MAC_DEVNET_OPS_RESERVE_SOL=$OPS_RESERVE_SOL)"
   say "  ─────────────────────────────────────────────────────────────"
+  say "  самый тугой шаг (залоги к шагу + его буфер + комиссии) : $(sol "$PEAK_SEQ") SOL  ($peak_seq_at)"
   say "  ИТОГО нужно на кошельке $WALLET_PUB: $(sol "$NEED") SOL"
+  info "порядок деплоя: $PROGRAMS — буфер каждого шага возвращается loader'ом до следующего, поэтому живёт один"
+  info "если бы все буферы были живы одновременно (не бывает в этом цикле): $(sol "$((DEPOSIT + PEAK + FEES + RESERVE))") SOL"
   return 0
 }
 stage_deploy() {

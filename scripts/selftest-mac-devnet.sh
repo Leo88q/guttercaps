@@ -222,9 +222,31 @@ case "$1" in
     bytes=$(printf '%s' "$2" | tr -dc '0-9')
     awk -v b="$bytes" 'BEGIN { printf "Rent-exempt minimum: %.8f SOL\n", (b + 128) * 5080 / 1000000000 }'
     exit 0 ;;
+  balance)
+    # Empty by default: the wallet has 0 SOL, so every budget scenario stops at ensure_funds *after*
+    # printing the plan — which is what makes the numbers observable without spending anything.
+    echo "${FAKE_BALANCE:-0}"
+    exit 0 ;;
   program)
     sub=$2; shift 2
     id=$(printf '%s' "$*" | tr ' ' '\n' | grep -E '^[1-9A-HJ-NP-Za-km-z]{32,44}$' | head -1)
+    # id -> program name, so one scenario can give a program a big enough Data Length and another a small
+    # one (FAKE_CAP_chip_core / FAKE_CAP_market / ...) instead of forcing every program into the same branch.
+    name=""
+    case "$id" in
+      GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q) name=chip_core ;;
+      GCA2aUeX7ZFbGz3zvjqvsbjD1G3QjWxLhBpK5jwwPdcz) name=market ;;
+      GCuGx7fnLcKnw1NWU4dLzQvnJWggMVniQ4u7EuMaQevA) name=staking ;;
+      GCfERiohebYDJLtNwAZpGxudwbXRqnxmuTT413fkTYrM) name=arena ;;
+    esac
+    cap="${FAKE_CAP:-0}"
+    if [ -n "$name" ]; then eval "v=\${FAKE_CAP_$name:-}"; [ -n "$v" ] && cap=$v; fi
+    # `program dump <id> <file>`: hand back the bytes the fixture put on chain. Without it the
+    # "these exact bytes are already deployed, skip" branch is unreachable and untested.
+    if [ "$sub" = dump ]; then
+      [ -n "$name" ] && cp "$FAKE_SO_DIR/$name.so" "$2" 2>/dev/null
+      exit 0
+    fi
     if [ "$sub" = show ] && [ "${1:-}" = "--buffers" ]; then
       [ -n "$FAKE_BUFFERS" ] && printf '%s\n' "$FAKE_BUFFERS"
       exit 0
@@ -240,7 +262,7 @@ case "$1" in
     if [ "$sub" = show ]; then
       case ",$FAKE_DEPLOYED," in
         *",$id,"*)
-          printf 'Program Id: %s\nOwner: BPFLoaderUpgradeab1e11111111111111111111111\nProgramData Address: 11111111111111111111111111111111\nAuthority: %s\nLast Deployed In Slot: 1\nData Length: %s (0x1) bytes\nBalance: 1 SOL\n' "$id" "$FAKE_AUTH" "$FAKE_CAP"
+          printf 'Program Id: %s\nOwner: BPFLoaderUpgradeab1e11111111111111111111111\nProgramData Address: 11111111111111111111111111111111\nAuthority: %s\nLast Deployed In Slot: 1\nData Length: %s (0x1) bytes\nBalance: 1 SOL\n' "$id" "$FAKE_AUTH" "$cap"
           exit 0 ;;
       esac
       echo "Error: RPC request error: Unable to find program $id" >&2
@@ -252,13 +274,22 @@ case "$1" in
 esac
 exit 0
 FAKE
-chmod +x "$bud/bin/solana" "$bud/bin/solana-keygen"
+# A funded wallet gets past ensure_funds, so the deploy loop really runs and the stage ends with the
+# on-chain verification. This stub answers for it: what is under test is the deploy command the loop
+# issues, not the verifier (which has its own suite and needs a real cluster).
+cat > "$bud/bin/npm" <<'NPM'
+#!/bin/sh
+echo "npm $*" >> "$FAKE_CALLS"
+exit 0
+NPM
+chmod +x "$bud/bin/solana" "$bud/bin/solana-keygen" "$bud/bin/npm"
 has()   { grep -qF -- "$1" "$2"; }   # `check … bash -c 'grep "$log"'` cannot see the outer variable
 lacks() { ! grep -qF -- "$1" "$2"; }
 budget() { # <env assignments...>; output -> $log, exit code -> $rc
   log="$tmp/budget.log"; : > "$tmp/calls.log"
   ( cd "$work" && env PATH="$bud/bin:$PATH" HOME="$tmp/home" REPO_DIR="$work" WALLET="$tmp/wallet.json" \
-      FAKE_CALLS="$tmp/calls.log" PROGRAM_KEYS_DIR="$work/keys" KEYS_DIR="$tmp/home/.config/solana/guttercaps" "$@" \
+      FAKE_CALLS="$tmp/calls.log" FAKE_SO_DIR="$work/target/deploy" PROGRAM_KEYS_DIR="$work/keys" \
+      KEYS_DIR="$tmp/home/.config/solana/guttercaps" "$@" \
       bash scripts/mac-devnet.sh --no-update --yes --only deploy ) < /dev/null > "$log" 2>&1
   rc=$?
 }
@@ -280,7 +311,17 @@ expect budget-absent "арендный залог (постоянный: Program
 expect budget-absent "временный пик (самый большой буфер, возвращается)  : 7.41 SOL" "$log"
 expect budget-absent "сетевые комиссии (оценка по байтам загрузки)       : 0.04 SOL" "$log"
 expect budget-absent "резерв на setup / lookup table / crank / pusher    : 3.00 SOL" "$log"
-expect budget-absent "ИТОГО нужно на кошельке 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi: 28.59 SOL" "$log"
+# The wallet is funded for the tightest step, not for the sum of the four lines: the loader drains a buffer
+# as soon as it deploys from it, so only one is ever alive. 21.06 = 18.13 of deposits + arena's 2.88 buffer
+# + 0.04 of fees; the conservative bound (all four buffers alive at once) is printed for reference.
+expect budget-absent "самый тугой шаг (залоги к шагу + его буфер + комиссии) : 21.06 SOL  (arena)" "$log"
+expect budget-absent "ИТОГО нужно на кошельке 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi: 24.06 SOL" "$log"
+expect budget-absent "если бы все буферы были живы одновременно (не бывает в этом цикле): 28.59 SOL" "$log"
+check budget-absent "the peak is a step, never the sum of the buffers" lacks "7.41 SOL  (chip_core" "$log"
+# The RPC is asked for the *data* length; the 128-byte account overhead is inside getMinimumBalanceForRentExemption,
+# so adding it here as well would budget every account 128 B too high. 1459197 is 1459069 + 128.
+check budget-absent "rent is asked for the data length, not data + 128" has "solana rent 1459069" "$tmp/calls.log"
+check budget-absent "…and never for data + 128" lacks "solana rent 1459197" "$tmp/calls.log"
 expect_not budget-absent "program deploy" "$tmp/calls.log"   # nothing is uploaded before the funds exist
 
 # Already on chain with a smaller Data Length: only the difference is budgeted, and it is an extend, not a
@@ -293,6 +334,17 @@ check budget-extend "the peak buffer is unchanged" has "временный пи�
 budget FAKE_X=1 FAKE_DEPLOYED=GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q FAKE_AUTH=4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi FAKE_CAP=2000000
 expect budget-cap "уже на цепи (Data Length 2000000 байт >= 1459024) — постоянный залог не растёт" "$log"
 check budget-cap "chip_core adds nothing to the deposit" has "арендный залог (постоянный: Program + ProgramData) : 10.72 SOL" "$log"
+
+# A half-finished deploy: chip_core is on chain and big enough (nothing to add), market is on chain but too
+# small (extend, not a re-deposit), staking and arena are absent. The deposit is the sum of three different
+# answers, and the tightest step is the last one, where all of it is already spent.
+budget FAKE_X=1 FAKE_DEPLOYED=GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q,GCA2aUeX7ZFbGz3zvjqvsbjD1G3QjWxLhBpK5jwwPdcz FAKE_AUTH=4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi FAKE_CAP_chip_core=2000000 FAKE_CAP_market=500000
+check  budget-partial "chip_core adds nothing (already big enough)" has "chip_core: уже на цепи (Data Length 2000000 байт >= 1459024) — постоянный залог не растёт" "$log"
+check  budget-partial "market is extended, not re-deposited" has "ProgramData расширяется 500000 -> 604272 байт — доплата 0.53 SOL" "$log"
+check  budget-partial "arena is a first deploy" has "arena: новый деплой, ProgramData 567677 байт (--max-len 567632) — залог 2.89 SOL" "$log"
+check budget-partial "deposit = 0 + 0.53 + 4.76 + 2.89" has "арендный залог (постоянный: Program + ProgramData) : 8.18 SOL" "$log"
+check budget-partial "tightest step is the last one" has "самый тугой шаг (залоги к шагу + его буфер + комиссии) : 11.10 SOL  (arena)" "$log"
+check budget-partial "funding follows the step" has "ИТОГО нужно на кошельке 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi: 14.10 SOL" "$log"
 
 # A foreign upgrade authority is still a hard stop, before anything is deployed.
 budget FAKE_X=1 FAKE_DEPLOYED=GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q FAKE_AUTH=SomeoneElse1111111111111111111111111111111 FAKE_CAP=1000000
@@ -320,6 +372,33 @@ done
 budget FAKE_X=1 FAKE_BUFFERS="BufFerAddr111111111111111111111111111111111  4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi  0.05 SOL  1000000  123"
 expect budget-buffer "буфер загрузки уже есть (1000000 байт) — добираю 2.33 SOL" "$log"
 expect budget-buffer "временный пик (самый большой буфер, возвращается)  : 2.33 SOL" "$log"
+
+# ---------------------------------------------------------------- 6b. the deploy loop (a funded wallet)
+# Everything above stops at ensure_funds with an empty wallet, which is what keeps the budget observable
+# without spending anything. These two fund it, so the loop really runs: one proves the exact --max-len
+# reaches the CLI (the whole 18 -> 36 SOL story), the other that a program whose bytes are already on chain
+# is skipped instead of re-uploaded.
+budget FAKE_X=1 FAKE_BALANCE=30000000000
+check deploy-fresh "a funded wallet gets to the deploy loop" test "$rc" -eq 0
+for prog in chip_core:1459024 market:604272 staking:937320 arena:567632; do
+  p=${prog%%:*}; want=${prog##*:}
+  check deploy-fresh "$p is deployed with --max-len $want (exact ELF length, not 2x)" has "--max-len $want" "$tmp/calls.log"
+  check deploy-fresh "$p deploys from its own resumable buffer" has "program deploy target/deploy/$p.so --program-id" "$tmp/calls.log"
+done
+check deploy-fresh "four uploads, one per program" test "$(grep -c 'solana program deploy target/deploy' "$tmp/calls.log")" = 4
+check deploy-fresh "no 2x ProgramData is ever allocated" lacks "--max-len 2918093" "$tmp/calls.log"
+check deploy-fresh "the stage ends with the on-chain verification" has "npm run verify-deploy -- onchain --cluster devnet" "$tmp/calls.log"
+
+# The same four binaries already on chain: nothing is uploaded, and the stage says so per program.
+budget FAKE_X=1 FAKE_BALANCE=30000000000 FAKE_DEPLOYED=GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q,GCA2aUeX7ZFbGz3zvjqvsbjD1G3QjWxLhBpK5jwwPdcz,GCuGx7fnLcKnw1NWU4dLzQvnJWggMVniQ4u7EuMaQevA,GCfERiohebYDJLtNwAZpGxudwbXRqnxmuTT413fkTYrM FAKE_AUTH=4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi FAKE_CAP=2000000
+check deploy-unchanged "a funded wallet gets to the deploy loop" test "$rc" -eq 0
+check deploy-unchanged "not one byte is uploaded" test "$(grep -c 'solana program deploy target/deploy' "$tmp/calls.log")" = 0
+check deploy-unchanged "…and it says so for every program" test "$(grep -c 'в devnet уже лежат ровно эти байты' "$log")" = 4
+check deploy-unchanged "the deposit stays at zero" has "арендный залог (постоянный: Program + ProgramData) : 0.00 SOL" "$log"
+# The plan cannot know the bytes are identical without downloading them, so it still budgets a buffer
+# for every program. That is the safe direction: 10.43 = chip_core's 7.41 buffer + fees + the 3 SOL
+# reserve, while the run itself spends nothing but the reserve. An over-estimate never stops a deploy.
+check deploy-unchanged "the plan still budgets a buffer (safe direction)" has "ИТОГО нужно на кошельке 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi: 10.43 SOL" "$log"
 
 # ---------------------------------------------------------------- 7. Pyth price pusher (SOL / SKR payments) and the faucet
 bin2="$tmp/bin2"; mkdir -p "$bin2"
