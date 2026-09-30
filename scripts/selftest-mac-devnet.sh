@@ -171,6 +171,156 @@ expect guard-ok "— devnet" "$log"                          # the real devnet h
 expect guard-ok "нет ключа программы" "$log"               # …and stops at the next precondition (no program keypairs here)
 expect_not guard-ok "program deploy" "$tmp/calls.log"
 
+# ---------------------------------------------------------------- 6b. the deploy budget: rent from the cluster, deposit != peak
+# A wrong budget is the one failure mode the rest of the script cannot catch: it either stops a deploy that
+# would have fit, or lets one start and run out of SOL half-way through a 1.5 MB buffer upload. These fixtures
+# pin the three things that used to be wrong — a hard-coded rent rate, a 2x ProgramData allocation nobody
+# accounted for, and a single "need" number that mixed permanent money with money that comes back.
+bud="$tmp/budget"; mkdir -p "$bud/bin" "$work/target/deploy" "$work/keys" "$work/buffers"
+# Four .so files at the sizes the user measured (chip_core 1459024, market 604272, staking 937320,
+# arena 567632) — real numbers, not round ones, because the budget is a sum over them.
+head -c 1459024 /dev/zero > "$work/target/deploy/chip_core.so"
+head -c 604272  /dev/zero > "$work/target/deploy/market.so"
+head -c 937320  /dev/zero > "$work/target/deploy/staking.so"
+head -c 567632  /dev/zero > "$work/target/deploy/arena.so"
+for prog in chip_core market staking arena; do cp "$tmp/wallet.json" "$work/keys/$prog-keypair.json"; done
+# declared_id() reads programs/<p>/src/lib.rs, so the fake checkout needs them to name the same four ids.
+mkdir -p "$work/programs/chip_core/src" "$work/programs/market/src" "$work/programs/staking/src" "$work/programs/arena/src"
+printf 'declare_id!("GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q");\n' > "$work/programs/chip_core/src/lib.rs"
+printf 'declare_id!("GCA2aUeX7ZFbGz3zvjqvsbjD1G3QjWxLhBpK5jwwPdcz");\n' > "$work/programs/market/src/lib.rs"
+printf 'declare_id!("GCuGx7fnLcKnw1NWU4dLzQvnJWggMVniQ4u7EuMaQevA");\n' > "$work/programs/staking/src/lib.rs"
+printf 'declare_id!("GCfERiohebYDJLtNwAZpGxudwbXRqnxmuTT413fkTYrM");\n' > "$work/programs/arena/src/lib.rs"
+cat > "$bud/bin/solana-keygen" <<'EOF'
+#!/bin/sh
+if [ "$1" = pubkey ]; then
+  # `*buffers/*` first: a buffer keypair lives at .../buffers/chip_core-<hash>.json, which also contains the
+  # program's name — the more specific pattern has to win, exactly as it must for the real keygen.
+  case "$2" in
+    *buffers/*)  echo BufFerAddr111111111111111111111111111111111 ;;
+    *chip_core*) echo GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q ;;
+    *market*)    echo GCA2aUeX7ZFbGz3zvjqvsbjD1G3QjWxLhBpK5jwwPdcz ;;
+    *staking*)   echo GCuGx7fnLcKnw1NWU4dLzQvnJWggMVniQ4u7EuMaQevA ;;
+    *arena*)     echo GCfERiohebYDJLtNwAZpGxudwbXRqnxmuTT413fkTYrM ;;
+    *)           echo 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi ;;
+  esac
+  exit 0
+fi
+if [ "$1" = new ]; then
+  out=""; while [ $# -gt 0 ]; do [ "$1" = --outfile ] && out=$2; shift; done
+  printf '[1,2,3]\n' > "$out"; exit 0
+fi
+exit 2
+EOF
+# `solana rent` answers with the cluster's own parameters — 128 B of account overhead, 2540
+# lamports/byte-year x the 2-year exemption threshold = 5080 lamports per byte (the rate the user measured).
+# The script must ask, not assume: nothing here knows a "6960".
+cat > "$bud/bin/solana" <<'FAKE'
+#!/bin/sh
+echo "solana $*" >> "$FAKE_CALLS"
+case "$1" in
+  rent)
+    bytes=$(printf '%s' "$2" | tr -dc '0-9')
+    awk -v b="$bytes" 'BEGIN { printf "Rent-exempt minimum: %.8f SOL\n", (b + 128) * 5080 / 1000000000 }'
+    exit 0 ;;
+  program)
+    sub=$2; shift 2
+    id=$(printf '%s' "$*" | tr ' ' '\n' | grep -E '^[1-9A-HJ-NP-Za-km-z]{32,44}$' | head -1)
+    if [ "$sub" = show ] && [ "${1:-}" = "--buffers" ]; then
+      [ -n "$FAKE_BUFFERS" ] && printf '%s\n' "$FAKE_BUFFERS"
+      exit 0
+    fi
+    if [ "$sub" = deploy ]; then
+      printf '        --max-len <max_len>\n            Maximum length of the upgradeable program [default: twice the length of the original deployed program]\n'
+      exit 0
+    fi
+    if [ "$sub" = show ] && [ "${FAKE_RPC_DOWN:-0}" = 1 ]; then
+      echo "Error: RPC request error: error trying to connect: Connection refused" >&2
+      exit 1
+    fi
+    if [ "$sub" = show ]; then
+      case ",$FAKE_DEPLOYED," in
+        *",$id,"*)
+          printf 'Program Id: %s\nOwner: BPFLoaderUpgradeab1e11111111111111111111111\nProgramData Address: 11111111111111111111111111111111\nAuthority: %s\nLast Deployed In Slot: 1\nData Length: %s (0x1) bytes\nBalance: 1 SOL\n' "$id" "$FAKE_AUTH" "$FAKE_CAP"
+          exit 0 ;;
+      esac
+      echo "Error: RPC request error: Unable to find program $id" >&2
+      exit 1
+    fi
+    exit 0 ;;
+  --version) echo "solana-cli 2.1.0 (src:fake)" ;;
+  genesis-hash) echo "${FAKE_GENESIS:-EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG}" ;;
+esac
+exit 0
+FAKE
+chmod +x "$bud/bin/solana" "$bud/bin/solana-keygen"
+has()   { grep -qF -- "$1" "$2"; }   # `check … bash -c 'grep "$log"'` cannot see the outer variable
+lacks() { ! grep -qF -- "$1" "$2"; }
+budget() { # <env assignments...>; output -> $log, exit code -> $rc
+  log="$tmp/budget.log"; : > "$tmp/calls.log"
+  ( cd "$work" && env PATH="$bud/bin:$PATH" HOME="$tmp/home" REPO_DIR="$work" WALLET="$tmp/wallet.json" \
+      FAKE_CALLS="$tmp/calls.log" PROGRAM_KEYS_DIR="$work/keys" KEYS_DIR="$tmp/home/.config/solana/guttercaps" "$@" \
+      bash scripts/mac-devnet.sh --no-update --yes --only deploy ) < /dev/null > "$log" 2>&1
+  rc=$?
+}
+
+budget FAKE_X=1
+# The wallet has 0 SOL in this fixture, so the stage correctly stops at ensure_funds — after printing the plan.
+check budget-absent "exit 0 is impossible without funds" test "$rc" -ne 0
+expect budget-absent "бюджет деплоя (rent-ставка кластера: ~5080 лампортов" "$log"
+expect budget-absent "арендный залог (постоянный: Program + ProgramData)" "$log"
+expect budget-absent "временный пик (самый большой буфер, возвращается)" "$log"
+expect budget-absent "сетевые комиссии (оценка по байтам загрузки)" "$log"
+expect budget-absent "резерв на setup / lookup table / crank / pusher" "$log"
+expect budget-absent "ИТОГО нужно на кошельке" "$log"
+# The whole point of --max-len: ProgramData is 45+len, not 45+2*len (2918093 is what the old default bought).
+expect budget-absent "ProgramData 1459069 байт (--max-len 1459024)" "$log"
+expect budget-absent "буфер загрузки 1459061 байт (временный, вернётся после деплоя)" "$log"
+check budget-absent "no 2x ProgramData anywhere in the plan" lacks 2918093 "$log"
+expect budget-absent "арендный залог (постоянный: Program + ProgramData) : 18.13 SOL" "$log"
+expect budget-absent "временный пик (самый большой буфер, возвращается)  : 7.41 SOL" "$log"
+expect budget-absent "сетевые комиссии (оценка по байтам загрузки)       : 0.04 SOL" "$log"
+expect budget-absent "резерв на setup / lookup table / crank / pusher    : 3.00 SOL" "$log"
+expect budget-absent "ИТОГО нужно на кошельке 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi: 28.59 SOL" "$log"
+expect_not budget-absent "program deploy" "$tmp/calls.log"   # nothing is uploaded before the funds exist
+
+# Already on chain with a smaller Data Length: only the difference is budgeted, and it is an extend, not a
+# re-deposit of the whole account. 13.05 = 2.33 (the chip_core difference) + 10.72 (the three new programs).
+budget FAKE_X=1 FAKE_DEPLOYED=GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q FAKE_AUTH=4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi FAKE_CAP=1000000
+expect budget-extend "ProgramData расширяется 1000000 -> 1459024 байт — доплата 2.33 SOL" "$log"
+expect budget-extend "арендный залог (постоянный: Program + ProgramData) : 13.05 SOL" "$log"
+check budget-extend "the peak buffer is unchanged" has "временный пик (самый большой буфер, возвращается)  : 7.41 SOL" "$log"
+# Already on chain and already big enough: no deposit at all, only the upload buffer and the fees.
+budget FAKE_X=1 FAKE_DEPLOYED=GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q FAKE_AUTH=4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi FAKE_CAP=2000000
+expect budget-cap "уже на цепи (Data Length 2000000 байт >= 1459024) — постоянный залог не растёт" "$log"
+check budget-cap "chip_core adds nothing to the deposit" has "арендный залог (постоянный: Program + ProgramData) : 10.72 SOL" "$log"
+
+# A foreign upgrade authority is still a hard stop, before anything is deployed.
+budget FAKE_X=1 FAKE_DEPLOYED=GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q FAKE_AUTH=SomeoneElse1111111111111111111111111111111 FAKE_CAP=1000000
+check budget-authority "refused (non-zero)" test "$rc" -ne 0
+expect budget-authority "уже задеплоен с другим upgrade authority" "$log"
+expect_not budget-authority "program deploy" "$tmp/calls.log"
+
+# An RPC that will not answer is NOT an absent program: the stage stops instead of guessing a number.
+budget FAKE_X=1 FAKE_RPC_DOWN=1
+check budget-rpc "refused (non-zero)" test "$rc" -ne 0
+expect budget-rpc "RPC https://api.devnet.solana.com не ответил про программу" "$log"
+expect budget-rpc "бюджет не посчитан" "$log"
+expect_not budget-rpc "program deploy" "$tmp/calls.log"
+
+# A reusable upload buffer is money already on chain: only the difference is budgeted, and the peak drops.
+# The keypair is what a previous, interrupted run left behind — its name is derived from the .so hash, which is
+# why the budget phase looks for it instead of creating a second buffer and paying for it twice.
+KEYS="$tmp/home/.config/solana/guttercaps/buffers"; mkdir -p "$KEYS"
+# macOS ships shasum, Linux sha256sum — and an empty `$(command-that-does-not-exist)` still yields a valid
+# filename, so the presence of the tool is tested, not the exit code of cp.
+if have shasum; then sha12() { shasum -a 256 "$1" | cut -c1-12; }; else sha12() { sha256sum "$1" | cut -c1-12; }; fi
+for prog in chip_core market staking arena; do
+  cp "$tmp/wallet.json" "$KEYS/$prog-$(sha12 "$work/target/deploy/$prog.so").json"
+done
+budget FAKE_X=1 FAKE_BUFFERS="BufFerAddr111111111111111111111111111111111  4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi  0.05 SOL  1000000  123"
+expect budget-buffer "буфер загрузки уже есть (1000000 байт) — добираю 2.33 SOL" "$log"
+expect budget-buffer "временный пик (самый большой буфер, возвращается)  : 2.33 SOL" "$log"
+
 # ---------------------------------------------------------------- 7. Pyth price pusher (SOL / SKR payments) and the faucet
 bin2="$tmp/bin2"; mkdir -p "$bin2"
 cat > "$bin2/solana-keygen" <<'EOF'

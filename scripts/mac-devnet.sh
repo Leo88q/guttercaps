@@ -20,7 +20,9 @@
 #   localnet   `--features localnet` build + the 92-scenario LiteSVM suite (needs sb_mock, never devnet)
 #   ids        program keypairs <-> declare_id!  (the repo ids are placeholders nobody holds keys for)
 #   build      `--features devnet` build + verify-deploy artifact (devnet Switchboard pins, no sb_mock)
-#   deploy     the 4 programs to devnet, resumable buffers, then verify-deploy onchain
+#   deploy     the 4 programs to devnet, resumable buffers, then verify-deploy onchain. The budget is asked
+#              from the cluster (`solana rent`) and split into permanent deposit / temporary peak / fees /
+#              reserve; `--max-len` is the exact ELF length, so ProgramData is not allocated at 2x.
 #   setup      `npm run setup` (mints, config, collections, emission, arena) + lookup table
 #   env        client/.env.local + backend/.env for this deployment
 #   pyth       SOL/SKR payments: Pyth API key, pusher wallet, the pusher in Docker, proof that fresh prices are on chain
@@ -34,6 +36,11 @@
 #   PROGRAM_KEYS_DIR=DIR    directory holding the 4 <program>-keypair.json you deploy with
 #   REPO_DIR=DIR            repository root (default: detected)
 #   PYTH_API_KEY=KEY        Pyth API key for Hermes (else the saved one, else asked once); https://pythdata.app/signup
+#   MAC_DEVNET_MAX_LEN_HEADROOM=N   extra ELF bytes of ProgramData headroom to buy beyond the current .so
+#                                   (default 0: `--max-len` = the exact length; a bigger binary is later
+#                                   extended with `solana program extend`, which deploy_program already does)
+#   MAC_DEVNET_OPS_RESERVE_SOL=X    operational SOL held back for setup / lookup table / crank / Pyth pusher
+#                                   (default 3). Printed as its own line, never folded into "network fees".
 #
 # Portable on purpose: macOS ships bash 3.2 — no associative arrays, mapfile, ${var,,}, `sed -i`.
 # No `set -u`/`set -e`: every step checks its own result so the failure names the stage and the fix.
@@ -478,7 +485,11 @@ wallet_preflight() { # informational only
   pub=$(solana-keygen pubkey "$WALLET" 2>/dev/null) || return 0
   bal=$(solana balance "$pub" -u "$RPC_URL" 2>/dev/null | head -1)
   ok "кошелёк деплоя: $pub  (devnet: ${bal:-баланс недоступен})"
-  info "для деплоя 4 программ понадобится порядка 15-30 SOL devnet (ориентир по размеру бинарников CI) — точную цифру скрипт посчитает после сборки."
+  # A first deploy of the four CI-sized binaries is ~21 SOL of devnet: ~18 SOL of permanent ProgramData rent
+  # (because `--max-len` is the exact ELF length, not the CLI's default 2x), the biggest upload buffer at its
+  # peak (~7.4 SOL, returned when the loader drains it), a few hundredths of a SOL of fees and the operational
+  # reserve. The stage prints the exact split after the build, from the cluster's own rent rate.
+  info "для деплоя 4 программ понадобится порядка 20-25 SOL devnet (точную разбивку скрипт посчитает после сборки, по rent-ставке кластера)."
   info "пока идёт сборка, можно пополнить кошелёк: https://faucet.solana.com (сеть Devnet)."
 }
 
@@ -601,10 +612,111 @@ ensure_wallet() {
 
 sol() { awk -v l="${1:-0}" 'BEGIN { printf "%.2f", l / 1000000000 }'; }
 balance_lamports() { solana balance --lamports "$1" -u "$RPC_URL" 2>/dev/null | awk '{print $1}' | head -1; }
-rent_for() { echo $(( ($1 + 128) * 6960 )); } # (128 B account overhead + data) x 3480 lamports/B-year x 2 years
+
+# ------------------------------------------------------------------ rent: always asked from the cluster
+# The rent-exempt minimum is a property of the cluster's rent parameters, not a constant of this script. The
+# line this replaces — `(128 + data) * 6960`, i.e. 3480 lamports/B-year × the 2-year exemption threshold — was
+# the parameter set of 2021. The cluster the user measured in 2026 charges 2540 × 2, so every account was
+# budgeted 37 % high and the printed total was wrong in the *safe* direction while still not explaining the
+# real bill (see max_len_of below). `solana rent` is the pinned CLI's own call to
+# `getMinimumBalanceForRentExemption`, so the number and the cluster agree by construction. If it cannot be
+# obtained the budget is not guessed: the stage stops and says why.
+rent_lamports() { # $1 = account data length in bytes -> lamports, or empty when the cluster did not answer
+  local bytes=$1 out sol lam attempt=0
+  case "$bytes" in ''|*[!0-9]*) return 1 ;; esac
+  while [ "$attempt" -lt 3 ]; do
+    attempt=$((attempt + 1))
+    out=$(solana rent "$bytes" -u "$RPC_URL" 2>&1)
+    # 2.1.0 prints "Rent-exempt minimum: 5.08065024 SOL"; a build with --lamports prints a bare integer.
+    sol=$(printf '%s\n' "$out" | sed -n 's/^Rent-exempt minimum: *\([0-9][0-9.]*\) SOL$/\1/p' | head -1)
+    if [ -n "$sol" ]; then
+      # %.0f, NOT %d: awk's %d is a 32-bit integer, and every rent we ask for here is > 2^31 lamports
+      # (7.4e9 for chip_core's ProgramData) — with %d the answer saturates at INT_MAX and the whole budget
+      # quietly becomes 2.15 SOL for every account.
+      awk -v s="$sol" 'BEGIN { printf "%.0f", (s * 1000000000) + 0.5 }'
+      return 0
+    fi
+    lam=$(printf '%s\n' "$out" | sed -n 's/^\([0-9][0-9]*\) lamports$/\1/p' | head -1)
+    if [ -n "$lam" ]; then printf '%s' "$lam"; return 0; fi
+    [ "$attempt" -lt 3 ] && sleep 2
+  done
+  return 1
+}
+
+# ------------------------------------------------------------------ upgradeable-loader account geometry
+# Byte sizes of the three accounts the upgradeable loader (BPFLoaderUpgradeab1e…) touches, from
+# `UpgradeableLoaderState` (scripts/verify-deploy.ts parses the same layouts on chain):
+LOADER_PROGRAM_DATA=36        # Program { programdata_address: Pubkey }          -> u32 tag + 32
+LOADER_PROGRAMDATA_HEADER=45  # ProgramData { slot: u64, upgrade_authority_address: Option<Pubkey> } -> u32 + 8 + 1 + 32
+LOADER_BUFFER_HEADER=37       # Buffer { authority: Option<Pubkey> }            -> u32 + 1 + 32
+
+# `solana program deploy` sizes the ProgramData account to `--max-len` bytes of ELF, and when the flag is not
+# given it uses **twice** the .so length ("By default, programs are deployed to accounts that are twice the
+# size of the original deployment … leaves room for program growth"). For the four CI binaries that doubling
+# is 36.3 SOL of permanent rent deposit instead of 18.1 — it is the single biggest line of a first deploy and
+# the reason a fresh wallet needs ~38 SOL, not the ~18 the old `rent(45 + len)` estimate printed.
+# So the exact length is passed, and the budget is computed from the very same number, which makes it
+# impossible for the estimate to disagree with what the CLI is about to allocate. Growth headroom is opt-in:
+# a later, larger binary is handled by the `program extend` path that deploy_program already has.
+MAX_LEN_HEADROOM=${MAC_DEVNET_MAX_LEN_HEADROOM:-0}   # extra ELF bytes to reserve beyond the current .so
+
+max_len_supported() { # read the pinned CLI's flags, do not assume them
+  [ "${MAX_LEN_FLAG:-}" = yes ] && return 0
+  solana program deploy --help 2>/dev/null | grep -q -- '--max-len' || return 1
+  MAX_LEN_FLAG=yes
+}
+max_len_of() { # $1 = .so bytes -> the --max-len we pass AND budget for
+  echo $(( $1 + MAX_LEN_HEADROOM ))
+}
+max_len_args() { # $1 = --max-len value -> the flag, or nothing when this CLI has no such flag
+  max_len_supported || return 0
+  printf ' --max-len %s' "$1"
+}
 
 program_show_field() { # $1 = show output, $2 = field
   printf '%s\n' "$1" | sed -n "s/^$2: *//p" | head -1
+}
+
+# `solana program show <id>` exits non-zero both when the program is genuinely absent ("Unable to find
+# program …") and when the RPC never answered (throttling, 5xx, a dropped connection). Treating the second as
+# the first is how a budget silently turns into a guess: an unconfirmed program is budgeted for a first
+# deploy (the expensive direction) and said out loud, while a transport failure is retried and then stops the
+# stage with the resume command instead of inventing a number.
+PROGRAM_ABSENT_RE='Unable to find program|AccountNotFound|could not find account|not found|does not exist'
+PROGRAM_RPC_ERR_RE='error trying to connect|Connection refused|timed out|timeout|Too Many Requests|429|502|503|504|RPC response error|node is behind|no upstream'
+program_state() { # $1 = program id -> stdout: "absent" | "present <authority> <data_len>" ; rc: 0 = answered, 1 = RPC did not answer
+  local id=$1 out rc attempt=0
+  while [ "$attempt" -lt 3 ]; do
+    attempt=$((attempt + 1))
+    out=$(solana program show "$id" -u "$RPC_URL" 2>&1); rc=$?
+    if [ "$rc" = 0 ]; then
+      printf 'present %s %s' "$(program_show_field "$out" Authority)" "$(program_show_field "$out" 'Data Length' | awk '{print $1}')"
+      return 0
+    fi
+    if printf '%s\n' "$out" | grep -Eq "$PROGRAM_ABSENT_RE"; then printf 'absent'; return 0; fi
+    if printf '%s\n' "$out" | grep -Eq "$PROGRAM_RPC_ERR_RE"; then
+      [ "$attempt" -lt 3 ] && { sleep 3; continue; }
+      printf '  [!]  RPC %s не ответил про программу %s (%s) — состояние на цепи не подтверждено\n' "$RPC_URL" "$id" "$(printf '%s' "$out" | head -1)" >&2
+      return 1
+    fi
+    # An error text we do not recognise: budget the expensive way, but never quietly.
+    printf '  [!]  не удалось определить, задеплоена ли программа %s (ответ CLI: %s) — считаю, что она НЕ задеплоена, бюджет посчитан для первого деплоя\n' "$id" "$(printf '%s' "$out" | head -1)" >&2
+    printf 'absent'
+    return 0
+  done
+  return 1
+}
+
+# Existing upload buffers are money already on chain. `solana program show --buffers` lists them with the
+# authority and the allocated length; a buffer this run created earlier (the keypair file is named after the
+# .so hash, so a retry finds the same address) is resumed instead of paid for twice.
+buffer_existing_len() { # $1 = buffer address, $2 = wallet -> allocated bytes, or 0 when there is none
+  local addr=$1 wallet=$2 list
+  list=$(solana program show --buffers -u "$RPC_URL" 2>/dev/null) || { printf '0'; return 0; }
+  printf '%s\n' "$list" | awk -v a="$addr" -v w="$wallet" '
+    $1 == a {
+      for (j = 2; j <= NF; j++) if ($j == w) { for (k = j + 1; k <= NF; k++) if ($k ~ /^[0-9]+$/) { print $k; exit } }
+    }'
 }
 
 keypair_dir() { local d; d=$(state_get PROGRAM_KEYS_DIR_USED); [ -n "$d" ] || d="${PROGRAM_KEYS_DIR:-$KEYS_DIR/programs}"; echo "$d"; }
@@ -666,9 +778,18 @@ deploy_program() { # $1 = program
   mkdir -p "$KEYS_DIR/buffers"; chmod 700 "$KEYS_DIR" "$KEYS_DIR/buffers" 2>/dev/null
   buf="$KEYS_DIR/buffers/$p-$sha.json"
   [ -f "$buf" ] || solana-keygen new --no-bip39-passphrase --silent --outfile "$buf" >/dev/null || die "не создался ключ буфера"
+  # `--max-len` fixes the ProgramData allocation at deploy time and cannot be raised later except by
+  # `program extend`. Passing the exact ELF length is what halves the permanent deposit (see max_len_of); a
+  # binary that later grows is extended by the branch above. When the pinned CLI has no such flag the old
+  # behaviour (2x) is what happens, and the budget prints it as such instead of pretending otherwise.
+  local maxargs
+  maxargs=$(max_len_args "$(max_len_of "$len")")
+  if [ -z "$maxargs" ]; then
+    warn "закреплённый solana CLI не умеет --max-len: ProgramData будет выделен в 2x от размера .so — бюджет посчитан именно так"
+  fi
   while :; do
-    show_cmd solana program deploy "$so" --program-id "$kp" --buffer "$buf" -u "$RPC_URL" -k "$WALLET" --use-rpc --max-sign-attempts 100
-    if solana program deploy "$so" --program-id "$kp" --buffer "$buf" -u "$RPC_URL" -k "$WALLET" --use-rpc --max-sign-attempts 100; then break; fi
+    show_cmd solana program deploy "$so" --program-id "$kp" --buffer "$buf" -u "$RPC_URL" -k "$WALLET" --use-rpc --max-sign-attempts 100 $maxargs
+    if solana program deploy "$so" --program-id "$kp" --buffer "$buf" -u "$RPC_URL" -k "$WALLET" --use-rpc --max-sign-attempts 100 $maxargs; then break; fi
     if [ "$attempt" -ge 3 ]; then
       info "буфер сохранён ($buf): повторный запуск продолжит загрузку, SOL не пропадут."
       info "вернуть SOL из брошенных буферов: solana program show --buffers -u $RPC_URL -k $WALLET  ->  solana program close --buffers …"
@@ -679,33 +800,112 @@ deploy_program() { # $1 = program
   ok "$p: https://explorer.solana.com/address/$id?cluster=devnet"
 }
 
+# The four kinds of money a deploy costs, kept apart on purpose — a single "need X SOL" number is what made
+# the old script un-auditable (and what made a 2x ProgramData allocation look like a rounding error):
+#   1. deposit   — rent-exempt lamports of the Program + ProgramData accounts. Permanent: they come back only
+#                  via `solana program close`, i.e. by giving up the program.
+#   2. peak      — the largest upload buffer alive at any moment. Temporary: the loader drains the buffer when
+#                  it deploys from it, and the programs are deployed one after another, so at most one buffer
+#                  is ever live. This is why the peak is a max and not a sum.
+#   3. fees      — network fees for the ~900-byte `write` transactions that fill the buffers plus the deploy /
+#                  extend transactions. Estimated from the bytes, not padded.
+#   4. reserve   — operational SOL for what follows (setup, lookup table, crank, Pyth pusher). Not a network
+#                  cost; it is a number the owner controls, printed on its own line.
+OPS_RESERVE_SOL=${MAC_DEVNET_OPS_RESERVE_SOL:-3}
+WRITE_CHUNK_BYTES=900      # the CLI fills a buffer with ~900 B of ELF per `write` transaction
+FEE_PER_TX_LAMPORTS=10000  # 5000 per signature, 2 signatures per write tx — deliberately rounded up
+
+require_program_keys() { # every keypair must derive the id compiled into the binary, else the deployed
+  local p kp              # address is not the one the client uses. Checked before the budget: a missing key is
+  for p in $PROGRAMS; do  # a stage-ids problem and must not be reported as an RPC/rent failure.
+    kp=$(keypair_file "$DEPLOY_KEYS_DIR" "$p")
+    [ -f "$kp" ] || die "нет ключа программы $kp — этап ids"
+    [ "$(solana-keygen pubkey "$kp")" = "$(declared_id "$p")" ] || die "ключ $kp даёт другой адрес, чем declare_id! для $p — выполните этап ids"
+  done
+}
+
+deploy_plan() { # fills DEPOSIT / PEAK / FEES / RESERVE (lamports) and prints the table; 1 = the RPC would not answer
+  local p kp id len state authority cap maxlen prog_rent data_rent buf_rent buf_need buf_extra buf_have
+  local deposit=0 peak=0 fees=0 rate per_byte txs bufaddr bufkey sha
+  local sol_prog sol_data sol_delta sol_buf what
+  rate=$(rent_lamports 1000) || return 1
+  # The rate is printed for the human only; every number below is a real `solana rent` answer for that size.
+  per_byte=$(awk -v r="$rate" 'BEGIN { printf "%.0f", r / (1000 + 128) }')
+  step "бюджет деплоя (rent-ставка кластера: ~$per_byte лампортов на байт аккаунта)"
+  for p in $PROGRAMS; do
+    id=$(declared_id "$p"); len=$(file_len "target/deploy/$p.so")
+    maxlen=$(max_len_of "$len")
+    prog_rent=$(rent_lamports $LOADER_PROGRAM_DATA) || return 1
+    data_rent=$(rent_lamports $((LOADER_PROGRAMDATA_HEADER + maxlen))) || return 1
+    buf_rent=$(rent_lamports $((LOADER_BUFFER_HEADER + len))) || return 1
+    state=$(program_state "$id") || return 1
+    case "$state" in
+      absent*)
+        deposit=$((deposit + prog_rent + data_rent))
+        sol_data=$(sol $((prog_rent + data_rent)))
+        info "  $p: новый деплой, ProgramData $((LOADER_PROGRAMDATA_HEADER + maxlen)) байт (--max-len $maxlen) — залог $sol_data SOL"
+        txs=$(( len / WRITE_CHUNK_BYTES + 3 )) ;;
+      present*)
+        authority=${state#present }; authority=${authority%% *}
+        cap=${state##* }
+        [ "$authority" = "$WALLET_PUB" ] \
+          || die "$p уже задеплоен с другим upgrade authority ($authority), а кошелёк — $WALLET_PUB. Возьмите кошелёк-владелец (WALLET=…) или новые ключи программ. Ничего ещё не задеплоено."
+        case "$cap" in ''|*[!0-9]*) cap=0 ;; esac
+        if [ "$maxlen" -gt "$cap" ]; then
+          buf_need=$(rent_lamports $((LOADER_PROGRAMDATA_HEADER + cap))) || return 1
+          sol_delta=$(sol $((data_rent - buf_need)))
+          deposit=$((deposit + data_rent - buf_need))
+          info "  $p: ProgramData расширяется $cap -> $maxlen байт — доплата $sol_delta SOL"
+        else
+          info "  $p: уже на цепи (Data Length $cap байт >= $maxlen) — постоянный залог не растёт"
+        fi
+        txs=$(( len / WRITE_CHUNK_BYTES + 2 )) ;;
+    esac
+    # The upload buffer: rent for its full size, minus whatever is already allocated for this exact upload.
+    # The buffer keypair is named after the .so hash, so a retry finds the same account and resumes it —
+    # paying for it twice would be the difference between 21 SOL and 28 SOL on a re-run.
+    sha=$(sha256_of "target/deploy/$p.so" | cut -c1-12)
+    bufkey="$KEYS_DIR/buffers/$p-$sha.json"
+    bufaddr=""
+    [ -f "$bufkey" ] && bufaddr=$(solana-keygen pubkey "$bufkey" 2>/dev/null)
+    buf_have=0
+    [ -n "$bufaddr" ] && buf_have=$(buffer_existing_len "$bufaddr" "$WALLET_PUB")
+    case "$buf_have" in ''|*[!0-9]*) buf_have=0 ;; esac
+    if [ "$buf_have" -gt 0 ]; then
+      buf_need=$(rent_lamports $((LOADER_BUFFER_HEADER + len))) || return 1
+      buf_extra=$(rent_lamports "$buf_have") || return 1
+      if [ "$buf_need" -gt "$buf_extra" ]; then buf_rent=$((buf_need - buf_extra)); else buf_rent=0; fi
+      sol_buf=$(sol "$buf_rent")
+      info "  $p: буфер загрузки уже есть ($buf_have байт) — добираю $sol_buf SOL"
+    else
+      sol_buf=$(sol "$buf_rent")
+      info "  $p: буфер загрузки $((LOADER_BUFFER_HEADER + len)) байт (временный, вернётся после деплоя) — $sol_buf SOL"
+    fi
+    [ "$buf_rent" -gt "$peak" ] && peak=$buf_rent
+    fees=$((fees + txs * FEE_PER_TX_LAMPORTS))
+  done
+  DEPOSIT=$deposit; PEAK=$peak; FEES=$fees
+  RESERVE=$(awk -v s="$OPS_RESERVE_SOL" 'BEGIN { printf "%.0f", (s * 1000000000) + 0.5 }')
+  NEED=$((DEPOSIT + PEAK + FEES + RESERVE))
+  say "  ─────────────────────────────────────────────────────────────"
+  say "  арендный залог (постоянный: Program + ProgramData) : $(sol "$DEPOSIT") SOL"
+  say "  временный пик (самый большой буфер, возвращается)  : $(sol "$PEAK") SOL"
+  say "  сетевые комиссии (оценка по байтам загрузки)       : $(sol "$FEES") SOL"
+  say "  резерв на setup / lookup table / crank / pusher    : $(sol "$RESERVE") SOL   (MAC_DEVNET_OPS_RESERVE_SOL=$OPS_RESERVE_SOL)"
+  say "  ─────────────────────────────────────────────────────────────"
+  say "  ИТОГО нужно на кошельке $WALLET_PUB: $(sol "$NEED") SOL"
+  return 0
+}
 stage_deploy() {
   have solana || die "нет solana CLI (этап toolchain)"
   [ -f target/deploy/chip_core.so ] || die "нет target/deploy/*.so — сначала этап build"
   ensure_wallet
   ensure_devnet
-  local p kp id len show cap need=0 peak=0 fee=3000000000 prog_rent data_rent buf_rent dir
-  dir=$(keypair_dir)
-  # Safety: every keypair must derive the id that is compiled into the binary (declare_id!), else the deployed address is not the one the client uses.
-  for p in $PROGRAMS; do
-    kp=$(keypair_file "$dir" "$p")
-    [ -f "$kp" ] || die "нет ключа программы $kp — этап ids"
-    [ "$(solana-keygen pubkey "$kp")" = "$(declared_id "$p")" ] || die "ключ $kp даёт другой адрес, чем declare_id! для $p — выполните этап ids"
-    len=$(file_len "target/deploy/$p.so")
-    prog_rent=$(rent_for 36); data_rent=$(rent_for $((45 + len))); buf_rent=$(rent_for $((37 + len)))
-    if show=$(solana program show "$(declared_id "$p")" -u "$RPC_URL" 2>/dev/null); then
-      [ "$(program_show_field "$show" "Authority")" = "$WALLET_PUB" ] \
-        || die "$p уже задеплоен с другим upgrade authority ($(program_show_field "$show" "Authority")), а кошелёк — $WALLET_PUB. Возьмите кошелёк-владелец (WALLET=…) или новые ключи программ. Ничего ещё не задеплоено."
-      cap=$(program_show_field "$show" "Data Length" | awk '{print $1}')
-      [ -n "$cap" ] && [ "$len" -gt "$cap" ] && need=$((need + (len - cap) * 6960))
-    else
-      need=$((need + prog_rent + data_rent))
-    fi
-    [ "$buf_rent" -gt "$peak" ] && peak=$buf_rent
-  done
-  need=$((need + peak + fee))
-  say "  нужно на кошельке для деплоя: $(sol "$need") SOL (новые программы + самый большой буфер, он возвращается, + 3 SOL на setup, lookup table, crank и pusher цен Pyth)"
-  ensure_funds "$need"
+  local p
+  DEPLOY_KEYS_DIR=$(keypair_dir)
+  require_program_keys
+  deploy_plan || die "не удалось узнать rent-ставку кластера через RPC ($RPC_URL) — бюджет не посчитан. Свой RPC: DEVNET_RPC_URL=… Повторить: bash scripts/mac-devnet.sh --from deploy"
+  ensure_funds "$NEED"
   for p in $PROGRAMS; do deploy_program "$p"; done
   step "проверка on-chain: байты == локальный .so, upgrade authority, пины Switchboard"
   run env PROGRAM_CHIP_CORE="$(declared_id chip_core)" PROGRAM_ARENA="$(declared_id arena)" \
