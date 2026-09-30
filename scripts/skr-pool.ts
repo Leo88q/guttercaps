@@ -18,6 +18,9 @@
 //   test-mint [supplySkr]     DEVNET ONLY: create a 6-decimal stand-in mint and mint `supply`
 //                             (default 1 000 000) to the signer. Never use on mainnet — the real
 //                             mint is hard-coded below and cannot be minted by us.
+//   mint-to <wallet> [skr]    DEVNET ONLY: mint `skr` (default 1 000) of the stand-in SKR (env SKR_MINT — the mint
+//                             `npm run setup` created, whose authority is the signer) to <wallet>'s ATA. This is how
+//                             a tester's browser wallet gets something to pay a pack with on the SKR rail.
 //
 // Env: SKR_MINT (default: the real Seeker mint), STAKING_PROGRAM_ID, DRY_RUN=1 (print, don't send).
 // No IDL needed: instructions are encoded by hand (Anchor discriminator = sha256("global:<name>")[..8]).
@@ -30,10 +33,11 @@ import {
 } from '@solana/web3.js';
 import {
   TOKEN_PROGRAM_ID, createAssociatedTokenAccountIdempotentInstruction, createMint, getAccount, getAssociatedTokenAddressSync,
-  getOrCreateAssociatedTokenAccount, mintTo,
+  getMint, getOrCreateAssociatedTokenAccount, mintTo,
 } from '@solana/spl-token';
 
 const REAL_SKR_MINT = 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3'; // 6 dp, classic Token Program, authority = Solana Mobile Squads vault
+const MAINNET_GENESIS = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d';
 /** Owner's treasury wallet for the SKR rail (packages/economy/src/skrRewards.ts::SKR_TREASURY_WALLET). */
 const TREASURY_WALLET = new PublicKey('HPMr5r9sS5ApWsPNJytZRLbm2jz1veFxTn1wepjAhtho');
 /** Funding policy (bps of realised SKR revenue) — owner decision 15 / 10 / 5 %. Mirrors SKR_POOL_FUNDING. */
@@ -176,7 +180,7 @@ async function main() {
       return status(conn);
     case 'test-mint': {
       const genesis = await conn.getGenesisHash();
-      if (genesis === '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d') throw new Error('refusing to create a test mint on mainnet-beta');
+      if (genesis === MAINNET_GENESIS) throw new Error('refusing to create a test mint on mainnet-beta');
       const supply = parseSkr(arg, 1_000_000n * MICRO);
       const mint = await createMint(conn, wallet, wallet.publicKey, null, 6);
       const ata = await getOrCreateAssociatedTokenAccount(conn, wallet, mint, wallet.publicKey);
@@ -185,8 +189,26 @@ async function main() {
       console.log(`export SKR_MINT=${mint.toBase58()}   # then: npm run skr-pool -- init && npm run skr-pool -- fund 1000`);
       return;
     }
+    case 'mint-to': {
+      // Argument and environment checks first: they need no network and say what to fix.
+      if (!arg) throw new Error('usage: mint-to <recipientWallet> [amountSkr]');
+      if (SKR_MINT.toBase58() === REAL_SKR_MINT) throw new Error('SKR_MINT is the real Seeker mint, which we cannot mint — set SKR_MINT to the stand-in mint `npm run setup` created');
+      const recipient = new PublicKey(arg);
+      const amount = parseSkr(process.argv[4], 1_000n * MICRO);
+      if (amount <= 0n) throw new Error('amount must be positive');
+      if (DRY_RUN) { console.log(`[dry-run] mint ${skr(amount)} of ${SKR_MINT.toBase58()} to ${recipient.toBase58()}`); return; }
+      if ((await conn.getGenesisHash()) === MAINNET_GENESIS) throw new Error('refusing to mint on mainnet-beta');
+      const mint = await getMint(conn, SKR_MINT);
+      if (!mint.mintAuthority?.equals(wallet.publicKey)) {
+        throw new Error(`the mint authority of ${SKR_MINT.toBase58()} is ${mint.mintAuthority?.toBase58() ?? 'nobody'}, not the signer ${wallet.publicKey.toBase58()} — run this with the deploy wallet`);
+      }
+      const ata = await getOrCreateAssociatedTokenAccount(conn, wallet, SKR_MINT, recipient);
+      await mintTo(conn, wallet, SKR_MINT, ata.address, wallet, amount);
+      console.log(`minted ${skr(amount)} stand-in SKR to ${recipient.toBase58()} (token account ${ata.address.toBase58()})`);
+      return;
+    }
     default:
-      console.log('usage: skr-pool <init [maxRootBudgetSkr] | fund <amountSkr> | plan [apiBase] | sync | status | test-mint [supplySkr]>');
+      console.log('usage: skr-pool <init [maxRootBudgetSkr] | fund <amountSkr> | plan [apiBase] | sync | status | test-mint [supplySkr] | mint-to <wallet> [amountSkr]>');
       process.exit(cmd ? 1 : 0);
   }
 }

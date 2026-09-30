@@ -8,7 +8,8 @@
 #   bash scripts/mac-devnet.sh --only doctor       # one stage (or a comma list: --only verify,rust)
 #   bash scripts/mac-devnet.sh --skip rust         # everything except these
 #   bash scripts/mac-devnet.sh --yes               # do not ask before installing tools / creating a wallet
-#   bash scripts/mac-devnet.sh run                 # opt-in: backend + client against devnet, browser opens
+#   bash scripts/mac-devnet.sh run                 # opt-in: backend + Pyth pusher + client against devnet, browser opens
+#   bash scripts/mac-devnet.sh faucet <wallet>     # opt-in: test SOL + SKR for the browser wallet (--sol N --skr N)
 #
 # Stages (the order is load-bearing, see the notes at each stage):
 #   update     git fetch + fast-forward to $BRANCH; regenerable local edits are dropped, yours are stashed
@@ -22,7 +23,9 @@
 #   deploy     the 4 programs to devnet, resumable buffers, then verify-deploy onchain
 #   setup      `npm run setup` (mints, config, collections, emission, arena) + lookup table
 #   env        client/.env.local + backend/.env for this deployment
-#   run        (opt-in) start backend + client dev server
+#   pyth       SOL/SKR payments: Pyth API key, pusher wallet, the pusher in Docker, proof that fresh prices are on chain
+#   run        (opt-in) start backend + pusher + client dev server
+#   faucet     (opt-in) `faucet <wallet>`: devnet SOL + stand-in SKR for a wallet that will play in the browser
 #
 # Environment:
 #   BRANCH=main             branch to sync (default main)           REMOTE=origin
@@ -30,6 +33,7 @@
 #   DEVNET_RPC_URL=https://api.devnet.solana.com   use your own devnet RPC if the public one throttles
 #   PROGRAM_KEYS_DIR=DIR    directory holding the 4 <program>-keypair.json you deploy with
 #   REPO_DIR=DIR            repository root (default: detected)
+#   PYTH_API_KEY=KEY        Pyth API key for Hermes (else the saved one, else asked once); https://pythdata.app/signup
 #
 # Portable on purpose: macOS ships bash 3.2 — no associative arrays, mapfile, ${var,,}, `sed -i`.
 # No `set -u`/`set -e`: every step checks its own result so the failure names the stage and the fix.
@@ -39,8 +43,8 @@
 
 set -o pipefail
 
-ALL_STAGES="update doctor toolchain verify rust localnet ids build deploy setup env"
-OPTIN_STAGES="run"
+ALL_STAGES="update doctor toolchain verify rust localnet ids build deploy setup env pyth"
+OPTIN_STAGES="run faucet"
 PROGRAMS="chip_core market staking arena"
 DEVNET_GENESIS="EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG"
 
@@ -49,12 +53,16 @@ BRANCH=${BRANCH:-main}
 RPC_URL=${DEVNET_RPC_URL:-https://api.devnet.solana.com}
 WALLET=${WALLET:-$HOME/.config/solana/id.json}
 KEYS_DIR=${KEYS_DIR:-$HOME/.config/solana/guttercaps}
+HERMES_URL=${HERMES_URL:-https://hermes.pyth.network}
+PYTH_KEY_FILE="$KEYS_DIR/pyth-api-key"
+PYTH_PAYER="$KEYS_DIR/pyth-payer.json"
 
 FROM=""; ONLY=""; SKIP=""; ASSUME_YES=0; DO_UPDATE=1
+FAUCET_TARGET=""; FAUCET_SOL=2; FAUCET_SKR=1000
 ORIG_ARGS=("$@")
 
-usage() {
-  sed -n '2,36p' "${BASH_SOURCE[0]:-$0}" 2>/dev/null | sed 's/^# \{0,1\}//' || true
+usage() { # the leading comment block, whatever its length
+  awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "${BASH_SOURCE[0]:-$0}" 2>/dev/null || true
 }
 
 # ------------------------------------------------------------------ small helpers
@@ -84,6 +92,7 @@ init_path() {
   path_add /usr/local/bin; path_add /opt/homebrew/bin
   path_add "$HOME/.local/share/solana/install/active_release/bin"
   path_add "$HOME/.avm/bin"; path_add "$HOME/.cargo/bin"
+  path_add /Applications/Docker.app/Contents/Resources/bin
 }
 
 sha256_stdin() { if have shasum; then shasum -a 256 | cut -d' ' -f1; else sha256sum | cut -d' ' -f1; fi; }
@@ -111,7 +120,9 @@ stage_title() {
     deploy) echo "деплой 4 программ в devnet" ;;
     setup) echo "инициализация on-chain (mints, config, коллекции…)" ;;
     env) echo ".env для клиента и бэкенда" ;;
-    run) echo "запуск бэкенда и клиента" ;;
+    pyth) echo "цены Pyth для оплаты SOL и SKR" ;;
+    run) echo "запуск бэкенда, pusher'а цен и клиента" ;;
+    faucet) echo "тестовые SOL и SKR для кошелька" ;;
   esac
 }
 
@@ -144,6 +155,9 @@ while [ $# -gt 0 ]; do
     --no-update) DO_UPDATE=0; shift ;;
     -h|--help) usage; exit 0 ;;
     run) ONLY="run"; shift ;;
+    faucet) ONLY="faucet"; shift; if [ $# -gt 0 ] && [ "${1#-}" = "$1" ]; then FAUCET_TARGET=$1; shift; fi ;;
+    --sol) [ $# -ge 2 ] || die "--sol требует число"; FAUCET_SOL=$2; shift 2 ;;
+    --skr) [ $# -ge 2 ] || die "--skr требует число"; FAUCET_SKR=$2; shift 2 ;;
     *) printf 'неизвестный аргумент: %s\n' "$1" >&2; usage >&2; exit 2 ;;
   esac
 done
@@ -166,13 +180,17 @@ if [ -z "$REPO" ] || [ ! -f "$REPO/Anchor.toml" ]; then
 fi
 cd "$REPO" || exit 2
 STATE="$REPO/target/mac-devnet/state.env"
+PYTH_DIR="$REPO/target/mac-devnet/pyth"
+PYTH_LOG="$REPO/target/mac-devnet/logs/pyth-pusher.log"
 
 # ------------------------------------------------------------------ log (every line also goes to a file)
 if [ -z "${MAC_DEVNET_LOG:-}" ]; then
   mkdir -p "$REPO/target/mac-devnet/logs"
   MAC_DEVNET_LOG="$REPO/target/mac-devnet/logs/run-$(date +%Y%m%d-%H%M%S).log"
   export MAC_DEVNET_LOG
-  exec > >(tee -a "$MAC_DEVNET_LOG") 2>&1
+  # tee ignores SIGINT: Ctrl+C goes to the whole foreground group, and a dead tee would make the script's next
+  # write a SIGPIPE, killing it before the EXIT trap could stop what it started (the pusher container).
+  exec > >(trap '' INT; exec tee -a "$MAC_DEVNET_LOG") 2>&1
 fi
 
 CURRENT_STAGE=""
@@ -184,9 +202,13 @@ on_exit() {
     printf '    Исправьте причину (текст ошибки выше) и продолжите с этого места:\n'
     printf '      bash scripts/mac-devnet.sh --from %s\n' "$CURRENT_STAGE"
   fi
+  [ "${PYTH_STARTED:-0}" = 1 ] && pyth_stop
   sleep 0.3
 }
 trap on_exit EXIT
+trap 'exit 130' INT   # exit -> EXIT trap: a Ctrl+C stops the pusher container and says where to resume
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 init_path
 export NPM_CONFIG_UPDATE_NOTIFIER=false
@@ -463,6 +485,7 @@ stage_toolchain() {
   ensure_anchor
   ensure_node_deps
   wallet_preflight
+  pyth_preflight
 }
 
 # ================================================================== stages: verify / rust / localnet
@@ -656,7 +679,7 @@ stage_deploy() {
   [ -f target/deploy/chip_core.so ] || die "нет target/deploy/*.so — сначала этап build"
   ensure_wallet
   ensure_devnet
-  local p kp id len show cap need=0 peak=0 fee=2000000000 prog_rent data_rent buf_rent dir
+  local p kp id len show cap need=0 peak=0 fee=3000000000 prog_rent data_rent buf_rent dir
   dir=$(keypair_dir)
   # Safety: every keypair must derive the id that is compiled into the binary (declare_id!), else the deployed address is not the one the client uses.
   for p in $PROGRAMS; do
@@ -676,7 +699,7 @@ stage_deploy() {
     [ "$buf_rent" -gt "$peak" ] && peak=$buf_rent
   done
   need=$((need + peak + fee))
-  say "  нужно на кошельке для деплоя: $(sol "$need") SOL (новые программы + самый большой буфер, он возвращается, + 2 SOL на setup, lookup table и crank)"
+  say "  нужно на кошельке для деплоя: $(sol "$need") SOL (новые программы + самый большой буфер, он возвращается, + 3 SOL на setup, lookup table, crank и pusher цен Pyth)"
   ensure_funds "$need"
   for p in $PROGRAMS; do deploy_program "$p"; done
   step "проверка on-chain: байты == локальный .so, upgrade authority, пины Switchboard"
@@ -799,7 +822,326 @@ EOF
   ok "crank: $cpub"
 }
 
+# ================================================================== Pyth price pusher (SOL / SKR payments)
+# chip_core converts a SOL or SKR payment from a Pyth PriceUpdateV2 account that must be <= 60 s old, and nobody
+# posts SKR/USD for us (it is not a sponsored feed), so the studio runs Pyth's own price_pusher (ops/pyth-pusher/,
+# owner decision Q7). Two facts that postdate that folder:
+#   * since 2026-08-26 every Hermes request needs a Pyth API key (https://pythdata.app/signup, free trial);
+#   * the pusher flag for it, --hermes-access-token, exists from v10.5.0 on (the folder used to pin v9.3.0).
+# The pusher is the pinned official Docker image: the npm package of the same name does not even start on a fresh
+# install (its Injective dependencies drift). It runs while `run` needs it, and briefly in `pyth` to prove the chain.
+PYTH_CONTAINER="guttercaps-pyth-pusher"
+PYTH_KEY_READY=0
+PYTH_KEY_WHY=missing   # missing | denied
+PYTH_SERVED=2          # feeds Hermes serves for this key (2 = both; fewer = the pusher will skip the rest)
+PYTH_STATUS="не проверялось"
+PYTH_WATCH_PID=""
+PYTH_STARTED=0
+
+pyth_conf() { sed -n "s/^$1=//p" ops/pyth-pusher/.env.example 2>/dev/null | head -1; }
+pyth_feed_ids() { sed -n 's/^ *id: *\([0-9a-fA-F]\{64\}\).*/\1/p' ops/pyth-pusher/price-config.yaml 2>/dev/null; }
+
+pyth_key_get() { # env wins over the saved file
+  if [ -n "${PYTH_API_KEY:-}" ]; then printf '%s' "$PYTH_API_KEY" | tr -d ' \r\n'; return 0; fi
+  [ -f "$PYTH_KEY_FILE" ] && tr -d ' \r\n' < "$PYTH_KEY_FILE"
+  return 0
+}
+pyth_key_save() {
+  mkdir -p "$KEYS_DIR"; chmod 700 "$KEYS_DIR" 2>/dev/null
+  ( umask 077; printf '%s\n' "$1" > "$PYTH_KEY_FILE" ); chmod 600 "$PYTH_KEY_FILE"
+}
+# The key is an argument of exactly one docker call; it never goes through show_cmd, and whatever the container logs
+# is passed through this filter before it reaches the terminal or a file.
+pyth_redact() {
+  awk 'BEGIN { k = ENVIRON["PYTH_API_KEY"] } { if (k != "") { while ((i = index($0, k)) > 0) $0 = substr($0, 1, i - 1) "<PYTH_API_KEY>" substr($0, i + length(k)) } print; fflush() }'
+}
+
+pyth_probe_hermes() { # $1 = key. Prints: ok | partial:<served>/<wanted> | denied | unreachable | http:<code>
+  local key=$1 hdr out code c ids id url="" want=0 got
+  hdr=$(mktemp "${TMPDIR:-/tmp}/mac-devnet-hdr.XXXXXX"); out=$(mktemp "${TMPDIR:-/tmp}/mac-devnet-hermes.XXXXXX")
+  chmod 600 "$hdr"; printf 'Authorization: Bearer %s\n' "$key" > "$hdr" # a header file, so the key is not in `ps`
+  ids=$(pyth_feed_ids)
+  for id in $ids; do url="${url}ids[]=0x$id&"; want=$((want + 1)); done
+  code=$(curl -g -sS -m 20 -o "$out" -w '%{http_code}' -H @"$hdr" "$HERMES_URL/v2/updates/price/latest?${url}encoding=hex" 2>/dev/null) || code=""
+  case "$code" in
+    200)
+      got=$(grep -o '"id": *"[0-9a-fA-F]\{64\}"' "$out" | sort -u | wc -l | tr -d ' ')
+      if [ "$got" -ge "$want" ]; then echo ok; else echo "partial:$got/$want"; fi ;;
+    401|403) echo denied ;;
+    404) # a feed id Hermes does not know: ask one by one, so that the answer says how many are served
+      got=0
+      for id in $ids; do
+        c=$(curl -g -sS -m 20 -o /dev/null -w '%{http_code}' -H @"$hdr" "$HERMES_URL/v2/updates/price/latest?ids[]=0x$id&encoding=hex" 2>/dev/null) || c=""
+        [ "$c" = 200 ] && got=$((got + 1))
+      done
+      echo "partial:$got/$want" ;;
+    "") echo unreachable ;;
+    *) echo "http:$code" ;;
+  esac
+  rm -f "$hdr" "$out"
+}
+
+pyth_obtain_key() { # [noask] -> 0 = a key exists (env / saved file / typed now) and Hermes did not reject it
+  [ "$PYTH_KEY_READY" = 1 ] && return 0
+  local key tries=0 probe
+  key=$(pyth_key_get)
+  while :; do
+    if [ -z "$key" ]; then
+      if [ "${1:-}" = noask ] || [ "$ASSUME_YES" = 1 ] || [ ! -t 0 ]; then return 1; fi
+      if [ "$tries" = 0 ]; then
+        say "  SOL- и SKR-оплата работает, только если на devnet кто-то публикует цены Pyth. Это делает pusher, а Hermes"
+        say "  (источник цен Pyth) с 26.08.2026 требует ключ API:"
+        say "    1) https://pythdata.app/signup — регистрация (есть бесплатный пробный период)"
+        say "    2) вставьте ключ сюда (ввод скрыт). Enter — пропустить: USDC и \$CG-оплата работают и без него."
+      fi
+      read -r -s -p "  Pyth API key: " key || return 1
+      echo
+      key=$(printf '%s' "$key" | tr -d ' \r\n')
+      [ -n "$key" ] || return 1
+    fi
+    probe=$(pyth_probe_hermes "$key")
+    case "$probe" in
+      ok) ok "Hermes принял ключ: цены SOL/USD и SKR/USD отдаются"; PYTH_SERVED=2 ;;
+      partial:*)
+        PYTH_SERVED=${probe#partial:}; PYTH_SERVED=${PYTH_SERVED%%/*}
+        warn "Hermes отдаёт не все цены (${probe#partial:}): pusher пропустит недоступные, оплата в этой валюте не заработает" ;;
+      denied)
+        bad "Hermes отклонил ключ (401/403): он скопирован целиком? не закончился пробный период?"
+        PYTH_KEY_WHY=denied
+        tries=$((tries + 1)); key=""
+        if [ "${1:-}" != noask ] && [ "$ASSUME_YES" = 0 ] && [ -t 0 ] && [ "$tries" -lt 3 ]; then continue; fi
+        return 1 ;;
+      unreachable) warn "Hermes сейчас недоступен (нет сети?) — ключ сохраняю без проверки" ;;
+      *) warn "Hermes ответил неожиданно ($probe) — ключ сохраняю без проверки" ;;
+    esac
+    break
+  done
+  pyth_key_save "$key"
+  PYTH_KEY_READY=1
+  return 0
+}
+
+pyth_docker_ready() { # 0 = the docker CLI talks to a daemon (starts Docker Desktop if it is installed but not running)
+  have docker || return 1
+  docker info >/dev/null 2>&1 && return 0
+  if is_macos && [ -d /Applications/Docker.app ]; then
+    say "  Docker Desktop установлен, но не запущен — запускаю (жду до 2 минут)…"
+    open -a Docker >/dev/null 2>&1 || true
+    local i=0
+    while [ "$i" -lt 40 ]; do docker info >/dev/null 2>&1 && return 0; sleep 3; i=$((i + 1)); done
+  fi
+  return 1
+}
+
+pyth_preflight() { # stage toolchain: ask for the key up front, so that the long stages below run unattended
+  if pyth_obtain_key; then
+    if ! have docker; then
+      warn "pusher цен Pyth запускается в Docker, а Docker не найден: установите Docker Desktop (https://www.docker.com/products/docker-desktop/ или brew install --cask docker); этап pyth запустит его сам"
+    elif docker info >/dev/null 2>&1; then
+      ok "Docker готов (в нём будет работать pusher цен Pyth)"
+    else
+      info "Docker установлен, но не запущен — этап pyth запустит Docker Desktop"
+    fi
+  else
+    info "Pyth: ключа нет — SOL/SKR-оплата будет выключена (USDC и \$CG работают). Позже: bash scripts/mac-devnet.sh --only pyth"
+  fi
+}
+
+pyth_unavailable() { # $1 = reason. Default flow: say it loudly and go on; an explicit `--only pyth` is a failure
+  PYTH_STATUS="выключено ($1)"
+  warn "SOL- и SKR-оплата не заработает: $1"
+  [ -z "$ONLY" ] || exit 1
+  return 0
+}
+
+pyth_prepare() { # the pusher's payer wallet (funded) and the files the container mounts
+  local pub bal dep dbal
+  if [ ! -f "$PYTH_PAYER" ]; then
+    mkdir -p "$KEYS_DIR"; chmod 700 "$KEYS_DIR" 2>/dev/null
+    run solana-keygen new --no-bip39-passphrase --silent --outfile "$PYTH_PAYER"
+  fi
+  pub=$(solana-keygen pubkey "$PYTH_PAYER") || die "не читается $PYTH_PAYER"
+  bal=$(balance_lamports "$pub"); bal=${bal:-0}
+  if [ "$bal" -lt 300000000 ]; then # ~1 SOL lasts weeks of pushing (~0.07 SOL a day), accounts rent 2 x 0.002
+    dep=$(solana-keygen pubkey "$WALLET" 2>/dev/null); dbal=$(balance_lamports "$dep"); dbal=${dbal:-0}
+    if [ -n "$dep" ] && [ "$dbal" -ge 1500000000 ]; then
+      run solana transfer "$pub" 1 --allow-unfunded-recipient -u "$RPC_URL" -k "$WALLET"
+    else
+      solana airdrop 1 "$pub" -u "$RPC_URL" || true
+    fi
+    bal=$(balance_lamports "$pub"); bal=${bal:-0}
+  fi
+  [ "$bal" -ge 100000000 ] || warn "у кошелька pusher'а $pub только $(sol "$bal") SOL — пополните (faucet.solana.com, Devnet), иначе цены не будут публиковаться"
+  ok "кошелёк pusher'а: $pub ($(sol "$bal") SOL)"
+  mkdir -p "$PYTH_DIR"
+  cp ops/pyth-pusher/price-config.yaml "$PYTH_DIR/price-config.yaml"
+  cp "$PYTH_PAYER" "$PYTH_DIR/payer.json"; chmod 644 "$PYTH_DIR/payer.json" # a devnet hot key with ~1 SOL; the container user must be able to read it
+}
+
+pyth_stop() {
+  [ -n "$PYTH_WATCH_PID" ] && { kill "$PYTH_WATCH_PID" 2>/dev/null; PYTH_WATCH_PID=""; }
+  have docker && docker rm -f "$PYTH_CONTAINER" >/dev/null 2>&1
+  PYTH_STARTED=0
+  return 0
+}
+
+pyth_start() {
+  local key tag shard oracle plat=""
+  key=$(pyth_key_get)
+  tag=$(pyth_conf PUSHER_VERSION); shard=$(pyth_conf PYTH_SHARD_ID); oracle=$(pyth_conf PYTH_PUSH_ORACLE)
+  : "${tag:=v13.0.0}" "${shard:=51829}" "${oracle:=pythWSnswVUd12oZpeFP8e9CVaEqJg25g1Vtc2biRsT}"
+  case "$RPC_URL" in *mainnet*) die "RPC_URL похож на mainnet ($RPC_URL): pusher платит комиссии с кошелька, а цены нужны devnet" ;; esac
+  pyth_stop
+  # the image may have no arm64 build; amd64 runs under Docker Desktop's emulation on Apple Silicon
+  case "$(uname -m)" in arm64|aarch64) plat="--platform ${PYTH_DOCKER_PLATFORM:-linux/amd64}" ;; esac
+  say "  запускаю pusher (образ xc-price-pusher:$tag, шард $shard; первый раз образ скачивается — 1-3 минуты)…"
+  # shellcheck disable=SC2086
+  docker run -d --name "$PYTH_CONTAINER" $plat \
+    -v "$PYTH_DIR/price-config.yaml:/config/price-config.yaml:ro" \
+    -v "$PYTH_DIR/payer.json:/config/payer.json:ro" \
+    "public.ecr.aws/pyth-network/xc-price-pusher:$tag" -- npm run start -- solana \
+    --endpoint "$RPC_URL" --keypair-file /config/payer.json --shard-id "$shard" \
+    --price-config-file /config/price-config.yaml \
+    --price-service-endpoint "$HERMES_URL" --hermes-access-token "$key" \
+    --pyth-contract-address "$oracle" \
+    --pushing-frequency 10 --polling-frequency 5 --compute-unit-price-micro-lamports 200 \
+    --metrics-port 9090 --log-level info > /dev/null || return 1
+  PYTH_STARTED=1
+  mkdir -p "$(dirname "$PYTH_LOG")"; : > "$PYTH_LOG"
+  ( docker logs -f "$PYTH_CONTAINER" 2>&1 | PYTH_API_KEY="$key" pyth_redact >> "$PYTH_LOG" ) > /dev/null 2>&1 &
+  return 0
+}
+
+pyth_container_running() { [ -n "$(docker ps -q --filter "name=^${PYTH_CONTAINER}\$" --filter status=running 2>/dev/null)" ]; }
+
+pyth_wait_healthy() { # $1 = seconds. 0 = both feeds fresh (output of `check` in $PYTH_DIR/last-check.txt), 1 = timeout, 2 = container died
+  local deadline out rc good
+  deadline=$(( $(now) + $1 ))
+  : > "$PYTH_DIR/last-check.txt" # nothing stale from an earlier run
+  while [ "$(now)" -lt "$deadline" ]; do
+    pyth_container_running || { return 2; }
+    out=$(npm run --silent pyth-pusher -- check "$RPC_URL" 2>&1); rc=$?
+    printf '%s\n' "$out" > "$PYTH_DIR/last-check.txt"
+    [ "$rc" -eq 0 ] && return 0
+    # `check` fails while any feed is bad; when Hermes serves only some feeds, the served ones are enough
+    good=$(printf '%s\n' "$out" | grep -c '✓')
+    [ "$good" -ge 1 ] && [ "$good" -ge "$PYTH_SERVED" ] && return 0
+    sleep 6
+  done
+  return 1
+}
+
+pyth_diagnose() { # $1 = result of pyth_wait_healthy
+  bad "цены Pyth так и не появились в devnet"
+  [ -s "$PYTH_DIR/last-check.txt" ] && sed 's/^/       /' "$PYTH_DIR/last-check.txt"
+  if [ "$1" = 2 ]; then warn "контейнер pusher остановился сам; последние строки его лога:"; else warn "pusher работает, но цены не доходят; последние строки его лога:"; fi
+  docker logs --tail 25 "$PYTH_CONTAINER" 2>&1 | PYTH_API_KEY=$(pyth_key_get) pyth_redact | cut -c1-260 | sed 's/^/       /'
+  info "обычные причины: ключ Pyth (401 / закончился пробный период) · у кошелька pusher'а нет SOL · публичный devnet RPC теряет"
+  info "транзакции (свой: DEVNET_RPC_URL=…) · devnet-receiver Pyth не принимает формат данных обновлённого Hermes."
+  info "лог: $PYTH_LOG"
+}
+
+pyth_report() { # $1 = text of a healthy `check`: the prices, what a $4.99 pack costs, and the confidence guard
+  local q
+  printf '%s\n' "$1" | grep -E '(SOL|SKR)/USD' | sed 's/^/  /'
+  q=$(npm run --silent pyth-pusher -- quote 499 "$RPC_URL" 2>&1) && printf '%s\n' "$q" | sed 's/^/  /'
+  # chip_core refuses a price whose confidence interval is wider than 2 % (SEC-M2)
+  printf '%s\n' "$1" | sed -nE 's/.*(SOL|SKR)\/USD.*± ([0-9.]+) %.*/\1 \2/p' | awk '$2 + 0 > 2 { print $1 " " $2 }' | while read -r sym w; do
+    warn "$sym/USD: доверительный интервал $w % > 2 % — программа откажет в оплате этой валютой, пока рынок не успокоится (SEC-M2)"
+  done
+}
+
+stage_pyth() {
+  have solana || die "нет solana CLI (этап toolchain)"
+  if ! pyth_obtain_key; then
+    if [ "$PYTH_KEY_WHY" = denied ]; then pyth_unavailable "Hermes отклонил ключ Pyth API (проверьте ключ и пробный период: https://pythdata.app)"
+    else pyth_unavailable "нет ключа Pyth API (https://pythdata.app/signup): задайте PYTH_API_KEY=… или запустите в терминале — скрипт спросит"; fi
+    return 0
+  fi
+  pyth_docker_ready || { pyth_unavailable "нет работающего Docker (Docker Desktop: https://www.docker.com/products/docker-desktop/ или brew install --cask docker)"; return 0; }
+  ensure_devnet
+  pyth_prepare
+  pyth_start || { pyth_unavailable "контейнер pusher не запустился (сообщение docker выше)"; return 0; }
+  local wait_s=${PYTH_WAIT_S:-150}
+  if [ "$wait_s" -ge 60 ]; then say "  жду первую публикацию цен в devnet (до $((wait_s / 60)) мин $((wait_s % 60)) с)…"; else say "  жду первую публикацию цен в devnet (до $wait_s с)…"; fi
+  local rc=0
+  pyth_wait_healthy "$wait_s" || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    local chk sol_ok=0 skr_ok=0
+    chk=$(cat "$PYTH_DIR/last-check.txt")
+    pyth_report "$chk"
+    printf '%s\n' "$chk" | grep '✓' | grep -q 'SOL/USD' && sol_ok=1
+    printf '%s\n' "$chk" | grep '✓' | grep -q 'SKR/USD' && skr_ok=1
+    if [ "$sol_ok" = 1 ] && [ "$skr_ok" = 1 ]; then
+      PYTH_STATUS="работает: SOL/USD и SKR/USD на чейне свежие (pusher запускает этап run)"
+      ok "цены Pyth публикуются — оплата SOL и SKR заработает"
+    else
+      PYTH_STATUS="частично: работает $([ "$sol_ok" = 1 ] && echo SOL || echo SKR), вторая валюта недоступна в Hermes"
+      warn "цены опубликованы только для одной валюты (Hermes не отдаёт вторую): оплата второй не заработает"
+    fi
+  else
+    pyth_diagnose "$rc"
+    PYTH_STATUS="не заработало (диагностика выше)"
+    pyth_stop
+    [ -z "$ONLY" ] || exit 1
+    return 0
+  fi
+  pyth_stop # nothing is left running: the pusher belongs to `run` (it costs ~0.07 SOL a day while it works)
+}
+
+# ================================================================== stage: faucet (opt-in)
+stage_faucet() { # test funds for a wallet that will play in the browser: devnet SOL + stand-in SKR
+  have solana || die "нет solana CLI (этап toolchain)"
+  [ -n "$FAUCET_TARGET" ] || die "укажите адрес кошелька из браузера: bash scripts/mac-devnet.sh faucet <адрес> [--sol 2] [--skr 1000]"
+  printf '%s' "$FAUCET_TARGET" | grep -Eq '^[1-9A-HJ-NP-Za-km-z]{32,44}$' || die "'$FAUCET_TARGET' не похоже на адрес кошелька Solana"
+  ensure_devnet
+  WALLET_PUB=$(solana-keygen pubkey "$WALLET") || die "не читается кошелёк деплоя $WALLET"
+  local need dbal skr_mint
+  need=$(awk -v s="$FAUCET_SOL" 'BEGIN { printf "%d", (s + 0.5) * 1000000000 }')
+  dbal=$(balance_lamports "$WALLET_PUB"); dbal=${dbal:-0}
+  if [ "$dbal" -ge "$need" ]; then
+    run solana transfer "$FAUCET_TARGET" "$FAUCET_SOL" --allow-unfunded-recipient -u "$RPC_URL" -k "$WALLET"
+  else
+    warn "на кошельке деплоя $(sol "$dbal") SOL — не хватает на перевод $FAUCET_SOL SOL. Возьмите devnet-SOL на https://faucet.solana.com (адрес: $FAUCET_TARGET)"
+  fi
+  skr_mint=$(state_get SKR_MINT)
+  if [ -z "$skr_mint" ]; then
+    warn "нет адреса SKR-минта (он создаётся на этапе setup) — SKR не выдан"
+  else
+    run env ANCHOR_WALLET="$WALLET" ANCHOR_PROVIDER_URL="$RPC_URL" SKR_MINT="$skr_mint" STAKING_PROGRAM_ID="$(declared_id staking)" \
+      npm run --silent skr-pool -- mint-to "$FAUCET_TARGET" "$FAUCET_SKR"
+  fi
+  info "USDC на devnet (оплата USDC): https://faucet.circle.com (Solana Devnet). \$CG выдаётся игрой, отдельного faucet у него нет."
+}
+
 # ================================================================== stage: run (opt-in)
+pyth_watch() { # background: say once when fresh prices are on chain (or that they are not coming)
+  local i=0
+  while [ "$i" -lt 50 ]; do
+    sleep 8
+    pyth_container_running || { warn "pusher цен Pyth остановился; лог: $PYTH_LOG"; return 0; }
+    if npm run --silent pyth-pusher -- check "$RPC_URL" > /dev/null 2>&1; then ok "цены Pyth свежие — оплата SOL и SKR доступна"; return 0; fi
+    i=$((i + 1))
+  done
+  warn "цены Pyth не появились за ~7 минут: лог $PYTH_LOG (или docker logs $PYTH_CONTAINER)"
+}
+
+pyth_for_run() { # the pusher belongs to the session: fresh prices while the app is open, stopped together with it
+  if ! pyth_obtain_key noask; then
+    if [ "$PYTH_KEY_WHY" = denied ]; then warn "Pyth: Hermes отклонил сохранённый ключ — SOL/SKR-оплата выключена. Новый ключ: bash scripts/mac-devnet.sh --only pyth"
+    else info "Pyth: ключа нет — SOL/SKR-оплата выключена (USDC и \$CG работают). Включить: bash scripts/mac-devnet.sh --only pyth"; fi
+    return 0
+  fi
+  if ! pyth_docker_ready; then warn "Pyth: Docker не запущен — SOL/SKR-оплата выключена"; return 0; fi
+  have solana || return 0
+  ensure_devnet
+  pyth_prepare
+  pyth_start || { warn "Pyth: pusher не запустился (сообщение docker выше) — SOL/SKR-оплата выключена"; return 0; }
+  ok "pusher цен Pyth запущен (лог: $PYTH_LOG); первые цены появятся примерно через минуту"
+  pyth_watch &
+  PYTH_WATCH_PID=$!
+}
+
 BACKEND_PID=""
 stop_backend() { local rc=$?; [ -n "$BACKEND_PID" ] && { kill -- "-$BACKEND_PID" 2>/dev/null || kill "$BACKEND_PID" 2>/dev/null; BACKEND_PID=""; }; return "$rc"; }
 
@@ -815,13 +1157,15 @@ stage_run() {
   BACKEND_PID=$!
   set +m
   # the trap strings are single-quoted on purpose: they must see the variable at exit time, not now
-  trap 'stop_backend; on_exit' EXIT
+  trap 'stop_backend; pyth_stop; on_exit' EXIT
   trap 'exit 130' INT TERM
   sleep 6
   kill -0 "$BACKEND_PID" 2>/dev/null || { tail -20 "$blog"; die "бэкенд не запустился (лог выше)"; }
   ok "бэкенд запущен (pid $BACKEND_PID), http://127.0.0.1:8787"
+  pyth_for_run
   ( sleep 6; is_macos && open "http://localhost:5173" ) >/dev/null 2>&1 &
   say "  клиент: http://localhost:5173 (Ctrl+C остановит всё). Кошелёк в браузере переключите на Devnet."
+  say "  чтобы платить SOL и SKR, кошельку из браузера нужны devnet-SOL и стенд-ин SKR: bash scripts/mac-devnet.sh faucet <адрес кошелька>"
   # the client's own `dev` script already passes --host; do not repeat it (two different values become an array).
   # --strictPort: SIWS_DOMAINS in backend/.env names :5173, so a silent hop to :5174 would break sign-in.
   npm --prefix client run dev -- --port 5173 --strictPort
@@ -835,7 +1179,9 @@ summary() {
   [ -n "$(state_get CG_MINT)" ] && info "\$CG mint: $(state_get CG_MINT)   lookup table: $(state_get LOOKUP_TABLE)"
   info "кошелёк деплоя / upgrade authority: $WALLET"
   info "ключи программ (храните копию!): $(keypair_dir)"
-  info "запустить приложение: bash scripts/mac-devnet.sh run"
+  info "оплата SOL и SKR (цены Pyth): $PYTH_STATUS"
+  info "запустить приложение (вместе с pusher'ом цен): bash scripts/mac-devnet.sh run"
+  info "тестовые SOL и SKR кошельку из браузера: bash scripts/mac-devnet.sh faucet <адрес>"
   info "лог этого запуска: $MAC_DEVNET_LOG"
   if ! git diff --quiet HEAD -- Anchor.toml 2>/dev/null; then
     warn "id программ в репозитории переписаны под ваши ключи — не коммитьте их (git checkout -- . вернёт заглушки)"
@@ -855,5 +1201,5 @@ for s in $ALL_STAGES $OPTIN_STAGES; do
   ok "этап $s: $(( $(now) - T0 )) с"
 done
 CURRENT_STAGE=""
-case ",$ONLY," in ",,"|*",deploy,"*|*",setup,"*|*",env,"*) summary ;; esac
+case ",$ONLY," in ",,"|*",deploy,"*|*",setup,"*|*",env,"*|*",pyth,"*) summary ;; esac
 exit 0
