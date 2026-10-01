@@ -107,9 +107,14 @@ for (const [locale, tag] of languages) test(`${locale}: handle availability, uns
   await page.getByRole('dialog').getByRole('button', { name: t('ui.listMarket'), exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(2);
   const listing = page.getByRole('dialog').last();
-  await listing.getByRole('button', { name: 'USDC', exact: true }).click();
-  const price = listing.getByRole('textbox', { name: t('market.price', { currency: 'USDC' }) });
-  await expect(price).toHaveAttribute('placeholder', new Intl.NumberFormat(tag, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(12));
+  // SEC-B28: the picker that used to sit here offered SOL/USDC/SKR. The V2 market settles by
+  // lamport transfers only, so `list_compressed_asset` refuses a listing in anything else — the
+  // picker was removed, not hidden. Assert it is gone instead of clicking through it, and keep
+  // the price-input localization the block exists for.
+  await expect(listing.getByRole('button', { name: /USDC|SKR/ })).toHaveCount(0);
+  await expect(listing.getByText(t('market.solOnly'))).toBeVisible();
+  const price = listing.getByRole('textbox', { name: t('market.price', { currency: 'SOL' }) });
+  await expect(price).toHaveAttribute('placeholder', new Intl.NumberFormat(tag, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(0.25));
   await price.fill('12,345678');
   for (const width of [360, 1280]) { await page.setViewportSize({ width, height: 900 }); await modalFits(page); }
   await expect(price).toHaveValue('12,345678');
