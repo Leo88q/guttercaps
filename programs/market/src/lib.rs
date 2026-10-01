@@ -1038,7 +1038,7 @@ pub struct BuyCompressedAsset<'info> {
 
 // sentio-ignore-fn SW023
 pub fn buy_compressed_asset_handler<'info>(
-    ctx: Context<'_, '_, '_, 'info, Box<BuyCompressedAsset<'info>>>,
+    ctx: Context<'_, '_, '_, 'info, BuyCompressedAsset<'info>>,
     _delegate: Pubkey,
     proof: LeafProofArgs,
     expected_price: u64,
@@ -1228,15 +1228,8 @@ pub mod market {
     ) -> Result<()> {
         list_compressed_asset_handler(ctx, price, currency)
     }
-    // `Box` on the context is load-bearing, not decoration. This instruction names 20 accounts,
-    // almost all of them `UncheckedAccount` (each an `AccountInfo` by value), so the whole struct
-    // lives in the SBF stack frame. Under `opt-level = "z"` it overflowed that frame and the
-    // program aborted with `Access violation in stack frame 5` on EVERY call — found by
-    // tests/localnet/32-market-compressed.spec.ts, which is the first thing ever to execute this
-    // handler in LiteSVM. Boxing moves the accounts to the heap; the discriminator, the account
-    // list and the IDL are all unchanged, so no client sees a difference.
     pub fn buy_compressed_asset<'info>(
-        ctx: Context<'_, '_, '_, 'info, Box<BuyCompressedAsset<'info>>>,
+        ctx: Context<'_, '_, '_, 'info, BuyCompressedAsset<'info>>,
         delegate: Pubkey,
         proof: LeafProofArgs,
         expected_price: u64,
