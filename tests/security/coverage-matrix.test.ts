@@ -142,12 +142,6 @@ const NO_LITESVM: Record<string, string> = {
   // PDA is seeded from ["offer", asset, bidder] and the asset is never parsed.
   update_price: 'Core-NFT market — needs a Core asset that cannot be minted (report §5.4)',
   accept_offer: 'Core-NFT market — needs a Core asset that cannot be minted (report §5.4)',
-  // The V2 asset market. This is the pair the report calls out: builders exist, they are called
-  // from UI code, and NOTHING exercises them on chain. If V2 is ever to become the target market
-  // flow, these three are the first thing that must be covered.
-  list_compressed_asset: 'V2 asset market — builders wired in the UI, zero LiteSVM coverage',
-  buy_compressed_asset: 'V2 asset market — builders wired in the UI, zero LiteSVM coverage',
-  cancel_compressed_asset: 'V2 asset market — builders wired in the UI, zero LiteSVM coverage',
   // --- staking ---------------------------------------------------------------------------------
   // Core-Chip staking. Same root cause as the market above: `stake_chip` loads the ["chip", asset]
   // ChipState, which only `open_pack` can create. The compressed twins are covered.
