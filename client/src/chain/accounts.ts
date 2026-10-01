@@ -412,6 +412,10 @@ export function decodeListing(data: Uint8Array): Listing {
   return { asset: r.pubkey(), seller: r.pubkey(), price: r.u64(), currency: r.u8(), createdAt: r.i64(), bump: r.u8() };
 }
 export interface Offer { asset: PublicKey; bidder: PublicKey; amountUsdc: bigint; expiresAt: bigint; bump: number }
+export function decodeOffer(data: Uint8Array): Offer {
+  const r = expectDiscriminator(data, 'Offer');
+  return { asset: r.pubkey(), bidder: r.pubkey(), amountUsdc: r.u64(), expiresAt: r.i64(), bump: r.u8() };
+}
 
 // ---------------------------------------------------------------- staking
 export interface EmissionState {

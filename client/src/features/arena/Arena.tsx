@@ -3,7 +3,7 @@ import { joinText, amountText } from '@/shared/i18n/message';
 // Cap Slam arena: squad builder (power, elements, synergy), ranked queue,
 // optional wager with on-chain escrow, season + rating overview.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { PublicKey } from '@solana/web3.js';
 import { sha256 } from '@noble/hashes/sha256';
@@ -12,7 +12,9 @@ import { useArenaMe, useMyChips, useMyServices, useSeason, useQueueArena, useLea
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
 import { sendTx } from '@/chain/tx';
 import { prepareRandomness } from '@/chain/switchboard';
-import { createBattleIx, wagerSplit, MIN_WAGER, MAX_WAGER, MIN_SQUAD_POWER, leagueOf } from '@/chain/ix/arena';
+import { createBattleIx, acceptBattleIx, wagerSplit, MIN_WAGER, MAX_WAGER, MIN_SQUAD_POWER, leagueOf } from '@/chain/ix/arena';
+import { battlePda } from '@/chain/pdas';
+import { BATTLE_STATUS, decodeWagerBattle, type WagerBattle } from '@/chain/accounts';
 import { RNG_KIND, freshNonce } from '@/chain/pdas';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { CleanZone, KV, Modal, Pill, Stat, Skeleton } from '@/shared/ui/primitives';
@@ -117,9 +119,74 @@ export default function Arena() {
       const ix = createBattleIx({ challenger: wallet.publicKey, nonce, wager: amountMicro, randomness: rnd.randomness, queue: rnd.queue, oracle: rnd.oracle, squad: squad.map((c) => new PublicKey(c.asset!)), cgMint: cfg.data.cgMint });
       const { signature } = await sendTx(connection, wallet, [...rnd.ixs, ix], { cuLimit: 400_000 });
       toast({ kind: 'money', title: { key: 'screens.wagerOpen' }, body: { key: 'screens.escrowWaiting', params: { amount: amountText(amountMicro, 'CG') } }, href: EXPLORER.tx(signature) });
+      // the invite IS the PDA seed, so the challenger can hand it over and the opponent lands straight
+      // on the accept panel below
+      setInvite({ challenger: wallet.publicKey.toBase58(), nonce: nonce.toString() });
+      setBattle(null); setBattleErr(null);
       setWager(null);
     } catch (e) {
       toast({ kind: 'error', title: { key: 'screens.wagerFailed' }, error: e });
+    } finally { setBusy(false); }
+  }
+
+  // --- accept a wager battle ---------------------------------------------------------------
+  // create_battle had no counterpart in the UI: `acceptBattleIx` existed in chain/ix/arena.ts but was
+  // imported nowhere, so a challenger could escrow a stake and nobody could take it. The battle account
+  // is the only discovery channel there is — the backend runs a separate, server-authoritative ranked
+  // queue and knows nothing about on-chain wager battles — so an invite is (challenger, nonce), which is
+  // exactly the PDA seed. It travels as a link, and the challenger sees it right after escrowing.
+  const [params] = useSearchParams();
+  const urlChallenger = params.get('challenger') ?? '';
+  const urlNonce = params.get('nonce') ?? '';
+  const [invite, setInvite] = useState<{ challenger: string; nonce: string } | null>(
+    urlChallenger && urlNonce ? { challenger: urlChallenger, nonce: urlNonce } : null,
+  );
+  const [battle, setBattle] = useState<WagerBattle | null>(null);
+  const [battleErr, setBattleErr] = useState<string | null>(null);
+  // an invite that arrived in the URL is a link somebody clicked: load it straight away
+  const autoLoaded = useRef(false);
+  useEffect(() => {
+    if (autoLoaded.current || !invite) return;
+    autoLoaded.current = true;
+    void loadBattle();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function loadBattle() {
+    if (!invite) return;
+    setBattleErr(null); setBattle(null);
+    let challenger: PublicKey; let nonce: bigint;
+    try { challenger = new PublicKey(invite.challenger.trim()); }
+    catch { setBattleErr(t('arena.acceptBadAddress')); return; }
+    if (!/^[0-9]+$/.test(invite.nonce.trim())) { setBattleErr(t('arena.acceptBadNonce')); return; }
+    nonce = BigInt(invite.nonce.trim());
+    try {
+      const info = await connection.getAccountInfo(battlePda(challenger, nonce)[0], 'confirmed');
+      if (!info) { setBattleErr(t('arena.acceptNotFound')); return; }
+      const b = decodeWagerBattle(new Uint8Array(info.data));
+      if (b.status !== 0) { setBattleErr(t('arena.acceptNotOpen', { status: BATTLE_STATUS[b.status] ?? b.status })); return; }
+      if (wallet && b.challenger.equals(wallet.publicKey)) { setBattleErr(t('arena.acceptSelf')); return; }
+      setBattle(b);
+    } catch (e) {
+      setBattleErr(t('arena.acceptNotFound'));
+      if (!isMock()) console.warn('[arena] battle lookup failed', e);
+    }
+  }
+
+  async function acceptBattle() {
+    if (!battle || !wallet || !cfg.data) return;
+    if (squad.length !== 3) { setBattleErr(t('arena.acceptNeedSquad')); return; }
+    setBusy(true);
+    try {
+      const ix = acceptBattleIx({
+        opponent: wallet.publicKey, challenger: battle.challenger, nonce: battle.nonce,
+        squad: squad.map((c) => new PublicKey(c.asset!)), cgMint: cfg.data.cgMint,
+      });
+      const { signature } = await sendTx(connection, wallet, [ix], { cuLimit: 400_000 });
+      toast({ kind: 'money', title: { key: 'arena.acceptOpened' }, body: { key: 'screens.escrowed', params: { amount: amountText(battle.wager, 'CG') } }, href: EXPLORER.tx(signature) });
+      setBattle(null); setInvite(null);
+    } catch (e) {
+      toast({ kind: 'error', title: { key: 'arena.acceptFailed' }, error: e });
     } finally { setBusy(false); }
   }
 
@@ -211,6 +278,44 @@ export default function Arena() {
         <div className="tag-list">{(season.data?.brackets ?? SEASON.payoutBrackets).map((b) => <span key={b.topPct} className="pill">{t('screens.topShare', { top: b.topPct, share: b.sharePct })}</span>)}</div>
         {me.data?.seasonRank && <div className="small">{t('ui.yourRank')} <b className="mono">#{me.data.seasonRank}</b> · {t('screens.projected', { value: me.data.projectedBracket ?? '—' })}</div>}
         <div className="tiny muted">{t('screens.seedFairness')}{season.data?.serverSecretHash ? <> {t('screens.hash')}<span className="mono">{season.data.serverSecretHash.slice(0, 16)}…</span></> : null}</div>
+      </div>
+
+      <div className="card stack-sm">
+        <div className="row between"><span className="strong">{t('arena.acceptTitle')}</span><span className="muted small">{t('arena.acceptHint')}</span></div>
+        {invite ? (
+          <>
+            <div className="tag-list">
+              <span className="pill mono">{t('arena.inviteChallenger')}: {invite.challenger}</span>
+              <span className="pill mono">{t('arena.inviteNonce')}: {invite.nonce}</span>
+            </div>
+            <div className="row-wrap">
+              <button className="btn btn-sm" onClick={() => { const u = new URL(window.location.href); u.searchParams.set('challenger', invite.challenger); u.searchParams.set('nonce', invite.nonce); void navigator.clipboard?.writeText(u.toString()); toast({ kind: 'info', title: { key: 'arena.inviteCopied' } }); }}>{t('arena.inviteCopy')}</button>
+              <button className="btn btn-sm btn-ghost" onClick={() => { setInvite(null); setBattle(null); setBattleErr(null); }}>{t('ui.clear')}</button>
+            </div>
+          </>
+        ) : (
+          <CleanZone>
+            <input className="input mono" placeholder={t('arena.acceptChallenger')} value={urlChallenger} disabled />
+            <input className="input mono" inputMode="numeric" placeholder={t('arena.acceptNonce')} onChange={(e) => setInvite({ challenger: urlChallenger, nonce: e.target.value })} />
+          </CleanZone>
+        )}
+        {invite && !battle && (
+          <button className="btn btn-sm" disabled={busy || !connected} onClick={() => void loadBattle()}>{t('arena.acceptLoad')}</button>
+        )}
+        {battleErr && <div className="tiny" style={{ color: 'var(--cg-neon-magenta)' }}>{battleErr}</div>}
+        {battle && (
+          <div className="stack-sm">
+            <KV k={t('arena.battleWager')} v={fmtCg(battle.wager)} />
+            <KV k={t('arena.pot')} v={fmtCg(wagerSplit(battle.wager).pot)} />
+            <KV k={t('arena.battleStatus')} v={BATTLE_STATUS[battle.status] ?? battle.status} />
+            <KV k={t('arena.league')} v={leagueName(leagueOf(battle.powerA))} />
+            <div className="tiny muted">{t('arena.squadLocked')}</div>
+            <CleanConfirmButton disabled={busy || !connected || squad.length !== 3} onClick={() => void acceptBattle()}>
+              {t('arena.acceptConfirm', { amount: fmtCg(battle.wager) })}
+            </CleanConfirmButton>
+            {squad.length !== 3 && <div className="tiny muted">{t('arena.acceptNeedSquad')}</div>}
+          </div>
+        )}
       </div>
 
       <Modal open={pick} onClose={() => setPick(false)} title={t('ui.pickSquad')} wide>

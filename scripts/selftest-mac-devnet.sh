@@ -365,7 +365,9 @@ expect_not budget-rpc "program deploy" "$tmp/calls.log"
 KEYS="$tmp/home/.config/solana/guttercaps/buffers"; mkdir -p "$KEYS"
 # macOS ships shasum, Linux sha256sum — and an empty `$(command-that-does-not-exist)` still yields a valid
 # filename, so the presence of the tool is tested, not the exit code of cp.
-if have shasum; then sha12() { shasum -a 256 "$1" | cut -c1-12; }; else sha12() { sha256sum "$1" | cut -c1-12; }; fi
+# `have` is not defined in this self-test (it lives in mac-devnet.sh), so the tool is probed with
+# `command -v` directly — otherwise the line prints "have: command not found" on every run.
+if command -v shasum >/dev/null 2>&1; then sha12() { shasum -a 256 "$1" | cut -c1-12; }; else sha12() { sha256sum "$1" | cut -c1-12; }; fi
 for prog in chip_core market staking arena; do
   cp "$tmp/wallet.json" "$KEYS/$prog-$(sha12 "$work/target/deploy/$prog.so").json"
 done

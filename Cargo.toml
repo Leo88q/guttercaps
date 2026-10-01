@@ -21,9 +21,17 @@ members = [
 overflow-checks = true
 lto = "fat"
 codegen-units = 1
-# SBF size experiment (see reports/SBF-SIZE-*.md): opt-level "s" trades a little speed for ELF size, and
-# ProgramData rent is paid per byte, so this is the one profile knob with a direct SOL cost. Measured on the
-# pinned CI toolchain, not assumed; overflow-checks stays on because it is a security property.
+# SBF size: opt-level "z". ProgramData rent is paid per byte, so this is the one profile knob with a
+# direct SOL cost, and it is measured, not assumed (reports/BUDGET-SBF-2026-10-01.md §3).
+#
+#   opt3 (default) 3 804 712 B   "s" 3 466 392 B (-8.89 %)   "z" 3 123 824 B (-17.89 %)
+#
+# "z" was chosen over "s" because it halves the win again (-680 888 B, ~3.5 SOL of rent deposit at the
+# cluster rate) while the heaviest transaction stays at 181 246 CU against a 1 400 000 CU tx limit —
+# 7.7x headroom, no limit broken, and every CI job green (programs / rust-lints / localnet 92+ / client /
+# e2e / economy / backend / landing / security). The cost is real and is recorded per transaction shape in
+# the report: +23…+43 % CU against opt3 on the heavy paths. overflow-checks, lto = "fat" and
+# codegen-units = 1 are unchanged — the first is a security property, the other two were already on.
 opt-level = "z"
 
 [profile.release.build-override]

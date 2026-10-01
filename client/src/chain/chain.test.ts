@@ -13,13 +13,13 @@ import { buyPackIx, openPackIx, payServiceIx, Currency, fuseIx, mintCompressedCh
 import { v2LeafHash, foldCompressionProof, discoverLeafNonce, verifyBubblegumProofLocal } from './bubblegum';
 import { DasClient } from './das';
 import { initRandomnessIx, revealRandomnessIx, closeRandomnessIx, closeRandomnessLutIx, commitAccountMetas, rngAccounts } from './ix/rng';
-import { createBattleIx } from './ix/arena';
+import { createBattleIx, acceptBattleIx } from './ix/arena';
 import { buyCompressedAssetIx, cancelCompressedAssetIx, listCompressedAssetIx, listCompressedIx, marketCurrencyOfApi, MarketCurrency, saleSplit } from './ix/market';
 import type { BubblegumProof } from './bubblegum';
 import { wagerSplit, leagueOf } from './ix/arena';
 import { unstakePenalty, claimRootIx, claimSkrRootIx, claimItemRootIx, claimChipRootIx, claimAnyRootIx, fundSliceIx, SLICE_PVP_SEASON } from './ix/staking';
 import { usdCentsToUnits, usdCentsToLamports, usdCentsToMicroSkr, priceUsd, assertFeed, pushOracleAccount, isFresh, priceAgeS, isConfident, PYTH_MAX_AGE_S, PYTH_MAX_CONF_BPS, PythConfidenceError } from './pyth';
-import { ADDRESS_LOOKUP_TABLE_PROGRAM_ID, PYTH_SOL_USD_FEED_ID_HEX, PYTH_SKR_USD_FEED_ID_HEX, PYTH_SHARD_ID, PYTH_PRICE_ACCOUNTS, PYTH_SPONSORED_SOL_USD, SWITCHBOARD_PROGRAM_ID, SWITCHBOARD_ON_DEMAND_ID, ARENA_ID, SYSVAR_SLOT_HASHES_ID, WSOL_MINT, MPL_BUBBLEGUM_V2_ID, MPL_NOOP_ID, MPL_ACCOUNT_COMPRESSION_ID, MPL_CORE_ID, SYSTEM_PROGRAM_ID } from './ids';
+import { ADDRESS_LOOKUP_TABLE_PROGRAM_ID, PYTH_SOL_USD_FEED_ID_HEX, PYTH_SKR_USD_FEED_ID_HEX, PYTH_SHARD_ID, PYTH_PRICE_ACCOUNTS, PYTH_SPONSORED_SOL_USD, SWITCHBOARD_PROGRAM_ID, SWITCHBOARD_ON_DEMAND_ID, ARENA_ID, TOKEN_PROGRAM_ID, SYSVAR_SLOT_HASHES_ID, WSOL_MINT, MPL_BUBBLEGUM_V2_ID, MPL_NOOP_ID, MPL_ACCOUNT_COMPRESSION_ID, MPL_CORE_ID, SYSTEM_PROGRAM_ID } from './ids';
 import { packSeed } from './flows/packFlow';
 import { describeProgramError, humanizeTxError } from './errors';
 import { revealValueFromIx, revealPayloadFromIx } from './switchboard';
@@ -409,6 +409,33 @@ describe('instruction builders', () => {
     expect(rngAuthPda(RNG_KIND.BATTLE)[0].equals(rngAuthPda(RNG_KIND.PACK)[0])).toBe(false); // per-program authority
     expect(ix.keys[9].pubkey.equals(mint)).toBe(true);
     expect(ix.keys[15].pubkey.equals(squad[0])).toBe(true);
+  });
+  // 2026-10-01 audit: accept_battle had a builder and no caller anywhere — a challenger could escrow a
+  // wager and no client path could take it. Pin the instruction itself so a regression in the wiring is
+  // visible in chain.test.ts too (the UI half is covered by features/arena/acceptBattle.test.tsx).
+  it('accept_battle: no args, opponent signs, same battle PDA and escrow ATAs as create_battle', () => {
+    const challenger = Keypair.generate().publicKey;
+    const opponent = Keypair.generate().publicKey;
+    const nonce = 99n;
+    const squad = [1, 2, 3].map(() => Keypair.generate().publicKey);
+    const ix = acceptBattleIx({ opponent, challenger, nonce, squad, cgMint: mint });
+    expect(ix.programId.equals(ARENA_ID)).toBe(true);
+    expect(ix.data).toHaveLength(8);                       // the instruction carries no arguments
+    expect(Array.from(ix.data)).toEqual(Array.from(ixDiscriminator('accept_battle')));
+    const [battle] = battlePda(challenger, nonce);
+    // the accept PDA must be the create PDA: same seeds, so the opponent lands on the challenger's account
+    const created = createBattleIx({ challenger, nonce, wager: 5_000_000n, randomness: rngPda(RNG_KIND.BATTLE, challenger, nonce)[0], queue: Keypair.generate().publicKey, oracle: Keypair.generate().publicKey, squad, cgMint: mint });
+    expect(created.keys[2].pubkey.equals(battle)).toBe(true);
+    expect(ix.keys[0].pubkey.equals(opponent) && ix.keys[0].isSigner && ix.keys[0].isWritable).toBe(true);
+    expect(ix.keys[2].pubkey.equals(battle) && ix.keys[2].isWritable).toBe(true);
+    expect(ix.keys[3].pubkey.equals(ata(mint, opponent))).toBe(true);   // opponent's $CG
+    expect(ix.keys[4].pubkey.equals(ata(mint, battle))).toBe(true);     // the escrow
+    expect(ix.keys[5].pubkey.equals(TOKEN_PROGRAM_ID)).toBe(true);
+    expect(ix.keys).toHaveLength(6 + 6);
+    for (let i = 0; i < 3; i++) {
+      expect(ix.keys[6 + i * 2].pubkey.equals(squad[i])).toBe(true);
+      expect(ix.keys[7 + i * 2].pubkey.equals(chipStatePda(squad[i])[0])).toBe(true);
+    }
   });
 });
 
