@@ -37,6 +37,23 @@ export const leafAssetId = (merkleTree: PublicKey, index: number): PublicKey =>
   PublicKey.findProgramAddressSync([Buffer.from('asset'), merkleTree.toBytes(), u32le(index)], MPL_BUBBLEGUM_V2_ID)[0];
 
 /**
+ * Monotonic leaf index handed out by `forgeLeaf`.
+ *
+ * The first version of this helper hardcoded index 3, and that is a trap worth writing down: the
+ * asset id is `PDA(["asset", tree, index])`, so with a fixed tree every forged leaf in a file lands
+ * on the SAME asset — and therefore on the same `["compressed_asset_listing", asset]` PDA. The first
+ * successful `list_compressed_asset` in a spec then poisons every later scenario: the second one
+ * fails with `Allocate: account ... already in use` (system error 0), which reads as "the guard did
+ * not fire" and sends you hunting for a handler bug that does not exist. Eight of the ten failures
+ * the first CI run reported were exactly that.
+ *
+ * The bound is read from the live `BubblegumTreeMeta` rather than assumed: `maxDepth` 5 means the
+ * index must stay below 32, and a spec that forges more leaves than a tree can hold is a bug in the
+ * spec, not something to paper over.
+ */
+let nextLeafIndex = 1;
+
+/**
  * `mpl_bubblegum::hash::hash_collection_option(Some(collection))` — `keccak256(pubkey)`, per the
  * Bubblegum V2 leaf schema (Metaplex, "Hashing NFT Data": the `None` case substitutes a default
  * collection key, the `Some` case hashes the key alone).
@@ -107,7 +124,13 @@ export async function forgeLeaf(
   const meta = decodeBubblegumTreeMeta(new Uint8Array((await chain.getAccount(bubblegumTreeMetaPda(collectionIdx)[0]))!.data));
   const coreCollection = decodeCollectionMeta(new Uint8Array((await chain.getAccount(collectionMetaPda(collectionIdx)[0]))!.data)).coreCollection;
   const merkleTree = o.chip?.merkleTree ?? meta.merkleTree;
-  const leafIndex = o.chip?.leafIndex ?? 3;
+  // A distinct index per leaf, so no two forged leaves share an asset id — see the note above.
+  const leafIndex = o.chip?.leafIndex ?? nextLeafIndex;
+  nextLeafIndex = Math.max(nextLeafIndex, leafIndex) + 1;
+  const maxLeaves = 2 ** meta.maxDepth;
+  if (leafIndex >= maxLeaves) {
+    throw new Error(`forgeLeaf: leafIndex ${leafIndex} is outside the tree (maxDepth ${meta.maxDepth} holds ${maxLeaves} leaves)`);
+  }
   const asset = o.chip?.asset ?? leafAssetId(merkleTree, leafIndex);
   const claim = compressedMintClaimPda(owner, claimNonce)[0];
   const [chip, chipBump] = compressedChipStatePda(asset);

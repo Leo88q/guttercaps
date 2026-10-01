@@ -31,7 +31,7 @@ import { CHIP_CORE_ID, MARKET_ID, SYSTEM_PROGRAM_ID } from '@/chain/ids';
 import { bubblegumTreeConfigPda, collectionMetaPda, compressedAssetListingPda, compressedChipStatePda, compressedMintClaimPda, marketAuthPda } from '@/chain/pdas';
 import { Err, expectAnyFail, expectFail } from './helpers/expect';
 import { binariesPresent, getEnv, type Env } from './helpers/env';
-import { collectionHash, forgeLeaf } from './helpers/v2leaf';
+import { collectionHash, forgeLeaf, leafAssetId } from './helpers/v2leaf';
 
 const bins = binariesPresent();
 const suite = describe.skipIf(!bins.ok && !process.env.LOCALNET_RPC);
@@ -113,6 +113,19 @@ describe('T-L-MA forged-leaf fixture layout', () => {
     const k = Keypair.generate().publicKey;
     expect(Array.from(collectionHash(k))).toEqual(Array.from(keccak_256(k.toBytes())));
     expect(collectionHash(k)).toHaveLength(32);
+  });
+
+  // The bug the first CI run found, pinned without an SVM so it can never come back: the asset id is
+  // PDA(["asset", tree, index]), so a fixed index makes every forged leaf in a file the same asset —
+  // and therefore the same listing PDA. `forgeLeaf` hands out a distinct index per call; this proves
+  // the property it relies on. Eight of that run's ten failures were this one line.
+  it('the asset id depends on the leaf index, so two forged leaves can never share a listing PDA', () => {
+    const tree = Keypair.generate().publicKey;
+    const ids = [0, 1, 2, 3, 17, 31].map((i) => leafAssetId(tree, i));
+    expect(new Set(ids.map((k) => k.toBase58())).size).toBe(ids.length);
+    // and the index really is part of the seed, not just a suffix of the address
+    expect(leafAssetId(tree, 3).equals(leafAssetId(tree, 3))).toBe(true);
+    expect(leafAssetId(tree, 3).equals(leafAssetId(Keypair.generate().publicKey, 3))).toBe(false);
   });
 });
 
@@ -279,9 +292,20 @@ suite('T-L-MA V2 compressed asset market', () => {
 
   it('cancelling a listing that does not exist is refused', async () => {
     const l = await leaf(70_600n);
-    await expectFail(env.chain.send([
+    const before = await env.chain.balance(seller.publicKey);
+    // Which Anchor error a missing `listing` surfaces as is a property of how the runtime hands a
+    // zeroed account to the program, not of this handler — the first CI run reported 2012
+    // (ConstraintAddress) here because a *different* test's listing was still alive at that PDA. So
+    // assert what actually matters: the instruction is refused, and nothing moved.
+    const failure = await expectAnyFail(env.chain.send([
       cancelCompressedAssetIx({ seller: seller.publicKey, asset: l.asset, claim: l.claim }),
-    ], { signers: [seller] }), Err.anchor('AccountNotInitialized'), 'cancel without a listing');
+    ], { signers: [seller] }), 'cancel without a listing');
+    expect(failure.code).toBeGreaterThan(0);
+    // no listing was conjured into existence, and the claim was never unflagged
+    expect(await env.chain.getAccount(compressedAssetListingPda(l.asset)[0])).toBeNull();
+    expect(await l.listed()).toBe(false);
+    // and the seller is not out of pocket for a signature on an instruction that did nothing
+    expect(await env.chain.balance(seller.publicKey)).toBeGreaterThanOrEqual(before - 10_000n);
   });
 
   // ------------------------------------------------------------------ buy guards
