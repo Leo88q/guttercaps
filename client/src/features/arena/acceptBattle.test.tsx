@@ -8,8 +8,8 @@
 // real WagerBattle buffer, and `sendTx` is intercepted so the transaction the UI built can
 // be inspected instead of sent. What is asserted is the seam that used to be missing: the
 // screen reads the challenger's battle, and clicking Accept produces exactly one
-// instruction with the `accept_battle` discriminator, signed by the opponent, against the
-// battle PDA and the escrow ATAs.
+// instruction with the `accept_battle_v2` discriminator, signed by the opponent, against the
+// battle PDA and the escrow ATAs, with all three squad proofs as remaining accounts.
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { render, screen, waitFor, cleanup, fireEvent, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -17,7 +17,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { accountDiscriminator, ixDiscriminator } from '@/chain/anchor';
 import { BorshWriter } from '@/chain/borsh';
-import { battlePda } from '@/chain/pdas';
+import { battlePda, bubblegumTreeMetaPda, compressedChipStatePda } from '@/chain/pdas';
 import { chainKeys } from '@/chain/hooks';
 import { setMockMode } from '@/api/client';
 import { qk } from '@/api/keys';
@@ -56,8 +56,14 @@ vi.mock('@solana/wallet-adapter-react', async () => {
         // test fails loudly if the screen starts reading an account it should not need.
         getAccountInfo: async (pk: PublicKey) => {
           const [battle] = battlePda(CHALLENGER, NONCE);
-          if (!pk.equals(battle)) return null;
-          return { data: Buffer.from(fakeBattle()), executable: false, lamports: 1, owner: ARENA };
+          if (pk.equals(battle)) return { data: Buffer.from(fakeBattle()), executable: false, lamports: 1, owner: ARENA };
+          for (const l of LEAVES) {
+            if (pk.equals(compressedChipStatePda(l.asset)[0])) return { data: Buffer.from(chipState(l)) };
+            if (pk.equals(l.claim)) return { data: Buffer.from(claimAccount()) };
+          }
+          // one tree per collection, so the meta is the same account for all three leaves
+          if (pk.equals(bubblegumTreeMetaPda(0)[0])) return { data: Buffer.from(treeMeta()) };
+          return null;
         },
         getMultipleAccountsInfo: async () => [],
         getSlot: async () => 1,
@@ -93,14 +99,69 @@ function fakeBattle(): Uint8Array {
   return w.toBytes();
 }
 
-/** Three caps owned by the opponent, seeded straight into the infinite-query cache so the squad the
- *  test picks is the squad the instruction must carry — the mock inventory is randomised. */
-const MY_CHIPS = [0, 1, 2].map((i) => ({
-  asset: Keypair.generate().publicKey.toBase58(), owner: OPPONENT.toBase58(),
+/**
+ * Three registered V2 leaves owned by the opponent, seeded straight into the infinite-query cache so
+ * the squad the test picks is the squad the instruction must carry — the mock inventory is
+ * randomised. Each one gets a real `["compressed_chip", asset]` projection, a real `BubblegumTreeMeta`
+ * and a real `CompressedMintClaim`, because `accept_battle_v2` re-verifies all three on chain and the
+ * client now resolves them before it builds anything.
+ */
+// one collection, one tree — which is what a real deployment has, and what the shared
+// `["bubblegum_tree", 0]` meta PDA implies
+const TREE = Keypair.generate().publicKey;
+const LEAVES = [0, 1, 2].map((i) => ({
+  asset: Keypair.generate().publicKey, claim: Keypair.generate().publicKey,
+  merkleTree: TREE, leafIndex: 100 + i,
+}));
+const MY_CHIPS = LEAVES.map((l, i) => ({
+  asset: l.asset.toBase58(), owner: OPPONENT.toBase58(),
   collection: i, rarity: 3 + i, level: 2, index: 10 + i,
   flags: { staked: false, listed: false, fusing: false, soulbound: false }, lockUntil: null,
   power: 500, skin: null, stakeWeight: '1000',
   art: { image: `/art/0${i + 1}-${3 + i}-256.webp`, vfxTier: 0 },
+}));
+
+/** A real-shaped `CompressedChipState` for one leaf. */
+function chipState(l: (typeof LEAVES)[number]): Uint8Array {
+  const w = new BorshWriter();
+  w.bytes(accountDiscriminator('CompressedChipState'));
+  w.pubkey(l.asset).pubkey(l.claim).u8(0).pubkey(l.merkleTree).u32(l.leafIndex).u64(BigInt(l.leafIndex));
+  for (let i = 0; i < 4; i++) w.bytes(new Uint8Array(32).fill(i + 1));
+  w.u8(0).u8(4).u8(9).u64(77n).u8(0).i64(0n).i64(1n).u8(200);
+  return w.toBytes();
+}
+
+function treeMeta(): Uint8Array {
+  const w = new BorshWriter();
+  w.bytes(accountDiscriminator('BubblegumTreeMeta'));
+  w.u8(0).pubkey(Keypair.generate().publicKey).pubkey(TREE)
+    .pubkey(Keypair.generate().publicKey).pubkey(PublicKey.default).u8(14).u8(8).bool(true).u8(201);
+  return w.toBytes();
+}
+
+function claimAccount(): Uint8Array {
+  const w = new BorshWriter();
+  w.bytes(accountDiscriminator('CompressedMintClaim'));
+  w.pubkey(OPPONENT).u8(0).u8(4).u8(9).u64(7n).i64(0n).pubkey(Keypair.generate().publicKey);
+  w.bool(true).bool(true).bool(true).bool(false).bool(false).u8(9).bool(false)
+    .pubkey(Keypair.generate().publicKey).i64(0n);
+  return w.toBytes();
+}
+
+// DAS is the only place the Merkle path exists, so the resolver's proof source is stubbed here.
+vi.mock('@/features/market/payment', () => ({
+  dasClient: () => ({
+    getAssetWithProof: async (id: PublicKey) => {
+      const l = LEAVES.find((x) => x.asset.equals(id))!;
+      return {
+        assetId: l.asset, leafOwner: OPPONENT, leafDelegate: OPPONENT, merkleTree: l.merkleTree,
+        root: new Uint8Array(32).fill(9), dataHash: new Uint8Array(32).fill(1), creatorHash: new Uint8Array(32).fill(2),
+        collectionHash: new Uint8Array(32).fill(3), assetDataHash: new Uint8Array(32).fill(4),
+        flags: 0, leafNonce: BigInt(l.leafIndex), leafIndex: BigInt(l.leafIndex),
+        proof: [Keypair.generate().publicKey, Keypair.generate().publicKey],
+      };
+    },
+  }),
 }));
 
 function seed(qc: QueryClient) {
@@ -164,14 +225,24 @@ describe('arena: accepting a wager battle', () => {
     const ix = sent[0];
     expect(ix.programId.equals(ARENA)).toBe(true);
     expect(Buffer.from(ix.data.subarray(0, 8)).toString('hex'))
-      .toBe(Buffer.from(ixDiscriminator('accept_battle')).toString('hex'));
-    expect(ix.data).toHaveLength(8); // accept_battle carries no arguments
+      .toBe(Buffer.from(ixDiscriminator('accept_battle_v2')).toString('hex'));
     const [battle] = battlePda(CHALLENGER, NONCE);
     expect(ix.keys[0].pubkey.equals(OPPONENT) && ix.keys[0].isSigner).toBe(true);   // opponent signs
     expect(ix.keys[2].pubkey.equals(battle) && ix.keys[2].isWritable).toBe(true);   // the battle
-    // 3 caps → 3 (asset, chip_state) pairs appended after the fixed prologue
-    expect(ix.keys).toHaveLength(6 + 6);
-    for (const c of MY_CHIPS) expect(ix.keys.some((k) => k.pubkey.equals(new PublicKey(c.asset)))).toBe(true);
+    // the args are 3 delegates + 3 full leaf proofs (5×32 B + flags + nonce + index) + 3 depths,
+    // and the proof nodes ride as remaining accounts after the fixed prologue
+    expect(ix.data.length).toBe(8 + 3 * 32 + 3 * (32 * 5 + 1 + 8 + 4) + 3);
+    // 7 fixed + 3 × (claim, chip, merkleTree) + 3 × 2 proof nodes
+    expect(ix.keys).toHaveLength(7 + 9 + 6);
+    for (const l of LEAVES) {
+      expect(ix.keys.some((k) => k.pubkey.equals(l.claim))).toBe(true);
+      expect(ix.keys.some((k) => k.pubkey.equals(compressedChipStatePda(l.asset)[0]))).toBe(true);
+      expect(ix.keys.some((k) => k.pubkey.equals(l.merkleTree))).toBe(true);
+    }
+    // the three delegates the instruction carries are the live leaf delegates, in squad order
+    for (let i = 0; i < 3; i++) {
+      expect(new PublicKey(ix.data.subarray(8 + i * 32, 8 + (i + 1) * 32)).equals(OPPONENT)).toBe(true);
+    }
   });
 
   it('refuses a battle that is not open, and one of your own', async () => {

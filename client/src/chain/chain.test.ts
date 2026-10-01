@@ -13,7 +13,7 @@ import { buyPackIx, openPackIx, payServiceIx, Currency, fuseIx, mintCompressedCh
 import { v2LeafHash, foldCompressionProof, discoverLeafNonce, verifyBubblegumProofLocal } from './bubblegum';
 import { DasClient } from './das';
 import { initRandomnessIx, revealRandomnessIx, closeRandomnessIx, closeRandomnessLutIx, commitAccountMetas, rngAccounts } from './ix/rng';
-import { createBattleIx, acceptBattleIx } from './ix/arena';
+import { createBattleIx, acceptBattleIx, createCompressedBattleV2Ix, acceptCompressedBattleV2Ix, type CompressedArenaChipProof } from './ix/arena';
 import { buyCompressedAssetIx, cancelCompressedAssetIx, listCompressedAssetIx, listCompressedIx, marketCurrencyOfApi, MarketCurrency, saleSplit } from './ix/market';
 import type { BubblegumProof } from './bubblegum';
 import { wagerSplit, leagueOf } from './ix/arena';
@@ -742,6 +742,82 @@ describe('V2 market: resolver → builder round trip', () => {
     ]);
     await expect(resolveCompressedChip({ getAccountInfo: async (k: PublicKey) => (accounts.has(k.toBase58()) ? { data: accounts.get(k.toBase58()) } : null) } as never, l.das as never, l.asset))
       .rejects.toThrow(/listed/);
+  });
+});
+
+describe('V2 arena builders', () => {
+  // Three registered leaves. `create_battle_v2` / `accept_battle_v2` take a squad of *proofs*, not a
+  // squad of assets: the Core path passed three Pubkeys, the V2 path passes three (claim, chip,
+  // merkleTree, proof) tuples plus the live delegate of each.
+  const squad = (): CompressedArenaChipProof[] => [0, 1, 2].map((i) => {
+    const asset = Keypair.generate().publicKey;
+    const claim = Keypair.generate().publicKey;
+    const merkleTree = Keypair.generate().publicKey;
+    const delegate = Keypair.generate().publicKey;
+    return {
+      claim, chip: compressedChipStatePda(asset)[0], merkleTree, delegate,
+      proof: {
+        root: new Uint8Array(32).fill(9 + i), dataHash: new Uint8Array(32).fill(1), creatorHash: new Uint8Array(32).fill(2),
+        collectionHash: new Uint8Array(32).fill(3), assetDataHash: new Uint8Array(32).fill(4),
+        flags: 0, nonce: BigInt(10 + i), index: 10 + i, proofNodes: [Keypair.generate().publicKey, Keypair.generate().publicKey],
+      },
+    };
+  });
+
+  it('create_battle_v2 carries three delegates, three full proofs and three depths, then the nodes', () => {
+    const challenger = Keypair.generate().publicKey;
+    const s = squad();
+    const ix = createCompressedBattleV2Ix({
+      challenger, nonce: 7n, wager: 25_000_000n, randomness: Keypair.generate().publicKey,
+      queue: Keypair.generate().publicKey, oracle: Keypair.generate().publicKey,
+      squad: s, delegates: s.map((x) => x.delegate), cgMint: Keypair.generate().publicKey,
+    });
+    expect(ix.data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('create_battle_v2')));
+    // args: nonce + wager + 3 delegates + 3 × (5 hashes + flags + nonce + index) + 3 depths
+    expect(ix.data.length).toBe(8 + 8 + 8 + 3 * 32 + 3 * (32 * 5 + 1 + 8 + 4) + 3);
+    for (const [i, x] of s.entries()) {
+      expect(new PublicKey(ix.data.subarray(8 + 16 + i * 32, 8 + 16 + (i + 1) * 32)).equals(x.delegate)).toBe(true);
+      // each leaf's nonce is serialized as u64 right after its five hashes and flags byte
+      const base = 8 + 16 + 3 * 32 + i * (32 * 5 + 1 + 8 + 4) + 32 * 5 + 1;
+      expect(ix.data.readBigUInt64LE(base)).toBe(x.proof.nonce);
+      expect(ix.data.readUInt32LE(base + 8)).toBe(x.proof.index);
+    }
+    // the proof nodes are remaining accounts, two per leaf, in squad order
+    for (const x of s) {
+      for (const node of x.proof.proofNodes) expect(ix.keys.some((k) => k.pubkey.equals(node))).toBe(true);
+      expect(ix.keys.some((k) => k.pubkey.equals(x.merkleTree))).toBe(true);
+    }
+  });
+
+  it('accept_battle_v2 omits the wager but carries the same three proofs', () => {
+    const opponent = Keypair.generate().publicKey;
+    const challenger = Keypair.generate().publicKey;
+    const s = squad();
+    const ix = acceptCompressedBattleV2Ix({
+      opponent, challenger, nonce: 7n, squad: s, delegates: s.map((x) => x.delegate),
+      cgMint: Keypair.generate().publicKey,
+    });
+    expect(ix.data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('accept_battle_v2')));
+    // no nonce and no wager in the args: the challenger pins those through the battle PDA
+    expect(ix.data.length).toBe(8 + 3 * 32 + 3 * (32 * 5 + 1 + 8 + 4) + 3);
+    expect(ix.keys[0].pubkey.equals(opponent) && ix.keys[0].isSigner).toBe(true);
+  });
+
+  it('refuses a squad that is not exactly three — a short squad is a reverted transaction and a fee', () => {
+    const s = squad();
+    const base = { challenger: Keypair.generate().publicKey, nonce: 1n, wager: 1n, randomness: Keypair.generate().publicKey, queue: Keypair.generate().publicKey, oracle: Keypair.generate().publicKey, delegates: [], cgMint: Keypair.generate().publicKey };
+    for (const bad of [s.slice(0, 2), [...s, s[0]]]) {
+      expect(() => createCompressedBattleV2Ix({ ...base, squad: bad, delegates: bad.map((x) => x.delegate) })).toThrow(/three/);
+      expect(() => acceptCompressedBattleV2Ix({ opponent: Keypair.generate().publicKey, challenger: base.challenger, nonce: 1n, squad: bad, delegates: bad.map((x) => x.delegate), cgMint: base.cgMint })).toThrow(/three/);
+    }
+  });
+
+  it('refuses delegates that are not one per chip — the program indexes them positionally', () => {
+    const s = squad();
+    expect(() => acceptCompressedBattleV2Ix({
+      opponent: Keypair.generate().publicKey, challenger: Keypair.generate().publicKey, nonce: 1n,
+      squad: s, delegates: s.slice(0, 2).map((x) => x.delegate), cgMint: Keypair.generate().publicKey,
+    })).toThrow(/three proofs/);
   });
 });
 

@@ -70,6 +70,12 @@ export interface CompressedArenaChipProof {
   chip: PublicKey;
   merkleTree: PublicKey;
   proof: CompressedLeafProof;
+  /**
+   * The leaf's live delegate. It is carried alongside the proof rather than derived from it because
+   * the caller resolved both from the same DAS answer, and the program checks the delegate it is
+   * given against the leaf — a delegate from a different read is a proof that does not match.
+   */
+  delegate: PublicKey;
 }
 
 function compressedBattleV2Data(name: string, delegates: PublicKey[], proofs: CompressedLeafProof[], depths: number[], nonce?: bigint, wager?: bigint): Buffer {

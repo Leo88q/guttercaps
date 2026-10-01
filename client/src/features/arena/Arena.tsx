@@ -12,7 +12,9 @@ import { useArenaMe, useMyChips, useMyServices, useSeason, useQueueArena, useLea
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
 import { sendTx } from '@/chain/tx';
 import { prepareRandomness } from '@/chain/switchboard';
-import { createBattleIx, acceptBattleIx, wagerSplit, MIN_WAGER, MAX_WAGER, MIN_SQUAD_POWER, leagueOf } from '@/chain/ix/arena';
+import { createCompressedBattleV2Ix, acceptCompressedBattleV2Ix, wagerSplit, MIN_WAGER, MAX_WAGER, MIN_SQUAD_POWER, leagueOf, type CompressedArenaChipProof } from '@/chain/ix/arena';
+import { resolveCompressedSquad } from '@/chain/flows/compressedChip';
+import { dasClient } from '@/features/market/payment';
 import { battlePda } from '@/chain/pdas';
 import { BATTLE_STATUS, decodeWagerBattle, type WagerBattle } from '@/chain/accounts';
 import { RNG_KIND, freshNonce } from '@/chain/pdas';
@@ -108,15 +110,37 @@ export default function Arena() {
     } finally { setBusy(false); }
   }
 
+  /**
+   * Resolve the three chosen caps into arena proofs. Identity (claim, tree, leaf index) comes from
+   * the on-chain projection and the Merkle path from DAS, which is the only place that has it —
+   * `create_battle_v2` / `accept_battle_v2` re-verify all three roots on chain.
+   *
+   * A missing member fails the squad rather than sending a short one: the builders already refuse
+   * anything but three, but failing here gives the user a readable message instead of a revert.
+   */
+  const squadProofs = async (): Promise<CompressedArenaChipProof[]> => {
+    if (squad.length !== 3) throw new Error('a wager battle needs exactly three caps');
+    const resolved = await resolveCompressedSquad(connection, dasClient(), squad.map((c) => new PublicKey(c.asset!)), { owner: wallet?.publicKey });
+    // `delegate` is the live leaf delegate, which is what the program checks the squad against
+    return resolved.map((r) => ({ claim: r.claim, chip: r.chip, merkleTree: r.merkleTree, proof: r.leaf, delegate: r.delegate }));
+  };
+
   async function createWager(amountMicro: bigint) {
     if (isMock()) { toast({ kind: 'money', title: { key: 'screens.wagerCreated' }, body: { key: 'screens.escrowed', params: { amount: amountText(amountMicro, 'CG') } } }); setWager(null); return; }
     if (!wallet || !cfg.data) return;
     setBusy(true);
     try {
       const nonce = freshNonce();
-      // arena-owned randomness PDA ["rng", 2, challenger, nonce]: init here, commit inside create_battle (SEC-C3 part 2)
+      // arena-owned randomness PDA ["rng", 2, challenger, nonce]: init here, commit inside create_battle_v2 (SEC-C3 part 2)
       const rnd = await prepareRandomness(connection, wallet.publicKey, RNG_KIND.BATTLE, nonce);
-      const ix = createBattleIx({ challenger: wallet.publicKey, nonce, wager: amountMicro, randomness: rnd.randomness, queue: rnd.queue, oracle: rnd.oracle, squad: squad.map((c) => new PublicKey(c.asset!)), cgMint: cfg.data.cgMint });
+      // every squad slot carries the registered projection and a *fresh* proof — the program
+      // re-verifies all three roots, so a proof that is one block stale is a reverted transaction
+      // and a paid fee, which is why they are resolved here and not read from the API row
+      const proofs = await squadProofs();
+      const ix = createCompressedBattleV2Ix({
+        challenger: wallet.publicKey, nonce, wager: amountMicro, randomness: rnd.randomness,
+        queue: rnd.queue, oracle: rnd.oracle, squad: proofs, delegates: proofs.map((x) => x.delegate), cgMint: cfg.data.cgMint,
+      });
       const { signature } = await sendTx(connection, wallet, [...rnd.ixs, ix], { cuLimit: 400_000 });
       toast({ kind: 'money', title: { key: 'screens.wagerOpen' }, body: { key: 'screens.escrowWaiting', params: { amount: amountText(amountMicro, 'CG') } }, href: EXPLORER.tx(signature) });
       // the invite IS the PDA seed, so the challenger can hand it over and the opponent lands straight
@@ -178,9 +202,10 @@ export default function Arena() {
     if (squad.length !== 3) { setBattleErr(t('arena.acceptNeedSquad')); return; }
     setBusy(true);
     try {
-      const ix = acceptBattleIx({
+      const proofs = await squadProofs();
+      const ix = acceptCompressedBattleV2Ix({
         opponent: wallet.publicKey, challenger: battle.challenger, nonce: battle.nonce,
-        squad: squad.map((c) => new PublicKey(c.asset!)), cgMint: cfg.data.cgMint,
+        squad: proofs, delegates: proofs.map((x) => x.delegate), cgMint: cfg.data.cgMint,
       });
       const { signature } = await sendTx(connection, wallet, [ix], { cuLimit: 400_000 });
       toast({ kind: 'money', title: { key: 'arena.acceptOpened' }, body: { key: 'screens.escrowed', params: { amount: amountText(battle.wager, 'CG') } }, href: EXPLORER.tx(signature) });
