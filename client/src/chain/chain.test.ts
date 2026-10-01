@@ -7,7 +7,7 @@ import { accountDiscriminator, ixDiscriminator, eventsFromLogs, findEvent, optio
 import {
   decodeChipState, decodeGameConfig, decodePendingPack, decodePendingClaimFusion, decodePlayerPity, decodeListing, decodeTokenStake, decodeVaultLedger, decodeCompressedAssetListing, decodeCompressedPackSettlement, decodeCompressedMintClaim, sumLedgers, readPackOpened, readCompressedClaimsCreated, readCompressedPackSettled, readClaimFusionRevealed, chipIsFree, claimIsListable, CHIP_FLAG,
 } from './accounts';
-import { vaultPda, assetPda, chipStatePda, collectionMetaPda, configPda, pendingPackPda, claimFusionPda, compressedMintClaimPda, compressedSettlementPda, bubblegumTreeConfigPda, pityPda, pendingFusionPda, battlePda, ata, freshNonce, rewardRootPda, rewarderPda, playerItemsPda, skrPoolPda, emissionPda, seasonPoolAuthPda, RNG_KIND, rngAuthPda, rngPda, sbLutPda, sbLutSignerPda, sbStatePda, sbOracleStatsPda, sbRewardEscrow, LEDGER_SHARDS, allLedgerPdas, ledgerPda, ledgerPdaOf, ledgerShardOf } from './pdas';
+import { vaultPda, assetPda, chipStatePda, collectionMetaPda, configPda, pendingPackPda, claimFusionPda, compressedMintClaimPda, compressedSettlementPda, bubblegumTreeConfigPda, compressedChipStatePda, bubblegumTreeMetaPda, pityPda, pendingFusionPda, battlePda, ata, freshNonce, rewardRootPda, rewarderPda, playerItemsPda, skrPoolPda, emissionPda, seasonPoolAuthPda, RNG_KIND, rngAuthPda, rngPda, sbLutPda, sbLutSignerPda, sbStatePda, sbOracleStatsPda, sbRewardEscrow, LEDGER_SHARDS, allLedgerPdas, ledgerPda, ledgerPdaOf, ledgerShardOf } from './pdas';
 import { fitsInTx } from './tx';
 import { buyPackIx, openPackIx, payServiceIx, Currency, fuseIx, mintCompressedChipIx, createBubblegumTreeIx, openCompressedPackIx, registerCompressedChipIx, cancelCompressedClaimIx, finalizeCompressedPackIx, fuseClaimsCommitIx, fuseClaimsRevealIx, cancelStaleClaimFusionIx, closeExpiredClaimIx } from './ix/chipCore';
 import { v2LeafHash, foldCompressionProof, discoverLeafNonce, verifyBubblegumProofLocal } from './bubblegum';
@@ -21,6 +21,8 @@ import { unstakePenalty, claimRootIx, claimSkrRootIx, claimItemRootIx, claimChip
 import { usdCentsToUnits, usdCentsToLamports, usdCentsToMicroSkr, priceUsd, assertFeed, pushOracleAccount, isFresh, priceAgeS, isConfident, PYTH_MAX_AGE_S, PYTH_MAX_CONF_BPS, PythConfidenceError } from './pyth';
 import { ADDRESS_LOOKUP_TABLE_PROGRAM_ID, PYTH_SOL_USD_FEED_ID_HEX, PYTH_SKR_USD_FEED_ID_HEX, PYTH_SHARD_ID, PYTH_PRICE_ACCOUNTS, PYTH_SPONSORED_SOL_USD, SWITCHBOARD_PROGRAM_ID, SWITCHBOARD_ON_DEMAND_ID, ARENA_ID, TOKEN_PROGRAM_ID, SYSVAR_SLOT_HASHES_ID, WSOL_MINT, MPL_BUBBLEGUM_V2_ID, MPL_NOOP_ID, MPL_ACCOUNT_COMPRESSION_ID, MPL_CORE_ID, SYSTEM_PROGRAM_ID } from './ids';
 import { packSeed } from './flows/packFlow';
+import { resolveCompressedChip } from './flows/compressedChip';
+import { decodeCompressedChipState, decodeBubblegumTreeMeta } from './accounts';
 import { describeProgramError, humanizeTxError } from './errors';
 import { revealValueFromIx, revealPayloadFromIx } from './switchboard';
 import { buildRewardTree, rewardLeaf, verifyRewardProof, hashPair, toHex, fromHex, MAX_PROOF_LEN } from './merkle';
@@ -646,6 +648,93 @@ describe('compressed Bubblegum V2 market builders', () => {
     // SEC-F5: the quoted price trails the proof args and ends the instruction data
     expect(ix.data.length).toBe(proofOffset + 32 * 5 + 1 + 8 + 4 + 8);
     expect(ix.data.readBigUInt64LE(proofOffset + 32 * 5 + 1 + 8 + 4)).toBe(1_234_567n);
+  });
+});
+
+describe('V2 market: resolver → builder round trip', () => {
+  // The UI's job is to hand `resolveCompressedChip`'s output straight to the market builders. Testing
+  // each side separately left the join untested: a resolver that named a tree the builder does not
+  // accept would pass both suites and fail at the wallet.
+  const leaf = async () => {
+    const asset = Keypair.generate().publicKey;
+    const claim = Keypair.generate().publicKey;
+    const merkleTree = Keypair.generate().publicKey;
+    const coreCollection = Keypair.generate().publicKey;
+    const owner = Keypair.generate().publicKey;
+    const chip = new BorshWriter().pubkey(asset).pubkey(claim).u8(3).pubkey(merkleTree).u32(6).u64(6n);
+    for (let i = 0; i < 4; i++) chip.bytes(new Uint8Array(32).fill(i + 1));
+    chip.u8(0).u8(4).u8(9).u64(77n).u8(0).i64(0n).i64(1n).u8(200);
+    const meta = new BorshWriter().u8(3).pubkey(coreCollection).pubkey(merkleTree)
+      .pubkey(bubblegumTreeConfigPda(merkleTree)[0]).pubkey(PublicKey.default).u8(14).u8(8).bool(true).u8(201);
+    const accounts = new Map<string, Uint8Array>([
+      [compressedChipStatePda(asset)[0].toBase58(), concat(Buffer.from(accountDiscriminator('CompressedChipState')), chip.toBytes())],
+      [bubblegumTreeMetaPda(3)[0].toBase58(), concat(Buffer.from(accountDiscriminator('BubblegumTreeMeta')), meta.toBytes())],
+    ]);
+    const connection = { getAccountInfo: async (k: PublicKey) => (accounts.has(k.toBase58()) ? { data: accounts.get(k.toBase58())! } : null) };
+    const das = {
+      getAssetWithProof: async () => ({
+        assetId: asset, leafOwner: owner, leafDelegate: owner, merkleTree,
+        root: new Uint8Array(32).fill(9), dataHash: new Uint8Array(32).fill(1), creatorHash: new Uint8Array(32).fill(2),
+        collectionHash: new Uint8Array(32).fill(3), assetDataHash: new Uint8Array(32).fill(4),
+        flags: 0, leafNonce: 6n, leafIndex: 6n, proof: [Keypair.generate().publicKey, Keypair.generate().publicKey],
+      }),
+    };
+    return { asset, claim, merkleTree, coreCollection, owner, connection, das };
+  };
+
+  it('a resolved leaf lists without any further translation', async () => {
+    const l = await leaf();
+    const r = await resolveCompressedChip(l.connection as never, l.das as never, l.asset);
+    // the state account decoded the same claim/tree/leaf the resolver reports
+    const state = decodeCompressedChipState(new Uint8Array((await l.connection.getAccountInfo(compressedChipStatePda(l.asset)[0]))!.data));
+    expect(state.claim.equals(r.claim)).toBe(true);
+    expect(state.leafIndex).toBe(r.leaf.index);
+    const meta = decodeBubblegumTreeMeta(new Uint8Array((await l.connection.getAccountInfo(bubblegumTreeMetaPda(3)[0]))!.data));
+    expect(meta.coreCollection.equals(r.coreCollection)).toBe(true);
+    const ix = listCompressedAssetIx({ seller: l.owner, asset: r.asset, collectionIdx: r.collectionIdx, claim: r.claim, price: 5_000_000n, currency: MarketCurrency.SOL });
+    expect(ix.data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('list_compressed_asset')));
+    expect(ix.keys.some((k) => k.pubkey.equals(r.claim))).toBe(true);
+  });
+
+  it('a resolved leaf buys, with the DAS proof the resolver fetched', async () => {
+    const l = await leaf();
+    const r = await resolveCompressedChip(l.connection as never, l.das as never, l.asset);
+    const buyer = Keypair.generate().publicKey;
+    const ix = buyCompressedAssetIx({
+      buyer, asset: r.asset, claim: r.claim, seller: l.owner, proof: r.proof, delegate: r.delegate,
+      treeConfig: r.treeConfig, merkleTree: r.merkleTree, coreCollection: r.coreCollection,
+      treasury: Keypair.generate().publicKey, buyback: Keypair.generate().publicKey, expectedPrice: 5_000_000n,
+    });
+    expect(ix.data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('buy_compressed_asset')));
+    // the proof nodes the resolver read from DAS are the remaining accounts, in order
+    expect(ix.keys.slice(-r.proof.proof.length).map((k) => k.pubkey.toBase58())).toEqual(r.proof.proof.map((k) => k.toBase58()));
+    expect(ix.keys.some((k) => k.pubkey.equals(r.treeConfig))).toBe(true);
+    expect(ix.keys.some((k) => k.pubkey.equals(r.merkleTree))).toBe(true);
+  });
+
+  it('a resolved leaf cancels through its claim, which survives a sale', async () => {
+    const l = await leaf();
+    const r = await resolveCompressedChip(l.connection as never, l.das as never, l.asset);
+    const ix = cancelCompressedAssetIx({ seller: l.owner, asset: r.asset, claim: r.claim });
+    expect(ix.data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('cancel_compressed_asset')));
+    expect(ix.keys[2].pubkey.equals(l.claim)).toBe(true);
+  });
+
+  it('a leaf the resolver refuses never reaches a builder — the guard is not the wallet\'s job', async () => {
+    const l = await leaf();
+    // flag the chip as listed and the resolver refuses before any instruction is built
+    const chip = new BorshWriter().pubkey(l.asset).pubkey(l.claim).u8(3).pubkey(l.merkleTree).u32(6).u64(6n);
+    for (let i = 0; i < 4; i++) chip.bytes(new Uint8Array(32).fill(i + 1));
+    chip.u8(0).u8(4).u8(9).u64(77n).u8(2).i64(0n).i64(1n).u8(200);
+    // the tree meta stays present: only the chip flag changes, so nothing else can explain the refusal
+    const meta = new BorshWriter().u8(3).pubkey(l.coreCollection).pubkey(l.merkleTree)
+      .pubkey(bubblegumTreeConfigPda(l.merkleTree)[0]).pubkey(PublicKey.default).u8(14).u8(8).bool(true).u8(201);
+    const accounts = new Map<string, Uint8Array>([
+      [compressedChipStatePda(l.asset)[0].toBase58(), concat(Buffer.from(accountDiscriminator('CompressedChipState')), chip.toBytes())],
+      [bubblegumTreeMetaPda(3)[0].toBase58(), concat(Buffer.from(accountDiscriminator('BubblegumTreeMeta')), meta.toBytes())],
+    ]);
+    await expect(resolveCompressedChip({ getAccountInfo: async (k: PublicKey) => (accounts.has(k.toBase58()) ? { data: accounts.get(k.toBase58()) } : null) } as never, l.das as never, l.asset))
+      .rejects.toThrow(/listed/);
   });
 });
 

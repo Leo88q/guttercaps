@@ -80,9 +80,11 @@ export default function Market() {
             {SORTS.map((s) => <Pill key={s.id} active={filter.sort === s.id} onClick={() => set('sort', s.id)}>{t(s.label)}</Pill>)}
           </div>
           <div className="tabs">
+            {/* SEC-B28: the V2 asset market settles in SOL only, so USDC/SKR filters were removed
+                rather than left to answer an empty grid. A hand-written ?currency=USDC still reaches
+                the API and still returns nothing, which is the honest answer for a currency with no
+                listings. */}
             <Pill active={filter.currency === 'SOL'} onClick={() => set('currency', filter.currency === 'SOL' ? undefined : 'SOL')}>SOL</Pill>
-            <Pill active={filter.currency === 'USDC'} onClick={() => set('currency', filter.currency === 'USDC' ? undefined : 'USDC')}>USDC</Pill>
-            <Pill active={filter.currency === 'SKR'} onClick={() => set('currency', filter.currency === 'SKR' ? undefined : 'SKR')}>SKR</Pill>
             <Pill active={!!filter.missingForMySet} onClick={() => set('missing', filter.missingForMySet ? undefined : '1')} tone="ok">{t('ui.completesSet')}</Pill>
           </div>
         </div>
