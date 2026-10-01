@@ -132,30 +132,38 @@ const NO_LITESVM: Record<string, string> = {
   // asserts statically that only the crank may do it.
   create_bubblegum_tree: 'crank-owned tree creation; the suite only configures trees (init_guard asserts the caller)',
   // The Core-Chip fusion reveal. The pair `fuse` / `fuse_reveal` needs Core assets, and so does the
-  // result; the claim-side `fuse_claims_commit` / `fuse_claims_reveal` are covered.
+  // result; the claim-side `fuse_claims_commit` / `fuse_claims_reveal` are covered. `fuse` itself
+  // passes the reachability rule only by substring accident (`fuseCompressedClaimsIx` contains
+  // "fuse") — the same looseness that let the Core market hide for months.
+  //
+  // Deferred, not pruned, in the 2026-10-01 migration: deleting the pair would take the backend's
+  // whole Core-fusion crank path (crank.processFusion + the /fusion/* API planner, 211 lines with
+  // its own routes and tests) with it, and that is a product decision, not dead code.
   fuse_reveal: 'Core-Chip fusion — needs Core assets that cannot be minted (report §5.4)',
   // --- market ----------------------------------------------------------------------------------
-  // The Core-NFT market: list / buy / cancel / update_price / make_offer / accept_offer. All of it
-  // is wired into the UI and none of it is reachable — `list` needs a Core asset plus its
-  // ChipState, and both can only come from the fail-closed `open_pack`. What IS covered is
-  // make_offer / cancel_offer (tests/localnet/31-market-core.spec.ts, M1–M4), because an Offer
-  // PDA is seeded from ["offer", asset, bidder] and the asset is never parsed.
+  // The two Core-market handlers that survived the 2026-10-01 deletion of `list` / `buy` / `cancel` /
+  // `make_offer` / `cancel_offer`. They are retained rather than deleted because `accept_offer` still
+  // owns the `chip_core::deliver_sold` CPI and its `ChipSold` event, but neither is reachable: both
+  // need a Core asset plus its ChipState, and both can only come from the fail-closed `open_pack`.
   update_price: 'Core-NFT market — needs a Core asset that cannot be minted (report §5.4)',
   accept_offer: 'Core-NFT market — needs a Core asset that cannot be minted (report §5.4)',
   // --- staking ---------------------------------------------------------------------------------
-  // Core-Chip staking. Same root cause as the market above: `stake_chip` loads the ["chip", asset]
-  // ChipState, which only `open_pack` can create. The compressed twins are covered.
-  stake_chip: 'Core-Chip staking — needs a ChipState that cannot be created (report §5.4)',
-  unstake_chip: 'Core-Chip staking — needs a ChipState that cannot be created (report §5.4)',
   // The V2 staking variant: builder exists, no scenario. `stake_compressed_chip` (the V1 twin)
   // is covered — 70800 CU in the census.
   stake_compressed_chip_v2: 'V2 staking variant — builder exists, no scenario; the V1 twin is covered',
   // --- arena -----------------------------------------------------------------------------------
-  // The Core-squad battle pair. `validate_squad` accepts a compressed squad too, and that is the
-  // pair the suite uses (40-arena). These two are the Core half and are unreachable for the same
-  // reason as the Core market.
-  create_battle_v2: 'Core-squad battle — needs Core assets that cannot be minted (report §5.4)',
-  accept_battle_v2: 'Core-squad battle — needs Core assets that cannot be minted (report §5.4)',
+  // The V2 battle pair, and the reason is worth stating precisely because the names invite the
+  // opposite reading: these are the COMPRESSED handlers the UI drives (createCompressedBattleV2Ix /
+  // acceptCompressedBattleV2Ix), not the Core ones. `create_battle` / `accept_battle` — the Core-squad
+  // handlers — are NOT here, because their squad is `remaining_accounts` and `validate_squad` accepts
+  // a compressed claim squad too, which is how 40-arena and 83-report-adapted cover them. Deleting
+  // them would take the only LiteSVM-reachable battle path with them.
+  //
+  // `create_battle_v2` takes real `LeafProofArgs` per slot and CPIs into Account Compression to
+  // verify each leaf, which the harness has no binary for. Covering it needs either a forged-leaf
+  // spec like 32-market-compressed (possible: the guards run before the CPI) or a real tree.
+  create_battle_v2: 'V2 battle pair — verifies each squad leaf by CPI into Account Compression, which LiteSVM cannot serve',
+  accept_battle_v2: 'V2 battle pair — verifies each squad leaf by CPI into Account Compression, which LiteSVM cannot serve',
   // Randomness lifecycle entry points the crank owns. `init_battle_randomness` and
   // `reveal_battle_randomness` are covered through 40-arena; closing the account is the crank's
   // job and no scenario does it.

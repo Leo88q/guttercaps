@@ -39,8 +39,14 @@ const bodyOf = (ts: string, name: string): string => {
 
 test('sanity: the reader sees the whole program surface', () => {
   assert.ok(files.length >= 20, `rust files: ${files.length}`);
+  // 2026-10-01 (Bubblegum V2 migration, STEP 4): the Core-market / Core-staking pruning and the
+  // `open_pack` dead-body removal deleted 9 account contexts and ~55 fields, so the floors moved
+  // 93 → 90, 800 → 745, 45 → 45 (init sites were unaffected: `open_pack`'s init lived in the
+  // deleted body and the rest are elsewhere) and 14 → 11. Each floor is still far above anything a
+  // broken parser would produce — the point of the test is that the reader is not silently matching
+  // nothing, not that the surface never shrinks.
   assert.ok(structs.length >= 90, `#[derive(Accounts)] structs: ${structs.length}`);
-  assert.ok(structs.reduce((a, s) => a + s.fields.length, 0) >= 800, 'account fields');
+  assert.ok(structs.reduce((a, s) => a + s.fields.length, 0) >= 745, 'account fields');
   for (const p of PROGRAMS) {
     const ixs = files.filter((f) => f.program === p).flatMap(programInstructionNames);
     assert.ok(ixs.length >= 5, `${p}: #[program] instructions ${ixs.length}`);
@@ -269,7 +275,7 @@ test('E28 every `close = X` pays the rent to a bound party (has_one / address / 
     if (!bound) bad.push(`${where(s, f)}: rent goes to '${target}' which is not bound to the closed account`);
     if (coreType(tf.type).kind !== 'Signer' && !has(tf, /^address\s*=/)) bad.push(`${where(s, f)}: close target neither signer nor address-pinned`);
   }
-  assert.ok(n >= 14, `close sites seen: ${n}`);
+  assert.ok(n >= 11, `close sites seen: ${n}`);
   assert.deepEqual(bad, []);
 });
 

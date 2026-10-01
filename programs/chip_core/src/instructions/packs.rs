@@ -624,14 +624,12 @@ pub struct OpenPack<'info> {
     pub mpl_core: UncheckedAccount<'info>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
-    // remaining_accounts — for chip i in 0..def.chips, 4 accounts each:
-    //   asset_i          PDA ["asset", pending, pack_no, i]     (mut)
-    //   chip_state_i     PDA ["chip", asset_i]                  (mut)
-    //   collection_meta  PDA ["collection", rolled_idx]          (mut)  ← rolled index, client pre-simulates
-    //   core_collection  CollectionMeta.core_collection          (mut)
-    // Because collection is chosen by the randomness, the client (crank)
-    // simulates `expand()` off-chain with the revealed value to know which
-    // collection accounts to pass; the program re-derives and verifies.
+    // The account list is kept exactly as it was: `open_pack` is a fail-closed
+    // stub (see the handler), and shrinking the context here would change the
+    // instruction's account encoding for every client that still builds it.
+    // The Core-mint `remaining_accounts` the old body consumed (4 per chip:
+    // asset_i, chip_state_i, collection_meta, core_collection) are therefore
+    // still accepted and simply never read.
 }
 
 // sentio-ignore-fn SW023
@@ -640,313 +638,31 @@ pub fn open_pack<'info>(
     nonce: u64,
     pack_no: u8,
 ) -> Result<()> {
-    // Fail closed: the historical MPL-Core mint implementation remains below
-    // for audit/reference compatibility, but cannot be reached on a full-closed
-    // Bubblegum V2 deployment. The replacement flow is
-    // stage_compressed_chip -> mint_compressed_chip -> DAS/proof registration.
-    // `params_version == 0` is reserved: initialize starts at 1 and every
-    // subsequent update uses checked increment, so no valid live config can
-    // enable this legacy branch accidentally.
+    // Fail closed. This instruction minted MPL-Core chips and created the
+    // ["chip", asset] ChipState that the whole Core surface (Core market, Core
+    // staking, Core fusion, deliver_sold / thaw_chip) is built on. On a
+    // full-closed Bubblegum V2 deployment it must never run again, and the
+    // replacement flow is stage_compressed_chip -> mint_compressed_chip ->
+    // DAS/proof registration.
+    //
+    // `params_version == 0` is reserved: `initialize` starts it at 1 and every
+    // subsequent update uses a checked increment, so no valid live config can
+    // enable this branch. That is the one-way migration gate, and it is asserted
+    // by tests/localnet/31-market-core.spec.ts M6.
+    //
+    // The historical body was deleted rather than kept as reference: it was
+    // ~300 lines of unreachable code that still had to compile, still had to be
+    // audited, and still shipped in the .so. The gate above is the whole
+    // instruction now.
     require!(
         ctx.accounts.config.params_version == 0,
         ChipError::CompressedMigrationRequired
     );
 
-    let clock = Clock::get()?;
-    // (#28) a voucher rolls ONE chip with its template odds — `sku` (0) only indexes the pity arrays
-    let is_voucher = ctx.accounts.pending.voucher;
-    let def = if is_voucher {
-        PackDef::voucher(ctx.accounts.pending.voucher_odds)
-    } else {
-        ctx.accounts.config.packs[ctx.accounts.pending.sku as usize]
-    };
-    let pending_key = ctx.accounts.pending.key();
-    let sku = ctx.accounts.pending.sku as usize;
-    let qty = ctx.accounts.pending.qty;
-
-    // SEC-C2: read the oracle exactly once per purchase and persist the value, so packs 2…N of a
-    // bundle (opened in later slots) never depend on `clock.slot == reveal_slot`.
-    let base: [u8; 32] = if ctx.accounts.pending.revealed {
-        ctx.accounts.pending.value
-    } else {
-        let rnd = randomness::parse_checked(&ctx.accounts.randomness)?;
-        let v = randomness::revealed_value(&rnd, ctx.accounts.pending.commit_slot)?;
-        let pending = &mut ctx.accounts.pending;
-        pending.value = v;
-        pending.revealed = true;
-        v
-    };
-
-    let bytes: [u8; 32] = if qty == 1 {
-        base
-    } else {
-        anchor_lang::solana_program::keccak::hashv(&[&base, &[pack_no]]).to_bytes()
-    };
-
-    let pool: Vec<u8> = if def.featured_only {
-        vec![ctx.accounts.config.featured_collection]
-    } else {
-        (0..ctx.accounts.config.collections_created).collect()
-    };
-    require!(!pool.is_empty(), ChipError::InvalidCollection);
-
-    let pity_before = ctx.accounts.pity.counters[sku];
-    let rolled = expand(&bytes, &def, pity_before, &pool);
-
-    let chips = def.chips as usize;
-    require!(
-        ctx.remaining_accounts.len() == chips * 4,
-        ChipError::InvalidQuantity
-    );
-
-    let mut assets = [Pubkey::default(); MAX_CHIPS_PER_PACK];
-    let mut rarities = [0u8; MAX_CHIPS_PER_PACK];
-    let mut cols = [0u8; MAX_CHIPS_PER_PACK];
-    let mut got_pity_tier = false;
-    let payer_before = ctx.accounts.payer.lamports();
-    // Starter: 7 days; voucher: the template's `soulbound_days` (0 = free to trade at once)
-    let soulbound_days: i64 = if is_voucher {
-        ctx.accounts.pending.soulbound_days as i64
-    } else if sku == PackSku::Starter as usize {
-        7
-    } else {
-        0
-    };
-    let soulbound = soulbound_days > 0;
-
-    for i in 0..chips {
-        let r = rolled[i].ok_or(ChipError::Overflow)?;
-        let acc = &ctx.remaining_accounts[i * 4..i * 4 + 4];
-        let (asset_ai, chip_state_ai, col_meta_ai, core_collection) =
-            (&acc[0], &acc[1], &acc[2], &acc[3]);
-
-        // asset PDA
-        let (exp_asset, asset_bump) = Pubkey::find_program_address(
-            &[b"asset", pending_key.as_ref(), &[pack_no], &[i as u8]],
-            ctx.program_id,
-        );
-        require_keys_eq!(exp_asset, asset_ai.key(), ChipError::InvalidChipState);
-        require!(asset_ai.data_is_empty(), ChipError::InvalidChipState); // idempotency: never re-mint
-
-        // collection meta for the rolled index
-        let (exp_meta, _) =
-            Pubkey::find_program_address(&[b"collection", &[r.collection_idx]], ctx.program_id);
-        require_keys_eq!(exp_meta, col_meta_ai.key(), ChipError::InvalidCollection);
-        let mut col_meta: Account<CollectionMeta> = Account::try_from(col_meta_ai)?;
-        require_keys_eq!(
-            col_meta.core_collection,
-            core_collection.key(),
-            ChipError::WrongCollection
-        );
-
-        col_meta.minted = col_meta.minted.checked_add(1).ok_or(ChipError::Overflow)?;
-        let ri = r.rarity.index() as usize;
-        col_meta.minted_by_rarity[ri] = col_meta.minted_by_rarity[ri]
-            .checked_add(1)
-            .ok_or(ChipError::Overflow)?;
-        let index = col_meta.minted;
-
-        // --- Core asset ---
-        let name = format!("{} #{}", col_meta.symbol, index);
-        let uri = format!("https://cdn.guttercaps.gg/m/{}/{}.json", col_meta.idx, ri);
-        let meta_bump = col_meta.bump;
-        let meta_idx = col_meta.idx;
-        let plugins = vec![
-            PluginAuthorityPair {
-                plugin: Plugin::PermanentFreezeDelegate(PermanentFreezeDelegate {
-                    frozen: soulbound,
-                }),
-                authority: Some(PluginAuthority::UpdateAuthority),
-            },
-            PluginAuthorityPair {
-                plugin: Plugin::PermanentBurnDelegate(PermanentBurnDelegate {}),
-                authority: Some(PluginAuthority::UpdateAuthority),
-            },
-            // lets the market deliver a sold (frozen-in-place) chip without a second seller signature
-            PluginAuthorityPair {
-                plugin: Plugin::PermanentTransferDelegate(PermanentTransferDelegate {}),
-                authority: Some(PluginAuthority::UpdateAuthority),
-            },
-        ];
-        let asset_seeds: &[&[u8]] = &[
-            b"asset",
-            pending_key.as_ref(),
-            &[pack_no],
-            &[i as u8],
-            &[asset_bump],
-        ];
-        let meta_seeds: &[&[u8]] = &[b"collection", &[meta_idx], &[meta_bump]];
-        CreateV2CpiBuilder::new(&ctx.accounts.mpl_core.to_account_info())
-            .asset(asset_ai)
-            .collection(Some(core_collection))
-            .authority(Some(col_meta_ai))
-            .payer(&ctx.accounts.payer.to_account_info())
-            .owner(Some(&ctx.accounts.buyer.to_account_info()))
-            .system_program(&ctx.accounts.system_program.to_account_info())
-            .name(name)
-            .uri(uri)
-            .plugins(plugins)
-            .invoke_signed(&[asset_seeds, meta_seeds])?;
-
-        // --- ChipState PDA ---
-        let (exp_state, state_bump) =
-            Pubkey::find_program_address(&[b"chip", asset_ai.key().as_ref()], ctx.program_id);
-        require_keys_eq!(exp_state, chip_state_ai.key(), ChipError::InvalidChipState);
-        let space = 8 + ChipState::INIT_SPACE;
-        system_program::create_account(
-            CpiContext::new_with_signer(
-                ctx.accounts.system_program.to_account_info(),
-                system_program::CreateAccount {
-                    from: ctx.accounts.payer.to_account_info(),
-                    to: chip_state_ai.clone(),
-                },
-                &[&[b"chip", asset_ai.key().as_ref(), &[state_bump]]],
-            ),
-            Rent::get()?.minimum_balance(space),
-            space as u64,
-            ctx.program_id,
-        )?;
-        let state = ChipState {
-            asset: asset_ai.key(),
-            collection_idx: r.collection_idx,
-            rarity: r.rarity,
-            level: 1,
-            index,
-            flags: if soulbound { ChipState::F_SOULBOUND } else { 0 },
-            lock_until: if soulbound {
-                clock.unix_timestamp + soulbound_days * DAY
-            } else {
-                0
-            },
-            minted_at: clock.unix_timestamp,
-            bump: state_bump,
-        };
-        {
-            let mut data = chip_state_ai.try_borrow_mut_data()?;
-            data[..8].copy_from_slice(ChipState::DISCRIMINATOR);
-            state.serialize(&mut &mut data[8..])?;
-        }
-        col_meta.exit(ctx.program_id)?;
-
-        assets[i] = asset_ai.key();
-        rarities[i] = ri as u8;
-        cols[i] = r.collection_idx;
-        if def.pity_tier > 0 && ri as u8 >= def.pity_tier {
-            got_pity_tier = true;
-        }
-    }
-
-    // --- pity ---
-    if def.pity_tier > 0 {
-        let p = &mut ctx.accounts.pity;
-        p.counters[sku] = if got_pity_tier {
-            0
-        } else {
-            p.counters[sku].saturating_add(1)
-        };
-    }
-    let pity_after = ctx.accounts.pity.counters[sku];
-
-    // --- reimburse cranker for rent spent (bounded by the reserve) ---
-    let spent = payer_before.saturating_sub(ctx.accounts.payer.lamports());
-    let reimburse = spent.min(RENT_RESERVE_PER_CHIP * chips as u64);
-    {
-        let pending_ai = ctx.accounts.pending.to_account_info();
-        let payer_ai = ctx.accounts.payer.to_account_info();
-        **pending_ai.try_borrow_mut_lamports()? -= reimburse;
-        **payer_ai.try_borrow_mut_lamports()? += reimburse;
-    }
-
-    emit!(PackOpened {
-        buyer: ctx.accounts.buyer.key(),
-        sku: sku as u8,
-        nonce,
-        assets,
-        rarities,
-        collections: cols,
-        count: chips as u8,
-        roll: bytes,
-        pity_before,
-        pity_after,
-    });
-
-    let pending = &mut ctx.accounts.pending;
-    pending.opened += 1;
-
-    if pending.opened == pending.qty {
-        // settle currency + liabilities, then close
-        let (pl, pu, pc, ps) = (
-            pending.paid_lamports,
-            pending.paid_usdc,
-            pending.paid_cg,
-            pending.paid_skr,
-        );
-        // (#12) the settling pack needs the buyer's shard writable — packs 1…N−1 passed it read-only
-        VaultLedger::require_writable(&ctx.accounts.ledger.to_account_info())?;
-        ctx.accounts.ledger.release(pl, pu, pc, ps)?;
-        if pc > 0 {
-            let burn = pc
-                .checked_mul(CG_PACK_BURN_BPS as u64)
-                .ok_or(ChipError::Overflow)?
-                .checked_div(BPS_DENOM as u64)
-                .ok_or(ChipError::Overflow)?;
-            let vault_seeds: &[&[u8]] = &[b"vault", &[ctx.accounts.config.vault_bump]];
-            let mint = ctx
-                .accounts
-                .cg_mint
-                .as_ref()
-                .ok_or(ChipError::CurrencyNotAccepted)?;
-            let from = ctx
-                .accounts
-                .vault_cg
-                .as_ref()
-                .ok_or(ChipError::CurrencyNotAccepted)?;
-            let to = ctx
-                .accounts
-                .treasury_cg
-                .as_ref()
-                .ok_or(ChipError::CurrencyNotAccepted)?;
-            token::burn(
-                CpiContext::new_with_signer(
-                    ctx.accounts.token_program.to_account_info(),
-                    token::Burn {
-                        mint: mint.to_account_info(),
-                        from: from.to_account_info(),
-                        authority: ctx.accounts.vault.to_account_info(),
-                    },
-                    &[vault_seeds],
-                ),
-                burn,
-            )?;
-            token::transfer(
-                CpiContext::new_with_signer(
-                    ctx.accounts.token_program.to_account_info(),
-                    token::Transfer {
-                        from: from.to_account_info(),
-                        to: to.to_account_info(),
-                        authority: ctx.accounts.vault.to_account_info(),
-                    },
-                    &[vault_seeds],
-                ),
-                pc - burn,
-            )?;
-            ctx.accounts.ledger.burned(burn);
-            emit!(BurnReported {
-                source: 0,
-                amount: burn
-            });
-        }
-        // the shard is not `mut` in the Accounts struct → persist explicitly
-        ctx.accounts.ledger.exit(ctx.program_id)?;
-        // close PendingPack: leftover reserve + rent → buyer
-        let pending_ai = ctx.accounts.pending.to_account_info();
-        let buyer_ai = ctx.accounts.buyer.to_account_info();
-        let lam = pending_ai.lamports();
-        **pending_ai.try_borrow_mut_lamports()? = 0;
-        **buyer_ai.try_borrow_mut_lamports()? += lam;
-        pending_ai.assign(&system_program::ID);
-        pending_ai.resize(0)?; // see `close_state` in fusion.rs: `resize(0)`, not the deprecated `realloc`
-    }
+    // `nonce` / `pack_no` stay in the signature so the instruction encoding is
+    // byte-identical; nothing below can run, so they are read only to keep the
+    // compiler honest about them.
+    let _ = (nonce, pack_no);
     Ok(())
 }
 

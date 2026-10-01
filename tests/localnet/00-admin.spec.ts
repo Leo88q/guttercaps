@@ -2,7 +2,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { COLLECTIONS } from '@/shared/lib/lore';
-import { decodeArenaConfig, decodeCollectionMeta, decodeCoreCollectionHeader, decodeEmissionState, decodePlayerItems } from '@/chain/accounts';
+import { decodeArenaConfig, decodeCollectionMeta, decodeCoreCollectionHeader, decodeEmissionState, decodeGameConfig, decodePlayerItems } from '@/chain/accounts';
 import { findEvent } from '@/chain/anchor';
 import { LEDGER_SHARDS, allLedgerPdas, arenaConfigPda, collectionMetaPda, configPda, emissionPda, ledgerShardOf, playerItemsPda, vaultPda } from '@/chain/pdas';
 import { PACKS } from '@guttercaps/economy';
@@ -89,6 +89,26 @@ suite('T-L-G admin', () => {
     await env.chain.send([setParamsIx(admin, { packs: cgBack })], { signers: [env.admin] });
     const stranger = await env.player();
     await expectFail(env.chain.send([setParamsIx(stranger.publicKey, { marketFeeBps: 100 })], { signers: [stranger] }), Err.chip('Unauthorized'), 'non-admin');
+  });
+
+  // The Core-NFT market is gone (2026-10-01: `list` / `buy` / `cancel` / `make_offer` / `cancel_offer`
+  // were deleted with the instructions). What keeps it gone is this gate: `open_pack` — the only
+  // instruction that ever minted a Core asset or created a ["chip", asset] ChipState — requires
+  // `config.params_version == 0`, and nothing on a live config can ever produce that again. G02 pins
+  // one increment; this pins that the counter is monotonic across a patch that touches nothing else,
+  // which is the property the deletion actually rests on.
+  it('G03 the Core migration gate is one-way: params_version only ever rises', async () => {
+    const cfg0 = decodeGameConfig(new Uint8Array((await env.chain.getAccount(configPda()[0]))!.data));
+    expect(cfg0.paramsVersion).toBeGreaterThanOrEqual(1);
+
+    await env.chain.send([setParamsIx(env.admin.publicKey, {})], { signers: [env.admin], label: 'set_params (empty patch)' });
+    const cfg1 = await env.refreshConfig();
+    expect(cfg1.paramsVersion).toBe(cfg0.paramsVersion + 1);
+
+    await env.chain.send([setParamsIx(env.admin.publicKey, { marketFeeBps: cfg1.marketFeeBps })], { signers: [env.admin], label: 'set_params (no-op value)' });
+    const cfg2 = await env.refreshConfig();
+    expect(cfg2.paramsVersion).toBe(cfg1.paramsVersion + 1);
+    expect(cfg2.paramsVersion).toBeGreaterThanOrEqual(2);
   });
 
   it('G03 set_paused: buy_pack → Paused while paused, admin-only, unpause restores', async () => {
