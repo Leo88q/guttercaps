@@ -18,9 +18,11 @@
 // reclamation. M1–M4 cover exactly that, plus the guards that stop a bad offer from escrowing.
 // M5 covers the one `list` guard that is reachable without an asset: the owner constraint.
 import { beforeAll, describe, expect, it } from 'vitest';
+import { TransactionInstruction } from '@solana/web3.js';
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { makeOfferIx, cancelOfferIx, listIx, MIN_PRICE_USDC } from '@/chain/ix/market';
-import { MPL_CORE_ID } from '@/chain/ids';
+import { MARKET_ID, MPL_CORE_ID, TOKEN_PROGRAM_ID } from '@/chain/ids';
+import { ixData, ro, rw, signer as signerMeta } from '@/chain/anchor';
 import { ata, configPda, listingPda, marketAuthPda, offerPda } from '@/chain/pdas';
 import { decodeGameConfig, decodeOffer } from '@/chain/accounts';
 import { Err, expectFail } from './helpers/expect';
@@ -30,6 +32,25 @@ const bins = binariesPresent();
 const suite = describe.skipIf(!bins.ok && !process.env.LOCALNET_RPC);
 const USDC = 1_000_000n; // 1 USDC, 6 decimals
 const SOL = 1_000_000_000n;
+
+// Amount held by an SPL token account. `tokenBalance` derives an ATA from an OWNER, so it cannot be
+// used on an ATA itself: the offer escrow IS an ATA, and reading it through `tokenBalance` silently
+// derives `ATA(mint, escrow)` and answers 0. Found by the first real CI run of this file (M1).
+const held = async (chain: Env['chain'], tokenAccount: PublicKey): Promise<bigint> => {
+  const a = await chain.getAccount(tokenAccount);
+  if (!a) return 0n;
+  return new DataView(a.data.buffer, a.data.byteOffset + 64, 8).getBigUint64(0, true);
+};
+
+// `cancel_offer` against a real Offer PDA, signed by somebody else. `cancelOfferIx` derives the PDA
+// from the bidder it is given, so it cannot express this case; the program still has to refuse it.
+function rawCancelOfferIx(signer: PublicKey, offer: PublicKey, usdcMint: PublicKey): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: MARKET_ID,
+    keys: [signerMeta(signer), rw(offer), rw(ata(usdcMint, offer)), rw(ata(usdcMint, signer)), ro(TOKEN_PROGRAM_ID)],
+    data: Buffer.from(ixData('cancel_offer')),
+  });
+}
 
 suite('T-L-MC Core-NFT market', () => {
   let env: Env;
@@ -55,7 +76,7 @@ suite('T-L-MC Core-NFT market', () => {
 
     const [offer] = offerPda(asset, bidder.publicKey);
     const escrow = ata(env.mints.usdc, offer);
-    expect(await tokenBalance(env.chain, env.mints.usdc, escrow)).toBe(USDC);
+    expect(await held(env.chain, escrow)).toBe(USDC);
     expect(await tokenBalance(env.chain, env.mints.usdc, bidder.publicKey)).toBe(before - USDC);
 
     const o = decodeOffer(new Uint8Array((await env.chain.getAccount(offer))!.data));
@@ -114,24 +135,29 @@ suite('T-L-MC Core-NFT market', () => {
     const [offer] = offerPda(asset, bidder.publicKey);
     const escrow = ata(env.mints.usdc, offer);
 
-    await expectFail(env.chain.send([cancelOfferIx({ bidder: stranger.publicKey, asset, usdcMint: env.mints.usdc })],
+    // the real Offer PDA with a stranger's signature: the offer seeds and `has_one = bidder` both
+    // have to hold, and neither does
+    await expectFail(env.chain.send([rawCancelOfferIx(stranger.publicKey, offer, env.mints.usdc)],
       { signers: [stranger], label: 'cancel_offer by stranger' }), Err.anchor('ConstraintSeeds'), 'cancel_offer by stranger');
 
-    expect(await tokenBalance(env.chain, env.mints.usdc, escrow)).toBe(USDC);
+    expect(await held(env.chain, escrow)).toBe(USDC);
   });
 
-  it('M5 list: an account that is not owned by the Core program is refused before any fee is burned', async () => {
+  it('M5 list: an asset with no ChipState is refused before any fee is burned', async () => {
     const seller = await env.player({ sol: 2n * SOL, cg: 10_000_000_000n });
     const start = await tokenBalance(env.chain, env.mints.cg, seller.publicKey);
-    // a system-owned keypair standing in for "an asset": the `owner = mpl_core::ID` constraint on
-    // `List.asset` is what has to fire, and it fires before the 0.5 $CG listing fee is burned
+    // A keypair standing in for "an asset the caller owns". The account that actually blocks the
+    // instruction is `chip` — the ["chip", asset] ChipState PDA — and it fails deserialising before
+    // anything else runs. That is the §5.4 point in one line: a ChipState can only be created by
+    // `open_pack`, and `open_pack` is fail-closed, so there is no input that gets past here.
     const notAnAsset = Keypair.generate().publicKey;
 
     await expectFail(env.chain.send([listIx({
       asset: notAnAsset, collectionIdx: 0, coreCollection: env.coreCollections.get(0)!,
       seller: seller.publicKey, price: 1_000_000_000n, currency: 0, cgMint: env.mints.cg,
-    })], { signers: [seller], label: 'list a non-Core account' }), Err.anchor('ConstraintOwner'), 'list a non-Core account');
+    })], { signers: [seller], label: 'list an asset with no ChipState' }), Err.anchor('AccountNotInitialized'), 'list an asset with no ChipState');
 
+    // refused before the 0.5 $CG listing fee is burned, and nothing is left behind either
     expect(await tokenBalance(env.chain, env.mints.cg, seller.publicKey)).toBe(start);
     expect(await env.chain.getAccount(listingPda(notAnAsset)[0])).toBeNull();
     // market_auth is a seed-only PDA — it is never created, so a refused list leaves nothing at all
