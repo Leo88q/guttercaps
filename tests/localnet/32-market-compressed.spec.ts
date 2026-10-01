@@ -27,7 +27,7 @@ import { accountDiscriminator, ixData, ro, rw, signer } from '@/chain/anchor';
 import { decodeCompressedAssetListing, decodeCompressedChipState, decodeCompressedMintClaim } from '@/chain/accounts';
 import { BorshReader, BorshWriter } from '@/chain/borsh';
 import { buyCompressedAssetIx, cancelCompressedAssetIx, listCompressedAssetIx, MarketCurrency, saleSplit } from '@/chain/ix/market';
-import { CHIP_CORE_ID, MARKET_ID, SYSTEM_PROGRAM_ID } from '@/chain/ids';
+import { CHIP_CORE_ID, MARKET_ID, MPL_BUBBLEGUM_V2_ID, SYSTEM_PROGRAM_ID } from '@/chain/ids';
 import { bubblegumTreeConfigPda, collectionMetaPda, compressedAssetListingPda, compressedChipStatePda, compressedMintClaimPda, marketAuthPda } from '@/chain/pdas';
 import { Err, expectAnyFail, expectFail } from './helpers/expect';
 import { binariesPresent, getEnv, type Env } from './helpers/env';
@@ -375,9 +375,19 @@ suite('T-L-MA V2 compressed asset market', () => {
     // means every guard passed, `split()` ran and the three lamport transfers were issued; the only
     // thing left in the handler is `TransferV2CpiBuilder::invoke_signed`, which needs a real
     // Bubblegum program the LiteSVM harness does not load.
+    //
+    // The absence of a custom error is NECESSARY but not SUFFICIENT, and the first CI run proved it:
+    // `buy_compressed_asset` was overflowing its SBF stack frame on every call (`Access violation in
+    // stack frame 5`), which is not a custom program error, so this assertion was happily green on a
+    // program that never ran. So also require the Bubblegum program to actually appear in the trace
+    // — the CPI cannot be reached without invoking it.
     const trace = failure.logs.join('\n');
     expect(trace, `expected the Bubblegum CPI to fail, but a market custom error fired instead:\n${trace.split('\n').slice(-8).join('\n')}`)
       .not.toMatch(/custom program error/);
+    expect(trace, `the program aborted before reaching the CPI — this is what a stack overflow looks like:\n${trace.split('\n').slice(-8).join('\n')}`)
+      .not.toMatch(/Access violation|stack frame|panicked/);
+    expect(trace, `the Bubblegum program was never invoked, so no CPI was reached:\n${trace.split('\n').slice(-8).join('\n')}`)
+      .toContain(MPL_BUBBLEGUM_V2_ID.toBase58());
 
     // The split the handler was about to apply, mirrored client-side so the numbers stay pinned.
     const split = saleSplit(price, env.config.marketFeeBps);
