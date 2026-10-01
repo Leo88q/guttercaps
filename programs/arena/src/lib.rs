@@ -537,13 +537,21 @@ pub struct CreateBattle<'info> {
 #[rustfmt::skip]
 #[derive(Accounts)]
 #[instruction(nonce: u64)]
+// `Box<Account<..>>` on the five state accounts, for the same reason as `market::BuyCompressedAsset`:
+// `Account<'info, T>` owns its `T` BY VALUE in the SBF stack frame. This context deserializes five
+// of them plus seven `UncheckedAccount`s. It has never been executed in LiteSVM (the coverage
+// matrix keeps it allow-listed with no scenario), so nobody had seen whether the frame holds — and
+// this IS the live arena path the UI drives through `createCompressedBattleV2Ix`. Boxing matches
+// what every other large context in this repo already does (`RegisterCompressedChip`,
+// `MintCompressedChip`, `StageCompressedChip`, `OpenCompressedPack` all box). Account list,
+// discriminators and IDL are unchanged.
 pub struct CreateBattleV2<'info> {
     #[account(mut)]
     pub challenger: Signer<'info>,
     #[account(seeds = [b"arena_config"], bump = config.bump, constraint = !config.paused @ ArenaError::Paused)]
-    pub config: Account<'info, ArenaConfig>,
+    pub config: Box<Account<'info, ArenaConfig>>,
     #[account(init, payer = challenger, space = 8 + WagerBattle::INIT_SPACE, seeds = [b"battle", challenger.key().as_ref(), &nonce.to_le_bytes()], bump)]
-    pub battle: Account<'info, WagerBattle>,
+    pub battle: Box<Account<'info, WagerBattle>>,
     /// CHECK: arena-owned Switchboard randomness PDA.
     #[account(mut, owner = randomness::SB_PROGRAM_ID @ ArenaError::Randomness, seeds = [randomness::RNG_SEED, &[randomness::RNG_KIND_BATTLE], challenger.key().as_ref(), &nonce.to_le_bytes()], bump)]
     pub randomness: UncheckedAccount<'info>,
@@ -564,11 +572,11 @@ pub struct CreateBattleV2<'info> {
     #[account(address = randomness::SLOT_HASHES_ID)]
     pub recent_slothashes: UncheckedAccount<'info>,
     #[account(address = config.cg_mint)]
-    pub cg_mint: Account<'info, Mint>,
+    pub cg_mint: Box<Account<'info, Mint>>,
     #[account(mut, token::mint = cg_mint, token::authority = challenger)]
-    pub challenger_cg: Account<'info, TokenAccount>,
+    pub challenger_cg: Box<Account<'info, TokenAccount>>,
     #[account(init, payer = challenger, associated_token::mint = cg_mint, associated_token::authority = battle)]
-    pub escrow: Account<'info, TokenAccount>,
+    pub escrow: Box<Account<'info, TokenAccount>>,
     /// CHECK: fixed MPL Account Compression program used by every proof.
     #[account(address = MPL_ACCOUNT_COMPRESSION_ID)]
     pub compression_program: UncheckedAccount<'info>,

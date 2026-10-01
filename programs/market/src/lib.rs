@@ -965,6 +965,15 @@ pub fn cancel_compressed_asset_handler(ctx: Context<CancelCompressedAsset>) -> R
 
 #[derive(Accounts)]
 #[instruction(delegate: Pubkey)]
+// The four `Box<Account<..>>` below are load-bearing. `Account<'info, T>` owns its `T` BY VALUE, so
+// every deserialized state account sits in the SBF stack frame — and this context deserializes four
+// of them plus fifteen `UncheckedAccount`s, which is ~2.6 KB of a 4096-byte frame before a single
+// validation temporary. Under `opt-level = "z"` that overflowed, and `buy_compressed_asset` aborted
+// with `Access violation in stack frame 5` on EVERY call — found by
+// tests/localnet/32-market-compressed.spec.ts, the first thing ever to execute this handler in
+// LiteSVM. Boxing moves the owned state to the heap and takes the frame to ~1.4 KB. The account
+// list, the discriminators and the IDL are untouched, so no client sees a difference; this is the
+// same remedy `AcceptOffer` already uses for its `GameConfig`.
 pub struct BuyCompressedAsset<'info> {
     #[account(mut)]
     pub buyer: Signer<'info>,
@@ -974,18 +983,18 @@ pub struct BuyCompressedAsset<'info> {
         seeds = [b"compressed_asset_listing", listing.asset.as_ref()],
         bump = listing.bump,
     )]
-    pub listing: Account<'info, CompressedAssetListing>,
+    pub listing: Box<Account<'info, CompressedAssetListing>>,
     #[account(mut, address = listing.claim)]
-    pub claim: Account<'info, CompressedMintClaim>,
+    pub claim: Box<Account<'info, CompressedMintClaim>>,
     #[account(
         mut,
         seeds = [b"compressed_chip", listing.asset.as_ref()],
         bump = chip.bump,
         seeds::program = chip_core::ID,
     )]
-    pub chip: Account<'info, CompressedChipState>,
+    pub chip: Box<Account<'info, CompressedChipState>>,
     #[account(seeds = [b"config"], bump = config.bump, seeds::program = chip_core::ID)]
-    pub config: Account<'info, GameConfig>,
+    pub config: Box<Account<'info, GameConfig>>,
     /// CHECK: treasury address is constrained to the immutable game configuration.
     #[account(mut, address = config.treasury @ MarketError::InvalidTreasury)]
     pub treasury: UncheckedAccount<'info>,
