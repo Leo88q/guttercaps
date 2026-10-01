@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Keypair } from '@solana/web3.js';
+import { Keypair, type PublicKey } from '@solana/web3.js';
 import { DasClient } from '@/chain/das';
 import { bubblegumTreeConfigPda, compressedAssetListingPda } from '@/chain/pdas';
 import { MarketCurrency } from '@/chain/ix/market';
@@ -10,6 +10,13 @@ import { listingBuyIxs, dasEndpoint } from './payment';
 const pk = () => Keypair.generate().publicKey;
 
 const SELLER = pk();
+
+/** The claim PDA state the resolver reads. Defaults to a settled, free, owned claim. */
+function claimState(buyer: PublicKey, over: Record<string, unknown> = {}) {
+  return { buyer, collectionIdx: 2, rarity: 3, level: 2, gameIndex: 7n, expiresAt: 0n,
+    settlement: pk(), indexReserved: true, minted: true, registered: true, consumed: false,
+    listed: false, bump: 9, staked: false, origin: pk(), lockUntil: 0n, ...over };
+}
 
 /**
  * A resolved leaf, as `resolveCompressedChip` returns it. The proof is internally consistent with
@@ -31,7 +38,7 @@ function resolved(over: Partial<ResolvedCompressedChip> = {}): ResolvedCompresse
     asset, claim: pk(), chip: pk(), merkleTree,
     // the tree config is derived from the tree, exactly as the program requires
     treeConfig: bubblegumTreeConfigPda(merkleTree)[0], coreCollection: pk(),
-    collectionIdx: 2, delegate, proof,
+    collectionIdx: 2, delegate, proof, claimState: claimState(SELLER),
     leaf: { root: proof.root, dataHash: proof.dataHash, creatorHash: proof.creatorHash, collectionHash: proof.collectionHash, assetDataHash: proof.assetDataHash, flags: 0, nonce: 7n, index: 7, proofNodes: proof.proof },
   };
   return { ...base, ...over };

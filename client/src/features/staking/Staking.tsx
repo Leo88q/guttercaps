@@ -11,8 +11,9 @@ import { useStakingOverview, useStakingMe, useMyChips, type Chip } from '@/api/h
 import { useGameConfig, useStakingChain, useWalletLike, useBalances } from '@/chain/hooks';
 import { pendingReward } from '@/chain/accounts';
 import { sendTx } from '@/chain/tx';
-import { fetchCoreCollections } from '@/chain/flows/packFlow';
-import { stakeCgIx, unstakeCgIx, stakeChipIx, unstakeChipIx, claimChipIx, unstakePenalty, MIN_STAKE_MICRO } from '@/chain/ix/staking';
+import { resolveCompressedChip, resolveCompressedChipIdentity } from '@/chain/flows/compressedChip';
+import { stakeCgIx, unstakeCgIx, stakeCompressedChipV2Ix, unstakeCompressedChipIx, unstakePenalty, MIN_STAKE_MICRO } from '@/chain/ix/staking';
+import { dasClient } from '@/features/market/payment';
 import { createAtaIdempotentIx } from '@/chain/ix/spl';
 import { CleanZone, KV, Modal, Pill, Stat, Skeleton, Empty } from '@/shared/ui/primitives';
 import { CleanConfirmButton } from '@/shared/ui/buttons';
@@ -72,6 +73,25 @@ export default function Staking() {
     } finally { setBusy(false); }
   }
   const ata = () => createAtaIdempotentIx(wallet!.publicKey, wallet!.publicKey, cgMint!);
+
+  /**
+   * The claim receipt of a chip, read from the on-chain projection. The API's `Chip` has no claim
+   * field and the `chips` table has no claim column, so the one read that owns it is chain — which
+   * is also the account the V2 handlers re-verify against, so it cannot be a stale indexer row.
+   */
+  const claimOf = async (c: Chip) => (await resolveCompressedChipIdentity(connection, new PublicKey(c.asset!))).claim;
+
+  /**
+   * Stake a registered V2 leaf. The leaf is resolved from chain + DAS rather than from the API row,
+   * because `stake_compressed_chip_v2` re-verifies the Merkle root and the four leaf hashes on
+   * chain — a proof that is even one block stale is a reverted transaction and a paid fee.
+   */
+  const stakeChip = async (c: Chip) => {
+    const r = await resolveCompressedChip(connection, dasClient(), new PublicKey(c.asset!), { owner: wallet!.publicKey });
+    return [stakeCompressedChipV2Ix({
+      owner: wallet!.publicKey, claim: r.claim, chip: r.chip, merkleTree: r.merkleTree, delegate: r.delegate, proof: r.leaf,
+    })];
+  };
 
   // on-chain token stakes (preferred) with API fallback
   const positions = [0, 1, 2, 3].map((t) => {
@@ -156,8 +176,9 @@ export default function Staking() {
                 <div key={c.asset} className="row between" style={{ flexWrap: 'wrap' }}>
                   <div className="row"><span style={{ width: 60 }}><ChipArt collection={c.collection!} rarity={c.rarity!} imageUrl={chipImageOf(c)} skin={(c as { skin?: string | null }).skin} /></span><div><div className="small">{chipName(c.collection!, c.rarity!)} <span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span></div><div className="tiny muted mono">{t('staking.weight')} {c.stakeWeight} · {t('ui.pending')} {api ? fmtCg(api.pending, 3) : '…'}</div></div></div>
                   <div className="row" style={{ gap: 6 }}>
-                    <button className="btn btn-sm" disabled={busy} onClick={() => run('staking.claim', async () => [ata(), claimChipIx({ owner: wallet!.publicKey, asset: new PublicKey(c.asset!), cgMint: cgMint! })])}>{t('pass.claim')}</button>
-                    <button className="btn btn-sm" disabled={busy} onClick={() => run('staking.unstake', async () => { const cores = await fetchCoreCollections(connection, cfg.data!.collectionsCreated); return [ata(), unstakeChipIx({ owner: wallet!.publicKey, asset: new PublicKey(c.asset!), collectionIdx: c.collection!, coreCollection: cores.get(c.collection!)!, cgMint: cgMint! })]; })}>{t('staking.unstake')}</button>
+                    {/* No separate claim for a V2 chip stake: `unstake_compressed_chip` mints the
+                        pending reward as it closes the stake, so claiming early would mean unstaking. */}
+                    <button className="btn btn-sm" disabled={busy} onClick={() => run('staking.unstake', async () => [ata(), unstakeCompressedChipIx({ owner: wallet!.publicKey, claim: (await claimOf(c))!, cgMint: cgMint! })])}>{t('staking.unstake')}</button>
                   </div>
                 </div>
               );
@@ -189,7 +210,7 @@ export default function Staking() {
       <Modal open={pickChip} onClose={() => setPickChip(false)} title={t('ui.stakeCap')} wide>
         <div className="grid-auto" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(144px, 47%), 1fr))' }}>
           {stakeable.map((c: Chip) => (
-            <div key={c.asset} className="chip-card" onClick={async () => { setPickChip(false); await run('staking.stake', async () => { const cores = await fetchCoreCollections(connection, cfg.data!.collectionsCreated); return [stakeChipIx({ owner: wallet!.publicKey, asset: new PublicKey(c.asset!), collectionIdx: c.collection!, coreCollection: cores.get(c.collection!)! })]; }); }}>
+            <div key={c.asset} className="chip-card" onClick={async () => { setPickChip(false); await run('staking.stake', () => stakeChip(c)); }}>
               <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c)} skin={(c as { skin?: string | null }).skin} />
               <div className="chip-meta"><span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span> · {t('staking.weight')} {c.stakeWeight}</div>
             </div>

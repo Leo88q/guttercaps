@@ -666,9 +666,13 @@ describe('V2 market: resolver → builder round trip', () => {
     chip.u8(0).u8(4).u8(9).u64(77n).u8(0).i64(0n).i64(1n).u8(200);
     const meta = new BorshWriter().u8(3).pubkey(coreCollection).pubkey(merkleTree)
       .pubkey(bubblegumTreeConfigPda(merkleTree)[0]).pubkey(PublicKey.default).u8(14).u8(8).bool(true).u8(201);
+    // the claim receipt is the economic half, and the V2 handlers gate on its flags
+    const claimAccount = new BorshWriter().pubkey(owner).u8(3).u8(4).u8(9).u64(7n).i64(0n).pubkey(Keypair.generate().publicKey)
+      .bool(true).bool(true).bool(true).bool(false).bool(false).u8(9).bool(false).pubkey(Keypair.generate().publicKey).i64(0n);
     const accounts = new Map<string, Uint8Array>([
       [compressedChipStatePda(asset)[0].toBase58(), concat(Buffer.from(accountDiscriminator('CompressedChipState')), chip.toBytes())],
       [bubblegumTreeMetaPda(3)[0].toBase58(), concat(Buffer.from(accountDiscriminator('BubblegumTreeMeta')), meta.toBytes())],
+      [claim.toBase58(), concat(Buffer.from(accountDiscriminator('CompressedMintClaim')), claimAccount.toBytes())],
     ]);
     const connection = { getAccountInfo: async (k: PublicKey) => (accounts.has(k.toBase58()) ? { data: accounts.get(k.toBase58())! } : null) };
     const das = {
@@ -684,7 +688,7 @@ describe('V2 market: resolver → builder round trip', () => {
 
   it('a resolved leaf lists without any further translation', async () => {
     const l = await leaf();
-    const r = await resolveCompressedChip(l.connection as never, l.das as never, l.asset);
+    const r = await resolveCompressedChip(l.connection as never, l.das as never, l.asset, { owner: l.owner });
     // the state account decoded the same claim/tree/leaf the resolver reports
     const state = decodeCompressedChipState(new Uint8Array((await l.connection.getAccountInfo(compressedChipStatePda(l.asset)[0]))!.data));
     expect(state.claim.equals(r.claim)).toBe(true);
@@ -698,7 +702,7 @@ describe('V2 market: resolver → builder round trip', () => {
 
   it('a resolved leaf buys, with the DAS proof the resolver fetched', async () => {
     const l = await leaf();
-    const r = await resolveCompressedChip(l.connection as never, l.das as never, l.asset);
+    const r = await resolveCompressedChip(l.connection as never, l.das as never, l.asset, { owner: l.owner });
     const buyer = Keypair.generate().publicKey;
     const ix = buyCompressedAssetIx({
       buyer, asset: r.asset, claim: r.claim, seller: l.owner, proof: r.proof, delegate: r.delegate,
@@ -714,7 +718,7 @@ describe('V2 market: resolver → builder round trip', () => {
 
   it('a resolved leaf cancels through its claim, which survives a sale', async () => {
     const l = await leaf();
-    const r = await resolveCompressedChip(l.connection as never, l.das as never, l.asset);
+    const r = await resolveCompressedChip(l.connection as never, l.das as never, l.asset, { owner: l.owner });
     const ix = cancelCompressedAssetIx({ seller: l.owner, asset: r.asset, claim: r.claim });
     expect(ix.data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('cancel_compressed_asset')));
     expect(ix.keys[2].pubkey.equals(l.claim)).toBe(true);
@@ -729,9 +733,12 @@ describe('V2 market: resolver → builder round trip', () => {
     // the tree meta stays present: only the chip flag changes, so nothing else can explain the refusal
     const meta = new BorshWriter().u8(3).pubkey(l.coreCollection).pubkey(l.merkleTree)
       .pubkey(bubblegumTreeConfigPda(l.merkleTree)[0]).pubkey(PublicKey.default).u8(14).u8(8).bool(true).u8(201);
+    const claimAccount = new BorshWriter().pubkey(l.owner).u8(3).u8(4).u8(9).u64(7n).i64(0n).pubkey(Keypair.generate().publicKey)
+      .bool(true).bool(true).bool(true).bool(false).bool(false).u8(9).bool(false).pubkey(Keypair.generate().publicKey).i64(0n);
     const accounts = new Map<string, Uint8Array>([
       [compressedChipStatePda(l.asset)[0].toBase58(), concat(Buffer.from(accountDiscriminator('CompressedChipState')), chip.toBytes())],
       [bubblegumTreeMetaPda(3)[0].toBase58(), concat(Buffer.from(accountDiscriminator('BubblegumTreeMeta')), meta.toBytes())],
+      [l.claim.toBase58(), concat(Buffer.from(accountDiscriminator('CompressedMintClaim')), claimAccount.toBytes())],
     ]);
     await expect(resolveCompressedChip({ getAccountInfo: async (k: PublicKey) => (accounts.has(k.toBase58()) ? { data: accounts.get(k.toBase58()) } : null) } as never, l.das as never, l.asset))
       .rejects.toThrow(/listed/);

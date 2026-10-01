@@ -32,6 +32,19 @@ function treeMetaBytes(a: { collectionIdx: number; coreCollection: PublicKey; me
   return out;
 }
 
+/** A real `CompressedMintClaim` buffer — the economic receipt the V2 handlers gate on. */
+function claimBytes(a: { buyer: PublicKey; minted?: boolean; registered?: boolean; consumed?: boolean; listed?: boolean; staked?: boolean; lockUntil?: bigint }): Uint8Array {
+  const w = new BorshWriter();
+  w.pubkey(a.buyer).u8(3).u8(4).u8(9).u64(7n).i64(0n).pubkey(Keypair.generate().publicKey);
+  w.bool(true).bool(a.minted ?? true).bool(a.registered ?? true).bool(a.consumed ?? false).bool(a.listed ?? false).u8(9);
+  w.bool(a.staked ?? false).pubkey(Keypair.generate().publicKey).i64(a.lockUntil ?? 0n);
+  const body = w.toBytes();
+  const out = new Uint8Array(8 + body.length);
+  out.set(Buffer.from(disc('CompressedMintClaim')), 0);
+  out.set(body, 8);
+  return out;
+}
+
 function dasProof(asset: PublicKey, merkleTree: PublicKey, leafIndex: bigint) {
   return {
     assetId: asset, leafOwner: PublicKey.default, leafDelegate: PublicKey.default, merkleTree,
@@ -41,20 +54,22 @@ function dasProof(asset: PublicKey, merkleTree: PublicKey, leafIndex: bigint) {
   };
 }
 
-function env(over: { flags?: number; leafFlags?: number; lockUntil?: bigint; active?: boolean; leafIndex?: bigint; dasLeafIndex?: bigint; dasTree?: PublicKey; asset?: PublicKey; merkleTree?: PublicKey; treeConfig?: PublicKey; coreCollection?: PublicKey } = {}) {
+function env(over: { flags?: number; leafFlags?: number; lockUntil?: bigint; claim?: Record<string, unknown>; owner?: PublicKey; active?: boolean; leafIndex?: bigint; dasLeafIndex?: bigint; dasTree?: PublicKey; asset?: PublicKey; merkleTree?: PublicKey; treeConfig?: PublicKey; coreCollection?: PublicKey } = {}) {
   const asset = over.asset ?? Keypair.generate().publicKey;
   const claim = Keypair.generate().publicKey;
   const merkleTree = over.merkleTree ?? Keypair.generate().publicKey;
   const coreCollection = over.coreCollection ?? Keypair.generate().publicKey;
   const treeConfig = over.treeConfig ?? Keypair.generate().publicKey;
   const leafIndex = over.leafIndex ?? 41n;
+  const owner = over.owner ?? Keypair.generate().publicKey;
   const accounts = new Map<string, Uint8Array>([
     [compressedChipStatePda(asset)[0].toBase58(), chipStateBytes({ asset, claim, collectionIdx: 2, merkleTree, leafIndex: Number(leafIndex), leafNonce: leafIndex, flags: over.flags ?? 0, leafFlags: over.leafFlags ?? 0, lockUntil: over.lockUntil ?? 0n })],
     [bubblegumTreeMetaPda(2)[0].toBase58(), treeMetaBytes({ collectionIdx: 2, coreCollection, merkleTree, treeConfig, active: over.active ?? true })],
+    [claim.toBase58(), claimBytes({ buyer: owner, ...over.claim })],
   ]);
   const connection = { getAccountInfo: vi.fn(async (k: PublicKey) => (accounts.has(k.toBase58()) ? { data: accounts.get(k.toBase58()) } : null)) };
-  const das = { getAssetWithProof: vi.fn(async () => dasProof(asset, over.dasTree ?? merkleTree, over.dasLeafIndex ?? leafIndex)) };
-  return { asset, claim, merkleTree, coreCollection, treeConfig, leafIndex, connection: connection as never, das: das as never };
+  const das = { getAssetWithProof: vi.fn(async () => { const p = dasProof(asset, over.dasTree ?? merkleTree, over.dasLeafIndex ?? leafIndex); return { ...p, leafOwner: owner, leafDelegate: owner }; }) };
+  return { asset, claim, merkleTree, coreCollection, treeConfig, leafIndex, owner, connection: connection as never, das: das as never };
 }
 
 describe('resolveCompressedChip', () => {
@@ -125,11 +140,31 @@ describe('resolveCompressedChip', () => {
     await expect(resolveCompressedChip(e.connection, e.das, e.asset)).rejects.toThrow(/mid-fusion/);
   });
 
+  it('refuses a claim that was never settled, consumed by a fusion, listed or already staked', async () => {
+    for (const [claim, message] of [
+      [{ minted: false }, /not registered as a V2 leaf yet/],
+      [{ registered: false }, /not registered as a V2 leaf yet/],
+      [{ consumed: true }, /consumed by a fusion/],
+      [{ listed: true }, /listed/],
+      [{ staked: true }, /staked/],
+      [{ lockUntil: BigInt(Math.floor(Date.now() / 1000)) + 600n }, /locked/],
+    ] as const) {
+      const e = env({ claim });
+      await expect(resolveCompressedChip(e.connection, e.das, e.asset)).rejects.toThrow(message);
+    }
+  });
+
+  it('refuses a chip whose claim receipt names another wallet when the caller says who is acting', async () => {
+    const e = env();
+    await expect(resolveCompressedChip(e.connection, e.das, e.asset, { owner: Keypair.generate().publicKey })).rejects.toThrow(/another wallet/);
+    await expect(resolveCompressedChip(e.connection, e.das, e.asset, { owner: e.owner })).resolves.toMatchObject({ claimState: expect.objectContaining({ buyer: e.owner }) });
+  });
+
   it('takes a pre-fetched tree meta instead of reading it again', async () => {
     const e = env();
     const spy = vi.spyOn(e.connection as unknown as { getAccountInfo: () => void }, 'getAccountInfo');
     await resolveCompressedChip(e.connection, e.das, e.asset, { tree: { collectionIdx: 2, coreCollection: e.coreCollection, merkleTree: e.merkleTree, treeConfig: e.treeConfig, treeAuthority: PublicKey.default, maxDepth: 14, canopy: 8, active: true, bump: 254 } });
-    expect(spy).toHaveBeenCalledTimes(1); // only the chip state, never the tree meta
+    expect(spy).toHaveBeenCalledTimes(2); // the chip state and the claim, never the tree meta
   });
 });
 
@@ -141,7 +176,10 @@ describe('resolveCompressedSquad', () => {
     const accounts = new Map<string, Uint8Array>([
       [bubblegumTreeMetaPda(2)[0].toBase58(), treeMetaBytes({ collectionIdx: 2, coreCollection: a.coreCollection, merkleTree: a.merkleTree, treeConfig: a.treeConfig, active: true })],
     ]);
-    for (const e of [a, b]) accounts.set(compressedChipStatePda(e.asset)[0].toBase58(), chipStateBytes({ asset: e.asset, claim: e.claim, collectionIdx: 2, merkleTree: a.merkleTree, leafIndex: 7, leafNonce: 7n, flags: 0 }));
+    for (const e of [a, b]) {
+      accounts.set(compressedChipStatePda(e.asset)[0].toBase58(), chipStateBytes({ asset: e.asset, claim: e.claim, collectionIdx: 2, merkleTree: a.merkleTree, leafIndex: 7, leafNonce: 7n, flags: 0 }));
+      accounts.set(e.claim.toBase58(), claimBytes({ buyer: e.owner }));
+    }
     const connection = { getAccountInfo: async (k: PublicKey) => (accounts.has(k.toBase58()) ? { data: accounts.get(k.toBase58()) } : null) };
     const das = { getAssetWithProof: async (k: PublicKey) => dasProof(k, a.merkleTree, 7n) };
     const squad = await resolveCompressedSquad(connection as never, das as never, [a.asset, b.asset]);
