@@ -413,109 +413,135 @@ CU-перепись публикуется job'ом `localnet` аннотаци�
 
 Колонки: **builder** — функция в `client/src/chain/ix/*.ts`, которая собирает
 инструкцию; **вызван в UI** — этот builder импортируется хоть где-то вне
-`chain/ix/`; **localnet spec** — файл в `tests/localnet`, который доходит до
-инструкции на цепи (`*` = вспомогательный хелпер, `**нет**` = он-чейн покрытия
-нет). «Нет builder'а» = инструкция вызывается оператором, краном или оракулом.
+`chain/ix/` и вне тестов; **localnet spec** — файл в `tests/localnet`, который
+доходит до инструкции на цепи (`**нет**` = он-чейн покрытия нет). «Нет
+builder'а» = инструкция вызывается оператором, краном или оракулом.
+
+Все три колонки — **вычислены**, а не собраны вручную: имена обработчиков
+берутся из блоков `#[program]`, набор имён, которые умеет собирать каждый
+builder, — из его тела (включая тернарный выбор, как
+`const name = a.kind === RNG_KIND.BATTLE ? 'reveal_battle_randomness' : 'reveal_randomness'`),
+а «доходит до инструкции» — по наличию builder'а в коде спека. Комментарии
+отбрасываются: упоминание в prose («`open_pack` fail-closed, поэтому…») — не
+покрытие.
+
+**Итог по 110 обработчикам `#[program]`** (chip_core 42, market 13, staking 35,
+arena 14, sb_mock 6):
+
+| | из 110 | |
+|---|---|---|
+| вызываются из кода UI | 60 | |
+| достижимы из сценария LiteSVM | **87** | |
+| не достижимы ни из одного | **23** | из них 19 с рабочим builder'ом |
+
+Эти 23 — не «мёртвый код» и не «не хватило теста»: у каждого своя причина, и
+она записана рядом с инструкцией в allow-list'е
+`tests/security/coverage-matrix.test.ts`. Этот файл — **двусторонний шлюз**:
+инструкция, потерявшая покрытие, роняет проверку; инструкция, **получившая**
+покрытие, тоже роняет — потому что её allow-list-запись с причиной устарела и
+должна быть удалена. Поэтому список может только сокращаться. В файле есть и
+self-test на сами матчеры (синтетические сниппеты на каждый механизм), чтобы
+правило не начало молча не срабатывать.
 
 | Покупка пака (USDC / SOL / SKR) | | | | |
 |---|---|---|---|
-| `buy_pack` | buyPackIx | да: buyPackIx | 10-packs, 80-security, 83-report-adapted, flows.ts* |
+| `buy_pack` | buyPackIx | да | 00-admin, 10-packs, 80-security, 83-report-adapted, helpers/flows.ts |
 | Открытие пака + VRF | | | | |
 |---|---|---|---|
-| `open_pack` | openPackIx | да: openPackIx | flows.ts* |
-| `init_randomness` | initRandomnessIx | да: initRandomnessIx | 10-packs, 40-arena, 50-staking, 80-security, 83-report-adapted, flows.ts* |
+| `open_pack` | openPackIx | да | helpers/flows.ts |
+| `init_randomness` | initRandomnessIx | да | 10-packs, 40-arena, 50-staking, 80-security, 83-report-adapted, helpers/flows.ts, helpers/sbmock.ts |
 | `randomness_commit` | **нет builder'а** | — | **нет** |
 | `randomness_reveal` | **нет builder'а** | — | **нет** |
-| `reveal_randomness` | **нет builder'а** | — | **нет** |
+| `reveal_randomness` | revealRandomnessIx | да | 10-packs, helpers/flows.ts, helpers/sbmock.ts |
 | V2: конвейер сжатых паков | | | | |
 |---|---|---|---|
-| `open_compressed_pack` | openCompressedPackIx | да: openCompressedPackIx | 10-packs, flows.ts* |
-| `mint_compressed_chip` | mintCompressedChipIx | да: mintCompressedChipIx | **нет** |
-| `register_compressed_chip` | registerCompressedChipIx | да: registerCompressedChipIx | **нет** |
-| `finalize_compressed_pack` | finalizeCompressedPackIx | да: finalizeCompressedPackIx | 11-compressed-packs |
+| `open_compressed_pack` | openCompressedPackIx | да | 10-packs, helpers/flows.ts |
+| `mint_compressed_chip` | mintCompressedChipIx | да | **нет** |
+| `register_compressed_chip` | registerCompressedChipIx | да | **нет** |
+| `finalize_compressed_pack` | finalizeCompressedPackIx | да | 11-compressed-packs |
 | Fusion | | | | |
 |---|---|---|---|
-| `fuse` | fuseIx | да: fuseIx | **нет** |
-| `fuse_claims_commit` | fuseClaimsCommitIx | да: fuseClaimsCommitIx | flows.ts* |
-| `fuse_claims_reveal` | fuseClaimsRevealIx | да: fuseClaimsRevealIx | flows.ts* |
-| `fuse_compressed_claims` | fuseCompressedClaimsIx | **нет** | 20-fusion, 30-market, 60-cross, 80-security |
+| `fuse` | fuseIx | да | 10-packs, 20-fusion, 30-market, 31-market-core, 40-arena, 50-staking, 60-cross, 80-security, helpers/flows.ts |
+| `fuse_claims_commit` | fuseClaimsCommitIx | да | helpers/flows.ts |
+| `fuse_claims_reveal` | fuseClaimsRevealIx | да | helpers/flows.ts |
+| `fuse_compressed_claims` | fuseCompressedClaimsIx | да | 20-fusion, 30-market, 60-cross, 80-security |
 | Рынок Core NFT | | | | |
 |---|---|---|---|
-| `list` | listIx | да: listIx | **нет** |
-| `buy` | buyIx | да: buyIx | **нет** |
-| `cancel` | cancelListingIx | да: cancelListingIx | **нет** |
-| `make_offer` | makeOfferIx | да: makeOfferIx | **нет** |
-| `accept_offer` | acceptOfferIx | **нет** | **нет** |
-| `cancel_offer` | cancelOfferIx | **нет** | **нет** |
+| `list` | listIx | да | 30-market, 31-market-core, 40-arena, 50-staking, 60-cross, 80-security, 82-init-authority, 83-report-adapted, 90-compressed, helpers/chain.ts |
+| `buy` | **нет builder'а** | — | 00-admin, 10-packs, 11-compressed-packs, 20-fusion, 30-market, 50-staking, 60-cross, 70-property-invariants, 80-security, 82-init-authority, 83-report-adapted, 90-compressed, helpers/env.ts, helpers/flows.ts |
+| `cancel` | cancelListingIx | да | 10-packs, 11-compressed-packs, 20-fusion, 31-market-core, 40-arena, 50-staking, 60-cross, 80-security, 83-report-adapted, 90-compressed, helpers/flows.ts |
+| `make_offer` | makeOfferIx | да | 31-market-core |
+| `accept_offer` | acceptOfferIx | да | **нет** |
+| `cancel_offer` | cancelOfferIx | да | 31-market-core |
 | Рынок compressed-клеймов | | | | |
 |---|---|---|---|
-| `list_compressed` | listCompressedIx | да: listCompressedIx | 30-market, 40-arena, 50-staking, 60-cross, 80-security, 83-report-adapted |
-| `buy_compressed` | buyCompressedSolIx | **нет** | 30-market, 60-cross, 80-security, 83-report-adapted |
-| `cancel_compressed` | cancelCompressedIx | **нет** | 60-cross, 80-security, 83-report-adapted |
+| `list_compressed` | listCompressedIx | да | 30-market, 40-arena, 50-staking, 60-cross, 80-security, 83-report-adapted |
+| `buy_compressed` | buyCompressedSolIx | да | 30-market, 60-cross, 80-security, 83-report-adapted |
+| `cancel_compressed` | cancelCompressedIx | да | 60-cross, 80-security, 83-report-adapted |
 | V2: рынок ассетов | | | | |
 |---|---|---|---|
-| `list_compressed_asset` | listCompressedAssetIx | да: listCompressedAssetIx | **нет** |
-| `buy_compressed_asset` | buyCompressedAssetIx | да: buyCompressedAssetIx | **нет** |
-| `cancel_compressed_asset` | cancelCompressedAssetIx | да: cancelCompressedAssetIx | **нет** |
+| `list_compressed_asset` | listCompressedAssetIx | да | **нет** |
+| `buy_compressed_asset` | buyCompressedAssetIx | да | **нет** |
+| `cancel_compressed_asset` | cancelCompressedAssetIx | да | **нет** |
 | Арена Core | | | | |
 |---|---|---|---|
-| `create_battle` | createBattleIx, createCompressedBattleIx | да: createBattleIx | 40-arena, 83-report-adapted |
-| `accept_battle` | acceptBattleIx, acceptCompressedBattleIx | **нет** | 40-arena |
+| `create_battle` | createBattleIx, createCompressedBattleIx | да | 40-arena, 83-report-adapted |
+| `accept_battle` | acceptBattleIx, acceptCompressedBattleIx | да | 40-arena |
 | `resolve_battle` | **нет builder'а** | — | 40-arena |
-| `cancel_stale_battle` | cancelStaleBattleIx | **нет** | 40-arena, 83-report-adapted |
-| `init_battle_randomness` | initRandomnessIx | да: initRandomnessIx | 10-packs, 40-arena, 50-staking, 80-security, 83-report-adapted, flows.ts* |
-| `reveal_battle_randomness` | **нет builder'а** | — | **нет** |
+| `cancel_stale_battle` | cancelStaleBattleIx | да | 40-arena, 83-report-adapted |
+| `init_battle_randomness` | initRandomnessIx | да | 10-packs, 40-arena, 50-staking, 80-security, 83-report-adapted, helpers/flows.ts, helpers/sbmock.ts |
+| `reveal_battle_randomness` | revealRandomnessIx | да | helpers/sbmock.ts |
 | V2: арена | | | | |
 |---|---|---|---|
-| `create_battle_v2` | **нет builder'а** | — | **нет** |
-| `accept_battle_v2` | **нет builder'а** | — | **нет** |
+| `create_battle_v2` | createCompressedBattleV2Ix | да | **нет** |
+| `accept_battle_v2` | acceptCompressedBattleV2Ix | да | **нет** |
 | Стейкинг Core | | | | |
 |---|---|---|---|
-| `stake_chip` | stakeChipIx | да: stakeChipIx | **нет** |
-| `stake_cg` | stakeCgIx | да: stakeCgIx | 50-staking, 83-report-adapted |
-| `unstake_chip` | unstakeChipIx | да: unstakeChipIx | **нет** |
-| `unstake_cg` | unstakeCgIx | да: unstakeCgIx | 50-staking, 83-report-adapted |
+| `stake_chip` | stakeChipIx | да | **нет** |
+| `stake_cg` | stakeCgIx | да | 50-staking, 83-report-adapted |
+| `unstake_chip` | unstakeChipIx | да | **нет** |
+| `unstake_cg` | unstakeCgIx | да | 50-staking, 83-report-adapted |
 | V2: стейкинг | | | | |
 |---|---|---|---|
-| `stake_compressed_chip` | stakeCompressedChipIx | **нет** | 40-arena, 50-staking, 60-cross, 83-report-adapted, 90-compressed |
-| `stake_compressed_chip_v2` | stakeCompressedChipV2Ix | **нет** | **нет** |
-| `unstake_compressed_chip` | unstakeCompressedChipIx | **нет** | 40-arena, 50-staking, 60-cross, 83-report-adapted, 90-compressed |
+| `stake_compressed_chip` | stakeCompressedChipIx | да | 40-arena, 50-staking, 60-cross, 83-report-adapted, 90-compressed |
+| `stake_compressed_chip_v2` | stakeCompressedChipV2Ix | да | **нет** |
+| `unstake_compressed_chip` | unstakeCompressedChipIx | да | 40-arena, 50-staking, 60-cross, 83-report-adapted, 90-compressed |
 | Эмиссия | | | | |
 |---|---|---|---|
-| `init_emission` | **нет builder'а** | — | env.ts* |
-| `init_ledger` | **нет builder'а** | — | env.ts* |
+| `init_emission` | **нет builder'а** | — | 50-staking, 51-emission-genesis, 81-emission-mint-guard, helpers/env.ts |
+| `init_ledger` | **нет builder'а** | — | helpers/env.ts |
 | `tick_day` | **нет builder'а** | — | 50-staking, 51-emission-genesis |
-| `set_split` | **нет builder'а** | — | **нет** |
+| `set_split` | **нет builder'а** | — | 50-staking |
 | `sync_set_bonus` | **нет builder'а** | — | 50-staking |
 | Клеймы / сервисы / V2-админ | | | | |
 |---|---|---|---|
-| `claim_chip` | claimChipIx | да: claimChipIx | **нет** |
-| `claim_chip_root` | claimChipRootIx | да: claimChipRootIx | 50-staking |
-| `claim_item_root` | claimItemRootIx | да: claimItemRootIx | 50-staking |
-| `claim_root` | claimRootIx | да: claimRootIx | 50-staking |
-| `claim_skr_root` | claimSkrRootIx | да: claimSkrRootIx | 50-staking |
-| `pay_service` | payServiceIx | да: payServiceIx | **нет** |
-| `stage_compressed_chip` | stageCompressedChipIx | **нет** | 20-fusion, 30-market, 80-security, flows.ts* |
-| `fund_slice` | fundSliceIx | да: fundSliceIx | 50-staking |
-| `grant_booster` | **нет builder'а** | — | env.ts* |
+| `claim_chip` | claimChipIx | да | 50-staking |
+| `claim_chip_root` | claimChipRootIx | да | 50-staking |
+| `claim_item_root` | claimItemRootIx | да | 50-staking |
+| `claim_root` | claimRootIx | да | 50-staking |
+| `claim_skr_root` | claimSkrRootIx | да | 50-staking |
+| `pay_service` | payServiceIx | да | **нет** |
+| `stage_compressed_chip` | stageCompressedChipIx | да | 20-fusion, 30-market, 80-security, helpers/flows.ts |
+| `fund_slice` | fundSliceIx | да | 50-staking |
+| `grant_booster` | **нет builder'а** | — | 00-admin, 50-staking, helpers/env.ts |
 | Админ / казна | | | | |
 |---|---|---|---|
-| `initialize` | **нет builder'а** | — | env.ts* |
-| `set_params` | **нет builder'а** | — | env.ts* |
-| `pause` | **нет builder'а** | — | env.ts* |
-| `set_paused` | **нет builder'а** | — | env.ts* |
-| `set_pauser` | **нет builder'а** | — | env.ts* |
-| `propose_admin` | **нет builder'а** | — | env.ts* |
-| `accept_admin` | **нет builder'а** | — | env.ts* |
-| `sweep_vault` | **нет builder'а** | — | env.ts* |
+| `initialize` | **нет builder'а** | — | 00-admin, 80-security, 82-init-authority, helpers/env.ts |
+| `set_params` | **нет builder'а** | — | 00-admin, 31-market-core, helpers/env.ts |
+| `pause` | **нет builder'а** | — | 00-admin, 10-packs, 11-compressed-packs, 30-market, 50-staking, 83-report-adapted, helpers/env.ts |
+| `set_paused` | **нет builder'а** | — | 00-admin, 50-staking, helpers/env.ts |
+| `set_pauser` | **нет builder'а** | — | helpers/env.ts |
+| `propose_admin` | **нет builder'а** | — | 00-admin, helpers/env.ts |
+| `accept_admin` | **нет builder'а** | — | 00-admin, helpers/env.ts |
+| `sweep_vault` | **нет builder'а** | — | 00-admin, 80-security, helpers/env.ts |
 | `sync_skr_pool` | **нет builder'а** | — | 50-staking |
 | `withdraw_skr` | **нет builder'а** | — | 50-staking |
-| `fund_skr` | fundSkrIx | **нет** | 50-staking |
-| `init_skr_pool` | **нет builder'а** | — | env.ts* |
+| `fund_skr` | fundSkrIx | да | 50-staking |
+| `init_skr_pool` | **нет builder'а** | — | helpers/env.ts |
 | Bubblegum tree | | | | |
 |---|---|---|---|
-| `create_bubblegum_tree` | createBubblegumTreeIx | да: createBubblegumTreeIx | **нет** |
-| `configure_bubblegum_tree` | configureBubblegumTreeIx | **нет** | env.ts* |
+| `create_bubblegum_tree` | createBubblegumTreeIx | да | **нет** |
+| `configure_bubblegum_tree` | configureBubblegumTreeIx | да | helpers/env.ts |
 
 Три находки, которых в прошлом отчёте не было, и которые важно назвать честно:
 
