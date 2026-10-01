@@ -29,12 +29,6 @@ export interface BubblegumProof {
   proof: PublicKey[];
 }
 
-export function assertBubblegumOwner(proof: BubblegumProof, owner: PublicKey): void {
-  if (!proof.leafOwner.equals(owner) && !proof.leafDelegate.equals(owner)) {
-    throw new Error('Bubblegum leaf owner/delegate mismatch');
-  }
-}
-
 /** Remaining proof node metas. Bubblegum's fixed accounts are added by each ix builder. */
 export function bubblegumProofMetas(proof: BubblegumProof, writable = false): AccountMeta[] {
   return proof.proof.map((pubkey) => ({ pubkey, isSigner: false, isWritable: writable }));

@@ -161,12 +161,6 @@ pub mod staking {
     pub fn unstake_cg(ctx: Context<UnstakeCg>, tier: u8, amount: u64) -> Result<()> {
         instructions::unstake_cg(ctx, tier, amount)
     }
-    pub fn stake_chip(ctx: Context<StakeChip>) -> Result<()> {
-        instructions::stake_chip(ctx)
-    }
-    pub fn unstake_chip(ctx: Context<UnstakeChip>) -> Result<()> {
-        instructions::unstake_chip(ctx)
-    }
     pub fn stake_compressed_chip(ctx: Context<StakeCompressedChip>) -> Result<()> {
         instructions::stake_compressed_chip(ctx)
     }

@@ -10,9 +10,10 @@ import { PublicKey } from '@solana/web3.js';
 import type { Chip } from '@/api/hooks';
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
 import { sendTx } from '@/chain/tx';
-import { fetchCoreCollections } from '@/chain/flows/packFlow';
+import { resolveCompressedChip, resolveCompressedChipIdentity } from '@/chain/flows/compressedChip';
 import { thawChipIx } from '@/chain/ix/chipCore';
-import { stakeChipIx, unstakeChipIx, claimChipIx } from '@/chain/ix/staking';
+import { stakeCompressedChipV2Ix, unstakeCompressedChipIx } from '@/chain/ix/staking';
+import { dasClient } from '@/features/market/payment';
 import { createAtaIdempotentIx } from '@/chain/ix/spl';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { ExternalIcon } from '@/shared/ui/action-icons';
@@ -60,9 +61,21 @@ export function ChipDrawer({ chip, onClose }: { chip: Chip; onClose: () => void 
     }
   }
 
-  const ref = async () => {
-    const cores = await fetchCoreCollections(connection, cfg.data!.collectionsCreated);
-    return { asset: new PublicKey(chip.asset!), collectionIdx: chip.collection!, coreCollection: cores.get(chip.collection!)! };
+  /** Stake a registered V2 leaf: identity from chain, Merkle path from DAS, verified before signing. */
+  const stake = async () => {
+    const r = await resolveCompressedChip(connection, dasClient(), new PublicKey(chip.asset!), { owner: wallet!.publicKey });
+    return [stakeCompressedChipV2Ix({
+      owner: wallet!.publicKey, claim: r.claim, chip: r.chip, merkleTree: r.merkleTree, delegate: r.delegate, proof: r.leaf,
+    })];
+  };
+
+  /**
+   * Unstake a V2 leaf. Only the claim PDA is needed — `unstake_compressed_chip` reads no proof — so
+   * this resolves the on-chain half and skips the DAS round trip entirely.
+   */
+  const unstake = async () => {
+    const claim = (await resolveCompressedChipIdentity(connection, new PublicKey(chip.asset!))).claim;
+    return [createAtaIdempotentIx(wallet!.publicKey, wallet!.publicKey, cfg.data!.cgMint), unstakeCompressedChipIx({ owner: wallet!.publicKey, claim, cgMint: cfg.data!.cgMint })];
   };
 
   return (
@@ -92,12 +105,13 @@ export function ChipDrawer({ chip, onClose }: { chip: Chip; onClose: () => void 
 
       <div className="grid-2">
         {free && <button className="btn" onClick={() => setListing(true)}>{t('ui.listMarket')}</button>}
-        {free && <button className="btn" disabled={busy !== null} onClick={() => run('staking.stake', async () => { const r = await ref(); return [stakeChipIx({ ...r, owner: wallet!.publicKey })]; })}>{t('ui.stakeCg')}</button>}
+        {free && <button className="btn" disabled={busy !== null} onClick={() => run('staking.stake', stake)}>{t('ui.stakeCg')}</button>}
         {free && chip.rarity! < 8 && <button className="btn" onClick={() => { onClose(); nav(`/fusion?add=${chip.asset}`); }}>{t('ui.sendBench')}</button>}
-        {chip.flags?.staked && <button className="btn" disabled={busy !== null} onClick={() => run('staking.claim', async () => [createAtaIdempotentIx(wallet!.publicKey, wallet!.publicKey, cfg.data!.cgMint), claimChipIx({ owner: wallet!.publicKey, asset: new PublicKey(chip.asset!), cgMint: cfg.data!.cgMint })])}>{t('ui.claimRewards')}</button>}
-        {chip.flags?.staked && <button className="btn" disabled={busy !== null} onClick={() => run('staking.unstake', async () => { const r = await ref(); return [createAtaIdempotentIx(wallet!.publicKey, wallet!.publicKey, cfg.data!.cgMint), unstakeChipIx({ ...r, owner: wallet!.publicKey, cgMint: cfg.data!.cgMint })]; })}>{t('staking.unstake')}</button>}
+        {/* No separate claim: `unstake_compressed_chip` mints the pending reward as it closes the
+            stake, so claiming early would mean unstaking. The pending figure is on the row above. */}
+        {chip.flags?.staked && <button className="btn" disabled={busy !== null} onClick={() => run('staking.unstake', unstake)}>{t('staking.unstake')}</button>}
         {chip.flags?.listed && <Link className="btn" to={`/market/${chip.asset}`} onClick={onClose}>{t('ui.manageListing')}</Link>}
-        {lockExpired && <button className="btn" disabled={busy !== null} onClick={() => run('ui.thaw', async () => { const r = await ref(); return [thawChipIx({ ...r, owner: wallet!.publicKey })]; })}>{t('ui.thaw')}</button>}
+        {lockExpired && <button className="btn" disabled={busy !== null} onClick={() => run('ui.thaw', async () => { const r = await resolveCompressedChipIdentity(connection, new PublicKey(chip.asset!)); return [thawChipIx({ owner: wallet!.publicKey, asset: r.asset, collectionIdx: r.collectionIdx, coreCollection: r.coreCollection })]; })}>{t('ui.thaw')}</button>}
         <Link className="btn btn-ghost" to={`/market/${chip.asset}`} onClick={onClose}>{t('ui.provenanceLink')}</Link>
       </div>
       <div className="tiny muted">{chipName(chip.collection!, chip.rarity!)} · <a href={EXPLORER.account(chip.asset!)} target="_blank" rel="noreferrer" className="row" style={{ gap: 3, display: 'inline-flex' }}>{t('ui.asset')} {chip.asset!.slice(0, 6)}… <ExternalIcon size={10} /></a></div>

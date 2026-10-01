@@ -7,20 +7,22 @@ import { accountDiscriminator, ixDiscriminator, eventsFromLogs, findEvent, optio
 import {
   decodeChipState, decodeGameConfig, decodePendingPack, decodePendingClaimFusion, decodePlayerPity, decodeListing, decodeTokenStake, decodeVaultLedger, decodeCompressedAssetListing, decodeCompressedPackSettlement, decodeCompressedMintClaim, sumLedgers, readPackOpened, readCompressedClaimsCreated, readCompressedPackSettled, readClaimFusionRevealed, chipIsFree, claimIsListable, CHIP_FLAG,
 } from './accounts';
-import { vaultPda, assetPda, chipStatePda, collectionMetaPda, configPda, pendingPackPda, claimFusionPda, compressedMintClaimPda, compressedSettlementPda, bubblegumTreeConfigPda, pityPda, pendingFusionPda, battlePda, ata, freshNonce, rewardRootPda, rewarderPda, playerItemsPda, skrPoolPda, emissionPda, seasonPoolAuthPda, RNG_KIND, rngAuthPda, rngPda, sbLutPda, sbLutSignerPda, sbStatePda, sbOracleStatsPda, sbRewardEscrow, LEDGER_SHARDS, allLedgerPdas, ledgerPda, ledgerPdaOf, ledgerShardOf } from './pdas';
+import { vaultPda, assetPda, chipStatePda, collectionMetaPda, configPda, pendingPackPda, claimFusionPda, compressedMintClaimPda, compressedSettlementPda, bubblegumTreeConfigPda, compressedChipStatePda, bubblegumTreeMetaPda, pityPda, pendingFusionPda, battlePda, ata, freshNonce, rewardRootPda, rewarderPda, playerItemsPda, skrPoolPda, emissionPda, seasonPoolAuthPda, RNG_KIND, rngAuthPda, rngPda, sbLutPda, sbLutSignerPda, sbStatePda, sbOracleStatsPda, sbRewardEscrow, LEDGER_SHARDS, allLedgerPdas, ledgerPda, ledgerPdaOf, ledgerShardOf } from './pdas';
 import { fitsInTx } from './tx';
 import { buyPackIx, openPackIx, payServiceIx, Currency, fuseIx, mintCompressedChipIx, createBubblegumTreeIx, openCompressedPackIx, registerCompressedChipIx, cancelCompressedClaimIx, finalizeCompressedPackIx, fuseClaimsCommitIx, fuseClaimsRevealIx, cancelStaleClaimFusionIx, closeExpiredClaimIx } from './ix/chipCore';
 import { v2LeafHash, foldCompressionProof, discoverLeafNonce, verifyBubblegumProofLocal } from './bubblegum';
 import { DasClient } from './das';
 import { initRandomnessIx, revealRandomnessIx, closeRandomnessIx, closeRandomnessLutIx, commitAccountMetas, rngAccounts } from './ix/rng';
-import { createBattleIx } from './ix/arena';
+import { createBattleIx, acceptBattleIx, createCompressedBattleV2Ix, acceptCompressedBattleV2Ix, type CompressedArenaChipProof } from './ix/arena';
 import { buyCompressedAssetIx, cancelCompressedAssetIx, listCompressedAssetIx, listCompressedIx, marketCurrencyOfApi, MarketCurrency, saleSplit } from './ix/market';
 import type { BubblegumProof } from './bubblegum';
 import { wagerSplit, leagueOf } from './ix/arena';
 import { unstakePenalty, claimRootIx, claimSkrRootIx, claimItemRootIx, claimChipRootIx, claimAnyRootIx, fundSliceIx, SLICE_PVP_SEASON } from './ix/staking';
 import { usdCentsToUnits, usdCentsToLamports, usdCentsToMicroSkr, priceUsd, assertFeed, pushOracleAccount, isFresh, priceAgeS, isConfident, PYTH_MAX_AGE_S, PYTH_MAX_CONF_BPS, PythConfidenceError } from './pyth';
-import { ADDRESS_LOOKUP_TABLE_PROGRAM_ID, PYTH_SOL_USD_FEED_ID_HEX, PYTH_SKR_USD_FEED_ID_HEX, PYTH_SHARD_ID, PYTH_PRICE_ACCOUNTS, PYTH_SPONSORED_SOL_USD, SWITCHBOARD_PROGRAM_ID, SWITCHBOARD_ON_DEMAND_ID, ARENA_ID, SYSVAR_SLOT_HASHES_ID, WSOL_MINT, MPL_BUBBLEGUM_V2_ID, MPL_NOOP_ID, MPL_ACCOUNT_COMPRESSION_ID, MPL_CORE_ID, SYSTEM_PROGRAM_ID } from './ids';
+import { ADDRESS_LOOKUP_TABLE_PROGRAM_ID, PYTH_SOL_USD_FEED_ID_HEX, PYTH_SKR_USD_FEED_ID_HEX, PYTH_SHARD_ID, PYTH_PRICE_ACCOUNTS, PYTH_SPONSORED_SOL_USD, SWITCHBOARD_PROGRAM_ID, SWITCHBOARD_ON_DEMAND_ID, ARENA_ID, TOKEN_PROGRAM_ID, SYSVAR_SLOT_HASHES_ID, WSOL_MINT, MPL_BUBBLEGUM_V2_ID, MPL_NOOP_ID, MPL_ACCOUNT_COMPRESSION_ID, MPL_CORE_ID, SYSTEM_PROGRAM_ID } from './ids';
 import { packSeed } from './flows/packFlow';
+import { resolveCompressedChip } from './flows/compressedChip';
+import { decodeCompressedChipState, decodeBubblegumTreeMeta } from './accounts';
 import { describeProgramError, humanizeTxError } from './errors';
 import { revealValueFromIx, revealPayloadFromIx } from './switchboard';
 import { buildRewardTree, rewardLeaf, verifyRewardProof, hashPair, toHex, fromHex, MAX_PROOF_LEN } from './merkle';
@@ -410,6 +412,33 @@ describe('instruction builders', () => {
     expect(ix.keys[9].pubkey.equals(mint)).toBe(true);
     expect(ix.keys[15].pubkey.equals(squad[0])).toBe(true);
   });
+  // 2026-10-01 audit: accept_battle had a builder and no caller anywhere — a challenger could escrow a
+  // wager and no client path could take it. Pin the instruction itself so a regression in the wiring is
+  // visible in chain.test.ts too (the UI half is covered by features/arena/acceptBattle.test.tsx).
+  it('accept_battle: no args, opponent signs, same battle PDA and escrow ATAs as create_battle', () => {
+    const challenger = Keypair.generate().publicKey;
+    const opponent = Keypair.generate().publicKey;
+    const nonce = 99n;
+    const squad = [1, 2, 3].map(() => Keypair.generate().publicKey);
+    const ix = acceptBattleIx({ opponent, challenger, nonce, squad, cgMint: mint });
+    expect(ix.programId.equals(ARENA_ID)).toBe(true);
+    expect(ix.data).toHaveLength(8);                       // the instruction carries no arguments
+    expect(Array.from(ix.data)).toEqual(Array.from(ixDiscriminator('accept_battle')));
+    const [battle] = battlePda(challenger, nonce);
+    // the accept PDA must be the create PDA: same seeds, so the opponent lands on the challenger's account
+    const created = createBattleIx({ challenger, nonce, wager: 5_000_000n, randomness: rngPda(RNG_KIND.BATTLE, challenger, nonce)[0], queue: Keypair.generate().publicKey, oracle: Keypair.generate().publicKey, squad, cgMint: mint });
+    expect(created.keys[2].pubkey.equals(battle)).toBe(true);
+    expect(ix.keys[0].pubkey.equals(opponent) && ix.keys[0].isSigner && ix.keys[0].isWritable).toBe(true);
+    expect(ix.keys[2].pubkey.equals(battle) && ix.keys[2].isWritable).toBe(true);
+    expect(ix.keys[3].pubkey.equals(ata(mint, opponent))).toBe(true);   // opponent's $CG
+    expect(ix.keys[4].pubkey.equals(ata(mint, battle))).toBe(true);     // the escrow
+    expect(ix.keys[5].pubkey.equals(TOKEN_PROGRAM_ID)).toBe(true);
+    expect(ix.keys).toHaveLength(6 + 6);
+    for (let i = 0; i < 3; i++) {
+      expect(ix.keys[6 + i * 2].pubkey.equals(squad[i])).toBe(true);
+      expect(ix.keys[7 + i * 2].pubkey.equals(chipStatePda(squad[i])[0])).toBe(true);
+    }
+  });
 });
 
 describe('program-owned randomness (SEC-C3 part 2)', () => {
@@ -619,6 +648,176 @@ describe('compressed Bubblegum V2 market builders', () => {
     // SEC-F5: the quoted price trails the proof args and ends the instruction data
     expect(ix.data.length).toBe(proofOffset + 32 * 5 + 1 + 8 + 4 + 8);
     expect(ix.data.readBigUInt64LE(proofOffset + 32 * 5 + 1 + 8 + 4)).toBe(1_234_567n);
+  });
+});
+
+describe('V2 market: resolver → builder round trip', () => {
+  // The UI's job is to hand `resolveCompressedChip`'s output straight to the market builders. Testing
+  // each side separately left the join untested: a resolver that named a tree the builder does not
+  // accept would pass both suites and fail at the wallet.
+  const leaf = async () => {
+    const asset = Keypair.generate().publicKey;
+    const claim = Keypair.generate().publicKey;
+    const merkleTree = Keypair.generate().publicKey;
+    const coreCollection = Keypair.generate().publicKey;
+    const owner = Keypair.generate().publicKey;
+    const chip = new BorshWriter().pubkey(asset).pubkey(claim).u8(3).pubkey(merkleTree).u32(6).u64(6n);
+    for (let i = 0; i < 4; i++) chip.bytes(new Uint8Array(32).fill(i + 1));
+    chip.u8(0).u8(4).u8(9).u64(77n).u8(0).i64(0n).i64(1n).u8(200);
+    const meta = new BorshWriter().u8(3).pubkey(coreCollection).pubkey(merkleTree)
+      .pubkey(bubblegumTreeConfigPda(merkleTree)[0]).pubkey(PublicKey.default).u8(14).u8(8).bool(true).u8(201);
+    // the claim receipt is the economic half, and the V2 handlers gate on its flags
+    const claimAccount = new BorshWriter().pubkey(owner).u8(3).u8(4).u8(9).u64(7n).i64(0n).pubkey(Keypair.generate().publicKey)
+      .bool(true).bool(true).bool(true).bool(false).bool(false).u8(9).bool(false).pubkey(Keypair.generate().publicKey).i64(0n);
+    const accounts = new Map<string, Uint8Array>([
+      [compressedChipStatePda(asset)[0].toBase58(), concat(Buffer.from(accountDiscriminator('CompressedChipState')), chip.toBytes())],
+      [bubblegumTreeMetaPda(3)[0].toBase58(), concat(Buffer.from(accountDiscriminator('BubblegumTreeMeta')), meta.toBytes())],
+      [claim.toBase58(), concat(Buffer.from(accountDiscriminator('CompressedMintClaim')), claimAccount.toBytes())],
+    ]);
+    const connection = { getAccountInfo: async (k: PublicKey) => (accounts.has(k.toBase58()) ? { data: accounts.get(k.toBase58())! } : null) };
+    const das = {
+      getAssetWithProof: async () => ({
+        assetId: asset, leafOwner: owner, leafDelegate: owner, merkleTree,
+        root: new Uint8Array(32).fill(9), dataHash: new Uint8Array(32).fill(1), creatorHash: new Uint8Array(32).fill(2),
+        collectionHash: new Uint8Array(32).fill(3), assetDataHash: new Uint8Array(32).fill(4),
+        flags: 0, leafNonce: 6n, leafIndex: 6n, proof: [Keypair.generate().publicKey, Keypair.generate().publicKey],
+      }),
+    };
+    return { asset, claim, merkleTree, coreCollection, owner, connection, das };
+  };
+
+  it('a resolved leaf lists without any further translation', async () => {
+    const l = await leaf();
+    const r = await resolveCompressedChip(l.connection as never, l.das as never, l.asset, { owner: l.owner });
+    // the state account decoded the same claim/tree/leaf the resolver reports
+    const state = decodeCompressedChipState(new Uint8Array((await l.connection.getAccountInfo(compressedChipStatePda(l.asset)[0]))!.data));
+    expect(state.claim.equals(r.claim)).toBe(true);
+    expect(state.leafIndex).toBe(r.leaf.index);
+    const meta = decodeBubblegumTreeMeta(new Uint8Array((await l.connection.getAccountInfo(bubblegumTreeMetaPda(3)[0]))!.data));
+    expect(meta.coreCollection.equals(r.coreCollection)).toBe(true);
+    const ix = listCompressedAssetIx({ seller: l.owner, asset: r.asset, collectionIdx: r.collectionIdx, claim: r.claim, price: 5_000_000n, currency: MarketCurrency.SOL });
+    expect(ix.data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('list_compressed_asset')));
+    expect(ix.keys.some((k) => k.pubkey.equals(r.claim))).toBe(true);
+  });
+
+  it('a resolved leaf buys, with the DAS proof the resolver fetched', async () => {
+    const l = await leaf();
+    const r = await resolveCompressedChip(l.connection as never, l.das as never, l.asset, { owner: l.owner });
+    const buyer = Keypair.generate().publicKey;
+    const ix = buyCompressedAssetIx({
+      buyer, asset: r.asset, claim: r.claim, seller: l.owner, proof: r.proof, delegate: r.delegate,
+      treeConfig: r.treeConfig, merkleTree: r.merkleTree, coreCollection: r.coreCollection,
+      treasury: Keypair.generate().publicKey, buyback: Keypair.generate().publicKey, expectedPrice: 5_000_000n,
+    });
+    expect(ix.data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('buy_compressed_asset')));
+    // the proof nodes the resolver read from DAS are the remaining accounts, in order
+    expect(ix.keys.slice(-r.proof.proof.length).map((k) => k.pubkey.toBase58())).toEqual(r.proof.proof.map((k) => k.toBase58()));
+    expect(ix.keys.some((k) => k.pubkey.equals(r.treeConfig))).toBe(true);
+    expect(ix.keys.some((k) => k.pubkey.equals(r.merkleTree))).toBe(true);
+  });
+
+  it('a resolved leaf cancels through its claim, which survives a sale', async () => {
+    const l = await leaf();
+    const r = await resolveCompressedChip(l.connection as never, l.das as never, l.asset, { owner: l.owner });
+    const ix = cancelCompressedAssetIx({ seller: l.owner, asset: r.asset, claim: r.claim });
+    expect(ix.data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('cancel_compressed_asset')));
+    expect(ix.keys[2].pubkey.equals(l.claim)).toBe(true);
+  });
+
+  it('a leaf the resolver refuses never reaches a builder — the guard is not the wallet\'s job', async () => {
+    const l = await leaf();
+    // flag the chip as listed and the resolver refuses before any instruction is built
+    const chip = new BorshWriter().pubkey(l.asset).pubkey(l.claim).u8(3).pubkey(l.merkleTree).u32(6).u64(6n);
+    for (let i = 0; i < 4; i++) chip.bytes(new Uint8Array(32).fill(i + 1));
+    chip.u8(0).u8(4).u8(9).u64(77n).u8(2).i64(0n).i64(1n).u8(200);
+    // the tree meta stays present: only the chip flag changes, so nothing else can explain the refusal
+    const meta = new BorshWriter().u8(3).pubkey(l.coreCollection).pubkey(l.merkleTree)
+      .pubkey(bubblegumTreeConfigPda(l.merkleTree)[0]).pubkey(PublicKey.default).u8(14).u8(8).bool(true).u8(201);
+    const claimAccount = new BorshWriter().pubkey(l.owner).u8(3).u8(4).u8(9).u64(7n).i64(0n).pubkey(Keypair.generate().publicKey)
+      .bool(true).bool(true).bool(true).bool(false).bool(false).u8(9).bool(false).pubkey(Keypair.generate().publicKey).i64(0n);
+    const accounts = new Map<string, Uint8Array>([
+      [compressedChipStatePda(l.asset)[0].toBase58(), concat(Buffer.from(accountDiscriminator('CompressedChipState')), chip.toBytes())],
+      [bubblegumTreeMetaPda(3)[0].toBase58(), concat(Buffer.from(accountDiscriminator('BubblegumTreeMeta')), meta.toBytes())],
+      [l.claim.toBase58(), concat(Buffer.from(accountDiscriminator('CompressedMintClaim')), claimAccount.toBytes())],
+    ]);
+    await expect(resolveCompressedChip({ getAccountInfo: async (k: PublicKey) => (accounts.has(k.toBase58()) ? { data: accounts.get(k.toBase58()) } : null) } as never, l.das as never, l.asset))
+      .rejects.toThrow(/listed/);
+  });
+});
+
+describe('V2 arena builders', () => {
+  // Three registered leaves. `create_battle_v2` / `accept_battle_v2` take a squad of *proofs*, not a
+  // squad of assets: the Core path passed three Pubkeys, the V2 path passes three (claim, chip,
+  // merkleTree, proof) tuples plus the live delegate of each.
+  const squad = (): CompressedArenaChipProof[] => [0, 1, 2].map((i) => {
+    const asset = Keypair.generate().publicKey;
+    const claim = Keypair.generate().publicKey;
+    const merkleTree = Keypair.generate().publicKey;
+    const delegate = Keypair.generate().publicKey;
+    return {
+      claim, chip: compressedChipStatePda(asset)[0], merkleTree, delegate,
+      proof: {
+        root: new Uint8Array(32).fill(9 + i), dataHash: new Uint8Array(32).fill(1), creatorHash: new Uint8Array(32).fill(2),
+        collectionHash: new Uint8Array(32).fill(3), assetDataHash: new Uint8Array(32).fill(4),
+        flags: 0, nonce: BigInt(10 + i), index: 10 + i, proofNodes: [Keypair.generate().publicKey, Keypair.generate().publicKey],
+      },
+    };
+  });
+
+  it('create_battle_v2 carries three delegates, three full proofs and three depths, then the nodes', () => {
+    const challenger = Keypair.generate().publicKey;
+    const s = squad();
+    const ix = createCompressedBattleV2Ix({
+      challenger, nonce: 7n, wager: 25_000_000n, randomness: Keypair.generate().publicKey,
+      queue: Keypair.generate().publicKey, oracle: Keypair.generate().publicKey,
+      squad: s, delegates: s.map((x) => x.delegate), cgMint: Keypair.generate().publicKey,
+    });
+    expect(ix.data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('create_battle_v2')));
+    // args: nonce + wager + 3 delegates + 3 × (5 hashes + flags + nonce + index) + 3 depths
+    expect(ix.data.length).toBe(8 + 8 + 8 + 3 * 32 + 3 * (32 * 5 + 1 + 8 + 4) + 3);
+    for (const [i, x] of s.entries()) {
+      expect(new PublicKey(ix.data.subarray(8 + 16 + i * 32, 8 + 16 + (i + 1) * 32)).equals(x.delegate)).toBe(true);
+      // each leaf's nonce is serialized as u64 right after its five hashes and flags byte
+      const base = 8 + 16 + 3 * 32 + i * (32 * 5 + 1 + 8 + 4) + 32 * 5 + 1;
+      expect(ix.data.readBigUInt64LE(base)).toBe(x.proof.nonce);
+      expect(ix.data.readUInt32LE(base + 8)).toBe(x.proof.index);
+    }
+    // the proof nodes are remaining accounts, two per leaf, in squad order
+    for (const x of s) {
+      for (const node of x.proof.proofNodes) expect(ix.keys.some((k) => k.pubkey.equals(node))).toBe(true);
+      expect(ix.keys.some((k) => k.pubkey.equals(x.merkleTree))).toBe(true);
+    }
+  });
+
+  it('accept_battle_v2 omits the wager but carries the same three proofs', () => {
+    const opponent = Keypair.generate().publicKey;
+    const challenger = Keypair.generate().publicKey;
+    const s = squad();
+    const ix = acceptCompressedBattleV2Ix({
+      opponent, challenger, nonce: 7n, squad: s, delegates: s.map((x) => x.delegate),
+      cgMint: Keypair.generate().publicKey,
+    });
+    expect(ix.data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('accept_battle_v2')));
+    // no nonce and no wager in the args: the challenger pins those through the battle PDA
+    expect(ix.data.length).toBe(8 + 3 * 32 + 3 * (32 * 5 + 1 + 8 + 4) + 3);
+    expect(ix.keys[0].pubkey.equals(opponent) && ix.keys[0].isSigner).toBe(true);
+  });
+
+  it('refuses a squad that is not exactly three — a short squad is a reverted transaction and a fee', () => {
+    const s = squad();
+    const base = { challenger: Keypair.generate().publicKey, nonce: 1n, wager: 1n, randomness: Keypair.generate().publicKey, queue: Keypair.generate().publicKey, oracle: Keypair.generate().publicKey, delegates: [], cgMint: Keypair.generate().publicKey };
+    for (const bad of [s.slice(0, 2), [...s, s[0]]]) {
+      expect(() => createCompressedBattleV2Ix({ ...base, squad: bad, delegates: bad.map((x) => x.delegate) })).toThrow(/three/);
+      expect(() => acceptCompressedBattleV2Ix({ opponent: Keypair.generate().publicKey, challenger: base.challenger, nonce: 1n, squad: bad, delegates: bad.map((x) => x.delegate), cgMint: base.cgMint })).toThrow(/three/);
+    }
+  });
+
+  it('refuses delegates that are not one per chip — the program indexes them positionally', () => {
+    const s = squad();
+    expect(() => acceptCompressedBattleV2Ix({
+      opponent: Keypair.generate().publicKey, challenger: Keypair.generate().publicKey, nonce: 1n,
+      squad: s, delegates: s.slice(0, 2).map((x) => x.delegate), cgMint: Keypair.generate().publicKey,
+    })).toThrow(/three proofs/);
   });
 });
 

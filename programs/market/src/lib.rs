@@ -1,27 +1,40 @@
 //! GUTTERCAPS — market
 //!
-//! Freeze-in-place marketplace for Core chips. The asset never leaves the
-//! seller's wallet while listed (PermanentFreezeDelegate via chip_core), so
-//! wallets/explorers still show it, and there is no escrow account to drain.
+//! Freeze-in-place marketplace. The production flow is the Bubblegum V2 asset
+//! market: `list_compressed_asset` / `cancel_compressed_asset` /
+//! `buy_compressed_asset` trade a registered compressed leaf. The leaf never
+//! leaves the seller's wallet while listed (the claim's `listed` flag is the
+//! lock, not a freeze delegate), there is no escrow account to drain, and the
+//! buyer's lamports are split and transferred before the Bubblegum
+//! `TransferV2` CPI settles ownership.
 //!
 //! Fee model v2 (docs/02-economy.md §7, Phase 5): price → 90 % seller,
 //! protocol fee `GameConfig.market_fee_bps` (default 7.5 %, hard cap 10 %,
 //! live-tunable by the multisig) split ⅓ buyback-wallet / ⅔ treasury, plus
-//! 2.5 % creator royalty (treasury). Listing fee 0.5 $CG burned (spam guard).
-//! Currencies: SOL, USDC or SKR (Seeker) — SPL legs are generic over the
-//! listing's mint, so adding a currency is a config change, not a redeploy.
+//! 2.5 % creator royalty (treasury).
 //!
-//! Security: seller-signed listing; buyer pays the exact stored price in the
-//! stored currency (no swap-out); settlement transfers the asset via
-//! chip_core::deliver_sold which only works for LISTED chips and only when
-//! called by ["market_auth"]; offers escrow USDC in a PDA-owned ATA.
+//! Currency: SOL only. Every market instruction here settles by lamport
+//! transfer and `require_sol_claim_market` refuses anything else (SEC-B28), so
+//! there is no SPL leg to get wrong.
+//!
+//! Retained Core paths (`update_price`, `accept_offer`) operate on accounts
+//! that the fail-closed `open_pack` can no longer create — see report §5.4.
+//!
+//! Security: seller-signed listing; buyer pins the price it was shown and the
+//! tx fails with `ListingPriceChanged` if the seller relisted higher in the
+//! same slot (SEC-F5); settlement re-derives the leaf id, the tree config and
+//! the collection hash from the listing and the registered projection before
+//! any lamport moves; `chip_core::transfer_compressed_claim` only works when
+//! called by ["market_auth"].
 
 #![allow(clippy::result_large_err)]
 
 use anchor_lang::prelude::*;
 use anchor_lang::system_program;
-use anchor_spl::associated_token::AssociatedToken;
-use anchor_spl::token::{self, Mint, Token, TokenAccount};
+// 2026-10-01: the Core-market deletion took the only `Program<'info, AssociatedToken>` field with
+// it. The surviving `accept_offer` context still carries an `associated_token::` constraint, which
+// Anchor resolves through the `#[account]` attribute namespace and needs no import for.
+use anchor_spl::token::{self, Token, TokenAccount};
 use mpl_bubblegum::instructions::TransferV2CpiBuilder;
 use mpl_core::accounts::BaseAssetV1;
 
@@ -46,7 +59,6 @@ pub const BPS: u64 = 10_000;
 pub const MIN_PRICE_LAMPORTS: u64 = 1_000_000; // 0.001 SOL
 pub const MIN_PRICE_USDC: u64 = 100_000; // $0.10
 pub const MIN_PRICE_SKR: u64 = 5_000_000; // 5 SKR (≈ $0.10 at listing time; floor is only an anti-dust guard)
-pub const MAX_OFFER_TTL: i64 = 30 * 86_400;
 
 /// `asset` is unchecked because Metaplex Core assets are not Anchor accounts.
 /// Verify the program owner before parsing bytes, so malformed or foreign
@@ -271,106 +283,7 @@ fn set_listed(a: FlagAccounts, bump: u8, set: bool, owner: Pubkey) -> Result<()>
 }
 
 // ---------------------------------------------------------------------------
-// list
-// ---------------------------------------------------------------------------
-
-#[derive(Accounts)]
-pub struct List<'info> {
-    #[account(mut)]
-    pub seller: Signer<'info>,
-    #[account(init, payer = seller, space = 8 + Listing::INIT_SPACE, seeds = [b"listing", asset.key().as_ref()], bump)]
-    pub listing: Account<'info, Listing>,
-    // sentio-ignore-next-line SW013
-    /// CHECK: ["market_auth"] PDA signer for chip_core CPIs
-    #[account(seeds = [b"market_auth"], bump)]
-    pub market_auth: UncheckedAccount<'info>,
-
-    /// CHECK: Core asset (owner checked in handler)
-    #[account(mut, owner = mpl_core::ID)]
-    pub asset: UncheckedAccount<'info>,
-    #[account(mut, seeds = [b"chip", asset.key().as_ref()], bump = chip.bump, seeds::program = chip_core::ID)]
-    pub chip: Account<'info, ChipState>,
-    #[account(seeds = [b"collection", &[chip.collection_idx]], bump = meta.bump, seeds::program = chip_core::ID)]
-    pub meta: Account<'info, CollectionMeta>,
-    /// CHECK:
-    #[account(mut, address = meta.core_collection)]
-    pub core_collection: UncheckedAccount<'info>,
-    #[account(seeds = [b"config"], bump = config.bump, seeds::program = chip_core::ID)]
-    pub config: Account<'info, GameConfig>,
-
-    // listing fee burn
-    #[account(mut, address = config.cg_mint)]
-    pub cg_mint: Account<'info, Mint>,
-    #[account(mut, token::mint = config.cg_mint, token::authority = seller)]
-    pub seller_cg: Account<'info, TokenAccount>,
-
-    pub chip_core: Program<'info, ChipCore>,
-    /// CHECK: Metaplex Core
-    #[account(address = mpl_core::ID)]
-    pub mpl_core: UncheckedAccount<'info>,
-    pub token_program: Program<'info, Token>,
-    pub system_program: Program<'info, System>,
-}
-
-pub fn list_handler(ctx: Context<List>, price: u64, currency: Currency) -> Result<()> {
-    let base = load_core_asset(&ctx.accounts.asset.to_account_info())?;
-    require_keys_eq!(base.owner, ctx.accounts.seller.key(), MarketError::NotOwner);
-    let now = Clock::get()?.unix_timestamp;
-    require!(
-        now >= ctx.accounts.chip.lock_until
-            && ctx.accounts.chip.flags & ChipState::F_SOULBOUND == 0,
-        MarketError::ChipLocked
-    );
-    require!(price >= currency.min_price(), MarketError::PriceTooLow);
-    // 0.5 $CG listing fee → burn
-    token::burn(
-        CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
-            token::Burn {
-                mint: ctx.accounts.cg_mint.to_account_info(),
-                from: ctx.accounts.seller_cg.to_account_info(),
-                authority: ctx.accounts.seller.to_account_info(),
-            },
-        ),
-        LISTING_FEE_CG,
-    )?;
-
-    set_listed(
-        FlagAccounts {
-            chip_core: &ctx.accounts.chip_core,
-            market_auth: &ctx.accounts.market_auth.to_account_info(),
-            payer: &ctx.accounts.seller.to_account_info(),
-            config: &ctx.accounts.config.to_account_info(),
-            asset: &ctx.accounts.asset.to_account_info(),
-            chip: &ctx.accounts.chip.to_account_info(),
-            meta: &ctx.accounts.meta.to_account_info(),
-            core_collection: &ctx.accounts.core_collection.to_account_info(),
-            mpl_core: &ctx.accounts.mpl_core.to_account_info(),
-            system_program: &ctx.accounts.system_program.to_account_info(),
-        },
-        ctx.bumps.market_auth,
-        true,
-        ctx.accounts.seller.key(),
-    )?;
-
-    let l = &mut ctx.accounts.listing;
-    l.asset = ctx.accounts.asset.key();
-    l.seller = ctx.accounts.seller.key();
-    l.price = price;
-    l.currency = currency;
-    l.created_at = now;
-    l.bump = ctx.bumps.listing;
-    emit!(ChipListed {
-        asset: l.asset,
-        seller: l.seller,
-        price,
-        currency: currency as u8
-    });
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// update_price / cancel
+// update_price
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]
@@ -388,345 +301,6 @@ pub fn update_price_handler(ctx: Context<UpdatePrice>, price: u64) -> Result<()>
         asset: l.asset,
         price
     });
-    Ok(())
-}
-
-#[derive(Accounts)]
-pub struct Cancel<'info> {
-    #[account(mut)]
-    pub seller: Signer<'info>,
-    #[account(mut, close = seller, seeds = [b"listing", asset.key().as_ref()], bump = listing.bump, has_one = seller @ MarketError::NotSeller, has_one = asset)]
-    pub listing: Account<'info, Listing>,
-    // sentio-ignore-next-line SW013
-    /// CHECK: ["market_auth"] PDA signer
-    #[account(seeds = [b"market_auth"], bump)]
-    pub market_auth: UncheckedAccount<'info>,
-    /// CHECK: Core asset
-    #[account(mut, owner = mpl_core::ID)]
-    pub asset: UncheckedAccount<'info>,
-    #[account(mut, seeds = [b"chip", asset.key().as_ref()], bump = chip.bump, seeds::program = chip_core::ID)]
-    pub chip: Account<'info, ChipState>,
-    #[account(seeds = [b"collection", &[chip.collection_idx]], bump = meta.bump, seeds::program = chip_core::ID)]
-    pub meta: Account<'info, CollectionMeta>,
-    /// CHECK:
-    #[account(mut, address = meta.core_collection)]
-    pub core_collection: UncheckedAccount<'info>,
-    #[account(seeds = [b"config"], bump = config.bump, seeds::program = chip_core::ID)]
-    pub config: Account<'info, GameConfig>,
-    pub chip_core: Program<'info, ChipCore>,
-    /// CHECK:
-    #[account(address = mpl_core::ID)]
-    pub mpl_core: UncheckedAccount<'info>,
-    pub system_program: Program<'info, System>,
-}
-
-pub fn cancel_handler(ctx: Context<Cancel>) -> Result<()> {
-    set_listed(
-        FlagAccounts {
-            chip_core: &ctx.accounts.chip_core,
-            market_auth: &ctx.accounts.market_auth.to_account_info(),
-            payer: &ctx.accounts.seller.to_account_info(),
-            config: &ctx.accounts.config.to_account_info(),
-            asset: &ctx.accounts.asset.to_account_info(),
-            chip: &ctx.accounts.chip.to_account_info(),
-            meta: &ctx.accounts.meta.to_account_info(),
-            core_collection: &ctx.accounts.core_collection.to_account_info(),
-            mpl_core: &ctx.accounts.mpl_core.to_account_info(),
-            system_program: &ctx.accounts.system_program.to_account_info(),
-        },
-        ctx.bumps.market_auth,
-        false,
-        ctx.accounts.seller.key(),
-    )?;
-    emit!(ListingCancelled {
-        asset: ctx.accounts.asset.key()
-    });
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// buy
-// ---------------------------------------------------------------------------
-
-// Buy and AcceptOffer box every anchor `Account<…>` (and the optional SPL token accounts):
-// with 19–21 accounts the generated `try_accounts` frame — struct fields inline plus the constraint
-// temporaries — crosses the 4 KiB SBF stack-frame limit and the program dies with
-// `Access violation in stack frame 5` right after the "Instruction: Buy/AcceptOffer" log (~6 k CU,
-// before the first CPI and before the handler's first `require!`). `Box<Account<…>>` is anchor's
-// documented remedy for exactly this: the payloads move to the heap and the frame fits again.
-// GameConfig alone is ~700 bytes on-chain; the four `Account<TokenAccount>`s are 165 each.
-#[derive(Accounts)]
-pub struct Buy<'info> {
-    #[account(mut)]
-    pub buyer: Signer<'info>,
-    /// CHECK: seller receives proceeds; must equal listing.seller
-    #[account(mut, address = listing.seller)]
-    pub seller: UncheckedAccount<'info>,
-    #[account(mut, close = seller, seeds = [b"listing", asset.key().as_ref()], bump = listing.bump, has_one = asset)]
-    pub listing: Box<Account<'info, Listing>>,
-    // sentio-ignore-next-line SW013
-    /// CHECK: ["market_auth"] PDA signer
-    #[account(seeds = [b"market_auth"], bump)]
-    pub market_auth: UncheckedAccount<'info>,
-
-    /// CHECK: Core asset
-    #[account(mut, owner = mpl_core::ID)]
-    pub asset: UncheckedAccount<'info>,
-    #[account(mut, seeds = [b"chip", asset.key().as_ref()], bump = chip.bump, seeds::program = chip_core::ID)]
-    pub chip: Box<Account<'info, ChipState>>,
-    #[account(seeds = [b"collection", &[chip.collection_idx]], bump = meta.bump, seeds::program = chip_core::ID)]
-    pub meta: Box<Account<'info, CollectionMeta>>,
-    /// CHECK:
-    #[account(mut, address = meta.core_collection)]
-    pub core_collection: UncheckedAccount<'info>,
-    #[account(seeds = [b"config"], bump = config.bump, seeds::program = chip_core::ID, has_one = treasury, has_one = buyback_wallet)]
-    pub config: Box<Account<'info, GameConfig>>,
-    /// CHECK: from config
-    #[account(mut, address = config.treasury @ MarketError::InvalidTreasury)]
-    pub treasury: UncheckedAccount<'info>,
-    /// CHECK: from config
-    #[account(mut, address = config.buyback_wallet @ MarketError::InvalidBuyback)]
-    pub buyback_wallet: UncheckedAccount<'info>,
-
-    // SPL path (USDC or SKR — mint pinned to the listing's currency in the handler)
-    #[account(mut, token::authority = buyer)]
-    pub buyer_token: Option<Box<Account<'info, TokenAccount>>>,
-    #[account(mut, token::authority = seller)]
-    pub seller_token: Option<Box<Account<'info, TokenAccount>>>,
-    #[account(mut, token::authority = treasury)]
-    pub treasury_token: Option<Box<Account<'info, TokenAccount>>>,
-    #[account(mut, token::authority = buyback_wallet)]
-    pub buyback_token: Option<Box<Account<'info, TokenAccount>>>,
-
-    pub chip_core: Program<'info, ChipCore>,
-    /// CHECK:
-    #[account(address = mpl_core::ID)]
-    pub mpl_core: UncheckedAccount<'info>,
-    pub token_program: Program<'info, Token>,
-    pub system_program: Program<'info, System>,
-}
-
-pub fn buy_handler(
-    ctx: Context<Buy>,
-    expected_price: u64,
-    expected_currency: Currency,
-) -> Result<()> {
-    let l = &ctx.accounts.listing;
-    require!(l.seller != ctx.accounts.buyer.key(), MarketError::SelfTrade);
-    // front-running guard: the buyer signs for the price they saw
-    require!(
-        l.price == expected_price && l.currency == expected_currency,
-        MarketError::CurrencyMismatch
-    );
-    let (to_seller, fee_bb, fee_tr, royalty) = split(l.price, ctx.accounts.config.market_fee_bps)?;
-
-    match l.currency.mint(&ctx.accounts.config) {
-        None => {
-            let sys = ctx.accounts.system_program.to_account_info();
-            let from = ctx.accounts.buyer.to_account_info();
-            for (to, amt) in [
-                (&ctx.accounts.seller, to_seller),
-                (&ctx.accounts.buyback_wallet, fee_bb),
-                (&ctx.accounts.treasury, fee_tr + royalty),
-            ] {
-                if amt > 0 {
-                    system_program::transfer(
-                        CpiContext::new(
-                            sys.clone(),
-                            system_program::Transfer {
-                                from: from.clone(),
-                                to: to.to_account_info(),
-                            },
-                        ),
-                        amt,
-                    )?;
-                }
-            }
-        }
-        Some(mint) => {
-            let tp = ctx.accounts.token_program.to_account_info();
-            let buyer_t = ctx
-                .accounts
-                .buyer_token
-                .as_ref()
-                .ok_or(MarketError::MissingAccounts)?;
-            let seller_t = ctx
-                .accounts
-                .seller_token
-                .as_ref()
-                .ok_or(MarketError::MissingAccounts)?;
-            let bb_t = ctx
-                .accounts
-                .buyback_token
-                .as_ref()
-                .ok_or(MarketError::MissingAccounts)?;
-            let tr_t = ctx
-                .accounts
-                .treasury_token
-                .as_ref()
-                .ok_or(MarketError::MissingAccounts)?;
-            for t in [buyer_t, seller_t, bb_t, tr_t] {
-                require_keys_eq!(t.mint, mint, MarketError::CurrencyMismatch);
-            }
-            let from = buyer_t.to_account_info();
-            let auth = ctx.accounts.buyer.to_account_info();
-            let legs = [
-                (seller_t.to_account_info(), to_seller),
-                (bb_t.to_account_info(), fee_bb),
-                (tr_t.to_account_info(), fee_tr + royalty),
-            ];
-            for (to, amt) in legs {
-                if amt > 0 {
-                    token::transfer(
-                        CpiContext::new(
-                            tp.clone(),
-                            token::Transfer {
-                                from: from.clone(),
-                                to,
-                                authority: auth.clone(),
-                            },
-                        ),
-                        amt,
-                    )?;
-                }
-            }
-        }
-    }
-
-    // deliver: unfreeze + PermanentTransfer to buyer + clear flag (chip_core checks LISTED + seller)
-    let seeds: &[&[u8]] = &[b"market_auth", &[ctx.bumps.market_auth]];
-    chip_core::cpi::deliver_sold(
-        CpiContext::new_with_signer(
-            ctx.accounts.chip_core.to_account_info(),
-            DeliverSold {
-                caller: ctx.accounts.market_auth.to_account_info(),
-                payer: ctx.accounts.buyer.to_account_info(),
-                config: ctx.accounts.config.to_account_info(),
-                asset: ctx.accounts.asset.to_account_info(),
-                chip: ctx.accounts.chip.to_account_info(),
-                meta: ctx.accounts.meta.to_account_info(),
-                core_collection: ctx.accounts.core_collection.to_account_info(),
-                new_owner: ctx.accounts.buyer.to_account_info(),
-                mpl_core: ctx.accounts.mpl_core.to_account_info(),
-                system_program: ctx.accounts.system_program.to_account_info(),
-            },
-            &[seeds],
-        ),
-        l.seller,
-    )?;
-
-    emit!(ChipSold {
-        asset: l.asset,
-        seller: l.seller,
-        buyer: ctx.accounts.buyer.key(),
-        price: l.price,
-        currency: l.currency as u8,
-        fee: fee_bb + fee_tr,
-        royalty,
-        via_offer: false
-    });
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// offers (USDC escrow in PDA ATA)
-// ---------------------------------------------------------------------------
-
-#[derive(Accounts)]
-pub struct MakeOffer<'info> {
-    #[account(mut)]
-    pub bidder: Signer<'info>,
-    /// CHECK: any Core asset
-    #[account(owner = mpl_core::ID)]
-    pub asset: UncheckedAccount<'info>,
-    #[account(init, payer = bidder, space = 8 + Offer::INIT_SPACE, seeds = [b"offer", asset.key().as_ref(), bidder.key().as_ref()], bump)]
-    pub offer: Account<'info, Offer>,
-    #[account(seeds = [b"config"], bump = config.bump, seeds::program = chip_core::ID)]
-    pub config: Account<'info, GameConfig>,
-    #[account(address = config.usdc_mint)]
-    pub usdc_mint: Account<'info, Mint>,
-    #[account(mut, token::mint = usdc_mint, token::authority = bidder)]
-    pub bidder_usdc: Account<'info, TokenAccount>,
-    #[account(init, payer = bidder, associated_token::mint = usdc_mint, associated_token::authority = offer)]
-    pub escrow: Account<'info, TokenAccount>,
-    pub token_program: Program<'info, Token>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
-}
-
-pub fn make_offer_handler(ctx: Context<MakeOffer>, amount: u64, ttl_secs: i64) -> Result<()> {
-    require!(amount >= MIN_PRICE_USDC, MarketError::PriceTooLow);
-    require!(
-        ttl_secs > 0 && ttl_secs <= MAX_OFFER_TTL,
-        MarketError::TtlTooLong
-    );
-    token::transfer(
-        CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
-            token::Transfer {
-                from: ctx.accounts.bidder_usdc.to_account_info(),
-                to: ctx.accounts.escrow.to_account_info(),
-                authority: ctx.accounts.bidder.to_account_info(),
-            },
-        ),
-        amount,
-    )?;
-    let o = &mut ctx.accounts.offer;
-    o.asset = ctx.accounts.asset.key();
-    o.bidder = ctx.accounts.bidder.key();
-    o.amount_usdc = amount;
-    o.expires_at = Clock::get()?.unix_timestamp + ttl_secs;
-    o.bump = ctx.bumps.offer;
-    emit!(OfferMade {
-        asset: o.asset,
-        bidder: o.bidder,
-        amount,
-        expires_at: o.expires_at
-    });
-    Ok(())
-}
-
-#[derive(Accounts)]
-pub struct CancelOffer<'info> {
-    #[account(mut)]
-    pub bidder: Signer<'info>,
-    #[account(mut, close = bidder, seeds = [b"offer", offer.asset.as_ref(), bidder.key().as_ref()], bump = offer.bump, has_one = bidder)]
-    pub offer: Account<'info, Offer>,
-    #[account(mut, associated_token::mint = bidder_usdc.mint, associated_token::authority = offer)]
-    pub escrow: Account<'info, TokenAccount>,
-    #[account(mut, token::authority = bidder, constraint = bidder_usdc.mint == escrow.mint)]
-    pub bidder_usdc: Account<'info, TokenAccount>,
-    pub token_program: Program<'info, Token>,
-}
-
-pub fn cancel_offer_handler(ctx: Context<CancelOffer>) -> Result<()> {
-    let o = &ctx.accounts.offer;
-    let asset = o.asset;
-    let bidder = o.bidder;
-    let bump = o.bump;
-    let seeds: &[&[u8]] = &[b"offer", asset.as_ref(), bidder.as_ref(), &[bump]];
-    token::transfer(
-        CpiContext::new_with_signer(
-            ctx.accounts.token_program.to_account_info(),
-            token::Transfer {
-                from: ctx.accounts.escrow.to_account_info(),
-                to: ctx.accounts.bidder_usdc.to_account_info(),
-                authority: o.to_account_info(),
-            },
-            &[seeds],
-        ),
-        ctx.accounts.escrow.amount,
-    )?;
-    token::close_account(CpiContext::new_with_signer(
-        ctx.accounts.token_program.to_account_info(),
-        token::CloseAccount {
-            account: ctx.accounts.escrow.to_account_info(),
-            destination: ctx.accounts.bidder.to_account_info(),
-            authority: o.to_account_info(),
-        },
-        &[seeds],
-    ))?;
-    emit!(OfferCancelled { asset, bidder });
     Ok(())
 }
 
@@ -988,8 +562,8 @@ pub fn list_compressed_handler(
             && Clock::get()?.unix_timestamp < claim.expires_at,
         MarketError::CompressedClaimNotTradable
     );
-    // Soulbound / fusion-locked claims cannot be listed (mirrors the Core
-    // `F_SOULBOUND` gate in `list_handler`).
+    // Soulbound / fusion-locked claims cannot be listed (the Core `F_SOULBOUND` gate that
+    // `list_compressed_asset` mirrors on the asset side).
     require!(
         Clock::get()?.unix_timestamp >= claim.lock_until,
         MarketError::ChipLocked
@@ -1391,6 +965,15 @@ pub fn cancel_compressed_asset_handler(ctx: Context<CancelCompressedAsset>) -> R
 
 #[derive(Accounts)]
 #[instruction(delegate: Pubkey)]
+// The four `Box<Account<..>>` below are load-bearing. `Account<'info, T>` owns its `T` BY VALUE, so
+// every deserialized state account sits in the SBF stack frame — and this context deserializes four
+// of them plus fifteen `UncheckedAccount`s, which is ~2.6 KB of a 4096-byte frame before a single
+// validation temporary. Under `opt-level = "z"` that overflowed, and `buy_compressed_asset` aborted
+// with `Access violation in stack frame 5` on EVERY call — found by
+// tests/localnet/32-market-compressed.spec.ts, the first thing ever to execute this handler in
+// LiteSVM. Boxing moves the owned state to the heap and takes the frame to ~1.4 KB. The account
+// list, the discriminators and the IDL are untouched, so no client sees a difference; this is the
+// same remedy `AcceptOffer` already uses for its `GameConfig`.
 pub struct BuyCompressedAsset<'info> {
     #[account(mut)]
     pub buyer: Signer<'info>,
@@ -1400,18 +983,18 @@ pub struct BuyCompressedAsset<'info> {
         seeds = [b"compressed_asset_listing", listing.asset.as_ref()],
         bump = listing.bump,
     )]
-    pub listing: Account<'info, CompressedAssetListing>,
+    pub listing: Box<Account<'info, CompressedAssetListing>>,
     #[account(mut, address = listing.claim)]
-    pub claim: Account<'info, CompressedMintClaim>,
+    pub claim: Box<Account<'info, CompressedMintClaim>>,
     #[account(
         mut,
         seeds = [b"compressed_chip", listing.asset.as_ref()],
         bump = chip.bump,
         seeds::program = chip_core::ID,
     )]
-    pub chip: Account<'info, CompressedChipState>,
+    pub chip: Box<Account<'info, CompressedChipState>>,
     #[account(seeds = [b"config"], bump = config.bump, seeds::program = chip_core::ID)]
-    pub config: Account<'info, GameConfig>,
+    pub config: Box<Account<'info, GameConfig>>,
     /// CHECK: treasury address is constrained to the immutable game configuration.
     #[account(mut, address = config.treasury @ MarketError::InvalidTreasury)]
     pub treasury: UncheckedAccount<'info>,
@@ -1619,23 +1202,8 @@ pub fn buy_compressed_asset_handler<'info>(
 #[program]
 pub mod market {
     use super::*;
-    pub fn list(ctx: Context<List>, price: u64, currency: Currency) -> Result<()> {
-        list_handler(ctx, price, currency)
-    }
     pub fn update_price(ctx: Context<UpdatePrice>, price: u64) -> Result<()> {
         update_price_handler(ctx, price)
-    }
-    pub fn cancel(ctx: Context<Cancel>) -> Result<()> {
-        cancel_handler(ctx)
-    }
-    pub fn buy(ctx: Context<Buy>, expected_price: u64, expected_currency: Currency) -> Result<()> {
-        buy_handler(ctx, expected_price, expected_currency)
-    }
-    pub fn make_offer(ctx: Context<MakeOffer>, amount: u64, ttl_secs: i64) -> Result<()> {
-        make_offer_handler(ctx, amount, ttl_secs)
-    }
-    pub fn cancel_offer(ctx: Context<CancelOffer>) -> Result<()> {
-        cancel_offer_handler(ctx)
     }
     pub fn accept_offer(ctx: Context<AcceptOffer>) -> Result<()> {
         accept_offer_handler(ctx)

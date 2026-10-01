@@ -15,7 +15,7 @@ import { createAtaIdempotentIx } from '@/chain/ix/spl';
 import { Currency } from '@/chain/ix/chipCore';
 import { RNG_KIND, freshNonce } from '@/chain/pdas';
 import { prepareRandomness } from '@/chain/switchboard';
-import { fromHex, verifyRewardProof } from '@/chain/merkle';
+import { fromHex } from '@/chain/merkle';
 import { usePackFlow } from '@/features/shop/usePackFlow';
 import { CleanZone, KV, Pill, Progress, Skeleton, Empty } from '@/shared/ui/primitives';
 import { CleanConfirmButton } from '@/shared/ui/buttons';
@@ -51,14 +51,6 @@ const PARTNER_LINKS: Record<string, string> = {
 
 type Cadence = 'daily' | 'weekly' | 'permanent';
 
-
-/**
- * Pre-check a claim leaf against the published root before spending a fee on it
- * (same bytes as `verify_proof` on-chain — see chain/merkle.ts).
- */
-export function verifyProof(leaf: ClaimLeaf, wallet: Uint8Array, root: Uint8Array): boolean {
-  return verifyRewardProof({ wallet, amountMicro: leaf.amountMicro!, kind: leaf.kind!, epoch: leaf.epoch! }, (leaf.proof ?? []).map(fromHex), root);
-}
 
 export default function Quests() {
   const t = useT();

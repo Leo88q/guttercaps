@@ -339,9 +339,6 @@ impl ChipState {
         self.flags & (Self::F_STAKED | Self::F_LISTED | Self::F_FUSING) == 0
             && now >= self.lock_until
     }
-    pub fn is_locked(&self, now: i64) -> bool {
-        now < self.lock_until
-    }
 }
 
 /// Per-wallet pity counters + rolling daily purchase caps.

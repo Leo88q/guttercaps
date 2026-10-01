@@ -1,10 +1,13 @@
-// Instruction builders for programs/staking ($CG tiers, chip staking, Merkle claims).
+// Instruction builders for programs/staking ($CG tiers, compressed-chip staking, Merkle claims).
+// The Core-chip pair (`stake_chip` / `unstake_chip`) was deleted with its instructions: both loaded
+// the ["chip", asset] ChipState, and only the fail-closed `open_pack` can create one. `claim_chip`
+// survives — it still owns the reward accounting for stakes opened before the migration.
 import { PublicKey, TransactionInstruction } from '@solana/web3.js';
 import { BorshWriter } from '../borsh';
 import { ixData, ro, rw, signer } from '../anchor';
-import { CHIP_CORE_ID, MPL_ACCOUNT_COMPRESSION_ID, MPL_CORE_ID, STAKING_ID, SYSTEM_PROGRAM_ID, TOKEN_PROGRAM_ID } from '../ids';
+import { CHIP_CORE_ID, MPL_ACCOUNT_COMPRESSION_ID, STAKING_ID, SYSTEM_PROGRAM_ID, TOKEN_PROGRAM_ID } from '../ids';
 import {
-  ata, chipPoolPda, chipStakePda, compressedChipStakePda, chipStatePda, claimReceiptPda, collectionMetaPda, configPda, emissionPda, pendingPackPda, pityPda, playerItemsPda, rewardRootPda,
+  ata, chipPoolPda, chipStakePda, chipStatePda, claimReceiptPda, compressedChipStakePda, configPda, emissionPda, pendingPackPda, pityPda, playerItemsPda, rewardRootPda,
   rewarderPda, RNG_KIND, rngAuthPda, rngPda, seasonPoolAuthPda, setBonusPda, skrPoolPda, stakeAuthPda, tokenPoolPda, tokenStakePda,
 } from '../pdas';
 import { SWITCHBOARD_ON_DEMAND_ID, SYSVAR_SLOT_HASHES_ID } from '../ids';
@@ -15,7 +18,6 @@ export const TIER_LOCK_SECS = [0, 30 * 86_400, 90 * 86_400, 180 * 86_400] as con
 export const TIER_BOOST_BPS = [10_000, 15_000, 22_000, 30_000] as const;
 export const TIER_PENALTY_BPS = [0, 500, 1_000, 1_500] as const;
 export const MIN_STAKE_MICRO = 10_000_000n;
-export const TIER_NAMES = ['Flex', '30 days', '90 days', '180 days'] as const;
 
 export function stakeCgIx(a: { owner: PublicKey; tier: number; amount: bigint; cgMint: PublicKey }): TransactionInstruction {
   const [emission] = emissionPda();
@@ -43,31 +45,7 @@ export function unstakeCgIx(a: { owner: PublicKey; tier: number; amount: bigint;
   });
 }
 
-interface ChipRef { asset: PublicKey; collectionIdx: number; coreCollection: PublicKey }
 
-export function stakeChipIx(a: ChipRef & { owner: PublicKey }): TransactionInstruction {
-  return new TransactionInstruction({
-    programId: STAKING_ID,
-    keys: [
-      signer(a.owner), rw(emissionPda()[0]), rw(chipPoolPda()[0]), rw(chipStakePda(a.asset)[0]), rw(setBonusPda(a.owner)[0]),
-      ro(stakeAuthPda()[0]), rw(a.asset), rw(chipStatePda(a.asset)[0]), ro(collectionMetaPda(a.collectionIdx)[0]), rw(a.coreCollection),
-      ro(configPda()[0]), ro(CHIP_CORE_ID), ro(MPL_CORE_ID), ro(SYSTEM_PROGRAM_ID),
-    ],
-    data: Buffer.from(ixData('stake_chip')),
-  });
-}
-
-export function unstakeChipIx(a: ChipRef & { owner: PublicKey; cgMint: PublicKey }): TransactionInstruction {
-  return new TransactionInstruction({
-    programId: STAKING_ID,
-    keys: [
-      signer(a.owner), rw(emissionPda()[0]), rw(chipPoolPda()[0]), rw(chipStakePda(a.asset)[0]), ro(stakeAuthPda()[0]),
-      rw(a.asset), rw(chipStatePda(a.asset)[0]), ro(collectionMetaPda(a.collectionIdx)[0]), rw(a.coreCollection), ro(configPda()[0]),
-      rw(a.cgMint), rw(ata(a.cgMint, a.owner)), ro(CHIP_CORE_ID), ro(MPL_CORE_ID), ro(TOKEN_PROGRAM_ID), ro(SYSTEM_PROGRAM_ID),
-    ],
-    data: Buffer.from(ixData('unstake_chip')),
-  });
-}
 
 /** Bubblegum V2 claim staking: staking state is separate and chip_core owns the claim transition. */
 export function stakeCompressedChipIx(a: { owner: PublicKey; claim: PublicKey }): TransactionInstruction {

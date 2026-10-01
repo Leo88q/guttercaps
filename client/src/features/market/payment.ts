@@ -1,28 +1,50 @@
 import { PublicKey } from '@solana/web3.js';
-import { buyIx, marketMintFor, MarketCurrency, type BuyArgs } from '@/chain/ix/market';
-import { createAtaIdempotentIx } from '@/chain/ix/spl';
+import { DasClient } from '@/chain/das';
+import { DAS_RPC_URL } from '@/app/config';
+import { resolveCompressedChip, type ResolvedCompressedChip } from '@/chain/flows/compressedChip';
+import { buyCompressedAssetIx } from '@/chain/ix/market';
+import type { Connection } from '@solana/web3.js';
 
-// Protocol codes and decimal precision are independent of the display language.
-const PAYMENTS = {
-  SOL: { symbol: 'SOL', code: MarketCurrency.SOL, decimals: 9 },
-  USDC: { symbol: 'USDC', code: MarketCurrency.USDC, decimals: 6 },
-  SKR: { symbol: 'SKR', code: MarketCurrency.SKR, decimals: 6 },
-} as const;
-export function marketPayment(symbol?: string) {
-  return symbol && Object.hasOwn(PAYMENTS, symbol) ? PAYMENTS[symbol as keyof typeof PAYMENTS] : undefined;
+/** The indexer endpoint the DAS client talks to. Overridable so tests can pin it. */
+export const dasEndpoint = (override?: string) => override ?? DAS_RPC_URL;
+
+/** A DAS client for one call. Stateless, so it is cheaper to build than to memoize wrongly. */
+export const dasClient = (override?: string) => new DasClient({ endpoint: dasEndpoint(override) });
+
+/**
+ * SEC-B28: the claim market — both the pre-mint claim listing and the V2 asset listing — settles by
+ * lamport transfers. `buy_compressed_asset` has no SPL legs, so a listing in USDC or SKR can never be
+ * bought. The program refuses it at list time; this refuses it before the wallet pays a fee.
+ */
+const CLAIM_MARKET_SOL_ONLY = 'the market settles in SOL only — list and buy in SOL';
+
+/** Resolve a V2 leaf for a buy. The proof is fetched now, not cached, because a stale proof reverts. */
+export async function resolveListingChip(connection: Connection, asset: PublicKey, das?: DasClient): Promise<ResolvedCompressedChip> {
+  return resolveCompressedChip(connection, das ?? dasClient(), asset);
 }
 
-/** Market's code 2 is SKR, unlike the API's general currency enum (2 = CG). */
-export const marketPaymentByCode = (code: number) => Object.values(PAYMENTS).find(p => p.code === code);
-
-export function listingBuyIxs(a: Omit<BuyArgs, 'expectedCurrency'> & { currency?: string }) {
-  const payment = marketPayment(a.currency);
-  if (!payment) throw new Error('This currency is not enabled on this cluster');
-  const args: BuyArgs = { ...a, expectedCurrency: payment.code };
-  const mint = marketMintFor(payment.code, args);
-  if (payment.code !== MarketCurrency.SOL && (!mint || mint.equals(PublicKey.default))) {
-    throw new Error('This currency is not enabled on this cluster');
-  }
-  const prepare = mint ? [a.seller, a.treasury, a.buybackWallet].map((owner) => createAtaIdempotentIx(a.buyer, owner, mint)) : [];
-  return [...prepare, buyIx(args)];
+/**
+ * The buy path for a registered V2 leaf. No ATA preparation is needed — there is no SPL leg.
+ *
+ * The listing's currency is checked here rather than trusted: an old USDC/SKR row would otherwise
+ * reach a program that has no way to pay it.
+ */
+export function listingBuyIxs(a: {
+  buyer: PublicKey;
+  seller: PublicKey;
+  asset: PublicKey;
+  resolved: ResolvedCompressedChip;
+  treasury: PublicKey;
+  buyback: PublicKey;
+  expectedPrice: bigint;
+  /** the currency the listing row claims, so a legacy row is refused instead of silently bought in SOL */
+  listingCurrency?: number;
+}): ReturnType<typeof buyCompressedAssetIx>[] {
+  if (a.listingCurrency !== undefined && a.listingCurrency !== 0) throw new Error(CLAIM_MARKET_SOL_ONLY);
+  return [buyCompressedAssetIx({
+    buyer: a.buyer, asset: a.asset, claim: a.resolved.claim, seller: a.seller,
+    proof: a.resolved.proof, delegate: a.resolved.delegate, treeConfig: a.resolved.treeConfig,
+    merkleTree: a.resolved.merkleTree, coreCollection: a.resolved.coreCollection,
+    treasury: a.treasury, buyback: a.buyback, expectedPrice: a.expectedPrice,
+  })];
 }

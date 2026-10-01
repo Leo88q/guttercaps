@@ -12,16 +12,16 @@ import { PublicKey } from '@solana/web3.js';
 import { useChipDetail } from '@/api/hooks';
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
 import { sendTx } from '@/chain/tx';
-import { fetchCoreCollections } from '@/chain/flows/packFlow';
-import { cancelListingIx, makeOfferIx, saleSplit, updatePriceIx } from '@/chain/ix/market';
-import { listingBuyIxs, marketPayment } from './payment';
+import { resolveCompressedChip } from '@/chain/flows/compressedChip';
+import { cancelCompressedAssetIx } from '@/chain/ix/market';
+import { listingBuyIxs, dasClient } from './payment';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { ExternalIcon } from '@/shared/ui/action-icons';
-import { CleanZone, KV, Modal, Skeleton } from '@/shared/ui/primitives';
+import { CleanZone, KV, Skeleton } from '@/shared/ui/primitives';
 import { CleanConfirmButton } from '@/shared/ui/buttons';
 import { chipLore, chipName, collectionName, rarityColor, rarityName, RARITY_PROFILES, ELEMENT_OF_COLLECTION, chipImageOf } from '@/shared/lib/rarity';
 import { ElementGlyph } from '@/shared/ui/element-icons';
-import { chipIndexText, fmtAmount, fmtUsd, parseUnits, shortKey, timeAgo } from '@/shared/lib/format';
+import { chipIndexText, fmtAmount, fmtUsd, shortKey, timeAgo } from '@/shared/lib/format';
 import { useUiStore } from '@/app/store/ui';
 import { EXPLORER } from '@/app/config';
 import { isMock } from '@/api/client';
@@ -37,8 +37,6 @@ export default function ChipPage() {
   const cfg = useGameConfig();
   const qc = useQueryClient();
   const toast = useUiStore((s) => s.toast);
-  const [offer, setOffer] = useState<string | null>(null);
-  const [newPrice, setNewPrice] = useState<string | null>(null);
   const [listing, setListing] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -50,9 +48,6 @@ export default function ChipPage() {
   const l = c.listing;
   const prof = RARITY_PROFILES[c.rarity!];
   const feeBps = cfg.data?.marketFeeBps ?? MARKET_FEE_BPS;
-  const payment = marketPayment(l?.currency);
-  const repriced = payment ? parseUnits(newPrice ?? '', payment.decimals) : null;
-
   async function tx(kind: MessageKey, build: () => Promise<import('@solana/web3.js').TransactionInstruction[]>) {
     if (isMock()) { toast({ kind: 'money', title: { key: 'screens.transactionDemo', params: { action: { key: kind } } }, body: { key: 'screens.simulated' } }); return; }
     if (!wallet || !cfg.data) { toast({ kind: 'error', title: { key: 'common.connectWallet' } }); return; }
@@ -67,7 +62,8 @@ export default function ChipPage() {
       toast({ kind: 'error', title: { key: 'screens.transactionFailed', params: { action: { key: kind } } }, error: e });
     } finally { setBusy(false); }
   }
-  const ref = async () => ({ asset: new PublicKey(asset), collectionIdx: c.collection!, coreCollection: (await fetchCoreCollections(connection, cfg.data!.collectionsCreated)).get(c.collection!)! });
+  /** Resolve the leaf once per action: identity from chain, Merkle path from DAS. */
+  const ref = () => resolveCompressedChip(connection, dasClient(), new PublicKey(asset));
 
   return (
     <div className="page page-bg page-bg-market stack">
@@ -95,23 +91,26 @@ export default function ChipPage() {
           {!mine && (
             <>
               <KV k={t('screens.sellerFees')} v={`${fmtPct(feeBps)} + ${fmtPct(ROYALTY_BPS)}`} />
-              <CleanConfirmButton disabled={busy || !payment} onClick={() => tx('market.buy', async () => {
-                return listingBuyIxs({ ...(await ref()), buyer: wallet!.publicKey, seller: new PublicKey(l.seller!), expectedPrice: BigInt(l.price!), currency: l.currency, treasury: cfg.data!.treasury, buybackWallet: cfg.data!.buybackWallet, usdcMint: cfg.data!.usdcMint, skrMint: cfg.data!.skrMint });
+              <CleanConfirmButton disabled={busy || l.currency !== 'SOL'} onClick={() => tx('market.buy', async () => {
+                const r = await ref();
+                return listingBuyIxs({ buyer: wallet!.publicKey, seller: new PublicKey(l.seller!), asset: r.asset, resolved: r, treasury: cfg.data!.treasury, buyback: cfg.data!.buybackWallet, expectedPrice: BigInt(l.price!), listingCurrency: l.currency === 'SOL' ? 0 : 1 });
               })}>{t('ui.buyFor', { amount: fmtAmount(l.price!, l.currency!) })}</CleanConfirmButton>
               <div className="tiny muted">{t('screens.pricePinned', { amount: fmtAmount(l.price!, l.currency!) })}</div>
             </>
           )}
           {mine && (
             <div className="grid-2">
-              <button className="btn" disabled={!payment} onClick={() => setNewPrice('')}>{t('ui.changePrice')}</button>
-              <button className="btn" disabled={busy} onClick={() => tx('market.cancelListing', async () => [cancelListingIx({ ...(await ref()), seller: wallet!.publicKey })])}>{t('market.cancelListing')}</button>
+              <button className="btn" disabled={busy} onClick={() => tx('market.cancelListing', async () => {
+                const r = await ref();
+                return [cancelCompressedAssetIx({ seller: wallet!.publicKey, asset: r.asset, claim: r.claim })];
+              })}>{t('market.cancelListing')}</button>
             </div>
           )}
         </CleanZone>
       ) : mine ? (
         <div className="card row between"><span>{t('ui.notListed')}</span><button className="btn" onClick={() => setListing(true)} disabled={c.flags?.staked || c.flags?.fusing}>{t('ui.listMarket')}</button></div>
       ) : (
-        <div className="card row between"><span>{t('ui.notForSale')}</span><button className="btn" onClick={() => setOffer('')}>{t('market.makeOffer')}</button></div>
+        <div className="card row between"><span>{t('ui.notForSale')}</span><span className="tiny muted">{t('market.solOnly')}</span></div>
       )}
 
       <div className="card stack-sm">
@@ -129,35 +128,6 @@ export default function ChipPage() {
           </tbody></table></div>
         )}
       </div>
-
-      <Modal open={offer !== null} onClose={() => setOffer(null)} title={t('ui.makeOfferUsdc')}>
-        <div className="stack">
-          <CleanZone>
-            <input className="input mono" inputMode="decimal" placeholder="10.00" value={offer ?? ''} onChange={(e) => setOffer(e.target.value)} />
-            <KV k={t('screens.offerEscrow')} v={fmtUsd(Number(offer) || 0)} />
-            <KV k={t('screens.sellerNet', { pct: (feeBps + ROYALTY_BPS) / 100 })} v={fmtAmount(saleSplit(parseUnits(offer ?? '', 6) ?? 0n, feeBps).seller, 'USDC')} />
-          </CleanZone>
-          <CleanConfirmButton disabled={!parseUnits(offer ?? '', 6) || busy} onClick={async () => {
-            const amt = parseUnits(offer ?? '', 6)!;
-            setOffer(null);
-            await tx('market.makeOffer', async () => [makeOfferIx({ bidder: wallet!.publicKey, asset: new PublicKey(asset), amountUsdc: amt, ttlSecs: 7n * 86_400n, usdcMint: cfg.data!.usdcMint })]);
-          }}>{t('ui.escrowOffer')}</CleanConfirmButton>
-        </div>
-      </Modal>
-
-      <Modal open={newPrice !== null} onClose={() => setNewPrice(null)} title={t('ui.changePrice')}>
-        <div className="stack">
-          <CleanZone>
-            <input className="input mono" inputMode="decimal" placeholder={payment?.decimals === 6 ? '12.00' : '0.25'} value={newPrice ?? ''} onChange={(e) => setNewPrice(e.target.value)} />
-            {repriced !== null && <KV k={t('market.youReceive')} v={fmtAmount(saleSplit(repriced, feeBps).seller, payment!.symbol)} accent />}
-          </CleanZone>
-          <CleanConfirmButton disabled={!repriced || busy} onClick={async () => {
-            const p = repriced!;
-            setNewPrice(null);
-            await tx('ui.changePrice', async () => [updatePriceIx({ seller: wallet!.publicKey, asset: new PublicKey(asset), price: p })]);
-          }}>{t('ui.update')}</CleanConfirmButton>
-        </div>
-      </Modal>
 
       {listing && <ListModal chip={c} onClose={() => setListing(false)} />}
     </div>

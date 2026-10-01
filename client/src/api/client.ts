@@ -14,8 +14,6 @@ export type ResponseOf<P extends keyof Paths, M extends Method> =
   OpFor<P, M> extends { responses: infer R } ? (R extends { 200: infer OK } ? Json<OK> : R extends { 204: unknown } ? void : unknown) : never;
 export type BodyOf<P extends keyof Paths, M extends Method> =
   OpFor<P, M> extends { requestBody: infer B } ? (B extends { content: { 'application/json': infer J } } ? J : never) : never;
-export type QueryOf<P extends keyof Paths, M extends Method> =
-  OpFor<P, M> extends { parameters: { query?: infer Q } } ? Q : never;
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public details?: unknown) {

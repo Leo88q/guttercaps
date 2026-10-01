@@ -1,8 +1,12 @@
-// Instruction builders for programs/market (freeze-in-place listings in SOL/USDC/SKR + USDC offers).
+// Instruction builders for programs/market. The live path is the Bubblegum V2 asset market
+// (`list_compressed_asset` / `buy_compressed_asset` / `cancel_compressed_asset`), which settles in
+// SOL. The Core-asset builders (`list` / `buy` / `cancel` / `make_offer` / `cancel_offer`) were
+// deleted with their instructions: the only creator of a Core asset is the fail-closed `open_pack`,
+// so nothing could ever reach them.
 import { PublicKey, TransactionInstruction } from '@solana/web3.js';
 import { BorshWriter } from '../borsh';
-import { ixData, optional, ro, rw, signer } from '../anchor';
-import { ASSOCIATED_TOKEN_PROGRAM_ID, CHIP_CORE_ID, MARKET_ID, MPL_ACCOUNT_COMPRESSION_ID, MPL_BUBBLEGUM_V2_ID, MPL_CORE_ID, MPL_NOOP_ID, SYSTEM_PROGRAM_ID, TOKEN_PROGRAM_ID } from '../ids';
+import { ixData, ro, rw, signer } from '../anchor';
+import { CHIP_CORE_ID, MARKET_ID, MPL_ACCOUNT_COMPRESSION_ID, MPL_BUBBLEGUM_V2_ID, MPL_CORE_ID, MPL_NOOP_ID, SYSTEM_PROGRAM_ID, TOKEN_PROGRAM_ID } from '../ids';
 import { assertFreshProof, bubblegumProofMetas, type BubblegumProof } from '../bubblegum';
 import { ata, bubblegumTreeConfigPda, chipStatePda, collectionMetaPda, compressedAssetListingPda, compressedChipStatePda, compressedListingPda, configPda, listingPda, marketAuthPda, offerPda } from '../pdas';
 
@@ -48,30 +52,7 @@ export function assertSolClaimListing(currency: MarketCurrencyCode): void {
   if (currency !== MarketCurrency.SOL) throw new Error(CLAIM_MARKET_SOL_ONLY);
 }
 
-interface ChipRef { asset: PublicKey; collectionIdx: number; coreCollection: PublicKey }
 
-export function listIx(a: ChipRef & { seller: PublicKey; price: bigint; currency: MarketCurrencyCode; cgMint: PublicKey }): TransactionInstruction {
-  return new TransactionInstruction({
-    programId: MARKET_ID,
-    keys: [
-      signer(a.seller),
-      rw(listingPda(a.asset)[0]),
-      ro(marketAuthPda()[0]),
-      rw(a.asset),
-      rw(chipStatePda(a.asset)[0]),
-      ro(collectionMetaPda(a.collectionIdx)[0]),
-      rw(a.coreCollection),
-      ro(configPda()[0]),
-      rw(a.cgMint),
-      rw(ata(a.cgMint, a.seller)),
-      ro(CHIP_CORE_ID),
-      ro(MPL_CORE_ID),
-      ro(TOKEN_PROGRAM_ID),
-      ro(SYSTEM_PROGRAM_ID),
-    ],
-    data: Buffer.from(ixData('list', new BorshWriter().u64(a.price).u8(a.currency).toBytes())),
-  });
-}
 
 export function updatePriceIx(a: { seller: PublicKey; asset: PublicKey; price: bigint }): TransactionInstruction {
   return new TransactionInstruction({
@@ -81,95 +62,13 @@ export function updatePriceIx(a: { seller: PublicKey; asset: PublicKey; price: b
   });
 }
 
-export function cancelListingIx(a: ChipRef & { seller: PublicKey }): TransactionInstruction {
-  return new TransactionInstruction({
-    programId: MARKET_ID,
-    keys: [
-      signer(a.seller),
-      rw(listingPda(a.asset)[0]),
-      ro(marketAuthPda()[0]),
-      rw(a.asset),
-      rw(chipStatePda(a.asset)[0]),
-      ro(collectionMetaPda(a.collectionIdx)[0]),
-      rw(a.coreCollection),
-      ro(configPda()[0]),
-      ro(CHIP_CORE_ID),
-      ro(MPL_CORE_ID),
-      ro(SYSTEM_PROGRAM_ID),
-    ],
-    data: Buffer.from(ixData('cancel')),
-  });
-}
 
-export interface BuyArgs extends ChipRef {
-  buyer: PublicKey;
-  seller: PublicKey;
-  expectedPrice: bigint;
-  expectedCurrency: MarketCurrencyCode;
-  treasury: PublicKey;
-  buybackWallet: PublicKey;
-  usdcMint: PublicKey;
-  skrMint?: PublicKey;
-}
 
-export function buyIx(a: BuyArgs): TransactionInstruction {
-  const mint = marketMintFor(a.expectedCurrency, a);
-  if (a.expectedCurrency !== MarketCurrency.SOL && !mint) throw new Error('mint for this currency is not configured');
-  return new TransactionInstruction({
-    programId: MARKET_ID,
-    keys: [
-      signer(a.buyer),
-      rw(a.seller),
-      rw(listingPda(a.asset)[0]),
-      ro(marketAuthPda()[0]),
-      rw(a.asset),
-      rw(chipStatePda(a.asset)[0]),
-      ro(collectionMetaPda(a.collectionIdx)[0]),
-      rw(a.coreCollection),
-      ro(configPda()[0]),
-      rw(a.treasury),
-      rw(a.buybackWallet),
-      optional(mint ? ata(mint, a.buyer) : undefined, MARKET_ID),
-      optional(mint ? ata(mint, a.seller) : undefined, MARKET_ID),
-      optional(mint ? ata(mint, a.treasury) : undefined, MARKET_ID),
-      optional(mint ? ata(mint, a.buybackWallet) : undefined, MARKET_ID),
-      ro(CHIP_CORE_ID),
-      ro(MPL_CORE_ID),
-      ro(TOKEN_PROGRAM_ID),
-      ro(SYSTEM_PROGRAM_ID),
-    ],
-    data: Buffer.from(ixData('buy', new BorshWriter().u64(a.expectedPrice).u8(a.expectedCurrency).toBytes())),
-  });
-}
 
-export function makeOfferIx(a: { bidder: PublicKey; asset: PublicKey; amountUsdc: bigint; ttlSecs: bigint; usdcMint: PublicKey }): TransactionInstruction {
-  const [offer] = offerPda(a.asset, a.bidder);
-  return new TransactionInstruction({
-    programId: MARKET_ID,
-    keys: [
-      signer(a.bidder),
-      ro(a.asset),
-      rw(offer),
-      ro(configPda()[0]),
-      ro(a.usdcMint),
-      rw(ata(a.usdcMint, a.bidder)),
-      rw(ata(a.usdcMint, offer)),
-      ro(TOKEN_PROGRAM_ID),
-      ro(ASSOCIATED_TOKEN_PROGRAM_ID),
-      ro(SYSTEM_PROGRAM_ID),
-    ],
-    data: Buffer.from(ixData('make_offer', new BorshWriter().u64(a.amountUsdc).i64(a.ttlSecs).toBytes())),
-  });
-}
 
-export function cancelOfferIx(a: { bidder: PublicKey; asset: PublicKey; usdcMint: PublicKey }): TransactionInstruction {
-  const [offer] = offerPda(a.asset, a.bidder);
-  return new TransactionInstruction({
-    programId: MARKET_ID,
-    keys: [signer(a.bidder), rw(offer), rw(ata(a.usdcMint, offer)), rw(ata(a.usdcMint, a.bidder)), ro(TOKEN_PROGRAM_ID)],
-    data: Buffer.from(ixData('cancel_offer')),
-  });
-}
+
+/** The Core-asset triple `accept_offer` still validates against (report §5.4: retained, unreachable). */
+interface ChipRef { asset: PublicKey; collectionIdx: number; coreCollection: PublicKey }
 
 export function acceptOfferIx(a: ChipRef & { seller: PublicKey; bidder: PublicKey; treasury: PublicKey; buybackWallet: PublicKey; usdcMint: PublicKey }): TransactionInstruction {
   const [offer] = offerPda(a.asset, a.bidder);

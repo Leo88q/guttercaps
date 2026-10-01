@@ -83,9 +83,3 @@ export async function displayClaim(ctx: ClaimSettleCtx, claim: CompressedMintCla
   const proof = await ctx.das.resolveClaimAsset(ctx.buyer, tree.coreCollection, `${meta.symbol} #${claim.gameIndex}`);
   return { asset: proof.assetId, rarity: claim.rarity, collectionIdx: claim.collectionIdx, gameIndex: claim.gameIndex };
 }
-
-/** Read one claim by nonce (null when closed). */
-export async function loadClaimByNonce(connection: Connection, buyer: PublicKey, claimNonce: bigint): Promise<CompressedMintClaim | null> {
-  const info = await connection.getAccountInfo(compressedMintClaimPda(buyer, claimNonce)[0], 'confirmed');
-  return info ? decodeCompressedMintClaim(new Uint8Array(info.data)) : null;
-}

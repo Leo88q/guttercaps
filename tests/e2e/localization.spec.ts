@@ -1,17 +1,17 @@
 import { expect, test } from '@playwright/test';
 
 const locales = [
-  ['en', 'en', 'English', 'Quick Moth'],
-  ['ru', 'ru', 'Русский', 'Быстрый мотылёк'],
-  ['pt', 'pt-BR', 'Português', 'Mariposa rápida'],
-  ['es', 'es', 'Español', 'Polilla rápida'],
-  ['vi', 'vi', 'Tiếng Việt', 'Bướm đêm vẽ vội'],
-  ['id', 'id', 'Bahasa Indonesia', 'Ngengat kilat'],
-  ['fil', 'fil', 'Filipino', 'Mabilis na gamu-gamo'],
+  ['en', 'en', 'English', 'Quick Moth', 'Caps settle in SOL only: the on-chain market moves the cap itself, and it has no USDC or SKR leg.'],
+  ['ru', 'ru', 'Русский', 'Быстрый мотылёк', 'Кэпы продаются только за SOL: маркет переводит сам кэп и не имеет расчётной ветки в USDC или SKR.'],
+  ['pt', 'pt-BR', 'Português', 'Mariposa rápida', 'As caps são negociadas apenas em SOL: o mercado on-chain transfere a própria cap e não tem perna em USDC ou SKR.'],
+  ['es', 'es', 'Español', 'Polilla rápida', 'Las caps se negocian solo en SOL: el mercado on-chain transfiere la propia cap y no tiene tramo en USDC ni SKR.'],
+  ['vi', 'vi', 'Tiếng Việt', 'Bướm đêm vẽ vội', 'Nắp chỉ giao dịch bằng SOL: thị trường on-chain chuyển chính chiếc nắp và không có nhánh thanh toán USDC hay SKR.'],
+  ['id', 'id', 'Bahasa Indonesia', 'Ngengat kilat', 'Cap hanya diperdagangkan dalam SOL: pasar on-chain memindahkan cap itu sendiri dan tidak punya jalur USDC atau SKR.'],
+  ['fil', 'fil', 'Filipino', 'Mabilis na gamu-gamo', 'Ang caps ay ipinagkalaki ng SOL lamang: ang merkado on-chain ay naglilipat ng cap mismo at walang hakbang na USDC o SKR.'],
 ] as const;
 const publicRoutes = ['/', '/collection', '/shop', '/shop?tab=services', '/market', '/arena', '/leaderboard', '/codex', '/verify', '/verify/demo', '/arena/match/demo', '/market/demo', '/language'];
 
-for (const [locale, tag, native, cap] of locales) {
+for (const [locale, tag, native, cap, solOnly] of locales) {
   test(`${locale}: switching, persistence, catalog, public routes and narrow layout`, async ({ page }) => {
     test.setTimeout(240_000);
     await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -38,12 +38,15 @@ for (const [locale, tag, native, cap] of locales) {
         await expect(page.locator('h1').first(), `${locale} ${path}: ${errors.join('; ')}`).toBeVisible({ timeout: 20_000 });
         await expect(page.locator('html')).toHaveAttribute('lang', tag);
         if (path === '/market/demo') {
-          // This public mock cap is unlisted: exercise the localized offer dialog,
-          // including its money disclosure and focus trap, at both viewport widths.
-          const offerButton = page.locator('.page .card button').first();
-          await offerButton.click();
-          await expect(page.getByRole('dialog')).toBeVisible();
-          await page.getByRole('dialog').locator('input').fill('100');
+          // SEC-B28: the V2 asset market settles by lamport transfers only — `list_compressed_asset`
+          // and `buy_compressed_asset` have no SPL legs, so `make_offer` and the currency picker
+          // were retired with the Core-NFT market. This block used to click "Make offer" and drive
+          // its money dialog; that button no longer exists, and clicking it is what failed here
+          // for every locale. What is left to cover on this route is the not-for-sale state itself
+          // — that it renders in the active locale — plus the invariant that replaced the picker:
+          // no non-SOL currency affordance is offered anywhere on the page.
+          await expect(page.getByText(solOnly, { exact: true })).toBeVisible();
+          await expect(page.getByRole('button', { name: /USDC|SKR/ })).toHaveCount(0);
         }
         // Wait for the local fonts before measuring real text, not fallback glyphs.
         await page.evaluate(() => document.fonts.ready);

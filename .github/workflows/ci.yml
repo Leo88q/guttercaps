@@ -218,6 +218,10 @@ jobs:
     container:
       image: solanafoundation/anchor:v0.31.1
     env:
+      # The one feature set this job builds with. scripts/ci-anchor-build.sh reads it (its own default is
+      # the same), and the annotation step below reports it, so a size comparison cannot silently mix a
+      # localnet build with a devnet one.
+      ANCHOR_FEATURES: localnet
       # Absolute, not `~`: this image keeps its cargo home at /root/.cargo while Actions exports
       # HOME=/github/home, so a `~/.cargo/registry` cache path caches a directory nobody writes — and the
       # job reads as a slow build instead of a mis-set path. Pinning CARGO_HOME makes cache and build agree.
@@ -366,6 +370,26 @@ jobs:
           cp tests/localnet/fixtures/sb_mock-keypair.json target/deploy/
           sh scripts/ci-run-logged.sh /tmp/anchor-build.log sh scripts/ci-anchor-build.sh
           ls -la target/deploy/*.so
+      - name: SBF sizes + digests as check-run annotations
+        # Neither the artifact host nor the log host is reachable from a terminal, so a check-run annotation is
+        # the only machine-readable channel out of this container. `gh api
+        # repos/OWNER/REPO/check-runs/<id>/annotations` reads them, which is how a report compares one build's
+        # binaries against another's (bytes, sha256, and the three account sizes the rent budget is computed
+        # from) without downloading a megabyte of .so. The budget itself is NOT computed here: it needs the
+        # cluster's own rent rate, which scripts/mac-devnet.sh asks for at deploy time.
+        run: |
+          total=0
+          for f in target/deploy/*.so; do
+            n=$(basename "$f" .so)
+            b=$(wc -c < "$f" | tr -d ' ')
+            d=$(sha256sum "$f" | cut -d' ' -f1)
+            total=$((total + b))
+            printf '::notice::sbf %s bytes=%s sha256=%s program=36 programdata=%s buffer=%s\n' \
+              "$n" "$b" "$d" "$((45 + b))" "$((37 + b))"
+          done
+          printf '::notice::sbf total bytes=%s\n' "$total"
+          printf '::notice::sbf-meta features=%s solana=%s anchor=%s\n' \
+            "$ANCHOR_FEATURES" "$(solana --version 2>/dev/null | head -1)" "$(anchor --version 2>/dev/null | head -1)"
       - name: IDL + program ids match Anchor.toml
         run: |
           for p in chip_core market staking arena sb_mock; do

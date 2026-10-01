@@ -200,9 +200,6 @@ export function decodeCompressedChipState(data: Uint8Array): CompressedChipState
   };
 }
 
-export const compressedChipIsFree = (c: CompressedChipState, nowSec = Math.floor(Date.now() / 1000)) =>
-  (c.flags & (CHIP_FLAG.STAKED | CHIP_FLAG.LISTED | CHIP_FLAG.FUSING)) === 0 && (c.leafFlags & 3) === 0 && BigInt(nowSec) >= c.lockUntil;
-
 export interface CompressedMintClaim {
   buyer: PublicKey;
   collectionIdx: number;
@@ -453,10 +450,6 @@ export function decodeTokenStake(data: Uint8Array): TokenStake {
 }
 
 export interface ChipStake { owner: PublicKey; asset: PublicKey; weight: bigint; rewardDebt: bigint; stakedAt: bigint; bump: number }
-export function decodeChipStake(data: Uint8Array): ChipStake {
-  const r = expectDiscriminator(data, 'ChipStake');
-  return { owner: r.pubkey(), asset: r.pubkey(), weight: r.u128(), rewardDebt: r.u128(), stakedAt: r.i64(), bump: r.u8() };
-}
 
 export interface CompressedChipStake { owner: PublicKey; claim: PublicKey; weight: bigint; rewardDebt: bigint; stakedAt: bigint; bump: number }
 export function decodeCompressedChipStake(data: Uint8Array): CompressedChipStake {
