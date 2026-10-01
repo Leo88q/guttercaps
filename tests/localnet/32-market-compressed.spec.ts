@@ -26,9 +26,10 @@ import { createHash } from 'node:crypto';
 import { accountDiscriminator, ixData, ro, rw, signer } from '@/chain/anchor';
 import { decodeCompressedAssetListing, decodeCompressedChipState, decodeCompressedMintClaim } from '@/chain/accounts';
 import { BorshReader, BorshWriter } from '@/chain/borsh';
+import { bubblegumProofMetas, type BubblegumProof } from '@/chain/bubblegum';
 import { buyCompressedAssetIx, cancelCompressedAssetIx, listCompressedAssetIx, MarketCurrency, saleSplit } from '@/chain/ix/market';
-import { CHIP_CORE_ID, MARKET_ID, MPL_BUBBLEGUM_V2_ID, SYSTEM_PROGRAM_ID } from '@/chain/ids';
-import { bubblegumTreeConfigPda, collectionMetaPda, compressedAssetListingPda, compressedChipStatePda, compressedMintClaimPda, marketAuthPda } from '@/chain/pdas';
+import { CHIP_CORE_ID, MARKET_ID, MPL_ACCOUNT_COMPRESSION_ID, MPL_BUBBLEGUM_V2_ID, MPL_NOOP_ID, SYSTEM_PROGRAM_ID } from '@/chain/ids';
+import { bubblegumTreeConfigPda, collectionMetaPda, compressedAssetListingPda, compressedChipStatePda, compressedMintClaimPda, configPda, marketAuthPda } from '@/chain/pdas';
 import { Err, expectAnyFail, expectFail } from './helpers/expect';
 import { binariesPresent, getEnv, type Env } from './helpers/env';
 import { collectionHash, forgeLeaf, leafAssetId } from './helpers/v2leaf';
@@ -49,6 +50,41 @@ function rawListIx(a: { seller: PublicKey; asset: PublicKey; claim: PublicKey; c
     programId: MARKET_ID,
     keys: [signer(a.seller), rw(compressedAssetListingPda(a.asset)[0]), rw(a.asset), rw(a.chip), ro(a.collectionMeta), rw(a.claim), ro(marketAuthPda()[0]), ro(CHIP_CORE_ID), ro(SYSTEM_PROGRAM_ID)],
     data: Buffer.from(ixData('list_compressed_asset', new BorshWriter().u64(a.price).u8(a.currency).toBytes())),
+  });
+}
+
+/**
+ * `buy_compressed_asset` with the accounts the program expects, byte for byte, but with none of
+ * `buyCompressedAssetIx`'s client-side cross-checks. Those checks exist so that an honest client
+ * cannot sign a buy whose DAS proof, tree config or listing disagree — `chain.test.ts` pins that
+ * they throw. What this asks instead is what the *program* does when a hand-built or third-party
+ * client sends the mismatched bytes anyway: the Anchor `address =` constraints have to be the thing
+ * that refuses them, not the builder. Same reason `rawListIx` exists above.
+ */
+function rawBuyIx(a: { buyer: PublicKey; asset: PublicKey; claim: PublicKey; seller: PublicKey; delegate: PublicKey; proof: BubblegumProof; treeConfig: PublicKey; merkleTree: PublicKey; coreCollection: PublicKey; treasury: PublicKey; buyback: PublicKey; expectedPrice: bigint }): TransactionInstruction {
+  const [listing] = compressedAssetListingPda(a.asset);
+  const data = new BorshWriter()
+    .pubkey(a.delegate)
+    .bytes(a.proof.root)
+    .bytes(a.proof.dataHash)
+    .bytes(a.proof.creatorHash)
+    .bytes(a.proof.collectionHash)
+    .bytes(a.proof.assetDataHash)
+    .u8(a.proof.flags)
+    .u64(a.proof.leafNonce)
+    .u32(Number(a.proof.leafIndex))
+    .u64(a.expectedPrice)
+    .toBytes();
+  return new TransactionInstruction({
+    programId: MARKET_ID,
+    keys: [
+      signer(a.buyer), rw(listing), rw(a.claim), rw(compressedChipStatePda(a.asset)[0]), ro(configPda()[0]),
+      rw(a.treasury), rw(a.buyback), rw(a.seller), ro(a.seller), ro(a.delegate),
+      rw(a.treeConfig), rw(a.merkleTree), ro(a.coreCollection), ro(marketAuthPda()[0]),
+      ro(MPL_BUBBLEGUM_V2_ID), ro(MPL_NOOP_ID), ro(MPL_ACCOUNT_COMPRESSION_ID), ro(CHIP_CORE_ID), ro(SYSTEM_PROGRAM_ID),
+      ...bubblegumProofMetas(a.proof),
+    ],
+    data: Buffer.from(ixData('buy_compressed_asset', data)),
   });
 }
 
@@ -341,8 +377,10 @@ suite('T-L-MA V2 compressed asset market', () => {
       Err.market('CompressedClaimNotTradable'), 'proof data hash mismatch');
 
     // a tree config other than the one the listing names: the account constraint rejects it before
-    // the handler runs, so the settlement cannot be pointed at a tree the leaf is not in
-    await expectFail(env.chain.send([buyCompressedAssetIx({ ...args, treeConfig: Keypair.generate().publicKey })], { signers: [buyer] }),
+    // the handler runs, so the settlement cannot be pointed at a tree the leaf is not in. Built by
+    // hand, because `buyCompressedAssetIx` refuses this one client-side on purpose — the question
+    // under test is what the *program* does when the mismatched bytes arrive anyway.
+    await expectFail(env.chain.send([rawBuyIx({ ...args, treeConfig: Keypair.generate().publicKey })], { signers: [buyer] }),
       Err.anchor('ConstraintAddress'), 'tree config not the one in the listing');
 
     // the claim must still be the listed one, owned by the seller
@@ -379,15 +417,36 @@ suite('T-L-MA V2 compressed asset market', () => {
     // The absence of a custom error is NECESSARY but not SUFFICIENT, and the first CI run proved it:
     // `buy_compressed_asset` was overflowing its SBF stack frame on every call (`Access violation in
     // stack frame 5`), which is not a custom program error, so this assertion was happily green on a
-    // program that never ran. So also require the Bubblegum program to actually appear in the trace
-    // — the CPI cannot be reached without invoking it.
+    // program that never ran.
+    //
+    // What actually discriminates "reached the CPI" from "overflowed before the handler ran", and
+    // what the trace shows now that the four state accounts are boxed:
+    //
+    //   (a) the three lamport transfers. Each is a `system_program::transfer` CPI, so each logs as a
+    //       depth-2 `Program 1111… invoke [2]`, and they are the last thing the handler does before
+    //       the Bubblegum CPI. An overflowing frame dies before the first one.
+    //
+    //   (b) compute units. The overflow aborted at ~14.6k CU. Running the whole handler and dying at
+    //       the CPI costs ~68k — far too wide a gap for any guard to sit inside.
+    //
+    // What is NOT assertable here, and was tried: that the Bubblegum program id appears in the
+    // trace. LiteSVM has no Bubblegum `.so` to load, so the CPI dies with `Unsupported program id`
+    // before Bubblegum is ever invoked, and the id can only surface truncated inside that error
+    // text. The trace ends at the CPI, which is the honest boundary — the `TransferV2` leg itself is
+    // not covered, and this file says so in its header.
     const trace = failure.logs.join('\n');
-    expect(trace, `expected the Bubblegum CPI to fail, but a market custom error fired instead:\n${trace.split('\n').slice(-8).join('\n')}`)
+    const tail = trace.split('\n').slice(-8).join('\n');
+    expect(trace, `expected the Bubblegum CPI to fail, but a market custom error fired instead:\n${tail}`)
       .not.toMatch(/custom program error/);
-    expect(trace, `the program aborted before reaching the CPI — this is what a stack overflow looks like:\n${trace.split('\n').slice(-8).join('\n')}`)
+    expect(trace, `the program aborted before reaching the CPI — this is what a stack overflow looks like:\n${tail}`)
       .not.toMatch(/Access violation|stack frame|panicked/);
-    expect(trace, `the Bubblegum program was never invoked, so no CPI was reached:\n${trace.split('\n').slice(-8).join('\n')}`)
-      .toContain(MPL_BUBBLEGUM_V2_ID.toBase58());
+    const transfers = trace.match(/^Program 11111111111111111111111111111111 invoke \[2\]$/gm) ?? [];
+    expect(transfers.length, `the handler issued ${transfers.length} lamport transfer(s), not 3, so it never reached the Bubblegum CPI:\n${tail}`)
+      .toBe(3);
+    const cu = /consumed (\d+) of/.exec(trace);
+    const burned = cu ? Number(cu[1]) : 0;
+    expect(burned, `the handler burned only ${burned} CU — an overflowing SBF frame aborts around 15k, so this never reached the CPI:\n${tail}`)
+      .toBeGreaterThan(40_000);
 
     // The split the handler was about to apply, mirrored client-side so the numbers stay pinned.
     const split = saleSplit(price, env.config.marketFeeBps);
