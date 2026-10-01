@@ -334,20 +334,23 @@ NEED         = PEAK_SEQ + RESERVE(3.00)
 роль администратора и модель доверия не изменены.** `state:layout` это
 подтверждает хешем.
 
-### 4.1b CI — что зелено, что нет (последний прогон: `d828a3a`)
+### 4.1b CI — что зелено, что нет (последний прогон: `37ecacf`)
 
-| job | `557b00c` | `6b2fa1c` | `d828a3a` |
-|---|---|---|---|
-| `rust · clippy + unit tests (pinned rust image)` | **success** | **success** | **success** |
-| `programs · fmt + anchor build` | **success** | **success** | **success** |
-| `client · typecheck + test + build` | **success** | **success** | **success** |
-| `backend · typecheck + test` | **success** | **success** | **success** |
-| `economy · invariants + golden + sync-check` | **success** | **success** | **success** |
-| `security · npm audit + secret scan` | **success** | **success** | **success** |
-| `landing · build + check + smoke` | **success** | **success** | **success** |
-| `Cloudflare Pages: guttercaps` / `guttercapslending` | **success** | **success** | **success** |
-| `localnet · 92 scenarios (LiteSVM)` | **failure** — баг программы (§4.2) | **failure** — баг фикстуры (§4.2) | **success** |
-| `e2e · built app + localized errors + axe` | success *(никогда не измерялось)* | failure — **регрессия миграции** (§4.1c) | failure — те же 14 |
+На `37ecacf` **все 18 job'ов зелёные** — впервые за миграцию, и впервые с
+доведённым до конца `e2e`.
+
+| job | `557b00c` | `6b2fa1c` | `d828a3a` | `37ecacf` |
+|---|---|---|---|---|
+| `rust · clippy + unit tests (pinned rust image)` | **success** | **success** | **success** | **success** |
+| `programs · fmt + anchor build` | **success** | **success** | **success** | **success** |
+| `client · typecheck + test + build` | **success** | **success** | **success** | **success** |
+| `backend · typecheck + test` | **success** | **success** | **success** | **success** |
+| `economy · invariants + golden + sync-check` | **success** | **success** | **success** | **success** |
+| `security · npm audit + secret scan` | **success** | **success** | **success** | **success** |
+| `landing · build + check + smoke` | **success** | **success** | **success** | **success** |
+| `Cloudflare Pages: guttercaps` / `guttercapslending` | **success** | **success** | **success** | **success** |
+| `localnet · 92 scenarios (LiteSVM)` | **failure** — баг программы (§4.2) | **failure** — баг фикстуры (§4.2) | **success** | **success** |
+| `e2e · built app + localized errors + axe` | cancelled *(не измерялось)* | **failure** — регрессия миграции (§4.1c) | **failure** — те же 14 | **success** |
 
 **`cargo clippy --workspace --all-targets -- -D warnings` зелёный на всех трёх.**
 Это главный результат шага 4: удаление 1008 строк Rust не сломало ни один импорт и
@@ -700,11 +703,10 @@ bash scripts/mac-devnet.sh verify
    `arena` в §3.3 не сдвинулась ни на байт, и это ровно та цена откладывания.
    Если решите удалить пару арены, выигрыш добавится в эту строку; плата —
    единственный LiteSVM-достижимый путь арены.
-8. **`e2e` закрыт на `79d072d`, но его зелёного прогона ещё нет.** Регрессия
-   найдена и исправлена (§4.1c), подтверждено только локально (`verify` EXIT=0,
-   `tsc -p tests/e2e` чистый). До прогона job'а в CI утверждать «зелено» нельзя —
-   ровно та ошибка, из-за которой строка `557b00c` в прошлой версии отчёта
-   оказалась предположением вместо измерения.
+8. ~~**`e2e`**~~ — **закрыто на `37ecacf`: `e2e · built app + localized errors + axe` —
+   success, 58 passed / 15 skipped / 0 failed** (было 44 passed / 14 failed).
+   Регрессия найдена и исправлена (§4.1c), подтверждена прогоном. Шаг Playwright
+   при этом сократился с **53.1 м до 3.5 м** — ушли 240-секундные таймауты.
 
 ---
 
@@ -789,7 +791,9 @@ git reset --mixed origin/arena/01a0f3f4-guttercaps
   SPL-ветвей), а два e2e-спека продолжали на них нажимать — 14 падений, все семь
   локалей, детерминированно. Красным он был **на базе `main` зелёным**, а на
   миграции ни разу не доводился до конца: `cancel-in-progress` убивал каждый
-  прогон. Исправлено в `79d072d`; подтверждает — прогон CI, которого ещё нет.
+  прогон. Исправлено в `79d072d`; на `37ecacf` — **success, 58 passed / 0 failed**.
+* **CI на `37ecacf` зелёный целиком** — впервые за миграцию: 18 job'ов, включая
+  `localnet · 92 scenarios` и `e2e`. До этого `e2e` не доходил до конца ни разу.
 * Сайт и ассеты не тронуты; план по-прежнему в §8 старого отчёта.
 
 ### 8.1 Что нужно от вас
@@ -799,7 +803,9 @@ git reset --mixed origin/arena/01a0f3f4-guttercaps
 2. CU-перепись после prune — она закрывает пункт 2 §6.
 3. Покрыть `create_battle_v2` в LiteSVM: это единственный оставшийся путь,
    который правился вслепую (пункт 5 §6).
-4. Довести `e2e` до зелёного прогона на `79d072d` (пункт 8 §6) — и, если он
-   снова красный, читать аннотацию **целиком**: первая версия этого отчёта
-   приняла усечённый список за «3 локали из 7», и на этом основании объявила
-   флейк то, что было регрессией.
+4. ~~Довести `e2e` до зелёного прогона~~ — **сделано на `37ecacf`** (пункт 8 §6).
+   Урок на будущее, он же в §4.1c: аннотация Playwright с списком падений
+   приходит **усечённой**, и первая версия этого отчёта приняла первые три из
+   четырнадцати за «3 локали из 7», на этом основании объявила флейк то, что
+   было регрессией, и на полчаса отложила настоящую причину. Читать аннотацию
+   целиком.
