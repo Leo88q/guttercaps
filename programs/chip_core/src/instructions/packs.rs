@@ -30,14 +30,10 @@
 use anchor_lang::prelude::*;
 use anchor_lang::system_program;
 use anchor_spl::token::{self, Mint, Token, TokenAccount};
-use mpl_core::{
-    instructions::CreateV2CpiBuilder,
-    types::{
-        PermanentBurnDelegate, PermanentFreezeDelegate, PermanentTransferDelegate, Plugin,
-        PluginAuthority, PluginAuthorityPair,
-    },
-    ID as MPL_CORE_ID,
-};
+// 2026-10-01: `open_pack` was the only Core-minting instruction in this file, and its body is now
+// the fail-closed migration gate, so the whole `mpl_core` plugin/delegate import set is gone.
+// `open_voucher` still checks a Core program address, which is why `ID` alone survives.
+use mpl_core::ID as MPL_CORE_ID;
 use pyth_solana_receiver_sdk::price_update::{get_feed_id_from_hex, PriceUpdateV2};
 
 // `price_update` below is a `/// CHECK:` account decoded by `crate::pyth::load` rather than an
@@ -648,7 +644,7 @@ pub fn open_pack<'info>(
     // `params_version == 0` is reserved: `initialize` starts it at 1 and every
     // subsequent update uses a checked increment, so no valid live config can
     // enable this branch. That is the one-way migration gate, and it is asserted
-    // by tests/localnet/31-market-core.spec.ts M6.
+    // by tests/localnet/00-admin.spec.ts G03.
     //
     // The historical body was deleted rather than kept as reference: it was
     // ~300 lines of unreachable code that still had to compile, still had to be

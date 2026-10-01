@@ -18,7 +18,7 @@ use chip_core::bubblegum::{
 use chip_core::cpi::accounts::SetCompressedClaimStaked;
 use chip_core::economy::level_mult_bps;
 use chip_core::program::ChipCore;
-use chip_core::state::{ChipState, CompressedChipState, CompressedMintClaim, GameConfig};
+use chip_core::state::{ChipState, CompressedChipState, CompressedMintClaim};
 
 use crate::errors::StakeError;
 use crate::instructions::emission::{mint_to_user, record_internal_burn};
@@ -244,6 +244,17 @@ pub struct StakeCompressedChip<'info> {
 
 fn compressed_chip_weight(claim: &CompressedMintClaim, sets: u8) -> u128 {
     claim.rarity.stake_weight() as u128 * MICRO as u128 * level_mult_bps(claim.level) as u128
+        / 10_000
+        * SetBonus::mult_bps(sets) as u128
+        / 10_000
+}
+
+/// Weight of a Core chip. Survives the 2026-10-01 Core-market / Core-staking pruning because
+/// `claim_chip` still needs it: a `ChipStake` opened before the migration keeps its level-ups and
+/// set-bonus changes re-weighed on every claim, and this is that arithmetic.
+pub fn chip_weight(chip: &ChipState, sets: u8) -> u128 {
+    chip.rarity.stake_weight() as u128 * MICRO as u128 // base unit scaled 1e6 for precision
+        * level_mult_bps(chip.level) as u128
         / 10_000
         * SetBonus::mult_bps(sets) as u128
         / 10_000

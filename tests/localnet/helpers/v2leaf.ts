@@ -8,8 +8,8 @@
 // neither `spl-account-compression` nor `mpl-bubblegum` is loaded into the harness (see
 // `programBinaries()` in env.ts — five project programs plus a Metaplex Core dump, nothing else).
 //
-// So the leaf is written straight into SVM state with `setAccount`, the same mechanism
-// 31-market-core.spec.ts uses for the Core asset it cannot mint either. What that buys, honestly:
+// So the leaf is written straight into SVM state with `setAccount`, the same mechanism the retired
+// 31-market-core.spec.ts used for the Core asset it could not mint either. What that buys, honestly:
 //   * the market handlers' own bodies — guards, PDA derivation, the chip_core CPI, the event, the
 //     listing account — run for real against real-shaped state;
 //   * `register_compressed_chip` stays allow-listed in the coverage matrix with its reason, because

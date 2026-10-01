@@ -31,7 +31,9 @@
 
 use anchor_lang::prelude::*;
 use anchor_lang::system_program;
-use anchor_spl::associated_token::AssociatedToken;
+// 2026-10-01: the Core-market deletion took the only `Program<'info, AssociatedToken>` field with
+// it. The surviving `accept_offer` context still carries an `associated_token::` constraint, which
+// Anchor resolves through the `#[account]` attribute namespace and needs no import for.
 use anchor_spl::token::{self, Token, TokenAccount};
 use mpl_bubblegum::instructions::TransferV2CpiBuilder;
 use mpl_core::accounts::BaseAssetV1;
