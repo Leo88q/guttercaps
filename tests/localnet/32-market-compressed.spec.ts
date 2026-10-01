@@ -383,8 +383,14 @@ suite('T-L-MA V2 compressed asset market', () => {
     await expectFail(env.chain.send([rawBuyIx({ ...args, treeConfig: Keypair.generate().publicKey })], { signers: [buyer] }),
       Err.anchor('ConstraintAddress'), 'tree config not the one in the listing');
 
-    // the claim must still be the listed one, owned by the seller
-    await expectFail(env.chain.send([buyCompressedAssetIx({ ...args, claim: compressedMintClaimPda(buyer.publicKey, 70_701n)[0] })], { signers: [buyer] }),
+    // the claim must still be the listed one, owned by the seller. The foreign claim has to EXIST
+    // for this to test the constraint at all: `claim` is a `Box<Account<CompressedMintClaim>>`, so
+    // Anchor checks the 8-byte discriminator while loading it, and a PDA that was never initialized
+    // comes back `AccountNotInitialized` (3012) before `address = listing.claim` is ever evaluated.
+    // The cancel case below documents the same trap with a missing listing. So forge a real claim
+    // owned by the buyer at the nonce this PDA is derived from — then 2012 is the honest expectation.
+    const foreign = await leaf(70_701n, { owner: buyer.publicKey });
+    await expectFail(env.chain.send([buyCompressedAssetIx({ ...args, claim: foreign.claim })], { signers: [buyer] }),
       Err.anchor('ConstraintAddress'), 'claim not the listed one');
 
     // the listing is still intact after every refusal — none of them moved a lamport
