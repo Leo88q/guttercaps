@@ -5,9 +5,11 @@
 # add one (comma-separated `Contact:`) once a monitored mailbox exists.
 #
 # `Expires` must stay under one year ahead; `tests/security/deploy-artifacts.test.ts` fails when it
-# lapses, and `Policy` must resolve to the `#reporting` section of SECURITY.md.
+# lapses. `Policy` points at the GitHub security-policy page, which renders SECURITY.md — it used to
+# point at `https://app.guttercaps.gg/#reporting`, and the landing page has no `#reporting` section and
+# no vulnerability content at all, so the policy link was a 200 with a dead fragment.
 Contact: https://github.com/Leo88q/guttercaps/security/advisories/new
 Expires: 2027-10-02T00:00:00.000Z
 Preferred-Languages: ru, en
 Canonical: https://app.guttercaps.gg/.well-known/security.txt
-Policy: https://app.guttercaps.gg/#reporting
+Policy: https://github.com/Leo88q/guttercaps/security/policy#reporting
