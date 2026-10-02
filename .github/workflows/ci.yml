@@ -583,7 +583,13 @@ jobs:
     name: security · npm audit + secret scan
     runs-on: ubuntu-latest
     steps:
+      # `fetch-depth: 0` is load-bearing, not tidiness. The secret scan below reads the *object
+      # database* (scripts/secret-scan.ts), so on the default depth-1 checkout it would see only the
+      # tip tree and pass on a credential that was committed in June and deleted in July. Every other
+      # checkout in this file is shallow on purpose; this one must not be, and nothing else enforces
+      # that — tests/security/secret-scan.test.ts pins it.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with: { fetch-depth: 0 }
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
       - run: npm ci
@@ -603,6 +609,19 @@ jobs:
         run: |
           npm run keypairs:scan -- --selftest
           npm run keypairs:scan
+      - name: no committed credential anywhere in history
+        # The two halves are deliberately different, not redundant. `keypairs:scan` reads `git ls-files`
+        # — the current tree only — and knows one secret class (a Solana keypair). This one walks every
+        # blob of the object database, so a credential that was committed and then deleted still fails:
+        # deleting the file does not remove the blob from a clone, and the clone is the leak. Nine
+        # classes (Solana keypair, PEM private key, AWS access key id, GitHub/Slack/Stripe/OpenAI
+        # tokens, Google API key, JWT), each with negative cases — sha256 digests, 40-hex git SHAs,
+        # two-segment JWT-likes and base58 public keys are not credentials. `--selftest` runs those
+        # offline first so a regex that only ever fails cannot pass the suite vacuously.
+        # Allow-list: tests/localnet/fixtures/ (see the fixture note in scripts/secret-scan.ts).
+        run: |
+          npm run secret:scan -- --selftest
+          npm run secret:scan
 
   # ---------------------------------------------------------------- nightly / manual (need devnet keys — T-D-03/04)
   e2e-devnet:
