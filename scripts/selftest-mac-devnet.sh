@@ -11,6 +11,15 @@
 # exits 1 for the wrong reason would keep an exit-code test green while sending the user to the wrong fix.
 set -u
 
+# mac-devnet.sh is configured through the environment, and `npm run verify` runs this file *inside* a run of it — which
+# the docs tell the user to start as `PYTH_API_KEY=… bash scripts/mac-devnet.sh`, with DEVNET_RPC_URL or
+# MAC_DEVNET_OPS_RESERVE_SOL set at will. Fixtures that inherit those test the caller's setup instead of the script: a
+# leaked key turns every "no key" scenario into a "has a key" one, a custom RPC changes each expected URL, another
+# reserve changes each total. So every scenario names the variables it needs. The locale variables are deliberately NOT
+# cleared: the suite has to hold in the user's own locale (a decimal comma once failed 46 checks here, on a Mac only).
+unset BRANCH REMOTE DEVNET_RPC_URL WALLET KEYS_DIR PROGRAM_KEYS_DIR REPO_DIR HERMES_URL PYTH_API_KEY PYTH_WAIT_S \
+  PYTH_DOCKER_PLATFORM MAC_DEVNET_MAX_LEN_HEADROOM MAC_DEVNET_OPS_RESERVE_SOL
+
 self=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 repo=$(CDPATH='' cd -- "$self/.." && pwd) || exit 1
 script="$repo/scripts/mac-devnet.sh"
@@ -219,8 +228,13 @@ cat > "$bud/bin/solana" <<'FAKE'
 echo "solana $*" >> "$FAKE_CALLS"
 case "$1" in
   rent)
+    # FAKE_RENT_SAYS: a CLI that does answer, in a shape the budget does not know
+    if [ -n "${FAKE_RENT_SAYS:-}" ]; then echo "$FAKE_RENT_SAYS"; exit 0; fi
     bytes=$(printf '%s' "$2" | tr -dc '0-9')
-    awk -v b="$bytes" 'BEGIN { printf "Rent-exempt minimum: %.8f SOL\n", (b + 128) * 5080 / 1000000000 }'
+    # LC_ALL=C: the real CLI is a Rust program and prints dots in every locale. An awk that follows the user's
+    # (ru_RU: "0,00573024") would make this fixture say something `solana rent` never says, and the first thing
+    # the budget does — read that number — would fail 46 checks for a reason that has nothing to do with them.
+    LC_ALL=C awk -v b="$bytes" 'BEGIN { printf "Rent-exempt minimum: %.8f SOL\n", (b + 128) * 5080 / 1000000000 }'
     exit 0 ;;
   balance)
     # Empty by default: the wallet has 0 SOL, so every budget scenario stops at ensure_funds *after*
@@ -285,6 +299,7 @@ NPM
 chmod +x "$bud/bin/solana" "$bud/bin/solana-keygen" "$bud/bin/npm"
 has()   { grep -qF -- "$1" "$2"; }   # `check … bash -c 'grep "$log"'` cannot see the outer variable
 lacks() { ! grep -qF -- "$1" "$2"; }
+lacks_re() { ! grep -qE -- "$1" "$2"; }
 budget() { # <env assignments...>; output -> $log, exit code -> $rc
   log="$tmp/budget.log"; : > "$tmp/calls.log"
   ( cd "$work" && env PATH="$bud/bin:$PATH" HOME="$tmp/home" REPO_DIR="$work" WALLET="$tmp/wallet.json" \
@@ -359,6 +374,15 @@ expect budget-rpc "RPC https://api.devnet.solana.com не ответил про 
 expect budget-rpc "бюджет не посчитан" "$log"
 expect_not budget-rpc "program deploy" "$tmp/calls.log"
 
+# An answer the parser does not know is not an outage, and the stage must show what the CLI said. This is what a
+# decimal comma looked like from outside before it was fixed: "cannot get the rent rate via RPC" and nothing about
+# where the number had gone — it took a root-cause hunt to find "0,00573024" in a place no log ever printed it.
+budget FAKE_X=1 FAKE_RENT_SAYS='Rent-exempt minimum: 0,00573024 SOL'
+check budget-rent-garbage "refused (non-zero)" test "$rc" -ne 0
+expect budget-rent-garbage "(ответ CLI: Rent-exempt minimum: 0,00573024 SOL)" "$log"
+expect budget-rent-garbage "бюджет не посчитан" "$log"
+expect_not budget-rent-garbage "program deploy" "$tmp/calls.log"
+
 # A reusable upload buffer is money already on chain: only the difference is budgeted, and the peak drops.
 # The keypair is what a previous, interrupted run left behind — its name is derived from the .so hash, which is
 # why the budget phase looks for it instead of creating a second buffer and paying for it twice.
@@ -401,6 +425,47 @@ check deploy-unchanged "the deposit stays at zero" has "арендный зал�
 # for every program. That is the safe direction: 10.43 = chip_core's 7.41 buffer + fees + the 3 SOL
 # reserve, while the run itself spends nothing but the reserve. An over-estimate never stops a deploy.
 check deploy-unchanged "the plan still budgets a buffer (safe direction)" has "ИТОГО нужно на кошельке 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi: 10.43 SOL" "$log"
+
+# ---------------------------------------------------------------- 6c. a decimal-comma locale (ru_RU) must not change a number
+# POSIX lets awk write numbers with the user's decimal separator, and Apple's awk and mawk do: under ru_RU.UTF-8
+# `printf "%.2f"` gives 18,13. On a Mac with a Russian locale that once failed 46 checks of this very suite — the
+# fake `solana rent` printed "0,00573024", rent_lamports (dots only, like the real CLI) found no number and every
+# budget stage died before its first line — while a Linux run stayed green: its locale is C, a Linux box rarely has
+# a Russian one installed, and gawk or busybox would ignore it anyway. So a plain run cannot be trusted to reproduce
+# this; a stand-in awk that follows the comma on *every* machine can. It obeys the rule a real awk obeys — the
+# numeric locale is LC_ALL, else LC_NUMERIC, else LANG — and for a Russian one it prints `18,13`, unless the caller
+# pinned the locale. (The reading side, a field "2.5" taken as 2, cannot be faked this way; the pyth-conf scenario
+# below covers it, and fails on a real comma-locale machine such as the Mac itself.)
+commabin="$tmp/commabin"; mkdir -p "$commabin"
+REAL_AWK=$(command -v awk); export REAL_AWK
+cat > "$commabin/awk" <<'SHIM'
+#!/usr/bin/env bash
+set -o pipefail
+case "${LC_ALL:-${LC_NUMERIC:-${LANG:-C}}}" in
+  ru_*) ;;                                 # a Russian locale: decimal comma
+  *)    exec "$REAL_AWK" "$@" ;;
+esac
+"$REAL_AWK" "$@" | sed 's/\([0-9]\)\.\([0-9]\)/\1,\2/g'
+SHIM
+chmod +x "$commabin/awk"
+# the stand-in itself must work, or everything below would pass for nothing
+check locale-comma "the stand-in prints a decimal comma under a Russian locale" \
+  test "$(env LANG=ru_RU.UTF-8 LC_ALL= LC_NUMERIC= "$commabin/awk" 'BEGIN { printf "%.2f", 18.13 }')" = "18,13"
+check locale-comma "…and a dot as soon as the caller pins LC_ALL=C" \
+  test "$(env LANG=ru_RU.UTF-8 LC_ALL=C "$commabin/awk" 'BEGIN { printf "%.2f", 18.13 }')" = "18.13"
+
+# The same funded run as deploy-fresh, for a user whose LANG is ru_RU.UTF-8: the rent must still be read, and the plan must
+# still say 18.13 / 24.06 — the numbers the English-locale scenarios above assert, character for character.
+budget FAKE_X=1 FAKE_BALANCE=30000000000 PATH="$commabin:$bud/bin:$PATH" LANG=ru_RU.UTF-8 LC_ALL= LC_NUMERIC=
+check locale-comma "the stage completes: the rent was read and the plan built" test "$rc" -eq 0
+expect locale-comma "арендный залог (постоянный: Program + ProgramData) : 18.13 SOL" "$log"
+expect locale-comma "ИТОГО нужно на кошельке 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi: 24.06 SOL" "$log"
+check locale-comma "no amount of the plan is printed with a comma" lacks_re '[0-9],[0-9]+ SOL' "$log"
+
+# A reserve typed the Russian way is the same number. awk is pinned to dots, so "2,5" would be read as 2 and quietly
+# shrink the reserve unless the comma is turned into a dot where the text comes in.
+budget FAKE_X=1 FAKE_BALANCE=30000000000 MAC_DEVNET_OPS_RESERVE_SOL=2,5
+check locale-comma "a reserve typed as 2,5 is 2.5" has "резерв на setup / lookup table / crank / pusher    : 2.50 SOL   (MAC_DEVNET_OPS_RESERVE_SOL=2.5)" "$log"
 
 # ---------------------------------------------------------------- 7. Pyth price pusher (SOL / SKR payments) and the faucet
 bin2="$tmp/bin2"; mkdir -p "$bin2"
@@ -525,6 +590,8 @@ check pyth-died "…and nothing is left running" test ! -f "$tmp/calls.log.up"
 
 pyth "--only pyth" PYTH_API_KEY=$GOOD_KEY FAKE_SKR_CONF=3.1
 expect pyth-conf "доверительный интервал 3.1 % > 2 %" "$log"   # SEC-M2: the program would refuse a payment at this width
+pyth "--only pyth" PYTH_API_KEY=$GOOD_KEY FAKE_SKR_CONF=2.5
+expect pyth-conf "доверительный интервал 2.5 % > 2 %" "$log"   # a decimal-comma awk reads 2.5 as 2 — and 3.1 as 3, which is why only this one catches it
 
 # faucet: test funds for a browser wallet
 TESTER=HeGzkwXYAtmuCv58TKDXLdPAjsYAoFbHVeLDQq1wivpd
@@ -536,6 +603,8 @@ pyth "faucet $TESTER --sol 1 --skr 500" FAKE_X=1
 check faucet "a good call succeeds" test "$rc" -eq 0
 expect faucet "solana transfer $TESTER 1 --allow-unfunded-recipient" "$tmp/calls.log"
 expect faucet "npm run --silent skr-pool -- mint-to $TESTER 500" "$tmp/calls.log"
+pyth "faucet $TESTER --sol 1,5 --skr 500" FAKE_X=1
+expect faucet "solana transfer $TESTER 1.5 --allow-unfunded-recipient" "$tmp/calls.log"   # --sol 1,5 is 1.5, for awk and for the CLI alike
 pyth "faucet $TESTER" FAKE_BALANCE=500000000
 expect faucet "не хватает на перевод" "$log"                  # short of SOL: says so, does not try
 expect_not faucet "solana transfer" "$tmp/calls.log"

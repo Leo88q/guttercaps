@@ -40,7 +40,8 @@
 #                                   (default 0: `--max-len` = the exact length; a bigger binary is later
 #                                   extended with `solana program extend`, which deploy_program already does)
 #   MAC_DEVNET_OPS_RESERVE_SOL=X    operational SOL held back for setup / lookup table / crank / Pyth pusher
-#                                   (default 3). Printed as its own line, never folded into "network fees".
+#                                   (default 3; 2.5 and 2,5 mean the same). Printed as its own line, never folded
+#                                   into "network fees".
 #
 # Portable on purpose: macOS ships bash 3.2 — no associative arrays, mapfile, ${var,,}, `sed -i`.
 # No `set -u`/`set -e`: every step checks its own result so the failure names the stage and the fix.
@@ -49,6 +50,15 @@
 [ -n "${BASH_VERSION:-}" ] || exec bash "$0" "$@"
 
 set -o pipefail
+
+# awk writes and reads numbers in the *user's* locale: under ru_RU.UTF-8 `printf "%.2f"` prints 18,13 and a field
+# "2.5" is read as 2 (POSIX ties awk's number<->text conversion to LC_NUMERIC; Apple's awk and mawk obey it, gawk and
+# busybox do not). Linux runs never saw it only because their locale is C. Every number this script hands to awk or takes from
+# it is a plain dot-decimal one: the Solana CLI and the JS tools print dots in any locale, and the plan is compared
+# with dots by the self-test and by whoever reads the log. LC_ALL, not LC_NUMERIC, is the pin that holds — it
+# outranks every LC_* the user may have exported. A decimal the user *types* (2,5) is turned into 2.5 where it
+# comes in, see below.
+awk() { LC_ALL=C command awk "$@"; }
 
 ALL_STAGES="update doctor toolchain verify rust localnet ids build deploy setup env pyth"
 OPTIN_STAGES="run faucet"
@@ -168,7 +178,7 @@ while [ $# -gt 0 ]; do
     -h|--help) usage; exit 0 ;;
     run) ONLY="run"; shift ;;
     faucet) ONLY="faucet"; shift; if [ $# -gt 0 ] && [ "${1#-}" = "$1" ]; then FAUCET_TARGET=$1; shift; fi ;;
-    --sol) [ $# -ge 2 ] || die "--sol требует число"; FAUCET_SOL=$2; shift 2 ;;
+    --sol) [ $# -ge 2 ] || die "--sol требует число"; FAUCET_SOL=${2//,/.}; shift 2 ;;   # 1,5 == 1.5
     --skr) [ $# -ge 2 ] || die "--skr требует число"; FAUCET_SKR=$2; shift 2 ;;
     *) printf 'неизвестный аргумент: %s\n' "$1" >&2; usage >&2; exit 2 ;;
   esac
@@ -641,6 +651,10 @@ rent_lamports() { # $1 = account data length in bytes -> lamports, or empty when
     if [ -n "$lam" ]; then printf '%s' "$lam"; return 0; fi
     [ "$attempt" -lt 3 ] && sleep 2
   done
+  # Say what the CLI actually answered: "the RPC is down" and "it answered something this parser does not know"
+  # (a new wording, a number in a foreign format) end the stage with the same sentence and need different fixes.
+  # stderr, like program_state: stdout of this function is the number.
+  printf '  [!]  solana rent %s не дал число (ответ CLI: %s)\n' "$bytes" "$(printf '%s' "$out" | head -1)" >&2
   return 1
 }
 
@@ -820,6 +834,7 @@ deploy_program() { # $1 = program
 # four buffers are alive at once, which cannot happen in this script's own loop. Funding the real peak is what
 # takes a first devnet deploy from ~28.6 SOL to ~24.1 SOL on the four measured binaries.
 OPS_RESERVE_SOL=${MAC_DEVNET_OPS_RESERVE_SOL:-3}
+OPS_RESERVE_SOL=${OPS_RESERVE_SOL//,/.}   # typed the Russian way (2,5) it is still 2.5: awk reads dots only (see awk() at the top)
 WRITE_CHUNK_BYTES=900      # the CLI fills a buffer with ~900 B of ELF per `write` transaction
 FEE_PER_TX_LAMPORTS=10000  # 5000 per signature, 2 signatures per write tx — deliberately rounded up
 
