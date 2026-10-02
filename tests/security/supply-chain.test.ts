@@ -18,7 +18,7 @@
 //   node --experimental-strip-types --test tests/security/*.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { COMPROMISED, missingNodes } from '../../scripts/lock-integrity.ts';
@@ -177,6 +177,83 @@ test('the lock matches the manifests it is resolved from', () => {
     }
   }
   assert.deepEqual(bad, [], 'package.json and package-lock.json disagree — run `npm install --package-lock-only`');
+});
+
+// --------------------------------------------------------------------------------- [patch.crates-io] (M-8)
+// The npm rules above protect `package-lock.json`. Cargo has the same failure mode and none of the
+// same machinery: a `[patch.crates-io]` entry pointing at a path directory is a *local modification of
+// third-party code* that `cargo audit` cannot see (no registry identity, so no advisory-db entry) and
+// `cargo update` cannot move. `vendor/mpl-core` is exactly that — root Cargo.toml:41-45 explains the
+// omission (upstream `hooked`/`indexable_asset` are left out so SBF does not link a 4 KiB-overflowing
+// plugin-list conversion frame), and Cargo.lock:1233 records the entry with no `source` and no
+// `checksum`. A patched crate with no written-down origin is a crate nobody can audit or update.
+test('every [patch.crates-io] path entry has a sibling PATCHES.md recording its origin', () => {
+  const patchBlock = /\[patch\.crates-io\]\n([\s\S]*?)(?=\n\[|$)/.exec(read('Cargo.toml'));
+  assert.ok(patchBlock, 'root Cargo.toml has no [patch.crates-io] block — the vendored subset is no longer wired in, and this gate has nothing to protect');
+  const entries = [...patchBlock[1]!.matchAll(/([A-Za-z0-9_-]+)\s*=\s*\{[^}]*path\s*=\s*"([^"]+)"/g)];
+  assert.ok(entries.length > 0, 'no path-based patch parsed — the reader is broken, not the manifest');
+
+  for (const [, crate, dir] of entries) {
+    const rel = dir.replace(/^\.\//, '').replace(/\/$/, '');
+    const doc = join(REPO, rel, 'PATCHES.md');
+    assert.ok(existsSync(doc), `${rel} is patched into the build via [patch.crates-io] ${crate} = { path = "${dir}" } but has no PATCHES.md — a local modification of third-party code nobody can audit`);
+    const text = read(`${rel}/PATCHES.md`);
+    // It has to name the upstream, and it has to say which revision — or say explicitly that it is
+    // unknown and why. "Unknown" is an acceptable answer here; a blank is not.
+    assert.match(text, /https?:\/\/github\.com\/[\w.-]+\/[\w.-]+/, `${rel}/PATCHES.md does not name an upstream repository`);
+    assert.match(text, /\b[0-9a-f]{7,40}\b/, `${rel}/PATCHES.md records no upstream revision (a tag SHA, or an explicit "unknown" with the reason)`);
+    assert.match(text, /unknown|no tag|cannot be|crates\.io/, `${rel}/PATCHES.md names a revision but does not say whether it was verified`);
+    // And the reason for the fork, which is the part a reviewer needs first.
+    assert.match(text, /intentionally|deliberate|omitted|because|reason/i, `${rel}/PATCHES.md does not state why the code differs from upstream`);
+  }
+});
+
+test('a patched crate whose Cargo.lock entry has no checksum is recorded as a path dependency', () => {
+  // Not a rule to fix — a *fact* to keep visible. `cargo audit` cannot see a path dependency, so the
+  // security posture of the vendored subset is "reviewed by hand or not at all", and this asserts the
+  // shape that makes that true rather than leaving it to be discovered during an incident.
+  const lock = read('Cargo.lock');
+  // Split on the block header rather than matching across it: `[[package]]` contains brackets, so a
+  // character-class exclusion silently matches nothing and the rule would pass vacuously.
+  const blocks = lock.split('[[package]]').slice(1);
+  for (const crate of ['mpl-core']) {
+    const block = blocks.find((b) => new RegExp(`^name = "${crate}"$`, 'm').test(b));
+    assert.ok(block, `Cargo.lock has no entry for ${crate} (read ${blocks.length} blocks)`);
+    assert.ok(!/^source = /m.test(block!), `${crate} now resolves from a registry — PATCHES.md and this rule need updating`);
+    assert.ok(!/^checksum = /m.test(block!), `${crate} now carries a checksum — the fork is pinned to a registry release, so record the revision in PATCHES.md`);
+    // and the version the lock agrees with the vendored manifest
+    const vendored = /^version = "([^"]+)"/m.exec(read('vendor/mpl-core/Cargo.toml'))!;
+    const locked = /^version = "([^"]+)"/m.exec(block!);
+    assert.equal(locked?.[1], vendored[1], `Cargo.lock pins mpl-core ${locked?.[1]} but vendor/mpl-core/Cargo.toml declares ${vendored[1]}`);
+  }
+});
+
+// ------------------------------------------------------------------- self-test for the patch gate
+// Same principle as the mutation block below, on the rules added for M-8: a gate nobody has seen fail
+// is a comment. These use the real reader over synthetic manifests, so a silently-broken parse of
+// `[patch.crates-io]` is caught here rather than by a future fork that ships with no PATCHES.md.
+test('the patch gate fires on a path entry with no PATCHES.md, and on a PATCHES.md with no origin', () => {
+  const patchEntries = (toml: string) =>
+    [...(/\[patch\.crates-io\]\n([\s\S]*?)(?=\n\[|$)/.exec(toml)?.[1] ?? '').matchAll(/([A-Za-z0-9_-]+)\s*=\s*\{[^}]*path\s*=\s*"([^"]+)"/g)];
+
+  const withPatch = '[dependencies]\nmpl-core = "0.11.2"\n\n[patch.crates-io]\nmpl-core = { path = "vendor/mpl-core" }\n';
+  const noPatch = '[dependencies]\nmpl-core = "0.11.2"\n';
+  const noPath = '[patch.crates-io]\nmpl-core = { git = "https://github.com/metaplex-foundation/mpl-core", rev = "f973593" }\n';
+  const twoEntries = '[patch.crates-io]\nmpl-core = { path = "vendor/mpl-core" }\nsolana-program = { path = "vendor/solana-program" }\n';
+
+  assert.equal(patchEntries(withPatch).length, 1, 'a path patch must be parsed');
+  assert.equal(patchEntries(noPatch).length, 0, 'a manifest with no patch block yields nothing');
+  assert.equal(patchEntries(noPath).length, 0, 'a git-rev patch is not a path patch — nothing to record');
+  assert.equal(patchEntries(twoEntries).length, 2, 'every path entry is checked, not just the first');
+  assert.equal(patchEntries(withPatch)[0]![2], 'vendor/mpl-core', 'the directory is what the sibling PATCHES.md must live in');
+
+  // and the four things PATCHES.md has to contain, as the gate reads them
+  const doc = read('vendor/mpl-core/PATCHES.md');
+  for (const [what, re] of [
+    ['an upstream repository', /https?:\/\/github\.com\/[\w.-]+\/[\w.-]+/],
+    ['a revision or an explicit unknown', /\b[0-9a-f]{7,40}\b|unknown/i],
+    ['a stated reason for the fork', /intentionally|deliberate|omitted|because|reason/i],
+  ] as const) assert.match(doc, re, `PATCHES.md is missing ${what}`);
 });
 
 // --------------------------------------------------------------------------------------------- mutations
