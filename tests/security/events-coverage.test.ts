@@ -100,6 +100,13 @@ const WIRE_ONLY: Record<string, string> = {
   // SEC-B22: `ParamsPatched` carries the new parameter values so a user can see *what* changed; the read model
   // counts changes from `ParamsChanged` (`params_changes`), and the ws feed maps it onto `params_changed`.
   ParamsPatched: 'wire.ts',
+  // SEC-A2 (2026-10-02, M-11): the arena paused *itself* — `resolve_battle` flipping `paused` when the
+  // battle oracle hit its own daily cap. It maps to `params_changed` (the client re-reads `paused` off
+  // the config), and the operator's signal is the `arena_paused` gauge in backend/src/oracle-metrics.ts
+  // + the ArenaAutoPaused rule in ops/monitoring/alerts.yml. There is deliberately no `authority_changes`
+  // row: that table is a governance audit trail keyed on a *human* rotating a role, and this event has no
+  // role to rotate — `by` is the key that tripped the breaker, which is what ArenaResolveNotOurs pages on.
+  ArenaAutoPaused: 'wire.ts',
 };
 
 // ------------------------------------------------------------------- the rules

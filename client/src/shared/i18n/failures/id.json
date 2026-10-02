@@ -181,5 +181,6 @@
   "internal": "Server tidak dapat menyelesaikan permintaan. Coba lagi nanti.",
   "guardRail": "Perubahan yang diajukan melanggar aturan. Tinjau pemeriksaan terperinci.",
   "network": "Koneksi jaringan gagal. Periksa koneksi dan coba lagi.",
-  "walletMessages": "Dompet ini tidak dapat menandatangani pesan. Gunakan dompet yang mendukungnya."
+  "walletMessages": "Dompet ini tidak dapat menandatangani pesan. Gunakan dompet yang mendukungnya.",
+  "arena_BadCap": "Batas harian pembayaran oracle arena tidak valid."
 }

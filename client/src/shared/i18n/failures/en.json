@@ -181,5 +181,6 @@
   "internal": "The server could not complete the request. Try again later.",
   "guardRail": "The proposed changes violate validation rules. Review the detailed checks.",
   "network": "Network connection failed. Check your connection and try again.",
-  "walletMessages": "This wallet cannot sign messages. Use a wallet that supports message signing."
+  "walletMessages": "This wallet cannot sign messages. Use a wallet that supports message signing.",
+  "arena_BadCap": "Oracle daily cap must be > 0 and <= 10000 battles at MAX_WAGER"
 }

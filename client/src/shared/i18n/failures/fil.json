@@ -181,5 +181,6 @@
   "internal": "Hindi makumpleto ng server ang kahilingan. Subukan mamaya.",
   "guardRail": "Lumalabag sa mga tuntunin ang mungkahing pagbabago. Suriin ang detalyadong pagsusuri.",
   "network": "Nabigo ang koneksyon. Suriin ang network at subukang muli.",
-  "walletMessages": "Hindi kayang pumirma ng mensahe ng wallet na ito. Gumamit ng wallet na may ganitong kakayahan."
+  "walletMessages": "Hindi kayang pumirma ng mensahe ng wallet na ito. Gumamit ng wallet na may ganitong kakayahan.",
+  "arena_BadCap": "Di-wasto ang pang-araw-araw na limit ng bayad ng arena oracle."
 }

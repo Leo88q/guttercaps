@@ -26,7 +26,7 @@ import { packQuote, validateRequest } from './quote.ts';
 import { gapStatus, getConnection, untimedStatus } from './ingest.ts';
 import { crankStatus, pauseStatus, priceStatus } from './queries.ts';
 import { burnOracleStatus } from './burn-oracle.ts';
-import { arenaOracleGauge, burnOracleGauges, rewardOracleGauges, unattributedResolves } from './oracle-metrics.ts';
+import { arenaOracleGauge, burnOracleGauges, rewardOracleGauges, unattributedResolves, vaultSolvencyGauge } from './oracle-metrics.ts';
 import { authorityChangesIndexed, governanceGauges } from './governance-metrics.ts';
 import { finalityStatus } from './finality.ts';
 import * as q from './queries.ts';
@@ -253,6 +253,16 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   registerScrape('arena_oracle_cap_cg', 'ArenaConfig.oracle_daily_cap ($CG of resolved pots per 24 h window); -1 when unreadable.', async () => [{ value: (await arenaOracleGauge()).capCg }]);
   registerScrape('arena_oracle_paid_today_cg', 'ArenaConfig.oracle_paid_today ($CG) in the current window; -1 when unreadable.', async () => [{ value: (await arenaOracleGauge()).paidTodayCg }]);
   registerScrape('arena_oracle_cap_readable', '1 when the two arena gauges above were read from the RPC in the last 30 s.', async () => [{ value: (await arenaOracleGauge()).readable }]);
+  // SEC-A2 (2026-10-02, M-11): `resolve_battle` flips `paused` itself when the oracle hits its own
+  // daily cap, so this series going 1 with no ArenaConfigChanged behind it is the automatic breaker.
+  registerScrape('arena_paused', 'ArenaConfig.paused; 1 when no battle can be created or accepted (cancel_stale_battle still refunds).', async () => [{ value: (await arenaOracleGauge()).paused }]);
+  // SEC-A2: the vault PDA against the Σ VaultLedger liabilities it owes. `sweep_vault` saturates and
+  // moves nothing when the vault is short, and no player path can pause the game over it (#12), so
+  // this is the only detector. `readable` keeps the rule from firing on a dead RPC.
+  registerScrape('vault_lamports_sol', 'chip_core vault PDA balance (SOL); -1 when unreadable.', async () => [{ value: (await vaultSolvencyGauge()).lamportsSol }]);
+  registerScrape('vault_liabilities_sol', 'Σ VaultLedger.liab_lamports the vault PDA owes (SOL); -1 when unreadable.', async () => [{ value: (await vaultSolvencyGauge()).liabLamportsSol }]);
+  registerScrape('vault_solvent', '1 when the vault PDA holds at least what the ledgers say it owes; -1/0 when unreadable/short.', async () => [{ value: (await vaultSolvencyGauge()).solvent }]);
+  registerScrape('vault_solvency_readable', '1 when the three vault gauges above were read from the RPC in the last 30 s.', async () => [{ value: (await vaultSolvencyGauge()).readable }]);
   // SEC-G05: governance keys (governance-metrics.ts). RPC-polled fingerprints (GOVERNANCE_WATCH) + the
   // indexed rotation events; either path alone is enough for the `guttercaps.governance` alerts.
   registerScrape('program_authority_fingerprint', 'First 6 bytes of each governance key as an integer (0 = cleared); changes() = a rotation. Empty until GOVERNANCE_WATCH reads the accounts.', async () => (await governanceGauges()).points.map((p) => ({ value: p.value, labels: { program: p.program, role: p.role } })));

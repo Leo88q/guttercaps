@@ -146,6 +146,9 @@ export const EVENT_SPECS: readonly EventSpec[] = [
   spec('arena', 'BattleCancelled', [['battle', 'pubkey'], ['refundedA', 'u64'], ['refundedB', 'u64']]),
   // SEC-G05: `set_arena` touched battle_oracle / oracle_daily_cap / treasury_cg (payload = resulting config).
   spec('arena', 'ArenaConfigChanged', [['by', 'pubkey'], ['battleOracle', 'pubkey'], ['oracleDailyCap', 'u64'], ['treasuryCg', 'pubkey']]),
+  // SEC-A2 (2026-10-02, M-11): `resolve_battle` hit `config.oracle_daily_cap` and flipped `paused` itself,
+  // so the breaker no longer depends on a cron noticing. `dayIndex`/`paid` are what the alert keys on.
+  spec('arena', 'ArenaAutoPaused', [['by', 'pubkey'], ['oraclePaidToday', 'u64'], ['oracleDailyCap', 'u64']]),
   // ---------------------------------------------------------------- staking
   spec('staking', 'DayClosed', [['dayIndex', 'u32'], ['year', 'u8'], ['scheduleCap', 'u64'], ['guarded', 'u64'], ['burn7dAvg', 'u64'], ['sliceBudget', ['u64', SPLIT_COUNT]]]),
   spec('staking', 'Staked', [['owner', 'pubkey'], ['kind', 'u8'], ['key', 'pubkey'], ['amount', 'u64'], ['weight', 'u128'], ['unlockAt', 'i64']]),

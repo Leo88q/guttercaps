@@ -16,7 +16,7 @@ import { RNG_KIND, ata, chipPoolPda, compressedChipStakePda, compressedMintClaim
 import { EMISSION_SPLIT, QUEST_CHIP_TEMPLATES, RARITY_PROFILES } from '@guttercaps/economy';
 import { QUEST_ORACLE, SB_ORACLE, SB_QUEUE, SEASON_ORACLE, SET_ORACLE, TREASURY, binariesPresent, getEnv, mintCg, tokenBalance, type Env } from './helpers/env';
 import { Err, expectAnyFail, expectFail, lamportsClose } from './helpers/expect';
-import { cancelStale, loadPending, mintCompressedChips, revealAndOpenCompressedAll, valueOf } from './helpers/flows';
+import { buyPack, cancelStale, loadPending, mintCompressedChips, revealAndOpenCompressedAll, valueOf, Currency, SKU } from './helpers/flows';
 import { randomnessAccount } from './helpers/sbmock';
 
 const bins = binariesPresent();
@@ -242,6 +242,10 @@ suite('T-L-S staking', () => {
   it('S06 stake_compressed_chip: authenticated CPI sets claim.staked; unstake clears; staked claims cannot be listed', async () => {
     const chips = await mintCompressedChips(env, staker, 1, valueOf('S06'));
     const c = chips[0];
+    // SEC-A1 (2026-10-02, M-5): an admin-staged claim carries no purchase, so it has no soulbound
+    // window — this is the unlocked half of the lock check S06b adds. Without this assertion the
+    // `ChipNotFree` guard in S06b would be equally satisfied by a check that always refuses.
+    expect(decodeCompressedMintClaim((await env.chain.getAccount(c.claim))!.data).lockUntil).toBe(0n);
     await env.chain.send([stakeCompressedChipIx({ owner: staker.publicKey, claim: c.claim })], { signers: [staker] });
     let claim = decodeCompressedMintClaim((await env.chain.getAccount(c.claim))!.data);
     expect(claim.staked).toBe(true);
@@ -258,6 +262,24 @@ suite('T-L-S staking', () => {
     const theirs = await mintCompressedChips(env, other, 1, valueOf('S06b'));
     await expectFail(env.chain.send([stakeCompressedChipIx({ owner: staker.publicKey, claim: theirs[0].claim })], { signers: [staker] }), Err.staking('NotOwner'));
   });
+
+  // SEC-A1 (2026-10-02, M-5): `stake_compressed_chip` read `chip.flags & F_SOULBOUND == 0 || now >= chip.lock_until`
+  // as documentation and never enforced it. A Starter is soulbound for 7 days (`soulbound_days` in
+  // packages/economy), and the claim PDA carries the same window, so staking one before it expires
+  // both bypasses the non-transferable rule (the stake PDA is what makes a chip spendable) and
+  // locks the claim into the emission pools for a chip the design says must stay put. `stake_compressed_chip_v2`
+  // got the same guard (its proof path is what 90-compressed covers).
+  it('S06b SEC-A1 (M-5): a soulbound Starter cannot be staked before its lock expires', async () => {
+    const buyer = await env.player({ usdc: 1_000_000_000n });
+    const b = await buyPack(env, buyer, { sku: SKU.STARTER, currency: Currency.USDC });
+    const [r] = await revealAndOpenCompressedAll(env, buyer, b);
+    const claim = compressedMintClaimPda(buyer.publicKey, r.event.claimNonces[0])[0];
+    const opened = decodeCompressedMintClaim((await env.chain.getAccount(claim))!.data);
+    expect(opened.lockUntil).toBeGreaterThan(0n);
+    await expectFail(env.chain.send([stakeCompressedChipIx({ owner: buyer.publicKey, claim })], { signers: [buyer] }), Err.staking('ChipNotFree'), 'stake a soulbound Starter');
+    // The claim PDA itself is untouched: the refusal is at the gate, not a half-written stake.
+    expect(decodeCompressedMintClaim((await env.chain.getAccount(claim))!.data).staked).toBe(false);
+  }, 600_000);
 
   it('S07 sync_set_bonus: set oracle only; compressed stake weight includes the ×1.12 set bonus; 11 → TooManySets', async () => {
     const chips = await mintCompressedChips(env, staker, 1, valueOf('S07'));
