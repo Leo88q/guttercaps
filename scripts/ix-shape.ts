@@ -285,11 +285,11 @@ export function tsEncodings(repo = REPO): Encoding[] {
       const idm = /^([A-Za-z_$][\w$]*)(?:\.toBytes\(\))?$/.exec(expr);
       if (idm) {
         const id = idm[1]!;
-        const fnStart = Math.max(
+        const fnStarts = [
           ...[...src.slice(0, at).matchAll(/\n(?:export\s+)?(?:async\s+)?function\s+\w+[^\n{]*\{\n/g)].map((x) => x.index! + x[0].length),
-          [...src.slice(0, at).matchAll(/\n(?:export\s+)?const\s+\w+\s*=\s*[^\n=]*=>\s*\{\n/g)].map((x) => x.index! + x[0].length),
-          0,
-        );
+          ...[...src.slice(0, at).matchAll(/\n(?:export\s+)?const\s+\w+\s*=\s*[^\n=]*=>\s*\{\n/g)].map((x) => x.index! + x[0].length),
+        ];
+        const fnStart = Math.max(0, ...fnStarts);
         const scope = src.slice(fnStart, at);
         // The declaration match has to run to the end of the *statement*, not stop at `()`: a
         // `const w = new BorshWriter().u64(a.amount);` carries its first argument in the chain, and a

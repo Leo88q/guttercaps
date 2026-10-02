@@ -1244,19 +1244,28 @@ pub fn resolve_battle_handler(
         c.oracle_day_start = clock.unix_timestamp;
         c.oracle_paid_today = 0;
     }
-    c.oracle_paid_today = c
+    let next_paid = c
         .oracle_paid_today
         .checked_add(pot)
         .ok_or(ArenaError::Overflow)?;
-    require!(
-        c.oracle_paid_today <= c.oracle_daily_cap,
-        ArenaError::OracleCap
-    );
-    // SEC-A2 (2026-10-02): automatic circuit breaker. Reaching the cap is exactly what a leaked
-    // `battle_oracle` looks like, so the arena pauses itself here instead of waiting for a human
-    // holding the pauser key. This battle still settles (the check above passed); `create_battle`
-    // and `accept_battle` read `!config.paused`, so no new wager can be escrowed, while
-    // `cancel_stale_battle` deliberately does not read `paused` and keeps refunding both sides.
+    // SEC-A2: a leaked `battle_oracle` looks like pots piling up against the daily cap.
+    // Returning `OracleCap` here used to roll back the pause — an unsuccessful tx cannot
+    // persist `paused = true`. When this pot would *exceed* the cap we pause on a successful
+    // path and leave the battle Accepted so `cancel_stale_battle` can refund both sides.
+    // `create_battle` / `accept_battle` already read `!config.paused`. Exact equality still
+    // settles this last in-cap battle and then pauses.
+    if next_paid > c.oracle_daily_cap {
+        if !c.paused {
+            c.paused = true;
+            emit!(ArenaAutoPaused {
+                by: ctx.accounts.battle_oracle.key(),
+                oracle_paid_today: c.oracle_paid_today,
+                oracle_daily_cap: c.oracle_daily_cap,
+            });
+        }
+        return Ok(());
+    }
+    c.oracle_paid_today = next_paid;
     if c.oracle_paid_today >= c.oracle_daily_cap && !c.paused {
         c.paused = true;
         emit!(ArenaAutoPaused {

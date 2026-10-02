@@ -6,11 +6,11 @@
 # saying "fill with your Alertmanager once one exists". The rules were a dashboard, not an alert, and
 # the severities (`page` = wake someone) were prose.
 #
-# This file is the missing half. It ships *with a receiver*, so `npm run ops:prometheus` produces a
-# stack that can actually page; what it cannot do is know where you want the page to go. That is one
-# edit below (`url:`), and the CI gate fails if `targets` ever goes back to empty while alerts.yml has
-# rules in it — the regression this file exists to prevent is someone deleting the delivery path and
-# leaving the rules behind.
+# This file is the missing half. It ships *with a receiver* (`alert-webhook` in compose), so
+# `npm run ops:prometheus` produces a stack that can actually page. The sidecar logs every
+# notification and, when SLACK_WEBHOOK_URL / PAGERDUTY_ROUTING_KEY are set, forwards a real
+# Slack / PagerDuty payload. The CI gate fails if `targets` goes back to empty, if the receiver
+# is loopback, or if ops:prometheus starts Prometheus without Alertmanager and the sidecar.
 #
 # Alertmanager does NOT expand environment variables in this file (Prometheus does, this does not).
 # That is why the receiver URL is a literal and why there is no `${ALERT_WEBHOOK_URL}` here.
@@ -66,7 +66,12 @@ receivers:
   # as the firing notification — an alert that never resolves is a channel nobody trusts.
   - name: default
     webhook_configs:
-      - url: 'http://127.0.0.1:5001/alerts'
+      # The compose `alert-webhook` service (ops/monitoring/alert-webhook.mjs). Alertmanager's
+      # generic webhook is not a Slack or PagerDuty payload; the sidecar translates and, if
+      # SLACK_WEBHOOK_URL / PAGERDUTY_ROUTING_KEY are set, forwards with egress on the `edge`
+      # network. Loopback 127.0.0.1 inside this container is a stub and is rejected by the
+      # alerting-delivery gate.
+      - url: 'http://alert-webhook:5001/alerts'
         send_resolved: true
 
 # The API's own `/metrics` is scraped by Prometheus; Alertmanager itself is scraped so a dead

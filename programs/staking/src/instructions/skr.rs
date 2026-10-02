@@ -68,6 +68,9 @@ pub fn init_skr_pool(ctx: Context<InitSkrPool>, max_root_budget: u64) -> Result<
     };
     p.paused = false;
     p.bump = ctx.bumps.pool;
+    p.last_withdraw_slot = 0;
+    p.withdraw_day_start = 0;
+    p.withdrawn_today = 0;
     emit!(SkrPoolChanged {
         max_root_budget: p.max_root_budget,
         paused: false
@@ -168,12 +171,10 @@ pub struct WithdrawSkr<'info> {
     pub pool: Box<Account<'info, SkrPool>>,
     #[account(mut, address = pool.vault)]
     pub vault: Account<'info, TokenAccount>,
-    /// Destination is deliberately *not* pinned to `admin` (Watchtower SW010): the instruction is
-    /// admin-only (`has_one = admin`, a Squads vault) and the money goes to the treasury vault's ATA
-    /// (localnet S18) — forcing `to.owner == admin` would only add a hop through the multisig's own
-    /// ATA without removing any capability an admin key already has. Mint is pinned; amount ≤ `budget`.
+    /// Destination owner is the admin (Squads vault). A leaked keeper that is not admin cannot
+    /// redirect; a leaked admin still only drains to an ATA the vault already controls.
     // sentio-ignore-next-line SW013
-    #[account(mut, token::mint = pool.skr_mint)]
+    #[account(mut, token::mint = pool.skr_mint, token::authority = admin)]
     pub to: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
 }
@@ -181,16 +182,39 @@ pub struct WithdrawSkr<'info> {
 /// Only the unreserved `budget` can leave — SKR promised to a live root stays.
 pub fn withdraw_skr(ctx: Context<WithdrawSkr>, amount: u64) -> Result<()> {
     require!(amount > 0, StakeError::ZeroAmount);
+    let clock = Clock::get()?;
     let p = &mut ctx.accounts.pool;
     require!(amount <= p.budget, StakeError::SkrBudgetExceeded);
-    // SEC-A6 (2026-10-02): the destination is deliberately not pinned (SW010), so a leaked admin key
-    // can move the whole unreserved budget in one transaction. Capping a single call at 10 % of the
-    // budget bounds the loss per tx and turns a silent one-tx drain into ≥ 10 visible transactions.
-    // Pinning `to` to a config treasury ATA is the real fix and needs a `SkrPool` layout migration
-    // (`state:layout -- --write`) — tracked as the follow-up to this cap in AUDIT-2026-10-02.md.
+    // SEC-A6: 10 % of the current budget per call, one call per slot (so packing 10 instructions
+    // into one transaction cannot drain the pool), and 10 % of the day's opening budget per day.
+    // `token::authority = admin` pins the recipient.
+    if p.withdraw_day_start == 0
+        || clock.unix_timestamp.saturating_sub(p.withdraw_day_start) >= DAY
+    {
+        p.withdraw_day_start = clock.unix_timestamp;
+        p.withdrawn_today = 0;
+    }
+    require!(
+        clock.slot > p.last_withdraw_slot,
+        StakeError::SkrWithdrawRate,
+    );
     let per_call_cap = (p.budget / 10).max(1);
-    require!(amount <= per_call_cap, StakeError::SkrBudgetExceeded);
+    let opening = p
+        .budget
+        .checked_add(p.withdrawn_today)
+        .ok_or(StakeError::Overflow)?;
+    let daily_cap = (opening / 10).max(1);
+    let daily_left = daily_cap.saturating_sub(p.withdrawn_today);
+    require!(
+        amount <= per_call_cap && amount <= daily_left,
+        StakeError::SkrBudgetExceeded,
+    );
     p.budget -= amount;
+    p.withdrawn_today = p
+        .withdrawn_today
+        .checked_add(amount)
+        .ok_or(StakeError::Overflow)?;
+    p.last_withdraw_slot = clock.slot;
     let seeds: &[&[u8]] = &[b"skr_pool", &[p.bump]];
     token::transfer(
         CpiContext::new_with_signer(

@@ -191,6 +191,11 @@ pub const VOUCHER_DEFS: [VoucherDef; 4] = [
     }, // 3 five referrals converted
 ];
 
+/// Starter chips cannot be listed, fused as material, or staked until this many days elapse.
+/// Mirrored in packages/economy `STARTER_SOULBOUND_DAYS` (packs.ts) — Starter is +EV on purpose,
+/// and the window is what stops a sybil farm from dumping the chips the same day.
+pub const STARTER_SOULBOUND_DAYS: u8 = 7;
+
 pub const DEFAULT_PACKS: [PackDef; 4] = [
     PackDef {
         chips: 4,

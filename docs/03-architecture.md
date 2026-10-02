@@ -85,7 +85,7 @@
 | `SetBonus` | staking | `["setbonus", wallet]` | 8+16 | completed_sets, updated_at (oracle-signed) |
 | `RewardRoot` | staking | `["root", u8 kind, u32 epoch]` | 8+~60 | Merkle root выплат (quests/season), budget, claimed_bitmap ptr |
 | `ClaimReceipt` | staking | `["claim", root, wallet]` | 8+1 | защита от двойного клейма |
-| `SkrPool` | staking | `["skr_pool"]` | 8+107 | SKR-призовой пул (наградная валюта #2): `skr_mint`, `vault` (ATA пула), `budget`, `reserved`, `funded_total`, `paid_total`, `max_root_budget`, `paused`; инвариант `vault ≥ budget + reserved` |
+| `SkrPool` | staking | `["skr_pool"]` | 8+130 | SKR-призовой пул (наградная валюта #2): `skr_mint`, `vault` (ATA пула), `budget`, `reserved`, `funded_total`, `paid_total`, `max_root_budget`, `paused`, `last_withdraw_slot`, `withdraw_day_start`, `withdrawn_today`; инвариант `vault ≥ budget + reserved`; вывод ≤ 10 %/вызов, 1/слот, 10 %/день, dest = admin ATA |
 | `WagerBattle` | arena | `["battle", challenger, nonce]` | 8+~200 | стороны, ставка ($CG ATA-эскроу), squads[3], randomness, status |
 
 Все PDA хранят `bump`; все `init` — с явным `space`; все числовые операции — `checked_*`.

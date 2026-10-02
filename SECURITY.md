@@ -74,6 +74,10 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   old bytes across, and it has to be written into `docs/06` §2.2 before `--write` accepts the new baseline.
   `GameConfig.params_version` versions the *economy parameters*, not the layout — do not read it as a
   compatibility guarantee.
+  **SkrPool (2026-10-02, SEC-A6):** three fields appended (`last_withdraw_slot`, `withdraw_day_start`,
+  `withdrawn_today`). No mainnet pool exists; `init_skr_pool` writes the new `INIT_SPACE`. A leftover
+  devnet account from before this change will fail to deserialize — close/re-init, do not `--write` over
+  a live layout again.
 - **SEC-B6 (2026-09-26): the API verifier checks rarities, not districts.** `POST /packs/verify`
   recomputes the rarity sequence from the emitted randomness and compares it with the mint, but it cannot
   recompute *which district* a chip landed in: the pool (`collections_created`, the featured district) is

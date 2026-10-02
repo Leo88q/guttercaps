@@ -145,6 +145,12 @@ export function scanBlob(blob: string, path: string, body: string, rules: readon
   const lines = body.split('\n');
   for (const rule of rules) {
     if (rule.allow?.some((p) => path === p || path.startsWith(p))) continue;
+    // Keypairs are often pretty-printed across 64 lines. A line-only scan would miss them;
+    // `isKeypairContent` parses the whole blob (compact and multiline JSON both).
+    if (rule.id === 'solana-keypair' && isKeypairContent(body)) {
+      hits.push({ blob, path, rule: rule.id, line: 1, source: blob === WORKTREE ? 'worktree' : 'history' });
+      continue;
+    }
     const at = lines.findIndex((l) => rule.re.test(l));
     if (at >= 0) hits.push({ blob, path, rule: rule.id, line: at + 1, source: blob === WORKTREE ? 'worktree' : 'history' });
   }
@@ -246,14 +252,21 @@ function readBlobs(cwd: string, wanted: Map<string, string>): Promise<Blob[]> {
       }
     };
 
+    let failed: Error | undefined;
     child.stdout!.on('data', onData as (c: Buffer) => void);
-    child.stdout!.on('end', () => resolve(blobs));
     child.stderr!.on('data', (d: Buffer) => process.stderr.write(d));
-    child.on('error', reject);
+    child.on('error', (e) => { failed = e; });
     // The object names go in as one line each; ~790 of them is well under the pipe buffer here, but an
     // unhandled 'error' on the stream would take the whole run down, so it is swallowed rather than
-    // assumed away — stdout 'end' is what resolves.
+    // assumed away. `close` is what settles: resolving on stdout `end` without the exit code would
+    // treat a failed `git cat-file --batch` as "0 secrets, scan clean".
     child.stdin!.on('error', () => {});
+    child.on('close', (code) => {
+      if (failed) { reject(failed); return; }
+      if (code !== 0) { reject(new Error(`git cat-file --batch exited ${code ?? 'null'}`)); return; }
+      if (want !== 0) { reject(new Error('git cat-file --batch ended mid-blob')); return; }
+      resolve(blobs);
+    });
     for (const sha2 of wanted.keys()) child.stdin!.write(`${sha2}\n`);
     try { child.stdin!.end(); } catch { /* the process is already gone */ }
   });
@@ -332,9 +345,11 @@ function selftest(): number {
   // rule matches while the committed source stays clean, and it means a *real* credential pasted into
   // this file later would still be caught.
   const keypair = JSON.stringify(Array.from({ length: 64 }, (_, i) => (i * 7 + 13) % 256));
+  const prettyKeypair = '[\n' + Array.from({ length: 64 }, (_, i) => `  ${(i * 7 + 13) % 256}`).join(',\n') + '\n]';
   const BEGIN = '-----BEGIN ';
   const positives: Array<[string, string]> = [
     ['solana-keypair', keypair],
+    ['solana-keypair (pretty-printed)', prettyKeypair],
     ['private-key-pem', `${BEGIN}RSA PRIVATE KEY-----\nMIIEow\n${BEGIN.replace('BEGIN', 'END')} RSA PRIVATE KEY-----`],
     ['aws-access-key-id', 'aws_access_key_id = AKIA' + 'IOSFODNN7EXAMPLE'],
     ['github-token', 'token: ghp_' + 'a'.repeat(36)],

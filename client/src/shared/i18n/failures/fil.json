@@ -90,6 +90,7 @@
   "staking_ClaimExpired": "Nag-expire na ang compressed mint claim at hindi maaaring i-stake",
   "staking_BeforeGenesis": "Hindi pa nagsisimula ang emission: now < genesis_ts",
   "staking_BadMint": "Dapat walang freeze authority ang $CG mint at pasok ang supply sa alokasyong hindi mula sa laro",
+  "staking_SkrWithdrawRate": "Ang pag-withdraw ng SKR ay limitado sa isang tawag bawat slot",
   "arena_WagerRange": "Labas sa saklaw na 5–5000 $CG ang pusta",
   "arena_BadStatus": "Wala ang laban sa inaasahang kalagayan",
   "arena_NotOwner": "Hindi pag-aari ng pumirma ang cap sa squad",

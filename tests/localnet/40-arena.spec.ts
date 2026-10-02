@@ -214,11 +214,15 @@ suite('T-L-A arena', () => {
     expect(await env.chain.getAccount(ata(env.mints.cg, r2.battle))).toBeNull();
   }, 600_000);
 
-  svmOnly('A07 oracle daily cap: pots above the cap → OracleCap; resets after 24 h', async () => {
+  svmOnly('A07 oracle daily cap: overshoot pauses without settling; exact cap settles then pauses', async () => {
     if (!env.chain.canWarp) return;
     // cap is 1 M $CG of pots per day — shrink it with set_arena(None, Some(cap), None, None) for the test
     const setCap = (cap: bigint) => {
       const w = new BorshWriter(); w.u8(0); w.u8(1); w.u64(cap); w.u8(0); w.u8(0);
+      return new TransactionInstruction({ programId: ARENA_ID, keys: [signer(env.admin.publicKey, false), rw(arenaConfigPda()[0])], data: Buffer.from(ixData('set_arena', w.toBytes())) });
+    };
+    const setCapAndPaused = (cap: bigint, paused: boolean) => {
+      const w = new BorshWriter(); w.u8(0); w.u8(1); w.u64(cap); w.u8(1); w.bool(paused); w.u8(0);
       return new TransactionInstruction({ programId: ARENA_ID, keys: [signer(env.admin.publicKey, false), rw(arenaConfigPda()[0])], data: Buffer.from(ixData('set_arena', w.toBytes())) });
     };
     await env.chain.send([setCap(150n * CG)], { signers: [env.admin] });
@@ -232,11 +236,34 @@ suite('T-L-A arena', () => {
       await env.chain.send([revealIx({ kind: RNG_KIND.BATTLE, payer: env.admin.publicKey, randomness: r.rng.randomness, value: valueOf('A07', Number(r.nonce)) })], { signers: [env.admin] });
       return env.chain.send([resolveBattleIx({ oracle: BATTLE_ORACLE.publicKey, challenger: a.publicKey, nonce: r.nonce, randomness: r.rng.randomness, winner: winner.publicKey, resultHash: valueOf('h'), cgMint: env.mints.cg, seasonPool, treasuryCg })], { signers: [BATTLE_ORACLE] });
     };
-    await play(50n * CG, a); // pot 100 ≤ 150
-    await expectFail(play(50n * CG, b), Err.arena('OracleCap'), 'second pot would exceed 150');
-    await env.chain.warpSeconds(86_401n);
-    await play(50n * CG, b);
-    await env.chain.send([setCap(1_000_000n * CG)], { signers: [env.admin] });
+    await play(50n * CG, a); // pot 100 ≤ 150 — settles, does not yet pause
+    expect(decodeArenaConfig((await env.chain.getAccount(arenaConfigPda()[0]))!.data).paused).toBe(false);
+    // A pot that would exceed the cap pauses on a successful path (an `OracleCap` error would
+    // roll the pause back). The battle stays Accepted so cancel_stale can refund; new wagers cannot
+    // be escrowed.
+    const over = await createBattle(a, squadA, 50n * CG);
+    await env.chain.send([acceptCompressedBattleIx({ opponent: b.publicKey, challenger: a.publicKey, nonce: over.nonce, claims: squadB, cgMint: env.mints.cg })], { signers: [b] });
+    await env.chain.send([revealIx({ kind: RNG_KIND.BATTLE, payer: env.admin.publicKey, randomness: over.rng.randomness, value: valueOf('A07', Number(over.nonce)) })], { signers: [env.admin] });
+    await env.chain.send([resolveBattleIx({ oracle: BATTLE_ORACLE.publicKey, challenger: a.publicKey, nonce: over.nonce, randomness: over.rng.randomness, winner: b.publicKey, resultHash: valueOf('h'), cgMint: env.mints.cg, seasonPool, treasuryCg })], { signers: [BATTLE_ORACLE] });
+    const cfgPaused = decodeArenaConfig((await env.chain.getAccount(arenaConfigPda()[0]))!.data);
+    expect(cfgPaused.paused).toBe(true);
+    expect((await battleOf(over.battle)).status).toBe(1); // Accepted — not paid over the cap
+    await expectFail(createBattle(a, squadA, 10n * CG), Err.arena('Paused'), 'no new wagers after auto-pause');
+    await env.chain.warpSeconds(1801n);
+    const a0 = await tokenBalance(env.chain, env.mints.cg, a.publicKey);
+    const b0 = await tokenBalance(env.chain, env.mints.cg, b.publicKey);
+    await env.chain.send([cancelStaleBattleIx({ caller: a.publicKey, challenger: a.publicKey, opponent: b.publicKey, nonce: over.nonce, cgMint: env.mints.cg })], { signers: [a] });
+    expect((await tokenBalance(env.chain, env.mints.cg, a.publicKey)) - a0).toBe(50n * CG);
+    expect((await tokenBalance(env.chain, env.mints.cg, b.publicKey)) - b0).toBe(50n * CG);
+    // Exact equality still settles this last in-cap battle and then pauses. paid_today is still 100
+    // (the overshoot did not move it); unpause with the same 150 cap, pot 50 → next_paid == cap.
+    await env.chain.send([setCapAndPaused(150n * CG, false)], { signers: [env.admin] });
+    await play(25n * CG, a);
+    const cfgExact = decodeArenaConfig((await env.chain.getAccount(arenaConfigPda()[0]))!.data);
+    expect(cfgExact.paused).toBe(true);
+    expect(cfgExact.oraclePaidToday).toBe(150n * CG);
+    // unpause + restore the production cap so later specs can create battles
+    await env.chain.send([setCapAndPaused(1_000_000n * CG, false)], { signers: [env.admin] });
   }, 600_000);
 
   it('A08 squad checks: chip not owned → NotOwner; listed chip → ChipBusy; staked chips MAY fight', async () => {

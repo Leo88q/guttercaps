@@ -70,7 +70,7 @@
     "ops:config": "docker compose -f ops/deploy/docker-compose.yaml config -q && echo \"compose config ok\"",
     "ops:backup-now": "docker compose -f ops/deploy/docker-compose.yaml exec -e RUN_ONCE=1 backup sh /backup/sqlite-backup.sh --once",
     "ops:restore-drill": "node --no-warnings=ExperimentalWarning scripts/restore-drill.mjs",
-    "ops:prometheus": "docker compose -f ops/deploy/docker-compose.yaml --profile monitoring up -d prometheus",
+    "ops:prometheus": "docker compose -f ops/deploy/docker-compose.yaml --profile monitoring up -d prometheus alertmanager alert-webhook",
     "schema:check": "node --experimental-strip-types scripts/schema-drift.ts --check",
     "state:layout": "node --experimental-strip-types --no-warnings scripts/state-layout.ts",
     "fonts:vendor": "node --experimental-strip-types --no-warnings scripts/vendor-fonts.ts --write",

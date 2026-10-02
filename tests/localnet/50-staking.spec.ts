@@ -1,7 +1,7 @@
 // T-L-S — staking / emission / Merkle roots / SKR prize pool (docs/06 §3.5 "Стейкинг").
 import { beforeAll, describe, expect, it } from 'vitest';
 import { Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
-import { createTransferInstruction } from '@solana/spl-token';
+import { createAssociatedTokenAccountIdempotentInstruction, createTransferInstruction } from '@solana/spl-token';
 import { ixData, ro, rw, signer } from '@/chain/anchor';
 import { BorshWriter } from '@/chain/borsh';
 import {
@@ -13,7 +13,7 @@ import { claimChipRootIx, claimItemRootIx, claimRootIx, claimSkrRootIx, fundSkrI
 import { closeRandomnessIx, initRandomnessIx, rngAccounts } from '@/chain/ix/rng';
 import { buildRewardTree } from '@/chain/merkle';
 import { RNG_KIND, ata, chipPoolPda, compressedChipStakePda, compressedMintClaimPda, claimReceiptPda, configPda, emissionPda, pendingPackPda, playerItemsPda, rewardRootPda, rewarderPda, seasonPoolAuthPda, setBonusPda, skrPoolPda, tokenPoolPda, tokenStakePda } from '@/chain/pdas';
-import { EMISSION_SPLIT, QUEST_CHIP_TEMPLATES, RARITY_PROFILES } from '@guttercaps/economy';
+import { EMISSION_SPLIT, QUEST_CHIP_TEMPLATES, RARITY_PROFILES, STARTER_SOULBOUND_DAYS } from '@guttercaps/economy';
 import { QUEST_ORACLE, SB_ORACLE, SB_QUEUE, SEASON_ORACLE, SET_ORACLE, TREASURY, binariesPresent, getEnv, mintCg, tokenBalance, type Env } from './helpers/env';
 import { Err, expectAnyFail, expectFail, lamportsClose } from './helpers/expect';
 import { buyPack, cancelStale, loadPending, mintCompressedChips, revealAndOpenCompressedAll, valueOf, Currency, SKU } from './helpers/flows';
@@ -279,6 +279,11 @@ suite('T-L-S staking', () => {
     await expectFail(env.chain.send([stakeCompressedChipIx({ owner: buyer.publicKey, claim })], { signers: [buyer] }), Err.staking('ChipNotFree'), 'stake a soulbound Starter');
     // The claim PDA itself is untouched: the refusal is at the gate, not a half-written stake.
     expect(decodeCompressedMintClaim((await env.chain.getAccount(claim))!.data).staked).toBe(false);
+    if (!env.chain.canWarp) return;
+    await env.chain.warpSeconds(BigInt(STARTER_SOULBOUND_DAYS) * DAY + 1n);
+    await env.chain.send([stakeCompressedChipIx({ owner: buyer.publicKey, claim })], { signers: [buyer] });
+    expect(decodeCompressedMintClaim((await env.chain.getAccount(claim))!.data).staked).toBe(true);
+    await env.chain.send([unstakeCompressedChipIx({ owner: buyer.publicKey, claim, cgMint: env.mints.cg })], { signers: [buyer] });
   }, 600_000);
 
   it('S07 sync_set_bonus: set oracle only; compressed stake weight includes the ×1.12 set bonus; 11 → TooManySets', async () => {
@@ -535,17 +540,32 @@ suite('T-L-S staking', () => {
 
   it('S18–S20 withdraw_skr only from unreserved budget; sync_skr_pool absorbs direct transfers; pause blocks publish/claim but not fund', async () => {
     const p0 = await skrInvariant();
-    await expectFail(env.chain.send([withdrawSkrIx(env.admin.publicKey, env.mints.skr, ata(env.mints.skr, TREASURY.publicKey), p0.budget + 1n)], { signers: [env.admin] }), Err.staking('SkrBudgetExceeded'));
-    const t0 = await tokenBalance(env.chain, env.mints.skr, TREASURY.publicKey);
-    await env.chain.send([withdrawSkrIx(env.admin.publicKey, env.mints.skr, ata(env.mints.skr, TREASURY.publicKey), p0.budget)], { signers: [env.admin] });
-    expect((await tokenBalance(env.chain, env.mints.skr, TREASURY.publicKey)) - t0).toBe(p0.budget);
+    const adminAta = ata(env.mints.skr, env.admin.publicKey);
+    await env.chain.send([createAssociatedTokenAccountIdempotentInstruction(env.admin.publicKey, adminAta, env.admin.publicKey, env.mints.skr)], { signers: [env.admin] });
+    const perCall = p0.budget / 10n > 0n ? p0.budget / 10n : 1n;
+    await expectFail(env.chain.send([withdrawSkrIx(env.admin.publicKey, env.mints.skr, adminAta, p0.budget + 1n)], { signers: [env.admin] }), Err.staking('SkrBudgetExceeded'));
+    await expectFail(env.chain.send([withdrawSkrIx(env.admin.publicKey, env.mints.skr, adminAta, perCall + 1n)], { signers: [env.admin] }), Err.staking('SkrBudgetExceeded'), 'over 10% per-call / daily cap');
+    await expectFail(env.chain.send([withdrawSkrIx(env.admin.publicKey, env.mints.skr, adminAta, p0.budget)], { signers: [env.admin] }), Err.staking('SkrBudgetExceeded'), 'full unreserved budget in one call');
+    await expectFail(env.chain.send([withdrawSkrIx(env.admin.publicKey, env.mints.skr, ata(env.mints.skr, TREASURY.publicKey), perCall)], { signers: [env.admin] }), Err.anchor('ConstraintTokenOwner'), 'destination must be the admin ATA');
+    await expectFail(
+      env.chain.send([
+        withdrawSkrIx(env.admin.publicKey, env.mints.skr, adminAta, perCall),
+        withdrawSkrIx(env.admin.publicKey, env.mints.skr, adminAta, 1n),
+      ], { signers: [env.admin] }),
+      Err.staking('SkrWithdrawRate'),
+      'two withdrawals share a slot',
+    );
+    const t0 = await tokenBalance(env.chain, env.mints.skr, env.admin.publicKey);
+    await env.chain.send([withdrawSkrIx(env.admin.publicKey, env.mints.skr, adminAta, perCall)], { signers: [env.admin] });
+    expect((await tokenBalance(env.chain, env.mints.skr, env.admin.publicKey)) - t0).toBe(perCall);
     const p1 = await skrInvariant();
-    expect(p1.budget).toBe(0n);
+    expect(p1.budget).toBe(p0.budget - perCall);
+    await expectFail(env.chain.send([withdrawSkrIx(env.admin.publicKey, env.mints.skr, adminAta, 1n)], { signers: [env.admin] }), Err.staking('SkrBudgetExceeded'), 'daily 10% already consumed');
     // direct SPL transfer + permissionless sync
     await env.chain.send([createTransferInstruction(ata(env.mints.skr, staker.publicKey), ata(env.mints.skr, skrPoolPda()[0]), staker.publicKey, 77n * CG)], { signers: [staker] });
     await env.chain.send([syncSkrPoolIx(env.mints.skr)], { signers: [env.admin] });
     const p2 = await skrInvariant();
-    expect(p2.budget).toBe(77n * CG);
+    expect(p2.budget).toBe(p1.budget + 77n * CG);
     expect(p2.fundedTotal).toBe(p1.fundedTotal + 77n * CG);
     // pause
     await env.chain.send([setSkrPoolIx(env.admin.publicKey, null, true)], { signers: [env.admin] });

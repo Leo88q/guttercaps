@@ -18,7 +18,7 @@ const STAKING = [
   'Paused', 'Unauthorized', 'Overflow', 'SplitSum', 'SplitGuard', 'DayAlreadyClosed', 'YearlyCap', 'InvalidTier', 'BelowMinimum', 'NothingToClaim',
   'BudgetExceeded', 'RootTimelocked', 'RootRevoked', 'BadProof', 'AlreadyClaimed', 'RootBudgetExceeded', 'NotBurnReporter', 'NotOwner', 'ChipNotFree', 'InvalidBubblegumProof',
   'BadOracle', 'TooManySets', 'WrongRootCurrency', 'SkrPoolPaused', 'SkrBudgetExceeded', 'ZeroAmount', 'WrongSlice', 'InsufficientPool', 'ItemBudgetExceeded',
-  'ChipBudgetExceeded', 'ClaimExpired', 'BeforeGenesis', 'BadMint',
+  'ChipBudgetExceeded', 'ClaimExpired', 'BeforeGenesis', 'BadMint', 'SkrWithdrawRate',
 ] as const;
 const ARENA = [
   'Paused', 'Unauthorized', 'WagerRange', 'BadStatus', 'NotOwner', 'ChipBusy', 'InvalidBubblegumProof', 'DuplicateChip', 'SquadTooWeak', 'LeagueMismatch', 'BadWinner', 'OracleCap',

@@ -90,6 +90,7 @@
   "staking_ClaimExpired": "Quyền đúc tài sản nén đã hết hạn, không thể staking",
   "staking_BeforeGenesis": "Phát hành chưa bắt đầu: now < genesis_ts",
   "staking_BadMint": "Mint $CG không được có quyền đóng băng; nguồn cung phải trong phân bổ ngoài trò chơi",
+  "staking_SkrWithdrawRate": "Rút SKR bị giới hạn một lần gọi mỗi slot",
   "arena_WagerRange": "Tiền cược ngoài phạm vi 5–5000 $CG",
   "arena_BadStatus": "Trận đấu không ở trạng thái yêu cầu",
   "arena_NotOwner": "Nắp trong đội không thuộc người ký",
