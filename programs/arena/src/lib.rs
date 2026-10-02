@@ -452,10 +452,7 @@ pub fn set_arena_handler(
     if let Some(cap) = oracle_daily_cap {
         // SEC-A4 (2026-10-02): 0 is fail-closed (every resolve fails) and an unbounded cap is worse
         // than useless — `u64::MAX` silently disables the only automatic breaker (SEC-A2).
-        require!(
-            cap > 0 && cap <= MAX_WAGER * 10_000,
-            ArenaError::BadCap
-        );
+        require!(cap > 0 && cap <= MAX_WAGER * 10_000, ArenaError::BadCap);
         c.oracle_daily_cap = cap;
     }
     if let Some(p) = paused {
