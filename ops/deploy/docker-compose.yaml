@@ -202,6 +202,31 @@ services:
     logging: *logging
     networks: [internal]
 
+  # H-1 (AUDIT-2026-10-02): the delivery half of the alert rules. Prometheus has mounted
+  # ops/monitoring/alerts.yml for weeks with an empty `alertmanagers.targets` *and* no `rule_files`
+  # entry, so the rules were neither loaded nor sent anywhere — they were a document. Same
+  # `monitoring` profile as Prometheus, so both come up together or neither does.
+  #
+  # The receiver URL is a literal in ops/monitoring/alertmanager.yml (Alertmanager does not expand env
+  # vars in its config, unlike Prometheus), so there is nothing to inject here: edit that file once and
+  # `npm run ops:config` still passes. `alertdata` keeps the notification log and the silences across a
+  # restart.
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    profiles: [monitoring]
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.listen-address=:9093
+    volumes:
+      - ../monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertdata:/alertmanager
+    ports:
+      - "${ALERTMANAGER_BIND:-127.0.0.1}:9093:9093"
+    logging: *logging
+    networks: [internal]
+
 networks:
   edge:
     internal: false
@@ -215,6 +240,7 @@ volumes:
   dbdata:
   redisdata:
   promdata:
+  alertdata:
 
 secrets:
   crank_keypair:

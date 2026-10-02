@@ -1,0 +1,75 @@
+# Alertmanager for the compose stack (docs/09 §4.1, runbook.md §3.2).
+#
+# H-1 (AUDIT-2026-10-02): ops/monitoring/alerts.yml grew to ~20 rules with severities, thresholds and
+# runbook references, and nothing was listening. Prometheus evaluated every one of them, kept the
+# state, and threw the notifications away — `alerting.alertmanagers.targets` was `[]`, with a comment
+# saying "fill with your Alertmanager once one exists". The rules were a dashboard, not an alert, and
+# the severities (`page` = wake someone) were prose.
+#
+# This file is the missing half. It ships *with a receiver*, so `npm run ops:prometheus` produces a
+# stack that can actually page; what it cannot do is know where you want the page to go. That is one
+# edit below (`url:`), and the CI gate fails if `targets` ever goes back to empty while alerts.yml has
+# rules in it — the regression this file exists to prevent is someone deleting the delivery path and
+# leaving the rules behind.
+#
+# Alertmanager does NOT expand environment variables in this file (Prometheus does, this does not).
+# That is why the receiver URL is a literal and why there is no `${ALERT_WEBHOOK_URL}` here.
+route:
+  # Everything routes through the default tree; `severity` is a *label* the rules already carry, so
+  # the sub-routes below only need to differ in timing, not in matching.
+  receiver: default
+  group_by: ['alertname', 'severity', 'service']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  # A group that is still firing after 4 h is the same incident restated; repeat_interval keeps the
+  # channel alive for a long one without spamming it every minute.
+  routes:
+    # `page` = money is stuck or the game is down. Short group_wait: these arrive alone and fast,
+    # because a wager escrow that cannot be refunded is the one alert in this file that is always money.
+    - matchers: ['severity = "page"']
+      receiver: default
+      group_wait: 10s
+      group_interval: 1m
+      repeat_interval: 1h
+      continue: true
+    # `ticket` / `warn`: batched hard. A 30 % emission under-payment or a websocket saturation is a
+    # work item, and a channel that carries work items at page urgency trains people to mute it.
+    - matchers: ['severity =~ "ticket|warn"']
+      receiver: default
+      group_wait: 2m
+      group_interval: 15m
+      repeat_interval: 12h
+
+inhibit_rules:
+  # A source alert that explains a target alert suppresses it. Without these, one dead API produces
+  # ApiDown + ApiNotReady + Http5xx + IngestLag + CrankHeadStuck as five pages for one incident, and
+  # the sixth real page is read as noise.
+  - source_matchers: ['alertname = "ApiDown"']
+    target_matchers: ['alertname =~ "ApiNotReady|Http5xx|IngestLag|IngestStalled|CrankHeadStuck|CrankBacklog"']
+    equal: ['service']
+  # The governance keys being unreadable explains why no rotation was *seen*; it does not explain a
+  # rotation that was indexed, so the inhibition is one-directional and narrow.
+  - source_matchers: ['alertname = "GovernanceKeysUnreadable"']
+    target_matchers: ['alertname = "ProgramAuthorityRotated"']
+    equal: ['program', 'role']
+  # An arena that paused itself at the cap is the *expected* end state of the cap being exhausted;
+  # the cap alert is the leading indicator, the pause is the consequence.
+  - source_matchers: ['alertname = "ArenaOracleCapNearlyExhausted"']
+    target_matchers: ['alertname = "ArenaAutoPaused"']
+    equal: ['service']
+
+receivers:
+  # THE ONE EDIT. Point this at whatever wakes a human: a PagerDuty Events API v2 URL
+  # (https://events.pagerduty.com/v2/enqueue with the integration key in the path), a Slack
+  # incoming-webhook, an Opsgenie endpoint, or your own bridge. `send_resolved: true` matters as much
+  # as the firing notification — an alert that never resolves is a channel nobody trusts.
+  - name: default
+    webhook_configs:
+      - url: 'http://127.0.0.1:5001/alerts'
+        send_resolved: true
+
+# The API's own `/metrics` is scraped by Prometheus; Alertmanager itself is scraped so a dead
+# notification pipeline is visible as a gap in `alertmanager_notifications_total` rather than as
+# silence. `alertmanager:9093` is the compose service name — the network is `internal`, so this port
+# is not published to the host (ALERTMANAGER_BIND controls the UI if you want one).
