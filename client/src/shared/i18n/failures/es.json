@@ -181,5 +181,6 @@
   "internal": "El servidor no pudo completar la solicitud. Inténtalo más tarde.",
   "guardRail": "Los cambios propuestos incumplen las reglas. Revisa las comprobaciones detalladas.",
   "network": "Falló la conexión. Revisa la red y vuelve a intentarlo.",
-  "walletMessages": "Esta billetera no puede firmar mensajes. Usa una que admita esa función."
+  "walletMessages": "Esta billetera no puede firmar mensajes. Usa una que admita esa función.",
+  "arena_BadCap": "Límite diario de pagos del oráculo de arena no válido."
 }

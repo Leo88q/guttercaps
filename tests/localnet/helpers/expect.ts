@@ -22,7 +22,7 @@ const STAKING = [
 ] as const;
 const ARENA = [
   'Paused', 'Unauthorized', 'WagerRange', 'BadStatus', 'NotOwner', 'ChipBusy', 'InvalidBubblegumProof', 'DuplicateChip', 'SquadTooWeak', 'LeagueMismatch', 'BadWinner', 'OracleCap',
-  'NotStale', 'SelfBattle', 'Randomness', 'Overflow', 'NotUpgradeAuthority',
+  'NotStale', 'SelfBattle', 'Randomness', 'Overflow', 'NotUpgradeAuthority', 'BadCap',
 ] as const;
 const SB_MOCK = ['InvalidAuthority', 'InvalidAccount', 'RandomnessNotRequested', 'AlreadyRevealed', 'PayloadTooLong'] as const;
 

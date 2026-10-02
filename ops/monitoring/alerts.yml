@@ -164,6 +164,30 @@ groups:
           summary: 'Resolved wager pots today are above 80 % of the on-chain oracle cap'
           description: 'At 100 % legit resolves fail with OracleCap and accepted battles sit until cancel_stale_battle refunds them (30 min). If the volume is organic, raise the cap with `set_arena` (ORACLE_DAILY_CAP_CG is only the setup default; docs/02 §4.4); if it is not, ArenaResolveNotOurs should have fired first — check it either way.'
 
+      # SEC-A2 (2026-10-02, M-11). `resolve_battle` now flips `paused` itself when the oracle hits its
+      # own daily cap, so the breaker no longer depends on anyone reading the cap series above. This is
+      # the *consequence* page: players can no longer create or accept battles, and the only exits are
+      # `cancel_stale_battle` (which still refunds both sides) or the pauser clearing `paused`.
+      - alert: ArenaAutoPaused
+        expr: arena_oracle_cap_readable == 1 and arena_paused == 1
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: 'The arena has paused itself — the battle oracle hit its own daily cap'
+          description: '`arena_oracle_paid_today_cg` should be at `arena_oracle_cap_cg`. No new battle can be created or accepted; `cancel_stale_battle` still refunds both escrows, so nothing is stuck. If the volume is organic, wait for the 24 h window to reset or raise the cap with `set_arena`. If it is not organic, ArenaResolveNotOurs is the more serious page and the battle_oracle key must be rotated. `ArenaAutoPaused` events are in authority_changes (kind `arena_auto_paused`).'
+
+      # SEC-A2: the vault PDA is short of what the ledgers say it owes. `sweep_vault` saturates and
+      # moves nothing in this state, and `GameConfig` is read-only on every player path (#12), so
+      # nothing on chain can react — this poll is the only detector. `readable == 1` keeps a dead RPC
+      # from paging as a solvency event (the two gauges hold their last value).
+      - alert: VaultUnderfunded
+        expr: vault_solvency_readable == 1 and vault_solvent == 0
+        for: 15m
+        labels: { severity: page }
+        annotations:
+          summary: 'The chip_core vault PDA holds less than the Σ VaultLedger liabilities it owes'
+          description: '`vault_lamports_sol` vs `vault_liabilities_sol` on the dashboard. This is a reserve problem, not a stuck-user problem: open packs keep working until a payout is due. Stop `sweep_vault` (it would move the surplus that is left), reconcile the ledgers against `pack_opens`/`compressed_settlements`/`claims`, and fund the vault PDA before the next settlement. Never raise a liability to match the balance — `VaultLedger::release` is what closes it, and a claim whose liability was erased is a claim the vault no longer owes.'
+
   # SEC-G05 (Watchtower SW027 follow-up): governance keys. Two independent detection paths — the
   # RPC-polled fingerprints (GOVERNANCE_WATCH, backend/src/governance-metrics.ts) and the indexed
   # rotation events (authority_changes). A legitimate rotation is a ceremony: silence these for its

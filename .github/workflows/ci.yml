@@ -413,9 +413,11 @@ jobs:
         run: sh scripts/ci-surface-log.sh /tmp/sbf-check.log /tmp/anchor-build.log
 
   rust-lints:
-    name: rust · clippy + unit tests (pinned rust image)
+    name: rust · clippy + unit tests, debug and release (pinned rust image)
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # Two full builds now (debug, then release). 35 minutes was measured for one; a timeout that
+    # kills a green build is a red that measures nothing.
+    timeout-minutes: 55
     # A job has one container, so this is a job: the anchor image ships rustfmt (fmt is proven by it) but no
     # clippy, and `cargo clippy` inside it exited 101 with "no such command" — red, and measuring nothing.
     # rust:1.89.0 is the channel rust-toolchain.toml pins, so `-D warnings` here is the lint set the repo
@@ -471,9 +473,83 @@ jobs:
         run: |
           if [ -f Cargo.lock ]; then locked=--locked; else locked=; fi
           sh scripts/ci-run-logged.sh /tmp/cargo-test.log cargo test $locked --workspace
+      # L-1 (AUDIT-2026-10-02): the same tests in release mode. The two are not redundant — LiteSVM
+      # loading a release `.so` is not the same as running the crate's own `#[test]`s in release, and
+      # `debug_assert!` is compiled out there, so a release-only panic (an evaluation-order dependence
+      # the slow debug build hides, an overflow that only the optimizer reaches) shows up here first.
+      # `--locked` for the same reason as clippy: the graph under test must be the one being shipped.
+      # `programs:gate` runs the identical command, and tests/security/rust-gate.test.ts asserts the
+      # two do not drift.
+      - name: unit tests (release)
+        run: |
+          if [ -f Cargo.lock ]; then locked=--locked; else locked=; fi
+          sh scripts/ci-run-logged.sh /tmp/cargo-test-release.log cargo test $locked --release --workspace
       - name: surface the failure without log access
         if: failure()
-        run: sh scripts/ci-surface-log.sh /tmp/clippy.log /tmp/cargo-test.log
+        run: sh scripts/ci-surface-log.sh /tmp/clippy.log /tmp/cargo-test.log /tmp/cargo-test-release.log
+
+  rust-security:
+    name: rust · cargo audit against the shipped lock
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # M-2 (AUDIT-2026-10-02): the npm half of the tree has had an advisory gate for a while
+    # (`npm run audit:gate`, SEC-F12 — every high/critical advisory fails unless it is in the dated,
+    # justified ACCEPTED list of scripts/audit-gate.ts), and the Rust half had nothing at all. The
+    # `security` job's "npm audit" name described half a job.
+    #
+    # Separate job, not a step in `rust-lints`: the advisory report reads Cargo.lock and needs no
+    # build, so this is cheap on its own — and a red clippy must not be able to hide a red audit.
+    container:
+      image: rust:1.89.0
+    permissions:
+      contents: read
+    env:
+      CARGO_HOME: /usr/local/cargo
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          # The registry, not the installed binary: a cached `cargo-audit` is a scanner whose version
+          # nobody chose, and a stale advisory gate measures yesterday. The registry only speeds the
+          # compile; what gets installed is always what `--locked` resolves today.
+          path: |
+            /usr/local/cargo/registry
+            /usr/local/cargo/git
+          key: rust-security-${{ runner.os }}-1.89.0-${{ hashFiles('Cargo.lock') }}
+          restore-keys: rust-security-${{ runner.os }}-1.89.0-
+      - name: install cargo-audit
+        # `--locked`: the same discipline as every other cargo invocation here, so the advisory db and
+        # the scanner are the versions the lockfile describes rather than whatever is newest.
+        run: cargo install cargo-audit --locked
+      - name: the image must contain what the steps call
+        # An assertion of the environment, not a courtesy — the failure this prevents is an advisory
+        # gate that is red (or green) because a binary was missing.
+        run: |
+          bad=0
+          for t in "cargo --version" "cargo audit --version"; do
+            if out=$($t 2>&1 | head -1); then printf 'ok   %s → %s\n' "$t" "$out"; else printf '::error::`%s` is unusable in this image: %s\n' "$t" "$out"; bad=1; fi
+          done
+          if [ "$bad" = 1 ]; then
+            echo "::error::refusing to run an advisory gate against a toolchain that cannot answer"
+            exit 1
+          fi
+      - name: cargo audit
+        # `--deny warnings`, and that is the part that makes it a gate rather than a report: plain
+        # `cargo audit` exits non-zero on a vulnerability but *prints and ignores* the notices —
+        # yanked crates, unmaintained and unsupported ones — and a lockfile that has quietly picked
+        # up a yanked dependency is exactly the shape of a supply-chain incident here.
+        # `--locked` so the graph audited is the one being shipped.
+        # NOT passed, deliberately: `--no-fetch` / `--stale`, which would audit against a database
+        # checked out whenever the image was built.
+        # Verified offline by tests/security/supply-chain.test.ts; the advisory *outcome* cannot be
+        # verified from a sandbox with no cargo and no crates.io, so the first CI run on this branch
+        # is where that half gets confirmed.
+        run: |
+          if [ -f Cargo.lock ]; then locked=--locked; else locked=; fi
+          sh scripts/ci-run-logged.sh /tmp/cargo-audit.log cargo audit $locked --deny warnings
+      - name: surface the failure without log access
+        if: failure()
+        run: sh scripts/ci-surface-log.sh /tmp/cargo-audit.log
 
   localnet:
     name: localnet · 92 scenarios (LiteSVM)
@@ -583,7 +659,13 @@ jobs:
     name: security · npm audit + secret scan
     runs-on: ubuntu-latest
     steps:
+      # `fetch-depth: 0` is load-bearing, not tidiness. The secret scan below reads the *object
+      # database* (scripts/secret-scan.ts), so on the default depth-1 checkout it would see only the
+      # tip tree and pass on a credential that was committed in June and deleted in July. Every other
+      # checkout in this file is shallow on purpose; this one must not be, and nothing else enforces
+      # that — tests/security/secret-scan.test.ts pins it.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with: { fetch-depth: 0 }
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
       - run: npm ci
@@ -603,6 +685,19 @@ jobs:
         run: |
           npm run keypairs:scan -- --selftest
           npm run keypairs:scan
+      - name: no committed credential anywhere in history
+        # The two halves are deliberately different, not redundant. `keypairs:scan` reads `git ls-files`
+        # — the current tree only — and knows one secret class (a Solana keypair). This one walks every
+        # blob of the object database, so a credential that was committed and then deleted still fails:
+        # deleting the file does not remove the blob from a clone, and the clone is the leak. Nine
+        # classes (Solana keypair, PEM private key, AWS access key id, GitHub/Slack/Stripe/OpenAI
+        # tokens, Google API key, JWT), each with negative cases — sha256 digests, 40-hex git SHAs,
+        # two-segment JWT-likes and base58 public keys are not credentials. `--selftest` runs those
+        # offline first so a regex that only ever fails cannot pass the suite vacuously.
+        # Allow-list: tests/localnet/fixtures/ (see the fixture note in scripts/secret-scan.ts).
+        run: |
+          npm run secret:scan -- --selftest
+          npm run secret:scan
 
   # ---------------------------------------------------------------- nightly / manual (need devnet keys — T-D-03/04)
   e2e-devnet:

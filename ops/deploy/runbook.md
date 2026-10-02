@@ -247,18 +247,35 @@ npm run backend:crank      # то же: отдельный запуск нуже
 
 ### 3.2 алерты
 
-`ops/monitoring/alerts.yml` — правила; `npm run ops:prometheus` поднимает Prometheus с ними.
-Профиль `monitoring` включён не во всех деплоях, поэтому проверять так:
+`ops/monitoring/alerts.yml` — правила; `npm run ops:prometheus` поднимает Prometheus **и**
+Alertmanager с ними (H-1, AUDIT-2026-10-02). Профиль `monitoring` включён не во всех деплоях,
+поэтому проверять так:
 
 ```bash
 curl -s localhost:9090/api/v1/rules | python3 -c 'import json,sys; d=json.load(sys.stdin); print(sum(len(g["rules"]) for g in d["data"]["groups"]), "rules")'
 ```
 
-Alertmanager пока не подключён (`alerting.alertmanagers: []` — это осознанное состояние, а не
-забытая строчка): правила грузятся, `annotations` читаются как мини-runbook, а доставка — в
-`docs/09 §7` у владельца (PagerDuty/Telegram-бот). Тест `backend/test/monitoring.test.ts` не даст
-правилу сослаться на серию, которой нет: мёртвый алерт хуже отсутствия алерта, потому что он
-успокаивает.
+До H-1 было две независимые поломки, и обе вели к одному и тому же: `prometheus.yml` монтировал
+`alerts.yml` в контейнер, но не перечислял его в `rule_files` (Prometheus не вычислял ни одного
+правила), а `alerting.alertmanagers.targets` был `[]` — комментарием «заполнить, когда появится».
+Обе половины теперь на месте и обе закрыты тестом `tests/security/alerting-delivery.test.ts`
+(пустые `targets`, пустой `rule_files`, отсутствие сервиса `alertmanager` в compose, приёмник без
+`send_resolved` и inhibit-правило с несуществующим алертом — каждое роняет сборку).
+
+**Один обязательный ручной шаг:** `receivers[].webhook_configs[].url` в
+`ops/monitoring/alertmanager.yml` — это `http://127.0.0.1:5001/alerts`, заглушка. Alertmanager, в
+отличие от Prometheus, не раскрывает переменные окружения в своём конфиге, поэтому URL правится
+в файле и подхватывается при `npm run ops:up`. Без этого шага алерты вычисляются, группируются и
+уходят в пустоту — то есть ровно то состояние, из которого этот раздел вышел. Куда направить:
+PagerDuty Events API v2 (`https://events.pagerduty.com/v2/enqueue`), Slack incoming-webhook,
+Opsgenie или свой мост. `ALERTMANAGER_BIND` (по умолчанию `127.0.0.1`) — только UI: журнал
+отправленных уведомлений и silences; конвейер работает и без него.
+
+Группировка и тайминги уже настроены под политику severity из `alerts.yml`: `page` уходит одним
+уведомлением за 10 с и повторяется раз в час, `ticket`/`warn` — пачкой раз в 15 мин / 12 ч.
+`inhibit_rules` гасят производные: один упавший API даёт `ApiDown`, а не пять пейджей.
+Тест `backend/test/monitoring.test.ts` не даст правилу сослаться на серию, которой нет: мёртвый
+алерт хуже отсутствия алерта, потому что он успокаивает.
 
 Группа `guttercaps.governance` (SEC-G05) — четыре правила про ключи, которые могут остановить или
 забрать игру. Они **пейджат по факту изменения**, а не по порогу, поэтому у них есть обязательный

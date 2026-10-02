@@ -143,6 +143,15 @@ pub struct ArenaConfigChanged {
     pub oracle_daily_cap: u64,
     pub treasury_cg: Pubkey,
 }
+/// SEC-A2 (2026-10-02): the arena paused *itself*, with no human signer, because the oracle hit its
+/// own daily payout cap — the signature of a leaked `battle_oracle` key. `cancel_stale_battle` does
+/// not read `paused` (it needs the config only for its seeds), so every escrow stays refundable.
+#[event]
+pub struct ArenaAutoPaused {
+    pub by: Pubkey,
+    pub oracle_paid_today: u64,
+    pub oracle_daily_cap: u64,
+}
 
 #[error_code]
 pub enum ArenaError {
@@ -180,6 +189,8 @@ pub enum ArenaError {
     Overflow,
     #[msg("Only the program upgrade authority may initialise (SEC-F7)")]
     NotUpgradeAuthority,
+    #[msg("Oracle daily cap must be > 0 and <= 10000 battles at MAX_WAGER")]
+    BadCap,
 }
 
 /// Squad power = Σ basePower(rarity) × levelMult. Element/synergy live off-chain (they need the opponent).
@@ -403,6 +414,11 @@ pub fn init_arena_handler(
         ArenaError::NotUpgradeAuthority
     );
     let c = &mut ctx.accounts.config;
+    // SEC-A4 (2026-10-02): bound the circuit breaker at init too — see `set_arena`.
+    require!(
+        oracle_daily_cap > 0 && oracle_daily_cap <= MAX_WAGER * 10_000,
+        ArenaError::BadCap
+    );
     c.admin = ctx.accounts.admin.key();
     c.battle_oracle = battle_oracle;
     c.cg_mint = cg_mint;
@@ -434,6 +450,9 @@ pub fn set_arena_handler(
         c.battle_oracle = o;
     }
     if let Some(cap) = oracle_daily_cap {
+        // SEC-A4 (2026-10-02): 0 is fail-closed (every resolve fails) and an unbounded cap is worse
+        // than useless — `u64::MAX` silently disables the only automatic breaker (SEC-A2).
+        require!(cap > 0 && cap <= MAX_WAGER * 10_000, ArenaError::BadCap);
         c.oracle_daily_cap = cap;
     }
     if let Some(p) = paused {
@@ -1233,6 +1252,19 @@ pub fn resolve_battle_handler(
         c.oracle_paid_today <= c.oracle_daily_cap,
         ArenaError::OracleCap
     );
+    // SEC-A2 (2026-10-02): automatic circuit breaker. Reaching the cap is exactly what a leaked
+    // `battle_oracle` looks like, so the arena pauses itself here instead of waiting for a human
+    // holding the pauser key. This battle still settles (the check above passed); `create_battle`
+    // and `accept_battle` read `!config.paused`, so no new wager can be escrowed, while
+    // `cancel_stale_battle` deliberately does not read `paused` and keeps refunding both sides.
+    if c.oracle_paid_today >= c.oracle_daily_cap && !c.paused {
+        c.paused = true;
+        emit!(ArenaAutoPaused {
+            by: ctx.accounts.battle_oracle.key(),
+            oracle_paid_today: c.oracle_paid_today,
+            oracle_daily_cap: c.oracle_daily_cap,
+        });
+    }
 
     let (ch, nonce, bump) = (b.challenger, b.nonce, b.bump);
     let seeds: &[&[u8]] = &[b"battle", ch.as_ref(), &nonce.to_le_bytes(), &[bump]];

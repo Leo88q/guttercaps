@@ -36,7 +36,7 @@ describe('source synchronization', () => {
         count++;
       });
     }
-    expect(count).toBe(112);
+    expect(count).toBe(113); // 112 + SEC-A4 ArenaError::BadCap (2026-10-02)
     // Pin the framework identities to the installed SDK too, not just our translated hand table.
     const framework = {
       InstructionMissing: 100, InstructionFallbackNotFound: 101, ConstraintMut: 2000,

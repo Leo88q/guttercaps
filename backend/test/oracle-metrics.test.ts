@@ -6,8 +6,12 @@ import { ingestTx } from '../src/ingest.ts';
 import { accountDiscriminator } from '../src/chain.ts';
 import { BorshWriter } from '../src/borsh.ts';
 import { arenaConfigPda } from '../src/battle-resolver.ts';
+import { allLedgerPdas, vaultPda } from '../src/chain.ts';
 import { insertIgnore } from '../src/sql.ts';
-import { arenaOracleGauge, burnOracleGauges, resetArenaOracleGaugeForTests, rewardOracleGauges, unattributedResolves } from '../src/oracle-metrics.ts';
+import {
+  arenaOracleGauge, burnOracleGauges, resetArenaOracleGaugeForTests, resetVaultSolvencyGaugeForTests,
+  rewardOracleGauges, unattributedResolves, vaultSolvencyGauge,
+} from '../src/oracle-metrics.ts';
 import { FakeConnection } from './chainFixtures.ts';
 import { finalizeAll, hex32, kp, tx } from './fixtures.ts';
 
@@ -73,22 +77,76 @@ describe('oracle metrics (SEC-F02 / SEC-F06)', () => {
 
   it('arena_oracle_cap_*: reads ArenaConfig, treats a lapsed window as 0 paid, and is inert when not enabled', async () => {
     const conn = new FakeConnection();
-    const cfg = (paid: bigint, dayStart: number) => new Uint8Array([
+    const cfg = (paid: bigint, dayStart: number, paused = false) => new Uint8Array([
       ...accountDiscriminator('ArenaConfig'),
       ...new BorshWriter().pubkey(Keypair.generate().publicKey).pubkey(Keypair.generate().publicKey).pubkey(Keypair.generate().publicKey)
-        .pubkey(Keypair.generate().publicKey).pubkey(Keypair.generate().publicKey).u64(120_000n * 1_000_000n).u64(paid).i64(dayStart).bool(false).toBytes(),
+        .pubkey(Keypair.generate().publicKey).pubkey(Keypair.generate().publicKey).u64(120_000n * 1_000_000n).u64(paid).i64(dayStart).bool(paused).toBytes(),
     ]);
-    expect(await arenaOracleGauge({ enabled: false, connection: conn })).toEqual({ capCg: -1, paidTodayCg: -1, readable: 0, dayAgeS: -1 });
+    expect(await arenaOracleGauge({ enabled: false, connection: conn })).toEqual({ capCg: -1, paidTodayCg: -1, paused: 0, readable: 0, dayAgeS: -1 });
     // no account yet → unreadable, never throws
     expect(await arenaOracleGauge({ enabled: true, connection: conn, nowS: NOW })).toMatchObject({ readable: 0 });
     resetArenaOracleGaugeForTests();
     conn.set(arenaConfigPda()[0], cfg(96_000n * 1_000_000n, NOW - 3600));
-    expect(await arenaOracleGauge({ enabled: true, connection: conn, nowS: NOW })).toEqual({ capCg: 120_000, paidTodayCg: 96_000, readable: 1, dayAgeS: 3600 });
+    expect(await arenaOracleGauge({ enabled: true, connection: conn, nowS: NOW })).toEqual({ capCg: 120_000, paidTodayCg: 96_000, paused: 0, readable: 1, dayAgeS: 3600 });
     // cached for 30 s: a changed account is not re-read yet
     conn.set(arenaConfigPda()[0], cfg(1n, NOW - 90_000));
     expect((await arenaOracleGauge({ enabled: true, connection: conn, nowS: NOW })).paidTodayCg).toBe(96_000);
     resetArenaOracleGaugeForTests();
     // the program zeroes paid_today on the first resolve after 24 h; the gauge reports what that resolve will see
     expect(await arenaOracleGauge({ enabled: true, connection: conn, nowS: NOW })).toMatchObject({ capCg: 120_000, paidTodayCg: 0, readable: 1, dayAgeS: 90_000 });
+  });
+
+  // SEC-A2 (2026-10-02, M-11): `resolve_battle` flips `paused` itself at the daily cap, with no
+  // ArenaConfigChanged behind it, so `arena_paused == 1` is how the automatic breaker becomes visible.
+  it('arena_paused: ArenaConfig.paused is exported, and a dead RPC keeps the last value unreadable', async () => {
+    const conn = new FakeConnection();
+    const paused = (p: boolean) => new Uint8Array([
+      ...accountDiscriminator('ArenaConfig'),
+      ...new BorshWriter().pubkey(Keypair.generate().publicKey).pubkey(Keypair.generate().publicKey).pubkey(Keypair.generate().publicKey)
+        .pubkey(Keypair.generate().publicKey).pubkey(Keypair.generate().publicKey).u64(1n).u64(0n).i64(NOW - 60).bool(p).toBytes(),
+    ]);
+    conn.set(arenaConfigPda()[0], paused(true));
+    expect((await arenaOracleGauge({ enabled: true, connection: conn, nowS: NOW })).paused).toBe(1);
+    resetArenaOracleGaugeForTests();
+    conn.set(arenaConfigPda()[0], paused(false));
+    expect((await arenaOracleGauge({ enabled: true, connection: conn, nowS: NOW })).paused).toBe(0);
+    // missing account → unreadable (the alert rule requires readable == 1, so it cannot misfire)
+    resetArenaOracleGaugeForTests();
+    conn.del(arenaConfigPda()[0]);
+    expect(await arenaOracleGauge({ enabled: true, connection: conn, nowS: NOW })).toMatchObject({ readable: 0 });
+  });
+
+  // SEC-A2 (2026-10-02, M-11): the vault PDA against what the ledgers say it owes. `sweep_vault`
+  // saturates and moves nothing when the vault is short, and every player path keeps `GameConfig`
+  // read-only (#12), so nothing on chain can react to it — this poll is the detector.
+  it('vault_solvent: the vault PDA against Σ VaultLedger.liab_lamports, with a readable flag', async () => {
+    const conn = new FakeConnection();
+    const ledger = (shard: number, liab: bigint) => new Uint8Array([
+      ...accountDiscriminator('VaultLedger'),
+      ...new BorshWriter().u8(shard).u64(liab).u64(0n).u64(0n).u64(0n).u64(0n).u8(255).toBytes(),
+    ]);
+    const vaultAt = (lamports: number) => conn.lamports.set(vaultPda()[0].toBase58(), lamports);
+    const shards = allLedgerPdas().length;
+    conn.set(vaultPda()[0], new Uint8Array(0));
+    vaultAt(2_000_000_000);
+    for (let i = 0; i < shards; i++) conn.set(allLedgerPdas()[i], ledger(i, i === 0 ? 1_500_000_000n : 0n));
+    expect(await vaultSolvencyGauge({ connection: conn })).toEqual({ lamportsSol: 2, liabLamportsSol: 1.5, solvent: 1, readable: 1 });
+    // exactly at the liability boundary is solvent — the rule is "short", not "not comfortably long"
+    resetVaultSolvencyGaugeForTests();
+    vaultAt(1_500_000_000);
+    expect(await vaultSolvencyGauge({ connection: conn })).toMatchObject({ solvent: 1 });
+    // one lamport short is not, and it does not throw
+    resetVaultSolvencyGaugeForTests();
+    vaultAt(1_499_999_999);
+    expect(await vaultSolvencyGauge({ connection: conn })).toMatchObject({ solvent: 0, lamportsSol: 1.499999999 });
+    // a shard that was never initialised counts as zero (setup --step ledgers not run yet)
+    resetVaultSolvencyGaugeForTests();
+    vaultAt(10_000_000_000);
+    conn.del(allLedgerPdas()[0]);
+    expect(await vaultSolvencyGauge({ connection: conn })).toEqual({ lamportsSol: 10, liabLamportsSol: 0, solvent: 1, readable: 1 });
+    // no vault account at all → unreadable
+    resetVaultSolvencyGaugeForTests();
+    conn.del(vaultPda()[0]);
+    expect(await vaultSolvencyGauge({ connection: conn })).toMatchObject({ readable: 0 });
   });
 });
