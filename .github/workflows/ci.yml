@@ -488,6 +488,69 @@ jobs:
         if: failure()
         run: sh scripts/ci-surface-log.sh /tmp/clippy.log /tmp/cargo-test.log /tmp/cargo-test-release.log
 
+  rust-security:
+    name: rust · cargo audit against the shipped lock
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # M-2 (AUDIT-2026-10-02): the npm half of the tree has had an advisory gate for a while
+    # (`npm run audit:gate`, SEC-F12 — every high/critical advisory fails unless it is in the dated,
+    # justified ACCEPTED list of scripts/audit-gate.ts), and the Rust half had nothing at all. The
+    # `security` job's "npm audit" name described half a job.
+    #
+    # Separate job, not a step in `rust-lints`: the advisory report reads Cargo.lock and needs no
+    # build, so this is cheap on its own — and a red clippy must not be able to hide a red audit.
+    container:
+      image: rust:1.89.0
+    permissions:
+      contents: read
+    env:
+      CARGO_HOME: /usr/local/cargo
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          # The registry, not the installed binary: a cached `cargo-audit` is a scanner whose version
+          # nobody chose, and a stale advisory gate measures yesterday. The registry only speeds the
+          # compile; what gets installed is always what `--locked` resolves today.
+          path: |
+            /usr/local/cargo/registry
+            /usr/local/cargo/git
+          key: rust-security-${{ runner.os }}-1.89.0-${{ hashFiles('Cargo.lock') }}
+          restore-keys: rust-security-${{ runner.os }}-1.89.0-
+      - name: install cargo-audit
+        # `--locked`: the same discipline as every other cargo invocation here, so the advisory db and
+        # the scanner are the versions the lockfile describes rather than whatever is newest.
+        run: cargo install cargo-audit --locked
+      - name: the image must contain what the steps call
+        # An assertion of the environment, not a courtesy — the failure this prevents is an advisory
+        # gate that is red (or green) because a binary was missing.
+        run: |
+          bad=0
+          for t in "cargo --version" "cargo audit --version"; do
+            if out=$($t 2>&1 | head -1); then printf 'ok   %s → %s\n' "$t" "$out"; else printf '::error::`%s` is unusable in this image: %s\n' "$t" "$out"; bad=1; fi
+          done
+          if [ "$bad" = 1 ]; then
+            echo "::error::refusing to run an advisory gate against a toolchain that cannot answer"
+            exit 1
+          fi
+      - name: cargo audit
+        # `--deny warnings`, and that is the part that makes it a gate rather than a report: plain
+        # `cargo audit` exits non-zero on a vulnerability but *prints and ignores* the notices —
+        # yanked crates, unmaintained and unsupported ones — and a lockfile that has quietly picked
+        # up a yanked dependency is exactly the shape of a supply-chain incident here.
+        # `--locked` so the graph audited is the one being shipped.
+        # NOT passed, deliberately: `--no-fetch` / `--stale`, which would audit against a database
+        # checked out whenever the image was built.
+        # Verified offline by tests/security/supply-chain.test.ts; the advisory *outcome* cannot be
+        # verified from a sandbox with no cargo and no crates.io, so the first CI run on this branch
+        # is where that half gets confirmed.
+        run: |
+          if [ -f Cargo.lock ]; then locked=--locked; else locked=; fi
+          sh scripts/ci-run-logged.sh /tmp/cargo-audit.log cargo audit $locked --deny warnings
+      - name: surface the failure without log access
+        if: failure()
+        run: sh scripts/ci-surface-log.sh /tmp/cargo-audit.log
+
   localnet:
     name: localnet · 92 scenarios (LiteSVM)
     runs-on: ubuntu-latest

@@ -256,6 +256,79 @@ test('the patch gate fires on a path entry with no PATCHES.md, and on a PATCHES.
   ] as const) assert.match(doc, re, `PATCHES.md is missing ${what}`);
 });
 
+// ------------------------------------------------------------------------------ M-2 (cargo audit)
+// The npm half of the tree has an advisory gate (`npm run audit:gate`, SEC-F12: every high/critical
+// advisory fails unless it is in the dated, justified ACCEPTED list of scripts/audit-gate.ts). The
+// Rust half had none at all — `security`'s "npm audit" name described half a job, and 318 crates in
+// Cargo.lock were never checked against an advisory database.
+//
+// The `rust-security` job is that gate. What is checkable offline is its *shape*: that it exists, that
+// it is strict, that it cannot be made non-blocking or stale by accident, and that its actions are
+// pinned the way SEC-B50 requires. The advisory *outcome* needs cargo and crates.io, neither of which
+// exists in the sandbox this was written in — so this file pins the shape, and the first CI run on the
+// branch is where the outcome gets confirmed.
+test('M-2 a rust advisory gate exists, is strict, and cannot be quietly weakened', () => {
+  const ci = read('.github/workflows/ci.yml');
+  const job = jobBlock(ci, 'rust-security');
+  assert.ok(job, '.github/workflows/ci.yml has no rust-security job — the 318 crates in Cargo.lock are unchecked against any advisory database');
+  assert.deepEqual(auditProblems(job), [], 'the advisory gate is missing or weakened');
+  assert.match(auditCommand(job), /--locked --deny warnings/, 'the audit must resolve the committed graph and deny the notices');
+  // SEC-B50 applies here like everywhere else.
+  for (const [, ref] of job.matchAll(/- uses: (\S+)/g)) {
+    assert.match(ref, /@[0-9a-f]{40}(\s|$)/, `unpinned action ref in rust-security: ${ref}`);
+  }
+  // And the npm half it is held to the same standard as still has its accept-list, with a reason per
+  // entry — an undocumented ignore is how an advisory gate stops measuring anything.
+  const accepted = /export const ACCEPTED[^=]*=\s*\[([\s\S]*?)\n\];/.exec(read('scripts/audit-gate.ts'))?.[1] ?? '';
+  assert.ok(accepted.length > 0, 'scripts/audit-gate.ts lost its ACCEPTED list');
+  assert.equal(accepted.split('id:').length - 1, (accepted.match(/\bwhy:/g) ?? []).length, 'every accepted npm advisory must carry its reason');
+});
+
+/**
+ * The `cargo audit` argument string of one job, with `$locked` normalised. Anchored to the start of a
+ * line: the job is *named* "rust · cargo audit against the shipped lock", and a bare
+ * `/cargo audit (…)/` happily reads that prose as the command — a reader that reports "not --locked"
+ * against a comment is a reader nobody trusts twice.
+ */
+function auditCommand(job: string): string {
+  return (/(?:^|\n)[ \t]*(?:sh scripts\/ci-run-logged\.sh \S+ )?cargo audit ([^\r\n]+)/.exec(job)?.[1] ?? '').replace('$locked', '--locked');
+}
+
+/**
+ * The body of one top-level CI job: everything after its `  name:` key, up to the next top-level key.
+ * `(?:^|\n)` because a synthetic workflow in the self-test starts at offset 0 with no newline in
+ * front of it, and a reader that returns '' for that would make the self-test vacuous.
+ */
+function jobBlock(ci: string, name: string): string {
+  const m = new RegExp(`(?:^|\\n)  ${name}:\\n`).exec(ci);
+  if (!m) return '';
+  const after = ci.slice(m.index + m[0].length);
+  const next = after.search(/^  [a-z][\w-]*:/m);
+  return next < 0 ? after : after.slice(0, next);
+}
+
+/** The M-2 rule as a pure predicate, so the real gate and the synthetic self-test share one reader. */
+function auditProblems(job: string): string[] {
+  const problems: string[] = [];
+  if (!job) return ['no rust-security job'];
+  const audit = auditCommand(job);
+  // `--locked`: the graph audited must be the one being shipped, not whatever the runner re-resolves.
+  if (!/--locked/.test(audit)) problems.push('not --locked');
+  // `--deny warnings`: plain `cargo audit` exits non-zero on a vulnerability but *prints and ignores*
+  // the notices — yanked, unmaintained, unsupported — and a lockfile that has quietly picked up a
+  // yanked dependency is exactly the shape of a supply-chain incident here.
+  if (!/--deny warnings/.test(audit)) problems.push('no --deny warnings');
+  for (const weak of ['--no-fetch', '--stale', '--target-arch']) {
+    if (audit.includes(weak)) problems.push(`passed ${weak}: it audits a database nobody chose`);
+  }
+  if (/continue-on-error:\s*true/.test(job)) problems.push('continue-on-error: a gate allowed to fail is not a gate');
+  if (!/sh scripts\/ci-run-logged\.sh \S+ cargo audit/.test(job)) problems.push('no exit-code wrapper');
+  // The cache is the registry, never the installed binary: a cached cargo-audit is a scanner whose
+  // version nobody chose.
+  if (/\/usr\/local\/cargo\/bin/.test(job)) problems.push('cached scanner binary');
+  return problems;
+}
+
 // --------------------------------------------------------------------------------------------- mutations
 // The rules above are the assertions; these show each one can fail. Every case is a mutated copy of the
 // real lock (never written to disk) plus the same helper the gate uses, so a silently-broken reader is
@@ -282,4 +355,35 @@ test('each rule fails on a deliberately broken lock (mutation check)', () => {
   assert.ok(!withinRange('>=1.99.0', '1.95.7') && withinRange('>=1.99.0', '2.0.0'), 'gte floor');
   assert.deepEqual(rangeFloors('^1.95.3 || ~2.0.0'), ['1.95.3', '2.0.0']);
   assert.ok(cmpVersion('1.95.7', '1.99.0') < 0 && cmpVersion('1.99.0', '1.99.0') === 0 && cmpVersion('2.0.0', '1.99.0') > 0, 'cmpVersion orders versions');
+});
+
+// ------------------------------------------------------------------ self-test for the M-2 gate
+// The reader over synthetic workflow text, so a silently-broken job slice cannot pass the real rule
+// vacuously: `jobBlock` must find the job, stop at the next one, and every weakening below must be
+// visible to it.
+test('the M-2 reader sees a weakened advisory gate', () => {
+  const good = [
+    '  rust-security:',
+    '    name: rust · cargo audit',
+    '    steps:',
+    '      - run: |',
+    '          sh scripts/ci-run-logged.sh /tmp/cargo-audit.log cargo audit --locked --deny warnings',
+    '  localnet:',
+    '    name: localnet',
+  ].join('\n');
+  const weakenings: Array<[string, string]> = [
+    ['no --deny warnings', good.replace(' --deny warnings', '')],
+    ['a stale advisory database', good.replace('--locked --deny warnings', '--locked --no-fetch --deny warnings')],
+    ['a non-blocking gate', good.replace('    name: rust · cargo audit', '    continue-on-error: true')],
+    ['no exit-code wrapper', good.replace('sh scripts/ci-run-logged.sh /tmp/cargo-audit.log cargo audit', 'cargo audit')],
+    ['a cached scanner binary', good.replace('      - run: |', '      - uses: actions/cache@' + 'a'.repeat(40) + ' # v4.3.0\n        with:\n          path: /usr/local/cargo/bin')],
+    ['no job at all', good.replace('  rust-security:', '  rust-audit-gone:')],
+  ];
+  for (const [what, text] of weakenings) {
+    assert.notEqual(text, good, `the "${what}" mutation must actually change the workflow`);
+    assert.ok(auditProblems(jobBlock(text, 'rust-security')).length > 0, `the reader must reject ${what}`);
+  }
+  assert.deepEqual(auditProblems(jobBlock(good, 'rust-security')), [], 'the synthetic good job must pass');
+  assert.equal(jobBlock(good, 'rust-security').includes('localnet'), false, 'the job slice must stop at the next top-level key');
+  assert.equal(jobBlock(good, 'nope'), '', 'an absent job is an empty slice, not the whole file');
 });
