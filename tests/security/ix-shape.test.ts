@@ -152,6 +152,26 @@ test('M-3 a drifted call site in a real file is caught', () => {
     assert.match(problems[0]!.problem, /encodes \[u8, u64\]/, 'the report shows what was encoded');
     assert.match(problems[0]!.problem, /declares \[u8, u8, u64\]/, 'the report shows what the program wants');
 
+    // Two arrow functions: without spreading both match lists into Math.max the second
+    // writer's start is NaN and the gate reads a BorshWriter from the *other* function.
+    writeFileSync(join(dir, 'client/src/chain/ix/chipCore.ts'), [
+      "import { ixData } from '../anchor';",
+      'export const leftover = () => {',
+      "  const w = new BorshWriter().u8(1).u8(1).u64(2n);",
+      '  return 0;',
+      '};',
+      'export const buyPackIx = () => {',
+      "  return Buffer.from(ixData('buy_pack', w.toBytes()));",
+      '};',
+      '',
+    ].join('\n'));
+    git('add', '-A');
+    const leaked = shapeProblems(tsEncodings(dir), rustInstructions(dir).byName, []);
+    assert.equal(leaked.length, 0, JSON.stringify(leaked));
+    const encodings = tsEncodings(dir);
+    const buy = encodings.find((e) => e.name === 'buy_pack');
+    assert.equal(buy?.chain, null, 'buy_pack must not pick up leftover\'s writer from another arrow function');
+
     // and the same file, uncorrupted, is clean
     writeFileSync(join(dir, 'client/src/chain/ix/chipCore.ts'), [
       "import { ixData } from '../anchor';",

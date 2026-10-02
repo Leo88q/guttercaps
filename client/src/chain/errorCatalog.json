@@ -383,6 +383,10 @@
     {
       "name": "BadMint",
       "key": "staking_BadMint"
+    },
+    {
+      "name": "SkrWithdrawRate",
+      "key": "staking_SkrWithdrawRate"
     }
   ],
   "arena": [

@@ -90,6 +90,7 @@
   "staking_ClaimExpired": "O direito de emissão comprimida expirou e não pode entrar em staking",
   "staking_BeforeGenesis": "A emissão ainda não começou: now < genesis_ts",
   "staking_BadMint": "O mint $CG não deve ter autoridade de congelamento; a oferta deve caber na alocação fora do jogo",
+  "staking_SkrWithdrawRate": "Saques de SKR são limitados a uma chamada por slot",
   "arena_WagerRange": "Aposta fora do intervalo de 5–5000 $CG",
   "arena_BadStatus": "A batalha não está no estado esperado",
   "arena_NotOwner": "O cap do esquadrão não pertence ao signatário",

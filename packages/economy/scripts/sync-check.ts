@@ -4,7 +4,7 @@
 // Exit 1 on any mismatch. Wired into `npm run economy:check` at the root.
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { PACKS, BUNDLES, STALE_PACK_SLOTS } from '../src/packs.ts';
+import { PACKS, BUNDLES, STALE_PACK_SLOTS, STARTER_SOULBOUND_DAYS } from '../src/packs.ts';
 import { RARITY_PROFILES } from '../src/rarity.ts';
 import { FUSION_RECIPES, BOOSTER } from '../src/fusion.ts';
 import { LOCK_TIERS, fullSetBonusMult } from '../src/staking.ts';
@@ -71,6 +71,7 @@ check('bundle discounts', nums(line(econ, /BUNDLE_DISCOUNT_BPS: \[\(u8, u16\); 4
   BUNDLES.map((b) => b.discountBps));
 check('cg pack burn bps', int(line(econ, /CG_PACK_BURN_BPS: u16 = ([\d_]+)/)), FEES.cgPackBurnBps);
 check('stale pack slots (rust)', int(line(econ, /STALE_PACK_SLOTS: u64 = ([\d_]+)/)), STALE_PACK_SLOTS);
+check('starter soulbound days', int(line(econ, /STARTER_SOULBOUND_DAYS: u8 = (\d+)/)), STARTER_SOULBOUND_DAYS);
 // #12: VaultLedger shard count — the shard of a wallet is `key[0] % LEDGER_SHARDS` in all three places
 const ledgerShardsRs = int(line(rs('programs/chip_core/src/state.rs'), /LEDGER_SHARDS: u8 = (\d+)/));
 check('LEDGER_SHARDS (client)', int(line(rs('client/src/chain/pdas.ts'), /export const LEDGER_SHARDS = (\d+);/)), ledgerShardsRs);

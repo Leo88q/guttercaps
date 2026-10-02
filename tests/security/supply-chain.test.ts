@@ -272,7 +272,7 @@ test('M-2 a rust advisory gate exists, is strict, and cannot be quietly weakened
   const job = jobBlock(ci, 'rust-security');
   assert.ok(job, '.github/workflows/ci.yml has no rust-security job — the 318 crates in Cargo.lock are unchecked against any advisory database');
   assert.deepEqual(auditProblems(job), [], 'the advisory gate is missing or weakened');
-  assert.match(auditCommand(job), /--locked --deny warnings/, 'the audit must resolve the committed graph and deny the notices');
+  assert.match(auditCommand(job), /--file Cargo\.lock --deny warnings/, 'the audit must resolve the committed graph and deny the notices');
   // SEC-B50 applies here like everywhere else.
   for (const [, ref] of job.matchAll(/- uses: (\S+)/g)) {
     assert.match(ref, /@[0-9a-f]{40}(\s|$)/, `unpinned action ref in rust-security: ${ref}`);
@@ -291,7 +291,7 @@ test('M-2 a rust advisory gate exists, is strict, and cannot be quietly weakened
  * against a comment is a reader nobody trusts twice.
  */
 function auditCommand(job: string): string {
-  return (/(?:^|\n)[ \t]*(?:sh scripts\/ci-run-logged\.sh \S+ )?cargo audit ([^\r\n]+)/.exec(job)?.[1] ?? '').replace('$locked', '--locked');
+  return (/(?:^|\n)[ \t]*(?:sh scripts\/ci-run-logged\.sh \S+ )?cargo audit ([^\r\n]+)/.exec(job)?.[1] ?? '');
 }
 
 /**
@@ -312,8 +312,10 @@ function auditProblems(job: string): string[] {
   const problems: string[] = [];
   if (!job) return ['no rust-security job'];
   const audit = auditCommand(job);
-  // `--locked`: the graph audited must be the one being shipped, not whatever the runner re-resolves.
-  if (!/--locked/.test(audit)) problems.push('not --locked');
+  // `--file Cargo.lock`: the graph audited must be the one being shipped. `cargo audit` has no
+  // `--locked` flag (that belongs to cargo itself); requiring it here made the gate demand a
+  // command that the binary rejects.
+  if (!/--file Cargo\.lock/.test(audit)) problems.push('not --file Cargo.lock');
   // `--deny warnings`: plain `cargo audit` exits non-zero on a vulnerability but *prints and ignores*
   // the notices — yanked, unmaintained, unsupported — and a lockfile that has quietly picked up a
   // yanked dependency is exactly the shape of a supply-chain incident here.
@@ -367,13 +369,14 @@ test('the M-2 reader sees a weakened advisory gate', () => {
     '    name: rust · cargo audit',
     '    steps:',
     '      - run: |',
-    '          sh scripts/ci-run-logged.sh /tmp/cargo-audit.log cargo audit --locked --deny warnings',
+    '          sh scripts/ci-run-logged.sh /tmp/cargo-audit.log cargo audit --file Cargo.lock --deny warnings',
     '  localnet:',
     '    name: localnet',
   ].join('\n');
   const weakenings: Array<[string, string]> = [
     ['no --deny warnings', good.replace(' --deny warnings', '')],
-    ['a stale advisory database', good.replace('--locked --deny warnings', '--locked --no-fetch --deny warnings')],
+    ['cargo audit --locked (unsupported flag)', good.replace('--file Cargo.lock --deny warnings', '--locked --deny warnings')],
+    ['a stale advisory database', good.replace('--file Cargo.lock --deny warnings', '--file Cargo.lock --no-fetch --deny warnings')],
     ['a non-blocking gate', good.replace('    name: rust · cargo audit', '    continue-on-error: true')],
     ['no exit-code wrapper', good.replace('sh scripts/ci-run-logged.sh /tmp/cargo-audit.log cargo audit', 'cargo audit')],
     ['a cached scanner binary', good.replace('      - run: |', '      - uses: actions/cache@' + 'a'.repeat(40) + ' # v4.3.0\n        with:\n          path: /usr/local/cargo/bin')],

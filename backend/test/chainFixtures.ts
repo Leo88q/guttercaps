@@ -141,9 +141,10 @@ export function encodeEmissionState(o: {
 }
 
 /** staking `SkrPool` (programs/staking/src/state.rs) — treasury-funded SKR prize pool. */
-export function encodeSkrPool(o: { skrMint?: PublicKey; vault?: PublicKey; budget?: bigint; reserved?: bigint; fundedTotal?: bigint; paidTotal?: bigint; maxRootBudget?: bigint; paused?: boolean } = {}): Uint8Array {
+export function encodeSkrPool(o: { skrMint?: PublicKey; vault?: PublicKey; budget?: bigint; reserved?: bigint; fundedTotal?: bigint; paidTotal?: bigint; maxRootBudget?: bigint; paused?: boolean; lastWithdrawSlot?: bigint; withdrawDayStart?: bigint; withdrawnToday?: bigint } = {}): Uint8Array {
   return new BorshWriter().bytes(accountDiscriminator('SkrPool')).pubkey(o.skrMint ?? pk()).pubkey(o.vault ?? pk())
-    .u64(o.budget ?? 0n).u64(o.reserved ?? 0n).u64(o.fundedTotal ?? o.budget ?? 0n).u64(o.paidTotal ?? 0n).u64(o.maxRootBudget ?? 100_000_000_000n).bool(o.paused ?? false).u8(253).toBytes();
+    .u64(o.budget ?? 0n).u64(o.reserved ?? 0n).u64(o.fundedTotal ?? o.budget ?? 0n).u64(o.paidTotal ?? 0n).u64(o.maxRootBudget ?? 100_000_000_000n).bool(o.paused ?? false).u8(253)
+    .u64(o.lastWithdrawSlot ?? 0n).i64(o.withdrawDayStart ?? 0n).u64(o.withdrawnToday ?? 0n).toBytes();
 }
 
 export interface RandomnessFields { authority: PublicKey; queue: PublicKey; oracle: PublicKey; seedSlot: bigint; revealSlot?: bigint; value?: Uint8Array; lutSlot?: bigint; seedSlothash?: Uint8Array }

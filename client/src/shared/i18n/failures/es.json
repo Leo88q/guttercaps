@@ -90,6 +90,7 @@
   "staking_ClaimExpired": "El derecho de acuñación comprimida venció y no puede entrar en staking",
   "staking_BeforeGenesis": "La emisión aún no comenzó: now < genesis_ts",
   "staking_BadMint": "El mint $CG no debe tener autoridad de congelación; la oferta debe ajustarse a la asignación ajena al juego",
+  "staking_SkrWithdrawRate": "Los retiros de SKR se limitan a una llamada por slot",
   "arena_WagerRange": "Apuesta fuera del rango de 5–5000 $CG",
   "arena_BadStatus": "La batalla no está en el estado esperado",
   "arena_NotOwner": "El cap del escuadrón no pertenece al firmante",

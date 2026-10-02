@@ -66,7 +66,8 @@ test('a secret in a deleted blob is still a hit', async () => {
   // The regression this whole script exists for: the file is gone from the tree, so `git ls-files`
   // (and therefore `npm run keypairs:scan`) sees nothing. The blob is still in the object database,
   // still in every clone, and still a live credential.
-  const dir = scratchRepo({ 'notes/old-keypair.json': keypair, 'README.md': '# scratch\n' }, ['notes/old-keypair.json']);
+  const pretty = '[\n' + Array.from({ length: 64 }, (_, i) => `  ${(i * 7 + 13) % 256}`).join(',\n') + '\n]';
+  const dir = scratchRepo({ 'notes/old-keypair.json': pretty, 'README.md': '# scratch\n' }, ['notes/old-keypair.json']);
   try {
     const { hits, scanned, error } = await scan(dir);
     assert.equal(error, undefined, `the scan itself must not error: ${error}`);
@@ -122,6 +123,10 @@ test('the allow-list suppresses a fixture, and only the allow-list does', async 
 
 test('isKeypairContent: 64 uint8s and nothing else', () => {
   assert.equal(isKeypairContent(keypair), true);
+  const pretty = '[\n' + Array.from({ length: 64 }, (_, i) => `  ${(i * 7 + 13) % 256}`).join(',\n') + '\n]';
+  assert.equal(isKeypairContent(pretty), true, 'a pretty-printed 64-byte array is still a keypair');
+  assert.ok(scanBlob('0'.repeat(40), 'leaked.json', pretty).some((h) => h.rule === 'solana-keypair'),
+    'a multiline keypair must be flagged — a line-only scan misses it');
   assert.equal(isKeypairContent(JSON.stringify({ 'rights.title': 'nilai' })), false, 'a locale object is not a keypair');
   assert.equal(isKeypairContent(JSON.stringify(Array.from({ length: 63 }, (_, i) => i % 256))), false, '63 bytes is not a keypair');
   assert.equal(isKeypairContent(JSON.stringify(Array.from({ length: 64 }, () => 999))), false, 'values above 255 are not keypair bytes');

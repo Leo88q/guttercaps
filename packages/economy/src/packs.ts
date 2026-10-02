@@ -68,8 +68,10 @@ const PREMIUM_ODDS = [2320, 2600, 2250, 1600, 800, 310, 90, 25, 5] as const;
 
 // Starter is deliberately +EV (floor Rare, 4 chips, $1.99) — it is a
 // customer-acquisition cost, not a product. One-per-wallet, and its chips
-// are non-tradeable for 7 days (soulbound window via the Metaplex Core
-// FreezeDelegate plugin) so sybil wallets cannot farm and dump them.
+// are non-tradeable for STARTER_SOULBOUND_DAYS (soulbound window written onto
+// PendingPack / CompressedMintClaim.lock_until) so sybil wallets cannot farm
+// and dump them.
+export const STARTER_SOULBOUND_DAYS = 7;
 const STARTER_ODDS = [2900, 3000, 2500, 1200, 350, 50, 0, 0, 0] as const;
 
 // Limited event pack: only the featured (seasonal) collection, floor Rare+,

@@ -90,6 +90,7 @@
   "staking_ClaimExpired": "Hak pencetakan aset terkompresi kedaluwarsa dan tidak dapat di-staking",
   "staking_BeforeGenesis": "Emisi belum dimulai: now < genesis_ts",
   "staking_BadMint": "Mint $CG tidak boleh memiliki otoritas pembekuan; pasokan harus dalam alokasi non-game",
+  "staking_SkrWithdrawRate": "Penarikan SKR dibatasi satu panggilan per slot",
   "arena_WagerRange": "Taruhan di luar rentang 5–5000 $CG",
   "arena_BadStatus": "Pertarungan tidak dalam status yang diharapkan",
   "arena_NotOwner": "Cap regu bukan milik penanda tangan",

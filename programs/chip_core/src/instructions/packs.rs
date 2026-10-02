@@ -403,7 +403,15 @@ pub fn buy_pack(
     pending.value = [0u8; 32];
     pending.voucher = false;
     pending.voucher_odds = [0u16; RARITY_COUNT];
-    pending.soulbound_days = 0;
+    // Starter is the only paid SKU with a soulbound window (7 d). Other SKUs are tradeable at
+    // once; quest vouchers set `soulbound_days` from the template in `open_voucher`. Leaving this
+    // at 0 made `open_compressed_pack` write `lock_until = 0`, so the staking ChipNotFree guard
+    // (SEC-A1) never saw a Starter lock.
+    pending.soulbound_days = if sku_e == PackSku::Starter {
+        STARTER_SOULBOUND_DAYS
+    } else {
+        0
+    };
 
     emit!(PackBought {
         buyer: pending.buyer,

@@ -68,4 +68,6 @@ pub enum StakeError {
     BeforeGenesis,
     #[msg("$CG mint must have no freeze authority and a supply within the non-play allocation")]
     BadMint,
+    #[msg("SKR withdrawals are limited to one call per slot")]
+    SkrWithdrawRate,
 }

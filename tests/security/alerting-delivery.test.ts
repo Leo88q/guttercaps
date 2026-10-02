@@ -16,6 +16,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { parse } from 'yaml';
 
 const read = (rel: string) => readFileSync(new URL(`../../${rel}`, import.meta.url), 'utf8');
@@ -73,6 +74,8 @@ function receiversResolve(am: ReturnType<typeof AM>, alerts: ReturnType<typeof A
   for (const h of hooks) {
     assert.match(h.url, /^https?:\/\//, `receiver url ${h.url} is not an http(s) endpoint`);
     assert.equal(h.send_resolved, true, 'a receiver without send_resolved never clears the incident');
+    assert.doesNotMatch(h.url, /^https?:\/\/(127\.0\.0\.1|localhost|::1)(:|\/|$)/i,
+      `receiver url ${h.url} is loopback inside the Alertmanager container — a stub, not a pager`);
   }
   // A sub-route whose matcher names a severity no rule carries is dead configuration.
   const used = new Set(rules(alerts).map((r) => r.severity));
@@ -101,6 +104,27 @@ function inhibitsAreReal(am: ReturnType<typeof AM>, alerts: ReturnType<typeof AL
 test('the alert rules are loaded, not just mounted', () => ruleFilesLoaded(PROM(), COMPOSE()));
 test('Prometheus points at an Alertmanager that exists in the same compose profile', () => alertmanagerWired(PROM(), COMPOSE()));
 test('Alertmanager routes to a receiver that exists, and resolves what it fires', () => receiversResolve(AM(), ALERTS()));
+
+test('alert-webhook translators self-test', () => {
+  const r = spawnSync('node', [new URL('../../ops/monitoring/alert-webhook.mjs', import.meta.url).pathname, '--selftest'], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+});
+
+test('the webhook sidecar has egress and ops:prometheus starts the whole pipeline', () => {
+  const compose = COMPOSE();
+  const am = compose.services.alertmanager;
+  const hook = compose.services['alert-webhook'];
+  assert.ok(hook, 'ops/deploy/docker-compose.yaml has no alert-webhook service — Alertmanager has nowhere that can reach Slack/PagerDuty');
+  assert.deepEqual(hook.profiles, am.profiles, 'alert-webhook must share the monitoring profile');
+  assert.ok((hook.networks ?? []).includes('edge'), 'alert-webhook needs the edge network for egress; Alertmanager stays internal');
+  assert.ok((hook.networks ?? []).includes('internal'), 'alert-webhook must be on internal so Alertmanager can reach it');
+  const urls = AM().receivers.flatMap((r: { webhook_configs?: { url: string }[] }) => (r.webhook_configs ?? []).map((h) => h.url));
+  assert.ok(urls.some((u: string) => /^https?:\/\/alert-webhook:/.test(u)), `receiver urls ${urls.join(', ')} do not name the alert-webhook service`);
+  const pkg = JSON.parse(read('package.json')) as { scripts: Record<string, string> };
+  assert.match(pkg.scripts['ops:prometheus']!, /prometheus/, 'ops:prometheus must start prometheus');
+  assert.match(pkg.scripts['ops:prometheus']!, /alertmanager/, 'ops:prometheus must start alertmanager, not just prometheus');
+  assert.match(pkg.scripts['ops:prometheus']!, /alert-webhook/, 'ops:prometheus must start the webhook sidecar');
+});
 test('inhibit_rules only name alerts that exist', () => inhibitsAreReal(AM(), ALERTS()));
 
 test('every rule carries a severity the paging policy names, and a description worth reading', () => {
@@ -125,7 +149,9 @@ test('self-test: each half of the wiring fails when it is removed', () => {
   assert.throws(() => alertmanagerWired(PROM(), noAm), /no alertmanager service/);
   // a receiver that never resolves
   assert.throws(() => receiversResolve(
-    { ...AM(), receivers: [{ name: 'default', webhook_configs: [{ url: 'http://127.0.0.1:5001/alerts' }] }] }, ALERTS()), /send_resolved/);
+    { ...AM(), receivers: [{ name: 'default', webhook_configs: [{ url: 'http://alert-webhook:5001/alerts' }] }] }, ALERTS()), /send_resolved/);
+  assert.throws(() => receiversResolve(
+    { ...AM(), receivers: [{ name: 'default', webhook_configs: [{ url: 'http://127.0.0.1:5001/alerts', send_resolved: true }] }] }, ALERTS()), /loopback/);
   // no receivers at all
   assert.throws(() => receiversResolve({ ...AM(), receivers: [] }, ALERTS()), /no receivers/);
   // an inhibit rule naming an alert that does not exist

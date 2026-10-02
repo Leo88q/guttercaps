@@ -283,6 +283,14 @@ pub struct SkrPool {
     pub max_root_budget: u64, // per-root ceiling (admin-tunable)
     pub paused: bool,
     pub bump: u8,
+    /// Slot of the last `withdraw_skr`. Two instructions in one transaction share a slot, so this
+    /// is what turns the 10 % per-call cap into ≥ 10 separate transactions rather than 10
+    /// instructions packed into one.
+    pub last_withdraw_slot: u64,
+    /// Unix timestamp of the current withdraw-day window (`DAY` seconds).
+    pub withdraw_day_start: i64,
+    /// Micro-SKR withdrawn since `withdraw_day_start`; capped at 10 % of the day's opening budget.
+    pub withdrawn_today: u64,
 }
 
 impl SkrPool {

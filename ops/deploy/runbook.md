@@ -262,14 +262,13 @@ curl -s localhost:9090/api/v1/rules | python3 -c 'import json,sys; d=json.load(s
 (пустые `targets`, пустой `rule_files`, отсутствие сервиса `alertmanager` в compose, приёмник без
 `send_resolved` и inhibit-правило с несуществующим алертом — каждое роняет сборку).
 
-**Один обязательный ручной шаг:** `receivers[].webhook_configs[].url` в
-`ops/monitoring/alertmanager.yml` — это `http://127.0.0.1:5001/alerts`, заглушка. Alertmanager, в
-отличие от Prometheus, не раскрывает переменные окружения в своём конфиге, поэтому URL правится
-в файле и подхватывается при `npm run ops:up`. Без этого шага алерты вычисляются, группируются и
-уходят в пустоту — то есть ровно то состояние, из которого этот раздел вышел. Куда направить:
-PagerDuty Events API v2 (`https://events.pagerduty.com/v2/enqueue`), Slack incoming-webhook,
-Opsgenie или свой мост. `ALERTMANAGER_BIND` (по умолчанию `127.0.0.1`) — только UI: журнал
-отправленных уведомлений и silences; конвейер работает и без него.
+`npm run ops:prometheus` поднимает Prometheus, Alertmanager **и** `alert-webhook`
+(sidecar `ops/monitoring/alert-webhook.mjs`). Alertmanager остаётся на сети `internal` (без
+egress); sidecar сидит на `internal` + `edge` и переводит generic webhook в Slack incoming-webhook
+/ PagerDuty Events API v2. Без `SLACK_WEBHOOK_URL` / `PAGERDUTY_ROUTING_KEY` страницы всё равно
+пишутся в лог контейнера — это не заглушка `127.0.0.1` внутри Alertmanager. Чтобы разбудить
+человека, заполните одну из переменных в `ops/deploy/.env`. `ALERTMANAGER_BIND` (по умолчанию
+`127.0.0.1`) — только UI: журнал отправленных уведомлений и silences; конвейер работает и без него.
 
 Группировка и тайминги уже настроены под политику severity из `alerts.yml`: `page` уходит одним
 уведомлением за 10 с и повторяется раз в час, `ticket`/`warn` — пачкой раз в 15 мин / 12 ч.
