@@ -18,6 +18,11 @@ const EXPECTED = [
   ['fmt', '--all', '--', '--check'],
   ['clippy', '--locked', '--workspace', '--all-targets', '--', '-D', 'warnings', '-A', 'deprecated', '-A', 'unexpected_cfgs'],
   ['test', '--locked', '--workspace'],
+  // L-1: the same tests in release mode. Debug and release differ where it matters for an on-chain
+  // program — `debug_assert!` is compiled out and the optimizer can expose a dependence on evaluation
+  // order that a slow debug build hides — and LiteSVM loading a release `.so` is not the same as
+  // running the crate's own `#[test]`s in release.
+  ['test', '--locked', '--release', '--workspace'],
 ];
 
 function runGate(t: TestContext, failStage = '') {
@@ -27,9 +32,11 @@ function runGate(t: TestContext, failStage = '') {
   const log = join(dir, 'cargo.log');
   mkdirSync(bin);
   writeFileSync(log, '');
+  // The stage key is the whole argument string, not `$1`: two of the stages are `cargo test`, and a
+  // `$1` comparison cannot tell the debug run from the release one.
   writeFileSync(join(bin, 'cargo'), `#!/bin/sh
 printf '%s\\n' "$*" >> "$CARGO_GATE_LOG"
-if [ "$1" = "$CARGO_GATE_FAIL_STAGE" ]; then exit 37; fi
+if [ "$*" = "$CARGO_GATE_FAIL_STAGE" ]; then exit 37; fi
 `, { mode: 0o755 });
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ private: true, scripts: { 'programs:gate': GATE } }));
   const result = spawnSync('npm', ['run', '--silent', 'programs:gate'], {
@@ -50,7 +57,7 @@ if [ "$1" = "$CARGO_GATE_FAIL_STAGE" ]; then exit 37; fi
   return { ...result, calls };
 }
 
-test('programs:gate runs fmt, strict clippy with only the two Anchor exceptions, then locked unit tests', (t) => {
+test('programs:gate runs fmt, strict clippy with only the two Anchor exceptions, then locked unit tests in debug and release', (t) => {
   const result = runGate(t);
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(result.calls, EXPECTED, 'keep -D warnings; do not replace the two specific exceptions with -A warnings');
@@ -62,17 +69,21 @@ test('CI and the Mac gate use the same fmt, clippy and unit-test arguments', () 
   const fmt = ci.match(/^\s*run: cargo (fmt [^\r\n]+)$/m)?.[1];
   assert.ok(fmt, 'CI fmt command not found');
   assert.deepEqual(fmt.trim().split(/\s+/), EXPECTED[0]);
-  for (const i of [1, 2]) {
-    const command = ci.match(new RegExp(`^\\s*sh scripts/ci-run-logged\\.sh \\S+ cargo (${EXPECTED[i][0]} [^\\r\\n]+)$`, 'm'))?.[1];
-    assert.ok(command, `CI ${EXPECTED[i][0]} command not found`);
-    assert.deepEqual(command.replace('$locked', '--locked').trim().split(/\s+/), EXPECTED[i], 'local and CI lint policies must not drift');
+  // Every stage the npm gate runs must appear verbatim in CI too — collect them all, because two of
+  // the four stages start with `cargo test` and `match` would only ever see the first.
+  for (const [i, expected] of EXPECTED.entries()) {
+    const commands = [...ci.matchAll(new RegExp(`^\\s*(?:run: cargo |sh scripts/ci-run-logged\\.sh \\S+ cargo )(${expected[0]} [^\\r\\n]+)$`, 'mg'))].map((m) => m[1]!);
+    const normalised = commands.map((c) => c.replace('$locked', '--locked').trim().split(/\s+/));
+    assert.ok(normalised.some((c) => c.join(' ') === expected.join(' ')), `CI does not run \`cargo ${expected.join(' ')}\` — saw ${JSON.stringify(normalised)}`);
+    void i;
   }
+  assert.match(read('scripts/mac-devnet.sh'), /stage_rust\(\) \{[^}]*run npm run programs:gate/, 'the Mac rust stage must use the tested npm gate');
   assert.match(read('scripts/mac-devnet.sh'), /stage_rust\(\) \{[^}]*run npm run programs:gate/, 'the Mac rust stage must use the tested npm gate');
 });
 
 for (const [i, args] of EXPECTED.entries()) {
-  test(`programs:gate preserves a ${args[0]} failure and does not run later steps`, (t) => {
-    const result = runGate(t, args[0]);
+  test(`programs:gate preserves a \`cargo ${args.join(' ')}\` failure and does not run later steps`, (t) => {
+    const result = runGate(t, args.join(' '));
     assert.equal(result.status, 37, result.stderr);
     assert.deepEqual(result.calls, EXPECTED.slice(0, i + 1));
   });

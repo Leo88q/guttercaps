@@ -413,9 +413,11 @@ jobs:
         run: sh scripts/ci-surface-log.sh /tmp/sbf-check.log /tmp/anchor-build.log
 
   rust-lints:
-    name: rust · clippy + unit tests (pinned rust image)
+    name: rust · clippy + unit tests, debug and release (pinned rust image)
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # Two full builds now (debug, then release). 35 minutes was measured for one; a timeout that
+    # kills a green build is a red that measures nothing.
+    timeout-minutes: 55
     # A job has one container, so this is a job: the anchor image ships rustfmt (fmt is proven by it) but no
     # clippy, and `cargo clippy` inside it exited 101 with "no such command" — red, and measuring nothing.
     # rust:1.89.0 is the channel rust-toolchain.toml pins, so `-D warnings` here is the lint set the repo
@@ -471,9 +473,20 @@ jobs:
         run: |
           if [ -f Cargo.lock ]; then locked=--locked; else locked=; fi
           sh scripts/ci-run-logged.sh /tmp/cargo-test.log cargo test $locked --workspace
+      # L-1 (AUDIT-2026-10-02): the same tests in release mode. The two are not redundant — LiteSVM
+      # loading a release `.so` is not the same as running the crate's own `#[test]`s in release, and
+      # `debug_assert!` is compiled out there, so a release-only panic (an evaluation-order dependence
+      # the slow debug build hides, an overflow that only the optimizer reaches) shows up here first.
+      # `--locked` for the same reason as clippy: the graph under test must be the one being shipped.
+      # `programs:gate` runs the identical command, and tests/security/rust-gate.test.ts asserts the
+      # two do not drift.
+      - name: unit tests (release)
+        run: |
+          if [ -f Cargo.lock ]; then locked=--locked; else locked=; fi
+          sh scripts/ci-run-logged.sh /tmp/cargo-test-release.log cargo test $locked --release --workspace
       - name: surface the failure without log access
         if: failure()
-        run: sh scripts/ci-surface-log.sh /tmp/clippy.log /tmp/cargo-test.log
+        run: sh scripts/ci-surface-log.sh /tmp/clippy.log /tmp/cargo-test.log /tmp/cargo-test-release.log
 
   localnet:
     name: localnet · 92 scenarios (LiteSVM)
