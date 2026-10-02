@@ -183,6 +183,13 @@ pub fn withdraw_skr(ctx: Context<WithdrawSkr>, amount: u64) -> Result<()> {
     require!(amount > 0, StakeError::ZeroAmount);
     let p = &mut ctx.accounts.pool;
     require!(amount <= p.budget, StakeError::SkrBudgetExceeded);
+    // SEC-A6 (2026-10-02): the destination is deliberately not pinned (SW010), so a leaked admin key
+    // can move the whole unreserved budget in one transaction. Capping a single call at 10 % of the
+    // budget bounds the loss per tx and turns a silent one-tx drain into ≥ 10 visible transactions.
+    // Pinning `to` to a config treasury ATA is the real fix and needs a `SkrPool` layout migration
+    // (`state:layout -- --write`) — tracked as the follow-up to this cap in AUDIT-2026-10-02.md.
+    let per_call_cap = (p.budget / 10).max(1);
+    require!(amount <= per_call_cap, StakeError::SkrBudgetExceeded);
     p.budget -= amount;
     let seeds: &[&[u8]] = &[b"skr_pool", &[p.bump]];
     token::transfer(
@@ -316,7 +323,10 @@ pub fn revoke_skr_root(ctx: Context<RevokeSkrRoot>) -> Result<()> {
     r.revoked = true;
     let left = r.budget - r.claimed;
     let p = &mut ctx.accounts.pool;
-    p.reserved -= left;
+    // SEC-A3 (2026-10-02): the invariant `reserved == Σ(budget − claimed)` over live roots holds
+    // today, so this subtraction cannot underflow — but `claim_skr_root` and `publish_skr_root`
+    // both use `checked_*` for the same fields, and a raw `-=` wraps on the dev/test profile.
+    p.reserved = p.reserved.checked_sub(left).ok_or(StakeError::Overflow)?;
     p.budget = p.budget.checked_add(left).ok_or(StakeError::Overflow)?;
     emit!(RootRevoked {
         kind: r.kind,

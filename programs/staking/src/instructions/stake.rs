@@ -271,6 +271,15 @@ pub fn stake_compressed_chip(ctx: Context<StakeCompressedChip>) -> Result<()> {
         StakeError::ChipNotFree
     );
     let now = Clock::get()?.unix_timestamp;
+    // SEC-A1 (2026-10-02): a soulbound chip must not earn before its lock expires. `claim.lock_until`
+    // is set from `PendingPack.soulbound_days` (Starter 7 d, quest vouchers 3–30 d) and is the
+    // authoritative window — market (`market::buy_compressed_asset`) and fusion
+    // (`fuse_compressed_claims`) both refuse a locked claim, and staking is the one remaining
+    // consumer that used to turn a locked chip into a reward stream without transferring it.
+    require!(
+        now >= ctx.accounts.claim.lock_until,
+        StakeError::ChipNotFree
+    );
     // SEC-F04: never stake a dead claim. An unminted claim past its 7-day deadline can never be
     // minted/registered — it is only cancellable — so its weight is a claim on the pool backed
     // by nothing. Minted claims stay stakeable after the deadline exactly like
@@ -404,6 +413,15 @@ pub fn stake_compressed_chip_v2<'info>(
     // Keep the economic transition identical to the claim path, but only after
     // the live V2 leaf has been proven.
     let now = Clock::get()?.unix_timestamp;
+    // SEC-A1 (2026-10-02): soulbound / fusion-locked chips may not earn yet. The claim carries the
+    // window (`claim.lock_until`, from `PendingPack.soulbound_days`) and the registered leaf mirrors
+    // it as `CompressedChipState::F_SOULBOUND` + `lock_until` (`register_compressed_chip`). Either
+    // being set and unexpired is a refusal — market and fusion already enforce both.
+    require!(
+        now >= claim.lock_until
+            && (chip.flags & CompressedChipState::F_SOULBOUND == 0 || now >= chip.lock_until),
+        StakeError::ChipNotFree
+    );
     let sb = &mut ctx.accounts.set_bonus;
     if sb.owner == Pubkey::default() {
         sb.owner = ctx.accounts.owner.key();

@@ -1722,13 +1722,17 @@ pub fn finalize_compressed_pack(ctx: Context<FinalizeCompressedPack>, nonce: u64
 
     let settlement_ai = ctx.accounts.settlement.to_account_info();
     let settlement_lamports = settlement_ai.lamports();
-    let payer_ai = ctx.accounts.payer.to_account_info();
-    let payer_next = payer_ai
+    // SEC-A5 (2026-10-02): the settlement rent goes back to the buyer, exactly like the pending
+    // rent two blocks up and like `resolve_battle` (escrow → challenger), `cancel_stale_fusion` and
+    // `close_randomness` (rent → the player). The permissionless crank still earns its own
+    // transaction fee from elsewhere; paying it out of the player's pack rent was an asymmetry with
+    // every other closure path in this repo.
+    let buyer_next = buyer_ai
         .lamports()
         .checked_add(settlement_lamports)
         .ok_or(ChipError::Overflow)?;
     **settlement_ai.try_borrow_mut_lamports()? = 0;
-    **payer_ai.try_borrow_mut_lamports()? = payer_next;
+    **buyer_ai.try_borrow_mut_lamports()? = buyer_next;
     settlement_ai.assign(&system_program::ID);
     settlement_ai.resize(0)?;
 

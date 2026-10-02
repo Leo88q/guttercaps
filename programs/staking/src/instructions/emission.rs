@@ -599,8 +599,17 @@ pub fn revoke_root(ctx: Context<RevokeRoot>) -> Result<()> {
     );
     require!(!r.revoked, StakeError::RootRevoked);
     r.revoked = true;
+    // SEC-A3 (2026-10-02): `slice_budget[k]` is a running total that `tick_day` / `fund_slice` keep
+    // far below u64::MAX, so this cannot overflow today — but every sibling path in this file uses
+    // `checked_add` with `StakeError::Overflow`, and a raw `+=` would *wrap* on the dev/test profile
+    // (where `overflow-checks` is off) instead of failing the transaction.
+    let k = r.kind as usize;
+    let refund = r.budget - r.claimed;
     let e = &mut ctx.accounts.emission;
-    e.slice_budget[r.kind as usize] += r.budget - r.claimed;
+    let sum = e.slice_budget[k]
+        .checked_add(refund)
+        .ok_or(StakeError::Overflow)?;
+    e.slice_budget[k] = sum;
     emit!(RootRevoked {
         kind: r.kind,
         epoch: r.epoch

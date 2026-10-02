@@ -865,8 +865,8 @@ pub fn sweep_vault<'info>(ctx: Context<'_, '_, 'info, 'info, SweepVault<'info>>)
                     },
                     &[seeds],
                 ),
-                free,
-            )?;
+            free,
+        )?;
         }
     }
     Ok(())
