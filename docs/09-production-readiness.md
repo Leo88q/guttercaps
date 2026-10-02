@@ -597,3 +597,30 @@ npm run schema:check         # prisma ⇄ DDL: 56 таблиц / 61 модель
 | Логи GitHub Actions | `*.blob.core.windows.net` недоступен (EOF); восстановление по `gh api …/jobs` (статусы шагов) и `…/annotations` (тексты падений) — так и были найдены оба бага §5.4 |
 
 
+## 9. Заголовки и SPA-редиректы: один путь доставки (M-6, AUDIT-2026-10-02)
+
+**Заголовки приложения — ответственность `ops/deploy/nginx.conf`, и только его.** В дереве больше
+нет `client/public/_headers` и `client/public/_redirects`: это конвенции Cloudflare Pages, и их
+присутствие означало второй, молчаливый путь доставки — приложение, которое отдаётся вообще без
+CSP, `X-Frame-Options` и HSTS, если однажды кто-то сделает `wrangler pages deploy` или сменит CDN.
+Никто бы об этом не узнал: `tests/security/csp.test.ts` проверяет только nginx-сторону.
+
+Что покрыто и где, чтобы удаление ничего не потеряло:
+
+| директива | `_headers` (было) | `nginx.conf` (стало и осталось) |
+|---|---|---|
+| `/index.html` | `Cache-Control: no-cache` | `$app_cache_control`: `/index.html → no-store, must-revalidate` |
+| `/assets/*` | `public, max-age=31536000, immutable` | `~^/(assets|fonts)/ → public, immutable` (+ `expires 1y` в `location /assets/`) |
+| `/` | `no-cache` | `default ""`, а `$uri` после внутреннего редиректа на `/index.html` даёт `no-store` — включая deep-link'и |
+| `/.well-known/security.txt` | не было | `~^/\.well-known/ → no-cache` (M-1) |
+| SPA-fallback | `_redirects`: `/* /index.html 200` | `location / { try_files $uri $uri/ /index.html; }` |
+
+Проверка, что файлы не вернутся: `tests/security/header-ownership.test.ts` падает, если в
+`client/public/` снова появятся Cloudflare-Pages-конвенции (`_headers`, `_redirects`,
+`wrangler.toml`) или если CSP/HSTS/XFO исчезнут из server-scope `nginx.conf`. Условие удаления
+проверено по текущему дереву: ни одного `wrangler pages deploy`, ни одного Pages-job'а в
+`.github/workflows/` (и на базовом коммите тоже), Cloudflare встречается только как Turnstile
+(`challenges.cloudflare.com`) и как edge-источник гео (`GEO_GATE`, `GEO_TRUST_HEADER`).
+Остаточная неопределённость — пункт 105 аудита: какой домен и TLS-терминатор реально раздают
+приложение. Если ответ окажется «Cloudflare Pages», этот раздел откатывается в вариант B
+(привести `_headers` в соответствие и добавить тест на совпадение директив).
