@@ -61,6 +61,7 @@
     "audit:gate": "node --experimental-strip-types scripts/audit-gate.ts",
     "keypairs:scan": "node --experimental-strip-types scripts/committed-keypairs.ts",
     "secret:scan": "node --experimental-strip-types scripts/secret-scan.ts",
+    "ix:shape": "node --experimental-strip-types scripts/ix-shape.ts",
     "env:example": "node --experimental-strip-types scripts/env-doc.ts --write",
     "env:check": "node --experimental-strip-types scripts/env-doc.ts --check",
     "backend:start": "npm --prefix backend run start",
