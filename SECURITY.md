@@ -5,8 +5,12 @@ touching those paths as a security issue.
 
 ## Reporting
 
-Open a **private GitHub Security Advisory** in `Leo88q/caps`
+Open a **private GitHub Security Advisory** in `Leo88q/guttercaps`
 (Security → Report a vulnerability). Never post an exploit in a public issue.
+The same channel is published machine-readably at `https://app.guttercaps.gg/.well-known/security.txt`
+(RFC 9116; `client/public/.well-known/security.txt`, served by the `location ^~ /.well-known/` block in
+`ops/deploy/nginx.conf`). If you prefer email and have a monitored mailbox, add it as a second
+`Contact:` line in that file — it is checked for freshness by `npm run security:static`.
 Format we would like (but any working PoC is fine):
 
 `ID · Severity · Program/file:line · PoC (tx log or a tests/localnet spec) · Impact · Recommendation`

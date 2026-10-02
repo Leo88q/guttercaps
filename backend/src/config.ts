@@ -195,6 +195,16 @@ export function assertProductionConfig(): void {
   // compliant in review and sells to nobody/everybody depending on who reads the code first.
   const geoProblem = geoMisconfiguration();
   if (geoProblem) problems.push(`GEO: ${geoProblem}`);
+  // SEC-A7 (2026-10-02, M-13 in AUDIT-2026-10-02.md): age and market gating defaulted to OFF,
+  // *including in production* (`COMPLIANCE_ENFORCE ?? '0'`). A deploy that inherited the default
+  // sold paid loot boxes to every country and every age with nothing in the logs to say so — and
+  // `access-policy.json` already carries the real policy (packs denied in BE/NL, minimumAge 18),
+  // so the file that says "18+ and not BE/NL" was simply not being read. Stating it is now
+  // mandatory. The geo half was already fail-closed: `geoOf` returns `country: null` unless
+  // `GEO_TRUST_HEADER=1`, and `geoMisconfiguration` above refuses a gate that is on but untrusted.
+  if (env.COMPLIANCE_ENFORCE !== '1') {
+    problems.push('COMPLIANCE_ENFORCE=1 is required — it is the switch that makes backend/access-policy.json real (packs denied in BE/NL, minimumAge 18); unset or 0 used to mean "no age or market enforcement anywhere", including production');
+  }
   if (problems.length) throw new Error(`refusing to start in production:\n  - ${problems.join('\n  - ')}`);
 }
 

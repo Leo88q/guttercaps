@@ -181,5 +181,6 @@
   "internal": "O servidor não conseguiu concluir a solicitação. Tente mais tarde.",
   "guardRail": "As alterações propostas violam as regras. Confira as verificações detalhadas.",
   "network": "Falha de conexão. Verifique a rede e tente novamente.",
-  "walletMessages": "Esta carteira não assina mensagens. Use uma carteira com esse recurso."
+  "walletMessages": "Esta carteira não assina mensagens. Use uma carteira com esse recurso.",
+  "arena_BadCap": "Limite diário de pagamentos do oráculo da arena inválido."
 }

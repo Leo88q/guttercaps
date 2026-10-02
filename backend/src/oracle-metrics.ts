@@ -16,6 +16,12 @@
 //   * `arena_oracle_paid_today_cg` / `arena_oracle_cap_cg` — the on-chain circuit breaker itself, so a
 //     cap that is about to trip (legit resolves would start failing with `OracleCap`) is visible
 //     before players hit it.
+//   * `arena_paused` — ArenaConfig.paused, so the *automatic* pause (SEC-A2, `resolve_battle` flipping
+//     `paused` itself when the oracle hits its own cap) is visible without reading a tx;
+//   * `vault_solvent` / `vault_liabilities_sol` / `vault_lamports_sol` — the chip_core vault PDA against
+//     the `Σ VaultLedger.liabilities` it owes. `sweep_vault` saturates and silently moves nothing when
+//     the vault is short, and `GameConfig` is read-only on every player path (#12), so there is no
+//     permissionless instruction that could react to it — the poll is the detector.
 // Alert rules live in ops/monitoring/alerts.yml (group `guttercaps.oracles`); the contract test in
 // backend/test/monitoring.test.ts fails if a rule there queries a series this file stops exporting.
 import type { PublicKey } from '@solana/web3.js';
@@ -23,6 +29,7 @@ import { type Db, now } from './db.ts';
 import { burnOracleStatus } from './burn-oracle.ts';
 import { rewardOracleStatus } from './reward-oracle.ts';
 import { arenaConfigPda, BATTLE_ORACLE_KEYPAIR, decodeArenaConfig } from './battle-resolver.ts';
+import { allLedgerPdas, decodeVaultLedger, sumLedgers, vaultPda } from './chain.ts';
 import { getConnection } from './ingest.ts';
 import { log, errFields } from './log.ts';
 
@@ -74,8 +81,8 @@ export function unattributedResolves(db: Db, nowS = now(), windowS = 86_400): Un
   return { count: rows.length, sample: rows.slice(0, 5).map((r) => ({ battle: r.battle, signature: r.resolved_sig, resolvedAt: r.resolved_at })) };
 }
 
-export interface ArenaOracleGauge { capCg: number; paidTodayCg: number; readable: 0 | 1; dayAgeS: number }
-const capCache: ArenaOracleGauge & { at: number } = { at: 0, capCg: -1, paidTodayCg: -1, readable: 0, dayAgeS: -1 };
+export interface ArenaOracleGauge { capCg: number; paidTodayCg: number; paused: 0 | 1; readable: 0 | 1; dayAgeS: number }
+const capCache: ArenaOracleGauge & { at: number } = { at: 0, capCg: -1, paidTodayCg: -1, paused: 0, readable: 0, dayAgeS: -1 };
 const CAP_TTL_MS = 30_000;
 /**
  * The arena `ArenaConfig` circuit breaker, read from the RPC at most every 30 s and never thrown from
@@ -85,7 +92,7 @@ const CAP_TTL_MS = 30_000;
  * The on-chain window resets lazily (the first resolve after 24 h zeroes `paid_today`), so a stale
  * window reads as 0 here — exactly what the program will see on the next resolve.
  */
-const capSnapshot = (): ArenaOracleGauge => ({ capCg: capCache.capCg, paidTodayCg: capCache.paidTodayCg, readable: capCache.readable, dayAgeS: capCache.dayAgeS });
+const capSnapshot = (): ArenaOracleGauge => ({ capCg: capCache.capCg, paidTodayCg: capCache.paidTodayCg, paused: capCache.paused, readable: capCache.readable, dayAgeS: capCache.dayAgeS });
 type AccountReader = { getAccountInfo(key: PublicKey): Promise<{ data: Uint8Array } | null> };
 export async function arenaOracleGauge(deps: { enabled?: boolean; nowS?: number; connection?: AccountReader } = {}): Promise<ArenaOracleGauge> {
   const enabled = deps.enabled ?? Boolean(BATTLE_ORACLE_KEYPAIR);
@@ -99,6 +106,9 @@ export async function arenaOracleGauge(deps: { enabled?: boolean; nowS?: number;
     capCache.capCg = cg(cfg.oracleDailyCap);
     capCache.paidTodayCg = dayAgeS >= 86_400 ? 0 : cg(cfg.oraclePaidToday);
     capCache.dayAgeS = dayAgeS;
+    // SEC-A2 (2026-10-02, M-11): `resolve_battle` flips this itself at the cap, so `paused == 1` with no
+    // ArenaConfigChanged event behind it is the signature of the automatic breaker having fired.
+    capCache.paused = cfg.paused ? 1 : 0;
     capCache.readable = 1;
   } catch (e) {
     capCache.readable = 0; // keep the last known numbers, mark them unreadable
@@ -110,5 +120,53 @@ export async function arenaOracleGauge(deps: { enabled?: boolean; nowS?: number;
 
 /** Test hook: forget the cached RPC read. */
 export function resetArenaOracleGaugeForTests(): void {
-  Object.assign(capCache, { at: 0, capCg: -1, paidTodayCg: -1, readable: 0, dayAgeS: -1 });
+  Object.assign(capCache, { at: 0, capCg: -1, paidTodayCg: -1, paused: 0, readable: 0, dayAgeS: -1 });
+}
+
+// ------------------------------------------------------------------ vault solvency (SEC-A2, M-11)
+const LAMPORTS_PER_SOL = 1e9;
+const sol = (lamports: bigint): number => Number(lamports) / LAMPORTS_PER_SOL;
+
+export interface VaultSolvencyGauge { lamportsSol: number; liabLamportsSol: number; solvent: 0 | 1; readable: 0 | 1 }
+const vaultCache: VaultSolvencyGauge & { at: number } = { at: 0, lamportsSol: -1, liabLamportsSol: -1, solvent: 0, readable: 0 };
+const VAULT_TTL_MS = 30_000;
+/**
+ * The chip_core vault PDA against what it owes. `sweep_vault` only ever moves the *surplus*
+ * (`lamports.saturating_sub(liab).saturating_sub(rent_floor)`), so a short vault is not a bug the
+ * instruction can repair or even report — it just moves nothing. Every player path keeps `GameConfig`
+ * read-only (#12), so nothing on chain can pause the game over it either. This poll is the detector,
+ * and `vault_solvent == 0` is what pages.
+ *
+ * The comparison is deliberately lamports-only: `liab_usdc` / `liab_skr` live in different token
+ * accounts with their own mints, and mixing a $CG liability (which is *burned*, not held) into a SOL
+ * balance would make the number meaningless. `VaultLedger.liab_lamports` is the SOL reserve.
+ */
+const vaultSnapshot = (): VaultSolvencyGauge => ({ lamportsSol: vaultCache.lamportsSol, liabLamportsSol: vaultCache.liabLamportsSol, solvent: vaultCache.solvent, readable: vaultCache.readable });
+/** Like `AccountReader` but the vault PDA's *balance* is the point, so `lamports` is required. */
+type VaultReader = { getAccountInfo(key: PublicKey): Promise<{ lamports: number; data: Uint8Array } | null> };
+export async function vaultSolvencyGauge(deps: { connection?: VaultReader } = {}): Promise<VaultSolvencyGauge> {
+  if (Date.now() - vaultCache.at < VAULT_TTL_MS) return vaultSnapshot();
+  try {
+    const conn = deps.connection ?? getConnection();
+    const [vault, ...shards] = await Promise.all([
+      conn.getAccountInfo(vaultPda()[0]),
+      ...allLedgerPdas().map((k) => conn.getAccountInfo(k)),
+    ]);
+    if (!vault) throw new Error('vault account missing');
+    const liab = sumLedgers(shards.map((a) => (a ? decodeVaultLedger(new Uint8Array(a.data)) : null)));
+    vaultCache.lamportsSol = sol(BigInt(vault.lamports));
+    vaultCache.liabLamportsSol = sol(liab.liabLamports);
+    vaultCache.solvent = BigInt(vault.lamports) >= liab.liabLamports ? 1 : 0;
+    vaultCache.readable = 1;
+  } catch (e) {
+    vaultCache.readable = 0; // keep the last known numbers, mark them unreadable
+    log.warn('vault solvency read failed', errFields(e));
+  }
+  vaultCache.at = Date.now();
+  return vaultSnapshot();
+}
+
+/** Test hook: forget the cached RPC read. */
+export function resetVaultSolvencyGaugeForTests(): void {
+  Object.assign(vaultCache, { at: 0, lamportsSol: -1, liabLamportsSol: -1, solvent: 0, readable: 0 });
 }

@@ -264,6 +264,14 @@ describe('T-B-43 hardening', () => {
       process.env.PRODUCTION_DB_MODE = 'sqlite-single-instance';
       // Bubblegum V2 is an explicit production release gate; this test is about the remaining config checks.
       process.env.BUBBLEGUM_V2_ENABLED = '1';
+      // SEC-A7 (2026-10-02): the age/country gate used to default to OFF in every environment,
+      // production included, so a deploy that never mentioned the variable sold paid loot boxes to
+      // every country and every age while access-policy.json claimed 18+ and no BE/NL. Stating it
+      // is now mandatory; a hardened env that forgets it is refused like any other gap.
+      vi.resetModules();
+      const noCompliance = await import('../src/config.ts');
+      expect(() => noCompliance.assertProductionConfig()).toThrow(/COMPLIANCE_ENFORCE/);
+      process.env.COMPLIANCE_ENFORCE = '1';
       // T-B-49: proof of human is mandatory in production unless opted out explicitly
       const noHuman = await import('../src/config.ts');
       expect(() => noHuman.assertProductionConfig()).toThrow(/TURNSTILE_SECRET/);

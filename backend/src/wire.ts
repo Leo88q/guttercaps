@@ -57,6 +57,9 @@ export const WIRE_TYPE: Record<string, string> = {
   AdminProposed: 'params_changed',
   AdminAccepted: 'params_changed',
   ArenaConfigChanged: 'params_changed',
+  // SEC-A2 (2026-10-02, M-11): the arena paused itself. The client reads `paused` off the config, and
+  // `params_changed` is the invalidation that makes it re-read — the same route `PauseChanged` takes.
+  ArenaAutoPaused: 'params_changed',
   OraclesChanged: 'params_changed',
   CollectionCreated: 'params_changed',
 };

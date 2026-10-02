@@ -14,6 +14,14 @@ global:
     # worth having the first time two environments share one Alertmanager.
     cluster: ${PROM_CLUSTER:-mainnet}
 
+# H-1 (AUDIT-2026-10-02), the other half: compose has mounted alerts.yml into this container since the
+# rules were written, but nothing ever loaded it — there was no `rule_files` here, so Prometheus
+# evaluated *zero* of the ~20 rules and `alerting.alertmanagers.targets` was empty as well. A rules
+# file nobody loads and a receiver nobody points at fail the same way: silently, in the direction of
+# "nothing is wrong".
+rule_files:
+  - /etc/prometheus/alerts.yml
+
 scrape_configs:
   - job_name: api
     metrics_path: /metrics
@@ -43,6 +51,9 @@ scrape_configs:
 alerting:
   alertmanagers:
     - static_configs:
-        - targets: []   # fill with your Alertmanager (e.g. ['alertmanager:9093']) once one exists
-      # An empty target list is the honest current state (no Alertmanager yet): the rules still load,
-      # and their annotations are the runbook. Deliberate, not an oversight — see runbook §3.2.
+        # H-1 (AUDIT-2026-10-02): this list used to be empty, with a comment saying to fill it "once one
+        # exists". alerts.yml had ~20 rules with severities and runbook references and nothing was
+        # listening: every rule evaluated, held its state and was discarded. ops/monitoring/alertmanager.yml
+        # is the receiver now (same `monitoring` compose profile as this service).
+        - targets: ['alertmanager:9093']
+      # tests/security/alerting-delivery.test.ts fails when alerts.yml carries rules and this list is empty.

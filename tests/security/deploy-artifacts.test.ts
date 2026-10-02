@@ -315,6 +315,80 @@ test('SEC-B54 the SIWS message and the wallet adapter name the same chain, deriv
   assert.deepEqual(problems, []);
 });
 
+// --------------------------------------------------------------------------- M-1 (RFC 9116 security.txt)
+
+/**
+ * M-1: the vulnerability intake channel was broken in two places at once — `SECURITY.md` named
+ * `Leo88q/caps`, a repository that does not exist, and there was no machine-readable half. Both are
+ * fixed, but a security.txt is a *dated* artifact with three silent failure modes that a file that
+ * merely exists does not catch:
+ *
+ *   * `Expires` in the past. RFC 9116 §2.5.5 says less than a year ahead; a lapsed one is ignored by
+ *     every compliant crawler, and nothing on the deploy path notices — the file still answers 200.
+ *   * `Policy` pointing at an anchor that does not exist. The first cut pointed at
+ *     `https://app.guttercaps.gg/#reporting`, and the landing page has no `#reporting` section and no
+ *     vulnerability content at all: the policy link was a 200 with a dead fragment.
+ *   * nginx ordering. `/.well-known` starts with a dot, and the dotfile deny below is a *regex*
+ *     location. Without an exact-match `^~` prefix block above it, the file answers 403 to every
+ *     researcher who looks for it — the M-1 note calls this out as the easy thing to miss.
+ */
+const securityTxtProblems = (txt: string, policy: string, nginx: string, repoSlug: string): string[] => {
+  const problems: string[] = [];
+  const fields = new Map<string, string>();
+  for (const line of txt.split('\n')) {
+    const m = /^([A-Za-z][A-Za-z0-9-]*):[ \t]*(\S.*)$/.exec(line.trim());
+    if (m) fields.set(m[1]!.toLowerCase(), m[2]!.trim());
+  }
+  const contact = fields.get('contact') ?? '';
+  if (!contact) problems.push('security.txt has no Contact: field');
+  else if (!contact.includes(repoSlug)) problems.push(`security.txt Contact: does not name ${repoSlug} (got ${contact})`);
+
+  const expires = fields.get('expires');
+  if (!expires) problems.push('security.txt has no Expires: field');
+  else {
+    const at = Date.parse(expires);
+    if (Number.isNaN(at)) problems.push(`security.txt Expires: is not a date (${expires})`);
+    else {
+      const days = (at - Date.now()) / 86_400_000;
+      if (days <= 0) problems.push(`security.txt Expires: lapsed ${Math.abs(Math.round(days))} day(s) ago — a stale file is ignored by every compliant crawler`);
+      if (days > 366) problems.push(`security.txt Expires: is ${Math.round(days)} days out; RFC 9116 wants less than a year`);
+    }
+  }
+
+  const policyUrl = fields.get('policy') ?? '';
+  if (!policyUrl) problems.push('security.txt has no Policy: field');
+  else if (!policyUrl.startsWith('https://')) problems.push(`security.txt Policy: is not https (${policyUrl})`);
+  else if (!policyUrl.includes(repoSlug)) problems.push(`security.txt Policy: does not point at ${repoSlug} (${policyUrl})`);
+  else if (!policyUrl.includes('#reporting')) problems.push(`security.txt Policy: does not resolve to the reporting section (${policyUrl})`);
+  // The fragment has to exist: the page it names must actually render a Reporting heading.
+  if (!/^##\s+Reporting\b/m.test(policy)) problems.push('SECURITY.md has no "## Reporting" section, so Policy:#reporting resolves to nothing');
+  // And the human-readable half has to name the same repository. This is the original M-1 defect:
+  // SECURITY.md said `Leo88q/caps`, a repository that does not exist, so the one channel a researcher
+  // was told to use was a 404. A private advisory is only private if the slug is right.
+  if (!policy.includes(repoSlug)) problems.push(`SECURITY.md does not name ${repoSlug} — the human-readable reporting channel points somewhere else`);
+
+  const canonical = fields.get('canonical') ?? '';
+  if (!canonical) problems.push('security.txt has no Canonical: field');
+  else if (!canonical.startsWith('https://')) problems.push(`security.txt Canonical: is not https (${canonical})`);
+  else if (!canonical.endsWith('/.well-known/security.txt')) problems.push(`security.txt Canonical: is not the deployed path (${canonical})`);
+
+  // nginx: the `^~` prefix block must be above the dotfile deny, or the deny wins.
+  const wellKnown = nginx.indexOf('location ^~ /.well-known/');
+  const deny = nginx.indexOf('location ~ /\\.');
+  if (wellKnown < 0) problems.push('ops/deploy/nginx.conf has no `location ^~ /.well-known/` block — the RFC 9116 file answers 403 under the dotfile deny');
+  else if (deny >= 0 && wellKnown > deny) problems.push('the `location ^~ /.well-known/` block is below the dotfile deny in nginx.conf — order matters for a prefix match against a regex location');
+  return problems;
+};
+
+test('M-1 the RFC 9116 file is published, fresh and resolves to a real reporting channel', () => {
+  const txt = read('client/public/.well-known/security.txt');
+  const problems = securityTxtProblems(txt, read('SECURITY.md'), read('ops/deploy/nginx.conf'), 'Leo88q/guttercaps');
+  assert.deepEqual(problems, [], problems.join('; '));
+  // It has to be tracked, or the client image build has nothing to copy into dist/.
+  const tracked = spawnSync('git', ['ls-files', '--error-unmatch', 'client/public/.well-known/security.txt'], { cwd: REPO, encoding: 'utf8' });
+  assert.equal(tracked.status, 0, 'client/public/.well-known/security.txt is not tracked — vite will not copy it into dist/ and the deploy will 404');
+});
+
 // --------------------------------------------------------------------------- mutations
 
 test('each deploy-surface rule fails on a deliberately broken input', () => {
@@ -356,6 +430,28 @@ test('each deploy-surface rule fails on a deliberately broken input', () => {
     chainIdProblems(preFixSession, read('client/src/main.tsx'), read('client/src/app/config.ts')).length > 0,
     'the rule must reject a hardcoded chain id in the signed message',
   );
+
+  // 7. M-1 — the three silent failure modes: a lapsed Expires, a Policy with a dead fragment, and a
+  //    well-known block below the dotfile deny.
+  const goodTxt = read('client/public/.well-known/security.txt');
+  const goodNginx = read('ops/deploy/nginx.conf');
+  const future = new Date(Date.now() + 120 * 86_400_000).toISOString().replace(/\.\d{3}Z$/, '.000Z');
+  const past = new Date(Date.now() - 30 * 86_400_000).toISOString().replace(/\.\d{3}Z$/, '.000Z');
+  const far = new Date(Date.now() + 800 * 86_400_000).toISOString().replace(/\.\d{3}Z$/, '.000Z');
+  assert.equal(securityTxtProblems(goodTxt.replace(/^Expires:.*$/m, `Expires: ${past}`), read('SECURITY.md'), goodNginx, 'Leo88q/guttercaps').length, 1, 'a lapsed Expires must be reported');
+  assert.equal(securityTxtProblems(goodTxt.replace(/^Expires:.*$/m, `Expires: ${far}`), read('SECURITY.md'), goodNginx, 'Leo88q/guttercaps').length, 1, 'an Expires more than a year out must be reported');
+  assert.equal(securityTxtProblems(goodTxt.replace(/^Expires:.*$/m, `Expires: ${future}`), read('SECURITY.md'), goodNginx, 'Leo88q/guttercaps').length, 0, 'a fresh Expires must stay clean');
+  assert.equal(securityTxtProblems(goodTxt.replace(/^Policy:.*$/m, 'Policy: https://app.guttercaps.gg/#reporting'), read('SECURITY.md'), goodNginx, 'Leo88q/guttercaps').length, 1, 'a Policy that does not name the repository must be reported');
+  assert.ok(securityTxtProblems(goodTxt, read('SECURITY.md').replace('## Reporting', '## How to reach us'), goodNginx, 'Leo88q/guttercaps').some((p) => p.includes('## Reporting')), 'a Policy fragment with no matching heading must be reported');
+  // Move the block *below* the deny instead of deleting it: the failure mode is ordering, not absence.
+  const wkStart = goodNginx.indexOf('    location ^~ /.well-known/ {');
+  const wkEnd = goodNginx.indexOf('\n    }\n', wkStart) + '\n    }\n'.length;
+  assert.ok(wkStart >= 0 && wkEnd > wkStart, 'the well-known block must be found in nginx.conf');
+  const moved = goodNginx.slice(wkStart, wkEnd) + '\n';
+  const without = goodNginx.slice(0, wkStart) + goodNginx.slice(wkEnd);
+  const reordered = without.replace('    location ~ /\\. { deny all; }\n', `    location ~ /\\. { deny all; }\n${moved}`);
+  assert.notEqual(reordered, goodNginx, 'the nginx reorder mutation must actually apply');
+  assert.ok(securityTxtProblems(goodTxt, read('SECURITY.md'), reordered, 'Leo88q/guttercaps').some((p) => p.includes('below the dotfile deny')), 'a well-known block below the dotfile deny must be reported');
 
   // 6. SEC-B55 — the pre-fix ignore list named one dotenv file out of the four Vite reads
   const preFixIgnore = DOCKERIGNORE.replace('**/.env*', '**/.env');

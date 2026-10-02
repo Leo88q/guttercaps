@@ -181,5 +181,6 @@
   "internal": "Máy chủ không thể hoàn thành yêu cầu. Thử lại sau.",
   "guardRail": "Thay đổi đề xuất vi phạm quy tắc. Xem kiểm tra chi tiết.",
   "network": "Kết nối mạng thất bại. Kiểm tra mạng và thử lại.",
-  "walletMessages": "Ví này không thể ký thông điệp. Hãy dùng ví hỗ trợ ký thông điệp."
+  "walletMessages": "Ví này không thể ký thông điệp. Hãy dùng ví hỗ trợ ký thông điệp.",
+  "arena_BadCap": "Hạn mức thanh toán hàng ngày của oracle đấu trường không hợp lệ."
 }

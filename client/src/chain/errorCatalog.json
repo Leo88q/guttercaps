@@ -453,6 +453,10 @@
     {
       "name": "NotUpgradeAuthority",
       "key": "chip_core_NotUpgradeAuthority"
+    },
+    {
+      "name": "BadCap",
+      "key": "arena_BadCap"
     }
   ]
 }

@@ -178,10 +178,13 @@ export class FakeConnection {
   set(key: PublicKey, data: Uint8Array, owner: PublicKey = CHIP_CORE_ID) { this.accounts.set(key.toBase58(), { owner, data }); }
   del(key: PublicKey) { this.accounts.delete(key.toBase58()); }
   get(key: PublicKey) { return this.accounts.get(key.toBase58())?.data; }
+  /** Per-account lamport overrides. The runtime above models *data* only; a gauge that reads a PDA
+   *  balance (vault solvency, SEC-A2) needs the number too, and inventing it per-test was worse. */
+  lamports = new Map<string, number>();
 
   async getAccountInfo(key: PublicKey) {
     const a = this.accounts.get(key.toBase58());
-    return a ? { owner: a.owner, data: Buffer.from(a.data), lamports: 1_000_000, executable: false, rentEpoch: 0 } : null;
+    return a ? { owner: a.owner, data: Buffer.from(a.data), lamports: this.lamports.get(key.toBase58()) ?? 1_000_000, executable: false, rentEpoch: 0 } : null;
   }
   async getMultipleAccountsInfo(keys: PublicKey[]) { return Promise.all(keys.map((k) => this.getAccountInfo(k))); }
   async getProgramAccounts(program: PublicKey, cfg: { filters?: { memcmp?: { offset: number; bytes: string } }[] }) {

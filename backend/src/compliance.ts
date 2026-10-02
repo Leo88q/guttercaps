@@ -32,8 +32,11 @@ export function validatePolicy(p: AccessPolicy): AccessPolicy {
 }
 export const loadPolicy = (): AccessPolicy => validatePolicy(JSON.parse(readFileSync(new URL('../access-policy.json', import.meta.url), 'utf8')));
 export const enforcementEnabled = () => {
-  // Temporary owner-selected default: no age/country enforcement, including production.
-  // Explicit 1 re-enables it; privacy restrictions and authentication are independent.
+  // SEC-A7 (2026-10-02): `0` stays the dev/staging default, but production now *refuses to boot*
+  // without an explicit `1` (`assertProductionConfig` in config.ts). Previously the default was
+  // `?? '0'` in every environment, so a production deploy that never mentioned the variable ran
+  // with no age or market enforcement at all while `access-policy.json` claimed otherwise.
+  // Privacy restrictions and authentication are independent of this switch either way.
   const value = process.env.COMPLIANCE_ENFORCE ?? '0';
   if (!['0', '1'].includes(value)) throw new Error('COMPLIANCE_ENFORCE must be 0 or 1');
   return value === '1';
