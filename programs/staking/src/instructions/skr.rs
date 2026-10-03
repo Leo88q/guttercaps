@@ -188,8 +188,7 @@ pub fn withdraw_skr(ctx: Context<WithdrawSkr>, amount: u64) -> Result<()> {
     // SEC-A6: 10 % of the current budget per call, one call per slot (so packing 10 instructions
     // into one transaction cannot drain the pool), and 10 % of the day's opening budget per day.
     // `token::authority = admin` pins the recipient.
-    if p.withdraw_day_start == 0
-        || clock.unix_timestamp.saturating_sub(p.withdraw_day_start) >= DAY
+    if p.withdraw_day_start == 0 || clock.unix_timestamp.saturating_sub(p.withdraw_day_start) >= DAY
     {
         p.withdraw_day_start = clock.unix_timestamp;
         p.withdrawn_today = 0;
