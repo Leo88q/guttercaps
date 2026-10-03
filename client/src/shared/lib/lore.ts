@@ -1,8 +1,12 @@
 // Re-export of the canonical lore in `@guttercaps/economy` (see
-// packages/economy/src/lore.ts). Kept at this path because the client, the localnet
-// specs and scripts/setup.ts all import `@/shared/lib/lore`; the data itself is shared
-// with the backend API so the on-chain collection, the game UI and the landing page
-// cannot drift apart.
+// packages/economy/src/lore.ts). Kept at this path because the UI and the localnet
+// specs import `@/shared/lib/lore`; the data itself is shared with the backend API
+// so the on-chain collection, the game UI and the landing page cannot drift apart.
+//
+// NOT for the node scripts: `@/…` is a Vite/tsconfig alias, and `npm run setup` runs under bare Node,
+// which resolves only relative paths and node_modules. `scripts/setup.ts` imports
+// `packages/economy/src/lore.ts` directly — importing *this* file from a script is what broke the
+// `setup` stage of `scripts/mac-devnet.sh` (ERR_MODULE_NOT_FOUND: Cannot find package '@/shared').
 export {
   COLLECTIONS, RARITY_ORDER, chipNameFor, findCollectionBySymbol,
   type ChipLore, type CollectionLore,
