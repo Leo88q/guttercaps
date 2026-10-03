@@ -10,7 +10,7 @@
 //                mainnet: CG_MINT must be given (created by the treasury multisig); USDC/SKR are the real mints
 //   initialize   chip_core `initialize` (treasury / buyback / mints / Pyth accounts)
 //   ledgers      chip_core `init_ledger` × LEDGER_SHARDS — the VaultLedger liability shards (#12; permissionless, buy_pack needs them)
-//   collections  chip_core `create_collection` × 8 from client/src/shared/lib/lore.ts (Core collections, Royalties 250 bps)
+//   collections  chip_core `create_collection` × 8 from packages/economy/src/lore.ts (Core collections, Royalties 250 bps)
 //   atas         vault / treasury / buyback token accounts for $CG, USDC, SKR (buy_pack / sweep_vault assume they exist)
 //   emission     staking `init_emission` (takes the $CG mint authority; oracles = QUEST_ORACLE / SEASON_ORACLE / SET_ORACLE env)
 //   arena        arena `init_arena` (battle oracle = BATTLE_ORACLE env, season pool = emission's $CG ATA)
@@ -39,7 +39,12 @@ import { Connection, Keypair, PublicKey, SystemProgram, Transaction, Transaction
 import {
   MINT_SIZE, TOKEN_PROGRAM_ID, createAssociatedTokenAccountIdempotentInstruction, createInitializeMint2Instruction, getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
-import { COLLECTIONS } from '../client/src/shared/lib/lore.ts';
+// The canonical lore, NOT the client's re-export (`client/src/shared/lib/lore.ts`): this script runs under
+// bare Node (`node --experimental-strip-types`, see package.json → setup), which resolves relative paths and
+// node_modules and nothing else — the client file imports `@/shared/i18n` (a Vite/tsconfig alias) and React,
+// so importing it killed the setup stage with `ERR_MODULE_NOT_FOUND: Cannot find package '@/shared'` before
+// a single instruction was built. Same import as `scripts/art-pipeline.ts`.
+import { COLLECTIONS } from '../packages/economy/src/lore.ts';
 import { ARENA_ORACLE_DAILY_CAP_DEFAULT_CG, EMISSION_SPLIT } from '../packages/economy/src/tokenomics.ts';
 import { assessPins, fetchDeployedProgram, sha256hex, trimPadding } from './verify-deploy.ts';
 import { assessExistingSingleton, expectedAdminsFromEnv, upgradeAuthorityProblem, type Singleton } from './init-guard.ts';

@@ -4,7 +4,9 @@
 //   * the client (`client/src/shared/lib/lore.ts` is a re-export of this file),
 //   * the backend API (`/collections/{idx}/chips/{rarity}`, `GET /chips/{asset}`),
 //   * `scripts/setup.ts` (the 8 `create_collection` instructions — `symbol` is the
-//     on-chain Core collection symbol, max 16 ASCII bytes),
+//     on-chain Core collection symbol, max 16 ASCII bytes), which imports this file
+//     directly: the script runs under bare Node, where the client's `@/…` re-export
+//     does not resolve,
 //   * the marketing landing (`scripts/landing/collections.js`), whose 72 names are
 //     asserted against this file by `npm run landing:check` (they used to drift silently).
 
