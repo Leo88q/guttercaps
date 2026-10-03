@@ -395,13 +395,26 @@ else
 # after the mechanism changes, in both directions.
 #
 # mpl-core 0.12 requires solana-program ^3, and every manifest in that subtree declares rust_version 1.81+.
-# programs/*/Cargo.toml widened their range to `>=0.11.1, <0.12` so this pin is legal; 0.11.1 asks for
-# solana-program ^2.2.1 instead, the copy anchor-lang 0.31.1 already uses. Without this line the gate has ~30
-# offenders and no amount of utility pinning helps — check 0.11.x still compiles before removing it.
-mpl-core 0.11 0.11.1
+# programs/*/Cargo.toml widened their range to `>=0.11.1, <0.12` and root Cargo.toml patches `mpl-core` to
+# `vendor/mpl-core` (`0.11.2`, asking for solana-program 2.2.1 and kaigan 0.3.0). Keeping 0.11.2 here prevents
+# `cargo update --precise 0.11.1` from un-patching the vendored path dependency back to the registry release.
+mpl-core 0.11 0.11.2
+# mpl-bubblegum 2.1.1 declares `kaigan >=0.1` with no upper bound, so an unlocked resolve picks 0.5.0 (which
+# pulls a second kaigan copy alongside vendor/mpl-core's 0.3.0). 0.3.0 satisfies >=0.1 and unifies the graph.
+kaigan 0.5 0.3.0
+# switchboard-on-demand 0.13.0 requires `faster-hex ^0.10.0`; 0.10.1 (rust_version 1.61.0) backports the
+# AVX2 bounds check for RUSTSEC-2026-0306 (`hex_decode_unchecked` reading past `src`).
+faster-hex 0.10 0.10.1
 # pythnet-sdk 2.3.1 asks for solana-program >=1.13.6 with no upper bound, so the resolve rides to the 5.x SDK
-# (rust_version 1.89). 2.3.0 satisfies it and unifies with the copy the rest of the tree agreed on.
-solana-program 5.0 2.3.0
+# (rust_version 1.89; 5.1.0 also pulls wincode 0.6 / solana-* 3.x-5.x). Line is `5` (major, not `5.0`), so
+# 5.1+ matches too; 2.3.0 satisfies >=1.13.6 and unifies with the copy the rest of the tree agreed on.
+solana-program 5 2.3.0
+# wasm-bindgen 0.2.129 and js-sys/web-sys 0.3.106 (published 2026-09-25) raised rust_version to 1.81.
+# web-sys 0.3.105 pins `js-sys =0.3.105` and `wasm-bindgen =0.2.128` (rust_version 1.77), moving the whole
+# family on pass 1; the explicit js-sys/wasm-bindgen lines guard the case where web-sys leaves the graph.
+web-sys 0.3 0.3.105
+js-sys 0.3 0.3.105
+wasm-bindgen 0.2 0.2.128
 # blake3's own manifest is readable; what 1.8.x drags in is the RustCrypto 0.11/0.12 wave (digest 0.11,
 # crypto-common 0.2, block-buffer 0.12, hybrid-array 0.4 — all 1.85). 1.5.5 asks for digest ^0.10.1 and no
 # cpufeatures at all, and solana-program's `blake3 = "1.5.0"` range admits it.
@@ -417,9 +430,11 @@ proc-macro-crate 3 3.2.0
 indexmap 2 2.11.4
 # Ordinary `^1`/`^0.8` drift, each taken from the audit's residue. base64ct: switchboard-on-demand 0.13.0 asks
 # for `<1.8`, and the newest inside that is 1.7.3 at rust_version 1.81 — 1.6.0 is readable and allowed.
-# zeroize_derive 1.5.0 needs 1.85 while zeroize itself (1.8.2, pinned below) accepts `^1.3`.
+# zeroize 1.9.0 (1.85) requires zeroize_derive ^1.5 (1.85); moving zeroize to 1.8.2 (1.60) first relaxes the
+# bound to `^1.3` so zeroize_derive 1.4.3 lands on pass 1.
 unicode-segmentation 1 1.12.0
 base64ct 1 1.6.0
+zeroize 1 1.8.2
 zeroize_derive 1 1.4.3
 rmp 0.8 0.8.14
 rmp-serde 1 1.3.0
@@ -434,10 +449,6 @@ tempfile 3 3.23.0
 # the crate cannot move: `rust_decimal → rand 0.9 → rand_core 0.9 → getrandom 0.3` is the chain that keeps a
 # 0.3.x copy alive, and `^0.3` admits 0.3.0.
 getrandom 0.3 0.3.0
-# zeroize 1.9.0 declares 1.85; 1.8.2 (1.60) is what the rest of the tree is happy with. Left in even though
-# tempfile/proptest caps may make it unnecessary: unlike a *refused* line, an unnecessary-but-applied one is
-# reported by the audit as clean and costs a log line, and the drift it guards is a normal dependency.
-zeroize 1.9 1.8.2
 SBFPINS
 fi
 pins_dead=""
