@@ -29,7 +29,7 @@ anchor-spl = "0.31.1"
 mpl-core = { version = ">=0.11.1, <0.12", default-features = false, features = ["anchor"] }
 # Bubblegum V2 is pinned to the last line compatible with Anchor 0.31 / Solana 2.
 # 3.x requires Anchor 1.x and solana-program 3.x; upgrading that graph is a separate migration.
-mpl-bubblegum = "=2.1.1"
+mpl-bubblegum = "=4.0.0"
 # Switchboard On-Demand randomness (commit-reveal). v2 VRF is deprecated.
 switchboard-on-demand = { version = "0.13.0", features = ["anchor"] }
 # Pyth pull oracle for SOL/USD at checkout
