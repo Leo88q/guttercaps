@@ -125,7 +125,7 @@ jobs:
       - run: npm --prefix client run build
       # docs/06 §1.3 budget (≤ 350 KB gzip on the critical path) — a number with no owner drifted to 518 KB
       - run: npm run bundle:check
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with: { name: client-dist, path: client/dist, retention-days: 7 }
 
   e2e:
@@ -151,7 +151,7 @@ jobs:
       # Separate bundle: apiMock bypasses wallet signing and cannot exercise these failures.
       # Wallet/API/RPC/WS are intercepted; no funded wallet or live backend is used.
       - run: npm run e2e:errors
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with: { name: playwright-report, path: test-results/, retention-days: 7 }
 
@@ -398,7 +398,7 @@ jobs:
             echo "$p: $have (Anchor.toml $want)"
             if [ "$p" != "sb_mock" ] && [ "$have" != "$want" ]; then echo "::warning::$p keypair id != Anchor.toml (run anchor keys sync before deploying)"; fi
           done
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: program-binaries
           retention-days: 7
@@ -614,7 +614,7 @@ jobs:
           files=$(grep -c "<testsuite " "$f")
           echo "localnet: $tests tests in $files suites"
           if [ "${tests:-0}" -lt 92 ]; then echo "::error::expected >= 92 localnet scenarios, got ${tests:-0}"; exit 1; fi
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with: { name: localnet-junit, path: target/localnet-junit.xml, if-no-files-found: ignore, retention-days: 14 }
       - name: surface the failure without log access
@@ -637,7 +637,7 @@ jobs:
         # junit digest (see above), and CU numbers from a red run would be partial anyway.
         # Runs BEFORE the upload: it aggregates target/cu-log.jsonl into target/cu-summary.json.
         run: node --no-warnings=ExperimentalWarning --import tsx scripts/ci-surface-cu.ts target/cu-log.jsonl || true
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with: { name: cu-summary, path: target/cu-summary.json, if-no-files-found: ignore, retention-days: 14 }
 
@@ -663,7 +663,7 @@ jobs:
           if [ -z "$chrome" ]; then echo '::error::no Chrome on the runner — lighthouse cannot run here'; exit 1; fi
           echo "CHROME_PATH=$chrome" >> "$GITHUB_ENV"
       - run: npx lhci autorun
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with: { name: lighthouse, path: test-results/lighthouse, retention-days: 14, if-no-files-found: ignore }
 
   security:
@@ -777,7 +777,7 @@ jobs:
             -e K6_BASE_URL=http://127.0.0.1:8787/v1 -e K6_SESSION="$K6_SESSION" -e K6_CSRF="$K6_CSRF" \
             -e K6_READ_RPS=500 -e K6_RAMP_S=20 -e K6_PLATEAU_S=180 \
             grafana/k6:latest run /s/scripts/load/lt1.js
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with: { name: k6-lt1, path: k6-lt1.json, retention-days: 14, if-no-files-found: ignore }
 
