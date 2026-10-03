@@ -25,6 +25,12 @@ export const ACCEPTED: Accepted[] = [
     until: '2027-03-31',
     why: 'toBigIntLE() overflow lives in the optional native addon; the only caller is @solana/buffer-layout-utils, which passes fixed-length (8/16/24/32-byte) layout blobs, never attacker-sized input, and our images fall back to the pure-JS path (no node-gyp). No upstream fix exists: bigint-buffer is unmaintained and @solana/spl-token 0.4.x is the last web3.js-1.x line. Re-evaluate when spl-token/buffer-layout-utils drop it.',
   },
+  {
+    id: 'GHSA-vfj7-8cjw-p6xm',
+    pkg: 'braces',
+    until: '2027-03-31',
+    why: 'braces <= 3.0.3: stack exhaustion from a deeply nested expansion (CWE-674, published 2026-09-18). There is no patched release to move to — GitHub reports first_patched_version: null and the registry has nothing above 3.0.3, while micromatch (the holder) asks for `^3.0.3` — so `npm audit fix` cannot satisfy this and the only alternatives are dropping the chain or accepting it. The chain is braces ← micromatch ← metro-file-map ← metro ← @react-native/community-cli-plugin ← react-native ← @solana-mobile/mobile-wallet-adapter-protocol ← @solana-mobile/wallet-standard-mobile (the client calls registerMwa()): metro is React Native\'s bundler, this repo builds the web client with Vite and never runs metro, and the vulnerable function expands a pattern the caller chooses — no request data reaches it. Re-evaluate when braces publishes a fix (the registry is queried on every run of this gate) or when the mobile wallet adapter stack drops react-native.',
+  },
 ];
 
 // npm audit --json (v7+ "auditReportVersion": 2) — only the fields the gate reads.
@@ -46,18 +52,37 @@ export function evaluate(report: AuditReport, accepted: Accepted[] = ACCEPTED, t
   for (const a of accepted) if (a.until < today) failures.push(`accepted entry ${a.id} (${a.pkg}) expired on ${a.until} — re-evaluate it, then move the date or remove the entry`);
 
   const vulns = report.vulnerabilities ?? {};
-  // Root advisories of a package = the advisory objects in its own `via`, plus (recursively) those of the
-  // packages named as strings in `via` ("depends on vulnerable versions of X").
-  const memo = new Map<string, Set<string>>();
-  const rootsOf = (name: string, stack: string[] = []): Set<string> => {
-    const hit = memo.get(name);
-    if (hit) return hit;
+  /** The advisory objects in one package's own `via`. A string in `via` is an edge, not an advisory. */
+  const directAdvisories = (name: string): string[] =>
+    (vulns[name]?.via ?? [])
+      .filter((via): via is Advisory => typeof via !== 'string')
+      .map((a) => `${ghsaOf(a)}|${a.name}|${a.title}|${a.severity}`);
+
+  /**
+   * Root advisories of a package = every advisory object reachable from it through the string `via`
+   * edges ("depends on vulnerable versions of X"), its own included.
+   *
+   * A walk with a `seen` set, not the recursion this started as. The recursion memoised a node's
+   * result *before* finishing it, so a package reached while it was already on the stack cached the
+   * truncation as "no advisories here" — and npm reports contain exactly that shape: `metro` lists
+   * `metro-config`, `metro-config` lists `metro`, and the same file's `metro-file-map` is the one that
+   * reaches `micromatch` → `braces`. Sorted iteration visited `metro` first, so `metro-config` and
+   * `metro-transform-worker` were memoised empty and the gate printed "no advisory in its chain — npm
+   * changed the report shape" about two packages whose advisory was sitting one sibling away. That is
+   * a false red on a real advisory, the one failure mode an advisory gate cannot afford: it teaches
+   * the reader to ignore it. Here a node's answer depends only on the graph, never on the path that
+   * reached it.
+   */
+  const rootsOf = (name: string): Set<string> => {
     const out = new Set<string>();
-    memo.set(name, out); // cycle guard: npm reports contain mutual "effects" loops
-    const v = vulns[name];
-    if (!v) return out;
-    for (const via of v.via) {
-      if (typeof via === 'string') { if (!stack.includes(via)) for (const id of rootsOf(via, [...stack, name])) out.add(id); } else out.add(`${ghsaOf(via)}|${via.name}|${via.title}|${via.severity}`);
+    const seen = new Set<string>();
+    const queue = [name];
+    while (queue.length) {
+      const n = queue.shift() as string;
+      if (seen.has(n)) continue;
+      seen.add(n);
+      for (const root of directAdvisories(n)) out.add(root);
+      for (const via of vulns[n]?.via ?? []) if (typeof via === 'string' && !seen.has(via)) queue.push(via);
     }
     return out;
   };
@@ -104,7 +129,7 @@ const cases: { name: string; run: () => string[] }[] = [
   {
     name: 'the accepted bigint-buffer chain passes (3 entries covered by one id), moderate is ignored, nothing stale',
     run: () => {
-      const r = evaluate(canned(), ACCEPTED, '2026-09-23');
+      const r = evaluate(canned(), [ACCEPTED[0]], '2026-09-23');
       const p: string[] = [];
       if (!r.ok) p.push(`expected ok: ${r.failures.join(' | ')}`);
       if (r.notes.length !== 3) p.push(`expected 3 covered notes, got ${r.notes.length}: ${r.notes.join(' | ')}`);
@@ -133,7 +158,7 @@ const cases: { name: string; run: () => string[] }[] = [
       const p: string[] = [];
       const expired = evaluate(canned(), [{ ...ACCEPTED[0], until: '2026-01-01' }], '2026-09-23');
       if (expired.ok || !expired.failures.some((f) => f.includes('expired on 2026-01-01'))) p.push(`expected expiry failure: ${expired.failures.join(' | ')}`);
-      const stale = evaluate(canned(), [...ACCEPTED, { id: 'GHSA-gone-gone-gone', pkg: 'ghost', until: '2099-01-01', why: 'x' }], '2026-09-23');
+      const stale = evaluate(canned(), [ACCEPTED[0], { id: 'GHSA-gone-gone-gone', pkg: 'ghost', until: '2099-01-01', why: 'x' }], '2026-09-23');
       if (!stale.ok) p.push(`stale must not fail the gate: ${stale.failures.join(' | ')}`);
       if (stale.stale.length !== 1 || !stale.stale[0].includes('GHSA-gone-gone-gone')) p.push(`expected one stale entry: ${stale.stale.join(' | ')}`);
       return p;
@@ -148,6 +173,28 @@ const cases: { name: string; run: () => string[] }[] = [
       } };
       const r = evaluate(rep, ACCEPTED, '2026-09-23');
       return r.ok || !r.failures.some((f) => f.includes('no advisory in its chain')) ? [`expected a shape failure: ${r.failures.join(' | ')}`] : [];
+    },
+  },
+  {
+    // The shape the 2026-10-03 run turned up: `braces` (real advisory) is reachable from a package that
+    // is itself inside a `via` cycle. Recursion-with-memo reported the cycle members as having no
+    // advisory at all — a red for a package that is covered by the accepted root one sibling away.
+    name: 'a cycle member still resolves to the advisory reachable through its sibling, not to "no advisory in its chain"',
+    run: () => {
+      const rep: AuditReport = { vulnerabilities: {
+        braces: { name: 'braces', severity: 'high', isDirect: false, via: [adv('GHSA-vfj7-8cjw-p6xm', 'braces', 'high', 'stack exhaustion')], effects: ['micromatch'], range: '*', fixAvailable: true },
+        micromatch: { name: 'micromatch', severity: 'high', isDirect: false, via: ['braces'], effects: ['metro-file-map'], range: '*', fixAvailable: true },
+        'metro-file-map': { name: 'metro-file-map', severity: 'high', isDirect: false, via: ['micromatch'], effects: ['metro'], range: '*', fixAvailable: true },
+        metro: { name: 'metro', severity: 'high', isDirect: false, via: ['metro-config', 'metro-file-map', 'metro-transform-worker'], effects: [], range: '*', fixAvailable: true },
+        'metro-config': { name: 'metro-config', severity: 'high', isDirect: false, via: ['metro'], effects: [], range: '*', fixAvailable: true },
+        'metro-transform-worker': { name: 'metro-transform-worker', severity: 'high', isDirect: false, via: ['metro'], effects: [], range: '*', fixAvailable: true },
+      } };
+      const r = evaluate(rep, [{ id: 'GHSA-vfj7-8cjw-p6xm', pkg: 'braces', until: '2099-01-01', why: 'during this test' }], '2026-10-03');
+      const p: string[] = [];
+      if (!r.ok) p.push(`the accepted root must cover every cycle member: ${r.failures.join(' | ')}`);
+      if (r.notes.length !== 6) p.push(`expected all 6 packages covered, got ${r.notes.length}: ${r.notes.join(' | ')}`);
+      if (r.stale.length) p.push(`the accepted id is in use and must not be reported stale: ${r.stale.join(' | ')}`);
+      return p;
     },
   },
 ];

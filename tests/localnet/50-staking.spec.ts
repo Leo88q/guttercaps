@@ -24,6 +24,14 @@ const suite = describe.skipIf(!bins.ok && !process.env.LOCALNET_RPC);
 const CG = 1_000_000n;
 const DAY = 86_400n;
 const ACC = 1_000_000_000_000n;
+/**
+ * Byte offset of `minted` inside `CompressedMintClaim`, discriminator included. Field order is the
+ * decoder's (`@/chain/accounts`) and the struct's (`programs/chip_core/src/state.rs`): disc ‖ buyer ‖
+ * collection_idx ‖ rarity ‖ level ‖ game_index ‖ expires_at ‖ settlement ‖ index_reserved ‖ **minted**
+ * ‖ registered ‖ consumed ‖ listed ‖ bump ‖ staked ‖ origin ‖ lock_until. `helpers/v2leaf.ts` pins the
+ * same region from the writing side, where the claimant's `listed` byte is `8+32+1+1+1+8+8+32+1+1+1+1`.
+ */
+const CLAIM_MINTED_OFFSET = 8 + 32 + 1 + 1 + 1 + 8 + 8 + 32 + 1;
 
 // ---- admin / oracle builders (no client counterparts: backend-only paths; account order = programs/staking) ----
 const emissionAdmin = (name: string, admin: PublicKey, args: Uint8Array) =>
@@ -281,6 +289,21 @@ suite('T-L-S staking', () => {
     expect(decodeCompressedMintClaim((await env.chain.getAccount(claim))!.data).staked).toBe(false);
     if (!env.chain.canWarp) return;
     await env.chain.warpSeconds(BigInt(STARTER_SOULBOUND_DAYS) * DAY + 1n);
+    // SEC-F04 meets SEC-A1. A Starter's claim deadline and its soulbound window are both `open + 7 d`
+    // (`open_compressed_pack` writes `expires_at = now + 7 d` and `lock_until` from the Starter's
+    // `soulbound_days`), so one second past the lock the claim is *also* past its DAS deadline — and
+    // an unminted claim past that deadline can never be minted, which is what makes staking it a
+    // weight backed by nothing. The first version of this test asserted the stake succeeds at that
+    // instant and was red from the day it landed: an unminted Starter can never legally be staked.
+    await expectFail(env.chain.send([stakeCompressedChipIx({ owner: buyer.publicKey, claim })], { signers: [buyer] }), Err.staking('ClaimExpired'), 'stake an unminted Starter past its deadline');
+    // What SEC-A1 must let through is the *settled* claim — the one the DAS flipped after the
+    // Bubblegum CPI (`minted`, `mpl-bubblegum` being a program this harness does not load: see the
+    // header of helpers/v2leaf.ts). The state is written the same way that helper writes a claim,
+    // and the offset is asserted by decoding the result rather than trusted.
+    const settled = Uint8Array.from((await env.chain.getAccount(claim))!.data);
+    settled[CLAIM_MINTED_OFFSET] = 1;
+    await env.chain.setAccount(claim, { owner: CHIP_CORE_ID, data: settled });
+    expect(decodeCompressedMintClaim(settled).minted).toBe(true);
     await env.chain.send([stakeCompressedChipIx({ owner: buyer.publicKey, claim })], { signers: [buyer] });
     expect(decodeCompressedMintClaim((await env.chain.getAccount(claim))!.data).staked).toBe(true);
     await env.chain.send([unstakeCompressedChipIx({ owner: buyer.publicKey, claim, cgMint: env.mints.cg })], { signers: [buyer] });

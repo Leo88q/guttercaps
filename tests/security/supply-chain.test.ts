@@ -284,6 +284,80 @@ test('M-2 a rust advisory gate exists, is strict, and cannot be quietly weakened
   assert.equal(accepted.split('id:').length - 1, (accepted.match(/\bwhy:/g) ?? []).length, 'every accepted npm advisory must carry its reason');
 });
 
+// ------------------------------------------------------------------ the RustSec allow-list (M-2, rust half)
+// `--deny warnings` makes every unmaintained / unsound / yanked advisory red until it is acknowledged.
+// The acknowledgement lives in `.cargo/audit.toml` — the one path cargo-audit reads besides
+// `$CARGO_HOME/audit.toml`, which is a machine this repo does not control and which CI therefore does
+// not use — and the risk of any allow-list is that it becomes the place a red gate is made green
+// quietly. So the same two halves the npm list is held to (a reason per entry, an expiry that forces
+// the decision to be re-made) are checked here, offline, with a mutation for each rule.
+//   Format: `# <id> · <crate>@<version> · <kind> · <reason> · re-check <YYYY-MM-DD>`
+
+/**
+ * Problems with the RustSec allow-list, as a pure predicate so the selftest shares the reader with the
+ * real gate rather than testing a copy of it.
+ */
+export function auditIgnoreProblems(toml: string, today = new Date().toISOString().slice(0, 10)): string[] {
+  const problems: string[] = [];
+  const body = /\[advisories\][\s\S]*?\nignore\s*=\s*\[([\s\S]*?)\n\]/.exec(toml)?.[1];
+  if (body === undefined) return ['no [advisories] ignore array: every notice the gate denies has nowhere reviewed to be recorded'];
+  const entries: { id: string; doc: string | null }[] = [];
+  let doc: string | null = null;
+  for (const line of body.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (trimmed.startsWith('#')) { doc = trimmed; continue; }
+    const id = /^"(RUSTSEC-\d{4}-\d{4})",?$/.exec(trimmed)?.[1];
+    if (id) entries.push({ id, doc }); // blank lines do not clear `doc`: one comment belongs to one id, in any layout
+    doc = null;
+  }
+  const locked = new Set([...read('Cargo.lock').matchAll(/^name = "([^"]+)"$/gm)].map((m) => m[1]));
+  for (const { id, doc } of entries) {
+    if (!doc) { problems.push(`${id} is ignored with no comment above it — an undocumented ignore is how an advisory gate stops measuring anything`); continue; }
+    const m = /^#\s*(RUSTSEC-\d{4}-\d{4})\s*·\s*([^·]+?)\s*·\s*(unmaintained|unsound|vulnerability|notice|yanked)\s*·\s*(.+?)\s*·\s*re-check\s+(\d{4}-\d{2}-\d{2})\s*$/.exec(doc);
+    if (!m) { problems.push(`${id}: the comment above it is not "<id> · <crate>@<version> · <kind> · <reason> · re-check <date>": ${doc.slice(0, 90)}`); continue; }
+    const [, documented, crate, kind, reason, until] = m;
+    if (documented !== id) problems.push(`${id} is documented as ${documented} — a reason attached to the wrong advisory is worse than none`);
+    if (reason.length < 60) problems.push(`${id}: ${kind}, but the "reason" is ${reason.length} characters — that is a label, not a justification`);
+    if (!locked.has(crate.split('@')[0])) problems.push(`${id}: the comment names ${crate}, which Cargo.lock no longer contains — a stale acceptance reads as coverage of a crate that is gone`);
+    if (until < today) problems.push(`${id} (${crate}) was due for re-check on ${until} — re-evaluate the ignore, then move the date or remove the entry`);
+  }
+  return problems;
+}
+
+test('M-2 every RustSec ignore is documented, dated, and names a crate the lock still has', () => {
+  assert.deepEqual(auditIgnoreProblems(read('.cargo/audit.toml')), [], '.cargo/audit.toml — the RustSec allow-list the `cargo audit --deny warnings` step reads');
+});
+
+test('M-2 the ignore list is the only place an advisory can be acknowledged', () => {
+  // Two places to silence an advisory is one place for a review to be missed. `--ignore` on the CI
+  // command line would leave `.cargo/audit.toml` describing half of what the gate lets through.
+  const audit = auditCommand(jobBlock(read('.github/workflows/ci.yml'), 'rust-security'));
+  assert.ok(!audit.includes('--ignore'), `the cargo audit command carries --ignore: ${audit}`);
+});
+
+test('the RustSec allow-list reader sees an undocumented, mismatched or expired entry', () => {
+  const file = (list: string) => `[advisories]\nignore = [\n${list}\n]\n`;
+  const entry =
+    '  # RUSTSEC-2025-0141 · bincode@1.3.3 · unmaintained · the 1.x line is closed upstream and bincode 2.x is not what any holder resolves to · re-check 2099-01-01\n' +
+    '  "RUSTSEC-2025-0141",';
+  // The control first: if a well-formed entry failed, every mutation below would prove nothing.
+  assert.deepEqual(auditIgnoreProblems(file(entry), '2026-10-03'), []);
+  const mutations: Array<[string, string, string]> = [
+    ['an id with no comment above it', file('  "RUSTSEC-2025-0141",'), 'no comment'],
+    ['a comment about a different advisory', file(entry.replace('# RUSTSEC-2025-0141', '# RUSTSEC-2025-0161')), 'wrong advisory'],
+    ['no re-check date', file(entry.replace(' · re-check 2099-01-01', '')), 're-check'],
+    ['a re-check date in the past', file(entry.replace('2099-01-01', '2020-01-01')), 'due for re-check'],
+    ['a crate the lock no longer has', file(entry.replace('bincode@1.3.3', 'ghostcrate@9.9.9')), 'Cargo.lock no longer contains'],
+    ['a one-word "reason"', file(entry.replace(/·\s*the 1\.x line[^·]*·/, '· dep ·')), 'not a justification'],
+    ['no ignore array at all', '[advisories]\n', 'no [advisories] ignore array'],
+  ];
+  for (const [name, text, expected] of mutations) {
+    const problems = auditIgnoreProblems(text, '2026-10-03');
+    assert.ok(problems.some((p) => p.includes(expected)), `${name}: expected a problem containing "${expected}", got ${JSON.stringify(problems)}`);
+  }
+});
+
 /**
  * The `cargo audit` argument string of one job, with `$locked` normalised. Anchored to the start of a
  * line: the job is *named* "rust · cargo audit against the shipped lock", and a bare
@@ -323,6 +397,10 @@ function auditProblems(job: string): string[] {
   for (const weak of ['--no-fetch', '--stale', '--target-arch']) {
     if (audit.includes(weak)) problems.push(`passed ${weak}: it audits a database nobody chose`);
   }
+  // An ignored advisory belongs in `.cargo/audit.toml`, which the test below parses and `audit-gate.ts`'s
+  // ACCEPTED list is the npm-tree mirror of: a second, unreviewed place to silence the gate is the
+  // difference between an allow-list and a blind spot.
+  if (audit.includes('--ignore')) problems.push('--ignore on the command line: the reviewed allow-list is .cargo/audit.toml');
   if (/continue-on-error:\s*true/.test(job)) problems.push('continue-on-error: a gate allowed to fail is not a gate');
   if (!/sh scripts\/ci-run-logged\.sh \S+ cargo audit/.test(job)) problems.push('no exit-code wrapper');
   // The cache is the registry, never the installed binary: a cached cargo-audit is a scanner whose

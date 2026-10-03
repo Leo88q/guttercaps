@@ -538,6 +538,12 @@ jobs:
         # `cargo audit` exits non-zero on a vulnerability but *prints and ignores* the notices —
         # yanked crates, unmaintained and unsupported ones — and a lockfile that has quietly picked
         # up a yanked dependency is exactly the shape of a supply-chain incident here.
+        # An advisory that cannot be fixed from this tree is acknowledged in `.cargo/audit.toml` (the
+        # file cargo-audit reads from the job's working directory), one dated, reasoned comment per id;
+        # `tests/security/supply-chain.test.ts` parses that file offline and fails an undocumented,
+        # mismatched, stale or expired entry, and the first run of THIS job found one real fix that an
+        # ignore would have buried: faster-hex 0.10.0 (RUSTSEC-2026-0306, unsound) has a patched 0.10.1,
+        # so it is a version bump in Cargo.lock, not an entry in that list.
         # `--file Cargo.lock` so the graph audited is the one being shipped. `cargo audit` does not
         # accept cargo's `--locked` flag (that is `cargo install` / `cargo test`); passing it here
         # is `error: unexpected argument '--locked' found` and a red job that measured nothing.
@@ -675,9 +681,10 @@ jobs:
         with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
       - run: npm ci
       # Production tree, as a gate (SEC-F12): every high/critical advisory fails unless it is in the dated,
-      # justified ACCEPTED list of scripts/audit-gate.ts (today: bigint-buffer only, via @solana/spl-token).
-      # `jayson` / `toml` are pinned through package.json `overrides` — that is what took the tree from
-      # 23 advisories to that single chain; `npm audit --omit=dev` is the same report, human-shaped.
+      # justified ACCEPTED list of scripts/audit-gate.ts (today: bigint-buffer via @solana/spl-token, and
+      # braces/GHSA-vfj7-8cjw-p6xm, which has no patched release and arrives only through React Native's
+      # metro tooling). `jayson` / `toml` are pinned through package.json `overrides` — that is what took
+      # the tree from 23 advisories to those chains; `npm audit --omit=dev` is the same report, human-shaped.
       - name: npm audit (prod tree) through the gate
         run: |
           npm run audit:gate -- --selftest
