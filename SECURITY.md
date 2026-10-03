@@ -784,13 +784,25 @@ file and in `backend/test/monitoring.test.ts`.
 
 ## Current exposure of this repository (from `docs/09-production-readiness.md`)
 
-`npm audit --omit=dev` reports one advisory chain in the production tree: `bigint-buffer`
-(GHSA-3gc7-fjrx-p6mg, high, no upstream fix) through `@solana/buffer-layout-utils` → `@solana/spl-token`
-→ `@switchboard-xyz/on-demand`. It is accepted with a reason and an expiry date in
-`scripts/audit-gate.ts` (the only caller passes fixed-length layout blobs, and the vulnerable code is the
-optional native addon our images do not build). The other 19 advisories that used to be here were
-transitive through `jayson` (`uuid`, `stream-json`) and `toml` and are gone via `overrides` in the root
-`package.json` (`jayson ^5`, `toml ^5`). The `security` CI job runs `npm run audit:gate`, which **fails**
-on any high/critical advisory outside that dated list — acceptance is re-decided when the entry expires,
-not forgotten.
+`npm audit --omit=dev` reports two advisory chains in the production tree, each accepted with a reason and
+an expiry date in `scripts/audit-gate.ts`. `bigint-buffer` (GHSA-3gc7-fjrx-p6mg, high, no upstream fix)
+arrives through `@solana/buffer-layout-utils` → `@solana/spl-token` → `@switchboard-xyz/on-demand`; the
+only caller passes fixed-length layout blobs, and the vulnerable code is the optional native addon our
+images do not build. `braces` (GHSA-vfj7-8cjw-p6xm, high, **no patched release**: GitHub reports
+`first_patched_version: null` and 3.0.3 is the newest on the registry) arrives only through React
+Native's bundler tooling — `micromatch` → `metro-file-map` → `metro` → `@react-native/community-cli-plugin`
+→ `react-native` → `@solana-mobile/mobile-wallet-adapter-protocol` ← `@solana-mobile/wallet-standard-mobile`
+— and this repo builds the client with Vite, so the pattern expander the advisory is about never runs and
+never receives request data. The other 19 advisories that used to be here were transitive through `jayson`
+(`uuid`, `stream-json`) and `toml` and are gone via `overrides` in the root `package.json` (`jayson ^5`,
+`toml ^5`). The `security` CI job runs `npm run audit:gate`, which **fails** on any high/critical advisory
+outside that dated list — acceptance is re-decided when the entry expires, not forgotten.
+
+The Rust side of the same contract is the `rust · cargo audit against the shipped lock` job
+(`cargo audit --file Cargo.lock --deny warnings`). Advisories that cannot be fixed from this tree
+(unmaintained or unsound crates held by the Solana/Anchor/Switchboard graph) are listed in
+`.cargo/audit.toml`, one dated comment per id, and `tests/security/supply-chain.test.ts` fails an
+undocumented, mismatched, stale or expired entry offline. `faster-hex` is not in that list: 0.10.0 carries
+RUSTSEC-2026-0306 (AVX2 `hex_decode_unchecked` reading past `src`) and a patched 0.10.1 exists, so
+`Cargo.lock` was moved to it rather than the advisory being ignored.
 
