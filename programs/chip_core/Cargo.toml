@@ -34,7 +34,7 @@ mpl-bubblegum = "=2.1.1"
 switchboard-on-demand = { version = "0.13.0", features = ["anchor"] }
 # Pyth pull oracle for SOL/USD at checkout
 # 1.0.x is the last line built against anchor-lang 0.31 (2.0 → anchor 1.x)
-pyth-solana-receiver-sdk = "=1.0.1"
+pyth-solana-receiver-sdk = "=2.0.0"
 
 [dev-dependencies]
 proptest = "1"
