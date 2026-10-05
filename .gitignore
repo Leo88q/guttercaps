@@ -78,3 +78,14 @@ playwright-report/
 
 # Privileged legal evidence and personal team records never belong in source/images.
 legal-private/
+
+# SQLite runtime files (сам *.sqlite / *.db уже в игноре)
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite-journal
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Вложенный clone по ошибке
+/guttercaps/
