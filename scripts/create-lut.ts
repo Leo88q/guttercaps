@@ -26,15 +26,18 @@ import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 
 const RPC = process.env.ANCHOR_PROVIDER_URL ?? 'https://api.devnet.solana.com';
 const MAINNET = RPC.includes('mainnet');
-const CHIP_CORE = new PublicKey(process.env.PROGRAM_CHIP_CORE ?? 'GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q');
+const CHIP_CORE = new PublicKey(process.env.PROGRAM_CHIP_CORE ?? 'J68G8KrbLTSdi68LHr9Kkw1YbRRHv3uBPirWCd5Xt13V');
 /** #12 — mirrors chip_core `state::LEDGER_SHARDS` (sync-check pins it). */
 const LEDGER_SHARDS = 4;
-const MARKET = new PublicKey(process.env.PROGRAM_MARKET ?? 'GCA2aUeX7ZFbGz3zvjqvsbjD1G3QjWxLhBpK5jwwPdcz');
-const STAKING = new PublicKey(process.env.PROGRAM_STAKING ?? 'GCuGx7fnLcKnw1NWU4dLzQvnJWggMVniQ4u7EuMaQevA');
-const ARENA = new PublicKey(process.env.PROGRAM_ARENA ?? 'GCfERiohebYDJLtNwAZpGxudwbXRqnxmuTT413fkTYrM');
+const MARKET = new PublicKey(process.env.PROGRAM_MARKET ?? '5skEmmhgFYn5xjHEdrcsiQ68kUg5kvhXKhjWTWSppjfo');
+const STAKING = new PublicKey(process.env.PROGRAM_STAKING ?? 'Ewkbp7WpqbiJAu3ofEcTPinqnr5oH3e94YJDZFg1eSJn');
+const ARENA = new PublicKey(process.env.PROGRAM_ARENA ?? 'DUTokrhWBYL7nJ9VbMy7bFELQFf8TN1tmvVpKLsskqD6');
 const SWITCHBOARD = new PublicKey(process.env.SWITCHBOARD_PROGRAM_ID ?? (MAINNET ? 'SBondMDrcV3K4kxZR1HNVT7osZxAHVHgYXL5Ze1oMUv' : 'Aio4gaXjXzJNVLtzwtNVmSqGKpANtXhybbkhtAC94ji2'));
 const SB_QUEUE = new PublicKey(process.env.SWITCHBOARD_QUEUE ?? (MAINNET ? 'A43DyUGA7s8eXPxqEjJY6EBu1KKbNgfxF8h17VAHn13w' : 'EYiAmGSdsQTuCw413V5BzaruWuCCSDgTPtBGvLkXHbe7'));
 const MPL_CORE = new PublicKey('CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d');
+const MPL_BUBBLEGUM_V2 = new PublicKey('BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY');
+const MPL_NOOP = new PublicKey('mnoopTCrg4p8ry25e4bcWA9XZjbNjMTfgYVGGEdRsf3');
+const MPL_ACCOUNT_COMPRESSION = new PublicKey('mcmt6YrQEMKw8Mw43FmpRLmf7BqRnFMKmAcbxE3xkAW');
 const TOKEN = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 const ATA_PROGRAM = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
 const WSOL = new PublicKey('So11111111111111111111111111111111111111112');
@@ -72,7 +75,7 @@ export async function plan(conn: Connection): Promise<{ label: string; key: Publ
   const vault = pda([enc('vault')], CHIP_CORE);
   const out: { label: string; key: PublicKey }[] = [
     { label: 'chip_core', key: CHIP_CORE }, { label: 'market', key: MARKET }, { label: 'staking', key: STAKING }, { label: 'arena', key: ARENA },
-    { label: 'mpl_core', key: MPL_CORE }, { label: 'token', key: TOKEN }, { label: 'ata_program', key: ATA_PROGRAM }, { label: 'system', key: SystemProgram.programId },
+    { label: 'mpl_core', key: MPL_CORE }, { label: 'mpl_bubblegum_v2', key: MPL_BUBBLEGUM_V2 }, { label: 'mpl_noop', key: MPL_NOOP }, { label: 'mpl_account_compression', key: MPL_ACCOUNT_COMPRESSION }, { label: 'token', key: TOKEN }, { label: 'ata_program', key: ATA_PROGRAM }, { label: 'system', key: SystemProgram.programId },
     { label: 'wsol', key: WSOL }, { label: 'slot_hashes', key: SLOT_HASHES }, { label: 'alt_program', key: ALT_PROGRAM }, { label: 'pyth_receiver', key: PYTH_RECEIVER },
     { label: 'switchboard', key: SWITCHBOARD }, { label: 'sb_state', key: pda([enc('STATE')], SWITCHBOARD) }, { label: 'sb_queue', key: SB_QUEUE },
     { label: 'config', key: config }, { label: 'vault', key: vault },
@@ -95,6 +98,13 @@ export async function plan(conn: Connection): Promise<{ label: string; key: Publ
     if (!mi) { console.warn(`collection ${i}: meta ${meta.toBase58()} missing (collections_created says ${cfg.collectionsCreated})`); continue; }
     out.push({ label: `collection_meta[${i}]`, key: meta });
     out.push({ label: `core_collection[${i}]`, key: new PublicKey(mi.data.subarray(9, 41)) });
+    const treeMeta = pda([enc('bubblegum_tree'), Buffer.from([i])], CHIP_CORE);
+    const ti = await conn.getAccountInfo(treeMeta, 'confirmed');
+    if (ti && ti.data.length >= 105) {
+      out.push({ label: `bubblegum_tree[${i}]`, key: treeMeta });
+      out.push({ label: `merkle_tree[${i}]`, key: new PublicKey(ti.data.subarray(41, 73)) });
+      out.push({ label: `tree_config[${i}]`, key: new PublicKey(ti.data.subarray(73, 105)) });
+    }
   }
   // de-duplicate, keep first label
   const seen = new Set<string>();

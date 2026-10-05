@@ -83,7 +83,7 @@ export function usePackFlow() {
       return flow.state.nonce;
     } catch (e) {
       toast({ kind: 'error', title: { key: 'screens.packStopped' }, error: e });
-      return flow.state.nonce;
+      return flow.state.buySignature ? flow.state.nonce : undefined;
     }
   }, [wallet, connection, bind, toast, pushReveals, invalidate]);
 

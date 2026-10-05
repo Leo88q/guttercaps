@@ -30,32 +30,52 @@ const INVALIDATE: Record<string, (qc: QueryClient, e: Event) => void> = {
 export function useIndexerSocket() {
   const qc = useQueryClient();
   const { publicKey } = useWallet();
+  const wallet = publicKey?.toBase58();
   const toast = useUiStore((s) => s.toast);
 
   useEffect(() => {
-    if (isMock() || !publicKey) return;
+    if (isMock() || !wallet) return;
     let ws: WebSocket | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     let closed = false;
     let backoff = 1_000;
+    const closeSocket = (sock: WebSocket | undefined) => {
+      if (!sock) return;
+      sock.onmessage = null;
+      sock.onerror = null;
+      sock.onclose = null;
+      if (sock.readyState === WebSocket.CONNECTING) {
+        sock.addEventListener('open', () => {
+          try { sock.close(); } catch { /* ignore */ }
+        }, { once: true });
+      } else if (sock.readyState === WebSocket.OPEN) {
+        try { sock.close(); } catch { /* ignore */ }
+      }
+    };
     const connect = () => {
+      if (closed) return;
       const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-      ws = new WebSocket(`${proto}://${window.location.host}${WS_BASE}?wallet=${publicKey.toBase58()}`);
+      ws = new WebSocket(`${proto}://${window.location.host}${WS_BASE}?wallet=${wallet}`);
       ws.onopen = () => { backoff = 1_000; };
       ws.onmessage = (m) => {
         try {
           const e = JSON.parse(m.data as string) as Event;
           INVALIDATE[e.type]?.(qc, e);
           if (e.type === 'match_found') toast({ kind: 'info', title: { key: 'ui.opponentFound' }, body: { key: 'screens.revealInArena' } });
-          if (e.type === 'sale' && e.payload?.seller === publicKey.toBase58()) toast({ kind: 'money', title: { key: 'screens.capSold' }, body: usdText(e.payload?.priceUsd == null ? null : Number(e.payload.priceUsd)) });
+          if (e.type === 'sale' && e.payload?.seller === wallet) toast({ kind: 'money', title: { key: 'screens.capSold' }, body: usdText(e.payload?.priceUsd == null ? null : Number(e.payload.priceUsd)) });
         } catch { /* ignore */ }
       };
       ws.onclose = () => {
         if (closed) return;
-        setTimeout(connect, backoff);
+        timer = setTimeout(connect, backoff);
         backoff = Math.min(backoff * 2, 30_000);
       };
     };
-    connect();
-    return () => { closed = true; ws?.close(); };
-  }, [qc, publicKey, toast]);
+    timer = setTimeout(connect, 25);
+    return () => {
+      closed = true;
+      if (timer) clearTimeout(timer);
+      closeSocket(ws);
+    };
+  }, [qc, wallet, toast]);
 }

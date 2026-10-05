@@ -62,13 +62,13 @@ export default function Profile() {
   const theme = themeSel && themesOwned.includes(themeSel) ? themeSel : (themesOwned[0] ?? null);
 
   return (
-    <div className={`page page-bg page-bg-profile stack${hasTheme ? ' profile-themed' : ''}`} style={hasTheme ? { ['--profile-lamp' as string]: themeById(theme).hex } : undefined}>
+    <div className={`page page-bg page-bg-profile stack${hasTheme ? ' profile-themed' : ''}`} style={hasTheme ? { ['--profile-lamp' as string]: themeById(theme)?.hex } : undefined}>
       <div className="row between">
         <div className="row" style={{ gap: 12, alignItems: 'center' }}>
           {(() => {
             const cells = grid.data?.cells;
             let best: [number, number] | null = null;
-            cells?.forEach((row, ci) => row.forEach((n, ri) => { if (n > 0 && (!best || ri > best[1])) best = [ci, ri]; }));
+            cells?.forEach((row, ci) => row?.forEach((n, ri) => { if (n > 0 && (!best || ri > best[1])) best = [ci, ri]; }));
             return best ? (
               <span style={{ width: 64, flex: '0 0 auto', borderRadius: '50%', border: `2px solid ${rarityColor(best[1])}` }} title={t('ui.rarestCap')}>
                 <ChipArt collection={best[0]} rarity={best[1]} imageUrl={chipArtUrl(best[0], best[1])} crimp={rarityColor(best[1])} />
@@ -77,7 +77,7 @@ export default function Profile() {
           })()}
           <div>
             <h1 className="page-title">{me.data?.handle ? `@${me.data.handle}` : shortKey(addr, 6)}</h1>
-            <p className="page-sub">{wallet?.adapter.name} · <a href={EXPLORER.account(addr)} target="_blank" rel="noreferrer" className="row" style={{ gap: 3, display: 'inline-flex' }}>{shortKey(addr, 8)} <ExternalIcon size={11} /></a> · {t('profile.playingSince', { date: me.data?.firstSeen ? fmtLocale.date(me.data.firstSeen, locale) : '—' })}</p>
+            <p className="page-sub">{wallet?.adapter?.name} · <a href={EXPLORER.account(addr)} target="_blank" rel="noreferrer" className="row" style={{ gap: 3, display: 'inline-flex' }}>{shortKey(addr, 8)} <ExternalIcon size={11} /></a> · {t('profile.playingSince', { date: me.data?.firstSeen ? fmtLocale.date(me.data.firstSeen, locale) : '—' })}</p>
           </div>
         </div>
         <div className="row-wrap" style={{ gap: 8 }}>
@@ -86,7 +86,7 @@ export default function Profile() {
         </div>
       </div>
       {handleOpen && <HandleModal onClose={() => setHandleOpen(false)} />}
-      {hasBanner && banner !== null && completed.includes(banner) && (
+      {hasBanner && banner !== null && completed.includes(banner) && COLLECTIONS[banner] && (
         <div className="banner-anim" aria-hidden>
           <img className="district-banner" style={{ marginBottom: 0 }} src={`/districts/${COLLECTIONS[banner].num}.jpg`} alt="" loading="lazy" decoding="async" />
         </div>
@@ -136,7 +136,7 @@ export default function Profile() {
               <span className="label">{t('ui.banner')} {completed.length === 0 && <span className="muted">— {t('ui.bannerHint')}</span>}</span>
               <div className="tag-list">
                 <Pill active={banner === null} onClick={() => { setBannerState(null); saveBanner(addr, null); }}>{t('ui.off')}</Pill>
-                {bannersOwned.map((ci) => <Pill key={ci} active={banner === ci} onClick={() => { setBannerState(ci); saveBanner(addr, ci); }}><span style={{ width: 8, height: 8, borderRadius: 4, background: collectionColor(ci) }} />{COLLECTIONS[ci].name}</Pill>)}
+                {bannersOwned.map((ci) => <Pill key={ci} active={banner === ci} onClick={() => { setBannerState(ci); saveBanner(addr, ci); }}><span style={{ width: 8, height: 8, borderRadius: 4, background: collectionColor(ci) }} />{COLLECTIONS[ci]?.name ?? `#${ci}`}</Pill>)}
               </div>
             </div>
           )}
@@ -202,7 +202,7 @@ export default function Profile() {
             <span className="label">{t('ui.debug')}</span>
             <SprayCapToggle on={isMock()} onChange={(v) => { setMockMode(v); window.location.reload(); }} label={t('screens.mockApi', { state: isMock() ? t('screens.enabled') : t('ui.off') })} />
             <div className="tiny mono muted">chip_core {PROGRAM_IDS.chipCore.toBase58()}<br />{t('market.title')} {PROGRAM_IDS.market.toBase58()}<br />{t('leaderboard.boards.staking')} {PROGRAM_IDS.staking.toBase58()}<br />{t('admin.kpi.arena')} {PROGRAM_IDS.arena.toBase58()}</div>
-            {(active.packs.length > 0 || active.fusions.length > 0) && <div className="tiny">{t('ui.unfinished')}: {active.packs.map((p) => <Link key={p.id} to={`/shop/opening/${p.nonce}`}>{t('ui.pack')} {p.nonce.slice(-6)} ({phaseLabel(p.phase)}) </Link>)}{active.fusions.map((f) => <span key={f.id}>{t('ui.fusion')} {f.nonce.slice(-6)} ({phaseLabel(f.phase)}) </span>)}</div>}
+            {(active.packs.length > 0 || active.fusions.length > 0) && <div className="tiny">{t('ui.unfinished')}: {active.packs.map((p) => <Link key={p.id} to={`/shop/opening/${p.nonce}`}>{t('ui.pack')} {String(p.nonce ?? '').slice(-6)} ({phaseLabel(p.phase)}) </Link>)}{active.fusions.map((f) => <span key={f.id}>{t('ui.fusion')} {String(f.nonce ?? '').slice(-6)} ({phaseLabel(f.phase)}) </span>)}</div>}
             <button className="btn btn-sm" onClick={() => { Object.keys(txs.packs).forEach(txs.remove); Object.keys(txs.fusions).forEach(txs.remove); }}><TrashIcon size={14} /> {t('ui.clearHistory')}</button>
           </div>
         )}
@@ -211,7 +211,7 @@ export default function Profile() {
       <div className="card stack-sm">
         <div className="strong">{t('profile.activity')}</div>
         {activity.isLoading && <Skeleton h={100} />}
-        {(activity.data?.pages.flatMap((p) => p.items ?? []) ?? []).map((a, i) => (
+        {((activity.data?.pages ?? []).flatMap((p) => p?.items ?? [])).map((a, i) => (
           <div key={`${a.signature}-${i}`} className="row between small">
             <span>{a.kind?.replace(/_/g, ' ')}</span>
             <span className="muted">{a.blockTime ? timeAgo(a.blockTime) : ''} {a.signature && <a href={EXPLORER.tx(a.signature)} target="_blank" rel="noreferrer" aria-label={t('ui.explorer')}><ExternalIcon size={12} /></a>}</span>
@@ -283,7 +283,7 @@ function ClaimSkinModal({ tier, busy, onClose, onClaim }: { tier: number; busy: 
   const t = useT();
   const chips = useMyChips({});
   const [asset, setAsset] = useState<string | null>(null);
-  const caps = useMemo(() => chips.data?.pages.flatMap((pg) => pg.items ?? []) ?? [], [chips.data]);
+  const caps = useMemo(() => (chips.data?.pages ?? []).flatMap((pg) => pg?.items ?? []), [chips.data]);
   const skin = PASS_TRACK.find((x) => x.tier === tier)?.reward.kind === 'skin'
     ? (PASS_TRACK.find((x) => x.tier === tier)?.reward as { skin: string }).skin
     : null;

@@ -31,7 +31,7 @@ use mpl_core::accounts::BaseAssetV1;
 
 use chip_core::state::{ChipState, CompressedChipState, CompressedMintClaim};
 
-declare_id!("GCfERiohebYDJLtNwAZpGxudwbXRqnxmuTT413fkTYrM");
+declare_id!("DUTokrhWBYL7nJ9VbMy7bFELQFf8TN1tmvVpKLsskqD6");
 
 pub const MICRO: u64 = 1_000_000;
 pub const MIN_WAGER: u64 = 5 * MICRO;

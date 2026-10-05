@@ -208,11 +208,18 @@ export function t(key: MessageKey, vars?: Vars): string {
 /** Locale-aware formatting helpers that do NOT touch bigint money math. */
 export const fmtLocale = {
   int: (n: number, l: Locale = getLocale()) => new Intl.NumberFormat(LOCALE_META[l].tag).format(n),
-  date: (d: Date | string | number, l: Locale = getLocale(), opts: Intl.DateTimeFormatOptions = { dateStyle: 'medium' }) =>
-    new Intl.DateTimeFormat(LOCALE_META[l].tag, opts).format(typeof d === 'string' || typeof d === 'number' ? new Date(d) : d),
-  dateTime: (d: Date | string | number, l: Locale = getLocale()) =>
-    new Intl.DateTimeFormat(LOCALE_META[l].tag, { dateStyle: 'medium', timeStyle: 'short' }).format(typeof d === 'string' || typeof d === 'number' ? new Date(d) : d),
+  date: (d: Date | string | number, l: Locale = getLocale(), opts: Intl.DateTimeFormatOptions = { dateStyle: 'medium' }) => {
+    const dt = typeof d === 'string' || typeof d === 'number' ? new Date(d) : d;
+    if (!dt || Number.isNaN(dt.getTime())) return '—';
+    return new Intl.DateTimeFormat(LOCALE_META[l].tag, opts).format(dt);
+  },
+  dateTime: (d: Date | string | number, l: Locale = getLocale()) => {
+    const dt = typeof d === 'string' || typeof d === 'number' ? new Date(d) : d;
+    if (!dt || Number.isNaN(dt.getTime())) return '—';
+    return new Intl.DateTimeFormat(LOCALE_META[l].tag, { dateStyle: 'medium', timeStyle: 'short' }).format(dt);
+  },
   relative: (fromMs: number, l: Locale = getLocale()) => {
+    if (!Number.isFinite(fromMs)) return '—';
     const rtf = new Intl.RelativeTimeFormat(LOCALE_META[l].tag, { numeric: 'auto' });
     const s = Math.round((fromMs - Date.now()) / 1000);
     const abs = Math.abs(s);

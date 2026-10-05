@@ -349,7 +349,7 @@ describe('instruction builders', () => {
     expect(ix.keys[7].pubkey.equals(merkleTree) && ix.keys[7].isWritable).toBe(true);
     expect(ix.keys[8].pubkey.equals(collectionMetaPda(2)[0]) && !ix.keys[8].isWritable).toBe(true); // tree authority / delegate
     expect(ix.keys[9].pubkey.equals(coreCollection) && ix.keys[9].isWritable).toBe(true);
-    expect(ix.keys[10].pubkey.equals(PublicKey.findProgramAddressSync([Buffer.from('collection_cpi')], MPL_BUBBLEGUM_V2_ID)[0])).toBe(true);
+    expect(ix.keys[10].pubkey.equals(PublicKey.findProgramAddressSync([Buffer.from('mpl_core_cpi_signer')], MPL_BUBBLEGUM_V2_ID)[0])).toBe(true);
     expect(ix.keys[11].pubkey.equals(MPL_BUBBLEGUM_V2_ID)).toBe(true);
     expect(ix.keys[12].pubkey.equals(MPL_NOOP_ID)).toBe(true);
     expect(ix.keys[13].pubkey.equals(MPL_ACCOUNT_COMPRESSION_ID)).toBe(true);

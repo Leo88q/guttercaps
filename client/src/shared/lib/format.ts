@@ -53,6 +53,7 @@ export function shortKey(k: string | undefined | null, n = 4): string {
 
 export function timeAgo(iso: string | number | Date): string {
   const t = typeof iso === 'number' ? iso : new Date(iso).getTime();
+  if (!Number.isFinite(t)) return '';
   const s = Math.max(0, Math.round((Date.now() - t) / 1000));
   const rtf = new Intl.RelativeTimeFormat(localeTag(), { numeric: 'auto' });
   if (s < 60) return rtf.format(-s, 'second');

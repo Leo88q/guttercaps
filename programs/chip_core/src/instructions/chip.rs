@@ -17,8 +17,8 @@ use mpl_core::{
 use crate::errors::ChipError;
 use crate::state::*;
 
-pub const MARKET_PROGRAM_ID: Pubkey = pubkey!("GCA2aUeX7ZFbGz3zvjqvsbjD1G3QjWxLhBpK5jwwPdcz");
-pub const STAKING_PROGRAM_ID: Pubkey = pubkey!("GCuGx7fnLcKnw1NWU4dLzQvnJWggMVniQ4u7EuMaQevA");
+pub const MARKET_PROGRAM_ID: Pubkey = pubkey!("5skEmmhgFYn5xjHEdrcsiQ68kUg5kvhXKhjWTWSppjfo");
+pub const STAKING_PROGRAM_ID: Pubkey = pubkey!("Ewkbp7WpqbiJAu3ofEcTPinqnr5oH3e94YJDZFg1eSJn");
 
 /// Core asset accounts are unchecked because mpl-core does not expose an
 /// Anchor account type. Keep the owner check next to the parser so every

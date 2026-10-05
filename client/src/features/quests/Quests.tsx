@@ -28,6 +28,7 @@ import { ANTI_FARM, QUEST_CHIP_TEMPLATES, SKR_ANTI_FARM, isChipRootKind, isItemR
 import { useT, type MessageKey } from '@/shared/i18n';
 import { RewardGlyph, type RewardKind, CgCoinIcon, SkrTokenIcon, BoosterIcon, VoucherIcon, StreakIcon, StashIcon } from '@/shared/ui/reward-icons';
 import { ExternalIcon } from '@/shared/ui/action-icons';
+import { isClaimReady } from './claimReadiness';
 
 const QUEST_KEYS: Record<string, MessageKey> = Object.fromEntries(
   ['d_login', 'd_pvp3', 'd_win1', 'd_fuse1', 'd_streak7', 'd_visit_neuroforge', 'd_visit_ares1', 'w_pvp20', 'w_win8', 'w_trade', 'w_stake', 'w_all', 'w_visit_neuroforge', 'w_visit_ares1', 'p_first_fusion', 'p_win50', 'p_win500', 'p_set1', 'p_diamond_hand', 'p_referral5', 'p_visit_neuroforge', 'p_visit_ares1', 'p_stake30', 'p_trades5']
@@ -75,7 +76,7 @@ export default function Quests() {
   /** The face each reward kind wears in the rewards panel (reward-icons set). */
   const kindGlyph = (kind: number): RewardKind => isChipRootKind(kind) ? 'voucher' : isItemRootKind(kind) ? 'booster' : isSkrRootKind(kind) ? 'skr' : 'cg';
   const list = (quests.data ?? []).filter((q) => q.cadence === tab);
-  const ready = (claims.data ?? []).filter((c) => !c.claimed && new Date(c.claimableAt!).getTime() <= Date.now());
+  const ready = (claims.data ?? []).filter((c) => isClaimReady(c));
   const claimable = ready.filter((c) => !isChipRootKind(c.kind!));   // one tx for every $CG / SKR / booster leaf
   const vouchers = ready.filter((c) => isChipRootKind(c.kind!));     // one tx EACH: the claim commits a randomness request (like buy_pack)
   const sumOf = (pick: (kind: number) => boolean) => claimable.filter((c) => pick(c.kind!)).reduce((s, c) => s + BigInt(c.amountMicro ?? '0'), 0n);

@@ -107,5 +107,5 @@ export function ata(mint: PublicKey, owner: PublicKey): PublicKey {
 export function freshNonce(): bigint {
   const rnd = new Uint32Array(1);
   crypto.getRandomValues(rnd);
-  return (BigInt(Date.now()) << 20n) | BigInt(rnd[0] & 0xfffff);
+  return ((BigInt(Date.now()) & 0x1ff_ffff_ffffn) << 15n) | BigInt(rnd[0] & 0x7fff);
 }

@@ -20,7 +20,7 @@ pub mod state;
 use instructions::*;
 use state::SPLIT_COUNT;
 
-declare_id!("GCuGx7fnLcKnw1NWU4dLzQvnJWggMVniQ4u7EuMaQevA");
+declare_id!("Ewkbp7WpqbiJAu3ofEcTPinqnr5oH3e94YJDZFg1eSJn");
 
 #[program]
 pub mod staking {

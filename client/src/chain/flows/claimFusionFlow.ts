@@ -3,11 +3,12 @@ import { errorSnapshot, type ErrorSnapshot } from '../errorSnapshot';
 // kind 3) → reveal → settle the result claim (mint → DAS → register).
 // Pure orchestration: no React here; the UI subscribes through onState.
 import { Connection, PublicKey } from '@solana/web3.js';
+import { FUSION_RECIPES } from '@guttercaps/economy';
 import { DAS_RPC_URL } from '@/app/config';
 import { appLookupTables, fitsInTx, sendTx, type WalletLike } from '../tx';
 import { prepareClose, prepareCloseLut, prepareRandomness, prepareReveal, readRandomness, sendCloseLut } from '../switchboard';
 import {
-  cancelStaleClaimFusionIx, closeExpiredClaimIx, fuseClaimsCommitIx, fuseClaimsRevealIx, STALE_PACK_SLOTS,
+  cancelStaleClaimFusionIx, closeExpiredClaimIx, fuseClaimsCommitIx, fuseClaimsRevealIx, fuseCompressedClaimsIx, STALE_PACK_SLOTS,
 } from '../ix/chipCore';
 import { RNG_KIND, claimFusionPda, compressedMintClaimPda, freshNonce } from '../pdas';
 import {
@@ -73,6 +74,49 @@ export class ClaimFusionFlow {
       this.cfg ??= await fetchGameConfig(connection);
       const nonce = await this.pickFreeNonce();
       this.set({ nonce });
+      const recipe = FUSION_RECIPES[this.state.recipe];
+      if (recipe && recipe.successBps === 10_000) {
+        this.set({ phase: 'signing' });
+        const { signature } = await sendTx(connection, wallet, [
+          fuseCompressedClaimsIx({
+            owner: wallet.publicKey,
+            resultClaimNonce: nonce,
+            resultCollectionIdx: this.state.resultCollectionIdx,
+            cgMint: this.cfg.cgMint,
+            materialClaims: this.state.materials,
+          }),
+        ], { cuLimit: 400_000 });
+        const resultClaim = compressedMintClaimPda(wallet.publicKey, nonce)[0];
+        this.set({
+          phase: 'settling',
+          signatures: [signature],
+          result: {
+            owner: wallet.publicKey,
+            nonce,
+            recipe: this.state.recipe,
+            materials: this.state.materials,
+            resultClaim,
+            success: true,
+            rollBps: 0,
+            thresholdBps: 10_000,
+            feeBurned: BigInt(recipe.feeCgMicro),
+          },
+        });
+        const lookupTables = await appLookupTables(connection, this.deps.lookupTable);
+        const metas = await fetchCollectionMetas(connection, this.cfg.collectionsCreated);
+        const trees = await fetchTreeMetas(connection, Array.from({ length: this.cfg.collectionsCreated }, (_, i) => i));
+        const settled = await settleClaim(
+          {
+            connection, wallet, das: new DasClient({ endpoint: this.deps.dasEndpoint ?? DAS_RPC_URL }),
+            buyer: wallet.publicKey, metas, trees, lookupTables,
+            onSignature: (sig) => this.set({ signatures: [...this.state.signatures, sig] }),
+          },
+          nonce,
+        );
+        if (!settled) throw new Error('result claim vanished after atomic claim fusion');
+        this.set({ phase: 'done', settledAsset: settled.asset, settledRarity: settled.rarity });
+        return;
+      }
       const rnd = await prepareRandomness(connection, wallet.publicKey, RNG_KIND.CLAIM_FUSION, nonce);
       this.set({ phase: 'signing', randomness: rnd.randomness });
       const { signature, logs } = await sendTx(connection, wallet, [

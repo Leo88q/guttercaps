@@ -19,7 +19,7 @@ export const NONCES_PER_WALLET = 3;
 
 export function issueNonce(db: Db, address: string) {
   new PublicKey(address); // throws on garbage
-  const nonce = randomBytes(16).toString('base64url');
+  const nonce = randomBytes(16).toString('hex');
   const expiresAt = now() + 300;
   db.run(`DELETE FROM siws_nonces WHERE expires_at < ?`, now());
   // keep the newest NONCES_PER_WALLET − 1 (rowid breaks same-second ties; Postgres port: order by a serial id)
@@ -31,7 +31,7 @@ export function issueNonce(db: Db, address: string) {
 /** Parse the fields we verify out of an ERC-4361/SIWS-style message. */
 export function parseSiws(message: string): { address?: string; nonce?: string; domain?: string; issuedAt?: string } {
   const lines = message.split('\n');
-  const domain = /^(\S+) wants you to sign in/.exec(lines[0] ?? '')?.[1];
+  const domain = (/^(\S+) wants you to sign in/.exec(lines[0] ?? '') ?? /^GUTTERCAPS sign-in \(([^)]+)\):/.exec(lines[0] ?? ''))?.[1];
   const address = lines[1]?.trim();
   const field = (k: string) => lines.find((l) => l.startsWith(`${k}: `))?.slice(k.length + 2).trim();
   return { domain, address, nonce: field('Nonce'), issuedAt: field('Issued At') };

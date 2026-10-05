@@ -50,10 +50,10 @@ pub fn tree_config_pda(merkle_tree: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(&[merkle_tree.as_ref()], &BUBBLEGUM_V2_ID).0
 }
 
-/// Leaf Asset ID PDA used by Bubblegum/DAS for a tree leaf.
+/// Leaf Asset ID PDA used by Bubblegum/DAS for a tree leaf (`mpl_bubblegum::utils::get_asset_id`).
 pub fn leaf_asset_id(merkle_tree: &Pubkey, index: u32) -> Pubkey {
     Pubkey::find_program_address(
-        &[b"asset", merkle_tree.as_ref(), &index.to_le_bytes()],
+        &[b"asset", merkle_tree.as_ref(), &(index as u64).to_le_bytes()],
         &BUBBLEGUM_V2_ID,
     )
     .0
@@ -62,7 +62,7 @@ pub fn leaf_asset_id(merkle_tree: &Pubkey, index: u32) -> Pubkey {
 /// Bubblegum's signer PDA used when it invokes MPL Core for V2 collection
 /// verification. It is a Bubblegum-owned signer, not a project authority.
 pub fn mpl_core_cpi_signer() -> Pubkey {
-    Pubkey::find_program_address(&[b"collection_cpi"], &BUBBLEGUM_V2_ID).0
+    Pubkey::find_program_address(&[b"mpl_core_cpi_signer"], &BUBBLEGUM_V2_ID).0
 }
 
 pub fn require_bubblegum_program(program: &AccountInfo<'_>) -> Result<()> {

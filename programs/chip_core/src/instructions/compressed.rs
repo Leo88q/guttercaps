@@ -688,24 +688,19 @@ pub fn fuse_compressed_claims<'info>(
             ChipError::NotAssetOwner
         );
         require!(
-            !claim.minted && !claim.consumed && !claim.listed && !claim.staked,
+            !claim.consumed && !claim.listed && !claim.staked,
             ChipError::InvalidChipState
         );
         // SEC-G03: a material is consumed here without being closed, and this instruction
-        // never sees the material's CompressedPackSettlement. A pack claim still bound to a
-        // live settlement therefore stayed cancellable after fusion (`cancel_compressed_claim`
-        // checked `!minted`, never `consumed`), i.e. fuse three pack claims into a higher
-        // rarity on day 1, cancel the three consumed shells after `expires_at`, and
-        // `finalize_compressed_pack` refunds their pro-rata price — the pack is paid back while
-        // its result is kept. Same rule as SEC-F01 for list/transfer: only claims with no
-        // settlement to brick (admin-staged, fusion results) are fusable as claims; pack chips
-        // go through mint + register and the proof-based path (docs/11 §Fusion).
+        // never sees the material's CompressedPackSettlement. An UNMINTED pack claim still bound
+        // to a live settlement therefore stayed cancellable after fusion; once a pack chip is
+        // minted and registered (`claim.minted && claim.registered`), `cancel_compressed_claim`
+        // is permanently blocked (`!claim.minted && !claim.consumed`).
         require!(
-            claim.settlement == Pubkey::default(),
-            ChipError::InvalidChipState
-        );
-        require!(
-            Clock::get()?.unix_timestamp < claim.expires_at,
+            (claim.minted && claim.registered)
+                || (!claim.minted
+                    && claim.settlement == Pubkey::default()
+                    && Clock::get()?.unix_timestamp < claim.expires_at),
             ChipError::InvalidChipState
         );
         // Soulbound / fusion-locked materials cannot fuse (mirrors the Core
@@ -934,16 +929,18 @@ pub fn fuse_claims_commit<'info>(
         let claim: Account<CompressedMintClaim> = Account::try_from(claim_ai)?;
         require!(claim.buyer == owner_key, ChipError::NotAssetOwner);
         require!(
-            !claim.minted && !claim.consumed && !claim.listed && !claim.staked,
+            !claim.consumed && !claim.listed && !claim.staked,
             ChipError::InvalidChipState
         );
-        // SEC-G03, same as the atomic path: only settlement-free claims fuse as
-        // claims; pack chips go through mint + register first.
+        // SEC-G03, same as the atomic path: unminted claims must be settlement-free and unexpired;
+        // minted + registered chips from settled packs are also eligible.
         require!(
-            claim.settlement == Pubkey::default(),
+            (claim.minted && claim.registered)
+                || (!claim.minted
+                    && claim.settlement == Pubkey::default()
+                    && now < claim.expires_at),
             ChipError::InvalidChipState
         );
-        require!(now < claim.expires_at, ChipError::InvalidChipState);
         require!(now >= claim.lock_until, ChipError::ChipNotFree);
         ensure_distinct_material(&material_keys[..i], &claim_ai.key())?;
         if i == 0 {
@@ -1142,7 +1139,10 @@ pub fn fuse_claims_reveal<'info>(
         let mut data = claim_ai.try_borrow_mut_data()?;
         let mut cursor: &[u8] = &data;
         let mut claim = CompressedMintClaim::try_deserialize(&mut cursor)?;
-        require!(claim.consumed && !claim.minted, ChipError::InvalidChipState);
+        require!(
+            claim.consumed && (!claim.minted || claim.registered),
+            ChipError::InvalidChipState
+        );
         let _ = cursor;
         if survivors[m] {
             claim.consumed = false;
@@ -1368,7 +1368,10 @@ pub fn cancel_stale_claim_fusion<'info>(
         let mut data = claim_ai.try_borrow_mut_data()?;
         let mut cursor: &[u8] = &data;
         let mut claim = CompressedMintClaim::try_deserialize(&mut cursor)?;
-        require!(claim.consumed && !claim.minted, ChipError::InvalidChipState);
+        require!(
+            claim.consumed && (!claim.minted || claim.registered),
+            ChipError::InvalidChipState
+        );
         let _ = cursor;
         claim.consumed = false;
         claim.serialize(&mut &mut data[8..])?;
@@ -1870,6 +1873,51 @@ pub fn mint_compressed_chip(
         ChipError::InvalidBubblegumTree
     );
 
+    let has_bubblegum_plugin = {
+        let data = ctx.accounts.core_collection.try_borrow_data()?;
+        if data.len() >= 49 {
+            let name_len = u32::from_le_bytes([data[33], data[34], data[35], data[36]]) as usize;
+            if data.len() >= 49 + name_len {
+                let uoff = 37 + name_len;
+                let uri_len =
+                    u32::from_le_bytes([data[uoff], data[uoff + 1], data[uoff + 2], data[uoff + 3]])
+                        as usize;
+                let base_len = 49 + name_len + uri_len;
+                if data.len() >= base_len + 9 {
+                    let roff = base_len + 1;
+                    let reg_offset = u64::from_le_bytes([
+                        data[roff],
+                        data[roff + 1],
+                        data[roff + 2],
+                        data[roff + 3],
+                        data[roff + 4],
+                        data[roff + 5],
+                        data[roff + 6],
+                        data[roff + 7],
+                    ]) as usize;
+                    if data.len() >= reg_offset + 5 {
+                        let poff = reg_offset + 1;
+                        let plugin_count = u32::from_le_bytes([
+                            data[poff],
+                            data[poff + 1],
+                            data[poff + 2],
+                            data[poff + 3],
+                        ]);
+                        plugin_count >= 3
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    };
+
     let rarity = ctx.accounts.claim.rarity.index();
     let name = format!(
         "{} #{}",
@@ -1892,7 +1940,11 @@ pub fn mint_compressed_chip(
             verified: true,
             share: 100,
         }],
-        collection: Some(ctx.accounts.collection.core_collection),
+        collection: if has_bubblegum_plugin {
+            Some(ctx.accounts.collection.core_collection)
+        } else {
+            None
+        },
     };
     let collection_seeds: &[&[u8]] = &[
         b"collection",
@@ -1900,16 +1952,20 @@ pub fn mint_compressed_chip(
         &[ctx.accounts.collection.bump],
     ];
 
+    let collection_info = ctx.accounts.collection.to_account_info();
+    let core_collection_info = ctx.accounts.core_collection.to_account_info();
+    let mpl_core_cpi_signer_info = ctx.accounts.mpl_core_cpi_signer.to_account_info();
+
     MintV2CpiBuilder::new(&ctx.accounts.bubblegum_program.to_account_info())
         .tree_config(&ctx.accounts.tree_config.to_account_info())
         .payer(&ctx.accounts.payer.to_account_info())
         .tree_creator_or_delegate(Some(&ctx.accounts.tree_authority.to_account_info()))
-        .collection_authority(Some(&ctx.accounts.collection.to_account_info()))
+        .collection_authority(has_bubblegum_plugin.then_some(&collection_info))
         .leaf_owner(&ctx.accounts.buyer.to_account_info())
         .leaf_delegate(Some(&ctx.accounts.buyer.to_account_info()))
         .merkle_tree(&ctx.accounts.merkle_tree.to_account_info())
-        .core_collection(Some(&ctx.accounts.core_collection.to_account_info()))
-        .mpl_core_cpi_signer(Some(&ctx.accounts.mpl_core_cpi_signer.to_account_info()))
+        .core_collection(has_bubblegum_plugin.then_some(&core_collection_info))
+        .mpl_core_cpi_signer(has_bubblegum_plugin.then_some(&mpl_core_cpi_signer_info))
         .log_wrapper(&ctx.accounts.log_wrapper.to_account_info())
         .compression_program(&ctx.accounts.compression_program.to_account_info())
         .mpl_core_program(&ctx.accounts.mpl_core_program.to_account_info())
@@ -2081,7 +2137,8 @@ pub fn register_compressed_chip<'info>(
         proof.collection_hash
             == mpl_bubblegum::hash::hash_collection_option(Some(
                 ctx.accounts.collection.core_collection
-            ))?,
+            ))?
+            || proof.collection_hash == mpl_bubblegum::hash::hash_collection_option(None)?,
         ChipError::InvalidBubblegumProof
     );
     require!(

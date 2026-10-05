@@ -14,10 +14,10 @@ export type ProgramName = 'chip_core' | 'market' | 'staking' | 'arena';
 
 /** The four GUTTERCAPS programs. Same defaults as the client — override per cluster with env. */
 export const PROGRAMS: Record<ProgramName, PublicKey> = {
-  chip_core: pk(env.PROGRAM_CHIP_CORE, 'GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q'),
-  market: pk(env.PROGRAM_MARKET, 'GCA2aUeX7ZFbGz3zvjqvsbjD1G3QjWxLhBpK5jwwPdcz'),
-  staking: pk(env.PROGRAM_STAKING, 'GCuGx7fnLcKnw1NWU4dLzQvnJWggMVniQ4u7EuMaQevA'),
-  arena: pk(env.PROGRAM_ARENA, 'GCfERiohebYDJLtNwAZpGxudwbXRqnxmuTT413fkTYrM'),
+  chip_core: pk(env.PROGRAM_CHIP_CORE, 'J68G8KrbLTSdi68LHr9Kkw1YbRRHv3uBPirWCd5Xt13V'),
+  market: pk(env.PROGRAM_MARKET, '5skEmmhgFYn5xjHEdrcsiQ68kUg5kvhXKhjWTWSppjfo'),
+  staking: pk(env.PROGRAM_STAKING, 'Ewkbp7WpqbiJAu3ofEcTPinqnr5oH3e94YJDZFg1eSJn'),
+  arena: pk(env.PROGRAM_ARENA, 'DUTokrhWBYL7nJ9VbMy7bFELQFf8TN1tmvVpKLsskqD6'),
 };
 
 export const PROGRAM_NAMES = Object.keys(PROGRAMS) as ProgramName[];

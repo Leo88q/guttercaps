@@ -8,8 +8,8 @@ use mpl_bubblegum::instructions::CreateTreeConfigV2CpiBuilder;
 use mpl_core::{
     instructions::CreateCollectionV2CpiBuilder,
     types::{
-        Creator, PermanentTransferDelegate, Plugin, PluginAuthority, PluginAuthorityPair,
-        Royalties, RuleSet,
+        BubblegumV2, Creator, PermanentTransferDelegate, Plugin, PluginAuthority,
+        PluginAuthorityPair, Royalties, RuleSet,
     },
     ID as MPL_CORE_ID,
 };
@@ -173,6 +173,10 @@ pub fn create_collection(
             authority: Some(PluginAuthority::Address {
                 address: market_auth,
             }),
+        },
+        PluginAuthorityPair {
+            plugin: Plugin::BubblegumV2(BubblegumV2 {}),
+            authority: None,
         },
     ];
     let seeds: &[&[u8]] = &[b"collection", &[idx], &[meta.bump]];

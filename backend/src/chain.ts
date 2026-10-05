@@ -406,7 +406,7 @@ export function mintCompressedChipIx(a: MintCompressedChipArgs): TransactionInst
     programId: CHIP_CORE_ID,
     keys: [
       signer(a.payer), ro(configPda()[0]), ro(collection), ro(bubblegumTreeMetaPda(a.collectionIdx)[0]), rw(compressedMintClaimPda(a.buyer, a.claimNonce)[0]), ro(a.buyer),
-      rw(a.treeConfig), rw(a.merkleTree), ro(collection), rw(a.coreCollection), ro(find([enc('collection_cpi')], MPL_BUBBLEGUM_V2_ID)[0]),
+      rw(a.treeConfig), rw(a.merkleTree), ro(collection), rw(a.coreCollection), ro(find([enc('mpl_core_cpi_signer')], MPL_BUBBLEGUM_V2_ID)[0]),
       ro(MPL_BUBBLEGUM_V2_ID), ro(MPL_NOOP_ID), ro(MPL_ACCOUNT_COMPRESSION_ID), ro(MPL_CORE_ID), ro(SYSTEM_PROGRAM_ID),
     ],
     data: ixData('mint_compressed_chip', data),

@@ -42,6 +42,42 @@ function noThirdPartyAssets() {
   };
 }
 
+const WS_PROXY = {
+  target: API_TARGET.replace(/^http/, 'ws'),
+  ws: true,
+  changeOrigin: true,
+  configure: (proxy: { on: (event: string, cb: (...args: never[]) => void) => void }) => {
+    proxy.on('proxyReqWs', ((
+      proxyReq: { destroy: () => void; on: (ev: string, cb: (...a: never[]) => void) => void },
+      _req: unknown,
+      socket: { on: (ev: string, cb: (...a: never[]) => void) => void; emit: (ev: string, ...a: unknown[]) => boolean },
+    ) => {
+      let upstream: { unpipe?: () => void; destroy: () => void; on?: (ev: string, cb: () => void) => void } | undefined;
+      proxyReq.on('upgrade', ((_res: unknown, proxySocket: typeof upstream) => {
+        upstream = proxySocket;
+        proxySocket?.on?.('error', () => { /* ignore upstream reset */ });
+      }) as never);
+      const abort = () => {
+        try { upstream?.unpipe?.(); upstream?.destroy(); } catch { /* ignore */ }
+        try { proxyReq.destroy(); } catch { /* ignore */ }
+      };
+      socket.on('close', abort);
+      socket.on('end', abort);
+      const origEmit = socket.emit.bind(socket);
+      socket.emit = (ev: string, ...args: unknown[]) => {
+        if (ev === 'error') {
+          const code = (args[0] as { code?: string } | undefined)?.code;
+          if (code === 'ECONNRESET' || code === 'EPIPE' || code === 'ERR_STREAM_WRITE_AFTER_END') {
+            abort();
+            return true;
+          }
+        }
+        return origEmit(ev, ...args);
+      };
+    }) as never);
+  },
+};
+
 export default defineConfig({
   plugins: [react(), noThirdPartyAssets()],
   resolve: {
@@ -88,7 +124,7 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       '/v1': { target: API_TARGET, changeOrigin: true },
-      '/ws': { target: API_TARGET.replace(/^http/, 'ws'), ws: true, changeOrigin: true },
+      '/ws': WS_PROXY,
     },
   },
   preview: {
@@ -100,7 +136,7 @@ export default defineConfig({
     // VITE_API_BASE says, and the E2E tier ends up testing a different topology than production's nginx.
     proxy: {
       '/v1': { target: API_TARGET, changeOrigin: true },
-      '/ws': { target: API_TARGET.replace(/^http/, 'ws'), ws: true, changeOrigin: true },
+      '/ws': WS_PROXY,
     },
   },
   test: {

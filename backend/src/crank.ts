@@ -43,7 +43,7 @@ import { getConnection, mapLimit, sleep } from './ingest.ts';
 import { base58Encode } from './base58.ts';
 import { crankStatus } from './queries.ts';
 import {
-  ARENA_ID, BATTLE_STATUS, CHIP_CORE_ERR, CHIP_CORE_ID, RNG_KIND, accountDiscriminator, ata, battlePda, bubblegumTreeMetaPda, chipStatePda, claimFusionPda,
+  ARENA_ID, BATTLE_STATUS, CHIP_CORE_ERR, CHIP_CORE_ID, COMPRESSED_CLAIM_PACK_STRIDE, RNG_KIND, accountDiscriminator, ata, battlePda, bubblegumTreeMetaPda, chipStatePda, claimFusionPda,
   closeRandomnessIx, closeRandomnessLutIx, collectionMetaPda, compressedClaimNonce, compressedMintClaimPda, compressedSettlementPda, configPda, decodeBubblegumTreeMeta,
   decodeChipState, decodeCollectionMeta, decodeCompressedMintClaim, decodeCompressedPackSettlement, decodeGameConfig, decodeOracleGateway, decodePendingClaimFusion,
   decodePendingFusion, decodePendingPack, decodePlayerPity, createAtaIdempotentIx, decodeRandomness, decodeWagerBattle, finalizeCompressedPackIx, fuseClaimsRevealIx,
@@ -52,7 +52,7 @@ import {
   type BubblegumTreeMeta, type CollectionMeta, type CompressedMintClaim, type GameConfig, type PendingClaimFusion, type PendingFusion, type PendingPack,
   type RandomnessData, type RngKind, type WagerBattle,
 } from './chain.ts';
-import { DasClient, discoverLeafNonce } from './das.ts';
+import { DasClient, discoverLeafNonce, resolveClaimFromTreeAccount, type DasAssetWithProof } from './das.ts';
 import { TxError, fitsInTx, loadLookupTables, sendAndConfirm } from './tx.ts';
 
 const LAMPORTS = 1_000_000_000;
@@ -440,6 +440,11 @@ export class Crank {
     // holds it, and the ALT rent can only be reclaimed if the slot was recorded first.
     if (job.lut_slot === null) await this.recordLutSlot(job);
     let pending: PendingPack = decodePendingPack(data);
+    if (nonce * COMPRESSED_CLAIM_PACK_STRIDE > 0xffff_ffff_ffff_ffffn) {
+      this.setPhase(job, 'stale', { next_at: this.now() + CRANK_STALE_RECHECK_MS, last_error: 'nonce exceeds u64/128 claim stride (refund via cancel_stale_pack)' });
+      this.log(`[crank] pack ${job.key} nonce ${nonce} exceeds u64/128 claim stride — parked for cancel_stale_pack refund`);
+      return;
+    }
 
     let value: Uint8Array | null = pending.revealed ? pending.value : null;
     let revealIx: ReturnType<typeof revealRandomnessIx> | undefined;
@@ -561,8 +566,25 @@ export class Crank {
     // and register. On-chain `verify_leaf` stays the authority boundary.
     const tree = await this.treeMeta(claim.collectionIdx);
     const symbol = await this.collectionSymbol(claim.collectionIdx);
-    const das = this.requireDas();
-    const combined = await das.resolveClaimAssetId(owner, tree.coreCollection, `${symbol} #${claim.gameIndex}`);
+    let combined: DasAssetWithProof;
+    try {
+      const das = this.requireDas();
+      combined = await das.resolveClaimAssetId(owner, tree.coreCollection, `${symbol} #${claim.gameIndex}`);
+    } catch (dasErr) {
+      const treeData = await this.account(tree.merkleTree);
+      if (!treeData) throw dasErr;
+      combined = resolveClaimFromTreeAccount({
+        buyer: owner,
+        merkleTree: tree.merkleTree,
+        collectionMeta: collectionMetaPda(claim.collectionIdx)[0],
+        coreCollection: tree.coreCollection,
+        symbol,
+        collectionIdx: claim.collectionIdx,
+        rarity: claim.rarity,
+        gameIndex: claim.gameIndex,
+        treeAccountData: treeData,
+      });
+    }
     const leafNonce = discoverLeafNonce(combined, tree.maxDepth, 8, owner);
     const { asset, proof } = combined;
     const register = registerCompressedChipIx({

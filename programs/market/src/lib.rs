@@ -47,7 +47,7 @@ use chip_core::state::{
     ChipState, CollectionMeta, CompressedChipState, CompressedMintClaim, GameConfig,
 };
 
-declare_id!("GCA2aUeX7ZFbGz3zvjqvsbjD1G3QjWxLhBpK5jwwPdcz");
+declare_id!("5skEmmhgFYn5xjHEdrcsiQ68kUg5kvhXKhjWTWSppjfo");
 
 pub const LISTING_FEE_CG: u64 = 500_000; // 0.5 $CG (6 dp)
 /// Default protocol fee; the live value is `GameConfig.market_fee_bps` (≤ MAX_MARKET_FEE_BPS = 10 %).

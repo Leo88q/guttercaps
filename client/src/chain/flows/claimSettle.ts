@@ -6,11 +6,11 @@
 import { Connection, PublicKey, SystemProgram, type AddressLookupTableAccount } from '@solana/web3.js';
 import { fitsInTx, sendTx, type WalletLike } from '../tx';
 import { mintCompressedChipIx, registerCompressedChipIx } from '../ix/chipCore';
-import { compressedMintClaimPda } from '../pdas';
+import { collectionMetaPda, compressedMintClaimPda } from '../pdas';
 import {
   decodeCompressedMintClaim, type BubblegumTreeMeta, type CollectionMeta, type CompressedMintClaim,
 } from '../accounts';
-import { discoverLeafNonce } from '../bubblegum';
+import { discoverLeafNonce, resolveClaimFromTreeAccount, type BubblegumProof } from '../bubblegum';
 import type { DasClient } from '../das';
 
 export interface ClaimSettleCtx {
@@ -43,11 +43,18 @@ export async function settleClaim(ctx: ClaimSettleCtx, claimNonce: bigint): Prom
   if (!tree || !tree.active) throw new Error(`collection ${claim.collectionIdx} has no active Bubblegum tree`);
   let live: CompressedMintClaim = claim;
   if (!live.minted) {
-    const { signature } = await sendTx(connection, wallet, [mintCompressedChipIx({
-      payer: wallet.publicKey, buyer, collectionIdx: live.collectionIdx, claimNonce,
-      treeConfig: tree.treeConfig, merkleTree: tree.merkleTree, coreCollection: tree.coreCollection,
-    })], { cuLimit: 500_000, lookupTables });
-    ctx.onSignature(signature);
+    try {
+      const { signature } = await sendTx(connection, wallet, [mintCompressedChipIx({
+        payer: wallet.publicKey, buyer, collectionIdx: live.collectionIdx, claimNonce,
+        treeConfig: tree.treeConfig, merkleTree: tree.merkleTree, coreCollection: tree.coreCollection,
+      })], { cuLimit: 500_000, lookupTables });
+      ctx.onSignature(signature);
+    } catch (e) {
+      const raced = await connection.getAccountInfo(claimKey, 'confirmed');
+      const racedClaim = raced ? decodeCompressedMintClaim(new Uint8Array(raced.data)) : null;
+      if (!racedClaim || racedClaim.consumed) return null;
+      if (!racedClaim.minted) throw e;
+    }
     const reloaded = await connection.getAccountInfo(claimKey, 'confirmed');
     live = reloaded ? decodeCompressedMintClaim(new Uint8Array(reloaded.data)) : live;
     if (!live.minted) throw new Error('mint transaction landed but the claim is still unminted');
@@ -55,7 +62,15 @@ export async function settleClaim(ctx: ClaimSettleCtx, claimNonce: bigint): Prom
   }
   const meta = metas.get(live.collectionIdx);
   if (!meta) throw new Error(`collection ${live.collectionIdx} not created`);
-  const proof = await das.resolveClaimAsset(buyer, tree.coreCollection, `${meta.symbol} #${live.gameIndex}`);
+  const proof = await resolveClaimProof(ctx, live, meta, tree);
+  const preReg = await connection.getAccountInfo(claimKey, 'confirmed');
+  if (preReg) {
+    const preClaim = decodeCompressedMintClaim(new Uint8Array(preReg.data));
+    if (preClaim.consumed) return null;
+    if (preClaim.registered) {
+      return { asset: proof.assetId, rarity: live.rarity, collectionIdx: live.collectionIdx, gameIndex: live.gameIndex };
+    }
+  }
   proof.leafNonce = discoverLeafNonce(proof, tree.maxDepth, 8, buyer);
   const register = registerCompressedChipIx({
     payer: wallet.publicKey, buyer, claimNonce, asset: proof.assetId, merkleTree: tree.merkleTree,
@@ -70,9 +85,42 @@ export async function settleClaim(ctx: ClaimSettleCtx, claimNonce: bigint): Prom
   if (!fitsInTx(wallet.publicKey, [register], lookupTables)) {
     throw new Error('Bubblegum proof does not fit this transaction — the app lookup table is not configured for this wallet (the crank will register this chip instead)');
   }
-  const { signature } = await sendTx(connection, wallet, [register], { cuLimit: 600_000, lookupTables });
-  ctx.onSignature(signature);
+  try {
+    const { signature } = await sendTx(connection, wallet, [register], { cuLimit: 600_000, lookupTables });
+    ctx.onSignature(signature);
+  } catch (e) {
+    // Lost the race against the crank while the wallet popup was open → verify it is now registered and move on.
+    const fresh = await connection.getAccountInfo(claimKey, 'confirmed');
+    const freshClaim = fresh ? decodeCompressedMintClaim(new Uint8Array(fresh.data)) : null;
+    if (!freshClaim || freshClaim.consumed) return null;
+    if (!freshClaim.registered) throw e;
+  }
   return { asset: proof.assetId, rarity: live.rarity, collectionIdx: live.collectionIdx, gameIndex: live.gameIndex };
+}
+
+async function resolveClaimProof(
+  ctx: ClaimSettleCtx,
+  claim: CompressedMintClaim,
+  meta: CollectionMeta,
+  tree: BubblegumTreeMeta,
+): Promise<BubblegumProof> {
+  try {
+    return await ctx.das.resolveClaimAsset(ctx.buyer, tree.coreCollection, `${meta.symbol} #${claim.gameIndex}`);
+  } catch (dasErr) {
+    const treeAcct = await ctx.connection.getAccountInfo(tree.merkleTree, 'confirmed');
+    if (!treeAcct) throw dasErr;
+    return resolveClaimFromTreeAccount({
+      buyer: ctx.buyer,
+      merkleTree: tree.merkleTree,
+      collectionMeta: collectionMetaPda(claim.collectionIdx)[0],
+      coreCollection: tree.coreCollection,
+      symbol: meta.symbol,
+      collectionIdx: claim.collectionIdx,
+      rarity: claim.rarity,
+      gameIndex: claim.gameIndex,
+      treeAccountData: new Uint8Array(treeAcct.data),
+    });
+  }
 }
 
 /** Resolve an already-registered claim's leaf purely for display (no preflight, no signature). */
@@ -80,6 +128,6 @@ export async function displayClaim(ctx: ClaimSettleCtx, claim: CompressedMintCla
   const meta = ctx.metas.get(claim.collectionIdx);
   const tree = ctx.trees.get(claim.collectionIdx);
   if (!meta || !tree) throw new Error(`collection ${claim.collectionIdx} not created`);
-  const proof = await ctx.das.resolveClaimAsset(ctx.buyer, tree.coreCollection, `${meta.symbol} #${claim.gameIndex}`);
+  const proof = await resolveClaimProof(ctx, claim, meta, tree);
   return { asset: proof.assetId, rarity: claim.rarity, collectionIdx: claim.collectionIdx, gameIndex: claim.gameIndex };
 }

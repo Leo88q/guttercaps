@@ -53,11 +53,14 @@ import { assessExistingSingleton, expectedAdminsFromEnv, upgradeAuthorityProblem
 const RPC = process.env.ANCHOR_PROVIDER_URL ?? 'https://api.devnet.solana.com';
 const MAINNET = RPC.includes('mainnet');
 const DRY_RUN = process.env.DRY_RUN === '1';
-const CHIP_CORE = new PublicKey(process.env.PROGRAM_CHIP_CORE ?? 'GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q');
-const MARKET = new PublicKey(process.env.PROGRAM_MARKET ?? 'GCA2aUeX7ZFbGz3zvjqvsbjD1G3QjWxLhBpK5jwwPdcz');
-const STAKING = new PublicKey(process.env.PROGRAM_STAKING ?? 'GCuGx7fnLcKnw1NWU4dLzQvnJWggMVniQ4u7EuMaQevA');
-const ARENA = new PublicKey(process.env.PROGRAM_ARENA ?? 'GCfERiohebYDJLtNwAZpGxudwbXRqnxmuTT413fkTYrM');
+const CHIP_CORE = new PublicKey(process.env.PROGRAM_CHIP_CORE ?? 'J68G8KrbLTSdi68LHr9Kkw1YbRRHv3uBPirWCd5Xt13V');
+const MARKET = new PublicKey(process.env.PROGRAM_MARKET ?? '5skEmmhgFYn5xjHEdrcsiQ68kUg5kvhXKhjWTWSppjfo');
+const STAKING = new PublicKey(process.env.PROGRAM_STAKING ?? 'Ewkbp7WpqbiJAu3ofEcTPinqnr5oH3e94YJDZFg1eSJn');
+const ARENA = new PublicKey(process.env.PROGRAM_ARENA ?? 'DUTokrhWBYL7nJ9VbMy7bFELQFf8TN1tmvVpKLsskqD6');
 const MPL_CORE = new PublicKey('CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d');
+const MPL_BUBBLEGUM_V2 = new PublicKey('BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY');
+const MPL_NOOP = new PublicKey('mnoopTCrg4p8ry25e4bcWA9XZjbNjMTfgYVGGEdRsf3');
+const MPL_ACCOUNT_COMPRESSION = new PublicKey('mcmt6YrQEMKw8Mw43FmpRLmf7BqRnFMKmAcbxE3xkAW');
 const SQUADS_TREASURY = new PublicKey('HPMr5r9sS5ApWsPNJytZRLbm2jz1veFxTn1wepjAhtho');
 const REAL_USDC = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
 const DEVNET_USDC = new PublicKey('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU');
@@ -79,6 +82,7 @@ class W {
   private parts: Buffer[] = [];
   u8(v: number) { this.parts.push(Buffer.from([v & 0xff])); return this; }
   u16(v: number) { const b = Buffer.alloc(2); b.writeUInt16LE(v); this.parts.push(b); return this; }
+  u32(v: number) { const b = Buffer.alloc(4); b.writeUInt32LE(v >>> 0); this.parts.push(b); return this; }
   u64(v: bigint) { const b = Buffer.alloc(8); b.writeBigUInt64LE(v); this.parts.push(b); return this; }
   i64(v: bigint) { const b = Buffer.alloc(8); b.writeBigInt64LE(v); this.parts.push(b); return this; }
   pubkey(k: PublicKey) { this.parts.push(Buffer.from(k.toBytes())); return this; }
@@ -96,6 +100,10 @@ const vaultPda = pda([Buffer.from('vault')], CHIP_CORE);
 const LEDGER_SHARDS = 4;
 const ledgerPda = (shard: number) => pda([Buffer.from('ledger'), Buffer.from([shard])], CHIP_CORE);
 const collectionMetaPda = (i: number) => pda([Buffer.from('collection'), Buffer.from([i])], CHIP_CORE);
+const bubblegumTreeMetaPda = (i: number) => pda([Buffer.from('bubblegum_tree'), Buffer.from([i])], CHIP_CORE);
+const treeConfigPda = (merkleTree: PublicKey) => pda([merkleTree.toBuffer()], MPL_BUBBLEGUM_V2);
+const cmtAccountSize = (maxDepth: number, maxBufferSize: number, canopy = 0) =>
+  56 + 24 + (maxBufferSize + 1) * (40 + 32 * maxDepth) + (canopy > 0 ? ((1 << (canopy + 1)) - 2) * 32 : 0);
 const emissionPda = pda([Buffer.from('emission')], STAKING);
 /** SEC-L5: authority of the arena's season pool — staking spends it with `fund_slice` (NOT the emission PDA, whose $CG ATA is the staking vault). */
 const seasonPoolAuthPda = pda([Buffer.from('season_pool')], STAKING);
@@ -206,6 +214,53 @@ async function stepCollections(conn: Connection, wallet: Keypair) {
   console.log(`  collections: ${created}/${COLLECTIONS.length}`);
 }
 
+async function stepTrees(conn: Connection, wallet: Keypair) {
+  const maxDepth = Number(process.env.TREE_MAX_DEPTH ?? '5');
+  const canopy = Number(process.env.TREE_CANOPY ?? '0');
+  const maxBufferSize = Number(process.env.TREE_MAX_BUFFER_SIZE ?? '8');
+  const space = cmtAccountSize(maxDepth, maxBufferSize, canopy);
+  const rent = DRY_RUN ? 0 : await conn.getMinimumBalanceForRentExemption(space);
+  let ready = 0;
+  for (let i = 0; i < COLLECTIONS.length; i++) {
+    const c = COLLECTIONS[i];
+    const treeMeta = bubblegumTreeMetaPda(i);
+    if (await exists(conn, treeMeta)) {
+      console.log(`  tree ${i} ${c.symbol} (${treeMeta.toBase58()}) exists — skip`);
+      ready++;
+      continue;
+    }
+    const merkleTree = Keypair.generate();
+    const allocIx = SystemProgram.createAccount({
+      fromPubkey: wallet.publicKey,
+      newAccountPubkey: merkleTree.publicKey,
+      lamports: rent,
+      space,
+      programId: MPL_ACCOUNT_COMPRESSION,
+    });
+    const args = new W().u8(i).u8(maxDepth).u8(canopy).u32(maxBufferSize).bytes();
+    const createIx = ix(
+      CHIP_CORE,
+      'create_bubblegum_tree',
+      [
+        signer(wallet.publicKey),
+        ro(configPda),
+        ro(collectionMetaPda(i)),
+        rw(treeMeta),
+        rw(merkleTree.publicKey),
+        rw(treeConfigPda(merkleTree.publicKey)),
+        ro(MPL_BUBBLEGUM_V2),
+        ro(MPL_NOOP),
+        ro(MPL_ACCOUNT_COMPRESSION),
+        ro(SystemProgram.programId),
+      ],
+      args,
+    );
+    await send(conn, wallet, [allocIx, createIx], `create_bubblegum_tree ${i} ${c.symbol} (merkle ${merkleTree.publicKey.toBase58()}, d=${maxDepth}/b=${maxBufferSize}/c=${canopy})`, [merkleTree]);
+    ready++;
+  }
+  console.log(`  trees: ${ready}/${COLLECTIONS.length}`);
+}
+
 async function stepAtas(conn: Connection, wallet: Keypair, mints: { cg: PublicKey; usdc: PublicKey; skr: PublicKey }, treasury: PublicKey, buyback: PublicKey) {
   const ixs: TransactionInstruction[] = [];
   for (const m of [mints.cg, mints.usdc, mints.skr]) {
@@ -297,20 +352,26 @@ async function main() {
   await mainnetPreflight(conn);
   const steps: [string, () => Promise<unknown>][] = [];
   let mints!: { cg: PublicKey; usdc: PublicKey; skr: PublicKey };
+  const needsMints = !only || ['mints', 'initialize', 'atas', 'emission', 'arena'].includes(only);
   steps.push(['mints', async () => { mints = await stepMints(conn, wallet); }]);
   steps.push(['initialize', () => stepInitialize(conn, wallet, mints, treasury, buyback)]);
   steps.push(['ledgers', () => stepLedgers(conn, wallet)]);
   steps.push(['collections', () => stepCollections(conn, wallet)]);
+  steps.push(['trees', () => stepTrees(conn, wallet)]);
   steps.push(['atas', () => stepAtas(conn, wallet, mints, treasury, buyback)]);
   steps.push(['emission', () => stepEmission(conn, wallet, mints.cg)]);
   steps.push(['arena', () => stepArena(conn, wallet, mints.cg, treasury)]);
   steps.push(['burn-oracle', () => stepBurnOracle(conn, wallet)]);
   for (const [name, run] of steps) {
-    if (only && name !== only && name !== 'mints') continue; // mints resolves addresses for every other step
+    if (only && name !== only && !(name === 'mints' && needsMints)) continue;
     console.log(`\n▶ ${name}`);
     await run();
   }
-  console.log(`\nDone. Client / backend env:\n  VITE_CG_MINT=${mints.cg.toBase58()}\n  VITE_USDC_MINT=${mints.usdc.toBase58()}\n  VITE_SKR_MINT=${mints.skr.toBase58()}\n  CG_MINT=${mints.cg.toBase58()}  SKR_MINT=${mints.skr.toBase58()}\nNext: npm run skr-pool -- init · npm run pyth-pusher -- set-params-args · npm run create-lut -- create`);
+  if (mints) {
+    console.log(`\nDone. Client / backend env:\n  VITE_CG_MINT=${mints.cg.toBase58()}\n  VITE_USDC_MINT=${mints.usdc.toBase58()}\n  VITE_SKR_MINT=${mints.skr.toBase58()}\n  CG_MINT=${mints.cg.toBase58()}  SKR_MINT=${mints.skr.toBase58()}\nNext: npm run skr-pool -- init · npm run pyth-pusher -- set-params-args · npm run create-lut -- create`);
+  } else {
+    console.log(`\nDone (--step ${only}).`);
+  }
 }
 
 main().catch((e) => { console.error(e instanceof Error ? e.message : e); process.exit(1); });

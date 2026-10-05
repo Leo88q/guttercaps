@@ -451,10 +451,16 @@ const HANDLERS: Record<string, Handler> = {
    */
   CompressedClaimsFused(db, e, c) {
     const d = e.data;
+    const owner = str(d.owner);
+    const materials = d.materials as string[];
     touchBySpec(db, e, c);
+    for (const m of materials) {
+      const chip = chipOwnedByClaim(db, m, owner);
+      if (chip) db.run(`UPDATE chips SET burned_at = ?, flags = flags & ~?, updated_slot = ? WHERE asset = ?`, c.blockTime ?? 0, CHIP_FLAG_FUSING, c.slot, chip);
+    }
     db.run(
       insertIgnore('fusions', COLS.fusions),
-      c.signature, e.eventIndex, str(d.owner), num(d.recipe), j(d.materials as string[]), str(d.resultClaim), 1, 0, 10_000, str(d.feeBurned), c.slot, c.blockTime,
+      c.signature, e.eventIndex, owner, num(d.recipe), j(materials), str(d.resultClaim), 1, 0, 10_000, str(d.feeBurned), c.slot, c.blockTime,
     );
   },
   /** H3 commit: no row (the pending fusion closes at reveal) — but the owner is active even if the reveal never lands. */
@@ -473,12 +479,30 @@ const HANDLERS: Record<string, Handler> = {
    */
   ClaimFusionRevealed(db, e, c) {
     const d = e.data;
+    const owner = str(d.owner);
+    const materials = d.materials as string[];
     const success = Boolean(d.success);
     const result = str(d.resultClaim);
     touchBySpec(db, e, c);
+    if (success) {
+      for (const m of materials) {
+        const chip = chipOwnedByClaim(db, m, owner);
+        if (chip) db.run(`UPDATE chips SET burned_at = ?, flags = flags & ~?, updated_slot = ? WHERE asset = ?`, c.blockTime ?? 0, CHIP_FLAG_FUSING, c.slot, chip);
+      }
+    } else {
+      const recipe = num(d.recipe);
+      const refund = recipe >= 4 ? 1 : 0;
+      const sorted = [...materials].sort((a, b) => cmpBase58Bytes(a, b));
+      const survivors = new Set(sorted.slice(0, refund));
+      for (const m of materials) {
+        if (survivors.has(m)) continue;
+        const chip = chipOwnedByClaim(db, m, owner);
+        if (chip) db.run(`UPDATE chips SET burned_at = ?, flags = flags & ~?, updated_slot = ? WHERE asset = ?`, c.blockTime ?? 0, CHIP_FLAG_FUSING, c.slot, chip);
+      }
+    }
     db.run(
       insertIgnore('fusions', COLS.fusions),
-      c.signature, e.eventIndex, str(d.owner), num(d.recipe), j(d.materials as string[]),
+      c.signature, e.eventIndex, owner, num(d.recipe), j(materials),
       success && result !== '11111111111111111111111111111111' ? result : null, success ? 1 : 0,
       num(d.rollBps), num(d.thresholdBps), str(d.feeBurned), c.slot, c.blockTime,
     );

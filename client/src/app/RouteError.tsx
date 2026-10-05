@@ -11,7 +11,7 @@ const RELOAD_FLAG = 'gc:chunk-reload';
 
 export function isChunkLoadError(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : String(e ?? '');
-  return /MIME type|dynamically imported module|Importing a module script failed|Failed to fetch dynamically|error loading dynamically|ChunkLoadError/i.test(msg);
+  return /MIME type|dynamically imported module|Importing a module script failed|Failed to fetch dynamically|error loading dynamically|ChunkLoadError|does not provide an export named/i.test(msg);
 }
 
 /** Reload the page once per session for a stale-chunk error; returns false if we already tried. */
@@ -47,6 +47,11 @@ export function RouteError() {
     <div className="page stack" role="alert" style={{ maxWidth: 560, margin: '12vh auto', textAlign: 'center' }}>
       <h1 className="h1">{c.title}</h1>
       <p className="muted">{stale ? c.stale : c.generic}</p>
+      {import.meta.env.DEV && error != null && (
+        <pre className="mono tiny muted" style={{ maxWidth: '100%', overflowX: 'auto', textAlign: 'left', whiteSpace: 'pre-wrap', wordBreak: 'break-word', padding: 10, border: '1px solid var(--gc-line)', borderRadius: 8 }}>
+          {error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ''}` : String(error)}
+        </pre>
+      )}
       <div className="row" style={{ justifyContent: 'center', gap: 12 }}>
         <button className="btn" onClick={() => { clearChunkReloadFlag(); window.location.reload(); }}>{c.reload}</button>
         <a className="btn" href="/">{c.home}</a>

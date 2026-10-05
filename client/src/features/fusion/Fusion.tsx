@@ -12,6 +12,9 @@ import { FUSION_RECIPES, BOOSTER } from '@guttercaps/economy';
 import { useMyChips, useFusionSuggest, useGrid, useMyServices, type Chip } from '@/api/hooks';
 import { KIND, loadPresets, owns, savePresets, presetName, type FusionPreset } from '@/shared/lib/cosmetics';
 import { usePlayerItems, useWalletLike } from '@/chain/hooks';
+import { decodeCompressedChipState } from '@/chain/accounts';
+import { compressedChipStatePda } from '@/chain/pdas';
+import { ClaimFusionFlow } from '@/chain/flows/claimFusionFlow';
 import { FusionFlow, successBps, type FusionFlowState } from '@/chain/flows/fusionFlow';
 import { useTxStore, fusionId } from '@/app/store/txs';
 import { useUiStore } from '@/app/store/ui';
@@ -98,6 +101,60 @@ export default function Fusion() {
       }
       if (!wallet) return;
       const w = wallet.publicKey.toBase58();
+      const matAssets = filled.map((c) => new PublicKey(c.asset!));
+      const cStateInfos = await connection.getMultipleAccountsInfo(
+        matAssets.map((a) => compressedChipStatePda(a)[0]),
+        'confirmed',
+      );
+      if (cStateInfos.every((info) => !!info)) {
+        const materialClaims = cStateInfos.map((info) => decodeCompressedChipState(new Uint8Array(info!.data)).claim);
+        const cf = new ClaimFusionFlow(
+          {
+            connection,
+            wallet,
+            lookupTable: LOOKUP_TABLE,
+            onState: (s) => {
+              setFlow({
+                phase: s.phase as FusionFlowState['phase'],
+                nonce: s.nonce,
+                recipe: s.recipe,
+                boosted: s.boosted,
+                materials: filled.map((c) => ({ asset: new PublicKey(c.asset!), collectionIdx: c.collection! })),
+                resultCollectionIdx: s.resultCollectionIdx,
+                randomness: s.randomness,
+                signatures: s.signatures,
+                error: s.error,
+                errorDiagnostic: s.errorDiagnostic,
+                result: s.result
+                  ? {
+                      owner: s.result.owner,
+                      recipe: s.result.recipe,
+                      materials: s.result.materials,
+                      result: s.settledAsset ?? s.result.resultClaim,
+                      success: s.result.success,
+                      rollBps: s.result.rollBps,
+                      thresholdBps: s.result.thresholdBps,
+                      feeBurned: s.result.feeBurned,
+                    }
+                  : undefined,
+              });
+            },
+          },
+          { recipe: recipe.from, boosted: booster, materials: materialClaims, resultCollectionIdx: effectiveResultCol! },
+        );
+        await cf.fuse();
+        if (cf.state.phase === 'committed') await cf.reveal();
+        if (cf.state.phase === 'stale') { toast({ kind: 'error', title: { key: 'opening.phase.stale' }, body: { key: 'screens.fusionTimeout' } }); return; }
+        const r = cf.state.result;
+        const outAsset = (cf.state.settledAsset ?? r?.resultClaim)?.toBase58();
+        if (r?.success && outAsset) { enqueue([{ id: outAsset, asset: outAsset, rarity: recipe.to, collectionIdx: effectiveResultCol!, fused: true }]); toast({ kind: 'success', title: { key: 'fusion.success' }, href: EXPLORER.tx(cf.state.signatures.at(-1)!) }); }
+        else if (r) toast({ kind: 'error', title: { key: 'fusion.failed' }, body: { key: 'screens.fusionRoll', params: { roll: percentText(r.rollBps), threshold: percentText(r.thresholdBps) } }, href: EXPLORER.tx(cf.state.signatures.at(-1)!) });
+        setSlots([null, null, null]);
+        if (cf.state.randomness) { try { await cf.reclaimRent(); } catch { /* optional */ } }
+        void qc.invalidateQueries({ queryKey: ['me'] });
+        void qc.invalidateQueries({ queryKey: ['chain'] });
+        return;
+      }
       const f = new FusionFlow({ connection, wallet, lookupTable: LOOKUP_TABLE, onState: (s) => { setFlow({ ...s }); upsertFusion({ id: fusionId(w, s.nonce), wallet: w, createdAt: Date.now(), updatedAt: Date.now(), phase: s.phase, nonce: s.nonce.toString(), recipe: s.recipe, boosted: s.boosted, resultCollectionIdx: s.resultCollectionIdx, signatures: s.signatures, randomness: s.randomness?.toBase58(), materials: s.materials.map((m) => ({ asset: m.asset.toBase58(), collectionIdx: m.collectionIdx })), error: s.error, errorDiagnostic: s.errorDiagnostic, result: s.result ? { result: s.result.result.toBase58(), success: s.result.success, rollBps: s.result.rollBps, thresholdBps: s.result.thresholdBps, feeBurned: s.result.feeBurned.toString() } : undefined }); } },
         { recipe: recipe.from, boosted: booster, materials: filled.map((c) => ({ asset: new PublicKey(c.asset!), collectionIdx: c.collection! })), resultCollectionIdx: effectiveResultCol! });
       await f.fuse();

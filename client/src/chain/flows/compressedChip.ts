@@ -19,11 +19,11 @@
 // instruction, and the program still re-verifies the proof on chain.
 import { Connection, PublicKey } from '@solana/web3.js';
 import { DasClient } from '../das';
-import { decodeCompressedChipState, decodeCompressedMintClaim, type BubblegumTreeMeta, type CompressedMintClaim } from '../accounts';
+import { decodeCompressedChipState, decodeCompressedMintClaim, type BubblegumTreeMeta, type CompressedChipState, type CompressedMintClaim } from '../accounts';
 import { bubblegumTreeMetaPda, compressedChipStatePda } from '../pdas';
 import { decodeBubblegumTreeMeta } from '../accounts';
 import type { CompressedLeafProof } from '../ix/chipCore';
-import type { BubblegumProof } from '../bubblegum';
+import { resolveRegisteredLeafFromTreeAccount, type BubblegumProof } from '../bubblegum';
 
 export interface ResolvedCompressedChip {
   /** the Bubblegum V2 asset id (the leaf) */
@@ -70,6 +70,7 @@ export interface CompressedChipIdentity {
   leafIndex: number;
   leafNonce: bigint;
   claimState: CompressedMintClaim;
+  chipState: CompressedChipState;
 }
 
 /** The ChipState flag bits that mean "a program already holds this leaf". */
@@ -137,7 +138,7 @@ export async function resolveCompressedChipIdentity(
   return {
     asset, claim: state.claim, chip: chipKey, merkleTree: state.merkleTree,
     treeConfig: tree.treeConfig, coreCollection: tree.coreCollection, collectionIdx: state.collectionIdx,
-    leafIndex: state.leafIndex, leafNonce: state.leafNonce, claimState,
+    leafIndex: state.leafIndex, leafNonce: state.leafNonce, claimState, chipState: state,
   };
 }
 
@@ -161,7 +162,27 @@ export async function resolveCompressedChip(
 ): Promise<ResolvedCompressedChip> {
   const id = await resolveCompressedChipIdentity(connection, asset, opts);
 
-  const proof = await das.getAssetWithProof(asset);
+  let proof: BubblegumProof;
+  try {
+    proof = await das.getAssetWithProof(asset);
+  } catch (dasErr) {
+    const treeAcct = await connection.getAccountInfo(id.merkleTree, 'confirmed');
+    if (!treeAcct) throw dasErr;
+    proof = resolveRegisteredLeafFromTreeAccount({
+      assetId: asset,
+      owner: id.claimState.buyer,
+      delegate: id.claimState.buyer,
+      merkleTree: id.merkleTree,
+      leafIndex: id.leafIndex,
+      leafNonce: id.leafNonce,
+      dataHash: id.chipState.dataHash,
+      creatorHash: id.chipState.creatorHash,
+      collectionHash: id.chipState.collectionHash,
+      assetDataHash: id.chipState.assetDataHash,
+      flags: id.chipState.leafFlags,
+      treeAccountData: new Uint8Array(treeAcct.data),
+    });
+  }
   if (!proof.merkleTree.equals(id.merkleTree)) throw new Error('DAS answered with a proof for a different tree');
   if (proof.leafIndex !== BigInt(id.leafIndex)) throw new Error('DAS answered with a different leaf index than the one registered on chain');
   if (opts.owner && !proof.leafOwner.equals(opts.owner)) throw new Error('this leaf is owned by a different wallet on the Merkle tree');

@@ -290,6 +290,7 @@ export function attachWs(server: Server, opts: WsOptions): { hub: WsHub; close: 
   const path = opts.path ?? '/ws';
   const allowed = opts.allowedOrigins ?? CORS_ORIGINS;
   const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+    socket.on('error', () => { /* a torn socket during upgrade is normal */ });
     let pathname = '/';
     try { pathname = new URL(req.url ?? '/', 'http://internal').pathname; } catch { socket.destroy(); return; }
     if (pathname !== path) { socket.destroy(); return; } // not ours: another upgrade handler owns it

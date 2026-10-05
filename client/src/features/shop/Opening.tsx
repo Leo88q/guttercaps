@@ -28,14 +28,14 @@ export default function Opening() {
   const enqueue = useUiStore((s) => s.enqueueReveal);
   const started = useRef(false);
 
-  // resume if the on-chain PendingPack still exists and nothing is running
+  // resume if the purchase is not yet marked done (even if the crank already closed PendingPack)
   useEffect(() => {
-    if (started.current || !nonce || !tracked || isMock()) return;
-    if (pending.data && !['done'].includes(tracked.phase) && !flow.state) {
+    if (started.current || !nonce || !tracked || isMock() || pending.isLoading) return;
+    if ((pending.data || tracked.buySignature) && !['done'].includes(tracked.phase) && !flow.state) {
       started.current = true;
-      void flow.resume(nonce, pending.data.sku, pending.data.qty, tracked.currency as CurrencyCode);
+      void flow.resume(nonce, pending.data?.sku ?? tracked.sku, pending.data?.qty ?? tracked.qty, tracked.currency as CurrencyCode);
     }
-  }, [nonce, tracked, pending.data, flow]);
+  }, [nonce, tracked, pending.data, pending.isLoading, flow]);
 
   const live: PackFlowState | null = flow.state ?? (tracked ? {
     phase: tracked.phase, nonce: nonce ?? 0n, sku: tracked.sku, qty: tracked.qty, currency: tracked.currency as CurrencyCode,

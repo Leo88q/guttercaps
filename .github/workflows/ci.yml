@@ -727,7 +727,7 @@ jobs:
           RPC: ${{ secrets.DEVNET_RPC_URL }}
         run: |
           if [ -z "$RPC" ]; then echo '::notice::DEVNET_RPC_URL not set — devnet smoke skipped (T-D-03/T-D-04 pending)'; exit 0; fi
-          for id in GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q GCA2aUeX7ZFbGz3zvjqvsbjD1G3QjWxLhBpK5jwwPdcz GCuGx7fnLcKnw1NWU4dLzQvnJWggMVniQ4u7EuMaQevA GCfERiohebYDJLtNwAZpGxudwbXRqnxmuTT413fkTYrM; do
+          for id in J68G8KrbLTSdi68LHr9Kkw1YbRRHv3uBPirWCd5Xt13V 5skEmmhgFYn5xjHEdrcsiQ68kUg5kvhXKhjWTWSppjfo Ewkbp7WpqbiJAu3ofEcTPinqnr5oH3e94YJDZFg1eSJn DUTokrhWBYL7nJ9VbMy7bFELQFf8TN1tmvVpKLsskqD6; do
             curl -sf "$RPC" -H 'content-type: application/json' -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getAccountInfo\",\"params\":[\"$id\",{\"encoding\":\"base64\"}]}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const r=JSON.parse(s);console.log(process.argv[1], r.result&&r.result.value? "deployed ("+r.result.value.owner+")" : "NOT DEPLOYED")})' "$id"
           done
           # a full T-D pass (setup DRY_RUN + crank/oracle health) is wired once the devnet payer exists:

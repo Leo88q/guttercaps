@@ -285,7 +285,7 @@ export function mintCompressedChipIx(a: MintCompressedChipArgs): TransactionInst
     keys: [
       signer(a.payer), ro(config), ro(collection), ro(treeMeta), rw(claim), ro(a.buyer),
       rw(a.treeConfig), rw(a.merkleTree), ro(collection), rw(a.coreCollection),
-      ro(PublicKey.findProgramAddressSync([Buffer.from('collection_cpi')], MPL_BUBBLEGUM_V2_ID)[0]),
+      ro(PublicKey.findProgramAddressSync([Buffer.from('mpl_core_cpi_signer')], MPL_BUBBLEGUM_V2_ID)[0]),
       ro(MPL_BUBBLEGUM_V2_ID), ro(MPL_NOOP_ID), ro(MPL_ACCOUNT_COMPRESSION_ID), ro(MPL_CORE_ID), ro(SYSTEM_PROGRAM_ID),
     ],
     data: Buffer.from(ixData('mint_compressed_chip', data)),

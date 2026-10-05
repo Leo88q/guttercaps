@@ -29,7 +29,7 @@ pub mod state;
 use bubblegum::LeafProofArgs;
 use instructions::*;
 
-declare_id!("GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q");
+declare_id!("J68G8KrbLTSdi68LHr9Kkw1YbRRHv3uBPirWCd5Xt13V");
 
 /// Metaplex Bubblegum V2 program id. Kept explicit instead of accepting an
 /// arbitrary CPI target; all tree configuration and later leaf mutations use

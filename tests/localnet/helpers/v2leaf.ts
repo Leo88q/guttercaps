@@ -30,11 +30,11 @@ import { CHIP_CORE_ID, MPL_ACCOUNT_COMPRESSION_ID, MPL_BUBBLEGUM_V2_ID } from '@
 import { bubblegumTreeMetaPda, collectionMetaPda, compressedChipStatePda, compressedMintClaimPda } from '@/chain/pdas';
 import type { Chain } from './chain';
 
-const u32le = (v: number) => { const b = Buffer.alloc(4); b.writeUInt32LE(v >>> 0); return b; };
+const u64le = (v: number) => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(v >>> 0)); return b; };
 
-/** `leaf_asset_id` in chip_core/src/bubblegum.rs — PDA(["asset", tree, index_le], BUBBLEGUM_V2). */
+/** `leaf_asset_id` in chip_core/src/bubblegum.rs — PDA(["asset", tree, (index as u64)_le], BUBBLEGUM_V2). */
 export const leafAssetId = (merkleTree: PublicKey, index: number): PublicKey =>
-  PublicKey.findProgramAddressSync([Buffer.from('asset'), merkleTree.toBytes(), u32le(index)], MPL_BUBBLEGUM_V2_ID)[0];
+  PublicKey.findProgramAddressSync([Buffer.from('asset'), merkleTree.toBytes(), u64le(index)], MPL_BUBBLEGUM_V2_ID)[0];
 
 /**
  * Monotonic leaf index handed out by `forgeLeaf`.

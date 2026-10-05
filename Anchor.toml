@@ -15,18 +15,18 @@ skip-lint = false
 # Program ids — managed ONLY by `npm run program-ids -- apply` (docs/09 §2; freeze record: programs/program-ids.json).
 # Never `anchor keys sync`: it rewrites declare_id! from whatever keypair happens to be local.
 [programs.localnet]
-chip_core = "GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q"
-market    = "GCA2aUeX7ZFbGz3zvjqvsbjD1G3QjWxLhBpK5jwwPdcz"
-staking   = "GCuGx7fnLcKnw1NWU4dLzQvnJWggMVniQ4u7EuMaQevA"
-arena     = "GCfERiohebYDJLtNwAZpGxudwbXRqnxmuTT413fkTYrM"
+chip_core = "J68G8KrbLTSdi68LHr9Kkw1YbRRHv3uBPirWCd5Xt13V"
+market    = "5skEmmhgFYn5xjHEdrcsiQ68kUg5kvhXKhjWTWSppjfo"
+staking   = "Ewkbp7WpqbiJAu3ofEcTPinqnr5oH3e94YJDZFg1eSJn"
+arena     = "DUTokrhWBYL7nJ9VbMy7bFELQFf8TN1tmvVpKLsskqD6"
 # Switchboard stand-in — localnet ONLY (never in [programs.devnet]); id == chip_core::randomness::SB_PROGRAM_ID (feature `localnet`)
 sb_mock   = "ApDh35vcLCxXc5ivaRGFhayn1HduJ9b2nXbfR6WMpVKH"
 
 [programs.devnet]
-chip_core = "GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q"
-market    = "GCA2aUeX7ZFbGz3zvjqvsbjD1G3QjWxLhBpK5jwwPdcz"
-staking   = "GCuGx7fnLcKnw1NWU4dLzQvnJWggMVniQ4u7EuMaQevA"
-arena     = "GCfERiohebYDJLtNwAZpGxudwbXRqnxmuTT413fkTYrM"
+chip_core = "J68G8KrbLTSdi68LHr9Kkw1YbRRHv3uBPirWCd5Xt13V"
+market    = "5skEmmhgFYn5xjHEdrcsiQ68kUg5kvhXKhjWTWSppjfo"
+staking   = "Ewkbp7WpqbiJAu3ofEcTPinqnr5oH3e94YJDZFg1eSJn"
+arena     = "DUTokrhWBYL7nJ9VbMy7bFELQFf8TN1tmvVpKLsskqD6"
 
 # Production ids (docs/09-production-readiness.md §2). They are identical to devnet on purpose: one
 # cold keypair per program, held with the upgrade authority behind the Squads 3/5 + 48 h timelock,
@@ -36,10 +36,10 @@ arena     = "GCfERiohebYDJLtNwAZpGxudwbXRqnxmuTT413fkTYrM"
 # REGENERATE THE IDS BEFORE MAINNET (see the script) — these four values are dev-derived placeholders.
 # Machine gate: `npm run program-ids -- guard-mainnet` exits 1 while mainnet ids == devnet/localnet ids (SEC-F05).
 [programs.mainnet]
-chip_core = "GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q"
-market    = "GCA2aUeX7ZFbGz3zvjqvsbjD1G3QjWxLhBpK5jwwPdcz"
-staking   = "GCuGx7fnLcKnw1NWU4dLzQvnJWggMVniQ4u7EuMaQevA"
-arena     = "GCfERiohebYDJLtNwAZpGxudwbXRqnxmuTT413fkTYrM"
+chip_core = "J68G8KrbLTSdi68LHr9Kkw1YbRRHv3uBPirWCd5Xt13V"
+market    = "5skEmmhgFYn5xjHEdrcsiQ68kUg5kvhXKhjWTWSppjfo"
+staking   = "Ewkbp7WpqbiJAu3ofEcTPinqnr5oH3e94YJDZFg1eSJn"
+arena     = "DUTokrhWBYL7nJ9VbMy7bFELQFf8TN1tmvVpKLsskqD6"
 
 [registry]
 url = "https://api.apr.dev"

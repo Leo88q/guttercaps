@@ -15,10 +15,38 @@
 // so it stays behind dynamic imports.
 import { Connection, PublicKey, type TransactionInstruction } from '@solana/web3.js';
 import { CLUSTER } from '@/app/config';
+import { expectDiscriminator, hasDiscriminator } from './anchor';
 import { SWITCHBOARD_ON_DEMAND_ID, SWITCHBOARD_QUEUE } from './ids';
 import { closeRandomnessIx, closeRandomnessLutIx, initRandomnessIx, revealRandomnessIx, rngAccounts, type RngAccounts } from './ix/rng';
 import type { RngKind } from './pdas';
 import { sendTx, type WalletLike } from './tx';
+
+const RANDOMNESS_ACCOUNT_SIZE = 480;
+const ORACLE_GATEWAY_URI_OFFSET = 3584;
+
+function decodeRandomnessAccount(data: Uint8Array) {
+  const r = expectDiscriminator(data, 'RandomnessAccountData');
+  if (data.length < RANDOMNESS_ACCOUNT_SIZE) throw new Error(`RandomnessAccountData: ${data.length} bytes`);
+  return {
+    authority: r.pubkey(),
+    queue: r.pubkey(),
+    seedSlothash: r.bytes(32),
+    seedSlot: r.u64(),
+    oracle: r.pubkey(),
+    revealSlot: r.u64(),
+    value: r.bytes(32),
+    lutSlot: r.u64(),
+  };
+}
+
+function decodeOracleGateway(data: Uint8Array): string {
+  if (!hasDiscriminator(data, 'OracleAccountData')) throw new Error('Account discriminator mismatch: expected OracleAccountData');
+  if (data.length < ORACLE_GATEWAY_URI_OFFSET + 64) throw new Error(`OracleAccountData: ${data.length} bytes`);
+  const raw = data.subarray(ORACLE_GATEWAY_URI_OFFSET, ORACLE_GATEWAY_URI_OFFSET + 64);
+  let end = raw.indexOf(0);
+  if (end < 0) end = raw.length;
+  return new TextDecoder().decode(raw.subarray(0, end)).trim();
+}
 
 type Sb = typeof import('@switchboard-xyz/on-demand');
 type SbProgram = Awaited<ReturnType<Sb['AnchorUtils']['loadProgramFromConnection']>>;
@@ -94,24 +122,41 @@ export async function prepareReveal(
   randomness: PublicKey,
   opts: { maxWaitMs?: number; onAttempt?: (n: number) => void } = {},
 ): Promise<{ ix: TransactionInstruction; value: Uint8Array }> {
-  const sb = await loadSb();
-  const program = await sbProgram(connection, payer);
-  const r = new sb.Randomness(program, randomness);
   const deadline = Date.now() + (opts.maxWaitMs ?? 60_000);
-  let delay = 1_000;
+  const gatewayRpc = CLUSTER === 'mainnet-beta' ? 'https://api.mainnet-beta.solana.com' : 'https://api.devnet.solana.com';
+  let delay = 1_500;
   let attempt = 0;
   for (;;) {
     attempt++;
     opts.onAttempt?.(attempt);
     try {
-      // The SDK instruction targets Switchboard directly with `authority` as a signer we do not
-      // have (it is our PDA); we only borrow its gateway round-trip and re-wrap the payload.
-      const sdkIx = await r.revealIx(payer);
-      const reveal = revealPayloadFromIx(sdkIx);
-      const oracle = sdkIx.keys[1].pubkey;
-      const queue = sdkIx.keys[2].pubkey;
-      const ix = revealRandomnessIx({ kind, payer, randomness, oracle, queue, ...reveal });
-      return { ix, value: reveal.value };
+      const rndInfo = await connection.getAccountInfo(randomness, 'confirmed');
+      if (!rndInfo) throw new Error('randomness account not found yet');
+      const rnd = decodeRandomnessAccount(new Uint8Array(rndInfo.data));
+      const oracleInfo = await connection.getAccountInfo(rnd.oracle, 'confirmed');
+      if (!oracleInfo) throw new Error(`oracle ${rnd.oracle.toBase58()} account not found`);
+      const gatewayUri = decodeOracleGateway(new Uint8Array(oracleInfo.data));
+      if (!/^https?:\/\//.test(gatewayUri)) throw new Error(`oracle ${rnd.oracle.toBase58()} has no gateway uri`);
+      const url = `${gatewayUri.replace(/\/+$/, '')}/gateway/api/v1/randomness_reveal`;
+      const hex = Array.from(randomness.toBytes(), (x) => x.toString(16).padStart(2, '0')).join('');
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ slothash: Array.from(rnd.seedSlothash), randomness_key: hex, slot: Number(rnd.seedSlot), rpc: gatewayRpc }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      const text = await res.text();
+      if (!res.ok) throw new Error(`gateway ${res.status}: ${text.slice(0, 200)}`);
+      const j = JSON.parse(text) as { signature?: string; recovery_id?: number; value?: number[] };
+      const bin = atob(j.signature ?? '');
+      const signature = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) signature[i] = bin.charCodeAt(i);
+      const value = Uint8Array.from(j.value ?? []);
+      if (signature.length !== 64 || value.length !== 32 || typeof j.recovery_id !== 'number') {
+        throw new Error('gateway payload malformed');
+      }
+      const ix = revealRandomnessIx({ kind, payer, randomness, oracle: rnd.oracle, queue: rnd.queue, signature, recoveryId: j.recovery_id, value });
+      return { ix, value };
     } catch (e) {
       if (Date.now() + delay > deadline) throw e;
       await new Promise((f) => setTimeout(f, delay));
@@ -145,17 +190,15 @@ export interface RandomnessView {
 }
 
 /** Decode the on-chain RandomnessAccountData (authority / oracle / slots / revealed value). */
-export async function readRandomness(connection: Connection, payer: PublicKey, randomness: PublicKey): Promise<RandomnessView | null> {
-  const program = await sbProgram(connection, payer);
+export async function readRandomness(connection: Connection, _payer: PublicKey, randomness: PublicKey): Promise<RandomnessView | null> {
   try {
-    const r = new (await loadSb()).Randomness(program, randomness);
-    const data = await r.loadData();
-    const seedSlot = BigInt(data.seedSlot.toString());
-    const revealSlot = BigInt(data.revealSlot.toString());
-    const value = revealSlot > 0n ? Uint8Array.from(data.value as number[]) : null;
+    const info = await connection.getAccountInfo(randomness, 'confirmed');
+    if (!info) return null;
+    const rnd = decodeRandomnessAccount(new Uint8Array(info.data));
+    const value = rnd.revealSlot > 0n ? rnd.value : null;
     return {
-      authority: new PublicKey(data.authority), queue: new PublicKey(data.queue), oracle: new PublicKey(data.oracle),
-      seedSlot, revealSlot, lutSlot: BigInt(data.lutSlot.toString()), value,
+      authority: rnd.authority, queue: rnd.queue, oracle: rnd.oracle,
+      seedSlot: rnd.seedSlot, revealSlot: rnd.revealSlot, lutSlot: rnd.lutSlot, value,
     };
   } catch {
     return null;

@@ -205,7 +205,30 @@ export class PackFlow {
       this.cfg ??= await fetchGameConfig(connection);
       const [pendingKey] = pendingPackPda(wallet.publicKey, this.state.nonce);
       let pending = await this.loadPending(pendingKey);
-      if (!pending) throw new Error('Pending pack not found (already opened?)');
+      if (!pending) {
+        const [firstClaimKey] = compressedMintClaimPda(wallet.publicKey, compressedClaimNonce(this.state.nonce, 0, 0));
+        const firstClaim = await connection.getAccountInfo(firstClaimKey, 'confirmed');
+        if (!firstClaim) throw new Error('Pending pack not found (already opened?)');
+        pending = {
+          buyer: wallet.publicKey,
+          nonce: this.state.nonce,
+          sku: this.state.sku,
+          qty: this.state.qty,
+          opened: this.state.qty,
+          commitSlot: 0n,
+          paidLamports: 0n,
+          paidUsdc: 0n,
+          paidCg: 0n,
+          paidSkr: 0n,
+          randomness: this.state.randomness ?? PublicKey.default,
+          revealed: true,
+          value: new Uint8Array(32),
+          bump: 0,
+          soulboundDays: 0,
+          voucher: false,
+          voucherOdds: [0, 0, 0, 0, 0, 0, 0, 0],
+        };
+      }
       const randomness = pending.randomness;
       this.set({ randomness, phase: 'revealing' });
 
@@ -324,8 +347,13 @@ export class PackFlow {
     const { connection, wallet } = this.deps;
     const { pending, lookupTables } = ctx;
     const cfg = this.cfg!;
-    const info = await connection.getAccountInfo(compressedSettlementPda(pending.buyer, pending.nonce)[0], 'confirmed');
-    if (!info) throw new Error('Settlement account not found (opens incomplete?)');
+    const [settlementKey] = compressedSettlementPda(pending.buyer, pending.nonce);
+    const [pendingKey] = pendingPackPda(pending.buyer, pending.nonce);
+    const info = await connection.getAccountInfo(settlementKey, 'confirmed');
+    if (!info) {
+      if (!(await this.loadPending(pendingKey))) return;
+      throw new Error('Settlement account not found (opens incomplete?)');
+    }
     const settlement = decodeCompressedPackSettlement(new Uint8Array(info.data));
     const done = settlement.registeredClaims + settlement.cancelledClaims;
     if (done < settlement.totalClaims) {
@@ -343,10 +371,19 @@ export class PackFlow {
       if (mint) refundToken = { vault: ata(mint, vaultPda()[0]), buyer: ata(mint, pending.buyer) };
     }
     ixs.push(finalizeCompressedPackIx({ payer: wallet.publicKey, buyer: pending.buyer, nonce: pending.nonce, cg, refundToken }));
-    const { signature, logs } = await sendTx(connection, wallet, ixs, { cuLimit: 300_000, lookupTables });
-    const ev = findEvent(logs, 'CompressedPackSettled', readCompressedPackSettled);
-    if (!ev) throw new Error('finalize transaction landed without a CompressedPackSettled event');
-    this.set({ openSignatures: [...this.state.openSignatures, signature] });
+    try {
+      const { signature, logs } = await sendTx(connection, wallet, ixs, { cuLimit: 300_000, lookupTables });
+      const ev = findEvent(logs, 'CompressedPackSettled', readCompressedPackSettled);
+      if (!ev) throw new Error('finalize transaction landed without a CompressedPackSettled event');
+      this.set({ openSignatures: [...this.state.openSignatures, signature] });
+    } catch (e) {
+      const [stillPending, stillSettlement] = await Promise.all([
+        this.loadPending(pendingKey),
+        connection.getAccountInfo(settlementKey, 'confirmed'),
+      ]);
+      if (!stillPending || !stillSettlement) return;
+      throw e;
+    }
   }
 
   /** Cancel one expired-unminted claim so `finalize` can proceed (re-run `open()` afterwards). */

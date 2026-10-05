@@ -208,7 +208,7 @@ export class DasClient {
     if (!options.endpoint) throw new DasError('transport', 'DAS endpoint is empty');
     this.endpoint = options.endpoint;
     this.timeoutMs = options.timeoutMs ?? 10_000;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.fetchImpl = options.fetchImpl ?? ((url, init) => fetch(url, init));
   }
 
   private async rpc<T>(method: string, params: unknown[]): Promise<T> {

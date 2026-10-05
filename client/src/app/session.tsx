@@ -35,9 +35,15 @@ export function useSignIn() {
       let message: string;
       let signature: Uint8Array;
       if (signIn) {
-        const out = await signIn({ domain, address, statement: statement ?? `Sign in to ${APP_NAME}`, nonce, issuedAt, uri: window.location.origin, version: '1', chainId: SIWS_CHAIN_ID });
-        message = new TextDecoder().decode(out.signedMessage);
-        signature = out.signature;
+        try {
+          const out = await signIn({ domain, address, statement: statement ?? `Sign in to ${APP_NAME}`, nonce, issuedAt, uri: window.location.origin, version: '1', chainId: SIWS_CHAIN_ID });
+          message = new TextDecoder().decode(out.signedMessage);
+          signature = out.signature;
+        } catch (err) {
+          if (!signMessage || !/invalid formatting/i.test(String((err as { message?: string })?.message ?? err))) throw err;
+          message = `GUTTERCAPS sign-in (${domain}):\n${address}\n\n${statement ?? `Sign in to ${APP_NAME}`}\n\nURI: ${window.location.origin}\nVersion: 1\nNonce: ${nonce}\nIssued At: ${issuedAt}`;
+          signature = await signMessage(new TextEncoder().encode(message));
+        }
       } else {
         if (!signMessage) throw new Error('Wallet cannot sign messages');
         message = `${domain} wants you to sign in with your Solana account:\n${address}\n\n${statement ?? `Sign in to ${APP_NAME}`}\n\nURI: ${window.location.origin}\nVersion: 1\nNonce: ${nonce}\nIssued At: ${issuedAt}`;
