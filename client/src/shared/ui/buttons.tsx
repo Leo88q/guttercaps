@@ -34,53 +34,6 @@ export function SprayNozzleButton({ children, onClick, disabled, ...rest }: ObjB
   );
 }
 
-/** Secondary action: cancel, back, filters. */
-export function DuctTapeButton({ children, onClick, disabled, ...rest }: ObjBtnProps) {
-  const { fired, fire } = useFire(300, disabled);
-  return (
-    <button
-      className={`cg-btn-tape ${fired ? 'cg-fired' : ''} ${disabled ? 'cg-btn-disabled' : ''}`}
-      onClick={(e) => { fire(); onClick?.(e); }}
-      disabled={disabled}
-      {...rest}
-    >
-      {children}
-    </button>
-  );
-}
-
-/** Destructive action: sell, discard, unstake. */
-export function SpillCanButton({ children, onClick, disabled, ...rest }: ObjBtnProps) {
-  const { fired, fire } = useFire(500, disabled);
-  return (
-    <button
-      className={`cg-btn-spill ${fired ? 'cg-fired' : ''} ${disabled ? 'cg-btn-disabled' : ''}`}
-      onClick={(e) => { fire(); onClick?.(e); }}
-      disabled={disabled}
-      {...rest}
-    >
-      {children}
-      <span className="cg-drip-trail" />
-    </button>
-  );
-}
-
-/** Chip-specific action: open pack, list on marketplace, keep — the
- *  button IS a miniature chip. */
-export function ChipButton({ children, onClick, disabled, ...rest }: ObjBtnProps) {
-  const { fired, fire } = useFire(500, disabled);
-  return (
-    <button
-      className={`cg-btn-chip ${fired ? 'cg-fired' : ''} ${disabled ? 'cg-btn-disabled' : ''}`}
-      onClick={(e) => { fire(); onClick?.(e); }}
-      disabled={disabled}
-      {...rest}
-    >
-      {children}
-    </button>
-  );
-}
-
 /** Clean-zone variant: wallet confirm, staking confirm, real-money purchase.
  *  Same silhouette family as SprayNozzleButton but chrome, with a checkmark
  *  stamp instead of mist — signals "this one spends real money." */

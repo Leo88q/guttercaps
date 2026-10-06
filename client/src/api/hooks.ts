@@ -96,7 +96,7 @@ export function useClaimPassTier() {
 // ------------------------------------------------------------- beta pre-sale (docs/preorder-beta.md)
 export type PreorderCampaign = ResponseOf<'/preorder', 'get'>;
 export type PreorderIntent = ResponseOf<'/preorder/intent', 'post'>;
-export type PreorderMine = ResponseOf<'/preorder/me', 'get'>['items'][number];
+
 
 export const usePreorderCampaign = () => useQuery({ queryKey: ['preorder'], queryFn: () => api.get('/preorder'), staleTime: 30_000 });
 export function useMyPreorders() {

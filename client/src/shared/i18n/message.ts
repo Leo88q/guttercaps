@@ -6,7 +6,7 @@ export interface MessageRef {
   key: MessageKey;
   params?: Record<string, string | number | bigint | undefined | TextRef>;
 }
-export type TextRef = MessageRef
+type TextRef = MessageRef
   | { parts: UiText[]; separator?: string }
   | { format: 'amount'; atoms: string; currency: CurrencySymbol }
   | { format: 'percent'; bps: number; fraction: number }

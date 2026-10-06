@@ -14,7 +14,7 @@ interface IconProps {
 export type RewardKind = 'cg' | 'skr' | 'booster' | 'voucher' | 'streak' | 'stash';
 
 /** Generated faces (extend after the next art batch). */
-export const REWARD_ICON_URL: Partial<Record<RewardKind, string>> = {
+const REWARD_ICON_URL: Partial<Record<RewardKind, string>> = {
   cg: '/icons/gen/cg.webp',
   skr: '/icons/gen/skr.webp',
   booster: '/icons/gen/booster.webp',

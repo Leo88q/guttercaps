@@ -25,5 +25,5 @@ class Hash {
 
 export const createHash = (algo: string) => new Hash(algo);
 export const randomBytes = (n: number) => Buffer.from(crypto.getRandomValues(new Uint8Array(n)));
-export const webcrypto = globalThis.crypto;
+const webcrypto = globalThis.crypto;
 export default { createHash, randomBytes, webcrypto };

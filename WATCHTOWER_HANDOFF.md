@@ -31,7 +31,7 @@
 **Три главных блокера:**
 
 1. **B1 — нет runtime-верификации.** Из окружения подготовки недоступен Solana RPC (SSL error), поэтому devnet-деплой
-   подтверждён только документально (`FIXES-2026-10-03.md`: `verify-deploy onchain OK`). Нужен прогон
+   подтверждён только документально (прогон `scripts/mac-devnet.sh` от 2026-10-03: `verify-deploy onchain OK`). Нужен прогон
    `npm run verify-deploy -- onchain --cluster devnet --rpc <URL>` с машины с доступом к devnet.
 2. **B2 — маппинг первого действия.** Хаб ожидает `PackOpened`; в текущем коде событие `PackOpened` объявлено, но
    **не эмитится** (легаси Core-путь `open_pack` заблокирован миграцией на Bubblegum V2,
@@ -59,7 +59,7 @@
 `sha256("event:<Name>")[..8]` закреплены тестом `backend/test/events.test.ts` (зелёный в этом прогоне, раздел G).
 Тулчейн: Anchor `0.31.1`, solana `2.1.0`, Rust `1.89.0` (`Anchor.toml`, `rust-toolchain.toml`).
 
-**Deployment evidence.** `FIXES-2026-10-03.md:3`: прогон `scripts/mac-devnet.sh` прошёл стадию `deploy`
+**Deployment evidence.** Прогон `scripts/mac-devnet.sh` от 2026-10-03 прошёл стадию `deploy`
 (13 530 с) с `verify-deploy onchain OK` для devnet — 4 программы загружены, байты в сети == локальные `.so`,
 upgrade authority == кошелёк деплоя. Независимо перепроверить из этого окружения нельзя (нет RPC-выхода) —
 команда для проверки: `npm run verify-deploy -- onchain --cluster devnet --rpc <RPC_URL>`.

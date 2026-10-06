@@ -150,7 +150,7 @@ export function buildEnv(opts: {
   if (cluster === 'mainnet-beta' && dev.size) {
     for (const [key, id] of dev) {
       const use = values.get(key) ?? values.get(`VITE_${key}`);
-      if (use && use === id) problems.push(`${key}: equals the dev placeholder baked into client/src/app/config.ts — apply the freeze (docs/08 §1.1) before a mainnet image is published`);
+      if (use && use === id) problems.push(`${key}: equals the dev placeholder baked into client/src/app/config.ts — apply the freeze (ops/deploy/runbook.md §1.1) before a mainnet image is published`);
     }
   }
   if (opts.freeze) {

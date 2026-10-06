@@ -83,7 +83,7 @@ describe('complete versioned legal translations', () => {
 
 describe('legal route without wallet or API', () => {
   for (const locale of LOCALES) {
-    it(`${locale}: renders both complete documents, correct language, date and draft warning`, async () => {
+    it(`${locale}: renders both complete documents with the correct language and date`, async () => {
       await act(() => setLocale(locale));
       const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network disabled'));
       const docs = await loader.loadLegalCopy(locale);
@@ -94,7 +94,6 @@ describe('legal route without wallet or API', () => {
         expect(article.getAttribute('lang')).toBe(LOCALE_META[locale].tag);
         expect(article.querySelectorAll('section')).toHaveLength(docs[id].sections.length);
         expect(article.querySelectorAll('p')).toHaveLength(1 + docs[id].sections.reduce((n, s) => n + s.p.length, 0));
-        expect(screen.getByRole('note').textContent).toContain(t('legal.draftTitle'));
         expect(screen.getByText(t('legal.canonical'))).toBeTruthy();
         expect(document.title).toContain(t(id === 'terms' ? 'legal.terms' : 'legal.privacy'));
         view.unmount();

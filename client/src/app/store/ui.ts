@@ -3,7 +3,7 @@ import type { UiText } from '@/shared/i18n/message';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export interface RevealItem {
+interface RevealItem {
   id: string;
   rarity: number;
   collectionIdx: number;
@@ -27,7 +27,7 @@ export interface Toast {
   ttlMs?: number;
 }
 
-export type UiLocale = 'en' | 'pt' | 'es' | 'vi' | 'id' | 'fil' | 'ru';
+type UiLocale = 'en' | 'pt' | 'es' | 'vi' | 'id' | 'fil' | 'ru';
 
 interface UiState {
   sound: boolean;

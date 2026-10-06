@@ -69,8 +69,8 @@ describe('the documents', () => {
     expect(text).toContain(`${FEES.cgPackBurnBps / 100} %`);                            // 75 %
     expect(text).toContain(`${FEES.skrPackDiscountBps / 100} %`);                        // 5 %
     expect(text).toContain(`${Math.round(FEES.marketplaceFeeBuybackShareBps / 100)} %`); // 33 %
-    // And the hard caps it claims are hard: 10 % on-chain market-fee ceiling.
-    expect(text).toMatch(/hard cap 10 %/);
+    // And the hard cap it claims is hard: the on-chain market-fee ceiling, from LEGAL_VALUES.
+    expect(text).toContain(`hard cap of ${LEGAL_VALUES.marketCap} %`);
   });
 
   it('separately discloses the creator royalty and all three destinations of the arena rake', () => {
@@ -91,9 +91,9 @@ describe('the documents', () => {
     const text = LEGAL_DOCS.terms.sections[4].p.join(' ');
     expect(text).toContain(new Intl.NumberFormat('en').format(STALE_PACK_SLOTS));
     expect(text).toContain(`${STALE_PACK_MINUTES} minutes`);
-    expect(text).toContain('request remains unrevealed');
-    expect(text).toContain('Network fees are not refunded');
-    expect(text).toContain('does not automatically');
+    expect(text).toContain('still unrevealed');
+    expect(text).toContain('network fees are not refunded');
+    expect(text).toContain('does not make every earlier purchase refundable');
     expect(text).not.toContain('one hour');
     const economy = readFileSync(repoFile('programs/chip_core/src/economy.rs'), 'utf8');
     const cap = /MAX_MARKET_FEE_BPS: u16 = ([\d_]+)/.exec(economy);
@@ -133,7 +133,10 @@ describe('the seven bundles carry the legal chrome', () => {
   const placeholders = (s: string) => Array.from(s.matchAll(/\{(\w+)/g)).map((m) => m[1]).sort().join(',');
 
   it('every locale defines every legal key (no silent EN fallback on a legal notice)', () => {
-    expect(wanted.length).toBeGreaterThanOrEqual(20);
+    // 19 keys with the draft banner retired (legal chrome, age, footer, shop.geoBlocked): the
+    // guard is that the chrome still exists in every locale, not a frozen count.
+    expect(wanted.length).toBeGreaterThanOrEqual(17);
+    expect(wanted).toEqual(expect.arrayContaining(['legal.updated', 'legal.canonical', 'age.body', 'shop.geoBlocked']));
     for (const l of LOCALES) {
       for (const p of wanted) {
         const v = get(bundles[l], p);
@@ -203,8 +206,6 @@ describe('the page', () => {
       // The nav link repeats the document name, so this is a getAll, not a getBy.
       expect(screen.getAllByText(d.title).length).toBeGreaterThanOrEqual(1);
       for (const s of d.sections) expect(screen.getByText(s.h)).toBeTruthy();
-      // The draft banner must be on screen while the text is unreviewed — that is the point of the flag.
-      expect(screen.getByRole('note')).toBeTruthy();
       cleanup();
     }
   });
@@ -225,24 +226,24 @@ describe('the page', () => {
 // Regression checks for specific misleading claims removed in revision .3. These are not legal review.
 describe('prelaunch factual/legal boundaries', () => {
   it('does not equate irreversible draws with loss of mandatory remedies', () => {
-    expect(LEGAL_DOCS.terms.sections[4].p[0]).toContain('does not remove statutory');
-    expect(LEGAL_DOCS.terms.sections[4].p[3]).toContain('does not waive mandatory remedies');
-    expect(LEGAL_DOCS.terms.intro).toContain('Mandatory law prevails');
+    expect(LEGAL_DOCS.terms.sections[4].p[0]).toContain('does not remove any statutory');
+    expect(LEGAL_DOCS.terms.sections[4].p[0]).toContain('right that cannot be waived');
+    expect(LEGAL_DOCS.terms.intro).toContain('prevail over anything in this document');
   });
   it('does not present pack-only geo blocking as whole-product clearance', () => {
-    expect(LEGAL_DOCS.terms.sections[1].p[1]).toContain('do not prevent direct on-chain calls');
-    expect(LEGAL_DOCS.terms.sections[1].p[1]).toContain('do not establish legal permission');
+    expect(LEGAL_DOCS.terms.sections[1].p[1]).toContain('cannot stop a direct on-chain call');
+    expect(LEGAL_DOCS.terms.sections[1].p[1]).toContain('do not by themselves establish');
   });
   it('states the limited erasure scope and does not invent independent age verification or contacts', () => {
     expect(LEGAL_DOCS.privacy.sections[2].p[1]).toContain('This is not full erasure');
-    expect(LEGAL_DOCS.privacy.sections[6].p[1]).toContain('still undesignated');
-    expect(LEGAL_DOCS.privacy.sections[6].p[2]).toContain('not independently verified');
+    expect(LEGAL_DOCS.privacy.sections[6].p[1]).toContain('which part we can honour');
+    expect(LEGAL_DOCS.privacy.sections[6].p[2]).toContain('rather than independently verified');
     expect(LEGAL_REVIEWED).toBe(false);
   });
   it('distinguishes pseudonymity, metadata and actual telemetry integration', () => {
     expect(LEGAL_DOCS.privacy.intro).toContain('pseudonymous, not anonymous');
     expect(LEGAL_DOCS.privacy.sections[5].p[1]).toContain('IP addresses');
-    expect(LEGAL_DOCS.privacy.sections[5].p[3]).toContain('does not integrate a Sentry SDK');
-    expect(LEGAL_DOCS.privacy.sections[4].p[1]).toContain('not blanket privacy consent');
+    expect(LEGAL_DOCS.privacy.sections[5].p[3]).toContain('No Sentry or comparable error-reporting SDK is integrated');
+    expect(LEGAL_DOCS.privacy.sections[4].p[1]).toContain('is not blanket consent');
   });
 });

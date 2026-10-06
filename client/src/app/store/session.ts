@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
-export interface SessionProfile { address: string; handle?: string; avatarAsset?: string; firstSeen?: string; country?: string }
+interface SessionProfile { address: string; handle?: string; avatarAsset?: string; firstSeen?: string; country?: string }
 
 interface SessionState {
   csrf?: string;

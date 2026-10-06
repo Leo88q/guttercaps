@@ -38,7 +38,7 @@ export function createBubblegumTreeIx(a: CreateBubblegumTreeArgs): TransactionIn
 }
 
 /** One-time admin binding for a Bubblegum V2 tree created by the operations script. */
-export interface ConfigureBubblegumTreeArgs {
+interface ConfigureBubblegumTreeArgs {
   admin: PublicKey;
   collectionIdx: number;
   merkleTree: PublicKey;
@@ -108,7 +108,7 @@ export function openCompressedPackIx(a: OpenCompressedPackArgs): TransactionInst
   return new TransactionInstruction({ programId: CHIP_CORE_ID, keys, data: Buffer.from(ixData('open_compressed_pack', data)) });
 }
 
-export interface FuseCompressedClaimsArgs {
+interface FuseCompressedClaimsArgs {
   owner: PublicKey;
   resultClaimNonce: bigint;
   resultCollectionIdx: number;
@@ -403,7 +403,7 @@ export const RENT_RESERVE_PER_CHIP = 8_000_000n;
 /** Refund window (≈ 72 min at 400 ms slots) — mirrors chip_core::economy::STALE_PACK_SLOTS and @guttercaps/economy `STALE_PACK_SLOTS` (sync-check pins all three); refunds are only possible after the oracle's 1 h reveal window has expired (SEC-C3). */
 export const STALE_PACK_SLOTS = 10_800n;
 
-export interface BuyPackArgs {
+interface BuyPackArgs {
   buyer: PublicKey;
   sku: number;
   qty: number;
@@ -518,7 +518,7 @@ export function openPackIx(a: OpenPackArgs): TransactionInstruction {
   });
 }
 
-export interface CancelStalePackArgs {
+interface CancelStalePackArgs {
   buyer: PublicKey;
   nonce: bigint;
   randomness: PublicKey;
@@ -551,7 +551,7 @@ export function cancelStalePackIx(a: CancelStalePackArgs): TransactionInstructio
 // ---------------------------------------------------------------- fusion
 export interface FuseMaterial { asset: PublicKey; collectionIdx: number }
 
-export interface FuseArgs {
+interface FuseArgs {
   owner: PublicKey;
   nonce: bigint;
   useBooster: boolean;
@@ -687,7 +687,7 @@ export function thawChipIx(a: { owner: PublicKey; asset: PublicKey; collectionId
 }
 
 // ---------------------------------------------------------------- paid services
-export interface PayServiceArgs {
+interface PayServiceArgs {
   buyer: PublicKey;
   kind: number;
   currency: CurrencyCode;

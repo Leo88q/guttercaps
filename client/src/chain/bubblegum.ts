@@ -35,7 +35,7 @@ export function bubblegumProofMetas(proof: BubblegumProof, writable = false): Ac
   return proof.proof.map((pubkey) => ({ pubkey, isSigner: false, isWritable: writable }));
 }
 
-export function assertHash32(value: Uint8Array, label: string): void {
+function assertHash32(value: Uint8Array, label: string): void {
   if (value.byteLength !== 32) throw new Error(`${label} must be exactly 32 bytes`);
 }
 

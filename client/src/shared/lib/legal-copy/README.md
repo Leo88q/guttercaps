@@ -25,8 +25,20 @@
 5. Run `legal.test.tsx`, `legalCopy.test.tsx`, all locale parity tests, and the
    `legal-localization.spec.ts` browser suite. Do not infer semantic accuracy from hashes.
 
-`LEGAL_REVIEWED` remains **false**. Neither tests nor translation constitute independent
-native-speaker review or counsel sign-off. English precedence and the draft banner remain.
+`LEGAL_REVIEWED` remains **false**, but it is no longer rendered: the page carries no draft
+banner. The flag feeds the internal `scripts/legal-readiness.mjs` report and the release test
+only. Neither the tests nor the translations constitute independent native-speaker review or
+counsel sign-off, and the published text does not claim otherwise.
+
+Revision 2026-10-06.1 is the owner-approved clean rewrite: the documents are written as
+publishable game terms in the house style (numbered sections, highlighted notices, plain
+description of the randomised-pack mechanic, wallet responsibility, fees and burn shares),
+with **no operator name, address, registration number or contact details anywhere** — rights
+requests, receipts and exports run through the in-app rights centre. All seven languages were
+rewritten together, the 9 Terms / 7 Privacy section structure and the 47 body paragraphs were
+preserved, every `{placeholder}` is interpolated from `legal.ts`, and the draft banner was
+removed from `features/legal/Legal.tsx` along with its `legal.draftTitle` / `legal.draftBody`
+strings in all seven bundles.
 
 Revision 2026-09-29.2 corrects the stale-oracle window/refund eligibility, asset-path
 wording, and cookie/IP-counter disclosures. It removes the unsupported automatic

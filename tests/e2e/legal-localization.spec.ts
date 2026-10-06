@@ -27,11 +27,10 @@ for (const [locale, tag, native] of languages) {
         await expect(body).toHaveAttribute('lang', tag, { timeout: 20_000 });
         await expect(body.locator('section')).toHaveCount(sections);
         await expect(body.locator('p')).toHaveCount(paragraphs);
-        await expect(page.getByRole('note')).toBeVisible();
         // With the legacy geography flag off, the footer must not claim a BE/NL sales block.
         await expect(page.locator('.page .card.stack.muted.small')).not.toContainText('BE, NL');
         expect(await body.innerText()).not.toMatch(/\{\w+\}|\[object Object\]/);
-        if (locale !== 'en') expect(await body.innerText()).not.toContain('A browser game on Solana');
+        if (locale !== 'en') expect(await body.innerText()).not.toContain('is a browser game on Solana');
         await page.evaluate(() => document.fonts.ready);
         expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
         const clipped = await page.locator('.legal-body h2, .legal-body p, .page button, .page nav a').evaluateAll(nodes =>

@@ -105,7 +105,7 @@ export function Progress({ value, max, tone }: { value: number; max: number; ton
   return <div className={`progress ${tone ?? ''}`}><i style={{ width: `${pct}%` }} /></div>;
 }
 
-export type PillProps = {
+type PillProps = {
   children: ReactNode;
   active?: boolean;
   onClick?: () => void;

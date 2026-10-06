@@ -21,7 +21,7 @@
     "devnet": {
       "cluster": "devnet",
       "status": "deployed_documented_not_reverified_here",
-      "notes": "scripts/mac-devnet.sh run of 2026-10-03 reports `deploy` stage passed with `verify-deploy onchain OK` (FIXES-2026-10-03.md:3). The handoff environment has no RPC egress (curl api.devnet.solana.com -> SSL_ERROR_SYSCALL), so this could not be independently re-verified. Re-verify with `npm run verify-deploy -- onchain --cluster devnet --rpc <RPC_URL>` from a machine with devnet access.",
+      "notes": "scripts/mac-devnet.sh run of 2026-10-03 reports `deploy` stage passed with `verify-deploy onchain OK`. The handoff environment has no RPC egress (curl api.devnet.solana.com -> SSL_ERROR_SYSCALL), so this could not be independently re-verified. Re-verify with `npm run verify-deploy -- onchain --cluster devnet --rpc <RPC_URL>` from a machine with devnet access.",
       "verificationStatus": "code_only"
     },
     "mainnet": {

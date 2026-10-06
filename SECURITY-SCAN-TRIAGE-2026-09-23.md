@@ -100,13 +100,13 @@ python3 scripts/sec-scan.py programs > /tmp/scan.out     # сырые хиты �
 | `cargo fmt --check`, `anchor build`, clippy `-D warnings`, `cargo test` | — (нет toolchain) | ✓ run 35877343136 (`c5cb573`): programs / rust-lints зелёные |
 | LiteSVM: `51-emission-genesis` G01/G02, `50-staking` S24, регресс S01/C13 | — (нет `.so`) | ✓ тот же run: `localnet · LiteSVM` зелёный (полная сюита, включая новые спеки) |
 | **Второй заход (G-03/G-04/G-05):** `npm run backend:test` (340), `backend typecheck`, `env:check`, `api:check`, `schema:check`, `tsc -p tests/localnet`, `docs:refs`, `workflows:check` | ✓ | backend / client / docs jobs |
-| Rust G-03/G-04/G-05 (`compressed.rs`, `admin.rs`, arena `lib.rs`, staking `emission.rs`/`state.rs`), LiteSVM X11 + G03b | — | CI run — см. `FIXES-2026-09-23.md` «CI» |
+| Rust G-03/G-04/G-05 (`compressed.rs`, `admin.rs`, arena `lib.rs`, staking `emission.rs`/`state.rs`), LiteSVM X11 + G03b | — | CI run (см. историю git) |
 
 `cargo fmt --check` прошёл через бот `format.yml` (его патч `783b52a` влит в ветку). Все 8 обязательных job CI на `c5cb573` зелёные.
 
 ## 5. Что остаётся из аудита 21.09
 
-Шесть пунктов, которые здесь раньше числились «за владельцем/ops» (F-02, F-05, F-06, F-12, F-14, F-19), **закрыты кодом** — построчно в `FIXES-2026-09-23.md` (коммиты `d9417ee`, `6899ce3`). За владельцем остаются только вещи, которые из репозитория не делаются: церемония program-id + Squads, внешний аудит, devnet-soak, доставка алертов (Alertmanager). Подробности — `SECURITY-ECON-AUDIT-2026-09-21.md`, `FIXES-2026-09-21.md`.
+Шесть пунктов, которые здесь раньше числились «за владельцем/ops» (F-02, F-05, F-06, F-12, F-14, F-19), **закрыты кодом** — коммитами `d9417ee`, `6899ce3`. За владельцем остаются только вещи, которые из репозитория не делаются: церемония program-id + Squads, внешний аудит, devnet-soak, доставка алертов (Alertmanager). Подробности — `SECURITY-ECON-AUDIT-2026-09-21.md`.
 
 ## 5.1 Пофайловый триаж списка Watchtower — что за цифрами
 

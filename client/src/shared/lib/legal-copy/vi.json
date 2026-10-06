@@ -1,83 +1,83 @@
 {
-  "revision": "2026-09-29.5",
-  "sha256": "d871fd12ff18be592bb985c18da7dd3f5c1a40e0bd55d356c494204009ccfe81",
+  "revision": "2026-10-06.1",
+  "sha256": "ddfada3bdc5084a2ad847c1c9ca5d1d9b84e19dc4ac6b0c52718846c2ee20f6c",
   "docs": {
     "terms": {
       "slug": "terms",
-      "title": "Điều khoản dịch vụ",
-      "intro": "Bản dự thảo điều khoản này mô tả GUTTERCAPS và cơ chế on-chain. Mã chương trình quyết định cách thực hiện giao dịch, không quyết định quyền pháp lý của người tiêu dùng. Luật bắt buộc được ưu tiên khi điều khoản hoặc chương trình mâu thuẫn. Chưa xác định đơn vị vận hành và thị trường ra mắt; văn bản này không cho phép ra mắt công khai có thu phí.",
+      "title": "Điều khoản sử dụng",
+      "intro": "GUTTERCAPS là một trò chơi trên trình duyệt chạy trên Solana: bạn mua các gói thẻ sưu tầm, và nội dung của mỗi gói được rút ngẫu nhiên theo một phân phối đã công bố. Điều khoản sử dụng này là thỏa thuận ràng buộc về mặt pháp lý giữa bạn và đơn vị vận hành GUTTERCAPS («chúng tôi», «của chúng tôi»), bao gồm trò chơi, ứng dụng web, cửa hàng, chợ, staking, đấu trường, trung tâm quyền và mọi tính năng liên quan (gọi chung là «Dịch vụ»). Bạn chấp nhận Điều khoản này khi sử dụng Dịch vụ dưới bất kỳ hình thức nào — mở ứng dụng, kết nối ví hoặc ký một giao dịch. Nếu bạn không chấp nhận, xin đừng sử dụng Dịch vụ. Xin lưu ý: Mục 8 giới hạn trách nhiệm của chúng tôi, và Mục 9 giải thích cách Điều khoản thay đổi cũng như văn bản nào có hiệu lực. Không nội dung nào ở đây xóa bỏ các quyền mà pháp luật bắt buộc dành cho bạn; những quyền đó có hiệu lực cao hơn tài liệu này và cao hơn hành vi của bất kỳ hợp đồng thông minh nào.",
       "sections": [
         {
-          "h": "1. Sản phẩm này là gì",
+          "h": "1. GUTTERCAPS là gì",
           "p": [
-            "Một trò chơi trên trình duyệt chạy trên Solana. Bạn mua gói nắp sưu tầm; nắp nhận được được chọn ngẫu nhiên theo phân bố xác suất đã công bố. Nắp là tài sản Solana do ví kiểm soát, gồm cả luồng tài sản nén Bubblegum V2 và tài sản Metaplex Core đời cũ. Chúng tôi không giữ khóa ví của bạn và không vận hành dịch vụ nạp hoặc rút tiền có lưu ký.",
-            "Gói là vật phẩm trả phí có nội dung ngẫu nhiên. Chúng tôi không khẳng định điều ngược lại hay gọi đây là giao dịch mua có giá trị được bảo đảm. Các giới hạn khu vực tại §2 tồn tại vì một số cơ quan quản lý xem cơ chế này là cờ bạc."
+            "Một trò chơi về thẻ, gói và lãnh thổ trên Solana. Bạn sưu tầm thẻ, lắp đội hình, giao dịch, đặt staking và chiến đấu bằng chúng. Thẻ là tài sản Solana do ví của bạn kiểm soát — tài sản nén được đúc qua Bubblegum V2 và tài sản Metaplex Core cho các đợt phát hành trước đó. Chúng tôi không giữ khóa của bạn và không vận hành dịch vụ nạp hay rút tập trung: tài sản nằm trong ví của bạn, dưới sự kiểm soát của bạn, và mọi dịch chuyển đều là giao dịch do bạn tự ký.",
+            "Gói là vật phẩm trả phí có nội dung ngẫu nhiên, và chúng tôi nói thẳng điều đó: bạn trả tiền cho một gói, và thẻ bên trong được rút theo phân phối đã công bố, không do bạn hay chúng tôi chọn. Thẻ là vật sưu tầm có công dụng trong trò chơi, không phải sản phẩm đầu tư, và $CG được dành cho việc sử dụng trong trò chơi. Hợp đồng thông minh thực thi giao dịch và áp dụng luật chơi; nó không xác định quyền pháp lý của bạn và không thể đứng trên pháp luật bắt buộc. Nếu văn bản này, mã nguồn và pháp luật bắt buộc mâu thuẫn, pháp luật được áp dụng."
           ]
         },
         {
-          "h": "2. Ai được chơi và những nơi không bán gói",
+          "h": "2. Ai được chơi và nơi không bán gói",
           "p": [
-            "Bạn phải đủ {age} tuổi và đáp ứng ngưỡng địa phương hoặc cấu hình cao hơn. Trung tâm nhận khai báo ngày sinh; máy chủ tính điều kiện mà không lưu ngày. Đây là tự khai, không xác minh tuổi hay danh tính. Kiểm soát production có thể yêu cầu khai báo còn hiệu lực trước hoạt động mới.",
-            "Các kiểm tra tuổi và vị trí địa lý hiện được tắt theo mặc định; có thể bật lại một cách tường minh trong cấu hình triển khai. Khi được bật, cơ chế kiểm soát báo giá gói cũ hạn chế các khu vực được phát hiện là {regions}; quy tắc tùy chỉnh theo tính năng và việc xác định quốc gia từ nguồn đáng tin cậy cũng áp dụng cho một số thao tác API và việc ký giao dịch qua ứng dụng của chúng tôi. Quốc gia không xác định sẽ bị từ chối khi bật kiểm tra. Các biện pháp này không ngăn lệnh gọi trực tiếp đến blockchain và không chứng minh rằng việc tham gia là hợp pháp ở các quốc gia khác.",
-            "Quốc gia được suy ra từ siêu dữ liệu mạng ở biên và có thể sai. Dùng VPN để bảo vệ riêng tư tự nó không bị cấm, nhưng bạn không được khai sai điều kiện tham gia hoặc vượt hạn chế pháp lý áp dụng. VPN không thay đổi luật áp dụng cho bạn."
+            "Bạn phải đủ {age} tuổi để sử dụng Dịch vụ, và cao hơn nếu pháp luật nơi bạn sống yêu cầu ngưỡng cao hơn. Độ tuổi được tự khai: trung tâm quyền tiếp nhận bản khai ngày sinh, máy chủ tính kết quả mà không lưu ngày sinh, và chỉ lưu kết quả, phiên bản chính sách cùng mốc thời gian. Đó không phải là xác minh danh tính, và chúng tôi có thể yêu cầu khai lại trước một hoạt động mới.",
+            "Một số cơ quan quản lý coi gói trả phí có nội dung ngẫu nhiên là cơ chế cờ bạc, nên việc bán gói có thể bị hạn chế theo khu vực. Khi cổng chặn gói được bật, giao dịch mua bị từ chối đối với các khu vực bị phát hiện {regions}, và cả các quốc gia không xác định; những kiểm tra tương tự có thể áp dụng cho một số hành động API và cho việc ký giao dịch qua ứng dụng của chúng tôi. Việc phát hiện dựa trên siêu dữ liệu mạng ở lớp biên và có thể sai. Các biện pháp này không ngăn được lời gọi trực tiếp tới hợp đồng thông minh từ ứng dụng khác, và tự chúng không có nghĩa là khu vực tài phán của bạn cho phép chơi.",
+            "Dùng VPN vì quyền riêng tư không bị cấm. Khai sai vị trí của bạn, hoặc dùng VPN để lách một hạn chế đang áp dụng cho bạn, là bị cấm. Nếu bạn chưa chắc trò chơi có hợp pháp và được phép tại nơi bạn sống hay không, hãy làm rõ trước khi trả tiền: việc đánh giá đó là của bạn, và không cấu hình nào của chúng tôi biến việc sử dụng trái pháp luật thành hợp pháp."
           ]
         },
         {
-          "h": "3. Xác suất, bảo đảm tích lũy và tính ngẫu nhiên có thể kiểm chứng",
+          "h": "3. Nội dung gói, tỷ lệ đã công bố và kết quả có thể kiểm chứng",
           "p": [
-            "Phân bố độ hiếm, độ hiếm tối thiểu được bảo đảm và bộ đếm bảo đảm của mỗi gói được công bố trong cửa hàng và định nghĩa trong mã (packages/economy PACKS; Gói khởi đầu: {starterCaps} nắp; Gói tiêu chuẩn: {standardCaps} nắp; Gói cao cấp: {premiumCaps} nắp; Gói sự kiện giới hạn: {limitedCaps} nắp). Chương trình trên chuỗi áp dụng cùng bảng này, kể cả các giới hạn cứng cho hai bậc cao nhất.",
-            "Việc rút thưởng sử dụng nguồn ngẫu nhiên theo cơ chế cam kết rồi công bố (Switchboard on-demand). Cả cam kết và giá trị công bố đều ở trên chuỗi, nên có thể tính lại kết quả cũ: màn hình kiểm chứng nhận giao dịch mở gói và chạy lại phép khai triển mà chương trình đã thực hiện. Oracle không phản hồi sẽ không âm thầm đốt khoản thanh toán của bạn — xem §5.",
-            "Bộ đếm bảo đảm được lưu trên chuỗi, riêng cho từng ví và mã loại gói (SKU). Chúng không hứa hẹn kết quả của một lần rút cụ thể mà giới hạn chuỗi kết quả kém may mắn nhất."
+            "Phân phối độ hiếm, bảo đảm mức tối thiểu và bộ đếm pity của mỗi gói được công bố trong cửa hàng trước khi bạn trả tiền và được định nghĩa trong mã: Starter Pack {starterCaps} thẻ, Standard Pack {standardCaps} thẻ, Premium Pack {premiumCaps} thẻ, Limited Event Pack {limitedCaps} thẻ. Chương trình trên chuỗi áp dụng đúng bảng đó, kể cả giới hạn cứng ở hai bậc hiếm nhất, nên tỷ lệ bạn đọc chính là tỷ lệ chương trình áp dụng.",
+            "Việc rút thẻ dùng một beacon ngẫu nhiên theo cơ chế commit–reveal (Switchboard on demand). Cả cam kết và phần tiết lộ đều ở trên chuỗi, nên kết quả trong quá khứ có thể được tính lại: màn hình xác minh phát lại đúng phần mở rộng mà chương trình đã thực hiện, và bạn có thể tự kiểm tra một lượt rút mà không cần hỏi chúng tôi điều gì.",
+            "Bộ đếm pity được giữ riêng theo ví và theo loại gói, trên chuỗi. Bộ đếm giới hạn chuỗi xấu nhất có thể; nó không phải lời hứa về một lượt rút cụ thể và không làm thay đổi phân phối đã công bố của bất kỳ gói riêng lẻ nào."
           ]
         },
         {
-          "h": "4. Giá, phí và phần bị đốt",
+          "h": "4. Giá, phí và những gì bị đốt",
           "p": [
-            "Gói có giá trị tương đương tiền pháp định, thanh toán bằng SOL, USDC, $CG hoặc SKR. Nhà vận hành đặt giá và giá thay đổi theo cấu hình trò chơi; bạn trả đúng giá trong báo giá đã ký.",
-            "Khi bán trên chợ, người bán chịu phí giao thức có thể cấu hình (mặc định {marketFee} %, giới hạn cứng trên chuỗi {marketCap} %) và phí bản quyền riêng {royalty} % cho người sáng tạo. Khoảng {buyback} % phí giao thức được dùng để mua lại và đốt; phần còn lại cùng phí bản quyền vào ngân quỹ. Tạo tin bán cũng đốt {listingBurn} $CG. Phí hiện hành được hiển thị trước khi ký.",
-            "Cược đấu trường bị trừ phí bằng {arenaRake} % tổng tiền cược: {arenaTreasury} % khoản phí vào ngân quỹ, {arenaPool} % tài trợ quỹ giải thưởng mùa và {arenaBurn} % còn lại bị đốt.",
-            "Gói trả bằng $CG đốt {cgBurn} % giá mua. Gói trả bằng SKR được giảm {skrDiscount} %.",
-            "Bạn chịu phí mạng, không phải chúng tôi: phí giao dịch Solana và khoản dự trữ thuê tài khoản mà gói tạo ra. Khoản dự trữ giữ trong lúc xử lý gói được hoàn lại khi tài khoản đóng."
+            "Gói được thanh toán bằng SOL, USDC, $CG hoặc SKR, và mức giá bạn ký là mức giá bạn trả. Giá, ưu đãi và cấu hình gói được đặt trong giới hạn mà các chương trình thực thi, và báo giá hiển thị trước khi bạn ký là báo giá có hiệu lực.",
+            "Giao dịch trên chợ trừ phí giao thức — mặc định {marketFee} %, với mức trần cứng trên chuỗi là {marketCap} % — cùng khoản royalty tác giả riêng {royalty} % do người bán chịu. Khoảng {buyback} % phí giao thức dành cho mua lại và đốt; phần còn lại cùng royalty chuyển vào kho bạc. Tạo một tin đăng cũng đốt {listingBurn} $CG. Các con số hiện hành được hiển thị trước khi ký, và các mức phí mô tả ở đây chính là mức phí mà các chương trình thu.",
+            "Cược ở đấu trường chịu rake {arenaRake} % của quỹ cược: {arenaTreasury} % của rake vào kho bạc, {arenaPool} % tạo quỹ thưởng mùa giải, và {arenaBurn} % còn lại bị đốt. Rake chỉ áp dụng cho khoản cược; số thẻ bạn mang vào trận không bị ảnh hưởng.",
+            "Gói thanh toán bằng $CG đốt {cgBurn} % giá, và gói thanh toán bằng SKR được giảm {skrDiscount} %. Việc đốt là thay đổi nguồn cung token, không phải khoản phí chúng tôi giữ lại, và diễn ra trên chuỗi trong chính giao dịch mua.",
+            "Phí mạng Solana và tiền thuê mở các tài khoản của gói do bạn trả, không phải chúng tôi. Tiền thuê được giữ trong lúc gói đang xử lý sẽ được trả lại cho bạn khi các tài khoản đóng. Phí mạng không bao giờ được hoàn lại — chúng được trả cho mạng lưới, không phải cho chúng tôi."
           ]
         },
         {
-          "h": "5. Hoàn tiền, gói bị kẹt và hủy",
+          "h": "5. Hoàn tiền, gói bị gián đoạn và hủy",
           "p": [
-            "Chương trình không thể đảo ngược kết quả gói đã mở. Điều đó không tước quyền hủy, rút khỏi hợp đồng, hoàn tiền hoặc yêu cầu phù hợp theo luật. Ngoại lệ cho nội dung hay dịch vụ số cần được đánh giá theo thị trường, kèm sự đồng ý và xác nhận rõ ràng mà luật yêu cầu trước khi mua.",
-            "Nếu giá trị ngẫu nhiên không bao giờ được công bố, gói vẫn chưa mở. Chỉ được hoàn toàn bộ khoản thanh toán mua từ kho quỹ sau khi cửa sổ oracle hết hạn và yêu cầu vẫn chưa được công bố: {staleSlots} slot (khoảng {staleMinutes} phút với 400 mili giây mỗi slot; thời gian thực tế có thể khác). Bạn không cần yêu cầu bộ phận hỗ trợ nhưng phải ký lệnh hủy. Phí mạng không được hoàn lại.",
-            "Nếu chúng tôi ngừng bán một đợt phát hành do cấu hình lỗi, khóa bị xâm phạm hoặc yêu cầu quản lý, không có nghĩa mọi giao dịch mua trước đó tự động được hoàn tiền. Gói đã trả tiền đang chờ chỉ có thể dùng cùng cơ chế hoàn tiền của chương trình khi đáp ứng các điều kiện của cơ chế đó. Hoàn tiền bằng loại tiền đã dùng để mua.",
-            "Blockchain không có bồi hoàn thẻ tích hợp; quyền bảo vệ bắt buộc vẫn còn. Trung tâm ghi nhận yêu cầu hoàn tiền và rút khỏi hợp đồng, cung cấp biên nhận tải được và phản hồi của đơn vị vận hành. Gửi yêu cầu không phê duyệt hay thanh toán. Hủy gói treo là cơ chế riêng; quyền theo luật cần được xem xét và áp dụng quy trình bổ sung thích hợp."
+            "Sau khi một gói đã được mở, chương trình không thể đảo ngược kết quả rút: kết quả đã nằm trong bản ghi trên chuỗi. Điều này không xóa bỏ bất kỳ quyền hủy bỏ, rút lại, hoàn tiền hay quyền về sự phù hợp nào mà bạn có theo luật. Việc có áp dụng ngoại lệ cho nội dung số hay không, và ngoại lệ đó đòi hỏi sự đồng ý hay xác nhận nào, phụ thuộc vào từng thị trường, và không nội dung nào trong Điều khoản này từ bỏ quyền không thể từ bỏ.",
+            "Nếu phần tiết lộ ngẫu nhiên không bao giờ đến, gói vẫn chưa mở và khoản thanh toán vẫn nằm trong kho. Việc hoàn lại toàn bộ giá mua trở nên khả dụng khi cửa sổ oracle hết hạn mà yêu cầu vẫn chưa được tiết lộ: {staleSlots} slot, khoảng {staleMinutes} phút với 400 ms mỗi slot, và thời gian thực tế có thể khác. Điều kiện hoàn tiền được đọc từ chương trình, không do nhân viên hỗ trợ phán đoán; bạn là người ký giao dịch hủy, và phí mạng không được hoàn lại.",
+            "Nếu chúng tôi ngừng bán một đợt vì cấu hình lỗi, khóa bị xâm phạm hoặc yêu cầu của cơ quan quản lý, chỉ riêng điều đó không làm mọi giao dịch mua trước đó trở nên được hoàn tiền: một lượt rút đã giao vẫn là đã giao, và đường hoàn tiền qua chương trình vẫn là đường tự động duy nhất. Khi một giao dịch mua đã trả tiền hoàn toàn không được giao, các biện pháp bảo vệ theo luật được áp dụng theo đúng quy định, và chúng tôi xem xét trường hợp đó thay vì giả vờ rằng nó không tồn tại.",
+            "Thanh toán trên chuỗi không có chargeback thẻ, và chúng tôi không dựa vào điều đó. Yêu cầu hoàn tiền và yêu cầu rút lại hợp đồng có thể được gửi tại trung tâm quyền: nơi đây ghi nhận yêu cầu, cấp biên nhận tải về, theo dõi phản hồi của chúng tôi và tự nó không phê duyệt hay thực hiện khoản thanh toán nào. Đừng bao giờ gửi cụm từ hạt giống hay khóa riêng cho bất kỳ ai, kể cả người tự nhận là hỗ trợ của chúng tôi."
           ]
         },
         {
-          "h": "6. Chơi công bằng, thiết bị và những gì chúng tôi có thể tạm dừng",
+          "h": "6. Chơi công bằng, thiết bị và các tính năng bị tạm dừng",
           "p": [
-            "Phần thưởng nhiệm vụ, PvP và mùa bị giới hạn theo thiết bị: ba ví; ví thứ tư trên cùng thiết bị vẫn chơi được nhưng không nhận thưởng. Hệ thống kiểm tra dấu hiệu dàn xếp thắng thua, giao dịch giả tạo và bot. Nhà vận hành xử lý tín hiệu có thể xác minh; mọi hành động của họ với tài khoản của bạn được ghi vào nhật ký kiểm toán mà chúng tôi sẵn sàng cho bạn xem.",
-            "Khi có sự cố, nhà vận hành có thể tạm dừng mua mới, đăng bán, gửi staking và trận đấu. Rút khỏi staking, hủy, hoàn tiền và rút tài sản vẫn hoạt động — không bao giờ dùng việc tạm dừng để đóng băng tài sản của bạn.",
-            "Lợi dụng hệ thống bảo đảm, oracle hoặc lỗi phần mềm để lấy giá trị là vi phạm điều khoản. Chúng tôi có thể đảo ngược thao tác bị ảnh hưởng trong trò chơi; với giá trị trên chuỗi, chỉ thông qua cơ chế sẵn có của các chương trình."
+            "Phần thưởng nhiệm vụ, trận đấu và mùa giải bị giới hạn theo thiết bị: ba ví có thể nhận thưởng trên cùng một thiết bị, ví thứ tư vẫn chơi được nhưng không nhận thưởng. Điều kiện được kiểm tra dựa trên dấu hiệu dàn xếp kết quả, giao dịch khống và bot, và mọi quyết định của đơn vị vận hành về một tài khoản đều được ghi vào nhật ký kiểm toán mà chúng tôi sẵn sàng cho bạn xem. Nếu dấu hiệu sai, hãy khiếu nại qua trung tâm quyền.",
+            "Chúng tôi có thể tạm dừng giao dịch mua mới, tin đăng mới, cược mới và trận đấu mới trong lúc xử lý sự cố. Việc rút khỏi staking, hủy, hoàn tiền và rút tài sản vẫn hoạt động trong thời gian tạm dừng — việc tạm dừng không bao giờ được dùng để phong tỏa tài sản vốn đã thuộc về bạn, và không thay thế cho một quy trình pháp lý mà nếu không sẽ là bắt buộc.",
+            "Khai thác lỗi, hệ thống pity hoặc beacon ngẫu nhiên để trục lợi là vi phạm Điều khoản này. Khi giá trị nằm trên chuỗi, cách khắc phục duy nhất mà chúng tôi có là cơ chế của chính các chương trình; khi giá trị nằm trong trò chơi, chúng tôi có thể đảo ngược các bản ghi liên quan — và chúng tôi sẽ nói rõ đã làm gì và vì sao."
           ]
         },
         {
-          "h": "7. Trách nhiệm của bạn",
+          "h": "7. Ví và giao dịch của bạn",
           "p": [
-            "Bạn chịu trách nhiệm về ví, cụm từ khôi phục và mọi giao dịch mình ký. Chúng tôi không bao giờ hỏi cụm từ khôi phục, không gửi liên kết nhận thưởng đòi hỏi cụm từ đó và không thể thu hồi chữ ký.",
-            "Bạn cần ví Solana cho phép kiểm tra lệnh đang phê duyệt. Nếu yêu cầu ký hiển thị chương trình lạ hoặc số tiền ngoài dự kiến, đừng ký."
+            "Ví, cụm từ hạt giống và mọi chữ ký bạn tạo ra là trách nhiệm của bạn. Chúng tôi không bao giờ hỏi cụm từ hạt giống hay khóa riêng, không bao giờ gửi liên kết «claim» cần chúng, và không ai — kể cả chúng tôi — có thể đảo ngược một chữ ký sau khi đã ký. Hãy giữ cụm từ hạt giống ngoại tuyến và không bao giờ nhập nó vào một trang mà bạn đến từ tin nhắn.",
+            "Hãy dùng ví cho phép bạn xem lệnh trước khi phê duyệt. Nếu một yêu cầu ký hiển thị chương trình lạ, số tiền bất thường hoặc địa chỉ nhận bạn không nhận ra, đừng ký: dừng lại, kiểm tra giao dịch trên trình duyệt khối và hỏi trong kênh chính thức nếu có gì đó không ổn."
           ]
         },
         {
-          "h": "8. Không phải tư vấn tài chính, đầu tư hay cam kết bảo đảm",
+          "h": "8. Không tư vấn đầu tư, không bảo đảm giá trị, giới hạn trách nhiệm",
           "p": [
-            "$CG được thiết kế để dùng trong trò chơi. Mô tả này không quyết định token, phần thưởng, staking hay hoạt động chợ có thuộc diện quản lý hay không. Không bảo đảm giá, thanh khoản, lợi nhuận hoặc lợi suất. Phân loại và giấy phép theo từng nơi vẫn là điều kiện ra mắt.",
-            "Phần mềm được cung cấp theo hiện trạng, không có bất kỳ bảo hành nào, trong phạm vi tối đa pháp luật nơi bạn sống cho phép. Nếu không được phép giới hạn trách nhiệm, giới hạn đó không áp dụng cho bạn.",
-            "Tổng trách nhiệm của chúng tôi đối với một giao dịch mua giới hạn ở số tiền bạn đã trả cho các gói bị ảnh hưởng. Điều này không hạn chế các quyền không thể bị hạn chế, gồm quyền người tiêu dùng vẫn áp dụng bất chấp điều khoản này và mọi bảo hành bắt buộc."
+            "$CG là token trò chơi dành cho việc sử dụng trong trò chơi; việc nó có bị quản lý hay không phụ thuộc vào luật áp dụng cho bạn, và chúng tôi không quyết định câu hỏi đó bằng cách gọi nó là token tiện ích. Không nội dung nào trong trò chơi, cửa hàng, chợ hay đấu trường là tư vấn tài chính hay lời đề nghị đầu tư, và không gì bảo đảm giá, thanh khoản, lợi nhuận hay lợi tức. Tài sản số có thể về 0 và ở đó.",
+            "Dịch vụ được cung cấp «nguyên trạng» và «theo mức sẵn có», không có bảo đảm nào ngoài những bảo đảm mà luật yêu cầu, trong phạm vi tối đa mà luật nơi bạn sống cho phép. Mã hóa, chuỗi khối, oracle và trình duyệt đôi khi hỏng, và chúng tôi không hứa hoạt động liên tục hay không có lỗi.",
+            "Tổng trách nhiệm của chúng tôi cho một giao dịch mua được giới hạn ở số tiền bạn đã trả cho (các) gói liên quan. Mức giới hạn đó không áp dụng nơi luật cấm, và không bao giờ hạn chế các quyền không thể hạn chế — bao gồm quyền của người tiêu dùng, bảo đảm theo luật và các biện pháp khắc phục khi có gian dối hoặc cố ý."
           ]
         },
         {
-          "h": "9. Thay đổi và văn bản được ưu tiên",
+          "h": "9. Thay đổi Điều khoản và văn bản nào có hiệu lực",
           "p": [
-            "Giá, xác suất, phí và cơ chế bảo đảm có thể đổi trong giới hạn chương trình. Điều kiện giao dịch hiện tại phải được hiển thị trước khi ký. Thay đổi quan trọng có thể cần thông báo hoặc thỏa thuận mới theo luật; cập nhật cấu hình không thể xóa quyền bắt buộc.",
-            "Thay đổi quan trọng cần ngày hiệu lực hoặc phiên bản mới và thông báo dễ tiếp cận. Phải lấy lại sự đồng ý khi luật yêu cầu; tiếp tục chơi không tự động là đồng ý đủ ở mọi thị trường. Giữ các cách rút staking, hủy và rút tài sản đang có.",
-            "Tiếng Anh là ngôn ngữ soạn thảo; bản dịch giúp dễ tiếp cận. Ưu tiên tiếng Anh chỉ áp dụng khi hợp pháp và không tước quyền theo quy định bắt buộc về ngôn ngữ, công bố thông tin hoặc bảo vệ người tiêu dùng. Báo chênh lệch cho đơn vị vận hành sau khi thông tin liên hệ được công bố."
+            "Giá gói, tỷ lệ, phí, tham số pity và các loại tiền được hỗ trợ có thể thay đổi trong giới hạn mà các chương trình thực thi. Điều kiện của một giao dịch được hiển thị trước khi bạn ký, và thay đổi cấu hình không viết lại giao dịch đã hoàn tất.",
+            "Chúng tôi có thể sửa đổi Điều khoản này để phản ánh thay đổi của pháp luật, yêu cầu nền tảng, thông lệ bảo mật, tính năng hoặc mô hình thương mại của trò chơi, và để sửa hoặc làm rõ văn bản. Thay đổi không trọng yếu có hiệu lực khi được công bố với ngày mới. Với thay đổi trọng yếu, chúng tôi thông báo trong ứng dụng trước khi nó áp dụng cho bạn và yêu cầu bạn đồng ý lại nếu luật đòi hỏi; việc tiếp tục chơi không được coi là đồng ý khi sự đồng ý phải là rõ ràng.",
+            "Văn bản tiếng Anh là bản gốc và có hiệu lực khi bản dịch và bản gốc khác nhau, nếu luật cho phép kết quả đó; bản dịch vẫn có hiệu lực nếu luật địa phương của bạn trao cho nó hiệu lực đó. Thắc mắc, khiếu nại và tranh chấp được gửi trước tới trung tâm quyền, và các quyền bắt buộc được đưa ra tòa án hoặc cơ quan có thẩm quyền tại quốc gia bạn cư trú không bị ảnh hưởng."
           ]
         }
       ]
@@ -85,60 +85,60 @@
     "privacy": {
       "slug": "privacy",
       "title": "Quyền riêng tư",
-      "intro": "Đăng nhập bằng ví là dùng định danh giả, không phải ẩn danh: địa chỉ, giao dịch, tín hiệu thiết bị và siêu dữ liệu mạng có thể kết hợp để nhận diện cá nhân. Dự thảo này mô tả luồng dữ liệu hiện tại. Phải xác định bên kiểm soát dữ liệu, liên hệ hoạt động được và thông tin theo thị trường trước khi ra mắt công khai có thu phí.",
+      "intro": "Đăng nhập bằng ví là ẩn danh giả, không phải ẩn danh hoàn toàn: địa chỉ, lịch sử giao dịch và tín hiệu thiết bị có thể nhận dạng một người khi được kết hợp. Thông báo này giải thích chúng tôi xử lý gì, vì sao, trong bao lâu và bạn có thể làm gì. Đây không phải biểu mẫu đồng ý — khi luật yêu cầu sự đồng ý cho một hoạt động cụ thể, chúng tôi hỏi riêng. Hãy đọc cùng với Điều khoản sử dụng.",
       "sections": [
         {
-          "h": "1. Dữ liệu chúng tôi thu thập",
+          "h": "1. Chúng tôi xử lý những gì",
           "p": [
-            "Địa chỉ Solana từ chữ ký bạn cung cấp khi đăng nhập. Cookie phiên HttpOnly tên gc_session giúp ứng dụng hiển thị trạng thái của bạn. Phiên mặc định kéo dài 7 ngày và SameSite mặc định là Lax; cấu hình triển khai có thể thay đổi các giá trị này. SameSite=None giữa các trang yêu cầu Secure qua HTTPS.",
-            "Bản ghi trò chơi gắn với địa chỉ: giao dịch mua, mở gói và độ hiếm nhận được, tin bán và đề nghị, vị thế staking, trận đấu trường, nhận thưởng nhiệm vụ, liên kết giới thiệu, hạn mức hằng ngày, bộ đếm bảo đảm và nhật ký kiểm toán hành động trên tài khoản chỉ dành cho nhà vận hành.",
-            "Tín hiệu chống gian lận: hàm băm có thêm salt của dấu vân tay thiết bị, dùng để giới hạn ví trên mỗi thiết bị và loại bỏ việc cày thưởng trùng lặp, cùng cờ xác minh người thật từ Cloudflare Turnstile. Chúng tôi không lưu dấu vân tay thô, không thu thập dữ liệu pin, phông chữ, canvas hay cảm biến thường dùng để tạo dấu vân tay.",
-            "Giới hạn tần suất tạm lưu bộ đếm có khóa là địa chỉ IP hoặc tiền tố mạng, ví hay phiên. Cửa sổ phụ thuộc điểm cuối: thường là 60 giây, một số giới hạn là một giờ. Đây không phải bộ đếm ẩn danh; khóa suy ra từ IP được xử lý để ngăn lạm dụng."
+            "Địa chỉ Solana của bạn, lấy từ chữ ký bạn cung cấp khi đăng nhập. Cookie phiên tên gc_session giữ bạn đăng nhập: HttpOnly, mặc định 7 ngày, SameSite Lax, và SameSite=None chỉ qua HTTPS. Cookie duy trì phiên, không phải công cụ theo dõi bạn trên các trang khác.",
+            "Bản ghi trò chơi gắn với địa chỉ đó: giao dịch mua, lượt mở gói và độ hiếm nhận được, tin đăng và đề nghị, vị thế staking, trận đấu trường, phần thưởng nhiệm vụ, liên kết giới thiệu, hạn mức hằng ngày và bộ đếm pity, cùng nhật ký kiểm toán về các hành động của đơn vị vận hành trên tài khoản của bạn.",
+            "Tín hiệu chống gian lận: hash có muối của dấu vết thiết bị, dùng để thực thi giới hạn ví trên mỗi thiết bị và chống farm trùng lặp, và cờ xác minh con người từ Cloudflare Turnstile. Chúng tôi không lưu dấu vết thô và không thu thập dữ liệu pin, phông chữ, canvas hay cảm biến.",
+            "Bộ đếm giới hạn tần suất, với khóa là địa chỉ IP hoặc tiền tố mạng, ví hoặc phiên, được giữ trong thời gian ngắn — 60 giây ở hầu hết endpoint, một giờ ở một số ít. Những bộ đếm này không phải số liệu ẩn danh; khi khóa là địa chỉ IP thì đó là dữ liệu cá nhân, và chúng tôi xử lý như vậy."
           ]
         },
         {
-          "h": "2. Giảm thiểu dữ liệu",
+          "h": "2. Những gì chúng tôi cố ý không thu thập",
           "p": [
-            "Đăng nhập ví không hỏi tên, email, điện thoại hay giấy tờ. Biểu mẫu tuổi tùy chọn gửi ngày sinh để tính tạm thời; chỉ lưu kết quả ngưỡng, phiên bản chính sách và thời điểm. Tin nhắn hỗ trợ có thể chứa dữ liệu cá nhân. Không gửi giấy tờ, cụm từ khôi phục hay khóa riêng.",
-            "Dữ liệu thẻ thanh toán — khoản thanh toán là giao dịch bạn ký trong ví.",
-            "SDK quảng cáo hoặc phân tích, bản phát lại phiên hay pixel theo dõi. Nếu điều này thay đổi, trang này sẽ được sửa trước."
+            "Đăng nhập bằng ví không hỏi tên, email, số điện thoại hay giấy tờ tùy thân. Bản khai tuổi tùy chọn gửi ngày sinh cho một phép tính duy nhất trên máy chủ; ngày sinh không được lưu, chỉ lưu kết quả, phiên bản chính sách và mốc thời gian. Tin nhắn hỗ trợ có thể chứa dữ liệu cá nhân, và việc bạn viết gì ở đó là lựa chọn của bạn — đừng gửi giấy tờ, cụm từ hạt giống hay khóa riêng.",
+            "Không có dữ liệu thẻ thanh toán. Thanh toán là giao dịch bạn ký từ ví của mình; chúng tôi không thấy số thẻ vì không có thẻ.",
+            "Không SDK quảng cáo hay phân tích, không ghi lại phiên, không pixel theo dõi. Nếu điều đó thay đổi, tài liệu này sẽ thay đổi trước — và thay đổi theo cách buộc chúng tôi phải hỏi bạn."
           ]
         },
         {
-          "h": "3. Điều yêu cầu xóa không thể giải quyết",
+          "h": "3. Điều mà yêu cầu xóa không thể chạm tới",
           "p": [
-            "Mọi thứ trò chơi ghi lên Solana đều công khai, vĩnh viễn và ai cũng đọc được: địa chỉ, gói đã mở, nắp sở hữu và giao dịch, lịch sử staking và đấu trường. Đó không phải cơ sở dữ liệu hay máy chủ của chúng tôi mà là blockchain; không yêu cầu nào gửi cho chúng tôi có thể xóa chúng.",
-            "Xóa ngoài chuỗi không xóa blockchain. Sau khi xem xét, có thể xóa tên/quốc gia hồ sơ, lịch sử/giữ chỗ tên và phiên/nonce; hoạt động mới bị hạn chế và có dấu ghi để áp dụng lại việc xóa hồ sơ. Không phải xóa toàn bộ: bản chiếu chuỗi, hồ sơ tài chính/chống gian lận, khai báo, vụ việc, nhật ký ngoài và sao lưu cần đánh giá riêng. Phục hồi cần sổ riêng tư mới nhất và áp dụng lại trước khi mở dịch vụ."
+            "Những gì trò chơi ghi lên Solana là công khai và vĩnh viễn: địa chỉ của bạn, các gói bạn đã mở, thẻ bạn sở hữu và giao dịch, lịch sử staking và đấu trường. Bản ghi đó nằm trên chuỗi và ở các dịch vụ lập chỉ mục bên thứ ba, không nằm trong cơ sở dữ liệu của chúng tôi, và không yêu cầu nào gửi cho chúng tôi có thể xóa nó. Xóa hồ sơ không viết lại sổ cái.",
+            "Trong hệ thống của chúng tôi, một yêu cầu xóa đã được xem xét có thể xóa tên hiển thị và quốc gia trong hồ sơ, lịch sử tên hiển thị và đặt chỗ, cùng phiên đăng nhập và nonce; yêu cầu đó dừng hoạt động mới và để lại dấu để cùng hồ sơ đó không thể chỉ đơn giản lặp lại yêu cầu xóa tương tự. Đây không phải xóa hoàn toàn: dữ liệu chiếu từ chuỗi, hồ sơ tài chính và chống gian lận, bản khai, vụ việc đang mở, nhật ký bên ngoài và bản sao lưu cần được đánh giá riêng, và việc khôi phục đòi hỏi phải áp dụng lại việc xóa trước khi dịch vụ mở lại."
           ]
         },
         {
           "h": "4. Cookie và lưu trữ cục bộ",
           "p": [
-            "Ứng dụng dùng cookie phiên và bộ nhớ trình duyệt cho ngôn ngữ, giao diện, chuyển động, xác nhận tuổi và trạng thái giao dịch. Tích hợp ví và xác minh có thể dùng bộ nhớ khác. Xóa dữ liệu trình duyệt không xóa máy chủ hay blockchain. Phải rà soát danh mục cookie và bộ nhớ thực tế trước khi ra mắt."
+            "Ứng dụng dùng cookie phiên và lưu trữ trình duyệt cho ngôn ngữ, giao diện, tùy chọn chuyển động, xác nhận độ tuổi và trạng thái giao dịch. Các tích hợp ví và xác minh có thể ghi thêm mục riêng. Xóa dữ liệu trình duyệt chỉ xóa bản sao cục bộ; bản ghi trên máy chủ, vụ việc về quyền và lịch sử trên chuỗi không bị ảnh hưởng."
           ]
         },
         {
-          "h": "5. Cơ sở pháp lý và thời gian lưu giữ",
+          "h": "5. Thời gian lưu và căn cứ pháp lý",
           "p": [
-            "Lệnh bảo trì xóa vụ việc đã đóng sau thời hạn cấu hình, trừ giữ theo luật hoặc bằng chứng hạn chế còn hiệu lực, cùng khai báo hết hạn đủ điều kiện và bản ghi xác thực. Đơn vị vận hành phải lên lịch; có lệnh không có nghĩa là đang chạy. Dữ liệu trò chơi, chống gian lận, kiểm toán và sao lưu khác vẫn cần tiêu chí được duyệt. Không được âm thầm xóa vụ việc mở và bằng chứng cần thiết.",
-            "Bên kiểm soát phải ghi nhận cơ sở pháp lý cho từng mục đích và đánh giá lợi ích chính đáng khi cần. Kết nối ví hay chấp nhận điều khoản không phải đồng ý chung cho mọi xử lý dữ liệu. Turnstile dùng để chống lạm dụng, không được mô tả ở đây là chức năng tùy chọn dựa trên đồng ý; cần đánh giá thông báo và sự đồng ý theo luật trước khi ra mắt."
+            "Một lệnh bảo trì xóa các vụ việc đã đóng sau khoảng thời gian đã cấu hình, trừ khi có lệnh giữ hoặc chứng cứ về hạn chế, đồng thời xóa bản khai hết hạn và bản ghi xác thực cũ. Việc chạy lệnh là nhiệm vụ của đơn vị vận hành: có lệnh không có nghĩa là nó đã chạy theo lịch. Các nhóm khác — bản ghi trò chơi, tín hiệu chống gian lận, nhật ký kiểm toán và bản sao lưu — được giữ theo tiêu chí phải được phê duyệt cho dịch vụ đã triển khai, và vụ việc đang mở cùng chứng cứ cần thiết không bị xóa âm thầm.",
+            "Mỗi mục đích xử lý cần một căn cứ pháp lý được ghi nhận và, khi căn cứ là lợi ích hợp pháp, một đánh giá được ghi nhận. Kết nối ví hay chấp nhận các tài liệu này không phải là sự đồng ý chung cho mọi thứ khác. Turnstile chạy trong luồng chống lạm dụng vì trò chơi cần nó, không phải như một tiện ích tùy chọn."
           ]
         },
         {
-          "h": "6. Những ai khác thấy dữ liệu",
+          "h": "6. Ai khác nhìn thấy dữ liệu",
           "p": [
-            "Cloudflare — CDN/WAF, thử thách Turnstile và mã quốc gia cho chặn khu vực — thấy siêu dữ liệu yêu cầu. Chúng tôi đọc tiêu đề quốc gia của họ để nhận diện khu vực. Khóa giới hạn tần suất suy ra từ IP cũng được xử lý như mô tả ở §1.",
-            "Nhà cung cấp RPC Solana chuyển tiếp truy vấn và giao dịch, có thể nhận IP, thời điểm yêu cầu, định danh ví và siêu dữ liệu kết nối, không chỉ dữ liệu chuỗi công khai. Phải xác định nhà cung cấp thực tế, vai trò hợp đồng và việc chuyển dữ liệu quốc tế của dịch vụ triển khai.",
-            "Dịch vụ giá và ngẫu nhiên gồm Pyth, Hermes và Switchboard. Sự kiện on-chain là công khai; yêu cầu dịch vụ cũng có thể lộ siêu dữ liệu mạng cho nhà cung cấp hạ tầng. Đơn vị vận hành phải kiểm chứng luồng thực tế thay vì hứa rằng họ chỉ thấy giao dịch.",
-            "Phiên bản này không tích hợp SDK Sentry; chỉ đặt DSN không tạo cơ chế báo lỗi hay rút gọn địa chỉ ví. Telemetry tương lai cần danh mục dữ liệu, bên nhận, cơ sở pháp lý được kiểm chứng và sự đồng ý cần thiết trước khi bật. Nhật ký máy chủ có thể chứa định danh ví và phải có thời hạn lưu cùng kiểm soát truy cập."
+            "Cloudflare cung cấp CDN, WAF và thử thách Turnstile, và thấy siêu dữ liệu yêu cầu — bao gồm tiêu đề quốc gia mà chúng tôi dùng để phát hiện khu vực.",
+            "Các nhà cung cấp RPC của Solana chuyển tiếp lượt đọc và giao dịch và có thể thấy địa chỉ IP, thời điểm yêu cầu, định danh ví và siêu dữ liệu kết nối khác, không chỉ dữ liệu công khai trên chuỗi. Nhà cung cấp thực tế mà dịch vụ đã triển khai sử dụng, vai trò của họ và mọi chuyển dữ liệu quốc tế cần được xác định cho lần triển khai đó.",
+            "Các dịch vụ giá và ngẫu nhiên — Pyth, Hermes và Switchboard — nhận yêu cầu có thể để lộ siêu dữ liệu mạng cho hạ tầng của họ ngoài kết quả trên chuỗi. Bản thân sự kiện trên chuỗi vốn công khai theo thiết kế.",
+            "Không có SDK báo lỗi kiểu Sentry nào được tích hợp, và việc cấu hình DSN tự nó không thay đổi điều đó. Nhật ký vận hành của máy chủ có thể chứa định danh ví và chịu sự điều chỉnh về thời gian lưu và kiểm soát truy cập; mọi telemetry trong tương lai phải có danh mục dữ liệu đã kiểm chứng, bên nhận được nêu tên, căn cứ pháp lý và sự đồng ý nếu luật yêu cầu trước khi được bật."
           ]
         },
         {
-          "h": "7. Quyền của bạn và cách liên hệ",
+          "h": "7. Quyền của bạn và cách thực hiện",
           "p": [
-            "Quyền truy cập, sửa, xóa, phản đối, chuyển dữ liệu và khiếu nại lên cơ quan giám sát, kể cả yêu cầu xóa dữ liệu trong cơ sở dữ liệu của chúng tôi. Nếu quyền mâu thuẫn với đặc tính blockchain (xem §3), chúng tôi sẽ nói rõ phần nào làm được và không làm được, thay vì giả vờ.",
-            "Có thể gửi yêu cầu hỗ trợ và riêng tư sau khi đăng nhập ví dù tuổi hay vùng chặn hoạt động mới. Có biên nhận, trao đổi và bản xuất giới hạn; truy cập rộng hơn được yêu cầu riêng. Chưa xác định danh tính đơn vị vận hành/bên kiểm soát và liên hệ bên ngoài; phải công bố, gồm cách khác cho người không đăng nhập ví được. Không cung cấp cụm từ khôi phục hay khóa riêng.",
-            "Sản phẩm dành cho người lớn ({age}+). Tuổi do tự khai, không xác minh độc lập. Khai báo bị từ chối có thời gian chờ; đơn vị vận hành có thể xem xét sửa trước khi cho khai lại. Đây chưa phải chương trình bảo vệ trẻ em đầy đủ hay bảo đảm tuổi đủ theo luật."
+            "Bạn có thể yêu cầu truy cập, chỉnh sửa, xóa, hạn chế, phản đối và chuyển dữ liệu, và có thể khiếu nại với cơ quan giám sát nơi bạn sống. Yêu cầu được gửi tại trung tâm quyền sau khi đăng nhập bằng ví — con đường vẫn hoạt động ngay cả khi kiểm tra tuổi hoặc khu vực chặn các hoạt động khác. Trung tâm cấp biên nhận và bản xuất dữ liệu tự phục vụ có giới hạn; có thể yêu cầu phạm vi truy cập rộng hơn.",
+            "Một số câu trả lời sẽ chỉ một phần do cách chuỗi khối vận hành: khi một quyền vướng vào bản ghi vĩnh viễn mô tả ở §3, chúng tôi nói rõ phần nào chúng tôi có thể thực hiện và phần nào không ai có thể. Đừng bao giờ gửi cụm từ hạt giống hay khóa riêng kèm yêu cầu, và coi mọi tin nhắn yêu cầu chúng là một nỗ lực đánh cắp.",
+            "Sản phẩm dành cho người lớn ({age}+). Kết quả độ tuổi là tự khai, không được xác minh độc lập; sau một bản khai bị từ chối có thời gian chờ, và việc chỉnh sửa có thể được xem xét trước khi cho phép khai lại. Đó không phải chương trình bảo vệ trẻ em hay xác minh độ tuổi đầy đủ, và chúng tôi không mô tả nó như vậy."
           ]
         }
       ]

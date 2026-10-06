@@ -235,7 +235,7 @@ const en = {
   errors: {
     rejected: 'You rejected the signature', insufficient: 'Not enough balance', network: 'Network error — try again', stale: 'Quote expired — refresh', generic: 'Something went wrong',
   },
-  legal: { title: 'Legal', terms: 'Terms of Service', privacy: 'Privacy', updated: 'Effective {date}', draftTitle: 'Draft — not yet reviewed by counsel', draftBody: 'This text describes how the product actually works, but no lawyer has signed it off yet. Until that happens treat it as a statement of intent, not as advice — and note that the region limits in §2 are already enforced in code.', canonical: 'The English text is the canonical version; translations are convenience copies.', ages: '18+ only', noSaleIn: 'no pack sales in', verify: 'Verify a past draw', notFound: 'No such document. The two that exist:' },
+  legal: { title: 'Legal', terms: 'Terms of Service', privacy: 'Privacy', updated: 'Effective {date}', canonical: 'The English text is the canonical version; translations are convenience copies.', ages: '18+ only', noSaleIn: 'no pack sales in', verify: 'Verify a past draw', notFound: 'No such document. The two that exist:' },
   age: { title: 'Are you 18 or older?', body: 'GUTTERCAPS sells randomised packs. You must be at least {age} and old enough to enter a contract where you live.', termsLink: 'Read the terms first', confirm: 'I am {age}+', deny: 'I am not', declined: 'Purchases stay off for you: the game requires {age}+. Everything already yours keeps working — collection, market, staking and arena.', reopen: 'Answer again' },
   preorder: {
     title: 'Founders pre-sale',

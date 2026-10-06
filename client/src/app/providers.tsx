@@ -43,4 +43,4 @@ export function Providers({ children }: { children: ReactNode }) {
   );
 }
 
-export { queryClient };
+

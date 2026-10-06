@@ -23,7 +23,7 @@ export function fmtUnits(v: bigint | string | number | undefined | null, decimal
 }
 
 export const fmtSol = (lamports: bigint | string | number | undefined | null, maxFrac = 3) => `${fmtUnits(lamports, 9, maxFrac)} SOL`;
-export const fmtUsdc = (micro: bigint | string | number | undefined | null) => `${fmtUnits(micro, 6, 2, 2)} USDC`;
+const fmtUsdc = (micro: bigint | string | number | undefined | null) => `${fmtUnits(micro, 6, 2, 2)} USDC`;
 export const fmtCg = (micro: bigint | string | number | undefined | null, maxFrac = 2) => `${fmtUnits(micro, 6, maxFrac)} $CG`;
 export const fmtSkr = (micro: bigint | string | number | undefined | null, maxFrac = 2) => `${fmtUnits(micro, 6, maxFrac)} SKR`;
 

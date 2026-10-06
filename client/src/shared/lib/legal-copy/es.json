@@ -1,83 +1,83 @@
 {
-  "revision": "2026-09-29.5",
-  "sha256": "d871fd12ff18be592bb985c18da7dd3f5c1a40e0bd55d356c494204009ccfe81",
+  "revision": "2026-10-06.1",
+  "sha256": "ddfada3bdc5084a2ad847c1c9ca5d1d9b84e19dc4ac6b0c52718846c2ee20f6c",
   "docs": {
     "terms": {
       "slug": "terms",
-      "title": "Términos de servicio",
-      "intro": "Estos términos en borrador describen GUTTERCAPS y su funcionamiento on-chain. El código determina la ejecución de la transacción, no los derechos legales del consumidor. La ley imperativa prevalece sobre términos o comportamientos del programa incompatibles. Aún no se han designado operador ni mercados de lanzamiento; este texto no autoriza un lanzamiento público de pago.",
+      "title": "Términos del servicio",
+      "intro": "GUTTERCAPS es un juego de navegador en Solana: compras sobres de fichas coleccionables y el contenido de cada sobre se sortea a partir de una distribución publicada. Estos Términos del servicio constituyen un acuerdo legalmente vinculante entre tú y el operador de GUTTERCAPS («nosotros», «nos», «nuestro»), y cubren el juego, la aplicación web, la tienda, el mercado, el staking, la arena, el centro de derechos y cualquier función relacionada (los «Servicios»). Aceptas estos Términos al usar los Servicios de cualquier forma: abriendo la aplicación, conectando una cartera o firmando una transacción. Si no los aceptas, no uses los Servicios. Atención: la sección 8 limita nuestra responsabilidad y la sección 9 explica cómo cambian estos Términos y qué texto prevalece. Nada de lo aquí escrito elimina los derechos que te otorga la ley imperativa; esos derechos prevalecen sobre este documento y sobre el comportamiento de cualquier contrato inteligente.",
       "sections": [
         {
-          "h": "1. Qué es este producto",
+          "h": "1. Qué es GUTTERCAPS",
           "p": [
-            "Un juego de navegador en Solana. Compras paquetes de caps coleccionables; la ficha recibida se sortea según una distribución publicada. Las caps son activos de Solana controlados por la cartera, incluidos los activos comprimidos de Bubblegum V2 y los antiguos activos de Metaplex Core. No custodiamos las claves de tu cartera ni ofrecemos un servicio de depósitos o retiradas con custodia.",
-            "Los paquetes son artículos de pago con contenido aleatorio. No afirmamos lo contrario ni los presentamos como una compra de valor garantizado. Las restricciones regionales del §2 existen porque varios reguladores consideran esta mecánica un juego de azar."
+            "Un juego de fichas, sobres y territorio en Solana. Coleccionas fichas, montas equipamientos, las intercambias, las pones en staking y luchas con ellas. Las fichas son activos de Solana controlados por la cartera: activos comprimidos emitidos mediante Bubblegum V2 y activos Metaplex Core en los drops anteriores. No custodiamos tus claves ni operamos un servicio de depósito o retirada: los activos permanecen en tu cartera, bajo tu control, y cada movimiento es una transacción que firmas tú.",
+            "Los sobres son artículos de pago con contenido aleatorio, y lo decimos sin rodeos: pagas por un sobre y la ficha que contiene se sortea de una distribución publicada, no la eliges tú ni la elegimos nosotros. Las fichas son objetos coleccionables con uso en el juego, no un producto de inversión, y $CG está pensado para usarse dentro del juego. Un contrato inteligente ejecuta transacciones y aplica las reglas del juego; no define tus derechos legales ni puede pasar por encima de la ley imperativa. Si este texto, el código y la ley imperativa discrepan, prevalece la ley."
           ]
         },
         {
-          "h": "2. Quién puede jugar y dónde no se venden paquetes",
+          "h": "2. Quién puede jugar y dónde no se venden sobres",
           "p": [
-            "Debes tener al menos {age} años y cumplir cualquier umbral local o configurado superior. El centro recibe una declaración de nacimiento; el servidor calcula la elegibilidad sin guardar la fecha. Es autodeclaración, no verificación de edad o identidad. Los controles de producción pueden exigir una declaración vigente antes de nuevas actividades.",
-            "Las comprobaciones de edad y ubicación están desactivadas por defecto; pueden reactivarse expresamente en la configuración del despliegue. Cuando está activado, el control anterior de cotización de sobres restringe las regiones detectadas {regions}; las reglas configurables por función y la detección fiable del país también cubren determinadas acciones de la API y la firma de transacciones mediante nuestro cliente. Los países desconocidos se rechazan cuando las comprobaciones están activas. Estos controles no impiden las llamadas directas a la cadena ni acreditan permiso legal en otros países.",
-            "El país se estima mediante metadatos de red en el borde y puede ser incorrecto. Usar una VPN por privacidad no está prohibido por sí mismo, pero no debes falsear tu elegibilidad ni eludir restricciones legales aplicables. Una VPN no cambia la ley que te corresponde."
+            "Debes tener al menos {age} años para usar los Servicios, y más si la ley de tu país exige un umbral mayor. La edad es una autodeclaración: el centro de derechos acepta una declaración con fecha de nacimiento, el servidor calcula el resultado sin almacenar la fecha, y solo se conservan el resultado, la versión de la política y las marcas de tiempo. Eso no es verificación de identidad, y podemos pedir una nueva declaración antes de una nueva actividad.",
+            "Varios reguladores consideran que los sobres de pago con contenido aleatorio son una mecánica de juego de azar, por lo que la venta de sobres puede restringirse por región. Cuando el bloqueo de sobres está activo, las compras se rechazan para las regiones detectadas {regions}, y también para países desconocidos; comprobaciones del mismo tipo pueden aplicarse a determinadas acciones de la API y a la firma de transacciones desde nuestro cliente. La detección usa metadatos de red en el borde y puede equivocarse. Estos controles no impiden una llamada directa al contrato inteligente desde otro cliente y, por sí solos, no significan que tu jurisdicción permita jugar.",
+            "Usar una VPN por privacidad no está prohibido. Falsear tu ubicación o eludir una restricción que se te aplica sí lo está. Si no tienes claro que el juego sea lícito y esté permitido donde vives, resuélvelo antes de pagar: esa valoración es tuya, y ninguna configuración de nuestro lado convierte un uso ilícito en lícito."
           ]
         },
         {
-          "h": "3. Probabilidades, garantía progresiva y aleatoriedad verificable",
+          "h": "3. Contenido de los sobres, probabilidades publicadas y sorteos verificables",
           "p": [
-            "La distribución de rarezas, la rareza mínima garantizada y el contador de garantía de cada paquete se publican en la tienda y se definen en el código (packages/economy PACKS; Paquete inicial: {starterCaps} caps; Paquete estándar: {standardCaps} caps; Paquete prémium: {premiumCaps} caps; Paquete de evento limitado: {limitedCaps} caps). El programa en cadena aplica la misma tabla, incluidos los límites estrictos de los dos niveles superiores.",
-            "Los sorteos utilizan una fuente de aleatoriedad con compromiso y revelación (Switchboard on-demand). Ambos se registran en cadena, por lo que se puede recalcular un resultado pasado: la pantalla de verificación recibe una transacción de apertura y reproduce la expansión realizada por el programa. Un oráculo que no responde nunca quema tu pago en silencio: consulta el §5.",
-            "Los contadores de garantía son independientes por cartera y SKU y se guardan en cadena. No prometen un resultado concreto para un sorteo; limitan la peor racha posible."
+            "La distribución de rarezas, la garantía mínima y el contador de pity de cada sobre se publican en la tienda antes de pagar y están definidos en código: Starter Pack {starterCaps} fichas, Standard Pack {standardCaps} fichas, Premium Pack {premiumCaps} fichas, Limited Event Pack {limitedCaps} fichas. El programa on-chain aplica la misma tabla, incluidos límites estrictos en los dos niveles más raros, así que las probabilidades que lees son las que aplica el programa.",
+            "Los sorteos usan un faro de aleatoriedad commit–reveal (Switchboard on demand). Tanto el compromiso como la revelación están on-chain, lo que permite recalcular un resultado pasado: la pantalla de verificación reproduce la misma expansión que ejecutó el programa, y puedes comprobar un sorteo por tu cuenta sin pedirnos nada.",
+            "Los contadores de pity se mantienen por cartera y por tipo de sobre, on-chain. El contador limita la peor racha posible; no es una promesa sobre un sorteo concreto ni altera la distribución publicada de ningún sobre individual."
           ]
         },
         {
-          "h": "4. Precio, comisiones y quema",
+          "h": "4. Precios, comisiones y qué se quema",
           "p": [
-            "Los paquetes tienen un precio equivalente en moneda fiduciaria que se paga en SOL, USDC, $CG o SKR. El operador fija los precios, que cambian con la configuración del juego; pagas el precio de la cotización que has firmado.",
-            "Las ventas del mercado descuentan al vendedor una comisión de protocolo configurable (por defecto, {marketFee} %; límite estricto en cadena, {marketCap} %) y unos derechos de autor independientes del {royalty} %. Aproximadamente el {buyback} % de la comisión de protocolo se destina a recompra y quema; el resto y los derechos de autor van a la tesorería. Crear un anuncio también quema {listingBurn} $CG. La comisión vigente se muestra antes de firmar.",
-            "Las apuestas de la arena descuentan un {arenaRake} % del bote: el {arenaTreasury} % de esa comisión va a la tesorería, el {arenaPool} % financia los premios de temporada y el {arenaBurn} % restante se quema.",
-            "Los paquetes pagados en $CG queman el {cgBurn} % del precio. Los pagos en SKR reciben un descuento del {skrDiscount} %.",
-            "Los gastos de red —comisiones de transacción de Solana y reserva de alquiler de las cuentas creadas por un paquete— corren por tu cuenta, no por la nuestra. La reserva mantenida durante la tramitación del paquete se devuelve al cerrar la cuenta."
+            "Los sobres se pagan en SOL, USDC, $CG o SKR, y el precio que firmas es el precio que pagas. Los precios, descuentos y la configuración de los sobres se fijan dentro de los límites que aplican los programas, y la cotización que se te muestra antes de firmar es la que vale.",
+            "Las ventas en el mercado descuentan una comisión de protocolo — {marketFee} % por defecto, con un tope estricto on-chain del {marketCap} % — más un royalty de creador aparte del {royalty} %, a cargo del vendedor. Alrededor del {buyback} % de la comisión de protocolo se destina a recompra y quema; el resto y el royalty van a la tesorería. Crear un anuncio también quema {listingBurn} $CG. Las cifras vigentes se muestran antes de firmar, y las comisiones aquí descritas son las que cobran los programas.",
+            "Las apuestas de arena pagan un rake del {arenaRake} % del bote: el {arenaTreasury} % del rake va a la tesorería, el {arenaPool} % forma el premio de la temporada y el {arenaBurn} % restante se quema. El rake se aplica solo a la apuesta; las fichas que llevas a un combate no se ven afectadas.",
+            "Los sobres pagados en $CG queman el {cgBurn} % del precio, y los sobres pagados en SKR reciben un {skrDiscount} % de descuento. La quema es un cambio en la oferta del token, no una comisión que nos quedemos, y ocurre on-chain en la misma transacción de la compra.",
+            "Las comisiones de red de Solana y el alquiler que abre las cuentas de un sobre corren por tu cuenta, no por la nuestra. El alquiler reservado mientras un sobre está en trámite se te devuelve cuando se cierran las cuentas. Las comisiones de red nunca se reembolsan: se pagan a la red, no a nosotros."
           ]
         },
         {
-          "h": "5. Reembolsos, paquetes atascados y cancelaciones",
+          "h": "5. Reembolsos, sobres interrumpidos y cancelaciones",
           "p": [
-            "El programa no puede revertir el sorteo de un paquete abierto. Esto no elimina los derechos legales de cancelación, desistimiento, reembolso o conformidad. Las excepciones para contenido o servicios digitales requieren evaluación por mercado y cualquier consentimiento y reconocimiento expreso exigido por ley antes de comprar.",
-            "Si nunca llega la revelación del valor aleatorio, el paquete permanece cerrado. El reembolso íntegro del pago de compra desde la bóveda solo está disponible cuando vence el plazo del oráculo y la solicitud sigue sin revelarse: {staleSlots} slots (aproximadamente {staleMinutes} minutos a 400 ms por slot; el tiempo real varía). No necesitas pedirlo al soporte, pero debes firmar la cancelación. Las comisiones de red no se reembolsan.",
-            "Si dejamos de vender una edición por una configuración defectuosa, una clave comprometida o una solicitud regulatoria, eso no convierte automáticamente todas las compras anteriores en reembolsables. Los paquetes pagados y pendientes solo pueden utilizar el mismo mecanismo de reembolso del programa cuando se cumplen sus condiciones. Se devuelve la moneda utilizada en la compra.",
-            "La cadena no incorpora chargeback de tarjeta; no se excluyen remedios obligatorios. El centro registra solicitudes de reembolso y desistimiento, ofrece acuses descargables y muestra respuestas. Enviar no aprueba ni ejecuta pagos. Cancelar un paquete atascado es un mecanismo separado; los derechos legales requieren revisión del operador y los demás procesos aplicables."
+            "Una vez abierto un sobre, el programa no puede revertir su sorteo: el resultado ya forma parte del registro on-chain. Esto no elimina ningún derecho legal de desistimiento, retirada, reembolso o conformidad que tengas. Si se aplica una excepción para contenido digital y qué consentimiento o confirmación exige depende del mercado en cuestión, y nada en estos Términos renuncia a un derecho al que no se puede renunciar.",
+            "Si la revelación de aleatoriedad nunca llega, el sobre queda cerrado y el pago permanece en la bóveda. El reembolso íntegro del precio está disponible cuando la ventana del oráculo expira y la solicitud sigue sin revelarse: {staleSlots} slots, aproximadamente {staleMinutes} minutos a 400 ms por slot, con tiempos reales que pueden variar. Las condiciones del reembolso se leen del programa, no las decide una persona de soporte; tú firmas la transacción de cancelación, y las comisiones de red no se reembolsan.",
+            "Si dejamos de vender un drop por una configuración defectuosa, una clave comprometida o una exigencia regulatoria, eso por sí solo no hace reembolsable toda compra anterior: un sorteo entregado sigue entregado, y la vía de reembolso del programa sigue siendo la única automática. Cuando una compra pagada nunca llegó a entregarse, se aplican las protecciones legales en sus propios términos, y estudiamos el caso en lugar de fingir que no existe.",
+            "Los pagos en blockchain no tienen contracargo de tarjeta, y no contamos con ello. Las solicitudes de reembolso y de desistimiento pueden presentarse en el centro de derechos: registra la solicitud, te da un recibo descargable, sigue nuestra respuesta y, por sí mismo, no aprueba ni ejecuta ningún pago. Nunca envíes una frase semilla ni una clave privada a nadie, tampoco a quien diga ser nuestro soporte."
           ]
         },
         {
-          "h": "6. Juego limpio, dispositivos y funciones que podemos pausar",
+          "h": "6. Juego limpio, dispositivos y funciones pausadas",
           "p": [
-            "Las recompensas de misiones, PvP y temporadas están limitadas por dispositivo: tres carteras; una cuarta en el mismo dispositivo puede jugar, pero no recibe recompensas. Se comprueban indicios de victorias pactadas, operaciones ficticias y bots. Un operador resuelve los indicios verificables, y cada actuación sobre tu cuenta queda en un registro de auditoría que estamos dispuestos a mostrarte.",
-            "El operador puede pausar nuevas compras, anuncios, depósitos en staking y batallas durante un incidente. Retirar del staking, cancelar, reembolsar y retirar fondos sigue funcionando: una pausa nunca se utiliza para congelar tus activos.",
-            "Abusar de la garantía progresiva, del oráculo o de un error del software para extraer valor incumple estos términos. Podemos revertir las operaciones afectadas dentro del juego y, para el valor en cadena, únicamente mediante los mecanismos de los propios programas."
+            "Las recompensas de misiones, combates y temporadas están limitadas por dispositivo: tres carteras pueden ganar en el mismo dispositivo y una cuarta puede seguir jugando, pero no gana nada. La elegibilidad se comprueba frente a señales de amaño de resultados, operaciones ficticias y bots, y toda decisión de un operador sobre una cuenta queda registrada en un registro de auditoría que estamos dispuestos a mostrarte. Si una señal es errónea, reclama en el centro de derechos.",
+            "Podemos pausar nuevas compras, nuevos anuncios, nuevas apuestas y nuevos combates mientras se gestiona un incidente. Retirar del staking, cancelar, reembolsar y sacar fondos siguen funcionando durante la pausa: la pausa nunca se usa para congelar activos que ya son tuyos ni sustituye un proceso legal que de otro modo sería necesario.",
+            "Explotar un error, el sistema de pity o el faro de aleatoriedad para extraer valor incumple estos Términos. Cuando el valor está on-chain, la única corrección de la que disponemos son los mecanismos de los propios programas; cuando está dentro del juego, podemos revertir los registros afectados, y te diremos qué hicimos y por qué."
           ]
         },
         {
-          "h": "7. Tu responsabilidad",
+          "h": "7. Tu cartera y tus transacciones",
           "p": [
-            "Eres responsable de tu cartera, su frase de recuperación y cada transacción que firmas. Nunca pedimos esa frase, nunca enviamos enlaces para reclamar recompensas que la exijan y no podemos deshacer una firma.",
-            "Necesitas una cartera Solana que permita examinar la instrucción que apruebas. Si una solicitud de firma muestra un programa desconocido o un importe inesperado, no la firmes."
+            "Tu cartera, tu frase semilla y cada firma que produces son responsabilidad tuya. Nunca pedimos una frase semilla ni una clave privada, nunca enviamos un enlace de «claim» que las necesite, y nadie —tampoco nosotros— puede deshacer una firma a posteriori. Guarda la frase fuera de línea y nunca la escribas en una página a la que llegaste desde un mensaje.",
+            "Usa una cartera que te permita inspeccionar la instrucción antes de aprobarla. Si una solicitud de firma muestra un programa desconocido, un importe inesperado o un destino que no reconoces, no firmes: detente, comprueba la transacción en un explorador de bloques y pregunta en el canal oficial si algo parece ir mal."
           ]
         },
         {
-          "h": "8. Sin asesoramiento financiero, inversión ni garantías",
+          "h": "8. Sin asesoramiento de inversión, sin valor garantizado, límites de responsabilidad",
           "p": [
-            "$CG está destinado al uso en el juego. Esa descripción no determina si el token, las recompensas, el staking o el mercado están regulados. No se garantiza precio, liquidez, beneficio ni rentabilidad. La clasificación y los permisos por jurisdicción siguen siendo condiciones de lanzamiento.",
-            "El software se proporciona tal cual, sin garantías de ningún tipo, en la máxima medida permitida por la legislación de tu lugar de residencia. Cuando no se permite limitar la responsabilidad, ese límite no se te aplica.",
-            "Nuestra responsabilidad total por una compra se limita al importe pagado por los paquetes afectados. Esto no restringe derechos irrenunciables, incluidos los derechos del consumidor que prevalezcan sobre esta cláusula y cualquier garantía que estemos obligados a ofrecer."
+            "$CG es un token de juego destinado al uso dentro del juego; si está regulado depende de la ley que se te aplique, y no decidimos esa cuestión llamándolo token de utilidad. Nada en el juego, la tienda, el mercado o la arena es asesoramiento financiero ni una oferta de inversión, y nada garantiza precio, liquidez, beneficio o rentabilidad. Los activos digitales pueden caer a cero y quedarse ahí.",
+            "Los Servicios se prestan «tal cual» y «según disponibilidad», sin más garantías que las exigidas por ley, en la máxima medida que permita la ley de tu país. El cifrado, las blockchains, los oráculos y los navegadores fallan a veces, y no prometemos un funcionamiento ininterrumpido ni libre de errores.",
+            "Nuestra responsabilidad agregada por una compra se limita al importe que pagaste por el sobre o sobres afectados. Ese límite no se aplica donde la ley lo prohíbe y nunca restringe derechos a los que no se puede renunciar, incluidos los derechos del consumidor, las garantías legales y las protecciones frente a fraude o dolo."
           ]
         },
         {
-          "h": "9. Cambios y texto que prevalece",
+          "h": "9. Cambios en estos Términos y qué texto prevalece",
           "p": [
-            "Precios, probabilidades, comisiones y garantías pueden cambiar dentro de los límites del programa. Las condiciones vigentes deben mostrarse antes de firmar. Un cambio sustancial puede exigir aviso o nuevo acuerdo por ley; actualizar la configuración no anula derechos imperativos.",
-            "Los cambios sustanciales requieren nueva fecha o revisión y un aviso accesible. Debe obtenerse un nuevo acuerdo cuando lo exija la ley; seguir jugando no basta como consentimiento en todos los mercados. Deben preservarse las vías disponibles de salida del staking, cancelación y retirada.",
-            "El inglés es el idioma de redacción; las traducciones facilitan el acceso. Su prevalencia solo rige donde sea legal y no elimina derechos derivados de normas obligatorias de idioma, información o protección del consumidor. Comunica discrepancias al operador cuando publique sus contactos."
+            "Los precios de los sobres, las probabilidades, las comisiones, los parámetros de pity y las monedas admitidas pueden cambiar dentro de los límites que aplican los programas. Las condiciones de una transacción se muestran antes de firmarla, y un cambio de configuración no reescribe retroactivamente una transacción ya completada.",
+            "Podemos modificar estos Términos para reflejar cambios en la ley, en requisitos de plataformas, en prácticas de seguridad, en la funcionalidad o en el modelo comercial del juego, y para corregir o aclarar el texto. Los cambios no materiales entran en vigor al publicarse con una nueva fecha. Para un cambio material avisamos en la aplicación antes de que se te aplique y pedimos tu consentimiento renovado cuando la ley lo exija; seguir jugando no se considera consentimiento cuando este debe ser explícito.",
+            "El texto en inglés es el original y prevalece cuando una traducción y el original discrepen, si la ley permite ese resultado; una traducción sigue rigiendo si tu ley local le da ese efecto. Las dudas, reclamaciones y disputas pasan primero por el centro de derechos, y los derechos imperativos a acudir a un tribunal o autoridad de tu país de residencia no se ven afectados."
           ]
         }
       ]
@@ -85,60 +85,60 @@
     "privacy": {
       "slug": "privacy",
       "title": "Privacidad",
-      "intro": "El acceso con cartera es seudónimo, no anónimo: direcciones, transacciones, señales del dispositivo y metadatos de red combinados pueden identificar a una persona. Este borrador describe los flujos actuales. El responsable, sus contactos operativos y la información por mercado deben definirse antes del lanzamiento público de pago.",
+      "intro": "Iniciar sesión con una cartera es seudónimo, no anónimo: una dirección, un historial de transacciones y una señal del dispositivo pueden identificar a una persona cuando se combinan. Este aviso explica qué tratamos, por qué, durante cuánto tiempo y qué puedes hacer al respecto. No es un formulario de consentimiento: cuando la ley exige consentimiento para un tratamiento concreto, lo pedimos por separado. Léelo junto con los Términos del servicio.",
       "sections": [
         {
-          "h": "1. Qué recopilamos",
+          "h": "1. Qué tratamos",
           "p": [
-            "Tu dirección Solana, obtenida de la firma que proporcionas al iniciar sesión. Una cookie de sesión HttpOnly llamada gc_session permite mostrar tu estado en la aplicación. La sesión dura 7 días por defecto y SameSite usa Lax; la configuración del despliegue puede cambiar estos valores. SameSite=None entre sitios exige Secure mediante HTTPS.",
-            "Registros del juego vinculados a esa dirección: compras, aperturas de paquetes y rarezas obtenidas, anuncios y ofertas, posiciones en staking, partidas de arena, recompensas de misiones, enlaces de invitación, límites diarios y contadores de garantía y, solo para operadores, el registro de auditoría de las actuaciones sobre tu cuenta.",
-            "Señales antifraude: un hash con sal de la huella del dispositivo para aplicar el límite de carteras y evitar el farming duplicado, y un indicador de persona real de Cloudflare Turnstile. No almacenamos la huella original ni recopilamos datos de batería, fuentes, canvas o sensores con los que suelen construirse estas huellas.",
-            "El control de frecuencia almacena temporalmente contadores cuyas claves son una dirección IP o prefijo de red, cartera o sesión. Las ventanas dependen del endpoint: normalmente 60 segundos, con algunos límites de una hora. No son contadores anónimos; las claves derivadas de IP se procesan para prevenir abusos."
+            "Tu dirección de Solana, obtenida de la firma que aportas al iniciar sesión. Una cookie de sesión llamada gc_session mantiene tu sesión: HttpOnly, 7 días por defecto, SameSite Lax, y SameSite=None solo por HTTPS. La cookie mantiene una sesión y no es un mecanismo para rastrearte en otros sitios.",
+            "Registros de juego vinculados a esa dirección: compras, aperturas de sobres y rarezas obtenidas, anuncios y ofertas, posiciones de staking, combates de arena, recompensas de misiones, enlaces de referidos, límites diarios y contadores de pity, además del registro de auditoría de las acciones del operador sobre tu cuenta.",
+            "Señales antifraude: un hash con sal de la huella del dispositivo, usado para aplicar el límite de carteras por dispositivo y para evitar el farmeo duplicado, y una señal de verificación humana de Cloudflare Turnstile. No almacenamos la huella sin tratar y no recogemos datos de batería, fuentes, canvas ni sensores.",
+            "Contadores de limitación de frecuencia, con clave de dirección IP o prefijo de red, cartera o sesión, conservados durante una ventana corta: 60 segundos en la mayoría de los endpoints y una hora en algunos. Esos contadores no son estadística anónima; cuando la clave es una dirección IP son datos personales, y así los tratamos."
           ]
         },
         {
-          "h": "2. Minimización de datos",
+          "h": "2. Lo que deliberadamente no recogemos",
           "p": [
-            "El acceso con cartera no solicita nombre, email, teléfono ni documento. El formulario opcional de edad envía la fecha para un cálculo temporal; solo se guardan resultado del umbral, versión de política y marcas temporales. Los mensajes de soporte pueden contener datos personales. No envíes documentos, frases semilla ni claves privadas.",
-            "Datos de tarjetas de pago: los pagos son transacciones que firmas en tu cartera.",
-            "SDK de publicidad o analítica, grabaciones de sesiones ni píxeles de seguimiento. Si eso cambia, esta página cambiará primero."
+            "Iniciar sesión con una cartera no pide nombre, correo electrónico, teléfono ni documento de identidad. La declaración de edad opcional envía una fecha de nacimiento para un único cálculo en el servidor; la fecha no se guarda, solo el resultado, la versión de la política y las marcas de tiempo. Los mensajes de soporte pueden contener datos personales, y lo que escribas allí es tu elección: no envíes documentos, frases semilla ni claves privadas.",
+            "Ningún dato de tarjeta de pago. Los pagos son transacciones que firmas desde tu propia cartera; no vemos ningún número de tarjeta porque no hay tarjeta.",
+            "Ningún SDK de publicidad o analítica, ninguna grabación de sesión, ningún píxel de seguimiento. Si algún día eso cambia, este documento cambia primero, y cambia de la forma que obliga a preguntarte."
           ]
         },
         {
-          "h": "3. Lo que una solicitud de borrado no puede resolver",
+          "h": "3. A dónde no llega una solicitud de supresión",
           "p": [
-            "Todo lo que el juego escribe en Solana es público, permanente y legible por cualquiera: tu dirección, los paquetes abiertos, las caps que posees y negocias, tu historial de staking y arena. No es nuestra base de datos ni nuestro servidor: es la cadena, y ninguna solicitud dirigida a nosotros puede eliminarlo.",
-            "Borrar un registro fuera de la cadena no borra la blockchain. Tras revisar una solicitud se pueden eliminar nombre/país del perfil, historial/reservas de nombre y sesiones/nonces; se limitan nuevas actividades y queda una marca para reaplicar la supresión del perfil. No es supresión total: proyecciones de cadena, registros financieros/antifraude, declaraciones, casos, registros externos y copias requieren revisión separada. Restaurar exige el registro de privacidad más reciente y reaplicar antes de reabrir."
+            "Lo que el juego escribe en Solana es público y permanente: tu dirección, los sobres que abriste, las fichas que tuviste y negociaste, tu historial de staking y arena. Ese registro vive en la cadena y en indexadores de terceros, no en nuestra base de datos, y ninguna solicitud dirigida a nosotros puede eliminarlo. Borrar tu perfil no reescribe el libro mayor.",
+            "Dentro de nuestros sistemas, una solicitud de supresión revisada puede eliminar tu alias y país de perfil, el historial de alias y reservas, y las sesiones y nonces de autenticación; detiene la actividad nueva y deja una marca para que el mismo perfil no pueda limitarse a repetir la misma supresión. Esto no es una supresión total: las proyecciones de la cadena, los registros financieros y antifraude, las declaraciones, los casos abiertos, los registros externos y las copias de seguridad exigen una evaluación aparte, y una restauración exige volver a aplicar la supresión antes de reanudar el servicio."
           ]
         },
         {
           "h": "4. Cookies y almacenamiento local",
           "p": [
-            "La app usa una cookie de sesión y almacenamiento del navegador para idioma, tema, movimiento, confirmación de edad y estado de transacciones. Las integraciones de cartera y verificación pueden usar almacenamiento adicional. Limpiar el navegador no borra registros del servidor ni de la cadena. El inventario real debe revisarse antes del lanzamiento."
+            "La aplicación usa una cookie de sesión y almacenamiento del navegador para el idioma, el tema, la preferencia de movimiento, la confirmación de edad y el estado de la transacción. Las integraciones de cartera y de verificación pueden escribir entradas propias adicionales. Borrar los datos del navegador elimina solo las copias locales; los registros del servidor, los casos de derechos y el historial de la cadena no se ven afectados."
           ]
         },
         {
-          "h": "5. Base jurídica y conservación",
+          "h": "5. Conservación y bases jurídicas",
           "p": [
-            "El comando de mantenimiento elimina casos cerrados tras el plazo configurado, salvo conservación vigente o pruebas de limitación, y declaraciones caducadas elegibles y registros de autenticación. El operador debe programarlo; tener un comando no implica que esté ejecutándose. Otras categorías de juego, antifraude, auditoría y copias necesitan criterios aprobados. Los casos abiertos y pruebas necesarias no deben borrarse silenciosamente.",
-            "El responsable debe documentar la base jurídica de cada finalidad y, cuando proceda, evaluar el interés legítimo. Conectar la cartera o aceptar términos no es consentimiento general de privacidad. Turnstile se usa contra abusos y no se presenta aquí como función opcional basada en consentimiento; los avisos y consentimientos aplicables deben evaluarse antes del lanzamiento."
+            "Un comando de mantenimiento elimina los casos de derechos cerrados pasado el periodo configurado, salvo que los retenga una medida cautelar o una prueba de restricción, y elimina declaraciones caducadas y registros de autenticación obsoletos. Ejecutarlo es tarea del operador: disponer del comando no significa que ya se ejecute según un calendario. Las demás categorías —registros de juego, señales antifraude, registros de auditoría y copias de seguridad— se conservan según criterios que deben aprobarse para el servicio desplegado, y los casos abiertos y las pruebas necesarias no se purgan en silencio.",
+            "Cada finalidad de tratamiento necesita una base jurídica documentada y, cuando la base sea el interés legítimo, una evaluación documentada. Conectar una cartera o aceptar estos documentos no es un consentimiento general para todo lo demás. Turnstile funciona dentro de flujos antabuso porque el juego lo necesita, no como un extra opcional."
           ]
         },
         {
           "h": "6. Quién más ve los datos",
           "p": [
-            "Cloudflare —CDN/WAF, desafío Turnstile y código de país del filtro regional— ve los metadatos de las solicitudes. Leemos su cabecera de país para detectar la región. También se procesan claves de limitación derivadas de IP, como se describe en el §1.",
-            "Los proveedores RPC de Solana retransmiten consultas y transacciones y pueden recibir IP, horarios, identificadores de cartera y otros metadatos de conexión, no solo datos públicos de la cadena. Deben identificarse los proveedores reales, las funciones contractuales y las transferencias internacionales del servicio desplegado.",
-            "Los servicios de precio y aleatoriedad incluyen Pyth, Hermes y Switchboard. Los eventos on-chain son públicos; las solicitudes también pueden exponer metadatos de red a proveedores de infraestructura. El operador debe verificar los flujos reales en lugar de prometer que solo ven una transacción.",
-            "Esta versión no integra el SDK de Sentry; configurar un DSN no activa por sí solo informes de errores ni truncamiento de carteras. La telemetría futura requiere inventario verificado, destinatarios, base jurídica y los consentimientos necesarios antes de activarse. Los registros operativos pueden contener identificadores de cartera y necesitan retención y controles de acceso."
+            "Cloudflare presta la CDN, el WAF y el desafío Turnstile, y ve metadatos de las solicitudes, incluida la cabecera de país que usamos para detectar la región.",
+            "Los proveedores de RPC de Solana retransmiten lecturas y transacciones y pueden ver direcciones IP, momentos de las solicitudes, identificadores de cartera y otros metadatos de conexión, no solo datos públicos de la cadena. Los proveedores que realmente use un servicio desplegado, sus roles y cualquier transferencia internacional deben identificarse para ese despliegue.",
+            "Los servicios de precios y aleatoriedad —Pyth, Hermes y Switchboard— reciben solicitudes que pueden exponer metadatos de red a su infraestructura además del resultado on-chain. Los eventos on-chain son públicos por diseño.",
+            "No hay integrado ningún SDK de informes de errores tipo Sentry, y configurar un DSN no cambiaría eso por sí solo. Los registros operativos del servidor pueden contener identificadores de cartera y están sujetos a conservación y control de acceso; cualquier telemetría futura contará con inventario verificado, destinatarios identificados, base jurídica y el consentimiento que exija la ley antes de activarse."
           ]
         },
         {
-          "h": "7. Tus derechos y cómo contactarnos",
+          "h": "7. Tus derechos y cómo ejercerlos",
           "p": [
-            "Acceso, rectificación, supresión, oposición, portabilidad y reclamación ante tu autoridad de control, incluida la petición de borrar lo que esté en nuestra base. Si un derecho entra en conflicto con la cadena (consulta §3), explicaremos qué podemos y qué no podemos hacer, sin fingir lo contrario.",
-            "Las solicitudes de soporte y privacidad se presentan tras acceder con la cartera, aunque edad o región bloqueen nuevas actividades. Hay acuses, correspondencia y exportación limitada; puede solicitarse acceso más amplio. Aún no se han designado identidad del operador/responsable ni contactos externos; deben publicarse, con alternativa para quien no pueda acceder con cartera. Nunca facilites frase semilla ni clave privada.",
-            "El producto es para adultos ({age}+). La edad es autodeclarada, no verificada de forma independiente. Una declaración rechazada tiene espera; el operador puede revisar una rectificación antes de admitir otra. No constituye un programa completo de protección infantil ni una garantía de edad jurídicamente suficiente."
+            "Puedes solicitar acceso, rectificación, supresión, limitación, oposición y portabilidad, y reclamar ante la autoridad de control de tu país. Las solicitudes se presentan en el centro de derechos tras iniciar sesión con tu cartera: una vía que sigue funcionando aunque las comprobaciones de edad o región bloqueen otras actividades. El centro entrega recibos y una exportación limitada de autoservicio, y puede solicitarse un acceso más amplio.",
+            "Algunas respuestas serán parciales por cómo funcionan las cadenas de bloques: cuando un derecho choca con el registro permanente descrito en la §3, te decimos qué parte podemos cumplir y qué parte no puede cumplir nadie. Nunca envíes una frase semilla ni una clave privada con una solicitud, y trata cualquier mensaje que las pida como un intento de robo.",
+            "El producto es para adultos ({age}+). Los resultados de edad son autodeclarados y no se verifican de forma independiente; tras una declaración denegada hay un periodo de espera, y una corrección puede revisarse antes de permitir una nueva declaración. Eso no es un programa completo de protección de menores ni de verificación de edad, y no lo describimos como tal."
           ]
         }
       ]

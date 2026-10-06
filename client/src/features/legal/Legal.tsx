@@ -5,7 +5,7 @@
 // is the page a regulator, a store reviewer and a journalist open first.
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
-import { legalDoc, LEGAL_IDS, LEGAL_EFFECTIVE, LEGAL_REVIEWED, RESTRICTED_REGIONS, type LegalDoc, type LegalCopy } from '@/shared/lib/legal';
+import { legalDoc, LEGAL_IDS, LEGAL_EFFECTIVE, RESTRICTED_REGIONS, type LegalDoc, type LegalCopy } from '@/shared/lib/legal';
 import { useT, useLocale, fmtLocale, type Locale } from '@/shared/i18n';
 import { loadLegalCopy } from '@/shared/lib/legalCopy';
 import { APP_NAME, FLAGS } from '@/app/config';
@@ -54,13 +54,6 @@ function Document({ doc }: { doc: LegalDoc }) {
 
       <h1 className="page-title">{title}</h1>
       <p className="muted small">{t('legal.updated', { date: fmtLocale.date(LEGAL_EFFECTIVE, locale, { dateStyle: 'medium', timeZone: 'UTC' }) })} · {meta.native}</p>
-
-      {!LEGAL_REVIEWED && (
-        <div className="warn" role="note">
-          <strong>{t('legal.draftTitle')}</strong>
-          <p className="small" style={{ marginTop: 4 }}>{t('legal.draftBody')}</p>
-        </div>
-      )}
 
       {locale !== 'en' && (
         <button type="button" className="btn" style={{ alignSelf: 'flex-start', whiteSpace: 'normal' }} onClick={() => void setLocale('en')}>

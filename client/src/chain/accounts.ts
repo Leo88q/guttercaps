@@ -379,12 +379,12 @@ export function readCompressedClaimsCreated(r: BorshReader): CompressedClaimsCre
   return { ...e, claimNonces: e.claimNonces.slice(0, e.count) };
 }
 
-export interface CompressedPackSettledEvent { buyer: PublicKey; nonce: bigint; refunded: boolean }
+interface CompressedPackSettledEvent { buyer: PublicKey; nonce: bigint; refunded: boolean }
 export function readCompressedPackSettled(r: BorshReader): CompressedPackSettledEvent {
   return { buyer: r.pubkey(), nonce: r.u64(), refunded: r.bool() };
 }
 
-export interface ClaimFusionCommittedEvent { owner: PublicKey; nonce: bigint; recipe: number; materials: PublicKey[] }
+interface ClaimFusionCommittedEvent { owner: PublicKey; nonce: bigint; recipe: number; materials: PublicKey[] }
 export function readClaimFusionCommitted(r: BorshReader): ClaimFusionCommittedEvent {
   return { owner: r.pubkey(), nonce: r.u64(), recipe: r.u8(), materials: r.array(MATERIALS_PER_FUSION, () => r.pubkey()) };
 }
@@ -418,10 +418,6 @@ export function decodeListing(data: Uint8Array): Listing {
   return { asset: r.pubkey(), seller: r.pubkey(), price: r.u64(), currency: r.u8(), createdAt: r.i64(), bump: r.u8() };
 }
 export interface Offer { asset: PublicKey; bidder: PublicKey; amountUsdc: bigint; expiresAt: bigint; bump: number }
-export function decodeOffer(data: Uint8Array): Offer {
-  const r = expectDiscriminator(data, 'Offer');
-  return { asset: r.pubkey(), bidder: r.pubkey(), amountUsdc: r.u64(), expiresAt: r.i64(), bump: r.u8() };
-}
 
 // ---------------------------------------------------------------- staking
 export interface EmissionState {
@@ -483,7 +479,7 @@ export function decodeSkrPool(data: Uint8Array): SkrPool {
 }
 
 /** MasterChef pending = weight × acc / 1e12 − debt */
-export const ACC_PRECISION = 1_000_000_000_000n;
+const ACC_PRECISION = 1_000_000_000_000n;
 export function pendingReward(weight: bigint, acc: bigint, debt: bigint): bigint {
   const v = (weight * acc) / ACC_PRECISION - debt;
   return v > 0n ? v : 0n;
@@ -509,25 +505,11 @@ export function decodeWagerBattle(data: Uint8Array): WagerBattle {
   };
 }
 
-// ---------------------------------------------------------------- Metaplex Core (BaseAssetV1 header)
-/** Reads owner + update authority from a Core asset account (Key::AssetV1 = 1). */
-export function decodeCoreAssetHeader(data: Uint8Array): { owner: PublicKey; updateAuthorityKind: number; updateAuthority?: PublicKey; name: string; uri: string } {
-  const r = new BorshReader(data);
-  const key = r.u8();
-  if (key !== 1) throw new Error('Not a Core AssetV1');
-  const owner = r.pubkey();
-  const kind = r.u8(); // 0 None, 1 Address, 2 Collection
-  const updateAuthority = kind === 0 ? undefined : r.pubkey();
-  const name = r.string();
-  const uri = r.string();
-  return { owner, updateAuthorityKind: kind, updateAuthority, name, uri };
-}
-
+// ---------------------------------------------------------------- Metaplex Core (collection header)
 /** Reads name + update authority from a Core collection account (Key::CollectionV1 = 5 in the crate-era
  * program — the enum is Uninitialized=0, AssetV1=1, HashedAssetV1=2, PluginHeaderV1=3, PluginRegistryV1=4,
  * CollectionV1=5, GroupV1=6) — the layout the admin spec checks after create_collection (name, update
- * authority = the collection meta PDA); decoding a collection with the asset decoder above answers
- * "Not a Core AssetV1" because the key byte differs. */
+ * authority = the collection meta PDA). */
 export function decodeCoreCollectionHeader(data: Uint8Array): { updateAuthority: PublicKey; name: string; uri: string; numMinted: number; currentSize: number } {
   const r = new BorshReader(data);
   const key = r.u8();

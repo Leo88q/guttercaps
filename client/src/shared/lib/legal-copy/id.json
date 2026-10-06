@@ -1,83 +1,83 @@
 {
-  "revision": "2026-09-29.5",
-  "sha256": "d871fd12ff18be592bb985c18da7dd3f5c1a40e0bd55d356c494204009ccfe81",
+  "revision": "2026-10-06.1",
+  "sha256": "ddfada3bdc5084a2ad847c1c9ca5d1d9b84e19dc4ac6b0c52718846c2ee20f6c",
   "docs": {
     "terms": {
       "slug": "terms",
       "title": "Ketentuan Layanan",
-      "intro": "Draf ketentuan ini menjelaskan GUTTERCAPS dan mekanisme on-chain. Kode menentukan pelaksanaan transaksi, bukan hak hukum konsumen. Hukum wajib berlaku mengatasi ketentuan atau perilaku program yang bertentangan. Operator dan pasar peluncuran belum ditetapkan; teks ini bukan izin peluncuran publik berbayar.",
+      "intro": "GUTTERCAPS adalah game peramban di Solana: Anda membeli paket berisi chip koleksi, dan isi setiap paket diundi secara acak dari distribusi yang dipublikasikan. Ketentuan Layanan ini adalah perjanjian yang mengikat secara hukum antara Anda dan operator GUTTERCAPS («kami»), dan mencakup game, aplikasi web, toko, pasar, staking, arena, pusat hak, dan fitur terkait lainnya (selanjutnya «Layanan»). Anda menerima Ketentuan ini dengan menggunakan Layanan dalam bentuk apa pun — membuka aplikasi, menghubungkan dompet, atau menandatangani transaksi. Jika Anda tidak menerimanya, jangan gunakan Layanan. Perhatikan: Bagian 8 membatasi tanggung jawab kami, dan Bagian 9 menjelaskan bagaimana Ketentuan ini berubah dan teks mana yang berlaku. Tidak ada di sini yang menghapus hak yang diberikan hukum wajib kepada Anda; hak tersebut mengalahkan dokumen ini dan perilaku kontrak pintar mana pun.",
       "sections": [
         {
-          "h": "1. Tentang produk ini",
+          "h": "1. Apa itu GUTTERCAPS",
           "p": [
-            "Game peramban di Solana. Anda membeli paket cap koleksi; cap yang diterima diundi menurut distribusi peluang yang dipublikasikan. Cap merupakan aset Solana yang dikendalikan dompet, termasuk alur aset terkompresi Bubblegum V2 dan aset lama Metaplex Core. Kami tidak memegang kunci dompet Anda atau menjalankan layanan setoran maupun penarikan kustodian.",
-            "Paket adalah item berbayar dengan isi acak. Kami tidak menyatakan sebaliknya atau menyebutnya pembelian dengan nilai terjamin. Pembatasan wilayah dalam §2 ada karena sejumlah regulator menganggap mekanisme ini sebagai perjudian."
+            "Game tentang chip, paket, dan wilayah di Solana. Anda mengumpulkan chip, menyusun loadout, memperdagangkannya, men-staking, dan bertarung dengannya. Chip adalah aset Solana yang dikendalikan dompet — aset terkompresi yang dicetak lewat Bubblegum V2, dan aset Metaplex Core untuk drop sebelumnya. Kami tidak menyimpan kunci Anda dan tidak menjalankan layanan setor atau tarik kustodial: aset tetap di dompet Anda, di bawah kendali Anda, dan setiap perpindahan adalah transaksi yang Anda tandatangani sendiri.",
+            "Paket adalah barang berbayar dengan isi acak, dan kami mengatakannya terus terang: Anda membayar sebuah paket, dan chip di dalamnya diundi dari distribusi yang dipublikasikan, bukan dipilih oleh Anda atau kami. Chip adalah barang koleksi dengan kegunaan dalam game, bukan produk investasi, dan $CG ditujukan untuk penggunaan di dalam game. Kontrak pintar mengeksekusi transaksi dan menegakkan aturan game; kontrak itu tidak menentukan hak hukum Anda dan tidak dapat mengalahkan hukum wajib. Jika teks ini, kode, dan hukum wajib berbeda, hukum yang berlaku."
           ]
         },
         {
-          "h": "2. Siapa yang boleh bermain dan wilayah tanpa penjualan paket",
+          "h": "2. Siapa yang boleh bermain, dan di mana paket tidak dijual",
           "p": [
-            "Anda harus berusia minimal {age} dan memenuhi ambang lokal atau konfigurasi yang lebih tinggi. Pusat menerima pernyataan tanggal lahir; server menghitung kelayakan tanpa menyimpannya. Ini pernyataan sendiri, bukan verifikasi usia atau identitas. Kontrol produksi dapat mewajibkan pernyataan aktif sebelum aktivitas baru.",
-            "Pemeriksaan usia dan wilayah saat ini dinonaktifkan secara default; pemeriksaan dapat diaktifkan kembali secara eksplisit dalam konfigurasi deployment. Saat aktif, kontrol penawaran harga paket lama membatasi wilayah yang terdeteksi sebagai {regions}; aturan per fitur yang dapat dikonfigurasi dan deteksi negara dari sumber tepercaya juga mencakup tindakan API tertentu serta penandatanganan transaksi melalui klien kami. Negara yang tidak diketahui ditolak saat pemeriksaan aktif. Kontrol ini tidak mencegah panggilan langsung ke blockchain dan tidak membuktikan izin hukum di negara lain.",
-            "Negara diperkirakan dari metadata jaringan di edge dan bisa keliru. VPN untuk privasi tidak dilarang dengan sendirinya, tetapi Anda tidak boleh memalsukan kelayakan atau melewati pembatasan hukum yang berlaku. VPN tidak mengubah hukum yang berlaku bagi Anda."
+            "Anda harus berusia minimal {age} tahun untuk menggunakan Layanan, dan lebih tinggi jika hukum di tempat Anda tinggal mensyaratkan ambang yang lebih tinggi. Usia bersifat deklarasi mandiri: pusat hak menerima pernyataan tanggal lahir, server menghitung hasilnya tanpa menyimpan tanggal tersebut, dan hanya hasil, versi kebijakan, serta stempel waktu yang disimpan. Itu bukan verifikasi identitas, dan kami dapat meminta pernyataan baru sebelum aktivitas baru.",
+            "Beberapa regulator menganggap paket berbayar dengan isi acak sebagai mekanisme perjudian, sehingga penjualan paket dapat dibatasi per wilayah. Saat gerbang paket aktif, pembelian ditolak untuk wilayah yang terdeteksi {regions}, dan negara yang tidak diketahui juga; pemeriksaan sejenis dapat berlaku untuk tindakan API tertentu dan untuk penandatanganan transaksi lewat klien kami. Deteksi memakai metadata jaringan di tepi dan bisa keliru. Kontrol ini tidak dapat menghentikan panggilan langsung ke kontrak pintar dari klien lain, dan dengan sendirinya tidak berarti yurisdiksi Anda mengizinkan permainan.",
+            "Memakai VPN demi privasi tidak dilarang. Menyesatkan soal lokasi Anda, atau memakai VPN untuk menghindari pembatasan yang berlaku bagi Anda, dilarang. Jika Anda tidak yakin game ini sah dan diizinkan di tempat Anda tinggal, pastikan dulu sebelum membayar: penilaian itu milik Anda, dan tidak ada pengaturan di sisi kami yang mengubah penggunaan melanggar hukum menjadi sah."
           ]
         },
         {
-          "h": "3. Peluang, jaminan progresif, dan keacakan yang dapat diverifikasi",
+          "h": "3. Isi paket, peluang yang dipublikasikan, dan undian yang dapat diverifikasi",
           "p": [
-            "Distribusi kelangkaan, batas kelangkaan minimum yang dijamin, dan penghitung jaminan setiap paket dipublikasikan di toko dan ditetapkan dalam kode (packages/economy PACKS; Paket Pemula: {starterCaps} cap; Paket Standar: {standardCaps} cap; Paket Premium: {premiumCaps} cap; Paket Event Terbatas: {limitedCaps} cap). Program on-chain memberlakukan tabel yang sama, termasuk batas mutlak untuk dua tingkat tertinggi.",
-            "Undian memakai sumber keacakan dengan komitmen lalu pengungkapan (Switchboard on-demand). Keduanya tercatat on-chain sehingga hasil terdahulu dapat dihitung ulang: layar verifikasi menerima transaksi pembukaan dan mengulangi ekspansi yang dilakukan program. Oracle yang tidak merespons tidak pernah diam-diam membakar pembayaran Anda — lihat §5.",
-            "Penghitung jaminan terpisah untuk setiap dompet dan SKU serta disimpan on-chain. Penghitung ini tidak menjanjikan hasil undian tertentu, tetapi membatasi rangkaian hasil terburuk."
+            "Distribusi kelangkaan, jaminan batas bawah, dan penghitung pity setiap paket dipublikasikan di toko sebelum Anda membayar dan ditetapkan dalam kode: Starter Pack {starterCaps} chip, Standard Pack {standardCaps} chip, Premium Pack {premiumCaps} chip, Limited Event Pack {limitedCaps} chip. Program on-chain menegakkan tabel yang sama, termasuk batas keras pada dua tingkat paling langka, jadi peluang yang Anda baca adalah peluang yang diterapkan program.",
+            "Undian memakai beacon keacakan commit–reveal (Switchboard on demand). Baik komitmen maupun pengungkapannya on-chain, sehingga hasil lama dapat dihitung ulang: layar verifikasi memutar ulang ekspansi yang sama seperti yang dijalankan program, dan Anda dapat memeriksa undian sendiri tanpa meminta apa pun kepada kami.",
+            "Penghitung pity disimpan per dompet dan per jenis paket, on-chain. Penghitung membatasi rangkaian terburuk yang mungkin; itu bukan janji tentang undian tertentu dan tidak mengubah distribusi yang dipublikasikan untuk paket mana pun."
           ]
         },
         {
-          "h": "4. Harga, biaya, dan pembakaran",
+          "h": "4. Harga, biaya, dan apa yang dibakar",
           "p": [
-            "Harga paket setara nilai uang fiat, dibayar dalam SOL, USDC, $CG, atau SKR. Operator menetapkan harga, yang berubah bersama konfigurasi game; Anda membayar harga dalam penawaran yang ditandatangani.",
-            "Penjualan di pasar memotong biaya protokol yang dapat diatur (bawaan {marketFee} %, batas mutlak on-chain {marketCap} %) dan royalti kreator terpisah sebesar {royalty} % dari penjual. Sekitar {buyback} % biaya protokol digunakan untuk pembelian kembali dan pembakaran; sisanya beserta royalti masuk ke kas. Membuat listing juga membakar {listingBurn} $CG. Biaya yang berlaku ditampilkan sebelum Anda menandatangani.",
-            "Taruhan arena dikenai potongan {arenaRake} % dari total pot: {arenaTreasury} % potongan masuk ke kas, {arenaPool} % mendanai hadiah musim, dan {arenaBurn} % sisanya dibakar.",
-            "Paket yang dibayar dengan $CG membakar {cgBurn} % harganya. Pembayaran dengan SKR mendapat diskon {skrDiscount} %.",
-            "Biaya jaringan — biaya transaksi Solana dan cadangan sewa akun yang dibuat oleh paket — menjadi tanggungan Anda, bukan kami. Cadangan yang ditahan selama paket diproses dikembalikan saat akun ditutup."
+            "Paket dibayar dengan SOL, USDC, $CG, atau SKR, dan harga yang Anda tandatangani adalah harga yang Anda bayar. Harga, diskon, dan konfigurasi paket ditetapkan dalam batas yang ditegakkan program, dan penawaran yang ditampilkan sebelum Anda menandatangani adalah yang berlaku.",
+            "Penjualan di pasar memotong biaya protokol — {marketFee} % secara default, dengan batas keras on-chain {marketCap} % — ditambah royalti kreator terpisah {royalty} % dari penjual. Sekitar {buyback} % dari biaya protokol digunakan untuk buyback dan bakar; sisanya dan royalti masuk ke kas. Membuat listing juga membakar {listingBurn} $CG. Angka terkini ditampilkan sebelum Anda menandatangani, dan biaya yang dijelaskan di sini adalah biaya yang dipungut program.",
+            "Taruhan arena dikenai rake {arenaRake} % dari pot: {arenaTreasury} % dari rake ke kas, {arenaPool} % membentuk hadiah musim, dan {arenaBurn} % sisanya dibakar. Rake hanya berlaku pada taruhan; chip yang Anda bawa ke pertarungan tidak tersentuh.",
+            "Paket yang dibayar dengan $CG membakar {cgBurn} % dari harga, dan paket yang dibayar dengan SKR mendapat diskon {skrDiscount} %. Pembakaran adalah perubahan pasokan token, bukan biaya yang kami simpan, dan terjadi on-chain dalam transaksi yang sama dengan pembelian.",
+            "Biaya jaringan Solana dan sewa yang membuka akun paket menjadi tanggungan Anda, bukan kami. Sewa yang dicadangkan selama paket diproses dikembalikan kepada Anda saat akun ditutup. Biaya jaringan tidak pernah dikembalikan — biaya itu dibayarkan kepada jaringan, bukan kepada kami."
           ]
         },
         {
-          "h": "5. Pengembalian dana, paket macet, dan pembatalan",
+          "h": "5. Pengembalian dana, paket terhenti, dan pembatalan",
           "p": [
-            "Program tidak dapat membalik hasil paket yang sudah dibuka. Ini tidak menghapus hak pembatalan, penarikan dari kontrak, pengembalian dana, atau kesesuaian menurut hukum. Pengecualian konten atau layanan digital membutuhkan penilaian per pasar serta persetujuan dan pengakuan tegas yang diwajibkan sebelum pembelian.",
-            "Jika pengungkapan keacakan tidak pernah terjadi, paket tetap belum terbuka. Pengembalian penuh pembayaran pembelian dari brankas hanya tersedia setelah jendela oracle berakhir dan permintaan masih belum diungkap: {staleSlots} slot (sekitar {staleMinutes} menit pada 400 milidetik per slot; waktu sebenarnya bervariasi). Anda tidak perlu meminta dukungan, tetapi harus menandatangani pembatalan. Biaya jaringan tidak dikembalikan.",
-            "Jika kami menghentikan penjualan suatu rilisan karena konfigurasi rusak, kunci disusupi, atau permintaan regulator, tidak berarti semua pembelian sebelumnya otomatis dapat dikembalikan. Paket berbayar yang masih tertunda hanya dapat memakai mekanisme pengembalian program yang sama jika syaratnya terpenuhi. Dana dikembalikan dalam mata uang pembelian.",
-            "Blockchain tidak memiliki sanggahan kartu bawaan; hak pemulihan wajib tetap ada. Pusat mencatat permintaan pengembalian dana dan penarikan kontrak, memberi tanda terima unduhan serta balasan operator. Pengiriman tidak menyetujui atau membayar dana. Pembatalan paket macet terpisah; hak hukum memerlukan penilaian operator dan proses tambahan yang berlaku."
+            "Setelah paket dibuka, program tidak dapat membalik undiannya: hasilnya sudah menjadi bagian dari catatan on-chain. Ini tidak menghapus hak pembatalan, penarikan, pengembalian dana, atau kesesuaian yang Anda miliki menurut hukum. Apakah pengecualian untuk konten digital berlaku, dan persetujuan atau pengakuan apa yang diperlukan, bergantung pada pasar yang bersangkutan, dan tidak ada dalam Ketentuan ini yang melepaskan hak yang tidak dapat dilepaskan.",
+            "Jika pengungkapan keacakan tidak pernah terjadi, paket tetap tertutup dan pembayaran tetap di vault. Pengembalian dana penuh atas harga pembelian tersedia ketika jendela oracle berakhir sementara permintaan masih belum diungkap: {staleSlots} slot, sekitar {staleMinutes} menit pada 400 ms per slot, dengan waktu nyata yang bisa berbeda. Syarat pengembalian dibaca dari program, bukan dinilai oleh agen dukungan; Anda yang menandatangani transaksi pembatalan, dan biaya jaringan tidak dikembalikan.",
+            "Jika kami menghentikan penjualan suatu drop karena konfigurasi cacat, kunci yang bocor, atau permintaan regulator, itu sendiri tidak membuat semua pembelian sebelumnya dapat dikembalikan: undian yang sudah terkirim tetap terkirim, dan jalur pengembalian lewat program tetap satu-satunya yang otomatis. Jika pembelian berbayar sama sekali tidak terkirim, perlindungan menurut hukum berlaku dengan syaratnya sendiri, dan kami menilai kasus semacam itu alih-alih berpura-pura tidak ada.",
+            "Pembayaran blockchain tidak memiliki chargeback kartu, dan kami tidak mengandalkannya. Permintaan pengembalian dana dan penarikan dari kontrak dapat diajukan di pusat hak: pusat mencatat permintaan, memberi tanda terima yang bisa diunduh, melacak balasan kami, dan dengan sendirinya tidak menyetujui atau menjalankan pembayaran. Jangan pernah mengirim frasa pemulihan atau kunci pribadi kepada siapa pun, termasuk pihak yang mengaku sebagai dukungan kami."
           ]
         },
         {
-          "h": "6. Permainan adil, perangkat, dan hal yang dapat kami jeda",
+          "h": "6. Permainan adil, perangkat, dan fitur yang dijeda",
           "p": [
-            "Hadiah misi, PvP, dan musim dibatasi per perangkat: tiga dompet; dompet keempat pada perangkat yang sama tetap bisa bermain tetapi tidak mendapat hadiah. Sistem memeriksa tanda pengaturan kemenangan, transaksi semu, dan bot. Sinyal yang dapat diverifikasi ditangani operator; setiap tindakan operator pada akun Anda dicatat dalam log audit yang bersedia kami tunjukkan.",
-            "Operator dapat menjeda pembelian baru, listing, penempatan staking, dan pertarungan ketika terjadi insiden. Pelepasan staking, pembatalan, pengembalian dana, dan penarikan tetap berjalan — jeda tidak pernah dipakai untuk membekukan aset Anda.",
-            "Menyalahgunakan sistem jaminan, oracle, atau bug perangkat lunak untuk mengambil nilai melanggar ketentuan ini. Kami dapat membalik operasi terkait di dalam game; untuk nilai on-chain, hanya melalui mekanisme program itu sendiri."
+            "Hadiah misi, pertarungan, dan musim dibatasi per perangkat: tiga dompet dapat memperoleh hadiah di perangkat yang sama, dan dompet keempat tetap bisa bermain tetapi tidak memperoleh hadiah. Kelayakan diperiksa terhadap sinyal pengaturan hasil, perdagangan fiktif, dan bot, dan setiap keputusan operator atas sebuah akun dicatat dalam log audit yang siap kami tunjukkan. Jika sinyalnya keliru, ajukan banding lewat pusat hak.",
+            "Kami dapat menjeda pembelian baru, listing baru, taruhan baru, dan pertarungan baru selama insiden ditangani. Penarikan dari staking, pembatalan, pengembalian dana, dan penarikan aset tetap berjalan selama penjedaan — penjedaan tidak pernah dipakai untuk membekukan aset yang sudah menjadi milik Anda, dan bukan pengganti proses hukum yang seharusnya diperlukan.",
+            "Memanfaatkan bug, sistem pity, atau beacon keacakan untuk mengambil nilai adalah pelanggaran Ketentuan ini. Jika nilainya on-chain, satu-satunya koreksi yang tersedia bagi kami adalah mekanisme program itu sendiri; jika nilainya di dalam game, kami dapat membalik catatan terkait — dan kami akan memberi tahu apa yang kami lakukan dan mengapa."
           ]
         },
         {
-          "h": "7. Tanggung jawab Anda",
+          "h": "7. Dompet dan transaksi Anda",
           "p": [
-            "Anda bertanggung jawab atas dompet, frasa pemulihan, dan setiap transaksi yang ditandatangani. Kami tidak pernah meminta frasa pemulihan, mengirim tautan klaim yang membutuhkannya, dan tidak dapat membatalkan tanda tangan.",
-            "Anda memerlukan dompet Solana yang memungkinkan pemeriksaan instruksi yang disetujui. Jika permintaan tanda tangan menampilkan program asing atau jumlah tak terduga, jangan tanda tangani."
+            "Dompet, frasa pemulihan, dan setiap tanda tangan yang Anda buat adalah tanggung jawab Anda. Kami tidak pernah meminta frasa pemulihan atau kunci pribadi, tidak pernah mengirim tautan «claim» yang memerlukannya, dan tidak ada siapa pun — termasuk kami — yang dapat membatalkan tanda tangan setelah terjadi. Simpan frasa itu offline dan jangan pernah mengetikkannya di halaman yang Anda buka dari pesan.",
+            "Gunakan dompet yang memungkinkan Anda memeriksa instruksi sebelum menyetujuinya. Jika permintaan tanda tangan menampilkan program yang tidak dikenal, jumlah yang tak terduga, atau tujuan yang tidak Anda kenali, jangan tanda tangani: berhenti, periksa transaksi di penjelajah blok, dan tanyakan di kanal resmi jika ada yang tampak salah."
           ]
         },
         {
-          "h": "8. Bukan nasihat keuangan, investasi, atau jaminan",
+          "h": "8. Tanpa nasihat investasi, tanpa jaminan nilai, batas tanggung jawab",
           "p": [
-            "$CG ditujukan untuk penggunaan dalam gim. Deskripsi itu tidak menentukan apakah token, hadiah, staking, atau aktivitas pasar diatur. Tidak ada jaminan harga, likuiditas, laba, atau imbal hasil. Klasifikasi dan izin tiap yurisdiksi tetap menjadi syarat peluncuran.",
-            "Perangkat lunak disediakan apa adanya, tanpa jaminan apa pun, sejauh diizinkan hukum tempat Anda tinggal. Bila pembatasan tanggung jawab tidak diizinkan, batas itu tidak berlaku untuk Anda.",
-            "Total tanggung jawab kami atas pembelian dibatasi sebesar jumlah yang Anda bayarkan untuk paket terkait. Ini tidak membatasi hak yang tidak boleh dibatasi, termasuk hak konsumen yang tetap berlaku meskipun ada klausul ini dan jaminan apa pun yang wajib kami berikan."
+            "$CG adalah token game yang ditujukan untuk penggunaan di dalam game; apakah diatur atau tidak bergantung pada hukum yang berlaku bagi Anda, dan kami tidak memutuskan pertanyaan itu dengan menyebutnya token utilitas. Tidak ada dalam game, toko, pasar, atau arena yang merupakan nasihat keuangan atau tawaran investasi, dan tidak ada yang menjamin harga, likuiditas, keuntungan, atau imbal hasil. Aset digital dapat jatuh ke nol dan bertahan di sana.",
+            "Layanan disediakan «sebagaimana adanya» dan «sesuai ketersediaan», tanpa jaminan melebihi yang diwajibkan hukum, sejauh yang diizinkan hukum di tempat Anda tinggal. Enkripsi, blockchain, oracle, dan peramban kadang gagal, dan kami tidak menjanjikan operasi tanpa gangguan atau tanpa kesalahan.",
+            "Tanggung jawab agregat kami atas suatu pembelian dibatasi pada jumlah yang Anda bayarkan untuk paket yang terdampak. Batas itu tidak berlaku di tempat hukum melarangnya, dan tidak pernah membatasi hak yang tidak dapat dibatasi — termasuk hak konsumen, jaminan menurut hukum, dan upaya hukum atas kecurangan atau kesengajaan."
           ]
         },
         {
-          "h": "9. Perubahan dan teks yang berlaku",
+          "h": "9. Perubahan Ketentuan ini dan teks yang berlaku",
           "p": [
-            "Harga, peluang, biaya, dan jaminan dapat berubah dalam batas program. Kondisi transaksi terkini harus ditampilkan sebelum penandatanganan. Perubahan penting mungkin memerlukan pemberitahuan atau persetujuan baru menurut hukum; pembaruan konfigurasi tidak dapat menghapus hak wajib.",
-            "Perubahan penting memerlukan tanggal atau revisi baru dan pemberitahuan yang mudah diakses. Dapatkan persetujuan baru bila hukum mewajibkan; terus bermain saja tidak cukup sebagai persetujuan di semua pasar. Pertahankan jalur pelepasan staking, pembatalan, dan penarikan yang tersedia.",
-            "Bahasa Inggris adalah sumber penyusunan; terjemahan disediakan agar mudah diakses. Keutamaan bahasa Inggris hanya berlaku jika sah dan tidak menghapus hak dari aturan wajib tentang bahasa, keterbukaan, atau perlindungan konsumen. Laporkan perbedaan kepada operator setelah kontaknya diumumkan."
+            "Harga paket, peluang, biaya, parameter pity, dan mata uang yang didukung dapat berubah dalam batas yang ditegakkan program. Syarat suatu transaksi ditampilkan sebelum Anda menandatanganinya, dan perubahan konfigurasi tidak menulis ulang transaksi yang sudah selesai.",
+            "Kami dapat mengubah Ketentuan ini untuk mencerminkan perubahan hukum, persyaratan platform, praktik keamanan, fungsionalitas, atau model komersial game, serta untuk memperbaiki atau memperjelas teks. Perubahan non-material berlaku saat dipublikasikan dengan tanggal baru. Untuk perubahan material, kami memberi pemberitahuan di aplikasi sebelum berlaku bagi Anda dan meminta persetujuan baru Anda jika hukum mensyaratkannya; terus bermain tidak dianggap sebagai persetujuan bila persetujuan harus tegas.",
+            "Teks bahasa Inggris adalah naskah asli dan berlaku bila terjemahan dan aslinya berbeda, jika hukum mengizinkan hasil itu; terjemahan tetap berlaku jika hukum lokal Anda memberinya efek tersebut. Pertanyaan, keluhan, dan sengketa diajukan lebih dulu ke pusat hak, dan hak wajib untuk membawa perkara ke pengadilan atau otoritas di negara tempat Anda tinggal tidak terpengaruh."
           ]
         }
       ]
@@ -85,60 +85,60 @@
     "privacy": {
       "slug": "privacy",
       "title": "Privasi",
-      "intro": "Masuk melalui dompet bersifat pseudonim, bukan anonim: alamat, transaksi, sinyal perangkat, dan metadata jaringan dapat digabungkan untuk mengenali seseorang. Draf ini menjelaskan aliran data saat ini. Pengendali, kontak aktif, dan pengungkapan tiap pasar harus ditetapkan sebelum peluncuran publik berbayar.",
+      "intro": "Masuk dengan dompet bersifat pseudonim, bukan anonim: alamat, riwayat transaksi, dan sinyal perangkat dapat mengidentifikasi seseorang bila digabungkan. Pemberitahuan ini menjelaskan apa yang kami proses, mengapa, berapa lama, dan apa yang dapat Anda lakukan. Ini bukan formulir persetujuan — bila hukum mensyaratkan persetujuan untuk suatu pemrosesan, kami memintanya secara terpisah. Bacalah bersama Ketentuan Layanan.",
       "sections": [
         {
-          "h": "1. Data yang kami kumpulkan",
+          "h": "1. Apa yang kami proses",
           "p": [
-            "Alamat Solana dari tanda tangan yang Anda berikan saat masuk. Cookie sesi HttpOnly bernama gc_session memungkinkan aplikasi menampilkan status Anda. Masa sesi bawaan adalah 7 hari dan SameSite bawaan adalah Lax; pengaturan penerapan dapat mengubahnya. SameSite=None lintas situs memerlukan Secure melalui HTTPS.",
-            "Catatan game terkait alamat tersebut: pembelian, pembukaan paket dan kelangkaan hasilnya, listing dan penawaran, posisi staking, pertandingan arena, klaim misi, tautan referral, batas harian, penghitung jaminan, serta log audit tindakan pada akun yang hanya tersedia bagi operator.",
-            "Sinyal antipenipuan: hash sidik perangkat dengan salt untuk membatasi dompet per perangkat dan mencegah farming berulang, serta penanda manusia asli dari Cloudflare Turnstile. Kami tidak menyimpan sidik perangkat mentah atau mengumpulkan data baterai, font, canvas, maupun sensor yang sering dipakai untuk membuatnya.",
-            "Pembatasan frekuensi menyimpan sementara penghitung dengan kunci alamat IP atau prefiks jaringan, dompet, atau sesi. Jendelanya bergantung pada endpoint: umumnya 60 detik, dengan beberapa batas satu jam. Penghitung ini tidak anonim; kunci turunan IP diproses untuk mencegah penyalahgunaan."
+            "Alamat Solana Anda, yang diambil dari tanda tangan yang Anda berikan saat masuk. Cookie sesi bernama gc_session menjaga sesi Anda: HttpOnly, 7 hari secara default, SameSite Lax, dan SameSite=None hanya lewat HTTPS. Cookie ini menjaga sesi dan bukan alat pelacak Anda di situs lain.",
+            "Catatan game yang terkait dengan alamat itu: pembelian, pembukaan paket dan kelangkaan yang keluar, listing dan penawaran, posisi staking, pertarungan arena, klaim misi, tautan referral, batas harian, dan penghitung pity, serta log audit tindakan operator atas akun Anda.",
+            "Sinyal antifraud: hash bergaram dari sidik jari perangkat, dipakai untuk menegakkan batas dompet per perangkat dan mencegah farming ganda, serta penanda verifikasi manusia dari Cloudflare Turnstile. Kami tidak menyimpan sidik jari mentah dan tidak mengumpulkan data baterai, font, canvas, atau sensor.",
+            "Penghitung pembatasan laju, dengan kunci berupa alamat IP atau prefiks jaringan, dompet, atau sesi, disimpan untuk jendela singkat — 60 detik di sebagian besar endpoint, satu jam di beberapa. Penghitung itu bukan statistik anonim; bila kuncinya alamat IP, itu data pribadi, dan kami memperlakukannya demikian."
           ]
         },
         {
-          "h": "2. Minimalisasi data",
+          "h": "2. Apa yang sengaja tidak kami kumpulkan",
           "p": [
-            "Login dompet tidak meminta nama, email, telepon atau dokumen. Formulir usia opsional mengirim tanggal untuk perhitungan sementara; hanya hasil ambang, versi kebijakan dan waktu disimpan. Pesan dukungan dapat memuat data pribadi. Jangan kirim dokumen, frasa pemulihan atau kunci privat.",
-            "Data kartu pembayaran — pembayaran adalah transaksi yang Anda tandatangani di dompet.",
-            "SDK iklan atau analitik, rekaman ulang sesi, maupun piksel pelacakan. Jika ini berubah, halaman ini diubah terlebih dahulu."
+            "Masuk dengan dompet tidak meminta nama, email, nomor telepon, atau dokumen identitas. Deklarasi usia opsional mengirim tanggal lahir untuk satu perhitungan di server; tanggal itu tidak disimpan, hanya hasil, versi kebijakan, dan stempel waktu. Pesan dukungan dapat berisi data pribadi, dan apa yang Anda tulis di sana adalah pilihan Anda — jangan kirim dokumen identitas, frasa pemulihan, atau kunci pribadi.",
+            "Tidak ada data kartu pembayaran. Pembayaran adalah transaksi yang Anda tandatangani dari dompet Anda sendiri; kami tidak melihat nomor kartu karena tidak ada kartu.",
+            "Tidak ada SDK iklan atau analitik, tidak ada perekaman sesi, tidak ada piksel pelacak. Jika itu berubah, dokumen ini berubah lebih dulu — dan berubah dengan cara yang mengharuskan kami bertanya kepada Anda."
           ]
         },
         {
-          "h": "3. Hal yang tidak dapat diselesaikan dengan permintaan penghapusan",
+          "h": "3. Yang tidak dapat dijangkau permintaan penghapusan",
           "p": [
-            "Semua yang ditulis game ke Solana bersifat publik, permanen, dan dapat dibaca siapa pun: alamat Anda, paket yang dibuka, cap yang dimiliki dan diperdagangkan, serta riwayat staking dan arena. Itu bukan basis data atau server kami, melainkan blockchain; tidak ada permintaan kepada kami yang dapat menghapusnya.",
-            "Penghapusan di luar chain tidak menghapus blockchain. Setelah ditinjau, nama/negara profil, riwayat/reservasi nama dan sesi/nonce dapat dihapus; aktivitas baru dibatasi dan penanda memungkinkan penghapusan profil diterapkan ulang. Ini bukan penghapusan total: proyeksi chain, catatan keuangan/antifraud, pernyataan, kasus, log eksternal dan cadangan perlu penilaian terpisah. Pemulihan membutuhkan buku privasi terkini dan penerapan ulang sebelum membuka layanan."
+            "Apa yang ditulis game ke Solana bersifat publik dan permanen: alamat Anda, paket yang Anda buka, chip yang Anda miliki dan perdagangkan, riwayat staking dan arena. Catatan itu hidup di rantai dan di pengindeks pihak ketiga, bukan di basis data kami, dan tidak ada permintaan kepada kami yang dapat menghapusnya. Menghapus profil tidak menulis ulang ledger.",
+            "Di dalam sistem kami, permintaan penghapusan yang ditinjau dapat menghapus nama tampilan dan negara pada profil, riwayat nama dan reservasi, serta sesi dan nonce autentikasi; permintaan itu menghentikan aktivitas baru dan meninggalkan penanda agar profil yang sama tidak bisa sekadar mengulang penghapusan yang sama. Ini bukan penghapusan penuh: proyeksi rantai, catatan keuangan dan antifraud, deklarasi, kasus hak yang terbuka, log eksternal, dan cadangan perlu penilaian terpisah, dan pemulihan menuntut penghapusan diterapkan ulang sebelum layanan dibuka kembali."
           ]
         },
         {
           "h": "4. Cookie dan penyimpanan lokal",
           "p": [
-            "Aplikasi memakai cookie sesi dan penyimpanan peramban untuk bahasa, tema, gerakan, konfirmasi usia, dan status transaksi. Integrasi dompet dan verifikasi bisa memakai penyimpanan tambahan. Membersihkan peramban tidak menghapus server atau blockchain. Inventaris cookie dan penyimpanan nyata harus ditinjau sebelum peluncuran."
+            "Aplikasi memakai cookie sesi dan penyimpanan peramban untuk bahasa, tema, preferensi gerak, pengakuan usia, dan status transaksi. Integrasi dompet dan verifikasi dapat menulis entri tambahan sendiri. Menghapus data peramban hanya menghapus salinan lokal; catatan di server, kasus hak, dan riwayat rantai tidak terpengaruh."
           ]
         },
         {
-          "h": "5. Dasar hukum dan penyimpanan",
+          "h": "5. Retensi dan dasar hukum",
           "p": [
-            "Perintah pemeliharaan menghapus kasus tertutup setelah periode konfigurasi, kecuali penahanan atau bukti pembatasan aktif, serta pernyataan kedaluwarsa yang memenuhi syarat dan catatan autentikasi. Operator harus menjadwalkannya; adanya perintah bukan berarti sedang berjalan. Kategori gim, antifraud, audit dan cadangan lain masih membutuhkan kriteria disetujui. Kasus terbuka dan bukti wajib tidak boleh dihapus diam-diam.",
-            "Pengendali harus mendokumentasikan dasar hukum tiap tujuan dan, jika relevan, penilaian kepentingan yang sah. Menghubungkan dompet atau menerima ketentuan bukan persetujuan privasi menyeluruh. Turnstile digunakan untuk mencegah penyalahgunaan, bukan dinyatakan di sini sebagai fitur opsional berbasis persetujuan; kewajiban pemberitahuan dan persetujuan harus dinilai sebelum peluncuran."
+            "Perintah pemeliharaan menghapus kasus hak yang sudah ditutup setelah periode yang dikonfigurasi, kecuali ada penahanan atau bukti pembatasan, dan menghapus deklarasi kedaluwarsa serta catatan autentikasi lama. Menjalankannya adalah tugas operator: tersedianya perintah tidak berarti sudah berjalan sesuai jadwal. Kategori lain — catatan game, sinyal antifraud, log audit, dan cadangan — disimpan menurut kriteria yang harus disetujui untuk layanan yang diterapkan, dan kasus terbuka serta bukti yang diperlukan tidak dihapus diam-diam.",
+            "Setiap tujuan pemrosesan memerlukan dasar hukum yang terdokumentasi dan, bila dasarnya kepentingan sah, penilaian yang terdokumentasi. Menghubungkan dompet atau menerima dokumen ini bukan persetujuan menyeluruh atas hal lain. Turnstile berjalan dalam alur anti-penyalahgunaan karena game membutuhkannya, bukan sebagai tambahan opsional."
           ]
         },
         {
-          "h": "6. Pihak lain yang melihat data",
+          "h": "6. Siapa lagi yang melihat data",
           "p": [
-            "Cloudflare — CDN/WAF, tantangan Turnstile, dan kode negara untuk pembatasan wilayah — melihat metadata permintaan. Kami membaca header negaranya untuk mendeteksi wilayah. Kunci pembatasan frekuensi turunan IP juga diproses sebagaimana dijelaskan dalam §1.",
-            "Penyedia RPC Solana meneruskan pembacaan dan transaksi serta dapat menerima IP, waktu permintaan, pengenal dompet, dan metadata koneksi lain, bukan hanya data chain publik. Penyedia nyata, peran kontraktual, dan transfer internasional untuk layanan yang diterapkan harus diidentifikasi.",
-            "Layanan harga dan keacakan mencakup Pyth, Hermes, dan Switchboard. Peristiwa on-chain bersifat publik; permintaan layanan juga dapat membuka metadata jaringan kepada penyedia infrastruktur. Operator harus memverifikasi aliran sebenarnya, bukan menjanjikan bahwa penyedia hanya melihat transaksi.",
-            "Versi ini tidak mengintegrasikan SDK Sentry; DSN yang dikonfigurasi saja tidak mengaktifkan pelaporan kesalahan atau pemendekan alamat dompet. Telemetri mendatang memerlukan inventaris, penerima, dasar hukum terverifikasi, serta persetujuan yang diperlukan sebelum diaktifkan. Log server dapat memuat pengenal dompet dan memerlukan retensi serta kontrol akses."
+            "Cloudflare menyediakan CDN, WAF, dan tantangan Turnstile, dan melihat metadata permintaan — termasuk header negara yang kami pakai untuk deteksi wilayah.",
+            "Penyedia RPC Solana meneruskan pembacaan dan transaksi dan dapat melihat alamat IP, waktu permintaan, pengenal dompet, dan metadata koneksi lain, bukan hanya data publik rantai. Penyedia yang benar-benar dipakai layanan yang diterapkan, perannya, dan setiap transfer internasional harus diidentifikasi untuk penerapan itu.",
+            "Layanan harga dan keacakan — Pyth, Hermes, dan Switchboard — menerima permintaan yang dapat mengungkap metadata jaringan ke infrastruktur mereka selain hasil on-chain. Peristiwa on-chain sendiri memang publik menurut desainnya.",
+            "Tidak ada Sentry atau SDK pelaporan galat sejenis yang terpasang, dan mengonfigurasi DSN saja tidak mengubah itu. Log operasional server dapat memuat pengenal dompet dan tunduk pada retensi serta kontrol akses; setiap telemetri di masa depan mendapat inventaris terverifikasi, penerima yang disebutkan, dasar hukum, dan persetujuan bila hukum mensyaratkannya sebelum dinyalakan."
           ]
         },
         {
-          "h": "7. Hak Anda dan cara menghubungi kami",
+          "h": "7. Hak Anda dan cara menggunakannya",
           "p": [
-            "Akses, perbaikan, penghapusan, keberatan, portabilitas, dan pengaduan ke otoritas pengawas, termasuk permintaan menghapus data dalam basis data kami. Jika suatu hak berbenturan dengan blockchain (lihat §3), kami akan menjelaskan bagian yang bisa dan tidak bisa dilakukan, bukan berpura-pura.",
-            "Permintaan dukungan dan privasi dapat dikirim setelah login dompet meskipun usia atau wilayah memblokir aktivitas baru. Tersedia tanda terima, korespondensi dan ekspor terbatas; akses lebih luas dapat diminta. Identitas operator/pengendali dan kontak luar belum ditetapkan dan harus diterbitkan, termasuk alternatif bagi yang tidak dapat login dompet. Jangan memberikan frasa pemulihan atau kunci privat.",
-            "Produk untuk orang dewasa ({age}+). Usia dinyatakan sendiri, bukan diverifikasi independen. Pernyataan yang ditolak memiliki masa tunggu; operator dapat meninjau koreksi sebelum mengizinkan pernyataan baru. Ini bukan program perlindungan anak lengkap atau jaminan usia yang cukup secara hukum."
+            "Anda dapat meminta akses, perbaikan, penghapusan, pembatasan, penolakan, dan portabilitas, serta mengadu ke otoritas pengawas di tempat Anda tinggal. Permintaan diajukan di pusat hak setelah masuk dengan dompet — jalur yang tetap berfungsi meski pemeriksaan usia atau wilayah memblokir aktivitas lain. Pusat memberi tanda terima dan ekspor swalayan terbatas, dan akses yang lebih luas dapat diminta.",
+            "Sebagian jawaban akan bersifat parsial karena cara kerja blockchain: bila suatu hak berbenturan dengan catatan permanen yang dijelaskan di §3, kami memberi tahu bagian mana yang dapat kami penuhi dan bagian mana yang tidak dapat dipenuhi siapa pun. Jangan pernah mengirim frasa pemulihan atau kunci pribadi bersama permintaan, dan anggap setiap pesan yang memintanya sebagai upaya pencurian.",
+            "Produk ini untuk orang dewasa ({age}+). Hasil usia bersifat deklarasi mandiri dan tidak diverifikasi secara independen; setelah deklarasi ditolak ada masa tunggu, dan koreksi dapat ditinjau sebelum deklarasi baru diizinkan. Itu bukan program perlindungan anak atau verifikasi usia yang lengkap, dan kami tidak menggambarkannya seperti itu."
           ]
         }
       ]

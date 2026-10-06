@@ -34,7 +34,7 @@ export function serviceRefHash(kind: number, wallet: PublicKey, payload: string 
 
 export const handleRefHash = (kind: 0 | 1, wallet: PublicKey, handle: string) => serviceRefHash(kind, wallet, handle.trim().toLowerCase());
 
-export interface ServiceQuote {
+interface ServiceQuote {
   /** base units of `currency` the program will charge (client estimate; SOL/SKR are re-priced on-chain via Pyth) */
   amount: bigint;
   /** slippage guard passed as max_units (amount × 1.01 for volatile currencies, 0 otherwise) */
@@ -54,7 +54,7 @@ export function quoteService(id: ServiceId, currency: CurrencyCode, prices: { so
   return { amount, maxUnits: (amount * 101n) / 100n };
 }
 
-export interface PayServiceParams {
+interface PayServiceParams {
   connection: Connection;
   wallet: WalletLike;
   id: ServiceId;

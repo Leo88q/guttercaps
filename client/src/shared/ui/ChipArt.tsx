@@ -7,7 +7,7 @@ import { collectionColor, rarityColor, vfxTier } from '@/shared/lib/rarity';
 
 function hash(n: number) { let x = (n + 0x9e37) * 2654435761; x ^= x >>> 15; x = Math.imul(x, 0x85ebca6b); x ^= x >>> 13; return (x >>> 0) / 4294967295; }
 
-export interface ChipArtProps {
+interface ChipArtProps {
   collection: number;
   rarity: number;
   /** mint number (`Name #N`) — `null`/absent while the API has not resolved it; the art seed falls back */
