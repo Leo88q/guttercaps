@@ -3,11 +3,10 @@
 // -----------------------------------------------------------------------------
 // Two rules about this file, because both are the kind of thing that gets "cleaned up" later:
 //
-//  1. `reviewed: false` is not a TODO to tick off, and neither is the copy below. It is a factual
-//     statement about the product: the lootbox/gambling question (BE/NL/UK) needs a lawyer, not a
-//     translation. The page renders the banner while it is false, so what a player reads matches what
-//     the team actually knows. Flipping it belongs to the owner's checklist (docs/09 §7), never to a
-//     drive-by commit.
+//  1. `LEGAL_REVIEWED` is an internal readiness flag read by `scripts/legal-readiness.mjs` and the
+//     release test. It is not rendered: the published documents are the owner-approved clean text and
+//     say nothing about drafts or counsel. Keep the flag honest — flipping it belongs to the owner's
+//     checklist (docs/09 §7), never to a drive-by commit.
 //  2. The numbers are not marketing prose. Fees, caps, windows and burn shares here are the values
 //     `packages/economy` and the programs enforce, and `legal.test.ts` compares them against those
 //     sources — a ToS that says 7.5 % while the contract charges 10 % is a consumer-protection
@@ -71,10 +70,10 @@ export function formatLegalCopy(copy: LegalCopy, locale: string): LegalCopy {
 export const LEGAL_DOCS = formatLegalCopy(english as LegalCopy, 'en');
 export const LEGAL_IDS: LegalDocId[] = ['terms', 'privacy'];
 /** Effective date of the text above — the page shows it, and the store listing quotes it. */
-export const LEGAL_EFFECTIVE = '2026-09-29';
+export const LEGAL_EFFECTIVE = '2026-10-06';
 /** Separate revision: material corrections on the same day still re-ask for acknowledgement. */
-export const LEGAL_REVISION = '2026-09-29.5';
-/** Counsel sign-off. While false the page says so out loud (see the file header). */
+export const LEGAL_REVISION = '2026-10-06.1';
+/** Internal readiness flag for `scripts/legal-readiness.mjs`. It is not rendered to players. */
 export const LEGAL_REVIEWED = false;
 
 export function legalDoc(id: string | undefined): LegalDoc | undefined {

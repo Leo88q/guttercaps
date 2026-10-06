@@ -1,144 +1,144 @@
 {
-  "revision": "2026-09-29.5",
-  "sha256": "d871fd12ff18be592bb985c18da7dd3f5c1a40e0bd55d356c494204009ccfe81",
+  "revision": "2026-10-06.1",
+  "sha256": "ddfada3bdc5084a2ad847c1c9ca5d1d9b84e19dc4ac6b0c52718846c2ee20f6c",
   "docs": {
     "terms": {
       "slug": "terms",
       "title": "Mga Tuntunin ng Serbisyo",
-      "intro": "Inilalarawan ng draft na tuntuning ito ang GUTTERCAPS at mga mekanismo nito sa chain. Kodigo ang nagtatakda ng pagpapatupad ng transaksiyon, hindi ng legal na karapatan ng mamimili. Nangingibabaw ang sapilitang batas sa salungat na tuntunin o kilos ng programa. Wala pang itinakdang operator at mga merkado ng paglulunsad; hindi ito pahintulot para sa pampublikong bayad na paglulunsad.",
+      "intro": "Ang GUTTERCAPS ay isang browser game sa Solana: bumibili ka ng mga pack ng kolektibong chip, at ang laman ng bawat pack ay iginuguhit nang random mula sa isang publikadong distribusyon. Ang Mga Tuntunin ng Serbisyo na ito ay isang legal na nagbubuklod na kasunduan sa pagitan mo at ng operator ng GUTTERCAPS («kami», «namin»), at saklaw nito ang laro, web app, tindahan, pamilihan, staking, arena, sentrong pangkarapatan at anumang kaugnay na tampok (ang «Mga Serbisyo»). Tinatanggap mo ang Mga Tuntuning ito sa paggamit ng Mga Serbisyo sa anumang paraan — pagbukas ng app, pagkonekta ng wallet o pagpirma ng transaksyon. Kung hindi mo tinatanggap ang mga ito, huwag gamitin ang Mga Serbisyo. Pansinin: nililimitahan ng Seksyon 8 ang aming pananagutan, at ipinapaliwanag ng Seksyon 9 kung paano nagbabago ang Mga Tuntuning ito at aling teksto ang namamayani. Walang nakasaad dito na nag-aalis ng mga karapatang ipinagkakaloob sa iyo ng mandatoryong batas; nangingibabaw ang mga karapatang iyon sa dokumentong ito at sa gawi ng anumang smart contract.",
       "sections": [
         {
-          "h": "1. Ano ang produktong ito",
+          "h": "1. Ano ang GUTTERCAPS",
           "p": [
-            "Isang larong pang-browser sa Solana. Bumibili ka ng mga pakete ng kolektibol na cap; sapalarang pinipili ang matatanggap na cap ayon sa inilathalang distribusyon. Ang mga cap ay mga asset sa Solana na kontrolado ng wallet, kabilang ang compressed-asset na daloy ng Bubblegum V2 at ang mga dating Metaplex Core asset. Hindi namin hawak ang mga key ng wallet mo at hindi kami nagpapatakbo ng kustodiyal na serbisyo sa pagdeposito o pag-withdraw.",
-            "Ang mga pakete ay bayad na item na may sapalarang laman. Hindi namin sinasabing iba ito o na pagbili ito ng garantisadong halaga. May mga limitasyon sa rehiyon sa §2 dahil itinuturing ng ilang regulator na pagsusugal ang mekanismong ito."
+            "Isang laro tungkol sa mga chip, pack at teritoryo sa Solana. Nagtitipon ka ng mga chip, bumubuo ng loadout, nakikipagpalitan, naglalagay sa staking at nakikipaglaban gamit ang mga ito. Ang mga chip ay mga asset sa Solana na kontrolado ng wallet — mga compressed asset na ginawa sa Bubblegum V2, at mga Metaplex Core asset para sa mga naunang drop. Hindi namin hawak ang iyong mga susi at wala kaming custodial na serbisyo ng deposito o pag-withdraw: nasa wallet mo ang mga asset, sa ilalim ng iyong kontrol, at bawat paggalaw ay transaksyong ikaw mismo ang pumipirma.",
+            "Ang mga pack ay bayad na bagay na may random na laman, at sinasabi namin ito nang tuwiran: nagbabayad ka para sa isang pack, at ang chip sa loob ay iginuguhit mula sa publikadong distribusyon, hindi pinipili mo o namin. Ang mga chip ay kolektibleng may gamit sa laro, hindi produkto ng pamumuhunan, at ang $CG ay para sa paggamit sa loob ng laro. Ang smart contract ay nagpapatupad ng mga transaksyon at nagpapatibay ng mga patakaran ng laro; hindi nito tinutukoy ang iyong mga legal na karapatan at hindi nito maaaring lampasan ang mandatoryong batas. Kung nagkasalungat ang tekstong ito, ang code at ang mandatoryong batas, ang batas ang namamayani."
           ]
         },
         {
-          "h": "2. Sino ang maaaring maglaro at saan hindi ibinebenta ang mga pakete",
+          "h": "2. Sino ang puwedeng maglaro, at saan hindi ibinebenta ang mga pack",
           "p": [
-            "Dapat kang may edad na hindi bababa sa {age} at sumunod sa mas mataas na lokal o itinakdang minimum. Tumatanggap ang sentro ng deklarasyon ng kapanganakan; kinakalkula ng server ang pagiging kuwalipikado nang hindi iniimbak ang petsa. Sariling pahayag ito, hindi beripikasyon ng edad o identidad. Maaaring kailangan ang aktibong deklarasyon bago ang bagong gawain sa production.",
-            "Kasalukuyang naka-off bilang default ang mga pagsusuri sa edad at lokasyon; maaaring tahasang i-on muli ang mga ito sa configuration ng deployment. Kapag naka-on, nililimitahan ng dating kontrol sa quote ng pack ang mga natukoy na rehiyong {regions}; saklaw din ng nako-configure na mga tuntunin bawat feature at pagtukoy ng bansa mula sa pinagkakatiwalaang source ang ilang aksyon sa API at pagpirma ng transaksyon sa aming client. Tinatanggihan ang hindi matukoy na bansa kapag naka-on ang mga pagsusuri. Hindi pinipigilan ng mga kontrol na ito ang direktang pagtawag sa blockchain at hindi nito pinatutunayang legal ang pagsali sa ibang bansa.",
-            "Tinataya ang bansa mula sa network metadata sa edge at maaaring magkamali. Hindi awtomatikong bawal ang VPN para sa privacy, ngunit bawal magsinungaling tungkol sa pagiging kuwalipikado o lampasan ang naaangkop na legal na paghihigpit. Hindi binabago ng VPN ang batas na saklaw ka."
+            "Kailangan mong hindi bababa sa {age} taong gulang upang gamitin ang Mga Serbisyo, at mas matanda pa kung mas mataas ang itinatakda ng batas sa iyong lugar. Ang edad ay sariling pahayag: tumatanggap ang sentrong pangkarapatan ng pahayag ng petsa ng kapanganakan, kinakalkula ng server ang resulta nang hindi iniimbak ang petsa, at ang resulta, bersyon ng patakaran at mga timestamp lamang ang itinatago. Hindi ito pagpapatunay ng pagkakakilanlan, at maaari kaming humingi ng bagong pahayag bago ang isang bagong gawain.",
+            "Itinuturing ng ilang regulator ang mga bayad na pack na may random na laman bilang mekanismo ng pagsusugal, kaya maaaring limitahan ang pagbebenta ng pack ayon sa rehiyon. Kapag bukas ang gate ng pack, tinatanggihan ang mga pagbili para sa mga natukoy na rehiyon {regions}, gayundin ang mga hindi kilalang bansa; maaaring ilapat ang katulad na pagsusuri sa ilang aksyon sa API at sa pagpirma ng transaksyon sa aming client. Umaasa ang pagtukoy sa metadata ng network sa edge at maaaring magkamali. Hindi napipigilan ng mga kontrol na ito ang direktang tawag sa smart contract mula sa ibang client, at sa sarili nila ay hindi nangangahulugang pinapayagan ng iyong hurisdiksyon ang paglalaro.",
+            "Hindi ipinagbabawal ang paggamit ng VPN para sa privacy. Ipinagbabawal ang pagpapanggap tungkol sa iyong lokasyon, o paggamit ng VPN upang lusutan ang restriksyong naaangkop sa iyo. Kung hindi ka sigurado kung legal at pinapayagan ang laro sa iyong lugar, alamin ito bago magbayad: ang pagtatasa ay responsibilidad mo, at walang setting sa aming panig ang gagawa ng labag sa batas na paggamit na maging legal."
           ]
         },
         {
-          "h": "3. Tsansa, progresibong garantiya, at napapatunayang randomness",
+          "h": "3. Laman ng pack, publikadong tsansa at mabeberipikang draw",
           "p": [
-            "Nakalathala sa tindahan at nakatakda sa code ang distribusyon ng rarity, pinakamababang garantisadong rarity, at counter ng garantiya ng bawat pakete (packages/economy PACKS; Panimulang pakete: {starterCaps} cap; Karaniwang pakete: {standardCaps} cap; Premium na pakete: {premiumCaps} cap; Limitadong pakete ng event: {limitedCaps} cap). Ipinapatupad ng programang on-chain ang parehong talahanayan, kasama ang mahigpit na hangganan para sa dalawang pinakamataas na antas.",
-            "Gumagamit ang mga bunutan ng pinagmumulan ng randomness na may paunang commitment at kasunod na pagbubunyag (Switchboard on-demand). Parehong on-chain ang mga ito kaya maaaring kalkulahin muli ang nakaraang resulta: tinatanggap ng verification screen ang transaksyon ng pagbubukas at inuulit ang expansion na ginawa ng programa. Hindi palihim na sinusunog ng hindi tumutugong oracle ang bayad mo — tingnan ang §5.",
-            "Hiwalay ang mga counter ng garantiya para sa bawat wallet at SKU, at nakaimbak ang mga ito on-chain. Hindi ito pangako ng partikular na resulta sa isang bunutan; nililimitahan nito ang pinakamahabang malas na sunod-sunod na resulta."
+            "Ang distribusyon ng rarity, garantiyang pinakamababa at counter ng pity ng bawat pack ay publikado sa tindahan bago ka magbayad at tinukoy sa code: Starter Pack {starterCaps} chip, Standard Pack {standardCaps} chip, Premium Pack {premiumCaps} chip, Limited Event Pack {limitedCaps} chip. Ipinapatupad ng on-chain program ang parehong talahanayan, kasama ang mahigpit na limitasyon sa dalawang pinakabihirang antas, kaya ang tsansang binabasa mo ay ang tsansang ipinapatupad ng program.",
+            "Gumagamit ang mga draw ng commit–reveal randomness beacon (Switchboard on demand). Parehong on-chain ang commitment at ang reveal, kaya mababanggit muli ang nakaraang resulta: inuulit ng verify screen ang parehong expansion na ginawa ng program, at maaari mong suriin ang isang draw nang mag-isa nang hindi nagtatanong sa amin ng anuman.",
+            "Ang mga counter ng pity ay itinatago kada wallet at kada uri ng pack, on-chain. Nililimitahan ng counter ang pinakamasamang posibleng sunod-sunod; hindi ito pangako tungkol sa isang partikular na draw at hindi nito binabago ang publikadong distribusyon ng alinmang pack."
           ]
         },
         {
-          "h": "4. Presyo, bayarin, at sinusunog na halaga",
+          "h": "4. Presyo, bayarin at kung ano ang sinusunog",
           "p": [
-            "Katumbas ng halaga sa fiat ang presyo ng mga pakete at binabayaran ito sa SOL, USDC, $CG, o SKR. Operator ang nagtatakda ng presyo at nagbabago ito kasabay ng configuration ng laro; ang presyong nasa pinirmahan mong quote ang babayaran mo.",
-            "Sa bentahan sa merkado, ibinabawas sa nagbebenta ang nababagong bayad sa protocol (default na {marketFee} %, mahigpit na on-chain na hangganang {marketCap} %) at hiwalay na royalty sa creator na {royalty} %. Humigit-kumulang {buyback} % ng bayad sa protocol ang napupunta sa muling pagbili at pagsunog; ang natitira at royalty ay sa ingatang-yaman. Sinusunog din ang {listingBurn} $CG kapag gumagawa ng listing. Ipinapakita ang kasalukuyang bayarin bago pumirma.",
-            "May kaltas na {arenaRake} % sa kabuuang pot ng pustahan sa arena: {arenaTreasury} % ng kaltas ang napupunta sa ingatang-yaman, {arenaPool} % ang para sa papremyo ng season, at sinusunog ang natitirang {arenaBurn} %.",
-            "Sinusunog ang {cgBurn} % ng presyo ng paketeng binayaran sa $CG. May {skrDiscount} % na diskuwento sa pagbabayad sa SKR.",
-            "Ikaw ang sasagot sa bayarin sa network, hindi kami: transaction fee ng Solana at reserbang renta para sa mga account na nililikha ng pakete. Ibinabalik ang reserba habang pinoproseso ang pakete kapag isinara ang account."
+            "Ang mga pack ay binabayaran sa SOL, USDC, $CG o SKR, at ang presyong pinipirmahan mo ang presyong binabayaran mo. Ang mga presyo, diskwento at konfigurasyon ng pack ay itinatakda sa loob ng mga limitasyong ipinapatupad ng mga program, at ang quote na ipinapakita bago ka pumirma ang namamayani.",
+            "Ang mga benta sa pamilihan ay nagbabawas ng bayad sa protocol — {marketFee} % bilang default, na may mahigpit na on-chain na kisame na {marketCap} % — at hiwalay na {royalty} % na royalty ng lumikha mula sa nagbebenta. Humigit-kumulang {buyback} % ng bayad sa protocol ay napupunta sa buyback-and-burn; ang natitira at ang royalty ay napupunta sa treasury. Ang paggawa ng listing ay nagsusunog din ng {listingBurn} $CG. Ang mga kasalukuyang bilang ay ipinapakita bago ka pumirma, at ang mga bayad na inilalarawan dito ay ang mga bayad na sinisingil ng mga program.",
+            "Ang mga taya sa arena ay may rake na {arenaRake} % ng pot: {arenaTreasury} % ng rake ay napupunta sa treasury, {arenaPool} % ang bumubuo sa premyo ng season, at ang natitirang {arenaBurn} % ay sinusunog. Ang rake ay para lamang sa taya; hindi naaapektuhan ang mga chip na dinadala mo sa laban.",
+            "Ang mga pack na binayaran sa $CG ay nagsusunog ng {cgBurn} % ng presyo, at ang mga pack na binayaran sa SKR ay may {skrDiscount} % na diskwento. Ang pagsunog ay pagbabago sa suplay ng token, hindi bayad na kinikita namin, at nangyayari ito on-chain sa parehong transaksyon ng pagbili.",
+            "Ang mga bayad sa network ng Solana at ang rent na nagbubukas ng mga account ng pack ay ikaw ang nagbabayad, hindi kami. Ang rent na nakalaan habang pinoproseso ang pack ay ibinabalik sa iyo kapag nagsara ang mga account. Hindi kailanman naibabalik ang mga bayad sa network — binabayaran ang mga ito sa network, hindi sa amin."
           ]
         },
         {
-          "h": "5. Refund, naipit na pakete, at pagkansela",
+          "h": "5. Mga refund, naantalang pack at pagkansela",
           "p": [
-            "Hindi kayang baligtarin ng programa ang resulta ng nabuksang pack. Hindi nito inaalis ang karapatan sa pagkansela, pag-atras sa kontrata, refund o pagsunod sa pamantayan sa ilalim ng batas. Kailangang suriin kada merkado ang eksepsiyon para sa digital na nilalaman o serbisyo, kasama ang tahasang pagsang-ayon at pagkilala na hinihingi bago bumili.",
-            "Kung hindi kailanman maibunyag ang random na halaga, mananatiling hindi bukas ang pakete. Magiging available lang ang buong refund ng bayad sa pagbili mula sa vault kapag lumipas na ang takdang panahon ng oracle at hindi pa rin naibubunyag ang kahilingan: {staleSlots} slot (humigit-kumulang {staleMinutes} minuto sa 400 millisecond bawat slot; nag-iiba ang aktuwal na oras). Hindi kailangang humingi sa suporta, pero dapat mong pirmahan ang pagkansela. Hindi ibinabalik ang network fee.",
-            "Kung ihihinto namin ang pagbebenta ng isang release dahil sa maling configuration, nakompromisong key, o utos ng regulator, hindi nito awtomatikong ginagawang refundable ang lahat ng naunang pagbili. Magagamit lang ng bayad at nakabinbing pakete ang parehong refund mechanism ng programa kapag natugunan ang mga kondisyon nito. Ibinabalik ang bayad sa perang ginamit sa pagbili.",
-            "Walang built-in na card chargeback ang blockchain; nananatili ang sapilitang remedyo. Itinatala ng sentro ang refund at pag-atras sa kontrata, nagbibigay ng mada-download na resibo at nagpapakita ng tugon. Hindi pag-apruba o pagbabayad ang pagsusumite. Hiwalay ang pagkansela ng nakabinbing pack; kailangan ng pagsusuri ng operator at angkop na karagdagang proseso para sa legal na karapatan."
+            "Kapag nabuksan na ang isang pack, hindi na maibabalik ng program ang draw nito: bahagi na ng on-chain record ang resulta. Hindi nito inaalis ang anumang karapatan sa pagkansela, pag-atras, refund o pagsunod na mayroon ka sa ilalim ng batas. Kung naaangkop ang eksepsyon para sa digital na nilalaman at anong pahintulot o pagkilala ang kailangan nito ay depende sa partikular na merkado, at walang nakasaad sa Mga Tuntuning ito na nagtatakwil sa karapatang hindi matatakwil.",
+            "Kung hindi dumating ang reveal ng randomness, nananatiling sarado ang pack at nasa vault ang bayad. Ang buong refund ng presyo ng pagbili ay magagamit kapag nag-expire ang window ng oracle habang hindi pa naisasapubliko ang kahilingan: {staleSlots} slot, humigit-kumulang {staleMinutes} minuto sa 400 ms bawat slot, na maaaring iba ang tunay na tiyempo. Binabasa ang mga kondisyon ng refund mula sa program, hindi hinuhusgahan ng support agent; ikaw ang pumipirma sa transaksyon ng pagkansela, at hindi ibinabalik ang mga bayad sa network.",
+            "Kung ihinto namin ang pagbebenta ng isang drop dahil sa maling konfigurasyon, naapektuhang susi o kahilingan ng regulator, hindi nito awtomatikong ginagawang mare-refund ang lahat ng naunang pagbili: nananatiling naihatid ang naihatid na draw, at ang refund path ng program pa rin ang tanging awtomatiko. Kapag ang bayad na pagbili ay hindi naihatid nang tuluyan, umiiral ang mga proteksyon ng batas sa sarili nilang mga tuntunin, at sinusuri namin ang ganoong kaso sa halip na magpanggap na wala ito.",
+            "Walang chargeback ng card ang mga pagbabayad sa blockchain, at hindi kami umaasa doon. Maaaring ihain ang mga kahilingan sa refund at pag-atras sa kontrata sa sentrong pangkarapatan: itinatala nito ang kahilingan, nagbibigay ng maaaring i-download na resibo, sinusubaybayan ang aming sagot, at sa sarili nito ay hindi nag-aapruba o nagpapatupad ng bayad. Huwag kailanman magpadala ng seed phrase o private key sa kahit kanino, kasama na ang nagpapanggap na aming support."
           ]
         },
         {
-          "h": "6. Patas na laro, mga device, at maaari naming ihinto pansamantala",
+          "h": "6. Patas na laro, mga device at pansamantalang itinigil na tampok",
           "p": [
-            "Limitado bawat device ang mga gantimpala sa quest, PvP, at season: tatlong wallet; maaari pa ring maglaro ang ikaapat sa parehong device pero walang gantimpala. Sinusuri ang mga palatandaan ng sabwatang panalo, pekeng kalakalan, at bot. Operator ang lumulutas sa napapatunayang signal; bawat aksyon ng operator sa account mo ay nasa audit log na handa naming ipakita sa iyo.",
-            "Maaaring pansamantalang ihinto ng operator ang bagong pagbili, listing, pagpasok sa staking, at laban kapag may insidente. Patuloy na gumagana ang pag-unstake, pagkansela, refund, at pag-withdraw — hindi ginagamit ang paghinto para i-freeze ang mga asset mo.",
-            "Paglabag sa mga tuntunin ang pagsasamantala sa sistema ng garantiya, oracle, o bug ng software upang kumuha ng halaga. Maaari naming baligtarin ang apektadong operasyon sa laro; para sa on-chain na halaga, sa pamamagitan lamang ng sariling mekanismo ng mga programa."
+            "Ang mga premyo sa quest, laban at season ay limitado kada device: tatlong wallet ang maaaring kumita sa parehong device, at ang ikaapat ay maaari pa ring maglaro ngunit walang kinikita. Sinusuri ang pagiging karapat-dapat laban sa mga senyales ng win-trading, wash-trading at bot, at bawat desisyon ng operator sa isang account ay naitala sa audit log na handa naming ipakita sa iyo. Kung mali ang senyales, mag-apela sa sentrong pangkarapatan.",
+            "Maaari naming i-pause ang mga bagong pagbili, bagong listing, bagong taya at bagong laban habang inaasikaso ang isang insidente. Patuloy na gumagana ang pag-unstake, pagkansela, refund at pag-withdraw habang naka-pause — hindi kailanman ginagamit ang pause upang i-freeze ang mga asset na pag-aari mo na, at hindi ito kapalit ng legal na prosesong kailangan sana.",
+            "Ang pagsasamantala sa isang bug, sa pity system o sa randomness beacon upang kumita ng halaga ay paglabag sa Mga Tuntuning ito. Kapag on-chain ang halaga, ang tanging pagwawasto na magagamit namin ay ang mga mekanismo ng mga program mismo; kapag nasa loob ng laro, maaari naming ibalik ang mga apektadong tala — at sasabihin namin kung ano ang ginawa namin at bakit."
           ]
         },
         {
-          "h": "7. Pananagutan mo",
+          "h": "7. Ang iyong wallet at ang iyong mga transaksyon",
           "p": [
-            "Responsibilidad mo ang wallet, seed phrase, at bawat transaksyong pinipirmahan mo. Hindi namin kailanman hinihingi ang seed phrase, hindi kami nagpapadala ng claim link na nangangailangan nito, at hindi namin mababawi ang isang pirma.",
-            "Kailangan mo ng Solana wallet na nagpapahintulot sa iyong suriin ang instruction na inaaprubahan. Kung may hindi pamilyar na programa o di-inaasahang halaga sa hiling na pumirma, huwag pumirma."
+            "Ang iyong wallet, seed phrase at bawat pirma mo ay responsibilidad mo. Hindi kami kailanman humihingi ng seed phrase o private key, hindi kami nagpapadala ng «claim» link na nangangailangan nito, at walang sinuman — kasama kami — ang makakabalik ng pirmang nagawa na. Itago ang seed phrase offline at huwag kailanman itong i-type sa pahinang napuntahan mo mula sa isang mensahe.",
+            "Gumamit ng wallet na nagpapahintulot sa iyong suriin ang instruction bago mo aprubahan ito. Kung ang kahilingan sa pagpirma ay nagpapakita ng hindi pamilyar na program, hindi inaasahang halaga o destinasyong hindi mo kilala, huwag pumirma: huminto, suriin ang transaksyon sa block explorer, at magtanong sa opisyal na channel kung may mukhang mali."
           ]
         },
         {
-          "h": "8. Hindi payong pinansyal, pamumuhunan, o garantiya",
+          "h": "8. Walang payo sa pamumuhunan, walang garantiyang halaga, mga limitasyon ng pananagutan",
           "p": [
-            "Nilalayon ang $CG para sa paggamit sa laro. Hindi nito tinutukoy kung saklaw ng regulasyon ang token, reward, staking o market. Walang garantisadong presyo, liquidity, tubo o balik. Kondisyon pa rin sa paglulunsad ang pag-uuri at mga pahintulot sa bawat hurisdiksiyon.",
-            "Ibinibigay ang software sa kasalukuyang kalagayan nito, nang walang anumang warranty, sa pinakamalawak na saklaw na pinapayagan ng batas sa tinitirhan mo. Kung hindi pinapayagan ang limitasyon sa pananagutan, hindi ito naaangkop sa iyo.",
-            "Ang kabuuang pananagutan namin sa isang pagbili ay limitado sa halagang ibinayad mo sa apektadong mga pakete. Hindi nito nililimitahan ang mga karapatang hindi maaaring limitahan, kabilang ang karapatan ng mamimiling nananatili sa kabila ng sugnay na ito at anumang warranty na obligado naming ibigay."
+            "Ang $CG ay token ng laro na para sa paggamit sa loob ng laro; kung regulated ito ay depende sa batas na naaangkop sa iyo, at hindi namin minamarka ang tanong na iyon sa pamamagitan ng pagtawag dito na utility token. Walang anuman sa laro, tindahan, pamilihan o arena ang payo sa pananalapi o alok ng pamumuhunan, at walang gumagarantiya ng presyo, liquidity, tubo o kita. Maaaring bumagsak sa zero ang mga digital asset at manatili doon.",
+            "Ang Mga Serbisyo ay ibinibigay «as-is» at «as-available», nang walang garantiya na lampas sa hinihingi ng batas, sa pinakamalawak na lawak na pinapayagan ng batas sa iyong lugar. Ang encryption, blockchain, oracle at browser ay minsan nabibigo, at hindi kami nangangako ng walang-abalang o walang-error na operasyon.",
+            "Ang kabuuang pananagutan namin para sa isang pagbili ay nililimitahan sa halagang binayaran mo para sa apektadong pack o mga pack. Hindi umiiral ang limitasyong iyon kung ipinagbabawal ito ng batas, at hindi nito kailanman nililimitahan ang mga karapatang hindi maaaring limitahan — kasama ang mga karapatan ng mamimili, mga garantiyang ayon sa batas, at mga lunas laban sa pandaraya o sinadyang paglabag."
           ]
         },
         {
-          "h": "9. Mga pagbabago at tekstong mananaig",
+          "h": "9. Mga pagbabago sa Mga Tuntuning ito at aling teksto ang namamayani",
           "p": [
-            "Maaaring magbago ang presyo, tsansa, singil at garantiya sa loob ng limitasyon ng programa. Dapat makita ang kasalukuyang kondisyon bago pumirma. Maaaring kailanganin ang abiso o panibagong kasunduan sa mahalagang pagbabago ayon sa batas; hindi maaaring alisin ng configuration update ang sapilitang karapatan.",
-            "Kailangan ng bagong petsa o rebisyon at madaling mahanap na abiso para sa mahahalagang pagbabago. Kumuha ng panibagong pagsang-ayon kung hinihingi ng batas; hindi sapat ang patuloy na paglalaro sa lahat ng merkado. Panatilihin ang mga magagamit na paraan ng unstaking, pagkansela at pag-withdraw.",
-            "Ingles ang pinagmulang teksto; ang salin ay para sa mas madaling pag-unawa. Nangingibabaw lamang ang Ingles kung legal at hindi nito inaalis ang karapatan sa ilalim ng sapilitang tuntunin sa wika, pagsisiwalat o proteksiyon ng mamimili. Ipaalam ang di-pagtutugma sa operator kapag nailathala na ang mga kontak nito."
+            "Maaaring magbago ang mga presyo ng pack, tsansa, bayarin, parameter ng pity at mga sinusuportahang currency sa loob ng mga limitasyong ipinapatupad ng mga program. Ipinapakita sa iyo ang mga kondisyon ng isang transaksyon bago ka pumirma, at hindi muling isinusulat ng pagbabago sa konfigurasyon ang natapos nang transaksyon.",
+            "Maaari naming baguhin ang Mga Tuntuning ito upang ipakita ang mga pagbabago sa batas, sa mga kinakailangan ng platform, sa kasanayan sa seguridad, sa functionality o sa komersyal na modelo ng laro, at upang itama o linawin ang teksto. Ang mga di-materyal na pagbabago ay nagsisimulang umiiral kapag naisapubliko nang may bagong petsa. Para sa materyal na pagbabago, nagbibigay kami ng abiso sa app bago ito umiral sa iyo at hinihiling ang panibagong pagsang-ayon mo kung kinakailangan ito ng batas; ang patuloy na paglalaro ay hindi itinuturing na pagsang-ayon kung ang pagsang-ayon ay dapat malinaw.",
+            "Ang tekstong Ingles ang orihinal na isinulat at namamayani kapag nagkakaiba ang salin at ang orihinal, kung pinahihintulutan ng batas ang ganoong resulta; nananaig pa rin ang salin kung binibigyan ito ng epekto ng iyong lokal na batas. Ang mga tanong, reklamo at hindi pagkakasundo ay dumadaan muna sa sentrong pangkarapatan, at hindi naaapektuhan ang mga mandatoryong karapatang maghain ng usapin sa hukuman o awtoridad sa iyong bansang tinitirahan."
           ]
         }
       ]
     },
     "privacy": {
       "slug": "privacy",
-      "title": "Pagkapribado",
-      "intro": "Pseudonymous ang pag-sign in gamit ang wallet, hindi anonymous: maaaring makilala ang tao kapag pinagsama ang address, transaksiyon, signal ng device at network metadata. Inilalarawan ng draft ang kasalukuyang daloy ng datos. Dapat matukoy ang controller, gumaganang kontak at mga pagsisiwalat kada merkado bago ang pampublikong bayad na paglulunsad.",
+      "title": "Privacy",
+      "intro": "Ang pagpasok gamit ang wallet ay pseudonymous, hindi anonymous: ang address, kasaysayan ng transaksyon at senyales ng device ay maaaring makakilala ng tao kapag pinagsama. Ipinaliwanag ng abisong ito kung ano ang pinoproseso namin, bakit, gaano katagal at ano ang magagawa mo. Hindi ito pormularyo ng pagsang-ayon — kung kinakailangan ng batas ang pagsang-ayon para sa isang partikular na gawain, hiwalay naming hinihiling ito. Basahin kasama ng Mga Tuntunin ng Serbisyo.",
       "sections": [
         {
-          "h": "1. Kinokolekta namin",
+          "h": "1. Ano ang pinoproseso namin",
           "p": [
-            "Ang Solana address mo mula sa pirmang ibinibigay sa pag-sign in. Isang HttpOnly session cookie na gc_session ang nagpapahintulot na ipakita ng app ang kalagayan mo. Default na 7 araw ang bisa ng session at Lax ang SameSite; maaaring baguhin ito ng deployment settings. Nangangailangan ng Secure sa HTTPS ang cross-site na SameSite=None.",
-            "Mga tala ng laro na nakaugnay sa address: pagbili, pagbubukas ng pakete at rarity na nakuha, listing at alok, staking position, laban sa arena, pag-claim ng quest, referral link, arawang limitasyon, counter ng garantiya, at audit log ng aksyon sa account na para lamang sa mga operator.",
-            "Mga signal laban sa pandaraya: salted hash ng device fingerprint para ipatupad ang limitasyon ng wallet bawat device at pigilan ang dobleng farming, at palatandaan ng tunay na tao mula sa Cloudflare Turnstile. Hindi namin iniimbak ang raw fingerprint o kinokolekta ang datos ng baterya, font, canvas, o sensor na madalas gamitin sa paggawa nito.",
-            "Pansamantalang nag-iimbak ang rate limiting ng mga counter na may key na IP address o network prefix, wallet, o session. Depende sa endpoint ang panahon: karaniwang 60 segundo, at isang oras para sa ilang limitasyon. Hindi anonymous ang mga counter na ito; pinoproseso ang mga key mula sa IP upang pigilan ang pang-aabuso."
+            "Ang iyong Solana address, na kinuha mula sa pirmang ibinibigay mo kapag pumapasok. Ang session cookie na pinangalanang gc_session ay nagpapanatili ng iyong pagpasok: HttpOnly, 7 araw bilang default, SameSite Lax, at SameSite=None sa HTTPS lamang. Ang cookie ay nagpapanatili ng session, at hindi ito kasangkapan sa pagsubaybay sa iyo sa ibang mga site.",
+            "Mga tala ng laro na nakaugnay sa address na iyon: mga pagbili, pagbubukas ng pack at mga rarity na nakuha, listing at alok, posisyon sa staking, laban sa arena, pag-claim ng quest, referral link, arawang limitasyon at counter ng pity, kasama ang audit log ng mga aksyon ng operator sa iyong account.",
+            "Mga senyales laban sa pandaraya: salted hash ng fingerprint ng device, na ginagamit upang ipatupad ang limitasyon ng wallet kada device at upang maiwasan ang doble-dobleng farming, at human-verification flag mula sa Cloudflare Turnstile. Hindi namin iniimbak ang hilaw na fingerprint at hindi kami nangongolekta ng data ng baterya, font, canvas o sensor.",
+            "Mga counter ng rate limit, na ang key ay IP address o prefix ng network, wallet o session, na itinatago nang maikling panahon — 60 segundo sa karamihan ng endpoint, isang oras sa ilan. Ang mga counter na iyon ay hindi anonymous na estadistika; kapag IP address ang key, personal data ang mga ito, at ganoon ang pagtrato namin."
           ]
         },
         {
-          "h": "2. Pagliit ng kinokolektang datos",
+          "h": "2. Ang sadyang hindi namin kinokolekta",
           "p": [
-            "Hindi hinihingi sa wallet login ang pangalan, email, telepono o dokumento. Ipinapadala ng opsyonal na age form ang petsa para sa pansamantalang kalkulasyon; resulta ng minimum, bersiyon ng patakaran at oras lang ang iniimbak. Maaaring may personal na datos ang support message. Huwag magpadala ng dokumento, seed phrase o private key.",
-            "Datos ng payment card — ang mga pagbabayad ay transaksyong pinipirmahan mo sa wallet.",
-            "Advertising o analytics SDK, session replay, o tracking pixel. Kung magbabago ito, mauunang magbago ang pahinang ito."
+            "Ang pagpasok gamit ang wallet ay hindi humihingi ng pangalan, email, numero ng telepono o dokumento ng pagkakakilanlan. Ang opsyonal na pahayag ng edad ay nagpapadala ng petsa ng kapanganakan para sa isang kalkulasyon sa server; hindi itinatago ang petsa, tanging ang resulta, bersyon ng patakaran at mga timestamp. Ang mga mensahe sa support ay maaaring maglaman ng personal data, at ang isusulat mo doon ay desisyon mo — huwag magpadala ng mga dokumento, seed phrase o private key.",
+            "Walang data ng payment card. Ang mga pagbabayad ay transaksyong pinipirma mo mula sa iyong wallet; wala kaming nakikitang numero ng card dahil walang card.",
+            "Walang advertising o analytics SDK, walang session replay, walang tracking pixel. Kung magbabago iyon, ang dokumentong ito ang unang magbabago — at magbabago sa paraang kailangan naming magtanong sa iyo."
           ]
         },
         {
-          "h": "3. Hindi kayang ayusin ng hiling na magbura",
+          "h": "3. Ang hindi kayang abutin ng kahilingan sa pagbura",
           "p": [
-            "Lahat ng isinusulat ng laro sa Solana ay pampubliko, permanente, at nababasa ng sinuman: address mo, paketeng binuksan, cap na pag-aari at ipinagkalakalan, at kasaysayan ng staking at arena. Hindi iyon ang database o server namin kundi ang blockchain; walang hiling sa amin ang makapagbubura nito.",
-            "Hindi binubura ng off-chain na pagtanggal ang blockchain. Matapos suriin, maaaring burahin ang pangalan/bansa ng profile, history/reservation ng pangalan at session/nonce; limitado ang bagong gawain at may marker para muling ilapat ang profile erasure. Hindi ito buong pagbura: chain projection, financial/antifraud record, deklarasyon, kaso, external log at backup ay kailangan pang suriin. Kailangan ang pinakabagong privacy ledger at muling paglalapat bago buksan pagkatapos ng restore."
+            "Ang isinusulat ng laro sa Solana ay pampubliko at permanente: ang iyong address, ang mga pack na binuksan mo, ang mga chip na pag-aari at ipinagpalit mo, ang kasaysayan mo sa staking at arena. Ang talang iyon ay nasa chain at sa mga third-party indexer, hindi sa aming database, at walang kahilingan sa amin ang makakapag-alis nito. Hindi muling isinusulat ng pagbura ng profile ang ledger.",
+            "Sa loob ng aming mga sistema, ang sinuring kahilingan sa pagbura ay maaaring mag-alis ng handle at bansa sa profile, kasaysayan ng handle at mga reservation, at mga session at nonce ng authentication; itinitigil nito ang bagong aktibidad at nag-iiwan ng marka upang ang parehong profile ay hindi basta makapag-ulit ng parehong pagbura. Hindi ito buong pagbura: ang mga projection ng chain, talaan sa pananalapi at laban sa pandaraya, mga pahayag, bukas na kaso sa karapatan, panlabas na log at backup ay nangangailangan ng hiwalay na pagtatasa, at ang pag-restore ay nangangailangan ng muling paglalapat ng pagbura bago magbalik ang serbisyo."
           ]
         },
         {
-          "h": "4. Cookies at lokal na imbakan",
+          "h": "4. Cookie at local storage",
           "p": [
-            "Gumagamit ang app ng session cookie at browser storage para sa wika, tema, galaw, kumpirmasyon ng edad at estado ng transaksiyon. Maaaring gumamit ng ibang storage ang wallet at verification integration. Hindi binubura ng paglilinis ng browser ang server o chain. Dapat suriin ang aktuwal na talaan ng cookie at storage bago maglunsad."
+            "Gumagamit ang app ng session cookie at browser storage para sa wika, tema, preference sa galaw, pagkilala sa edad at estado ng transaksyon. Ang mga integrasyon ng wallet at verification ay maaaring magsulat ng sarili nilang karagdagang entry. Ang paglilinis ng data ng browser ay nag-aalis lamang ng lokal na kopya; hindi naaapektuhan ang mga talaan sa server, kaso sa karapatan at kasaysayan sa chain."
           ]
         },
         {
-          "h": "5. Legal na batayan at tagal ng pag-iimbak",
+          "h": "5. Pagtagal ng imbak at mga legal na batayan",
           "p": [
-            "Binubura ng maintenance command ang saradong kaso matapos ang itinakdang panahon, maliban sa aktibong hold o ebidensiya ng paghihigpit, at ang kuwalipikadong expired declaration at authentication record. Dapat itong iiskedyul ng operator; hindi nangangahulugang tumatakbo na dahil may command. Kailangan pa ng aprubadong pamantayan ang ibang game, antifraud, audit at backup record. Hindi dapat tahimik na burahin ang bukas na kaso at kinakailangang ebidensiya.",
-            "Dapat idokumento ng controller ang legal na batayan ng bawat layunin at, kung kailangan, pagsusuri sa lehitimong interes. Hindi pangkalahatang pahintulot sa privacy ang pagkonekta ng wallet o pagtanggap ng tuntunin. Ginagamit ang Turnstile laban sa abuso, hindi inilalarawan dito bilang opsyonal na tampok batay sa pahintulot; dapat suriin ang kinakailangang abiso at pahintulot bago maglunsad."
+            "Ang maintenance command ay nag-aalis ng mga saradong kaso sa karapatan pagkatapos ng nakatakdang panahon, maliban kung may hold o ebidensya ng restriksyon, at nag-aalis ng mga expired na pahayag at lumang talaan ng authentication. Ang pagpapatakbo nito ay gawain ng operator: ang pagkakaroon ng command ay hindi nangangahulugang tumatakbo na ito sa iskedyul. Ang ibang kategorya — talaan ng laro, senyales laban sa pandaraya, audit log at backup — ay itinatago ayon sa pamantayang dapat aprubahan para sa naka-deploy na serbisyo, at ang bukas na kaso at kailangang ebidensya ay hindi tahimik na binubura.",
+            "Ang bawat layunin ng pagproseso ay nangangailangan ng dokumentadong legal na batayan at, kung legitimate interest ang batayan, dokumentadong pagtatasa. Ang pagkonekta ng wallet o pagtanggap sa mga dokumentong ito ay hindi pangkalahatang pagsang-ayon sa lahat ng iba pa. Ang Turnstile ay tumatakbo sa mga anti-abuse flow dahil kailangan ito ng laro, hindi bilang opsyonal na dagdag."
           ]
         },
         {
-          "h": "6. Sino pa ang nakakakita",
+          "h": "6. Sino pa ang nakakakita ng data",
           "p": [
-            "Nakikita ng Cloudflare — CDN/WAF, hamon ng Turnstile, at country code para sa pagharang ayon sa rehiyon — ang metadata ng kahilingan. Binabasa namin ang country header nito para tukuyin ang rehiyon. Pinoproseso rin ang mga rate-limiting key mula sa IP gaya ng nasa §1.",
-            "Ipinapasa ng Solana RPC provider ang mga query at transaksiyon at maaari itong makatanggap ng IP, oras ng request, wallet identifier at ibang connection metadata, hindi lamang pampublikong datos ng chain. Dapat matukoy ang aktuwal na provider, papel sa kontrata at internasyonal na paglilipat ng inilunsad na serbisyo.",
-            "Kasama sa serbisyo sa presyo at randomness ang Pyth, Hermes at Switchboard. Pampubliko ang on-chain event; maaari ring maglantad ng network metadata ang request sa infrastructure provider. Dapat tiyakin ng operator ang aktuwal na daloy sa halip na mangakong transaksiyon lamang ang nakikita nila.",
-            "Walang integrasyon ng Sentry SDK sa bersiyong ito; hindi sapat ang DSN para magpatunay ng error reporting o pagpapaikli ng wallet address. Kailangan ng beripikadong talaan ng datos, tatanggap, legal na batayan at kinakailangang pahintulot bago paganahin ang telemetry. Maaaring may wallet identifier ang server log at kailangan nito ng retention at kontrol sa akses."
+            "Ang Cloudflare ang nagbibigay ng CDN, WAF at Turnstile challenge, at nakikita nito ang metadata ng kahilingan — kasama ang country header na ginagamit namin para sa pagtukoy ng rehiyon.",
+            "Ang mga Solana RPC provider ay nagpapasa ng mga pagbasa at transaksyon at maaaring makakita ng IP address, oras ng kahilingan, identifier ng wallet at iba pang metadata ng koneksyon, hindi lamang pampublikong data ng chain. Ang mga provider na aktwal na ginagamit ng naka-deploy na serbisyo, ang kanilang mga papel at anumang internasyonal na paglilipat ay dapat tukuyin para sa deployment na iyon.",
+            "Ang mga serbisyo ng presyo at randomness — Pyth, Hermes at Switchboard — ay tumatanggap ng mga kahilingan na maaaring maglantad ng metadata ng network sa kanilang imprastraktura bukod sa resulta sa chain. Ang mga kaganapan sa chain mismo ay pampubliko ayon sa disenyo.",
+            "Walang Sentry o katulad na error-reporting SDK na integrado, at ang pag-configure ng DSN ay hindi nagbabago nito nang mag-isa. Ang mga operational log ng server ay maaaring maglaman ng identifier ng wallet at sakop ng pagtagal ng imbak at access control; ang anumang telemetry sa hinaharap ay may beripikadong inventory, pinangalanang tatanggap, legal na batayan at pagsang-ayon kung kinakailangan ng batas bago ito buksan."
           ]
         },
         {
-          "h": "7. Mga karapatan mo at paraan ng pakikipag-ugnayan",
+          "h": "7. Ang iyong mga karapatan at paano gamitin ang mga ito",
           "p": [
-            "Pag-access, pagwawasto, pagbura, pagtutol, paglipat ng datos, at pagrereklamo sa awtoridad na nangangasiwa, kabilang ang hiling na burahin ang nasa aming database. Kung may karapatang salungat sa katangian ng chain (tingnan ang §3), sasabihin namin kung alin ang magagawa at hindi, sa halip na magkunwari.",
-            "Maaaring magsumite ng support at privacy request matapos mag-sign in sa wallet kahit hinaharang ng edad o rehiyon ang bagong gawain. May resibo, usapan at limitadong export; maaaring humiling ng mas malawak na akses. Wala pang itinakdang identidad ng operator/controller at external contact; dapat itong ilathala, kasama ang alternatibo para sa hindi makagamit ng wallet login. Huwag ibigay ang seed phrase o private key.",
-            "Para sa nasa hustong gulang ang produkto ({age}+). Sariling pahayag ang edad, hindi hiwalay na beripikasyon. May panahon ng paghihintay ang tinanggihang deklarasyon; maaaring suriin ng operator ang pagwawasto bago payagan ang bago. Hindi ito kumpletong programa ng proteksiyon ng bata o legal na sapat na age assurance."
+            "Maaari kang humiling ng access, pagtutuwid, pagbura, paghihigpit, pagtutol at portability, at maaari kang magreklamo sa supervising authority sa iyong lugar. Ang mga kahilingan ay inihahain sa sentrong pangkarapatan pagkatapos pumasok gamit ang wallet — landas na patuloy na gumagana kahit hinaharang ng pagsusuri sa edad o rehiyon ang ibang aktibidad. Nagbibigay ang sentro ng mga resibo at limitadong self-service export, at maaaring hilingin ang mas malawak na access.",
+            "Ang ilang sagot ay magiging bahagya dahil sa paraan ng paggana ng blockchain: kapag ang isang karapatan ay bumangga sa permanenteng talaang inilarawan sa §3, sinasabi namin kung aling bahagi ang matutupad namin at aling bahagi ang hindi kayang tuparin ng kahit sino. Huwag kailanman magpadala ng seed phrase o private key kasama ng kahilingan, at ituring ang bawat mensaheng humihingi nito bilang pagtatangkang magnakaw.",
+            "Ang produkto ay para sa mga nasa hustong gulang ({age}+). Ang resulta ng edad ay sariling pahayag, hindi independiyenteng beripikado; pagkatapos ng tinanggihang pahayag ay may panahon ng paghihintay, at ang pagwawasto ay maaaring suriin bago payagan ang bagong pahayag. Hindi ito kumpletong programa ng proteksyon ng bata o pagpapatunay ng edad, at hindi namin ito inilalarawan nang ganoon."
           ]
         }
       ]
