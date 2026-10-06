@@ -1,0 +1,3751 @@
+{
+  "catalogVersion": "1.0.0",
+  "gameId": "guttercaps",
+  "generatedAt": "2026-10-06T00:00:00Z",
+  "sourceCommit": "7967e3597de04cd11ce1046b8f18b561752b0247",
+  "generator": "watchtower/scripts/generate-handoff-fixtures.ts (fixtures are round-tripped through the backend codec; run fails on drift)",
+  "hubAdapterExpectation": {
+    "gameIdInHub": "guttercaps",
+    "hubEnvVar": "GUTTERCAPS_CORE_PROGRAM_ID",
+    "expectedNames": [
+      "PlayerJoined",
+      "PackOpened",
+      "AssetMinted",
+      "AssetTransferred",
+      "WagerCreated",
+      "WagerSettled",
+      "RewardGranted",
+      "TokenBurned"
+    ],
+    "note": "Adapter names are an allowlist, not proof of emission. Below: what the game actually emits and the proposed mapping. PackOpened exists as a declared event but has NO live emitter (legacy Core path gated off) — the real first-action event is CompressedClaimsCreated; this needs hub sign-off, the game will not rename on-chain events."
+  },
+  "events": [
+    {
+      "sourceEventName": "ServicePaid",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": "PurchaseCompleted",
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Paid service (handle, cosmetics, boosters, season pass) settled on-chain. `kind` = ServiceKind, `currency` = Currency enum (0 SOL / 1 USDC / 2 CG / 3 SKR), `amount` raw units of that currency, `burned` = $CG portion burned, `refHash` = keccak of the canonical off-chain payload.",
+      "payloadFields": [
+        {
+          "name": "buyer",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "kind",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "currency",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "amount",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "burned",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "refHash",
+          "type": "bytes32",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "hex-encoded 32 bytes"
+        }
+      ],
+      "playerIdentity": {
+        "field": "buyer",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "sink,revenue",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "PackBought",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": "PackPurchased",
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Pack purchase committed: payment moved to the vault ledger, a PendingPack was created and Switchboard randomness requested. This is the purchase COMMIT — the pack is opened later by the crank (open_compressed_pack); a never-revealed pack is refundable (cancel_stale_pack).",
+      "payloadFields": [
+        {
+          "name": "buyer",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "sku",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "qty",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "currency",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "amount",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "nonce",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "randomness",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        }
+      ],
+      "playerIdentity": {
+        "field": "buyer",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "deposit",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "PackOpened",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Legacy MPL-Core pack-open outcome (assets/rarities/roll/pity). DECLARED BUT NO LONGER EMITTED: the Core open_pack handler is gated to params_version==0 (unreachable since the Bubblegum V2 migration; programs/chip_core/src/instructions/packs.rs:663). The live equivalent is CompressedClaimsCreated + CompressedChipMinted.",
+      "payloadFields": [
+        {
+          "name": "buyer",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "sku",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "nonce",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "assets",
+          "type": "pubkey[5]",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "rarities",
+          "type": "u8[5]",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "collections",
+          "type": "u8[5]",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "count",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "roll",
+          "type": "bytes32",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "hex-encoded 32 bytes"
+        },
+        {
+          "name": "pityBefore",
+          "type": "u16",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "pityAfter",
+          "type": "u16",
+          "nullable": false,
+          "sensitivity": "game_state"
+        }
+      ],
+      "playerIdentity": {
+        "field": "buyer",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "unavailable",
+      "coverage": "The event struct and codec entry remain (state.rs:517, events.ts) so historical logs — if any deployment ever emitted them — still decode. No emitter exists in the current program.",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "PackCancelled",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Stale pending pack cancelled (oracle never revealed): 100% refund from the vault. `refunded` is raw units of the paid currency.",
+      "payloadFields": [
+        {
+          "name": "buyer",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "nonce",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "refunded",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": "buyer",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "withdrawal",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "CompressedClaimsCreated",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": "PackOpened",
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "V2 pack-opened moment: open_compressed_pack settled one pack of a purchase and created `count` mint claims with rolled rarities for the buyer (claim PDAs keyed by claimNonces). Proposed mapping for the hub first-action slot — subject to hub agreement.",
+      "payloadFields": [
+        {
+          "name": "buyer",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "nonce",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "packNo",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "claimNonces",
+          "type": "u64[5]",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "count",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        }
+      ],
+      "playerIdentity": {
+        "field": "buyer",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "reward",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "CompressedClaimCancelled",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Buyer cancelled an unsettled compressed claim (refund path).",
+      "payloadFields": [
+        {
+          "name": "buyer",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "nonce",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "claimNonce",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": "buyer",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "withdrawal",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "CompressedPackSettled",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "finalize_compressed_pack: all claims of a pending pack settlement delivered (refunded=false) or the settlement was unwound (refunded=true). Lifecycle/audit event.",
+      "payloadFields": [
+        {
+          "name": "buyer",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "nonce",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "refunded",
+          "type": "bool",
+          "nullable": false,
+          "sensitivity": "economy_raw_units"
+        }
+      ],
+      "playerIdentity": {
+        "field": "buyer",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "CompressedChipMinted",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": "AssetMinted",
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "A mint claim was converted into a Bubblegum V2 compressed chip (collection idx, rarity, level, sequential gameIndex). The `claim` PDA joins the mint back to its pack claim.",
+      "payloadFields": [
+        {
+          "name": "buyer",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "collectionIdx",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "claimNonce",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "rarity",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "level",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "gameIndex",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "claim",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        }
+      ],
+      "playerIdentity": {
+        "field": "buyer",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "mint",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "CompressedChipRegistered",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "The minted leaf was registered in the Bubblegum tree (merkleTree, leafIndex) with owner/delegate, flags and lock_until. Companion to CompressedChipMinted — join on claimNonce; do not double-count as a second mint.",
+      "payloadFields": [
+        {
+          "name": "asset",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "claimNonce",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "collectionIdx",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "merkleTree",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "leafIndex",
+          "type": "u32",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "leafNonce",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "owner",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "delegate",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "rarity",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "level",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "gameIndex",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "flags",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "lockUntil",
+          "type": "i64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "claim",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        }
+      ],
+      "playerIdentity": {
+        "field": "owner",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "mint",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "CompressedChipStaged",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "ADMIN created a settlement-free claim of any rarity (SEC-F4 governance audit trail). Watch for unexpected instances — this path mints value out of thin air by design of the migration.",
+      "payloadFields": [
+        {
+          "name": "admin",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "buyer",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "claim",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "collectionIdx",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "rarity",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "level",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "gameIndex",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "expiresAt",
+          "type": "i64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": "buyer",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "CompressedClaimListedSet",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Claim listed/unlisted flag flipped (CPI from the market program). Listing-cancel emits only the false flip.",
+      "payloadFields": [
+        {
+          "name": "claim",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "buyer",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "listed",
+          "type": "bool",
+          "nullable": false,
+          "sensitivity": "game_state"
+        }
+      ],
+      "playerIdentity": {
+        "field": "buyer",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "CompressedClaimStakedSet",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Claim staked/unstaked flag flipped (CPI from the staking program).",
+      "payloadFields": [
+        {
+          "name": "claim",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "buyer",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "staked",
+          "type": "bool",
+          "nullable": false,
+          "sensitivity": "game_state"
+        }
+      ],
+      "playerIdentity": {
+        "field": "buyer",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "CompressedClaimTransferred",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": "AssetTransferred",
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Ownership of a pre-mint claim moved from → to (market sale delivery / admin move). The authoritative ownership event for claims; a transfer clears listed+staked flags.",
+      "payloadFields": [
+        {
+          "name": "claim",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "from",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "to",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        }
+      ],
+      "playerIdentity": {
+        "field": "to",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "trade",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "VoucherIssued",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": "RewardGranted",
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Quest chip voucher (#28): a free 1-chip PendingPack granted; the chip is minted later by the regular open crank for the same (wallet, nonce). Grant-of-reward semantics.",
+      "payloadFields": [
+        {
+          "name": "wallet",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "nonce",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "template",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "randomness",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        }
+      ],
+      "playerIdentity": {
+        "field": "wallet",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "reward",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "PreorderDropOpened",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Admin opened a beta pre-sale drop for one SKU (total, per-wallet cap). Governance/campaign event.",
+      "payloadFields": [
+        {
+          "name": "admin",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "drop",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "sku",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "total",
+          "type": "u32",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "maxPerWallet",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "PackGranted",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Admin converted a PAID OFF-CHAIN preorder into an on-chain pack for the beneficiary (mainnet-launch delivery). `preorderRef` joins to the backend preorder registry; payment happened off-chain in mainnet SOL (memo GC-PRE|<ref>) — not a hub PackPurchased without hub agreement on semantics.",
+      "payloadFields": [
+        {
+          "name": "admin",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "beneficiary",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "sku",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "qty",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "nonce",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "preorderRef",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "randomness",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        }
+      ],
+      "playerIdentity": {
+        "field": "beneficiary",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "reward",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "PreorderDropClosed",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Admin retired a fully delivered drop (granted == total at close). Governance event.",
+      "payloadFields": [
+        {
+          "name": "admin",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "drop",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "sku",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "total",
+          "type": "u32",
+          "nullable": false,
+          "sensitivity": "game_state"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "ChipFused",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "LEGACY Core fusion: 3 material chips → 1 result, probabilistic (success flag, roll vs threshold bps), `feeBurned` micro-CG. Unreachable on the V2 path (claims replaced Core chips).",
+      "payloadFields": [
+        {
+          "name": "owner",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "recipe",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "materials",
+          "type": "pubkey[3]",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "result",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "success",
+          "type": "bool",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "rollBps",
+          "type": "u16",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "thresholdBps",
+          "type": "u16",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "feeBurned",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": "owner",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "sink,burn",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "CompressedClaimsFused",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Deterministic claim-based fusion: 3 claims consumed → new settlement-free claim (100% recipes). `feeBurned` micro-CG to the burn ledger.",
+      "payloadFields": [
+        {
+          "name": "owner",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "recipe",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "materials",
+          "type": "pubkey[3]",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "resultClaim",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "resultClaimNonce",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "resultCollectionIdx",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "resultRarity",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "feeBurned",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": "owner",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "sink,burn",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "ClaimFusionCommitted",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Commit step of randomized claim fusion: fee escrowed, materials consumed; reveal pending.",
+      "payloadFields": [
+        {
+          "name": "owner",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "nonce",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "recipe",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "materials",
+          "type": "pubkey[3]",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        }
+      ],
+      "playerIdentity": {
+        "field": "owner",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "deposit",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "ClaimFusionRevealed",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Reveal step: roll vs threshold decides success; result claim created on success. `feeBurned` micro-CG.",
+      "payloadFields": [
+        {
+          "name": "owner",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "nonce",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "recipe",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "materials",
+          "type": "pubkey[3]",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "resultClaim",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "success",
+          "type": "bool",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "rollBps",
+          "type": "u16",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "thresholdBps",
+          "type": "u16",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "feeBurned",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": "owner",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "sink,burn",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "ChipFlagsChanged",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Asset flags / soulbound lock_until changed (listed/staked/locked state).",
+      "payloadFields": [
+        {
+          "name": "asset",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "flags",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "lockUntil",
+          "type": "i64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "ParamsChanged",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Admin bumped the GameConfig params version (opaque — see ParamsPatched for what moved).",
+      "payloadFields": [
+        {
+          "name": "admin",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "version",
+          "type": "u32",
+          "nullable": false,
+          "sensitivity": "game_state"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "ParamsPatched",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Descriptive companion to ParamsChanged (SEC-B22): bitmask of changed fields + resulting treasury/buyback/Pyth/SKR-mint addresses and fee bps. Governance audit trail.",
+      "payloadFields": [
+        {
+          "name": "admin",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "version",
+          "type": "u32",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "changed",
+          "type": "u16",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "treasury",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "buybackWallet",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "pythSolUsdFeed",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "pythSkrUsdFeed",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "skrMint",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "marketFeeBps",
+          "type": "u16",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "skrDiscountBps",
+          "type": "u16",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "featuredCollection",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "packs",
+          "type": "bool",
+          "nullable": false,
+          "sensitivity": "game_state"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "PauseChanged",
+      "program": "chip_core",
+      "alsoEmittedBy": [
+        "staking",
+        "arena"
+      ],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Program pause toggled by pauser/admin (emitted by chip_core, staking and arena — identical shape).",
+      "payloadFields": [
+        {
+          "name": "by",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "paused",
+          "type": "bool",
+          "nullable": false,
+          "sensitivity": "game_state"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "PauserChanged",
+      "program": "chip_core",
+      "alsoEmittedBy": [
+        "staking",
+        "arena"
+      ],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Hot pauser key rotated (SEC-G05 governance audit trail).",
+      "payloadFields": [
+        {
+          "name": "by",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "pauser",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "AdminProposed",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Step 1 of the 2-step admin transfer (or proposal withdrawal).",
+      "payloadFields": [
+        {
+          "name": "by",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "newAdmin",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "AdminAccepted",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Step 2: admin handover completed.",
+      "payloadFields": [
+        {
+          "name": "oldAdmin",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "newAdmin",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "CollectionCreated",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "Collection idx is now backed by an MPL-Core collection.",
+      "payloadFields": [
+        {
+          "name": "by",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "idx",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "coreCollection",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "BurnReported",
+      "program": "chip_core",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": "TokenBurned",
+      "sourceKind": "onchain",
+      "emitter": "chip_core program (anchor emit!)",
+      "meaning": "$CG burn reported by chip_core. source: 0 pack-in-$CG, 1 fusion fee, 3 paid service in $CG. amount = micro-CG.",
+      "payloadFields": [
+        {
+          "name": "source",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "amount",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "burn",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "ChipListed",
+      "program": "market",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "market program (anchor emit!)",
+      "meaning": "Core chip listed at price/currency.",
+      "payloadFields": [
+        {
+          "name": "asset",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "seller",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "price",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "currency",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        }
+      ],
+      "playerIdentity": {
+        "field": "seller",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "ListingUpdated",
+      "program": "market",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "market program (anchor emit!)",
+      "meaning": "Listing price changed.",
+      "payloadFields": [
+        {
+          "name": "asset",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "price",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "ListingCancelled",
+      "program": "market",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "market program (anchor emit!)",
+      "meaning": "Listing cancelled.",
+      "payloadFields": [
+        {
+          "name": "asset",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "ChipSold",
+      "program": "market",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "market program (anchor emit!)",
+      "meaning": "Core market trade: price/currency plus fee (market) and royalty splits in raw units; viaOffer flag. Trade event — no hub slot in the current adapter list.",
+      "payloadFields": [
+        {
+          "name": "asset",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "seller",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "buyer",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "price",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "currency",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "fee",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "royalty",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "viaOffer",
+          "type": "bool",
+          "nullable": false,
+          "sensitivity": "game_state"
+        }
+      ],
+      "playerIdentity": {
+        "field": "buyer",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "trade,fee",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "OfferMade",
+      "program": "market",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "market program (anchor emit!)",
+      "meaning": "Bid placed on an asset (amount, expiry).",
+      "payloadFields": [
+        {
+          "name": "asset",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "bidder",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "amount",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "expiresAt",
+          "type": "i64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": "bidder",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "deposit",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "OfferCancelled",
+      "program": "market",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "market program (anchor emit!)",
+      "meaning": "Bid withdrawn.",
+      "payloadFields": [
+        {
+          "name": "asset",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "bidder",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        }
+      ],
+      "playerIdentity": {
+        "field": "bidder",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "CompressedClaimListed",
+      "program": "market",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "market program (anchor emit!)",
+      "meaning": "Pre-mint claim listed on the compressed market (claim PDA keyed).",
+      "payloadFields": [
+        {
+          "name": "claim",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "seller",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "price",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "currency",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        }
+      ],
+      "playerIdentity": {
+        "field": "seller",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "CompressedClaimSold",
+      "program": "market",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "market program (anchor emit!)",
+      "meaning": "Pre-mint claim sold: price + fee + royalty (micro units of the pool currency).",
+      "payloadFields": [
+        {
+          "name": "claim",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "seller",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "buyer",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "price",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "fee",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "royalty",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": "buyer",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "trade,fee",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "CompressedAssetListed",
+      "program": "market",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "market program (anchor emit!)",
+      "meaning": "Registered Bubblegum leaf listed (asset + claim join keys).",
+      "payloadFields": [
+        {
+          "name": "asset",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "claim",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "seller",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "price",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "currency",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        }
+      ],
+      "playerIdentity": {
+        "field": "seller",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "CompressedAssetSold",
+      "program": "market",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "market program (anchor emit!)",
+      "meaning": "Registered Bubblegum leaf sold: price + fee + royalty.",
+      "payloadFields": [
+        {
+          "name": "asset",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "claim",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "seller",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "buyer",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "price",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "fee",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "royalty",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": "buyer",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "trade,fee",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "BattleCreated",
+      "program": "arena",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": "WagerCreated",
+      "sourceKind": "onchain",
+      "emitter": "arena program (anchor emit!)",
+      "meaning": "Wagered battle created: challenger escrowed `wager` micro-CG (range 5–5000 CG, enforced MIN_WAGER..MAX_WAGER) into the PDA-owned escrow; VRF randomness attached.",
+      "payloadFields": [
+        {
+          "name": "battle",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "challenger",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "wager",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "powerA",
+          "type": "u32",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "randomness",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        }
+      ],
+      "playerIdentity": {
+        "field": "challenger",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "deposit",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "BattleAccepted",
+      "program": "arena",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "arena program (anchor emit!)",
+      "meaning": "Opponent accepted and escrowed the matching wager. Second half of the wager lifecycle; the hub may fold this into WagerCreated accounting if it wants per-side exposure.",
+      "payloadFields": [
+        {
+          "name": "battle",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "opponent",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "powerB",
+          "type": "u32",
+          "nullable": false,
+          "sensitivity": "game_state"
+        }
+      ],
+      "playerIdentity": {
+        "field": "opponent",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "deposit",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "BattleResolved",
+      "program": "arena",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": "WagerSettled",
+      "sourceKind": "onchain",
+      "emitter": "arena program (anchor emit!)",
+      "meaning": "Battle resolved by the battle oracle: winner paid pot−rake from the escrow; pot = 2×wager; rake 5% split 40% treasury / 20% season pool / 40% burned (RAKE_* constants, arena/lib.rs:39-41). Chips are never at risk.",
+      "payloadFields": [
+        {
+          "name": "battle",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "winner",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "pot",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "rakeBurn",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "rakePool",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "rakeTreasury",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "resultHash",
+          "type": "bytes32",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "hex-encoded 32 bytes"
+        },
+        {
+          "name": "roll",
+          "type": "bytes32",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "hex-encoded 32 bytes"
+        }
+      ],
+      "playerIdentity": {
+        "field": "winner",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "withdrawal,fee,burn,reward",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "BattleCancelled",
+      "program": "arena",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "arena program (anchor emit!)",
+      "meaning": "Stale battle cancelled: both escrows refunded.",
+      "payloadFields": [
+        {
+          "name": "battle",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "refundedA",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "refundedB",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "withdrawal",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "ArenaConfigChanged",
+      "program": "arena",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "arena program (anchor emit!)",
+      "meaning": "set_arena: battle oracle / daily payout cap / CG treasury changed (SEC-G05).",
+      "payloadFields": [
+        {
+          "name": "by",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "battleOracle",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "oracleDailyCap",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "treasuryCg",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "ArenaAutoPaused",
+      "program": "arena",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "arena program (anchor emit!)",
+      "meaning": "Circuit breaker: resolve_battle hit the oracle daily cap and paused the arena itself (SEC-A2). Alert-worthy.",
+      "payloadFields": [
+        {
+          "name": "by",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "oraclePaidToday",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "oracleDailyCap",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "DayClosed",
+      "program": "staking",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "staking program (anchor emit!)",
+      "meaning": "Emission day closed: schedule cap, guarded emission (1.25× 7d avg burns, 30% floor), 7d burn average and the 5-slice budget recorded.",
+      "payloadFields": [
+        {
+          "name": "dayIndex",
+          "type": "u32",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "year",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "scheduleCap",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "guarded",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "burn7dAvg",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "sliceBudget",
+          "type": "u64[5]",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "treasury",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "Staked",
+      "program": "staking",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "staking program (anchor emit!)",
+      "meaning": "Chip or token staked: amount + staking weight (u128 — string!) + unlock_at. kind selects the pool.",
+      "payloadFields": [
+        {
+          "name": "owner",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "kind",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "key",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "amount",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "weight",
+          "type": "u128",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "unlockAt",
+          "type": "i64",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": "owner",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "deposit",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "Unstaked",
+      "program": "staking",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "staking program (anchor emit!)",
+      "meaning": "Unstaked with early-exit penalty burned (penaltyBurned micro-CG).",
+      "payloadFields": [
+        {
+          "name": "owner",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "kind",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "key",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "amount",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "penaltyBurned",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": "owner",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "withdrawal,burn",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "Claimed",
+      "program": "staking",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": "RewardGranted",
+      "sourceKind": "onchain",
+      "emitter": "staking program (anchor emit!)",
+      "meaning": "Emission reward claimed from a staking pool (micro-CG).",
+      "payloadFields": [
+        {
+          "name": "owner",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "kind",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "amount",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": "owner",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "reward",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "RootPublished",
+      "program": "staking",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "staking program (anchor emit!)",
+      "meaning": "Merkle reward root published: kind 0–4 $CG emission slices, 5–7 SKR prize pool, 8 items, 9 chip vouchers; budget in micro units of the root currency.",
+      "payloadFields": [
+        {
+          "name": "kind",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "epoch",
+          "type": "u32",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "root",
+          "type": "bytes32",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "hex-encoded 32 bytes"
+        },
+        {
+          "name": "budget",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "treasury",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "RootRevoked",
+      "program": "staking",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "staking program (anchor emit!)",
+      "meaning": "Reward root revoked before full claim.",
+      "payloadFields": [
+        {
+          "name": "kind",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "epoch",
+          "type": "u32",
+          "nullable": false,
+          "sensitivity": "game_state"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "RootClaimed",
+      "program": "staking",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": "RewardGranted",
+      "sourceKind": "onchain",
+      "emitter": "staking program (anchor emit!)",
+      "meaning": "Merkle leaf claimed by `wallet`: quests/season/events (CG or SKR), items, chip vouchers — currency follows the root kind (see RootPublished).",
+      "payloadFields": [
+        {
+          "name": "kind",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "epoch",
+          "type": "u32",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "wallet",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "amount",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": "wallet",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "reward",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "BurnRecorded",
+      "program": "staking",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": "TokenBurned",
+      "sourceKind": "onchain",
+      "emitter": "staking program (anchor emit!)",
+      "meaning": "Burn oracle recorded a $CG burn from `source`; burnToday = running daily total (micro-CG).",
+      "payloadFields": [
+        {
+          "name": "source",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "amount",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "burnToday",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "burn",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "SetBonusSynced",
+      "program": "staking",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "staking program (anchor emit!)",
+      "meaning": "Completed-set bonus counter synced for a staker.",
+      "payloadFields": [
+        {
+          "name": "owner",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "sets",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        }
+      ],
+      "playerIdentity": {
+        "field": "owner",
+        "coverage": "present on every emission of this event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "SliceFunded",
+      "program": "staking",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "staking program (anchor emit!)",
+      "meaning": "Season pool (20% wager rake) burned into an emission slice budget; recycledTotal tracks cumulative recycling (SEC-L5).",
+      "payloadFields": [
+        {
+          "name": "by",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "kind",
+          "type": "u8",
+          "nullable": false,
+          "sensitivity": "game_state"
+        },
+        {
+          "name": "amount",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "sliceBudget",
+          "type": "u64[5]",
+          "nullable": false,
+          "sensitivity": "game_state",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "recycledTotal",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "treasury",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "SkrFunded",
+      "program": "staking",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "staking program (anchor emit!)",
+      "meaning": "SKR prize pool funded (funder, amount, resulting budget/reserved).",
+      "payloadFields": [
+        {
+          "name": "funder",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "amount",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "budget",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "reserved",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "deposit",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "SkrWithdrawn",
+      "program": "staking",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "staking program (anchor emit!)",
+      "meaning": "SKR withdrawn from the prize pool by authority.",
+      "payloadFields": [
+        {
+          "name": "to",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "amount",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "budget",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": "withdrawal",
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "SkrPoolChanged",
+      "program": "staking",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "staking program (anchor emit!)",
+      "meaning": "SKR pool max root budget / pause flag changed.",
+      "payloadFields": [
+        {
+          "name": "maxRootBudget",
+          "type": "u64",
+          "nullable": false,
+          "sensitivity": "economy_raw_units",
+          "note": "serialized as a DECIMAL STRING by the codec; can exceed Number.MAX_SAFE_INTEGER (u128 always can) — hub parser must not cast to float"
+        },
+        {
+          "name": "paused",
+          "type": "bool",
+          "nullable": false,
+          "sensitivity": "game_state"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    },
+    {
+      "sourceEventName": "OraclesChanged",
+      "program": "staking",
+      "alsoEmittedBy": [],
+      "watchtowerEventType": null,
+      "sourceKind": "onchain",
+      "emitter": "staking program (anchor emit!)",
+      "meaning": "set_oracles: the keys allowed to publish reward roots / burn reports rotated (SEC-G05).",
+      "payloadFields": [
+        {
+          "name": "by",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "questOracle",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "seasonOracle",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "setOracle",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        },
+        {
+          "name": "burnOracle",
+          "type": "pubkey",
+          "nullable": false,
+          "sensitivity": "pseudonymous_identifier",
+          "note": "base58 Solana pubkey"
+        }
+      ],
+      "playerIdentity": {
+        "field": null,
+        "coverage": "none — infrastructure/governance event"
+      },
+      "sessionId": {
+        "source": null,
+        "note": "on-chain events carry no session id; dedup is by chain coordinates"
+      },
+      "location": "not_applicable",
+      "finality": {
+        "commitment": "backend indexes at `confirmed` and stamps `finalized_at` via the finality reconciler (backend/src/finality.ts); hub must treat only finalized as final",
+        "time": "blockTime (unix s) from RPC; initially NULL on the websocket path, healed by re-fetch (SEC-B13)"
+      },
+      "idempotency": "backend dedup key = (signature, ix_index, event_index) UNIQUE in events_raw; maps to hub cluster+slot+signature+instructionIndex+innerIndex with innerIndex = ordinal of the event inside its instruction",
+      "economy": null,
+      "verificationStatus": "code_only",
+      "coverage": "emitter verified in source; codec round-trip test green in this environment; no runtime capture from this environment (no RPC egress)",
+      "proof": "programs source emit! + backend/src/events.ts spec; codec round-trip: backend/test/events.test.ts (exit 0 this run)"
+    }
+  ],
+  "expectedButAbsent": [
+    {
+      "watchtowerEventType": "PlayerJoined",
+      "status": "unavailable",
+      "sourceKind": "neither",
+      "reason": "No on-chain join instruction and no off-chain event stream. The nearest raw fact is backend/src/auth.ts:81 — first SIWS sign-in inserts a `wallets` row with `first_seen` (DB row only, never emitted). Exposing it as an event needs an agreed off-chain contract (eventId/sessionId/seq semantics).",
+      "nextStep": "Hub confirms whether wallets.first_seen may be exported off-chain and under which identity/dedup fields; game team implements an exporter only after that."
+    },
+    {
+      "watchtowerEventType": "WalletConnected",
+      "status": "unavailable",
+      "sourceKind": "neither",
+      "reason": "Wallet connection is a client-side adapter state; no event is recorded. Sessions exist as backend `sessions` rows after SIWS sign-in (DB fact only).",
+      "nextStep": "Same off-chain contract decision as PlayerJoined."
+    },
+    {
+      "watchtowerEventType": "SessionStarted",
+      "status": "unavailable",
+      "sourceKind": "neither",
+      "reason": "No session event. Raw proxies: `quest_logins` (one row per wallet+UTC day on quest-page read) and backend `sessions` rows — DB facts only, no stream.",
+      "nextStep": "Off-chain contract decision; do not simulate sessions."
+    },
+    {
+      "watchtowerEventType": "SessionEnded",
+      "status": "unavailable",
+      "sourceKind": "neither",
+      "reason": "Not tracked anywhere.",
+      "nextStep": "n/a unless hub requires it."
+    },
+    {
+      "watchtowerEventType": "PaymentSettled",
+      "status": "unavailable",
+      "sourceKind": "neither",
+      "reason": "No fiat/payment-provider settlement events. The beta preorder flow settles in MAINNET SOL to a multisig treasury and is verified by the backend (MAINNET_RPC_URL, getTransaction finalized) — DB rows in `preorders`/`preorder_grants`, no event stream.",
+      "nextStep": "If the hub needs preorder settlement, agree on an off-chain export of preorder milestones."
+    },
+    {
+      "watchtowerEventType": "RetentionDay1",
+      "status": "unavailable",
+      "sourceKind": "neither",
+      "reason": "Not emitted. Retention IS computed internally for the admin KPI (backend/src/admin.ts:408-424: cohort by wallets.first_seen, active = quest_logins row or a battle on day N). Raw inputs (first_seen + quest_logins + battles) exist; the hub may compute retention from them. No synthetic retention events will be produced.",
+      "nextStep": "Hub decides: pull raw inputs or ask the game to export the KPI."
+    },
+    {
+      "watchtowerEventType": "RetentionDay7",
+      "status": "unavailable",
+      "sourceKind": "neither",
+      "reason": "Same as RetentionDay1 (the KPI function is parameterised by n).",
+      "nextStep": "Same as RetentionDay1."
+    },
+    {
+      "watchtowerEventType": "CrossGameEntry",
+      "status": "unavailable",
+      "sourceKind": "offchain_raw_only",
+      "reason": "No bridge/transfer program between games exists. The only cross-game fact is `quest_visits`: client-driven check-ins POST /quests/visit with whitelisted metrics visit_neuroforge | visit_ares1 (backend/src/quests.ts:165-169) — DB rows at client trust level, no stream, and nothing about asset movement.",
+      "nextStep": "If the hub wants visit check-ins as CrossGameEntry, agree on export + dedup (wallet+metric+day is the natural key)."
+    }
+  ],
+  "identity": {
+    "recommendedProjectionField": "payload playerKey does not exist in this game — the natural player key is the wallet pubkey carried per event (buyer/owner/wallet/challenger/winner/to fields, see per-event playerIdentity)",
+    "options": [
+      {
+        "field": "wallet pubkey",
+        "kind": "public on-chain wallet",
+        "stableAcrossSessions": true,
+        "stableAcrossGames": "yes when the same wallet plays other studio games; no cross-game linking is implemented in-game (only quest_visits check-ins)",
+        "consent": "on-chain public data; backend applies privacy retention/erasure to OFF-chain rows only (npm run privacy:retention)"
+      },
+      {
+        "field": "handle",
+        "kind": "player-chosen display name (wallets.handle)",
+        "stableAcrossSessions": true,
+        "note": "NOT part of any event payload; do not export without a privacy decision"
+      }
+    ],
+    "forbidden": "names, email, phone, logins, auth tokens, IP, device fingerprint (device_hash stays in the backend), chat, cookies, payment data — none of these may enter the ingest stream"
+  },
+  "dedup": {
+    "onchain": "cluster + slot + signature + instructionIndex + innerIndex (innerIndex = event ordinal within its top-level instruction; backend stores the transaction-wide event_index — identical for single-instruction txs, which every emitted flow currently is)",
+    "offchain": "NO off-chain event protocol exists yet; hub offchainIdentity (provider+campaignId/pageId/sessionId/seq) cannot be satisfied until a contract is agreed. Do not route anything to POST /api/ingest/solana with chain:offchain yet."
+  },
+  "assetsAndUnits": {
+    "currencies": [
+      {
+        "code": 0,
+        "symbol": "SOL",
+        "decimals": 9,
+        "unit": "lamports"
+      },
+      {
+        "code": 1,
+        "symbol": "USDC",
+        "decimals": 6,
+        "unit": "micro-USDC"
+      },
+      {
+        "code": 2,
+        "symbol": "CG",
+        "decimals": 6,
+        "unit": "micro-CG",
+        "hardCap": "1e9 CG = 1e15 micro (below MAX_SAFE_INTEGER but treat u64 as string anyway)"
+      },
+      {
+        "code": 3,
+        "symbol": "SKR",
+        "decimals": 6,
+        "unit": "micro-SKR",
+        "mint": "SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3 (mainnet canonical; devnet uses a setup-created stand-in)"
+      }
+    ],
+    "rules": "raw integer units only — never float, never pre-divided; no fiat conversion exists in-game (Pyth SOL/USD + SKR/USD feeds exist for PRICING packs, not for event amounts)",
+    "safeInteger": "u64 amounts can exceed Number.MAX_SAFE_INTEGER; the codec already serializes u64/u128 as decimal strings; staking Staked.weight is u128"
+  },
+  "location": {
+    "status": "not_applicable",
+    "reason": "No geographic or in-game map regions. Collections are themed after fictional city districts (lore only). The backend `wallets.country` comes from an edge header for LEGAL geo-gating of the shop and must not be used as regionId."
+  },
+  "crossGame": {
+    "status": "unavailable",
+    "reason": "No transfer/bridge/linking program exists between games. Only fact: quest_visits check-ins (see expectedButAbsent CrossGameEntry). No BridgeIn/BridgeOut/CrossGameLinked/CrossGameAssetGranted events exist or are planned at this commit."
+  }
+}

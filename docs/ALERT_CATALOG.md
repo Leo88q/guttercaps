@@ -1,6 +1,9 @@
-# Watchtower Hub Alert Catalog & Operational Runbooks (Wave W3 / i-10)
+# Alert Catalog & Operational Runbooks
 
-This catalog defines all standard alerts, severities, trigger conditions, and automated or operator-guided runbooks.
+This catalog defines the game's alerts, severities, trigger conditions, and operator-guided runbooks.
+Rewritten 2026-10-06 where it previously described infrastructure that is not in this tree (the old
+ALERT-04 monitored a mock exporter that has been removed; its number now belongs to the phantom-payment
+case of the finality reconciler). Hub-facing telemetry status lives in `WATCHTOWER_HANDOFF.md`.
 
 ---
 
@@ -21,7 +24,7 @@ This catalog defines all standard alerts, severities, trigger conditions, and au
   1. Trigger immediate emergency pause via Anchor admin instruction or `/admin/kill-switch`.
   2. Inspect latest `sales`, `wagers`, and `fusions` projection records against on-chain transaction hashes.
   3. Replay `events_raw` locally with `npm run backend:rebuild` to determine whether issue is an in-memory projection bug or an on-chain double-spend.
-  4. Submit emergency post-mortem report to the Watchtower Hub.
+  4. Write the post-mortem into the incident log; nothing about this game is pushed to any hub automatically.
 
 ---
 
@@ -83,13 +86,19 @@ This catalog defines all standard alerts, severities, trigger conditions, and au
 
 ---
 
-### ALERT-04: `EXPORTER_UNHEALTHY_OR_MUTATING` (P1)
-- **Description**: Exporter `/watchtower/health` returned non-200 or `writes != false`.
-- **Threshold**: Any response where `writes: true` or HTTP status >= 500.
+### ALERT-04: `PHANTOM_PAYMENT_ISSUED` (P1)
+- **Description**: The finality reconciler deleted a fork-dropped transaction whose payment was ALREADY
+  consumed off-chain: the log line `[finality] ALERT dropped tx <signature> … payments already consumed`
+  (`backend/src/finality.ts`). Entitlement was granted against a transaction the cluster no longer has —
+  money left the treasury for a phantom payment.
+- **Threshold**: Any such log line (occurs at most once per dropped signature).
 - **Runbook**:
-  1. Check `scripts/watchtower_v3_server.py` process status.
-  2. Verify no mutating routes or write handlers were inadvertently activated.
-  3. Ensure server is strictly serving read-only projection views.
+  1. Take the signature and the `service_payments.consumed_by` rows from the log; freeze the affected
+     entitlement (set the wallet's `rewardsPaused` flag via the admin surface while reviewing).
+  2. Re-derive the read model (`npm run backend:rebuild`) and confirm the dropped events are gone from
+     the projections — the reconciler already did this; the rebuild is the double-check.
+  3. Decide refund vs clawback per the incident; record the decision in the incident log. Do not edit
+     `events_raw` by hand — the chain is the only source of truth.
 
 ---
 
@@ -97,7 +106,7 @@ This catalog defines all standard alerts, severities, trigger conditions, and au
 - **Description**: Events whose block time could not be recovered: `GET /health.untimedEvents.stuck > 0` — indexed events exist with `block_time IS NULL` after the heal pass exhausted its attempts on them (the RPC serves neither the transaction nor the slot's time), so they are absent from every day-bucketed read (revenue/spend metrics, daily and weekly quest windows, antifraud activity).
 - **Threshold**: `stuck > 0` (any), `pending > 0` for more than 2 h is the softer WARN variant.
 - **Runbook**:
-  1. Confirm the counter: `curl -s $API/v1/health | jq .untimedEvents` (also on the watchtower surface alongside `/health.finality`).
+  1. Confirm the counter: `curl -s $API/v1/health | jq .untimedEvents`.
   2. Check how far back the queue reaches (`oldestSlot`) and compare with the RPC's retention: a provider that keeps signatures for a shorter window parks rows earlier. `npm run backend:rebuild` re-derives projections from `events_raw`, but it cannot invent a date either.
   3. Two repair paths, in order: (a) raise `LISTEN_HEAL_TIMES_MAX_ATTEMPTS` temporarily and point `RPC_URL` at a provider that still serves those slots, letting the next `heal` tick retry them; (b) if the chain no longer exposes them anywhere, treat the affected window as "possibly in-season" for reconciliation purposes (the same safe direction `settleSeason` takes — never freeze early) and record the episode in the incident log.
   4. Do NOT zero or fabricate block times to clear the alert: a fabricated date is worse than a missing one (it moves the event into the wrong window instead of out of it).

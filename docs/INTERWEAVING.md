@@ -1,91 +1,79 @@
 # Gutter Caps Ecosystem Interweaving Specification (Wave W3)
 
-This document formalizes the Gutter Caps interweaving contracts with the Watchtower Hub and adjacent games in the arcade ecosystem, following the `00_HUB_CONTRACT.md` standards.
+Status on 2026-10-06: rewritten to match the tree. The previous version described hub endpoints
+(`/watchtower/*`), event names (`CapShot`, `ChipMinted`) and a cross-game `studio_profile` PDA that do
+not exist in this repository; those claims were removed instead of re-verified. Source of truth for the
+hub-facing data contract is now `WATCHTOWER_HANDOFF.md` + `watchtower/events/event-catalog.json`.
 
 ---
 
-## 1. i-01: Shared Identity & Studio Profile
+## 1. i-01: Shared Identity
 
-- **Contract**: Unified `playerKey` (Solana public key or SIWS-derived identity) across all games.
-- **Onboarding Pipeline**:
-  1. `GUEST`: Anonymous local session.
-  2. `EMBEDDED_PRIVY`: Gasless email/social embedded wallet.
-  3. `NATIVE_PHANTOM`: Direct Solana mainnet/devnet wallet.
-  4. `LINKED_CROSS_GAME_PDA`: Derivation and link of `studio_profile` PDA (`seeds = [b"studio_profile", wallet]`).
-- **Endpoint**:
-  - `GET /watchtower/passport`
-  - `GET /api/os/config` (exposes Identity stage pipeline)
-- **Test Reference**: `tests/godot/test_gutter_caps_v3.gd` (`test_identity_stages`), `tests/watchtower/interweaving.test.ts`.
+- The only player identity the game actually produces is the **Solana wallet pubkey** (SIWS sign-in,
+  `backend/src/auth.ts`; first contact recorded as `wallets.first_seen`). It is stable across sessions
+  and can be the hub `playerKey` without transformation.
+- Onboarding stages in the client (guest → embedded wallet → native wallet) are client state. The
+  `studio_profile` reference in `godot/scripts/wallet_adapter.gd` is a client-side placeholder string —
+  **no on-chain cross-game PDA program exists**; nothing derives or stores such an account.
+- Hub export of the join fact (`PlayerJoined`) requires the off-chain event contract first
+  (`WATCHTOWER_HANDOFF.md` blocker B3).
 
----
+## 2. i-03 & i-04: Asset Inventory & Portability
 
-## 2. i-03 & i-04: Cross-Game Inventory & Asset Portability
+- Every chip carries a stable asset id (MPL-Core pubkey for the legacy path, Bubblegum V2 leaf/claim for
+  the live compressed path) and the ECS owner component tags it `source_game = "guttercaps"`
+  (`godot/scripts/ecs_world.gd:31`), plus `rarity` 0..4 and fusion `level`.
+- **There is no cross-game transfer mechanism.** No bridge, no linking program, no
+  `BridgeIn/BridgeOut/CrossGameLinked/CrossGameAssetGranted` events. Ownership moves only through the
+  in-game market (`CompressedClaimTransferred`, see the catalog). Portability contracts with adjacent
+  games do not exist yet and must not be reported to the hub as if they did.
 
-- **Contract**: Gutter Caps chips and cosmetics expose standard cross-game attributes:
-  - `source_game`: `"guttercaps"`
-  - `asset_id`: Base58 Metaplex Core or compressed leaf pubkey
-  - `rarity`: 0 (Common) .. 4 (Legendary)
-  - `level`: Upgradeable via fusion
-- **ECS Integration**: `ComponentOwner` in `godot/scripts/ecs_world.gd` stores `source_game`, `asset_id`, and `is_cnft`.
-- **Endpoints**:
-  - `GET /watchtower/token-flows`
-  - `GET /watchtower/projections`
-- **Invariants**: Cross-game transferred assets cannot be duplicated; burns on transfer emit `BurnReported`.
+## 3. i-05: Economic Budget & Treasury Solvency
 
----
+Real, test-pinned rules (unchanged from before):
 
-## 3. i-05: Economic Budget & Studio Treasury Solvency
+1. $CG minting is capped by the emission guard (`programs/staking`): ≤ 1.25× the 7-day average burn,
+   floored at 30% of the scheduled emission (`packages/economy`, `npm run economy:check`).
+2. Arena wager escrows hold both stakes in a PDA-owned token account before resolution
+   (`programs/arena/src/lib.rs`).
+3. SKR prize pool invariant: `funded >= paid + reserved + withdrawn`
+   (`tests/localnet/70-property-invariants.spec.ts`).
 
-- **Contract**: The game cannot autonomously emit arbitrary tokens.
-- **Rules**:
-  1. Minting of `$CG` is strictly capped by the emission guard (`programs/staking/src/state.rs`) at 1.25× 7-day average burns, floored at 30% of scheduled emissions.
-  2. Wager escrows in Arena require exact 100% collateral locking before battle resolution.
-  3. Studio treasury balance and SKR prize pools maintain the double-entry invariant:
-     `funded >= paid + reserved + withdrawn`.
-- **Endpoints**:
-  - `GET /watchtower/treasury-balance`
-  - `GET /watchtower/economic-summary`
-- **Test Reference**: `tests/localnet/70-property-invariants.spec.ts` (Invariant 5 & Invariant 6).
+Treasury balances are read from the cluster (`GET /stats`, `GET /admin/kpi` of a running backend); no
+treasury snapshot is committed to the repo.
 
----
+## 4. i-06: Unified Events
 
-## 4. i-06: Unified Events & Cross-Game Quests
+- The event taxonomy is whatever the four programs emit — **60 events**, all declared and decoded by
+  `backend/src/events.ts` (`EVENT_SPECS`), listed with meanings and proposed hub mappings in
+  `watchtower/events/event-catalog.json`. Names invented for earlier drafts of this document
+  (`CapShot`, `ChipMinted`) have no emitter and were dropped.
+- First-action mapping: the hub expects `PackOpened`; the live event is `CompressedClaimsCreated`
+  (the legacy `PackOpened` struct is declared but emitted nowhere). Pending hub sign-off — see
+  `WATCHTOWER_HANDOFF.md` blocker B2.
+- **Deduplication** matches the hub contract: `cluster:slot:signature:instructionIndex:innerIndex`
+  (backend uniqueness key `(signature, ix_index, event_index)`, `backend/src/db.ts`).
 
-- **Contract**: All on-chain events follow standard taxonomy:
-  - `CapShot`, `ChipMinted`, `PackOpened`, `WagerSettled`, `RewardGranted`, `TokenBurned`.
-- **Deduplication**: Keyed by `cluster:slot:signature:instructionIndex:innerIndex`.
-- **Endpoint**:
-  - `GET /watchtower/events?limit=N&cursor=C`
-- **Hub Acceptance**: Devnet ingestion tested via `POST /api/ingest/solana` (`accepted: true`, retry `duplicate: true`).
+## 5. i-07: Profile & Progression
 
----
-
-## 5. i-07: Cross-Game Profile & Progression
-
-- **Contract**: Level, matches played, chips owned, and win-rate exportable to ecosystem leaderboards.
-- **Endpoint**:
-  - `GET /watchtower/live-stats`
-
----
+- The backend computes level-adjacent facts (chips owned, battles, quest progress) from indexed events
+  (`GET /me`, `GET /me/activity`), and an internal admin KPI set (`GET /admin/kpi`). There is no
+  hub-facing progress export; Operator Game progress (`hours/rank/updatedAt`) is not measured —
+  `WATCHTOWER_HANDOFF.md` §F.
 
 ## 6. i-10: Severity Dictionary & Alert Catalog
 
-- **Contract**: Alignment with Watchtower hub alert schema (P1 Critical, P2 High, P3 Medium).
-- **Runbooks**: Documented in `docs/ALERT_CATALOG.md`.
-- **Endpoint**:
-  - `GET /watchtower/dr-status`
-  - `GET /watchtower/health`
-
----
+- Alert definitions and runbooks live in `docs/ALERT_CATALOG.md` and are cross-checked against
+  `package.json` by `tests/security/indexer-gaps.test.ts`. Prometheus rules: `ops/monitoring/alerts.yml`
+  (28 rules); severity ladder P1 page / P2 high / P3 medium as defined there.
+- Delivery note (audit AUDIT-2026-10-02 H-1): `ops/monitoring/prometheus.yml` still has empty
+  Alertmanager targets — until a receiver is configured, P1 rules fire into the void. This is a
+  production blocker tracked in `WATCHTOWER_HANDOFF.md`.
 
 ## 7. i-11: Hub Control & Governance Boundaries
 
-- **Contract**: Hub control requests are strictly proposal-only (`writes=false`).
-- **Safety**:
-  - Automatic slashing is forbidden.
-  - Pausing programs requires multisig or timelock proposal.
-  - Fraud mitigation sets flags (`rewardsPaused`, `shadowBanned`) without modifying player token balances.
-- **Endpoints**:
-  - `GET /watchtower/fraud-summary`
-  - `GET /watchtower/security`
-- **Test Reference**: `tests/watchtower/interweaving.test.ts`, `backend/test/security.test.ts`.
+- Hub interaction with this game is read-only by construction: the hub reads events; it cannot propose
+  state changes. Program pause/admin changes require the on-chain governance paths (two-step admin
+  transfer, pauser key, Squads multisig + timelock per `docs/09` §2) — never automatic.
+- Anti-fraud actions are proposal-only flags (`rewardsPaused`, shadow flags via
+  `npm run backend:antifraud -- resolve …`); balances are never modified by moderation.
