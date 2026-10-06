@@ -1882,9 +1882,12 @@ pub fn mint_compressed_chip(
             let name_len = u32::from_le_bytes([data[33], data[34], data[35], data[36]]) as usize;
             if data.len() >= 49 + name_len {
                 let uoff = 37 + name_len;
-                let uri_len =
-                    u32::from_le_bytes([data[uoff], data[uoff + 1], data[uoff + 2], data[uoff + 3]])
-                        as usize;
+                let uri_len = u32::from_le_bytes([
+                    data[uoff],
+                    data[uoff + 1],
+                    data[uoff + 2],
+                    data[uoff + 3],
+                ]) as usize;
                 let base_len = 49 + name_len + uri_len;
                 if data.len() >= base_len + 9 {
                     let roff = base_len + 1;
