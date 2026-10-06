@@ -3,7 +3,7 @@ import type { TransactionInstruction } from '@solana/web3.js';
 import { request, isMock } from '@/api/client';
 import { CHIP_CORE_ID, MARKET_ID, STAKING_ID, ARENA_ID } from './ids';
 import { ixDiscriminator } from './anchor';
-export type AccessFeature = 'packs' | 'market' | 'staking' | 'arena' | 'rewards' | 'services' | 'fusion';
+type AccessFeature = 'packs' | 'market' | 'staking' | 'arena' | 'rewards' | 'services' | 'fusion';
 const EXITS = [
   'cancel', 'cancel_compressed', 'cancel_compressed_asset', 'cancel_compressed_claim', 'cancel_offer',
   'cancel_stale_battle', 'cancel_stale_claim_fusion', 'cancel_stale_fusion', 'cancel_stale_pack',

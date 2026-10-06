@@ -7,7 +7,7 @@ import { BorshWriter } from '../borsh';
 import { ixData, ro, rw, signer } from '../anchor';
 import { CHIP_CORE_ID, MPL_ACCOUNT_COMPRESSION_ID, STAKING_ID, SYSTEM_PROGRAM_ID, TOKEN_PROGRAM_ID } from '../ids';
 import {
-  ata, chipPoolPda, chipStakePda, chipStatePda, claimReceiptPda, compressedChipStakePda, configPda, emissionPda, pendingPackPda, pityPda, playerItemsPda, rewardRootPda,
+  ata, chipPoolPda, claimReceiptPda, compressedChipStakePda, configPda, emissionPda, pendingPackPda, pityPda, playerItemsPda, rewardRootPda,
   rewarderPda, RNG_KIND, rngAuthPda, rngPda, seasonPoolAuthPda, setBonusPda, skrPoolPda, stakeAuthPda, tokenPoolPda, tokenStakePda,
 } from '../pdas';
 import { SWITCHBOARD_ON_DEMAND_ID, SYSVAR_SLOT_HASHES_ID } from '../ids';
@@ -104,16 +104,7 @@ export function unstakeCompressedChipIx(a: { owner: PublicKey; claim: PublicKey;
   });
 }
 
-export function claimChipIx(a: { owner: PublicKey; asset: PublicKey; cgMint: PublicKey }): TransactionInstruction {
-  return new TransactionInstruction({
-    programId: STAKING_ID,
-    keys: [
-      signer(a.owner), rw(emissionPda()[0]), rw(chipPoolPda()[0]), rw(chipStakePda(a.asset)[0]), ro(setBonusPda(a.owner)[0]),
-      ro(chipStatePda(a.asset)[0]), rw(a.cgMint), rw(ata(a.cgMint, a.owner)), ro(TOKEN_PROGRAM_ID),
-    ],
-    data: Buffer.from(ixData('claim_chip')),
-  });
-}
+
 
 /** $CG Merkle claim (kinds 2..4) — mints from the emission slice. Rejects SKR / item kinds: use `claimSkrRootIx` / `claimItemRootIx`. */
 export function claimRootIx(a: { wallet: PublicKey; kind: number; epoch: number; amount: bigint; proof: Uint8Array[]; cgMint: PublicKey }): TransactionInstruction {

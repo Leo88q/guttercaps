@@ -16,7 +16,7 @@ import { EXPLORER, LOOKUP_TABLE } from '@/app/config';
 import { freshNonce, pendingPackPda } from '@/chain/pdas';
 import { decodePendingPack, type PackOpenedEvent } from '@/chain/accounts';
 
-export interface StartArgs {
+interface StartArgs {
   sku: number;
   qty: number;
   currency: CurrencyCode;

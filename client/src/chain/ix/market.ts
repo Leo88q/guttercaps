@@ -6,14 +6,14 @@
 import { PublicKey, TransactionInstruction } from '@solana/web3.js';
 import { BorshWriter } from '../borsh';
 import { ixData, ro, rw, signer } from '../anchor';
-import { CHIP_CORE_ID, MARKET_ID, MPL_ACCOUNT_COMPRESSION_ID, MPL_BUBBLEGUM_V2_ID, MPL_CORE_ID, MPL_NOOP_ID, SYSTEM_PROGRAM_ID, TOKEN_PROGRAM_ID } from '../ids';
+import { CHIP_CORE_ID, MARKET_ID, MPL_ACCOUNT_COMPRESSION_ID, MPL_BUBBLEGUM_V2_ID, MPL_NOOP_ID, SYSTEM_PROGRAM_ID } from '../ids';
 import { assertFreshProof, bubblegumProofMetas, type BubblegumProof } from '../bubblegum';
-import { ata, bubblegumTreeConfigPda, chipStatePda, collectionMetaPda, compressedAssetListingPda, compressedChipStatePda, compressedListingPda, configPda, listingPda, marketAuthPda, offerPda } from '../pdas';
+import { bubblegumTreeConfigPda, collectionMetaPda, compressedAssetListingPda, compressedChipStatePda, compressedListingPda, configPda, marketAuthPda } from '../pdas';
 
 // SKR is 2, not 3: market::Currency is a three-variant enum, and borsh puts the variant INDEX on the
 // wire (see the comment on the Rust side); 3 was chip_core's four-variant code.
 export const MarketCurrency = { SOL: 0, USDC: 1, SKR: 2 } as const;
-export type MarketCurrencyCode = (typeof MarketCurrency)[keyof typeof MarketCurrency];
+type MarketCurrencyCode = (typeof MarketCurrency)[keyof typeof MarketCurrency];
 
 /**
  * SEC-F11: translate the shared API currency code (packages/economy `CURRENCIES`: SOL 0 / USDC 1 /
@@ -34,11 +34,11 @@ export const LISTING_FEE_CG = 500_000n; // 0.5 $CG burned on list
 export const MARKET_FEE_BPS = 750;
 export const FEE_BUYBACK_SHARE_BPS = 3_333;
 export const ROYALTY_BPS = 250;
-export const MIN_PRICE_LAMPORTS = 1_000_000n;
-export const MIN_PRICE_USDC = 100_000n;
-export const MIN_PRICE_SKR = 5_000_000n;
+const MIN_PRICE_LAMPORTS = 1_000_000n;
+const MIN_PRICE_USDC = 100_000n;
+const MIN_PRICE_SKR = 5_000_000n;
 export const minPriceFor = (c: MarketCurrencyCode) => (c === MarketCurrency.SOL ? MIN_PRICE_LAMPORTS : c === MarketCurrency.USDC ? MIN_PRICE_USDC : MIN_PRICE_SKR);
-export const marketMintFor = (c: MarketCurrencyCode, cfg: { usdcMint: PublicKey; skrMint?: PublicKey }) => (c === MarketCurrency.USDC ? cfg.usdcMint : c === MarketCurrency.SKR ? cfg.skrMint : undefined);
+
 
 /**
  * SEC-B28: the *claim* market (both the pre-mint claim listing and the V2 asset listing) settles by
@@ -54,50 +54,7 @@ export function assertSolClaimListing(currency: MarketCurrencyCode): void {
 
 
 
-export function updatePriceIx(a: { seller: PublicKey; asset: PublicKey; price: bigint }): TransactionInstruction {
-  return new TransactionInstruction({
-    programId: MARKET_ID,
-    keys: [signer(a.seller, false), rw(listingPda(a.asset)[0])],
-    data: Buffer.from(ixData('update_price', new BorshWriter().u64(a.price).toBytes())),
-  });
-}
 
-
-
-
-
-
-/** The Core-asset triple `accept_offer` still validates against (report §5.4: retained, unreachable). */
-interface ChipRef { asset: PublicKey; collectionIdx: number; coreCollection: PublicKey }
-
-export function acceptOfferIx(a: ChipRef & { seller: PublicKey; bidder: PublicKey; treasury: PublicKey; buybackWallet: PublicKey; usdcMint: PublicKey }): TransactionInstruction {
-  const [offer] = offerPda(a.asset, a.bidder);
-  return new TransactionInstruction({
-    programId: MARKET_ID,
-    keys: [
-      signer(a.seller),
-      rw(a.bidder),
-      rw(offer),
-      rw(ata(a.usdcMint, offer)),
-      ro(marketAuthPda()[0]),
-      rw(a.asset),
-      rw(chipStatePda(a.asset)[0]),
-      ro(collectionMetaPda(a.collectionIdx)[0]),
-      rw(a.coreCollection),
-      ro(configPda()[0]),
-      ro(a.treasury),
-      ro(a.buybackWallet),
-      rw(ata(a.usdcMint, a.seller)),
-      rw(ata(a.usdcMint, a.treasury)),
-      rw(ata(a.usdcMint, a.buybackWallet)),
-      ro(CHIP_CORE_ID),
-      ro(MPL_CORE_ID),
-      ro(TOKEN_PROGRAM_ID),
-      ro(SYSTEM_PROGRAM_ID),
-    ],
-    data: Buffer.from(ixData('accept_offer')),
-  });
-}
 
 /** Sale split shown before signing (matches market::split). */
 /** Same integer math as market::split. `feeBps` = GameConfig.marketFeeBps (live), default 7.5 %. */

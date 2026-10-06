@@ -1,5 +1,5 @@
 /** The API includes pending reward batches before their Merkle root is published. */
-export interface ClaimReadiness {
+interface ClaimReadiness {
   claimed?: boolean;
   published?: boolean;
   claimableAt?: string | null;

@@ -75,11 +75,11 @@ async function sbProgram(connection: Connection, payer: PublicKey): Promise<SbPr
   return p;
 }
 
-export function defaultQueue(): PublicKey {
+function defaultQueue(): PublicKey {
   return SWITCHBOARD_QUEUE[CLUSTER];
 }
 
-export interface RandomnessPrep extends RngAccounts {
+interface RandomnessPrep extends RngAccounts {
   /** the pinned queue and the oracle chosen for this request (both go into the commit accounts) */
   queue: PublicKey;
   oracle: PublicKey;
@@ -91,7 +91,7 @@ export interface RandomnessPrep extends RngAccounts {
  * Pick a healthy randomness oracle from the queue (SDK health snapshots + on-chain heartbeat).
  * On localnet `sb_mock` ignores the oracle, so any key works.
  */
-export async function selectOracle(connection: Connection, payer: PublicKey, queue: PublicKey = defaultQueue()): Promise<PublicKey> {
+async function selectOracle(connection: Connection, payer: PublicKey, queue: PublicKey = defaultQueue()): Promise<PublicKey> {
   if (CLUSTER === 'localnet') return queue;
   const sb = await loadSb();
   const program = await sbProgram(connection, payer);
@@ -179,7 +179,7 @@ export function revealPayloadFromIx(ix: TransactionInstruction): { signature: Ui
 }
 export const revealValueFromIx = (ix: TransactionInstruction): Uint8Array => revealPayloadFromIx(ix).value;
 
-export interface RandomnessView {
+interface RandomnessView {
   authority: PublicKey;
   queue: PublicKey;
   oracle: PublicKey;

@@ -19,9 +19,9 @@
 import { FEES, PACKS, STALE_PACK_SLOTS, STALE_PACK_MINUTES } from '@guttercaps/economy';
 import english from './legal-copy/en.json';
 
-export type LegalDocId = 'terms' | 'privacy';
+type LegalDocId = 'terms' | 'privacy';
 
-export interface LegalSection { h: string; p: string[] }
+interface LegalSection { h: string; p: string[] }
 export interface LegalDoc { slug: LegalDocId; title: string; intro: string; sections: LegalSection[] }
 
 /** ISO-3166 alpha-2 codes the shop refuses to sell packs into (mirrors GEO_DEFAULT_COUNTRIES backend-side). */

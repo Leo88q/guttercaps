@@ -1,9 +1,8 @@
 import { PublicKey } from '@solana/web3.js';
 import { DasClient } from '@/chain/das';
 import { DAS_RPC_URL } from '@/app/config';
-import { resolveCompressedChip, type ResolvedCompressedChip } from '@/chain/flows/compressedChip';
+import { type ResolvedCompressedChip } from '@/chain/flows/compressedChip';
 import { buyCompressedAssetIx } from '@/chain/ix/market';
-import type { Connection } from '@solana/web3.js';
 
 /** The indexer endpoint the DAS client talks to. Overridable so tests can pin it. */
 export const dasEndpoint = (override?: string) => override ?? DAS_RPC_URL;
@@ -17,11 +16,6 @@ export const dasClient = (override?: string) => new DasClient({ endpoint: dasEnd
  * bought. The program refuses it at list time; this refuses it before the wallet pays a fee.
  */
 const CLAIM_MARKET_SOL_ONLY = 'the market settles in SOL only — list and buy in SOL';
-
-/** Resolve a V2 leaf for a buy. The proof is fetched now, not cached, because a stale proof reverts. */
-export async function resolveListingChip(connection: Connection, asset: PublicKey, das?: DasClient): Promise<ResolvedCompressedChip> {
-  return resolveCompressedChip(connection, das ?? dasClient(), asset);
-}
 
 /**
  * The buy path for a registered V2 leaf. No ATA preparation is needed — there is no SPL leg.

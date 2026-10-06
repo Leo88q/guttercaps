@@ -9,7 +9,7 @@ import { getLocale } from '@/shared/i18n';
 
 const RELOAD_FLAG = 'gc:chunk-reload';
 
-export function isChunkLoadError(e: unknown): boolean {
+function isChunkLoadError(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : String(e ?? '');
   return /MIME type|dynamically imported module|Importing a module script failed|Failed to fetch dynamically|error loading dynamically|ChunkLoadError|does not provide an export named/i.test(msg);
 }

@@ -48,7 +48,7 @@ export interface PackFlowState {
   revealAttempt?: number;
 }
 
-export interface PackFlowDeps {
+interface PackFlowDeps {
   connection: Connection;
   wallet: WalletLike;
   onState: (s: PackFlowState) => void;

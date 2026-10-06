@@ -33,7 +33,7 @@ function fnv1a(s: string): string {
   return h.toString(16).padStart(8, '0');
 }
 
-export interface DeviceSignals { platform: string; screen: string; tz: string; lang: string; cores: number; memory: number; touch: number; ua: string }
+interface DeviceSignals { platform: string; screen: string; tz: string; lang: string; cores: number; memory: number; touch: number; ua: string }
 
 export function collectSignals(): DeviceSignals {
   const nav = typeof navigator !== 'undefined' ? navigator : ({} as Navigator);

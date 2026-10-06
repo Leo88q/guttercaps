@@ -13,7 +13,7 @@ import {
 import { discoverLeafNonce, resolveClaimFromTreeAccount, type BubblegumProof } from '../bubblegum';
 import type { DasClient } from '../das';
 
-export interface ClaimSettleCtx {
+interface ClaimSettleCtx {
   connection: Connection;
   wallet: WalletLike;
   das: DasClient;
@@ -24,7 +24,7 @@ export interface ClaimSettleCtx {
   onSignature: (sig: string) => void;
 }
 
-export interface SettledChip { asset: PublicKey; rarity: number; collectionIdx: number; gameIndex: bigint }
+interface SettledChip { asset: PublicKey; rarity: number; collectionIdx: number; gameIndex: bigint }
 
 /**
  * Settle one claim by nonce. Returns null for missing/consumed claims (buyer-cancelled —
@@ -124,7 +124,7 @@ async function resolveClaimProof(
 }
 
 /** Resolve an already-registered claim's leaf purely for display (no preflight, no signature). */
-export async function displayClaim(ctx: ClaimSettleCtx, claim: CompressedMintClaim): Promise<SettledChip> {
+async function displayClaim(ctx: ClaimSettleCtx, claim: CompressedMintClaim): Promise<SettledChip> {
   const meta = ctx.metas.get(claim.collectionIdx);
   const tree = ctx.trees.get(claim.collectionIdx);
   if (!meta || !tree) throw new Error(`collection ${claim.collectionIdx} not created`);

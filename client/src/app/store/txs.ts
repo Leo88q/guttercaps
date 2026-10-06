@@ -10,7 +10,7 @@ export type TrackedPack = Omit<PackFlowState, 'nonce' | 'randomness' | 'opened'>
   id: string; wallet: string; nonce: string; randomness?: string; createdAt: number; updatedAt: number;
   opened: { assets: string[]; rarities: number[]; collections: number[]; roll: string; pityBefore: number; pityAfter: number }[];
 };
-export type TrackedFusion = Omit<FusionFlowState, 'nonce' | 'randomness' | 'materials' | 'result'> & {
+type TrackedFusion = Omit<FusionFlowState, 'nonce' | 'randomness' | 'materials' | 'result'> & {
   id: string; wallet: string; nonce: string; randomness?: string; createdAt: number; updatedAt: number;
   materials: { asset: string; collectionIdx: number }[];
   result?: { result: string; success: boolean; rollBps: number; thresholdBps: number; feeBurned: string };

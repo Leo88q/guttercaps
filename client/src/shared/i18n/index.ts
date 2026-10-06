@@ -24,7 +24,7 @@ import en from './locales/en';
 export const LOCALES = ['en', 'pt', 'es', 'vi', 'id', 'fil', 'ru'] as const;
 export type Locale = (typeof LOCALES)[number];
 
-export interface LocaleMeta {
+interface LocaleMeta {
   code: Locale;
   /** BCP-47 tag handed to <html lang> and Intl */
   tag: string;
@@ -57,7 +57,7 @@ export type Messages = { [K in keyof typeof en]: Widen<(typeof en)[K]> };
 type Widen<T> = T extends string ? string : { [K in keyof T]: Widen<T[K]> };
 /** Runtime fallback shape for loading/recovery. Authored locale bundles use the complete Messages type. */
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends string ? string : DeepPartial<T[K]> };
-export type PartialMessages = DeepPartial<Messages>;
+type PartialMessages = DeepPartial<Messages>;
 
 const loaders: Record<Locale, () => Promise<{ default: PartialMessages }>> = {
   en: () => Promise.resolve({ default: en }),
@@ -165,7 +165,7 @@ export async function setLocale(l: Locale): Promise<void> {
 }
 
 /** Side effects on <html>: lang, data-lang, text-expansion class, display-font class. */
-export function applyDocumentLocale(l: Locale): void {
+function applyDocumentLocale(l: Locale): void {
   if (typeof document === 'undefined') return;
   const meta = LOCALE_META[l];
   const root = document.documentElement;

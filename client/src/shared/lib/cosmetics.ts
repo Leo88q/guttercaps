@@ -8,7 +8,7 @@ import { PROFILE_THEMES as ECONOMY_THEMES } from '@guttercaps/economy';
 /** economy service kinds for the cosmetic/convenience entitlements. */
 export const KIND = { skin: 2, theme: 3, emotePack: 4, bench: 5, pass: 6, skip: 8, banner: 9 } as const;
 
-export interface EntitlementLike { kind?: number; payload?: Record<string, unknown> | null; expiresAt?: string | null }
+interface EntitlementLike { kind?: number; payload?: Record<string, unknown> | null; expiresAt?: string | null }
 
 export function owns(ents: EntitlementLike[] | undefined, kind: number): boolean {
   return (ents ?? []).some((e) => e.kind === kind && (e.expiresAt === null || e.expiresAt === undefined || new Date(e.expiresAt).getTime() > Date.now()));
@@ -91,7 +91,7 @@ export function skinText(id: string, description = false): string {
   const key = SKIN_KEYS[id];
   return key ? t((description ? `${key}Desc` : key) as MessageKey) : t('common.unavailable');
 }
-export function themeText(id: string, description = false): string {
+function themeText(id: string, description = false): string {
   const key = THEME_KEYS[id];
   return key ? t((description ? `${key}Desc` : key) as MessageKey) : t('common.unavailable');
 }

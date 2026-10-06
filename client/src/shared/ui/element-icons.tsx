@@ -4,7 +4,7 @@
 import type { Element } from '@/shared/lib/rarity';
 import './reward-icons.css';
 
-export const ELEMENT_ICON_URL: Record<Element, string> = {
+const ELEMENT_ICON_URL: Record<Element, string> = {
   paint: '/icons/gen/paint.webp',
   steel: '/icons/gen/steel.webp',
   wheels: '/icons/gen/wheels.webp',

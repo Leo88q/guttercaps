@@ -4,8 +4,8 @@
 // Deliberately omitted (not player knowledge): anti-fraud thresholds, device/IP limits,
 // oracle internals, emission-guard formula, team allocation, model assumptions.
 
-export interface GuideSection { id: string; title: string; lead: string; body: string[] }
-export interface GuideCopy { title: string; subtitle: string; toc: string; sections: GuideSection[]; outro: string }
+interface GuideSection { id: string; title: string; lead: string; body: string[] }
+interface GuideCopy { title: string; subtitle: string; toc: string; sections: GuideSection[]; outro: string }
 
 const en: GuideCopy = {
   title: 'How the city works',

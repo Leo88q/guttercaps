@@ -8,7 +8,7 @@ import { BoosterIcon } from './reward-icons';
 interface Props { id: ServiceId; size?: number; className?: string; }
 
 /** Generated faces (extend after the next art batch). */
-export const SERVICE_ICON_URL: Partial<Record<ServiceId, string>> = {
+const SERVICE_ICON_URL: Partial<Record<ServiceId, string>> = {
   seasonPass: '/icons/gen/svc-pass.webp',
   capSkin: '/icons/gen/svc-skin.webp',
 };

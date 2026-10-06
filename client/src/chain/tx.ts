@@ -15,7 +15,7 @@ export interface WalletLike {
   signTransaction<T extends VersionedTransaction>(tx: T): Promise<T>;
 }
 
-export interface SendOptions {
+interface SendOptions {
   /** compute unit limit; defaults to a simulation-derived value ×1.2 */
   cuLimit?: number;
   /** microLamports per CU; default = recent median clamped to [1_000, 200_000] */
@@ -83,7 +83,7 @@ export async function appLookupTables(connection: Connection, address: PublicKey
   return lutCache.value;
 }
 
-export async function buildV0Tx(
+async function buildV0Tx(
   connection: Connection,
   payer: PublicKey,
   ixs: TransactionInstruction[],

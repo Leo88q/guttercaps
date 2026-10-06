@@ -10,7 +10,7 @@ import { PYTH_PUSH_ORACLE_ID, PYTH_SHARD_ID } from './ids';
 
 /** Max age chip_core accepts (economy.rs SOL_PRICE_MAX_AGE_SECS) and the API's quote-refusal margin. */
 export const PYTH_MAX_AGE_S = 60;
-export const PYTH_ALERT_AGE_S = 45;
+const PYTH_ALERT_AGE_S = 45;
 export { PYTH_MAX_CONF_BPS, PythConfidenceError };
 
 /** Push-oracle PriceUpdateV2 PDA: seeds [shard u16 LE, feed_id] under pythWSns… */

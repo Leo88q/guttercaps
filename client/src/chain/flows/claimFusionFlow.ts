@@ -20,9 +20,9 @@ import { DasClient } from '../das';
 import { settleClaim } from './claimSettle';
 import { fetchCollectionMetas, fetchGameConfig, fetchTreeMetas } from './packFlow';
 
-export type ClaimFusionPhase = 'idle' | 'signing' | 'committed' | 'revealing' | 'settling' | 'done' | 'stale' | 'error';
+type ClaimFusionPhase = 'idle' | 'signing' | 'committed' | 'revealing' | 'settling' | 'done' | 'stale' | 'error';
 
-export interface ClaimFusionFlowState {
+interface ClaimFusionFlowState {
   phase: ClaimFusionPhase;
   nonce: bigint;
   recipe: number;
@@ -40,7 +40,7 @@ export interface ClaimFusionFlowState {
   errorDiagnostic?: ErrorSnapshot;
 }
 
-export interface ClaimFusionDeps {
+interface ClaimFusionDeps {
   connection: Connection;
   wallet: WalletLike;
   onState: (s: ClaimFusionFlowState) => void;
