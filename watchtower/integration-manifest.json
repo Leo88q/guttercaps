@@ -1,0 +1,195 @@
+{
+  "manifestVersion": "1.0.0",
+  "generatedAt": "2026-10-06",
+  "game": {
+    "name": "Gutter Caps",
+    "gameId": "guttercaps",
+    "gameIdStatus": "confirmed — matches the hub adapter table (`guttercaps`, ENV `GUTTERCAPS_CORE_PROGRAM_ID`); no divergence found in code",
+    "repo": "https://github.com/Leo88q/guttercaps.git",
+    "verifiedCommit": "7967e3597de04cd11ce1046b8f18b561752b0247",
+    "branch": "arena/cccdf05b-guttercaps (worktree of main @ 7967e35)",
+    "genre": "Casual pop-n-shoot cap-collecting game with on-chain packs, marketplace, staking and wagered PvP",
+    "stage": "pre-mainnet beta. Local checks green; devnet deploy documented 2026-10-03; mainnet deliberately NOT deployed (program ids are dev-derived placeholders guarded by `npm run program-ids -- guard-mainnet`, SEC-F05). docs/09-production-readiness.md gates G-1/G-3/G-4 still open.",
+    "engine": "Godot client + Rust Actix-style TS backend; four Anchor programs (chip_core, market, staking, arena)"
+  },
+  "environments": {
+    "localnet": {
+      "cluster": "local",
+      "status": "available_for_tests",
+      "notes": "anchor test / LiteSVM suite (92 scenarios in CI). Not runnable in the handoff environment: no Anchor/Rust toolchain and target/deploy/*.so artifacts absent (npm test: 123/137 scenarios skipped, exit 0). CI job `localnet · 92 scenarios` is the standing evidence."
+    },
+    "devnet": {
+      "cluster": "devnet",
+      "status": "deployed_documented_not_reverified_here",
+      "notes": "scripts/mac-devnet.sh run of 2026-10-03 reports `deploy` stage passed with `verify-deploy onchain OK` (FIXES-2026-10-03.md:3). The handoff environment has no RPC egress (curl api.devnet.solana.com -> SSL_ERROR_SYSCALL), so this could not be independently re-verified. Re-verify with `npm run verify-deploy -- onchain --cluster devnet --rpc <RPC_URL>` from a machine with devnet access.",
+      "verificationStatus": "code_only"
+    },
+    "mainnet": {
+      "cluster": "mainnet-beta",
+      "status": "not_deployed_by_design",
+      "notes": "Anchor.toml [programs.mainnet] intentionally equals devnet ids (one cold keypair per program) until the id ceremony; guard-mainnet fails CI while they are equal. Do NOT index mainnet for this game.",
+      "verificationStatus": "not_applicable"
+    }
+  },
+  "programs": [
+    {
+      "name": "chip_core",
+      "role": "core — packs, chips (MPL-Core legacy + Bubblegum V2 compressed claims), fusion, vouchers, preorders, paid services, governance",
+      "programId": "J68G8KrbLTSdi68LHr9Kkw1YbRRHv3uBPirWCd5Xt13V",
+      "declareId": "programs/chip_core/src/lib.rs:32",
+      "verificationStatus": "code_only",
+      "evidence": "npm run economy:check (exit 0): declare_id!, Anchor.toml, client/backend defaults and CI all agree; devnet on-chain re-verification blocked (no RPC egress)",
+      "idl": "No committed IDL JSON (build artifact). The running indexer deliberately uses an Anchor-free declarative codec: backend/src/events.ts EVENT_SPECS (field order == Rust structs in programs/chip_core/src/state.rs), pinned by backend/test/events.test.ts (exit 0 this handoff). Anchor 0.31.1 / solana 2.1.0 toolchain (Anchor.toml)."
+    },
+    {
+      "name": "market",
+      "role": "market — Core + compressed chip listings/sales/offers",
+      "programId": "5skEmmhgFYn5xjHEdrcsiQ68kUg5kvhXKhjWTWSppjfo",
+      "declareId": "programs/market/src/lib.rs:50",
+      "verificationStatus": "code_only",
+      "evidence": "npm run economy:check (exit 0)",
+      "idl": "same codec note as chip_core (events in programs/market/src/lib.rs)"
+    },
+    {
+      "name": "staking",
+      "role": "rewards/emission — chip+token staking, guarded $CG emission, Merkle reward roots (CG/SKR/items/vouchers), SKR prize pool, burn ledger",
+      "programId": "Ewkbp7WpqbiJAu3ofEcTPinqnr5oH3e94YJDZFg1eSJn",
+      "declareId": "programs/staking/src/lib.rs:23",
+      "verificationStatus": "code_only",
+      "evidence": "npm run economy:check (exit 0)",
+      "idl": "same codec note (events in programs/staking/src/state.rs)"
+    },
+    {
+      "name": "arena",
+      "role": "wagered PvP — $CG escrow battles resolved by a battle oracle (VRF), rake split burn/pool/treasury",
+      "programId": "DUTokrhWBYL7nJ9VbMy7bFELQFf8TN1tmvVpKLsskqD6",
+      "declareId": "programs/arena/src/lib.rs:34",
+      "verificationStatus": "code_only",
+      "evidence": "npm run economy:check (exit 0)",
+      "idl": "same codec note (events in programs/arena/src/lib.rs)"
+    },
+    {
+      "name": "sb_mock",
+      "role": "localnet-only Switchboard stand-in — NEVER deployed to devnet/mainnet",
+      "programId": "ApDh35vcLCxXc5ivaRGFhayn1HduJ9b2nXbfR6WMpVKH",
+      "declareId": "programs/sb_mock/src/lib.rs:38",
+      "verificationStatus": "not_applicable",
+      "evidence": "Anchor.toml [programs.localnet] only; verify-deploy scans deployed chip_core/arena bytes for foreign pins (scripts/verify-deploy.ts)"
+    }
+  ],
+  "assets": {
+    "skrMint": {
+      "address": "SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3",
+      "decimals": 6,
+      "source": "backend/src/config.ts SKR_MINT (comment: 'Genuine SKR mint — never resolve by symbol (counterfeits exist)'); client/src/app/config.ts treats it as the mainnet canonical mint; devnet uses a setup-created stand-in",
+      "verificationStatus": "code_only"
+    },
+    "usdcMint": {
+      "mainnet": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "devnetTestMint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "decimals": 6,
+      "source": "client/src/app/config.ts",
+      "verificationStatus": "code_only"
+    },
+    "cgMint": {
+      "address": "unavailable — created per cluster by `npm run setup` (scripts/setup.ts); no committed address in the repo and no RPC access to read it here",
+      "decimals": 6,
+      "hardCap": "1e9 CG (packages/economy/src/tokenomics.ts)",
+      "verificationStatus": "unavailable",
+      "unblockBy": "read GameConfig / ParamsPatched.skrMint sibling fields on devnet, or run `npm run setup` status output on the deploying machine"
+    },
+    "treasuryVaultsPdAs": {
+      "status": "unavailable",
+      "note": "Treasury/buyback/season-pool/vault addresses are runtime config (GameConfig accounts + ParamsPatched fields; arena treasury_cg + season pool accounts). They exist on-chain per deployed cluster but are not committed to the repo and could not be read here (no RPC). Never infer them from docs: WATCHTOWER_INTEGRATION.md lists placeholder strings like 'STrEaSuRy111…' which are NOT addresses.",
+      "unblockBy": "gPA GameConfig (seed 'config') on each program with a devnet RPC, or decode a ParamsPatched event"
+    }
+  },
+  "eventPipeline": {
+    "producer": "The four Anchor programs emit Anchor events (emit!) into transaction logs.",
+    "indexer": "backend/src/{listen,backfill,ingest}.ts — one onLogs websocket per program (push) + historical getSignaturesForAddress walk (pull/backfill) + periodic heal passes. Read-only: no signer, no admin, no writes to the chain. Same ingestTx also handles Helius enhanced-webhook payloads (docs/03 §3.1).",
+    "storage": "SQLite events_raw (node:sqlite), dedup UNIQUE(signature, ix_index, event_index); projections rebuilt purely from events_raw (npm run backend:rebuild).",
+    "cursors": "indexer_cursor per program: newest_signature / newest_slot / history_complete (history_complete stays 0 while any listed signature could not be fetched — indexer_gaps records them, repairIndexerGaps retries, SEC-B27).",
+    "finality": "projections applied at `confirmed`; finality reconciler stamps events_raw.finalized_at via getSignatureStatuses and DELETES events of fork-dropped txs (backend/src/finality.ts, SEC-M5). Value-bearing endpoints require finalized.",
+    "readApis": "GET /wallet/{address}/events (raw indexed events, openapi.yaml), /stats, /admin/kpi — served by the backend API (default port 8787). WebSocket /ws is a client cache-invalidation protocol (backend/src/wire.ts), NOT a telemetry feed.",
+    "exporterForHub": "No dedicated Watchtower exporter exists. The former scripts/watchtower_v3_server.py was a CONTRACT MOCK with hardcoded synthetic sample events and WRONG program ids — it was DELETED on 2026-10-06 together with its registry, CLI (handoff-v3.*) and mock tests. The real read path today is the backend indexer DB/API; a hub-facing exporter (push to POST /api/ingest/solana or pull endpoint) is the agreed next step."
+  },
+  "dataQuality": {
+    "onchainEvents": {
+      "quality": "partial",
+      "reason": "Emitters verified in source (path:line for every emit!), codec round-trip + discriminator tests green in this environment (backend:test exit 0), but no runtime capture was possible here (no RPC egress) and the 92-scenario LiteSVM suite needs build artifacts this environment cannot produce (skipped). Replay/dedup is proven by tests, not by a verified devnet window."
+    },
+    "offchainEvents": {
+      "quality": "unavailable",
+      "reason": "No off-chain event emitter/protocol exists (sessions, logins, visits, preorders are DB rows only). Nothing is sent to the hub today."
+    },
+    "playerIdentity": {
+      "quality": "partial",
+      "reason": "Wallet pubkey present on every player-facing event (per-event field documented in event-catalog.json); no consent framework beyond on-chain publicness + backend privacy retention jobs; cross-game linking not implemented."
+    },
+    "economy": {
+      "quality": "partial",
+      "reason": "Units/decimals/hard-cap/rake constants fully documented and test-pinned (economy:check exit 0); no runtime treasury/supply snapshot obtainable here (no RPC)."
+    },
+    "location": { "quality": "unavailable", "reason": "not_applicable — the game has no geographic or map-region mechanics (see catalog `location`)." },
+    "crossGame": { "quality": "unavailable", "reason": "No bridge/transfer/linking program exists; only quest_visits client check-ins (DB rows)." },
+    "operatorGameProgress": { "quality": "unavailable", "reason": "hours/rank/updatedAt are not stored per player (arena keeps internal seasonal ratings only; no measurement of play hours)." }
+  },
+  "evidenceStatus": {
+    "note": "verificationStatus values (verified_runtime | code_only | planned | unavailable | not_applicable) are NOT mixed with dataQuality above.",
+    "verified_runtime": "nothing in this handoff — no cluster reachable from the handoff environment",
+    "code_only": "all four program ids, the full event surface, codec, dedup/cursor/finality machinery, amounts/units",
+    "planned": "off-chain event export (PlayerJoined/SessionStarted/retention) and a real hub-facing exporter — require contracts agreed with the hub first",
+    "unavailable": "on-chain runtime re-verification, CG mint address, treasury PDAs, supply/treasury snapshots",
+    "not_applicable": "mainnet, sb_mock, location slices, cross-game transfers, Operator Game progress"
+  },
+  "commandsRun": [
+    { "command": "npm ci --no-audit --no-fund", "exitCode": 0, "date": "2026-10-06" },
+    { "command": "npm run backend:test", "exitCode": 0, "note": "30 files, 555 tests passed (incl. events codec round-trip, replay idempotency, backfill gap handling)", "date": "2026-10-06" },
+    { "command": "npm run verify-deploy -- --selftest", "exitCode": 0, "note": "5 cases ok (Switchboard pin scan + loader layout)", "date": "2026-10-06" },
+    { "command": "npm run api:check", "exitCode": 0, "note": "every openapi.yaml operation has a route and vice versa", "date": "2026-10-06" },
+    { "command": "npm --prefix backend run typecheck", "exitCode": 0, "date": "2026-10-06" },
+    { "command": "npm run economy:check", "exitCode": 0, "note": "all on-chain constants (program ids, splits, mints) match the economy model", "date": "2026-10-06" },
+    { "command": "npm test", "exitCode": 0, "note": "14 passed / 123 SKIPPED — LiteSVM scenarios require target/deploy/*.so + mpl_core/pyth fixtures; no Anchor/Rust toolchain in this environment", "date": "2026-10-06" },
+    { "command": "node --experimental-transform-types watchtower/scripts/generate-handoff-fixtures.ts", "exitCode": 0, "note": "60-event catalog + 16 synthetic fixtures, every fixture round-tripped through decodeLogs", "date": "2026-10-06" },
+    { "command": "curl -m 8 https://api.devnet.solana.com (getHealth)", "exitCode": 35, "note": "SSL_ERROR_SYSCALL — sandbox has no egress to Solana RPC; this is why no runtime verification exists in this handoff", "date": "2026-10-06" }
+  ],
+  "secrets": {
+    "included": "none — no tokens, keys, RPC keys, cookies or auth headers are in this package",
+    "hubSideEnvNames": ["WATCHTOWER_INGEST_TOKEN", "WATCHTOWER_INGEST_HMAC_SECRET"],
+    "gameSideReadPathEnvNames": ["SOLANA_RPC_URL (read-only provider)", "METAPLEX_DAS_RPC_URL (optional, DAS)"],
+    "transfer": "secrets only via the operator-agreed vault/secret manager, never in repo/tickets/chat"
+  },
+  "discrepancies": [
+    {
+      "id": "D1",
+      "file": "WATCHTOWER_INTEGRATION.md",
+      "issue": "Stated program id GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q for the core program plus placeholder ids (CgInv111…, SessKeys111…, STrEaSuRy111…), claimed data_quality: complete, and described a '33-component ideal free stack' (MagicBlock ER, Arcium, Xandeum, …) with no corresponding code. Real id: chip_core = J68G8KrbLTSdi68LHr9Kkw1YbRRHv3uBPirWCd5Xt13V (declare_id! + economy:check).",
+      "handling": "RESOLVED 2026-10-06 — file deleted; this manifest is the passport."
+    },
+    {
+      "id": "D2",
+      "file": "scripts/watchtower_v3_server.py + watchtower_v3_registry.py + handoff-v3.{py,js} + tests/watchtower/* + docs/SLO_REPORT.md",
+      "issue": "Exporter mock served hardcoded SAMPLE_EVENTS with eventTypes ChipMinted/CapShot and program ids GCRhrg…/GCfERioh… that exist in no program; samples unmarked synthetic; SLO report presented fabricated measurements (99.95% uptime, 3.5ms MagicBlock ER latency).",
+      "handling": "RESOLVED 2026-10-06 — all five artifacts deleted (nothing in CI or npm scripts referenced them; the gate tests/security/indexer-gaps.test.ts does not read them)."
+    },
+    {
+      "id": "D3",
+      "file": "docs/INTERWEAVING.md, docs/ALERT_CATALOG.md, docs/DISASTER_RECOVERY.md, scripts/verify-addresses.ts",
+      "issue": "INTERWEAVING listed a taxonomy (CapShot/ChipMinted/…) and /watchtower/* endpoints that do not exist; ALERT-04 monitored the mock exporter; DR quoted an S3 store and the mock for readiness; verify-addresses.ts verified the retired placeholder ids.",
+      "handling": "RESOLVED 2026-10-06 — INTERWEAVING rewritten on facts; ALERT-04 replaced by the real PHANTOM_PAYMENT_ISSUED finality case; DR phases now use ops/backup + npm run ops:restore-drill + GET /v1/health (still under the indexer-gaps gate); verify-addresses.ts now reads ids from backend/src/config.ts."
+    },
+    {
+      "id": "D4",
+      "file": "AUDIT-2026-10-02.md, QWEN.md",
+      "issue": "The audit inspected a shallow clone still carrying chip_core id GCRhrg…; the current tree carries J68G8… (ids changed after that snapshot). QWEN.md pointed at nonexistent paths (programs/guttercaps/src/lib.rs).",
+      "handling": "Audit findings remain valid as findings; program-id statements must come from declare_id! (QWEN.md deleted 2026-10-06)."
+    }
+  ],
+  "blockers": [
+    { "id": "B1", "blocker": "No RPC egress from the handoff environment", "owner": "operator with devnet RPC access", "unblock": "run `npm run verify-deploy -- onchain --cluster devnet --rpc <URL>` and paste the output; optionally export one real finalized devnet tx per mapped event to replace the synthetic fixtures" },
+    { "id": "B2", "blocker": "Hub mapping decision for the first-action slot: hub expects PackOpened; the game's live first-action event is CompressedClaimsCreated (PackOpened struct exists but has no emitter)", "owner": "hub integration owner + game team", "unblock": "hub accepts CompressedClaimsCreated -> PackOpened mapping or defines an alternative" },
+    { "id": "B3", "blocker": "No off-chain event contract (PlayerJoined / SessionStarted / retention / cross-game visits)", "owner": "hub + game team", "unblock": "agree eventId/sessionId/seq/replay semantics given the hub offchainIdentity constraint (provider+campaignId/pageId/sessionId/seq); only then implement an exporter" },
+    { "id": "B4", "blocker": "RESOLVED 2026-10-06: stale watchtower artifacts (D1/D2) deleted, D3 docs rewritten", "owner": "game team", "unblock": "done — see discrepancies" },
+    { "id": "B5", "blocker": "No real-chain fixture in this package (RPC unavailable)", "owner": "operator", "unblock": "after B1, capture real finalized devnet events through backend GET /wallet/{address}/events and add them under watchtower/events/fixtures/ (never with mainnet player data)" }
+  ]
+}
