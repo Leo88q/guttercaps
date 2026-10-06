@@ -12,7 +12,19 @@
 **/*.sqlite-wal
 **/*.sqlite-shm
 **/*-keypair.json
-**/id.json
+# Rooted on purpose, and the only line in this file that is. `id` is the ISO 639-1 code for Indonesian, so
+# five tracked catalogues are named `id.json` (client/src/shared/i18n/{diagnostics,failures,rights}/,
+# client/src/shared/lib/legal-copy/, scripts/landing/locales/) and four of them are build inputs:
+# client/src/shared/i18n/locales/id.ts imports three, legalCopy.ts imports the fourth. A blanket
+# `**/id.json` kept them out of the build context and `vite build` died on "Cannot find module
+# './legal-copy/id.json'" — the name-vs-content mistake ci.yml's old `grep -E '(keypair|id)\.json$'` made
+# when it burned the security job on the same five files, which scripts/committed-keypairs.ts now settles
+# by parsing the body: a 64-uint8 array is a keypair wherever it hides, a locale object never is.
+# Rooted, this still excludes what `solana-keygen new -o id.json` and a copied `~/.config/solana/id.json`
+# leave at the context root; `**/*-keypair.json` above covers the anchor naming at any depth; and the
+# images workflow scans the *built* api image for `id.json`/`*-keypair.json`/`*.env` before anything can
+# pull it, so a keypair nested somewhere this list does not name still fails the build there.
+id.json
 # SEC-B55: `**/.env` is one name out of the five Vite reads — for `vite build` (mode production) it loads
 # `.env`, `.env.local`, `.env.production` and `.env.production.local` from the client root, and every one of
 # them can set any `VITE_*` name. process.env wins for the names the Dockerfile declares, so a stray
