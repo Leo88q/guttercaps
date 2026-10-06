@@ -318,3 +318,33 @@ export const CRANK_GATEWAY_RPC = env.CRANK_GATEWAY_RPC ?? (RPC_URL.includes('mai
 /** Price fallbacks used by /services and /market/floor when no oracle cache exists yet (dev). */
 export const SOL_USD_FALLBACK = Number(env.SOL_USD_FALLBACK ?? 150);
 export const SKR_USD_FALLBACK = Number(env.SKR_USD_FALLBACK ?? 0.0174);
+
+// ---------------------------------------------------------------------------
+// Beta pre-sale (preorder) — docs/preorder-beta.md. During the devnet beta, buyers pay for a
+// limited pack drop in MAINNET SOL to the team's multisig treasury; delivery (chip_core
+// `grant_preorder_pack`) happens at mainnet launch. Money is verified against the MAINNET chain,
+// never against the cluster this backend indexes (the beta backend runs on devnet).
+/** Campaign on at all: when false, `/preorder` reports the campaign closed and intents are refused. */
+export const PREORDER_ACTIVE = env.PREORDER_ACTIVE !== 'false';
+/** Squads multisig vault receiving the pre-sale SOL. Empty string = campaign disabled regardless of PREORDER_ACTIVE. */
+export const PREORDER_TREASURY = env.PREORDER_TREASURY ?? '';
+/** Fixed SOL price per pack, lamports (u64 decimal string — never JS number math). */
+export const PREORDER_PRICE_LAMPORTS = env.PREORDER_PRICE_LAMPORTS ?? '999000000'; // 0.999 SOL dev default
+/** Which pack SKU the drop sells (3 = Limited Event Pack). */
+export const PREORDER_SKU = Number(env.PREORDER_SKU ?? 3);
+/** Total packs in the drop (mirrors the on-chain `PreorderDrop.total` opened at launch). */
+export const PREORDER_TOTAL = Number(env.PREORDER_TOTAL ?? 500);
+/** Per-wallet cap enforced by the registry AND by the on-chain drop. */
+export const PREORDER_MAX_PER_WALLET = Number(env.PREORDER_MAX_PER_WALLET ?? 5);
+/** Max packs in one intent (the client's qty stepper stops here too). */
+export const PREORDER_MAX_QTY = Number(env.PREORDER_MAX_QTY ?? 5);
+/** A payment memo the buyer attaches so a payment is unambiguous even across same-amount intents. */
+export const PREORDER_MEMO_PREFIX = env.PREORDER_MEMO_PREFIX ?? 'GC-PRE';
+/** How long an intent waits for its payment before it stops accepting one (72 h default). */
+export const PREORDER_INTENT_TTL_S = Number(env.PREORDER_INTENT_TTL_S ?? 72 * 3_600);
+/**
+ * RPC used ONLY to verify pre-sale payments (getTransaction, finalized). Separate from RPC_URL on
+ * purpose: the beta backend indexes devnet while payments land on mainnet. Falls back to the public
+ * mainnet endpoint; point it at a keyed endpoint in production.
+ */
+export const MAINNET_RPC_URL = env.MAINNET_RPC_URL ?? 'https://api.mainnet-beta.solana.com';

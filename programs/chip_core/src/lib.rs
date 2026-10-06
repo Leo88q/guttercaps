@@ -247,6 +247,35 @@ pub mod chip_core {
         instructions::grant_booster(ctx, count)
     }
 
+    // ----- preorder (beta pre-sale delivery) -----
+    /// Opens the limited pre-sale drop for one SKU: hard `total`, optional `max_per_wallet`
+    /// (0 = uncapped). Money was collected off-chain (multisig treasury); the drop caps how many
+    /// packs `grant_preorder_pack` may ever mint for it.
+    pub fn init_preorder_drop(
+        ctx: Context<InitPreorderDrop>,
+        sku: u8,
+        total: u32,
+        max_per_wallet: u8,
+    ) -> Result<()> {
+        instructions::init_preorder_drop(ctx, sku, total, max_per_wallet)
+    }
+    /// Converts one paid preorder into a pack owned by the beneficiary: the admin fronts the
+    /// rent reserve and the Switchboard request, the pack opens through the normal compressed
+    /// pipeline (`voucher = false`, `paid_* = 0`). `preorder_ref` joins the grant to the
+    /// backend registry row / payment memo.
+    pub fn grant_preorder_pack(
+        ctx: Context<GrantPreorderPack>,
+        qty: u8,
+        nonce: u64,
+        preorder_ref: u64,
+    ) -> Result<()> {
+        instructions::grant_preorder_pack(ctx, qty, nonce, preorder_ref)
+    }
+    /// Reclaims the drop account once every pack is granted (`granted == total`).
+    pub fn close_preorder_drop(ctx: Context<ClosePreorderDrop>) -> Result<()> {
+        instructions::close_preorder_drop(ctx)
+    }
+
     // ----- packs -----
     /// currency: 0 SOL (needs price_update SOL/USD), 1 USDC, 2 $CG, 3 SKR (needs price_update SKR/USD).
     /// `max_lamports` = slippage guard for volatile currencies (max lamports / max micro-SKR).
@@ -287,6 +316,17 @@ pub mod chip_core {
         recent_slot: u64,
     ) -> Result<()> {
         instructions::init_randomness(ctx, kind, nonce, recent_slot)
+    }
+    /// Admin-payer twin of `init_randomness` for preorder grants: the beneficiary owns the
+    /// randomness account but never signs — the admin (GameConfig.admin) pays the rent, escrow
+    /// and LUT. Used in the same tx as `grant_preorder_pack`.
+    pub fn init_grant_randomness(
+        ctx: Context<InitGrantRandomness>,
+        kind: u8,
+        nonce: u64,
+        recent_slot: u64,
+    ) -> Result<()> {
+        instructions::init_grant_randomness(ctx, kind, nonce, recent_slot)
     }
     /// Permissionless relay of the oracle's reveal (gateway response) — CPI `randomness_reveal` signed by `rng_auth`.
     pub fn reveal_randomness(

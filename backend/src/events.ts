@@ -77,6 +77,12 @@ export const EVENT_SPECS: readonly EventSpec[] = [
   spec('chip_core', 'CompressedClaimStakedSet', [['claim', 'pubkey'], ['buyer', 'pubkey'], ['staked', 'bool']]),
   spec('chip_core', 'CompressedClaimTransferred', [['claim', 'pubkey'], ['from', 'pubkey'], ['to', 'pubkey']]),
   spec('chip_core', 'VoucherIssued', [['wallet', 'pubkey'], ['nonce', 'u64'], ['template', 'u8'], ['randomness', 'pubkey']]),
+  // Beta pre-sale (docs/preorder-beta.md): the admin opens a drop cap and converts paid off-chain
+  // preorders into real packs at mainnet launch. `preorderRef` joins the grant to the backend
+  // registry (`preorders.ref_id`), the payment memo carries the same id.
+  spec('chip_core', 'PreorderDropOpened', [['admin', 'pubkey'], ['drop', 'pubkey'], ['sku', 'u8'], ['total', 'u32'], ['maxPerWallet', 'u8']]),
+  spec('chip_core', 'PackGranted', [['admin', 'pubkey'], ['beneficiary', 'pubkey'], ['sku', 'u8'], ['qty', 'u8'], ['nonce', 'u64'], ['preorderRef', 'u64'], ['randomness', 'pubkey']]),
+  spec('chip_core', 'PreorderDropClosed', [['admin', 'pubkey'], ['drop', 'pubkey'], ['sku', 'u8'], ['total', 'u32']]),
   spec('chip_core', 'ChipFused', [
     ['owner', 'pubkey'], ['recipe', 'u8'], ['materials', ['pubkey', MATERIALS_PER_FUSION]], ['result', 'pubkey'],
     ['success', 'bool'], ['rollBps', 'u16'], ['thresholdBps', 'u16'], ['feeBurned', 'u64'],

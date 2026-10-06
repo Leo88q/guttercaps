@@ -9,7 +9,7 @@ import { STALE_PACK_MINUTES } from '@guttercaps/economy';
 const STEPS: { key: PackPhase[]; label: MessageKey; hint: MessageKey }[] = [
   { key: ['signing'], label: 'ui.payCommit', hint: 'ui.signOnce' },
   { key: ['committed', 'revealing'], label: 'ui.oracle', hint: 'ui.oracleHint' },
-  { key: ['opening'], label: 'ui.mint', hint: 'ui.mintHint' },
+  { key: ['opening', 'settling'], label: 'ui.mint', hint: 'ui.mintHint' },
   { key: ['done'], label: 'nav.caps', hint: 'ui.inWallet' },
 ];
 
@@ -36,6 +36,9 @@ export function PackStepper({ state, compact, onRefund, onReclaimRent }: { state
       )}
       {state.phase === 'opening' && (
         <div className="small muted">{t('ui.mintingPack', { n: state.opened.length + 1, total: state.qty })}</div>
+      )}
+      {state.phase === 'settling' && (
+        <div className="small muted">{t('screens.bgSettling')}</div>
       )}
       {errored && <div className="danger"><ErrorNotice error={state.errorDiagnostic ?? state.error} /></div>}
       {stale && (

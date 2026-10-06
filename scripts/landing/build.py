@@ -59,10 +59,12 @@ LANDING_CATALOG = {l: client_catalog('catalog', l) for l in LOCALES}
 LANDING_UI = {l: {k: v for k, v in client_catalog('ui', l).items() if k.startswith(('pack', 'rarity')) or k in ('comingSoon', 'primaryNav')} for l in LOCALES}
 
 
-# Embedded imagery: AI street-art backdrops (bg-*) and per-district contact
-# sheets cut from the real chip masters (district-*). Everything is inlined as
-# webp data URIs so the landing stays one self-contained file — the tradeoff is
-# roughly +1.1 MB of HTML, tracked in scripts/landing/README.
+# Embedded imagery: AI street-art backdrops (bg-*), per-district contact
+# sheets cut from the real chip masters (district-*), and the four foil
+# wrapper renders (starter/standard/premium/limited — see PACK_ART_STEMS).
+# Everything is inlined as webp data URIs so the landing stays one
+# self-contained file — the tradeoff is roughly +2 MB of HTML, tracked in
+# scripts/landing/README.
 # Tile grid of the district contact sheets — MUST match the sheet generator
 # (TILE x TILE tiles, GUT gutter, PAD padding; see scripts/landing/README.md).
 # app.js uses it to sprite each chip's real art out of its district sheet.
@@ -71,7 +73,8 @@ LANDING_UI = {l: {k: v for k, v in client_catalog('ui', l).items() if k.startswi
 # crop the individual cap sprites without shipping 72 duplicate images.
 ART_TILE, ART_GUT, ART_PAD = 256, 12, 16
 ASSET_DIR = HERE / 'assets'
-PHOTOS, DISTRICT_ART, STEP_ART, GEN_ICONS = {}, {}, {}, {}
+PHOTOS, DISTRICT_ART, STEP_ART, GEN_ICONS, PACK_ART = {}, {}, {}, {}, {}
+PACK_ART_STEMS = {'starter', 'standard', 'premium', 'limited'}  # foil wrapper renders, scripts/landing/README
 if ASSET_DIR.is_dir():
     for _p in sorted(ASSET_DIR.glob('*.webp')):
         _uri = 'data:image/webp;base64,' + base64.b64encode(_p.read_bytes()).decode()
@@ -81,6 +84,8 @@ if ASSET_DIR.is_dir():
             STEP_ART[_p.stem] = _uri
         elif _p.stem.startswith('icon-'):
             GEN_ICONS[_p.stem] = _uri
+        elif _p.stem in PACK_ART_STEMS:
+            PACK_ART[_p.stem] = _uri  # exposed to app.js as PACK_ART, NOT as wall photos
         else:
             PHOTOS[_p.stem] = _uri
 
@@ -321,14 +326,15 @@ BODY = f'''
 <nav aria-label="Primary">
   <a class="logo-mark" href="#top">{LOGO_SVG}GUTTER<span>CAPS</span></a>
   <div class="nav-links">
-    <a href="#world" data-i18n="nav.world">{t('nav.world')}</a>
+    <a href="#why" data-i18n="nav.why">{t('nav.why')}</a>
     <a href="#how" data-i18n="nav.how">{t('nav.how')}</a>
-    <a href="#collections" data-i18n="nav.districts">{t('nav.districts')}</a>
-    <a href="#rarity" data-i18n="nav.rarity">{t('nav.rarity')}</a>
     <a href="#packs" data-i18n="nav.packs">{t('nav.packs')}</a>
+    <a href="#rarity" data-i18n="nav.rarity">{t('nav.rarity')}</a>
+    <a href="#world" data-i18n="nav.world">{t('nav.world')}</a>
     <a href="#economy" data-i18n="nav.economy">{t('nav.economy')}</a>
     <a href="#road" data-i18n="nav.roadmap">{t('nav.roadmap')}</a>
     <a href="#faq" data-i18n="nav.faq">{t('nav.faq')}</a>
+    <a href="#collections" data-i18n="nav.districts">{t('nav.districts')}</a>
   </div>
   <div class="nav-right">
     <div class="lang-toggle" role="group" aria-label="Language">
@@ -362,19 +368,37 @@ BODY = f'''
   <div class="skate-rail"></div>
 </section>
 
-<!-- ================= WORLD / LORE ================= -->
-<section class="section brick wall-world torn-top" id="world">
-  <div class="wall-photo" data-photo="bg-world"></div>
-  <div class="lamp-glow" style="top:-200px; left:8%; background: radial-gradient(circle, rgba(182,255,60,0.18), transparent 70%);"></div>
+<!-- ================= WHY: THE LOOP AND ITS VALUE (2026-10 reorg: right after the hero) ================= -->
+<section class="section brick wall-value torn-top" id="why">
+  <div class="wall-photo" data-photo="bg-value"></div>
+  <div class="lamp-glow" style="top:-190px; left:10%; background: radial-gradient(circle, rgba(22,229,217,0.22), transparent 70%);"></div>
   <div class="wrap">
-{head_block('world.h', 'world.p', 'var(--acid)')}
-    <p class="lore-body" data-i18n-html="world.body">{t('world.body')}</p>
-    <div class="lore-facts">
-      <span class="lore-fact" data-i18n="world.f1">{t('world.f1')}</span>
-      <span class="lore-fact" data-i18n="world.f2">{t('world.f2')}</span>
-      <span class="lore-fact" data-i18n="world.f3">{t('world.f3')}</span>
-      <span class="lore-fact" data-i18n="world.f4">{t('world.f4')}</span>
+{head_block('why.h', 'why.p', 'var(--cyan)')}
+    <ol class="why-loop">
+      {''.join(f'<li data-i18n="why.l{i}">{t(f"why.l{i}")}</li>' for i in range(1, 5))}
+    </ol>
+    <div class="why-grid">
+      {''.join(f'<div class="why-card clean-zone"><h3 data-i18n="why.v{i}h">{t(f"why.v{i}h")}</h3><p data-i18n="why.v{i}p">{t(f"why.v{i}p")}</p></div>' for i in range(1, 5))}
     </div>
+  </div>
+</section>
+
+<!-- ================= PRE-SALE (docs/preorder-beta.md) ================= -->
+<section class="section brick wall-value torn-top" id="presale">
+  <div class="wall-photo" data-photo="bg-packs"></div>
+  <div class="lamp-glow" style="top:-180px; left:12%; background: radial-gradient(circle, rgba(255,122,26,0.20), transparent 70%);"></div>
+  <div class="wrap">
+{head_block('presale.h', 'presale.p', 'var(--orange)')}
+    <div class="presale-grid">
+      <div class="presale-card clean-zone"><h3 data-i18n="presale.c1h">{t('presale.c1h')}</h3><p data-i18n="presale.c1p">{t('presale.c1p')}</p></div>
+      <div class="presale-card clean-zone"><h3 data-i18n="presale.c2h">{t('presale.c2h')}</h3><p data-i18n="presale.c2p">{t('presale.c2p')}</p></div>
+      <div class="presale-card clean-zone"><h3 data-i18n="presale.c3h">{t('presale.c3h')}</h3><p data-i18n="presale.c3p">{t('presale.c3p')}</p></div>
+      <div class="presale-card clean-zone"><h3 data-i18n="presale.c4h">{t('presale.c4h')}</h3><p data-i18n="presale.c4p">{t('presale.c4p')}</p></div>
+    </div>
+    <div class="presale-cta">
+      <a class="btn-spray btn-spray-lg" data-link="presale" href="#" onclick="fireSpray(this)"><span class="mist-puff"></span><span data-i18n="presale.cta">{t('presale.cta')}</span></a>
+    </div>
+    <p class="presale-note" data-i18n="presale.note">{t('presale.note')}</p>
   </div>
 </section>
 
@@ -388,14 +412,14 @@ BODY = f'''
   </div>
 </section>
 
-<!-- ================= COLLECTIONS: THE EIGHT DISTRICTS ================= -->
-<section class="section brick wall-collections torn-top" id="collections">
-  <div class="wall-photo" data-photo="bg-collections"></div>
-  <div class="lamp-glow" style="top:-200px; right:6%; background: radial-gradient(circle, rgba(255,122,26,0.2), transparent 70%);"></div>
+<!-- ================= PACKS ================= -->
+<section class="section brick wall-value torn-top" id="packs">
+  <div class="wall-photo" data-photo="bg-packs"></div>
+  <div class="lamp-glow" style="top:-200px; right:8%; background: radial-gradient(circle, rgba(182,255,60,0.2), transparent 70%);"></div>
   <div class="wrap">
-{head_block('districts.h', 'districts.p', 'var(--orange)')}
-    <noscript><p>Night Moth · Asphalt Devils · Rail Kings · Gutter Soles · Boombox Block · Gutter Beasts · Pixel Basement · City Myths — nine tiers each, Common → Diamond.</p></noscript>
-    <div id="districts"></div>
+{head_block('packs.h', 'packs.p', 'var(--acid)')}
+    <div class="pack-grid" id="packs-grid"></div>
+    <p class="bundles" data-i18n="packs.bundles">{t('packs.bundles')}</p>
   </div>
 </section>
 
@@ -413,14 +437,19 @@ BODY = f'''
   </div>
 </section>
 
-<!-- ================= PACKS ================= -->
-<section class="section brick wall-value torn-top" id="packs">
-  <div class="wall-photo" data-photo="bg-packs"></div>
-  <div class="lamp-glow" style="top:-200px; right:8%; background: radial-gradient(circle, rgba(182,255,60,0.2), transparent 70%);"></div>
+<!-- ================= WORLD / LORE ================= -->
+<section class="section brick wall-world torn-top" id="world">
+  <div class="wall-photo" data-photo="bg-world"></div>
+  <div class="lamp-glow" style="top:-200px; left:8%; background: radial-gradient(circle, rgba(182,255,60,0.18), transparent 70%);"></div>
   <div class="wrap">
-{head_block('packs.h', 'packs.p', 'var(--acid)')}
-    <div class="pack-grid" id="packs-grid"></div>
-    <p class="bundles" data-i18n="packs.bundles">{t('packs.bundles')}</p>
+{head_block('world.h', 'world.p', 'var(--acid)')}
+    <p class="lore-body" data-i18n-html="world.body">{t('world.body')}</p>
+    <div class="lore-facts">
+      <span class="lore-fact" data-i18n="world.f1">{t('world.f1')}</span>
+      <span class="lore-fact" data-i18n="world.f2">{t('world.f2')}</span>
+      <span class="lore-fact" data-i18n="world.f3">{t('world.f3')}</span>
+      <span class="lore-fact" data-i18n="world.f4">{t('world.f4')}</span>
+    </div>
   </div>
 </section>
 
@@ -562,6 +591,17 @@ BODY = f'''
   </div>
 </section>
 
+<!-- ================= COLLECTIONS: THE EIGHT DISTRICTS ================= -->
+<section class="section brick wall-collections torn-top" id="collections">
+  <div class="wall-photo" data-photo="bg-collections"></div>
+  <div class="lamp-glow" style="top:-200px; right:6%; background: radial-gradient(circle, rgba(255,122,26,0.2), transparent 70%);"></div>
+  <div class="wrap">
+{head_block('districts.h', 'districts.p', 'var(--orange)')}
+    <noscript><p>Night Moth · Asphalt Devils · Rail Kings · Gutter Soles · Boombox Block · Gutter Beasts · Pixel Basement · City Myths — nine tiers each, Common → Diamond.</p></noscript>
+    <div id="districts"></div>
+  </div>
+</section>
+
 <!-- ================= COMMUNITY ================= -->
 <section class="section brick wall-world torn-top" id="community">
   <div class="wall-photo" data-photo="bg-events"></div>
@@ -604,6 +644,7 @@ DATA_JS = (
     + '  const DISTRICT_ART = ' + json.dumps(DISTRICT_ART) + ';\n'
     + '  const DISTRICT_ART_GEO = ' + json.dumps({'tile': ART_TILE, 'gut': ART_GUT, 'pad': ART_PAD}) + ';\n'
     + '  const TIERS = ' + json.dumps([{'key': k, 'color': c, 'odds': o, 'power': p, 'level': l, 'weight': w} for k, c, o, p, l, w in TIERS], ensure_ascii=False) + ';\n'
+    + '  const PACK_ART = ' + json.dumps(PACK_ART) + ';\n'
     + '  const HOWTO = ' + json.dumps(HOWTO, ensure_ascii=False) + ';\n'
     + '  const PACKS = ' + json.dumps(PACKS, ensure_ascii=False) + ';\n'
     + '  const STEP_ART = ' + json.dumps(STEP_ART) + ';\n'

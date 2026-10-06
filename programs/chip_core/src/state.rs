@@ -244,6 +244,8 @@ impl CompressedChipState {
     pub const F_LISTED: u8 = 1 << 1;
     pub const F_FUSING: u8 = 1 << 2;
     pub const F_SOULBOUND: u8 = 1 << 3;
+    /// Mainnet pre-sale origin — permanent founder frame (docs/preorder-beta.md).
+    pub const F_FOUNDER: u8 = 1 << 4;
 
     pub fn is_free(&self, now: i64) -> bool {
         self.flags & (Self::F_STAKED | Self::F_LISTED | Self::F_FUSING) == 0
@@ -294,6 +296,9 @@ pub struct CompressedMintClaim {
     /// by `set_compressed_claim_listed`, and copied to `CompressedChipState` at
     /// registration. Appended last (layout-compatible with older decoders).
     pub lock_until: i64,
+    /// Mainnet pre-sale origin (docs/preorder-beta.md): copied from `PendingPack.preorder`
+    /// at open time; the registered chip gets `CompressedChipState::F_FOUNDER`.
+    pub founder: bool,
 }
 
 /// Settlement state for a paid compressed pack. The pending purchase remains
@@ -334,6 +339,8 @@ impl ChipState {
     pub const F_LISTED: u8 = 1 << 1;
     pub const F_FUSING: u8 = 1 << 2;
     pub const F_SOULBOUND: u8 = 1 << 3;
+    /// Mainnet pre-sale origin — permanent founder frame (docs/preorder-beta.md).
+    pub const F_FOUNDER: u8 = 1 << 4;
 
     pub fn is_free(&self, now: i64) -> bool {
         self.flags & (Self::F_STAKED | Self::F_LISTED | Self::F_FUSING) == 0
@@ -381,6 +388,10 @@ pub struct PendingPack {
     pub voucher: bool,
     pub voucher_odds: [u16; RARITY_COUNT],
     pub soulbound_days: u8,
+    /// Mainnet pre-sale (docs/preorder-beta.md): created by `grant_preorder_pack` instead of
+    /// `buy_pack`. Chips minted from this pack carry `ChipState::F_FOUNDER` — the permanent
+    /// founder frame. Appended after `soulbound_days` (layout-compatible decoders).
+    pub preorder: bool,
 }
 
 /// In-flight fusion (recipes with < 100 % success).
@@ -432,6 +443,35 @@ pub struct PendingClaimFusion {
 pub struct PlayerItems {
     pub owner: Pubkey,
     pub boosters: u16,
+    pub bump: u8,
+}
+
+/// Beta pre-sale delivery window for one pack SKU (`["drop", sku]`): the admin opens it with a
+/// hard `total` and `grant_preorder_pack` converts paid off-chain preorders into real packs,
+/// incrementing `granted`. The program refuses the `total + 1`-th pack; the off-chain registry
+/// (backend/src/preorders.ts) is convenience, this account is the gate. `max_per_wallet` caps the
+/// per-wallet count enforced through `PreorderGrant` (0 = uncapped).
+#[account]
+#[derive(InitSpace)]
+pub struct PreorderDrop {
+    pub admin: Pubkey,
+    pub sku: u8,
+    pub bump: u8,
+    pub max_per_wallet: u8,
+    pub total: u32,
+    pub granted: u32,
+    pub opened_at: i64,
+    pub closed: bool,
+}
+
+/// Per-wallet preorder tally for one drop (`["pregrant", drop, beneficiary]`) — the per-wallet
+/// cap check and the on-chain audit trail of the grant (who received how many packs).
+#[account]
+#[derive(InitSpace)]
+pub struct PreorderGrant {
+    pub drop: Pubkey,
+    pub beneficiary: Pubkey,
+    pub count: u32,
     pub bump: u8,
 }
 
@@ -492,6 +532,40 @@ pub struct PackCancelled {
     pub buyer: Pubkey,
     pub nonce: u64,
     pub refunded: u64,
+}
+
+/// The admin opened a beta pre-sale drop for one SKU (`init_preorder_drop`).
+#[event]
+pub struct PreorderDropOpened {
+    pub admin: Pubkey,
+    pub drop: Pubkey,
+    pub sku: u8,
+    pub total: u32,
+    pub max_per_wallet: u8,
+}
+
+/// The admin converted a paid off-chain preorder into a pack owned by the beneficiary
+/// (`grant_preorder_pack`). `preorder_ref` is the backend registry id that joins the on-chain
+/// grant to the payment (memo `GC-PRE|<ref>` → registry row → this event).
+#[event]
+pub struct PackGranted {
+    pub admin: Pubkey,
+    pub beneficiary: Pubkey,
+    pub sku: u8,
+    pub qty: u8,
+    pub nonce: u64,
+    pub preorder_ref: u64,
+    pub randomness: Pubkey,
+}
+
+/// The admin retired a fully delivered drop (`close_preorder_drop`). Emitted before the rent
+/// reclaim so the governance trail keeps the closing statement: `granted == total` at close time.
+#[event]
+pub struct PreorderDropClosed {
+    pub admin: Pubkey,
+    pub drop: Pubkey,
+    pub sku: u8,
+    pub total: u32,
 }
 
 /// Quest chip voucher issued (#28): a free 1-chip PendingPack for `wallet` — opened by the regular

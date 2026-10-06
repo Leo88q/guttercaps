@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RPC_URL, RPC_WS_URL } from './config';
 import { useUiStore } from './store/ui';
 import { SessionGate } from './session';
+import { WaitBridge } from './WaitBridge';
 import '@solana/wallet-adapter-react-ui/styles.css';
 
 const queryClient = new QueryClient({
@@ -31,6 +32,7 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <ConnectionProvider endpoint={endpoint} config={config}>
       <WalletProvider wallets={wallets} autoConnect>
+        <WaitBridge />
         <WalletDialogProvider>
           <QueryClientProvider client={queryClient}>
             <SessionGate>{children}</SessionGate>

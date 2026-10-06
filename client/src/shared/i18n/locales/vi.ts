@@ -25,6 +25,19 @@ const vi: Messages = {
     walletRequired: 'Kết nối ví để tiếp tục', mock: 'dữ liệu demo',
     working: 'Đang xử lý…',
   },
+  // Giải thích các khoảng chờ chậm của ví để người chơi không tưởng là bấm chưa ăn (WaitStatusPill).
+  wait: {
+    connect: 'Đang mở ví của bạn…',
+    connectHint: 'Cửa sổ ví sẽ hiện ra — có thể mở ở tab mới.',
+    signin: 'Xác nhận đăng nhập trong ví của bạn',
+    prepare: 'Đang chuẩn bị giao dịch…',
+    wallet: 'Xác nhận giao dịch trong ví của bạn',
+    walletHint: 'Kiểm tra cửa sổ ví — nó có thể nằm sau các cửa sổ khác.',
+    send: 'Đang gửi lên mạng…',
+    confirm: 'Đang chờ mạng xác nhận…',
+    confirmHint: 'Đang xử lý trên chuỗi: đừng đóng trang và đừng ký lại. Có thể mất tới một phút.',
+    seconds: '{n} s',
+  },
   lang: { title: 'Ngôn ngữ', subtitle: 'Giá và số dư luôn giữ nguyên đơn vị trong ví của bạn. Chỉ có chữ thay đổi.', auto: 'Tự động ({name})', current: 'Hiện tại: {name}', applied: 'Đã đặt ngôn ngữ: {name}' },
   home: {
     greeting: 'Yo, {name}', collector: 'nhà sưu tầm', inSeason: 'Gutter City đang ở mùa {id}', loadingCity: 'Gutter City đang tải',
@@ -57,6 +70,7 @@ const vi: Messages = {
     title: 'Bộ sưu tập', subtitle: '{owned}/72 mẫu · {sets, plural, other{# quận hoàn thành}}',
     empty: 'Chưa có nắp nào. Gói đầu tiên chỉ cách một chạm.', filters: { all: 'Tất cả', free: 'Tự do', staked: 'Đang stake', listed: 'Đang bán', locked: 'Đang khóa' },
     missing: 'Còn thiếu cho bộ', level: 'Cấp {n}', soulbound: 'không chuyển nhượng đến {date}',
+    founderBadge: 'NGƯỜI SÁNG LẬP', founderNote: 'Khung người sáng lập — bán trước mainnet',
   },
   fusion: {
     title: 'Bàn hợp nhất', subtitle: 'Ba nắp cùng bậc → một nắp bậc kế tiếp. Phí $CG bị đốt dù thắng hay thua; nếu thất bại, hai nắp bị đốt và một nắp được trả lại.',
@@ -207,6 +221,22 @@ const vi: Messages = {
   errors: { rejected: 'Bạn đã từ chối ký', insufficient: 'Không đủ số dư', network: 'Lỗi mạng — thử lại', stale: 'Báo giá hết hạn — làm mới', generic: 'Đã xảy ra lỗi' },
   legal: { title: 'Pháp lý', terms: 'Điều khoản sử dụng', privacy: 'Quyền riêng tư', updated: 'Hiệu lực từ {date}', draftTitle: 'Bản nháp — chưa được luật sư xem qua', draftBody: 'Văn bản này mô tả sản phẩm hoạt động thực tế ra sao, nhưng chưa có luật sư phê duyệt. Cho tới lúc đó, hãy xem đây là tuyên bố ý định, không phải tư vấn pháp lý — và lưu ý rằng giới hạn khu vực ở §2 đã được áp dụng trong mã nguồn.', canonical: 'Bản tiếng Anh là bản chính thức; các bản dịch chỉ để tham khảo.', ages: 'Chỉ 18+', noSaleIn: 'không bán gói tại', verify: 'Kiểm tra một lượt mở', notFound: 'Không có tài liệu này. Hai tài liệu có sẵn:' },
   age: { title: 'Bạn đã đủ 18 tuổi?', body: 'GUTTERCAPS bán các gói có nội dung ngẫu nhiên. Bạn phải từ {age} tuổi trở lên và đủ tuổi giao kết hợp đồng nơi bạn cư trú.', termsLink: 'Đọc điều khoản trước', confirm: 'Tôi đủ {age}+', deny: 'Tôi chưa đủ', declined: 'Chức năng mua vẫn tắt với bạn: trò chơi yêu cầu {age}+. Những gì đã là của bạn vẫn hoạt động — bộ sưu tập, chợ, staking và arena.', reopen: 'Trả lời lại' },
+  preorder: {
+    title: 'Bán trước cho người sáng lập',
+    tagline: 'Số lượng giới hạn gói sự kiện cho lần ra mắt mainnet. Thanh toán hôm nay, mở vào ngày game chính thức hoạt động.',
+    betaNote: 'Bạn đang chơi bản beta devnet miễn phí. Đợt bán trước bên dưới là giao dịch mainnet thật — SOL bây giờ, gói khi ra mắt.',
+    price: 'Giá mỗi gói', left: 'còn {n} trong {total}', soldOut: 'Đã bán hết', ended: 'Đã đóng bán trước',
+    reserve: 'Đặt trước gói', qty: 'Số gói', total: 'Tổng', perWallet: 'tối đa {n} mỗi ví',
+    payTitle: 'Gửi thanh toán', sendExactly: 'Gửi chính xác', toAddress: 'đến địa chỉ này (multisig của đội ngũ)', memo: 'Memo — bắt buộc',
+    memoWhy: 'Memo liên kết thanh toán với đơn đặt của bạn; nếu không có, hãy gửi từ ví đã kết nối.',
+    signature: 'Chữ ký giao dịch thanh toán', confirm: 'Tôi đã thanh toán — kiểm tra giúp tôi', checking: 'Đang xác minh trên mainnet…',
+    ttl: 'Đơn đặt giữ gói của bạn trong {h} giờ.',
+    statusIntent: 'chờ thanh toán', statusPaid: 'đã thanh toán — phát khi mainnet ra mắt', statusGranted: 'đã phát — xem gói của bạn', statusExpired: 'đã hết hạn',
+    mine: 'Đơn đặt của tôi', empty: 'Chưa có đơn đặt nào.', grantedNote: 'Gói bán trước nằm trong “Gói của tôi” — hãy mở ở đó.',
+    refund: 'Nếu mainnet chưa hoạt động vào ngày ra mắt đã công bố → mọi khoản thanh toán được hoàn 1:1 từ cùng kho multisig. Sổ đăng ký bên dưới là công khai.',
+    shopBanner: 'Limited Event Pack đang bán trước: 0,999 SOL mỗi gói, phát khi mainnet ra mắt.', shopCta: 'Đến trang bán trước',
+    registry: 'Sổ đăng ký công khai', confirmed: 'Đã xác minh thanh toán — bạn đã được ghi nhận.',
+  },
   footer: { legal: 'Pháp lý', ages: '18+' },
 
 };

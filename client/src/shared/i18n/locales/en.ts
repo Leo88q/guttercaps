@@ -27,6 +27,19 @@ const en = {
     season: 'Season {id}', endsIn: 'ends in {time}', pool: 'pool {amount}', burned: 'burned', treasury: 'treasury',
     walletRequired: 'Connect a wallet to continue', mock: 'demo data', working: 'Working…',
   },
+  // Explains the slow wallet pauses so players don't think the tap did nothing (WaitStatusPill).
+  wait: {
+    connect: 'Opening your wallet…',
+    connectHint: 'A wallet window should appear — it may open in a new tab.',
+    signin: 'Confirm the sign-in in your wallet',
+    prepare: 'Preparing the transaction…',
+    wallet: 'Confirm the transaction in your wallet',
+    walletHint: 'Check the wallet window — it may be hiding behind other windows.',
+    send: 'Sending to the network…',
+    confirm: 'Waiting for the network to confirm…',
+    confirmHint: 'Already processing on-chain — keep this page open, do not sign again. Can take up to a minute.',
+    seconds: '{n} s',
+  },
   lang: {
     title: 'Language', subtitle: 'Prices and balances always stay in your wallet units. Only the words change.',
     auto: 'Auto ({name})', current: 'Current: {name}', applied: 'Language set to {name}',
@@ -62,6 +75,7 @@ const en = {
     title: 'Collection', subtitle: '{owned}/72 archetypes · {sets, plural, one{# district complete} other{# districts complete}}',
     empty: 'No caps yet. Your first pack is one tap away.', filters: { all: 'All', free: 'Free', staked: 'Staked', listed: 'Listed', locked: 'Locked' },
     missing: 'Missing for the set', level: 'Lv {n}', soulbound: 'soulbound until {date}',
+    founderBadge: 'FOUNDER', founderNote: 'Founder frame — mainnet pre-sale',
   },
   fusion: {
     title: 'Fusion bench', subtitle: 'Three caps of one tier → one cap of the next. The $CG fee is burned whether you win or lose; on a failed roll two caps burn and one comes back.',
@@ -223,6 +237,22 @@ const en = {
   },
   legal: { title: 'Legal', terms: 'Terms of Service', privacy: 'Privacy', updated: 'Effective {date}', draftTitle: 'Draft — not yet reviewed by counsel', draftBody: 'This text describes how the product actually works, but no lawyer has signed it off yet. Until that happens treat it as a statement of intent, not as advice — and note that the region limits in §2 are already enforced in code.', canonical: 'The English text is the canonical version; translations are convenience copies.', ages: '18+ only', noSaleIn: 'no pack sales in', verify: 'Verify a past draw', notFound: 'No such document. The two that exist:' },
   age: { title: 'Are you 18 or older?', body: 'GUTTERCAPS sells randomised packs. You must be at least {age} and old enough to enter a contract where you live.', termsLink: 'Read the terms first', confirm: 'I am {age}+', deny: 'I am not', declined: 'Purchases stay off for you: the game requires {age}+. Everything already yours keeps working — collection, market, staking and arena.', reopen: 'Answer again' },
+  preorder: {
+    title: 'Founders pre-sale',
+    tagline: 'A limited run of event packs for the mainnet launch. Pay today, open them the day the game goes live.',
+    betaNote: 'You are playing the free devnet beta. The pre-sale below is a real mainnet purchase — SOL now, packs at launch.',
+    price: 'Price per pack', left: '{n} of {total} left', soldOut: 'Sold out', ended: 'Pre-sale closed',
+    reserve: 'Reserve packs', qty: 'Packs', total: 'Total', perWallet: 'max {n} per wallet',
+    payTitle: 'Send the payment', sendExactly: 'Send exactly', toAddress: 'to this address (team multisig)', memo: 'Memo — required',
+    memoWhy: 'The memo ties the payment to your reservation; without it, send from your connected wallet.',
+    signature: 'Payment transaction signature', confirm: 'I sent it — check my payment', checking: 'Verifying on mainnet…',
+    ttl: 'Your reservation holds the packs for {h} h.',
+    statusIntent: 'awaiting payment', statusPaid: 'paid — delivered at mainnet launch', statusGranted: 'delivered — see your packs', statusExpired: 'expired',
+    mine: 'My reservations', empty: 'No reservations yet.', grantedNote: 'Pre-sale packs are in “My packs” — open them there.',
+    refund: 'Mainnet not live by the published launch date → every payment is refunded 1:1 from the same multisig vault. The registry below is public.',
+    shopBanner: 'Limited Event Packs are on pre-sale now: 0.999 SOL each, delivered at mainnet launch.', shopCta: 'To the pre-sale',
+    registry: 'Public registry', confirmed: 'Payment verified — you are in.',
+  },
   footer: { legal: 'Legal', ages: '18+' },
 
 } as const;

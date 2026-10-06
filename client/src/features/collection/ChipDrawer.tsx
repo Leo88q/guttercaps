@@ -81,12 +81,13 @@ export function ChipDrawer({ chip, onClose }: { chip: Chip; onClose: () => void 
   return (
     <div className="stack">
       <div className="row" style={{ alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div style={{ width: 'min(198px, 100%)', flex: '0 0 auto' }}><ChipArt collection={chip.collection!} rarity={chip.rarity!} index={chip.index} level={chip.level} imageUrl={chipImageOf(chip, 512)} skin={chip.skin} crimp={rarityColor(chip.rarity!)} /></div>
+        <div style={{ width: 'min(198px, 100%)', flex: '0 0 auto' }}><ChipArt collection={chip.collection!} rarity={chip.rarity!} index={chip.index} level={chip.level} imageUrl={chipImageOf(chip, 512)} skin={chip.skin} crimp={rarityColor(chip.rarity!)} founder={!!chip.flags?.founder} /></div>
         <div className="grow stack-sm">
           <div style={{ color: rarityColor(chip.rarity!) }} className="strong">{rarityName(chip.rarity!)} · {collectionName(chip.collection!)} <ElementGlyph element={ELEMENT_OF_COLLECTION[chip.collection!]} /></div>
           <div className="small muted">{chipIndexText(chip.index) ?? t('ui.unnumbered')} · {t('ui.level')} {chip.level}/{prof.maxLevel} · {t('ui.power')} {chip.power} · {t('ui.stakeWeight')} {chip.stakeWeight}</div>
           <div className="small" style={{ lineHeight: 1.45 }}>{chipLore(chip.collection!, chip.rarity!)}</div>
           <div className="tag-list">
+            {chip.flags?.founder && <span className="pill pill-ok">{t('collection.founderNote')}</span>}
             {chip.flags?.staked && <span className="pill">{t('collection.filters.staked')}</span>}
             {chip.flags?.listed && <span className="pill">{t('collection.filters.listed')}</span>}
             {chip.flags?.fusing && <span className="pill">{t('ui.inFusion')}</span>}

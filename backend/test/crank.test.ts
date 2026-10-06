@@ -5,7 +5,7 @@ import { Db } from '../src/db.ts';
 import { ingestTx } from '../src/ingest.ts';
 import { crankStatus } from '../src/queries.ts';
 import {
-  Crank, CU, GatewayError, fetchGatewayReveal, jobKey, toEconPack, voucherEconPack, type FetchLike,
+  CLAIM_FUSION_SETTLE, Crank, CU, GatewayError, fetchGatewayReveal, jobKey, toEconPack, voucherEconPack, type FetchLike,
 } from '../src/crank.ts';
 import {
   ARENA_ID, ASSOCIATED_TOKEN_PROGRAM_ID, CHIP_CORE_ID, MPL_ACCOUNT_COMPRESSION_ID, MPL_BUBBLEGUM_V2_ID, MPL_CORE_ID, MPL_NOOP_ID, RNG_KIND,
@@ -188,8 +188,13 @@ function runtime(w: World, opts: { failOpenWith?: number; onOpen?: (packNo: numb
         const c = decodeCompressedMintClaim(cur);
         if (!c.minted || c.registered) throw new ProgramError(6030, i);
         w.conn.set(claimKey, encodeCompressedMintClaim({ ...claimFields(c), registered: true }));
-        const s = decodeCompressedPackSettlement(w.conn.get(settlementKey)!);
-        w.conn.set(settlementKey, encodeCompressedPackSettlement({ buyer: s.buyer, pending: s.pending, nonce: s.nonce, totalClaims: s.totalClaims, registeredClaims: s.registeredClaims + 1, cancelledClaims: s.cancelledClaims }));
+        // settlement-free claims (fusion results) carry a SYSTEM_PROGRAM_ID placeholder in slot 5 —
+        // the account is absent from the fake chain, and there is no settlement to bump.
+        const sData = w.conn.get(settlementKey);
+        if (sData) {
+          const s = decodeCompressedPackSettlement(sData);
+          w.conn.set(settlementKey, encodeCompressedPackSettlement({ buyer: s.buyer, pending: s.pending, nonce: s.nonce, totalClaims: s.totalClaims, registeredClaims: s.registeredClaims + 1, cancelledClaims: s.cancelledClaims }));
+        }
       } else if (d === FINALIZE) {
         const settlementKey = ix.keys[2], pendingKey = ix.keys[3];
         const s = decodeCompressedPackSettlement(w.conn.get(settlementKey)!);
@@ -866,6 +871,131 @@ describe('crank · fusions and wagers', () => {
     expect(fuse.keys[7].equals(compressedMintClaimPda(owner, nonce)[0])).toBe(true);
     expect(c.stats.claimFusions).toBe(1);
     expect(w.conn.get(randomness)).toBeUndefined();
+  });
+
+  it('claim fusion success: the crank settles the result claim inline (mint + register) — the owner signed only the commit', async () => {
+    const w = world({ withDbRow: false });
+    runtime(w);
+    w.conn.del(w.pending); w.conn.del(w.randomness);
+    const owner = pk(), nonce = 11n;
+    const [pending] = claimFusionPda(owner, nonce);
+    const [randomness] = rngPda(RNG_KIND.CLAIM_FUSION, owner, nonce);
+    const mats = [compressedMintClaimPda(owner, 101n)[0], compressedMintClaimPda(owner, 102n)[0], compressedMintClaimPda(owner, 103n)[0]];
+    mats.forEach((m, i) => w.conn.set(m, encodeCompressedMintClaim({ buyer: owner, collectionIdx: i, minted: true, registered: true })));
+    // the program creates this inside fuse_claims_reveal (result nonce == commit nonce, settlement-free);
+    // the fake chain pre-creates it in the same post-fuse state
+    const [resultKey] = compressedMintClaimPda(owner, nonce);
+    w.conn.set(resultKey, encodeCompressedMintClaim({ buyer: owner, collectionIdx: 2, gameIndex: 7n }));
+    w.conn.set(pending, encodePendingClaimFusion({ owner, recipe: 4, materials: mats, resultCollectionIdx: 2, randomness, commitSlot: 4_100n, nonce }));
+    w.conn.set(randomness, encodeRandomness({ authority: rngAuthPda(RNG_KIND.CLAIM_FUSION)[0], queue: w.queue, oracle: w.oracle, seedSlot: 4_100n }), SB_OWNER);
+    const { das, seen } = fakeDas();
+    const c = new Crank({ connection: asConn(w.conn), payer: w.payer, db: w.db, fetch: gateway(), das });
+    await c.tick({ sweep: true });
+    expect(c.job(jobKey(RNG_KIND.CLAIM_FUSION, owner, nonce))!.phase).toBe('closed');
+    const mint = w.conn.sent.find((t) => t.ixs.some((ix) => hex(ix.data.subarray(0, 8)) === D.mint));
+    const reg = w.conn.sent.find((t) => t.ixs.some((ix) => hex(ix.data.subarray(0, 8)) === D.register));
+    expect(mint).toBeDefined();
+    expect(reg).toBeDefined();
+    const mintIx = mint!.ixs.find((ix) => hex(ix.data.subarray(0, 8)) === D.mint)!;
+    const regIx = reg!.ixs.find((ix) => hex(ix.data.subarray(0, 8)) === D.register)!;
+    expect(mintIx.keys[4].equals(resultKey)).toBe(true);
+    expect(regIx.keys[4].equals(resultKey)).toBe(true);
+    expect(regIx.keys[5].equals(SYSTEM_PROGRAM_ID)).toBe(true); // settlement-free: placeholder in slot 5
+    const claim = decodeCompressedMintClaim(w.conn.get(resultKey)!);
+    expect(claim.minted).toBe(true);
+    expect(claim.registered).toBe(true);
+    expect(seen).toEqual([{ owner: owner.toBase58(), collection: w.cores[2].toBase58(), name: 'COL2 #7' }]);
+    expect(c.stats.mints).toBe(1);
+    expect(c.stats.registers).toBe(1);
+    expect(c.job(jobKey(CLAIM_FUSION_SETTLE, owner, nonce))).toBeUndefined(); // no deferred job — settled inline
+    const sent = w.conn.sent.length;
+    expect(w.conn.get(randomness)).toBeUndefined();
+    // the fusions projection (ClaimFusionRevealed success) backstops the same result: a kind-4 job is
+    // discovered, finds the claim already registered, and closes WITHOUT sending another transaction
+    ingestTx(tx([{ program: 'chip_core', name: 'ClaimFusionRevealed', data: {
+      owner: owner.toBase58(), nonce: nonce.toString(), recipe: 4, materials: mats.map((m) => m.toBase58()),
+      resultClaim: resultKey.toBase58(), success: true, rollBps: 9_000, thresholdBps: 5_000, feeBurned: '1000',
+    } }]), w.db);
+    await c.tick();
+    const k4 = c.job(jobKey(CLAIM_FUSION_SETTLE, owner, nonce));
+    expect(k4).toBeDefined();
+    expect(k4!.phase).toBe('closed');
+    expect(w.conn.sent.length).toBe(sent);
+    expect(c.stats.mints).toBe(1);
+    expect(c.stats.registers).toBe(1);
+  });
+
+  it('atomic claim fusion (CompressedClaimsFused): a kind-4 job mints + registers the result claim from the fusions row', async () => {
+    const w = world({ withDbRow: false });
+    runtime(w);
+    w.conn.del(w.pending); w.conn.del(w.randomness);
+    const owner = pk();
+    const claimNonce = 555n; // client-chosen result claim nonce (pickFreeNonce), unrelated to any commit nonce
+    const [resultKey] = compressedMintClaimPda(owner, claimNonce);
+    w.conn.set(resultKey, encodeCompressedMintClaim({ buyer: owner, collectionIdx: 2, gameIndex: 9n }));
+    ingestTx(tx([{ program: 'chip_core', name: 'CompressedClaimsFused', data: {
+      owner: owner.toBase58(), recipe: 4, materials: [pk().toBase58(), pk().toBase58(), pk().toBase58()],
+      resultClaim: resultKey.toBase58(), resultClaimNonce: claimNonce.toString(), resultCollectionIdx: 2, resultRarity: 1, feeBurned: '1000',
+    } }]), w.db);
+    const { das, seen } = fakeDas();
+    const c = new Crank({ connection: asConn(w.conn), payer: w.payer, db: w.db, fetch: gateway(), das });
+    await c.tick();
+    const job = c.job(jobKey(CLAIM_FUSION_SETTLE, owner, claimNonce));
+    expect(job).toBeDefined();
+    expect(job!.phase).toBe('closed');
+    expect(job!.pinned).toBe(resultKey.toBase58());
+    const mint = w.conn.sent.find((t) => t.ixs.some((ix) => hex(ix.data.subarray(0, 8)) === D.mint));
+    const reg = w.conn.sent.find((t) => t.ixs.some((ix) => hex(ix.data.subarray(0, 8)) === D.register));
+    expect(mint).toBeDefined();
+    expect(reg).toBeDefined();
+    const mintIx = mint!.ixs.find((ix) => hex(ix.data.subarray(0, 8)) === D.mint)!;
+    const regIx2 = reg!.ixs.find((ix) => hex(ix.data.subarray(0, 8)) === D.register)!;
+    expect(mintIx.keys[4].equals(resultKey)).toBe(true);
+    expect(regIx2.keys[4].equals(resultKey)).toBe(true);
+    expect(regIx2.keys[5].equals(SYSTEM_PROGRAM_ID)).toBe(true);
+    const claim = decodeCompressedMintClaim(w.conn.get(resultKey)!);
+    expect(claim.minted).toBe(true);
+    expect(claim.registered).toBe(true);
+    expect(seen).toEqual([{ owner: owner.toBase58(), collection: w.cores[2].toBase58(), name: 'COL2 #9' }]);
+  });
+
+  it('kind-4 settle: transferred / expired-reclaimed / PDA-mismatched result claims close without sending anything', async () => {
+    const w = world({ withDbRow: false });
+    runtime(w);
+    w.conn.del(w.pending); w.conn.del(w.randomness);
+    // three different owners so all three jobs run in one pass (the scheduler dedupes one per owner)
+    const ownerA = pk(), ownerB = pk(), ownerC = pk(), stranger = pk();
+    // (a) transferred: the claim now belongs to someone else — the new owner's own job settles it
+    const a = compressedMintClaimPda(ownerA, 601n)[0];
+    w.conn.set(a, encodeCompressedMintClaim({ buyer: stranger, collectionIdx: 2 }));
+    ingestTx(tx([{ program: 'chip_core', name: 'CompressedClaimsFused', data: {
+      owner: ownerA.toBase58(), recipe: 4, materials: [pk().toBase58(), pk().toBase58(), pk().toBase58()],
+      resultClaim: a.toBase58(), resultClaimNonce: '601', resultCollectionIdx: 2, resultRarity: 1, feeBurned: '1000',
+    } }]), w.db);
+    // (b) gone: the claim account is absent (buyer reclaimed an expired shell via close_expired_claim)
+    const b = compressedMintClaimPda(ownerB, 602n)[0];
+    ingestTx(tx([{ program: 'chip_core', name: 'CompressedClaimsFused', data: {
+      owner: ownerB.toBase58(), recipe: 4, materials: [pk().toBase58(), pk().toBase58(), pk().toBase58()],
+      resultClaim: b.toBase58(), resultClaimNonce: '602', resultCollectionIdx: 2, resultRarity: 1, feeBurned: '1000',
+    } }]), w.db);
+    // (c) corrupted row: the stored nonce does not reproduce the stored result PDA → parked once
+    const cPda = compressedMintClaimPda(ownerC, 603n)[0];
+    const strangerPda = compressedMintClaimPda(stranger, 603n)[0];
+    ingestTx(tx([{ program: 'chip_core', name: 'CompressedClaimsFused', data: {
+      owner: ownerC.toBase58(), recipe: 4, materials: [pk().toBase58(), pk().toBase58(), pk().toBase58()],
+      resultClaim: strangerPda.toBase58(), resultClaimNonce: '603', resultCollectionIdx: 2, resultRarity: 1, feeBurned: '1000',
+    } }]), w.db);
+    expect(cPda.equals(strangerPda)).toBe(false); // the row really is inconsistent
+    const c = new Crank({ connection: asConn(w.conn), payer: w.payer, db: w.db, fetch: gateway(), das: fakeDas().das });
+    await c.tick();
+    expect(c.job(jobKey(CLAIM_FUSION_SETTLE, ownerA, 601n))!.phase).toBe('closed');
+    expect(c.job(jobKey(CLAIM_FUSION_SETTLE, ownerB, 602n))!.phase).toBe('closed');
+    const parked = c.job(jobKey(CLAIM_FUSION_SETTLE, ownerC, 603n));
+    expect(parked).toBeDefined();
+    expect(parked!.phase).toBe('closed');
+    expect(w.conn.sent).toHaveLength(0); // nothing was sent for any of them
+    await c.tick(); // the parked row must not be re-read every pass
+    expect(w.conn.sent).toHaveLength(0);
   });
 
   it('wager: reveal_battle_randomness only (the battle oracle resolves), then close after Resolved/Cancelled', async () => {

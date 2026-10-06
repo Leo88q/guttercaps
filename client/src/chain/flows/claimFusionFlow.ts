@@ -12,8 +12,8 @@ import {
 } from '../ix/chipCore';
 import { RNG_KIND, claimFusionPda, compressedMintClaimPda, freshNonce } from '../pdas';
 import {
-  decodePendingClaimFusion, readClaimFusionCommitted, readClaimFusionRevealed,
-  type ClaimFusionRevealedEvent, type GameConfig,
+  decodeCompressedMintClaim, decodePendingClaimFusion, readClaimFusionCommitted, readClaimFusionRevealed,
+  type ClaimFusionRevealedEvent, type CompressedMintClaim, type GameConfig,
 } from '../accounts';
 import { findEvent } from '../anchor';
 import { DasClient } from '../das';
@@ -102,19 +102,9 @@ export class ClaimFusionFlow {
             feeBurned: BigInt(recipe.feeCgMicro),
           },
         });
-        const lookupTables = await appLookupTables(connection, this.deps.lookupTable);
-        const metas = await fetchCollectionMetas(connection, this.cfg.collectionsCreated);
-        const trees = await fetchTreeMetas(connection, Array.from({ length: this.cfg.collectionsCreated }, (_, i) => i));
-        const settled = await settleClaim(
-          {
-            connection, wallet, das: new DasClient({ endpoint: this.deps.dasEndpoint ?? DAS_RPC_URL }),
-            buyer: wallet.publicKey, metas, trees, lookupTables,
-            onSignature: (sig) => this.set({ signatures: [...this.state.signatures, sig] }),
-          },
-          nonce,
-        );
-        if (!settled) throw new Error('result claim vanished after atomic claim fusion');
-        this.set({ phase: 'done', settledAsset: settled.asset, settledRarity: settled.rarity });
+        // ONE-signature mode: that fuse signature is the wallet's only one for this fusion — the
+        // CRANK mints + registers the result claim with its own wallet. The UI follows progress
+        // with `waitSettle()`; `settleResult()` is the local fallback (extra signatures).
         return;
       }
       const rnd = await prepareRandomness(connection, wallet.publicKey, RNG_KIND.CLAIM_FUSION, nonce);
@@ -177,21 +167,70 @@ export class ClaimFusionFlow {
 
       // Settle the result claim (protocol convention: resultClaimNonce == commit nonce).
       if (ev.success) {
+        // ONE-signature-per-scenario: commit + reveal are the wallet's only signatures — the CRANK
+        // mints + registers the result with its own wallet. The UI follows with `waitSettle()`;
+        // `settleResult()` is the local fallback (extra signatures).
         this.set({ phase: 'settling' });
-        const metas = await fetchCollectionMetas(connection, this.cfg.collectionsCreated);
-        const trees = await fetchTreeMetas(connection, Array.from({ length: this.cfg.collectionsCreated }, (_, i) => i));
-        const settled = await settleClaim(
-          {
-            connection, wallet, das: new DasClient({ endpoint: this.deps.dasEndpoint ?? DAS_RPC_URL }),
-            buyer: pending.owner, metas, trees, lookupTables,
-            onSignature: (sig) => this.set({ signatures: [...this.state.signatures, sig] }),
-          },
-          pending.nonce,
-        );
-        if (!settled) throw new Error('result claim vanished after a successful reveal');
-        this.set({ settledAsset: settled.asset, settledRarity: settled.rarity });
+        return;
       }
       this.set({ phase: 'done' });
+    } catch (e) {
+      const diagnostic = errorSnapshot(e);
+      this.set({ phase: 'error', error: diagnostic.message, errorDiagnostic: diagnostic });
+      throw e;
+    }
+  }
+
+  /**
+   * Wait for the CRANK to mint + register the result claim (one-signature mode). Polls the
+   * on-chain claim account — the single source of truth both actors write. Resolves with
+   * `{ failed: false, claim }` once `registered` flips, or `{ failed: true }` when a random roll
+   * visibly produced no result claim. Throws on timeout so the caller can fall back to the local
+   * `settleResult()` (extra signatures).
+   */
+  async waitSettle(opts: { maxWaitMs?: number; intervalMs?: number } = {}): Promise<{ failed: boolean; claim?: CompressedMintClaim }> {
+    const { connection, wallet } = this.deps;
+    const owner = wallet.publicKey;
+    const nonce = this.state.nonce;
+    const claimKey = compressedMintClaimPda(owner, nonce)[0];
+    const maxWaitMs = opts.maxWaitMs ?? 120_000;
+    const intervalMs = opts.intervalMs ?? 4_000;
+    const startedAt = Date.now();
+    for (;;) {
+      const info = await connection.getAccountInfo(claimKey, 'confirmed');
+      if (info) {
+        const claim = decodeCompressedMintClaim(new Uint8Array(info.data));
+        if (claim.registered) { this.set({ settledRarity: claim.rarity }); return { failed: false, claim }; }
+      } else if (this.state.randomness) {
+        // Random recipe: a failed roll never creates the result claim — pending gone + no claim = done.
+        const [pendingKey] = claimFusionPda(owner, nonce);
+        const pendingInfo = await connection.getAccountInfo(pendingKey, 'confirmed');
+        if (!pendingInfo) return { failed: true };
+      }
+      if (Date.now() - startedAt > maxWaitMs) throw new Error('the worker has not settled the fusion result yet');
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+  }
+
+  /** Local fallback (extra wallet signatures): mint + register the result claim ourselves when the
+   *  crank has not done it in time. Re-reads the claim, so racing the crank is harmless. */
+  async settleResult(): Promise<void> {
+    const { connection, wallet } = this.deps;
+    try {
+      this.cfg ??= await fetchGameConfig(connection);
+      const lookupTables = await appLookupTables(connection, this.deps.lookupTable);
+      const metas = await fetchCollectionMetas(connection, this.cfg.collectionsCreated);
+      const trees = await fetchTreeMetas(connection, Array.from({ length: this.cfg.collectionsCreated }, (_, i) => i));
+      const settled = await settleClaim(
+        {
+          connection, wallet, das: new DasClient({ endpoint: this.deps.dasEndpoint ?? DAS_RPC_URL }),
+          buyer: wallet.publicKey, metas, trees, lookupTables,
+          onSignature: (sig) => this.set({ signatures: [...this.state.signatures, sig] }),
+        },
+        this.state.nonce,
+      );
+      if (!settled) throw new Error('result claim vanished before the local settle');
+      this.set({ phase: 'done', settledAsset: settled.asset, settledRarity: settled.rarity });
     } catch (e) {
       const diagnostic = errorSnapshot(e);
       this.set({ phase: 'error', error: diagnostic.message, errorDiagnostic: diagnostic });

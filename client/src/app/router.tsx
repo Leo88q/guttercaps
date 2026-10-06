@@ -20,6 +20,7 @@ const Leaderboard = lazy(() => import('@/features/leaderboard/Leaderboard'));
 const Profile = lazy(() => import('@/features/profile/Profile'));
 const Codex = lazy(() => import('@/features/codex/Codex'));
 const Verify = lazy(() => import('@/features/verify/Verify'));
+const Preorder = lazy(() => import('@/features/preorder/Preorder'));
 const Admin = lazy(() => import('@/features/admin/Admin'));
 const Language = lazy(() => import('@/features/language/Language'));
 const Rights = lazy(() => import('@/features/rights/Rights'));
@@ -68,6 +69,7 @@ export const routes: RouteObject[] = [
       { path: 'profile', element: W(<Profile />) },
       { path: 'admin', element: W(<Admin />) }, // ops panel — shown only to `me.isAdmin`; the API enforces ADMIN_WALLETS
       { path: 'codex', element: S(<Codex />) },
+      { path: 'preorder', element: S(<Preorder />) }, // beta pre-sale: campaign viewable anon, reserve/confirm require the wallet
       { path: 'guide', element: S(<Guide />) },
       { path: 'verify/:signature?', element: S(<Verify />) },
       { path: 'language', element: S(<Language />) },

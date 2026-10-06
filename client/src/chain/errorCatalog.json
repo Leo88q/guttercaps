@@ -187,6 +187,22 @@
     {
       "name": "InvalidConfigAddress",
       "key": "chip_core_InvalidConfigAddress"
+    },
+    {
+      "name": "PreorderDropClosed",
+      "key": "chip_core_PreorderDropClosed"
+    },
+    {
+      "name": "PreorderDropExhausted",
+      "key": "chip_core_PreorderDropExhausted"
+    },
+    {
+      "name": "PreorderWalletCap",
+      "key": "chip_core_PreorderWalletCap"
+    },
+    {
+      "name": "PreorderNotExhausted",
+      "key": "chip_core_PreorderNotExhausted"
     }
   ],
   "market": [

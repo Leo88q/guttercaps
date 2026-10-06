@@ -152,7 +152,7 @@ has('footer age badge', html, '18+');
   // `api` is the stats fetch, not an anchor; terms/privacy are the derived legal pair, added to
   // LINKS by the loop above rather than written into the literal. Everything else must line up.
   const NOT_AN_ANCHOR = ['api'];
-  const DERIVED_AT_RUNTIME = ['terms', 'privacy'];
+  const DERIVED_AT_RUNTIME = ['terms', 'privacy', 'presale'];
   const rendered = new Set(Array.from(html.matchAll(/data-link="([\w-]+)"/g), (m) => m[1]));
   check(
     'every rendered link has a LINKS entry',
@@ -216,6 +216,25 @@ has('footer age badge', html, '18+');
   check('no extra font is inlined', Array.from(html.matchAll(/data:font\/woff2;base64,/g)).length, landingFiles.length);
   const inlinedFaces = new Set(Array.from(html.matchAll(/@font-face\{font-family:'([^']+)';font-style:normal;font-display:swap;font-weight:(\d+);src:url\(data:font\/woff2;base64,[^)]+\) format\('woff2'\);unicode-range:U\+/g)).map((x) => `${x[1]}@${x[2]}`));
   check('each inlined family/weight declares a unicode-range', inlinedFaces.size, new Set(landingFiles.map((f) => `${f.family}@${f.weight}`)).size);
+}
+
+// ---- pre-sale numbers (docs/preorder-beta.md): the landing copy must mirror the backend defaults ----
+// The campaign is env-tunable, but the marketing page promises the COMMITTED defaults; if the defaults
+// move, the copy moves with them or this gate fails.
+{
+  const cfg = readFileSync(resolve(root, 'backend/src/config.ts'), 'utf8');
+  const price = `${Number(cfg.match(/PREORDER_PRICE_LAMPORTS \?\? '(\d+)'/)![1]) / 1e9}`; // 999000000 → 0.999
+  const total = cfg.match(/Number\(env\.PREORDER_TOTAL \?\? (\d+)\)/)![1];                 // 500
+  const cap = cfg.match(/Number\(env\.PREORDER_MAX_PER_WALLET \?\? (\d+)\)/)![1];          // 5
+  const presaleEn = en('presale.p');
+  has('presale total', presaleEn, `${total} packs`);
+  has('presale price', presaleEn, `${price} SOL`);
+  has('presale per-wallet cap', presaleEn, `max ${cap} per wallet`);
+  const presaleRu = RU['presale.p'] ?? '';
+  has('presale total (ru)', presaleRu, `${total} паков`);
+  has('presale price (ru)', presaleRu, `${price.replace('.', ',')} SOL`);
+  has('presale per-wallet cap (ru)', presaleRu, `${cap} на кошелёк`);
+  has('presale section present', html, 'id="presale"');
 }
 
 // ---- i18n coverage: every EN key has a RU string, no empty strings ----

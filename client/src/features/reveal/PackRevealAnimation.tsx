@@ -1,5 +1,6 @@
 import { useT } from '@/shared/i18n';
 import { RARITIES, rarityName } from '@/shared/lib/rarity';
+import { packArtUrl } from '@/shared/lib/packArt';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useUiStore } from '@/app/store/ui';
 import './reveal.css';
@@ -33,14 +34,17 @@ interface Props {
   isOnChain?: boolean; // shows the foil NFT badge on the revealed card
   /** how many more reveals are queued after this one */
   remaining?: number;
+  /** pack SKU — selects the foil wrapper art; absent (fusion / quest) falls back to the plain pack */
+  sku?: number;
   onDone: () => void;
 }
 
-export function PackRevealAnimation({ rarity, chipName, chipImageUrl, chipArt, isOnChain, remaining = 0, onDone }: Props) {
+export function PackRevealAnimation({ rarity, chipName, chipImageUrl, chipArt, isOnChain, remaining = 0, sku, onDone }: Props) {
   const t = useT();
   const [phase, setPhase] = useState<Phase>('buildup');
   const config = TIER_CONFIG[RARITIES[rarity]] ?? TIER_CONFIG.Common;
   const sound = useUiStore((s) => s.sound);
+  const packArt = packArtUrl(sku);
 
   useEffect(() => {
     const t1 = setTimeout(() => setPhase('burst'), config.holdMs);
@@ -61,7 +65,13 @@ export function PackRevealAnimation({ rarity, chipName, chipImageUrl, chipArt, i
     <div className="reveal-backdrop" onClick={phase === 'reveal' ? onDone : undefined}>
       <div className={`reveal-stage ${config.shake && phase === 'burst' ? 'reveal-shake' : ''}`}>
 
-        {phase !== 'reveal' && (
+        {phase !== 'reveal' && packArt ? (
+          <div className={`reveal-pack-art ${phase === 'burst' ? 'tearing' : 'reveal-pack-pulse'}`} style={glowStyle}>
+            <img className="tear-half tear-top" src={packArt} alt="" draggable={false} />
+            <img className="tear-half tear-bottom" src={packArt} alt="" draggable={false} />
+            {phase === 'buildup' && <div className="reveal-pack-shine" />}
+          </div>
+        ) : phase !== 'reveal' && (
           <div className={`reveal-pack ${phase === 'burst' ? 'reveal-pack-burst' : 'reveal-pack-pulse'}`} style={glowStyle}>
             <div className="reveal-pack-shine" />
           </div>

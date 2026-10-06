@@ -96,4 +96,12 @@ pub enum ChipError {
     NotUpgradeAuthority,
     #[msg("Config address must not be the zero key (treasury / buyback / Pyth feeds / SKR mint)")]
     InvalidConfigAddress,
+    #[msg("Preorder drop is closed")]
+    PreorderDropClosed,
+    #[msg("Preorder drop has no packs left (granted == total)")]
+    PreorderDropExhausted,
+    #[msg("Per-wallet preorder cap reached for this drop")]
+    PreorderWalletCap,
+    #[msg("Preorder drop is not fully granted yet — cannot close")]
+    PreorderNotExhausted,
 }

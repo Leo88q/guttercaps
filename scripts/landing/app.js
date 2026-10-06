@@ -18,7 +18,7 @@
   // The legal documents are served by the app itself (client/src/features/legal/), so they are derived
   // from `app` rather than written out again: at launch the domain changes in exactly one place, and a
   // ToS link left on the old host is the kind of bug a store rejection is filed for.
-  for (const [key, path] of [['terms', '/legal/terms'], ['privacy', '/legal/privacy']]) {
+  for (const [key, path] of [['terms', '/legal/terms'], ['privacy', '/legal/privacy'], ['presale', '/preorder']]) {
     LINKS[key] = LINKS.app + path;
   };
   document.querySelectorAll('[data-link]').forEach((a) => {
@@ -186,7 +186,9 @@
       }
       lines.push(i === 3 ? tr('pack.pool') : 'SOL · USDC · SKR' + (p.cg ? ' · $CG' : ''));
       const alt = p.cg ? tr('pack.or', { amount: num(Number(p.cg.replace(/[^0-9]/g, ''))) + ' $CG' }) : '';
-      return '<div class="pack" style="--pack-color:' + p.color + ';--pack-glow:' + p.glow + '">' +
+      const art = (typeof PACK_ART !== 'undefined' && PACK_ART[p.art])
+        ? '<img class="pack-art" src="' + PACK_ART[p.art] + '" alt="' + name + '" loading="lazy" decoding="async">' : '';
+      return '<div class="pack" style="--pack-color:' + p.color + ';--pack-glow:' + p.glow + '">' + art +
         '<span class="pack-tag">' + tag + '</span><span class="pack-name">' + name + '</span>' +
         '<span class="pack-price">' + usd(Number(p.price.slice(1))) + '<small>' + alt + '</small></span>' +
         '<ul>' + lines.map((l) => '<li>' + l + '</li>').join('') + '</ul></div>';

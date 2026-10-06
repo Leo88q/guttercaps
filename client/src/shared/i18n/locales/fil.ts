@@ -25,6 +25,19 @@ const fil: Messages = {
     walletRequired: 'Ikonekta ang wallet para magpatuloy', mock: 'demo data',
     working: 'Pinoproseso…',
   },
+  // Ipinaliwanag ang matagal na paghihintay ng wallet para hindi isipin ng manlalaro na walang nangyari (WaitStatusPill).
+  wait: {
+    connect: 'Binubuksan ang wallet mo…',
+    connectHint: 'Dapat lumabas ang window ng wallet — baka sa bagong tab ito magbukas.',
+    signin: 'Kumpirmahin ang pag-sign in sa wallet mo',
+    prepare: 'Inihahanda ang transaksyon…',
+    wallet: 'Kumpirmahin ang transaksyon sa wallet mo',
+    walletHint: 'Tingnan ang window ng wallet — maaaring nakatago ito sa likod ng ibang windows.',
+    send: 'Ipinapadala sa network…',
+    confirm: 'Hinihintay ang kumpirmasyon ng network…',
+    confirmHint: 'Pinoproseso na on-chain: huwag isara ang page na ito at huwag muling mag-sign. Maaaring abutin nang isang minuto.',
+    seconds: '{n} s',
+  },
   lang: { title: 'Wika', subtitle: 'Ang presyo at balanse ay laging nasa units ng wallet mo. Mga salita lang ang nagbabago.', auto: 'Awtomatiko ({name})', current: 'Kasalukuyan: {name}', applied: 'Wika: {name}' },
   home: {
     greeting: 'Yo, {name}', collector: 'kolektor', inSeason: 'Nasa season {id} ang Gutter City', loadingCity: 'Naglo-load ang Gutter City',
@@ -57,6 +70,7 @@ const fil: Messages = {
     title: 'Koleksyon', subtitle: '{owned}/72 archetype · {sets, plural, one{# distritong kumpleto} other{# distritong kumpleto}}',
     empty: 'Wala pang caps. Isang tap na lang ang unang pack mo.', filters: { all: 'Lahat', free: 'Libre', staked: 'Naka-stake', listed: 'Nakabenta', locked: 'Naka-lock' },
     missing: 'Kulang para sa set', level: 'Lv {n}', soulbound: 'hindi mailipat hanggang {date}',
+    founderBadge: 'TAGAPAGTATAG', founderNote: 'Founder frame — pre-sale ng mainnet',
   },
   fusion: {
     title: 'Fusion bench', subtitle: 'Tatlong cap ng iisang tier → isang cap ng susunod. Sinusunog ang $CG fee manalo o matalo; kapag nabigo, dalawang cap ang nasusunog at isa ang bumabalik.',
@@ -207,6 +221,22 @@ const fil: Messages = {
   errors: { rejected: 'Tinanggihan mo ang pirma', insufficient: 'Kulang ang balanse', network: 'Network error — subukan ulit', stale: 'Nag-expire ang quote — i-refresh', generic: 'May nagkamali' },
   legal: { title: 'Legal', terms: 'Mga Tuntunin ng Serbisyo', privacy: 'Privacy', updated: 'Epektibo noong {date}', draftTitle: 'Burador — hindi pa sinusuri ng abogado', draftBody: 'Inilalarawan ng tekstong ito kung paano talaga gumagana ang produkto, pero wala pang pinag-antos na abogado. Hanggang sa mangyari iyon, ituring na pahayag ng intensyon, hindi payo — at alamin na ang mga limitasyon sa rehiyon sa §2 ay ipinatupad na sa code.', canonical: 'Ang bersyon sa Ingles ang opisyal; ang mga pagsasalin ay para sa kaginhawaan lamang.', ages: '18+ lamang', noSaleIn: 'walang benta ng pack sa', verify: 'Beripikahin ang draw', notFound: 'Wala ang dokumentong iyan. Ang dalawang meron:' },
   age: { title: '18 ka o higit pa?', body: 'Nagbibida ang GUTTERCAPS ng mga pack na random ang laman. Kailangan mong hindi bababa sa {age} at sapat na gulang para makipag-contract kung saan ka nakatira.', termsLink: 'Basahin muna ang tuntunin', confirm: 'Ako ay {age}+', deny: 'Hindi pa', declined: 'Nakadagan para sa iyo ang pagbili: nangangailangan ang laro ng {age}+. Patuloy na gumagana ang lahat ng sa iyo na — koleksyon, merkado, staking at arena.', reopen: 'Sagutin muli' },
+  preorder: {
+    title: 'Pre-sale ng mga founder',
+    tagline: 'Limitadong serye ng event packs para sa mainnet launch. Magbayad ngayon, buksan sa araw ng paglulunsad.',
+    betaNote: 'Naglalaro ka sa libreng devnet beta. Ang pre-sale sa ibaba ay totoong mainnet purchase — SOL ngayon, packs sa launch.',
+    price: 'Presyo bawat pack', left: '{n} sa {total} ang natitira', soldOut: 'Ubos na', ended: 'Sarado na ang pre-sale',
+    reserve: 'Mag-reserve ng packs', qty: 'Packs', total: 'Kabuuan', perWallet: 'max {n} bawat wallet',
+    payTitle: 'Ipadala ang bayad', sendExactly: 'Magpadala ng eksaktong', toAddress: 'sa address na ito (team multisig)', memo: 'Memo — kinakailangan',
+    memoWhy: 'Ang memo ang nag-uugnay ng bayad sa reservation mo; kung wala nito, magpadala mula sa connected wallet mo.',
+    signature: 'Signature ng payment transaction', confirm: 'Nagbayad na ako — i-check ang payment', checking: 'Sinusuri sa mainnet…',
+    ttl: 'Hinahawak ng reservation ang packs ng {h} oras.',
+    statusIntent: 'naghihintay ng bayad', statusPaid: 'bayad na — ide-deliver sa mainnet launch', statusGranted: 'na-deliver — tingnan ang packs mo', statusExpired: 'paso na',
+    mine: 'Mga reservation ko', empty: 'Wala pang reservation.', grantedNote: 'Nasa “My packs” ang pre-sale packs — buksan doon.',
+    refund: 'Kung hindi live ang mainnet sa published launch date → ibabalik ang bawat bayad 1:1 mula sa parehong multisig vault. Pampubliko ang registry sa ibaba.',
+    shopBanner: 'Naka-pre-sale na ang mga Limited Event Pack: 0.999 SOL bawat isa, ipapamahagi sa paglunsad ng mainnet.', shopCta: 'Pumunta sa pre-sale',
+    registry: 'Pampublikong registry', confirmed: 'Na-verify ang bayad — kasali ka na.',
+  },
   footer: { legal: 'Legal', ages: '18+' },
 
 };

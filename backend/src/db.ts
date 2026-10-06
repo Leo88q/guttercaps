@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS chips (
   collection_idx   INTEGER NOT NULL,
   rarity           INTEGER NOT NULL,
   level            INTEGER NOT NULL DEFAULT 1,
-  flags            INTEGER NOT NULL DEFAULT 0,   -- bit0 staked, bit1 listed, bit2 fusing, bit3 soulbound
+  flags            INTEGER NOT NULL DEFAULT 0,   -- bit0 staked, bit1 listed, bit2 fusing, bit3 soulbound, bit4 founder (pre-sale)
   lock_until       INTEGER NOT NULL DEFAULT 0,
   origin           TEXT    NOT NULL,             -- pack | fusion | voucher (#28 quest chip)
   origin_signature TEXT,
@@ -178,6 +178,56 @@ CREATE TABLE IF NOT EXISTS vouchers (
   block_time  INTEGER,
   status      TEXT    NOT NULL DEFAULT 'pending',   -- pending | opened | cancelled
   PRIMARY KEY (wallet, nonce)
+);
+-- Beta pre-sale registry (docs/preorder-beta.md): the off-chain liability ledger of packs paid for
+-- in MAINNET SOL during the devnet beta. NOT a projection — rows are created by the API when a
+-- buyer reserves a pack and by payment verification; npm run rebuild must never wipe them.
+-- On-chain delivery at mainnet launch (chip_core grant_preorder_pack) joins back through
+-- preorder_grants.preorder_ref = ref_id. Amounts are decimal strings (u64).
+CREATE TABLE IF NOT EXISTS preorders (
+  ref_id      INTEGER PRIMARY KEY AUTOINCREMENT,  -- on-chain preorder_ref + payment memo id
+  wallet      TEXT    NOT NULL,
+  sku         INTEGER NOT NULL,
+  qty         INTEGER NOT NULL,
+  lamports    TEXT    NOT NULL,
+  status      TEXT    NOT NULL DEFAULT 'intent',  -- intent | paid | granted | expired
+  tx_sig      TEXT,
+  nonce       TEXT,                               -- PendingPack nonce once granted on-chain
+  grant_sig   TEXT,
+  created_at  INTEGER NOT NULL,
+  paid_at     INTEGER,
+  granted_at  INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_preorders_wallet ON preorders(wallet);
+CREATE INDEX IF NOT EXISTS idx_preorders_status ON preorders(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_preorders_tx ON preorders(tx_sig);
+-- Projection of chip_core PackGranted (preorder delivery at mainnet launch).
+CREATE TABLE IF NOT EXISTS preorder_grants (
+  signature    TEXT    NOT NULL,
+  event_index  INTEGER NOT NULL,
+  admin        TEXT    NOT NULL,
+  beneficiary  TEXT    NOT NULL,
+  sku          INTEGER NOT NULL,
+  qty          INTEGER NOT NULL,
+  nonce        TEXT    NOT NULL,
+  preorder_ref TEXT    NOT NULL,
+  randomness   TEXT    NOT NULL,
+  slot         INTEGER NOT NULL,
+  block_time   INTEGER,
+  PRIMARY KEY (signature, event_index)
+);
+-- Projection of chip_core PreorderDropOpened (the on-chain supply cap of a drop, one per SKU).
+CREATE TABLE IF NOT EXISTS preorder_drops (
+  sku            INTEGER PRIMARY KEY,
+  drop_pda       TEXT    NOT NULL,
+  admin          TEXT    NOT NULL,
+  total          INTEGER NOT NULL,
+  max_per_wallet INTEGER NOT NULL,
+  signature      TEXT    NOT NULL,
+  slot           INTEGER NOT NULL,
+  block_time     INTEGER,
+  closed_sig     TEXT,
+  closed_at      INTEGER
 );
 CREATE TABLE IF NOT EXISTS pack_opens (
   signature   TEXT PRIMARY KEY,
@@ -256,6 +306,7 @@ CREATE TABLE IF NOT EXISTS fusions (
   fee_burned    TEXT    NOT NULL,
   slot          INTEGER NOT NULL,
   block_time    INTEGER,
+  nonce         TEXT,               -- RESULT CLAIM nonce (claim fusions; NULL for core ChipFused — its result is a ChipState)
   PRIMARY KEY (signature, event_index)
 );
 CREATE INDEX IF NOT EXISTS idx_fusions_owner ON fusions(owner, slot);
@@ -503,7 +554,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 -- key = kind:owner:nonce; phase pending → settled (pinned account gone) → closed (rent reclaimed); stale = refund window open; abandoned = alert.
 CREATE TABLE IF NOT EXISTS crank_jobs (
   key         TEXT PRIMARY KEY,
-  kind        INTEGER NOT NULL,             -- 0 pack | 1 fusion | 2 battle
+  kind        INTEGER NOT NULL,             -- 0 pack | 1 fusion | 2 battle | 3 claim fusion | 4 claim-fusion RESULT settle (crank-only, no randomness account)
   owner       TEXT    NOT NULL,
   nonce       TEXT    NOT NULL,
   randomness  TEXT    NOT NULL,
@@ -815,6 +866,7 @@ CREATE TABLE IF NOT EXISTS oracle_prices (
 export const PROJECTION_TABLES = [
   'chips', 'pack_purchases', 'vouchers', 'pack_opens', 'compressed_claims', 'compressed_settlements', 'fusions', 'listings', 'sales', 'offers', 'battles', 'stakes', 'claims',
   'reward_roots', 'reward_claims', 'skr_pool_events', 'set_bonus', 'burns', 'emission_days', 'slice_fundings', 'params_changes', 'pause_changes', 'authority_changes', 'service_payments',
+  'preorder_grants', 'preorder_drops',
 ] as const;
 
 export class Db {
@@ -868,6 +920,14 @@ export class Db {
     for (const name of ['lut_slot', 'lut_closed_at'] as const) {
       if (!cj.has(name)) this.raw.exec(`ALTER TABLE crank_jobs ADD COLUMN ${name} INTEGER`);
     }
+    // One-signature fusion settlement: the crank settles the settlement-free RESULT claim, so the
+    // `fusions` row must carry the RESULT CLAIM nonce (atomic `fuse_compressed_claims`: the
+    // client-chosen `result_claim_nonce`; randomized: the commit nonce by protocol convention).
+    // Core `ChipFused` rows stay NULL (their `result` is a ChipState asset, not a claim). Rows
+    // written before this column existed are not backfillable (the PDA does not expose the nonce);
+    // their result claims, if ever left unsettled, expire after 7 days like any other claim shell.
+    const fu = new Set((this.raw.prepare(`PRAGMA table_info(fusions)`).all() as { name: string }[]).map((c) => c.name));
+    if (!fu.has('nonce')) this.raw.exec(`ALTER TABLE fusions ADD COLUMN nonce TEXT`);
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_crank_lut_due ON crank_jobs(lut_closed_at)`);
     // the crank's index back-fill queue is game_index IS NULL AND burned_at IS NULL AND index_attempts < N
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_chips_index_pending ON chips(index_attempts) WHERE game_index IS NULL`);

@@ -144,7 +144,7 @@ export function decodeBubblegumTreeMeta(data: Uint8Array): BubblegumTreeMeta {
   };
 }
 
-export const CHIP_FLAG = { STAKED: 1, LISTED: 2, FUSING: 4, SOULBOUND: 8 } as const;
+export const CHIP_FLAG = { STAKED: 1, LISTED: 2, FUSING: 4, SOULBOUND: 8, FOUNDER: 16 } as const;
 
 export interface ChipState {
   asset: PublicKey;
@@ -218,6 +218,8 @@ export interface CompressedMintClaim {
   origin: PublicKey;
   /** H1: unix timestamp until which the claim's chip cannot be listed (Starter packs: +7 days; 0 = tradeable at once). */
   lockUntil: bigint;
+  /** pre-sale origin: the registered chip gets the founder frame (docs/preorder-beta.md). */
+  founder: boolean;
 }
 
 export function decodeCompressedMintClaim(data: Uint8Array): CompressedMintClaim {
@@ -225,6 +227,7 @@ export function decodeCompressedMintClaim(data: Uint8Array): CompressedMintClaim
   return {
     buyer: r.pubkey(), collectionIdx: r.u8(), rarity: r.u8(), level: r.u8(), gameIndex: r.u64(), expiresAt: r.i64(),
     settlement: r.pubkey(), indexReserved: r.bool(), minted: r.bool(), registered: r.bool(), consumed: r.bool(), listed: r.bool(), bump: r.u8(), staked: r.bool(), origin: r.pubkey(), lockUntil: r.i64(),
+    founder: r.remaining >= 1 ? r.bool() : false,
   };
 }
 
@@ -290,6 +293,8 @@ export interface PendingPack {
   voucher: boolean;
   voucherOdds: number[];
   soulboundDays: number;
+  /** pre-sale origin (docs/preorder-beta.md): chips minted from this pack carry the founder frame */
+  preorder: boolean;
 }
 
 export function decodePendingPack(data: Uint8Array): PendingPack {
@@ -303,7 +308,8 @@ export function decodePendingPack(data: Uint8Array): PendingPack {
   const voucher = r.remaining >= 20 ? r.bool() : false;
   const voucherOdds = r.remaining >= 19 ? r.array(RARITY_COUNT, () => r.u16()) : Array<number>(RARITY_COUNT).fill(0);
   const soulboundDays = r.remaining >= 1 ? r.u8() : 0;
-  return { ...head, voucher, voucherOdds, soulboundDays };
+  const preorder = r.remaining >= 1 ? r.bool() : false;
+  return { ...head, voucher, voucherOdds, soulboundDays, preorder };
 }
 
 export interface PendingFusion {

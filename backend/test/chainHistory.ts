@@ -271,6 +271,13 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
             buyer: actor, nonce: compressedNonce, refunded: true,
           },
         },
+        // Beta pre-sale (docs/preorder-beta.md): the drop cap opens and this same wallet's paid
+        // reservation is granted on-chain. Rides the first real transaction (like the compressed
+        // events above) so the deterministic RNG stream — and every probabilistic invariant the
+        // corpus pins — is untouched.
+        { program: 'chip_core', name: 'PreorderDropOpened', data: { admin: fixtureAddr(seed, 'preorder-admin', 0), drop: fixtureAddr(seed, 'preorder-drop', 0), sku: 3, total: 500, maxPerWallet: 5 } },
+        { program: 'chip_core', name: 'PackGranted', data: { admin: fixtureAddr(seed, 'preorder-admin', 0), beneficiary: actor, sku: 3, qty: 1, nonce: compressedNonce, preorderRef: '1', randomness: fixtureAddr(seed, 'rng', 0) } },
+        { program: 'chip_core', name: 'PreorderDropClosed', data: { admin: fixtureAddr(seed, 'preorder-admin', 0), drop: fixtureAddr(seed, 'preorder-drop', 0), sku: 3, total: 500 } },
       ];
     }
 

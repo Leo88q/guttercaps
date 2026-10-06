@@ -6,7 +6,12 @@
 //                            → register_compressed_chip ×chips (local V2 preflight, on-chain verify_leaf)
 //                            → finalize_compressed_pack → close_randomness
 //   fusions   PendingFusion → reveal_randomness → fuse_reveal → close_randomness
-//   claim fus PendingClaimFusion → reveal_randomness (kind 3) → fuse_claims_reveal → close_randomness
+//   claim fus PendingClaimFusion → reveal_randomness (kind 3) → fuse_claims_reveal
+//                            → mint + register the result claim (success case — the owner's single
+//                              commit signature must be enough) → close_randomness
+//   fusion res kind-4 job (no randomness account): a settlement-free fusion RESULT claim — atomic
+//                            `fuse_compressed_claims` (discovered from `fusions`) or a randomized
+//                            result whose settle was deferred → mint + register → done
 //   wagers    WagerBattle  → reveal_battle_randomness (the battle oracle resolves) → close_battle_randomness
 //
 // Players can do all of this themselves from the app (usePackFlow / Fusion);
@@ -68,13 +73,25 @@ export const CU = {
 } as const;
 
 export type Phase = 'pending' | 'stale' | 'settled' | 'closed' | 'abandoned';
+
+/**
+ * Crank-only job kind (NOT a Switchboard RNG kind): a settlement-free fusion RESULT claim that the
+ * owner's single signature created and the crank must mint + register. Either an atomic
+ * `fuse_compressed_claims` result (discovered from the `fusions` projection, which carries the
+ * result claim nonce) or a randomized-fusion result whose settle was deferred after the reveal.
+ * Such a job has no randomness account — no reveal, no close step; `pinned` is the result claim PDA
+ * and the terminal phase is `closed` (registered / consumed / expired-unminted).
+ */
+export const CLAIM_FUSION_SETTLE = 4;
+export type CrankKind = RngKind | typeof CLAIM_FUSION_SETTLE;
+
 export interface Job {
-  key: string; kind: RngKind; owner: string; nonce: string; randomness: string; pinned: string; phase: Phase; commit_slot: number | null;
+  key: string; kind: CrankKind; owner: string; nonce: string; randomness: string; pinned: string; phase: Phase; commit_slot: number | null;
   attempts: number; next_at: number; last_error: string | null; reveal_sig: string | null; settle_sigs: string; close_sig: string | null; created_at: number; updated_at: number;
   /** backlog #23: the request's Switchboard lookup-table slot (NULL for jobs discovered before the column existed) */
   lut_slot: number | null; lut_closed_at: number | null;
 }
-export const jobKey = (kind: RngKind, owner: PublicKey | string, nonce: bigint | string) => `${kind}:${typeof owner === 'string' ? owner : owner.toBase58()}:${nonce.toString()}`;
+export const jobKey = (kind: CrankKind, owner: PublicKey | string, nonce: bigint | string) => `${kind}:${typeof owner === 'string' ? owner : owner.toBase58()}:${nonce.toString()}`;
 
 export interface GatewayReveal { signature: Uint8Array; recoveryId: number; value: Uint8Array }
 export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
@@ -218,6 +235,54 @@ export class Crank {
     return n;
   }
 
+  /**
+   * Kind-4 fast path: settlement-free fusion RESULT claims the owner's single signature created and
+   * that no job has taken yet. Source is the `fusions` projection — `nonce` is the RESULT CLAIM
+   * nonce (atomic `fuse_compressed_claims`: the client-chosen `result_claim_nonce`; randomized: the
+   * commit nonce by protocol convention) and is NULL for core `ChipFused` rows, whose `result` is a
+   * ChipState asset, not a claim. A randomized success also lands here as a BACKSTOP: its kind-3 job
+   * settles the result inline (and defers here on failure), so a second kind-4 job for the same
+   * (owner, nonce) finds the claim registered/consumed and closes without sending anything.
+   * The (owner, nonce) → claim PDA match is re-derived locally before any job exists: a row whose
+   * nonce does not reproduce its `result` is corrupted and is parked `closed` (one-time, via a
+   * job row) instead of being re-read every pass.
+   */
+  discoverFusionSettles(limit = 200): number {
+    const rows = this.db.all<{ owner: string; nonce: string; result: string; slot: number }>(
+      `SELECT owner, nonce, result, slot FROM fusions
+       WHERE result IS NOT NULL AND nonce IS NOT NULL AND success = 1
+         AND NOT EXISTS (SELECT 1 FROM crank_jobs j WHERE j.key = '4:' || fusions.owner || ':' || fusions.nonce)
+       ORDER BY slot ASC LIMIT ?`,
+      limit,
+    );
+    const t = this.now();
+    let n = 0;
+    for (const r of rows) {
+      try {
+        const owner = new PublicKey(r.owner);
+        const nonce = BigInt(r.nonce);
+        const claimKey = compressedMintClaimPda(owner, nonce)[0];
+        if (claimKey.toBase58() !== r.result) {
+          // a corrupted row must never become a job: `mint_compressed_chip` / `register_compressed_chip`
+          // re-derive the claim PDA from (buyer, claim_nonce) on chain, so a nonce/PDA mismatch would
+          // mint or register the WRONG claim. Park it once so it is never re-read.
+          this.db.run(
+            `INSERT INTO crank_jobs (key, kind, owner, nonce, randomness, pinned, phase, attempts, next_at, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, 'closed', 0, 0, ?, ?)`,
+            jobKey(CLAIM_FUSION_SETTLE, owner, nonce), CLAIM_FUSION_SETTLE, r.owner, r.nonce, r.result, r.result, t, t,
+          );
+          this.log(`[crank] fusion-result row ${r.result} does not match (owner ${r.owner}, nonce ${r.nonce}) — parked`);
+          continue;
+        }
+        this.upsertJob(CLAIM_FUSION_SETTLE, owner, nonce, claimKey, claimKey, 'pending', r.slot);
+        n++;
+      } catch (e) {
+        this.log(`[crank] fusion-result discovery skipped fusions row (${r.owner}, ${r.result}): ${(e as Error).message.slice(0, 120)}`);
+      }
+    }
+    return n;
+  }
+
   /** Slow path: every pinned account that exists on chain right now (by Anchor discriminator). */
   async sweepChain(): Promise<{ packs: number; fusions: number; claimFusions: number; battles: number }> {
     const byDisc = async (program: PublicKey, name: string) => this.connection.getProgramAccounts(program, { commitment: 'confirmed', filters: [{ memcmp: { offset: 0, bytes: base58Encode(accountDiscriminator(name)) } }] });
@@ -243,7 +308,7 @@ export class Crank {
   }
 
   /** Insert a job if unknown; a closed/abandoned job is never resurrected here (the close step re-checks the chain itself). */
-  upsertJob(kind: RngKind, owner: PublicKey, nonce: bigint, randomness: PublicKey, pinned: PublicKey, phase: Phase, commitSlot: number | null, lutSlot: number | null = null): Job {
+  upsertJob(kind: CrankKind, owner: PublicKey, nonce: bigint | string, randomness: PublicKey, pinned: PublicKey, phase: Phase, commitSlot: number | null, lutSlot: number | null = null): Job {
     const key = jobKey(kind, owner, nonce);
     const t = this.now();
     this.db.run(
@@ -533,9 +598,17 @@ export class Crank {
     await this.closeStep({ ...job, phase: 'settled' });
   }
 
-  /** Mint (if needed) and register one compressed claim. Skips expired-unminted claims (buyer cancels those). */
-  private async settleCompressedChip(job: Job, owner: PublicKey, nonce: bigint, packNo: number, chipNo: number): Promise<void> {
-    const claimNonce = compressedClaimNonce(nonce, packNo, chipNo);
+  /**
+   * Mint (if needed) and register ONE live claim PDA — the shared mint → DAS resolve (name
+   * `{symbol} #{game_index}`) → local V2 preflight → register step. Consumed / already-registered
+   * claims are skipped (racing the buyer's app is harmless — every on-chain state is re-checked),
+   * and `settlement` is undefined for settlement-free fusion results (the register instruction then
+   * carries no settlement account). `throwOnExpiry` distinguishes the two callers: a pack claim the
+   * buyer can cancel (skip; the settlement counters wait for it) versus a fusion result, where an
+   * expired-unminted claim must fail the job loudly (the rent is the buyer's to reclaim via
+   * `close_expired_claim`, but a silently stuck result is an incident).
+   */
+  private async settleClaim(job: Job, owner: PublicKey, claimNonce: bigint, settlement: PublicKey | undefined, label: string, throwOnExpiry: boolean): Promise<void> {
     const claimKey = compressedMintClaimPda(owner, claimNonce)[0];
     let data = await this.account(claimKey);
     // A closed claim was buyer-cancelled (`cancel_compressed_claim` / `close_expired_claim`); the
@@ -546,7 +619,10 @@ export class Crank {
     if (claim.consumed || claim.registered) return;
     const nowSec = Math.floor(this.now() / 1000);
     if (!claim.minted) {
-      if (Number(claim.expiresAt) <= nowSec) return; // buyer cancels via cancel_compressed_claim; finalize waits
+      if (Number(claim.expiresAt) <= nowSec) {
+        if (throwOnExpiry) throw new Error(`claim ${claimKey.toBase58()} expired before mint — the buyer reclaims its rent via close_expired_claim`);
+        return; // pack claim: buyer cancels via cancel_compressed_claim; finalize waits
+      }
       const tree = await this.treeMeta(claim.collectionIdx);
       const mint = mintCompressedChipIx({
         payer: this.payer.publicKey, buyer: owner, claimNonce, collectionIdx: claim.collectionIdx,
@@ -555,7 +631,7 @@ export class Crank {
       const { signature } = await sendAndConfirm(this.connection, this.payer, [mint], { cuLimit: CU.MINT_COMPRESSED, lookupTables: this.lookupTables });
       this.stats.mints++;
       this.addSettleSig(job, signature);
-      this.log(`[crank] mint_compressed_chip ${job.key} #${packNo}.${chipNo} ${signature}`);
+      this.log(`[crank] mint_compressed_chip ${label} ${signature}`);
       data = await this.account(claimKey);
       if (!data) throw new Error(`claim ${claimKey.toBase58()} vanished after mint`);
       claim = decodeCompressedMintClaim(data);
@@ -595,19 +671,24 @@ export class Crank {
         assetDataHash: asset.assetDataHash, flags: asset.flags, nonce: leafNonce, index: Number(proof.leafIndex), proofNodes: proof.proof,
       },
       rarity: claim.rarity, level: claim.level, gameIndex: claim.gameIndex,
-      settlement: compressedSettlementPda(owner, nonce)[0],
+      settlement,
     });
     try {
       const { signature } = await sendAndConfirm(this.connection, this.payer, [register], { cuLimit: CU.REGISTER_COMPRESSED, lookupTables: this.lookupTables });
       this.stats.registers++;
       this.addSettleSig(job, signature);
-      this.log(`[crank] register_compressed_chip ${job.key} #${packNo}.${chipNo} ${asset.assetId.toBase58()} ${signature}`);
+      this.log(`[crank] register_compressed_chip ${label} ${asset.assetId.toBase58()} ${signature}`);
     } catch (e) {
       // Someone else (the buyer app) registered first → the chip account now exists; move on.
       const fresh = await this.account(claimKey);
       if (fresh && decodeCompressedMintClaim(fresh).registered) return;
       throw e;
     }
+  }
+
+  /** Mint (if needed) and register one PACK claim (claim nonces live under the purchase-nonce stride). */
+  private async settleCompressedChip(job: Job, owner: PublicKey, nonce: bigint, packNo: number, chipNo: number): Promise<void> {
+    await this.settleClaim(job, owner, compressedClaimNonce(nonce, packNo, chipNo), compressedSettlementPda(owner, nonce)[0], `${job.key} #${packNo}.${chipNo}`, false);
   }
 
   private async finalizeCompressedPack(job: Job, owner: PublicKey, pending: PendingPack, cancelledClaims: number): Promise<void> {
@@ -714,8 +795,51 @@ export class Crank {
       if (!(await this.account(pendingKey))) { this.setPhase(job, 'settled'); return this.closeStep({ ...job, phase: 'settled' }); }
       throw e;
     }
+
+    // The owner's single commit signature must be enough: on success the reveal created a
+    // settlement-free result claim (it reuses the commit nonce), so mint + register it here. On a
+    // failed roll no result claim exists — the `refund_on_fail` materials were un-consumed on chain.
+    // A settle failure must not lose this job (the reveal already landed, a chain fact): park it as
+    // its own kind-4 job with independent backoff and let the rent reclaim proceed.
+    try {
+      const [resultKey] = compressedMintClaimPda(owner, nonce);
+      const resultData = await this.account(resultKey);
+      if (resultData) {
+        const rc = decodeCompressedMintClaim(resultData);
+        if (!rc.registered && !rc.consumed) await this.settleClaim(job, owner, nonce, undefined, `fusion result ${job.key}`, true);
+      }
+    } catch (e) {
+      const [resultKey] = compressedMintClaimPda(owner, nonce);
+      this.upsertJob(CLAIM_FUSION_SETTLE, owner, nonce, resultKey, resultKey, 'pending', Number(pending.commitSlot));
+      this.log(`[crank] fusion ${job.key}: result settle deferred to a kind-4 job: ${(e as Error).message.slice(0, 160)}`);
+    }
     this.setPhase(job, 'settled');
     await this.closeStep({ ...job, phase: 'settled' });
+  }
+
+  // ---------------------------------------------------------------- fusion results (settlement-free, kind 4)
+  /**
+   * Settle a settlement-free fusion RESULT claim (atomic `fuse_compressed_claims`, or a randomized
+   * result parked by `processClaimFusion`). There is no randomness account behind such a job, so the
+   * terminal phase is `closed` directly — no reveal, no rent reclaim. Every state is re-read before
+   * acting: the claim may already be registered / consumed / gone (the buyer reclaimed an expired
+   * shell via `close_expired_claim`), or may have been transferred (then the new owner's own job —
+   * discovered from the same `fusions` row under the new owner's claim — settles it; we must not
+   * mint against a foreign claim).
+   */
+  async processClaimFusionSettle(job: Job): Promise<void> {
+    const owner = new PublicKey(job.owner);
+    const claimKey = new PublicKey(job.pinned);
+    const data = await this.account(claimKey);
+    if (!data) { this.setPhase(job, 'closed'); return; }
+    const claim = decodeCompressedMintClaim(data);
+    if (claim.registered || claim.consumed) { this.setPhase(job, 'closed'); return; }
+    if (!claim.buyer.equals(owner)) {
+      this.setPhase(job, 'closed', { last_error: `claim owner ${claim.buyer.toBase58()} != job owner ${owner.toBase58()} — the new owner's job settles it` });
+      return;
+    }
+    await this.settleClaim(job, owner, BigInt(job.nonce), undefined, `claim settle ${job.key}`, true);
+    this.setPhase(job, 'closed');
   }
 
   // ---------------------------------------------------------------- wagers
@@ -751,7 +875,9 @@ export class Crank {
   /** Pinned account is gone (battle settled) → close the randomness account; rent → owner. */
   async closeStep(job: Job): Promise<void> {
     const owner = new PublicKey(job.owner), nonce = BigInt(job.nonce);
-    const [randomnessKey] = rngPda(job.kind, owner, nonce);
+    // kind-4 (fusion result) jobs carry no randomness account and never reach this step — they end
+    // `closed` in `processClaimFusionSettle`; the cast is safe by construction.
+    const [randomnessKey] = rngPda(job.kind as RngKind, owner, nonce);
     const rnd = await this.randomness(randomnessKey);
     if (!rnd) {
       // already closed (by the player's "Reclaim rent" button or an earlier pass) — but the table slot
@@ -761,7 +887,9 @@ export class Crank {
       this.setPhase(job, 'closed');
       return;
     }
-    const ix = closeRandomnessIx({ kind: job.kind, payer: this.payer.publicKey, owner, nonce, lutSlot: rnd.lutSlot });
+    // kind-4 jobs never reach the rent reclaim (no randomness account) — they end `closed` in
+    // `processClaimFusionSettle`, so the kind is a real RNG kind here.
+    const ix = closeRandomnessIx({ kind: job.kind as RngKind, payer: this.payer.publicKey, owner, nonce, lutSlot: rnd.lutSlot });
     const { signature } = await sendAndConfirm(this.connection, this.payer, [ix], { cuLimit: CU.CLOSE, lookupTables: this.lookupTables });
     this.stats.closes++;
     this.db.run(`UPDATE crank_jobs SET lut_slot = COALESCE(lut_slot, ?), updated_at = ? WHERE key = ?`, Number(rnd.lutSlot), this.now(), job.key);
@@ -814,6 +942,7 @@ export class Crank {
       if (job.kind === RNG_KIND.PACK) return await this.processPack(job);
       if (job.kind === RNG_KIND.FUSION) return await this.processFusion(job);
       if (job.kind === RNG_KIND.CLAIM_FUSION) return await this.processClaimFusion(job);
+      if (job.kind === CLAIM_FUSION_SETTLE) return await this.processClaimFusionSettle(job);
       return await this.processBattle(job);
     } catch (e) {
       this.fail(job, e);
@@ -833,6 +962,7 @@ export class Crank {
   /** One scheduler pass: discover (DB), then run due jobs with bounded concurrency. Returns how many ran. */
   async tick(opts: { sweep?: boolean } = {}): Promise<number> {
     this.discoverFromDb();
+    this.discoverFusionSettles();
     if (opts.sweep) {
       try { const s = await this.sweepChain(); this.log(`[crank] sweep: ${s.packs} pending packs, ${s.fusions} fusions, ${s.claimFusions} claim fusions, ${s.battles} battles on chain`); }
       catch (e) { this.log(`[crank] sweep failed: ${(e as Error).message}`); }

@@ -27,9 +27,11 @@ export interface ChipArtProps {
   className?: string;
   /** Paint the scalloped bottle-cap crimp ring in this colour (usually the rarity colour). */
   crimp?: string;
+  /** pre-sale origin (docs/preorder-beta.md): permanent founder foil frame + badge */
+  founder?: boolean;
 }
 
-export const ChipArt = memo(function ChipArt({ collection, rarity, index = null, level, size = '100%', imageUrl, fallbackUrl, selected, dim, badge, skin, onClick, title, className = '', crimp }: ChipArtProps) {
+export const ChipArt = memo(function ChipArt({ collection, rarity, index = null, level, size = '100%', imageUrl, fallbackUrl, selected, dim, badge, skin, onClick, title, className = '', crimp, founder }: ChipArtProps) {
   const t = useT();
   const base = collectionColor(collection);
   const glow = rarityColor(rarity);
@@ -97,6 +99,7 @@ export const ChipArt = memo(function ChipArt({ collection, rarity, index = null,
       )}
       {level !== undefined && <span className="chip-lvl">{t('screens.levelBadge', { n: level })}</span>}
       {badge && <span className="chip-badge">{badge}</span>}
+      {founder && <><span className="chip-founder" aria-hidden /><span className="chip-founder-tag">{t('collection.founderBadge')}</span></>}
     </div>
   );
   if (!crimp) return tile;

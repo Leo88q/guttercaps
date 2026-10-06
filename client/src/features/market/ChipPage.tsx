@@ -68,7 +68,7 @@ export default function ChipPage() {
   return (
     <div className="page page-bg page-bg-market stack">
       <div className="row" style={{ alignItems: 'flex-start', gap: 20, flexWrap: 'wrap' }}>
-        <div style={{ width: 'min(330px, 100%)', flex: '0 0 auto' }}><ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c, 512)} skin={c.skin} crimp={rarityColor(c.rarity!)} /></div>
+        <div style={{ width: 'min(330px, 100%)', flex: '0 0 auto' }}><ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c, 512)} skin={c.skin} crimp={rarityColor(c.rarity!)} founder={!!c.flags?.founder} /></div>
         <div className="grow stack-sm" style={{ minWidth: 260 }}>
           <div className="tiny muted">{collectionName(c.collection!)} <ElementGlyph element={ELEMENT_OF_COLLECTION[c.collection!]} /> · <span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span></div>
           <h1 className="page-title" style={{ margin: 0 }}>{chipName(c.collection!, c.rarity!)} {chipIndexText(c.index) && <span className="muted mono" style={{ fontSize: 18 }}>{chipIndexText(c.index)}</span>}</h1>

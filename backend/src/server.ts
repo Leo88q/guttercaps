@@ -37,6 +37,7 @@ import * as quests from './quests.ts';
 import { rewardOracleStatus } from './reward-oracle.ts';
 import { referralSummary } from './referrals.ts';
 import { antifraudStatus } from './antifraud.ts';
+import * as preorders from './preorders.ts';
 import * as admin from './admin.ts';
 import * as compliance from './compliance.ts';
 import { clientIp, ipNet } from './ratelimit.ts';
@@ -425,6 +426,31 @@ export function createApp(db: Db, deps: AppOptions = {}) {
       fusions: [],
     });
   });
+  // One-signature settlement view for one purchase, in ANY state (unlike /me/pending, which drops
+  // 'settled' rows): the Opening page polls the ON-CHAIN claim accounts for progress and uses this
+  // endpoint for the one thing the chain does not store on the claim — the registered Bubblegum
+  // leaf ids (`compressed_claims.asset`, projected from CompressedChipRegistered). Empty `claims`
+  // means the purchase was never opened (oracle still pending) or the nonce is unknown to the wallet.
+  v1.get('/me/packs/:nonce/result', requireAuth, (req, res) => {
+    const wallet = req.session!.wallet;
+    const nonce = String(req.params.nonce ?? '');
+    const settlement = db.get<{ nonce: string; total_claims: number; registered_claims: number; cancelled_claims: number; status: string }>(
+      `SELECT nonce, total_claims, registered_claims, cancelled_claims, status FROM compressed_settlements WHERE buyer = ? AND nonce = ?`, wallet, nonce,
+    );
+    const claims = db.all<{ claim_nonce: string; pack_no: number; status: string; asset: string | null; collection_idx: number | null; rarity: number | null; level: number | null; game_index: string | null }>(
+      `SELECT claim_nonce, pack_no, status, asset, collection_idx, rarity, level, game_index FROM compressed_claims WHERE buyer = ? AND nonce = ? ORDER BY CAST(claim_nonce AS INTEGER)`, wallet, nonce,
+    );
+    res.json({
+      nonce,
+      settlement: settlement
+        ? { nonce: settlement.nonce, totalClaims: settlement.total_claims, registeredClaims: settlement.registered_claims, cancelledClaims: settlement.cancelled_claims, status: settlement.status }
+        : null,
+      claims: claims.map((c) => ({
+        claimNonce: c.claim_nonce, packNo: c.pack_no, status: c.status, asset: c.asset,
+        collectionIdx: c.collection_idx, rarity: c.rarity, level: c.level, gameIndex: c.game_index,
+      })),
+    });
+  });
   v1.get('/me/handle/check', requireAuth, rl(POLICIES.handleCheck), (req, res) => { res.json(checkHandle(db, req.session!.wallet, String(req.query.handle ?? ''))); });
   v1.put('/me/handle', requireAuth, rl(POLICIES.claim), rl(POLICIES.claimNet), (req, res) => {
     const b = req.body as { handle: string; signature: string };
@@ -466,6 +492,24 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     if (!r) { res.status(404).json({ code: 'not_found', message: 'Unknown signature' }); return; }
     res.json(r);
   });
+
+  // ------------------------------------------------------------ beta pre-sale (docs/preorder-beta.md)
+  // Money lands in the Squads treasury on MAINNET while the game beta runs; packs are granted
+  // on-chain at mainnet launch (chip_core grant_preorder_pack). Verification reads MAINNET
+  // regardless of the cluster this backend indexes.
+  v1.get('/preorder', (_req, res) => { res.json(preorders.campaign(db)); });
+  v1.get('/preorder/me', requireAuth, (req, res) => { res.json({ items: preorders.mine(db, req.session!.wallet) }); });
+  v1.get('/preorder/registry', (_req, res) => { res.json(preorders.registrySnapshot(db)); });
+  v1.post('/preorder/intent', requireAuth, accessGate('packs'), rl(POLICIES.mutate), wrap(async (req, res) => {
+    res.json(preorders.createIntent(db, req.session!.wallet, Number(req.body?.qty)));
+  }));
+  v1.post('/preorder/confirm', requireAuth, accessGate('packs'), rl(POLICIES.claim), rl(POLICIES.claimNet), wrap(async (req, res) => {
+    const refId = Number(req.body?.refId);
+    const signature = String(req.body?.signature ?? '');
+    if (!Number.isInteger(refId) || refId <= 0) throw new ServiceError(400, 'bad_ref', 'refId is required');
+    if (signature.length < 32) throw new ServiceError(400, 'bad_signature', 'signature is required');
+    res.json(await preorders.confirmPayment(db, req.session!.wallet, refId, signature, preorders.mainnetPaymentFetcher()));
+  }));
 
   // ------------------------------------------------------------ collections / chips
   v1.get('/collections', (_req, res) => { res.json(q.collections(db)); });
@@ -633,6 +677,13 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.post('/admin/rights/:id/correct-access', rightsAudited('rights.correct_access', req => compliance.correctAccess(db, req.params.id, req.body)));
   v1.post('/admin/rights/:id/erase-profile', rightsAudited('rights.erase_profile', req => compliance.eraseProfile(db, req.params.id, req.body?.version, req.body?.message)));
 
+  v1.get('/admin/preorders', audited('preorders.list', () => ({
+    campaign: preorders.campaign(db),
+    registry: preorders.registrySnapshot(db),
+    queue: preorders.deliveryQueue(db),
+  })));
+  v1.post('/admin/preorders/drop', audited('preorders.drop', (req) => preorders.proposeDrop(req.body ?? {}), (req) => String(req.body?.action ?? '')));
+  v1.post('/admin/preorders/delivery', audited('preorders.delivery', (req) => preorders.proposeDelivery(db, req.body ?? {})));
   v1.get('/admin/params', audited('params.get', async () => admin.paramsApi(db, await admin.fetchChainParams(connection()))));
   v1.post('/admin/params', audited('params.propose', async (req) => {
     const p = admin.proposeParams(await admin.fetchChainParams(connection()), req.body as admin.ParamsProposal);

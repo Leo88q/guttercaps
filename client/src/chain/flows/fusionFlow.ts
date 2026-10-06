@@ -11,7 +11,7 @@ import { findEvent } from '../anchor';
 import { fetchCoreCollections, fetchGameConfig } from './packFlow';
 import { CHIP_CORE_ID } from '../ids';
 
-export type FusionPhase = 'idle' | 'signing' | 'committed' | 'revealing' | 'done' | 'stale' | 'error';
+export type FusionPhase = 'idle' | 'signing' | 'committed' | 'revealing' | 'settling' | 'done' | 'stale' | 'error';
 
 export interface FusionFlowState {
   phase: FusionPhase;

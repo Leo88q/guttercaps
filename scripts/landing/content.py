@@ -53,6 +53,27 @@ T = {
   'packs.bundles': ('Bundles: ×5 −7 % · ×10 −12 % · ×25 −18 %. Paying in SKR takes another 5 % off (stacks, capped at 30 %). Limited packs: max 5 per wallet per day, no bundles.',
                     'Бандлы: ×5 −7 % · ×10 −12 % · ×25 −18 %. Оплата в SKR даёт ещё −5 % (суммируется, потолок 30 %). Limited-паки: не более 5 на кошелёк в день, без бандлов.'),
 
+  # Mainnet pre-sale (docs/preorder-beta.md) — numbers mirror backend/src/config.ts
+  # PREORDER_* defaults and are pinned against them by scripts/landing/check.ts.
+  'presale.h': ('Founder <span class="tag-accent">pre-sale</span>', 'Пре-сейл <span class="tag-accent">для первых</span>'),
+  'presale.p': ('The beta is free and runs on devnet; mainnet comes after the audit. Until then, a limited drop of Limited Event Packs is on sale for real SOL: 500 packs at 0.999 SOL each, max 5 per wallet. You pay today, the packs are delivered on-chain at mainnet launch, and you open them yourself — same Switchboard randomness, same published odds.',
+                'Бета бесплатна и идёт на devnet; mainnet будет после аудита. До тех пор идёт ограниченный дроп Limited-паков за реальные SOL: 500 паков по 0,999 SOL, не больше 5 на кошелёк. Вы платите сегодня, паки выдаются на цепи при запуске майнета, и вскрываете их вы сами — та же случайность Switchboard, те же опубликованные шансы.'),
+  'presale.c1h': ('Pay now — open at launch', 'Платите сейчас — вскрытие на запуске'),
+  'presale.c1p': ('SOL goes to the team multisig (2-of-3) with the memo GC-PRE|42 style tag. At mainnet launch the packs are granted on-chain in reservation order and land in your wallet as pending packs you open yourself.',
+                  'SOL уходит в мультиподпись команды (2-из-3) с мемо вида GC-PRE|42. При запуске майнета паки выдаются на цепи в порядке бронирования и ложатся в ваш кошелёк как ожидающие паки, которые вы вскрываете сами.'),
+  'presale.c2h': ('The price is locked in SOL', 'Цена зафиксирована в SOL'),
+  'presale.c2p': ('At launch the Limited Event Pack costs $29.99 converted at the Pyth feed. Pre-sale packs cost a flat 0.999 SOL — no conversion, no slippage — and the drop is capped at 500 on-chain.',
+                  'На запуске Limited-пак стоит $29,99 в пересчёте по фиду Pyth. Паки пре-сейла стоят ровно 0,999 SOL — без конвертации и проскальзывания, — а дроп ограничен 500 паками на цепи.'),
+  'presale.c3h': ('5 caps, floor Rare+', '5 фишек, порог Rare+'),
+  'presale.c3p': ('Only the featured seasonal collection, no cap below Rare+, Legend guaranteed by pack 25 — the strongest top-end odds in the game. Event packs exist to fund the prize pools.',
+                  'Только сезонная избранная коллекция, ни одной фишки ниже Rare+, Legend гарантирован к 25-му паку — сильнейшие верхние шансы в игре. Событийные паки и существуют, чтобы наполнять призовые пулы.'),
+  'presale.c4h': ('Public registry, visible terms', 'Публичный реестр, видимые условия'),
+  'presale.c4p': ('Every reservation is listed in a public registry; a drop can only close once fully delivered, and the campaign can be switched off at any moment. Delivery has not happened yet — read the refund terms in the app before paying.',
+                  'Каждая бронь видна в публичном реестре; дроп закрывается только после полной выдачи, а кампанию можно остановить в любой момент. Выдачи ещё не было — до оплаты прочитайте условия возврата в приложении.'),
+  'presale.cta': ('Reserve packs in the app', 'Забронировать паки в приложении'),
+  'presale.note': ('This is an advance purchase of mainnet packs, not a token sale: you receive exactly the packs you reserved, delivered at launch. The devnet beta stays free for everyone.',
+                   'Это авансовая покупка майнет-паков, а не продажа токенов: вы получаете ровно те паки, что забронировали, с выдачей на запуске. Devnet-бета остаётся бесплатной для всех.'),
+
   'eco.h': ('<span class="tag-accent">$CG</span> and SKR', '<span class="tag-accent">$CG</span> и SKR'),
   'eco.p': ('Two currencies with two jobs. $CG is the game token: minted only by the program on a decaying schedule, burned by every sink. SKR — the Seeker token — is a payment rail and a prize currency: you pay with it, a fixed share of that revenue flows into an on-chain SKR prize pool, and the game never mints or burns it.',
             'Две валюты — две роли. $CG — игровой токен: его выпускает только программа по убывающему графику, а сжигает каждый sink. SKR — токен Seeker — это платёжный рельс и призовая валюта: им платят, фиксированная доля этой выручки идёт в on-chain призовой пул SKR, а игра его не выпускает и не сжигает.'),
@@ -235,6 +256,8 @@ FAQ = [
    'Когда mainnet?', 'После независимого аудита всех четырёх программ — это третий слой роадмапа. До тех пор всё работает на devnet с тестовыми средствами, о чём и говорят счётчики на этой странице.'),
   ('Is the code open?', 'The four Anchor programs, the economy package with its invariant tests, the indexer and the app are in the repository linked below. The economy numbers on this page are rendered from that same package.',
    'Код открыт?', 'Четыре Anchor-программы, пакет экономики с тестами инвариантов, индексатор и приложение лежат в репозитории по ссылке ниже. Числа экономики на этой странице берутся из того же пакета.'),
+  ('What is the pre-sale?', 'A limited drop of 500 Limited Event Packs sold for mainnet SOL while the game runs its free devnet beta: 0.999 SOL per pack, max 5 per wallet. Payment goes to the team multisig (2-of-3) with a memo; packs are granted on-chain at mainnet launch in reservation order, and you open them yourself with the same Switchboard randomness as any purchase. The campaign can be switched off at any moment; the public reservation registry is the record for refunds.',
+   'Что такое пре-сейл?', 'Ограниченный дроп из 500 Limited-паков за mainnet SOL, пока идёт бесплатная devnet-бета: 0,999 SOL за пак, максимум 5 на кошелёк. Оплата уходит в мультиподпись команды (2-из-3) с мемо; паки выдаются на цепи при запуске майнета в порядке бронирования, и вскрываете вы их сами — с той же случайностью Switchboard, что и любую покупку. Кампанию можно остановить в любой момент; публичный реестр бронирований — основание для возвратов.'),
 ]
 
 # (key, colour, Standard-pack odds, base power, level cap, stake weight)
@@ -317,12 +340,41 @@ T.update({
 })
 # Rendering metadata is language-independent and checked against economy by check.ts.
 for _p, _m in zip(PACKS, [
-    {'chips': 4, 'floor': 2, 'hardAt': None, 'softStart': None, 'dailyCap': 1},
-    {'chips': 4, 'floor': 1, 'hardAt': 60, 'softStart': 30, 'dailyCap': None},
-    {'chips': 5, 'floor': 2, 'hardAt': 40, 'softStart': 20, 'dailyCap': None},
-    {'chips': 5, 'floor': 3, 'hardAt': 25, 'softStart': 12, 'dailyCap': 5},
+    {'chips': 4, 'floor': 2, 'hardAt': None, 'softStart': None, 'dailyCap': 1, 'art': 'starter'},
+    {'chips': 4, 'floor': 1, 'hardAt': 60, 'softStart': 30, 'dailyCap': None, 'art': 'standard'},
+    {'chips': 5, 'floor': 2, 'hardAt': 40, 'softStart': 20, 'dailyCap': None, 'art': 'premium'},
+    {'chips': 5, 'floor': 3, 'hardAt': 25, 'softStart': 12, 'dailyCap': 5, 'art': 'limited'},
 ]):
     _p.update(_m)
+# WHY block (2026-10 reorg): the loop and its value, second after the hero,
+# before the economy deep-dive — keeps the phone scroll on live information.
+T.update({
+  'nav.why': ('Why it pays', 'Почему выгодно'),
+  'why.h': ('The loop, and why it pays', 'Цикл игры — и почему это выгодно'),
+  'why.p': ('Guttercaps is a cap-battle economy: open packs, upgrade caps, fight for $CG. Every step either protects or grows what you paid for — here is the whole loop in four moves.',
+            'Guttercaps — это экономика боёв на фишках: открываешь паки, прокачиваешь фишки, бьёшься за $CG. Каждый шаг либо защищает, либо растит то, за что ты заплатил, — вот весь цикл в четырёх ходах.'),
+  'why.l1': ('Pack: a floor rarity and pity — your money always turns into real value',
+             'Пак: флор-редкость и pity — деньги всегда превращаются в реальную ценность'),
+  'why.l2': ('Caps: eight districts, nine tiers — rarer caps hit harder',
+             'Фишки: восемь районов, девять тиров — редкие бьют сильнее'),
+  'why.l3': ('Fuse & fight: merge caps into a higher tier, win $CG in Cap Slam',
+             'Фьюжн и бои: сливай фишки в тир выше, выигрывай $CG в Cap Slam'),
+  'why.l4': ('Earn back: the market, staking and quests put $CG back in your pocket',
+             'Возврат: маркет, стейкинг и квесты возвращают $CG в карман'),
+  'why.v1h': ('Your spend is guarded', 'Твоя трата защищена'),
+  'why.v1p': ('Every pack has a floor rarity and a published pity counter. No dud packs: worst case you still get a cap at the floor, and a Legend is guaranteed by a known pack number.',
+              'У каждого пака есть флор-редкость и публичный счётчик pity. Пустых паков не бывает: в худшем случае выпадает фишка флора, а Legend гарантирован к известному номеру пака.'),
+  'why.v2h': ('Upgrade without gambling twice', 'Апгрейд без второй ставки на удачу'),
+  'why.v2p': ('Fusion merges three caps into one of a higher tier for free. Cheap Commons become Epics without buying more packs.',
+              'Фьюжн бесплатно объединяет три фишки в одну тиром выше. Дешёвые Common становятся Epic без покупки новых паков.'),
+  'why.v3h': ('Caps earn, they do not sit', 'Фишки работают, а не лежат'),
+  'why.v3p': ('Cap Slam battles pay $CG to the winner, the market lets you sell what you pull, and staking plus quests drip rewards while you are away.',
+              'Бои в Cap Slam платят победителю $CG, маркет позволяет продать дроп, а стейкинг и квесты капают наградами, пока тебя нет.'),
+  'why.v4h': ('The prize pool is real money', 'Призовой фонд — реальные деньги'),
+  'why.v4p': ('Every Limited Event Pack funds the season pool, and the SKR treasury tops it up weekly. The ledger is public and on-chain.',
+              'Каждый Limited Event Pack питает фонд сезона, а казна SKR пополняет его еженедельно. Реестр публичный и он-чейн.'),
+})
+
 T['faq.a4'] = (
     'The background worker can open the pack even while the app is closed. If the oracle does not answer, the pending pack stays on your Home screen. After 10 800 slots (about 72 minutes), you can cancel; the program refunds the payment, without relying on support.',
     'Фоновый обработчик может открыть пак, даже когда приложение закрыто. Если оракул не отвечает, незавершённый пак остаётся на главной странице. После 10 800 слотов (около 72 минут) его можно отменить; программа вернёт оплату без обращения в поддержку.',

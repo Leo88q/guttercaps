@@ -167,6 +167,16 @@ const NO_LITESVM: Record<string, string> = {
   // Randomness lifecycle entry points the crank owns. `init_battle_randomness` and
   // `reveal_battle_randomness` are covered through 40-arena; closing the account is the crank's
   // job and no scenario does it.
+  // The mainnet pre-sale trio (docs/preorder-beta.md): drop open/close plus the launch-day grant.
+  // All three are admin-signed and reach the chain ONLY through the Squads multisig — the backend
+  // merely ENCODES them (backend/src/preorders.ts proposeDrop/proposeDelivery → scripts/grant-preorders.ts);
+  // there is no client builder by design, and a LiteSVM scenario cannot hold a multisig quorum.
+  // The guard rails they enforce (total/granted accounting, per-wallet cap, nonce-once, close-only-
+  // when-exhausted) are asserted statically here and in backend/test/preorders.test.ts.
+  init_preorder_drop: 'Squads-multisig pre-sale admin — encoded for the multisig, no client builder by design (docs/preorder-beta.md)',
+  close_preorder_drop: 'Squads-multisig pre-sale admin — encoded for the multisig, no client builder by design (docs/preorder-beta.md)',
+  grant_preorder_pack: 'launch-day grant through the Squads multisig (scripts/grant-preorders.ts); no player-driven path exists',
+  init_grant_randomness: 'payer is the multisig admin at delivery time (scripts/grant-preorders.ts); the player-owned reveal is the normal open_pack path, which is covered',
   // --- sb_mock ---------------------------------------------------------------------------------
   // The mock oracle stands in for Switchboard On-Demand on localnet/devnet. Its randomness
   // lifecycle is driven by the programs' own CPI flow and by the sb_mock binary's tests, not by

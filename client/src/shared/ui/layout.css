@@ -64,6 +64,7 @@ img { max-width: 100%; display: block; }
   .shell-nav { position: sticky; top: 0; bottom: auto; height: 100vh; width: 92px; grid-template-columns: 1fr; grid-auto-rows: 72px; align-content: start; padding-top: 12px; border-top: 0; border-right: 1px solid var(--gc-line); }
   .shell-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .shell-main { padding-bottom: 32px; }
+  .wait-pill { bottom: 24px; }
 }
 /* legal + age footer — the one place a player (and a store reviewer) can find the documents, so it
    lives in the shell, not only in a settings screen. */
@@ -129,6 +130,14 @@ img { max-width: 100%; display: block; }
 .tag-list { display: flex; gap: 6px; flex-wrap: wrap; }
 .tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
+/* Filter strips: chips keep their natural width and never wrap mid-word. The localization rule
+   (`.pill { white-space: normal; overflow-wrap: anywhere }` below) is for pills sitting in cards —
+   in a flex strip a squeezed chip would collapse to one letter per line on phone widths. Wide
+   screens: the strip scrolls; phones (≤ 480 px, the existing mobile breakpoint): chips wrap to a
+   second row instead of forcing a hidden swipe. */
+.tabs > * { flex: 0 0 auto; }
+.tabs .pill { white-space: nowrap; overflow-wrap: normal; }
+@media (max-width: 480px) { .tabs { flex-wrap: wrap; } }
 .stat { display: flex; flex-direction: column; gap: 2px; }
 .stat b { font-size: 18px; font-family: var(--cg-font-mono); }
 .stat span { font-size: 11px; color: var(--gc-muted); }
@@ -183,6 +192,16 @@ img { max-width: 100%; display: block; }
 .chip-tile svg { width: 100%; height: 100%; display: block; }
 .chip-tile .chip-lvl { position: absolute; bottom: 6%; right: 8%; font-family: var(--cg-font-mono); font-size: 10px; background: rgba(0,0,0,0.6); padding: 1px 5px; border-radius: 4px; }
 .chip-tile .chip-badge { position: absolute; top: 6%; left: 8%; font-size: 10px; padding: 1px 6px; border-radius: 4px; background: rgba(0,0,0,0.6); }
+/* Founder frame (docs/preorder-beta.md): pre-sale chips carry a permanent foil border + tag. */
+.chip-tile .chip-founder { position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  border: 2px solid transparent;
+  background: linear-gradient(140deg, rgba(255,214,120,0.9), rgba(255,122,26,0.55) 45%, rgba(255,214,120,0.9)) border-box;
+  -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  box-shadow: inset 0 0 10px rgba(255,170,60,0.35); }
+.chip-tile .chip-founder-tag { position: absolute; bottom: 4%; right: 6%; font-size: 8px; letter-spacing: 0.08em; font-weight: 700;
+  padding: 1px 5px; border-radius: 4px; color: #1a1206;
+  background: linear-gradient(120deg, #ffd678, #ff9a3c); box-shadow: 0 0 8px rgba(255,170,60,0.6); }
 .chip-tile.selected { outline: 3px solid var(--cg-acid-green); outline-offset: 2px; }
 .chip-tile.dim { opacity: 0.35; filter: grayscale(0.6); }
 .chip-card { display: flex; flex-direction: column; gap: 8px; }
@@ -233,6 +252,7 @@ img { max-width: 100%; display: block; }
 
 /* ---------- pack shop ---------- */
 .pack-card { position: relative; overflow: hidden; }
+.pack-card .pack-art { width: 100%; height: 150px; object-fit: cover; border-radius: 14px; border: 1px solid rgba(216,216,220,0.1); }
 .pack-card::before { content: ''; position: absolute; inset: -40% -20% auto; height: 70%; background: radial-gradient(ellipse at center, var(--pack-glow, rgba(22,229,217,0.18)), transparent 70%); pointer-events: none; }
 .odds-bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,0.06); }
 .odds-bar i { display: block; height: 100%; }
@@ -511,3 +531,21 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 .odds-gem-meter { grid-column: 1 / -1; height: 3px; margin-top: 4px; border-radius: 3px; background: rgba(255,255,255,.07); overflow: hidden; }
 .odds-gem-meter i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, color-mix(in srgb, var(--gem) 60%, transparent), var(--gem)); box-shadow: 0 0 6px var(--gem); }
 @media (max-width: 380px) { .odds-gems { grid-template-columns: repeat(2, 1fr); } }
+
+/* Wait-status pill: explains wallet popup / on-chain confirmation pauses (WaitStatusPill). */
+.wait-pill {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--gc-nav-h) + var(--gc-safe-b) + 12px); z-index: 70;
+  display: flex; align-items: flex-start; gap: 10px; max-width: min(92vw, 420px);
+  padding: 10px 14px; border-radius: 14px; border: 1px solid var(--gc-line);
+  background: rgba(22, 21, 26, 0.94); backdrop-filter: blur(10px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+.wait-spinner { flex: 0 0 auto; width: 14px; height: 14px; margin-top: 3px; border-radius: 50%;
+  border: 2px solid var(--gc-line); border-top-color: var(--cg-cyan, #16E5D9); animation: lang-spin 0.8s linear infinite; }
+.wait-pill-text { display: grid; gap: 2px; font-size: 13px; line-height: 1.35; }
+.wait-pill-title { font-weight: 600; color: var(--chrome); }
+.wait-pill-sec { margin-left: 6px; font-family: var(--mono); font-weight: 400; font-size: 12px; color: rgba(216,216,220,0.55); }
+.wait-pill-hint { color: rgba(216,216,220,0.7); font-size: 12px; }
+.wait-pill-link { justify-self: start; font-size: 12px; color: var(--cg-cyan, #16E5D9); text-decoration: none; }
+.wait-pill-link:hover { text-decoration: underline; }

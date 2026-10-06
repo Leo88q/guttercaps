@@ -325,11 +325,70 @@ model Fusion {
   thresholdBps Int     @map("threshold_bps")
   feeBurned   BigInt   @map("fee_burned")
   boosted     Boolean  @default(false)
+  nonce       String?
   blockTime   DateTime @map("block_time")
 
   @@index([owner, blockTime])
   @@index([recipe, success])
   @@map("fusions")
+}
+
+// ---------------------------------------------------------------------------
+// Mainnet pre-sale (docs/preorder-beta.md) — off-chain liability ledger of packs
+// paid to the Squads treasury now and granted on-chain at launch
+// ---------------------------------------------------------------------------
+model Preorder {
+  refId     Int      @id @default(autoincrement()) @map("ref_id") // on-chain preorder_ref + payment memo id
+  wallet    String
+  sku       Int
+  qty       Int
+  lamports  String
+  status    String   @default("intent") // intent | paid | granted | expired
+  txSig     String?  @map("tx_sig")
+  nonce     String?
+  grantSig  String?  @map("grant_sig")
+  createdAt DateTime @map("created_at")
+  paidAt    DateTime? @map("paid_at")
+  grantedAt DateTime? @map("granted_at")
+
+  @@unique([txSig])
+  @@index([wallet])
+  @@index([status])
+  @@map("preorders")
+}
+
+/// Projection of chip_core PackGranted (preorder delivery at mainnet launch).
+model PreorderGrant {
+  signature   String
+  eventIndex  Int      @map("event_index")
+  admin       String
+  beneficiary String
+  sku         Int
+  qty         Int
+  nonce       String
+  preorderRef String   @map("preorder_ref")
+  randomness  String
+  slot        BigInt
+  blockTime   DateTime? @map("block_time")
+
+  @@id([signature, eventIndex])
+  @@map("preorder_grants")
+}
+
+/// Projection of chip_core PreorderDropOpened / PreorderDropClosed (the on-chain supply cap of a drop, one per SKU).
+model PreorderDrop {
+  sku           Int       @id
+  dropPda       String    @map("drop_pda")
+  admin         String
+  total         Int
+  maxPerWallet  Int       @map("max_per_wallet")
+  signature     String
+  slot          BigInt
+  blockTime     DateTime? @map("block_time")
+  closedSig     String?   @map("closed_sig")
+  closedAt      DateTime? @map("closed_at")
+
+  @@map("preorder_drops")
 }
 
 // ---------------------------------------------------------------------------

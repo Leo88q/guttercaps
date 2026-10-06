@@ -37,6 +37,7 @@ use crate::randomness::{
     self, ADDRESS_LOOKUP_TABLE_PROGRAM_ID, RNG_AUTH_SEED, RNG_KIND_CLAIM_FUSION, RNG_KIND_FUSION,
     RNG_KIND_PACK, RNG_SEED, SB_PROGRAM_ID, SB_QUEUE, SLOT_HASHES_ID, WSOL_MINT,
 };
+use crate::state::GameConfig;
 
 #[derive(Accounts)]
 #[instruction(kind: u8, nonce: u64)]
@@ -106,6 +107,107 @@ pub fn init_randomness(
         authority: ctx.accounts.rng_auth.to_account_info(),
         queue: ctx.accounts.queue.to_account_info(),
         payer: ctx.accounts.owner.to_account_info(),
+        system_program: ctx.accounts.system_program.to_account_info(),
+        token_program: ctx.accounts.token_program.to_account_info(),
+        associated_token_program: ctx.accounts.associated_token_program.to_account_info(),
+        wrapped_sol_mint: ctx.accounts.wrapped_sol_mint.to_account_info(),
+        program_state: ctx.accounts.program_state.to_account_info(),
+        lut_signer: ctx.accounts.lut_signer.to_account_info(),
+        lut: ctx.accounts.lut.to_account_info(),
+        address_lookup_table_program: ctx.accounts.address_lookup_table_program.to_account_info(),
+    };
+    randomness::init_owned(
+        &ctx.accounts.switchboard_program.to_account_info(),
+        &a,
+        recent_slot,
+        &[rng_seeds, auth_seeds],
+    )?;
+    Ok(())
+}
+
+/// Like [`InitRandomness`], but the payer is the admin and the randomness owner is the preorder
+/// beneficiary, who is not online and signs nothing: `grant_preorder_pack` converts an off-chain
+/// payment into a pack at mainnet launch, and its randomness account `["rng", 0, beneficiary,
+/// nonce]` must exist first. Identical account set and CPI otherwise.
+#[derive(Accounts)]
+#[instruction(kind: u8, nonce: u64)]
+pub struct InitGrantRandomness<'info> {
+    /// GameConfig admin: pays the rent of the randomness account, its wSOL reward escrow and the LUT.
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    /// CHECK: preorder beneficiary — only read for the randomness PDA seed; never signs, never pays.
+    pub owner: UncheckedAccount<'info>,
+
+    #[account(
+        seeds = [b"config"], bump = config.bump,
+        constraint = !config.paused @ ChipError::Paused,
+        constraint = payer.key() == config.admin @ ChipError::Unauthorized
+    )]
+    pub config: Box<Account<'info, GameConfig>>,
+
+    /// CHECK: PDA `["rng", kind, owner, nonce]` — created by Switchboard via CPI (system-owned & empty before).
+    #[account(mut, seeds = [RNG_SEED, &[kind], owner.key().as_ref(), &nonce.to_le_bytes()], bump)]
+    pub randomness: UncheckedAccount<'info>,
+    /// CHECK: Switchboard authority of every chip_core randomness account.
+    #[account(seeds = [RNG_AUTH_SEED], bump)]
+    pub rng_auth: UncheckedAccount<'info>,
+    // sentio-ignore-next-line SW002
+    /// CHECK: wSOL ATA of `randomness` (Switchboard creates it; oracle reward escrow).
+    #[account(mut)]
+    pub reward_escrow: UncheckedAccount<'info>,
+    /// CHECK: pinned queue (`randomness::SB_QUEUE`) — verified in the helper.
+    #[account(mut, address = SB_QUEUE @ ChipError::RandomnessMismatch)]
+    pub queue: UncheckedAccount<'info>,
+    /// CHECK: Switchboard `["STATE"]`.
+    pub program_state: UncheckedAccount<'info>,
+    // sentio-ignore-next-line SW002
+    /// CHECK: Switchboard `["LutSigner", randomness]`.
+    pub lut_signer: UncheckedAccount<'info>,
+    // sentio-ignore-next-line SW002
+    /// CHECK: `AddressLookupTableProgram.createLookupTable({authority: lut_signer, recentSlot})`.
+    #[account(mut)]
+    pub lut: UncheckedAccount<'info>,
+    /// CHECK: Switchboard On-Demand program for this cluster.
+    #[account(address = SB_PROGRAM_ID @ ChipError::RandomnessMismatch)]
+    pub switchboard_program: UncheckedAccount<'info>,
+    /// CHECK: wSOL mint.
+    #[account(address = WSOL_MINT)]
+    pub wrapped_sol_mint: UncheckedAccount<'info>,
+    /// CHECK: Address Lookup Table program.
+    #[account(address = ADDRESS_LOOKUP_TABLE_PROGRAM_ID)]
+    pub address_lookup_table_program: UncheckedAccount<'info>,
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+}
+
+pub fn init_grant_randomness(
+    ctx: Context<InitGrantRandomness>,
+    kind: u8,
+    nonce: u64,
+    recent_slot: u64,
+) -> Result<()> {
+    require!(
+        kind == RNG_KIND_PACK || kind == RNG_KIND_FUSION || kind == RNG_KIND_CLAIM_FUSION,
+        ChipError::RandomnessMismatch
+    );
+    let owner = ctx.accounts.owner.key();
+    let nonce_le = nonce.to_le_bytes();
+    let rng_seeds: &[&[u8]] = &[
+        RNG_SEED,
+        &[kind],
+        owner.as_ref(),
+        &nonce_le,
+        &[ctx.bumps.randomness],
+    ];
+    let auth_seeds: &[&[u8]] = &[RNG_AUTH_SEED, &[ctx.bumps.rng_auth]];
+    let a = randomness::SbInitAccounts {
+        randomness: ctx.accounts.randomness.to_account_info(),
+        reward_escrow: ctx.accounts.reward_escrow.to_account_info(),
+        authority: ctx.accounts.rng_auth.to_account_info(),
+        queue: ctx.accounts.queue.to_account_info(),
+        payer: ctx.accounts.payer.to_account_info(),
         system_program: ctx.accounts.system_program.to_account_info(),
         token_program: ctx.accounts.token_program.to_account_info(),
         associated_token_program: ctx.accounts.associated_token_program.to_account_info(),

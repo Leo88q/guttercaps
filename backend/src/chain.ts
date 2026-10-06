@@ -225,10 +225,10 @@ export function decodeCompressedChipState(data: Uint8Array): CompressedChipState
     rarity: r.u8(), level: r.u8(), index: r.u64(), flags: r.u8(), lockUntil: r.i64(), mintedAt: r.i64(), bump: r.u8(),
   };
 }
-export interface CompressedMintClaim { buyer: PublicKey; collectionIdx: number; rarity: number; level: number; gameIndex: bigint; expiresAt: bigint; settlement: PublicKey; indexReserved: boolean; minted: boolean; registered: boolean; consumed: boolean; listed: boolean; bump: number; staked: boolean; origin: PublicKey; lockUntil: bigint }
+export interface CompressedMintClaim { buyer: PublicKey; collectionIdx: number; rarity: number; level: number; gameIndex: bigint; expiresAt: bigint; settlement: PublicKey; indexReserved: boolean; minted: boolean; registered: boolean; consumed: boolean; listed: boolean; bump: number; staked: boolean; origin: PublicKey; lockUntil: bigint; founder: boolean }
 export function decodeCompressedMintClaim(data: Uint8Array): CompressedMintClaim {
   const r = expectDiscriminator(data, 'CompressedMintClaim');
-  return { buyer: r.pubkey(), collectionIdx: r.u8(), rarity: r.u8(), level: r.u8(), gameIndex: r.u64(), expiresAt: r.i64(), settlement: r.pubkey(), indexReserved: r.bool(), minted: r.bool(), registered: r.bool(), consumed: r.bool(), listed: r.bool(), bump: r.u8(), staked: r.bool(), origin: r.pubkey(), lockUntil: r.i64() };
+  return { buyer: r.pubkey(), collectionIdx: r.u8(), rarity: r.u8(), level: r.u8(), gameIndex: r.u64(), expiresAt: r.i64(), settlement: r.pubkey(), indexReserved: r.bool(), minted: r.bool(), registered: r.bool(), consumed: r.bool(), listed: r.bool(), bump: r.u8(), staked: r.bool(), origin: r.pubkey(), lockUntil: r.i64(), founder: r.remaining >= 1 ? r.bool() : false };
 }
 
 export interface CompressedAssetListing { asset: PublicKey; claim: PublicKey; seller: PublicKey; merkleTree: PublicKey; treeConfig: PublicKey; coreCollection: PublicKey; collectionIdx: number; price: bigint; currency: number; createdAt: bigint; bump: number }
@@ -256,9 +256,11 @@ export interface PendingPack {
   revealed: boolean; value: Uint8Array;
   /** (#28) quest chip voucher: 1 chip rolled with `voucherOdds`, frozen `soulboundDays`; `sku` (0) only indexes pity arrays */
   voucher: boolean; voucherOdds: number[]; soulboundDays: number;
+  /** pre-sale origin (docs/preorder-beta.md): chips minted from this pack carry the founder frame */
+  preorder: boolean;
 }
-/** 8 + 32+1+1+1+32+8 + 8×4 + 2+8+1 + 1+32 (159) + #28 appendix 1 + 18 + 1 */
-export const PENDING_PACK_SIZE = 179;
+/** 8 + 32+1+1+1+32+8 + 8×4 + 2+8+1 + 1+32 (159) + #28 appendix 1 + 18 + 1 + pre-sale preorder bool */
+export const PENDING_PACK_SIZE = 180;
 export function decodePendingPack(data: Uint8Array): PendingPack {
   const r = expectDiscriminator(data, 'PendingPack');
   const head = {
@@ -270,7 +272,8 @@ export function decodePendingPack(data: Uint8Array): PendingPack {
   const voucher = r.remaining >= 20 ? r.bool() : false;
   const voucherOdds = r.remaining >= 19 ? r.array(RARITY_COUNT, () => r.u16()) : Array<number>(RARITY_COUNT).fill(0);
   const soulboundDays = r.remaining >= 1 ? r.u8() : 0;
-  return { ...head, voucher, voucherOdds, soulboundDays };
+  const preorder = r.remaining >= 1 ? r.bool() : false;
+  return { ...head, voucher, voucherOdds, soulboundDays, preorder };
 }
 
 export interface PendingFusion { owner: PublicKey; recipe: number; materials: PublicKey[]; resultCollectionIdx: number; boosted: boolean; randomness: PublicKey; commitSlot: bigint; nonce: bigint; bump: number; feeEscrowed: bigint }
@@ -670,4 +673,60 @@ export function customErrorCode(err: unknown): number | undefined {
   }
   const j = /"Custom":(\d+)/.exec(msg);
   return j ? Number(j[1]) : undefined;
+}
+
+// ---------------------------------------------------------------- preorder (beta pre-sale delivery)
+// Mirrors programs/chip_core/src/instructions/preorder.rs + `init_grant_randomness` (rng.rs).
+// Delivery never signs here: the builders return instructions for the Squads multisig, exactly like
+// the admin proposals in admin.ts — the backend holds no key that can move funds or grant packs.
+export const preorderDropPda = (sku: number) => find([enc('drop'), u8(sku)], CHIP_CORE_ID);
+export const pregrantPda = (drop: PublicKey, beneficiary: PublicKey) => find([enc('pregrant'), drop.toBytes(), beneficiary.toBytes()], CHIP_CORE_ID);
+
+/** `init_preorder_drop(sku, total, max_per_wallet)` — admin opens the on-chain supply cap of a drop. */
+export function initPreorderDropIx(a: { admin: PublicKey; sku: number; total: number; maxPerWallet: number }): TransactionInstruction {
+  const keys = [
+    signer(a.admin), ro(configPda()[0]), rw(preorderDropPda(a.sku)[0]), ro(SYSTEM_PROGRAM_ID),
+  ];
+  return new TransactionInstruction({ programId: CHIP_CORE_ID, keys, data: ixData('init_preorder_drop', new BorshWriter().u8(a.sku).u32(a.total).u8(a.maxPerWallet).toBytes()) });
+}
+
+/**
+ * `init_grant_randomness(kind, nonce, recent_slot)` — admin-payer twin of the client's
+ * `init_randomness`: the beneficiary owns the randomness account but never signs. `recentSlot`
+ * must be finalized (`getSlot('finalized')`). Account order mirrors InitGrantRandomness in rng.rs.
+ */
+export function initGrantRandomnessIx(a: { payer: PublicKey; owner: PublicKey; nonce: bigint; queue: PublicKey; recentSlot: bigint }): TransactionInstruction {
+  const randomness = rngPda(0, a.owner, a.nonce)[0];
+  const lutSigner = sbLutSignerPda(randomness)[0];
+  const keys = [
+    signer(a.payer), ro(a.owner), ro(configPda()[0]), rw(randomness), ro(rngAuthPda(0)[0]), rw(sbRewardEscrow(randomness)), rw(a.queue),
+    ro(sbStatePda()[0]), ro(lutSigner), rw(sbLutPda(lutSigner, a.recentSlot)[0]), ro(SWITCHBOARD_PROGRAM_ID), ro(WSOL_MINT),
+    ro(ADDRESS_LOOKUP_TABLE_PROGRAM_ID), ro(TOKEN_PROGRAM_ID), ro(ASSOCIATED_TOKEN_PROGRAM_ID), ro(SYSTEM_PROGRAM_ID),
+  ];
+  return new TransactionInstruction({ programId: CHIP_CORE_ID, keys, data: ixData('init_grant_randomness', new BorshWriter().u8(0).u64(a.nonce).u64(a.recentSlot).toBytes()) });
+}
+
+/**
+ * `grant_preorder_pack(qty, nonce, preorder_ref)` — converts one paid off-chain preorder into a
+ * pack owned by the beneficiary. `oracle` is picked from the queue by the caller at build time,
+ * exactly like a purchase. Account order mirrors GrantPreorderPack in preorder.rs.
+ */
+export function grantPreorderPackIx(a: {
+  admin: PublicKey; beneficiary: PublicKey; sku: number; qty: number; nonce: bigint; preorderRef: bigint;
+  queue: PublicKey; oracle: PublicKey;
+}): TransactionInstruction {
+  const drop = preorderDropPda(a.sku)[0];
+  const randomness = rngPda(0, a.beneficiary, a.nonce)[0];
+  const keys = [
+    signer(a.admin), ro(a.beneficiary), ro(configPda()[0]), rw(drop), rw(pregrantPda(drop, a.beneficiary)[0]),
+    rw(pityPda(a.beneficiary)[0]), rw(pendingPackPda(a.beneficiary, a.nonce)[0]), rw(randomness), ro(rngAuthPda(0)[0]),
+    ro(SWITCHBOARD_PROGRAM_ID), ro(a.queue), rw(a.oracle), ro(SYSVAR_SLOT_HASHES_ID), ro(SYSTEM_PROGRAM_ID),
+  ];
+  return new TransactionInstruction({ programId: CHIP_CORE_ID, keys, data: ixData('grant_preorder_pack', new BorshWriter().u8(a.qty).u64(a.nonce).u64(a.preorderRef).toBytes()) });
+}
+
+/** `close_preorder_drop` — admin reclaims the drop account once fully granted. */
+export function closePreorderDropIx(a: { admin: PublicKey; sku: number }): TransactionInstruction {
+  const keys = [signer(a.admin), ro(configPda()[0]), rw(preorderDropPda(a.sku)[0])];
+  return new TransactionInstruction({ programId: CHIP_CORE_ID, keys, data: ixData('close_preorder_drop') });
 }

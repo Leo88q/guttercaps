@@ -392,6 +392,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/packs/{nonce}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Settlement result of one purchase (claims + registered assets) — the one-signature mode view
+         * @description The opening page polls the ON-CHAIN claim accounts for progress (minted / registered /
+         *     cancelled flags) and uses this endpoint for the one thing a claim account does not store —
+         *     the registered Bubblegum leaf ids (`compressed_claims.asset`, projected from
+         *     CompressedChipRegistered). Unlike /me/pending it answers for every purchase state, including
+         *     `settled`. `claims` is empty while the purchase is still awaiting the oracle (never opened)
+         *     or when the nonce is unknown to the caller's wallet.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    nonce: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description result */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            nonce?: string;
+                            settlement?: {
+                                nonce?: string;
+                                totalClaims?: number;
+                                registeredClaims?: number;
+                                cancelledClaims?: number;
+                                /** @enum {string} */
+                                status?: "pending" | "settled" | "refunded";
+                            } | null;
+                            claims?: {
+                                claimNonce?: string;
+                                packNo?: number;
+                                /** @enum {string} */
+                                status?: "pending" | "minted" | "registered" | "cancelled";
+                                /** @description Bubblegum leaf id once registered; null before that (or for cancelled claims) */
+                                asset?: string | null;
+                                collectionIdx?: number | null;
+                                rarity?: number | null;
+                                level?: number | null;
+                                /** @description per-collection mint number (decimal u64), known from the mint */
+                                gameIndex?: string | null;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/handle/check": {
         parameters: {
             query?: never;
@@ -920,6 +989,268 @@ export interface paths {
                 503: components["responses"]["Error"];
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/preorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Beta pre-sale campaign state (docs/preorder-beta.md)
+         * @description While the game runs its devnet beta, a limited pack drop is sold for MAINNET SOL to the team's Squads
+         *     multisig treasury; packs are granted on-chain (chip_core `grant_preorder_pack`) at mainnet launch.
+         *     `active` is false once the campaign is switched off or the drop is reserved out. `remaining` counts
+         *     packs not yet reserved (paid, granted or awaiting payment); `sold` = paid + granted; `granted` is what
+         *     the chain has already delivered (PackGranted projection).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description campaign */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PreorderCampaign"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/preorder/intent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reserve packs and get the payment instruction set
+         * @description Creates an `intent` row and returns the exact payment data: the treasury address, the total in lamports
+         *     and the memo `GC-PRE|<refId>` to attach. The intent expires after `intentTtlS` unless confirmed. The
+         *     per-wallet cap counts intents too, so a wallet cannot reserve the whole drop without paying.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        qty: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description reserved */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PreorderIntent"];
+                    };
+                };
+                /** @description bad_qty */
+                400: components["responses"]["Error"];
+                /** @description sign-in required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description geo_blocked — same gate as /packs/quote */
+                403: components["responses"]["Error"];
+                /** @description sold_out | wallet_cap */
+                409: components["responses"]["Error"];
+                /** @description campaign_closed */
+                410: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/preorder/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify the buyer's MAINNET payment and mark the reservation paid
+         * @description The buyer submits their payment transaction signature; the backend fetches it from MAINNET (finalized,
+         *     regardless of the cluster this backend indexes) and checks a successful SOL transfer into the treasury
+         *     of at least the reserved amount, attributed by the memo when present, else by the payer being the
+         *     reserving wallet. Idempotent for the same (refId, signature). One payment can never credit two
+         *     reservations (unique tx_sig).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        refId: number;
+                        signature: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description the reservation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PreorderItem"];
+                    };
+                };
+                /** @description bad_ref | bad_signature */
+                400: components["responses"]["Error"];
+                /** @description sign-in required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not_yours */
+                403: components["responses"]["Error"];
+                /** @description not_found | tx_not_found */
+                404: components["responses"]["Error"];
+                /** @description already_granted | not_payable | already_confirmed */
+                409: components["responses"]["Error"];
+                /** @description payment_tx_failed | payment_no_transfer | payment_amount_low | payment_memo_mismatch | payment_unknown_payer */
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/preorder/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The session wallet's reservations (newest first, capped at 50) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description reservations */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["PreorderItem"][];
+                        };
+                    };
+                };
+                /** @description sign-in required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/preorder/registry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public audit snapshot — every paid/granted reservation (wallets not included) and the campaign state */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description snapshot */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            campaign: components["schemas"]["PreorderCampaign"];
+                            rows: {
+                                refId?: number;
+                                qty?: number;
+                                status?: string;
+                                paidAt?: number | null;
+                                grantedAt?: number | null;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2771,6 +3102,167 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/preorders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pre-sale registry — campaign state, the paid/granted audit snapshot and the on-chain delivery queue */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description registry */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            campaign: components["schemas"]["PreorderCampaign"];
+                            registry: Record<string, never>;
+                            queue: {
+                                refId: number;
+                                beneficiary: string;
+                                sku: number;
+                                qty: number;
+                                nonce: string;
+                                lamports: string;
+                                txSig: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/preorders/drop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Encode init_preorder_drop / close_preorder_drop for the multisig (unsigned) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        action: "open" | "close";
+                        /** @description base58 admin that will sign */
+                        admin: string;
+                        sku?: number;
+                        total?: number;
+                        maxPerWallet?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description unsigned instruction */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok: boolean;
+                            instructions: Record<string, never>[];
+                            items: Record<string, never>[];
+                        };
+                    };
+                };
+                400: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/preorders/delivery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Encode [init_grant_randomness, grant_preorder_pack] for up to `batch` paid reservations (unsigned; multisig signs at mainnet launch) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        admin: string;
+                        oracle: string;
+                        queue?: string;
+                        /** @description finalized slot */
+                        recentSlot: string;
+                        /** @default 10 */
+                        batch?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description unsigned instructions + the items they deliver */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok: boolean;
+                            instructions: Record<string, never>[];
+                            items: {
+                                refId: number;
+                                beneficiary: string;
+                                qty: number;
+                                nonce: string;
+                            }[];
+                        };
+                    };
+                };
+                400: components["responses"]["Error"];
+                /** @description nothing_to_deliver */
+                404: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/fraud": {
         parameters: {
             query?: never;
@@ -4064,6 +4556,8 @@ export interface components {
                 listed?: boolean;
                 fusing?: boolean;
                 soulbound?: boolean;
+                /** @description minted from a mainnet pre-sale pack — carries the permanent founder frame (docs/preorder-beta.md) */
+                founder?: boolean;
             };
             /** Format: date-time */
             lockUntil?: string | null;
@@ -4175,6 +4669,58 @@ export interface components {
             enabled?: boolean;
             pAtLeastLegend?: number;
             evPct?: number;
+        };
+        PreorderCampaign: {
+            /** @description campaign switched on AND treasury configured AND packs remain */
+            active: boolean;
+            /** @description pack SKU of the drop (3 = Limited) */
+            sku: number;
+            /** @description price of ONE pack in lamports (decimal string, u64) */
+            priceLamports: string;
+            /** @description Squads multisig vault receiving the payments */
+            treasury: string;
+            total: number;
+            /** @description packs not yet reserved (granted + paid + intent all subtract) */
+            remaining: number;
+            /** @description paid + granted packs */
+            sold: number;
+            /** @description packs already delivered on-chain (PackGranted projection) */
+            granted: number;
+            memoPrefix: string;
+            intentTtlS: number;
+        };
+        PreorderIntent: {
+            /** @description the on-chain preorder_ref and the payment memo id */
+            refId: number;
+            wallet: string;
+            sku: number;
+            qty: number;
+            /** @description total to send (price × qty), decimal string */
+            lamports: string;
+            treasury: string;
+            /** @description attach to the payment, e.g. GC-PRE|42 */
+            memo: string;
+            /** @description unix seconds; after that the intent stops accepting payments */
+            expiresAt: number;
+        };
+        PreorderItem: {
+            ref_id: number;
+            wallet: string;
+            sku: number;
+            qty: number;
+            lamports: string;
+            /** @enum {string} */
+            status: "intent" | "paid" | "granted" | "expired";
+            /** @description the verified mainnet payment signature */
+            tx_sig?: string | null;
+            /** @description PendingPack nonce once granted on-chain */
+            nonce?: string | null;
+            grant_sig?: string | null;
+            created_at: number;
+            paid_at?: number | null;
+            granted_at?: number | null;
+            memo?: string;
+            expiresAt?: number;
         };
         PackQuote: {
             sku?: number;
