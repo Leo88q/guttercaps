@@ -55,6 +55,7 @@
     "ops:buildenv": "node --no-warnings=ExperimentalWarning --import tsx scripts/deploy-build-env.ts",
     "workflows:check": "node --no-warnings=ExperimentalWarning --import tsx scripts/check-workflows.ts",
     "docs:refs": "node --no-warnings=ExperimentalWarning --import tsx scripts/check-docrefs.ts",
+    "i18n:audit": "node scripts/i18n-audit.mjs",
     "ops:logs": "docker compose -f ops/deploy/docker-compose.yaml logs -f --tail=200",
     "program-ids": "node --experimental-strip-types scripts/program-ids.ts",
     "verify-deploy": "node --experimental-strip-types scripts/verify-deploy.ts",

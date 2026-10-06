@@ -79,8 +79,15 @@ test.describe('legal + accessibility', () => {
     await foot.getByRole('link', { name: /terms/i }).click();
     await expect(page).toHaveURL(/\/legal\/terms$/);
     await expect(page.locator('h1.page-title')).toContainText(/terms/i);
-    // The draft banner (docs/09 §5.2): unreviewed text must say so on screen, not in a comment.
-    await expect(page.getByRole('note')).toBeVisible();
+    // The draft banner this used to assert is gone on purpose, not by accident. The page carried
+    // `role="note"` + `legal.draftTitle`/`legal.draftBody` while the documents were placeholders; PR #51
+    // replaced them with the owner's clean text in seven languages and dropped both keys from every
+    // catalogue, so there is nothing to render. docs/09 §5.2 now records `LEGAL_REVIEWED` as an internal
+    // owner flag the page no longer displays (`LEGAL_REVIEWED` is still `false`, and `legal.test.tsx`
+    // still pins it — readiness is gated by `npm run legal:check`, not by a banner).
+    // What remains guaranteed here: the canonical document actually rendered, not an empty shell.
+    await expect(page.locator('.legal-body')).toBeVisible();
+    await expect(page.locator('.legal-body section').first()).toBeVisible();
 
     await page.goto('/terms');
     await expect(page).toHaveURL(/\/legal\/terms$/);
