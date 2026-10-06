@@ -152,10 +152,16 @@ jobs:
           [[ -n "${base##ghcr.io/}" ]] || { echo "steps.plan.outputs.base is empty — the plan step did not emit it, and an unprefixed name pushes nothing to a registry"; exit 1; }
           docker compose -f ops/deploy/docker-compose.yaml --env-file /tmp/build.env build api client backup
           echo '--- what a deploy host would pull for these services ---'
-          docker compose -f ops/deploy/docker-compose.yaml --env-file /tmp/build.env config --images
+          # Scoped to the three services this workflow builds, both here and in `refs=` below. Project-wide,
+          # `config --images` also lists every image compose resolves for services it is not building, and
+          # `redis:7.4.2-alpine` is one of them: unlike prometheus, alertmanager and the node exporter it has
+          # no `profiles:` key, so it is always in the resolved config. It is not registry-prefixed and never
+          # will be — it is pulled from Docker Hub, not built here — so an unscoped grep -v made the check
+          # below fail on every run that got this far, whatever the build produced.
+          docker compose -f ops/deploy/docker-compose.yaml --env-file /tmp/build.env config --images api client backup
           # If a service is missing its `*_IMAGE` indirection, this lists an unprefixed local tag: the build
           # still succeeds, the push pushes nothing for it, and the host quietly builds its own.
-          refs="$(docker compose -f ops/deploy/docker-compose.yaml --env-file /tmp/build.env config --images)"
+          refs="$(docker compose -f ops/deploy/docker-compose.yaml --env-file /tmp/build.env config --images api client backup)"
           bad="$(printf '%s\n' "$refs" | grep -v '^'"${{ steps.plan.outputs.base }}"'/guttercaps-' || true)"
           if [[ -n "$bad" ]]; then
             echo "these images are not registry-prefixed, so they cannot be published from this run:"
