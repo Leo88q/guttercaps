@@ -51,16 +51,16 @@ COPY packages packages/
 # The freeze-commit ids must be in the bundle. `GCRhrg…`/`GCA2aU…`/`GCuGx7…`/`GCfERi…` are the
 # devnet placeholders (docs/09 §2); if one of them reached a mainnet build, players would be signing
 # transactions for a program that holds nothing, and the app would look *healthy* while doing it.
-RUN node --input-type=module -e "
-const need = { VITE_CLUSTER: process.env.VITE_CLUSTER, VITE_PROGRAM_CHIP_CORE: process.env.VITE_PROGRAM_CHIP_CORE, VITE_PROGRAM_MARKET: process.env.VITE_PROGRAM_MARKET, VITE_PROGRAM_STAKING: process.env.VITE_PROGRAM_STAKING, VITE_PROGRAM_ARENA: process.env.VITE_PROGRAM_ARENA, VITE_CG_MINT: process.env.VITE_CG_MINT, VITE_SKR_MINT: process.env.VITE_SKR_MINT };
-const missing = Object.entries(need).filter(([, v]) => !v).map(([k]) => k);
-if (missing.length) { console.error('missing build args: ' + missing.join(', ')); process.exit(1); }
-const PLACEHOLDERS = ['GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q','GCA2aUeX7ZFbGz3zvjqvsbjD1G3QjWxLhBpK5jwwPdcz','GCuGx7fnLcKnw1NWU4dLzQvnJWggMVniQ4u7EuMaQevA','GCfERiohebYDJLtNwAZpGxudwbXRqnxmuTT413fkTYrM'];
-if (need.VITE_CLUSTER === 'mainnet-beta') {
-  const stuck = Object.entries(need).filter(([, v]) => PLACEHOLDERS.includes(v));
-  if (stuck.length) { console.error('mainnet build with dev placeholder program id(s): ' + stuck.map(([k]) => k).join(', ') + ' — run npm run program-ids first'); process.exit(1); }
-}
-console.log('build args ok for cluster ' + need.VITE_CLUSTER);
+RUN node --input-type=module -e " \
+const need = { VITE_CLUSTER: process.env.VITE_CLUSTER, VITE_PROGRAM_CHIP_CORE: process.env.VITE_PROGRAM_CHIP_CORE, VITE_PROGRAM_MARKET: process.env.VITE_PROGRAM_MARKET, VITE_PROGRAM_STAKING: process.env.VITE_PROGRAM_STAKING, VITE_PROGRAM_ARENA: process.env.VITE_PROGRAM_ARENA, VITE_CG_MINT: process.env.VITE_CG_MINT, VITE_SKR_MINT: process.env.VITE_SKR_MINT }; \
+const missing = Object.entries(need).filter(([, v]) => !v).map(([k]) => k); \
+if (missing.length) { console.error('missing build args: ' + missing.join(', ')); process.exit(1); } \
+const PLACEHOLDERS = ['GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q','GCA2aUeX7ZFbGz3zvjqvsbjD1G3QjWxLhBpK5jwwPdcz','GCuGx7fnLcKnw1NWU4dLzQvnJWggMVniQ4u7EuMaQevA','GCfERiohebYDJLtNwAZpGxudwbXRqnxmuTT413fkTYrM']; \
+if (need.VITE_CLUSTER === 'mainnet-beta') { \
+  const stuck = Object.entries(need).filter(([, v]) => PLACEHOLDERS.includes(v)); \
+  if (stuck.length) { console.error('mainnet build with dev placeholder program id(s): ' + stuck.map(([k]) => k).join(', ') + ' — run npm run program-ids first'); process.exit(1); } \
+} \
+console.log('build args ok for cluster ' + need.VITE_CLUSTER); \
 "
 
 # SEC-B55: the build context may not contribute a build-time switch this Dockerfile does not declare.
@@ -70,43 +70,43 @@ console.log('build args ok for cluster ' + need.VITE_CLUSTER);
 # mock backend: fake balances, fake sign-in) or `VITE_FLAG_DEBUG_PANEL` could reach production from a
 # developer's `.env.local`, the file client/.env.example tells them to create. `.dockerignore` keeps those
 # files out of the context; this is the half that holds if the ignore list ever drifts.
-RUN node --input-type=module -e "
-import { existsSync, readFileSync } from 'node:fs';
-const DECLARED = new Set(['VITE_CLUSTER','VITE_SOLANA_RPC','VITE_SOLANA_WS','VITE_API_BASE','VITE_WS_BASE','VITE_PROGRAM_CHIP_CORE','VITE_PROGRAM_MARKET','VITE_PROGRAM_STAKING','VITE_PROGRAM_ARENA','VITE_CG_MINT','VITE_USDC_MINT','VITE_SKR_MINT','VITE_LOOKUP_TABLE','VITE_TURNSTILE_SITE_KEY','VITE_SENTRY_DSN','VITE_API_MOCK']);
-const files = ['client/.env','client/.env.local','client/.env.production','client/.env.production.local'];
-const strays = [];
-for (const f of files) {
-  if (!existsSync(f)) continue;
-  for (const line of readFileSync(f, 'utf8').split('\n')) {
-    if (/^\s*#/.test(line)) continue;
-    const m = /^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=/.exec(line);
-    if (m && m[1].startsWith('VITE_') && !DECLARED.has(m[1])) strays.push(f + ': ' + m[1]);
-  }
-}
-const mock = (process.env.VITE_API_MOCK || '').trim();
-if (mock && !/^(0|false)$/i.test(mock)) strays.push('VITE_API_MOCK=' + mock);
-if (strays.length) {
-  console.error('refusing to build — undeclared VITE_ switch visible at build time: ' + strays.join(', ') + '. The client bundle is baked here: remove the file, or declare the variable in this Dockerfile (and in compose) if it is meant to be deployable.');
-  process.exit(1);
-}
-console.log('no undeclared VITE_ switch in the build context (' + files.length + ' file names checked)');
+RUN node --input-type=module -e " \
+import { existsSync, readFileSync } from 'node:fs'; \
+const DECLARED = new Set(['VITE_CLUSTER','VITE_SOLANA_RPC','VITE_SOLANA_WS','VITE_API_BASE','VITE_WS_BASE','VITE_PROGRAM_CHIP_CORE','VITE_PROGRAM_MARKET','VITE_PROGRAM_STAKING','VITE_PROGRAM_ARENA','VITE_CG_MINT','VITE_USDC_MINT','VITE_SKR_MINT','VITE_LOOKUP_TABLE','VITE_TURNSTILE_SITE_KEY','VITE_SENTRY_DSN','VITE_API_MOCK']); \
+const files = ['client/.env','client/.env.local','client/.env.production','client/.env.production.local']; \
+const strays = []; \
+for (const f of files) { \
+  if (!existsSync(f)) continue; \
+  for (const line of readFileSync(f, 'utf8').split('\n')) { \
+    if (/^\s*#/.test(line)) continue; \
+    const m = /^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=/.exec(line); \
+    if (m && m[1].startsWith('VITE_') && !DECLARED.has(m[1])) strays.push(f + ': ' + m[1]); \
+  } \
+} \
+const mock = (process.env.VITE_API_MOCK || '').trim(); \
+if (mock && !/^(0|false)$/i.test(mock)) strays.push('VITE_API_MOCK=' + mock); \
+if (strays.length) { \
+  console.error('refusing to build — undeclared VITE_ switch visible at build time: ' + strays.join(', ') + '. The client bundle is baked here: remove the file, or declare the variable in this Dockerfile (and in compose) if it is meant to be deployable.'); \
+  process.exit(1); \
+} \
+console.log('no undeclared VITE_ switch in the build context (' + files.length + ' file names checked)'); \
 "
 
 RUN npm --prefix client run build \
- && node -e "
-const fs = require('fs'), p = 'client/dist';
-if (!fs.existsSync(p + '/index.html')) { console.error('no index.html'); process.exit(1); }
-const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(d + '/' + e.name) : [d + '/' + e.name]);
-const files = walk(p);
-const html = fs.readFileSync(p + '/index.html', 'utf8');
-if (/undefined|\\[object Object\\]/.test(html)) { console.error('index.html contains undefined — a VITE_ arg did not reach the build'); process.exit(1); }
-const maps = files.filter((f) => f.endsWith('.js.map'));
-for (const m of maps) fs.rmSync(m);
-if (maps.length) console.log('stripped ' + maps.length + ' sourcemap(s) (upload them to Sentry BEFORE this stage if you need symbolicated stacks)');
-const js = files.filter((f) => f.endsWith('.js'));
-const gz = files.filter((f) => /\.(js|css|html)$/.test(f)).length;
-console.log('client bundle ok: ' + js.length + ' chunks, ' + gz + ' gzip-precompressible files');
-if (!js.length) process.exit(1);
+ && node -e " \
+const fs = require('fs'), p = 'client/dist'; \
+if (!fs.existsSync(p + '/index.html')) { console.error('no index.html'); process.exit(1); } \
+const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(d + '/' + e.name) : [d + '/' + e.name]); \
+const files = walk(p); \
+const html = fs.readFileSync(p + '/index.html', 'utf8'); \
+if (/undefined|\\[object Object\\]/.test(html)) { console.error('index.html contains undefined — a VITE_ arg did not reach the build'); process.exit(1); } \
+const maps = files.filter((f) => f.endsWith('.js.map')); \
+for (const m of maps) fs.rmSync(m); \
+if (maps.length) console.log('stripped ' + maps.length + ' sourcemap(s) (upload them to Sentry BEFORE this stage if you need symbolicated stacks)'); \
+const js = files.filter((f) => f.endsWith('.js')); \
+const gz = files.filter((f) => /\.(js|css|html)$/.test(f)).length; \
+console.log('client bundle ok: ' + js.length + ' chunks, ' + gz + ' gzip-precompressible files'); \
+if (!js.length) process.exit(1); \
 "
 
 FROM ${NGINX_IMAGE} AS runtime
