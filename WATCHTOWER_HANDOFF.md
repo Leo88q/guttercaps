@@ -299,6 +299,7 @@ IP, device fingerprint, чаты, cookies, платёжные данные.
 | Команда (реальная, из `package.json`) | Exit | Результат |
 |---|---|---|
 | `npm ci --no-audit --no-fund` | 0 | установка зависимостей воркспейса |
+| `npm run verify` | 0 | **полный прод-гейт репозитория: все 28 проверок зелёные** (2026-10-06, после очистки: 186 статических security-правил, 555 бэкенд-тестов, клиент-сборка, economy/lock/schema/api/env-гейты, docs-refs) |
 | `npm run backend:test` | 0 | 30 файлов, **555 тестов**: кодек событий и дискриминаторы (`events.test.ts`), идемпотентность реплея (`replay.test.ts`), gap-механика (`backfill.test.ts`), финальность (`finality.test.ts`) и весь API |
 | `npm run verify-deploy -- --selftest` | 0 | 5 кейсов: скан Switchboard-пинов в `.so`, раскладка upgradeable-loader |
 | `npm run api:check` | 0 | каждая операция `openapi.yaml` имеет маршрут и наоборот |

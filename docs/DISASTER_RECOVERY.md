@@ -9,7 +9,7 @@ in this tree; both phases now describe the mechanisms that do (`ops/backup/sqlit
 - **RPO**: the read model is a pure projection of the chain, so on-chain facts have effectively RPO 0 —
   anything the index lost can be re-walked from the cluster (`npm run backend:backfill`). What snapshots
   protect is the OFF-chain state (sessions, handles, quests, preorders, antifraud flags): the compose
-  backup runs hourly (`ops/backup/sqlite-backup.sh`, runbook §4), so the worst-case loss of off-chain
+  backup runs hourly (`ops/backup/sqlite-backup.sh`, ops/deploy/runbook.md §4), so the worst-case loss of off-chain
   rows is ≈ one hour of writes.
 - **RTO**: target ≤ 4 hours. The replay mechanism is test-proven (`backend/test/replay.test.ts` —
   projections rebuild deterministically from `events_raw`); no 1M-event timed run is recorded in this
@@ -53,9 +53,9 @@ in this tree; both phases now describe the mechanisms that do (`ops/backup/sqlit
 ### Phase 2: Snapshot Recovery (off-chain state)
 The compose deployment writes hourly snapshots into the bind-mounted `backup/` directory
 (`ops/backup/sqlite-backup.sh`: `sqlite3 .backup` + `PRAGMA integrity_check`, status file scraped by the
-API as `backup_*` metrics; runbook §4). Restore the newest verified snapshot to the API volume:
+API as `backup_*` metrics; ops/deploy/runbook.md §4). Restore the newest verified snapshot to the API volume:
 ```bash
-# inside the deployment host (compose layout, runbook §4)
+# inside the deployment host (compose layout, ops/deploy/runbook.md §4)
 ls -1 backup/*.sqlite.gz                    # pick the newest
 npm run ops:restore-drill -- --selftest     # the drill's own cases: round-trip + corruption rejection
 ```

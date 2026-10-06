@@ -144,6 +144,7 @@
   },
   "commandsRun": [
     { "command": "npm ci --no-audit --no-fund", "exitCode": 0, "date": "2026-10-06" },
+    { "command": "npm run verify", "exitCode": 0, "note": "full production gate: all 28 checks green after the stale-artifact cleanup", "date": "2026-10-06" },
     { "command": "npm run backend:test", "exitCode": 0, "note": "30 files, 555 tests passed (incl. events codec round-trip, replay idempotency, backfill gap handling)", "date": "2026-10-06" },
     { "command": "npm run verify-deploy -- --selftest", "exitCode": 0, "note": "5 cases ok (Switchboard pin scan + loader layout)", "date": "2026-10-06" },
     { "command": "npm run api:check", "exitCode": 0, "note": "every openapi.yaml operation has a route and vice versa", "date": "2026-10-06" },
