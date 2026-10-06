@@ -94,7 +94,7 @@ export interface ForgeLeafOptions {
   owner?: PublicKey;
   collectionIdx?: number;
   /** overrides for the guard scenarios */
-  claim?: { minted?: boolean; registered?: boolean; consumed?: boolean; listed?: boolean; staked?: boolean; lockUntil?: bigint };
+  claim?: { minted?: boolean; registered?: boolean; consumed?: boolean; listed?: boolean; staked?: boolean; lockUntil?: bigint; founder?: boolean };
   chip?: { flags?: number; lockUntil?: bigint; leafIndex?: number; asset?: PublicKey; assetField?: PublicKey; merkleTree?: PublicKey };
   /** proof hashes that do NOT match the chip state — for the mismatch guards */
   badProof?: boolean;
@@ -104,7 +104,7 @@ export interface ForgeLeafOptions {
  * Byte offset of `listed` inside `CompressedMintClaim`, counted from the start of the account data
  * (8-byte Anchor discriminator included). Field order is the decoder in `@/chain/accounts`:
  * disc ‖ buyer ‖ collection_idx ‖ rarity ‖ level ‖ game_index ‖ expires_at ‖ settlement ‖
- * index_reserved ‖ minted ‖ registered ‖ consumed ‖ **listed** ‖ bump ‖ staked ‖ origin ‖ lock_until.
+ * index_reserved ‖ minted ‖ registered ‖ consumed ‖ **listed** ‖ bump ‖ staked ‖ origin ‖ lock_until ‖ founder.
  */
 const CLAIM_LISTED_OFFSET = 8 + 32 + 1 + 1 + 1 + 8 + 8 + 32 + 1 + 1 + 1 + 1;
 
@@ -167,8 +167,16 @@ export async function forgeLeaf(
   const m = new BorshWriter();
   m.bytes(accountDiscriminator('CompressedMintClaim'));
   m.pubkey(owner).u8(collectionIdx).u8(0).u8(2).u64(claimNonce).i64(0n).pubkey(PublicKey.default);
+  // Every field of the frozen layout, in order — including the trailing ones. `decodeCompressedMintClaim`
+  // is forgiving (`founder` defaults when the byte is absent) but the program's `Account<CompressedMintClaim>`
+  // is strict Borsh, so a payload one field short deserializes to `AccountDidNotDeserialize` (3003) and reads
+  // as a market bug. That is exactly what happened when `founder` was appended: ten scenarios in
+  // 32-market-compressed.spec.ts failed on the claim, while that file's fixture round-trip still passed
+  // because it decodes with the forgiving reader. `npm run state:layout` is the field list to write
+  // against, and the round-trip now pins this forgery to it.
   m.bool(true).bool(o.claim?.minted ?? true).bool(o.claim?.registered ?? true).bool(o.claim?.consumed ?? false)
-    .bool(o.claim?.listed ?? false).u8(255).bool(o.claim?.staked ?? false).pubkey(owner).i64(o.claim?.lockUntil ?? 0n);
+    .bool(o.claim?.listed ?? false).u8(255).bool(o.claim?.staked ?? false).pubkey(owner).i64(o.claim?.lockUntil ?? 0n)
+    .bool(o.claim?.founder ?? false);
   await chain.setAccount(claim, { owner: CHIP_CORE_ID, data: m.toBytes(), lamports: 1_000_000n });
 
   return {
