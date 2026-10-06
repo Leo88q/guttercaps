@@ -68,7 +68,7 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   fails the build if that posture changes; if a T22 mint is ever wanted, that test is where the decision has
   to be recorded.
 - **SEC-B7 (2026-09-26): accounts carry no layout version.** `reports/state-layout.json` freezes the field
-  list of all 29 `#[account]` structs and `npm run state:layout` fails when one moves, so a layout change
+  list of all 31 `#[account]` structs and `npm run state:layout` fails when one moves, so a layout change
   cannot land unnoticed — but nothing lets an *existing* account be reinterpreted: if a struct truly has to
   change, the migration is a new account (extra PDA seed or a new type) plus an instruction that copies the
   old bytes across, and it has to be written into `docs/06` §2.2 before `--write` accepts the new baseline.
@@ -78,6 +78,15 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   `withdrawn_today`). No mainnet pool exists; `init_skr_pool` writes the new `INIT_SPACE`. A leftover
   devnet account from before this change will fail to deserialize — close/re-init, do not `--write` over
   a live layout again.
+  **PreorderDrop / PreorderGrant (2026-10-06, mainnet pre-sale):** two new accounts
+  (seeds `["drop", &[sku]]` and `["pregrant", drop, beneficiary]`) backing the limited-pack pre-sale
+  (docs/preorder-beta.md). No chain bytes exist at either address yet, so nothing existing is
+  reinterpreted and no migration instruction is needed.
+  **PendingPack / CompressedMintClaim (2026-10-06, founder frame):** one bool appended to each
+  (`preorder`, `founder`) so chips minted from pre-sale packs carry `F_FOUNDER`. The program is not
+  on mainnet yet — every live account is devnet state created after this change or disposable test
+  data; a leftover devnet account from before this change fails to deserialize (close/re-init, same
+  posture as SkrPool above). Nothing existing is reinterpreted.
 - **SEC-B6 (2026-09-26): the API verifier checks rarities, not districts.** `POST /packs/verify`
   recomputes the rarity sequence from the emitted randomness and compares it with the mint, but it cannot
   recompute *which district* a chip landed in: the pool (`collections_created`, the featured district) is

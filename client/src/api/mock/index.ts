@@ -29,7 +29,7 @@ let mockHandle = 'gutter_rat';
 // ------------------------------------------------------------- state
 interface MockChip {
   asset: string; owner: string; collection: number; rarity: number; level: number; index: number | null;
-  flags: { staked: boolean; listed: boolean; fusing: boolean; soulbound: boolean };
+  flags: { staked: boolean; listed: boolean; fusing: boolean; soulbound: boolean; founder: boolean };
   lockUntil: string | null; power: number; stakeWeight: string;
   skin: string | null;
   art: { image: string; video?: string; vfxTier: number };
@@ -45,7 +45,7 @@ function makeChip(collection: number, rarity: number, owner = ME, opts: Partial<
   const power = Math.round(RARITY_PROFILES[rarity].basePower * (1 + 0.025 * (level - 1)));
   return {
     asset: fakeKey('As'), owner, collection, rarity, level, index: 1 + Math.floor(rnd() * 5000),
-    flags: { staked: false, listed: false, fusing: false, soulbound: false }, lockUntil: null, power, skin: null,
+    flags: { staked: false, listed: false, fusing: false, soulbound: false, founder: false }, lockUntil: null, power, skin: null,
     stakeWeight: String(RARITY_PROFILES[rarity].stakeWeight), art: { image: `/art/${COLLECTIONS[collection]?.num ?? '01'}-${rarity}-256.webp`, vfxTier: RARITY_PROFILES[rarity].vfxTier },
     ...opts,
   };
@@ -66,6 +66,7 @@ for (const [r, n] of inventoryPlan) for (let i = 0; i < n; i++) chips.push(makeC
 for (let r = 0; r <= 8; r++) if (!chips.some((c) => c.collection === 0 && c.rarity === r)) chips.push(makeChip(0, r));
 chips[0].flags.staked = true; chips[1].flags.staked = true; chips[2].flags.staked = true;
 chips[5].flags.soulbound = true; chips[5].lockUntil = iso(3 * 86_400_000);
+chips[0].flags.founder = true; // pre-sale founder frame demo (docs/preorder-beta.md)
 
 const listings: MockChip[] = [];
 for (let i = 0; i < 60; i++) {
@@ -438,17 +439,54 @@ on('get', '/quests', () => {
   });
 });
 on('get', '/quests/claims', () => [
-  { kind: 2, epoch: 143, currency: 'CG', rootPda: fakeKey('Rt'), amountMicro: '9000000', proof: ['aa'.repeat(32), 'bb'.repeat(32)], claimableAt: iso(-60_000), claimed: false },
+  { kind: 2, epoch: 143, currency: 'CG', rootPda: fakeKey('Rt'), amountMicro: '9000000', proof: ['aa'.repeat(32), 'bb'.repeat(32)], claimableAt: iso(-60_000), claimed: false, published: true },
   // SKR root (kind 5 = Seeker-week quests) — paid from the treasury-funded prize pool
-  { kind: 5, epoch: 21, currency: 'SKR', rootPda: fakeKey('Rs'), amountMicro: '12500000', proof: ['cc'.repeat(32)], claimableAt: iso(-30_000), claimed: false },
+  { kind: 5, epoch: 21, currency: 'SKR', rootPda: fakeKey('Rs'), amountMicro: '12500000', proof: ['cc'.repeat(32)], claimableAt: iso(-30_000), claimed: false, published: true },
   // item root (kind 8 = fusion boosters, backlog #27) — amountMicro is the booster COUNT; claim_item_root CPIs chip_core grant_booster
-  { kind: 8, epoch: 3, currency: 'ITEM', rootPda: fakeKey('Ri'), amountMicro: '2', proof: ['dd'.repeat(32)], claimableAt: iso(-20_000), claimed: false, memo: ['w_stake@w2971', 'p_set1@all'] },
+  { kind: 8, epoch: 3, currency: 'ITEM', rootPda: fakeKey('Ri'), amountMicro: '2', proof: ['dd'.repeat(32)], claimableAt: iso(-20_000), claimed: false, published: true, memo: ['w_stake@w2971', 'p_set1@all'] },
   // chip voucher root (kind 9 = quest caps, backlog #28) — amountMicro is the voucher TEMPLATE (0 = 7-day streak cap); claim_chip_root CPIs chip_core open_voucher → a free 1-cap pack
-  { kind: 9, epoch: 12, currency: 'CHIP', rootPda: fakeKey('Rc'), amountMicro: '0', proof: ['ee'.repeat(32)], claimableAt: iso(-10_000), claimed: false, memo: ['d_streak7@d20713', 'template:0'] },
+  { kind: 9, epoch: 12, currency: 'CHIP', rootPda: fakeKey('Rc'), amountMicro: '0', proof: ['ee'.repeat(32)], claimableAt: iso(-10_000), claimed: false, published: true, memo: ['d_streak7@d20713', 'template:0'] },
 ]);
 on('get', '/quests/streak', () => ({ days: 4, total: 11, nextChipAt: 7, resetsAt: iso(9 * 3_600_000), todayDone: false }));
 on('post', '/quests/login', () => ({ day: Math.floor(Date.now() / 86_400_000), inserted: false }));
 on('post', '/quests/visit', () => ({ day: Math.floor(Date.now() / 86_400_000), inserted: true }));
+
+// ------------------------------------------------------------- beta pre-sale (docs/preorder-beta.md)
+const PREORDER_TREASURY = fakeKey('Tr');
+const PREORDER_PRICE = '999000000'; // 0.999 SOL
+const PREORDER_TOTAL = 500;
+const PREORDER_TTL_S = 72 * 3_600;
+let preorderSeq = 41;
+interface MockPreorder { ref_id: number; wallet: string; sku: number; qty: number; lamports: string; status: 'intent' | 'paid' | 'granted' | 'expired'; tx_sig: string | null; nonce: string | null; grant_sig: string | null; created_at: number; paid_at: number | null; granted_at: number | null }
+const preorderRows: MockPreorder[] = [];
+const preorderStats = () => {
+  const sold = preorderRows.filter((r) => r.status === 'paid' || r.status === 'granted').reduce((s, r) => s + r.qty, 0) + 137;
+  const granted = preorderRows.filter((r) => r.status === 'granted').reduce((s, r) => s + r.qty, 0);
+  return { active: true, sku: 3, priceLamports: PREORDER_PRICE, treasury: PREORDER_TREASURY, total: PREORDER_TOTAL, remaining: Math.max(0, PREORDER_TOTAL - sold), sold, granted, memoPrefix: 'GC-PRE', intentTtlS: PREORDER_TTL_S };
+};
+const preorderItem = (r: MockPreorder) => ({ ...r, memo: `GC-PRE|${r.ref_id}`, expiresAt: r.created_at + PREORDER_TTL_S });
+on('get', '/preorder', () => preorderStats());
+on('get', '/preorder/me', () => ({ items: preorderRows.filter((r) => r.wallet === ME).map(preorderItem).reverse() }));
+on('get', '/preorder/registry', () => ({ campaign: preorderStats(), rows: preorderRows.filter((r) => r.status === 'paid' || r.status === 'granted').map((r) => ({ refId: r.ref_id, qty: r.qty, status: r.status, paidAt: r.paid_at, grantedAt: r.granted_at })) }));
+on('post', '/preorder/intent', (o) => {
+  const qty = Number((o.body as { qty?: number } | undefined)?.qty ?? 1);
+  if (!Number.isInteger(qty) || qty < 1 || qty > 5) throw Object.assign(new Error('qty must be 1..5'), { status: 400, code: 'bad_qty' });
+  const mine = preorderRows.filter((r) => r.wallet === ME && r.status !== 'expired').reduce((s, r) => s + r.qty, 0);
+  if (mine + qty > 5) throw Object.assign(new Error('At most 5 packs per wallet'), { status: 409, code: 'wallet_cap' });
+  const row: MockPreorder = { ref_id: ++preorderSeq, wallet: ME, sku: 3, qty, lamports: String(BigInt(PREORDER_PRICE) * BigInt(qty)), status: 'intent', tx_sig: null, nonce: null, grant_sig: null, created_at: Math.floor(Date.now() / 1000), paid_at: null, granted_at: null };
+  preorderRows.push(row);
+  return { refId: row.ref_id, wallet: ME, sku: 3, qty, lamports: row.lamports, treasury: PREORDER_TREASURY, memo: `GC-PRE|${row.ref_id}`, expiresAt: row.created_at + PREORDER_TTL_S };
+});
+on('post', '/preorder/confirm', (o) => {
+  const { refId, signature } = (o.body ?? {}) as { refId?: number; signature?: string };
+  const row = preorderRows.find((r) => r.ref_id === Number(refId));
+  if (!row) throw Object.assign(new Error('Unknown preorder reference'), { status: 404, code: 'not_found' });
+  if (row.status === 'paid' && row.tx_sig === signature) return preorderItem(row);
+  if (row.status !== 'intent') throw Object.assign(new Error(`Reservation is ${row.status}`), { status: 409, code: 'not_payable' });
+  if (!signature || String(signature).length < 32) throw Object.assign(new Error('Transaction not found on mainnet (finalized)'), { status: 404, code: 'tx_not_found' });
+  row.status = 'paid'; row.tx_sig = String(signature); row.paid_at = Math.floor(Date.now() / 1000);
+  return preorderItem(row);
+});
 
 on('get', '/leaderboard/{board}', (_o, p) => ({
   board: p.board, season: 3,

@@ -31,7 +31,7 @@ export interface SettledChip { asset: PublicKey; rarity: number; collectionIdx: 
  * the settlement counters track them) and for expired-unminted ones (cancel first).
  */
 export async function settleClaim(ctx: ClaimSettleCtx, claimNonce: bigint): Promise<SettledChip | null> {
-  const { connection, wallet, das, buyer, metas, trees, lookupTables } = ctx;
+  const { connection, wallet, buyer, metas, trees, lookupTables } = ctx;
   const [claimKey] = compressedMintClaimPda(buyer, claimNonce);
   const info = await connection.getAccountInfo(claimKey, 'confirmed');
   const claim = info ? decodeCompressedMintClaim(new Uint8Array(info.data)) : null;

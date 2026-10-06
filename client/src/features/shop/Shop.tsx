@@ -4,7 +4,7 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { ExternalIcon } from '@/shared/ui/action-icons';
 import { PACKS, BUNDLES, bundlePriceCents, effectiveOdds, probabilityAtLeast, type PackId } from '@guttercaps/economy';
-import { useMe, usePackCatalog, useQuote, type PackSku } from '@/api/hooks';
+import { useMe, usePackCatalog, usePreorderCampaign, useQuote, type PackSku } from '@/api/hooks';
 import type { components } from '@/api/schema';
 type PackQuote = components['schemas']['PackQuote'];
 import { useGameConfig, usePity } from '@/chain/hooks';
@@ -14,6 +14,7 @@ import { Currency, type CurrencyCode } from '@/chain/ix/chipCore';
 import { FLAGS, ONRAMP_URL } from '@/app/config';
 import { fmtAmount, fmtCents, fmtPct, fmtProb, fmtSol, fmtUsd } from '@/shared/lib/format';
 import { packName, rarityName, rarityColor } from '@/shared/lib/rarity';
+import { packArtUrl } from '@/shared/lib/packArt';
 import { CleanZone, KV, Modal, Pill, Progress } from '@/shared/ui/primitives';
 import { SprayNozzleButton, CleanConfirmButton } from '@/shared/ui/buttons';
 import { ChipArt } from '@/shared/ui/ChipArt';
@@ -33,6 +34,7 @@ const CUR_LABEL = ['SOL', 'USDC', 'CG', 'SKR'] as const;
 
 export default function Shop() {
   const catalog = usePackCatalog();
+  const preorder = usePreorderCampaign();
   const cfg = useGameConfig();
   const me = useMe();
   const pity = usePity();
@@ -127,6 +129,12 @@ export default function Shop() {
       {tab === 'packs' && (
       <div role="tabpanel" id="shop-panel-packs" aria-labelledby="shop-tab-packs" tabIndex={0}>
 
+      {preorder.data?.active && preorder.data.remaining > 0 && (
+        <Link to="/preorder" data-testid="shop-preorder-banner" className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16, textDecoration: 'none', borderColor: 'rgba(255,122,26,0.4)' }}>
+          <div style={{ fontSize: 13, color: '#ddd' }}>{t('preorder.shopBanner')}</div>
+          <Pill tone="ok">{t('preorder.shopCta')} →</Pill>
+        </Link>
+      )}
       {geoBlocked && (
         <div className="warn" style={{ marginBottom: 16 }}>
           {t('shop.geoBlocked', { regions: RESTRICTED_REGIONS.join(' / ') })} <Link to="/market">{t('nav.market')}</Link>
@@ -147,6 +155,7 @@ export default function Shop() {
           const glow = ['rgba(216,216,220,0.12)', 'rgba(22,229,217,0.18)', 'rgba(255,46,138,0.18)', 'rgba(255,122,26,0.22)'][sku];
           return (
             <div key={sku} className="card pack-card stack" style={{ ['--pack-glow' as string]: glow, opacity: enabled ? 1 : 0.55 }}>
+              <img className="pack-art" src={packArtUrl(sku)} alt={packName(sku)} loading="lazy" />
               <div className="row between">
                 <div className="pack-head">
                   <div className="cg-heading" style={{ fontSize: 22 }}>{packName(sku)}</div>

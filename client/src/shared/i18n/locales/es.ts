@@ -25,6 +25,19 @@ const es: Messages = {
     walletRequired: 'Conecta una billetera para continuar', mock: 'datos de demo',
     working: 'Procesando…',
   },
+  // Explica las pausas largas de la billetera para que el jugador no crea que no pasó nada (WaitStatusPill).
+  wait: {
+    connect: 'Abriendo tu billetera…',
+    connectHint: 'Debería aparecer una ventana de la billetera; puede abrirse en una pestaña nueva.',
+    signin: 'Confirma el inicio de sesión en tu billetera',
+    prepare: 'Preparando la transacción…',
+    wallet: 'Confirma la transacción en tu billetera',
+    walletHint: 'Revisa la ventana de la billetera: puede estar detrás de otras ventanas.',
+    send: 'Enviando a la red…',
+    confirm: 'Esperando la confirmación de la red…',
+    confirmHint: 'Ya se está procesando en cadena: mantén esta página abierta y no firmes de nuevo. Puede tardar hasta un minuto.',
+    seconds: '{n} s',
+  },
   lang: { title: 'Idioma', subtitle: 'Los precios y saldos siempre quedan en las unidades de tu billetera. Solo cambian las palabras.', auto: 'Automático ({name})', current: 'Actual: {name}', applied: 'Idioma: {name}' },
   home: {
     greeting: 'Ey, {name}', collector: 'coleccionista', inSeason: 'Gutter City está en la temporada {id}', loadingCity: 'Gutter City está cargando',
@@ -57,6 +70,7 @@ const es: Messages = {
     title: 'Colección', subtitle: '{owned}/72 arquetipos · {sets, plural, one{# distrito completo} other{# distritos completos}}',
     empty: 'Aún no tienes caps. Tu primer sobre está a un toque.', filters: { all: 'Todos', free: 'Libres', staked: 'En stake', listed: 'En venta', locked: 'Bloqueados' },
     missing: 'Faltan para el set', level: 'Nv {n}', soulbound: 'intransferible hasta {date}',
+    founderBadge: 'FUNDADOR', founderNote: 'Marco de fundador — preventa de mainnet',
   },
   fusion: {
     title: 'Banco de fusión', subtitle: 'Tres caps de un nivel → un cap del siguiente. La comisión en $CG se quema ganes o pierdas; si falla, dos caps se queman y uno vuelve.',
@@ -207,6 +221,22 @@ const es: Messages = {
   errors: { rejected: 'Rechazaste la firma', insufficient: 'Saldo insuficiente', network: 'Error de red — inténtalo de nuevo', stale: 'La cotización expiró — actualiza', generic: 'Algo salió mal' },
   legal: { title: 'Legal', terms: 'Términos del servicio', privacy: 'Privacidad', updated: 'Vigente desde {date}', draftTitle: 'Borrador — sin revisión legal todavía', draftBody: 'Este texto describe cómo funciona el producto de verdad, pero ningún abogado lo ha aprobado aún. Hasta entonces trátalo como una declaración de intención, no como asesoramiento; y ten en cuenta que los límites regionales del §2 ya se aplican en el código.', canonical: 'El texto en inglés es la versión oficial; las traducciones son una cortesía.', ages: 'Solo 18+', noSaleIn: 'sin venta de sobres en', verify: 'Verificar un sorteo', notFound: 'Ese documento no existe. Los dos que sí:' },
   age: { title: '¿Tienes 18 años o más?', body: 'GUTTERCAPS vende sobres con contenido aleatorio. Debes tener al menos {age} y la edad para contratar donde vives.', termsLink: 'Lee los términos antes', confirm: 'Tengo {age}+', deny: 'No cumplo', declined: 'Las compras siguen apagadas para ti: el juego exige {age}+. Lo que ya es tuyo sigue funcionando — colección, mercado, staking y arena.', reopen: 'Responder otra vez' },
+  preorder: {
+    title: 'Preventa de fundadores',
+    tagline: 'Una tirada limitada de packs de evento para el lanzamiento en mainnet. Paga hoy, ábrelos el día que el juego salga en vivo.',
+    betaNote: 'Estás jugando la beta gratuita de devnet. La preventa de abajo es una compra real de mainnet: SOL ahora, packs en el lanzamiento.',
+    price: 'Precio por pack', left: 'quedan {n} de {total}', soldOut: 'Agotado', ended: 'Preventa cerrada',
+    reserve: 'Reservar packs', qty: 'Packs', total: 'Total', perWallet: 'máx. {n} por billetera',
+    payTitle: 'Envía el pago', sendExactly: 'Envía exactamente', toAddress: 'a esta dirección (multisig del equipo)', memo: 'Memo — obligatorio',
+    memoWhy: 'El memo vincula el pago a tu reserva; sin él, envía desde tu billetera conectada.',
+    signature: 'Firma de la transacción de pago', confirm: 'Ya pagué — verificar mi pago', checking: 'Verificando en mainnet…',
+    ttl: 'Tu reserva guarda los packs por {h} h.',
+    statusIntent: 'esperando pago', statusPaid: 'pagado — se entrega en el lanzamiento de mainnet', statusGranted: 'entregado — mira tus packs', statusExpired: 'expirado',
+    mine: 'Mis reservas', empty: 'Aún no hay reservas.', grantedNote: 'Los packs de la preventa están en “Mis packs” — ábrelos ahí.',
+    refund: 'Si mainnet no está en vivo para la fecha publicada, cada pago se reembolsa 1:1 desde el mismo multisig. El registro de abajo es público.',
+    shopBanner: 'Los Packs de Evento Limitados están en preventa: 0,999 SOL cada uno, entrega en el lanzamiento de mainnet.', shopCta: 'A la preventa',
+    registry: 'Registro público', confirmed: 'Pago verificado — estás dentro.',
+  },
   footer: { legal: 'Legal', ages: '18+' },
 
 };

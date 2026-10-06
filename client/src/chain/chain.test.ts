@@ -110,11 +110,12 @@ describe('account layouts (sizes = 8 + INIT_SPACE)', () => {
     const buf = w.toBytes(); expect(buf.length).toBe(62);
     const p = decodePlayerPity(buf); expect(p.counters).toEqual([0, 23, 4, 0]); expect(p.starterClaimed).toBe(true);
   });
-  it('PendingPack = 8 + 32+1+1+1+32+8+8+8+8+8+2+8+1 + 1+32 + 1+18+1 = 179 (revealed + value SEC-C2, voucher fields #28)', () => {
+  it('PendingPack = 8 + 32+1+1+1+32+8+8+8+8+8+2+8+1 + 1+32 + 1+18+1 + 1 = 180 (revealed + value SEC-C2, voucher fields #28, preorder bool)', () => {
     const w = new BorshWriter().bytes(accountDiscriminator('PendingPack')).pubkey(pk()).u8(2).u8(5).u8(1).pubkey(pk()).u64(1000n).u64(0n).u64(0n).u64(1_950_000_000n).u64(7_000_000n).u16(19).u64(42n).u8(250).bool(true).bytes(new Uint8Array(32).fill(9));
-    w.bool(false); new Array(9).fill(0).forEach((o) => w.u16(o)); w.u8(0);
-    const buf = w.toBytes(); expect(buf.length).toBe(179);
-    const p = decodePendingPack(buf); expect(p.qty).toBe(5); expect(p.opened).toBe(1); expect(p.paidCg).toBe(1_950_000_000n); expect(p.paidSkr).toBe(7_000_000n); expect(p.nonce).toBe(42n);
+    w.bool(false); new Array(9).fill(0).forEach((o) => w.u16(o)); w.u8(0); w.bool(true); // preorder (pre-sale origin)
+    const buf = w.toBytes(); expect(buf.length).toBe(180);
+    const p = decodePendingPack(buf); expect(p.qty).toBe(5); expect(p.opened).toBe(1); expect(p.paidCg).toBe(1_950_000_000n); expect(p.paidSkr).toBe(7_000_000n); expect(p.nonce).toBe(42n); expect(p.preorder).toBe(true);
+    const legacy = buf.slice(0, 179); expect(decodePendingPack(legacy).preorder).toBe(false); // pre-presale accounts stay purchases
     expect(p.revealed).toBe(true); expect(Array.from(p.value)).toEqual(new Array(32).fill(9));
     expect(p.voucher).toBe(false); expect(p.soulboundDays).toBe(0);
   });

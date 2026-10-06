@@ -93,6 +93,17 @@ export function useClaimPassTier() {
   });
 }
 
+// ------------------------------------------------------------- beta pre-sale (docs/preorder-beta.md)
+export type PreorderCampaign = ResponseOf<'/preorder', 'get'>;
+export type PreorderIntent = ResponseOf<'/preorder/intent', 'post'>;
+export type PreorderMine = ResponseOf<'/preorder/me', 'get'>['items'][number];
+
+export const usePreorderCampaign = () => useQuery({ queryKey: ['preorder'], queryFn: () => api.get('/preorder'), staleTime: 30_000 });
+export function useMyPreorders() {
+  const status = useSessionStore((s) => s.status);
+  return useQuery({ queryKey: ['preorder', 'me'], queryFn: () => api.get('/preorder/me'), enabled: status === 'authenticated', staleTime: 15_000 });
+}
+
 export const usePackVerify = (signature: string) =>
   useQuery({ queryKey: qk.packVerify(signature), queryFn: () => api.post('/packs/verify', { signature }), enabled: !!signature, retry: 1 });
 

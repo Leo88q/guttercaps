@@ -60,7 +60,8 @@ console.log(' RU sample mech:', text('.mech-card h3'), '|', text('.mech-card p')
 console.log(' RU nav:', qa('.nav-links a').map((a) => a.textContent).join(' · '));
 console.log(' RU pressed:', qa('.lang-toggle button').map((b) => b.dataset.lang + '=' + b.getAttribute('aria-pressed')).join(' '));
 expect(/Фьюжн/.test(text('.mech-card h3')), 'RU mechanics translated');
-expect(/Мир/.test(text('.nav-links a')), 'RU nav translated');
+// order-independent: the 2026-10 reorg moved Districts/Lore down the nav
+expect(qa('.nav-links a').some((a) => /Мир/.test(a.textContent ?? '')), 'RU nav translated');
 qa('.lang-toggle button').find((b) => b.dataset.lang === 'en').click();
 await page.waitUntilComplete();
 report('EN again', 'en');

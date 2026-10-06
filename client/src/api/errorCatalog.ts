@@ -36,4 +36,12 @@ export const API_ERROR_KEYS = {
   handle_invalid: 'failures.invalidHandle', handle_taken: 'failures.handleTaken', handle_reserved: 'failures.handleReserved', handle_blocked: 'failures.handleBlocked',
   rate_limited: 'failures.rateLimited', payload_too_large: 'failures.payloadLarge', bad_json: 'failures.requestInvalid', internal: 'failures.internal',
   unknown_archetype: 'failures.requestInvalid', bad_season: 'failures.requestInvalid', unknown_board: 'failures.requestInvalid',
+  campaign_closed: 'failures.preorderCampaignClosed', sold_out: 'failures.preorderSoldOut',
+  wallet_cap: 'failures.preorderWalletCap', not_yours: 'failures.preorderNotYours',
+  already_granted: 'failures.preorderAlreadyGranted', not_payable: 'failures.preorderNotPayable',
+  tx_not_found: 'failures.preorderTxNotFound', already_confirmed: 'failures.preorderAlreadyConfirmed',
+  payment_tx_failed: 'failures.preorderPaymentFailed', payment_no_transfer: 'failures.preorderNoTransfer',
+  payment_amount_low: 'failures.preorderAmountLow', payment_memo_mismatch: 'failures.preorderMemoMismatch',
+  payment_unknown_payer: 'failures.preorderUnknownPayer', nothing_to_deliver: 'failures.preorderNothingToDeliver',
+  bad_ref: 'failures.requestInvalid', bad_signature: 'failures.requestInvalid',
 } as const satisfies Record<string, MessageKey>;

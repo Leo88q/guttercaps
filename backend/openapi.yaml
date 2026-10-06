@@ -108,6 +108,49 @@ paths:
       summary: In-flight commit-reveal operations (packs / fusions) with crank status
       responses:
         '200': { description: pending, content: { application/json: { schema: { type: object, properties: { packs: { type: array, items: { $ref: '#/components/schemas/PendingPack' } }, compressed: { type: array, items: { $ref: '#/components/schemas/CompressedSettlement' } }, fusions: { type: array, items: { $ref: '#/components/schemas/PendingFusion' } } } } } } }
+  /me/packs/{nonce}/result:
+    get:
+      tags: [me]
+      summary: Settlement result of one purchase (claims + registered assets) — the one-signature mode view
+      description: |
+        The opening page polls the ON-CHAIN claim accounts for progress (minted / registered /
+        cancelled flags) and uses this endpoint for the one thing a claim account does not store —
+        the registered Bubblegum leaf ids (`compressed_claims.asset`, projected from
+        CompressedChipRegistered). Unlike /me/pending it answers for every purchase state, including
+        `settled`. `claims` is empty while the purchase is still awaiting the oracle (never opened)
+        or when the nonce is unknown to the caller's wallet.
+      parameters: [{ in: path, name: nonce, required: true, schema: { type: string } }]
+      responses:
+        '200':
+          description: result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nonce: { type: string }
+                  settlement:
+                    type: object
+                    nullable: true
+                    properties:
+                      nonce: { type: string }
+                      totalClaims: { type: integer }
+                      registeredClaims: { type: integer }
+                      cancelledClaims: { type: integer }
+                      status: { type: string, enum: [pending, settled, refunded] }
+                  claims:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        claimNonce: { type: string }
+                        packNo: { type: integer }
+                        status: { type: string, enum: [pending, minted, registered, cancelled] }
+                        asset: { type: string, nullable: true, description: 'Bubblegum leaf id once registered; null before that (or for cancelled claims)' }
+                        collectionIdx: { type: integer, nullable: true }
+                        rarity: { type: integer, nullable: true }
+                        level: { type: integer, nullable: true }
+                        gameIndex: { type: string, nullable: true, description: 'per-collection mint number (decimal u64), known from the mint' }
   /me/handle/check:
     get:
       tags: [me]
@@ -219,6 +262,68 @@ paths:
         '409': { description: starter_claimed — one Starter per wallet }
         '429': { description: daily_cap — Limited 5 / day }
         '503': { $ref: '#/components/responses/Error', description: 'price_unavailable — Pyth account stale / missing / unverified, or its confidence interval is wider than 2 % of the price (SEC-M2 — the program would reject with PriceUncertain); retry after the next push (≤ 30 s)' }
+  /preorder:
+    get:
+      tags: [packs]
+      security: []
+      summary: Beta pre-sale campaign state (docs/preorder-beta.md)
+      description: |
+        While the game runs its devnet beta, a limited pack drop is sold for MAINNET SOL to the team's Squads
+        multisig treasury; packs are granted on-chain (chip_core `grant_preorder_pack`) at mainnet launch.
+        `active` is false once the campaign is switched off or the drop is reserved out. `remaining` counts
+        packs not yet reserved (paid, granted or awaiting payment); `sold` = paid + granted; `granted` is what
+        the chain has already delivered (PackGranted projection).
+      responses:
+        '200': { description: campaign, content: { application/json: { schema: { $ref: '#/components/schemas/PreorderCampaign' } } } }
+  /preorder/intent:
+    post:
+      tags: [packs]
+      summary: Reserve packs and get the payment instruction set
+      description: |
+        Creates an `intent` row and returns the exact payment data: the treasury address, the total in lamports
+        and the memo `GC-PRE|<refId>` to attach. The intent expires after `intentTtlS` unless confirmed. The
+        per-wallet cap counts intents too, so a wallet cannot reserve the whole drop without paying.
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [qty], properties: { qty: { type: integer, minimum: 1, maximum: 5 } } } } } }
+      responses:
+        '200': { description: reserved, content: { application/json: { schema: { $ref: '#/components/schemas/PreorderIntent' } } } }
+        '400': { $ref: '#/components/responses/Error', description: 'bad_qty' }
+        '401': { description: sign-in required }
+        '403': { $ref: '#/components/responses/Error', description: 'geo_blocked — same gate as /packs/quote' }
+        '409': { $ref: '#/components/responses/Error', description: 'sold_out | wallet_cap' }
+        '410': { $ref: '#/components/responses/Error', description: 'campaign_closed' }
+  /preorder/confirm:
+    post:
+      tags: [packs]
+      summary: Verify the buyer's MAINNET payment and mark the reservation paid
+      description: |
+        The buyer submits their payment transaction signature; the backend fetches it from MAINNET (finalized,
+        regardless of the cluster this backend indexes) and checks a successful SOL transfer into the treasury
+        of at least the reserved amount, attributed by the memo when present, else by the payer being the
+        reserving wallet. Idempotent for the same (refId, signature). One payment can never credit two
+        reservations (unique tx_sig).
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [refId, signature], properties: { refId: { type: integer }, signature: { type: string } } } } } }
+      responses:
+        '200': { description: the reservation, content: { application/json: { schema: { $ref: '#/components/schemas/PreorderItem' } } } }
+        '400': { $ref: '#/components/responses/Error', description: 'bad_ref | bad_signature' }
+        '401': { description: sign-in required }
+        '403': { $ref: '#/components/responses/Error', description: 'not_yours' }
+        '404': { $ref: '#/components/responses/Error', description: 'not_found | tx_not_found' }
+        '409': { $ref: '#/components/responses/Error', description: 'already_granted | not_payable | already_confirmed' }
+        '422': { $ref: '#/components/responses/Error', description: 'payment_tx_failed | payment_no_transfer | payment_amount_low | payment_memo_mismatch | payment_unknown_payer' }
+  /preorder/me:
+    get:
+      tags: [packs]
+      summary: The session wallet's reservations (newest first, capped at 50)
+      responses:
+        '200': { description: reservations, content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/PreorderItem' } } } } } } }
+        '401': { description: sign-in required }
+  /preorder/registry:
+    get:
+      tags: [packs]
+      security: []
+      summary: Public audit snapshot — every paid/granted reservation (wallets not included) and the campaign state
+      responses:
+        '200': { description: snapshot, content: { application/json: { schema: { type: object, required: [campaign, rows], properties: { campaign: { $ref: '#/components/schemas/PreorderCampaign' }, rows: { type: array, items: { type: object, properties: { refId: { type: integer }, qty: { type: integer }, status: { type: string }, paidAt: { type: integer, nullable: true }, grantedAt: { type: integer, nullable: true } } } } } } } } }
   /prices:
     get:
       tags: [packs]
@@ -626,6 +731,23 @@ paths:
       summary: Encode pause (hot pauser key, SEC-H2, needs a reason) or un-pause (admin-only → multisig) for chip_core / staking / arena
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [program, paused], properties: { program: { type: string, enum: [chip_core, staking, arena] }, paused: { type: boolean }, reason: { type: string, minLength: 8, description: required when paused = true } } } } } }
       responses: { '200': { description: instruction for the pauser / multisig, content: { application/json: { schema: { $ref: '#/components/schemas/Proposal' } } } }, '422': { description: bad program / missing reason } }
+  /admin/preorders:
+    get:
+      tags: [admin]
+      summary: Pre-sale registry — campaign state, the paid/granted audit snapshot and the on-chain delivery queue
+      responses: { '200': { description: registry, content: { application/json: { schema: { type: object, required: [campaign, registry, queue], properties: { campaign: { $ref: '#/components/schemas/PreorderCampaign' }, registry: { type: object }, queue: { type: array, items: { type: object, required: [refId, beneficiary, sku, qty, nonce, lamports, txSig], properties: { refId: { type: integer }, beneficiary: { type: string }, sku: { type: integer }, qty: { type: integer }, nonce: { type: string }, lamports: { type: string }, txSig: { type: string } } } } } } } } } }
+  /admin/preorders/drop:
+    post:
+      tags: [admin]
+      summary: Encode init_preorder_drop / close_preorder_drop for the multisig (unsigned)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [action, admin], properties: { action: { type: string, enum: [open, close] }, admin: { type: string, description: base58 admin that will sign }, sku: { type: integer }, total: { type: integer }, maxPerWallet: { type: integer } } } } } }
+      responses: { '200': { description: unsigned instruction, content: { application/json: { schema: { type: object, required: [ok, instructions, items], properties: { ok: { type: boolean }, instructions: { type: array, items: { type: object } }, items: { type: array, items: { type: object } } } } } } }, '400': { $ref: '#/components/responses/Error' } }
+  /admin/preorders/delivery:
+    post:
+      tags: [admin]
+      summary: Encode [init_grant_randomness, grant_preorder_pack] for up to `batch` paid reservations (unsigned; multisig signs at mainnet launch)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [admin, oracle, recentSlot], properties: { admin: { type: string }, oracle: { type: string }, queue: { type: string }, recentSlot: { type: string, description: finalized slot }, batch: { type: integer, minimum: 1, maximum: 25, default: 10 } } } } } }
+      responses: { '200': { description: unsigned instructions + the items they deliver, content: { application/json: { schema: { type: object, required: [ok, instructions, items], properties: { ok: { type: boolean }, instructions: { type: array, items: { type: object } }, items: { type: array, items: { type: object, required: [refId, beneficiary, qty, nonce], properties: { refId: { type: integer }, beneficiary: { type: string }, qty: { type: integer }, nonce: { type: string } } } } } } } } }, '400': { $ref: '#/components/responses/Error' }, '404': { $ref: '#/components/responses/Error', description: nothing_to_deliver } }
   /admin/fraud:
     get:
       tags: [admin]
@@ -998,7 +1120,7 @@ components:
         rarity: { $ref: '#/components/schemas/Rarity' }
         level: { type: integer }
         index: { type: [integer, 'null'], description: 'per-collection mint number (`Name #N`); null = not resolved on chain yet (core `open_pack` chips are back-filled by the crank within a sweep). Never a placeholder: #0 is a real chip' }
-        flags: { type: object, properties: { staked: { type: boolean }, listed: { type: boolean }, fusing: { type: boolean }, soulbound: { type: boolean } } }
+        flags: { type: object, properties: { staked: { type: boolean }, listed: { type: boolean }, fusing: { type: boolean }, soulbound: { type: boolean }, founder: { type: boolean, description: 'minted from a mainnet pre-sale pack — carries the permanent founder frame (docs/preorder-beta.md)' } } }
         lockUntil: { type: [string, 'null'], format: date-time }
         power: { type: integer }
         stakeWeight: { type: string }
@@ -1086,6 +1208,50 @@ components:
         enabled: { type: boolean }
         pAtLeastLegend: { type: number }
         evPct: { type: number }
+    PreorderCampaign:
+      type: object
+      required: [active, sku, priceLamports, treasury, total, remaining, sold, granted, memoPrefix, intentTtlS]
+      properties:
+        active: { type: boolean, description: 'campaign switched on AND treasury configured AND packs remain' }
+        sku: { type: integer, description: 'pack SKU of the drop (3 = Limited)' }
+        priceLamports: { type: string, description: 'price of ONE pack in lamports (decimal string, u64)' }
+        treasury: { type: string, description: 'Squads multisig vault receiving the payments' }
+        total: { type: integer }
+        remaining: { type: integer, description: 'packs not yet reserved (granted + paid + intent all subtract)' }
+        sold: { type: integer, description: 'paid + granted packs' }
+        granted: { type: integer, description: 'packs already delivered on-chain (PackGranted projection)' }
+        memoPrefix: { type: string }
+        intentTtlS: { type: integer }
+    PreorderIntent:
+      type: object
+      required: [refId, wallet, sku, qty, lamports, treasury, memo, expiresAt]
+      properties:
+        refId: { type: integer, description: 'the on-chain preorder_ref and the payment memo id' }
+        wallet: { type: string }
+        sku: { type: integer }
+        qty: { type: integer }
+        lamports: { type: string, description: 'total to send (price × qty), decimal string' }
+        treasury: { type: string }
+        memo: { type: string, description: 'attach to the payment, e.g. GC-PRE|42' }
+        expiresAt: { type: integer, description: 'unix seconds; after that the intent stops accepting payments' }
+    PreorderItem:
+      type: object
+      required: [ref_id, wallet, sku, qty, lamports, status, created_at]
+      properties:
+        ref_id: { type: integer }
+        wallet: { type: string }
+        sku: { type: integer }
+        qty: { type: integer }
+        lamports: { type: string }
+        status: { type: string, enum: [intent, paid, granted, expired] }
+        tx_sig: { type: string, nullable: true, description: 'the verified mainnet payment signature' }
+        nonce: { type: string, nullable: true, description: 'PendingPack nonce once granted on-chain' }
+        grant_sig: { type: string, nullable: true }
+        created_at: { type: integer }
+        paid_at: { type: integer, nullable: true }
+        granted_at: { type: integer, nullable: true }
+        memo: { type: string }
+        expiresAt: { type: integer }
     PackQuote:
       type: object
       properties:

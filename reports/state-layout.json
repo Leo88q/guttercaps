@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "fingerprint": "8bc73ab2da325f13f951a6f6a159d2d1fa3512ca80dfc3bf5166af4db5d547b5",
+  "fingerprint": "5c0ebd299f8f5a306871a07a9b6afcde92e559f95b08067bf2eab3dbf8d9d35a",
   "accounts": [
     {
       "program": "arena",
@@ -162,7 +162,8 @@
         "bump: u8",
         "staked: bool",
         "origin: Pubkey",
-        "lock_until: i64"
+        "lock_until: i64",
+        "founder: bool"
       ]
     },
     {
@@ -226,7 +227,8 @@
         "value: [u8; 32]",
         "voucher: bool",
         "voucher_odds: [u16; RARITY_COUNT]",
-        "soulbound_days: u8"
+        "soulbound_days: u8",
+        "preorder: bool"
       ]
     },
     {
@@ -267,6 +269,30 @@
       "fields": [
         "owner: Pubkey",
         "boosters: u16",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "chip_core",
+      "name": "PreorderDrop",
+      "fields": [
+        "admin: Pubkey",
+        "sku: u8",
+        "bump: u8",
+        "max_per_wallet: u8",
+        "total: u32",
+        "granted: u32",
+        "opened_at: i64",
+        "closed: bool"
+      ]
+    },
+    {
+      "program": "chip_core",
+      "name": "PreorderGrant",
+      "fields": [
+        "drop: Pubkey",
+        "beneficiary: Pubkey",
+        "count: u32",
         "bump: u8"
       ]
     },

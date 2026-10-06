@@ -6,6 +6,7 @@ import { LanguageIcon, SettingsIcon, QuestsIcon, FusionNavIcon, GuideNavIcon } f
 import { useT, useLocale, LOCALE_META, type MessageKey } from '@/shared/i18n';
 import { PaintTrail } from '@/shared/ui/PaintTrail';
 import { Toasts } from '@/shared/ui/primitives';
+import { WaitStatusPill } from './WaitStatusPill';
 import { RevealQueue } from '@/features/reveal/RevealQueue';
 import { BalanceChip } from './BalanceChip';
 import { useUiStore } from '../store/ui';
@@ -134,6 +135,7 @@ export function Shell({ children }: { children: ReactNode }) {
       </div>
       {!reducedMotion && <PaintTrail />}
       <Toasts />
+      <WaitStatusPill />
       <RevealQueue />
     </div>
   );

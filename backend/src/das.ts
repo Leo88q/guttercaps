@@ -459,7 +459,7 @@ const CMT_HEADER_SIZE = 56;
 const ROYALTY_BPS_LE = Uint8Array.of(250, 0);
 
 function emptyTreeNode(level: number): Uint8Array {
-  let node = new Uint8Array(32);
+  let node: Uint8Array = new Uint8Array(32);
   for (let i = 0; i < level; i++) {
     const pair = new Uint8Array(64);
     pair.set(node, 0);

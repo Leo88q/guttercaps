@@ -8,6 +8,7 @@ import {
 } from '@solana/web3.js';
 import { isBlockhashExpired } from './errors';
 import { base58Encode } from '@/shared/lib/base58';
+import { setWait, clearWait, TX_PHASES } from '@/shared/lib/waitStatus';
 
 export interface WalletLike {
   publicKey: PublicKey;
@@ -23,6 +24,8 @@ export interface SendOptions {
   lookupTables?: AddressLookupTableAccount[];
   /** skip simulation (e.g. Switchboard reveal, whose sim needs an oracle signature) */
   skipPreflight?: boolean;
+  /** set false to keep this send out of the global wait-status pill (quiet background flows) */
+  status?: boolean;
   onSigned?: (signature: string) => void;
   onSent?: (signature: string) => void;
 }
@@ -122,31 +125,41 @@ export async function sendTx(
   ixs: TransactionInstruction[],
   opts: SendOptions = {},
 ): Promise<{ signature: TransactionSignature; logs: string[] }> {
+  const reportStatus = opts.status !== false;
   await checkTransactionAccess(wallet.publicKey.toBase58(), ixs);
   let attempt = 0;
-  for (;;) {
-    attempt++;
-    try {
-      const { tx, blockhash, lastValidBlockHeight } = await buildV0Tx(connection, wallet.publicKey, ixs, opts);
-      if (opts.signers?.length) tx.sign(opts.signers);
-      await checkTransactionAccess(wallet.publicKey.toBase58(), ixs);
-      const signed = await wallet.signTransaction(tx);
-      const sigBytes = signed.signatures[0];
-      const signature = base58Encode(sigBytes);
-      opts.onSigned?.(signature);
-      await connection.sendRawTransaction(signed.serialize(), { skipPreflight: opts.skipPreflight ?? false, maxRetries: 3, preflightCommitment: 'confirmed' });
-      opts.onSent?.(signature);
-      const conf = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
-      if (conf.value.err) {
+  try {
+    for (;;) {
+      attempt++;
+      try {
+        if (reportStatus) setWait('prepare');
+        const { tx, blockhash, lastValidBlockHeight } = await buildV0Tx(connection, wallet.publicKey, ixs, opts);
+        if (opts.signers?.length) tx.sign(opts.signers);
+        await checkTransactionAccess(wallet.publicKey.toBase58(), ixs);
+        if (reportStatus) setWait('wallet');
+        const signed = await wallet.signTransaction(tx);
+        const sigBytes = signed.signatures[0];
+        const signature = base58Encode(sigBytes);
+        opts.onSigned?.(signature);
+        if (reportStatus) setWait('send', signature);
+        await connection.sendRawTransaction(signed.serialize(), { skipPreflight: opts.skipPreflight ?? false, maxRetries: 3, preflightCommitment: 'confirmed' });
+        opts.onSent?.(signature);
+        if (reportStatus) setWait('confirm', signature);
+        const conf = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+        if (conf.value.err) {
+          const txInfo = await connection.getTransaction(signature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
+          throw new TxError({ message: `custom program error: ${JSON.stringify(conf.value.err)}`, logs: txInfo?.meta?.logMessages ?? undefined }, txInfo?.meta?.logMessages ?? undefined);
+        }
         const txInfo = await connection.getTransaction(signature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
-        throw new TxError({ message: `custom program error: ${JSON.stringify(conf.value.err)}`, logs: txInfo?.meta?.logMessages ?? undefined }, txInfo?.meta?.logMessages ?? undefined);
+        return { signature, logs: txInfo?.meta?.logMessages ?? [] };
+      } catch (e) {
+        // one automatic rebuild on expired blockhash, never on user rejection / program error
+        if (attempt === 1 && isBlockhashExpired(e)) continue;
+        throw e instanceof TxError ? e : new TxError(e);
       }
-      const txInfo = await connection.getTransaction(signature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
-      return { signature, logs: txInfo?.meta?.logMessages ?? [] };
-    } catch (e) {
-      // one automatic rebuild on expired blockhash, never on user rejection / program error
-      if (attempt === 1 && isBlockhashExpired(e)) continue;
-      throw e instanceof TxError ? e : new TxError(e);
     }
+  } finally {
+    // phase-guarded: never erase a connect/signin status owned by the wallet bridge
+    if (reportStatus) clearWait(...TX_PHASES);
   }
 }

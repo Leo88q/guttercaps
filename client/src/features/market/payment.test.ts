@@ -15,7 +15,7 @@ const SELLER = pk();
 function claimState(buyer: PublicKey, over: Record<string, unknown> = {}) {
   return { buyer, collectionIdx: 2, rarity: 3, level: 2, gameIndex: 7n, expiresAt: 0n,
     settlement: pk(), indexReserved: true, minted: true, registered: true, consumed: false,
-    listed: false, bump: 9, staked: false, origin: pk(), lockUntil: 0n, ...over };
+    listed: false, bump: 9, staked: false, origin: pk(), lockUntil: 0n, founder: false, ...over };
 }
 
 /**

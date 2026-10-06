@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
-import { useMe, useGrid, useQuests, usePendingOps, useStreak, useSeason } from '@/api/hooks';
+import { useMe, useGrid, useQuests, usePendingOps, useStreak, useSeason, usePreorderCampaign } from '@/api/hooks';
 import { usePity } from '@/chain/hooks';
 import { useActiveOps } from '@/app/store/txs';
 import { PACKS } from '@guttercaps/economy';
@@ -31,6 +31,7 @@ export default function Home() {
   const season = useSeason();
   const pity = usePity();
   const active = useActiveOps(publicKey?.toBase58());
+  const preorder = usePreorderCampaign();
 
   if (!connected) return <Landing onConnect={() => setVisible(true)} />;
 
@@ -57,6 +58,17 @@ export default function Home() {
           <span>{t('ui.pendingOps', { n: Math.max(localPending, apiPending) })}</span>
           {active.packs[0] ? <Link className="btn btn-sm" to={`/shop/opening/${active.packs[0].nonce}`}>{t('ui.continue')}</Link> : compressedPending > 0 ? <span className="tiny">{t('ui.recovering')}</span> : <Link className="btn btn-sm" to="/fusion">{t('ui.openBench')}</Link>}
         </div>
+      )}
+
+      {/* Beta pre-sale rail (docs/preorder-beta.md): mainnet packs sold during the devnet beta. */}
+      {preorder.data?.active && preorder.data.remaining > 0 && (
+        <Link to="/preorder" className="card preorder-banner" data-testid="preorder-banner" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, textDecoration: 'none' }}>
+          <div>
+            <strong style={{ fontSize: 14 }}>{t('preorder.title')}</strong>
+            <div className="tiny" style={{ marginTop: 2 }}>{t('preorder.left', { n: preorder.data.remaining, total: preorder.data.total })}</div>
+          </div>
+          <ChevronRightIcon size={20} />
+        </Link>
       )}
 
       <div className="grid-3">

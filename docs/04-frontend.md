@@ -129,6 +129,7 @@ shared/
 2. `sendTx()` добавляет `ComputeBudget.setComputeUnitLimit` (по таблице ниже) и `setComputeUnitPrice` (медиана priority fee за 20 слотов через `getRecentPrioritizationFees`, clamp 1 000–200 000 microLamports), собирает **v0** транзакцию, подписывает через `wallet.signTransaction` (+ `partialSign` локальных ключей), шлёт `sendRawTransaction({skipPreflight:false, maxRetries:3})`, ждёт `confirmed` по `lastValidBlockHeight`.
 3. Ошибки: `custom program error: 0x…` → таблица `chain/errors.ts` (программа определяется по индексу инструкции из логов) → человекочитаемый тост; `blockhash expired` → авто-пересборка один раз.
 4. Каждая tx регистрируется в сторе `txs` (`{id, kind, phase, signature?, nonce?, createdAt}`) — это источник для степпера и восстановления.
+5. **Статус ожидания** (`shared/lib/waitStatus.ts`, 2026-10): обе длинные паузы — до появления окна кошелька и между подписанием и подтверждением — игроки склонны читать как «ничего не произошло». `sendTx()` репортит фазы `prepare → wallet → send → confirm` в глобальный канал (с подписью после подписания), `app/WaitBridge.tsx` репортит `connect`/`signin` от wallet-adapter и SIWS; `app/layout/WaitStatusPill.tsx` рендерит пилюлю с пояснением фазы, секундомером и ссылкой на обозреватель. Очистка защищена фазой (`TX_PHASES`), чтобы конвейер и кошелёк не стирали статус друг друга; тихие фоновые отправки отключаются `SendOptions.status = false`. Ключи — `wait.*` во всех 7 локалях.
 
 | Инструкция | CU limit | Комментарий |
 |---|---|---|

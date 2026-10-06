@@ -402,6 +402,7 @@ pub fn buy_pack(
     pending.revealed = false;
     pending.value = [0u8; 32];
     pending.voucher = false;
+    pending.preorder = false;
     pending.voucher_odds = [0u16; RARITY_COUNT];
     // Starter is the only paid SKU with a soulbound window (7 d). Other SKUs are tradeable at
     // once; quest vouchers set `soulbound_days` from the template in `open_voucher`. Leaving this
@@ -557,6 +558,7 @@ pub fn open_voucher(ctx: Context<OpenVoucher>, nonce: u64, template: u8) -> Resu
     pending.revealed = false;
     pending.value = [0u8; 32];
     pending.voucher = true;
+    pending.preorder = false;
     pending.voucher_odds = def.odds_bps;
     pending.soulbound_days = def.soulbound_days;
 

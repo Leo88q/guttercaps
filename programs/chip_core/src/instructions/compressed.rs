@@ -278,8 +278,9 @@ pub fn stage_compressed_chip(
     claim.bump = ctx.bumps.claim;
     claim.staked = false;
     claim.origin = buyer;
-    // Admin-staged claims carry no purchase, hence no soulbound window.
+    // Admin-staged claims carry no purchase, hence no soulbound window and no founder origin.
     claim.lock_until = 0;
+    claim.founder = false;
     emit!(CompressedChipStaged {
         admin: ctx.accounts.admin.key(),
         buyer,
@@ -552,6 +553,7 @@ pub fn open_compressed_pack<'info>(
             staked: false,
             origin: buyer,
             lock_until,
+            founder: ctx.accounts.pending.preorder,
         };
         let space = 8 + CompressedMintClaim::INIT_SPACE;
         system_program::create_account(
@@ -1225,6 +1227,7 @@ pub fn fuse_claims_reveal<'info>(
             staked: false,
             origin: owner,
             lock_until,
+            founder: false,
         };
         {
             let mut data = result_claim_ai.try_borrow_mut_data()?;
@@ -2227,11 +2230,17 @@ pub fn register_compressed_chip<'info>(
     chip.index = game_index;
     // The claim's soulbound window becomes the chip's: the V2 leaf flags bit is
     // kept as an additional signal, the claim lock is the authority.
-    chip.flags = if proof.flags & 0b1000 != 0 || ctx.accounts.claim.lock_until > now {
+    let mut chip_flags = if proof.flags & 0b1000 != 0 || ctx.accounts.claim.lock_until > now {
         CompressedChipState::F_SOULBOUND
     } else {
         0
     };
+    // Pre-sale origin (docs/preorder-beta.md): the founder frame is permanent and travels
+    // with the chip — the claim is the authority, the leaf flag cannot add or remove it.
+    if ctx.accounts.claim.founder {
+        chip_flags |= CompressedChipState::F_FOUNDER;
+    }
+    chip.flags = chip_flags;
     chip.lock_until = ctx.accounts.claim.lock_until;
     chip.minted_at = now;
     chip.bump = ctx.bumps.chip;

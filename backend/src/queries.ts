@@ -77,7 +77,7 @@ export function chipToApi(r: ChipRow) {
     rarity: r.rarity,
     level: r.level,
     index: chipIndexOf(r.game_index),
-    flags: { staked: (r.flags & 1) !== 0, listed: (r.flags & 2) !== 0, fusing: (r.flags & 4) !== 0, soulbound: (r.flags & 8) !== 0 },
+    flags: { staked: (r.flags & 1) !== 0, listed: (r.flags & 2) !== 0, fusing: (r.flags & 4) !== 0, soulbound: (r.flags & 8) !== 0, founder: (r.flags & 16) !== 0 },
     lockUntil: r.lock_until > 0 ? iso(r.lock_until) : null,
     skin: r.skin ?? null,
     power: Math.round(p.basePower * lm),

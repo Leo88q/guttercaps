@@ -25,6 +25,19 @@ const id: Messages = {
     walletRequired: 'Hubungkan dompet untuk melanjutkan', mock: 'data demo',
     working: 'Memproses…',
   },
+  // Menjelaskan jeda lambat dompet agar pemain tidak mengira ketukannya gagal (WaitStatusPill).
+  wait: {
+    connect: 'Membuka dompet Anda…',
+    connectHint: 'Jendela dompet akan muncul — mungkin terbuka di tab baru.',
+    signin: 'Konfirmasikan masuk di dompet Anda',
+    prepare: 'Menyiapkan transaksi…',
+    wallet: 'Konfirmasikan transaksi di dompet Anda',
+    walletHint: 'Periksa jendela dompet — mungkin tersembunyi di balik jendela lain.',
+    send: 'Mengirim ke jaringan…',
+    confirm: 'Menunggu konfirmasi jaringan…',
+    confirmHint: 'Sedang diproses on-chain: jangan tutup halaman ini dan jangan tanda tangani ulang. Bisa sampai satu menit.',
+    seconds: '{n} d',
+  },
   lang: { title: 'Bahasa', subtitle: 'Harga dan saldo selalu dalam satuan dompet Anda. Hanya kata-katanya yang berubah.', auto: 'Otomatis ({name})', current: 'Saat ini: {name}', applied: 'Bahasa diatur ke {name}' },
   home: {
     greeting: 'Yo, {name}', collector: 'kolektor', inSeason: 'Gutter City sedang di musim {id}', loadingCity: 'Gutter City sedang dimuat',
@@ -57,6 +70,7 @@ const id: Messages = {
     title: 'Koleksi', subtitle: '{owned}/72 arketipe · {sets, plural, other{# distrik lengkap}}',
     empty: 'Belum ada cap. Pack pertamamu tinggal satu ketukan.', filters: { all: 'Semua', free: 'Bebas', staked: 'Di-stake', listed: 'Dijual', locked: 'Terkunci' },
     missing: 'Kurang untuk set', level: 'Lv {n}', soulbound: 'tidak bisa dipindah sampai {date}',
+    founderBadge: 'PENDIRI', founderNote: 'Bingkai pendiri — pre-sale mainnet',
   },
   fusion: {
     title: 'Meja fusi', subtitle: 'Tiga cap satu tingkat → satu cap tingkat berikutnya. Biaya $CG dibakar menang atau kalah; jika gagal, dua cap terbakar dan satu kembali.',
@@ -207,6 +221,22 @@ const id: Messages = {
   errors: { rejected: 'Anda menolak tanda tangan', insufficient: 'Saldo tidak cukup', network: 'Kesalahan jaringan — coba lagi', stale: 'Kuotasi kedaluwarsa — segarkan', generic: 'Terjadi kesalahan' },
   legal: { title: 'Legal', terms: 'Ketentuan Layanan', privacy: 'Privasi', updated: 'Berlaku sejak {date}', draftTitle: 'Draf — belum ditinjau penasihat hukum', draftBody: 'Teks ini menggambarkan bagaimana produk benar-benar bekerja, tetapi belum ditinjau pengacara. Sampai itu terjadi, anggap sebagai pernyataan niat, bukan nasihat — dan catat bahwa batasan wilayah di §2 sudah ditegakkan dalam kode.', canonical: 'Teks bahasa Inggris adalah versi resmi; terjemahan hanya untuk kemudahan.', ages: 'Hanya 18+', noSaleIn: 'tidak ada penjualan pack di', verify: 'Verifikasi undian', notFound: 'Dokumen itu tidak ada. Yang tersedia:' },
   age: { title: 'Usia Anda 18 atau lebih?', body: 'GUTTERCAPS menjual pack dengan isi acak. Anda harus berusia minimal {age} dan cukup dewasa untuk membuat kontrak di tempat Anda tinggal.', termsLink: 'Baca ketentuan dulu', confirm: 'Saya {age}+', deny: 'Belum', declined: 'Pembelian tetap nonaktif untuk Anda: game ini memerlukan {age}+. Semua yang sudah menjadi milik Anda tetap berjalan — koleksi, pasar, staking, dan arena.', reopen: 'Jawab ulang' },
+  preorder: {
+    title: 'Pre-sale pendiri',
+    tagline: 'Edisi terbatas event pack untuk peluncuran mainnet. Bayar hari ini, buka pada hari game diluncurkan.',
+    betaNote: 'Kamu sedang bermain beta devnet gratis. Pre-sale di bawah adalah pembelian mainnet sungguhan — SOL sekarang, pack saat peluncuran.',
+    price: 'Harga per pack', left: 'tersisa {n} dari {total}', soldOut: 'Habis terjual', ended: 'Pre-sale ditutup',
+    reserve: 'Reservasi pack', qty: 'Pack', total: 'Total', perWallet: 'maks {n} per wallet',
+    payTitle: 'Kirim pembayaran', sendExactly: 'Kirim tepat', toAddress: 'ke alamat ini (multisig tim)', memo: 'Memo — wajib',
+    memoWhy: 'Memo mengaitkan pembayaran dengan reservasi kamu; tanpanya, kirim dari wallet yang terhubung.',
+    signature: 'Signature transaksi pembayaran', confirm: 'Sudah bayar — periksa pembayaran saya', checking: 'Memverifikasi di mainnet…',
+    ttl: 'Reservasi menahan pack selama {h} jam.',
+    statusIntent: 'menunggu pembayaran', statusPaid: 'lunas — dikirim saat peluncuran mainnet', statusGranted: 'terkirim — lihat pack kamu', statusExpired: 'kedaluwarsa',
+    mine: 'Reservasi saya', empty: 'Belum ada reservasi.', grantedNote: 'Pack pre-sale ada di “Pack saya” — buka di sana.',
+    refund: 'Jika mainnet belum live pada tanggal peluncuran yang diumumkan → setiap pembayaran dikembalikan 1:1 dari vault multisig yang sama. Registri di bawah bersifat publik.',
+    shopBanner: 'Limited Event Pack sedang pre-sale: 0,999 SOL per pack, dikirim saat mainnet meluncur.', shopCta: 'Ke pre-sale',
+    registry: 'Registri publik', confirmed: 'Pembayaran terverifikasi — kamu terdaftar.',
+  },
   footer: { legal: 'Legal', ages: '18+' },
 
 };

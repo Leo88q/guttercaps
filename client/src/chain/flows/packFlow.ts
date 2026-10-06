@@ -227,6 +227,8 @@ export class PackFlow {
           soulboundDays: 0,
           voucher: false,
           voucherOdds: [0, 0, 0, 0, 0, 0, 0, 0],
+          pitySnapshot: 0,
+          preorder: false,
         };
       }
       const randomness = pending.randomness;

@@ -12,6 +12,8 @@ export interface RevealItem {
   level?: number;
   /** true when the reveal came from a fusion result */
   fused?: boolean;
+  /** pack SKU the chip rolled from — selects the wrapper art in the reveal animation */
+  sku?: number;
 }
 
 export interface Toast {

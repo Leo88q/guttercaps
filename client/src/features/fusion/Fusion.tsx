@@ -12,8 +12,9 @@ import { FUSION_RECIPES, BOOSTER } from '@guttercaps/economy';
 import { useMyChips, useFusionSuggest, useGrid, useMyServices, type Chip } from '@/api/hooks';
 import { KIND, loadPresets, owns, savePresets, presetName, type FusionPreset } from '@/shared/lib/cosmetics';
 import { usePlayerItems, useWalletLike } from '@/chain/hooks';
-import { decodeCompressedChipState } from '@/chain/accounts';
+import { decodeCompressedChipState, type CompressedMintClaim } from '@/chain/accounts';
 import { compressedChipStatePda } from '@/chain/pdas';
+import { qk } from '@/api/keys';
 import { ClaimFusionFlow } from '@/chain/flows/claimFusionFlow';
 import { FusionFlow, successBps, type FusionFlowState } from '@/chain/flows/fusionFlow';
 import { useTxStore, fusionId } from '@/app/store/txs';
@@ -80,6 +81,20 @@ export default function Fusion() {
   const breaksSet = filled.some((c) => (grid.data?.cells?.[c.collection!]?.[c.rarity!] ?? 0) === 1);
   const eligibleForSlot = (i: number) => all.filter((c) => !slots.some((s, j) => j !== i && s?.asset === c.asset) && (from === undefined || i === 0 || c.rarity === from) && (!recipe || recipe.rule === 'any' || i === 0 || c.collection === filled[0]?.collection));
 
+  // The worker registered the result chip — find its Bubblegum leaf id in the refetched chip list.
+  // The indexer's projection of CompressedChipRegistered can lag the on-chain flag flip by seconds,
+  // so retry a few times; the caller falls back to the claim PDA if it never shows up.
+  async function findRegisteredChip(claim: CompressedMintClaim): Promise<string | undefined> {
+    for (let i = 0; i < 5; i++) {
+      await qc.refetchQueries({ queryKey: ['me', 'chips'] });
+      const data = qc.getQueryData<{ pages: { items?: Chip[] }[] }>(qk.myChips({ status: 'free' }));
+      const chip = data?.pages.flatMap((p) => p.items ?? []).find((c) => c.collection === claim.collectionIdx && c.rarity === claim.rarity && c.index === Number(claim.gameIndex));
+      if (chip?.asset) return chip.asset;
+      await new Promise((r) => setTimeout(r, 2_000));
+    }
+    return undefined;
+  }
+
   async function fuse() {
     if (!ready || !recipe) return;
     setBusy(true);
@@ -145,14 +160,28 @@ export default function Fusion() {
         await cf.fuse();
         if (cf.state.phase === 'committed') await cf.reveal();
         if (cf.state.phase === 'stale') { toast({ kind: 'error', title: { key: 'opening.phase.stale' }, body: { key: 'screens.fusionTimeout' } }); return; }
+        // ONE-signature-per-scenario: the worker (crank) mints + registers the result with its own
+        // wallet. We just wait for the on-chain claim to flip `registered`; if it is absent (dev
+        // without a crank, backlog) we finish locally — a few extra signatures, same result.
+        let settledClaim: CompressedMintClaim | undefined;
+        if (cf.state.phase === 'settling') {
+          try {
+            settledClaim = (await cf.waitSettle()).claim;
+          } catch {
+            toast({ kind: 'info', title: { key: 'screens.localFinish' } });
+            await cf.settleResult();
+          }
+        }
         const r = cf.state.result;
-        const outAsset = (cf.state.settledAsset ?? r?.resultClaim)?.toBase58();
+        void qc.invalidateQueries({ queryKey: qk.me });
+        void qc.invalidateQueries({ queryKey: ['chain'] });
+        let outAsset = cf.state.settledAsset?.toBase58();
+        if (!outAsset && settledClaim) outAsset = await findRegisteredChip(settledClaim);
+        outAsset ??= r?.resultClaim?.toBase58();
         if (r?.success && outAsset) { enqueue([{ id: outAsset, asset: outAsset, rarity: recipe.to, collectionIdx: effectiveResultCol!, fused: true }]); toast({ kind: 'success', title: { key: 'fusion.success' }, href: EXPLORER.tx(cf.state.signatures.at(-1)!) }); }
         else if (r) toast({ kind: 'error', title: { key: 'fusion.failed' }, body: { key: 'screens.fusionRoll', params: { roll: percentText(r.rollBps), threshold: percentText(r.thresholdBps) } }, href: EXPLORER.tx(cf.state.signatures.at(-1)!) });
         setSlots([null, null, null]);
         if (cf.state.randomness) { try { await cf.reclaimRent(); } catch { /* optional */ } }
-        void qc.invalidateQueries({ queryKey: ['me'] });
-        void qc.invalidateQueries({ queryKey: ['chain'] });
         return;
       }
       const f = new FusionFlow({ connection, wallet, lookupTable: LOOKUP_TABLE, onState: (s) => { setFlow({ ...s }); upsertFusion({ id: fusionId(w, s.nonce), wallet: w, createdAt: Date.now(), updatedAt: Date.now(), phase: s.phase, nonce: s.nonce.toString(), recipe: s.recipe, boosted: s.boosted, resultCollectionIdx: s.resultCollectionIdx, signatures: s.signatures, randomness: s.randomness?.toBase58(), materials: s.materials.map((m) => ({ asset: m.asset.toBase58(), collectionIdx: m.collectionIdx })), error: s.error, errorDiagnostic: s.errorDiagnostic, result: s.result ? { result: s.result.result.toBase58(), success: s.result.success, rollBps: s.result.rollBps, thresholdBps: s.result.thresholdBps, feeBurned: s.result.feeBurned.toString() } : undefined }); } },
@@ -227,7 +256,7 @@ export default function Fusion() {
           </CleanZone>
         )}
         <CleanConfirmButton disabled={!ready || busy} onClick={fuse}>{busy ? t('common.working') : recipe && recipe.successBps < 10_000 ? `${t('fusion.fuse')} (${fmtPct(chance, 0)})` : t('fusion.fuse')}</CleanConfirmButton>
-        {flow && flow.phase !== 'done' && flow.phase !== 'idle' && <div className="small muted">{t('ui.phase')}: {phaseLabel(flow.phase)}{flow.error && <ErrorNotice error={flow.errorDiagnostic ?? flow.error} />}</div>}
+        {flow && flow.phase !== 'done' && flow.phase !== 'idle' && <div className="small muted">{t('ui.phase')}: {flow.phase === 'settling' ? t('screens.fusionBgWait') : phaseLabel(flow.phase)}{flow.error && <ErrorNotice error={flow.errorDiagnostic ?? flow.error} />}</div>}
       </div>
 
       <div className="card stack-sm" data-testid="fusion-suggestions">

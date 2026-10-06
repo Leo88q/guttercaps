@@ -40,6 +40,7 @@ export function RevealQueue() {
       chipArt={<ChipArt collection={head.collectionIdx} rarity={head.rarity} index={head.index} level={head.level} imageUrl={chipArtUrl(head.collectionIdx, head.rarity, 512)} crimp={rarityColor(head.rarity)} />}
       isOnChain
       remaining={queue.length - 1}
+      sku={head.sku}
       onDone={done}
     />
   );

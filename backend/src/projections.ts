@@ -23,7 +23,7 @@ const COLS = {
   packPurchases: ['buyer', 'nonce', 'sku', 'qty', 'currency', 'amount', 'randomness', 'signature', 'slot', 'block_time'],
   vouchers: ['wallet', 'nonce', 'template', 'randomness', 'signature', 'slot', 'block_time'],
   packOpens: ['signature', 'buyer', 'sku', 'nonce', 'count', 'assets', 'rarities', 'collections', 'roll_hex', 'pity_before', 'pity_after', 'slot', 'block_time'],
-  fusions: ['signature', 'event_index', 'owner', 'recipe', 'materials', 'result', 'success', 'roll_bps', 'threshold_bps', 'fee_burned', 'slot', 'block_time'],
+  fusions: ['signature', 'event_index', 'owner', 'recipe', 'materials', 'result', 'success', 'roll_bps', 'threshold_bps', 'fee_burned', 'slot', 'block_time', 'nonce'],
   chips: ['asset', 'owner', 'collection_idx', 'rarity', 'level', 'flags', 'lock_until', 'origin', 'origin_signature', 'minted_at', 'updated_slot'],
   paramsChanges: ['signature', 'admin', 'version', 'slot', 'block_time'],
   pauseChanges: ['signature', 'event_index', 'program', 'by_wallet', 'paused', 'slot', 'block_time'],
@@ -39,6 +39,8 @@ const COLS = {
   skrFunded: ['signature', 'event_index', 'kind', 'counterparty', 'amount', 'budget', 'reserved', 'slot', 'block_time'],
   skrWithdrawn: ['signature', 'event_index', 'kind', 'counterparty', 'amount', 'budget', 'slot', 'block_time'],
   skrChanged: ['signature', 'event_index', 'kind', 'max_root_budget', 'paused', 'slot', 'block_time'],
+  preorderGrants: ['signature', 'event_index', 'admin', 'beneficiary', 'sku', 'qty', 'nonce', 'preorder_ref', 'randomness', 'slot', 'block_time'],
+  preorderDrops: ['sku', 'drop_pda', 'admin', 'total', 'max_per_wallet', 'signature', 'slot', 'block_time'],
 };
 
 export interface EventCtx {
@@ -197,6 +199,51 @@ const HANDLERS: Record<string, Handler> = {
       insertIgnore('vouchers', COLS.vouchers),
       str(d.wallet), str(d.nonce), num(d.template), str(d.randomness), c.signature, c.slot, c.blockTime,
     );
+  },
+  /** Beta pre-sale: the admin opened the on-chain supply cap of a drop (one per SKU). */
+  PreorderDropOpened(db, e, c) {
+    const d = e.data;
+    db.run(
+      upsert('preorder_drops', COLS.preorderDrops, ['sku'], ['drop_pda = excluded.drop_pda', 'admin = excluded.admin', 'total = excluded.total', 'max_per_wallet = excluded.max_per_wallet', 'signature = excluded.signature', 'slot = excluded.slot', 'block_time = COALESCE(excluded.block_time, preorder_drops.block_time)']),
+      num(d.sku), str(d.drop), str(d.admin), num(d.total), num(d.maxPerWallet), c.signature, c.slot, c.blockTime,
+    );
+  },
+  /**
+   * Beta pre-sale: the admin retired a fully delivered drop (on chain `granted == total` is
+   * enforced before close). Marks the read-model row closed; the open-time columns stay the
+   * audit trail for how the drop was configured.
+   */
+  PreorderDropClosed(db, e, c) {
+    const d = e.data;
+    db.run(
+      `UPDATE preorder_drops SET closed_sig = COALESCE(closed_sig, ?), closed_at = COALESCE(closed_at, ?) WHERE sku = ?`,
+      c.signature, c.blockTime, num(d.sku),
+    );
+  },
+  /**
+   * Beta pre-sale delivery: a paid off-chain preorder became a real PendingPack owned by the
+   * beneficiary. Two writes: the grant trail, and a `pack_purchases` row (currency 255 = "paid
+   * off-chain", amount 0) so the pack flows through the exact same `/me/pending` → open → settled
+   * read path as a purchase. The registry row (`preorders`) is joined via `preorder_ref = ref_id`.
+   */
+  PackGranted(db, e, c) {
+    const d = e.data;
+    touchBySpec(db, e, c);
+    db.run(
+      insertIgnore('preorder_grants', COLS.preorderGrants),
+      c.signature, e.eventIndex, str(d.admin), str(d.beneficiary), num(d.sku), num(d.qty), str(d.nonce), str(d.preorderRef), str(d.randomness), c.slot, c.blockTime,
+    );
+    db.run(
+      insertIgnore('pack_purchases', COLS.packPurchases),
+      str(d.beneficiary), str(d.nonce), num(d.sku), num(d.qty), 255, '0', str(d.randomness), c.signature, c.slot, c.blockTime,
+    );
+    const ref = Number(d.preorderRef);
+    if (Number.isInteger(ref) && ref > 0) {
+      db.run(
+        `UPDATE preorders SET status = 'granted', nonce = ?, grant_sig = ?, granted_at = COALESCE(granted_at, ?) WHERE ref_id = ? AND status = 'paid'`,
+        str(d.nonce), c.signature, c.blockTime ?? 0, ref,
+      );
+    }
   },
   CompressedClaimsCreated(db, e, c) {
     const d = e.data;
@@ -414,9 +461,11 @@ const HANDLERS: Record<string, Handler> = {
     const result = str(d.result);
     const hasResult = success && result !== '11111111111111111111111111111111';
     touchBySpec(db, e, c);
+    // nonce: NULL — a core `fuse` result is a ChipState asset, not a claim (the crank's kind-4
+    // discovery selects on `nonce IS NOT NULL` and never touches these rows).
     db.run(
       insertIgnore('fusions', COLS.fusions),
-      c.signature, e.eventIndex, owner, num(d.recipe), j(materials), hasResult ? result : null, success ? 1 : 0, num(d.rollBps), num(d.thresholdBps), str(d.feeBurned), c.slot, c.blockTime,
+      c.signature, e.eventIndex, owner, num(d.recipe), j(materials), hasResult ? result : null, success ? 1 : 0, num(d.rollBps), num(d.thresholdBps), str(d.feeBurned), c.slot, c.blockTime, null,
     );
     // The commit half sets F_FUSING (ChipFlagsChanged is not emitted for it), the settle half clears it here.
     if (success) {
@@ -458,9 +507,11 @@ const HANDLERS: Record<string, Handler> = {
       const chip = chipOwnedByClaim(db, m, owner);
       if (chip) db.run(`UPDATE chips SET burned_at = ?, flags = flags & ~?, updated_slot = ? WHERE asset = ?`, c.blockTime ?? 0, CHIP_FLAG_FUSING, c.slot, chip);
     }
+    // nonce = the client-chosen RESULT CLAIM nonce: the crank's kind-4 settle job keys off it and
+    // re-derives the claim PDA from (owner, nonce) before minting (see Crank.processClaimFusionSettle).
     db.run(
       insertIgnore('fusions', COLS.fusions),
-      c.signature, e.eventIndex, owner, num(d.recipe), j(materials), str(d.resultClaim), 1, 0, 10_000, str(d.feeBurned), c.slot, c.blockTime,
+      c.signature, e.eventIndex, owner, num(d.recipe), j(materials), str(d.resultClaim), 1, 0, 10_000, str(d.feeBurned), c.slot, c.blockTime, numStr(d.resultClaimNonce),
     );
   },
   /** H3 commit: no row (the pending fusion closes at reveal) — but the owner is active even if the reveal never lands. */
@@ -500,11 +551,13 @@ const HANDLERS: Record<string, Handler> = {
         if (chip) db.run(`UPDATE chips SET burned_at = ?, flags = flags & ~?, updated_slot = ? WHERE asset = ?`, c.blockTime ?? 0, CHIP_FLAG_FUSING, c.slot, chip);
       }
     }
+    // nonce = the commit nonce: the program's convention is resultClaimNonce == commit nonce, so the
+    // kind-4 backstop (and a kind-3 job's deferral) can re-derive the result claim PDA from it.
     db.run(
       insertIgnore('fusions', COLS.fusions),
       c.signature, e.eventIndex, owner, num(d.recipe), j(materials),
       success && result !== '11111111111111111111111111111111' ? result : null, success ? 1 : 0,
-      num(d.rollBps), num(d.thresholdBps), str(d.feeBurned), c.slot, c.blockTime,
+      num(d.rollBps), num(d.thresholdBps), str(d.feeBurned), c.slot, c.blockTime, success ? numStr(d.nonce) : null,
     );
   },
   ChipFlagsChanged(db, e, c) {
@@ -773,7 +826,7 @@ const HANDLERS: Record<string, Handler> = {
  * names against the event specs, which is what catches a renamed payload field.
  */
 export const WALLET_TOUCH_FIELDS: Record<string, readonly string[]> = {
-  ServicePaid: ['buyer'], PackBought: ['buyer'], VoucherIssued: ['wallet'], PackOpened: ['buyer'],
+  ServicePaid: ['buyer'], PackBought: ['buyer'], VoucherIssued: ['wallet'], PackOpened: ['buyer'], PackGranted: ['beneficiary'],
   CompressedClaimsCreated: ['buyer'], CompressedClaimCancelled: ['buyer'], CompressedChipMinted: ['buyer'], CompressedPackSettled: ['buyer'],
   // SEC-B31: the compressed claim/V2 market and its state events name a wallet that may be new to us — a
   // buyer of a claim, a seller listing one, a chip's new owner after a transfer, an admin staging a claim.
@@ -819,6 +872,8 @@ export function patchLateTimes(db: Db, e: RawEvent, c: EventCtx): number {
     case 'ServicePaid': fill('service_payments', 'block_time'); break;
     case 'PackBought': fill('pack_purchases', 'block_time'); break;
     case 'VoucherIssued': fill('vouchers', 'block_time'); break;
+    case 'PackGranted': fill('preorder_grants', 'block_time'); fill('pack_purchases', 'block_time'); break;
+    case 'PreorderDropOpened': fill('preorder_drops', 'block_time'); break;
     case 'PackOpened':
       fill('pack_opens', 'block_time');
       // the chips this open minted carry the same origin signature
