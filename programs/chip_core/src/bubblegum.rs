@@ -53,7 +53,11 @@ pub fn tree_config_pda(merkle_tree: &Pubkey) -> Pubkey {
 /// Leaf Asset ID PDA used by Bubblegum/DAS for a tree leaf (`mpl_bubblegum::utils::get_asset_id`).
 pub fn leaf_asset_id(merkle_tree: &Pubkey, index: u32) -> Pubkey {
     Pubkey::find_program_address(
-        &[b"asset", merkle_tree.as_ref(), &(index as u64).to_le_bytes()],
+        &[
+            b"asset",
+            merkle_tree.as_ref(),
+            &(index as u64).to_le_bytes(),
+        ],
         &BUBBLEGUM_V2_ID,
     )
     .0

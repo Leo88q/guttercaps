@@ -189,14 +189,21 @@ pub fn grant_preorder_pack(
         .granted
         .checked_add(qty as u32)
         .ok_or(ChipError::Overflow)?;
-    require!(granted_after <= ctx.accounts.drop.total, ChipError::PreorderDropExhausted);
+    require!(
+        granted_after <= ctx.accounts.drop.total,
+        ChipError::PreorderDropExhausted
+    );
     let pregrant = &mut ctx.accounts.pregarant;
     if pregrant.drop == Pubkey::default() {
         pregrant.drop = ctx.accounts.drop.key();
         pregrant.beneficiary = ctx.accounts.beneficiary.key();
         pregrant.bump = ctx.bumps.pregarant;
     }
-    require_keys_eq!(pregrant.drop, ctx.accounts.drop.key(), ChipError::Unauthorized);
+    require_keys_eq!(
+        pregrant.drop,
+        ctx.accounts.drop.key(),
+        ChipError::Unauthorized
+    );
     require_keys_eq!(
         pregrant.beneficiary,
         ctx.accounts.beneficiary.key(),
