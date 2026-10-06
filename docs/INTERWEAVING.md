@@ -12,9 +12,9 @@ hub-facing data contract is now `WATCHTOWER_HANDOFF.md` + `watchtower/events/eve
 - The only player identity the game actually produces is the **Solana wallet pubkey** (SIWS sign-in,
   `backend/src/auth.ts`; first contact recorded as `wallets.first_seen`). It is stable across sessions
   and can be the hub `playerKey` without transformation.
-- Onboarding stages in the client (guest → embedded wallet → native wallet) are client state. The
-  `studio_profile` reference in `godot/scripts/wallet_adapter.gd` is a client-side placeholder string —
-  **no on-chain cross-game PDA program exists**; nothing derives or stores such an account.
+- Onboarding stages in the client (guest → embedded wallet → native wallet) are client state, and the
+  identity is the wallet pubkey — there is **no on-chain cross-game PDA program**: nothing derives or
+  stores such an account.
 - Hub export of the join fact (`PlayerJoined`) requires the off-chain event contract first
   (`WATCHTOWER_HANDOFF.md` blocker B3).
 

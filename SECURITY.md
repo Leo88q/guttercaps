@@ -15,7 +15,7 @@ Format we would like (but any working PoC is fine):
 
 `ID · Severity · Program/file:line · PoC (tx log or a tests/localnet spec) · Impact · Recommendation`
 
-## Response SLA (same numbers the external auditor works to — `docs/08-audit-handoff.md` §6)
+## Response SLA (the numbers the external auditor worked to)
 
 | Severity | Acknowledged | Triage + plan | Fix + test |
 |---|---|---|---|
@@ -24,7 +24,7 @@ Format we would like (but any working PoC is fine):
 | Low / Info | ≤ 3 business days | — | fixed or accepted in writing |
 
 Every accepted finding gets: a commit with the fix, a test (`tests/localnet/*` or a `#[test]`), and a
-row in `docs/06-acceptance-security-testing.md` §2.2 and `docs/08-audit-handoff.md` §3.1.
+row in `docs/06-acceptance-security-testing.md` §2.2.
 
 ## Bug bounty
 

@@ -3,7 +3,7 @@
 # (sentio-rs v0.3.2, JSON shape `rule_id / location.path / help / suppressed`), fully offline from
 # crates.io: every dependency of `sentio-core` is fetched as a GitHub source tarball and patched in by
 # path. Needed because this repo's sandboxes and some CI runners cannot reach crates.io, and the hub's
-# numbers must be reproducible bit-for-bit (see reports/guttercaps-audit.md §0 "reproduction").
+# numbers must be reproducible bit-for-bit.
 #
 #   sh scripts/audit/build-sentio.sh            # → $SENTIO_DIR/target/release/sentio-json
 #   SENTIO_DIR=/opt/sentio sh scripts/audit/build-sentio.sh

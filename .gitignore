@@ -89,3 +89,19 @@ legal-private/
 
 # Вложенный clone по ошибке
 /guttercaps/
+
+# ── reports/: regenerable outputs ────────────────────────────────────────────────────────────
+# Regenerate with `npm run assets:inventory`, `npm run assets:qa` and the portfolio/address tools.
+# Baselines the gates read stay tracked: reports/state-layout.json, reports/BUDGET-SBF-2026-10-01.md,
+# reports/ASSET-INVENTORY-2026-09-25.md, reports/guttercaps-audit.json.
+reports/asset-inventory.json
+reports/asset-visual-qa.json
+reports/contact-*.png
+reports/address-verification.json
+
+# ── art pipeline working copies ──────────────────────────────────────────────
+# `raw/` holds the pre-edit backups written by scripts/art-*.py and `preview_*` are one-off review
+# tiles; both are regenerable and were removed from the tree on 2026-10-06 (recoverable from git
+# history). The committed art lives in art_drafts/{master,icons,site,covers,packs}.
+art_drafts/raw/
+art_drafts/preview_*.png

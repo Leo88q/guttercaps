@@ -242,11 +242,11 @@ pin_rust=$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' rust-toolchain.toml | head
 pin_node=$(tr -d 'v \r\n' < .nvmrc 2>/dev/null)
 : "${pin_solana:=2.1.0}" "${pin_anchor:=0.31.1}" "${pin_rust:=1.89.0}" "${pin_node:=22}"
 
-# The 13 files `npm run program-ids -- apply` rewrites (scripts/program-ids.ts ID_SITES). Edits that only
+# The 12 files `npm run program-ids -- apply` rewrites (scripts/program-ids.ts ID_SITES). Edits that only
 # change public keys in these files are regenerable from the keypairs, so the updater may drop them.
 ID_SITES="programs/chip_core/src/lib.rs programs/market/src/lib.rs programs/staking/src/lib.rs programs/arena/src/lib.rs
 programs/chip_core/src/instructions/chip.rs Anchor.toml client/src/app/config.ts client/.env.example backend/src/config.ts
-.github/workflows/ci.yml scripts/setup.ts scripts/create-lut.ts docs/08-audit-handoff.md"
+.github/workflows/ci.yml scripts/setup.ts scripts/create-lut.ts"
 
 solana_ver() { solana --version 2>/dev/null | sed -n 's/^solana-cli \([0-9][0-9.]*\).*/\1/p' | head -1; }
 anchor_ver() { anchor --version 2>/dev/null | sed -n 's/^anchor-cli \([0-9][0-9.]*\).*/\1/p' | head -1; }

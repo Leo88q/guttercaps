@@ -9,9 +9,9 @@ copyright holder.
 
 Two exceptions, granted deliberately and limited in scope:
 
-1. Security audit. The auditor named in docs/08-audit-handoff.md receives a
-   frozen commit and may build, run and publish findings about it. The audit
-   report itself is published after gate G-4.
+1. Security audit. The external auditor receives a frozen commit and may build,
+   run and publish findings about it. The audit report itself is published
+   after gate G-4.
 2. Bug-bounty research. Anyone may run a local copy for the sole purpose of
    finding and responsibly reporting defects under SECURITY.md.
 
