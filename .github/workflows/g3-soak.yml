@@ -6,9 +6,9 @@
 # "whatever the ref means today" is not a pin. Updating one is a deliberate edit: resolve the new
 # tag, change the SHA *and* the inline comment, and `npm run workflows:check` will notice a
 # disagreement. The same mapping is asserted in `tests/security/deploy-artifacts.test.ts`.
-#   actions/checkout             v4.4.0   f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a 2026-10-07
-#   actions/setup-node           v4.4.0   54337e0d02de9202d0948aaff36ad556375497b9 2026-10-07
-#   actions/upload-artifact      v4.6.2   cf430e030ddbb5b0abf93d22962f4752f3646cd9 2026-10-07
+#   actions/checkout             v4.4.0   11d5960a326750d5838078e36cf38b85af677262 2026-07-16
+#   actions/setup-node           v4.4.0   49933ea5288caeca8642d1e84afbd3f7d6820020 2025-04-02
+#   actions/upload-artifact      v4.6.2   ea165f8d65b6e75b540449e92b4886f43607fa02 2025-03-19
 # G-3 Devnet Soak Bot workflow
 # Requirements (docs/06 §1.4 G-3):
 #   - >= 10,000 packs purchased
@@ -76,12 +76,12 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v4.4.0
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 1
       
       - name: Set up Node.js 24
-        uses: actions/setup-node@54337e0d02de9202d0948aaff36ad556375497b9 # v4.4.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24'
           cache: 'npm'
@@ -170,7 +170,7 @@ jobs:
       
       - name: Upload soak log
         if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: g3-soak-log
           path: soak.log

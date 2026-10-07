@@ -6,8 +6,8 @@
 # "whatever the ref means today" is not a pin. Updating one is a deliberate edit: resolve the new
 # tag, change the SHA *and* the inline comment, and `npm run workflows:check` will notice a
 # disagreement. The same mapping is asserted in `tests/security/deploy-artifacts.test.ts`.
-#   actions/checkout             v4.4.0   f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a 2026-10-07
-#   actions/upload-artifact      v4.6.2   cf430e030ddbb5b0abf93d22962f4752f3646cd9 2026-10-07
+#   actions/checkout             v4.4.0   11d5960a326750d5838078e36cf38b85af677262 2026-07-16
+#   actions/upload-artifact      v4.6.2   ea165f8d65b6e75b540449e92b4886f43607fa02 2025-03-19
 # This workflow helps set up a self-hosted runner with all required dependencies
 # for running the G-3 soak bot and other Anchor-based workflows.
 
@@ -32,7 +32,7 @@ jobs:
     
     steps:
       - name: Checkout
-        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v4.4.0
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       
       - name: Generate setup script
         id: setup
@@ -215,7 +215,7 @@ EOF
           echo "setup-script-generated=true" >> $GITHUB_OUTPUT
       
       - name: Upload setup script
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: setup-runner-script
           path: setup-runner.sh
