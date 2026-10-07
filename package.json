@@ -50,6 +50,7 @@
     "load:lt1": "k6 run scripts/load/lt1.js",
     "load:lt3": "node --no-warnings=ExperimentalWarning --import tsx scripts/load/lt3.ts",
     "load:soak-g3": "node --no-warnings=ExperimentalWarning --import tsx scripts/load/soak-g3.ts",
+    "load:soak-g3:test": "vitest run scripts/load/soak-g3.test.ts",
     "openapi:gen": "cd client && npx openapi-typescript ../backend/openapi.yaml -o src/api/schema.d.ts",
     "ops:up": "docker compose -f ops/deploy/docker-compose.yaml up -d",
     "ops:build": "docker compose -f ops/deploy/docker-compose.yaml build",
