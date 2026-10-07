@@ -65,6 +65,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 1440 # 24 hours max
     
+    outputs:
+      g3_passed: ${{ steps.metrics.outputs.g3_passed }}
+    
     env:
       # Configuration defaults
       SOAK_DURATION_DAYS: 1
@@ -181,10 +184,8 @@ jobs:
         id: metrics
         run: |
           # Extract final metrics from log
-          METRICS=$(grep -A 20 "FINAL G-3 SOAK METRICS" soak.log || echo "")
-          echo "metrics<<EOF" >> $GITHUB_OUTPUT
-          echo "$METRICS" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          METRICS=$(grep -A 20 "FINAL G-3 SOAK METRICS" soak.log || echo "No metrics found")
+          echo "metrics=$METRICS" >> $GITHUB_OUTPUT
           
           # Check if G-3 passed
           if grep -q "G-3 Gate: PASS" soak.log; then
@@ -212,7 +213,7 @@ jobs:
     name: Validate G-3 Requirements
     needs: soak
     runs-on: ubuntu-latest
-    if: ${{ needs.soak.result == 'success' && steps.metrics.outputs.g3_passed == 'true' }}
+    if: ${{ needs.soak.result == 'success' && needs.soak.outputs.g3_passed == 'true' }}
     
     steps:
       - name: Check G-3 gate passed
