@@ -1,7 +1,18 @@
-name: G-3 Soak Nightly
-
+# ── action pins (SEC-B50) ────────────────────────────────────────────────────────────────────────────
+# Every `uses:` in this file is a full commit SHA. A tag (`@v4`) is a ref the action's owner can
+# repoint at any commit they like — including one that reads `GITHUB_TOKEN` and the deploy secrets,
+# which is the shape of the `tj-actions/changed-files` compromise — and this repository pins npm
+# versions by `sha512`, base images by patch tag and Cargo deps by exact version precisely because
+# "whatever the ref means today" is not a pin. Updating one is a deliberate edit: resolve the new
+# tag, change the SHA *and* the inline comment, and `npm run workflows:check` will notice a
+# disagreement. The same mapping is asserted in `tests/security/deploy-artifacts.test.ts`.
+#   actions/checkout             v4.4.0   f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a 2026-10-07
+#   actions/setup-node           v4.4.0   54337e0d02de9202d0948aaff36ad556375497b9 2026-10-07
+#   actions/upload-artifact      v4.6.2   cf430e030ddbb5b0abf93d22962f4752f3646cd9 2026-10-07
 # Nightly short soak test to validate G-3 readiness
 # Runs a reduced soak test (1 hour, 100 packs) to catch regressions
+
+name: G-3 Soak Nightly
 
 on:
   schedule:
@@ -32,10 +43,10 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v4.4.0
       
       - name: Set up Node.js 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@54337e0d02de9202d0948aaff36ad556375497b9 # v4.4.0
         with:
           node-version: '24'
           cache: 'npm'
@@ -90,7 +101,7 @@ jobs:
       
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4.6.2
         with:
           name: g3-soak-nightly-${{ github.run_id }}
           path: |

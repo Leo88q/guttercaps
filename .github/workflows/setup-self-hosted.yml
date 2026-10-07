@@ -1,7 +1,17 @@
-name: Setup Self-Hosted Runner for G-3 Soak
-
+# ── action pins (SEC-B50) ────────────────────────────────────────────────────────────────────────────
+# Every `uses:` in this file is a full commit SHA. A tag (`@v4`) is a ref the action's owner can
+# repoint at any commit they like — including one that reads `GITHUB_TOKEN` and the deploy secrets,
+# which is the shape of the `tj-actions/changed-files` compromise — and this repository pins npm
+# versions by `sha512`, base images by patch tag and Cargo deps by exact version precisely because
+# "whatever the ref means today" is not a pin. Updating one is a deliberate edit: resolve the new
+# tag, change the SHA *and* the inline comment, and `npm run workflows:check` will notice a
+# disagreement. The same mapping is asserted in `tests/security/deploy-artifacts.test.ts`.
+#   actions/checkout             v4.4.0   f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a 2026-10-07
+#   actions/upload-artifact      v4.6.2   cf430e030ddbb5b0abf93d22962f4752f3646cd9 2026-10-07
 # This workflow helps set up a self-hosted runner with all required dependencies
 # for running the G-3 soak bot and other Anchor-based workflows.
+
+name: Setup Self-Hosted Runner for G-3 Soak
 
 on:
   workflow_dispatch:
@@ -22,7 +32,7 @@ jobs:
     
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v4.4.0
       
       - name: Generate setup script
         id: setup
@@ -205,7 +215,7 @@ EOF
           echo "setup-script-generated=true" >> $GITHUB_OUTPUT
       
       - name: Upload setup script
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4.6.2
         with:
           name: setup-runner-script
           path: setup-runner.sh
