@@ -41,17 +41,17 @@ on:
       duration_hours:
         description: 'Soak duration in hours (336 = 14 days)'
         required: true
-        default: '24'
+        default: 24
         type: number
       target_packs:
         description: 'Target packs to purchase'
         required: true
-        default: '1000'
+        default: 1000
         type: number
       concurrency:
         description: 'Number of concurrent workers'
         required: true
-        default: '5'
+        default: 5
         type: number
       rpc_url:
         description: 'Devnet RPC URL (empty = DEVNET_RPC_URL secret, then public devnet)'
@@ -60,12 +60,34 @@ on:
         type: string
 
 jobs:
+  # GitHub expressions have no arithmetic (a duration-times-60-plus-180 expression makes GitHub reject the
+  # whole file: "Invalid workflow file … Unexpected symbol: '+'"), so the timeout is computed here and
+  # handed to the soak job through `needs`. Runs on a GitHub-hosted runner: it takes seconds.
+  plan:
+    name: Plan the soak timeout
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      timeout_minutes: ${{ steps.calc.outputs.timeout_minutes }}
+    steps:
+      - name: Compute the job timeout (duration + 3 h slack)
+        id: calc
+        env:
+          DURATION_HOURS: ${{ inputs.duration_hours }}
+        run: |
+          set -euo pipefail
+          # a non-positive duration is refused here, before anything is requested from the runner
+          TIMEOUT_MINUTES=$(awk -v h="$DURATION_HOURS" 'BEGIN { if (h + 0 <= 0) exit 1; printf "%d", h * 60 + 180 }')
+          echo "timeout_minutes=$TIMEOUT_MINUTES" >> "$GITHUB_OUTPUT"
+          echo "soak job timeout: ${TIMEOUT_MINUTES} min (duration ${DURATION_HOURS} h + 180 min slack)"
+
   soak:
     name: G-3 Soak Test
+    needs: plan
     runs-on: [self-hosted, g3-soak]
     # Self-hosted runners are not subject to the 6-hour GitHub-hosted cap; the timeout
     # still bounds a hung run: requested duration + 3 hours of slack.
-    timeout-minutes: ${{ (inputs.duration_hours * 60) + 180 }}
+    timeout-minutes: ${{ fromJSON(needs.plan.outputs.timeout_minutes) }}
 
     env:
       DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL || inputs.rpc_url || 'https://api.devnet.solana.com' }}
