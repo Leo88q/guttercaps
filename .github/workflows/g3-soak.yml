@@ -188,10 +188,16 @@ jobs:
           fi
 
       - name: Notify Discord
-        if: always() && secrets.DISCORD_WEBHOOK_URL != ''
+        # `secrets` is not available in a step's `if:` (GitHub rejects the whole file), so the secret is
+        # read here and the empty case is decided in the shell.
+        if: always()
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
+          if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
+            echo "DISCORD_WEBHOOK_URL is not set — skipping the notification"
+            exit 0
+          fi
           curl -sf -X POST "$DISCORD_WEBHOOK_URL" \
             -H 'Content-Type: application/json' \
             -d "{\"content\":\"G-3 soak finished — gate: ${{ steps.metrics.outputs.g3_passed }} · duration: ${{ inputs.duration_hours }}h · target: ${{ inputs.target_packs }} packs · log: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
