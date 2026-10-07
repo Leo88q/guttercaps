@@ -14,6 +14,13 @@
 // Dockerfile cannot make: the freeze record in `programs/program-ids.json`, if it exists, is the authority
 // for the ids — a published image may not be built from ids that predate the deploy keypairs.
 //
+// That authority is only as good as the reader. The record is written by `npm run program-ids -- manifest`
+// as `programs[]` — a *list* of `{ name, id, keypairPresent }` — and this file used to read it as
+// `(…).programs ?? {}`, i.e. as a map keyed by program: `array['chip_core']` is `undefined`, so every
+// comparison below was against `undefined` and the check reported nothing for any record ever written.
+// `freezeIds` asserts the shape and the caller turns a record it cannot read into a problem, because a
+// gate whose condition is never true is a comment.
+//
 //   npm run ops:buildenv -- --check                                    # validate, print only problems
 //   npm run ops:buildenv -- --out /tmp/build.env                       # write it (compose --env-file format)
 //   npm run ops:buildenv -- --from ci-vars.env --out /tmp/build.env     # + an overlay (CI repo variables)
@@ -25,6 +32,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const root = resolve(import.meta.dirname, '..');
 const COMPOSE = 'ops/deploy/docker-compose.yaml';
@@ -88,6 +96,25 @@ export function devDefaults(clientConfigText: string): Map<string, string> {
   return out;
 }
 
+/**
+ * The freeze record's ids, keyed by program — the *shape* is the whole point. `manifest`
+ * (scripts/program-ids.ts:freezeRecordDoc) writes `programs` as a list of `{ name, id, keypairPresent }`;
+ * read as a map that list answers `undefined` to every question, which is how this check came to compare
+ * nothing against nothing and pass. A record this function cannot read is `null`, and the caller reports
+ * it: "the authority exists but says nothing" is a problem, not a skip.
+ */
+export function freezeIds(text: string): Record<string, string> | null {
+  let doc: { programs?: unknown };
+  try { doc = JSON.parse(text) as { programs?: unknown }; } catch { return null; }
+  if (!Array.isArray(doc.programs)) return null;
+  const ids: Record<string, string> = {};
+  for (const e of doc.programs as { name?: unknown; id?: unknown; keypairPresent?: unknown }[]) {
+    if (typeof e?.name !== 'string' || typeof e.id !== 'string') return null;
+    ids[e.name] = e.id;
+  }
+  return Object.keys(ids).length ? ids : null;
+}
+
 // --------------------------------------------------------------------------- assembly
 
 export interface Result { values: Map<string, string>; problems: string[] }
@@ -98,7 +125,10 @@ export function buildEnv(opts: {
   overlay?: string;
   env?: Record<string, string | undefined>;
   clientConfigText?: string;
-  freeze?: Record<string, string> | null;
+  /** the *contents* of `programs/program-ids.json` — null when the file does not exist. Passed as text, not
+   * as a parsed map, so the reader and the writer cannot disagree about the shape without failing a case
+   * here (`freezeIds`). */
+  freezeText?: string | null;
   cluster?: string;
 }): Result {
   const args = requiredArgs(opts.composeText);
@@ -153,12 +183,15 @@ export function buildEnv(opts: {
       if (use && use === id) problems.push(`${key}: equals the dev placeholder baked into client/src/app/config.ts — apply the freeze (ops/deploy/runbook.md §1.1) before a mainnet image is published`);
     }
   }
-  if (opts.freeze) {
+  if (opts.freezeText !== undefined && opts.freezeText !== null) {
     const named: Record<string, string> = { chip_core: 'PROGRAM_CHIP_CORE', market: 'PROGRAM_MARKET', staking: 'PROGRAM_STAKING', arena: 'PROGRAM_ARENA' };
-    for (const [program, varName] of Object.entries(named)) {
-      const want = opts.freeze[program];
+    const frozen = freezeIds(opts.freezeText);
+    if (!frozen) problems.push(`${FREEZE}: exists but is not the record \`npm run program-ids -- manifest\` writes (\`programs[]\` as a list of { name, id, keypairPresent }) — the ids below cannot be checked against it, and an unreadable authority is refused rather than skipped`);
+    else for (const [program, varName] of Object.entries(named)) {
+      const want = frozen[program];
       const got = values.get(varName);
-      if (want && got && want !== got) problems.push(`${varName}: "${got}" disagrees with the freeze record ${FREEZE} ("${want}") for ${program}`);
+      if (!want) problems.push(`${FREEZE}: no entry for ${program} — the record has to speak for all four (rewrite it with \`npm run program-ids -- manifest --from DIR\`)`);
+      else if (got && want !== got) problems.push(`${varName}: "${got}" disagrees with the freeze record ${FREEZE} ("${want}") for ${program}`);
     }
   }
   return { values, problems };
@@ -194,6 +227,9 @@ const FIXTURE_COMPOSE = `services:
 `;
 /** one program carries a dev default, the way `pk(env.X, '…')` does in the real config */
 const FIXTURE_CLIENT = `export const PROGRAMS = { chipCore: pk(env.VITE_PROGRAM_CHIP_CORE, '${A}') };`;
+/** `programs/program-ids.json` as `npm run program-ids -- manifest` writes it: `programs[]` is a list. */
+const record = (ids: Record<string, string>) =>
+  JSON.stringify({ programs: Object.entries(ids).map(([name, id]) => ({ name, id, keypairPresent: true })) });
 const RPCS = 'https://mainnet.helius-rpc.com/?api-key=0123456789abcdef';
 
 type Env = Record<string, string | undefined>;
@@ -248,8 +284,27 @@ const cases: { name: string; run: () => string[] }[] = [
   {
     name: 'the freeze record outranks every other source',
     run: () => {
-      const mk = (freeze: Record<string, string>) => buildEnv({ composeText: FIXTURE_COMPOSE, exampleText: '', env: FULL, clientConfigText: FIXTURE_CLIENT, freeze }).problems.filter((p) => p.includes('freeze record'));
-      return [...expectProblem(mk({ chip_core: C }), 'PROGRAM_CHIP_CORE', 'freeze record'), ...(mk({ chip_core: B }).length ? ['a record that agrees was reported'] : [])];
+      const mk = (ids: Record<string, string>) => buildEnv({ composeText: FIXTURE_COMPOSE, exampleText: '', env: FULL, clientConfigText: FIXTURE_CLIENT, freezeText: record(ids) }).problems.filter((p) => p.includes('freeze record'));
+      // FULL carries PROGRAM_CHIP_CORE=B and PROGRAM_MARKET=C, so "agrees" means exactly those two values.
+      return [...expectProblem(mk({ chip_core: C, market: C, staking: B, arena: B }), 'PROGRAM_CHIP_CORE', 'freeze record'), ...(mk({ chip_core: B, market: C, staking: B, arena: B }).length ? ['a record that agrees was reported: ' + mk({ chip_core: B, market: C, staking: B, arena: B })[0]] : [])];
+    },
+  },
+  {
+    // The shape mutation: `manifest` writes programs[] as a *list*. This file read it as a map for as long
+    // as the record existed — `array['chip_core']` is undefined, every comparison was against undefined,
+    // and the check reported nothing at all. A record in the map shape, or one that is not JSON, must be
+    // named as unreadable instead of quietly dropping the authority it is supposed to carry.
+    name: 'a freeze record in the wrong shape or not JSON is refused, never skipped',
+    run: () => {
+      const mk = (text: string) => buildEnv({ composeText: FIXTURE_COMPOSE, exampleText: '', env: FULL, clientConfigText: FIXTURE_CLIENT, freezeText: text }).problems;
+      const good = mk(record({ chip_core: B, market: C, staking: B, arena: C }));
+      return [
+        ...expectProblem(mk(JSON.stringify({ programs: { chip_core: C } })), FREEZE, 'not the record'),
+        ...expectProblem(mk('{ not json'), FREEZE, 'not the record'),
+        ...expectProblem(mk(JSON.stringify({ programs: [{ name: 'chip_core', id: B }] })), FREEZE, 'no entry for'),
+        ...(good.some((p) => p.includes(FREEZE)) ? [`a record written the way \`manifest\` writes it was reported: ${good.find((p) => p.includes(FREEZE))}`] : []),
+        ...(freezeIds(record({ chip_core: C }))?.chip_core === C ? [] : ['freezeIds did not read the shape it was handed — the cases above would pass on a parse that returns nothing']),
+      ];
     },
   },
   {
@@ -330,38 +385,47 @@ const opt = (name: string, dflt?: string) => {
   return i >= 0 ? argv[i + 1] : dflt;
 };
 
-if (argv.includes('--selftest')) process.exit(selftest());
+function main(): number {
+  if (argv.includes('--selftest')) return selftest();
 
-const overlay = opt('from') ? readFileSync(resolve(root, opt('from')!), 'utf8') : undefined;
-const freezePath = join(root, FREEZE);
-const freeze = existsSync(freezePath) ? ((JSON.parse(readFileSync(freezePath, 'utf8')).programs ?? {}) as Record<string, string>) : null;
-const result = buildEnv({
-  composeText: readFileSync(join(root, COMPOSE), 'utf8'),
-  exampleText: existsSync(join(root, EXAMPLE)) ? readFileSync(join(root, EXAMPLE), 'utf8') : '',
-  overlay,
-  clientConfigText: readFileSync(join(root, 'client/src/app/config.ts'), 'utf8'),
-  freeze,
-  cluster: opt('cluster'),
-});
+  const overlay = opt('from') ? readFileSync(resolve(root, opt('from')!), 'utf8') : undefined;
+  const freezePath = join(root, FREEZE);
+  const freezeText = existsSync(freezePath) ? readFileSync(freezePath, 'utf8') : null;
+  const result = buildEnv({
+    composeText: readFileSync(join(root, COMPOSE), 'utf8'),
+    exampleText: existsSync(join(root, EXAMPLE)) ? readFileSync(join(root, EXAMPLE), 'utf8') : '',
+    overlay,
+    clientConfigText: readFileSync(join(root, 'client/src/app/config.ts'), 'utf8'),
+    freezeText,
+    cluster: opt('cluster'),
+  });
 
-for (const p of result.problems) console.error('✗ ' + p);
-if (result.problems.length) {
-  console.error(`\n${result.problems.length} problem(s); nothing was written. An image built with a missing or\nplaceholder value is not "a build to retry" — it is a deployable artifact for the wrong\nnetwork. Fix the sources (${EXAMPLE}, or the freeze record) and re-run.`);
-  process.exit(1);
+  for (const p of result.problems) console.error('✗ ' + p);
+  if (result.problems.length) {
+    console.error(`\n${result.problems.length} problem(s); nothing was written. An image built with a missing or\nplaceholder value is not "a build to retry" — it is a deployable artifact for the wrong\nnetwork. Fix the sources (${EXAMPLE}, or the freeze record) and re-run.`);
+    return 1;
+  }
+
+  const text = render(result.values);
+  const out = opt('out');
+  if (argv.includes('--check')) {
+    console.log(`ok: ${result.values.size} value(s), cluster ${result.values.get('VITE_CLUSTER') ?? 'mainnet-beta'}, ${result.values.get('VITE_PROGRAM_CHIP_CORE') ? 'ids from ' + (freezeText ? FREEZE + ' + overlay' : 'overlay/env') : 'no ids (do not publish a mainnet image from this)'}`);
+  } else if (out) {
+    const abs = resolve(root, out);
+    if (abs === resolve(root, EXAMPLE)) { console.error(`refusing to overwrite ${EXAMPLE} — that file is hand-maintained truth, not a generated artifact`); return 1; }
+    // The guard is against the mistake that would be invisible: a generated env file committed into the tree
+    // and then read as truth by the next deploy. Temp dir or ops/deploy, nowhere else.
+    if (!abs.startsWith(tmpdir()) && !abs.startsWith(resolve(root, 'ops/deploy'))) { console.error(`refusing to write outside ${tmpdir()} or ops/deploy (got ${abs})`); return 1; }
+    writeFileSync(abs, text, { mode: 0o600 });
+    console.log(`wrote ${out}: ${result.values.size} value(s), cluster ${result.values.get('VITE_CLUSTER') ?? 'mainnet-beta'}`);
+  } else {
+    process.stdout.write(text);
+  }
+  return 0;
 }
 
-const text = render(result.values);
-const out = opt('out');
-if (argv.includes('--check')) {
-  console.log(`ok: ${result.values.size} value(s), cluster ${result.values.get('VITE_CLUSTER') ?? 'mainnet-beta'}, ${result.values.get('VITE_PROGRAM_CHIP_CORE') ? 'ids from ' + (freeze ? FREEZE + ' + overlay' : 'overlay/env') : 'no ids (do not publish a mainnet image from this)'}`);
-} else if (out) {
-  const abs = resolve(root, out);
-  if (abs === resolve(root, EXAMPLE)) { console.error(`refusing to overwrite ${EXAMPLE} — that file is hand-maintained truth, not a generated artifact`); process.exit(1); }
-  // The guard is against the mistake that would be invisible: a generated env file committed into the tree
-  // and then read as truth by the next deploy. Temp dir or ops/deploy, nowhere else.
-  if (!abs.startsWith(tmpdir()) && !abs.startsWith(resolve(root, 'ops/deploy'))) { console.error(`refusing to write outside ${tmpdir()} or ops/deploy (got ${abs})`); process.exit(1); }
-  writeFileSync(abs, text, { mode: 0o600 });
-  console.log(`wrote ${out}: ${result.values.size} value(s), cluster ${result.values.get('VITE_CLUSTER') ?? 'mainnet-beta'}`);
-} else {
-  process.stdout.write(text);
-}
+// Importable, and it has to be: the freeze record has two readers (this file's `freezeIds` and
+// scripts/program-ids.ts's `parseFreezeRecord`) and one writer, and tests/security/program-ids-guard.test.ts
+// asserts that both read what `manifest` writes. A module that runs its CLI — and `process.exit`s — at
+// import time cannot take part in that.
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) process.exit(main());
