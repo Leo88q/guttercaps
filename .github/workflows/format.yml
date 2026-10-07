@@ -138,7 +138,7 @@ jobs:
       has_changes: ${{ steps.patch.outputs.has_changes }}
       files: ${{ steps.patch.outputs.files }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: format
         run: |
           # git in a container runs as a different uid than the checkout owner and refuses to touch the repo
@@ -193,7 +193,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: rustfmt-patch, path: /tmp }
       - name: apply
