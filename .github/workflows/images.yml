@@ -18,7 +18,8 @@
 #   * it does not invent build values. The required ones are read out of the compose file by
 #     `npm run ops:buildenv` (scripts/deploy-build-env.ts), which lists every problem and writes nothing on
 #     failure. Set them as repository variables — the names are exactly the keys of ops/deploy/.env.example.
-#     On a repo whose program ids are still the dev placeholders, only `cluster: devnet` builds.
+#     Until the id ceremony writes `programs/program-ids.json`, only `cluster: devnet` builds (the mainnet
+#     path is refused by `guard-mainnet`, step 6).
 #   * it does not build for arm64. The compose file is a single-host amd64 deploy; a second architecture
 #     doubles the publish time and the surface for images nobody runs.
 #
@@ -127,8 +128,11 @@ jobs:
           CLUSTER: ${{ inputs.cluster || 'mainnet-beta' }}
         run: |
           set -euo pipefail
-          # SEC-F05: a mainnet image is refused while Anchor.toml's [programs.mainnet] still carries the
-          # pre-ceremony placeholder ids (ops:buildenv checks the vars; this checks the tree they came from).
+          # SEC-F05: a mainnet image is refused while the tree has no freeze record (`programs/program-ids.json`,
+          # the ids cut from the cold keypairs at the ceremony). The gate asks where the ids came from, not
+          # whether they look like placeholders: `apply` keeps every copy agreeing, so a tree that never saw a
+          # deploy keypair still agrees with itself. `ops:buildenv` then checks the vars against that record.
+          # Until the ceremony this fails every mainnet run — by design, see ops/deploy/runbook.md §1.1.
           if [[ "$CLUSTER" == "mainnet-beta" ]]; then npm run program-ids -- guard-mainnet; fi
           npm run ops:buildenv -- --cluster "$CLUSTER" --out /tmp/build.env
           {
