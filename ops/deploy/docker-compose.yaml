@@ -232,7 +232,7 @@ services:
   # Alertmanager can reach it, and on `edge` so it has egress — Alertmanager itself stays off
   # the public internet. Empty SLACK_WEBHOOK_URL / PAGERDUTY_ROUTING_KEY still logs every page.
   alert-webhook:
-    image: node:22-alpine
+    image: node:24-alpine
     profiles: [monitoring]
     restart: unless-stopped
     command: ["node", "/app/alert-webhook.mjs"]

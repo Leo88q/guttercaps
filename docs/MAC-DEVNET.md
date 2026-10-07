@@ -30,7 +30,7 @@ origin <ветка>` и в `BRANCH=<ветка>`.
 |---|---|---|
 | `update` | `git fetch`, fast-forward на `$BRANCH` | правки, которые можно восстановить, сбрасываются, ваши — в `git stash` (см. раздел 5) |
 | `doctor` | что установлено, чего не хватает | ничего не меняет |
-| `toolchain` | Node 22, Rust 1.89.0, solana CLI 2.1.0 (Agave), Anchor 0.31.1, `npm ci` | перед каждой установкой спрашивает `[y/N]`; версии берутся из `Anchor.toml`, `rust-toolchain.toml`, `.nvmrc` |
+| `toolchain` | Node 24, Rust 1.89.0, solana CLI 2.1.0 (Agave), Anchor 0.31.1, `npm ci` | перед каждой установкой спрашивает `[y/N]`; версии берутся из `Anchor.toml`, `rust-toolchain.toml`, `.nvmrc` |
 | `verify` | `npm run verify` — 28 проверок Node/Python, как в CI | около 3 минут |
 | `rust` | `npm run programs:gate` — `cargo fmt --check`, `clippy -D warnings`, `cargo test`; clippy и тесты с `--locked` | как в CI: только `deprecated` / `unexpected_cfgs` из макросов Anchor разрешены; первая компиляция всех зависимостей долгая |
 | `localnet` | сборка `--features localnet` + 92 сценария LiteSVM (`npm test`) | нужен `sb_mock` (подставной Switchboard); эти `.so` на devnet никогда не попадают |
@@ -101,7 +101,7 @@ origin <ветка>` и в `BRANCH=<ветка>`.
 
 * Глобально, только после вашего `y`: rustup и Rust-toolchain 1.89.0; solana CLI **2.1.0 становится активным**
   (прежнюю версию можно вернуть `agave-install init <версия>`); Anchor 0.31.1 — через `avm`, если он есть, иначе
-  готовым бинарником релиза в `~/.cargo/bin` (без 10-минутной компиляции); `node@22` через Homebrew, если Node другой.
+  готовым бинарником релиза в `~/.cargo/bin` (без 10-минутной компиляции); `node@24` через Homebrew, если Node другой.
 * В репозитории: `target/mac-devnet/` (состояние и логи запусков — каждый запуск пишет `run-<время>.log`),
   `client/.env.local`, `backend/.env` (только если их нет или они созданы этим скриптом), правки id программ
   (раздел 6).
@@ -133,7 +133,7 @@ bash scripts/mac-devnet.sh --yes               # не спрашивать пе�
 
 ## 6. Ключи и id программ
 
-Четыре id в репозитории (`GCRhrg6…`, `GCA2aU…`, `GCuGx7…`, `GCfERi…`) — заглушки: их ключей в репозитории нет
+Четыре id в репозитории (`J68G8KrbLTSdi68LHr9Kkw1YbRRHv3uBPirWCd5Xt13V`, `5skEmmhgFYn5xjHEdrcsiQ68kUg5kvhXKhjWTWSppjfo`, `Ewkbp7WpqbiJAu3ofEcTPinqnr5oH3e94YJDZFg1eSJn`, `DUTokrhWBYL7nJ9VbMy7bFELQFf8TN1tmvVpKLsskqD6`) — заглушки: их ключей в репозитории нет
 (`*-keypair.json` в `.gitignore`), а простой `anchor build` придумал бы случайные ключи, и задеплоенный адрес не
 совпал бы с `declare_id!`. Поэтому этап `ids` делает так:
 

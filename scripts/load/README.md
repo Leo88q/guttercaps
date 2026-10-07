@@ -76,7 +76,7 @@ throughput живого индексирования и пересборки, э
 | Строка §4 | Почему скрипта нет |
 |---|---|
 | LT-2a pack storm (localnet) | нужен `solana-test-validator` + генератор транзакций (`scripts/load/packstorm.ts`), и `sb_mock`-сборка программ: в этой среде нет ни `cargo`, ни `anchor`, ни валидатора (`docs/09` §8) |
-| LT-2b pack storm (devnet) | то же + реальные очереди Switchboard (`Aio4…`/`EYiA…`) и оплаченный devnet-payer; это G-3, 14 дней соака |
+| LT-2b pack storm (devnet) | то же + реальные очереди Switchboard (`Aio4…`/`EYiA…`) и оплаченный devnet-payer; **G-3 soak-бот** (`scripts/load/soak-g3.ts`) — 14 дней, ≥10 000 паков |
 | LT-2c dress rehearsal | mainnet, 200 паков командными кошельками — только руками |
 | LT-3 indexer (остаток) | `npm run load:lt3` и `backend/test/replay.test.ts` закрывают всё, что измеримо без цепи (см. секцию ниже). Не измеримо отсюда: лаг p95 при 50 tx/с, 200 tx/с на реальном `backfill`, WS-мок провайдера и память под настоящим RPC-потоком |
 | LT-4 crank | 10 000 pending в очереди + обрывы RPC — требует LT-2a-стенда |

@@ -238,7 +238,7 @@ dapp-store/             — PORTAL_CHECKLIST.md + медиа для Publisher Po
 
 ```bash
 # 0. Зависимости — строго по коммитнутому lock-файлу: `npm ci` из корня (workspaces покрывают
-#    client/, backend/, packages/) — одинаково под npm 10 (CI, node 22) и npm 11 (машина разработчика).
+#    client/, backend/, packages/) — одинаково под npm 10 (CI, node 24) и npm 11 (машина разработчика).
 #    Lock обязан нести платформенные optional-пакеты всех OS/CPU: если он записан инсталлом, который
 #    видел только одну платформу, то на чужой `npm ci` падает с пачкой «Missing: @esbuild/darwin-arm64
 #    … from lock file», а `npm install` переписывает файл — и следующий `git pull` встаёт на «local
