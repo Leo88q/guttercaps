@@ -1,0 +1,359 @@
+name: Setup Self-Hosted Runner for G-3 Soak
+
+# This workflow helps set up a self-hosted runner with all required dependencies
+# for running the G-3 soak bot and other Anchor-based workflows.
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner_name:
+        description: 'Name for the self-hosted runner'
+        required: true
+        default: 'g3-soak-runner'
+      labels:
+        description: 'Labels for the runner (comma-separated)'
+        required: false
+        default: 'self-hosted,g3-soak,anchor'
+
+jobs:
+  setup-runner:
+    name: Generate Setup Script
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Generate setup script
+        id: setup
+        run: |
+          # Create setup script for self-hosted runner
+          cat > setup-runner.sh << 'EOF'
+#!/bin/bash
+set -euo pipefail
+
+# Self-Hosted Runner Setup Script for G-3 Soak Bot
+# This script sets up a machine with all dependencies needed for:
+#   - Anchor toolchain
+#   - Solana CLI
+#   - Rust
+#   - Node 24+
+#   - Docker
+#   - GitHub Actions Runner
+
+# ============================================================================
+# Configuration
+# ============================================================================
+
+RUNNER_NAME="${{ github.event.inputs.runner_name || 'g3-soak-runner' }}"
+REPO_URL="${{ github.server_url }}/${{ github.repository }}"
+RUNNER_TOKEN="${{ secrets.SELF_HOSTED_RUNNER_TOKEN }}"
+LABELS="${{ github.event.inputs.labels || 'self-hosted,g3-soak,anchor' }}"
+
+# ============================================================================
+# Dependencies
+# ============================================================================
+
+echo "============================================================"
+echo "  Setting up self-hosted runner for G-3 Soak Bot"
+echo "============================================================"
+
+# 1. Update system
+echo ""
+echo "[1/7] Updating system..."
+sudo apt-get update -y
+sudo apt-get upgrade -y
+
+# 2. Install basic dependencies
+echo ""
+echo "[2/7] Installing basic dependencies..."
+sudo apt-get install -y \
+  curl \
+  wget \
+  git \
+  build-essential \
+  pkg-config \
+  libssl-dev \
+  libudev-dev \
+  zlib1g-dev \
+  llvm \
+  clang \
+  cmake \
+  make \
+  g++ \
+  jq \
+  unzip \
+  tar
+
+# 3. Install Node 24 (via nvm)
+echo ""
+echo "[3/7] Installing Node 24..."
+if [ ! -d "$HOME/.nvm" ]; then
+  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+  export NVM_DIR="$HOME/.nvm"
+  [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+fi
+
+# Install Node 24
+nvm install 24
+nvm use 24
+nvm alias default 24
+
+echo "Node version: $(node -v)"
+echo "NPM version: $(npm -v)"
+
+# 4. Install Rust 1.89.0
+echo ""
+echo "[4/7] Installing Rust 1.89.0..."
+if [ ! -d "$HOME/.rustup" ]; then
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.89.0
+  source "$HOME/.cargo/env"
+else
+  rustup default 1.89.0
+  rustup update 1.89.0
+fi
+
+echo "Rust version: $(rustc --version)"
+echo "Cargo version: $(cargo --version)"
+
+# 5. Install Solana CLI 2.1.0 (Agave)
+echo ""
+echo "[5/7] Installing Solana CLI 2.1.0..."
+if [ ! -d "$HOME/.local/share/solana" ]; then
+  curl -sSfL https://raw.githubusercontent.com/solana-labs/solana/v2.1.0/install | sh -s -- --install-dir /usr/local
+else
+  solana-install update 2.1.0
+fi
+
+echo "Solana version: $(solana --version)"
+
+# 6. Install Anchor 0.31.1
+echo ""
+echo "[6/7] Installing Anchor 0.31.1..."
+if [ ! -d "$HOME/.avm" ]; then
+  cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked --force
+else
+  avm use 0.31.1 || (cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked --force && avm use 0.31.1)
+fi
+
+echo "Anchor version: $(anchor --version)"
+
+# 7. Install Docker
+echo ""
+echo "[7/7] Installing Docker..."
+if [ ! -x "$(command -v docker)" ]; then
+  curl -fsSL https://get.docker.com | sh
+  sudo usermod -aG docker $USER
+  echo "Docker installed. Please log out and back in for group changes to take effect."
+else
+  echo "Docker already installed: $(docker --version)"
+fi
+
+# ============================================================================
+# Install GitHub Actions Runner
+# ============================================================================
+
+echo ""
+echo "============================================================"
+echo "  Installing GitHub Actions Runner"
+echo "============================================================"
+
+# Create actions-runner directory
+mkdir -p ~/actions-runner
+cd ~/actions-runner
+
+# Download the latest runner package
+RUNNER_PACKAGE_URL="https://github.com/actions/runner/releases/download/v2.311.0/actions-runner-linux-x64-2.311.0.tar.gz"
+echo "Downloading runner from $RUNNER_PACKAGE_URL..."
+curl -o actions-runner.tar.gz -L $RUNNER_PACKAGE_URL
+tar xzf actions-runner.tar.gz
+
+# Configure the runner
+echo "Configuring runner..."
+./config.sh --url $REPO_URL --token $RUNNER_TOKEN --name $RUNNER_NAME --labels $LABELS --unattended
+
+# Clean up
+rm -f actions-runner.tar.gz
+
+echo ""
+echo "============================================================"
+echo "  Runner Setup Complete!"
+echo "============================================================"
+echo ""
+echo "To start the runner manually:"
+echo "  cd ~/actions-runner && ./run.sh"
+echo ""
+echo "To start as a service:"
+echo "  sudo ./svc.sh install"
+echo "  sudo ./svc.sh start"
+echo ""
+echo "To verify:"
+echo "  - Node: node -v (should be 24+)"
+echo "  - Rust: rustc --version (should be 1.89.0)"
+echo "  - Solana: solana --version (should be 2.1.0)"
+echo "  - Anchor: anchor --version (should be 0.31.1)"
+echo "  - Docker: docker --version"
+echo ""
+echo "Runner will automatically start on boot if installed as a service."
+EOF
+          
+          # Make script executable
+          chmod +x setup-runner.sh
+          
+          # Output instructions
+          echo "" >> setup-runner.sh
+          echo "setup-script-generated=true" >> $GITHUB_OUTPUT
+      
+      - name: Upload setup script
+        uses: actions/upload-artifact@v4
+        with:
+          name: setup-runner-script
+          path: setup-runner.sh
+          retention-days: 7
+      
+      - name: Display instructions
+        run: |
+          echo "" 
+echo "============================================================"
+echo "  Self-Hosted Runner Setup Instructions"
+echo "============================================================"
+echo ""
+echo "1. Create a PAT (Personal Access Token) with 'repo' scope:"
+echo "   https://github.com/settings/tokens/new"
+echo ""
+echo "2. Add the PAT as a secret named SELF_HOSTED_RUNNER_TOKEN:"
+echo "   https://github.com/${{ github.repository }}/settings/secrets/actions/new"
+echo ""
+echo "3. Download and run the setup script on your machine:"
+echo "   wget <artifact-url>/setup-runner.sh"
+echo "   chmod +x setup-runner.sh"
+echo "   ./setup-runner.sh"
+echo ""
+echo "4. Or run manually with:"
+echo "   bash setup-runner.sh"
+echo ""
+echo "5. After setup, start the runner:"
+echo "   cd ~/actions-runner && ./run.sh"
+echo ""
+echo "============================================================"
+
+  setup-self-hosted-manual:
+    name: Manual Setup Instructions
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Display manual setup instructions
+        run: |
+          echo "" 
+echo "============================================================"
+echo "  MANUAL SETUP: Self-Hosted Runner for G-3 Soak Bot"
+echo "============================================================"
+echo ""
+echo "This runner needs:"
+echo "  - Node 24+ (SEC-B50 requirement)"
+echo "  - Rust 1.89.0"
+echo "  - Solana CLI 2.1.0 (Agave)"
+echo "  - Anchor 0.31.1"
+echo "  - Docker"
+echo "  - GitHub Actions Runner"
+echo ""
+echo "============================================================"
+echo "  STEP 1: Create a PAT Token"
+echo "============================================================"
+echo ""
+echo "1. Go to: https://github.com/settings/tokens/new"
+echo "2. Create a new Personal Access Token (classic)"
+echo "3. Select scope: 'repo'"
+echo "4. Copy the token (it won't be shown again)"
+echo ""
+echo "============================================================"
+echo "  STEP 2: Add PAT as Repository Secret"
+echo "============================================================"
+echo ""
+echo "1. Go to: ${{ github.server_url }}/${{ github.repository }}/settings/secrets/actions"
+echo "2. Click 'New repository secret'"
+echo "3. Name: SELF_HOSTED_RUNNER_TOKEN"
+echo "4. Value: <your PAT token>"
+echo "5. Click 'Add secret'"
+echo ""
+echo "============================================================"
+echo "  STEP 3: Install Dependencies on Target Machine"
+echo "============================================================"
+echo ""
+echo "# Update system"
+echo "sudo apt-get update -y && sudo apt-get upgrade -y"
+echo ""
+echo "# Install basic dependencies"
+echo "sudo apt-get install -y curl wget git build-essential pkg-config \\"
+echo "  libssl-dev libudev-dev zlib1g-dev llvm clang cmake make \\"
+echo "  g++ jq unzip tar"
+echo ""
+echo "# Install Node 24 (via nvm)"
+echo "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash"
+echo "export NVM_DIR="\$HOME/.nvm""
+echo "[ -s \"\$NVM_DIR/nvm.sh\" ] && \\. \"\$NVM_DIR/nvm.sh\""
+echo "nvm install 24"
+echo "nvm use 24"
+echo "nvm alias default 24"
+echo ""
+echo "# Install Rust 1.89.0"
+echo "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.89.0"
+echo "source \"\$HOME/.cargo/env\""
+echo ""
+echo "# Install Solana CLI 2.1.0"
+echo "curl -sSfL https://raw.githubusercontent.com/solana-labs/solana/v2.1.0/install | sh -s -- --install-dir /usr/local"
+echo ""
+echo "# Install Anchor 0.31.1"
+echo "cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked --force"
+echo "avm use 0.31.1"
+echo ""
+echo "# Install Docker"
+echo "curl -fsSL https://get.docker.com | sh"
+echo "sudo usermod -aG docker \$USER"
+echo "newgrp docker  # or log out and back in"
+echo ""
+echo "============================================================"
+echo "  STEP 4: Install GitHub Actions Runner"
+echo "============================================================"
+echo ""
+echo "# Download runner"
+echo "mkdir -p ~/actions-runner && cd ~/actions-runner"
+echo "curl -o actions-runner.tar.gz -L https://github.com/actions/runner/releases/download/v2.311.0/actions-runner-linux-x64-2.311.0.tar.gz"
+echo "tar xzf actions-runner.tar.gz"
+echo ""
+echo "# Configure runner (replace placeholders)"
+echo "RUNNER_TOKEN=<your-PAT>"
+echo "REPO_URL=https://github.com/${{ github.repository }}"
+echo "RUNNER_NAME=g3-soak-runner"
+echo "./config.sh --url \$REPO_URL --token \$RUNNER_TOKEN --name \$RUNNER_NAME --labels self-hosted,g3-soak,anchor --unattended"
+echo ""
+echo "# Start runner"
+echo "./run.sh"
+echo ""
+echo "# (Optional) Install as service"
+echo "sudo ./svc.sh install"
+echo "sudo ./svc.sh start"
+echo ""
+echo "============================================================"
+echo "  STEP 5: Verify Setup"
+echo "============================================================"
+echo ""
+echo "node -v           # Should be v24.x.x"
+echo "rustc --version  # Should be 1.89.0"
+echo "solana --version # Should be 2.1.0"
+echo "anchor --version # Should be 0.31.1"
+echo "docker --version # Should be installed"
+echo ""
+echo "============================================================"
+echo "  STEP 6: Run G-3 Soak Bot"
+echo "============================================================"
+echo ""
+echo "# The runner will automatically pick up workflows with:"
+echo "#   runs-on: self-hosted"
+echo "#   runs-on: [self-hosted, g3-soak]"
+echo "#   runs-on: [self-hosted, anchor]"
+echo ""
+echo "# To manually trigger a soak test:"
+echo "gh workflow run g3-soak.yml -f duration_hours=24 -f target_packs=1000"
+echo ""
+echo "============================================================"
