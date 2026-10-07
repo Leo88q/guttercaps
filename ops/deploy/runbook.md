@@ -35,7 +35,7 @@ image CI, build-env, setup и `ops:release`. Реквизиты/заключен
 
 ```bash
 docker compose version          # нужен ≥ v2.24: env_file с required:false
-node -v                          # ≥ 22.13 — бэкенд работает на node:sqlite
+node -v                          # ≥ 24.21.0 — бэкенд работает на node:sqlite
 npm ci && npm run verify         # все оффлайн-проверки должны быть зелёными ДО сборки
 ```
 
@@ -194,7 +194,7 @@ docker compose -f ops/deploy/docker-compose.yaml images   # digest'ы = из ф�
 npm run env:check       # офлайн: каждая ${VAR} из compose описана в .env.example и наоборот
 npm run ops:config      # валидация самого compose (этот шаг уже требует Docker)
 npm run ops:buildenv -- --check   # обязательные build.args: заданы, и это не плейсхолдеры
-npm run ops:build       # три образа: client (Vite→nginx), api (node:22.13.0-slim), backup (alpine+sqlite3)
+npm run ops:build       # три образа: client (Vite→nginx), api (node:24.21.0-slim), backup (alpine+sqlite3)
 npm run ops:up
 npm run ops:ps          # api: healthy. client: healthy. redis: healthy
 curl -fsS localhost:8080/healthz && curl -s localhost:8080/readyz | head -c 400
@@ -399,7 +399,7 @@ sqlite3 /tmp/restore.sqlite 'PRAGMA integrity_check; SELECT COUNT(*) FROM events
 
 ```bash
 docker compose -f ops/deploy/docker-compose.yaml logs --since 30m api 2>&1 | grep -iE "crank|ALERT" | tail -20
-# только чтение, без зависимостей: образ — node 22, у которого есть встроенный node:sqlite
+# только чтение, без зависимостей: образ — node 24, у которого есть встроенный node:sqlite
 docker compose -f ops/deploy/docker-compose.yaml exec api node -e "
 const { DatabaseSync } = require('node:sqlite');
 const db = new DatabaseSync('/data/guttercaps.sqlite', { readOnly: true });

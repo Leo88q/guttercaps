@@ -7,7 +7,7 @@
 # cannot be flipped on a running production origin, which is the security property we want, and the
 # assertion below fails the build if a required value was forgotten instead of shipping a bundle that
 # quietly points at devnet placeholders.
-ARG NODE_IMAGE=node:22.13.0-slim
+ARG NODE_IMAGE=node:24.21.0-slim
 ARG NGINX_IMAGE=nginx:1.27.4-alpine
 
 FROM ${NODE_IMAGE} AS build

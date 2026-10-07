@@ -2,10 +2,10 @@
 # GUTTERCAPS backend image: the API + the workers that talk to it (ops/deploy/runbook.md §1).
 #
 # Two decisions worth reading before you edit:
-#   1. The base is pinned to a patch tag. An unpinned `node:22-slim` means a rebuild 6 months from now
+#   1. The base is pinned to a patch tag. An unpinned `node:24-slim` means a rebuild 6 months from now
 #      produces a different binary than the one you audited, and `solana-verify`/program-hash
 #      comparisons are only as reproducible as the toolchain around them (docs/06 §4 finding: unpinned
-#      images). `engines.node >= 22.13` in package.json is the floor because the backend runs on
+#      images). `engines.node >= 24.21.0` in package.json is the floor because the backend runs on
 #      `node:sqlite`, which is experimental before it; the assertion below fails the build rather than
 #      the deploy if someone bumps the base down.
 #   2. There is no compile step. The backend runs `.ts` directly through `tsx`, so the image ships
@@ -35,8 +35,8 @@ COPY backend/openapi.yaml backend/openapi.yaml
 COPY backend/access-policy.json backend/access-policy.json
 
 # Fail the build, not the deploy, if the runtime can't do what the code assumes.
-# Node 22.13 does not load .ts by default: use the same production tsx loader as the API.
-RUN node -e "const [maj,min]=process.versions.node.split('.').map(Number); if (maj!==22 || min<13) { console.error('node 22.13+ required (node:sqlite), got '+process.versions.node); process.exit(1) } if (typeof process.getBuiltinModule('node:sqlite').DatabaseSync !== 'function') { console.error('node:sqlite unavailable'); process.exit(1) }" \
+# Node 24.21 does not load .ts by default: use the same production tsx loader as the API.
+RUN node -e "const [maj,min]=process.versions.node.split('.').map(Number); if (maj!==24 || min<21) { console.error('node 24.21+ required (node:sqlite), got '+process.versions.node); process.exit(1) } if (typeof process.getBuiltinModule('node:sqlite').DatabaseSync !== 'function') { console.error('node:sqlite unavailable'); process.exit(1) }" \
  && node --import tsx --input-type=module -e "import('@guttercaps/economy').then(m => { if (!m.PACKS || Object.keys(m.PACKS).length !== 4) { console.error('economy package did not resolve through the workspace symlink'); process.exit(1) } })"
 
 # The `node` user of the official image (uid 1000): never run the API as root — it holds a session
