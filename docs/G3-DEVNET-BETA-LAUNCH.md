@@ -162,7 +162,6 @@ spl-token mint $CG_MINT 100000 --url devnet -- --recipient $SOAK_PUB   # 100K CG
 | `SOAK_PRIVATE_KEY` | ✅ | base64 сырых 64 байт (шаг 3) |
 | `DEVNET_RPC_URL` | ✅ | приватный RPC (шаг 2) |
 | `DISCORD_WEBHOOK_URL` | ⛔ | алерты о завершении soak |
-| `SELF_HOSTED_RUNNER_TOKEN` | ✅ (для setup) | регистрация раннера |
 
 Бот **не печатает** приватный ключ — только адрес кошелька.
 

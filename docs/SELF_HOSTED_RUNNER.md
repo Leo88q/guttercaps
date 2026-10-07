@@ -32,29 +32,18 @@ GitHub Actions **free runners** have limitations:
 
 ### Option A: Use Setup Workflow
 
-1. **Create a PAT token** with `repo` scope:
-   ```
-   https://github.com/settings/tokens/new
-   ```
-
-2. **Add PAT as secret**: `SELF_HOSTED_RUNNER_TOKEN`
-   ```
-   https://github.com/Leo88q/guttercaps/settings/secrets/actions/new
-   ```
-
-3. **Run setup workflow**:
+1. **Run setup workflow** (it only generates `setup-runner.sh`; it never registers anything):
    ```bash
    gh workflow run setup-self-hosted.yml \
      -f runner_name=g3-soak-runner \
      -f labels="self-hosted,g3-soak,anchor"
    ```
 
-4. **Download and run setup script** on target machine:
+2. **Download and run setup script** on the target machine. Get a runner **registration token** (valid ~1 hour, not a PAT) from `https://github.com/Leo88q/guttercaps/settings/actions/runners/new`. The script reads it from the environment and never stores it in a file or artifact:
    ```bash
-   # From workflow artifacts
-   wget <artifact-url>/setup-runner.sh
+   # setup-runner.sh is in the 'setup-runner-script' artifact of the setup workflow run
    chmod +x setup-runner.sh
-   ./setup-runner.sh
+   RUNNER_TOKEN=<registration-token> ./setup-runner.sh
    ```
 
 ### Option B: Manual Setup
@@ -165,7 +154,6 @@ Set these as **repository secrets** or **organization secrets**:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `SELF_HOSTED_RUNNER_TOKEN` | ✅ | PAT for runner registration |
 | `DEVNET_RPC_URL` | ✅ | Private devnet RPC endpoint |
 | `SOAK_PRIVATE_KEY` | ✅ | Funded wallet private key — **base64 of the raw 64-byte secret key**: `node -e "console.log(Buffer.from(require('./soak-key.json')).toString('base64'))"`. NOT base64 of the solana-cli JSON file (that encodes the JSON text and `Keypair.fromSecretKey` rejects it) |
 
