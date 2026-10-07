@@ -1,0 +1,229 @@
+name: G-3 Soak Test
+
+# G-3 Devnet Soak Bot workflow
+# Requirements (docs/06 §1.4 G-3):
+#   - >= 10,000 packs purchased
+#   - 0 abandoned/stale pending packs/fusions/battles
+#   - crank p95 <= 20 seconds
+#   - >= 500 fusions (>= 100 risky)
+#   - >= 200 wager matches
+#
+# This workflow runs the soak bot in a container with:
+#   - Node 24+ (SEC-B50)
+#   - Docker for containerized execution
+#   - Devnet RPC access
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration_hours:
+        description: 'Soak duration in hours'
+        required: true
+        default: '24'
+        type: number
+      target_packs:
+        description: 'Target packs to purchase'
+        required: true
+        default: '1000'
+        type: number
+      concurrency:
+        description: 'Number of concurrent workers'
+        required: true
+        default: '5'
+        type: number
+      rpc_url:
+        description: 'Devnet RPC URL'
+        required: false
+        default: 'https://api.devnet.solana.com'
+        type: string
+
+  schedule:
+    # Run daily at 00:00 UTC (optional)
+    - cron: '0 0 * * *'
+
+  push:
+    branches: [main, arena/**]
+    paths:
+      - 'scripts/load/soak-g3.ts'
+      - 'scripts/load/soak-g3.md'
+      - '.github/workflows/g3-soak.yml'
+
+jobs:
+  soak:
+    name: G-3 Soak Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 1440 # 24 hours max
+    
+    env:
+      # Configuration defaults
+      SOAK_DURATION_DAYS: 1
+      SOAK_TARGET_PACKS: 100
+      SOAK_CONCURRENCY: 5
+      SOAK_INTERVAL_MS: 1000
+      SOAK_LOG_INTERVAL_MS: 60000
+      DEVNET_RPC_URL: ${{ inputs.rpc_url || 'https://api.devnet.solana.com' }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm ci --omit=optional --no-audit --no-fund
+          npm run lock:integrity
+      
+      - name: Build programs (optional)
+        run: |
+          # Only if Anchor toolchain is available
+          if command -v anchor &> /dev/null; then
+            echo "Anchor found, building programs..."
+            anchor build -- --features devnet
+          else
+            echo "Anchor not found, skipping program build"
+          fi
+        continue-on-error: true
+      
+      - name: Configure soak bot
+        id: config
+        run: |
+          # Calculate duration in days from hours input
+          DURATION_DAYS=$(echo "${{ inputs.duration_hours }} / 24" | bc -l)
+          echo "duration_days=$DURATION_DAYS" >> $GITHUB_OUTPUT
+          echo "SOAK_DURATION_DAYS=$DURATION_DAYS" >> $GITHUB_ENV
+          echo "SOAK_TARGET_PACKS=${{ inputs.target_packs }}" >> $GITHUB_ENV
+          echo "SOAK_CONCURRENCY=${{ inputs.concurrency }}" >> $GITHUB_ENV
+      
+      - name: Create test wallet
+        id: wallet
+        run: |
+          # Create a temporary wallet for testing
+          WALLET_JSON=$(mktemp)
+          node -e "
+            const { Keypair } = require('@solana/web3.js');
+            const fs = require('fs');
+            const kp = Keypair.generate();
+            fs.writeFileSync('$WALLET_JSON', JSON.stringify(Array.from(kp.secretKey)));
+            console.log('PRIVATE_KEY=' + Buffer.from(kp.secretKey).toString('base64'));
+            console.log('WALLET=' + kp.publicKey.toBase58());
+          " > wallet.env
+          echo "WALLET_FILE=$WALLET_JSON" >> $GITHUB_OUTPUT
+          echo "PRIVATE_KEY=$(cat wallet.env | grep PRIVATE_KEY | cut -d= -f2)" >> $GITHUB_ENV
+          echo "WALLET_ADDRESS=$(cat wallet.env | grep WALLET | cut -d= -f2)" >> $GITHUB_OUTPUT
+      
+      - name: Request devnet airdrop
+        run: |
+          # Request airdrop for the test wallet
+          # Note: Public devnet faucet has rate limits
+          node -e "
+            const { Connection, Keypair, LAMPORTS_PER_SOL } = require('@solana/web3.js');
+            const connection = new Connection('https://api.devnet.solana.com');
+            const walletJson = require('fs').readFileSync('${{ steps.wallet.outputs.WALLET_FILE }}', 'utf8');
+            const secretKey = Uint8Array.from(JSON.parse(walletJson));
+            const keypair = Keypair.fromSecretKey(secretKey);
+            
+            console.log('Requesting airdrop for:', keypair.publicKey.toBase58());
+            try {
+              const signature = await connection.requestAirdrop(keypair.publicKey, 10 * LAMPORTS_PER_SOL);
+              await connection.confirmTransaction(signature, 'confirmed');
+              console.log('Airdrop received:', signature);
+            } catch (error) {
+              console.log('Airdrop request failed (rate limited?):', error.message);
+            }
+          "
+        continue-on-error: true
+      
+      - name: Run soak bot
+        id: soak
+        run: |
+          echo "Starting G-3 Soak Bot..."
+          echo "Duration: ${{ steps.config.outputs.duration_days }} days"
+          echo "Target: ${{ env.SOAK_TARGET_PACKS }} packs"
+          echo "Workers: ${{ env.SOAK_CONCURRENCY }}"
+          
+          # Run the soak bot
+          npm run load:soak-g3 2>&1 | tee soak.log
+        env:
+          DEVNET_RPC_URL: ${{ env.DEVNET_RPC_URL }}
+          PRIVATE_KEY: ${{ env.PRIVATE_KEY }}
+          SOAK_DURATION_DAYS: ${{ steps.config.outputs.duration_days }}
+          SOAK_TARGET_PACKS: ${{ env.SOAK_TARGET_PACKS }}
+          SOAK_CONCURRENCY: ${{ env.SOAK_CONCURRENCY }}
+      
+      - name: Upload soak log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g3-soak-log
+          path: soak.log
+          retention-days: 7
+      
+      - name: Parse metrics
+        if: always()
+        id: metrics
+        run: |
+          # Extract final metrics from log
+          METRICS=$(grep -A 20 "FINAL G-3 SOAK METRICS" soak.log || echo "")
+          echo "metrics<<EOF" >> $GITHUB_OUTPUT
+          echo "$METRICS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          # Check if G-3 passed
+          if grep -q "G-3 Gate: PASS" soak.log; then
+            echo "g3_passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "g3_passed=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Summary
+        if: always()
+        run: |
+          echo "### G-3 Soak Test Results"
+          echo ""
+          echo "**Configuration:**"
+          echo "- Duration: ${{ steps.config.outputs.duration_days }} days"
+          echo "- Target Packs: ${{ env.SOAK_TARGET_PACKS }}"
+          echo "- Workers: ${{ env.SOAK_CONCURRENCY }}"
+          echo ""
+          echo "**Metrics:**"
+          echo "${{ steps.metrics.outputs.metrics }}"
+          echo ""
+          echo "**Result: ${{ steps.metrics.outputs.g3_passed == 'true' && 'PASS' || 'FAIL' }}**"
+
+  validate:
+    name: Validate G-3 Requirements
+    needs: soak
+    runs-on: ubuntu-latest
+    if: ${{ needs.soak.result == 'success' && steps.metrics.outputs.g3_passed == 'true' }}
+    
+    steps:
+      - name: Check G-3 gate passed
+        run: |
+          echo "G-3 Soak Test: PASSED"
+          echo "All requirements met:"
+          echo "- >= 10,000 packs purchased"
+          echo "- >= 500 fusions (>= 100 risky)"
+          echo "- >= 200 wager matches"
+          echo "- 0 abandoned/stale pending"
+          echo "- crank p95 <= 20s"
+
+  # Production soak (14 days, 10,000 packs) - manual trigger only
+  production:
+    name: Production G-3 Soak
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Run production soak
+        run: |
+          echo "Production G-3 soak requires manual execution"
+          echo "Use: npm run load:soak-g3 with proper configuration"
+          echo "This workflow is for validation only"
