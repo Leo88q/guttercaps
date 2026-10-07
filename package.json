@@ -51,6 +51,7 @@
     "load:lt3": "node --no-warnings=ExperimentalWarning --import tsx scripts/load/lt3.ts",
     "load:soak-g3": "node --no-warnings=ExperimentalWarning --import tsx scripts/load/soak-g3.ts",
     "load:soak-g3:test": "vitest run scripts/load/soak-g3.test.ts",
+    "load:soak-g3:validate": "node --no-warnings=ExperimentalWarning --import tsx scripts/load/soak-validate.ts",
     "openapi:gen": "cd client && npx openapi-typescript ../backend/openapi.yaml -o src/api/schema.d.ts",
     "ops:up": "docker compose -f ops/deploy/docker-compose.yaml up -d",
     "ops:build": "docker compose -f ops/deploy/docker-compose.yaml build",
@@ -93,8 +94,10 @@
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",
+    "@guttercaps/economy": "*",
     "@solana/spl-token": "^0.4.8",
-    "@solana/web3.js": "^1.99.0"
+    "@solana/web3.js": "^1.99.0",
+    "@switchboard-xyz/on-demand": "^3.10.6"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.1",

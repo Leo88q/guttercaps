@@ -44,21 +44,25 @@ jobs:
           cache: 'npm'
       
       - name: Install dependencies
-        run: npm ci --omit=optional --no-audit --no-fund
+        # NOT --omit=optional: the bot runs under tsx/esbuild whose platform binaries are
+        # optional deps — omitting them breaks `npm run load:soak-g3` on the runner.
+        run: npm ci --no-audit --no-fund
       
       - name: Create test wallet
         id: wallet
         run: |
+          set -euo pipefail
           WALLET_JSON=$(mktemp)
-          node -e "
+          # base64 ends with '=' padding — never split it with cut -d= -f2, capture directly.
+          PRIVATE_KEY=$(node -e "
             const { Keypair } = require('@solana/web3.js');
             const fs = require('fs');
             const kp = Keypair.generate();
             fs.writeFileSync('$WALLET_JSON', JSON.stringify(Array.from(kp.secretKey)));
-            console.log('PRIVATE_KEY=' + Buffer.from(kp.secretKey).toString('base64'));
-          " > wallet.env
-          echo "WALLET_FILE=$WALLET_JSON" >> $GITHUB_OUTPUT
-          echo "PRIVATE_KEY=$(cat wallet.env | grep PRIVATE_KEY | cut -d= -f2)" >> $GITHUB_ENV
+            process.stdout.write(Buffer.from(kp.secretKey).toString('base64'));
+          ")
+          echo "WALLET_FILE=$WALLET_JSON" >> "$GITHUB_OUTPUT"
+          echo "PRIVATE_KEY=$PRIVATE_KEY" >> "$GITHUB_ENV"
       
       - name: Request devnet airdrop
         run: |
