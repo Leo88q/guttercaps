@@ -167,7 +167,7 @@ Set these as **repository secrets** or **organization secrets**:
 |----------|----------|-------------|
 | `SELF_HOSTED_RUNNER_TOKEN` | ✅ | PAT for runner registration |
 | `DEVNET_RPC_URL` | ✅ | Private devnet RPC endpoint |
-| `SOAK_PRIVATE_KEY` | ✅ | Funded wallet private key |
+| `SOAK_PRIVATE_KEY` | ✅ | Funded wallet private key — **base64 of the raw 64-byte secret key**: `node -e "console.log(Buffer.from(require('./soak-key.json')).toString('base64'))"`. NOT base64 of the solana-cli JSON file (that encodes the JSON text and `Keypair.fromSecretKey` rejects it) |
 
 ---
 

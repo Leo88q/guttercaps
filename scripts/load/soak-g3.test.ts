@@ -5,7 +5,7 @@
  * and validate its environment requirements.
  */
 
-import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -74,8 +74,7 @@ describe('G-3 Soak Bot Configuration', () => {
     const soakBotPath = join(__dirname, 'soak-g3.ts');
     const content = readFileSync(soakBotPath, 'utf-8');
     
-    expect(content).toContain('async function buyPack');
-    expect(content).toContain('async function openPack');
+    expect(content).toContain('async function buyAndOpenPack');
     expect(content).toContain('async function performFusion');
     expect(content).toContain('async function createWagerMatch');
   });
@@ -122,9 +121,37 @@ describe('G-3 Soak Bot Configuration', () => {
   it('should have automatic airdrop', () => {
     const soakBotPath = join(__dirname, 'soak-g3.ts');
     const content = readFileSync(soakBotPath, 'utf-8');
-    
+   
     expect(content).toContain('requestAirdropIfLow');
     expect(content).toContain('getPayerBalance');
+  });
+});
+
+describe('G-3 Pending-State Validator', () => {
+  const validatorPath = join(__dirname, 'soak-validate.ts');
+
+  it('should exist and query all three pending kinds on-chain', () => {
+    const content = readFileSync(validatorPath, 'utf-8');
+
+    expect(content).toContain('PendingPack');
+    expect(content).toContain('PendingFusion');
+    expect(content).toContain('WagerBattle');
+    expect(content).toContain('getProgramAccounts');
+    expect(content).toContain('STALE_SLOTS');
+    expect(content).toContain('commit_slot');
+  });
+
+  it('should use Anchor account discriminators, not raw names', () => {
+    const content = readFileSync(validatorPath, 'utf-8');
+
+    expect(content).toContain("accountDiscriminator('PendingPack')");
+    expect(content).toContain("accountDiscriminator('WagerBattle')");
+  });
+
+  it('should exit non-zero when stale pending is found', () => {
+    const content = readFileSync(validatorPath, 'utf-8');
+
+    expect(content).toContain('process.exit(allClean ? 0 : 1)');
   });
 });
 
