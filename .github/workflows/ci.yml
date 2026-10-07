@@ -44,7 +44,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: 22
+  NODE_VERSION: 24
   ANCHOR_VERSION: 0.31.1
   SOLANA_VERSION: 2.1.0
   # keep vitest / node quiet and deterministic

@@ -1,5 +1,14 @@
-name: G-3 Soak Test
-
+# ── action pins (SEC-B50) ────────────────────────────────────────────────────────────────────────────
+# Every `uses:` in this file is a full commit SHA. A tag (`@v4`) is a ref the action's owner can
+# repoint at any commit they like — including one that reads `GITHUB_TOKEN` and the deploy secrets,
+# which is the shape of the `tj-actions/changed-files` compromise — and this repository pins npm
+# versions by `sha512`, base images by patch tag and Cargo deps by exact version precisely because
+# "whatever the ref means today" is not a pin. Updating one is a deliberate edit: resolve the new
+# tag, change the SHA *and* the inline comment, and `npm run workflows:check` will notice a
+# disagreement. The same mapping is asserted in `tests/security/deploy-artifacts.test.ts`.
+#   actions/checkout             v4.4.0   11d5960a326750d5838078e36cf38b85af677262 2026-07-16
+#   actions/setup-node           v4.4.0   49933ea5288caeca8642d1e84afbd3f7d6820020 2025-04-02
+#   actions/upload-artifact      v4.6.2   ea165f8d65b6e75b540449e92b4886f43607fa02 2025-03-19
 # G-3 Devnet Soak Bot workflow
 # Requirements (docs/06 §1.4 G-3):
 #   - >= 10,000 packs purchased
@@ -12,6 +21,8 @@ name: G-3 Soak Test
 #   - Node 24+ (SEC-B50)
 #   - Docker for containerized execution
 #   - Devnet RPC access
+
+name: G-3 Soak Test
 
 on:
   workflow_dispatch:
@@ -54,6 +65,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 1440 # 24 hours max
     
+    outputs:
+      g3_passed: ${{ steps.metrics.outputs.g3_passed }}
+    
     env:
       # Configuration defaults
       SOAK_DURATION_DAYS: 1
@@ -65,12 +79,12 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 1
       
       - name: Set up Node.js 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24'
           cache: 'npm'
@@ -159,7 +173,7 @@ jobs:
       
       - name: Upload soak log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: g3-soak-log
           path: soak.log
@@ -170,10 +184,8 @@ jobs:
         id: metrics
         run: |
           # Extract final metrics from log
-          METRICS=$(grep -A 20 "FINAL G-3 SOAK METRICS" soak.log || echo "")
-          echo "metrics<<EOF" >> $GITHUB_OUTPUT
-          echo "$METRICS" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          METRICS=$(grep -A 20 "FINAL G-3 SOAK METRICS" soak.log || echo "No metrics found")
+          echo "metrics=$METRICS" >> $GITHUB_OUTPUT
           
           # Check if G-3 passed
           if grep -q "G-3 Gate: PASS" soak.log; then
@@ -201,7 +213,7 @@ jobs:
     name: Validate G-3 Requirements
     needs: soak
     runs-on: ubuntu-latest
-    if: ${{ needs.soak.result == 'success' && steps.metrics.outputs.g3_passed == 'true' }}
+    if: ${{ needs.soak.result == 'success' && needs.soak.outputs.g3_passed == 'true' }}
     
     steps:
       - name: Check G-3 gate passed

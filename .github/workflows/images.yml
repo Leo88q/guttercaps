@@ -65,7 +65,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  NODE_VERSION: 22
+  NODE_VERSION: 24
   CI: 1
   # Not secrets: an RPC URL for the browser and public addresses. A keypair is a secret and nothing here
   # touches one — compose's `${VAR:?}` markers decide which of these the build requires, and this file does

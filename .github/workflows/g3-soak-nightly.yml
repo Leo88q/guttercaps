@@ -1,20 +1,23 @@
-name: G-3 Soak Nightly
-
+# ── action pins (SEC-B50) ────────────────────────────────────────────────────────────────────────────
+# Every `uses:` in this file is a full commit SHA. A tag (`@v4`) is a ref the action's owner can
+# repoint at any commit they like — including one that reads `GITHUB_TOKEN` and the deploy secrets,
+# which is the shape of the `tj-actions/changed-files` compromise — and this repository pins npm
+# versions by `sha512`, base images by patch tag and Cargo deps by exact version precisely because
+# "whatever the ref means today" is not a pin. Updating one is a deliberate edit: resolve the new
+# tag, change the SHA *and* the inline comment, and `npm run workflows:check` will notice a
+# disagreement. The same mapping is asserted in `tests/security/deploy-artifacts.test.ts`.
+#   actions/checkout             v4.4.0   11d5960a326750d5838078e36cf38b85af677262 2026-07-16
+#   actions/setup-node           v4.4.0   49933ea5288caeca8642d1e84afbd3f7d6820020 2025-04-02
+#   actions/upload-artifact      v4.6.2   ea165f8d65b6e75b540449e92b4886f43607fa02 2025-03-19
 # Nightly short soak test to validate G-3 readiness
 # Runs a reduced soak test (1 hour, 100 packs) to catch regressions
+
+name: G-3 Soak Nightly
 
 on:
   schedule:
     # Run nightly at 02:00 UTC
     - cron: '0 2 * * *'
-  
-  workflow_dispatch:
-    inputs:
-      duration_hours:
-        description: 'Soak duration in hours'
-        required: false
-        default: '1'
-        type: number
 
 jobs:
   nightly-soak:
@@ -32,10 +35,10 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       
       - name: Set up Node.js 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24'
           cache: 'npm'
@@ -54,6 +57,7 @@ jobs:
             fs.writeFileSync('$WALLET_JSON', JSON.stringify(Array.from(kp.secretKey)));
             console.log('PRIVATE_KEY=' + Buffer.from(kp.secretKey).toString('base64'));
           " > wallet.env
+          echo "WALLET_FILE=$WALLET_JSON" >> $GITHUB_OUTPUT
           echo "PRIVATE_KEY=$(cat wallet.env | grep PRIVATE_KEY | cut -d= -f2)" >> $GITHUB_ENV
       
       - name: Request devnet airdrop
@@ -90,7 +94,7 @@ jobs:
       
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: g3-soak-nightly-${{ github.run_id }}
           path: |
