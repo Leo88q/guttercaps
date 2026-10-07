@@ -43,7 +43,7 @@
 | 1.4 | `scripts/legal-readiness.d.mts` (415 Б, типы без потребителя) | 0 импортов; `scripts/legal-readiness.mjs` — CLI, его типы никто не читает | **удалить** |
 | 1.5 | `tests/test-hub-ingest-guttercaps.mjs` (1.9 КБ) | 0 запусков: нет в `package.json`, в CI, в тестах-раннерах | **удалить или подключить** |
 | 1.6 | `scripts/audit/build-sentio.sh` (6.5 КБ, единственный файл в `scripts/audit/`) | упоминается только внутри `FIXES-2026-09-25.md`; CI его не зовёт | **решить:** удалить папку `scripts/audit/` или перенести в `scripts/` и описать |
-| 1.7 | `scripts/i18n-audit.mjs` | рабочая утилита, но нигде не зарегистрирована (`package.json` её не знает) | **оставить**, добавить `npm run i18n:audit` (или удалить) |
+| 1.7 | `scripts/i18n-audit.mjs` | рабочая утилита, но нигде не зарегистрирована (`package.json` её не знает) | **оставить**, добавить `npm run i18n:audit` (или удалить) — ✅ **закрыто 2026-10-06**: зарегистрирован как `npm run i18n:audit`, описан в `docs/04-frontend.md` §10a; гейтом не сделан намеренно (утилита всегда выходит нулём — это очередь на ручной просмотр, а не проверка) |
 | 1.8 | `godot/` — 7 файлов, 28 КБ + `tests/godot/ecs_benchmark.gd`, `tests/godot/test_gutter_caps_v3.gd` | `scenes/main.tscn`, `scripts/anchor_program.gd` — 0 ссылок; остальное упоминают только `scripts/godot_ecs_benchmark.py` + `docs/INTERWEAVING.md`; в CI не собирается; из 77 файлов `tests/` эти два `.gd` — единственные, не подключённые ни к одному раннеру/`package.json`/CI | **решить:** удалить пакет целиком или признать живым экспериментом |
 | 1.9 | `legacy/chip-game/` — 15 файлов, 104 КБ | вне cargo-workspace **намеренно** (`Cargo.toml`: anchor собирает всё под `programs/`, из-за этого падал ci run 75); `marketplace.rs`/`upgrade.rs` **объявлены** в `instructions/mod.rs` (ранее подозрение не подтвердилось) | **оставить** как есть |
 | 1.10 | `programs/`, `packages/economy`, `ops/`, `vendor/mpl-core` | orbituary-скан по `mod`/`use` — мёртвых файлов нет; `packages/economy` и `ops/` потребляются кодом/CI/деплоем | **оставить** |
@@ -184,6 +184,9 @@ ASSET-INVENTORY-2026-09-25.md,LAUNCH-AUDIT-2026-09-29.md,PERF-AUDIT-2026-09-30.m
 `docs/legal/**`, `docs/{00,02,03,04,06,07,09,11}*`, `art_regeneration_plan.md`, `gutter_caps_collections.md`,
 `scripts/audit/build-sentio.sh` (комментарий обновлён), `scripts/i18n-audit.mjs` (рабочая утилита), `art_drafts/{master,icons,site,covers,packs}`.
 
-**Осталось на отдельное решение владельца:** `scripts/i18n-audit.mjs` не зарегистрирован в `package.json`
-(либо `npm run i18n:audit`, либо удалить); `PERF-AUDIT-2026-09-30.md` — самый свежий перф-бейзлайн, оставлен
+**Закрыто отдельным решением владельца (2026-10-06):** `scripts/i18n-audit.mjs` зарегистрирован в
+`package.json` как `npm run i18n:audit` (а не удалён) и описан в `docs/04-frontend.md` §10a — что он обходит,
+что фильтрует и почему это очередь на ручной просмотр, а не гейт CI.
+
+**Осталось на отдельное решение владельца:** `PERF-AUDIT-2026-09-30.md` — самый свежий перф-бейзлайн, оставлен
 намеренно.

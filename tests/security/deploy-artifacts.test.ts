@@ -207,9 +207,10 @@ test('SEC-B50 every workflow action is a full SHA, annotated with its version, o
  * bundle, from a file `.gitignore` hides and no diff of the deploy artifacts would ever show.
  *
  * The matcher below implements the pattern shapes this ignore file uses, for *file* paths: a leading
- * double-star-slash (any depth),
- * depth), `*` (within one path segment), a leading `!` (re-include), last match wins. Directory patterns
- * are not modelled — the paths checked are the dotenv names themselves.
+ * double-star slash (any depth, including none), a bare double star (anything), `*` (within one path
+ * segment), `?` (one character), a leading `!` (re-include), last match wins. Directory patterns are not
+ * modelled — every path checked is a file. Spelled out rather than written literally: the two-character
+ * sequence a double star followed by a slash would close this block comment.
  */
 const dockerignoreMatch = (patterns: string[], path: string): boolean => {
   // Built without regex literals on purpose: every backslash in this file would otherwise have to survive
@@ -218,11 +219,22 @@ const dockerignoreMatch = (patterns: string[], path: string): boolean => {
   const specials = '.+^${}()|[]' + B;
   const glob = (pat: string): RegExp => {
     const escaped = [...pat].map((c) => (specials.includes(c) ? B + c : c)).join('');
-    const rx = escaped
-      .split(B + B + '/').join('(?:.*/)?') // `**/` — any depth, including none
-      .split(B + B).join('.*')             // `**`  — anything
-      .split('*').join('[^/]*')            // `*`   — within one segment
-      .split('?').join('[^/]');
+    // One pass over the pattern, so a `*` this function has just emitted is never re-read as a wildcard.
+    // Sequential splits cannot do that: replacing `**/` with `(?:.*/)?` and then splitting on `*` rewrites
+    // the `(?:.*/)?` it just produced into `(?:./[^/]*)/?`. That is what the previous shape did — its two
+    // `**` splits looked for a doubled *backslash*, which `escaped` never contains because `*` is not in
+    // `specials`, so both were dead and `**` fell through to the single-segment `*` rule. `**/id.json`
+    // compiled to `^[^/]*[^/]*\/id\.json$`, which matches `foo/id.json` but not
+    // `client/src/shared/i18n/rights/id.json` — and a matcher that cannot see past the first slash cannot
+    // police an ignore list whose whole job is excluding paths at depth.
+    let rx = '';
+    for (let i = 0; i < escaped.length; i++) {
+      if (escaped.startsWith('**/', i)) { rx += '(?:.*/)?'; i += 2; }  // any depth, including none
+      else if (escaped.startsWith('**', i)) { rx += '.*'; i += 1; }    // anything
+      else if (escaped[i] === '*') { rx += '[^/]*'; }                  // within one segment
+      else if (escaped[i] === '?') { rx += '[^/]'; }                   // one character
+      else rx += escaped[i];
+    }
     return new RegExp('^' + rx + '$');
   };
   let ignored = false;
@@ -288,6 +300,38 @@ test('SEC-B55 no undeclared VITE_ switch can reach a production client bundle fr
   assert.deepEqual(clientDockerfileProblems(DOCKERFILE_CLIENT), []);
   // the check cannot pass by finding nothing to read
   assert.ok(DOCKERFILE_CLIENT.includes('files.length + \' file names checked)'), 'the build-time check must report how many file names it examined');
+});
+
+/**
+ * The other half of the build-context rule, and the half that broke the image build. `id` is the ISO 639-1
+ * code for Indonesian, so five tracked catalogues are named `id.json` and four of them are build inputs:
+ * client/src/shared/i18n/locales/id.ts imports three, client/src/shared/lib/legalCopy.ts the fourth.
+ * `.dockerignore` carried a blanket double-star `id.json` pattern aimed at `solana-keygen new -o id.json`
+ * and silently took
+ * them out of the context, so `vite build` failed on "Cannot find module './legal-copy/id.json'" — the
+ * name-vs-content mistake ci.yml's old keypair grep made on the same five files, which
+ * scripts/committed-keypairs.ts settles by parsing the body. Asserted over the tracked tree rather than
+ * over those four names, so a sixth locale, or any other source file an ignore pattern happens to cover,
+ * fails here instead of surfacing in a registry build.
+ */
+const contextSourceProblems = (dockerignore: string): string[] => {
+  const patterns = dockerignore.split('\n').map((l) => l.trim()).filter((l) => l.length > 0 && !l.startsWith('#'));
+  const { stdout } = spawnSync('git', ['ls-files', 'client/src', 'packages'], { cwd: REPO, encoding: 'utf8' });
+  const tracked = stdout.split('\n').filter(Boolean);
+  // the rule cannot pass by finding nothing to check
+  assert.ok(tracked.length > 100, `git ls-files returned ${tracked.length} paths`);
+  return tracked
+    .filter((f) => dockerignoreMatch(patterns, f))
+    .map((f) => `${f} is excluded from the client build context — the image build cannot compile without it`);
+};
+
+test('SEC-B55 the client build context keeps every tracked source file', () => {
+  assert.deepEqual(contextSourceProblems(DOCKERIGNORE), []);
+  const patterns = DOCKERIGNORE.split('\n').map((l) => l.trim()).filter((l) => l.length > 0 && !l.startsWith('#'));
+  // rooting the `id.json` line must not root the keypair rule it was over-reaching for
+  assert.equal(dockerignoreMatch(patterns, 'id.json'), true, 'solana-keygen default output at the context root stays excluded');
+  assert.equal(dockerignoreMatch(patterns, 'target/deploy/chip_core-keypair.json'), true, 'an anchor keypair stays excluded at any depth');
+  assert.equal(dockerignoreMatch(patterns, 'client/src/shared/i18n/rights/id.json'), false, 'an Indonesian locale catalogue is a build input, not a keypair');
 });
 
 // --------------------------------------------------------------------------- SEC-B54
@@ -465,6 +509,17 @@ test('each deploy-surface rule fails on a deliberately broken input', () => {
   const unpinned = DOCKERFILE_CLIENT.replace("VITE_SENTRY_DSN=$VITE_SENTRY_DSN VITE_API_MOCK=$VITE_API_MOCK", "VITE_SENTRY_DSN=$VITE_SENTRY_DSN");
   assert.notEqual(unpinned, DOCKERFILE_CLIENT, 'the ENV mutation must actually apply');
   assert.ok(clientDockerfileProblems(unpinned).some((p) => p.includes('VITE_API_MOCK')), 'the rule must reject a mock switch that is not pinned by ENV');
+
+  // 8. SEC-B55 — the pre-fix ignore list excluded the Indonesian catalogues by file name. This mutation is
+  //    also what proves the matcher fix: `**/id.json` only reaches
+  //    `client/src/shared/i18n/rights/id.json` if `**` really means any depth, and the single-segment
+  //    matcher this file used to build reported nothing here — the blind spot that let the exclusion ship.
+  const blanketId = DOCKERIGNORE.replace('\nid.json', '\n**/id.json');
+  assert.notEqual(blanketId, DOCKERIGNORE, 'the id.json mutation must actually apply');
+  assert.ok(
+    contextSourceProblems(blanketId).some((p) => p.includes('client/src/shared/i18n/rights/id.json')),
+    'the rule must reject an ignore list that drops a tracked build input at depth',
+  );
 });
 
 

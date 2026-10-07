@@ -52,7 +52,7 @@ pub struct InitPreorderDrop<'info> {
 
     #[account(
         init, payer = admin, space = 8 + PreorderDrop::INIT_SPACE,
-        seeds = [b"drop", &[sku]], bump
+        seeds = [b"drop".as_ref(), &[sku]], bump
     )]
     pub drop: Box<Account<'info, PreorderDrop>>,
 
@@ -193,11 +193,11 @@ pub fn grant_preorder_pack(
         granted_after <= ctx.accounts.drop.total,
         ChipError::PreorderDropExhausted
     );
-    let pregrant = &mut ctx.accounts.pregarant;
+    let pregrant = &mut ctx.accounts.pregrant;
     if pregrant.drop == Pubkey::default() {
         pregrant.drop = ctx.accounts.drop.key();
         pregrant.beneficiary = ctx.accounts.beneficiary.key();
-        pregrant.bump = ctx.bumps.pregarant;
+        pregrant.bump = ctx.bumps.pregrant;
     }
     require_keys_eq!(
         pregrant.drop,

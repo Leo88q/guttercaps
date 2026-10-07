@@ -149,19 +149,32 @@ jobs:
         run: |
           set -euo pipefail
           base='${{ steps.plan.outputs.base }}'
+          tag='${{ steps.plan.outputs.tag }}'
           [[ -n "${base##ghcr.io/}" ]] || { echo "steps.plan.outputs.base is empty — the plan step did not emit it, and an unprefixed name pushes nothing to a registry"; exit 1; }
           docker compose -f ops/deploy/docker-compose.yaml --env-file /tmp/build.env build api client backup
           echo '--- what a deploy host would pull for these services ---'
-          docker compose -f ops/deploy/docker-compose.yaml --env-file /tmp/build.env config --images
-          # If a service is missing its `*_IMAGE` indirection, this lists an unprefixed local tag: the build
-          # still succeeds, the push pushes nothing for it, and the host quietly builds its own.
-          refs="$(docker compose -f ops/deploy/docker-compose.yaml --env-file /tmp/build.env config --images)"
-          bad="$(printf '%s\n' "$refs" | grep -v '^'"${{ steps.plan.outputs.base }}"'/guttercaps-' || true)"
-          if [[ -n "$bad" ]]; then
-            echo "these images are not registry-prefixed, so they cannot be published from this run:"
-            echo "$bad"
-            exit 1
-          fi
+          # Scoped to the three services this workflow builds — but compose resolves dependencies as well, and
+          # `api` carries `depends_on: redis`, so `redis:7.4.2-alpine` is listed too (prometheus, alertmanager
+          # and the node exporter are not: they sit behind `profiles: [monitoring]`, which is not enabled).
+          # Redis belongs in this echo — a host running these three does pull it — and must not be a publish
+          # criterion, because it is neither built nor pushed here. So the check below is not "everything
+          # compose listed carries the registry prefix"; it asserts the three images this run publishes, by
+          # exact name. A blanket grep -v failed on every run that got this far, whatever the build produced.
+          refs="$(docker compose -f ops/deploy/docker-compose.yaml --env-file /tmp/build.env config --images api client backup)"
+          printf '%s\n' "$refs"
+          # If a service is missing its `*_IMAGE` indirection, compose falls back to the default written in
+          # docker-compose.yaml (`guttercaps/api:local` and friends): the build still succeeds, the push pushes
+          # nothing for it, and the host quietly builds its own.
+          for svc in api client backup; do
+            want="$base/guttercaps-${svc}:${tag}"
+            if ! printf '%s\n' "$refs" | grep -qxF "$want"; then
+              echo "${svc} did not resolve to ${want} — its *_IMAGE indirection is missing from the compose file,"
+              echo "so this run built a tag it cannot publish. What compose resolved for it:"
+              printf '%s\n' "$refs" | grep "guttercaps[-/]${svc}" || echo "  (nothing)"
+              exit 1
+            fi
+          done
+          echo "all three resolve to ${base}/guttercaps-{api,client,backup}:${tag}"
 
       - name: check the artifacts before anyone can pull them
         run: |
@@ -219,29 +232,37 @@ jobs:
           base='${{ steps.plan.outputs.base }}'
           tag='${{ steps.plan.outputs.tag }}'
           [[ -n "$base" && -n "$tag" ]] || { echo "missing plan outputs (base=\"$base\" tag=\"$tag\") — a pin has to name exactly what was pushed"; exit 1; }
+          # Before the digest loop, not after it. A dry run pushed nothing, so no image carries a RepoDigest:
+          # `docker image inspect --format '{{index .RepoDigests 0}}'` fails on the empty array, the `|| true`
+          # leaves $digest empty, and the loop exits 1 on "no RepoDigests entry" — which reads as a broken
+          # build rather than what it is, a run that was never meant to publish. This guard used to sit below
+          # the loop it protects, so `publish=false` (the documented "build and check only" mode) could never
+          # complete. There is nothing to pin and nothing honest to write, so /tmp/images.env is deliberately
+          # not created; the artifact step reports that.
+          if [[ '${{ steps.plan.outputs.publish }}' != 'true' ]]; then
+            echo "publish=false — nothing was pushed, so no image carries a RepoDigest to pin; this run proved the images build and pass the checks"
+            exit 0
+          fi
           {
             echo "# Pinned image refs for the deploy — written by .github/workflows/images.yml."
             echo "# A host that reads these three lines pulls exactly these bytes; the moving tags are for humans."
-            echo "# `git revert` of this file is the rollback (ops/deploy/runbook.md §7)."
+            echo "# \`git revert\` of this file is the rollback (ops/deploy/runbook.md §7)."
             echo "# Do not edit by hand: a digest nobody can reproduce from a registry is worse than no pin."
             echo "# source: ${{ github.sha }} on ${{ github.ref_name }}, $(date -u +%Y-%m-%dT%H:%M:%SZ)"
             for svc in api client backup; do
               img="$base/guttercaps-${svc}:$tag"
               digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "$img" 2>/dev/null || true)"
               if [[ "$digest" != *"@sha256:"* ]]; then
-                echo "no RepoDigests entry for $img — it was pushed to ghcr.io, or the name is not the pushed one"
+                # >&2, not stdout: this group redirects stdout into /tmp/images.env, and the `cat` that would
+                # have shown that file runs after the group — so a message on stdout is written into the pin
+                # file and never reaches the log. That is why this failure was silent in CI.
+                echo "no RepoDigests entry for $img — it was pushed to ghcr.io, or the name is not the pushed one" >&2
                 exit 1
               fi
               printf '%s_IMAGE=%s\n' "$(tr '[:lower:]' '[:upper:]' <<< "$svc")" "$digest"
             done
           } > /tmp/images.env
           cat /tmp/images.env
-          if [[ '${{ steps.plan.outputs.publish }}' != 'true' ]]; then
-            # A dry run pushed nothing, so there is no digest to record — `docker image inspect` would fail
-            # with a message about names, and the honest statement is that the run checked the build only.
-            echo "publish=false — no digests recorded, this run only proved the images build and pass the checks"
-            exit 0
-          fi
           if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF}" == refs/tags/v* ]]; then
             # The gate that makes a release mean something: the tag has to carry the digests its own images
             # were published with. A mismatch is not a formatting problem — it is "the release you cut
@@ -274,7 +295,7 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          [[ -f /tmp/images.env ]] || { echo "no pin was produced (the run failed before the digests existed)"; exit 0; }
+          [[ -f /tmp/images.env ]] || { echo "no pin was produced (publish=false — a dry run has no digests to pin — or the run failed before they existed)"; exit 0; }
           {
             echo
             echo '### The pin this run produced'

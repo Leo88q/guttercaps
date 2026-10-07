@@ -23,6 +23,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
 import { keccak_256 } from '@noble/hashes/sha3';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { accountDiscriminator, ixData, ro, rw, signer } from '@/chain/anchor';
 import { decodeCompressedAssetListing, decodeCompressedChipState, decodeCompressedMintClaim } from '@/chain/accounts';
 import { BorshReader, BorshWriter } from '@/chain/borsh';
@@ -37,6 +38,16 @@ import { collectionHash, forgeLeaf, leafAssetId } from './helpers/v2leaf';
 const bins = binariesPresent();
 const suite = describe.skipIf(!bins.ok && !process.env.LOCALNET_RPC);
 const SOL = 1_000_000_000n;
+/** The frozen `#[account]` layouts `npm run state:layout` derives from `programs/**`. Every hand-written
+ * fixture in this file writes raw Borsh, so this is the list it has to be written against. */
+const LAYOUTS = JSON.parse(readFileSync(new URL('../../reports/state-layout.json', import.meta.url), 'utf8')) as
+  { accounts: { program: string; name: string; fields: string[] }[] };
+/** What the `CompressedMintClaim` forgery below writes: one Borsh value per frozen field, and the bytes
+ * they occupy — 8 disc ‖ 32 buyer ‖ 1 collection_idx ‖ 1 rarity ‖ 1 level ‖ 8 game_index ‖ 8 expires_at
+ * ‖ 32 settlement ‖ 1 index_reserved ‖ 1 minted ‖ 1 registered ‖ 1 consumed ‖ 1 listed ‖ 1 bump
+ * ‖ 1 staked ‖ 32 origin ‖ 8 lock_until ‖ 1 founder. */
+const FORGED_CLAIM_FIELDS = 17;
+const FORGED_CLAIM_BYTES = 8 + 32 + 1 + 1 + 1 + 8 + 8 + 32 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 32 + 8 + 1;
 /** Deterministic 32-byte fill for the fixture hashes. */
 const h32 = (seed: string) => new Uint8Array(createHash('sha256').update(seed).digest());
 
@@ -123,7 +134,7 @@ describe('T-L-MA forged-leaf fixture layout', () => {
     const m = new BorshWriter();
     m.bytes(accountDiscriminator('CompressedMintClaim'));
     m.pubkey(owner).u8(2).u8(1).u8(2).u64(99n).i64(0n).pubkey(PublicKey.default);
-    m.bool(true).bool(true).bool(true).bool(false).bool(false).u8(claimBump).bool(false).pubkey(owner).i64(0n);
+    m.bool(true).bool(true).bool(true).bool(false).bool(false).u8(claimBump).bool(false).pubkey(owner).i64(0n).bool(true);
     const cl = decodeCompressedMintClaim(m.toBytes());
     expect(cl.buyer.equals(owner)).toBe(true);
     expect(cl.collectionIdx).toBe(2);
@@ -136,6 +147,23 @@ describe('T-L-MA forged-leaf fixture layout', () => {
     expect(cl.bump).toBe(claimBump);
     expect(cl.staked).toBe(false);
     expect(cl.lockUntil).toBe(0n);
+    // `true`, not `false`: the decoder defaults a MISSING trailing byte to false, so only a set byte
+    // proves the forge actually wrote the field rather than leaving the reader to invent it.
+    expect(cl.founder).toBe(true);
+
+    // The drift guard this fixture existed for. `helpers/v2leaf.ts` forges claims as raw bytes and
+    // `decodeCompressedMintClaim` is forgiving (`founder: r.remaining >= 1 ? r.bool() : false`), while
+    // `market`'s `Account<CompressedMintClaim>` is strict Borsh. So when `founder` was appended to the
+    // struct, every decoder in this repo kept passing and ten on-chain scenarios failed with an opaque
+    // `AccountDidNotDeserialize` (3003) on `claim` — the forgery was one byte short. These two assertions
+    // move the failure into a unit test that needs no binaries: append a field in Rust, accept it with
+    // `npm run state:layout -- --write`, and this fails here by name until the forgery is written to match.
+    const frozen = LAYOUTS.accounts.find((a) => a.program === 'chip_core' && a.name === 'CompressedMintClaim');
+    expect(frozen, 'CompressedMintClaim is missing from reports/state-layout.json').toBeDefined();
+    expect(FORGED_CLAIM_FIELDS, `the frozen CompressedMintClaim layout moved (${frozen!.fields.join(', ')}) — ` +
+      'write the new field into the forgery in helpers/v2leaf.ts and into this fixture, then move both constants')
+      .toBe(frozen!.fields.length);
+    expect(m.toBytes().length).toBe(FORGED_CLAIM_BYTES);
 
     // `ForgedLeaf.listed()` reads the raw byte, so its offset must be pinned too
     const r = new BorshReader(m.toBytes());
