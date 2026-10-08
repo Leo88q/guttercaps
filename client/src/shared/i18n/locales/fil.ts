@@ -94,6 +94,8 @@ const fil: Messages = {
     acceptNotFound: 'Walang account ng laban para sa challenger at nonce na iyan.',
     acceptNotOpen: '{status} ang labang iyan, hindi bukas.',
     acceptSelf: 'Hindi mo matanggap ang sarili mong laban.',
+    squadTooWeak: "Lakas ng squad {power} / {min}. Pumili ng mas malalakas na cap o i-upgrade ang mga ito para sa ranked at wager battles.",
+    stakedAllowed: "Puwedeng lumaban ang mga naka-stake na cap — hindi kailangang i-unstake.",
     acceptNeedSquad: 'Pumili muna ng squad na tatlong cap.',
     acceptOpened: 'Natanggap ang laban na may taya',
     acceptFailed: 'Hindi matanggap ang laban',

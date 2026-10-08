@@ -11,7 +11,7 @@ import { useStakingOverview, useStakingMe, useMyChips, type Chip } from '@/api/h
 import { useGameConfig, useStakingChain, useWalletLike, useBalances } from '@/chain/hooks';
 import { pendingReward } from '@/chain/accounts';
 import { sendTx } from '@/chain/tx';
-import { resolveCompressedChip, resolveCompressedChipIdentity } from '@/chain/flows/compressedChip';
+import { resolveCompressedChip, resolveCompressedUnstakeClaim } from '@/chain/flows/compressedChip';
 import { stakeCgIx, unstakeCgIx, stakeCompressedChipV2Ix, unstakeCompressedChipIx, unstakePenalty, MIN_STAKE_MICRO } from '@/chain/ix/staking';
 import { dasClient } from '@/features/market/payment';
 import { createAtaIdempotentIx } from '@/chain/ix/spl';
@@ -79,7 +79,7 @@ export default function Staking() {
    * field and the `chips` table has no claim column, so the one read that owns it is chain — which
    * is also the account the V2 handlers re-verify against, so it cannot be a stale indexer row.
    */
-  const claimOf = async (c: Chip) => (await resolveCompressedChipIdentity(connection, new PublicKey(c.asset!))).claim;
+  const claimOf = async (c: Chip) => resolveCompressedUnstakeClaim(connection, new PublicKey(c.asset!), wallet!.publicKey);
 
   /**
    * Stake a registered V2 leaf. The leaf is resolved from chain + DAS rather than from the API row,

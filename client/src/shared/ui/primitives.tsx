@@ -40,7 +40,9 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
     };
     window.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
-    (focusable()[0] ?? dialog.current)?.focus();
+    // The first control can be the Done button below a long cap grid. Focusing it must
+    // not scroll the dialog past its title and the first rows before the user sees them.
+    (focusable()[0] ?? dialog.current)?.focus({ preventScroll: true });
     return () => {
       window.removeEventListener('keydown', onKey);
       if (--modalLocks === 0) document.body.style.overflow = originalOverflow;

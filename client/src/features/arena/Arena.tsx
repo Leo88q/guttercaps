@@ -90,6 +90,8 @@ export default function Arena() {
   const synergy = squadSynergy(squad.map((c) => ({ collection: c.collection! })));
   const league = leagueOf(power);
   const ready = squad.length === 3 && power >= MIN_SQUAD_POWER;
+  const squadHint = squad.length !== 3 ? t('arena.acceptNeedSquad')
+    : power < MIN_SQUAD_POWER ? t('arena.squadTooWeak', { power: fmtDecimal(power, 0), min: MIN_SQUAD_POWER }) : null;
 
   async function joinRanked() {
     if (!ready) return;
@@ -126,6 +128,7 @@ export default function Arena() {
   };
 
   async function createWager(amountMicro: bigint) {
+    if (!ready) return;
     if (isMock()) { toast({ kind: 'money', title: { key: 'screens.wagerCreated' }, body: { key: 'screens.escrowed', params: { amount: amountText(amountMicro, 'CG') } } }); setWager(null); return; }
     if (!wallet || !cfg.data) return;
     setBusy(true);
@@ -199,7 +202,7 @@ export default function Arena() {
 
   async function acceptBattle() {
     if (!battle || !wallet || !cfg.data) return;
-    if (squad.length !== 3) { setBattleErr(t('arena.acceptNeedSquad')); return; }
+    if (!ready) { setBattleErr(squadHint); return; }
     setBusy(true);
     try {
       const proofs = await squadProofs();
@@ -235,6 +238,10 @@ export default function Arena() {
 
       <div className="card stack">
         <div className="row between"><span className="strong">{t('arena.squad')}</span><span className="muted small">{t('ui.minPower')} {MIN_SQUAD_POWER}</span></div>
+        <div className="row-wrap between">
+          <span className="tiny muted">{t('arena.stakedAllowed')}</span>
+          <button className="btn btn-sm" onClick={() => setPick(true)}>{t('ui.pickSquad')}</button>
+        </div>
         <div className="squad">
           {[0, 1, 2].map((i) => {
             const c = squad[i];
@@ -272,6 +279,7 @@ export default function Arena() {
             <button className="btn" disabled={!ready || busy || !connected} onClick={() => setWager('')}>{t('ui.wagerBattle')}</button>
           </div>
         )}
+        {connected && squadHint && <div className="warn small" role="status">{squadHint}</div>}
         {!connected && <div className="muted small">{t('ui.connectPlay')}</div>}
         {lastMatch && (
           <div className="row between small" style={{ color: lastMatch.won ? 'var(--cg-acid-green)' : 'var(--cg-neon-magenta)' }}>
@@ -335,21 +343,26 @@ export default function Arena() {
             <KV k={t('arena.battleStatus')} v={BATTLE_STATUS[battle.status] ?? battle.status} />
             <KV k={t('arena.league')} v={leagueName(leagueOf(battle.powerA))} />
             <div className="tiny muted">{t('arena.squadLocked')}</div>
-            <CleanConfirmButton disabled={busy || !connected || squad.length !== 3} onClick={() => void acceptBattle()}>
+            <CleanConfirmButton disabled={busy || !connected || !ready} onClick={() => void acceptBattle()}>
               {t('arena.acceptConfirm', { amount: fmtCg(battle.wager) })}
             </CleanConfirmButton>
-            {squad.length !== 3 && <div className="tiny muted">{t('arena.acceptNeedSquad')}</div>}
+            {squadHint && <div className="tiny muted">{squadHint}</div>}
           </div>
         )}
       </div>
 
       <Modal open={pick} onClose={() => setPick(false)} title={t('ui.pickSquad')} wide>
+        <div className="stack-sm" style={{ marginBottom: 12 }} aria-live="polite">
+          <div className="mono">{t('ui.squadPower')}: {fmtDecimal(power, 0)} / {MIN_SQUAD_POWER} · {squad.length}/3</div>
+          {squadHint && <div className="warn small">{squadHint}</div>}
+          <div className="tiny muted">{t('arena.stakedAllowed')}</div>
+        </div>
         <div className="grid-auto" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(144px, 47%), 1fr))' }}>
           {all.map((c) => {
             const sel = squad.some((s) => s.asset === c.asset);
             return (
               <div key={c.asset} className="chip-card" onClick={() => setSquad((s) => (sel ? s.filter((x) => x.asset !== c.asset) : s.length < 3 ? [...s, c] : s))}>
-                <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c)} skin={c.skin} selected={sel} dim={!sel && squad.length >= 3} />
+                <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c)} skin={c.skin} badge={c.flags?.staked ? t('collection.filters.staked') : undefined} selected={sel} dim={!sel && squad.length >= 3} />
                 <div className="chip-meta"><span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span> · {chipPower(c.rarity!, c.level!)} {t('ui.power')}</div>
                 <div className="tiny muted">{chipName(c.collection!, c.rarity!)}</div>
               </div>
@@ -373,7 +386,7 @@ export default function Arena() {
               <KV k={t('arena.payout')} v={fmtCg(s.payout)} total accent />
             </>; })()}
           </CleanZone>
-          <CleanConfirmButton disabled={busy || !parseUnits(wager ?? '', 6) || parseUnits(wager ?? '', 6)! < MIN_WAGER || parseUnits(wager ?? '', 6)! > MAX_WAGER} onClick={() => createWager(parseUnits(wager ?? '', 6)!)}>{t('ui.escrowOpen')}</CleanConfirmButton>
+          <CleanConfirmButton disabled={!ready || busy || !parseUnits(wager ?? '', 6) || parseUnits(wager ?? '', 6)! < MIN_WAGER || parseUnits(wager ?? '', 6)! > MAX_WAGER} onClick={() => createWager(parseUnits(wager ?? '', 6)!)}>{t('ui.escrowOpen')}</CleanConfirmButton>
           <div className="tiny muted">{t('ui.wagerRefund')}</div>
         </div>
       </Modal>

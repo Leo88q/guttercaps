@@ -188,10 +188,15 @@ img { max-width: 100%; display: block; }
 .toast-money { border-left-color: var(--cg-trust-blue); font-family: var(--cg-font-mono); }
 
 /* ---------- chip card ---------- */
-.chip-tile { position: relative; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; overflow: hidden; isolation: isolate; }
+.chip-tile { position: relative; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; overflow: visible; isolation: isolate; }
 .chip-tile svg { width: 100%; height: 100%; display: block; }
-.chip-tile .chip-lvl { position: absolute; bottom: 6%; right: 8%; font-family: var(--cg-font-mono); font-size: 10px; background: rgba(0,0,0,0.6); padding: 1px 5px; border-radius: 4px; }
-.chip-tile .chip-badge { position: absolute; top: 6%; left: 8%; font-size: 10px; padding: 1px 6px; border-radius: 4px; background: rgba(0,0,0,0.6); }
+/* Clip only the art: circular overflow used to cut off both the level number and status text. */
+.st-crimp > .chip-tile { overflow: visible; }
+.chip-face { position: relative; width: 100%; height: 100%; border-radius: inherit; overflow: hidden; }
+.chip-labels { position: absolute; bottom: 0; right: 0; max-width: 100%; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 3px; z-index: 1; }
+.chip-tile .chip-lvl, .chip-tile .chip-badge { color: var(--cg-chrome); font-size: 11px; line-height: 1.4; background: rgba(0,0,0,0.88); padding: 2px 6px; border-radius: 4px; overflow-wrap: anywhere; }
+.chip-tile .chip-lvl { font-family: var(--cg-font-mono); }
+.chip-tile .chip-badge { position: absolute; top: 0; left: 0; max-width: 100%; z-index: 1; }
 /* Founder frame (docs/preorder-beta.md): pre-sale chips carry a permanent foil border + tag. */
 .chip-tile .chip-founder { position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
   border: 2px solid transparent;
@@ -199,7 +204,7 @@ img { max-width: 100%; display: block; }
   -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor; mask-composite: exclude;
   box-shadow: inset 0 0 10px rgba(255,170,60,0.35); }
-.chip-tile .chip-founder-tag { position: absolute; bottom: 4%; right: 6%; font-size: 8px; letter-spacing: 0.08em; font-weight: 700;
+.chip-tile .chip-founder-tag { font-size: 10px; overflow-wrap: anywhere; letter-spacing: 0.08em; font-weight: 700;
   padding: 1px 5px; border-radius: 4px; color: #1a1206;
   background: linear-gradient(120deg, #ffd678, #ff9a3c); box-shadow: 0 0 8px rgba(255,170,60,0.6); }
 .chip-tile.selected { outline: 3px solid var(--cg-acid-green); outline-offset: 2px; }

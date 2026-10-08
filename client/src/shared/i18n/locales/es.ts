@@ -94,6 +94,8 @@ const es: Messages = {
     acceptNotFound: 'No hay cuenta de combate para ese retador y nonce.',
     acceptNotOpen: 'Ese combate está {status}, no abierto.',
     acceptSelf: 'No puedes aceptar tu propio combate.',
+    squadTooWeak: "Poder del escuadrón {power} / {min}. Elige gorras más fuertes o mejóralas para desbloquear combates de clasificación y apuestas.",
+    stakedAllowed: "Las gorras en stake también pueden luchar; no necesitas retirarlas.",
     acceptNeedSquad: 'Elige primero un escuadrón de tres gorras.',
     acceptOpened: 'Combate con apuesta aceptado',
     acceptFailed: 'No se pudo aceptar el combate',

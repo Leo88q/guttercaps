@@ -17,7 +17,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { accountDiscriminator, ixDiscriminator } from '@/chain/anchor';
 import { BorshWriter } from '@/chain/borsh';
-import { bubblegumTreeMetaPda, compressedChipStatePda } from '@/chain/pdas';
+import { bubblegumTreeMetaPda, compressedChipStatePda, compressedChipStakePda } from '@/chain/pdas';
 import { chainKeys } from '@/chain/hooks';
 
 const OWNER = Keypair.generate().publicKey;
@@ -58,12 +58,18 @@ vi.mock('@solana/wallet-adapter-react', () => ({
   useWallet: () => ({ publicKey: OWNER, connected: true, signTransaction: async (tx: unknown) => tx }),
   useConnection: () => ({
     connection: {
-      // Only the three accounts a V2 leaf needs are answered; anything else stays null so the test
+      // Only the leaf identity / claim / stake accounts are answered; anything else stays null so the test
       // fails loudly if the screen starts reading an account it should not need.
       getAccountInfo: async (pk: PublicKey) => {
-        if (pk.equals(compressedChipStatePda(ASSET)[0])) return { data: Buffer.from(chipState(0)) };
+        if (pk.equals(compressedChipStatePda(ASSET)[0])) return { data: Buffer.from(chipState(CHIP.staked ? 1 : 0)) };
         if (pk.equals(bubblegumTreeMetaPda(3)[0])) return { data: Buffer.from(treeMeta()) };
-        if (pk.equals(CLAIM)) return { data: Buffer.from(claimAccount(false)) };
+        if (pk.equals(CLAIM)) return { data: Buffer.from(claimAccount(CHIP.staked)) };
+        if (pk.equals(compressedChipStakePda(CLAIM)[0]) && CHIP.staked) {
+          const w = new BorshWriter();
+          w.bytes(accountDiscriminator('CompressedChipStake'));
+          w.pubkey(OWNER).pubkey(CLAIM).u128(1000n).u128(0n).i64(1n).u8(200);
+          return { data: Buffer.from(w.toBytes()) };
+        }
         return null;
       },
       getMultipleAccountsInfo: async () => [],
@@ -76,6 +82,7 @@ vi.mock('@solana/wallet-adapter-react', () => ({
 }));
 
 import Staking from './Staking';
+import { ChipDrawer } from '@/features/collection/ChipDrawer';
 
 /** A real-shaped `CompressedChipState`. `stakedFlag` flips the bit the program sets on a stake. */
 function chipState(stakedFlag: number): Uint8Array {
@@ -202,4 +209,19 @@ describe('V2 chip staking', () => {
     expect(sent).toHaveLength(0);
     vi.restoreAllMocks();
   });
+});
+
+
+it('the collection drawer also unstakes a genuinely staked cap without DAS', async () => {
+  const qc = new QueryClient();
+  seed(qc, true);
+  const onClose = vi.fn();
+  render(<QueryClientProvider client={qc}><MemoryRouter>
+    <ChipDrawer chip={chip(true)} onClose={onClose} />
+  </MemoryRouter></QueryClientProvider>);
+  fireEvent.click(screen.getByRole('button', { name: /Unstake/ }));
+  await waitFor(() => expect(sent).toHaveLength(2));
+  expect(sent[1].data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('unstake_compressed_chip')));
+  expect(dasCalls).toBe(0);
+  expect(onClose).toHaveBeenCalledOnce();
 });

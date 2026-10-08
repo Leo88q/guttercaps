@@ -10,7 +10,7 @@ import { PublicKey } from '@solana/web3.js';
 import type { Chip } from '@/api/hooks';
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
 import { sendTx } from '@/chain/tx';
-import { resolveCompressedChip, resolveCompressedChipIdentity } from '@/chain/flows/compressedChip';
+import { resolveCompressedChip, resolveCompressedChipIdentity, resolveCompressedUnstakeClaim } from '@/chain/flows/compressedChip';
 import { thawChipIx } from '@/chain/ix/chipCore';
 import { stakeCompressedChipV2Ix, unstakeCompressedChipIx } from '@/chain/ix/staking';
 import { dasClient } from '@/features/market/payment';
@@ -74,7 +74,7 @@ export function ChipDrawer({ chip, onClose }: { chip: Chip; onClose: () => void 
    * this resolves the on-chain half and skips the DAS round trip entirely.
    */
   const unstake = async () => {
-    const claim = (await resolveCompressedChipIdentity(connection, new PublicKey(chip.asset!))).claim;
+    const claim = await resolveCompressedUnstakeClaim(connection, new PublicKey(chip.asset!), wallet!.publicKey);
     return [createAtaIdempotentIx(wallet!.publicKey, wallet!.publicKey, cfg.data!.cgMint), unstakeCompressedChipIx({ owner: wallet!.publicKey, claim, cgMint: cfg.data!.cgMint })];
   };
 

@@ -30,6 +30,7 @@ const NONCE = 4242n;
 const SQUAD_A = [Keypair.generate().publicKey, Keypair.generate().publicKey, Keypair.generate().publicKey];
 
 let connected = false;
+let chainStaked = false;
 const sent: { programId: PublicKey; data: Uint8Array; keys: { pubkey: PublicKey; isSigner: boolean; isWritable: boolean }[] }[] = [];
 
 vi.mock('@/chain/tx', () => ({
@@ -127,7 +128,7 @@ function chipState(l: (typeof LEAVES)[number]): Uint8Array {
   w.bytes(accountDiscriminator('CompressedChipState'));
   w.pubkey(l.asset).pubkey(l.claim).u8(0).pubkey(l.merkleTree).u32(l.leafIndex).u64(BigInt(l.leafIndex));
   for (let i = 0; i < 4; i++) w.bytes(new Uint8Array(32).fill(i + 1));
-  w.u8(0).u8(4).u8(9).u64(77n).u8(0).i64(0n).i64(1n).u8(200);
+  w.u8(0).u8(4).u8(9).u64(77n).u8(chainStaked ? 1 : 0).i64(0n).i64(1n).u8(200);
   return w.toBytes();
 }
 
@@ -143,7 +144,7 @@ function claimAccount(): Uint8Array {
   const w = new BorshWriter();
   w.bytes(accountDiscriminator('CompressedMintClaim'));
   w.pubkey(OPPONENT).u8(0).u8(4).u8(9).u64(7n).i64(0n).pubkey(Keypair.generate().publicKey);
-  w.bool(true).bool(true).bool(true).bool(false).bool(false).u8(9).bool(false)
+  w.bool(true).bool(true).bool(true).bool(false).bool(false).u8(9).bool(chainStaked)
     .pubkey(Keypair.generate().publicKey).i64(0n);
   return w.toBytes();
 }
@@ -166,7 +167,7 @@ vi.mock('@/features/market/payment', () => ({
 
 function seed(qc: QueryClient) {
   qc.setQueryData(chainKeys.config, { cgMint: CG_MINT, admin: OPPONENT } as never);
-  qc.setQueryData(qk.myChips({}), { pages: [{ items: MY_CHIPS, nextCursor: null }], pageParams: [undefined] });
+  qc.setQueryData(qk.myChips({}), { pages: [{ items: MY_CHIPS.map(c => ({ ...c, flags: { ...c.flags, staked: chainStaked } })), nextCursor: null }], pageParams: [undefined] });
 }
 
 function mount(qc: QueryClient) {
@@ -187,13 +188,14 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  cleanup(); sent.length = 0; connected = true;
+  cleanup(); sent.length = 0; connected = true; chainStaked = false;
   // the chip list is gated on a SIWS session, and the accept path needs three owned caps
   useSessionStore.setState({ status: 'authenticated', address: OPPONENT.toBase58() });
 });
 
 describe('arena: accepting a wager battle', () => {
-  it('reads the challenger’s battle from the PDA and sends exactly accept_battle', async () => {
+  it.each([false, true])('reads the battle and sends accept_battle_v2 (staked squad: %s)', async (staked) => {
+    chainStaked = staked;
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     // useGameConfig is disabled in mock mode, so the $CG mint the escrow needs is seeded directly.
     seed(qc);
@@ -256,4 +258,35 @@ describe('arena: accepting a wager battle', () => {
     // reaches the confirm step only for a battle it could actually take.
     expect(sent).toHaveLength(0);
   });
+});
+
+
+it('explains why 300 power blocks BOTH battle buttons and unlocks them for a stronger squad', async () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  seed(qc);
+  const low = MY_CHIPS.map(c => ({ ...c, rarity: 0, level: 1, power: 100 }));
+  const strong = { ...MY_CHIPS[0], asset: Keypair.generate().publicKey.toBase58(), flags: { ...MY_CHIPS[0].flags, staked: true } };
+  qc.setQueryData(qk.myChips({}), { pages: [{ items: [...low, strong], nextCursor: null }], pageParams: [undefined] });
+  mount(qc);
+  await waitFor(() => expect(screen.getByText(/Accept and stake/i)).toBeTruthy());
+  const ranked = () => screen.getByRole('button', { name: 'Ranked match' }) as HTMLButtonElement;
+  const wager = () => screen.getByRole('button', { name: 'Wager battle ($CG)' }) as HTMLButtonElement;
+  expect(ranked().disabled).toBe(true);
+  expect(wager().disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Pick your squad (3)' }));
+  const cards = document.querySelectorAll('.chip-card');
+  expect(cards).toHaveLength(4);
+  for (let i = 0; i < 3; i++) fireEvent.click(cards[i]);
+  fireEvent.click(screen.getByText(/^Done/i));
+  expect(screen.getByRole('status').textContent).toContain('Squad power 300 / 400');
+  expect(ranked().disabled).toBe(true);
+  expect(wager().disabled).toBe(true);
+  expect(sent).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Pick your squad (3)' }));
+  fireEvent.click(document.querySelectorAll('.chip-card')[0]);
+  fireEvent.click(document.querySelectorAll('.chip-card')[3]);
+  fireEvent.click(screen.getByText(/^Done/i));
+  expect(screen.queryByRole('status')).toBeNull();
+  expect(ranked().disabled).toBe(false);
+  expect(wager().disabled).toBe(false);
 });
