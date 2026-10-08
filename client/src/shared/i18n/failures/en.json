@@ -202,5 +202,6 @@
   "preorderUnknownPayer": "No memo was attached — send the payment from your connected wallet.",
   "preorderAlreadyConfirmed": "This payment signature was already credited to a reservation.",
   "preorderNothingToDeliver": "No paid preorders are awaiting delivery.",
-  "confirmationUnknown": "The transaction was sent, but confirmation is unavailable. Check it in Explorer and refresh your balance before trying again."
+  "confirmationUnknown": "The transaction was sent, but confirmation is unavailable. Check it in Explorer and refresh your balance before trying again.",
+  "blockhashRejected": "RPC rejected the transaction before execution: blockhash not found. This attempt did not make a payment. Retry; if the error persists, check the RPC and wallet network."
 }

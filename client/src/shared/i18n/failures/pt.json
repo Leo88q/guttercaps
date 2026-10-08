@@ -202,5 +202,6 @@
   "preorderUnknownPayer": "Sem memo anexado — envie o pagamento da sua carteira conectada.",
   "preorderAlreadyConfirmed": "Esta assinatura de pagamento já foi creditada a uma reserva.",
   "preorderNothingToDeliver": "Nenhuma pré-venda paga aguardando entrega.",
-  "confirmationUnknown": "A transação foi enviada, mas não há confirmação. Confira no Explorer e atualize o saldo antes de tentar novamente."
+  "confirmationUnknown": "A transação foi enviada, mas não há confirmação. Confira no Explorer e atualize o saldo antes de tentar novamente.",
+  "blockhashRejected": "O RPC rejeitou a transação antes da execução: blockhash não encontrado. Esta tentativa não efetuou pagamento. Tente novamente; se persistir, verifique o RPC e a rede da carteira."
 }

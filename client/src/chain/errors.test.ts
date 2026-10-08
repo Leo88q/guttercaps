@@ -113,6 +113,15 @@ for (const locale of LOCALES) {
 }
 
 describe('error attribution and recovery safety', () => {
+  it('translates a known preflight blockhash rejection without claiming payment was sent', async () => {
+    const error = new TxError({ code: 'blockhash_rejected', message: 'Simulation failed. Transaction simulation failed: Blockhash not found', logs: [] });
+    for (const locale of LOCALES) {
+      await setLocale(locale);
+      expect(humanizeTxError(error)).toBe(t('failures.blockhashRejected'));
+      expect(humanizeTxError(errorSnapshot(error))).not.toBe(t('failures.confirmationUnknown'));
+    }
+    expect(originalErrorText(error)).toContain('Blockhash not found');
+  });
   it('keeps an unknown submitted confirmation distinct from an unsubmitted expiry', async () => {
     const error = new TxError({ code: 'confirmation_unknown', message: 'Submitted, confirmation unknown', details: 'Signature has expired: block height exceeded' }, undefined, 'test-signature');
     for (const locale of LOCALES) {
@@ -178,7 +187,7 @@ describe('error attribution and recovery safety', () => {
 describe('sendTx retry boundary (mock RPC and signature)', () => {
   function fixture() {
     const connection = {
-      getLatestBlockhash: vi.fn().mockResolvedValue({ blockhash: CHIP_CORE_ID.toBase58(), lastValidBlockHeight: 123 }),
+      getLatestBlockhashAndContext: vi.fn().mockResolvedValue({ context: { slot: 100 }, value: { blockhash: CHIP_CORE_ID.toBase58(), lastValidBlockHeight: 123 } }),
       sendRawTransaction: vi.fn().mockResolvedValue('test-only'),
       confirmTransaction: vi.fn().mockResolvedValue({ value: { err: null } }),
       getTransaction: vi.fn().mockResolvedValue({ meta: { logMessages: [] } }),
@@ -190,7 +199,7 @@ describe('sendTx retry boundary (mock RPC and signature)', () => {
     const { connection, wallet } = fixture();
     connection.sendRawTransaction.mockRejectedValue({ message: 'Offer expired', logs: [`Program ${MARKET_ID} failed: custom program error: 6004`] });
     await expect(sendTx(connection as unknown as Connection, wallet, [], { cuLimit: 10000, cuPrice: 1 })).rejects.toBeInstanceOf(TxError);
-    expect(connection.getLatestBlockhash).toHaveBeenCalledTimes(1);
+    expect(connection.getLatestBlockhashAndContext).toHaveBeenCalledTimes(1);
     expect(connection.sendRawTransaction).toHaveBeenCalledTimes(1);
   });
   it('rebuilds once if the wallet refuses an expired blockhash before any send', async () => {
@@ -198,7 +207,7 @@ describe('sendTx retry boundary (mock RPC and signature)', () => {
     const sign = wallet.signTransaction;
     wallet.signTransaction = vi.fn(sign).mockRejectedValueOnce(new Error('Blockhash not found'));
     await expect(sendTx(connection as unknown as Connection, wallet, [], { cuLimit: 10000, cuPrice: 1 })).resolves.toHaveProperty('signature');
-    expect(connection.getLatestBlockhash).toHaveBeenCalledTimes(2);
+    expect(connection.getLatestBlockhashAndContext).toHaveBeenCalledTimes(2);
     expect(connection.sendRawTransaction).toHaveBeenCalledTimes(1);
   });
 });

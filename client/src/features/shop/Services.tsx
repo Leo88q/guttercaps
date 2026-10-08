@@ -1,3 +1,4 @@
+import { TxError } from '@/chain/tx';
 import { skinText, emotePackName } from '@/shared/lib/cosmetics';
 // "Extras" tab — the voluntary-spend catalogue (cosmetics, identity,
 // convenience, boosters). Every card states what the money does (burn vs
@@ -144,7 +145,7 @@ function ServiceModal({ service, onClose }: { service: ServiceDef; onClose: () =
       toast({ kind: 'money', title: { key: 'services.bought' }, body: { key: `services.names.${service.id}` }, href: EXPLORER.tx(signature) });
       onClose();
     } catch (e) {
-      toast({ kind: 'error', title: { key: 'services.buyFailed' }, error: e });
+      toast({ kind: 'error', title: { key: 'services.buyFailed' }, error: e, href: e instanceof TxError && e.signature ? EXPLORER.tx(e.signature) : undefined });
     } finally {
       setBusy(false);
     }

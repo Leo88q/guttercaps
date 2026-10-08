@@ -202,5 +202,6 @@
   "preorderUnknownPayer": "Sin memo adjunto: envía el pago desde tu billetera conectada.",
   "preorderAlreadyConfirmed": "Esta firma de pago ya fue acreditada a una reserva.",
   "preorderNothingToDeliver": "No hay reservas pagadas esperando entrega.",
-  "confirmationUnknown": "La transacción se envió, pero no hay confirmación. Revísala en Explorer y actualiza tu saldo antes de reintentar."
+  "confirmationUnknown": "La transacción se envió, pero no hay confirmación. Revísala en Explorer y actualiza tu saldo antes de reintentar.",
+  "blockhashRejected": "El RPC rechazó la transacción antes de ejecutarla: no encontró el blockhash. Este intento no realizó ningún pago. Reintenta; si persiste, comprueba el RPC y la red de la cartera."
 }

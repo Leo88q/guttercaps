@@ -202,5 +202,6 @@
   "preorderUnknownPayer": "Tanpa memo — kirim pembayaran dari wallet yang terhubung.",
   "preorderAlreadyConfirmed": "Signature pembayaran ini sudah dikreditkan ke sebuah reservasi.",
   "preorderNothingToDeliver": "Tidak ada preorder lunas yang menunggu pengiriman.",
-  "confirmationUnknown": "Transaksi sudah dikirim, tetapi konfirmasi belum tersedia. Periksa di Explorer dan perbarui saldo sebelum mencoba lagi."
+  "confirmationUnknown": "Transaksi sudah dikirim, tetapi konfirmasi belum tersedia. Periksa di Explorer dan perbarui saldo sebelum mencoba lagi.",
+  "blockhashRejected": "RPC menolak transaksi sebelum dieksekusi: blockhash tidak ditemukan. Percobaan ini tidak melakukan pembayaran. Coba lagi; jika tetap gagal, periksa RPC dan jaringan dompet."
 }

@@ -130,6 +130,7 @@ export async function sendTx(
   const reportStatus = opts.status !== false;
   await checkTransactionAccess(wallet.publicKey.toBase58(), ixs);
   let attempt = 0;
+  let minContextSlot: number | undefined;
   try {
     for (;;) {
       attempt++;
@@ -139,7 +140,12 @@ export async function sendTx(
         if (!fitsInTx(wallet.publicKey, ixs, opts.lookupTables)) throw new Error('Transaction exceeds the 1232-byte packet limit — a lookup table is required');
         const tx = await buildV0Tx(connection, wallet.publicKey, ixs, opts);
         await checkTransactionAccess(wallet.publicKey.toBase58(), ixs);
-        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+        // Public RPC URLs can balance across nodes. Do not let send/preflight use a bank
+        // older than the one that supplied this blockhash (or go backwards on a retry).
+        const latest = await connection.getLatestBlockhashAndContext({ commitment: 'confirmed', minContextSlot });
+        minContextSlot = Math.max(minContextSlot ?? 0, latest.context.slot);
+        const { blockhash, lastValidBlockHeight } = latest.value;
+        const signingStartedAt = Date.now();
         tx.message.recentBlockhash = blockhash;
         if (opts.signers?.length) tx.sign(opts.signers);
         if (reportStatus) setWait('wallet');
@@ -151,7 +157,24 @@ export async function sendTx(
         const raw = signed.serialize();
         // A lost HTTP response does not prove the RPC rejected the signed transaction.
         submittedSignature = signature;
-        await connection.sendRawTransaction(raw, { skipPreflight: opts.skipPreflight ?? false, maxRetries: 3, preflightCommitment: 'confirmed' });
+        try {
+          await connection.sendRawTransaction(raw, { skipPreflight: opts.skipPreflight ?? false, maxRetries: 3, preflightCommitment: 'confirmed', minContextSlot });
+        } catch (e) {
+          // SDK SendTransactionError also wraps other RPC failures. Only an explicit
+          // simulation rejection with preflight enabled proves this send did not execute.
+          // Plain 'Blockhash not found', HTTP timeouts and confirmation expiry stay ambiguous.
+          if (!opts.skipPreflight && e instanceof SendTransactionError && e.transactionError.message.startsWith('Transaction simulation failed:')) {
+            submittedSignature = undefined;
+            if (/^Transaction simulation failed: Blockhash not found\.?$/i.test(e.transactionError.message)) {
+              if (attempt === 1) continue; // fresh blockhash + a NEW wallet approval, at most once
+              throw new TxError({ code: 'blockhash_rejected', message: e.message, logs: e.logs, details: {
+                stage: 'preflight', attempts: attempt, blockhash, signedBlockhash: signed.message.recentBlockhash,
+                minContextSlot, signingElapsedMs: Date.now() - signingStartedAt,
+              } });
+            }
+          }
+          throw e;
+        }
         opts.onSent?.(signature);
         if (reportStatus) setWait('confirm', signature);
         const conf = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');

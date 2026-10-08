@@ -16,7 +16,7 @@ function fixture() {
   const connection = {
     rpcEndpoint: 'http://test.invalid', getSlot: vi.fn(async () => slot),
     getAddressLookupTable: vi.fn(async (key: PublicKey) => ({ context: { slot: slot + 1 }, value: tables.get(key.toBase58()) ?? null })),
-    getLatestBlockhash: vi.fn(async () => ({ blockhash: pk().toBase58(), lastValidBlockHeight: 5000 })),
+    getLatestBlockhashAndContext: vi.fn(async () => ({ context: { slot }, value: { blockhash: pk().toBase58(), lastValidBlockHeight: 5000 } })),
     sendRawTransaction: vi.fn(async (bytes: Uint8Array) => {
       expect(bytes.length).toBeLessThanOrEqual(MAX_TX_BYTES);
       const tx = VersionedTransaction.deserialize(bytes); packets.push(tx); slot++;
