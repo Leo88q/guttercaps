@@ -204,5 +204,6 @@
   "preorderNothingToDeliver": "No paid preorders are awaiting delivery.",
   "confirmationUnknown": "The transaction was sent, but confirmation is unavailable. Check it in Explorer and refresh your balance before trying again.",
   "blockhashRejected": "RPC rejected the transaction before execution: blockhash not found. This attempt did not make a payment. Retry; if the error persists, check the RPC and wallet network.",
-  "proofUnavailable": "Could not obtain the chip’s Merkle proof. Check the DAS endpoint and its access permissions. Technical details contain both the DAS error and the tree fallback error."
+  "proofUnavailable": "Could not obtain the chip’s Merkle proof. Check the DAS endpoint and its access permissions. Technical details contain both the DAS error and the tree fallback error.",
+  "switchboardUnavailable": "Switchboard randomness is unavailable. Do not repeat a purchase or wager. An existing operation must be resumed after recovery; see the technical details."
 }

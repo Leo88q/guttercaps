@@ -4,6 +4,161 @@
  */
 
 export interface paths {
+    "/switchboard/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read-only Switchboard readiness, before creating a purchase or wager
+         * @description Server reads the pinned queue and checks verified, fresh members against their live gateway health.
+         *     No Crossbar dependency, wallet signature or transaction. Cached for five seconds; 12 requests/min/IP.
+         *     A ready response is point-in-time availability, not a guarantee of later reveal or settlement.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description At least one eligible oracle is live */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ready: boolean;
+                            /** Format: date-time */
+                            checkedAt: string;
+                            genesis: string;
+                            program: components["schemas"]["Pubkey"];
+                            queue: components["schemas"]["Pubkey"];
+                            oracle: string | null;
+                            queueMembers: number;
+                            eligibleMembers: number;
+                            probes: {
+                                oracle?: string;
+                                gateway?: string | null;
+                                healthy?: boolean;
+                                code?: string;
+                            }[];
+                        };
+                    };
+                };
+                /** @description Rate limit; see Retry-After */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description No live oracle, RPC/cluster failure, or concurrency limit; no transaction submitted */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/switchboard/reveal/{randomness}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Relay an oracle-signed reveal for our committed randomness account
+         * @description Accepts only the account public key, never a URL, RPC or arbitrary body. Validates Switchboard owner,
+         *     pinned queue, our authority and committed oracle binding. Calls only that oracle's HTTPS gateway.
+         *     The client wraps the response into an instruction; Switchboard verifies its signature on chain.
+         *     No signing keys or transaction submission in this endpoint. 30 requests/min/IP, bounded concurrency.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    randomness: components["schemas"]["Pubkey"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Oracle response (still requires on-chain verification) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            randomness: components["schemas"]["Pubkey"];
+                            oracle: components["schemas"]["Pubkey"];
+                            queue: components["schemas"]["Pubkey"];
+                            /** @description 64-byte secp256k1 signature in base64 */
+                            signature: string;
+                            recovery_id: number;
+                            value: number[];
+                        };
+                    };
+                };
+                /** @description Invalid account key */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not committed or already revealed; reread chain state */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Rate limit; see Retry-After */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Gateway/RPC unavailable or bounded concurrency exhausted */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/siws/nonce": {
         parameters: {
             query?: never;

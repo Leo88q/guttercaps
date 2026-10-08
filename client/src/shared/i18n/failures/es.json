@@ -204,5 +204,6 @@
   "preorderNothingToDeliver": "No hay reservas pagadas esperando entrega.",
   "confirmationUnknown": "La transacción se envió, pero no hay confirmación. Revísala en Explorer y actualiza tu saldo antes de reintentar.",
   "blockhashRejected": "El RPC rechazó la transacción antes de ejecutarla: no encontró el blockhash. Este intento no realizó ningún pago. Reintenta; si persiste, comprueba el RPC y la red de la cartera.",
-  "proofUnavailable": "No se pudo obtener la prueba Merkle de la ficha. Comprueba la dirección DAS y sus permisos de acceso. Los detalles técnicos incluyen los errores de DAS y de reconstrucción desde el árbol."
+  "proofUnavailable": "No se pudo obtener la prueba Merkle de la ficha. Comprueba la dirección DAS y sus permisos de acceso. Los detalles técnicos incluyen los errores de DAS y de reconstrucción desde el árbol.",
+  "switchboardUnavailable": "La aleatoriedad de Switchboard no está disponible. No repitas la compra o apuesta. Reanuda la operación existente tras la recuperación; consulta los detalles técnicos."
 }

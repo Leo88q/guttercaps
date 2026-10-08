@@ -34,6 +34,74 @@ security:
   - cookieAuth: []
 
 paths:
+  /switchboard/health:
+    get:
+      security: []
+      summary: Read-only Switchboard readiness, before creating a purchase or wager
+      description: |
+        Server reads the pinned queue and checks verified, fresh members against their live gateway health.
+        No Crossbar dependency, wallet signature or transaction. Cached for five seconds; 12 requests/min/IP.
+        A ready response is point-in-time availability, not a guarantee of later reveal or settlement.
+      responses:
+        '200':
+          description: At least one eligible oracle is live
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ready, checkedAt, genesis, program, queue, oracle, queueMembers, eligibleMembers, probes]
+                properties:
+                  ready: { type: boolean }
+                  checkedAt: { type: string, format: date-time }
+                  genesis: { type: string }
+                  program: { $ref: '#/components/schemas/Pubkey' }
+                  queue: { $ref: '#/components/schemas/Pubkey' }
+                  oracle: { type: [string, 'null'] }
+                  queueMembers: { type: integer }
+                  eligibleMembers: { type: integer }
+                  probes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        oracle: { type: string }
+                        gateway: { type: [string, 'null'] }
+                        healthy: { type: boolean }
+                        code: { type: string }
+        '503':
+          description: No live oracle, RPC/cluster failure, or concurrency limit; no transaction submitted
+          content: { application/json: { schema: { type: object, additionalProperties: true } } }
+        '429': { description: Rate limit; see Retry-After }
+  /switchboard/reveal/{randomness}:
+    get:
+      security: []
+      summary: Relay an oracle-signed reveal for our committed randomness account
+      description: |
+        Accepts only the account public key, never a URL, RPC or arbitrary body. Validates Switchboard owner,
+        pinned queue, our authority and committed oracle binding. Calls only that oracle's HTTPS gateway.
+        The client wraps the response into an instruction; Switchboard verifies its signature on chain.
+        No signing keys or transaction submission in this endpoint. 30 requests/min/IP, bounded concurrency.
+      parameters:
+        - { in: path, name: randomness, required: true, schema: { $ref: '#/components/schemas/Pubkey' } }
+      responses:
+        '200':
+          description: Oracle response (still requires on-chain verification)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [randomness, oracle, queue, signature, recovery_id, value]
+                properties:
+                  randomness: { $ref: '#/components/schemas/Pubkey' }
+                  oracle: { $ref: '#/components/schemas/Pubkey' }
+                  queue: { $ref: '#/components/schemas/Pubkey' }
+                  signature: { type: string, description: 64-byte secp256k1 signature in base64 }
+                  recovery_id: { type: integer, minimum: 0, maximum: 3 }
+                  value: { type: array, minItems: 32, maxItems: 32, items: { type: integer, minimum: 0, maximum: 255 } }
+        '400': { description: Invalid account key, owner, authority or queue binding }
+        '409': { description: Not committed or already revealed; reread chain state }
+        '429': { description: Rate limit; see Retry-After }
+        '503': { description: Gateway/RPC unavailable or bounded concurrency exhausted }
   # ------------------------------------------------------------------ auth
   /auth/siws/nonce:
     post:

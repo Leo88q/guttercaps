@@ -1,3 +1,5 @@
+import { createSwitchboardService, switchboardConnection } from './switchboard.ts';
+import { SwitchboardError } from './switchboard-gateway.ts';
 // REST API — backend/openapi.yaml served from indexed events + local state: auth, profile,
 // inventory, packs catalogue + Pyth quotes, market, leaderboards, paid services, fusion planner,
 // staking read-model, the server-authoritative arena (queue / reveal / matches / seasons) and
@@ -67,6 +69,7 @@ const LISTING_SORTS = ['price_asc', 'price_desc', 'rarity_desc', 'newest', 'inde
 
 export interface AppOptions {
   connection?: () => Connection;
+  switchboard?: ReturnType<typeof createSwitchboardService>;
   compliancePolicy?: compliance.AccessPolicy;
   complianceEnforce?: boolean;
   limiter?: Limiter;
@@ -278,6 +281,14 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   app.use((req, res, next) => (req.method === 'GET' || req.method === 'HEAD' ? rl(POLICIES.read)(req, res, next) : rl(POLICIES.mutate)(req, res, next)));
 
   const v1 = express.Router();
+  const switchboard = deps.switchboard ?? createSwitchboardService(() => switchboardConnection(connection()));
+  v1.get('/switchboard/health', rl({ name: 'switchboard-health', limit: 12, windowMs: 60_000, by: 'ip' }), asyncRoute(async (_req, res) => {
+    const result = await switchboard.health();
+    res.status(result.ready ? 200 : 503).json(result);
+  }));
+  v1.get('/switchboard/reveal/:randomness', rl({ name: 'switchboard-reveal', limit: 30, windowMs: 60_000, by: 'ip' }), asyncRoute(async (req, res) => {
+    res.json(await switchboard.reveal(req.params.randomness));
+  }));
   const wrap = (fn: (req: Request, res: Response) => unknown) => (req: Request, res: Response, next: NextFunction) => {
     Promise.resolve(fn(req, res)).catch(next);
   };
@@ -718,6 +729,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   app.use('/', v1); // legacy paths (/leaderboard, /stats, /wallet/:address/events) keep working for the landing page
 
   app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
+    if (err instanceof SwitchboardError) { res.status(err.status).json({ code: err.code, message: err.code }); return; }
     if (err instanceof ServiceError) { res.status(err.status).json({ code: err.code, message: err.message, ...(err.details !== undefined ? { details: err.details } : {}) }); return; }
     if (err instanceof AuthError) { res.status(err.status).json({ code: err.code, message: err.message }); return; }
     const msg = (err as Error)?.message ?? String(err);

@@ -11,19 +11,19 @@
 //   close  → `close_randomness` / `close_battle_randomness` (rent back to the player, SEC-M7)
 //   table  → `close_randomness_lut` / `close_battle_randomness_lut` (the Address Lookup Table's rent,
 //            one ALT deactivation cooldown later — backlog #23; also swept by our crank)
-// The SDK (~250 KB) is only used to pick a healthy oracle and to talk to the oracle gateway,
-// so it stays behind dynamic imports.
+// Selection and gateway HTTP run on our backend, never through browser Crossbar/CORS.
+// The relay returns only oracle-signed bytes; Switchboard still verifies the reveal on chain.
 import { Connection, PublicKey, type TransactionInstruction } from '@solana/web3.js';
 import { CLUSTER } from '@/app/config';
 import { expectDiscriminator, hasDiscriminator } from './anchor';
 import { SWITCHBOARD_ON_DEMAND_ID, SWITCHBOARD_QUEUE } from './ids';
 import { closeRandomnessIx, closeRandomnessLutIx, initRandomnessIx, revealRandomnessIx, rngAccounts, type RngAccounts } from './ix/rng';
-import type { RngKind } from './pdas';
+import { rngAuthPda, type RngKind } from './pdas';
+import { recentLookupSlots } from './lookupTableSlots';
+import { relayKey, relayReveal, switchboardRequest, SwitchboardUnavailable } from './switchboardRelay';
 import { sendTx, type WalletLike } from './tx';
 
 const RANDOMNESS_ACCOUNT_SIZE = 480;
-const ORACLE_GATEWAY_URI_OFFSET = 3584;
-
 function decodeRandomnessAccount(data: Uint8Array) {
   const r = expectDiscriminator(data, 'RandomnessAccountData');
   if (data.length < RANDOMNESS_ACCOUNT_SIZE) throw new Error(`RandomnessAccountData: ${data.length} bytes`);
@@ -39,42 +39,6 @@ function decodeRandomnessAccount(data: Uint8Array) {
   };
 }
 
-function decodeOracleGateway(data: Uint8Array): string {
-  if (!hasDiscriminator(data, 'OracleAccountData')) throw new Error('Account discriminator mismatch: expected OracleAccountData');
-  if (data.length < ORACLE_GATEWAY_URI_OFFSET + 64) throw new Error(`OracleAccountData: ${data.length} bytes`);
-  const raw = data.subarray(ORACLE_GATEWAY_URI_OFFSET, ORACLE_GATEWAY_URI_OFFSET + 64);
-  let end = raw.indexOf(0);
-  if (end < 0) end = raw.length;
-  return new TextDecoder().decode(raw.subarray(0, end)).trim();
-}
-
-type Sb = typeof import('@switchboard-xyz/on-demand');
-type SbProgram = Awaited<ReturnType<Sb['AnchorUtils']['loadProgramFromConnection']>>;
-
-let sbMod: Promise<Sb> | undefined;
-const loadSb = () => (sbMod ??= import('@switchboard-xyz/on-demand'));
-
-const programCache = new WeakMap<Connection, Promise<SbProgram>>();
-
-async function sbProgram(connection: Connection, payer: PublicKey): Promise<SbProgram> {
-  let p = programCache.get(connection);
-  if (!p) {
-    p = (async () => {
-      const sb = await loadSb();
-      // A "wallet" that can't sign: we never let the SDK send; we only read and build.
-      const wallet = {
-        publicKey: payer,
-        signTransaction: async () => { throw new Error('read-only'); },
-        signAllTransactions: async () => { throw new Error('read-only'); },
-      };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return sb.AnchorUtils.loadProgramFromConnection(connection, wallet as any, SWITCHBOARD_ON_DEMAND_ID);
-    })();
-    programCache.set(connection, p);
-  }
-  return p;
-}
-
 function defaultQueue(): PublicKey {
   return SWITCHBOARD_QUEUE[CLUSTER];
 }
@@ -88,29 +52,35 @@ interface RandomnessPrep extends RngAccounts {
 }
 
 /**
- * Pick a healthy randomness oracle from the queue (SDK health snapshots + on-chain heartbeat).
+ * Pick a live, verified queue member via our server; independently check its on-chain binding.
  * On localnet `sb_mock` ignores the oracle, so any key works.
  */
-async function selectOracle(connection: Connection, payer: PublicKey, queue: PublicKey = defaultQueue()): Promise<PublicKey> {
+async function selectOracle(connection: Connection, _payer: PublicKey, queue: PublicKey = defaultQueue()): Promise<PublicKey> {
   if (CLUSTER === 'localnet') return queue;
-  const sb = await loadSb();
-  const program = await sbProgram(connection, payer);
-  const { oracle } = await new sb.Queue(program, queue).selectRandomnessOracle();
-  return oracle.pubkey;
+  const report = await switchboardRequest('health');
+  if (report.ready !== true || report.program !== SWITCHBOARD_ON_DEMAND_ID.toBase58() || report.queue !== queue.toBase58() ||
+      report.genesis !== await connection.getGenesisHash()) throw new SwitchboardUnavailable({ stage: 'cluster_or_queue_mismatch' });
+  const oracle = relayKey(report.oracle);
+  const info = await connection.getAccountInfo(oracle, 'confirmed');
+  if (!info?.owner.equals(SWITCHBOARD_ON_DEMAND_ID) || info.data.length < 3504 || !hasDiscriminator(info.data, 'OracleAccountData') ||
+      !new PublicKey(info.data.subarray(3472, 3504)).equals(queue)) throw new SwitchboardUnavailable({ stage: 'oracle_binding' });
+  return oracle;
 }
 
 /** Build the init instruction for the program-owned randomness account of (kind, owner, nonce). */
 export async function prepareRandomness(
   connection: Connection, owner: PublicKey, kind: RngKind, nonce: bigint, queue: PublicKey = defaultQueue(),
 ): Promise<RandomnessPrep> {
-  const [oracle, recentSlot] = await Promise.all([selectOracle(connection, owner, queue), connection.getSlot('finalized')]);
+  const oracle = await selectOracle(connection, owner, queue);
+  // Health probes may take seconds: only acquire the init slot AFTER they complete.
+  const recentSlot = (await recentLookupSlots(connection)).slots[0];
   const acc = rngAccounts(kind, owner, nonce);
   return { ...acc, queue, oracle, ixs: [initRandomnessIx({ ...acc, queue, recentSlot: BigInt(recentSlot) })] };
 }
 
 /**
  * Fetch the oracle's reveal for a committed account and wrap it into our permissionless
- * `reveal_randomness` instruction. The SDK waits ~3 s and calls the oracle gateway; we retry
+ * `reveal_randomness` instruction. Our server calls the committed oracle gateway; we retry
  * with backoff because the oracle needs the committed slot to be finalized. Resolves to the
  * instruction plus the 32 revealed bytes (so the UI can pre-simulate the roll before the chain
  * confirms).
@@ -123,7 +93,6 @@ export async function prepareReveal(
   opts: { maxWaitMs?: number; onAttempt?: (n: number) => void } = {},
 ): Promise<{ ix: TransactionInstruction; value: Uint8Array }> {
   const deadline = Date.now() + (opts.maxWaitMs ?? 60_000);
-  const gatewayRpc = CLUSTER === 'mainnet-beta' ? 'https://api.mainnet-beta.solana.com' : 'https://api.devnet.solana.com';
   let delay = 1_500;
   let attempt = 0;
   for (;;) {
@@ -132,30 +101,15 @@ export async function prepareReveal(
     try {
       const rndInfo = await connection.getAccountInfo(randomness, 'confirmed');
       if (!rndInfo) throw new Error('randomness account not found yet');
+      if (!rndInfo.owner.equals(SWITCHBOARD_ON_DEMAND_ID)) throw new SwitchboardUnavailable({ stage: 'randomness_owner' });
       const rnd = decodeRandomnessAccount(new Uint8Array(rndInfo.data));
-      const oracleInfo = await connection.getAccountInfo(rnd.oracle, 'confirmed');
-      if (!oracleInfo) throw new Error(`oracle ${rnd.oracle.toBase58()} account not found`);
-      const gatewayUri = decodeOracleGateway(new Uint8Array(oracleInfo.data));
-      if (!/^https?:\/\//.test(gatewayUri)) throw new Error(`oracle ${rnd.oracle.toBase58()} has no gateway uri`);
-      const url = `${gatewayUri.replace(/\/+$/, '')}/gateway/api/v1/randomness_reveal`;
-      const hex = Array.from(randomness.toBytes(), (x) => x.toString(16).padStart(2, '0')).join('');
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ slothash: Array.from(rnd.seedSlothash), randomness_key: hex, slot: Number(rnd.seedSlot), rpc: gatewayRpc }),
-        signal: AbortSignal.timeout(10_000),
-      });
-      const text = await res.text();
-      if (!res.ok) throw new Error(`gateway ${res.status}: ${text.slice(0, 200)}`);
-      const j = JSON.parse(text) as { signature?: string; recovery_id?: number; value?: number[] };
-      const bin = atob(j.signature ?? '');
-      const signature = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) signature[i] = bin.charCodeAt(i);
-      const value = Uint8Array.from(j.value ?? []);
-      if (signature.length !== 64 || value.length !== 32 || typeof j.recovery_id !== 'number') {
-        throw new Error('gateway payload malformed');
+      if (!rnd.authority.equals(rngAuthPda(kind)[0]) || !rnd.queue.equals(defaultQueue())) throw new SwitchboardUnavailable({ stage: 'randomness_binding' });
+      const j = await switchboardRequest(`reveal/${randomness.toBase58()}`, Math.min(30_000, Math.max(1, deadline - Date.now())));
+      if (j.randomness !== randomness.toBase58() || j.oracle !== rnd.oracle.toBase58() || j.queue !== rnd.queue.toBase58()) {
+        throw new SwitchboardUnavailable({ stage: 'reveal_binding' });
       }
-      const ix = revealRandomnessIx({ kind, payer, randomness, oracle: rnd.oracle, queue: rnd.queue, signature, recoveryId: j.recovery_id, value });
+      const { signature, value, recoveryId } = relayReveal(j);
+      const ix = revealRandomnessIx({ kind, payer, randomness, oracle: rnd.oracle, queue: rnd.queue, signature, recoveryId, value });
       return { ix, value };
     } catch (e) {
       if (Date.now() + delay > deadline) throw e;

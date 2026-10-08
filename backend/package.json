@@ -26,6 +26,7 @@
     "@noble/curves": "^1.9.7",
     "@noble/hashes": "^1.8.0",
     "@solana/web3.js": "^1.99.0",
+    "@switchboard-xyz/on-demand": "^3.10.6",
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "tsx": "^4.16.5",
