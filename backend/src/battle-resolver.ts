@@ -27,7 +27,7 @@ import { db as sharedDb, type Db } from './db.ts';
 import { BorshWriter } from './borsh.ts';
 import { PROGRAMS } from './config.ts';
 import {
-  ARENA_ID, BATTLE_STATUS, TOKEN_PROGRAM_ID, ata, battlePda, decodeRandomness, decodeWagerBattle, expectDiscriminator, ixData, ro, rw, signer, type WagerBattle,
+  ARENA_ID, BATTLE_STATUS, TOKEN_PROGRAM_ID, ata, battlePda, decodeRandomness, decodeWagerBattle, ixData, ro, rw, signer, type WagerBattle,
 } from './chain.ts';
 import { getConnection, sleep } from './ingest.ts';
 import { loadKeypair } from './crank.ts';
@@ -40,7 +40,8 @@ export const BATTLE_ORACLE_KEYPAIR = env.BATTLE_ORACLE_KEYPAIR ?? '';
 export const BATTLE_RESOLVER_POLL_MS = Number(env.BATTLE_RESOLVER_POLL_MS ?? 5_000);
 export const CU_RESOLVE_BATTLE = 120_000;
 
-export const arenaConfigPda = () => PublicKey.findProgramAddressSync([Buffer.from('arena_config')], ARENA_ID);
+import { arenaConfigPda, decodeArenaConfig } from './arena-config.ts';
+export { arenaConfigPda, decodeArenaConfig, type ArenaConfig } from './arena-config.ts';
 
 const sha256 = (...parts: (Uint8Array | string)[]) => { const h = createHash('sha256'); for (const p of parts) h.update(p); return h.digest(); };
 
@@ -66,18 +67,6 @@ export function resolveBattleIx(a: { oracle: PublicKey; challenger: PublicKey; n
   });
 }
 
-export interface ArenaConfig {
-  admin: PublicKey; battleOracle: PublicKey; cgMint: PublicKey; seasonPool: PublicKey; treasuryCg: PublicKey; oracleDailyCap: bigint; oraclePaidToday: bigint; oracleDayStart: bigint; paused: boolean;
-  /** SEC-H2 hot pauser, appended last on chain; `PublicKey.default` = none (also for a pre-pauser account layout). */
-  pauser: PublicKey;
-}
-export function decodeArenaConfig(data: Uint8Array): ArenaConfig {
-  const r = expectDiscriminator(data, 'ArenaConfig');
-  const head = { admin: r.pubkey(), battleOracle: r.pubkey(), cgMint: r.pubkey(), seasonPool: r.pubkey(), treasuryCg: r.pubkey(), oracleDailyCap: r.u64(), oraclePaidToday: r.u64(), oracleDayStart: r.i64(), paused: r.bool() };
-  // bump (u8) then the appended pauser; tolerate a fixture / legacy layout that stops at `paused`
-  const pauser = r.remaining >= 33 ? (r.u8(), r.pubkey()) : PublicKey.default;
-  return { ...head, pauser };
-}
 
 export function squadFromDb(db: Db, assets: readonly PublicKey[]): FighterChip[] | undefined {
   const out: FighterChip[] = [];
@@ -158,7 +147,8 @@ export async function resolveAll(d: ResolverDeps): Promise<{ resolved: number; s
 }
 
 export async function battleResolver(log: (s: string) => void = console.log) {
-  const oracle = loadKeypair(BATTLE_ORACLE_KEYPAIR || undefined);
+  if (!BATTLE_ORACLE_KEYPAIR) throw new Error('BATTLE_ORACLE_KEYPAIR is required; refusing to use the crank signer');
+  const oracle = loadKeypair(BATTLE_ORACLE_KEYPAIR);
   const connection = getConnection();
   const db = sharedDb();
   log(`[battle-resolver] oracle ${oracle.publicKey.toBase58()} · arena ${PROGRAMS.arena.toBase58()} · poll ${BATTLE_RESOLVER_POLL_MS} ms`);

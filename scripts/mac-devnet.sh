@@ -1383,15 +1383,28 @@ pyth_for_run() { # the pusher belongs to the session: fresh prices while the app
 BACKEND_PID=""
 stop_backend() { local rc=$?; [ -n "$BACKEND_PID" ] && { kill -- "-$BACKEND_PID" 2>/dev/null || kill "$BACKEND_PID" 2>/dev/null; BACKEND_PID=""; }; return "$rc"; }
 
+# Called only in a subshell: backend secrets must not enter Vite's environment.
+mac_backend_env() {
+  # shellcheck disable=SC1091
+  set -a; . backend/.env || return 1; set +a
+  # Respect an explicit WORKERS list (including an intentionally empty/API-only one).
+  export WORKERS="${WORKERS-crank,pyth,battle}"
+  # Deployer is only a candidate on Mac Devnet, never implicitly trusted as battle authority.
+  # The read-only preflight below must verify this key against ArenaConfig before launch.
+  export BATTLE_ORACLE_KEYPAIR="${BATTLE_ORACLE_KEYPAIR:-$WALLET}"
+}
+
 stage_run() {
   [ -f backend/.env ] && [ -f client/.env.local ] || die "нет backend/.env и client/.env.local — сначала: bash scripts/mac-devnet.sh --only env"
+  say "  проверка battle worker: Devnet, ArenaConfig, signer и запас SOL (без транзакций)"
+  ( mac_backend_env && node --import tsx scripts/mac-battle-preflight.mts ) || die "battle preflight не прошёл. Проверьте код выше; ключи/полный .env не публикуйте. Для осознанного запуска без арены задайте WORKERS=crank,pyth в backend/.env."
   mkdir -p target/mac-devnet/logs
   local blog="target/mac-devnet/logs/backend.log"
-  say "  бэкенд (API + индексатор + crank) -> лог $blog"
+  say "  бэкенд (API + индексатор + выбранные workers) -> лог $blog"
   # own process group (set -m), so stopping the backend also stops the node child that npm spawned
   set -m
   # shellcheck disable=SC1091
-  ( set -a; . backend/.env; set +a; exec npm run backend:start ) > "$blog" 2>&1 &
+  ( mac_backend_env || exit 1; exec npm run backend:start ) > "$blog" 2>&1 &
   BACKEND_PID=$!
   set +m
   # the trap strings are single-quoted on purpose: they must see the variable at exit time, not now
