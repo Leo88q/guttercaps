@@ -1,10 +1,11 @@
 // Three V2 proofs + atomic randomness init exceed Solana's 1232-byte packet even with a
 // static app LUT. Keep the wager atomic; prepare a reusable, wallet-owned address table
 // in separate transactions instead of splitting off randomness or dropping proof nodes.
-import { AddressLookupTableAccount, AddressLookupTableProgram, PublicKey, type Connection, type TransactionInstruction } from '@solana/web3.js';
+import { AddressLookupTableAccount, AddressLookupTableProgram, PublicKey, SendTransactionError, type Connection, type TransactionInstruction } from '@solana/web3.js';
 import { sha256 } from '@noble/hashes/sha256';
-import { appLookupTables, fitsInTx, sendTx, type WalletLike } from '../tx';
+import { appLookupTables, fitsInTx, sendTx, TxError, type WalletLike } from '../tx';
 import { checkTransactionAccess } from '../access';
+import { recentLookupSlots } from '../lookupTableSlots';
 
 const ACTIVE = 0xffff_ffff_ffff_ffffn;
 const remembered = new Map<string, string[]>();
@@ -36,6 +37,18 @@ const missingFrom = (table: AddressLookupTableAccount, addresses: PublicKey[]) =
   return addresses.filter(key => !have.has(key.toBase58()));
 };
 
+/** Only the explicit RPC preflight rejection is safe to rebuild. Unknown sends,
+ * confirmation errors and a wallet error merely mentioning a slot must not retry. */
+function rejectedLookupSlot(error: unknown) {
+  if (!(error instanceof TxError) || error.signature || !(error.cause instanceof SendTransactionError)) return false;
+  const cause = error.cause;
+  const logs = cause.logs ?? [];
+  return cause.transactionError.message.startsWith('Transaction simulation failed:')
+    && logs.includes('Program log: Instruction: CreateLookupTable')
+    && logs.some(line => /^Program log: \d+ is not a recent slot$/.test(line))
+    && logs.includes(`Program ${AddressLookupTableProgram.programId} failed: invalid instruction data`);
+}
+
 async function prepareTable(connection: Connection, wallet: WalletLike, addresses: PublicKey[], onPrepare?: () => void) {
   const registry = registryKey(connection, wallet);
   let table: AddressLookupTableAccount | undefined;
@@ -48,19 +61,27 @@ async function prepareTable(connection: Connection, wallet: WalletLike, addresse
     }
   }
   if (!table) {
-    const slot = await connection.getSlot('finalized');
-    // Another tab may have created our PDA in this same slot. Never overwrite it or repeatedly
-    // pay for a new table after a wallet rejection; remember the deterministic address first.
-    for (let offset = 0; offset < 8 && !table; offset++) {
-      const [create, key] = AddressLookupTableProgram.createLookupTable({ authority: wallet.publicKey, payer: wallet.publicKey, recentSlot: slot - offset });
-      const existing = (await connection.getAddressLookupTable(key, { commitment: 'confirmed' })).value;
-      if (existing && (!existing.isActive() || !existing.state.authority?.equals(wallet.publicKey) || existing.state.addresses.length + missingFrom(existing, addresses).length > 256)) continue;
-      remember(registry, key);
-      if (!existing) {
-        onPrepare?.();
-        await sendTx(connection, wallet, [create], { cuLimit: 100_000 });
+    // At most one fresh-snapshot retry after an explicit rejected create. Remember the
+    // address BEFORE sending so an ambiguous network result can be recovered next time.
+    for (let attempt = 0; attempt < 2 && !table; attempt++) {
+      const recent = await recentLookupSlots(connection);
+      for (const slot of recent.slots.slice(0, 8)) {
+        const [create, key] = AddressLookupTableProgram.createLookupTable({ authority: wallet.publicKey, payer: wallet.publicKey, recentSlot: slot });
+        const existing = (await connection.getAddressLookupTable(key, { commitment: 'confirmed', minContextSlot: recent.contextSlot })).value;
+        if (existing && (!existing.isActive() || !existing.state.authority?.equals(wallet.publicKey) || existing.state.addresses.length + missingFrom(existing, addresses).length > 256)) continue;
+        remember(registry, key);
+        if (!existing) {
+          onPrepare?.();
+          try {
+            await sendTx(connection, wallet, [create], { cuLimit: 100_000, minContextSlot: recent.contextSlot });
+          } catch (error) {
+            if (attempt === 0 && rejectedLookupSlot(error)) break;
+            throw error;
+          }
+        }
+        table = existing ?? new AddressLookupTableAccount({ key, state: { authority: wallet.publicKey, deactivationSlot: ACTIVE, lastExtendedSlot: slot, lastExtendedSlotStartIndex: 0, addresses: [] } });
+        break;
       }
-      table = existing ?? new AddressLookupTableAccount({ key, state: { authority: wallet.publicKey, deactivationSlot: ACTIVE, lastExtendedSlot: slot, lastExtendedSlotStartIndex: 0, addresses: [] } });
     }
   }
   if (!table) throw new Error('Could not allocate an arena lookup table — retry in a later slot');
@@ -84,12 +105,24 @@ async function prepareTable(connection: Connection, wallet: WalletLike, addresse
 export async function sendArenaTx(connection: Connection, wallet: WalletLike, build: () => Promise<TransactionInstruction[]>, opts: {
   lookupTable?: PublicKey;
   onPrepare?: () => void;
+  /** Read after build(), which may refresh slot-dependent instructions. */
+  minContextSlot?: () => number | undefined;
 } = {}) {
   let tables = await appLookupTables(connection, opts.lookupTable);
+  let retriedFinalSlot = false;
   for (let pass = 0; pass < 3; pass++) {
     // Refresh proofs after slow wallet/table confirmations, not just once before preparing the LUT.
     const ixs = await build();
-    if (fitsInTx(wallet.publicKey, ixs, tables)) return sendTx(connection, wallet, ixs, { cuLimit: 400_000, lookupTables: tables });
+    if (fitsInTx(wallet.publicKey, ixs, tables)) {
+      try {
+        return await sendTx(connection, wallet, ixs, { cuLimit: 400_000, lookupTables: tables, minContextSlot: Math.max(opts.minContextSlot?.() ?? 0, ...tables.map(table => table.state.lastExtendedSlot + 1)) });
+      } catch (error) {
+        // Atomic randomness init has its own ALT create CPI. Rebuild proofs + slot too,
+        // but only if the whole final transaction was explicitly rejected by preflight.
+        if (!retriedFinalSlot && pass < 2 && rejectedLookupSlot(error)) { retriedFinalSlot = true; continue; }
+        throw error;
+      }
+    }
     const addresses = addressesOf(ixs);
     const ideal = new AddressLookupTableAccount({ key: wallet.publicKey, state: {
       authority: wallet.publicKey, deactivationSlot: ACTIVE, lastExtendedSlot: 0, lastExtendedSlotStartIndex: 0, addresses,

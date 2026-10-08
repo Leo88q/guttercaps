@@ -14,6 +14,7 @@ import { sendArenaTx } from '@/chain/flows/arenaTx';
 import { TxError } from '@/chain/tx';
 import { prepareRandomness } from '@/chain/switchboard';
 import { initRandomnessIx } from '@/chain/ix/rng';
+import { recentLookupSlots } from '@/chain/lookupTableSlots';
 import { createCompressedBattleV2Ix, acceptCompressedBattleV2Ix, wagerSplit, MIN_WAGER, MAX_WAGER, MIN_SQUAD_POWER, leagueOf, type CompressedArenaChipProof } from '@/chain/ix/arena';
 import { resolveCompressedSquad } from '@/chain/flows/compressedChip';
 import { dasClient } from '@/features/market/payment';
@@ -140,6 +141,7 @@ export default function Arena() {
       const rnd = await prepareRandomness(connection, wallet.publicKey, RNG_KIND.BATTLE, nonce);
       // Every slot carries the registered projection and a fresh proof. Resolve from chain/DAS
       // again after table setup so slow wallet prompts don't consume the CMT changelog window.
+      let minContextSlot: number | undefined;
       const { signature } = await sendArenaTx(connection, wallet, async () => {
         const proofs = await squadProofs();
         const ix = createCompressedBattleV2Ix({
@@ -148,9 +150,10 @@ export default function Arena() {
         });
         // LUT setup may involve several wallet prompts. Refresh Switchboard's recent-slot
         // argument too; init and the wager still commit atomically in the final packet.
-        const recentSlot = await connection.getSlot('finalized');
-        return [initRandomnessIx({ ...rnd, recentSlot: BigInt(recentSlot) }), ix];
-      }, { lookupTable: LOOKUP_TABLE });
+        const recent = await recentLookupSlots(connection);
+        minContextSlot = recent.contextSlot;
+        return [initRandomnessIx({ ...rnd, recentSlot: BigInt(recent.slots[0]) }), ix];
+      }, { lookupTable: LOOKUP_TABLE, minContextSlot: () => minContextSlot });
       toast({ kind: 'money', title: { key: 'screens.wagerOpen' }, body: { key: 'screens.escrowWaiting', params: { amount: amountText(amountMicro, 'CG') } }, href: EXPLORER.tx(signature) });
       // the invite IS the PDA seed, so the challenger can hand it over and the opponent lands straight
       // on the accept panel below

@@ -22,6 +22,8 @@ interface SendOptions {
   cuPrice?: number;
   signers?: Keypair[];
   lookupTables?: AddressLookupTableAccount[];
+  /** Minimum RPC bank slot required by freshly read instruction accounts. */
+  minContextSlot?: number;
   /** skip simulation (e.g. Switchboard reveal, whose sim needs an oracle signature) */
   skipPreflight?: boolean;
   /** set false to keep this send out of the global wait-status pill (quiet background flows) */
@@ -103,7 +105,7 @@ async function buildV0Tx(
       instructions: [ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }), ...ixs],
     }).compileToV0Message(opts.lookupTables);
     const simTx = new VersionedTransaction(simMsg);
-    const sim = await connection.simulateTransaction(simTx, { sigVerify: false, replaceRecentBlockhash: true });
+    const sim = await connection.simulateTransaction(simTx, { sigVerify: false, replaceRecentBlockhash: true, minContextSlot: opts.minContextSlot });
     if (sim.value.err && !opts.skipPreflight) {
       throw new TxError({ message: JSON.stringify(sim.value.err), logs: sim.value.logs ?? undefined }, sim.value.logs ?? undefined);
     }
@@ -130,7 +132,7 @@ export async function sendTx(
   const reportStatus = opts.status !== false;
   await checkTransactionAccess(wallet.publicKey.toBase58(), ixs);
   let attempt = 0;
-  let minContextSlot: number | undefined;
+  let minContextSlot = opts.minContextSlot;
   try {
     for (;;) {
       attempt++;

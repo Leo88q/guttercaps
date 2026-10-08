@@ -23,6 +23,12 @@ function fixture() {
 }
 
 describe('transaction freshness and safe confirmation recovery', () => {
+  it('keeps an instruction snapshot context floor even if a stale RPC replies with an older context', async () => {
+    const f = fixture();
+    await sendTx(f.connection as unknown as Connection, f.wallet, [], { cuLimit: 100000, cuPrice: 1, minContextSlot: 200 });
+    expect(f.connection.getLatestBlockhashAndContext).toHaveBeenCalledWith({ commitment: 'confirmed', minContextSlot: 200 });
+    expect(f.connection.sendRawTransaction).toHaveBeenCalledWith(expect.any(Uint8Array), expect.objectContaining({ minContextSlot: 200 }));
+  });
   it('obtains the signing blockhash AFTER simulation and the last compliance round trip', async () => {
     const f = fixture();
     await sendTx(f.connection as unknown as Connection, f.wallet, [], { cuPrice: 1 });
