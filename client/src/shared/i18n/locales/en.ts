@@ -161,6 +161,11 @@ const en = {
     boards: { rating: 'Rating', collection: 'Collection', staking: 'Staking', pvp: 'Wins' }, rank: 'Rank', player: 'Player', value: 'Value',
   },
   profile: {
+    rpcCheck: "Check RPC (no payment)",
+    rpcCheckHint: "Reads the active browser RPC now and again after 45 seconds. No wallet signatures or transactions. The report excludes the RPC URL and API key.",
+    rpcChecking: "Checking RPC and waiting to recheck the same blockhashes…",
+    rpcReport: "RPC diagnostic report",
+    rpcDownload: "Download RPC report",
     playingSince: 'playing since {date}', districts: 'completed districts', boosters: 'boosters', accountAge: 'account age', balances: 'Balances',
     rewardsPaused: 'Rewards paused for this wallet (fraud review). Contact support with your address.',
     referrals: 'Referrals', referralBody: "You earn {pct}% of each referee's paid pack spend (SOL / USDC / SKR) in $CG, cap {cap} $CG per referee; they get a {welcome} $CG welcome bonus after their first paid pack. Paid out with the Referrals root on the Quests page.",

@@ -153,6 +153,11 @@ const pt: Messages = {
   },
   leaderboard: { title: 'Ranking', subtitle: 'Temporada {id} · termina em {time} · prêmio {amount}', boards: { rating: 'Rating', collection: 'Coleção', staking: 'Staking', pvp: 'Vitórias' }, rank: 'Posição', player: 'Jogador', value: 'Valor' },
   profile: {
+    rpcCheck: "Verificar RPC (sem pagamento)",
+    rpcCheckHint: "Lê o RPC ativo do navegador agora e após 45 segundos. Sem assinaturas ou transações. O relatório não inclui a URL RPC nem a chave API.",
+    rpcChecking: "Verificando RPC e aguardando para conferir os mesmos blockhashes…",
+    rpcReport: "Relatório de diagnóstico RPC",
+    rpcDownload: "Baixar relatório RPC",
     playingSince: 'jogando desde {date}', districts: 'distritos completos', boosters: 'boosters', accountAge: 'idade da conta', balances: 'Saldos',
     rewardsPaused: 'Recompensas pausadas para esta carteira (análise antifraude). Fale com o suporte informando seu endereço.',
     referrals: 'Indicações', referralBody: 'Você ganha {pct}% do gasto pago em pacotes de cada indicado (SOL / USDC / SKR), em $CG, limite de {cap} $CG por indicado; ele ganha um bônus de boas-vindas de {welcome} $CG após o primeiro pacote pago. Pago com a raiz «Indicações» na página de missões.',

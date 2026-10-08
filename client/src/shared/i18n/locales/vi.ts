@@ -153,6 +153,11 @@ const vi: Messages = {
   },
   leaderboard: { title: 'Bảng xếp hạng', subtitle: 'Mùa {id} · kết thúc sau {time} · quỹ {amount}', boards: { rating: 'Điểm', collection: 'Bộ sưu tập', staking: 'Staking', pvp: 'Thắng' }, rank: 'Hạng', player: 'Người chơi', value: 'Giá trị' },
   profile: {
+    rpcCheck: "Kiểm tra RPC (không thanh toán)",
+    rpcCheckHint: "Đọc RPC đang dùng trong trình duyệt ngay và sau 45 giây. Không ký hay gửi giao dịch. Báo cáo không chứa URL RPC hoặc khóa API.",
+    rpcChecking: "Đang kiểm tra RPC và chờ kiểm tra lại các blockhash cũ…",
+    rpcReport: "Báo cáo chẩn đoán RPC",
+    rpcDownload: "Tải báo cáo RPC",
     playingSince: 'chơi từ {date}', districts: 'quận hoàn thành', boosters: 'booster', accountAge: 'tuổi tài khoản', balances: 'Số dư',
     rewardsPaused: 'Phần thưởng của ví này đang tạm dừng (kiểm tra gian lận). Liên hệ hỗ trợ kèm địa chỉ ví.',
     referrals: 'Giới thiệu', referralBody: 'Bạn nhận {pct}% chi tiêu mua gói trả phí (SOL / USDC / SKR) của mỗi người được giới thiệu bằng $CG, tối đa {cap} $CG mỗi người; họ nhận thưởng chào mừng {welcome} $CG sau gói trả phí đầu tiên. Trả qua gốc «Giới thiệu» ở trang Nhiệm vụ.',

@@ -153,6 +153,11 @@ const es: Messages = {
   },
   leaderboard: { title: 'Ranking', subtitle: 'Temporada {id} · termina en {time} · bote {amount}', boards: { rating: 'Rating', collection: 'Colección', staking: 'Staking', pvp: 'Victorias' }, rank: 'Puesto', player: 'Jugador', value: 'Valor' },
   profile: {
+    rpcCheck: "Comprobar RPC (sin pago)",
+    rpcCheckHint: "Lee el RPC activo del navegador ahora y tras 45 segundos. Sin firmas ni transacciones. El informe no incluye la URL RPC ni la clave API.",
+    rpcChecking: "Comprobando RPC y esperando para verificar los mismos blockhashes…",
+    rpcReport: "Informe de diagnóstico RPC",
+    rpcDownload: "Descargar informe RPC",
     playingSince: 'jugando desde {date}', districts: 'distritos completos', boosters: 'boosters', accountAge: 'antigüedad', balances: 'Saldos',
     rewardsPaused: 'Recompensas pausadas para esta billetera (revisión antifraude). Contacta a soporte con tu dirección.',
     referrals: 'Referidos', referralBody: 'Ganas el {pct}% del gasto pagado en sobres de cada referido (SOL / USDC / SKR), en $CG, tope de {cap} $CG por referido; ellos reciben un bono de bienvenida de {welcome} $CG tras su primer sobre pagado. Se paga con la raíz «Referidos» en la página de misiones.',

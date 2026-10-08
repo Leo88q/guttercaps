@@ -153,6 +153,11 @@ const fil: Messages = {
   },
   leaderboard: { title: 'Leaderboard', subtitle: 'Season {id} · matatapos sa {time} · pool {amount}', boards: { rating: 'Rating', collection: 'Koleksyon', staking: 'Staking', pvp: 'Panalo' }, rank: 'Ranggo', player: 'Player', value: 'Halaga' },
   profile: {
+    rpcCheck: "Suriin ang RPC (walang bayad)",
+    rpcCheckHint: "Binabasa ang aktibong RPC ng browser ngayon at makalipas ang 45 segundo. Walang pirma o transaksyon. Hindi kasama sa ulat ang RPC URL o API key.",
+    rpcChecking: "Sinusuri ang RPC at naghihintay upang suriin muli ang parehong mga blockhash…",
+    rpcReport: "Ulat ng pagsusuri sa RPC",
+    rpcDownload: "I-download ang ulat ng RPC",
     playingSince: 'naglalaro mula {date}', districts: 'kumpletong distrito', boosters: 'boosters', accountAge: 'edad ng account', balances: 'Mga balanse',
     rewardsPaused: 'Naka-pause ang rewards ng wallet na ito (fraud review). Makipag-ugnayan sa support kasama ang address mo.',
     referrals: 'Mga referral', referralBody: 'Kikita ka ng {pct}% ng bayad na gastos sa pack (SOL / USDC / SKR) ng bawat referral sa $CG, max {cap} $CG bawat referral; makakakuha sila ng {welcome} $CG na welcome bonus pagkatapos ng unang bayad na pack. Binabayaran sa pamamagitan ng «Referrals» root sa pahina ng Quests.',

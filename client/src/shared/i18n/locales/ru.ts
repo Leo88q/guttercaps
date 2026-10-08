@@ -153,6 +153,11 @@ const ru: Messages = {
   },
   leaderboard: { title: 'Таблица лидеров', subtitle: 'Сезон {id} · до конца {time} · пул {amount}', boards: { rating: 'Рейтинг', collection: 'Коллекция', staking: 'Стейкинг', pvp: 'Победы' }, rank: 'Место', player: 'Игрок', value: 'Значение' },
   profile: {
+    rpcCheck: "Проверить RPC (без платежа)",
+    rpcCheckHint: "Проверка активного RPC браузера сейчас и через 45 секунд. Без подписей и транзакций. URL RPC и API-ключ не включаются в отчёт.",
+    rpcChecking: "Проверяем RPC и ждём повторной проверки тех же blockhash…",
+    rpcReport: "Диагностический отчёт RPC",
+    rpcDownload: "Скачать отчёт RPC",
     playingSince: 'в игре с {date}', districts: 'собрано районов', boosters: 'бустеры', accountAge: 'возраст аккаунта', balances: 'Балансы',
     rewardsPaused: 'Награды для этого кошелька приостановлены (проверка на фрод). Напишите в поддержку, указав адрес.',
     referrals: 'Рефералы', referralBody: 'Вы получаете {pct}% платных трат реферала на паки (SOL / USDC / SKR) в $CG, максимум {cap} $CG за реферала; он получает приветственный бонус {welcome} $CG после первого платного пака. Выплата — корнем «Рефералы» на странице квестов.',

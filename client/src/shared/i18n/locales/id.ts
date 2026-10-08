@@ -153,6 +153,11 @@ const id: Messages = {
   },
   leaderboard: { title: 'Papan peringkat', subtitle: 'Musim {id} · berakhir dalam {time} · pool {amount}', boards: { rating: 'Rating', collection: 'Koleksi', staking: 'Staking', pvp: 'Menang' }, rank: 'Peringkat', player: 'Pemain', value: 'Nilai' },
   profile: {
+    rpcCheck: "Periksa RPC (tanpa pembayaran)",
+    rpcCheckHint: "Membaca RPC aktif browser sekarang dan setelah 45 detik. Tanpa tanda tangan atau transaksi. Laporan tidak memuat URL RPC atau kunci API.",
+    rpcChecking: "Memeriksa RPC dan menunggu pemeriksaan ulang blockhash yang sama…",
+    rpcReport: "Laporan diagnostik RPC",
+    rpcDownload: "Unduh laporan RPC",
     playingSince: 'bermain sejak {date}', districts: 'distrik lengkap', boosters: 'booster', accountAge: 'usia akun', balances: 'Saldo',
     rewardsPaused: 'Reward dompet ini dijeda (tinjauan anti-fraud). Hubungi dukungan dengan alamat Anda.',
     referrals: 'Referral', referralBody: 'Anda mendapat {pct}% dari belanja pack berbayar (SOL / USDC / SKR) tiap referral dalam $CG, maks {cap} $CG per referral; mereka mendapat bonus sambutan {welcome} $CG setelah pack berbayar pertama. Dibayar lewat root «Referral» di halaman Quest.',
