@@ -1,3 +1,5 @@
+# ── action pins (SEC-B50) ──
+# actions/checkout v4.4.0 11d5960a326750d5838078e36cf38b85af677262 2026-07-16
 name: Switchboard public HTTP control
 
 # Independent network control. Deliberately NOT part of normal application CI,
@@ -8,6 +10,7 @@ on:
     paths:
       - '.github/workflows/switchboard-network.yml'
       - 'scripts/switchboard-network.py'
+      - 'scripts/test_switchboard_network.py'
   workflow_dispatch:
 
 permissions:
@@ -21,5 +24,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
+      - name: Control-script safety tests (no network)
+        run: python3 -m unittest discover -s scripts -p 'test_switchboard_network.py'
       - name: Fixed public HTTPS reads only
         run: python3 scripts/switchboard-network.py --github-annotations
