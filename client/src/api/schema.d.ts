@@ -14,7 +14,8 @@ export interface paths {
         /**
          * Read-only Switchboard readiness, before creating a purchase or wager
          * @description Server reads the pinned queue and checks verified, fresh members against their live gateway health.
-         *     No Crossbar dependency, wallet signature or transaction. Cached for five seconds; 12 requests/min/IP.
+         *     Server-side SDK gateway discovery with on-chain fallback; merged live health is matched to the pinned queue.
+         *     No wallet signature or transaction. Cached for five seconds; 12 requests/min/IP.
          *     A ready response is point-in-time availability, not a guarantee of later reveal or settlement.
          */
         get: {
@@ -42,9 +43,22 @@ export interface paths {
                             oracle: string | null;
                             queueMembers: number;
                             eligibleMembers: number;
+                            discovery?: {
+                                ok?: boolean;
+                                gatewayCount?: number;
+                                code?: string;
+                            };
+                            gatewayChecks?: {
+                                gateway?: string | null;
+                                /** @enum {string} */
+                                source?: "registry" | "on_chain";
+                                code?: string;
+                            }[];
                             probes: {
                                 oracle?: string;
                                 gateway?: string | null;
+                                healthGateway?: string | null;
+                                directCode?: string;
                                 healthy?: boolean;
                                 code?: string;
                             }[];

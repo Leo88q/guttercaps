@@ -1,12 +1,12 @@
 import { Connection, PublicKey } from '@solana/web3.js';
 import { SWITCHBOARD_PROGRAM_ID as PROGRAM, SWITCHBOARD_QUEUE } from './config.ts';
 import { decodeRandomness, decodeOracleGateway, rngAuthPda, RNG_KIND } from './chain.ts';
-import { gatewayBaseUrl, readGateway, revealPayload, SwitchboardError, type GatewayRead } from './switchboard-gateway.ts';
+import { gatewayBaseUrl, readGateway, readGatewayRegistry, parseGatewayRegistry, revealPayload, SwitchboardError, type GatewayRead } from './switchboard-gateway.ts';
 
 const QUEUE = new PublicKey(SWITCHBOARD_QUEUE);
 const DEVNET = 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG';
 const MAINNET = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
-export interface Candidate { oracle: string; gateway: string; eligible: boolean }
+export interface Candidate { oracle: string; gateway: string; eligible: boolean; eligibleUntilMs?: number }
 export interface QueueSnapshot { genesis: string; candidates: Candidate[] }
 type Sb = typeof import('@switchboard-xyz/on-demand');
 type Program = Awaited<ReturnType<Sb['AnchorUtils']['loadProgramFromConnection']>>;
@@ -58,6 +58,7 @@ export async function loadQueue(connection: Connection): Promise<QueueSnapshot> 
         const data = program.coder.accounts.decode('oracleAccountData', account.data) as Awaited<ReturnType<Sb['Oracle']['loadData']>>;
         const age = now - data.lastHeartbeat.toNumber();
         candidates.push({ oracle: keys[i + n].toBase58(), gateway: decodeOracleGateway(account.data),
+          eligibleUntilMs: Math.min(data.enclave.validUntil.toNumber(), data.lastHeartbeat.toNumber() + queue.nodeTimeout.toNumber() + 1) * 1000,
           eligible: data.queue.equals(QUEUE) && data.isOnQueue && data.enclave.verificationStatus === 4 &&
             age >= -30 && age <= queue.nodeTimeout.toNumber() && data.enclave.validUntil.toNumber() > now });
       } catch { /* malformed accounts are not eligible */ }
@@ -74,10 +75,11 @@ export function liveOracle(raw: unknown, oracle: string): boolean {
   });
 }
 export function createSwitchboardService(connection: () => Connection, deps: {
-  load?: typeof loadQueue; gateway?: GatewayRead; now?: () => number;
+  load?: typeof loadQueue; gateway?: GatewayRead; registry?: typeof readGatewayRegistry; now?: () => number;
 } = {}) {
   const load = deps.load ?? loadQueue, gateway = deps.gateway ?? readGateway, now = deps.now ?? Date.now;
-  let active = 0;
+  const registry = deps.registry ?? readGatewayRegistry;
+  let active = 0, cacheDeadline = Infinity;
   async function limited<T>(fn: () => Promise<T>): Promise<T> {
     if (active >= 8) throw new SwitchboardError('switchboard_busy', 503);
     active++;
@@ -87,22 +89,49 @@ export function createSwitchboardService(connection: () => Connection, deps: {
   }
   async function inspect() {
     const snapshot = await load(connection());
-    const candidates = snapshot.candidates.filter(c => c.eligible);
-    const probes = new Map<string, { ok: boolean; code?: string; raw?: unknown }>();
-    // Bounded fanout, no unbounded fan-out over arbitrary URLs supplied by callers.
-    const bases = [...new Set(candidates.map(c => c.gateway))].slice(0, 16);
-    for (let offset = 0; offset < bases.length; offset += 8) {
+    const unexpired = (c: Candidate) => c.eligibleUntilMs === undefined || now() < c.eligibleUntilMs;
+    const candidates = snapshot.candidates.filter(c => c.eligible && unexpired(c));
+    const discovery: { ok: boolean; gatewayCount: number; code?: string } = { ok: false, gatewayCount: 0 };
+    let discovered: string[] = [];
+    if (candidates.length) {
+      try {
+        discovered = parseGatewayRegistry(await registry(PROGRAM.toBase58() === 'SBondMDrcV3K4kxZR1HNVT7osZxAHVHgYXL5Ze1oMUv' ? 'mainnet' : 'devnet'));
+        discovery.ok = true; discovery.gatewayCount = discovered.length;
+      } catch (e) { discovery.code = e instanceof SwitchboardError ? e.code : 'switchboard_registry_unavailable'; }
+    } else discovery.code = 'no_eligible_oracles';
+    // Match SDK Queue.inspectRandomnessOracles: health snapshots may advertise ANY
+    // oracle, not just the one owning that gateway URI. Ineligible oracles are never
+    // selected, but their gateways can report health for eligible queue members.
+    const ownBase = (uri: string) => { try { return gatewayBaseUrl(uri); } catch { return uri; } };
+    const chainBases = [...new Set(snapshot.candidates.map(c => ownBase(c.gateway)))].slice(0, 16);
+    const bases = [...new Set([...chainBases, ...discovered])];
+    const probes = new Map<string, { code: string; raw?: unknown }>();
+    // Up to 16 on-chain + 16 registry addresses, 8 requests at a time, 8s each.
+    // Keep chain fallbacks even if the registry fills its entire budget.
+    if (candidates.length) for (let offset = 0; offset < bases.length; offset += 8) {
       await Promise.all(bases.slice(offset, offset + 8).map(async uri => {
-        try { probes.set(uri, { ok: true, raw: await gateway(gatewayBaseUrl(uri), 'healthy_oracles') }); }
-        catch (e) { probes.set(uri, { ok: false, code: e instanceof SwitchboardError ? e.code : 'gateway_network' }); }
+        try {
+          const raw = await gateway(gatewayBaseUrl(uri), 'healthy_oracles');
+          if (!raw || !Array.isArray((raw as { oracles?: unknown }).oracles)) throw new SwitchboardError('gateway_health_schema');
+          probes.set(uri, { code: 'ok', raw });
+        }
+        catch (e) { probes.set(uri, { code: e instanceof SwitchboardError ? e.code : 'gateway_network' }); }
       }));
     }
-    const healthy = candidates.filter(c => liveOracle(probes.get(c.gateway)?.raw, c.oracle));
+    const sourceOf = (oracle: string) => [...probes].find(([, p]) => liveOracle(p.raw, oracle))?.[0];
+    const healthy = candidates.filter(c => unexpired(c) && sourceOf(c.oracle) !== undefined);
+    // Slow pool probes must not extend heartbeat/SGX validity or the positive cache.
+    cacheDeadline = Math.min(Infinity, ...healthy.map(c => c.eligibleUntilMs ?? Infinity));
     return { ready: healthy.length > 0, checkedAt: new Date(now()).toISOString(), genesis: snapshot.genesis,
       program: PROGRAM.toBase58(), queue: QUEUE.toBase58(), oracle: healthy[0]?.oracle ?? null,
-      queueMembers: snapshot.candidates.length, eligibleMembers: candidates.length,
-      probes: candidates.map(c => ({ oracle: c.oracle, gateway: safeOrigin(c.gateway),
-        healthy: healthy.includes(c), code: probes.get(c.gateway)?.code ?? (healthy.includes(c) ? 'ok' : 'oracle_not_live') })) };
+      queueMembers: snapshot.candidates.length, eligibleMembers: candidates.filter(unexpired).length, discovery,
+      gatewayChecks: [...probes].map(([uri, p]) => ({ gateway: safeOrigin(uri), source: discovered.includes(uri) ? 'registry' : 'on_chain', code: p.code })),
+      probes: candidates.map(c => {
+        const source = unexpired(c) ? sourceOf(c.oracle) : undefined, directCode = probes.get(ownBase(c.gateway))?.code ?? 'not_probed';
+        return { oracle: c.oracle, gateway: safeOrigin(c.gateway),
+          healthGateway: source === undefined ? null : safeOrigin(source), directCode,
+          healthy: source !== undefined, code: !unexpired(c) ? 'oracle_expired_during_probe' : source !== undefined ? 'ok' : directCode !== 'ok' ? directCode : 'oracle_not_live' };
+      }) };
   }
   type Health = Awaited<ReturnType<typeof inspect>>;
   let cached: { until: number; value: Health } | undefined;
@@ -110,7 +139,7 @@ export function createSwitchboardService(connection: () => Connection, deps: {
   async function health(): Promise<Health> {
     if (cached && cached.until > now()) return cached.value;
     if (!inFlight) {
-      inFlight = limited(inspect).then(value => { cached = { until: now() + 5000, value }; return value; }).finally(() => { inFlight = undefined; });
+      inFlight = limited(inspect).then(value => { cached = { until: Math.min(now() + 5000, cacheDeadline), value }; return value; }).finally(() => { inFlight = undefined; });
     }
     return inFlight;
   }

@@ -48,7 +48,7 @@ async function fixture() {
 }
 it('decodes the real Anchor account namespace and reads URI without Crossbar', async () => {
   const w = await fixture();
-  expect((await w.read()).candidates).toEqual([{ oracle: w.oracle.toBase58(), gateway: 'https://oracle.example.com', eligible: true }]);
+  expect((await w.read()).candidates).toEqual([{ oracle: w.oracle.toBase58(), gateway: 'https://oracle.example.com', eligible: true, eligibleUntilMs: (w.data.lastHeartbeat.toNumber() + 121) * 1000 }]);
 });
 it.each(['stale', 'unverified', 'expired', 'off-queue', 'wrong-queue'] as const)('refuses %s on-chain oracle before live health selection', async reason => {
   const w = await fixture();

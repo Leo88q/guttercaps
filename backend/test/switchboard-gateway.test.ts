@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { lookup } from 'node:dns/promises';
 import { request } from 'node:https';
-import { readGateway } from '../src/switchboard-gateway.ts';
+import { readGateway, readGatewayRegistry, parseGatewayRegistry } from '../src/switchboard-gateway.ts';
 
 vi.mock('node:dns/promises', () => ({ lookup: vi.fn() }));
 vi.mock('node:https', () => ({ request: vi.fn() }));
@@ -108,4 +108,38 @@ it.each(['UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'PRIVATE_RPC_KEY'])('tracing allowli
   await expect(readGateway('https://oracle.example.com', 'healthy_oracles', undefined, e => events.push(e))).rejects.toMatchObject({ code: 'gateway_network' });
   expect(JSON.stringify(events)).not.toContain('PRIVATE');
   expect(events.at(-1)).toEqual({ stage: 'error', ms: expect.any(Number), ...(code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' ? { errorCode: code } : {}) });
+});
+
+it('uses the fixed SDK registry origin and cluster query with the same protected transport', async () => {
+  body = '["https://pool.example.com/devnet/","https://pool.example.com/devnet"]';
+  expect(await readGatewayRegistry('devnet')).toEqual(['https://pool.example.com/devnet']);
+  const url = vi.mocked(request).mock.calls[0][0] as URL;
+  expect(url.href).toBe('https://crossbar.switchboard.xyz/gateways?network=devnet');
+  expect(requestBody).toBeUndefined();
+});
+it('bounds and validates registry data without fetching URLs it returned', () => {
+  for (const raw of [{ gateways: [] }, Array(65).fill('https://pool.example.com'), [123], ['http://localhost'], ['https://127.0.0.1'], ['https://pool.example.com?key=PRIVATE']]) {
+    expect(() => parseGatewayRegistry(raw)).toThrow();
+  }
+  expect(request).not.toHaveBeenCalled();
+});
+it('HTTP 200 with an unfinished body is still a timeout, never a health snapshot', async () => {
+  vi.useFakeTimers();
+  vi.mocked(request).mockImplementationOnce(((_url: URL, _options: unknown, callback: Function) => {
+    const req = Object.assign(new EventEmitter(), {
+      destroy: (error: Error) => { req.emit('error', error); req.emit('close'); },
+      end: () => {
+        const res = Object.assign(new EventEmitter(), { statusCode: 200 });
+        callback(res);
+        res.emit('data', Buffer.from('{"oracles":[')); // headers + partial bytes, no end event
+      },
+    });
+    return req;
+  }) as never);
+  const stages: string[] = [];
+  const result = readGateway('https://oracle.example.com/devnet', 'healthy_oracles', undefined, event => stages.push(event.stage));
+  const assertion = expect(result).rejects.toMatchObject({ code: 'gateway_timeout' });
+  await vi.advanceTimersByTimeAsync(8000); await assertion;
+  expect(stages).toContain('headers'); expect(stages).not.toContain('body');
+  expect(vi.getTimerCount()).toBe(0);
 });

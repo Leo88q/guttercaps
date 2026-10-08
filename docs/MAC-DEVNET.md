@@ -306,7 +306,14 @@ confirmed hash в finalized bank не выдаётся за неисправно
 Выбор оракула и HTTP reveal больше не идут из браузера на Crossbar / внешний gateway.
 Клиент использует `/v1/switchboard/health` и `/v1/switchboard/reveal/<randomness>` через обычный
 Vite/nginx API proxy. Backend читает закреплённую очередь, проверяет владельцев аккаунтов,
-heartbeat и срок SGX verification, затем **живую** доступность соответствующего оракула.
+heartbeat и срок SGX verification. Для live-health используется серверный discovery из SDK:
+`https://crossbar.switchboard.xyz/gateways?network=devnet` (mainnet — соответствующий параметр).
+Его ответы объединяются с gateway URI участников on-chain очереди. Crossbar не обязателен:
+при его отказе остаются адреса из блокчейна. Ответы `healthy_oracles` объединяются по публичному
+ключу оракула, как в `Queue.inspectRandomnessOracles` SDK. Gateway может сообщать о другом оракуле;
+его собственный владелец не обязан быть eligible, но **выбранный** oracle обязан пройти все on-chain проверки.
+Проверяются только HTTPS-адреса без credentials/query/fragment, с публичным DNS и без redirect.
+Лимиты: до 16 адресов из каждого источника, 8 параллельных запросов, 8 секунд на запрос.
 Если ни один оракул не прошёл проверку, `prepareRandomness` останавливает создание покупки/ставки
 до инициализации и подписи. On-chain-only fallback при недоступном gateway больше не используется.
 Слот для init читается из SlotHashes после проверки доступности, а не до сетевого ожидания.
@@ -321,7 +328,9 @@ http://localhost:5173/v1/switchboard/health
 
 - `ready: true`: выбран оракул, доступный **в момент проверки**, с действительными on-chain данными.
 - `ready: false`: новая операция заблокирована. `probes` покажет доступность каждого проверенного
-  eligible oracle; `gateway_http_502` означает ответ внешнего gateway, `gateway_dns` — DNS backend,
+  eligible oracle; `healthGateway` укажет источник live-health, `directCode` — результат собственного
+  endpoint. `discovery` показывает состояние реестра, `gatewayChecks` — ответы всех проверенных gateway.
+  `gateway_http_502` означает ответ внешнего gateway, `gateway_dns` — DNS backend,
   `gateway_timeout` — таймаут 8 секунд, `oracle_not_live` — нужного оракула нет в живом пуле gateway.
 - `switchboard_cluster_mismatch`: backend RPC не соответствует закреплённому Switchboard program;
   `switchboard_rpc_unavailable`: не удалось прочитать RPC/IDL; `unsafe_gateway`: URI/DNS не прошёл защиту.
@@ -359,9 +368,13 @@ redirects, локальные/служебные DNS адреса (включа�
 различаются, поэтому совпадение URL не означает побайтово одинаковые запросы. Doctor не меняет
 боевые таймауты и не доказывает готовность reveal/settlement. Полный JSON можно передать для разбора.
 
-Это устраняет **браузерную** зависимость от CORS и Crossbar, но не чинит выключенный внешний oracle.
+Это устраняет **браузерную** зависимость от CORS и прямых запросов Crossbar, но не чинит выключенный внешний oracle.
 При общей недоступности gateway новые операции блокируются, уже оплаченные нельзя создавать повторно:
 они продолжаются штатным resume/crank после восстановления (либо штатным refund, если применимо).
+Важно: серверный discovery меняет только выбор/проверку live-health, **не** reveal URL.
+Reveal и crank продолжают использовать URI закоммиченного oracle, как `Randomness.revealIx` SDK.
+Работоспособность `healthy_oracles` через агрегатор не доказывает доступность `randomness_reveal`;
+никакой автоматической ставки или переключения committed oracle эта проверка не запускает.
 Существующий crank уже обращается к gateway на сервере; ошибки DNS/502 могут затрагивать и его.
 `ready: true` не доказывает успешное settlement: для ставок дополнительно нужен запущенный и правильно
 настроенный `battle` worker (`WORKERS`, `BATTLE_ORACLE_KEYPAIR`). Mac-скрипт по умолчанию запускает

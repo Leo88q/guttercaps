@@ -17,8 +17,9 @@ function world() {
   conn.set(oracle, data, SWITCHBOARD_PROGRAM_ID);
   const gateway = vi.fn(async (_origin: string, op: string, _body?: unknown) => op === 'healthy_oracles' ? health() : payload);
   const load = vi.fn(async () => ({ genesis: 'devnet-genesis', candidates: [{ oracle: oracle.toBase58(), gateway: 'https://oracle.example.com', eligible: true }] }));
-  const service = createSwitchboardService(() => conn as unknown as Connection, { gateway, load });
-  return { conn, service, gateway, load, fields };
+  const registry = vi.fn(async (_network: string): Promise<string[]> => []);
+  const service = createSwitchboardService(() => conn as unknown as Connection, { gateway, load, registry });
+  return { conn, service, gateway, load, registry, fields };
 }
 
 describe('Switchboard service (no wallet or transaction)', () => {
@@ -60,7 +61,7 @@ describe('Switchboard service (no wallet or transaction)', () => {
     const h = await w.service.health();
     expect(h).toMatchObject({ ready: true, oracle: other, eligibleMembers: 2 });
     expect(h.probes[0].code).toBe('gateway_http_502');
-    expect(w.gateway).toHaveBeenCalledTimes(2);
+    expect(w.gateway).toHaveBeenCalledTimes(3);
   });
   it('fails closed when live health is missing (no on-chain-only fallback)', async () => {
     const w = world(); w.gateway.mockRejectedValue(new SwitchboardError('gateway_dns'));
@@ -70,6 +71,88 @@ describe('Switchboard service (no wallet or transaction)', () => {
   it('never selects a live oracle with stale/invalid on-chain credentials', async () => {
     const w = world(); w.load.mockResolvedValue({ genesis: 'x', candidates: [{ oracle: oracle.toBase58(), gateway: 'https://oracle.example.com', eligible: false }] });
     expect((await w.service.health()).ready).toBe(false); expect(w.gateway).not.toHaveBeenCalled();
+  });
+  it('can use discovered health for an eligible oracle whose own health route times out', async () => {
+    const w = world(); w.registry.mockResolvedValue(['https://pool.example.com/devnet/']);
+    w.gateway.mockImplementation(async base => {
+      if (base === 'https://pool.example.com/devnet') return health();
+      throw new SwitchboardError('gateway_timeout');
+    });
+    const result = await w.service.health();
+    expect(w.registry).toHaveBeenCalledWith('devnet');
+    expect(result).toMatchObject({ ready: true, oracle: oracle.toBase58(), discovery: { ok: true, gatewayCount: 1 },
+      probes: [{ healthy: true, code: 'ok', directCode: 'gateway_timeout', healthGateway: 'https://pool.example.com' }] });
+    // Discovery changes only health inspection. Reveal STILL goes to the committed oracle's URI.
+    w.gateway.mockClear(); w.gateway.mockResolvedValue(payload);
+    await w.service.reveal(randomness.toBase58());
+    expect(w.gateway).toHaveBeenCalledTimes(1);
+    expect(w.gateway).toHaveBeenCalledWith('https://oracle.example.com', 'randomness_reveal', expect.any(Object));
+    expect(w.conn.sent).toHaveLength(0);
+  });
+  it('on-chain fallback remains available when registry DNS fails', async () => {
+    const w = world(); w.registry.mockRejectedValue(new SwitchboardError('gateway_dns'));
+    expect(await w.service.health()).toMatchObject({ ready: true, discovery: { ok: false, code: 'gateway_dns' } });
+  });
+  it('merges health from all queue gateway URIs, without selecting ineligible owners', async () => {
+    const w = world();
+    const unavailable = { oracle: oracle.toBase58(), gateway: 'https://oracle.example.com', eligible: true };
+    w.load.mockResolvedValue({ genesis: 'devnet', candidates: [unavailable,
+      { oracle: pk().toBase58(), gateway: 'https://pool.example.com', eligible: false }] });
+    w.gateway.mockImplementation(async base => {
+      if (base === 'https://pool.example.com') return health();
+      throw new SwitchboardError('gateway_timeout');
+    });
+    expect(await w.service.health()).toMatchObject({ ready: true, oracle: oracle.toBase58(), eligibleMembers: 1 });
+  });
+  it('foreign registry health does not authorize an oracle outside the eligible pinned queue', async () => {
+    const w = world(); w.registry.mockResolvedValue(['https://pool.example.com']);
+    w.gateway.mockResolvedValue(health(pk().toBase58()));
+    expect(await w.service.health()).toMatchObject({ ready: false, oracle: null });
+  });
+  it('rejects unsafe discovery URLs before use but retains verified chain fallback', async () => {
+    const w = world(); w.registry.mockResolvedValue(['https://user:PRIVATE@pool.example.com']);
+    const result = await w.service.health();
+    expect(result).toMatchObject({ ready: true, discovery: { ok: false, code: 'unsafe_gateway' } });
+    expect(w.gateway).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(result)).not.toContain('PRIVATE');
+  });
+  it('complete JSON without a health array is not treated as a healthy gateway', async () => {
+    const w = world(); w.gateway.mockResolvedValue({ status: 'ok' } as never);
+    expect(await w.service.health()).toMatchObject({ ready: false, probes: [{ code: 'gateway_health_schema' }] });
+  });
+  it('bounds discovery and chain fanout with at most eight simultaneous reads', async () => {
+    const w = world();
+    w.registry.mockResolvedValue(Array.from({ length: 16 }, (_, i) => `https://pool-${i}.example.com`));
+    w.load.mockResolvedValue({ genesis: 'devnet', candidates: Array.from({ length: 20 }, (_, i) => ({
+      oracle: pk().toBase58(), gateway: `https://oracle-${i}.example.com`, eligible: true,
+    })) });
+    let active = 0, peak = 0;
+    w.gateway.mockImplementation(async () => {
+      active++; peak = Math.max(peak, active); await Promise.resolve(); active--;
+      return { oracles: [] };
+    });
+    expect((await w.service.health()).ready).toBe(false);
+    expect(w.gateway).toHaveBeenCalledTimes(32); expect(peak).toBeLessThanOrEqual(8);
+    expect(w.conn.sent).toHaveLength(0);
+  });
+  it('does not select an oracle that expires while gateway probes are pending', async () => {
+    vi.useFakeTimers();
+    const w = world(), eligibleUntilMs = Date.now() + 1000;
+    const candidate = { oracle: oracle.toBase58(), gateway: 'https://oracle.example.com', eligible: true, eligibleUntilMs };
+    w.load.mockResolvedValue({ genesis: 'devnet', candidates: [candidate] });
+    w.gateway.mockImplementation(async () => { vi.setSystemTime(eligibleUntilMs); return health(); });
+    expect(await w.service.health()).toMatchObject({ ready: false, oracle: null, eligibleMembers: 0,
+      probes: [{ healthy: false, code: 'oracle_expired_during_probe' }] });
+  });
+  it('positive cache cannot outlive the on-chain eligibility deadline', async () => {
+    vi.useFakeTimers();
+    const w = world(), eligibleUntilMs = Date.now() + 1000;
+    const candidate = { oracle: oracle.toBase58(), gateway: 'https://oracle.example.com', eligible: true, eligibleUntilMs };
+    w.load.mockResolvedValue({ genesis: 'devnet', candidates: [candidate] });
+    expect((await w.service.health()).ready).toBe(true);
+    vi.setSystemTime(eligibleUntilMs);
+    expect((await w.service.health()).ready).toBe(false);
+    expect(w.load).toHaveBeenCalledTimes(2);
   });
   it('relays exactly the committed oracle/seed with only a public RPC URL', async () => {
     const w = world(); const result = await w.service.reveal(randomness.toBase58());

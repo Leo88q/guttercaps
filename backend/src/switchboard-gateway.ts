@@ -37,14 +37,31 @@ export type GatewayTrace = (event: { stage: 'start' | 'dns_start' | 'dns_done' |
 export type GatewayRead = (base: string, operation: 'healthy_oracles' | 'randomness_reveal', body?: unknown, trace?: GatewayTrace) => Promise<unknown>;
 
 export const readGateway: GatewayRead = async (base, operation, body, observer) => {
+  // A leading-slash URL resolved against a base would discard its path prefix.
+  return readJson(new URL(`${gatewayBaseUrl(base)}/gateway/api/v1/${operation}`), body, observer);
+};
+
+/** SDK CrossbarClient.fetchGateways protocol, fixed public origin, never a user URL. */
+export async function readGatewayRegistry(network: 'devnet' | 'mainnet'): Promise<string[]> {
+  if (network !== 'devnet' && network !== 'mainnet') throw new SwitchboardError('switchboard_registry_network');
+  const raw = await readJson(new URL(`https://crossbar.switchboard.xyz/gateways?network=${network}`));
+  return parseGatewayRegistry(raw);
+}
+export function parseGatewayRegistry(raw: unknown): string[] {
+  if (!Array.isArray(raw) || raw.length > 64 || raw.some(uri => typeof uri !== 'string')) {
+    throw new SwitchboardError('switchboard_registry_schema');
+  }
+  // Apply exactly the same HTTPS/credential/path policy before any returned URL is used.
+  return [...new Set(raw.map(uri => gatewayBaseUrl(uri as string)))].slice(0, 16);
+}
+
+async function readJson(url: URL, body?: unknown, observer?: GatewayTrace): Promise<unknown> {
   const started = performance.now();
   const trace = (stage: Parameters<GatewayTrace>[0]['stage'], status?: number, errorCode?: string) => {
     // Read-only diagnostic hook: no URLs, addresses, headers or response prose.
     try { observer?.({ stage, ms: Math.round(performance.now() - started), ...(status === undefined ? {} : { status }), ...(errorCode === undefined ? {} : { errorCode }) }); }
     catch { /* Observability must not affect the request. */ }
   };
-  // A leading-slash URL resolved against a base would discard its path prefix.
-  const url = new URL(`${gatewayBaseUrl(base)}/gateway/api/v1/${operation}`);
   trace('start');
   return new Promise((resolve, reject) => {
     const req = request(url, {
@@ -101,7 +118,7 @@ export const readGateway: GatewayRead = async (base, operation, body, observer) 
     });
     req.end(body === undefined ? undefined : JSON.stringify(body));
   });
-};
+}
 
 export function revealPayload(raw: unknown) {
   const j = raw as { signature?: unknown; recovery_id?: unknown; value?: unknown } | null;
