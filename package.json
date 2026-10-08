@@ -2,6 +2,7 @@
   "name": "guttercaps-workspace",
   "private": true,
   "scripts": {
+    "switchboard:doctor": "node --import tsx scripts/switchboard-doctor.mts",
     "test": "vitest run --config tests/localnet/vitest.config.mts",
     "test:validator": "node --experimental-strip-types tests/localnet/run-validator.ts",
     "lock:matrix": "node --experimental-strip-types scripts/npm-lock-matrix.ts --selftest && node --experimental-strip-types scripts/npm-lock-matrix.ts",

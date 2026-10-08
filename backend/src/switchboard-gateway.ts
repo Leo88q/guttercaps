@@ -33,11 +33,19 @@ export function gatewayBaseUrl(uri: string): string {
   }
   return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
 }
-export type GatewayRead = (base: string, operation: 'healthy_oracles' | 'randomness_reveal', body?: unknown) => Promise<unknown>;
+export type GatewayTrace = (event: { stage: 'start' | 'dns_start' | 'dns_done' | 'socket' | 'reused_socket' | 'tcp' | 'tls' | 'headers' | 'body' | 'error'; ms: number; status?: number; errorCode?: string }) => void;
+export type GatewayRead = (base: string, operation: 'healthy_oracles' | 'randomness_reveal', body?: unknown, trace?: GatewayTrace) => Promise<unknown>;
 
-export const readGateway: GatewayRead = async (base, operation, body) => {
+export const readGateway: GatewayRead = async (base, operation, body, observer) => {
+  const started = performance.now();
+  const trace = (stage: Parameters<GatewayTrace>[0]['stage'], status?: number, errorCode?: string) => {
+    // Read-only diagnostic hook: no URLs, addresses, headers or response prose.
+    try { observer?.({ stage, ms: Math.round(performance.now() - started), ...(status === undefined ? {} : { status }), ...(errorCode === undefined ? {} : { errorCode }) }); }
+    catch { /* Observability must not affect the request. */ }
+  };
   // A leading-slash URL resolved against a base would discard its path prefix.
   const url = new URL(`${gatewayBaseUrl(base)}/gateway/api/v1/${operation}`);
+  trace('start');
   return new Promise((resolve, reject) => {
     const req = request(url, {
       method: body === undefined ? 'GET' : 'POST',
@@ -46,15 +54,18 @@ export const readGateway: GatewayRead = async (base, operation, body) => {
       // would permit DNS rebinding. TLS still verifies the original hostname.
       ...{ autoSelectFamily: false },
       lookup: (hostname, _options, callback) => {
+        trace('dns_start');
         void lookup(hostname, { all: true }).then(records => {
           if (!records.length || records.some(r => !publicAddress(r.address))) {
             callback(new SwitchboardError('unsafe_gateway'), '', 4); return;
           }
+          trace('dns_done');
           const r = records.find(r => r.family === 4) ?? records[0];
           callback(null, r.address, r.family);
         }, () => callback(new SwitchboardError('gateway_dns'), '', 4));
       },
     }, res => {
+      trace('headers', res.statusCode);
       if (res.statusCode !== 200) {
         res.destroy(); reject(new SwitchboardError(`gateway_http_${res.statusCode ?? 0}`)); return;
       }
@@ -66,13 +77,28 @@ export const readGateway: GatewayRead = async (base, operation, body) => {
       });
       res.on('error', () => reject(new SwitchboardError('gateway_network')));
       res.on('end', () => {
+        trace('body');
         try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
         catch { reject(new SwitchboardError('gateway_schema')); }
       });
     });
+    if (observer) req.once('socket', socket => {
+      trace('socket');
+      if (!socket.connecting) { trace('reused_socket'); return; }
+      socket.once('connect', () => trace('tcp'));
+      socket.once('secureConnect', () => trace('tls'));
+    });
     const timer = setTimeout(() => req.destroy(new SwitchboardError('gateway_timeout')), 8000);
     req.on('close', () => clearTimeout(timer));
-    req.on('error', e => reject(e instanceof SwitchboardError ? e : new SwitchboardError('gateway_network')));
+    req.on('error', e => {
+      // Only fixed Node system/TLS codes, never error messages or certificate details.
+      const code = (e as NodeJS.ErrnoException).code;
+      const allowed = ['ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH', 'ENETUNREACH', 'EPIPE', 'EPROTO',
+        'CERT_HAS_EXPIRED', 'ERR_TLS_CERT_ALTNAME_INVALID', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'SELF_SIGNED_CERT_IN_CHAIN',
+        'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY'];
+      trace('error', undefined, code && allowed.includes(code) ? code : undefined);
+      reject(e instanceof SwitchboardError ? e : new SwitchboardError('gateway_network'));
+    });
     req.end(body === undefined ? undefined : JSON.stringify(body));
   });
 };

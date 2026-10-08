@@ -18,9 +18,12 @@ beforeEach(() => {
       destroy: (e: Error) => { req.emit('error', e); req.emit('close'); },
       end: (data: string) => {
         requestBody = data;
+        const socket = Object.assign(new EventEmitter(), { connecting: true });
+        req.emit('socket', socket);
         opts.lookup(url.hostname, {}, (err: Error | null, address: string) => {
           if (err) { req.destroy(err); return; }
           socketAddress = address;
+          socket.emit('connect'); socket.emit('secureConnect');
           const res = Object.assign(new EventEmitter(), { statusCode: status, destroy: () => req.emit('close') });
           callback(res);
           if (status === 200) { res.emit('data', Buffer.from(body)); res.emit('end'); req.emit('close'); }
@@ -80,4 +83,29 @@ it('rejects oversized and non-JSON responses', async () => {
   await expect(readGateway('https://oracle.example.com', 'healthy_oracles')).rejects.toMatchObject({ code: 'gateway_payload_too_large' });
   body = 'not json';
   await expect(readGateway('https://oracle.example.com', 'healthy_oracles')).rejects.toMatchObject({ code: 'gateway_schema' });
+});
+
+it('optional doctor tracing reports phases/status but never URL, DNS address, headers or body', async () => {
+  const events: unknown[] = [];
+  await readGateway('https://oracle.example.com/prefix', 'healthy_oracles', undefined, event => events.push(event));
+  expect(events).toEqual(['start', 'socket', 'dns_start', 'dns_done', 'tcp', 'tls', 'headers', 'body'].map(stage => ({
+    stage, ms: expect.any(Number), ...(stage === 'headers' ? { status: 200 } : {}),
+  })));
+  expect(JSON.stringify(events)).not.toMatch(/oracle.example|8\.8\.8\.8|oracles/);
+});
+it('a faulty trace observer cannot change a successful response', async () => {
+  await expect(readGateway('https://oracle.example.com', 'healthy_oracles', undefined, () => { throw new Error('observer bug'); }))
+    .resolves.toEqual({ oracles: [] });
+});
+it.each(['UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'PRIVATE_RPC_KEY'])('tracing allowlists native error code %s without exception prose', async code => {
+  vi.mocked(request).mockImplementationOnce((() => {
+    const req = Object.assign(new EventEmitter(), {
+      end: () => { req.emit('error', Object.assign(new Error('PRIVATE exception text'), { code })); req.emit('close'); },
+    });
+    return req;
+  }) as never);
+  const events: unknown[] = [];
+  await expect(readGateway('https://oracle.example.com', 'healthy_oracles', undefined, e => events.push(e))).rejects.toMatchObject({ code: 'gateway_network' });
+  expect(JSON.stringify(events)).not.toContain('PRIVATE');
+  expect(events.at(-1)).toEqual({ stage: 'error', ms: expect.any(Number), ...(code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' ? { errorCode: code } : {}) });
 });
