@@ -480,13 +480,13 @@ describe('crank · instruction layouts (mirror programs/chip_core/src/instructio
 });
 
 describe('crank · oracle gateway', () => {
-  it('POSTs the SDK payload {slothash[], randomness_key hex, slot, rpc} and decodes {signature b64, recovery_id, value[]}', async () => {
+  it.each(['/', '/rpc/', '/nested/route'])('POSTs the unchanged SDK payload under base path %s and decodes the reveal', async (prefix) => {
     let seen: { url: string; body: Record<string, unknown> } | undefined;
     const f = gateway({ onCall: (url, body) => { seen = { url, body: body as Record<string, unknown> }; } });
     const randomness = pk();
     const rnd = decodeRandomness(encodeRandomness({ authority: pk(), queue: pk(), oracle: pk(), seedSlot: 4_000n, seedSlothash: new Uint8Array(32).fill(7) }));
-    const r = await fetchGatewayReveal(f, 'https://oracle-1.example.com/', randomness, rnd, 'https://api.devnet.solana.com');
-    expect(seen!.url).toBe('https://oracle-1.example.com/gateway/api/v1/randomness_reveal');
+    const r = await fetchGatewayReveal(f, `https://oracle-1.example.com${prefix}`, randomness, rnd, 'https://api.devnet.solana.com');
+    expect(seen!.url).toBe(`https://oracle-1.example.com${prefix.replace(/\/+$/, '')}/gateway/api/v1/randomness_reveal`);
     expect(seen!.body).toEqual({ slothash: Array(32).fill(7), randomness_key: hex(randomness.toBytes()), slot: 4000, rpc: 'https://api.devnet.solana.com' });
     expect(hex(r.signature)).toBe(hex(ORACLE_SIG)); expect(r.recoveryId).toBe(1); expect(hex(r.value)).toBe(hex(ORACLE_VALUE));
   });

@@ -18,19 +18,26 @@ export function publicAddress(ip: string): boolean {
   const family = isIP(ip);
   return family === 4 ? !blocked.check(ip, 'ipv4') : family === 6 && globalV6.check(ip, 'ipv6') && !blocked.check(ip, 'ipv6');
 }
-export function gatewayOrigin(uri: string): string {
+/** The on-chain URI is a BASE URL, not necessarily an origin. Match the SDK's
+ * `<base>/gateway/api/v1/...` contract, retaining routing prefixes. Only callers
+ * that have verified the pinned on-chain account may supply this base. */
+export function gatewayBaseUrl(uri: string): string {
+  // Reject ambiguous inputs rather than letting WHATWG silently strip controls
+  // or turn backslashes into path/authority separators.
+  if (/[\u0000-\u0020\u007f\\]/.test(uri)) throw new SwitchboardError('unsafe_gateway');
   let url: URL;
   try { url = new URL(uri); } catch { throw new SwitchboardError('unsafe_gateway'); }
   if (url.protocol !== 'https:' || url.username || url.password || url.port || url.search || url.hash ||
-      url.pathname !== '/' || isIP(url.hostname.replace(/^\[|\]$/g, '')) || !url.hostname.includes('.')) {
+      isIP(url.hostname.replace(/^\[|\]$/g, '')) || !url.hostname.includes('.')) {
     throw new SwitchboardError('unsafe_gateway');
   }
-  return url.origin;
+  return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
 }
-export type GatewayRead = (origin: string, operation: 'healthy_oracles' | 'randomness_reveal', body?: unknown) => Promise<unknown>;
+export type GatewayRead = (base: string, operation: 'healthy_oracles' | 'randomness_reveal', body?: unknown) => Promise<unknown>;
 
-export const readGateway: GatewayRead = async (origin, operation, body) => {
-  const url = new URL(`/gateway/api/v1/${operation}`, gatewayOrigin(origin));
+export const readGateway: GatewayRead = async (base, operation, body) => {
+  // A leading-slash URL resolved against a base would discard its path prefix.
+  const url = new URL(`${gatewayBaseUrl(base)}/gateway/api/v1/${operation}`);
   return new Promise((resolve, reject) => {
     const req = request(url, {
       method: body === undefined ? 'GET' : 'POST',

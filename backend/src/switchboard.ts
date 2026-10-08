@@ -1,7 +1,7 @@
 import { Connection, PublicKey } from '@solana/web3.js';
 import { SWITCHBOARD_PROGRAM_ID as PROGRAM, SWITCHBOARD_QUEUE } from './config.ts';
 import { decodeRandomness, decodeOracleGateway, rngAuthPda, RNG_KIND } from './chain.ts';
-import { gatewayOrigin, readGateway, revealPayload, SwitchboardError, type GatewayRead } from './switchboard-gateway.ts';
+import { gatewayBaseUrl, readGateway, revealPayload, SwitchboardError, type GatewayRead } from './switchboard-gateway.ts';
 
 const QUEUE = new PublicKey(SWITCHBOARD_QUEUE);
 const DEVNET = 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG';
@@ -90,10 +90,10 @@ export function createSwitchboardService(connection: () => Connection, deps: {
     const candidates = snapshot.candidates.filter(c => c.eligible);
     const probes = new Map<string, { ok: boolean; code?: string; raw?: unknown }>();
     // Bounded fanout, no unbounded fan-out over arbitrary URLs supplied by callers.
-    const origins = [...new Set(candidates.map(c => c.gateway))].slice(0, 16);
-    for (let offset = 0; offset < origins.length; offset += 8) {
-      await Promise.all(origins.slice(offset, offset + 8).map(async uri => {
-        try { probes.set(uri, { ok: true, raw: await gateway(gatewayOrigin(uri), 'healthy_oracles') }); }
+    const bases = [...new Set(candidates.map(c => c.gateway))].slice(0, 16);
+    for (let offset = 0; offset < bases.length; offset += 8) {
+      await Promise.all(bases.slice(offset, offset + 8).map(async uri => {
+        try { probes.set(uri, { ok: true, raw: await gateway(gatewayBaseUrl(uri), 'healthy_oracles') }); }
         catch (e) { probes.set(uri, { ok: false, code: e instanceof SwitchboardError ? e.code : 'gateway_network' }); }
       }));
     }
@@ -133,7 +133,7 @@ export function createSwitchboardService(connection: () => Connection, deps: {
         throw new SwitchboardError('switchboard_oracle_binding', 400);
       }
       // Always the COMMITTED oracle. Never switch oracle/slothash to rescue a failed reveal.
-      const raw = await gateway(gatewayOrigin(decodeOracleGateway(oracle.data)), 'randomness_reveal', {
+      const raw = await gateway(gatewayBaseUrl(decodeOracleGateway(oracle.data)), 'randomness_reveal', {
         slothash: Array.from(rnd.seedSlothash), randomness_key: key.toBuffer().toString('hex'), slot: Number(rnd.seedSlot),
         rpc: PROGRAM.toBase58() === 'SBondMDrcV3K4kxZR1HNVT7osZxAHVHgYXL5Ze1oMUv' ? 'https://api.mainnet-beta.solana.com' : 'https://api.devnet.solana.com',
       });
@@ -142,4 +142,4 @@ export function createSwitchboardService(connection: () => Connection, deps: {
   }
   return { health, reveal };
 }
-function safeOrigin(uri: string): string | null { try { return gatewayOrigin(uri); } catch { return null; } }
+function safeOrigin(uri: string): string | null { try { return new URL(gatewayBaseUrl(uri)).origin; } catch { return null; } }

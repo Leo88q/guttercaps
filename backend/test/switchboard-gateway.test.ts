@@ -37,6 +37,23 @@ it('pins the validated DNS address, retains the HTTPS hostname, and uses a fixed
   expect(requestBody).toBeUndefined();
   expect(lookup).toHaveBeenCalledTimes(1);
 });
+it.each(['', '/', '/rpc', '/rpc/', '/nested/route///'].flatMap(prefix =>
+  (['healthy_oracles', 'randomness_reveal'] as const).map(operation => ({ prefix, operation }))))(
+  'retains base $prefix when requesting $operation', async ({ prefix, operation }) => {
+    const host = '141.95.35.110.xip.switchboard-oracles.xyz';
+    const reveal = { slot: 4000, slothash: Array(32).fill(7), randomness_key: 'ab'.repeat(32), rpc: 'https://api.devnet.solana.com' };
+    await readGateway(`https://${host}${prefix}`, operation, operation === 'randomness_reveal' ? reveal : undefined);
+    expect(requestedPath).toBe(`${prefix.replace(/\/+$/, '')}/gateway/api/v1/${operation}`);
+    expect(lookup).toHaveBeenCalledWith(host, { all: true });
+    expect(requestBody).toBe(operation === 'randomness_reveal' ? JSON.stringify(reveal) : undefined);
+    expect(request).toHaveBeenCalledTimes(1);
+  },
+);
+it('blocks private-IP DNS even for an xip-style hostname and an accepted path', async () => {
+  vi.mocked(lookup).mockResolvedValue([{ address: '127.0.0.1', family: 4 }] as never);
+  await expect(readGateway('https://127.0.0.1.xip.switchboard-oracles.xyz/rpc', 'healthy_oracles')).rejects.toMatchObject({ code: 'unsafe_gateway' });
+  expect(socketAddress).toBeUndefined();
+});
 it('rejects mixed public/private DNS answers before opening a socket', async () => {
   vi.mocked(lookup).mockResolvedValue([{ address: '8.8.8.8', family: 4 }, { address: '169.254.169.254', family: 4 }] as never);
   await expect(readGateway('https://oracle.example.com', 'healthy_oracles')).rejects.toMatchObject({ code: 'unsafe_gateway' });
@@ -44,7 +61,7 @@ it('rejects mixed public/private DNS answers before opening a socket', async () 
 });
 it('does not follow redirects or expose gateway response prose', async () => {
   status = 302; body = 'https://private.invalid?api-key=SECRET';
-  await expect(readGateway('https://oracle.example.com', 'randomness_reveal', { slot: 1 })).rejects.toMatchObject({ message: 'gateway_http_302' });
+  await expect(readGateway('https://oracle.example.com/rpc', 'randomness_reveal', { slot: 1 })).rejects.toMatchObject({ message: 'gateway_http_302' });
   expect(request).toHaveBeenCalledTimes(1);
 });
 it('classifies DNS errors without leaking provider messages', async () => {

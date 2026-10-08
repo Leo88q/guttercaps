@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PublicKey, type Connection } from '@solana/web3.js';
 import { createSwitchboardService, liveOracle } from '../src/switchboard.ts';
-import { gatewayOrigin, publicAddress, revealPayload, SwitchboardError } from '../src/switchboard-gateway.ts';
+import { gatewayBaseUrl, publicAddress, revealPayload, SwitchboardError } from '../src/switchboard-gateway.ts';
 import { SWITCHBOARD_QUEUE, SWITCHBOARD_PROGRAM_ID } from '../src/config.ts';
 import { rngAuthPda, RNG_KIND } from '../src/chain.ts';
 import { FakeConnection, encodeRandomness, encodeOracle, pk } from './chainFixtures.ts';
@@ -28,6 +28,22 @@ describe('Switchboard service (no wallet or transaction)', () => {
     expect(a).toEqual(b); expect(a).toMatchObject({ ready: true, oracle: oracle.toBase58() });
     await w.service.health();
     expect(w.load).toHaveBeenCalledTimes(1); expect(w.gateway).toHaveBeenCalledTimes(1);
+    expect(w.conn.sent).toHaveLength(0);
+  });
+  it('preserves the same prefixed base for health and committed reveal, without exposing the path in health JSON', async () => {
+    const w = world();
+    // Synthetic prefix on the host reported by the user; not a guess of the live path.
+    const base = 'https://141.95.35.110.xip.switchboard-oracles.xyz/rpc/';
+    w.load.mockResolvedValue({ genesis: 'devnet', candidates: [{ oracle: oracle.toBase58(), gateway: base, eligible: true }] });
+    const data = encodeOracle(base); data.set(queue.toBytes(), 3472);
+    w.conn.set(oracle, data, SWITCHBOARD_PROGRAM_ID);
+    const report = await w.service.health();
+    expect(report).toMatchObject({ ready: true, probes: [{ gateway: 'https://141.95.35.110.xip.switchboard-oracles.xyz', healthy: true }] });
+    expect(w.gateway).toHaveBeenNthCalledWith(1, base.slice(0, -1), 'healthy_oracles');
+    await w.service.reveal(randomness.toBase58());
+    expect(w.gateway).toHaveBeenNthCalledWith(2, base.slice(0, -1), 'randomness_reveal', expect.objectContaining({
+      slot: 4000, randomness_key: randomness.toBuffer().toString('hex'), slothash: Array(32).fill(0xab),
+    }));
     expect(w.conn.sent).toHaveLength(0);
   });
   it('skips an unhealthy gateway and selects another live, on-chain eligible oracle', async () => {
@@ -82,13 +98,21 @@ describe('Switchboard service (no wallet or transaction)', () => {
 });
 
 describe('gateway boundary', () => {
-  it.each(['http://oracle.example.com', 'https://127.0.0.1', 'https://[::1]', 'https://user:secret@example.com', 'https://oracle.example.com?key=SECRET', 'https://oracle.example.com/path', 'https://localhost', 'https://oracle.example.com:8080'])('rejects unsafe URI %s', uri => {
-    expect(() => gatewayOrigin(uri)).toThrow('unsafe_gateway');
+  it.each(['http://oracle.example.com', 'https://127.0.0.1', 'https://[::1]', 'https://user:secret@example.com', 'https://oracle.example.com?key=SECRET', 'https://localhost', 'https://oracle.example.com:8080'])('rejects unsafe URI %s', uri => {
+    expect(() => gatewayBaseUrl(uri)).toThrow('unsafe_gateway');
+  });
+  it.each(['/rpc', '/rpc/', '/nested/route', '/nested/route///'])('preserves the verified gateway base path %s', path => {
+    expect(gatewayBaseUrl(`https://oracle.example.com${path}`)).toBe(`https://oracle.example.com${path.replace(/\/+$/, '')}`);
+  });
+  it.each(['https://oracle.example.com/prefix?key=SECRET', 'https://oracle.example.com/prefix#fragment',
+    'https://user:secret@oracle.example.com/prefix', 'https://oracle.example.com/a\\b',
+    'https://oracle.example.com/a\nb', 'https://oracle.example.com/a\0b'])('rejects ambiguous or credential-bearing base %s', uri => {
+    expect(() => gatewayBaseUrl(uri)).toThrow('unsafe_gateway');
   });
   it.each(['127.0.0.1', '10.2.3.4', '172.31.0.1', '192.168.1.1', '169.254.169.254', '100.64.0.1', '0.0.0.0', '224.0.0.1', '::1', '::ffff:127.0.0.1', 'fc00::1', 'fe80::1', '2002:7f00:1::', '2001:db8::1'])('rejects non-public DNS answer %s', ip => expect(publicAddress(ip)).toBe(false));
   it('accepts public IPv4 / global IPv6 and canonical HTTPS origins', () => {
     expect(publicAddress('8.8.8.8')).toBe(true); expect(publicAddress('2606:4700:4700::1111')).toBe(true);
-    expect(gatewayOrigin('https://oracle.example.com/')).toBe('https://oracle.example.com');
+    expect(gatewayBaseUrl('https://oracle.example.com/')).toBe('https://oracle.example.com');
   });
   it('requires the selected oracle, unrestricted pull-oracle service and strict bytes', () => {
     expect(liveOracle(health(), pk().toBase58())).toBe(false);
