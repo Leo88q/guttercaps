@@ -4,7 +4,7 @@ import { errorSnapshot, type ErrorSnapshot } from '../errorSnapshot';
 // Pure orchestration: no React here; the UI subscribes through onState.
 import { Connection, PublicKey } from '@solana/web3.js';
 import { FUSION_RECIPES } from '@guttercaps/economy';
-import { DAS_RPC_URL } from '@/app/config';
+import { rpcEndpoints } from '@/app/rpcEndpoints';
 import { appLookupTables, fitsInTx, sendTx, type WalletLike } from '../tx';
 import { prepareClose, prepareCloseLut, prepareRandomness, prepareReveal, readRandomness, sendCloseLut } from '../switchboard';
 import {
@@ -223,7 +223,7 @@ export class ClaimFusionFlow {
       const trees = await fetchTreeMetas(connection, Array.from({ length: this.cfg.collectionsCreated }, (_, i) => i));
       const settled = await settleClaim(
         {
-          connection, wallet, das: new DasClient({ endpoint: this.deps.dasEndpoint ?? DAS_RPC_URL }),
+          connection, wallet, das: new DasClient({ endpoint: this.deps.dasEndpoint ?? rpcEndpoints(connection.rpcEndpoint).das }),
           buyer: wallet.publicKey, metas, trees, lookupTables,
           onSignature: (sig) => this.set({ signatures: [...this.state.signatures, sig] }),
         },

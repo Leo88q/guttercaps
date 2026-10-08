@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { accountDiscriminator as disc } from '@/chain/anchor';
+import { errorSnapshot } from '../errorSnapshot';
+import { DasError } from '../das';
 import { BorshWriter } from '@/chain/borsh';
 import { bubblegumTreeMetaPda, compressedChipStatePda, compressedChipStakePda } from '@/chain/pdas';
 import { resolveCompressedChip, resolveCompressedSquad, resolveCompressedUnstakeClaim } from './compressedChip';
@@ -255,5 +257,18 @@ describe('arena-specific leaf rules', () => {
     }
     const e = env({ claim: { staked: true } });
     await expect(resolveCompressedSquad(e.connection, e.das, [e.asset], { owner: Keypair.generate().publicKey })).rejects.toThrow(/another wallet/);
+  });
+});
+
+it('preserves the original DAS failure when tree fallback cannot supply a proof', async () => {
+  const e = env();
+  const das = { getAssetWithProof: vi.fn().mockRejectedValue(new DasError('rpc', 'DAS getAsset RPC error -32602: Invalid params')) };
+  const error = await resolveCompressedChip(e.connection, das as never, e.asset).catch(err => err);
+  expect(errorSnapshot(error)).toMatchObject({
+    code: 'proof_unavailable', details: {
+      asset: e.asset.toBase58(),
+      das: { code: 'rpc', message: 'DAS getAsset RPC error -32602: Invalid params' },
+      tree: { message: 'Merkle tree account is unavailable' },
+    },
   });
 });

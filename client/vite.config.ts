@@ -1,6 +1,9 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
+import { createRequire } from 'node:module';
+
+const browserBuffer = createRequire(import.meta.url).resolve('buffer/');
 
 // The client is served from the same origin as the API in production
 // (nginx: `/v1 → backend`, everything else → this SPA). In dev, Vite proxies
@@ -84,6 +87,8 @@ export default defineConfig({
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
       '@guttercaps/economy': fileURLToPath(new URL('../packages/economy/src/index.ts', import.meta.url)),
+      buffer: browserBuffer,
+      'node:buffer': browserBuffer,
       // Node built-ins pulled in by @switchboard-xyz/* — tiny browser shims (see src/shims)
       https: fileURLToPath(new URL('./src/shims/node-https.ts', import.meta.url)),
       crypto: fileURLToPath(new URL('./src/shims/node-crypto.ts', import.meta.url)),

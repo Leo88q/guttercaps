@@ -1237,8 +1237,15 @@ describe('client DAS resolveClaimAsset (mint → register bridge)', () => {
     const calls: string[] = [];
     let polls = 0;
     const fetchImpl = (async (_url: string, init: { body: string }) => {
-      const req = JSON.parse(init.body) as { id: number; method: string };
+      const req = JSON.parse(init.body) as { id: number; method: string; params: Record<string, unknown> };
       calls.push(req.method);
+      expect(Array.isArray(req.params)).toBe(false);
+      if (req.method === 'getAssetsByOwner') expect(req.params).toEqual({
+        ownerAddress: buyer.toBase58(), page: 1, limit: 1000,
+        sortBy: { sortBy: 'created', sortDirection: 'desc' },
+        displayOptions: { showUnverifiedCollections: true, showCollectionMetadata: false },
+      });
+      else expect(req.params).toEqual({ id: assetPk.toBase58() });
       if (req.method === 'getAssetsByOwner') {
         const items = itemsByPoll[Math.min(polls, itemsByPoll.length - 1)];
         polls++;

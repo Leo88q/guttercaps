@@ -203,5 +203,6 @@
   "preorderAlreadyConfirmed": "Na-credit na ang payment signature na ito sa isang reservation.",
   "preorderNothingToDeliver": "Walang bayad na preorder na naghihintay ng delivery.",
   "confirmationUnknown": "Naipadala ang transaksyon pero wala pang kumpirmasyon. Suriin sa Explorer at i-refresh ang balanse bago subukang muli.",
-  "blockhashRejected": "Tinanggihan ng RPC ang transaksyon bago ito maisagawa: hindi nakita ang blockhash. Walang bayad na ginawa sa pagtatangkang ito. Subukan muli; kung mauulit, suriin ang RPC at network ng wallet."
+  "blockhashRejected": "Tinanggihan ng RPC ang transaksyon bago ito maisagawa: hindi nakita ang blockhash. Walang bayad na ginawa sa pagtatangkang ito. Subukan muli; kung mauulit, suriin ang RPC at network ng wallet.",
+  "proofUnavailable": "Hindi makuha ang Merkle proof ng chip. Suriin ang DAS endpoint at pahintulot sa access. Nasa teknikal na detalye ang error ng DAS at ng pagbawi mula sa tree."
 }

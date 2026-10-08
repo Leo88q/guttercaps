@@ -10,7 +10,7 @@ import { errorSnapshot, type ErrorSnapshot } from '../errorSnapshot';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { keccak_256 } from '@noble/hashes/sha3';
 import { PACKS, expandRandomness, type PackDef as EconPackDef } from '@guttercaps/economy';
-import { DAS_RPC_URL } from '@/app/config';
+import { rpcEndpoints } from '@/app/rpcEndpoints';
 import { appLookupTables, fitsInTx, sendTx, type WalletLike } from '../tx';
 import { prepareClose, prepareCloseLut, prepareRandomness, prepareReveal, readRandomness, sendCloseLut } from '../switchboard';
 import {
@@ -262,7 +262,7 @@ export class PackFlow {
       const metas = await fetchCollectionMetas(connection, this.cfg.collectionsCreated);
       const trees = await fetchTreeMetas(connection, pool);
       const lookupTables = await appLookupTables(connection, this.deps.lookupTable);
-      const das = new DasClient({ endpoint: this.deps.dasEndpoint ?? DAS_RPC_URL });
+      const das = new DasClient({ endpoint: this.deps.dasEndpoint ?? rpcEndpoints(connection.rpcEndpoint).das });
 
       this.set({ phase: 'opening' });
       for (let packNo = pending.opened; packNo < pending.qty; packNo++) {

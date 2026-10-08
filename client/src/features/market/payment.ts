@@ -1,11 +1,12 @@
 import { PublicKey } from '@solana/web3.js';
 import { DasClient } from '@/chain/das';
-import { DAS_RPC_URL } from '@/app/config';
+import { rpcEndpoints } from '@/app/rpcEndpoints';
+import { useUiStore } from '@/app/store/ui';
 import { type ResolvedCompressedChip } from '@/chain/flows/compressedChip';
 import { buyCompressedAssetIx } from '@/chain/ix/market';
 
 /** The indexer endpoint the DAS client talks to. Overridable so tests can pin it. */
-export const dasEndpoint = (override?: string) => override ?? DAS_RPC_URL;
+export const dasEndpoint = (override?: string) => override ?? rpcEndpoints(useUiStore.getState().rpcOverride).das;
 
 /** A DAS client for one call. Stateless, so it is cheaper to build than to memoize wrongly. */
 export const dasClient = (override?: string) => new DasClient({ endpoint: dasEndpoint(override) });

@@ -19,6 +19,7 @@
 // instruction, and the program still re-verifies the proof on chain.
 import { Connection, PublicKey } from '@solana/web3.js';
 import { DasClient } from '../das';
+import { errorSnapshot } from '../errorSnapshot';
 import { decodeCompressedChipState, decodeCompressedMintClaim, decodeCompressedChipStake, type BubblegumTreeMeta, type CompressedChipState, type CompressedMintClaim } from '../accounts';
 import { bubblegumTreeMetaPda, compressedChipStatePda, compressedChipStakePda } from '../pdas';
 import { decodeBubblegumTreeMeta } from '../accounts';
@@ -161,22 +162,31 @@ export async function resolveCompressedChip(
   try {
     proof = await das.getAssetWithProof(asset);
   } catch (dasErr) {
-    const treeAcct = await connection.getAccountInfo(id.merkleTree, 'confirmed');
-    if (!treeAcct) throw dasErr;
-    proof = resolveRegisteredLeafFromTreeAccount({
-      assetId: asset,
-      owner: id.claimState.buyer,
-      delegate: id.claimState.buyer,
-      merkleTree: id.merkleTree,
-      leafIndex: id.leafIndex,
-      leafNonce: id.leafNonce,
-      dataHash: id.chipState.dataHash,
-      creatorHash: id.chipState.creatorHash,
-      collectionHash: id.chipState.collectionHash,
-      assetDataHash: id.chipState.assetDataHash,
-      flags: id.chipState.leafFlags,
-      treeAccountData: new Uint8Array(treeAcct.data),
-    });
+    try {
+      const treeAcct = await connection.getAccountInfo(id.merkleTree, 'confirmed');
+      if (!treeAcct) throw new Error('Merkle tree account is unavailable');
+      proof = resolveRegisteredLeafFromTreeAccount({
+        assetId: asset,
+        owner: id.claimState.buyer,
+        delegate: id.claimState.buyer,
+        merkleTree: id.merkleTree,
+        leafIndex: id.leafIndex,
+        leafNonce: id.leafNonce,
+        dataHash: id.chipState.dataHash,
+        creatorHash: id.chipState.creatorHash,
+        collectionHash: id.chipState.collectionHash,
+        assetDataHash: id.chipState.assetDataHash,
+        flags: id.chipState.leafFlags,
+        treeAccountData: new Uint8Array(treeAcct.data),
+      });
+    } catch (treeErr) {
+      // Missing changelog history used to hide the reason DAS failed (wrong params,
+      // HTTP 401, unsupported method, etc.). Keep BOTH without weakening root checks.
+      throw Object.assign(new Error('Could not obtain a Merkle proof from DAS or the tree account'), {
+        code: 'proof_unavailable',
+        details: { asset: asset.toBase58(), das: errorSnapshot(dasErr), tree: errorSnapshot(treeErr) },
+      });
+    }
   }
   if (!proof.merkleTree.equals(id.merkleTree)) throw new Error('DAS answered with a proof for a different tree');
   if (proof.leafIndex !== BigInt(id.leafIndex)) throw new Error('DAS answered with a different leaf index than the one registered on chain');

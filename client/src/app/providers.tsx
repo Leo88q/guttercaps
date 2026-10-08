@@ -2,7 +2,7 @@ import { useMemo, type ReactNode } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletDialogProvider } from '@/shared/ui/WalletDialogProvider';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { RPC_URL, RPC_WS_URL } from './config';
+import { rpcEndpoints } from './rpcEndpoints';
 import { useUiStore } from './store/ui';
 import { SessionGate } from './session';
 import { WaitBridge } from './WaitBridge';
@@ -25,8 +25,8 @@ const queryClient = new QueryClient({
 
 export function Providers({ children }: { children: ReactNode }) {
   const rpcOverride = useUiStore((s) => s.rpcOverride);
-  const endpoint = rpcOverride && /^https?:\/\//.test(rpcOverride) ? rpcOverride : RPC_URL;
-  const config = useMemo(() => ({ commitment: 'confirmed' as const, wsEndpoint: RPC_WS_URL }), []);
+  const { rpc: endpoint, ws } = rpcEndpoints(rpcOverride);
+  const config = useMemo(() => ({ commitment: 'confirmed' as const, wsEndpoint: ws }), [ws]);
   // Wallet Standard wallets (Phantom, Solflare, Backpack, …) self-register; MWA is registered in main.tsx.
   const wallets = useMemo(() => [], []);
   return (
