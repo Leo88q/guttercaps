@@ -201,5 +201,6 @@
   "preorderMemoMismatch": "Hindi tugma ang payment memo sa reservation na ito.",
   "preorderUnknownPayer": "Walang memo — ipadala ang bayad mula sa connected wallet mo.",
   "preorderAlreadyConfirmed": "Na-credit na ang payment signature na ito sa isang reservation.",
-  "preorderNothingToDeliver": "Walang bayad na preorder na naghihintay ng delivery."
+  "preorderNothingToDeliver": "Walang bayad na preorder na naghihintay ng delivery.",
+  "confirmationUnknown": "Naipadala ang transaksyon pero wala pang kumpirmasyon. Suriin sa Explorer at i-refresh ang balanse bago subukang muli."
 }

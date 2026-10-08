@@ -70,6 +70,8 @@ export interface CompressedChipIdentity {
   leafNonce: bigint;
   claimState: CompressedMintClaim;
   chipState: CompressedChipState;
+  /** Top siblings are already stored in the on-chain canopy. */
+  proofLength: number;
 }
 
 /** The ChipState flag bits that mean "a program already holds this leaf". */
@@ -130,6 +132,7 @@ export async function resolveCompressedChipIdentity(
     asset, claim: state.claim, chip: chipKey, merkleTree: state.merkleTree,
     treeConfig: tree.treeConfig, coreCollection: tree.coreCollection, collectionIdx: state.collectionIdx,
     leafIndex: state.leafIndex, leafNonce: state.leafNonce, claimState, chipState: state,
+    proofLength: Math.max(1, tree.maxDepth - tree.canopy),
   };
 }
 
@@ -182,7 +185,7 @@ export async function resolveCompressedChip(
   const leaf: CompressedLeafProof = {
     root: proof.root, dataHash: proof.dataHash, creatorHash: proof.creatorHash,
     collectionHash: proof.collectionHash, assetDataHash: proof.assetDataHash, flags: proof.flags,
-    nonce: id.leafNonce, index: id.leafIndex, proofNodes: proof.proof,
+    nonce: id.leafNonce, index: id.leafIndex, proofNodes: proof.proof.slice(0, id.proofLength),
   };
   return { ...id, delegate: proof.leafDelegate, proof, leaf };
 }

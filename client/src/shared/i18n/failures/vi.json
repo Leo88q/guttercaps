@@ -201,5 +201,6 @@
   "preorderMemoMismatch": "Memo thanh toán không khớp với đơn đặt này.",
   "preorderUnknownPayer": "Không kèm memo — hãy thanh toán từ ví đã kết nối.",
   "preorderAlreadyConfirmed": "Chữ ký thanh toán này đã được ghi nhận cho một đơn đặt.",
-  "preorderNothingToDeliver": "Không có đơn bán trước đã thanh toán nào chờ phát."
+  "preorderNothingToDeliver": "Không có đơn bán trước đã thanh toán nào chờ phát.",
+  "confirmationUnknown": "Giao dịch đã gửi nhưng chưa có xác nhận. Kiểm tra trên Explorer và cập nhật số dư trước khi thử lại."
 }

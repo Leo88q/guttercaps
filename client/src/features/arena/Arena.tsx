@@ -10,8 +10,10 @@ import { sha256 } from '@noble/hashes/sha256';
 import { MATCH_REWARDS, MATCHMAKING, SEASON } from '@guttercaps/economy';
 import { useArenaMe, useMyChips, useMyServices, useSeason, useQueueArena, useLeaveQueue, useRevealNonce, type Chip } from '@/api/hooks';
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
-import { sendTx } from '@/chain/tx';
+import { sendArenaTx } from '@/chain/flows/arenaTx';
+import { TxError } from '@/chain/tx';
 import { prepareRandomness } from '@/chain/switchboard';
+import { initRandomnessIx } from '@/chain/ix/rng';
 import { createCompressedBattleV2Ix, acceptCompressedBattleV2Ix, wagerSplit, MIN_WAGER, MAX_WAGER, MIN_SQUAD_POWER, leagueOf, type CompressedArenaChipProof } from '@/chain/ix/arena';
 import { resolveCompressedSquad } from '@/chain/flows/compressedChip';
 import { dasClient } from '@/features/market/payment';
@@ -26,7 +28,7 @@ import { ElementGlyph } from '@/shared/ui/element-icons';
 import { fmtCg, fmtDecimal, countdown, parseUnits, shortKey } from '@/shared/lib/format';
 import { useUiStore } from '@/app/store/ui';
 import { isMock } from '@/api/client';
-import { EXPLORER } from '@/app/config';
+import { EXPLORER, LOOKUP_TABLE } from '@/app/config';
 import { useT } from '@/shared/i18n';
 import { loadTheme, ownedThemes, themeById } from '@/shared/lib/cosmetics';
 
@@ -136,15 +138,19 @@ export default function Arena() {
       const nonce = freshNonce();
       // arena-owned randomness PDA ["rng", 2, challenger, nonce]: init here, commit inside create_battle_v2 (SEC-C3 part 2)
       const rnd = await prepareRandomness(connection, wallet.publicKey, RNG_KIND.BATTLE, nonce);
-      // every squad slot carries the registered projection and a *fresh* proof — the program
-      // re-verifies all three roots, so a proof that is one block stale is a reverted transaction
-      // and a paid fee, which is why they are resolved here and not read from the API row
-      const proofs = await squadProofs();
-      const ix = createCompressedBattleV2Ix({
-        challenger: wallet.publicKey, nonce, wager: amountMicro, randomness: rnd.randomness,
-        queue: rnd.queue, oracle: rnd.oracle, squad: proofs, delegates: proofs.map((x) => x.delegate), cgMint: cfg.data.cgMint,
-      });
-      const { signature } = await sendTx(connection, wallet, [...rnd.ixs, ix], { cuLimit: 400_000 });
+      // Every slot carries the registered projection and a fresh proof. Resolve from chain/DAS
+      // again after table setup so slow wallet prompts don't consume the CMT changelog window.
+      const { signature } = await sendArenaTx(connection, wallet, async () => {
+        const proofs = await squadProofs();
+        const ix = createCompressedBattleV2Ix({
+          challenger: wallet.publicKey, nonce, wager: amountMicro, randomness: rnd.randomness,
+          queue: rnd.queue, oracle: rnd.oracle, squad: proofs, delegates: proofs.map((x) => x.delegate), cgMint: cfg.data!.cgMint,
+        });
+        // LUT setup may involve several wallet prompts. Refresh Switchboard's recent-slot
+        // argument too; init and the wager still commit atomically in the final packet.
+        const recentSlot = await connection.getSlot('finalized');
+        return [initRandomnessIx({ ...rnd, recentSlot: BigInt(recentSlot) }), ix];
+      }, { lookupTable: LOOKUP_TABLE });
       toast({ kind: 'money', title: { key: 'screens.wagerOpen' }, body: { key: 'screens.escrowWaiting', params: { amount: amountText(amountMicro, 'CG') } }, href: EXPLORER.tx(signature) });
       // the invite IS the PDA seed, so the challenger can hand it over and the opponent lands straight
       // on the accept panel below
@@ -152,7 +158,7 @@ export default function Arena() {
       setBattle(null); setBattleErr(null);
       setWager(null);
     } catch (e) {
-      toast({ kind: 'error', title: { key: 'screens.wagerFailed' }, error: e });
+      toast({ kind: 'error', title: { key: 'screens.wagerFailed' }, error: e, href: e instanceof TxError && e.signature ? EXPLORER.tx(e.signature) : undefined });
     } finally { setBusy(false); }
   }
 
@@ -205,16 +211,18 @@ export default function Arena() {
     if (!ready) { setBattleErr(squadHint); return; }
     setBusy(true);
     try {
-      const proofs = await squadProofs();
-      const ix = acceptCompressedBattleV2Ix({
-        opponent: wallet.publicKey, challenger: battle.challenger, nonce: battle.nonce,
-        squad: proofs, delegates: proofs.map((x) => x.delegate), cgMint: cfg.data.cgMint,
-      });
-      const { signature } = await sendTx(connection, wallet, [ix], { cuLimit: 400_000 });
+      const { signature } = await sendArenaTx(connection, wallet, async () => {
+        const proofs = await squadProofs();
+        const ix = acceptCompressedBattleV2Ix({
+          opponent: wallet.publicKey, challenger: battle.challenger, nonce: battle.nonce,
+          squad: proofs, delegates: proofs.map((x) => x.delegate), cgMint: cfg.data!.cgMint,
+        });
+        return [ix];
+      }, { lookupTable: LOOKUP_TABLE });
       toast({ kind: 'money', title: { key: 'arena.acceptOpened' }, body: { key: 'screens.escrowed', params: { amount: amountText(battle.wager, 'CG') } }, href: EXPLORER.tx(signature) });
       setBattle(null); setInvite(null);
     } catch (e) {
-      toast({ kind: 'error', title: { key: 'arena.acceptFailed' }, error: e });
+      toast({ kind: 'error', title: { key: 'arena.acceptFailed' }, error: e, href: e instanceof TxError && e.signature ? EXPLORER.tx(e.signature) : undefined });
     } finally { setBusy(false); }
   }
 
@@ -343,6 +351,7 @@ export default function Arena() {
             <KV k={t('arena.battleStatus')} v={BATTLE_STATUS[battle.status] ?? battle.status} />
             <KV k={t('arena.league')} v={leagueName(leagueOf(battle.powerA))} />
             <div className="tiny muted">{t('arena.squadLocked')}</div>
+            <div className="tiny muted">{t('arena.lookupSetup')}</div>
             <CleanConfirmButton disabled={busy || !connected || !ready} onClick={() => void acceptBattle()}>
               {t('arena.acceptConfirm', { amount: fmtCg(battle.wager) })}
             </CleanConfirmButton>
@@ -375,6 +384,7 @@ export default function Arena() {
       <Modal open={wager !== null} onClose={() => setWager(null)} title={t('ui.wagerBattle')}>
         <div className="stack">
           <div className="small muted">{t('arena.escrowNote')}</div>
+          <div className="small muted">{t('arena.lookupSetup')}</div>
           <div className="small muted">{t('arena.squadLocked')}</div>
           <div className="tag-list">{[5, 25, 100, 500].map((v) => <Pill key={v} active={wager === String(v)} onClick={() => setWager(String(v))}>{v} $CG</Pill>)}</div>
           <CleanZone>

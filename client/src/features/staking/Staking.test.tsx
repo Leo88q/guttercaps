@@ -31,7 +31,8 @@ const ASSET = Keypair.generate().publicKey;
 const sent: { programId: PublicKey; data: Uint8Array; keys: { pubkey: PublicKey }[] }[] = [];
 let dasCalls = 0;
 
-vi.mock('@/chain/tx', () => ({
+vi.mock('@/chain/tx', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/chain/tx')>(),
   sendTx: async (_c: unknown, _w: unknown, ixs: unknown[]) => {
     for (const ix of ixs as typeof sent) sent.push(ix);
     return { signature: '5'.repeat(64), logs: [] };

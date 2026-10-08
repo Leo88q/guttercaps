@@ -3,7 +3,7 @@ import { errorSnapshot } from './errorSnapshot';
 // One pipeline for every transaction: compute budget → v0 message → wallet
 // signature (+ local partial signers) → send → confirm → decoded error.
 import {
-  ComputeBudgetProgram, Connection, PublicKey, TransactionMessage, VersionedTransaction,
+  ComputeBudgetProgram, Connection, PublicKey, SendTransactionError, TransactionMessage, VersionedTransaction,
   type AddressLookupTableAccount, type Keypair, type TransactionInstruction, type TransactionSignature,
 } from '@solana/web3.js';
 import { isBlockhashExpired } from './errors';
@@ -31,7 +31,7 @@ interface SendOptions {
 }
 
 export class TxError extends Error {
-  constructor(public readonly cause: unknown, public readonly logs?: string[]) {
+  constructor(public readonly cause: unknown, public readonly logs?: string[], public readonly signature?: string) {
     super(errorSnapshot(cause).message);
   }
 }
@@ -88,10 +88,12 @@ async function buildV0Tx(
   payer: PublicKey,
   ixs: TransactionInstruction[],
   opts: SendOptions = {},
-): Promise<{ tx: VersionedTransaction; blockhash: string; lastValidBlockHeight: number }> {
+): Promise<VersionedTransaction> {
   const writable = ixs.flatMap((ix) => ix.keys.filter((k) => k.isWritable).map((k) => k.pubkey));
   const cuPrice = opts.cuPrice ?? (await recentPriorityFee(connection, writable));
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+  // Simulation replaces this placeholder. Fetch the real blockhash only AFTER simulation
+  // and the final access check, immediately before the wallet prompt.
+  const blockhash = PublicKey.default.toBase58();
 
   let cuLimit = opts.cuLimit;
   if (!cuLimit) {
@@ -116,7 +118,7 @@ async function buildV0Tx(
       ...ixs,
     ],
   }).compileToV0Message(opts.lookupTables);
-  return { tx: new VersionedTransaction(msg), blockhash, lastValidBlockHeight };
+  return new VersionedTransaction(msg);
 }
 
 export async function sendTx(
@@ -131,31 +133,54 @@ export async function sendTx(
   try {
     for (;;) {
       attempt++;
+      let submittedSignature: string | undefined;
       try {
         if (reportStatus) setWait('prepare');
-        const { tx, blockhash, lastValidBlockHeight } = await buildV0Tx(connection, wallet.publicKey, ixs, opts);
-        if (opts.signers?.length) tx.sign(opts.signers);
+        if (!fitsInTx(wallet.publicKey, ixs, opts.lookupTables)) throw new Error('Transaction exceeds the 1232-byte packet limit — a lookup table is required');
+        const tx = await buildV0Tx(connection, wallet.publicKey, ixs, opts);
         await checkTransactionAccess(wallet.publicKey.toBase58(), ixs);
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+        tx.message.recentBlockhash = blockhash;
+        if (opts.signers?.length) tx.sign(opts.signers);
         if (reportStatus) setWait('wallet');
         const signed = await wallet.signTransaction(tx);
         const sigBytes = signed.signatures[0];
         const signature = base58Encode(sigBytes);
         opts.onSigned?.(signature);
         if (reportStatus) setWait('send', signature);
-        await connection.sendRawTransaction(signed.serialize(), { skipPreflight: opts.skipPreflight ?? false, maxRetries: 3, preflightCommitment: 'confirmed' });
+        const raw = signed.serialize();
+        // A lost HTTP response does not prove the RPC rejected the signed transaction.
+        submittedSignature = signature;
+        await connection.sendRawTransaction(raw, { skipPreflight: opts.skipPreflight ?? false, maxRetries: 3, preflightCommitment: 'confirmed' });
         opts.onSent?.(signature);
         if (reportStatus) setWait('confirm', signature);
         const conf = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
         if (conf.value.err) {
           const txInfo = await connection.getTransaction(signature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
-          throw new TxError({ message: `custom program error: ${JSON.stringify(conf.value.err)}`, logs: txInfo?.meta?.logMessages ?? undefined }, txInfo?.meta?.logMessages ?? undefined);
+          throw new TxError({ message: `custom program error: ${JSON.stringify(conf.value.err)}`, logs: txInfo?.meta?.logMessages ?? undefined }, txInfo?.meta?.logMessages ?? undefined, signature);
         }
         const txInfo = await connection.getTransaction(signature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
         return { signature, logs: txInfo?.meta?.logMessages ?? [] };
       } catch (e) {
-        // one automatic rebuild on expired blockhash, never on user rejection / program error
-        if (attempt === 1 && isBlockhashExpired(e)) continue;
-        throw e instanceof TxError ? e : new TxError(e);
+        // Never blindly replay a stake/wager that the RPC accepted. Confirmation can lag behind
+        // execution. Recover a confirmed signature; otherwise keep its identity for reconciliation.
+        const unknownSendResult = !(e instanceof TxError) && !(e instanceof SendTransactionError) && !errorSnapshot(e).logs?.length;
+        if (submittedSignature && (isBlockhashExpired(e) || unknownSendResult)) {
+          const status = await connection.getSignatureStatuses([submittedSignature], { searchTransactionHistory: true }).catch(() => null);
+          const value = status?.value[0];
+          if (value?.err) {
+            const info = await connection.getTransaction(submittedSignature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 }).catch(() => null);
+            throw new TxError({ message: `custom program error: ${JSON.stringify(value.err)}`, logs: info?.meta?.logMessages ?? undefined }, info?.meta?.logMessages ?? undefined, submittedSignature);
+          }
+          if (value && !value.err && (value.confirmationStatus === 'confirmed' || value.confirmationStatus === 'finalized')) {
+            const info = await connection.getTransaction(submittedSignature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 }).catch(() => null);
+            return { signature: submittedSignature, logs: info?.meta?.logMessages ?? [] };
+          }
+          throw new TxError({ code: 'confirmation_unknown', message: 'Transaction confirmation is unresolved', details: { signature: submittedSignature, original: errorSnapshot(e) } }, undefined, submittedSignature);
+        }
+        // Only expiry BEFORE any send attempt is safe to rebuild automatically.
+        if (!submittedSignature && attempt === 1 && isBlockhashExpired(e)) continue;
+        throw e instanceof TxError ? e : new TxError(e, undefined, submittedSignature);
       }
     }
   } finally {

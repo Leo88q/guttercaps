@@ -33,10 +33,18 @@ let connected = false;
 let chainStaked = false;
 const sent: { programId: PublicKey; data: Uint8Array; keys: { pubkey: PublicKey; isSigner: boolean; isWritable: boolean }[] }[] = [];
 
-vi.mock('@/chain/tx', () => ({
+vi.mock('@/chain/tx', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/chain/tx')>(),
   sendTx: async (_c: unknown, _w: unknown, ixs: unknown[]) => {
     for (const ix of ixs as typeof sent) sent.push(ix);
     return { signature: '5'.repeat(64), logs: [] };
+  },
+}));
+
+vi.mock('@/chain/flows/arenaTx', () => ({
+  sendArenaTx: async (connection: unknown, wallet: unknown, build: () => Promise<unknown[]>) => {
+    const { sendTx } = await import('@/chain/tx');
+    return sendTx(connection as never, wallet as never, await build() as never);
   },
 }));
 

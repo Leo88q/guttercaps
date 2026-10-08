@@ -99,6 +99,7 @@ const en = {
     acceptNotFound: 'No battle account for that challenger and nonce.',
     acceptNotOpen: 'That battle is {status}, not open.',
     acceptSelf: 'You cannot accept your own battle.',
+    lookupSetup: "A wager may require extra wallet confirmations to prepare a reusable address table. This uses SOL for network fees and refundable table rent; the $CG wager is sent only in the final transaction.",
     squadTooWeak: "Squad power {power} / {min}. Pick stronger caps or upgrade them to unlock ranked and wager battles.",
     stakedAllowed: "Staked caps can fight too — no need to unstake them.",
     acceptNeedSquad: 'Pick a squad of three caps first.',

@@ -201,5 +201,6 @@
   "preorderMemoMismatch": "The payment memo does not match this reservation.",
   "preorderUnknownPayer": "No memo was attached — send the payment from your connected wallet.",
   "preorderAlreadyConfirmed": "This payment signature was already credited to a reservation.",
-  "preorderNothingToDeliver": "No paid preorders are awaiting delivery."
+  "preorderNothingToDeliver": "No paid preorders are awaiting delivery.",
+  "confirmationUnknown": "The transaction was sent, but confirmation is unavailable. Check it in Explorer and refresh your balance before trying again."
 }

@@ -113,6 +113,16 @@ for (const locale of LOCALES) {
 }
 
 describe('error attribution and recovery safety', () => {
+  it('keeps an unknown submitted confirmation distinct from an unsubmitted expiry', async () => {
+    const error = new TxError({ code: 'confirmation_unknown', message: 'Submitted, confirmation unknown', details: 'Signature has expired: block height exceeded' }, undefined, 'test-signature');
+    for (const locale of LOCALES) {
+      await setLocale(locale);
+      expect(humanizeTxError(error)).toBe(t('failures.confirmationUnknown'));
+      expect(humanizeTxError(errorSnapshot(error))).toBe(t('failures.confirmationUnknown'));
+    }
+    expect(error.signature).toBe('test-signature');
+    expect(originalErrorText(error)).toContain('block height exceeded');
+  });
   it('does not guess ownership or mislabel unknown token program error 0x1 as SOL balance', () => {
     expect(describeProgramError(6000)).toBeUndefined();
     expect(describeProgramError(6000, '11111111111111111111111111111111')).toBeUndefined();
@@ -183,11 +193,12 @@ describe('sendTx retry boundary (mock RPC and signature)', () => {
     expect(connection.getLatestBlockhash).toHaveBeenCalledTimes(1);
     expect(connection.sendRawTransaction).toHaveBeenCalledTimes(1);
   });
-  it('rebuilds exactly once for a genuinely expired blockhash', async () => {
+  it('rebuilds once if the wallet refuses an expired blockhash before any send', async () => {
     const { connection, wallet } = fixture();
-    connection.sendRawTransaction.mockRejectedValueOnce(new Error('Blockhash not found'));
+    const sign = wallet.signTransaction;
+    wallet.signTransaction = vi.fn(sign).mockRejectedValueOnce(new Error('Blockhash not found'));
     await expect(sendTx(connection as unknown as Connection, wallet, [], { cuLimit: 10000, cuPrice: 1 })).resolves.toHaveProperty('signature');
     expect(connection.getLatestBlockhash).toHaveBeenCalledTimes(2);
-    expect(connection.sendRawTransaction).toHaveBeenCalledTimes(2);
+    expect(connection.sendRawTransaction).toHaveBeenCalledTimes(1);
   });
 });

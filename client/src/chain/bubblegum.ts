@@ -160,6 +160,62 @@ function emptyTreeNode(level: number): Uint8Array {
   return node;
 }
 
+/** Decode one consistent account snapshot; changelog paths are branch nodes, NOT sibling proofs. */
+function readConcurrentTree(data: Uint8Array) {
+  if (data.length < CMT_HEADER_SIZE + 24) throw new Error('Invalid ConcurrentMerkleTree account layout');
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const maxBufferSize = dv.getUint32(2, true), maxDepth = dv.getUint32(6, true);
+  const stride = 40 + 32 * maxDepth;
+  const end = CMT_HEADER_SIZE + 24 + maxBufferSize * stride + 32 * maxDepth + 40;
+  if (!maxDepth || maxDepth > 30 || !maxBufferSize || data.length < end) throw new Error('Invalid ConcurrentMerkleTree account layout');
+  const active = Number(dv.getBigUint64(CMT_HEADER_SIZE + 8, true));
+  const size = Number(dv.getBigUint64(CMT_HEADER_SIZE + 16, true));
+  if (active >= maxBufferSize || !size || size > maxBufferSize) throw new Error('Invalid ConcurrentMerkleTree changelog indices');
+  // Newest first: the latest write in a sibling subtree contains that subtree's CURRENT hash.
+  const logs = Array.from({ length: size }, (_, age) => {
+    const base = CMT_HEADER_SIZE + 24 + ((active - age + maxBufferSize) % maxBufferSize) * stride;
+    return {
+      root: data.slice(base, base + 32),
+      path: Array.from({ length: maxDepth }, (_, level) => data.slice(base + 32 + level * 32, base + 64 + level * 32)),
+      index: dv.getUint32(base + 32 + 32 * maxDepth, true),
+    };
+  });
+  const rmBase = CMT_HEADER_SIZE + 24 + maxBufferSize * stride;
+  const rightmostIndex = dv.getUint32(rmBase + 32 * (maxDepth + 1), true);
+  const rightmostProof = Array.from({ length: maxDepth }, (_, level) => data.slice(rmBase + level * 32, rmBase + (level + 1) * 32));
+  return { maxDepth, logs, rightmostIndex, rightmostProof, canopy: data.subarray(end), root: logs[0].root };
+}
+
+/**
+ * Reconstruct each sibling by its subtree coordinates, regardless of when the TARGET was last
+ * changed. The old append-only shortcut assumed right siblings were empty at the target's latest
+ * changelog entry; after a transfer/update (or a wrapped buffer) that silently assembled a wrong path.
+ * Never invent unavailable history: an older small subtree may require a DAS-capable RPC.
+ */
+function currentTreeProof(tree: ReturnType<typeof readConcurrentTree>, index: number, leaf: Uint8Array): Uint8Array[] {
+  if (!Number.isInteger(index) || index < 0 || index >= tree.rightmostIndex || index >= 2 ** tree.maxDepth) {
+    throw new Error('Leaf index is outside the populated ConcurrentMerkleTree');
+  }
+  const proof = Array.from({ length: tree.maxDepth }, (_, level) => {
+    const sibling = (index >>> level) ^ 1;
+    const log = tree.logs.find(entry => (entry.index >>> level) === sibling);
+    if (log) return log.path[level];
+    if (sibling * 2 ** level >= tree.rightmostIndex) return emptyTreeNode(level);
+    // Canopy uses breadth-first heap coordinates, excluding the root (heap indices 0 and 1).
+    const canopyOffset = (2 ** (tree.maxDepth - level) + sibling - 2) * 32;
+    if (canopyOffset >= 0 && canopyOffset + 32 <= tree.canopy.length) {
+      const node = tree.canopy.slice(canopyOffset, canopyOffset + 32);
+      return node.every(byte => byte === 0) ? emptyTreeNode(level) : node;
+    }
+    if ((((tree.rightmostIndex - 1) >>> level) ^ 1) === sibling) return tree.rightmostProof[level];
+    throw new Error('Merkle proof history is no longer available in the tree — use a DAS-enabled RPC');
+  });
+  if (!bytesEq(foldCompressionProof(leaf, BigInt(index), proof), tree.root)) {
+    throw new Error('On-chain ConcurrentMerkleTree proof did not fold to active root');
+  }
+  return proof;
+}
+
 export function deriveBubblegumLeafAssetId(merkleTree: PublicKey, leafIndex: number): PublicKey {
   const idx = new Uint8Array(8);
   new DataView(idx.buffer).setBigUint64(0, BigInt(leafIndex >>> 0), true);
@@ -221,43 +277,11 @@ export function resolveClaimFromTreeAccount(input: OnChainClaimTreeInput): Bubbl
   const assetDataHash = keccak_256(new Uint8Array(0));
   const flags = 0;
 
-  const data = input.treeAccountData;
-  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const maxBufferSize = dv.getUint32(2, true);
-  const maxDepth = dv.getUint32(6, true);
-  const clStride = 40 + 32 * maxDepth;
-  const minBytes = CMT_HEADER_SIZE + 24 + maxBufferSize * clStride + 32 * maxDepth + 40;
-  if (maxDepth === 0 || maxDepth > 30 || maxBufferSize === 0 || data.byteLength < minBytes) {
-    throw new Error('Invalid ConcurrentMerkleTree account layout');
-  }
-  const activeIndex = Number(dv.getBigUint64(CMT_HEADER_SIZE + 8, true));
-  const bufferSize = Math.min(maxBufferSize, Number(dv.getBigUint64(CMT_HEADER_SIZE + 16, true)));
-  const changeLogs = Array.from({ length: maxBufferSize }, (_, k) => {
-    const base = CMT_HEADER_SIZE + 24 + k * clStride;
-    const root = data.slice(base, base + 32);
-    const path = Array.from({ length: maxDepth }, (__, i) => data.slice(base + 32 + i * 32, base + 64 + i * 32));
-    const index = dv.getUint32(base + 32 + 32 * maxDepth, true);
-    return { root, path, index };
-  });
-  const rmBase = CMT_HEADER_SIZE + 24 + maxBufferSize * clStride;
-  const rightmostProof = Array.from({ length: maxDepth }, (_, i) => data.slice(rmBase + i * 32, rmBase + (i + 1) * 32));
-  const rightmostIndex = dv.getUint32(rmBase + 32 * (maxDepth + 1), true);
-
+  const tree = readConcurrentTree(input.treeAccountData);
   const empty0 = emptyTreeNode(0);
-  const findLog = (targetIdx: number) => {
-    for (let s = 0; s < bufferSize; s++) {
-      const k = (activeIndex - s + maxBufferSize) % maxBufferSize;
-      if (changeLogs[k].index === targetIdx && !bytesEq(changeLogs[k].path[0], empty0)) {
-        return { step: s, cl: changeLogs[k] };
-      }
-    }
-    return null;
-  };
-
-  let matched: { step: number; leafIndex: number; assetId: PublicKey; leaf: Uint8Array; dataHash: Uint8Array; collectionHash: Uint8Array } | null = null;
-  for (let s = 0; s < bufferSize && !matched; s++) {
-    const k = (activeIndex - s + maxBufferSize) % maxBufferSize;
-    const cl = changeLogs[k];
+  let matched: { leafIndex: number; assetId: PublicKey; leaf: Uint8Array; dataHash: Uint8Array; collectionHash: Uint8Array } | null = null;
+  for (const cl of tree.logs) {
+    if (matched) break;
     if (bytesEq(cl.path[0], empty0)) continue;
     const leafIndex = cl.index;
     const assetId = deriveBubblegumLeafAssetId(input.merkleTree, leafIndex);
@@ -274,7 +298,7 @@ export function resolveClaimFromTreeAccount(input: OnChainClaimTreeInput): Bubbl
         flags,
       });
       if (bytesEq(cl.path[0], leaf)) {
-        matched = { step: s, leafIndex, assetId, leaf, dataHash: cand.dataHash, collectionHash: cand.collectionHash };
+        matched = { leafIndex, assetId, leaf, dataHash: cand.dataHash, collectionHash: cand.collectionHash };
         break;
       }
     }
@@ -283,35 +307,8 @@ export function resolveClaimFromTreeAccount(input: OnChainClaimTreeInput): Bubbl
     throw new Error('Minted Bubblegum V2 leaf not found in on-chain ConcurrentMerkleTree changelog');
   }
 
-  let proofNodes: Uint8Array[];
-  if (matched.leafIndex === rightmostIndex - 1) {
-    proofNodes = rightmostProof.slice();
-  } else {
-    proofNodes = [];
-    for (let i = 0; i < maxDepth; i++) {
-      if (((matched.leafIndex >>> i) & 1) === 0) {
-        proofNodes.push(emptyTreeNode(i));
-      } else {
-        const leftLast = ((matched.leafIndex >>> i) << i) - 1;
-        const leftHit = findLog(leftLast);
-        proofNodes.push(leftHit ? leftHit.cl.path[i] : rightmostProof[i]);
-      }
-    }
-    for (let s = matched.step - 1; s >= 0; s--) {
-      const cl = changeLogs[(activeIndex - s + maxBufferSize) % maxBufferSize];
-      if (cl.index !== matched.leafIndex) {
-        const xor = (matched.leafIndex ^ cl.index) << (32 - maxDepth);
-        const common = Math.clz32(xor);
-        const crit = maxDepth - 1 - common;
-        if (crit >= 0 && crit < maxDepth) proofNodes[crit] = cl.path[crit];
-      }
-    }
-  }
-
-  const activeRoot = changeLogs[activeIndex].root;
-  if (!bytesEq(foldCompressionProof(matched.leaf, BigInt(matched.leafIndex), proofNodes), activeRoot)) {
-    throw new Error('On-chain ConcurrentMerkleTree proof did not fold to active root');
-  }
+  const proofNodes = currentTreeProof(tree, matched.leafIndex, matched.leaf);
+  const activeRoot = tree.root;
 
   return {
     assetId: matched.assetId,
@@ -349,38 +346,7 @@ export function resolveRegisteredLeafFromTreeAccount(input: {
   treeAccountData: Uint8Array;
 }): BubblegumProof {
   const delegate = input.delegate ?? input.owner;
-  const data = input.treeAccountData;
-  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const maxBufferSize = dv.getUint32(2, true);
-  const maxDepth = dv.getUint32(6, true);
-  const clStride = 40 + 32 * maxDepth;
-  const minBytes = CMT_HEADER_SIZE + 24 + maxBufferSize * clStride + 32 * maxDepth + 40;
-  if (maxDepth === 0 || maxDepth > 30 || maxBufferSize === 0 || data.byteLength < minBytes) {
-    throw new Error('Invalid ConcurrentMerkleTree account layout');
-  }
-  const activeIndex = Number(dv.getBigUint64(CMT_HEADER_SIZE + 8, true));
-  const bufferSize = Math.min(maxBufferSize, Number(dv.getBigUint64(CMT_HEADER_SIZE + 16, true)));
-  const changeLogs = Array.from({ length: maxBufferSize }, (_, k) => {
-    const base = CMT_HEADER_SIZE + 24 + k * clStride;
-    const root = data.slice(base, base + 32);
-    const path = Array.from({ length: maxDepth }, (__, i) => data.slice(base + 32 + i * 32, base + 64 + i * 32));
-    const index = dv.getUint32(base + 32 + 32 * maxDepth, true);
-    return { root, path, index };
-  });
-  const rmBase = CMT_HEADER_SIZE + 24 + maxBufferSize * clStride;
-  const rightmostProof = Array.from({ length: maxDepth }, (_, i) => data.slice(rmBase + i * 32, rmBase + (i + 1) * 32));
-  const rightmostIndex = dv.getUint32(rmBase + 32 * (maxDepth + 1), true);
-
-  const empty0 = emptyTreeNode(0);
-  const findLog = (targetIdx: number) => {
-    for (let s = 0; s < bufferSize; s++) {
-      const k = (activeIndex - s + maxBufferSize) % maxBufferSize;
-      if (changeLogs[k].index === targetIdx && !bytesEq(changeLogs[k].path[0], empty0)) {
-        return { step: s, cl: changeLogs[k] };
-      }
-    }
-    return null;
-  };
+  const tree = readConcurrentTree(input.treeAccountData);
 
   const leaf = v2LeafHash({
     assetId: input.assetId,
@@ -394,38 +360,8 @@ export function resolveRegisteredLeafFromTreeAccount(input: {
     flags: input.flags,
   });
 
-  const hit = findLog(input.leafIndex);
-  let proofNodes: Uint8Array[];
-  if (input.leafIndex === rightmostIndex - 1) {
-    proofNodes = rightmostProof.slice();
-  } else if (hit) {
-    proofNodes = [];
-    for (let i = 0; i < maxDepth; i++) {
-      if (((input.leafIndex >>> i) & 1) === 0) {
-        proofNodes.push(emptyTreeNode(i));
-      } else {
-        const leftLast = ((input.leafIndex >>> i) << i) - 1;
-        const leftHit = findLog(leftLast);
-        proofNodes.push(leftHit ? leftHit.cl.path[i] : rightmostProof[i]);
-      }
-    }
-    for (let s = hit.step - 1; s >= 0; s--) {
-      const cl = changeLogs[(activeIndex - s + maxBufferSize) % maxBufferSize];
-      if (cl.index !== input.leafIndex) {
-        const xor = (input.leafIndex ^ cl.index) << (32 - maxDepth);
-        const common = Math.clz32(xor);
-        const crit = maxDepth - 1 - common;
-        if (crit >= 0 && crit < maxDepth) proofNodes[crit] = cl.path[crit];
-      }
-    }
-  } else {
-    throw new Error('Registered Bubblegum V2 leaf not found in on-chain ConcurrentMerkleTree changelog');
-  }
-
-  const activeRoot = changeLogs[activeIndex].root;
-  if (!bytesEq(foldCompressionProof(leaf, BigInt(input.leafIndex), proofNodes), activeRoot)) {
-    throw new Error('On-chain ConcurrentMerkleTree proof did not fold to active root');
-  }
+  const proofNodes = currentTreeProof(tree, input.leafIndex, leaf);
+  const activeRoot = tree.root;
 
   return {
     assetId: input.assetId,

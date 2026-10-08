@@ -154,13 +154,15 @@ export default function Shop() {
           const disabled = !enabled || shopBlocked || !!cfg.data?.paused || starterGone || capLeft === 0;
           const glow = ['rgba(216,216,220,0.12)', 'rgba(22,229,217,0.18)', 'rgba(255,46,138,0.18)', 'rgba(255,122,26,0.22)'][sku];
           return (
-            <div key={sku} className="card pack-card stack" style={{ ['--pack-glow' as string]: glow, opacity: enabled ? 1 : 0.55 }}>
+            <div key={sku} className="card pack-card" style={{ ['--pack-glow' as string]: glow, opacity: enabled ? 1 : 0.55 }}>
               <img className="pack-art" src={packArtUrl(sku)} alt={packName(sku)} loading="lazy" />
               <div className="row between">
                 <div className="pack-head">
                   <div className="cg-heading" style={{ fontSize: 22 }}>{packName(sku)}</div>
                   <div className="muted small pack-sub">{t('shop.perPack', { n: econ.chips })} · {t('shop.floor', { rarity: rarityName(econ.floor) })} · {t(econ.pool === 'featured' ? 'ui.featuredOnly' : 'ui.allEight')}</div>
                 </div>
+              </div>
+              <div className="pack-badges">
                 {!enabled && <Pill>{t('ui.comingSoon')}</Pill>}
                 {id === 'starter' && <Pill tone="ok">{t('shop.starterOnce')}</Pill>}
               </div>
@@ -197,10 +199,9 @@ export default function Shop() {
                   {counter >= econ.pity.softStart && <div className="tiny" style={{ color: 'var(--cg-orange-soft)' }}>{t('ui.softPity', { pct: fmtPct(econ.pity.softStepBps * (counter - econ.pity.softStart + 1), 2) })}</div>}
                 </div>
               ) : <div className="pack-pity-spacer" aria-hidden />}
-              {capLeft !== null && <div className="tiny muted">{t('services.dailyLeft', { n: capLeft })}</div>}
+              <div className="tiny muted pack-cap">{capLeft !== null ? t('services.dailyLeft', { n: capLeft }) : '\u00a0'}</div>
 
-              <div className="pack-card-foot stack">
-              <CleanZone>
+              <CleanZone className="pack-price">
                 <KV k={t('ui.price')} v={fmtCents(econ.priceUsdCents)} />
                 {econ.priceCgMicro
                   ? <KV k={t('ui.or')} v={fmtAmount(BigInt(econ.priceCgMicro), 'CG')} />
@@ -211,9 +212,10 @@ export default function Shop() {
                 {api?.evPct !== undefined && <KV k={t('ui.modelFloor')} v={t('ui.ofPrice', { pct: Math.round(api.evPct) })} />}
               </CleanZone>
 
-              <SprayNozzleButton disabled={disabled} onClick={() => (connected ? setSel({ sku, qty: 1, currency: Currency.SOL }) : setVisible(true))}>
-                {starterGone ? t('ui.starterClaimed') : capLeft === 0 ? t('ui.capReached') : connected ? t('services.buy') : t('ui.connectBuy')}
-              </SprayNozzleButton>
+              <div className="pack-buy">
+                <SprayNozzleButton disabled={disabled} onClick={() => (connected ? setSel({ sku, qty: 1, currency: Currency.SOL }) : setVisible(true))}>
+                  {starterGone ? t('ui.starterClaimed') : capLeft === 0 ? t('ui.capReached') : connected ? t('services.buy') : t('ui.connectBuy')}
+                </SprayNozzleButton>
               </div>
             </div>
           );

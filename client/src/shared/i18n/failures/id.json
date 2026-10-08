@@ -201,5 +201,6 @@
   "preorderMemoMismatch": "Memo pembayaran tidak cocok dengan reservasi ini.",
   "preorderUnknownPayer": "Tanpa memo — kirim pembayaran dari wallet yang terhubung.",
   "preorderAlreadyConfirmed": "Signature pembayaran ini sudah dikreditkan ke sebuah reservasi.",
-  "preorderNothingToDeliver": "Tidak ada preorder lunas yang menunggu pengiriman."
+  "preorderNothingToDeliver": "Tidak ada preorder lunas yang menunggu pengiriman.",
+  "confirmationUnknown": "Transaksi sudah dikirim, tetapi konfirmasi belum tersedia. Periksa di Explorer dan perbarui saldo sebelum mencoba lagi."
 }

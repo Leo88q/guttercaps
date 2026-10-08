@@ -43,6 +43,7 @@ export function humanizeTxError(error: unknown): string {
     return e.code === 'rate_limited' && typeof seconds === 'number' && Number.isSafeInteger(seconds) && seconds >= 0
       ? `${summary} ${t('failures.rateWait', { seconds })}` : summary;
   }
+  if (e.code === 'confirmation_unknown') return t('failures.confirmationUnknown');
   // Structured on-chain failures take precedence over incidental words in a wallet's prose.
   const custom = parseCustomError(e);
   if (custom) {

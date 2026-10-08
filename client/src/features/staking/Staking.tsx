@@ -10,7 +10,7 @@ import { LOCK_TIERS, fullSetBonusMult, impliedApy } from '@guttercaps/economy';
 import { useStakingOverview, useStakingMe, useMyChips, type Chip } from '@/api/hooks';
 import { useGameConfig, useStakingChain, useWalletLike, useBalances } from '@/chain/hooks';
 import { pendingReward } from '@/chain/accounts';
-import { sendTx } from '@/chain/tx';
+import { sendTx, TxError } from '@/chain/tx';
 import { resolveCompressedChip, resolveCompressedUnstakeClaim } from '@/chain/flows/compressedChip';
 import { stakeCgIx, unstakeCgIx, stakeCompressedChipV2Ix, unstakeCompressedChipIx, unstakePenalty, MIN_STAKE_MICRO } from '@/chain/ix/staking';
 import { dasClient } from '@/features/market/payment';
@@ -69,7 +69,7 @@ export default function Staking() {
       void qc.invalidateQueries({ queryKey: ['chain'] });
       void qc.invalidateQueries({ queryKey: ['me'] });
     } catch (e) {
-      toast({ kind: 'error', title: { key: 'screens.transactionFailed', params: { action: { key: kind } } }, error: e });
+      toast({ kind: 'error', title: { key: 'screens.transactionFailed', params: { action: { key: kind } } }, error: e, href: e instanceof TxError && e.signature ? EXPLORER.tx(e.signature) : undefined });
     } finally { setBusy(false); }
   }
   const ata = () => createAtaIdempotentIx(wallet!.publicKey, wallet!.publicKey, cgMint!);

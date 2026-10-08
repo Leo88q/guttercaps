@@ -94,6 +94,7 @@ const es: Messages = {
     acceptNotFound: 'No hay cuenta de combate para ese retador y nonce.',
     acceptNotOpen: 'Ese combate está {status}, no abierto.',
     acceptSelf: 'No puedes aceptar tu propio combate.',
+    lookupSetup: "Una apuesta puede pedir confirmaciones adicionales para preparar una tabla de direcciones reutilizable. Se usa SOL para comisiones y depósito recuperable; la apuesta en $CG se envía solo en la transacción final.",
     squadTooWeak: "Poder del escuadrón {power} / {min}. Elige gorras más fuertes o mejóralas para desbloquear combates de clasificación y apuestas.",
     stakedAllowed: "Las gorras en stake también pueden luchar; no necesitas retirarlas.",
     acceptNeedSquad: 'Elige primero un escuadrón de tres gorras.',

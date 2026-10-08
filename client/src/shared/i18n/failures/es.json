@@ -201,5 +201,6 @@
   "preorderMemoMismatch": "El memo del pago no coincide con esta reserva.",
   "preorderUnknownPayer": "Sin memo adjunto: envía el pago desde tu billetera conectada.",
   "preorderAlreadyConfirmed": "Esta firma de pago ya fue acreditada a una reserva.",
-  "preorderNothingToDeliver": "No hay reservas pagadas esperando entrega."
+  "preorderNothingToDeliver": "No hay reservas pagadas esperando entrega.",
+  "confirmationUnknown": "La transacción se envió, pero no hay confirmación. Revísala en Explorer y actualiza tu saldo antes de reintentar."
 }

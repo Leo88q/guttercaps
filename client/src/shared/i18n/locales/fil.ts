@@ -94,6 +94,7 @@ const fil: Messages = {
     acceptNotFound: 'Walang account ng laban para sa challenger at nonce na iyan.',
     acceptNotOpen: '{status} ang labang iyan, hindi bukas.',
     acceptSelf: 'Hindi mo matanggap ang sarili mong laban.',
+    lookupSetup: "Maaaring humingi ng dagdag na kumpirmasyon ang laban para sa reusable address table. Kailangan ng SOL para sa fees at refundable table rent; sa huling transaksyon lang ipapadala ang pustang $CG.",
     squadTooWeak: "Lakas ng squad {power} / {min}. Pumili ng mas malalakas na cap o i-upgrade ang mga ito para sa ranked at wager battles.",
     stakedAllowed: "Puwedeng lumaban ang mga naka-stake na cap — hindi kailangang i-unstake.",
     acceptNeedSquad: 'Pumili muna ng squad na tatlong cap.',

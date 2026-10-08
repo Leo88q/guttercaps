@@ -201,5 +201,6 @@
   "preorderMemoMismatch": "O memo do pagamento não corresponde a esta reserva.",
   "preorderUnknownPayer": "Sem memo anexado — envie o pagamento da sua carteira conectada.",
   "preorderAlreadyConfirmed": "Esta assinatura de pagamento já foi creditada a uma reserva.",
-  "preorderNothingToDeliver": "Nenhuma pré-venda paga aguardando entrega."
+  "preorderNothingToDeliver": "Nenhuma pré-venda paga aguardando entrega.",
+  "confirmationUnknown": "A transação foi enviada, mas não há confirmação. Confira no Explorer e atualize o saldo antes de tentar novamente."
 }

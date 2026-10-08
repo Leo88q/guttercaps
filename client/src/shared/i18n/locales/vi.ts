@@ -94,6 +94,7 @@ const vi: Messages = {
     acceptNotFound: 'Không có tài khoản trận đấu cho người thách đấu và nonce này.',
     acceptNotOpen: 'Trận đấu này đang {status}, không mở.',
     acceptSelf: 'Bạn không thể nhận trận đấu của chính mình.',
+    lookupSetup: "Trận cược có thể cần xác nhận ví bổ sung để tạo bảng địa chỉ tái sử dụng. Cần SOL cho phí và tiền thuê bảng có thể hoàn lại; cược $CG chỉ gửi trong giao dịch cuối.",
     squadTooWeak: "Sức mạnh đội {power} / {min}. Chọn nắp mạnh hơn hoặc nâng cấp để mở trận xếp hạng và đặt cược.",
     stakedAllowed: "Nắp đang stake vẫn có thể chiến đấu — không cần rút stake.",
     acceptNeedSquad: 'Hãy chọn đội hình ba mũ trước.',

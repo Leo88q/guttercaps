@@ -94,6 +94,7 @@ const pt: Messages = {
     acceptNotFound: 'Nenhuma conta de batalha para esse desafiante e nonce.',
     acceptNotOpen: 'Essa batalha está {status}, não aberta.',
     acceptSelf: 'Você não pode aceitar a sua própria batalha.',
+    lookupSetup: "Uma aposta pode pedir confirmações extras para preparar uma tabela de endereços reutilizável. É preciso SOL para taxas e depósito recuperável; a aposta em $CG só é enviada na transação final.",
     squadTooWeak: "Poder do esquadrão {power} / {min}. Escolha caps mais fortes ou melhore-os para liberar batalhas ranqueadas e com aposta.",
     stakedAllowed: "Caps em stake também podem lutar — não é preciso retirá-los.",
     acceptNeedSquad: 'Escolha primeiro um esquadrão de três bonés.',

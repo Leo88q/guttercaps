@@ -94,6 +94,7 @@ const id: Messages = {
     acceptNotFound: 'Tidak ada akun pertarungan untuk penantang dan nonce itu.',
     acceptNotOpen: 'Pertarungan itu {status}, bukan terbuka.',
     acceptSelf: 'Kamu tidak bisa menerima pertarunganmu sendiri.',
+    lookupSetup: "Taruhan mungkin meminta konfirmasi dompet tambahan untuk menyiapkan tabel alamat yang dapat dipakai ulang. Perlu SOL untuk biaya dan deposit tabel yang dapat dikembalikan; taruhan $CG hanya dikirim pada transaksi terakhir.",
     squadTooWeak: "Kekuatan skuad {power} / {min}. Pilih cap yang lebih kuat atau tingkatkan untuk membuka pertarungan peringkat dan taruhan.",
     stakedAllowed: "Cap yang di-stake juga bisa bertarung — tidak perlu ditarik.",
     acceptNeedSquad: 'Pilih skuad tiga topi dulu.',

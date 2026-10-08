@@ -166,6 +166,15 @@ describe('resolveCompressedChip', () => {
     await expect(resolveCompressedChip(e.connection, e.das, e.asset, { owner: e.owner })).resolves.toMatchObject({ claimState: expect.objectContaining({ buyer: e.owner }) });
   });
 
+  it('keeps the full DAS proof but sends only nodes below the registered canopy', async () => {
+    const e = env();
+    const fullProof = { ...dasProof(e.asset, e.merkleTree, e.leafIndex), proof: Array.from({ length: 14 }, () => Keypair.generate().publicKey) };
+    const das = { getAssetWithProof: async () => fullProof };
+    const result = await resolveCompressedChip(e.connection, das as never, e.asset);
+    expect(result.proof.proof).toHaveLength(14);
+    expect(result.leaf.proofNodes).toEqual(fullProof.proof.slice(0, 6)); // depth 14 minus canopy 8
+  });
+
   it('takes a pre-fetched tree meta instead of reading it again', async () => {
     const e = env();
     const spy = vi.spyOn(e.connection as unknown as { getAccountInfo: () => void }, 'getAccountInfo');

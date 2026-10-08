@@ -300,8 +300,11 @@ describe('payment rails: SKR is offered, and a rail that is off says why', () =>
     // empty one) and the 3-row gems grid the layout pins in CSS
     expect(container.querySelector('.pack-pity-spacer')).toBeTruthy();
     const css = readFileSync(resolve(import.meta.dirname, '../shared/ui/layout.css'), 'utf8');
-    expect(css).toMatch(/\.pack-grid \.odds-gems \{ grid-template-rows: repeat\(3/);
-    expect(css).toMatch(/\.pack-grid \.pack-pity-spacer \{ min-height/);
+    expect(css).toContain('grid-template-rows: repeat(5, minmax(54px, 1fr))');
+    // Shared intrinsic rows replace locale-specific spacer heights; Playwright checks geometry.
+    expect(css).toMatch(/grid-row: span 11; grid-template-rows: subgrid/);
+    expect(container.querySelectorAll('.pack-price')).toHaveLength(4);
+    expect(container.querySelectorAll('.pack-buy button')).toHaveLength(4);
     cleanup();
   });
 });
