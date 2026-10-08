@@ -1,0 +1,25 @@
+name: Switchboard public HTTP control
+
+# Independent network control. Deliberately NOT part of normal application CI,
+# not scheduled, no RPC credentials, no wallets, no deployment or transaction code.
+on:
+  push:
+    branches: ['arena/6d2512cc-guttercaps']
+    paths:
+      - '.github/workflows/switchboard-network.yml'
+      - 'scripts/switchboard-network.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Fixed public HTTPS reads only
+        run: python3 scripts/switchboard-network.py --github-annotations
