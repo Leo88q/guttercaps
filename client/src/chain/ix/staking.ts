@@ -13,6 +13,7 @@ import {
 import { SWITCHBOARD_ON_DEMAND_ID, SYSVAR_SLOT_HASHES_ID } from '../ids';
 import { CHIP_VOUCHER_REWARDS, ITEM_REWARDS, isChipRootKind, isItemRootKind, isSkrRootKind } from '@guttercaps/economy';
 import type { CompressedLeafProof } from './chipCore';
+import { createAtaIdempotentIx } from './spl';
 
 export const TIER_LOCK_SECS = [0, 30 * 86_400, 90 * 86_400, 180 * 86_400] as const;
 export const TIER_BOOST_BPS = [10_000, 15_000, 22_000, 30_000] as const;
@@ -30,6 +31,17 @@ export function stakeCgIx(a: { owner: PublicKey; tier: number; amount: bigint; c
     ],
     data: Buffer.from(ixData('stake_cg', new BorshWriter().u8(a.tier).u64(a.amount).toBytes())),
   });
+}
+
+/** First-use preparation belongs in the SAME transaction as the deposit. StakeCg requires
+ * vault_cg to exist; init_emission creates the pools, but not this SPL token account.
+ * Anyone may create the canonical ATA; only the emission PDA can authorize its funds. */
+export function stakeCgIxs(a: Parameters<typeof stakeCgIx>[0]): TransactionInstruction[] {
+  return [
+    createAtaIdempotentIx(a.owner, a.owner, a.cgMint),
+    createAtaIdempotentIx(a.owner, emissionPda()[0], a.cgMint),
+    stakeCgIx(a),
+  ];
 }
 
 /** amount = 0n → claim only */

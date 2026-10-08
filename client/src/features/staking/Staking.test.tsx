@@ -19,6 +19,8 @@ import { accountDiscriminator, ixDiscriminator } from '@/chain/anchor';
 import { BorshWriter } from '@/chain/borsh';
 import { bubblegumTreeMetaPda, compressedChipStatePda, compressedChipStakePda } from '@/chain/pdas';
 import { chainKeys } from '@/chain/hooks';
+import { ata, emissionPda } from '@/chain/pdas';
+import { ASSOCIATED_TOKEN_PROGRAM_ID } from '@/chain/ids';
 
 const OWNER = Keypair.generate().publicKey;
 const CG_MINT = Keypair.generate().publicKey;
@@ -225,4 +227,21 @@ it('the collection drawer also unstakes a genuinely staked cap without DAS', asy
   expect(sent[1].data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('unstake_compressed_chip')));
   expect(dasCalls).toBe(0);
   expect(onClose).toHaveBeenCalledOnce();
+});
+
+it('the first 30-day CG stake creates the shared vault before depositing, in one wallet transaction', async () => {
+  const qc = new QueryClient();
+  seed(qc, false);
+  mount(qc);
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: '1000' } });
+  fireEvent.click(await screen.findByRole('button', { name: /^Stake 30/ }));
+  await waitFor(() => expect(sent).toHaveLength(3));
+  expect(sent[0].programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)).toBe(true);
+  expect(sent[1].programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)).toBe(true);
+  expect(sent[1].keys[1].pubkey.equals(ata(CG_MINT, emissionPda()[0]))).toBe(true);
+  expect(sent[1].keys[2].pubkey.equals(emissionPda()[0])).toBe(true);
+  expect([...sent[1].data]).toEqual([1]); // CreateIdempotent, never a transfer to an arbitrary account
+  expect(sent[2].data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('stake_cg')));
+  expect(sent[2].data[8]).toBe(1); // 30 days; the fix must not change the chosen tier
+  expect(sent[2].keys[6].pubkey.equals(sent[1].keys[1].pubkey)).toBe(true);
 });

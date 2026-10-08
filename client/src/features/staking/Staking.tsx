@@ -12,7 +12,7 @@ import { useGameConfig, useStakingChain, useWalletLike, useBalances } from '@/ch
 import { pendingReward } from '@/chain/accounts';
 import { sendTx, TxError } from '@/chain/tx';
 import { resolveCompressedChip, resolveCompressedUnstakeClaim } from '@/chain/flows/compressedChip';
-import { stakeCgIx, unstakeCgIx, stakeCompressedChipV2Ix, unstakeCompressedChipIx, unstakePenalty, MIN_STAKE_MICRO } from '@/chain/ix/staking';
+import { stakeCgIxs, unstakeCgIx, stakeCompressedChipV2Ix, unstakeCompressedChipIx, unstakePenalty, MIN_STAKE_MICRO } from '@/chain/ix/staking';
 import { dasClient } from '@/features/market/payment';
 import { createAtaIdempotentIx } from '@/chain/ix/spl';
 import { CleanZone, KV, Modal, Pill, Stat, Skeleton, Empty } from '@/shared/ui/primitives';
@@ -137,7 +137,7 @@ export default function Staking() {
           {amt !== null && amt > 0n && <KV k={t('ui.perDay')} v={fmtCg(BigInt(Math.round((Number(amt) * apy) / 100 / 365)))} />}
         </CleanZone>
         {tier > 0 && positions.some((p) => p.tier === tier) && <div className="warn">{t('ui.topUpLock')}</div>}
-        <CleanConfirmButton disabled={busy || !amt || amt < MIN_STAKE_MICRO} onClick={() => run('staking.stake', async () => [ata(), stakeCgIx({ owner: wallet!.publicKey, tier, amount: amt!, cgMint: cgMint! })])}>{t('staking.stake')} {tierName(tier)}</CleanConfirmButton>
+        <CleanConfirmButton disabled={busy || !amt || amt < MIN_STAKE_MICRO} onClick={() => run('staking.stake', async () => stakeCgIxs({ owner: wallet!.publicKey, tier, amount: amt!, cgMint: cgMint! }))}>{t('staking.stake')} {tierName(tier)}</CleanConfirmButton>
 
         {positions.length > 0 && (
           <div className="stack-sm">

@@ -268,8 +268,12 @@ async function stepAtas(conn: Connection, wallet: Keypair, mints: { cg: PublicKe
       if (!(await exists(conn, ata(m, owner)))) ixs.push(createAssociatedTokenAccountIdempotentInstruction(wallet.publicKey, ata(m, owner), owner, m));
     }
   }
+  // stake_cg requires vault_cg to be an initialized TokenAccount. init_emission only
+  // creates emission + the two pools; do not confuse this vault with chip_core's vault.
+  const stakingVault = ata(mints.cg, emissionPda);
+  if (!(await exists(conn, stakingVault))) ixs.push(createAssociatedTokenAccountIdempotentInstruction(wallet.publicKey, stakingVault, emissionPda, mints.cg));
   if (ixs.length === 0) { console.log('  atas: all present — skip'); return; }
-  await send(conn, wallet, ixs, `create ${ixs.length} token accounts (vault / treasury / buyback)`);
+  await send(conn, wallet, ixs, `create ${ixs.length} token accounts (vault / treasury / buyback / staking)`);
 }
 
 async function stepEmission(conn: Connection, wallet: Keypair, cg: PublicKey) {
