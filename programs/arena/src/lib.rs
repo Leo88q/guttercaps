@@ -215,20 +215,20 @@ fn validate_compressed_squad<'info>(
 ) -> Result<([Pubkey; SQUAD], u32)> {
     require!(rem.len() == SQUAD, ArenaError::DuplicateChip);
     let mut keys = [Pubkey::default(); SQUAD];
-    let mut states: Vec<Account<CompressedMintClaim>> = Vec::with_capacity(SQUAD);
+    let mut states: Vec<CompressedMintClaim> = Vec::with_capacity(SQUAD);
     for i in 0..SQUAD {
         let claim_ai = &rem[i];
         require_keys_eq!(*claim_ai.owner, chip_core::ID, ArenaError::NotOwner);
-        let claim: Account<CompressedMintClaim> = Account::try_from(claim_ai)?;
+        let claim = CompressedMintClaim::try_deserialize_compat(&claim_ai.try_borrow_data()?)?;
         require_keys_eq!(claim.buyer, *owner, ArenaError::NotOwner);
         // Same rule as `validate_squad` / v2 (SEC-F14): owned, not listed, not consumed by fusion;
         // staked claims may fight. A claim is the paid pack outcome — rarity and level are final
         // before the Bubblegum mint — so an unminted claim fights with its recorded power.
         require!(!claim.listed && !claim.consumed, ArenaError::ChipBusy);
         for k in &keys[..i] {
-            require!(*k != claim.key(), ArenaError::DuplicateChip);
+            require!(*k != claim_ai.key(), ArenaError::DuplicateChip);
         }
-        keys[i] = claim.key();
+        keys[i] = claim_ai.key();
         states.push(claim);
     }
     let power = states
@@ -271,8 +271,16 @@ fn validate_compressed_squad_v2<'info>(
         let tree_ai = rem.get(offset + 2).ok_or(error!(ArenaError::InvalidBubblegumProof))?;
         let proof_end = offset + 3 + depth;
         require_keys_eq!(*claim_ai.owner, chip_core::ID, ArenaError::InvalidBubblegumProof);
-        let claim: Account<CompressedMintClaim> = Account::try_from(claim_ai)
-            .map_err(|_| error!(ArenaError::InvalidBubblegumProof))?;
+        let claim = {
+            let claim_data = claim_ai.try_borrow_data()?;
+            match CompressedMintClaim::try_deserialize_compat(&claim_data) {
+                Ok(c) => c,
+                Err(e) => {
+                    msg!("claim decode failed len={} err={}", claim_data.len(), e);
+                    return Err(error!(ArenaError::InvalidBubblegumProof));
+                }
+            }
+        };
         let chip: Account<CompressedChipState> = Account::try_from(chip_ai)
             .map_err(|_| error!(ArenaError::InvalidBubblegumProof))?;
         require_keys_eq!(claim.buyer, *owner, ArenaError::NotOwner);
@@ -284,7 +292,7 @@ fn validate_compressed_squad_v2<'info>(
             claim.minted && claim.registered && !claim.listed && !claim.consumed,
             ArenaError::ChipBusy
         );
-        require_keys_eq!(chip.claim, claim.key(), ArenaError::InvalidBubblegumProof);
+        require_keys_eq!(chip.claim, claim_ai.key(), ArenaError::InvalidBubblegumProof);
         require_keys_eq!(chip.merkle_tree, *tree_ai.key, ArenaError::InvalidBubblegumProof);
         require_keys_eq!(
             chip.asset,
@@ -313,9 +321,9 @@ fn validate_compressed_squad_v2<'info>(
         )
         .map_err(|_| error!(ArenaError::InvalidBubblegumProof))?;
         for key in &keys[..i] {
-            require!(*key != claim.key(), ArenaError::DuplicateChip);
+            require!(*key != claim_ai.key(), ArenaError::DuplicateChip);
         }
-        keys[i] = claim.key();
+        keys[i] = claim_ai.key();
         power = power
             .checked_add(
                 (claim.rarity.base_power() as u64

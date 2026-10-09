@@ -43,6 +43,15 @@ describe('annotateArenaProofError', () => {
     expect((annotated as { details: { left: string; right: string } }).details).toEqual(expect.objectContaining({ left: LEFT, right: RIGHT }));
   });
 
+  it('labels a 6006 with no Left/Right at lib.rs:275 as claim-decode', () => {
+    const error = {
+      message: `Program ${ARENA_ID.toBase58()} failed: custom program error: 0x1776`,
+      logs: ['Program log: AnchorError thrown in programs/arena/src/lib.rs:275. Error Code: InvalidBubblegumProof. Error Number: 6006.'],
+    };
+    const annotated = annotateArenaProofError(error, []);
+    expect((annotated as { message: string }).message).toMatch(/^arena 6006 claim-decode/);
+  });
+
   it('does not rewrite a chip_core 6006 (DailyCapReached)', () => {
     const error = { message: `Program ${CHIP_CORE_ID.toBase58()} failed: custom program error: 0x1776` };
     expect(annotateArenaProofError(error, [{

@@ -301,6 +301,29 @@ pub struct CompressedMintClaim {
     pub founder: bool,
 }
 
+impl CompressedMintClaim {
+    /// Accounts written before `founder` are one byte short of `INIT_SPACE`.
+    /// The TypeScript decoder already defaults that byte to `false`; Anchor's
+    /// `Account<CompressedMintClaim>` does not, so a rebuilt arena/market
+    /// rejects every live Devnet claim with `AccountDidNotDeserialize`.
+    /// Pad only that trailing bool — a shorter buffer is still a hard error.
+    pub fn try_deserialize_compat(data: &[u8]) -> Result<Self> {
+        const NEED: usize = 8 + CompressedMintClaim::INIT_SPACE;
+        if data.len() >= NEED {
+            let mut cursor: &[u8] = data;
+            return Self::try_deserialize(&mut cursor);
+        }
+        require!(
+            data.len() >= NEED - 1,
+            ChipError::InvalidChipState
+        );
+        let mut padded = [0u8; NEED];
+        padded[..data.len()].copy_from_slice(data);
+        let mut cursor: &[u8] = &padded;
+        Self::try_deserialize(&mut cursor)
+    }
+}
+
 /// Settlement state for a paid compressed pack. The pending purchase remains
 /// open until every claim is registered or an unminted expired claim is
 /// cancelled through the recovery path.
@@ -728,4 +751,75 @@ pub struct CompressedClaimsFused {
     pub result_collection_idx: u8,
     pub result_rarity: u8,
     pub fee_burned: u64,
+}
+
+#[cfg(test)]
+mod claim_compat_tests {
+    use super::*;
+    use crate::economy::Rarity;
+    use anchor_lang::{AccountDeserialize, AccountSerialize};
+
+    fn sample(founder: bool) -> CompressedMintClaim {
+        CompressedMintClaim {
+            buyer: Pubkey::new_from_array([7; 32]),
+            collection_idx: 2,
+            rarity: Rarity::Rare,
+            level: 4,
+            game_index: 99,
+            expires_at: 0,
+            settlement: Pubkey::default(),
+            index_reserved: true,
+            minted: true,
+            registered: true,
+            consumed: false,
+            listed: false,
+            bump: 255,
+            staked: false,
+            origin: Pubkey::new_from_array([9; 32]),
+            lock_until: 0,
+            founder,
+        }
+    }
+
+    fn serialize(claim: &CompressedMintClaim) -> Vec<u8> {
+        let mut data = Vec::new();
+        claim.try_serialize(&mut data).expect("serialize claim");
+        data
+    }
+
+    #[test]
+    fn full_account_roundtrips_founder() {
+        let data = serialize(&sample(true));
+        assert_eq!(data.len(), 8 + CompressedMintClaim::INIT_SPACE);
+        let decoded = CompressedMintClaim::try_deserialize_compat(&data).unwrap();
+        assert!(decoded.founder);
+        assert_eq!(decoded.game_index, 99);
+    }
+
+    #[test]
+    fn missing_founder_byte_defaults_false() {
+        let mut data = serialize(&sample(true));
+        data.pop();
+        assert_eq!(data.len(), 8 + CompressedMintClaim::INIT_SPACE - 1);
+        let decoded = CompressedMintClaim::try_deserialize_compat(&data).unwrap();
+        assert!(!decoded.founder);
+        assert!(decoded.minted && decoded.registered);
+        assert_eq!(decoded.level, 4);
+    }
+
+    #[test]
+    fn two_bytes_short_is_still_an_error() {
+        let mut data = serialize(&sample(false));
+        data.truncate(data.len() - 2);
+        assert!(CompressedMintClaim::try_deserialize_compat(&data).is_err());
+    }
+
+    #[test]
+    fn strict_borsh_rejects_the_short_account_that_compat_accepts() {
+        let mut data = serialize(&sample(true));
+        data.pop();
+        let mut cursor: &[u8] = &data;
+        assert!(CompressedMintClaim::try_deserialize(&mut cursor).is_err());
+        assert!(CompressedMintClaim::try_deserialize_compat(&data).is_ok());
+    }
 }

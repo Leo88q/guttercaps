@@ -97,7 +97,10 @@ export function annotateArenaProofError(error: unknown, traces: readonly ArenaAs
   const text = [snap.message, ...(snap.logs ?? [])].join('\n');
   const keys = parseRequireKeysEq(text);
   const chips = leafIdTraceRows(traces, keys);
-  const banner = leafIdBanner(chips, keys);
+  const claimDecode = !keys && (/lib\.rs:275\b/.test(text) || /claim decode failed/.test(text));
+  const banner = claimDecode
+    ? ['arena 6006 claim-decode', 'CompressedMintClaim did not deserialize (trailing founder byte is optional on live claims)', ...chips.map((row) => `chip ${row.asset} claim=${row.claim}`)].join('\n')
+    : leafIdBanner(chips, keys);
   const details = { ...(typeof snap.details === 'object' && snap.details ? snap.details as Record<string, unknown> : {}), left: keys?.left, right: keys?.right, chips, banner };
   if (error && typeof error === 'object') {
     const current = error as { message?: string };
