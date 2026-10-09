@@ -33,6 +33,7 @@
 #   BRANCH=main             branch to sync (default main)           REMOTE=origin
 #   WALLET=~/.config/solana/id.json   deployer = upgrade authority = setup admin
 #   DEVNET_RPC_URL=https://api.devnet.solana.com   use your own devnet RPC if the public one throttles
+#   PROGRAMS="chip_core market staking arena"   subset to deploy (e.g. PROGRAMS=arena)
 #   PROGRAM_KEYS_DIR=DIR    directory holding the 4 <program>-keypair.json you deploy with
 #   REPO_DIR=DIR            repository root (default: detected)
 #   PYTH_API_KEY=KEY        Pyth API key for Hermes (else the saved one, else asked once); https://pythdata.app/signup
@@ -62,7 +63,7 @@ awk() { LC_ALL=C command awk "$@"; }
 
 ALL_STAGES="update doctor toolchain verify rust localnet ids build deploy setup env pyth"
 OPTIN_STAGES="run faucet"
-PROGRAMS="chip_core market staking arena"
+PROGRAMS=${PROGRAMS:-chip_core market staking arena}
 DEVNET_GENESIS="EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG"
 
 REMOTE=${REMOTE:-origin}
