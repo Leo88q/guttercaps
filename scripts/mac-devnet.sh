@@ -773,7 +773,13 @@ deploy_program() { # $1 = program
     cap=$(program_show_field "$show" "Data Length" | awk '{print $1}')
     if [ -n "$cap" ] && [ "$len" -gt "$cap" ]; then
       grow=$((len - cap))
-      say "  новая версия больше ($len > $cap): расширяю программу на $grow байт"
+      # BPFLoader Upgradeable rejects ExtendProgram under 10240 bytes unless extending to max size.
+      if [ "$grow" -lt 10240 ]; then
+        say "  новая версия больше ($len > $cap): лоадер не принимает extend на $grow байт (< 10240) — расширяю на 10240"
+        grow=10240
+      else
+        say "  новая версия больше ($len > $cap): расширяю программу на $grow байт"
+      fi
       run solana program extend "$id" "$grow" -u "$RPC_URL" -k "$WALLET"
     fi
     # identical bytes already on chain (a re-run, or a program this change did not touch): nothing to upload
