@@ -27,8 +27,20 @@ describe('annotateArenaProofError', () => {
     const annotated = annotateArenaProofError(error, [{
       asset: stored, claim, merkleTree, leafIndex, leafNonce: BigInt(leafIndex), stored,
     }]);
-    const chips = (annotated as { details: { chips: { match: { left: string; right: string } }[] } }).details.chips;
+    const chips = (annotated as { message: string; details: { chips: { match: { left: string; right: string } }[]; banner: string } }).details.chips;
     expect(chips[0].match).toEqual({ left: 'stored', right: 'fromIndexU32' });
+    expect((annotated as { message: string }).message).toMatch(/^arena 6006 leaf-id/);
+    expect((annotated as { message: string }).message).toContain('fromIndexU32');
+  });
+
+  it('still banners 6006 when identity traces are missing', () => {
+    const error = {
+      message: `Program ${ARENA_ID.toBase58()} failed: custom program error: 0x1776`,
+      logs: [`Program log: Left: ${LEFT}`, `Program log: Right: ${RIGHT}`],
+    };
+    const annotated = annotateArenaProofError(error, []);
+    expect((annotated as { message: string }).message).toContain('no identity traces');
+    expect((annotated as { details: { left: string; right: string } }).details).toEqual(expect.objectContaining({ left: LEFT, right: RIGHT }));
   });
 
   it('does not rewrite a chip_core 6006 (DailyCapReached)', () => {

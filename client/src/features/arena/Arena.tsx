@@ -17,7 +17,7 @@ import { initRandomnessIx } from '@/chain/ix/rng';
 import { recentLookupSlots } from '@/chain/lookupTableSlots';
 import { createCompressedBattleV2Ix, acceptCompressedBattleV2Ix, wagerSplit, MIN_WAGER, MAX_WAGER, MIN_SQUAD_POWER, leagueOf, type CompressedArenaChipProof } from '@/chain/ix/arena';
 import { resolveCompressedChipIdentity, resolveCompressedSquad } from '@/chain/flows/compressedChip';
-import { annotateArenaProofError, type ArenaAssetTrace } from '@/chain/flows/arenaProofError';
+import { annotateArenaProofError, leafIdTraceRows, type ArenaAssetTrace } from '@/chain/flows/arenaProofError';
 import { dasClient } from '@/features/market/payment';
 import { battlePda } from '@/chain/pdas';
 import { BATTLE_STATUS, decodeWagerBattle, type WagerBattle } from '@/chain/accounts';
@@ -144,6 +144,7 @@ export default function Arena() {
         const id = await resolveCompressedChipIdentity(connection, new PublicKey(c.asset!), { owner: wallet.publicKey, purpose: 'arena' });
         traces.push({ asset: id.asset, claim: id.claim, merkleTree: id.merkleTree, leafIndex: id.leafIndex, leafNonce: id.leafNonce, stored: id.chipState.asset });
       }
+      console.info('[arena] leaf-id', leafIdTraceRows(traces));
       const nonce = freshNonce();
       // arena-owned randomness PDA ["rng", 2, challenger, nonce]: init here, commit inside create_battle_v2 (SEC-C3 part 2)
       const rnd = await prepareRandomness(connection, wallet.publicKey, RNG_KIND.BATTLE, nonce);
@@ -227,6 +228,7 @@ export default function Arena() {
         const id = await resolveCompressedChipIdentity(connection, new PublicKey(c.asset!), { owner: wallet.publicKey, purpose: 'arena' });
         traces.push({ asset: id.asset, claim: id.claim, merkleTree: id.merkleTree, leafIndex: id.leafIndex, leafNonce: id.leafNonce, stored: id.chipState.asset });
       }
+      console.info('[arena] leaf-id', leafIdTraceRows(traces));
       const { signature } = await sendArenaTx(connection, wallet, async () => {
         const proofs = await squadProofs();
         const ix = acceptCompressedBattleV2Ix({
