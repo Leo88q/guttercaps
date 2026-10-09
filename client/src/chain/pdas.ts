@@ -34,9 +34,9 @@ export const compressedSettlementPda = (buyer: PublicKey, nonce: bigint) => find
 export const compressedListingPda = (claim: PublicKey) => find([enc('compressed_listing'), claim.toBytes()], MARKET_ID);
 /** Listing for an already-registered Bubblegum V2 asset. */
 export const compressedAssetListingPda = (asset: PublicKey) => find([enc('compressed_asset_listing'), asset.toBytes()], MARKET_ID);
-/** Bubblegum V2 leaf asset PDA `["asset", tree, leafIndex LE]`. */
+/** Bubblegum V2 leaf asset PDA `["asset", tree, u64 LE index]` — same as `deriveBubblegumLeafAssetId`. */
 export const bubblegumLeafAssetPda = (merkleTree: PublicKey, leafIndex: number) =>
-  find([enc('asset'), merkleTree.toBytes(), u32le(leafIndex)], MPL_BUBBLEGUM_V2_ID);
+  find([enc('asset'), merkleTree.toBytes(), u64le(BigInt(leafIndex >>> 0))], MPL_BUBBLEGUM_V2_ID);
 export const bubblegumTreeConfigPda = (merkleTree: PublicKey) => find([merkleTree.toBytes()], MPL_BUBBLEGUM_V2_ID);
 export const pendingPackPda = (buyer: PublicKey, nonce: bigint) => find([enc('pending'), buyer.toBytes(), u64le(nonce)], CHIP_CORE_ID);
 export const pityPda = (wallet: PublicKey) => find([enc('pity'), wallet.toBytes()], CHIP_CORE_ID);

@@ -24,7 +24,7 @@ import { decodeCompressedChipState, decodeCompressedMintClaim, decodeCompressedC
 import { bubblegumTreeMetaPda, compressedChipStatePda, compressedChipStakePda } from '../pdas';
 import { decodeBubblegumTreeMeta } from '../accounts';
 import type { CompressedLeafProof } from '../ix/chipCore';
-import { deriveBubblegumLeafAssetId, resolveRegisteredLeafFromTreeAccount, type BubblegumProof } from '../bubblegum';
+import { leafAssetIdCandidates, resolveRegisteredLeafFromTreeAccount, type BubblegumProof } from '../bubblegum';
 
 export interface ResolvedCompressedChip {
   /** the Bubblegum V2 asset id (the leaf) */
@@ -97,12 +97,12 @@ function mismatch(left: PublicKey, right: PublicKey, extra: Record<string, unkno
 }
 
 function assertCanonicalRegisteredAsset(requested: PublicKey, state: CompressedChipState): void {
-  const fromIndex = deriveBubblegumLeafAssetId(state.merkleTree, state.leafIndex);
-  const fromNonce = deriveBubblegumLeafAssetId(state.merkleTree, state.leafNonce);
+  const { fromIndex, fromIndexU32, fromNonce } = leafAssetIdCandidates(state.merkleTree, state.leafIndex, state.leafNonce);
   const extra = {
     requested: requested.toBase58(),
     stored: state.asset.toBase58(),
     fromIndex: fromIndex.toBase58(),
+    fromIndexU32: fromIndexU32.toBase58(),
     fromNonce: fromNonce.toBase58(),
     tree: state.merkleTree.toBase58(),
     leafIndex: state.leafIndex,

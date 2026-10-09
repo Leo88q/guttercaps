@@ -17,6 +17,7 @@ import { initRandomnessIx } from '@/chain/ix/rng';
 import { recentLookupSlots } from '@/chain/lookupTableSlots';
 import { createCompressedBattleV2Ix, acceptCompressedBattleV2Ix, wagerSplit, MIN_WAGER, MAX_WAGER, MIN_SQUAD_POWER, leagueOf, type CompressedArenaChipProof } from '@/chain/ix/arena';
 import { resolveCompressedChipIdentity, resolveCompressedSquad } from '@/chain/flows/compressedChip';
+import { annotateArenaProofError, type ArenaAssetTrace } from '@/chain/flows/arenaProofError';
 import { dasClient } from '@/features/market/payment';
 import { battlePda } from '@/chain/pdas';
 import { BATTLE_STATUS, decodeWagerBattle, type WagerBattle } from '@/chain/accounts';
@@ -135,11 +136,13 @@ export default function Arena() {
     if (isMock()) { toast({ kind: 'money', title: { key: 'screens.wagerCreated' }, body: { key: 'screens.escrowed', params: { amount: amountText(amountMicro, 'CG') } } }); setWager(null); return; }
     if (!wallet || !cfg.data) return;
     setBusy(true);
+    const traces: ArenaAssetTrace[] = [];
     try {
       // Fail closed on the same asset-id invariant the program checks at arena:289, before
       // Switchboard selection or any wallet prompt. A mismatch is not a stale proof.
       for (const c of squad) {
-        await resolveCompressedChipIdentity(connection, new PublicKey(c.asset!), { owner: wallet.publicKey, purpose: 'arena' });
+        const id = await resolveCompressedChipIdentity(connection, new PublicKey(c.asset!), { owner: wallet.publicKey, purpose: 'arena' });
+        traces.push({ asset: id.asset, claim: id.claim, merkleTree: id.merkleTree, leafIndex: id.leafIndex, leafNonce: id.leafNonce, stored: id.chipState.asset });
       }
       const nonce = freshNonce();
       // arena-owned randomness PDA ["rng", 2, challenger, nonce]: init here, commit inside create_battle_v2 (SEC-C3 part 2)
@@ -166,7 +169,7 @@ export default function Arena() {
       setBattle(null); setBattleErr(null);
       setWager(null);
     } catch (e) {
-      toast({ kind: 'error', title: { key: 'screens.wagerFailed' }, error: e, href: e instanceof TxError && e.signature ? EXPLORER.tx(e.signature) : undefined });
+      toast({ kind: 'error', title: { key: 'screens.wagerFailed' }, error: annotateArenaProofError(e, traces), href: e instanceof TxError && e.signature ? EXPLORER.tx(e.signature) : undefined });
     } finally { setBusy(false); }
   }
 
@@ -218,7 +221,12 @@ export default function Arena() {
     if (!battle || !wallet || !cfg.data) return;
     if (!ready) { setBattleErr(squadHint); return; }
     setBusy(true);
+    const traces: ArenaAssetTrace[] = [];
     try {
+      for (const c of squad) {
+        const id = await resolveCompressedChipIdentity(connection, new PublicKey(c.asset!), { owner: wallet.publicKey, purpose: 'arena' });
+        traces.push({ asset: id.asset, claim: id.claim, merkleTree: id.merkleTree, leafIndex: id.leafIndex, leafNonce: id.leafNonce, stored: id.chipState.asset });
+      }
       const { signature } = await sendArenaTx(connection, wallet, async () => {
         const proofs = await squadProofs();
         const ix = acceptCompressedBattleV2Ix({
@@ -230,7 +238,7 @@ export default function Arena() {
       toast({ kind: 'money', title: { key: 'arena.acceptOpened' }, body: { key: 'screens.escrowed', params: { amount: amountText(battle.wager, 'CG') } }, href: EXPLORER.tx(signature) });
       setBattle(null); setInvite(null);
     } catch (e) {
-      toast({ kind: 'error', title: { key: 'arena.acceptFailed' }, error: e, href: e instanceof TxError && e.signature ? EXPLORER.tx(e.signature) : undefined });
+      toast({ kind: 'error', title: { key: 'arena.acceptFailed' }, error: annotateArenaProofError(e, traces), href: e instanceof TxError && e.signature ? EXPLORER.tx(e.signature) : undefined });
     } finally { setBusy(false); }
   }
 

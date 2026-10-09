@@ -224,6 +224,25 @@ export function deriveBubblegumLeafAssetId(merkleTree: PublicKey, leafIndex: num
 }
 
 /**
+ * 4-byte LE index seed. Bubblegum 2.1.1 `get_asset_id` and on-chain `leaf_asset_id` use
+ * 8-byte LE. Keep this only to classify a 6006 Left/Right pair against a stale binary.
+ */
+export function deriveBubblegumLeafAssetIdU32(merkleTree: PublicKey, leafIndex: number): PublicKey {
+  const idx = new Uint8Array(4);
+  new DataView(idx.buffer).setUint32(0, leafIndex >>> 0, true);
+  return PublicKey.findProgramAddressSync([new TextEncoder().encode('asset'), merkleTree.toBytes(), idx], MPL_BUBBLEGUM_V2_ID)[0];
+}
+
+/** Canonical 8-byte index PDA, 4-byte index PDA, and 8-byte nonce PDA for one registered leaf. */
+export function leafAssetIdCandidates(merkleTree: PublicKey, leafIndex: number, leafNonce: bigint) {
+  return {
+    fromIndex: deriveBubblegumLeafAssetId(merkleTree, leafIndex),
+    fromIndexU32: deriveBubblegumLeafAssetIdU32(merkleTree, leafIndex),
+    fromNonce: deriveBubblegumLeafAssetId(merkleTree, leafNonce),
+  };
+}
+
+/**
  * Reconstruct a `BubblegumProof` directly from the on-chain `ConcurrentMerkleTree`
  * account and the deterministic `MetadataArgsV2` minted by `mint_compressed_chip`.
  * Used as an immediate fallback when the RPC endpoint does not expose Metaplex

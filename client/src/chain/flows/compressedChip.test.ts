@@ -123,6 +123,8 @@ describe('resolveCompressedChip', () => {
     }));
     expect((snap.details as { right: string }).right).toBe(deriveBubblegumLeafAssetId(e.merkleTree, e.leafIndex).toBase58());
     expect((snap.details as { right: string }).right).not.toBe(e.asset.toBase58());
+    expect((snap.details as { fromIndexU32: string }).fromIndexU32).toBeTruthy();
+    expect((snap.details as { fromIndexU32: string }).fromIndexU32).not.toBe((snap.details as { fromIndex: string }).fromIndex);
   });
 
   it('refuses a chip whose collection has no active tree', async () => {

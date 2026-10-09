@@ -76,7 +76,7 @@ export const compressedMintClaimPda = (origin: PublicKey, claimNonce: bigint) =>
 export const compressedMintClaimPdaForOrigin = compressedMintClaimPda;
 export const compressedSettlementPda = (buyer: PublicKey, nonce: bigint) => find([enc('compressed_settlement'), buyer.toBytes(), u64le(nonce)], CHIP_CORE_ID);
 export const bubblegumLeafAssetPda = (merkleTree: PublicKey, leafIndex: number) =>
-  find([enc('asset'), merkleTree.toBytes(), new BorshWriter().u32(leafIndex).toBytes()], MPL_BUBBLEGUM_V2_ID);
+  find([enc('asset'), merkleTree.toBytes(), new BorshWriter().u64(leafIndex >>> 0).toBytes()], MPL_BUBBLEGUM_V2_ID);
 export const bubblegumTreeConfigPda = (merkleTree: PublicKey) => find([merkleTree.toBytes()], MPL_BUBBLEGUM_V2_ID);
 export const pendingPackPda = (buyer: PublicKey, nonce: bigint) => find([enc('pending'), buyer.toBytes(), u64le(nonce)], CHIP_CORE_ID);
 export const pityPda = (wallet: PublicKey) => find([enc('pity'), wallet.toBytes()], CHIP_CORE_ID);

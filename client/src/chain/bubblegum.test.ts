@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Keypair } from '@solana/web3.js';
 import { keccak_256 } from '@noble/hashes/sha3';
-import { deriveBubblegumLeafAssetId, foldCompressionProof, resolveRegisteredLeafFromTreeAccount, v2LeafHash } from './bubblegum';
+import { deriveBubblegumLeafAssetId, deriveBubblegumLeafAssetIdU32, foldCompressionProof, leafAssetIdCandidates, resolveRegisteredLeafFromTreeAccount, v2LeafHash } from './bubblegum';
 
 // Independently materialize every tree level after appends AND replacements. ChangeLog.path
 // contains the changed branch, whereas rightmost_proof contains siblings. Both are real CMT layout.
@@ -84,5 +84,20 @@ describe('registered leaf proof from a consistent CMT snapshot', () => {
     const input = { ...tree.identities.get(0)!, owner: Keypair.generate().publicKey, treeAccountData: tree.snapshot() };
     expect(() => resolveRegisteredLeafFromTreeAccount(input)).toThrow(/did not fold/);
     expect(() => resolveRegisteredLeafFromTreeAccount({ ...input, treeAccountData: new Uint8Array(2) })).toThrow(/layout/);
+  });
+});
+
+describe('leaf asset id seed width', () => {
+  it('8-byte index never collides with 4-byte index, including nonce==index', () => {
+    const tree = Keypair.generate().publicKey;
+    for (const index of [0, 1, 7, 255, 256, 1_000_000]) {
+      const eight = deriveBubblegumLeafAssetId(tree, index);
+      const four = deriveBubblegumLeafAssetIdU32(tree, index);
+      expect(eight.toBase58()).not.toBe(four.toBase58());
+      const c = leafAssetIdCandidates(tree, index, BigInt(index));
+      expect(c.fromIndex.equals(eight)).toBe(true);
+      expect(c.fromIndexU32.equals(four)).toBe(true);
+      expect(c.fromNonce.equals(eight)).toBe(true);
+    }
   });
 });
