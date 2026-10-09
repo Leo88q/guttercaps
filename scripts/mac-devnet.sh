@@ -947,9 +947,17 @@ stage_deploy() {
   deploy_plan || die "не удалось узнать rent-ставку кластера через RPC ($RPC_URL) — бюджет не посчитан. Свой RPC: DEVNET_RPC_URL=… Повторить: bash scripts/mac-devnet.sh --from deploy"
   ensure_funds "$NEED"
   for p in $PROGRAMS; do deploy_program "$p"; done
-  step "проверка on-chain: байты == локальный .so, upgrade authority, пины Switchboard"
+  local verify=""
+  for p in $PROGRAMS; do
+    case "$p" in chip_core|arena) verify="${verify:+$verify,}$p" ;; esac
+  done
+  if [ -z "$verify" ]; then
+    info "verify-deploy onchain пропущен: в PROGRAMS нет chip_core/arena"
+    return 0
+  fi
+  step "проверка on-chain: байты == локальный .so, upgrade authority, пины Switchboard ($verify)"
   run env PROGRAM_CHIP_CORE="$(declared_id chip_core)" PROGRAM_ARENA="$(declared_id arena)" \
-    npm run verify-deploy -- onchain --cluster devnet --rpc "$RPC_URL" --authority "$WALLET_PUB"
+    npm run verify-deploy -- onchain --cluster devnet --rpc "$RPC_URL" --authority "$WALLET_PUB" --programs "$verify"
 }
 
 # ================================================================== stage: setup
