@@ -24,7 +24,7 @@ import { decodeCompressedChipState, decodeCompressedMintClaim, decodeCompressedC
 import { bubblegumTreeMetaPda, compressedChipStatePda, compressedChipStakePda } from '../pdas';
 import { decodeBubblegumTreeMeta } from '../accounts';
 import type { CompressedLeafProof } from '../ix/chipCore';
-import { resolveRegisteredLeafFromTreeAccount, type BubblegumProof } from '../bubblegum';
+import { deriveBubblegumLeafAssetId, resolveRegisteredLeafFromTreeAccount, type BubblegumProof } from '../bubblegum';
 
 export interface ResolvedCompressedChip {
   /** the Bubblegum V2 asset id (the leaf) */
@@ -83,6 +83,35 @@ const F_FUSING = 1 << 2;
 /** Free-leaf actions stay strict by default; the arena permits staked / cooldown chips. */
 type ResolveOptions = { tree?: BubblegumTreeMeta; owner?: PublicKey; purpose?: 'free' | 'arena' };
 
+/**
+ * Mirror arena/staking `chip.asset == leaf_asset_id(tree, leaf_index)` before a wallet
+ * prompt. `Left` is the stored projection; `Right` is the canonical Bubblegum PDA from
+ * the registered tree and index (same 8-byte LE seed as on chain). `fromNonce` is
+ * diagnostic only — mint_v2 uses `num_minted` as both nonce and append index.
+ */
+function mismatch(left: PublicKey, right: PublicKey, extra: Record<string, unknown>) {
+  return Object.assign(new Error(`chip asset does not match Bubblegum leaf id\nLeft: ${left.toBase58()}\nRight: ${right.toBase58()}`), {
+    code: 'invalid_bubblegum_asset' as const,
+    details: { left: left.toBase58(), right: right.toBase58(), ...extra },
+  });
+}
+
+function assertCanonicalRegisteredAsset(requested: PublicKey, state: CompressedChipState): void {
+  const fromIndex = deriveBubblegumLeafAssetId(state.merkleTree, state.leafIndex);
+  const fromNonce = deriveBubblegumLeafAssetId(state.merkleTree, state.leafNonce);
+  const extra = {
+    requested: requested.toBase58(),
+    stored: state.asset.toBase58(),
+    fromIndex: fromIndex.toBase58(),
+    fromNonce: fromNonce.toBase58(),
+    tree: state.merkleTree.toBase58(),
+    leafIndex: state.leafIndex,
+    leafNonce: state.leafNonce.toString(),
+  };
+  if (!state.asset.equals(requested)) throw mismatch(requested, state.asset, extra);
+  if (!state.asset.equals(fromIndex)) throw mismatch(state.asset, fromIndex, extra);
+}
+
 /** The proof-backed identity path. Do not use it for unstaking: that needs a live stake, not a free leaf. */
 export async function resolveCompressedChipIdentity(
   connection: Connection,
@@ -93,6 +122,7 @@ export async function resolveCompressedChipIdentity(
   const info = await connection.getAccountInfo(chipKey, 'confirmed');
   if (!info) throw new Error('this chip is not registered as a Bubblegum V2 leaf yet — finish its pack settlement first');
   const state = decodeCompressedChipState(new Uint8Array(info.data));
+  assertCanonicalRegisteredAsset(asset, state);
 
   let tree = opts.tree;
   if (!tree) {

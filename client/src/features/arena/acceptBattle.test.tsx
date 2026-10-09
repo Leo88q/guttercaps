@@ -18,6 +18,7 @@ import { Keypair, PublicKey } from '@solana/web3.js';
 import { accountDiscriminator, ixDiscriminator } from '@/chain/anchor';
 import { BorshWriter } from '@/chain/borsh';
 import { battlePda, bubblegumTreeMetaPda, compressedChipStatePda } from '@/chain/pdas';
+import { deriveBubblegumLeafAssetId } from '@/chain/bubblegum';
 import { chainKeys } from '@/chain/hooks';
 import { setMockMode } from '@/api/client';
 import { qk } from '@/api/keys';
@@ -118,10 +119,13 @@ function fakeBattle(): Uint8Array {
 // one collection, one tree — which is what a real deployment has, and what the shared
 // `["bubblegum_tree", 0]` meta PDA implies
 const TREE = Keypair.generate().publicKey;
-const LEAVES = [0, 1, 2].map((i) => ({
-  asset: Keypair.generate().publicKey, claim: Keypair.generate().publicKey,
-  merkleTree: TREE, leafIndex: 100 + i,
-}));
+const LEAVES = [0, 1, 2].map((i) => {
+  const leafIndex = 100 + i;
+  return {
+    asset: deriveBubblegumLeafAssetId(TREE, leafIndex), claim: Keypair.generate().publicKey,
+    merkleTree: TREE, leafIndex,
+  };
+});
 const MY_CHIPS = LEAVES.map((l, i) => ({
   asset: l.asset.toBase58(), owner: OPPONENT.toBase58(),
   collection: i, rarity: 3 + i, level: 2, index: 10 + i,

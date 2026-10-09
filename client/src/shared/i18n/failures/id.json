@@ -205,5 +205,6 @@
   "confirmationUnknown": "Transaksi sudah dikirim, tetapi konfirmasi belum tersedia. Periksa di Explorer dan perbarui saldo sebelum mencoba lagi.",
   "blockhashRejected": "RPC menolak transaksi sebelum dieksekusi: blockhash tidak ditemukan. Percobaan ini tidak melakukan pembayaran. Coba lagi; jika tetap gagal, periksa RPC dan jaringan dompet.",
   "proofUnavailable": "Bukti Merkle chip tidak dapat diperoleh. Periksa alamat DAS dan izin aksesnya. Detail teknis memuat kesalahan DAS dan pemulihan dari pohon.",
-  "switchboardUnavailable": "Layanan acak Switchboard tidak tersedia. Jangan ulangi pembelian atau taruhan. Lanjutkan operasi yang sudah ada setelah pulih; lihat detail teknis."
+  "switchboardUnavailable": "Layanan acak Switchboard tidak tersedia. Jangan ulangi pembelian atau taruhan. Lanjutkan operasi yang sudah ada setelah pulih; lihat detail teknis.",
+  "invalidBubblegumAsset": "Asset id on-chain chip ini tidak cocok dengan daun Bubblegum. Left: {left}. Right: {right}. Dompet tidak diminta dan taruhan tidak dikirim."
 }

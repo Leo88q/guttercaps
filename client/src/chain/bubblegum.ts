@@ -216,9 +216,10 @@ function currentTreeProof(tree: ReturnType<typeof readConcurrentTree>, index: nu
   return proof;
 }
 
-export function deriveBubblegumLeafAssetId(merkleTree: PublicKey, leafIndex: number): PublicKey {
+export function deriveBubblegumLeafAssetId(merkleTree: PublicKey, leafIndex: number | bigint): PublicKey {
+  const n = typeof leafIndex === 'bigint' ? leafIndex : BigInt(leafIndex >>> 0);
   const idx = new Uint8Array(8);
-  new DataView(idx.buffer).setBigUint64(0, BigInt(leafIndex >>> 0), true);
+  new DataView(idx.buffer).setBigUint64(0, n, true);
   return PublicKey.findProgramAddressSync([new TextEncoder().encode('asset'), merkleTree.toBytes(), idx], MPL_BUBBLEGUM_V2_ID)[0];
 }
 

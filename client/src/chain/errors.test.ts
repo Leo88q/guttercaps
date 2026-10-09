@@ -172,6 +172,23 @@ describe('error attribution and recovery safety', () => {
     const api = JSON.parse(JSON.stringify(errorSnapshot(new TxError(new ApiError(409, 'payment_pending', 'raw pending')))));
     expect(humanizeTxError(api)).toBe(t('failures.paymentPending'));
   });
+  it('surfaces stored vs derived Bubblegum asset ids without implying a wager was sent', async () => {
+    const error = {
+      code: 'invalid_bubblegum_asset',
+      message: 'chip asset does not match Bubblegum leaf id\nLeft: LeftAddr\nRight: RightAddr',
+      details: { left: 'LeftAddr', right: 'RightAddr', tree: 'TreeAddr', leafIndex: 7, leafNonce: '7' },
+    };
+    for (const locale of LOCALES) {
+      await setLocale(locale);
+      const text = humanizeTxError(error);
+      expect(text).toBe(t('failures.invalidBubblegumAsset', { left: 'LeftAddr', right: 'RightAddr' }));
+      expect(text).toContain('Left: LeftAddr');
+      expect(text).toContain('Right: RightAddr');
+      expect(text.toLowerCase()).not.toMatch(/escrow|sent a wager|wager was sent and/);
+    }
+    expect(originalErrorText(error)).toContain('TreeAddr');
+    expect(humanizeTxError({ code: 'invalid_bubblegum_asset', message: 'fallback only' })).toBe('fallback only');
+  });
   it('preserves long unknown errors, resists prototype keys and safely snapshots cyclic causes', () => {
     const long = 'vendor diagnostic '.repeat(50);
     expect(humanizeTxError(new Error(long))).toBe(long);

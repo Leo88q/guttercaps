@@ -18,6 +18,7 @@ import { Keypair, PublicKey } from '@solana/web3.js';
 import { accountDiscriminator, ixDiscriminator } from '@/chain/anchor';
 import { BorshWriter } from '@/chain/borsh';
 import { bubblegumTreeMetaPda, compressedChipStatePda, compressedChipStakePda } from '@/chain/pdas';
+import { deriveBubblegumLeafAssetId } from '@/chain/bubblegum';
 import { chainKeys } from '@/chain/hooks';
 import { ata, emissionPda } from '@/chain/pdas';
 import { ASSOCIATED_TOKEN_PROGRAM_ID } from '@/chain/ids';
@@ -28,7 +29,7 @@ const MERKLE_TREE = Keypair.generate().publicKey;
 const CORE_COLLECTION = Keypair.generate().publicKey;
 const TREE_CONFIG = Keypair.generate().publicKey;
 const CLAIM = Keypair.generate().publicKey;
-const ASSET = Keypair.generate().publicKey;
+const ASSET = deriveBubblegumLeafAssetId(MERKLE_TREE, 11);
 
 const sent: { programId: PublicKey; data: Uint8Array; keys: { pubkey: PublicKey }[] }[] = [];
 let dasCalls = 0;

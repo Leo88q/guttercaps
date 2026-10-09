@@ -16,7 +16,7 @@ import { prepareRandomness } from '@/chain/switchboard';
 import { initRandomnessIx } from '@/chain/ix/rng';
 import { recentLookupSlots } from '@/chain/lookupTableSlots';
 import { createCompressedBattleV2Ix, acceptCompressedBattleV2Ix, wagerSplit, MIN_WAGER, MAX_WAGER, MIN_SQUAD_POWER, leagueOf, type CompressedArenaChipProof } from '@/chain/ix/arena';
-import { resolveCompressedSquad } from '@/chain/flows/compressedChip';
+import { resolveCompressedChipIdentity, resolveCompressedSquad } from '@/chain/flows/compressedChip';
 import { dasClient } from '@/features/market/payment';
 import { battlePda } from '@/chain/pdas';
 import { BATTLE_STATUS, decodeWagerBattle, type WagerBattle } from '@/chain/accounts';
@@ -136,6 +136,11 @@ export default function Arena() {
     if (!wallet || !cfg.data) return;
     setBusy(true);
     try {
+      // Fail closed on the same asset-id invariant the program checks at arena:289, before
+      // Switchboard selection or any wallet prompt. A mismatch is not a stale proof.
+      for (const c of squad) {
+        await resolveCompressedChipIdentity(connection, new PublicKey(c.asset!), { owner: wallet.publicKey, purpose: 'arena' });
+      }
       const nonce = freshNonce();
       // arena-owned randomness PDA ["rng", 2, challenger, nonce]: init here, commit inside create_battle_v2 (SEC-C3 part 2)
       const rnd = await prepareRandomness(connection, wallet.publicKey, RNG_KIND.BATTLE, nonce);

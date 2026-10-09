@@ -45,6 +45,12 @@ export function humanizeTxError(error: unknown): string {
   }
   if (e.code === 'switchboard_unavailable') return t('failures.switchboardUnavailable');
   if (e.code === 'proof_unavailable') return t('failures.proofUnavailable');
+  if (e.code === 'invalid_bubblegum_asset') {
+    const details = e.details as { left?: unknown; right?: unknown } | undefined;
+    if (typeof details?.left === 'string' && typeof details?.right === 'string') {
+      return t('failures.invalidBubblegumAsset', { left: details.left, right: details.right });
+    }
+  }
   if (e.code === 'blockhash_rejected') return t('failures.blockhashRejected');
   if (e.code === 'confirmation_unknown') return t('failures.confirmationUnknown');
   // Structured on-chain failures take precedence over incidental words in a wallet's prose.

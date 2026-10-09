@@ -10,7 +10,7 @@ import {
 import { vaultPda, assetPda, chipStatePda, collectionMetaPda, configPda, pendingPackPda, claimFusionPda, compressedMintClaimPda, compressedSettlementPda, bubblegumTreeConfigPda, compressedChipStatePda, bubblegumTreeMetaPda, pityPda, pendingFusionPda, battlePda, ata, freshNonce, rewardRootPda, rewarderPda, playerItemsPda, skrPoolPda, emissionPda, seasonPoolAuthPda, RNG_KIND, rngAuthPda, rngPda, sbLutPda, sbLutSignerPda, sbStatePda, sbOracleStatsPda, sbRewardEscrow, LEDGER_SHARDS, allLedgerPdas, ledgerPda, ledgerPdaOf, ledgerShardOf } from './pdas';
 import { fitsInTx } from './tx';
 import { buyPackIx, openPackIx, payServiceIx, Currency, fuseIx, mintCompressedChipIx, createBubblegumTreeIx, openCompressedPackIx, registerCompressedChipIx, cancelCompressedClaimIx, finalizeCompressedPackIx, fuseClaimsCommitIx, fuseClaimsRevealIx, cancelStaleClaimFusionIx, closeExpiredClaimIx } from './ix/chipCore';
-import { v2LeafHash, foldCompressionProof, discoverLeafNonce, verifyBubblegumProofLocal } from './bubblegum';
+import { v2LeafHash, foldCompressionProof, discoverLeafNonce, verifyBubblegumProofLocal, deriveBubblegumLeafAssetId } from './bubblegum';
 import { DasClient } from './das';
 import { initRandomnessIx, revealRandomnessIx, closeRandomnessIx, closeRandomnessLutIx, commitAccountMetas, rngAccounts } from './ix/rng';
 import { createBattleIx, acceptBattleIx, createCompressedBattleV2Ix, acceptCompressedBattleV2Ix, type CompressedArenaChipProof } from './ix/arena';
@@ -657,9 +657,9 @@ describe('V2 market: resolver → builder round trip', () => {
   // each side separately left the join untested: a resolver that named a tree the builder does not
   // accept would pass both suites and fail at the wallet.
   const leaf = async () => {
-    const asset = Keypair.generate().publicKey;
-    const claim = Keypair.generate().publicKey;
     const merkleTree = Keypair.generate().publicKey;
+    const asset = deriveBubblegumLeafAssetId(merkleTree, 6);
+    const claim = Keypair.generate().publicKey;
     const coreCollection = Keypair.generate().publicKey;
     const owner = Keypair.generate().publicKey;
     const chip = new BorshWriter().pubkey(asset).pubkey(claim).u8(3).pubkey(merkleTree).u32(6).u64(6n);
