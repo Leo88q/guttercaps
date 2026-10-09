@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
-import { useMe, useGrid, useQuests, usePendingOps, useStreak, useSeason, usePreorderCampaign } from '@/api/hooks';
+import { useMe, useGrid, useQuests, usePendingOps, useStreak, useSeason } from '@/api/hooks';
+import { PreorderBanner } from '@/features/preorder/PreorderBanner';
 import { usePity } from '@/chain/hooks';
 import { useActiveOps } from '@/app/store/txs';
 import { PACKS } from '@guttercaps/economy';
@@ -31,8 +32,6 @@ export default function Home() {
   const season = useSeason();
   const pity = usePity();
   const active = useActiveOps(publicKey?.toBase58());
-  const preorder = usePreorderCampaign();
-
   if (!connected) return <Landing onConnect={() => setVisible(true)} />;
 
   const owned = grid.data?.cells?.flat().filter((n) => n > 0).length ?? 0;
@@ -60,16 +59,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* Beta pre-sale rail (docs/preorder-beta.md): mainnet packs sold during the devnet beta. */}
-      {preorder.data?.active && preorder.data.remaining > 0 && (
-        <Link to="/preorder" className="card preorder-banner" data-testid="preorder-banner" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, textDecoration: 'none' }}>
-          <div>
-            <strong style={{ fontSize: 14 }}>{t('preorder.title')}</strong>
-            <div className="tiny" style={{ marginTop: 2 }}>{t('preorder.left', { n: preorder.data.remaining, total: preorder.data.total })}</div>
-          </div>
-          <ChevronRightIcon size={20} />
-        </Link>
-      )}
+      {/* Always linked: a closed campaign still has a page. Reservation stays gated on /preorder. */}
+      <PreorderBanner testId="preorder-banner" />
 
       <div className="grid-3">
         <div className="card"><Stat label={t('ui.capsGrid')} value={grid.isLoading ? <Skeleton h={22} w={48} /> : `${owned}/72`} /></div>
@@ -141,6 +132,7 @@ function Landing({ onConnect }: { onConnect: () => void }) {
       <div className="row" style={{ justifyContent: 'center', gap: 12 }}>
         <SprayNozzleButton onClick={onConnect}>{t('common.connectWallet')}</SprayNozzleButton>
         <Link to="/market" className="btn">{t('home.heroSecondary')}</Link>
+        <Link to="/preorder" className="btn btn-ghost">{t('preorder.title')}</Link>
       </div>
       <div className="grid-3" style={{ maxWidth: 720, margin: '24px auto 0', textAlign: 'left' }}>
         <div className="card"><GenBadge name="nav-collect" size={30} /><div className="strong">{t('ui.collect')}</div><div className="small muted">{t('ui.collectHint')}</div></div>

@@ -128,6 +128,7 @@ export function Shell({ children }: { children: ReactNode }) {
             <span className="gc-age" title={t('legal.ages')}>18+</span>
             <Link to="/legal/terms">{t('legal.terms')}</Link>
             <Link to="/legal/privacy">{t('legal.privacy')}</Link>
+            <Link to="/preorder">{t('preorder.title')}</Link>
             <Link to="/verify">{t('legal.verify')}</Link>
             <span className="mono">{LEGAL_EFFECTIVE}</span>
           </footer>
