@@ -313,10 +313,7 @@ impl CompressedMintClaim {
             let mut cursor: &[u8] = data;
             return Self::try_deserialize(&mut cursor);
         }
-        require!(
-            data.len() >= NEED - 1,
-            ChipError::InvalidChipState
-        );
+        require!(data.len() >= NEED - 1, ChipError::InvalidChipState);
         let mut padded = [0u8; NEED];
         padded[..data.len()].copy_from_slice(data);
         let mut cursor: &[u8] = &padded;
