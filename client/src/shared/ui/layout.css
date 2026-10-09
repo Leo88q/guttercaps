@@ -227,11 +227,21 @@ img { max-width: 100%; display: block; }
 .reduced-motion .vfx-3, .reduced-motion .vfx-4 { animation: none; }
 @keyframes pulse-glow { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.25); } }
 
-/* ---------- collection grid 10×9 ---------- */
-.cgrid { display: grid; grid-template-columns: 132px repeat(9, minmax(74px, 1fr)); gap: 8px; align-items: center; min-width: 860px; }
+/* ---------- collection grid: 8 districts × 9 rarities ---------- */
+/* Desktop keeps the spreadsheet (label + 9 caps). Below 860px that matrix is
+   wider than the phone and used to clip; each district becomes a 3×3 album. */
+.cgrid { display: flex; flex-direction: column; gap: 8px; min-width: 860px; }
 .cgrid-wrap { overflow-x: auto; padding-bottom: 8px; }
+.cgrid-rarity-heads, .cgrid-district {
+  display: grid; grid-template-columns: 132px repeat(9, minmax(74px, 1fr));
+  gap: 8px; align-items: center;
+}
+.cgrid-cells { display: contents; }
+.cgrid-slot { min-width: 0; }
+.cgrid .cell-rarity { display: none; }
 .cgrid .head { font-size: 10.5px; text-align: center; color: var(--gc-muted); letter-spacing: 0.06em; }
-.cgrid .rowhead { font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
+.cgrid .rowhead { font-size: 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cgrid .rowhead .progress { width: 100%; max-width: 100%; }
 .cgrid .rowhead b { font-size: 12.5px; }
 .cgrid .cell { position: relative; aspect-ratio: 1; border-radius: 50%; border: none; display: grid; place-items: center; cursor: pointer; transition: transform 0.1s ease; }
 /* empty cells keep a faint dashed placeholder ring so missing caps still read as slots */
@@ -241,6 +251,28 @@ img { max-width: 100%; display: block; }
 .cgrid .cell.missing { opacity: 0.55; }
 .cgrid .cell .count { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--cg-chrome); color: var(--cg-asphalt); font-size: 10px; font-weight: 700; display: grid; place-items: center; padding: 0 4px; font-family: var(--cg-font-mono); }
 .cgrid .cell .count.multi { background: var(--cg-acid-green); }
+@media (max-width: 859px) {
+  .cgrid { min-width: 0; gap: 0; }
+  .cgrid-wrap { overflow: visible; padding-bottom: 0; }
+  .cgrid-rarity-heads { display: none; }
+  .cgrid-district {
+    display: flex; flex-direction: column; align-items: stretch; gap: 10px;
+    min-width: 0; padding: 14px 2px 16px; border-top: 1px solid var(--gc-line);
+    grid-template-columns: none;
+  }
+  .cgrid-rarity-heads + .cgrid-district { border-top: 0; padding-top: 2px; }
+  .cgrid-district.is-active {
+    margin: 0 -8px; padding-left: 10px; padding-right: 10px; border-radius: 14px;
+    background: color-mix(in srgb, var(--district, var(--cg-neon-cyan)) 10%, transparent);
+    box-shadow: inset 3px 0 0 var(--district, var(--cg-neon-cyan));
+  }
+  .cgrid-cells { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 10px; }
+  .cgrid-slot { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+  .cgrid .cell { width: 100%; }
+  .cgrid .cell-rarity { display: block; font-size: 10px; line-height: 1.2; text-align: center; letter-spacing: 0.02em; }
+  .cgrid .cell .cell-empty { display: none; }
+  .cgrid .rowhead b { font-size: 15px; }
+}
 
 /* ---------- codex district strip: one scrollable row on desktop, two wrapping
    rows on phones (9 chips = 5 + 4, fully visible, no sideways scrolling) ---------- */

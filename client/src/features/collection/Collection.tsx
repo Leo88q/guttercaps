@@ -1,6 +1,6 @@
 // The 8×9 grid (district × rarity). Counts per cell, set progress, filters,
 // and a chip drawer with actions (list / stake / fuse / thaw).
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useGrid, useMyChips, useFloor, type Chip } from '@/api/hooks';
@@ -68,8 +68,10 @@ export default function Collection() {
       <div className="cgrid-wrap card">
         {grid.isLoading || !cells ? <Skeleton h={320} /> : (
           <div className="cgrid">
-            <div />
-            {RARITIES.map((r, i) => <div key={r} className="head" style={{ color: rarityColor(i) }}>{rarityName(i)}</div>)}
+            <div className="cgrid-rarity-heads">
+              <div />
+              {RARITIES.map((r, i) => <div key={r} className="head" style={{ color: rarityColor(i) }}>{rarityName(i)}</div>)}
+            </div>
             {COLLECTIONS.map((c, ci) => {
               const have = cells[ci].filter((n) => n > 0).length;
               return (
@@ -135,18 +137,23 @@ function RowFrag({ ci, have, cells, active, activeR, onRow, onCell }: { ci: numb
   const c = COLLECTIONS[ci];
   const color = collectionColor(ci);
   return (
-    <>
+    <div className={`cgrid-district${active ? ' is-active' : ''}`} style={{ '--district': color } as CSSProperties}>
       <div className="rowhead" onClick={onRow} style={{ cursor: 'pointer', opacity: active || activeR === undefined ? 1 : 0.6 }}>
         <b style={{ color }}>{c.name}</b>
         <span className="tiny muted"><ElementGlyph element={ELEMENT_OF_COLLECTION[ci]} /> {have}/9</span>
         <Progress value={have} max={9} tone={have === 9 ? 'acid' : undefined} />
       </div>
-      {cells.map((n, ri) => (
-        <div key={ri} className={`cell ${n > 0 ? 'owned' : 'missing'}`} style={{ borderColor: n > 0 ? rarityColor(ri) : undefined, outline: active && activeR === ri ? `2px solid ${color}` : undefined }} onClick={() => onCell(ri)} title={`${chipName(ci, ri)} · ${rarityName(ri)} · ${t('ui.ownedCount', { n })}`}>
-          {n > 0 ? <ChipArt collection={ci} rarity={ri} size="100%" imageUrl={chipArtUrl(ci, ri)} /> : <span className="tiny muted">{rarityName(ri)}</span>}
-          {n > 0 && <span className={`count ${n > 1 ? 'multi' : ''}`}>{n}</span>}
-        </div>
-      ))}
-    </>
+      <div className="cgrid-cells">
+        {cells.map((n, ri) => (
+          <div key={ri} className="cgrid-slot">
+            <div className={`cell ${n > 0 ? 'owned' : 'missing'}`} style={{ borderColor: n > 0 ? rarityColor(ri) : undefined, outline: active && activeR === ri ? `2px solid ${color}` : undefined }} onClick={() => onCell(ri)} title={`${chipName(ci, ri)} · ${rarityName(ri)} · ${t('ui.ownedCount', { n })}`}>
+              {n > 0 ? <ChipArt collection={ci} rarity={ri} size="100%" imageUrl={chipArtUrl(ci, ri)} /> : <span className="tiny muted cell-empty">{rarityName(ri)}</span>}
+              {n > 0 && <span className={`count ${n > 1 ? 'multi' : ''}`}>{n}</span>}
+            </div>
+            <span className="cell-rarity" style={{ color: rarityColor(ri) }}>{rarityName(ri)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
