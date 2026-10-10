@@ -205,6 +205,6 @@
   "confirmationUnknown": "Giao dịch đã gửi nhưng chưa có xác nhận. Kiểm tra trên Explorer và cập nhật số dư trước khi thử lại.",
   "blockhashRejected": "RPC đã từ chối giao dịch trước khi thực thi: không tìm thấy blockhash. Lần thử này chưa thanh toán. Hãy thử lại; nếu lỗi vẫn còn, kiểm tra RPC và mạng của ví.",
   "proofUnavailable": "Không lấy được bằng chứng Merkle của chip. Hãy kiểm tra địa chỉ DAS và quyền truy cập. Chi tiết kỹ thuật chứa lỗi DAS và lỗi khôi phục từ cây.",
-  "switchboardUnavailable": "Dịch vụ ngẫu nhiên Switchboard không khả dụng. Đừng mua hoặc cược lại. Tiếp tục thao tác hiện có sau khi dịch vụ phục hồi; xem chi tiết kỹ thuật.",
+  "switchboardUnavailable": "Ngẫu nhiên on-chain tạm thời không khả dụng. Đừng mua hoặc cược lại. Tiếp tục thao tác hiện có sau khi dịch vụ phục hồi; xem chi tiết kỹ thuật.",
   "invalidBubblegumAsset": "Asset id on-chain của chip không khớp với lá Bubblegum. Left: {left}. Right: {right}. Không mở ví và không gửi cược."
 }

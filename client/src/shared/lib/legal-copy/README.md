@@ -30,6 +30,9 @@ banner. The flag feeds the internal `scripts/legal-readiness.mjs` report and the
 only. Neither the tests nor the translations constitute independent native-speaker review or
 counsel sign-off, and the published text does not claim otherwise.
 
+Revision 2026-10-11.1 replaces Switchboard/Pyth oracle wording with on-chain SlotHashes
+and frozen studio FX. The 9 Terms / 7 Privacy structure is unchanged.
+
 Revision 2026-10-06.1 is the owner-approved clean rewrite: the documents are written as
 publishable game terms in the house style (numbered sections, highlighted notices, plain
 description of the randomised-pack mechanic, wallet responsibility, fees and burn shares),

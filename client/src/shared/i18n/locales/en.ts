@@ -68,7 +68,7 @@ const en = {
   },
   opening: {
     title: 'Opening', titlePack: 'Opening pack', packs: '{n, plural, one{# pack} other{# packs}}', nonce: 'Nonce {nonce}',
-    phase: { quote: 'Quoting', signing: 'Waiting for your signature', committed: 'Committed — waiting for the oracle', revealing: 'Revealing', opening: 'Minting caps', done: 'Done', stale: 'Oracle timed out', error: 'Failed' },
+    phase: { quote: 'Quoting', signing: 'Waiting for your signature', committed: 'Committed — waiting for SlotHashes', revealing: 'Revealing', opening: 'Minting caps', done: 'Done', stale: 'Roll timed out', error: 'Failed' },
     refund: 'Claim full refund', openNow: 'Open now', again: 'Open another',
   },
   collection: {
@@ -148,7 +148,7 @@ const en = {
     skrNotConfigured: 'SKR not configured', skrNotConfiguredBody: 'SKR rewards need the SKR mint (VITE_SKR_MINT) on this cluster.',
     rootEpoch: '{kind}', root: 'Payout',
     boosterLeaf: '{n, plural, one{# booster} other{# boosters}}', boosterHint: 'Quest boosters land on your fusion bench when you claim them.',
-    chipLeaf: 'cap voucher ({odds})', chipLeaves: '{n, plural, one{# cap voucher} other{# cap vouchers}}', claimVoucher: 'Claim cap voucher', voucherHint: 'One signature: the claim requests Switchboard randomness, then the cap is minted like a pack (≈ 0.01 SOL of rent, returned when it closes). Soulbound for {days} d.', voucherClaimed: 'Voucher claimed', voucherClaimedBody: 'Waiting for the oracle — your cap is being rolled…', voucherClaimedMock: 'Voucher claimed (mock)',
+    chipLeaf: 'cap voucher ({odds})', chipLeaves: '{n, plural, one{# cap voucher} other{# cap vouchers}}', claimVoucher: 'Claim cap voucher', voucherHint: 'One signature: the claim commits an on-chain SlotHashes roll, then the cap is minted like a pack (≈ 0.01 SOL of rent, returned when it closes). Soulbound for {days} d.', voucherClaimed: 'Voucher claimed', voucherClaimedBody: 'Waiting for SlotHashes — your cap is being rolled…', voucherClaimedMock: 'Voucher claimed (mock)',
     freeCaps: 'Caps from free sources: {daily}/day · {weekly}/week · {chips} free caps/week.',
     skrPool: 'SKR rewards come from a prize pool funded by SKR revenue (never minted): ≤ {weekly} SKR/week from quests, ≤ {season} SKR/season; needs ≥ 1 paid pack and a 7-day-old wallet.',
     empty: 'Nothing here yet.', capRoll: 'cap roll', booster: '{n} booster', resetsIn: 'resets in {time}', inNextRoot: 'queued', done: 'done',

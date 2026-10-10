@@ -33,7 +33,7 @@ const screens = {
   "sellerNet": "Penjual menerima (setelah biaya {pct}%)",
   "originRecipe": "Resep {recipe} → {rarity}",
   "listedDemo": "Dijual (demo)",
-  "networkOracleFees": "Biaya jaringan dan oracle",
+  "networkOracleFees": "Biaya jaringan",
   "randomness": "Keacakan",
   "fusionTimeout": "Batalkan fusi untuk membuka bahan.",
   "fusionRoll": "Undian {roll}, ambang {threshold}. Satu bahan dikembalikan; biaya dibakar.",
@@ -44,7 +44,7 @@ const screens = {
   "packStopped": "Pembukaan paket berhenti",
   "packFinishFailed": "Gagal menyelesaikan pembukaan",
   "paidCommitted": "Dibayar dan dikomit",
-  "oracleWaiting": "Menunggu oracle Switchboard…",
+  "oracleWaiting": "Membaca SlotHashes on-chain…",
   "refunded": "Dikembalikan",
   "refundAll": "100% dikembalikan dari vault",
   "refundFailed": "Pengembalian gagal",
@@ -167,7 +167,7 @@ const screens = {
   "revealInArena": "Buka arena untuk mengungkap seed Anda.",
   "capSold": "Tutup terjual",
   "fusionAtomic": "Tidak perlu — satu transaksi atomik",
-  "fusionRandom": "Switchboard: komitmen → pengungkapan (biasanya 2–3 tanda tangan)",
+  "fusionRandom": "SlotHashes: komitmen → pengungkapan (biasanya 1 tanda tangan extra)",
   "reconnectPackBuyer": "Paket ini ada di blockchain. Hubungkan kembali dompet yang membelinya untuk melanjutkan.",
   "mockApi": "API demo ({state})"
 } satisfies Record<keyof typeof en, string>;

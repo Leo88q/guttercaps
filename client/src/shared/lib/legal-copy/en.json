@@ -23,7 +23,7 @@
         "h": "3. Pack contents, published odds and verifiable draws",
         "p": [
           "Every pack's rarity distribution, floor guarantee and pity counter is published in the shop before you pay and defined in code: Starter Pack {starterCaps} caps, Standard Pack {standardCaps} caps, Premium Pack {premiumCaps} caps, Limited Event Pack {limitedCaps} caps. The on-chain program enforces the same table, including hard limits on the two rarest tiers, so the odds you read are the odds the program applies.",
-          "Draws use a commit–reveal randomness beacon (Switchboard on demand). Both the commitment and the reveal are on-chain, which means a past result can be re-derived: the verify screen replays the same expansion the program performed, and you can check a draw yourself without asking us for anything.",
+          "Draws use on-chain SlotHashes: the program hashes a seed committed in your payment with the cluster slot hash. Both the commitment and the derived roll are on-chain, which means a past result can be re-derived: the verify screen replays the same expansion the program performed, and you can check a draw yourself without asking us for anything.",
           "Pity counters are kept per wallet and per pack type, on-chain. A pity counter bounds the worst possible run; it is not a promise about a particular draw, and it does not change the disclosed distribution of any individual pack."
         ]
       },
@@ -41,7 +41,7 @@
         "h": "5. Refunds, interrupted packs and cancellations",
         "p": [
           "Once a pack has been opened, the program cannot reverse its draw: the result is already part of the on-chain record. This does not remove any statutory cancellation, withdrawal, refund or conformity right you may have. Whether an exception for digital content applies, and which consent or acknowledgement it requires, depends on the market concerned, and nothing in these Terms waives a right that cannot be waived.",
-          "If the randomness reveal never lands, the pack stays unopened and the payment stays in the vault. A full refund of the purchase price becomes available once the oracle window has expired while the request is still unrevealed: {staleSlots} slots, roughly {staleMinutes} minutes at 400 ms per slot, with real timing that can differ. Refund conditions are read from the program rather than judged by a support agent; you do sign the cancellation transaction, and network fees are not refunded.",
+          "If the randomness reveal never lands, the pack stays unopened and the payment stays in the vault. A full refund of the purchase price becomes available once the stale window has expired while the request is still unrevealed: {staleSlots} slots, roughly {staleMinutes} minutes at 400 ms per slot, with real timing that can differ. Refund conditions are read from the program rather than judged by a support agent; you do sign the cancellation transaction, and network fees are not refunded.",
           "If we stop selling a drop because of a defective configuration, a compromised key or a regulatory demand, that alone does not make every earlier purchase refundable: a delivered draw stays delivered, and the program refund path stays the only automatic one. Where a paid purchase was never delivered at all, statutory remedies apply on their own terms, and we assess such a case rather than pretend it does not exist.",
           "Blockchain payments carry no card chargeback, and we do not rely on that fact. Refund and contract-withdrawal requests can be filed in the rights centre: it records the request, gives you a downloadable receipt, tracks our reply, and does not by itself approve or execute a payment. Never send a seed phrase or private key to anyone, including anyone claiming to be our support."
         ]
@@ -65,7 +65,7 @@
         "h": "8. No investment advice, no guaranteed value, limits of liability",
         "p": [
           "$CG is a game token intended for in-game use; whether it is regulated depends on the law that applies to you, and we do not decide that question by calling it a utility token. Nothing in the game, the shop, the marketplace or the arena is financial advice or an offer of investment, and nothing guarantees a price, liquidity, profit or return. Digital assets can fall to zero and stay there.",
-          "The Services are provided as-is and as-available, without warranties beyond those the law requires, to the fullest extent the law where you live allows. Encryption, blockchains, oracles and browsers all fail sometimes, and we do not promise uninterrupted or error-free operation.",
+          "The Services are provided as-is and as-available, without warranties beyond those the law requires, to the fullest extent the law where you live allows. Encryption, blockchains, networks and browsers all fail sometimes, and we do not promise uninterrupted or error-free operation.",
           "Our aggregate liability for a purchase is capped at the amount you paid for the affected pack or packs. That cap does not apply where the law forbids it, and it never limits rights that cannot be limited — including consumer rights, statutory warranties, and remedies for fraud or wilful misconduct."
         ]
       },
@@ -126,7 +126,7 @@
         "p": [
           "Cloudflare provides the CDN, the WAF and the Turnstile challenge, and sees request metadata — including the country header we use for region detection.",
           "Solana RPC providers relay reads and transactions and can see IP addresses, request timing, wallet identifiers and other connection metadata, not only public chain data. The providers actually used by a deployed service, their roles and any international transfers have to be identified for that deployment.",
-          "Price and randomness services — Pyth, Hermes and Switchboard — receive requests that can expose network metadata to their infrastructure in addition to the on-chain result. On-chain events themselves are public by design.",
+          "RPC providers already described above relay the SlotHashes reads used for draws. We do not send pack rolls to a third-party randomness or price oracle. On-chain events themselves are public by design.",
           "No Sentry or comparable error-reporting SDK is integrated, and configuring a DSN would not by itself change that. Operational server logs can contain wallet identifiers and are covered by retention and access controls; any future telemetry gets a verified inventory, named recipients, a lawful basis and any consent the law requires before it is switched on."
         ]
       },

@@ -32,7 +32,7 @@ const screens = {
   "sellerNet": "Seller receives (after {pct}% fee)",
   "originRecipe": "Recipe {recipe} → {rarity}",
   "listedDemo": "Listed (demo)",
-  "networkOracleFees": "Network + oracle fees",
+  "networkOracleFees": "Network fees",
   "randomness": "Randomness",
   "fusionTimeout": "Cancel the fusion to unlock your materials.",
   "fusionRoll": "Roll {roll}, threshold {threshold}. One material returned; fee burned.",
@@ -43,7 +43,7 @@ const screens = {
   "packStopped": "Pack opening stopped",
   "packFinishFailed": "Could not finish opening",
   "paidCommitted": "Paid & committed",
-  "oracleWaiting": "Waiting for the Switchboard oracle…",
+  "oracleWaiting": "Reading on-chain SlotHashes…",
   "refunded": "Refunded",
   "refundAll": "100% returned from the vault",
   "refundFailed": "Refund failed",
@@ -166,7 +166,7 @@ const screens = {
   "revealInArena": "Open the Arena to reveal your seed.",
   "capSold": "Cap sold",
   "fusionAtomic": "Not needed — single atomic transaction",
-  "fusionRandom": "Switchboard: commit → reveal (usually 2–3 signatures)",
+  "fusionRandom": "SlotHashes: commit → reveal (usually 1 extra signature)",
   "reconnectPackBuyer": "This pack is on-chain. Reconnect with the wallet that bought it to continue.",
   "mockApi": "Demo API ({state})"
 } as const;

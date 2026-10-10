@@ -1,6 +1,6 @@
 {
-  "revision": "2026-10-06.1",
-  "sha256": "ddfada3bdc5084a2ad847c1c9ca5d1d9b84e19dc4ac6b0c52718846c2ee20f6c",
+  "revision": "2026-10-11.1",
+  "sha256": "c5110f2de4c2eaf087afda365fceef15d499ca9a1625f9fbc69d41588a311490",
   "docs": {
     "terms": {
       "slug": "terms",
@@ -26,7 +26,7 @@
           "h": "3. Contenido de los sobres, probabilidades publicadas y sorteos verificables",
           "p": [
             "La distribución de rarezas, la garantía mínima y el contador de pity de cada sobre se publican en la tienda antes de pagar y están definidos en código: Starter Pack {starterCaps} fichas, Standard Pack {standardCaps} fichas, Premium Pack {premiumCaps} fichas, Limited Event Pack {limitedCaps} fichas. El programa on-chain aplica la misma tabla, incluidos límites estrictos en los dos niveles más raros, así que las probabilidades que lees son las que aplica el programa.",
-            "Los sorteos usan un faro de aleatoriedad commit–reveal (Switchboard on demand). Tanto el compromiso como la revelación están on-chain, lo que permite recalcular un resultado pasado: la pantalla de verificación reproduce la misma expansión que ejecutó el programa, y puedes comprobar un sorteo por tu cuenta sin pedirnos nada.",
+            "Los sorteos usan SlotHashes on-chain: el programa mezcla una semilla comprometida en tu pago con el hash del slot. Tanto el compromiso como el sorteo derivado están on-chain, lo que permite recalcular un resultado pasado: la pantalla de verificación reproduce la misma expansión que ejecutó el programa, y puedes comprobar un sorteo por tu cuenta sin pedirnos nada.",
             "Los contadores de pity se mantienen por cartera y por tipo de sobre, on-chain. El contador limita la peor racha posible; no es una promesa sobre un sorteo concreto ni altera la distribución publicada de ningún sobre individual."
           ]
         },
@@ -44,7 +44,7 @@
           "h": "5. Reembolsos, sobres interrumpidos y cancelaciones",
           "p": [
             "Una vez abierto un sobre, el programa no puede revertir su sorteo: el resultado ya forma parte del registro on-chain. Esto no elimina ningún derecho legal de desistimiento, retirada, reembolso o conformidad que tengas. Si se aplica una excepción para contenido digital y qué consentimiento o confirmación exige depende del mercado en cuestión, y nada en estos Términos renuncia a un derecho al que no se puede renunciar.",
-            "Si la revelación de aleatoriedad nunca llega, el sobre queda cerrado y el pago permanece en la bóveda. El reembolso íntegro del precio está disponible cuando la ventana del oráculo expira y la solicitud sigue sin revelarse: {staleSlots} slots, aproximadamente {staleMinutes} minutos a 400 ms por slot, con tiempos reales que pueden variar. Las condiciones del reembolso se leen del programa, no las decide una persona de soporte; tú firmas la transacción de cancelación, y las comisiones de red no se reembolsan.",
+            "Si la revelación de aleatoriedad nunca llega, el sobre queda cerrado y el pago permanece en la bóveda. El reembolso íntegro del precio está disponible cuando la ventana de caducidad expira y la solicitud sigue sin revelarse: {staleSlots} slots, aproximadamente {staleMinutes} minutos a 400 ms por slot, con tiempos reales que pueden variar. Las condiciones del reembolso se leen del programa, no las decide una persona de soporte; tú firmas la transacción de cancelación, y las comisiones de red no se reembolsan.",
             "Si dejamos de vender un drop por una configuración defectuosa, una clave comprometida o una exigencia regulatoria, eso por sí solo no hace reembolsable toda compra anterior: un sorteo entregado sigue entregado, y la vía de reembolso del programa sigue siendo la única automática. Cuando una compra pagada nunca llegó a entregarse, se aplican las protecciones legales en sus propios términos, y estudiamos el caso en lugar de fingir que no existe.",
             "Los pagos en blockchain no tienen contracargo de tarjeta, y no contamos con ello. Las solicitudes de reembolso y de desistimiento pueden presentarse en el centro de derechos: registra la solicitud, te da un recibo descargable, sigue nuestra respuesta y, por sí mismo, no aprueba ni ejecuta ningún pago. Nunca envíes una frase semilla ni una clave privada a nadie, tampoco a quien diga ser nuestro soporte."
           ]
@@ -68,7 +68,7 @@
           "h": "8. Sin asesoramiento de inversión, sin valor garantizado, límites de responsabilidad",
           "p": [
             "$CG es un token de juego destinado al uso dentro del juego; si está regulado depende de la ley que se te aplique, y no decidimos esa cuestión llamándolo token de utilidad. Nada en el juego, la tienda, el mercado o la arena es asesoramiento financiero ni una oferta de inversión, y nada garantiza precio, liquidez, beneficio o rentabilidad. Los activos digitales pueden caer a cero y quedarse ahí.",
-            "Los Servicios se prestan «tal cual» y «según disponibilidad», sin más garantías que las exigidas por ley, en la máxima medida que permita la ley de tu país. El cifrado, las blockchains, los oráculos y los navegadores fallan a veces, y no prometemos un funcionamiento ininterrumpido ni libre de errores.",
+            "Los Servicios se prestan «tal cual» y «según disponibilidad», sin más garantías que las exigidas por ley, en la máxima medida que permita la ley de tu país. El cifrado, las blockchains, las redes y los navegadores fallan a veces, y no prometemos un funcionamiento ininterrumpido ni libre de errores.",
             "Nuestra responsabilidad agregada por una compra se limita al importe que pagaste por el sobre o sobres afectados. Ese límite no se aplica donde la ley lo prohíbe y nunca restringe derechos a los que no se puede renunciar, incluidos los derechos del consumidor, las garantías legales y las protecciones frente a fraude o dolo."
           ]
         },
@@ -129,7 +129,7 @@
           "p": [
             "Cloudflare presta la CDN, el WAF y el desafío Turnstile, y ve metadatos de las solicitudes, incluida la cabecera de país que usamos para detectar la región.",
             "Los proveedores de RPC de Solana retransmiten lecturas y transacciones y pueden ver direcciones IP, momentos de las solicitudes, identificadores de cartera y otros metadatos de conexión, no solo datos públicos de la cadena. Los proveedores que realmente use un servicio desplegado, sus roles y cualquier transferencia internacional deben identificarse para ese despliegue.",
-            "Los servicios de precios y aleatoriedad —Pyth, Hermes y Switchboard— reciben solicitudes que pueden exponer metadatos de red a su infraestructura además del resultado on-chain. Los eventos on-chain son públicos por diseño.",
+            "Los proveedores RPC descritos arriba retransmiten las lecturas de SlotHashes usadas en los sorteos. No enviamos los sorteos de sobres a un oráculo de aleatoriedad o de precios de terceros. Los eventos on-chain son públicos por diseño.",
             "No hay integrado ningún SDK de informes de errores tipo Sentry, y configurar un DSN no cambiaría eso por sí solo. Los registros operativos del servidor pueden contener identificadores de cartera y están sujetos a conservación y control de acceso; cualquier telemetría futura contará con inventario verificado, destinatarios identificados, base jurídica y el consentimiento que exija la ley antes de activarse."
           ]
         },

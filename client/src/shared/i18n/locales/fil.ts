@@ -63,7 +63,7 @@ const fil: Messages = {
   },
   opening: {
     title: 'Binubuksan', titlePack: 'Binubuksan ang pack', packs: '{n, plural, one{# pack} other{# pack}}', nonce: 'Nonce {nonce}',
-    phase: { quote: 'Kumukuha ng quote', signing: 'Hinihintay ang pirma mo', committed: 'Naka-commit — hinihintay ang oracle', revealing: 'Binubunyag', opening: 'Nagmi-mint ng caps', done: 'Tapos', stale: 'Nag-time out ang oracle', error: 'Nabigo' },
+    phase: { quote: 'Kumukuha ng quote', signing: 'Hinihintay ang pirma mo', committed: 'Naka-commit — hinihintay ang SlotHashes', revealing: 'Binubunyag', opening: 'Nagmi-mint ng caps', done: 'Tapos', stale: 'Hindi natapos ang roll', error: 'Nabigo' },
     refund: 'Kunin ang buong refund', openNow: 'Buksan ngayon', again: 'Magbukas ulit',
   },
   collection: {
@@ -143,7 +143,7 @@ const fil: Messages = {
     skrNotConfigured: 'Hindi naka-configure ang SKR', skrNotConfiguredBody: 'Kailangan ng SKR mint (VITE_SKR_MINT) sa cluster na ito para sa mga gantimpalang SKR.',
     rootEpoch: '{kind}', root: 'Payout',
     boosterLeaf: '{n} booster', boosterHint: 'Ang booster mula sa quests ay pumupunta sa fusion bench mo kapag i-claim mo.',
-    chipLeaf: 'cap voucher ({odds})', chipLeaves: '{n} cap voucher', claimVoucher: 'I-claim ang cap voucher', voucherHint: 'Isang pirma: humihingi ang claim ng Switchboard randomness, tapos mimintahin ang cap gaya ng pack (≈ 0.01 SOL na rent, ibabalik kapag nagsara). Soulbound nang {days} araw.', voucherClaimed: 'Na-claim ang voucher', voucherClaimedBody: 'Hinihintay ang oracle — niro-roll na ang cap mo…', voucherClaimedMock: 'Na-claim ang voucher (mock)',
+    chipLeaf: 'cap voucher ({odds})', chipLeaves: '{n} cap voucher', claimVoucher: 'I-claim ang cap voucher', voucherHint: 'Isang pirma: naka-commit ang claim sa on-chain SlotHashes roll, tapos mimintahin ang cap gaya ng pack (≈ 0.01 SOL na rent, ibabalik kapag nagsara). Soulbound nang {days} araw.', voucherClaimed: 'Na-claim ang voucher', voucherClaimedBody: 'Hinihintay ang SlotHashes — niro-roll na ang cap mo…', voucherClaimedMock: 'Na-claim ang voucher (mock)',
     freeCaps: 'Limitasyon ng libreng pinagmumulan: {daily}/araw · {weekly}/linggo · {chips} libreng cap/linggo.',
     skrPool: 'Ang mga gantimpalang SKR ay galing sa prize pool na pinopondohan ng kita sa SKR (hindi kailanman mini-mint): ≤ {weekly} SKR/linggo mula sa quests, ≤ {season} SKR/season; kailangan ng ≥ 1 bayad na pack at wallet na 7 araw na.',
     empty: 'Wala pa rito.', capRoll: 'cap roll', booster: '{n} booster', resetsIn: 'magre-reset sa {time}', inNextRoot: 'naka-queue', done: 'tapos',

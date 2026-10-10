@@ -63,7 +63,7 @@ const vi: Messages = {
   },
   opening: {
     title: 'Đang mở', titlePack: 'Đang mở gói', packs: '{n, plural, other{# gói}}', nonce: 'Nonce {nonce}',
-    phase: { quote: 'Đang báo giá', signing: 'Chờ bạn ký', committed: 'Đã cam kết — chờ oracle', revealing: 'Đang lật', opening: 'Đang mint nắp', done: 'Xong', stale: 'Oracle quá hạn', error: 'Thất bại' },
+    phase: { quote: 'Đang báo giá', signing: 'Chờ bạn ký', committed: 'Đã cam kết — chờ SlotHashes', revealing: 'Đang lật', opening: 'Đang mint nắp', done: 'Xong', stale: 'Lượt quay không xong', error: 'Thất bại' },
     refund: 'Nhận hoàn tiền đầy đủ', openNow: 'Mở ngay', again: 'Mở gói khác',
   },
   collection: {
@@ -143,7 +143,7 @@ const vi: Messages = {
     skrNotConfigured: 'Chưa cấu hình SKR', skrNotConfiguredBody: 'Phần thưởng SKR cần mint SKR (VITE_SKR_MINT) trên cụm này.',
     rootEpoch: '{kind}', root: 'Thanh toán',
     boosterLeaf: '{n} booster', boosterHint: 'Booster từ nhiệm vụ vào bàn hợp nhất khi bạn nhận thưởng.',
-    chipLeaf: 'phiếu cap ({odds})', chipLeaves: '{n} phiếu cap', claimVoucher: 'Nhận phiếu cap', voucherHint: 'Một chữ ký: lệnh nhận yêu cầu số ngẫu nhiên Switchboard, rồi cap được đúc như một gói (≈ 0,01 SOL tiền rent, hoàn lại khi đóng). Soulbound trong {days} ngày.', voucherClaimed: 'Đã nhận phiếu', voucherClaimedBody: 'Đang chờ oracle — cap của bạn đang được quay…', voucherClaimedMock: 'Đã nhận phiếu (mock)',
+    chipLeaf: 'phiếu cap ({odds})', chipLeaves: '{n} phiếu cap', claimVoucher: 'Nhận phiếu cap', voucherHint: 'Một chữ ký: lệnh nhận khóa lượt SlotHashes on-chain, rồi cap được đúc như một gói (≈ 0,01 SOL tiền rent, hoàn lại khi đóng). Soulbound trong {days} ngày.', voucherClaimed: 'Đã nhận phiếu', voucherClaimedBody: 'Đang chờ SlotHashes — cap của bạn đang được quay…', voucherClaimedMock: 'Đã nhận phiếu (mock)',
     freeCaps: 'Giới hạn nguồn miễn phí: {daily}/ngày · {weekly}/tuần · {chips} nắp miễn phí/tuần.',
     skrPool: 'Thưởng SKR đến từ quỹ giải thưởng được cấp bằng doanh thu SKR (không bao giờ được phát hành thêm): ≤ {weekly} SKR/tuần từ nhiệm vụ, ≤ {season} SKR/mùa; cần ≥ 1 gói trả phí và ví đủ 7 ngày tuổi.',
     empty: 'Chưa có gì ở đây.', capRoll: 'quay nắp', booster: '{n} booster', resetsIn: 'đặt lại sau {time}', inNextRoot: 'đang chờ', done: 'xong',

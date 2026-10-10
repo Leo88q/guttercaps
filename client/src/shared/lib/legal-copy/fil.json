@@ -1,6 +1,6 @@
 {
-  "revision": "2026-10-06.1",
-  "sha256": "ddfada3bdc5084a2ad847c1c9ca5d1d9b84e19dc4ac6b0c52718846c2ee20f6c",
+  "revision": "2026-10-11.1",
+  "sha256": "c5110f2de4c2eaf087afda365fceef15d499ca9a1625f9fbc69d41588a311490",
   "docs": {
     "terms": {
       "slug": "terms",
@@ -26,7 +26,7 @@
           "h": "3. Laman ng pack, publikadong tsansa at mabeberipikang draw",
           "p": [
             "Ang distribusyon ng rarity, garantiyang pinakamababa at counter ng pity ng bawat pack ay publikado sa tindahan bago ka magbayad at tinukoy sa code: Starter Pack {starterCaps} chip, Standard Pack {standardCaps} chip, Premium Pack {premiumCaps} chip, Limited Event Pack {limitedCaps} chip. Ipinapatupad ng on-chain program ang parehong talahanayan, kasama ang mahigpit na limitasyon sa dalawang pinakabihirang antas, kaya ang tsansang binabasa mo ay ang tsansang ipinapatupad ng program.",
-            "Gumagamit ang mga draw ng commit–reveal randomness beacon (Switchboard on demand). Parehong on-chain ang commitment at ang reveal, kaya mababanggit muli ang nakaraang resulta: inuulit ng verify screen ang parehong expansion na ginawa ng program, at maaari mong suriin ang isang draw nang mag-isa nang hindi nagtatanong sa amin ng anuman.",
+            "Gumagamit ang mga draw ng on-chain SlotHashes: hina-hash ng program ang seed na naka-commit sa iyong bayad kasama ang slot hash. Parehong on-chain ang commitment at ang nakuha na roll, kaya mababanggit muli ang nakaraang resulta: inuulit ng verify screen ang parehong expansion na ginawa ng program, at maaari mong suriin ang isang draw nang mag-isa nang hindi nagtatanong sa amin ng anuman.",
             "Ang mga counter ng pity ay itinatago kada wallet at kada uri ng pack, on-chain. Nililimitahan ng counter ang pinakamasamang posibleng sunod-sunod; hindi ito pangako tungkol sa isang partikular na draw at hindi nito binabago ang publikadong distribusyon ng alinmang pack."
           ]
         },
@@ -44,7 +44,7 @@
           "h": "5. Mga refund, naantalang pack at pagkansela",
           "p": [
             "Kapag nabuksan na ang isang pack, hindi na maibabalik ng program ang draw nito: bahagi na ng on-chain record ang resulta. Hindi nito inaalis ang anumang karapatan sa pagkansela, pag-atras, refund o pagsunod na mayroon ka sa ilalim ng batas. Kung naaangkop ang eksepsyon para sa digital na nilalaman at anong pahintulot o pagkilala ang kailangan nito ay depende sa partikular na merkado, at walang nakasaad sa Mga Tuntuning ito na nagtatakwil sa karapatang hindi matatakwil.",
-            "Kung hindi dumating ang reveal ng randomness, nananatiling sarado ang pack at nasa vault ang bayad. Ang buong refund ng presyo ng pagbili ay magagamit kapag nag-expire ang window ng oracle habang hindi pa naisasapubliko ang kahilingan: {staleSlots} slot, humigit-kumulang {staleMinutes} minuto sa 400 ms bawat slot, na maaaring iba ang tunay na tiyempo. Binabasa ang mga kondisyon ng refund mula sa program, hindi hinuhusgahan ng support agent; ikaw ang pumipirma sa transaksyon ng pagkansela, at hindi ibinabalik ang mga bayad sa network.",
+            "Kung hindi dumating ang reveal ng randomness, nananatiling sarado ang pack at nasa vault ang bayad. Ang buong refund ng presyo ng pagbili ay magagamit kapag nag-expire ang stale window habang hindi pa naisasapubliko ang kahilingan: {staleSlots} slot, humigit-kumulang {staleMinutes} minuto sa 400 ms bawat slot, na maaaring iba ang tunay na tiyempo. Binabasa ang mga kondisyon ng refund mula sa program, hindi hinuhusgahan ng support agent; ikaw ang pumipirma sa transaksyon ng pagkansela, at hindi ibinabalik ang mga bayad sa network.",
             "Kung ihinto namin ang pagbebenta ng isang drop dahil sa maling konfigurasyon, naapektuhang susi o kahilingan ng regulator, hindi nito awtomatikong ginagawang mare-refund ang lahat ng naunang pagbili: nananatiling naihatid ang naihatid na draw, at ang refund path ng program pa rin ang tanging awtomatiko. Kapag ang bayad na pagbili ay hindi naihatid nang tuluyan, umiiral ang mga proteksyon ng batas sa sarili nilang mga tuntunin, at sinusuri namin ang ganoong kaso sa halip na magpanggap na wala ito.",
             "Walang chargeback ng card ang mga pagbabayad sa blockchain, at hindi kami umaasa doon. Maaaring ihain ang mga kahilingan sa refund at pag-atras sa kontrata sa sentrong pangkarapatan: itinatala nito ang kahilingan, nagbibigay ng maaaring i-download na resibo, sinusubaybayan ang aming sagot, at sa sarili nito ay hindi nag-aapruba o nagpapatupad ng bayad. Huwag kailanman magpadala ng seed phrase o private key sa kahit kanino, kasama na ang nagpapanggap na aming support."
           ]
@@ -68,7 +68,7 @@
           "h": "8. Walang payo sa pamumuhunan, walang garantiyang halaga, mga limitasyon ng pananagutan",
           "p": [
             "Ang $CG ay token ng laro na para sa paggamit sa loob ng laro; kung regulated ito ay depende sa batas na naaangkop sa iyo, at hindi namin minamarka ang tanong na iyon sa pamamagitan ng pagtawag dito na utility token. Walang anuman sa laro, tindahan, pamilihan o arena ang payo sa pananalapi o alok ng pamumuhunan, at walang gumagarantiya ng presyo, liquidity, tubo o kita. Maaaring bumagsak sa zero ang mga digital asset at manatili doon.",
-            "Ang Mga Serbisyo ay ibinibigay «as-is» at «as-available», nang walang garantiya na lampas sa hinihingi ng batas, sa pinakamalawak na lawak na pinapayagan ng batas sa iyong lugar. Ang encryption, blockchain, oracle at browser ay minsan nabibigo, at hindi kami nangangako ng walang-abalang o walang-error na operasyon.",
+            "Ang Mga Serbisyo ay ibinibigay «as-is» at «as-available», nang walang garantiya na lampas sa hinihingi ng batas, sa pinakamalawak na lawak na pinapayagan ng batas sa iyong lugar. Ang encryption, blockchain, network at browser ay minsan nabibigo, at hindi kami nangangako ng walang-abalang o walang-error na operasyon.",
             "Ang kabuuang pananagutan namin para sa isang pagbili ay nililimitahan sa halagang binayaran mo para sa apektadong pack o mga pack. Hindi umiiral ang limitasyong iyon kung ipinagbabawal ito ng batas, at hindi nito kailanman nililimitahan ang mga karapatang hindi maaaring limitahan — kasama ang mga karapatan ng mamimili, mga garantiyang ayon sa batas, at mga lunas laban sa pandaraya o sinadyang paglabag."
           ]
         },
@@ -129,7 +129,7 @@
           "p": [
             "Ang Cloudflare ang nagbibigay ng CDN, WAF at Turnstile challenge, at nakikita nito ang metadata ng kahilingan — kasama ang country header na ginagamit namin para sa pagtukoy ng rehiyon.",
             "Ang mga Solana RPC provider ay nagpapasa ng mga pagbasa at transaksyon at maaaring makakita ng IP address, oras ng kahilingan, identifier ng wallet at iba pang metadata ng koneksyon, hindi lamang pampublikong data ng chain. Ang mga provider na aktwal na ginagamit ng naka-deploy na serbisyo, ang kanilang mga papel at anumang internasyonal na paglilipat ay dapat tukuyin para sa deployment na iyon.",
-            "Ang mga serbisyo ng presyo at randomness — Pyth, Hermes at Switchboard — ay tumatanggap ng mga kahilingan na maaaring maglantad ng metadata ng network sa kanilang imprastraktura bukod sa resulta sa chain. Ang mga kaganapan sa chain mismo ay pampubliko ayon sa disenyo.",
+            "Ang mga RPC provider na inilarawan sa itaas ang nagre-relay ng mga SlotHashes read para sa draw. Hindi namin ipinapadala ang pack rolls sa third-party randomness o price oracle. Ang mga kaganapan sa chain mismo ay pampubliko ayon sa disenyo.",
             "Walang Sentry o katulad na error-reporting SDK na integrado, at ang pag-configure ng DSN ay hindi nagbabago nito nang mag-isa. Ang mga operational log ng server ay maaaring maglaman ng identifier ng wallet at sakop ng pagtagal ng imbak at access control; ang anumang telemetry sa hinaharap ay may beripikadong inventory, pinangalanang tatanggap, legal na batayan at pagsang-ayon kung kinakailangan ng batas bago ito buksan."
           ]
         },

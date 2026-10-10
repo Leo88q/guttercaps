@@ -33,7 +33,7 @@ const screens = {
   "sellerNet": "Продавец получит (после комиссии {pct}%)",
   "originRecipe": "Рецепт {recipe} → {rarity}",
   "listedDemo": "Выставлено на продажу (демо)",
-  "networkOracleFees": "Комиссии сети и оракула",
+  "networkOracleFees": "Комиссии сети",
   "randomness": "Случайность",
   "fusionTimeout": "Отмените слияние, чтобы разблокировать фишки-материалы.",
   "fusionRoll": "Бросок {roll}, порог {threshold}. Одна фишка возвращена; комиссия сожжена.",
@@ -44,7 +44,7 @@ const screens = {
   "packStopped": "Открытие пака остановлено",
   "packFinishFailed": "Не удалось завершить открытие",
   "paidCommitted": "Оплачено, случайность зафиксирована",
-  "oracleWaiting": "Ждём оракул Switchboard…",
+  "oracleWaiting": "Читаем ончейн-SlotHashes…",
   "refunded": "Возврат выполнен",
   "refundAll": "100% возвращено из хранилища",
   "refundFailed": "Возврат не удался",
@@ -167,7 +167,7 @@ const screens = {
   "revealInArena": "Откройте арену, чтобы раскрыть свой сид.",
   "capSold": "Фишка продана",
   "fusionAtomic": "Не нужна — одна атомарная транзакция",
-  "fusionRandom": "Switchboard: фиксация → раскрытие (обычно 2–3 подписи)",
+  "fusionRandom": "SlotHashes: фиксация → раскрытие (обычно 1 доп. подпись)",
   "reconnectPackBuyer": "Этот пак есть в блокчейне. Чтобы продолжить, подключите кошелёк, с которого он был куплен.",
   "mockApi": "Демо-API ({state})"
 } satisfies Record<keyof typeof en, string>;

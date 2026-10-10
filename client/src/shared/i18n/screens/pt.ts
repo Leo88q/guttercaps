@@ -33,7 +33,7 @@ const screens = {
   "sellerNet": "Vendedor recebe (após taxa de {pct}%)",
   "originRecipe": "Receita {recipe} → {rarity}",
   "listedDemo": "Anunciado (demo)",
-  "networkOracleFees": "Taxas da rede e do oráculo",
+  "networkOracleFees": "Taxas da rede",
   "randomness": "Aleatoriedade",
   "fusionTimeout": "Cancele a fusão para desbloquear os materiais.",
   "fusionRoll": "Sorteio {roll}, limite {threshold}. Um material devolvido; taxa queimada.",
@@ -44,7 +44,7 @@ const screens = {
   "packStopped": "Abertura do pacote interrompida",
   "packFinishFailed": "Não foi possível concluir a abertura",
   "paidCommitted": "Pago e confirmado",
-  "oracleWaiting": "Aguardando o oráculo Switchboard…",
+  "oracleWaiting": "Lendo SlotHashes on-chain…",
   "refunded": "Reembolsado",
   "refundAll": "100% devolvido do cofre",
   "refundFailed": "Falha no reembolso",
@@ -167,7 +167,7 @@ const screens = {
   "revealInArena": "Abra a arena para revelar sua semente.",
   "capSold": "Tampinha vendida",
   "fusionAtomic": "Desnecessária — uma transação atômica",
-  "fusionRandom": "Switchboard: compromisso → revelação (geralmente 2–3 assinaturas)",
+  "fusionRandom": "SlotHashes: compromisso → revelação (geralmente 1 assinatura extra)",
   "reconnectPackBuyer": "Este pacote está na blockchain. Reconecte a carteira usada na compra para continuar.",
   "mockApi": "API de demonstração ({state})"
 } satisfies Record<keyof typeof en, string>;

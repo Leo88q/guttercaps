@@ -1,6 +1,6 @@
 {
-  "revision": "2026-10-06.1",
-  "sha256": "ddfada3bdc5084a2ad847c1c9ca5d1d9b84e19dc4ac6b0c52718846c2ee20f6c",
+  "revision": "2026-10-11.1",
+  "sha256": "c5110f2de4c2eaf087afda365fceef15d499ca9a1625f9fbc69d41588a311490",
   "docs": {
     "terms": {
       "slug": "terms",
@@ -26,7 +26,7 @@
           "h": "3. Isi paket, peluang yang dipublikasikan, dan undian yang dapat diverifikasi",
           "p": [
             "Distribusi kelangkaan, jaminan batas bawah, dan penghitung pity setiap paket dipublikasikan di toko sebelum Anda membayar dan ditetapkan dalam kode: Starter Pack {starterCaps} chip, Standard Pack {standardCaps} chip, Premium Pack {premiumCaps} chip, Limited Event Pack {limitedCaps} chip. Program on-chain menegakkan tabel yang sama, termasuk batas keras pada dua tingkat paling langka, jadi peluang yang Anda baca adalah peluang yang diterapkan program.",
-            "Undian memakai beacon keacakan commit–reveal (Switchboard on demand). Baik komitmen maupun pengungkapannya on-chain, sehingga hasil lama dapat dihitung ulang: layar verifikasi memutar ulang ekspansi yang sama seperti yang dijalankan program, dan Anda dapat memeriksa undian sendiri tanpa meminta apa pun kepada kami.",
+            "Undian memakai SlotHashes on-chain: program meng-hash seed yang dikomit saat pembayaran dengan hash slot. Baik komitmen maupun undian turunannya on-chain, sehingga hasil lama dapat dihitung ulang: layar verifikasi memutar ulang ekspansi yang sama seperti yang dijalankan program, dan Anda dapat memeriksa undian sendiri tanpa meminta apa pun kepada kami.",
             "Penghitung pity disimpan per dompet dan per jenis paket, on-chain. Penghitung membatasi rangkaian terburuk yang mungkin; itu bukan janji tentang undian tertentu dan tidak mengubah distribusi yang dipublikasikan untuk paket mana pun."
           ]
         },
@@ -44,7 +44,7 @@
           "h": "5. Pengembalian dana, paket terhenti, dan pembatalan",
           "p": [
             "Setelah paket dibuka, program tidak dapat membalik undiannya: hasilnya sudah menjadi bagian dari catatan on-chain. Ini tidak menghapus hak pembatalan, penarikan, pengembalian dana, atau kesesuaian yang Anda miliki menurut hukum. Apakah pengecualian untuk konten digital berlaku, dan persetujuan atau pengakuan apa yang diperlukan, bergantung pada pasar yang bersangkutan, dan tidak ada dalam Ketentuan ini yang melepaskan hak yang tidak dapat dilepaskan.",
-            "Jika pengungkapan keacakan tidak pernah terjadi, paket tetap tertutup dan pembayaran tetap di vault. Pengembalian dana penuh atas harga pembelian tersedia ketika jendela oracle berakhir sementara permintaan masih belum diungkap: {staleSlots} slot, sekitar {staleMinutes} menit pada 400 ms per slot, dengan waktu nyata yang bisa berbeda. Syarat pengembalian dibaca dari program, bukan dinilai oleh agen dukungan; Anda yang menandatangani transaksi pembatalan, dan biaya jaringan tidak dikembalikan.",
+            "Jika pengungkapan keacakan tidak pernah terjadi, paket tetap tertutup dan pembayaran tetap di vault. Pengembalian dana penuh atas harga pembelian tersedia ketika jendela kedaluwarsa berakhir sementara permintaan masih belum diungkap: {staleSlots} slot, sekitar {staleMinutes} menit pada 400 ms per slot, dengan waktu nyata yang bisa berbeda. Syarat pengembalian dibaca dari program, bukan dinilai oleh agen dukungan; Anda yang menandatangani transaksi pembatalan, dan biaya jaringan tidak dikembalikan.",
             "Jika kami menghentikan penjualan suatu drop karena konfigurasi cacat, kunci yang bocor, atau permintaan regulator, itu sendiri tidak membuat semua pembelian sebelumnya dapat dikembalikan: undian yang sudah terkirim tetap terkirim, dan jalur pengembalian lewat program tetap satu-satunya yang otomatis. Jika pembelian berbayar sama sekali tidak terkirim, perlindungan menurut hukum berlaku dengan syaratnya sendiri, dan kami menilai kasus semacam itu alih-alih berpura-pura tidak ada.",
             "Pembayaran blockchain tidak memiliki chargeback kartu, dan kami tidak mengandalkannya. Permintaan pengembalian dana dan penarikan dari kontrak dapat diajukan di pusat hak: pusat mencatat permintaan, memberi tanda terima yang bisa diunduh, melacak balasan kami, dan dengan sendirinya tidak menyetujui atau menjalankan pembayaran. Jangan pernah mengirim frasa pemulihan atau kunci pribadi kepada siapa pun, termasuk pihak yang mengaku sebagai dukungan kami."
           ]
@@ -68,7 +68,7 @@
           "h": "8. Tanpa nasihat investasi, tanpa jaminan nilai, batas tanggung jawab",
           "p": [
             "$CG adalah token game yang ditujukan untuk penggunaan di dalam game; apakah diatur atau tidak bergantung pada hukum yang berlaku bagi Anda, dan kami tidak memutuskan pertanyaan itu dengan menyebutnya token utilitas. Tidak ada dalam game, toko, pasar, atau arena yang merupakan nasihat keuangan atau tawaran investasi, dan tidak ada yang menjamin harga, likuiditas, keuntungan, atau imbal hasil. Aset digital dapat jatuh ke nol dan bertahan di sana.",
-            "Layanan disediakan «sebagaimana adanya» dan «sesuai ketersediaan», tanpa jaminan melebihi yang diwajibkan hukum, sejauh yang diizinkan hukum di tempat Anda tinggal. Enkripsi, blockchain, oracle, dan peramban kadang gagal, dan kami tidak menjanjikan operasi tanpa gangguan atau tanpa kesalahan.",
+            "Layanan disediakan «sebagaimana adanya» dan «sesuai ketersediaan», tanpa jaminan melebihi yang diwajibkan hukum, sejauh yang diizinkan hukum di tempat Anda tinggal. Enkripsi, blockchain, jaringan, dan peramban kadang gagal, dan kami tidak menjanjikan operasi tanpa gangguan atau tanpa kesalahan.",
             "Tanggung jawab agregat kami atas suatu pembelian dibatasi pada jumlah yang Anda bayarkan untuk paket yang terdampak. Batas itu tidak berlaku di tempat hukum melarangnya, dan tidak pernah membatasi hak yang tidak dapat dibatasi — termasuk hak konsumen, jaminan menurut hukum, dan upaya hukum atas kecurangan atau kesengajaan."
           ]
         },
@@ -129,7 +129,7 @@
           "p": [
             "Cloudflare menyediakan CDN, WAF, dan tantangan Turnstile, dan melihat metadata permintaan — termasuk header negara yang kami pakai untuk deteksi wilayah.",
             "Penyedia RPC Solana meneruskan pembacaan dan transaksi dan dapat melihat alamat IP, waktu permintaan, pengenal dompet, dan metadata koneksi lain, bukan hanya data publik rantai. Penyedia yang benar-benar dipakai layanan yang diterapkan, perannya, dan setiap transfer internasional harus diidentifikasi untuk penerapan itu.",
-            "Layanan harga dan keacakan — Pyth, Hermes, dan Switchboard — menerima permintaan yang dapat mengungkap metadata jaringan ke infrastruktur mereka selain hasil on-chain. Peristiwa on-chain sendiri memang publik menurut desainnya.",
+            "Penyedia RPC yang dijelaskan di atas meneruskan pembacaan SlotHashes untuk undian. Kami tidak mengirim undian paket ke oracle keacakan atau harga pihak ketiga. Peristiwa on-chain sendiri memang publik menurut desainnya.",
             "Tidak ada Sentry atau SDK pelaporan galat sejenis yang terpasang, dan mengonfigurasi DSN saja tidak mengubah itu. Log operasional server dapat memuat pengenal dompet dan tunduk pada retensi serta kontrol akses; setiap telemetri di masa depan mendapat inventaris terverifikasi, penerima yang disebutkan, dasar hukum, dan persetujuan bila hukum mensyaratkannya sebelum dinyalakan."
           ]
         },

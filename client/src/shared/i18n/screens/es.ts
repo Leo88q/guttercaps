@@ -33,7 +33,7 @@ const screens = {
   "sellerNet": "El vendedor recibe (tras comisión del {pct}%)",
   "originRecipe": "Receta {recipe} → {rarity}",
   "listedDemo": "Anunciado (demo)",
-  "networkOracleFees": "Comisiones de red y oráculo",
+  "networkOracleFees": "Comisiones de red",
   "randomness": "Aleatoriedad",
   "fusionTimeout": "Cancela la fusión para desbloquear los materiales.",
   "fusionRoll": "Tirada {roll}, umbral {threshold}. Un material devuelto; comisión quemada.",
@@ -44,7 +44,7 @@ const screens = {
   "packStopped": "Apertura del sobre detenida",
   "packFinishFailed": "No se pudo completar la apertura",
   "paidCommitted": "Pagado y confirmado",
-  "oracleWaiting": "Esperando al oráculo Switchboard…",
+  "oracleWaiting": "Leyendo SlotHashes on-chain…",
   "refunded": "Reembolsado",
   "refundAll": "100% devuelto de la bóveda",
   "refundFailed": "Falló el reembolso",
@@ -167,7 +167,7 @@ const screens = {
   "revealInArena": "Abre la arena para revelar tu semilla.",
   "capSold": "Chapa vendida",
   "fusionAtomic": "No hace falta — una transacción atómica",
-  "fusionRandom": "Switchboard: compromiso → revelación (normalmente 2–3 firmas)",
+  "fusionRandom": "SlotHashes: compromiso → revelación (normalmente 1 firma extra)",
   "reconnectPackBuyer": "Este sobre está en la blockchain. Vuelve a conectar la billetera con la que lo compraste para continuar.",
   "mockApi": "API de demostración ({state})"
 } satisfies Record<keyof typeof en, string>;

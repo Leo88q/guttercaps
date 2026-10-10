@@ -33,7 +33,7 @@ const screens = {
   "sellerNet": "Người bán nhận (sau phí {pct}%)",
   "originRecipe": "Công thức {recipe} → {rarity}",
   "listedDemo": "Đã đăng bán (demo)",
-  "networkOracleFees": "Phí mạng và oracle",
+  "networkOracleFees": "Phí mạng",
   "randomness": "Tính ngẫu nhiên",
   "fusionTimeout": "Hủy hợp nhất để mở khóa nguyên liệu.",
   "fusionRoll": "Kết quả {roll}, ngưỡng {threshold}. Trả lại một nguyên liệu; phí bị đốt.",
@@ -44,7 +44,7 @@ const screens = {
   "packStopped": "Đã dừng mở gói",
   "packFinishFailed": "Không thể hoàn tất mở gói",
   "paidCommitted": "Đã thanh toán và cam kết",
-  "oracleWaiting": "Đang chờ oracle Switchboard…",
+  "oracleWaiting": "Đang đọc SlotHashes on-chain…",
   "refunded": "Đã hoàn tiền",
   "refundAll": "Đã hoàn 100% từ kho",
   "refundFailed": "Hoàn tiền thất bại",
@@ -167,7 +167,7 @@ const screens = {
   "revealInArena": "Mở đấu trường để công bố hạt giống.",
   "capSold": "Đã bán nắp",
   "fusionAtomic": "Không cần — một giao dịch nguyên tử",
-  "fusionRandom": "Switchboard: cam kết → tiết lộ (thường cần 2–3 chữ ký)",
+  "fusionRandom": "SlotHashes: cam kết → tiết lộ (thường 1 chữ ký thêm)",
   "reconnectPackBuyer": "Gói này có trên blockchain. Kết nối lại ví đã mua gói để tiếp tục.",
   "mockApi": "API demo ({state})"
 } satisfies Record<keyof typeof en, string>;

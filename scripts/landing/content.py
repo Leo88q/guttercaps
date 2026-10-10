@@ -14,7 +14,7 @@ T = {
   'hero.sub': ('Seventy-two bottle caps from a city that never dries. Pull them from provably-fair packs, fuse three into one, slam them in the arena, stake them for $CG — every cap is a real asset in your wallet and every roll can be checked on-chain.',
                'Семьдесят две крышки из города, который никогда не сохнет. Доставайте их из доказуемо честных паков, сливайте три в одну, бейтесь на арене, стейкайте за $CG — каждая фишка реально лежит в вашем кошельке, а каждый ролл можно проверить в блокчейне.'),
   'hero.p1': ('8 districts × 9 tiers = 72 caps', '8 районов × 9 тиров = 72 фишки'),
-  'hero.p2': ('Switchboard VRF, never blockhash', 'Switchboard VRF, никакого blockhash'),
+  'hero.p2': ('On-chain SlotHashes, never a studio roll', 'Ончейн-SlotHashes, не ролл студии'),
   'hero.p3': ('Pay in SOL · USDC · SKR', 'Оплата в SOL · USDC · SKR'),
   'hero.p4': ('3 → 1 fusion', 'Фьюжн 3 → 1'),
   'hero.p5': ('Cap Slam 3-v-3', 'Cap Slam 3 на 3'),
@@ -48,16 +48,16 @@ T = {
                   'Pity: Standard-пак гарантирует Legend не позже 60-го пака без него (мягкий буст с 30-го); Premium — к 40-му, Limited — к 25-му. Счётчик хранится в вашем собственном аккаунте в блокчейне.'),
 
   'packs.h': ('Four <span class="tag-accent">packs</span>', 'Четыре <span class="tag-accent">пака</span>'),
-  'packs.p': ('Prices are fixed in US cents; SOL and SKR are converted at checkout with a Pyth price feed inside the same transaction. $CG packs burn 75 % of the price.',
-              'Цены зафиксированы в центах США; SOL и SKR пересчитываются при оплате по фиду Pyth внутри той же транзакции. Паки за $CG сжигают 75 % цены.'),
+  'packs.p': ('Prices are fixed in US cents; SOL and SKR convert at a frozen studio rate (SOL = $110, SKR = $0.016). $CG packs burn 75 % of the price.',
+              'Цены зафиксированы в центах США; SOL и SKR пересчитываются по фиксированному курсу студии (SOL = $110, SKR = $0.016). Паки за $CG сжигают 75 % цены.'),
   'packs.bundles': ('Bundles: ×5 −7 % · ×10 −12 % · ×25 −18 %. Paying in SKR takes another 5 % off (stacks, capped at 30 %). Limited packs: max 5 per wallet per day, no bundles.',
                     'Бандлы: ×5 −7 % · ×10 −12 % · ×25 −18 %. Оплата в SKR даёт ещё −5 % (суммируется, потолок 30 %). Limited-паки: не более 5 на кошелёк в день, без бандлов.'),
 
   # Mainnet pre-sale (docs/preorder-beta.md) — numbers mirror backend/src/config.ts
   # PREORDER_* defaults and are pinned against them by scripts/landing/check.ts.
   'presale.h': ('Founder <span class="tag-accent">pre-sale</span>', 'Пре-сейл <span class="tag-accent">для первых</span>'),
-  'presale.p': ('The beta is free and runs on devnet; mainnet comes after the audit. Until then two Limited Event Pack offers sell for real SOL: 500 singles at 0.30 SOL (max 5 per wallet) and 125 founders chests of 4 packs at 0.999 SOL (max 1 per wallet). You pay today, the packs are delivered on-chain at mainnet launch, and you open them yourself — same Switchboard randomness, same published odds.',
-                'Бета бесплатна и идёт на devnet; mainnet будет после аудита. До тех пор два предложения Limited-паков за реальные SOL: 500 одиночных по 0,30 SOL (макс. 5 на кошелёк) и 125 сундуков основателей из 4 паков по 0,999 SOL (макс. 1 на кошелёк). Вы платите сегодня, паки выдаются на цепи при запуске майнета, и вскрываете их вы сами — та же случайность Switchboard, те же опубликованные шансы.'),
+  'presale.p': ('The beta is free and runs on devnet; mainnet comes after the audit. Until then two Limited Event Pack offers sell for real SOL: 500 singles at 0.30 SOL (max 5 per wallet) and 125 founders chests of 4 packs at 0.999 SOL (max 1 per wallet). You pay today, the packs are delivered on-chain at mainnet launch, and you open them yourself — same on-chain SlotHashes, same published odds.',
+                'Бета бесплатна и идёт на devnet; mainnet будет после аудита. До тех пор два предложения Limited-паков за реальные SOL: 500 одиночных по 0,30 SOL (макс. 5 на кошелёк) и 125 сундуков основателей из 4 паков по 0,999 SOL (макс. 1 на кошелёк). Вы платите сегодня, паки выдаются на цепи при запуске майнета, и вскрываете их вы сами — те же ончейн-SlotHashes, те же опубликованные шансы.'),
   'presale.o1h': ('Limited Event Pack', 'Limited Event Pack'),
   'presale.o1p': ('500 singles · 0.30 SOL · max 5 per wallet', '500 одиночных · 0,30 SOL · макс. 5 на кошелёк'),
   'presale.o2h': ('Founders chest ×4', 'Сундук основателей ×4'),
@@ -66,8 +66,8 @@ T = {
   'presale.c1p': ('SOL goes to the team multisig (2-of-3) with the memo GC-PRE|42 style tag. At mainnet launch the packs are granted on-chain in reservation order and land in your wallet as pending packs you open yourself.',
                   'SOL уходит в мультиподпись команды (2-из-3) с мемо вида GC-PRE|42. При запуске майнета паки выдаются на цепи в порядке бронирования и ложатся в ваш кошелёк как ожидающие паки, которые вы вскрываете сами.'),
   'presale.c2h': ('The price is locked in SOL', 'Цена зафиксирована в SOL'),
-  'presale.c2p': ('At launch the Limited Event Pack costs $29.99 converted at the Pyth feed. Pre-sale singles are a flat 0.30 SOL; the founders chest is 0.999 SOL for 4 packs — no conversion, no slippage. 500 singles and 125 chests, 1000 packs on-chain.',
-                  'На запуске Limited-пак стоит $29,99 в пересчёте по фиду Pyth. Одиночный пак пре-сейла — ровно 0,30 SOL; сундук основателей — 0,999 SOL за 4 пака, без конвертации и проскальзывания. 500 одиночных и 125 сундуков, 1000 паков на цепи.'),
+  'presale.c2p': ('At launch the Limited Event Pack costs $29.99 at the frozen SOL rate ($110). Pre-sale singles are a flat 0.30 SOL; the founders chest is 0.999 SOL for 4 packs — no conversion, no slippage. 500 singles and 125 chests, 1000 packs on-chain.',
+                  'На запуске Limited-пак стоит $29,99 по фиксированному курсу SOL ($110). Одиночный пак пре-сейла — ровно 0,30 SOL; сундук основателей — 0,999 SOL за 4 пака, без конвертации и проскальзывания. 500 одиночных и 125 сундуков, 1000 паков на цепи.'),
   'presale.c3h': ('5 caps, floor Rare+', '5 фишек, порог Rare+'),
   'presale.c3p': ('Only the featured seasonal collection, no cap below Rare+, Legend guaranteed by pack 25 — the strongest top-end odds in the game. Event packs exist to fund the prize pools.',
                   'Только сезонная избранная коллекция, ни одной фишки ниже Rare+, Legend гарантирован к 25-му паку — сильнейшие верхние шансы в игре. Событийные паки и существуют, чтобы наполнять призовые пулы.'),
@@ -105,8 +105,8 @@ T = {
   'eco.f5': ('Extras (handle, skins, season pass…)', 'Экстры (хэндл, скины, сезонный пропуск…)'), 'eco.f5w': ('Cosmetic only — never odds, power or yield. $CG payments are burned; SOL/USDC/SKR go to the treasury.', 'Только косметика — никогда не шансы, сила или доход. Оплата в $CG сжигается; SOL/USDC/SKR идут в казну.'),
   'eco.f6': ('SKR pack discount', 'Скидка на паки в SKR'), 'eco.f6w': ('Seeker promo; live-tunable 0–15 %.', 'Промо Seeker; настраивается 0–15 %.'),
   'eco.skr.h': ('SKR — the Seeker token: pay with it, win it back', 'SKR — токен Seeker: платите им — и выигрывайте его'),
-  'eco.skr.p': ('Packs, listings, offers and extras accept SKR at the Pyth SKR/USD price; the program checks the feed id and a slippage cap in the same transaction. Only the genuine mint below is accepted — never a symbol lookup. Because the game cannot mint SKR, SKR prizes come from an on-chain prize pool funded by 15 % of SKR pack revenue (plus 10 % of SKR market fees and 5 % of SKR extras), paid in weekly from the public treasury wallet: Seeker-week quests, season ladders and tournaments pay out in SKR through the same Merkle claims as $CG, capped per wallet. Wagers, fusion fees and staking stay in $CG.',
-                'Паки, листинги, офферы и экстры принимают SKR по цене Pyth SKR/USD; программа проверяет id фида и лимит проскальзывания в той же транзакции. Принимается только подлинный минт ниже — никакого поиска по тикеру. Поскольку игра не может выпускать SKR, призы в SKR идут из on-chain призового пула, который еженедельно пополняется с публичного казначейского кошелька: 15 % выручки паков за SKR (плюс 10 % комиссий маркета и 5 % экстра-сервисов в SKR): квесты Seeker-недели, сезонные ладдеры и турниры выплачиваются в SKR через те же Merkle-клеймы, что и $CG, с капом на кошелёк. Ставки, fusion-fee и стейкинг остаются в $CG.'),
+  'eco.skr.p': ('Packs, listings, offers and extras accept SKR at the frozen studio rate ($0.016). Only the genuine mint below is accepted — never a symbol lookup. Because the game cannot mint SKR, SKR prizes come from an on-chain prize pool funded by 15 % of SKR pack revenue (plus 10 % of SKR market fees and 5 % of SKR extras), paid in weekly from the public treasury wallet: Seeker-week quests, season ladders and tournaments pay out in SKR through the same Merkle claims as $CG, capped per wallet. Wagers, fusion fees and staking stay in $CG.',
+                'Паки, листинги, офферы и экстры принимают SKR по фиксированному курсу студии ($0.016). Принимается только подлинный минт ниже — никакого поиска по тикеру. Поскольку игра не может выпускать SKR, призы в SKR идут из on-chain призового пула, который еженедельно пополняется с публичного казначейского кошелька: 15 % выручки паков за SKR (плюс 10 % комиссий маркета и 5 % экстра-сервисов в SKR): квесты Seeker-недели, сезонные ладдеры и турниры выплачиваются в SKR через те же Merkle-клеймы, что и $CG, с капом на кошелёк. Ставки, fusion-fee и стейкинг остаются в $CG.'),
 
   'mech.h': ('Everything you can <span class="tag-accent">do with a cap</span>', 'Всё, что можно <span class="tag-accent">сделать с фишкой</span>'),
   'mech.p': ('Numbers below are the live parameters of the devnet build — the same table the programs, the app and the economy tests read from.',
@@ -140,16 +140,16 @@ T = {
   'rules.h': ('Rules &amp; <span class="tag-accent">fairness</span>', 'Правила и <span class="tag-accent">честность</span>'),
   'rules.p': ('This section is deliberately boring and graffiti-free — it is about money, so precision matters more than mood.',
               'Этот раздел намеренно скучный и без граффити — он про деньги, поэтому точность важнее настроения.'),
-  'rules.1': ("Randomness comes from Switchboard On-Demand. The program refuses a request whose seed slot is not exactly the previous slot and refuses to open a pack whose value was already visible — the studio's server never picks a result after seeing your payment.",
-              'Случайность приходит из Switchboard On-Demand. Программа отвергает запрос, у которого seed-слот не равен ровно предыдущему слоту, и отказывается вскрывать пак, значение которого уже было видно, — сервер студии никогда не выбирает результат после вашей оплаты.'),
+  'rules.1': ("Randomness comes from Solana SlotHashes. The program hashes your committed seed with the slot hash, refuses a seed that is not from the current slot, and refuses to open a pack whose value was already visible — the studio's server never picks a result after seeing your payment.",
+              'Случайность берётся из SlotHashes Solana. Программа хеширует зафиксированный сид с хешем слота, отвергает сид не из текущего слота и отказывается вскрывать пак, значение которого уже было видно, — сервер студии никогда не выбирает результат после вашей оплаты.'),
   'rules.2': ('Odds, floors, pity and prices live in one on-chain config. Changes go through a 2-of-5 multisig, emit an event with a version number and are validated against the invariants in the open economy package before signing.',
               'Шансы, флоры, pity и цены живут в одном on-chain-конфиге. Изменения проходят через мультисиг 2 из 5, публикуют событие с номером версии и проверяются на инварианты открытого пакета экономики до подписи.'),
   'rules.3': ('The marketplace fee is tunable between 0 and 10 % and can never exceed that ceiling; the 2.5 % royalty is a program constant and cannot be raised.',
               'Комиссия маркетплейса настраивается в пределах 0–10 % и никогда не может превысить этот потолок; роялти 2,5 % — константа программы и не может быть повышено.'),
   'rules.4': ('In Cap Slam only the $CG wager is at stake, held in escrow; the program can pay out to the challenger or the opponent and nobody else. Caps are never burned, transferred or locked by a fight.',
               'В Cap Slam на кону только ставка в $CG, лежащая в эскроу; программа может выплатить её претенденту или оппоненту и никому больше. Фишки никогда не сжигаются, не передаются и не блокируются боем.'),
-  'rules.5': ('If a reveal never arrives you cancel and get refunded after 10 800 slots (about 72 minutes, once the oracle window has expired). If a pack is bought and the app crashes, the pending pack is visible on your Home screen until it is opened or refunded — our crank opens it for you.',
-              'Если reveal так и не пришёл, вы отменяете покупку и получаете возврат через 10 800 слотов (около 72 минут — когда окно оракула истекло). Если пак куплен, а приложение упало, ожидающий пак виден на главном экране, пока не будет вскрыт или возвращён — наш crank вскроет его за вас.'),
+  'rules.5': ('If a reveal never arrives you cancel and get refunded after 10 800 slots (about 72 minutes). If a pack is bought and the app crashes, the pending pack is visible on your Home screen until it is opened or refunded — our crank opens it for you.',
+              'Если раскрытие так и не пришло, вы отменяете покупку и получаете возврат через 10 800 слотов (около 72 минут). Если пак куплен, а приложение упало, ожидающий пак виден на главном экране, пока не будет вскрыт или возвращён — наш crank вскроет его за вас.'),
   'rules.6': ('An emergency pause blocks new purchases, listings and stakes during an incident. It never freezes what you already own: unstake, cancel and withdraw keep working.',
               'Аварийная пауза блокирует новые покупки, листинги и стейки во время инцидента. Она никогда не замораживает то, чем вы уже владеете: анстейк, отмена и вывод продолжают работать.'),
   'rules.7': ('Every action emits an event. Our backend is a cache over those events, not a source of truth — anyone can re-index the four programs and get the same leaderboards.',
@@ -163,7 +163,7 @@ T = {
   'road.s1': ('Now · devnet', 'Сейчас · devnet'), 'road.s2': ('Next', 'Дальше'), 'road.s3': ('Later', 'Позже'), 'road.s4': ('Beyond the horizon', 'За горизонтом'),
   'road.1h': ('Priming the wall', 'Грунтуем стену'),
   'road.1p': ('The core loop is playable end-to-end on devnet.', 'Основная петля целиком играется на devnet.'),
-  'road.1a': ('Packs with VRF, floors and pity · SOL / USDC / SKR / $CG', 'Паки с VRF, флорами и pity · SOL / USDC / SKR / $CG'),
+  'road.1a': ('Packs with SlotHashes, floors and pity · SOL / USDC / SKR / $CG', 'Паки с SlotHashes, флорами и pity · SOL / USDC / SKR / $CG'),
   'road.1b': ('3 → 1 fusion with boosters and result locks', 'Фьюжн 3 → 1 с бустерами и блокировкой результата'),
   'road.1c': ('Escrow market, cap & $CG staking, district set bonus', 'Эскроу-маркет, стейкинг фишек и $CG, бонус за сет района'),
   'road.1d': ('Provably-fair Verify page · app in 7 languages', 'Страница проверки честности · приложение на 7 языках'),
@@ -211,11 +211,11 @@ HOWTO = [
    'en': ('Connect', 'Any Solana wallet — Phantom, Solflare, Backpack or the Seeker wallet. Sign-in is a signed message: no e-mail, no password, no custody.', 'sign-in with Solana'),
    'ru': ('Подключиться', 'Любой Solana-кошелёк — Phantom, Solflare, Backpack или кошелёк Seeker. Вход — подписанное сообщение: без e-mail, пароля и кастодиала.', 'вход через Solana')},
   {'color': 'var(--magenta-soft)', 'glow': 'rgba(255,46,138,0.35)',
-   'en': ('Buy a pack', 'Starter $1.99 once, Standard $5.99, Premium $14.99, Limited $29.99. Pay in SOL, USDC or SKR (−5 %). The same transaction commits a Switchboard randomness request.', 'payment + VRF commit in one tx'),
-   'ru': ('Купить пак', 'Starter $1.99 один раз, Standard $5.99, Premium $14.99, Limited $29.99. Оплата в SOL, USDC или SKR (−5 %). Та же транзакция фиксирует запрос случайности Switchboard.', 'оплата + VRF-коммит в одной tx')},
+   'en': ('Buy a pack', 'Starter $1.99 once, Standard $5.99, Premium $14.99, Limited $29.99. Pay in SOL, USDC or SKR (−5 %). The same transaction commits an on-chain SlotHashes seed.', 'payment + seed in one tx'),
+   'ru': ('Купить пак', 'Starter $1.99 один раз, Standard $5.99, Premium $14.99, Limited $29.99. Оплата в SOL, USDC или SKR (−5 %). Та же транзакция фиксирует ончейн-сид SlotHashes.', 'оплата + сид в одной tx')},
   {'color': 'var(--acid-soft)', 'glow': 'rgba(182,255,60,0.35)',
-   'en': ('Reveal', 'The oracle reveals 32 bytes nobody knew when you paid; the program expands them into tiers and districts. The Verify page recomputes your roll from those bytes.', 'provably fair'),
-   'ru': ('Вскрыть', 'Оракул раскрывает 32 байта, которых никто не знал в момент оплаты; программа разворачивает их в тиры и районы. Страница проверки пересчитывает ваш ролл из этих байтов.', 'доказуемо честно')},
+   'en': ('Reveal', 'SlotHashes at that slot become 32 bytes the program expands into tiers and districts. The Verify page recomputes your roll from those bytes.', 'provably fair'),
+   'ru': ('Вскрыть', 'SlotHashes того слота становятся 32 байтами, которые программа разворачивает в тиры и районы. Страница проверки пересчитывает ваш ролл из этих байтов.', 'доказуемо честно')},
   {'color': 'var(--orange-soft)', 'glow': 'rgba(255,122,26,0.35)',
    'en': ('Fuse 3 → 1', 'Three caps of one tier become one of the next. Same district on every second step. From Epic up it can fail and refunds one material; a booster adds +15 pp.', '8 recipes, Common → Diamond'),
    'ru': ('Слить 3 → 1', 'Три фишки одного тира становятся одной следующего. На каждом втором шаге — один район. С Epic может провалиться и вернуть один материал; бустер даёт +15 п.п.', '8 рецептов, Common → Diamond')},
@@ -242,14 +242,14 @@ PACKS = [
 FAQ = [
   ('Is this gambling?', 'It is a collectible game with chance-based packs bought with real funds, so we treat it like one: 18+, odds and pity published in the program config, every roll verifiable, no cash-out promises. The market is peer-to-peer — the studio never buys caps back at a set price.',
    'Это азартная игра?', 'Это коллекционная игра с паками на основе случайности, купленными за реальные деньги, поэтому мы и относимся к ней так: 18+, шансы и pity опубликованы в конфиге программы, каждый ролл проверяем, никаких обещаний вывода. Маркет — peer-to-peer: студия никогда не выкупает фишки по фиксированной цене.'),
-  ('What can I pay with?', 'SOL, USDC and SKR for everything; $CG for Standard and Premium packs (75 % of it is burned). SOL and SKR are converted at checkout with a Pyth price inside the same transaction, with a slippage cap you set.',
-   'Чем можно платить?', 'SOL, USDC и SKR — за всё; $CG — за паки Standard и Premium (75 % сжигается). SOL и SKR пересчитываются при оплате по цене Pyth внутри той же транзакции с лимитом проскальзывания, который задаёте вы.'),
+  ('What can I pay with?', 'SOL, USDC and SKR for everything; $CG for Standard and Premium packs (75 % of it is burned). SOL and SKR convert at a frozen studio rate (SOL = $110, SKR = $0.016).',
+   'Чем можно платить?', 'SOL, USDC и SKR — за всё; $CG — за паки Standard и Premium (75 % сжигается). SOL и SKR пересчитываются по фиксированному курсу студии (SOL = $110, SKR = $0.016).'),
   ('What is SKR and do I need a Seeker phone?', 'SKR is the Solana Mobile Seeker ecosystem token. You do not need a Seeker: any Solana wallet works. Seeker owners get the 5 % SKR pack discount and the dApp Store install. The game only accepts the genuine SKR mint and never mints or burns SKR.',
    'Что такое SKR и нужен ли телефон Seeker?', 'SKR — токен экосистемы Solana Mobile Seeker. Seeker не нужен: подойдёт любой Solana-кошелёк. Владельцы Seeker получают скидку 5 % на паки в SKR и установку из dApp Store. Игра принимает только подлинный минт SKR и никогда его не выпускает и не сжигает.'),
   ('Can I lose my caps in Cap Slam?', 'No. Only the $CG wager is at stake, and it sits in escrow until the program settles the match. Caps are never burned, transferred or locked by a fight.',
    'Можно ли потерять фишки в Cap Slam?', 'Нет. На кону только ставка в $CG, и она лежит в эскроу, пока программа не рассчитает матч. Фишки никогда не сжигаются, не передаются и не блокируются боем.'),
-  ('What if the reveal never comes?', 'Nothing is lost. The oracle answers in seconds and our crank opens the pack even if you close the app. If the oracle never answers, a pending pack stays visible on your Home screen; after 10 800 slots (≈ 72 min) you can cancel it and the payment is refunded by the program, not by support.',
-   'Что, если reveal не придёт?', 'Ничего не теряется. Оракул отвечает за секунды, а наш crank вскрывает пак, даже если вы закрыли приложение. Если оракул так и не ответит, ожидающий пак остаётся на главном экране; через 10 800 слотов (≈ 72 мин) вы можете его отменить, и программа — не поддержка — вернёт оплату.'),
+  ('What if the reveal never comes?', 'Nothing is lost. SlotHashes land in seconds and our crank opens the pack even if you close the app. If the roll never completes, a pending pack stays visible on your Home screen; after 10 800 slots (≈ 72 min) you can cancel it and the payment is refunded by the program, not by support.',
+   'Что, если раскрытие не придёт?', 'Ничего не теряется. SlotHashes появляются за секунды, а наш crank вскрывает пак, даже если вы закрыли приложение. Если ролл так и не завершится, ожидающий пак остаётся на главном экране; через 10 800 слотов (≈ 72 мин) вы можете его отменить, и программа — не поддержка — вернёт оплату.'),
   ('How do I check the odds are real?', 'Open any pack result and press Verify. You will see the randomness account, the 32 revealed bytes, your pity counter before and after, the effective odds at that moment and a local recomputation of the roll next to the on-chain event.',
    'Как проверить, что шансы настоящие?', 'Откройте результат любого пака и нажмите «Проверить». Вы увидите аккаунт случайности, 32 раскрытых байта, счётчик pity до и после, эффективные шансы на тот момент и локальный пересчёт ролла рядом с on-chain-событием.'),
   ('What does the studio earn?', 'A 7.5 % marketplace fee (⅓ of it buys back and burns $CG), a 2.5 % creator royalty, 5 % rake on wagers, pack sales in SOL / USDC / SKR, and cosmetic extras. Nothing we sell changes odds, power or yield.',
@@ -260,8 +260,8 @@ FAQ = [
    'Когда mainnet?', 'После независимого аудита всех четырёх программ — это третий слой роадмапа. До тех пор всё работает на devnet с тестовыми средствами, о чём и говорят счётчики на этой странице.'),
   ('Is the code open?', 'The four Anchor programs, the economy package with its invariant tests, the indexer and the app are in the repository linked below. The economy numbers on this page are rendered from that same package.',
    'Код открыт?', 'Четыре Anchor-программы, пакет экономики с тестами инвариантов, индексатор и приложение лежат в репозитории по ссылке ниже. Числа экономики на этой странице берутся из того же пакета.'),
-  ('What is the pre-sale?', 'Two Limited Event Pack offers sold for mainnet SOL while the game runs its free devnet beta: 500 singles at 0.30 SOL (max 5 per wallet) and 125 founders chests of 4 packs at 0.999 SOL (max 1 per wallet). Payment goes to the team multisig (2-of-3) with a memo; packs are granted on-chain at mainnet launch in reservation order, and you open them yourself with the same Switchboard randomness as any purchase. The campaign can be switched off at any moment; the public reservation registry is the record for refunds.',
-   'Что такое пре-сейл?', 'Два предложения Limited-паков за mainnet SOL, пока идёт бесплатная devnet-бета: 500 одиночных по 0,30 SOL (макс. 5 на кошелёк) и 125 сундуков основателей из 4 паков по 0,999 SOL (макс. 1 на кошелёк). Оплата уходит в мультиподпись команды (2-из-3) с мемо; паки выдаются на цепи при запуске майнета в порядке бронирования, и вскрываете вы их сами — с той же случайностью Switchboard, что и любую покупку. Кампанию можно остановить в любой момент; публичный реестр бронирований — основание для возвратов.'),
+  ('What is the pre-sale?', 'Two Limited Event Pack offers sold for mainnet SOL while the game runs its free devnet beta: 500 singles at 0.30 SOL (max 5 per wallet) and 125 founders chests of 4 packs at 0.999 SOL (max 1 per wallet). Payment goes to the team multisig (2-of-3) with a memo; packs are granted on-chain at mainnet launch in reservation order, and you open them yourself with the same on-chain SlotHashes as any purchase. The campaign can be switched off at any moment; the public reservation registry is the record for refunds.',
+   'Что такое пре-сейл?', 'Два предложения Limited-паков за mainnet SOL, пока идёт бесплатная devnet-бета: 500 одиночных по 0,30 SOL (макс. 5 на кошелёк) и 125 сундуков основателей из 4 паков по 0,999 SOL (макс. 1 на кошелёк). Оплата уходит в мультиподпись команды (2-из-3) с мемо; паки выдаются на цепи при запуске майнета в порядке бронирования, и вскрываете вы их сами — с теми же ончейн-SlotHashes, что и любую покупку. Кампанию можно остановить в любой момент; публичный реестр бронирований — основание для возвратов.'),
 ]
 
 # (key, colour, Standard-pack odds, base power, level cap, stake weight)
@@ -279,8 +279,8 @@ for _i, (_q, _a, _qr, _ar) in enumerate(FAQ):
 SITE = 'https://guttercaps.gg'
 TITLE = ('GUTTERCAPS — provably-fair street-art caps on Solana · fuse, slam, stake',
          'GUTTERCAPS — доказуемо честные стрит-арт фишки на Solana · фьюжн, арена, стейкинг')
-DESC = ('GUTTERCAPS: 72 street-art bottle caps on Solana. Provably-fair packs (Switchboard VRF, on-chain pity), 3→1 fusion, Cap Slam 3-v-3 wagers, escrow market, $CG staking. Pay in SOL, USDC or SKR. Built for Seeker, in 7 languages.',
-        'GUTTERCAPS: 72 стрит-арт крышек на Solana. Доказуемо честные паки (Switchboard VRF, on-chain pity), фьюжн 3→1, ставки Cap Slam 3 на 3, эскроу-маркет, стейкинг $CG. Оплата в SOL, USDC или SKR. Для Seeker, на 7 языках.')
+DESC = ('GUTTERCAPS: 72 street-art bottle caps on Solana. Provably-fair packs (on-chain SlotHashes, on-chain pity), 3→1 fusion, Cap Slam 3-v-3 wagers, escrow market, $CG staking. Pay in SOL, USDC or SKR. Built for Seeker, in 7 languages.',
+        'GUTTERCAPS: 72 стрит-арт крышек на Solana. Доказуемо честные паки (ончейн-SlotHashes, on-chain pity), фьюжн 3→1, ставки Cap Slam 3 на 3, эскроу-маркет, стейкинг $CG. Оплата в SOL, USDC или SKR. Для Seeker, на 7 языках.')
 T['meta.title'] = TITLE
 T['meta.desc'] = DESC
 
@@ -325,12 +325,12 @@ T['mech.4p'] = (
     'Выставляйте за SOL, USDC или SKR: фишка заморожена в вашем кошельке до продажи или отмены, а оплата идёт напрямую вам. Предложения покупки — в USDC. Минимальные цены отслеживаются по району и редкости; нижний порог защищает от пылевых объявлений.',
 )
 T['eco.skr.p'] = (
-    'Packs, market sales and extras accept SKR; offers use USDC. For converted purchases the program checks the Pyth SKR/USD feed and slippage cap in the same transaction. Only the genuine mint below is accepted, never a symbol lookup. The game cannot mint SKR: its prize pool is funded weekly from the public treasury with 15 % of SKR pack revenue, 10 % of SKR market fees and 5 % of SKR extras. Seeker quests, seasons and tournaments use Merkle claims capped per wallet. Wagers, fusion and staking stay in $CG.',
-    'Паки, продажи на маркете и дополнения принимают SKR; предложения покупки — в USDC. При конвертации программа проверяет фид Pyth SKR/USD и лимит проскальзывания в той же транзакции. Принимается только подлинный mint ниже, а не совпадение символа. Игра не выпускает SKR: призовой пул пополняется еженедельно из публичной казны — 15 % выручки паков SKR, 10 % комиссий маркета SKR и 5 % дополнений SKR. Квесты Seeker, сезоны и турниры используют Merkle-выплаты с лимитом на кошелёк. Ставки, слияние и стейкинг остаются в $CG.',
+    'Packs, market sales and extras accept SKR; offers use USDC. SKR converts at the frozen studio rate ($0.016). Only the genuine mint below is accepted, never a symbol lookup. The game cannot mint SKR: its prize pool is funded weekly from the public treasury with 15 % of SKR pack revenue, 10 % of SKR market fees and 5 % of SKR extras. Seeker quests, seasons and tournaments use Merkle claims capped per wallet. Wagers, fusion and staking stay in $CG.',
+    'Паки, продажи на маркете и дополнения принимают SKR; предложения покупки — в USDC. SKR пересчитывается по фиксированному курсу студии ($0.016). Принимается только подлинный mint ниже, а не совпадение символа. Игра не выпускает SKR: призовой пул пополняется еженедельно из публичной казны — 15 % выручки паков SKR, 10 % комиссий маркета SKR и 5 % дополнений SKR. Квесты Seeker, сезоны и турниры используют Merkle-выплаты с лимитом на кошелёк. Ставки, слияние и стейкинг остаются в $CG.',
 )
 T['faq.a1'] = (
-    'SOL, USDC and SKR for packs and extras; market sales in those three currencies, offers in USDC. $CG buys Standard and Premium packs (75 % burned). SOL/SKR conversions use Pyth in the same transaction, with a slippage cap.',
-    'SOL, USDC и SKR — для паков и дополнений; продажи на маркете — в этих трёх валютах, предложения покупки — в USDC. $CG оплачивает обычные и премиум-паки (75 % сжигается). SOL/SKR конвертируются по Pyth в той же транзакции с лимитом проскальзывания.',
+    'SOL, USDC and SKR for packs and extras; market sales in those three currencies, offers in USDC. $CG buys Standard and Premium packs (75 % burned). SOL and SKR convert at a frozen studio rate (SOL = $110, SKR = $0.016).',
+    'SOL, USDC и SKR — для паков и дополнений; продажи на маркете — в этих трёх валютах, предложения покупки — в USDC. $CG оплачивает обычные и премиум-паки (75 % сжигается). SOL и SKR пересчитываются по фиксированному курсу студии (SOL = $110, SKR = $0.016).',
 )
 T['faq.a2'] = (
     'SKR is the Solana Mobile Seeker ecosystem token. Any Solana wallet works; no Seeker phone is required. Packs paid in SKR get a 5 % discount; Seeker supports installation through the dApp Store. Only the genuine SKR mint is accepted; the game never mints or burns SKR.',
@@ -380,8 +380,8 @@ T.update({
 })
 
 T['faq.a4'] = (
-    'The background worker can open the pack even while the app is closed. If the oracle does not answer, the pending pack stays on your Home screen. After 10 800 slots (about 72 minutes), you can cancel; the program refunds the payment, without relying on support.',
-    'Фоновый обработчик может открыть пак, даже когда приложение закрыто. Если оракул не отвечает, незавершённый пак остаётся на главной странице. После 10 800 слотов (около 72 минут) его можно отменить; программа вернёт оплату без обращения в поддержку.',
+    'The background worker can open the pack even while the app is closed. If the roll does not complete, the pending pack stays on your Home screen. After 10 800 slots (about 72 minutes), you can cancel; the program refunds the payment, without relying on support.',
+    'Фоновый обработчик может открыть пак, даже когда приложение закрыто. Если ролл не завершится, незавершённый пак остаётся на главной странице. После 10 800 слотов (около 72 минут) его можно отменить; программа вернёт оплату без обращения в поддержку.',
 )
 T['faq.a7'] = (
     'English, Português, Español, Tiếng Việt, Bahasa Indonesia, Filipino and Русский. Choose your language in the app; numbers, dates and amounts follow local formatting without changing token values.',

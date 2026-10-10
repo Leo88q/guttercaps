@@ -33,7 +33,7 @@ const screens = {
   "sellerNet": "Matatanggap ng nagbebenta (pagkatapos ng {pct}% na bayad)",
   "originRecipe": "Recipe {recipe} → {rarity}",
   "listedDemo": "Nakalista (demo)",
-  "networkOracleFees": "Bayad sa network at oracle",
+  "networkOracleFees": "Bayad sa network",
   "randomness": "Randomness",
   "fusionTimeout": "Kanselahin ang fusion para ma-unlock ang mga materyal.",
   "fusionRoll": "Draw {roll}, threshold {threshold}. Ibinalik ang isang materyal; sinunog ang bayad.",
@@ -44,7 +44,7 @@ const screens = {
   "packStopped": "Huminto ang pagbukas ng pack",
   "packFinishFailed": "Hindi matapos ang pagbukas",
   "paidCommitted": "Bayad at naka-commit",
-  "oracleWaiting": "Hinihintay ang oracle ng Switchboard…",
+  "oracleWaiting": "Binabasa ang on-chain SlotHashes…",
   "refunded": "Na-refund",
   "refundAll": "Naibalik ang 100% mula sa vault",
   "refundFailed": "Nabigo ang refund",
@@ -167,7 +167,7 @@ const screens = {
   "revealInArena": "Buksan ang arena para ibunyag ang seed mo.",
   "capSold": "Naibenta ang takip",
   "fusionAtomic": "Hindi kailangan — isang atomic na transaksyon",
-  "fusionRandom": "Switchboard: pag-commit → pag-reveal (karaniwang 2–3 pirma)",
+  "fusionRandom": "SlotHashes: pag-commit → pag-reveal (karaniwang 1 extra pirma)",
   "reconnectPackBuyer": "Nasa blockchain ang pack na ito. Ikonekta muli ang wallet na ginamit sa pagbili para magpatuloy.",
   "mockApi": "Demo API ({state})"
 } satisfies Record<keyof typeof en, string>;

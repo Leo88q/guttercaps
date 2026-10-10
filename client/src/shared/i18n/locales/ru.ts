@@ -63,7 +63,7 @@ const ru: Messages = {
   },
   opening: {
     title: 'Открытие', titlePack: 'Открываем пак', packs: '{n, plural, one{# пак} few{# пака} many{# паков} other{# пака}}', nonce: 'Nonce {nonce}',
-    phase: { quote: 'Котировка', signing: 'Ждём вашу подпись', committed: 'Зафиксировано — ждём оракул', revealing: 'Раскрытие', opening: 'Минтим фишки', done: 'Готово', stale: 'Оракул не ответил', error: 'Ошибка' },
+    phase: { quote: 'Котировка', signing: 'Ждём вашу подпись', committed: 'Зафиксировано — ждём SlotHashes', revealing: 'Раскрытие', opening: 'Минтим фишки', done: 'Готово', stale: 'Ролл не завершился', error: 'Ошибка' },
     refund: 'Забрать полный возврат', openNow: 'Открыть', again: 'Открыть ещё',
   },
   collection: {
@@ -143,7 +143,7 @@ const ru: Messages = {
     skrNotConfigured: 'SKR не настроен', skrNotConfiguredBody: 'Для наград в SKR нужен минт SKR (VITE_SKR_MINT) в этом кластере.',
     rootEpoch: '{kind}', root: 'Выплата',
     boosterLeaf: '{n, plural, one{# бустер} few{# бустера} many{# бустеров} other{# бустера}}', boosterHint: 'Бустеры за квесты падают на верстак слияния, когда забираешь награду.',
-    chipLeaf: 'ваучер на фишку ({odds})', chipLeaves: '{n, plural, one{# ваучер на фишку} few{# ваучера на фишку} other{# ваучеров на фишку}}', claimVoucher: 'Забрать ваучер', voucherHint: 'Одна подпись: клейм запрашивает случайность Switchboard, затем фишка минтится как пак (≈ 0,01 SOL ренты, вернётся при закрытии). Soulbound {days} дн.', voucherClaimed: 'Ваучер получен', voucherClaimedBody: 'Ждём оракул — ваша фишка разыгрывается…', voucherClaimedMock: 'Ваучер получен (mock)',
+    chipLeaf: 'ваучер на фишку ({odds})', chipLeaves: '{n, plural, one{# ваучер на фишку} few{# ваучера на фишку} other{# ваучеров на фишку}}', claimVoucher: 'Забрать ваучер', voucherHint: 'Одна подпись: клейм фиксирует ончейн-ролл SlotHashes, затем фишка минтится как пак (≈ 0,01 SOL ренты, вернётся при закрытии). Soulbound {days} дн.', voucherClaimed: 'Ваучер получен', voucherClaimedBody: 'Ждём SlotHashes — ваша фишка разыгрывается…', voucherClaimedMock: 'Ваучер получен (mock)',
     freeCaps: 'Лимиты бесплатных источников: {daily}/день · {weekly}/нед · {chips} бесплатных фишек/нед.',
     skrPool: 'Награды в SKR идут из призового пула, который пополняется выручкой в SKR (не эмитируются): ≤ {weekly} SKR/нед за квесты, ≤ {season} SKR/сезон; нужен ≥ 1 платный пак и кошелёк старше 7 дней.',
     empty: 'Пока пусто.', capRoll: 'ролл фишки', booster: '{n} бустер', resetsIn: 'сброс через {time}', inNextRoot: 'в очереди', done: 'готово',

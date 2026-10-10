@@ -63,7 +63,7 @@ const id: Messages = {
   },
   opening: {
     title: 'Membuka', titlePack: 'Membuka pack', packs: '{n, plural, other{# pack}}', nonce: 'Nonce {nonce}',
-    phase: { quote: 'Mengambil kuotasi', signing: 'Menunggu tanda tangan Anda', committed: 'Terkomit — menunggu oracle', revealing: 'Mengungkap', opening: 'Mint caps', done: 'Selesai', stale: 'Oracle kehabisan waktu', error: 'Gagal' },
+    phase: { quote: 'Mengambil kuotasi', signing: 'Menunggu tanda tangan Anda', committed: 'Terkomit — menunggu SlotHashes', revealing: 'Mengungkap', opening: 'Mint caps', done: 'Selesai', stale: 'Undian tidak selesai', error: 'Gagal' },
     refund: 'Klaim pengembalian penuh', openNow: 'Buka sekarang', again: 'Buka lagi',
   },
   collection: {
@@ -143,7 +143,7 @@ const id: Messages = {
     skrNotConfigured: 'SKR belum dikonfigurasi', skrNotConfiguredBody: 'Hadiah SKR memerlukan mint SKR (VITE_SKR_MINT) di cluster ini.',
     rootEpoch: '{kind}', root: 'Pembayaran',
     boosterLeaf: '{n} booster', boosterHint: 'Booster misi masuk ke meja fusi saat kamu klaim.',
-    chipLeaf: 'voucher cap ({odds})', chipLeaves: '{n} voucher cap', claimVoucher: 'Klaim voucher cap', voucherHint: 'Satu tanda tangan: klaim meminta keacakan Switchboard, lalu cap dicetak seperti pack (≈ 0,01 SOL rent, dikembalikan saat ditutup). Soulbound selama {days} hari.', voucherClaimed: 'Voucher diklaim', voucherClaimedBody: 'Menunggu oracle — cap kamu sedang diundi…', voucherClaimedMock: 'Voucher diklaim (mock)',
+    chipLeaf: 'voucher cap ({odds})', chipLeaves: '{n} voucher cap', claimVoucher: 'Klaim voucher cap', voucherHint: 'Satu tanda tangan: klaim mengunci undian SlotHashes on-chain, lalu cap dicetak seperti pack (≈ 0,01 SOL rent, dikembalikan saat ditutup). Soulbound selama {days} hari.', voucherClaimed: 'Voucher diklaim', voucherClaimedBody: 'Menunggu SlotHashes — cap kamu sedang diundi…', voucherClaimedMock: 'Voucher diklaim (mock)',
     freeCaps: 'Batas sumber gratis: {daily}/hari · {weekly}/minggu · {chips} cap gratis/minggu.',
     skrPool: 'Hadiah SKR berasal dari pool hadiah yang didanai pendapatan SKR (tidak pernah dicetak): ≤ {weekly} SKR/minggu dari misi, ≤ {season} SKR/musim; perlu ≥ 1 pack berbayar dan dompet berusia 7 hari.',
     empty: 'Belum ada apa-apa.', capRoll: 'undian cap', booster: '{n} booster', resetsIn: 'reset dalam {time}', inNextRoot: 'antre', done: 'selesai',
