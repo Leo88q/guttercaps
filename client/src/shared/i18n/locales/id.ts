@@ -76,6 +76,8 @@ const id: Messages = {
     title: 'Meja fusi', subtitle: 'Tiga cap satu tingkat → satu cap tingkat berikutnya. Biaya $CG dibakar menang atau kalah; jika gagal, dua cap terbakar dan satu kembali.',
     pick3: 'Pilih 3 cap dengan tingkat sama', chance: 'Peluang berhasil', fee: 'Biaya (dibakar)', booster: 'Booster (+15 pp, maks 95%)', useBooster: 'Pakai booster',
     fuse: 'Fusi', lock: 'Hasil terkunci {time}', success: 'Berhasil!', failed: 'Gagal — satu cap dikembalikan', boostersLeft: 'tersisa {n, plural, other{# booster}}',
+    blocked: 'Cap ini tidak bisa difusi ({reason}). Lepas listing atau stake, atau pilih tiga cap bebas yang sudah terdaftar.',
+    reasonConsumed: 'sudah difusi on-chain', reasonUnregistered: 'belum terdaftar sebagai daun V2', reasonOwner: 'milik dompet lain',
   },
   arena: {
     title: 'Cap Slam', subtitle: '3v3 · best of 3 · kekuatan × keunggulan elemen × keberuntungan. Diputuskan server dari seed terkomit kedua pemain; taruhan diselesaikan on-chain.',

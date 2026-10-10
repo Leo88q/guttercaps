@@ -81,6 +81,8 @@ const en = {
     title: 'Fusion bench', subtitle: 'Three caps of one tier → one cap of the next. The $CG fee is burned whether you win or lose; on a failed roll two caps burn and one comes back.',
     pick3: 'Pick 3 caps of the same tier', chance: 'Success chance', fee: 'Fee (burned)', booster: 'Booster (+15 pp, cap 95%)', useBooster: 'Use a booster',
     fuse: 'Fuse', lock: 'Result locked {time}', success: 'Fused!', failed: 'Failed — one cap returned', boostersLeft: '{n, plural, one{# booster} other{# boosters}} left',
+    blocked: 'This cap cannot be fused ({reason}). Unlist or unstake it, or pick three free registered caps.',
+    reasonConsumed: 'already fused on-chain', reasonUnregistered: 'not registered as a V2 leaf', reasonOwner: 'owned by another wallet',
   },
   arena: {
     title: 'Cap Slam', subtitle: "3v3 · best of 3 · power × element edge × luck. Resolved by the server from both players' committed seeds; wagers settle on-chain.",

@@ -76,6 +76,8 @@ const fil: Messages = {
     title: 'Fusion bench', subtitle: 'Tatlong cap ng iisang tier → isang cap ng susunod. Sinusunog ang $CG fee manalo o matalo; kapag nabigo, dalawang cap ang nasusunog at isa ang bumabalik.',
     pick3: 'Pumili ng 3 cap na magkapareho ang tier', chance: 'Tsansa ng tagumpay', fee: 'Bayad (sinusunog)', booster: 'Booster (+15 pp, max 95%)', useBooster: 'Gumamit ng booster',
     fuse: 'I-fuse', lock: 'Naka-lock ang resulta {time}', success: 'Na-fuse!', failed: 'Nabigo — isang cap ang ibinalik', boostersLeft: '{n, plural, one{# booster} other{# booster}} na lang',
+    blocked: 'Hindi ma-fuse ang cap na ito ({reason}). I-unlist o i-unstake, o pumili ng tatlong libreng naka-register na cap.',
+    reasonConsumed: 'na-fuse na on-chain', reasonUnregistered: 'hindi pa naka-register bilang V2 leaf', reasonOwner: 'sa ibang wallet',
   },
   arena: {
     title: 'Cap Slam', subtitle: '3v3 · best of 3 · power × element edge × swerte. Nire-resolve ng server mula sa committed seeds ng dalawang player; on-chain ang settlement ng pusta.',

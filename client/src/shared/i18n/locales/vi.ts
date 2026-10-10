@@ -76,6 +76,8 @@ const vi: Messages = {
     title: 'Bàn hợp nhất', subtitle: 'Ba nắp cùng bậc → một nắp bậc kế tiếp. Phí $CG bị đốt dù thắng hay thua; nếu thất bại, hai nắp bị đốt và một nắp được trả lại.',
     pick3: 'Chọn 3 nắp cùng bậc', chance: 'Tỷ lệ thành công', fee: 'Phí (đốt)', booster: 'Booster (+15 điểm, tối đa 95%)', useBooster: 'Dùng booster',
     fuse: 'Hợp nhất', lock: 'Kết quả bị khóa {time}', success: 'Thành công!', failed: 'Thất bại — trả lại một nắp', boostersLeft: 'còn {n, plural, other{# booster}}',
+    blocked: 'Không hợp nhất được cap này ({reason}). Gỡ niêm yết hoặc unstake, hoặc chọn ba cap trống đã đăng ký.',
+    reasonConsumed: 'đã hợp nhất on-chain', reasonUnregistered: 'chưa đăng ký lá V2', reasonOwner: 'thuộc ví khác',
   },
   arena: {
     title: 'Cap Slam', subtitle: '3v3 · thắng 2/3 · sức mạnh × lợi thế nguyên tố × may mắn. Máy chủ phân định từ seed đã cam kết của cả hai người chơi; tiền cược thanh toán on-chain.',

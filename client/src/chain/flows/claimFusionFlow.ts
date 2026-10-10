@@ -12,7 +12,7 @@ import {
 } from '../ix/chipCore';
 import { RNG_KIND, claimFusionPda, compressedMintClaimPda, freshNonce } from '../pdas';
 import {
-  decodeCompressedMintClaim, decodePendingClaimFusion, readClaimFusionCommitted, readClaimFusionRevealed,
+  claimFusionBlock, decodeCompressedMintClaim, decodePendingClaimFusion, readClaimFusionCommitted, readClaimFusionRevealed,
   type ClaimFusionRevealedEvent, type CompressedMintClaim, type GameConfig,
 } from '../accounts';
 import { findEvent } from '../anchor';
@@ -75,6 +75,28 @@ export class ClaimFusionFlow {
       const nonce = await this.pickFreeNonce();
       this.set({ nonce });
       const recipe = FUSION_RECIPES[this.state.recipe];
+      const claimInfos = await connection.getMultipleAccountsInfo(this.state.materials, 'confirmed');
+      for (let i = 0; i < this.state.materials.length; i++) {
+        const info = claimInfos[i];
+        if (!info) throw new Error(`fusion material claim missing: ${this.state.materials[i].toBase58()}`);
+        const claim = decodeCompressedMintClaim(new Uint8Array(info.data));
+        const block = claimFusionBlock(claim, wallet.publicKey);
+        if (block) {
+          throw Object.assign(new Error(`fusion blocked: ${block}`), {
+            code: 'fusion_blocked',
+            details: {
+              reason: block,
+              claim: this.state.materials[i].toBase58(),
+              minted: claim.minted,
+              registered: claim.registered,
+              consumed: claim.consumed,
+              listed: claim.listed,
+              staked: claim.staked,
+              lockUntil: claim.lockUntil.toString(),
+            },
+          });
+        }
+      }
       if (recipe && recipe.successBps === 10_000) {
         this.set({ phase: 'signing' });
         const { signature } = await sendTx(connection, wallet, [

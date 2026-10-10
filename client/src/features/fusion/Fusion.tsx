@@ -12,7 +12,7 @@ import { FUSION_RECIPES, BOOSTER } from '@guttercaps/economy';
 import { useMyChips, useFusionSuggest, useGrid, useMyServices, type Chip } from '@/api/hooks';
 import { KIND, loadPresets, owns, savePresets, presetName, type FusionPreset } from '@/shared/lib/cosmetics';
 import { usePlayerItems, useWalletLike } from '@/chain/hooks';
-import { decodeCompressedChipState, type CompressedMintClaim } from '@/chain/accounts';
+import { decodeCompressedChipState, decodeCompressedMintClaim, claimFusionBlock, type CompressedMintClaim } from '@/chain/accounts';
 import { compressedChipStatePda } from '@/chain/pdas';
 import { qk } from '@/api/keys';
 import { ClaimFusionFlow } from '@/chain/flows/claimFusionFlow';
@@ -123,6 +123,20 @@ export default function Fusion() {
       );
       if (cStateInfos.every((info) => !!info)) {
         const materialClaims = cStateInfos.map((info) => decodeCompressedChipState(new Uint8Array(info!.data)).claim);
+        const claimInfos = await connection.getMultipleAccountsInfo(materialClaims, 'confirmed');
+        const reasonOf = (block: NonNullable<ReturnType<typeof claimFusionBlock>>) => (
+          block === 'listed' ? t('collection.filters.listed')
+            : block === 'staked' ? t('collection.filters.staked')
+              : block === 'locked' ? t('collection.filters.locked')
+                : block === 'consumed' ? t('fusion.reasonConsumed')
+                  : block === 'owner' ? t('fusion.reasonOwner')
+                    : t('fusion.reasonUnregistered')
+        );
+        for (let i = 0; i < 3; i++) {
+          if (!claimInfos[i]) throw new Error(t('fusion.blocked', { reason: t('fusion.reasonUnregistered') }));
+          const block = claimFusionBlock(decodeCompressedMintClaim(new Uint8Array(claimInfos[i]!.data)), wallet.publicKey);
+          if (block) throw new Error(t('fusion.blocked', { reason: reasonOf(block) }));
+        }
         const cf = new ClaimFusionFlow(
           {
             connection,

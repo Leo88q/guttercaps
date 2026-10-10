@@ -76,6 +76,8 @@ const pt: Messages = {
     title: 'Bancada de fusão', subtitle: 'Três caps de um nível → um cap do próximo. A taxa em $CG é queimada ganhe ou perca; se falhar, dois caps queimam e um volta.',
     pick3: 'Escolha 3 caps do mesmo nível', chance: 'Chance de sucesso', fee: 'Taxa (queimada)', booster: 'Booster (+15 pp, máx. 95%)', useBooster: 'Usar booster',
     fuse: 'Fundir', lock: 'Resultado bloqueado por {time}', success: 'Fundido!', failed: 'Falhou — um cap devolvido', boostersLeft: '{n, plural, one{# booster} other{# boosters}} restante(s)',
+    blocked: 'Este cap não pode ser fundido ({reason}). Tire da listagem ou do stake, ou escolha três caps livres registrados.',
+    reasonConsumed: 'já fundido on-chain', reasonUnregistered: 'ainda não registrado como folha V2', reasonOwner: 'pertence a outra carteira',
   },
   arena: {
     title: 'Cap Slam', subtitle: '3x3 · melhor de 3 · poder × vantagem de elemento × sorte. Resolvido pelo servidor a partir das seeds comprometidas dos dois jogadores; apostas liquidam on-chain.',

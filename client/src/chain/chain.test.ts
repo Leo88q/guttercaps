@@ -5,7 +5,7 @@ import golden from '../../../packages/economy/golden/pack_expand.json';
 import { BorshReader, BorshWriter, u64le } from './borsh';
 import { accountDiscriminator, ixDiscriminator, eventsFromLogs, findEvent, optional, parseCustomError, concat, eventDiscriminator } from './anchor';
 import {
-  decodeChipState, decodeGameConfig, decodePendingPack, decodePendingClaimFusion, decodePlayerPity, decodeListing, decodeTokenStake, decodeVaultLedger, decodeCompressedAssetListing, decodeCompressedPackSettlement, decodeCompressedMintClaim, sumLedgers, readPackOpened, readCompressedClaimsCreated, readCompressedPackSettled, readClaimFusionRevealed, chipIsFree, claimIsListable, CHIP_FLAG,
+  decodeChipState, decodeGameConfig, decodePendingPack, decodePendingClaimFusion, decodePlayerPity, decodeListing, decodeTokenStake, decodeVaultLedger, decodeCompressedAssetListing, decodeCompressedPackSettlement, decodeCompressedMintClaim, sumLedgers, readPackOpened, readCompressedClaimsCreated, readCompressedPackSettled, readClaimFusionRevealed, chipIsFree, claimIsListable, claimFusionBlock, CHIP_FLAG,
 } from './accounts';
 import { vaultPda, assetPda, chipStatePda, collectionMetaPda, configPda, pendingPackPda, claimFusionPda, compressedMintClaimPda, compressedSettlementPda, bubblegumTreeConfigPda, compressedChipStatePda, bubblegumTreeMetaPda, pityPda, pendingFusionPda, battlePda, ata, freshNonce, rewardRootPda, rewarderPda, playerItemsPda, skrPoolPda, emissionPda, seasonPoolAuthPda, RNG_KIND, rngAuthPda, rngPda, sbLutPda, sbLutSignerPda, sbStatePda, sbOracleStatsPda, sbRewardEscrow, LEDGER_SHARDS, allLedgerPdas, ledgerPda, ledgerPdaOf, ledgerShardOf } from './pdas';
 import { fitsInTx } from './tx';
@@ -1159,6 +1159,9 @@ describe('H3 claim fusion (client mirror)', () => {
     expect(claimIsListable(decodeCompressedMintClaim(buf(2_000n, true)), 1_000)).toBe(false); // Starter window
     expect(claimIsListable(decodeCompressedMintClaim(buf(2_000n, true)), 2_000)).toBe(true);
     expect(claimIsListable(decodeCompressedMintClaim(buf(0n, false)), 1_000)).toBe(false); // unregistered
+    expect(claimFusionBlock(decodeCompressedMintClaim(buf(0n, true)), buyer, 1_000)).toBeUndefined();
+    expect(claimFusionBlock(decodeCompressedMintClaim(buf(0n, false)), buyer, 1_000)).toBe('unregistered');
+    expect(claimFusionBlock(decodeCompressedMintClaim(buf(0n, true)), Keypair.generate().publicKey, 1_000)).toBe('owner');
   });
 
   it('decodes the CompressedPackSettled and ClaimFusionRevealed events', () => {

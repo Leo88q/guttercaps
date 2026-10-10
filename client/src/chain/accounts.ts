@@ -235,6 +235,19 @@ export function decodeCompressedMintClaim(data: Uint8Array): CompressedMintClaim
 export const claimIsListable = (c: CompressedMintClaim, nowSec = Math.floor(Date.now() / 1000)) =>
   c.registered && !c.consumed && !c.listed && !c.staked && BigInt(nowSec) >= c.lockUntil;
 
+/** Why `fuse_compressed_claims` would throw InvalidChipState / ChipNotFree / NotAssetOwner. */
+export type ClaimFusionBlock = 'owner' | 'consumed' | 'listed' | 'staked' | 'locked' | 'unregistered';
+export function claimFusionBlock(c: CompressedMintClaim, owner: PublicKey, nowSec = Math.floor(Date.now() / 1000)): ClaimFusionBlock | undefined {
+  if (!c.buyer.equals(owner)) return 'owner';
+  if (c.consumed) return 'consumed';
+  if (c.listed) return 'listed';
+  if (c.staked) return 'staked';
+  if (BigInt(nowSec) < c.lockUntil) return 'locked';
+  if (c.minted && c.registered) return undefined;
+  if (!c.minted && c.settlement.equals(PublicKey.default) && BigInt(nowSec) < c.expiresAt) return undefined;
+  return 'unregistered';
+}
+
 export interface CompressedAssetListing {
   asset: PublicKey; claim: PublicKey; seller: PublicKey; merkleTree: PublicKey; treeConfig: PublicKey; coreCollection: PublicKey;
   collectionIdx: number; price: bigint; currency: number; createdAt: bigint; bump: number;

@@ -76,6 +76,8 @@ const es: Messages = {
     title: 'Banco de fusión', subtitle: 'Tres caps de un nivel → un cap del siguiente. La comisión en $CG se quema ganes o pierdas; si falla, dos caps se queman y uno vuelve.',
     pick3: 'Elige 3 caps del mismo nivel', chance: 'Probabilidad de éxito', fee: 'Comisión (quemada)', booster: 'Booster (+15 pp, máx. 95%)', useBooster: 'Usar booster',
     fuse: 'Fusionar', lock: 'Resultado bloqueado {time}', success: '¡Fusionado!', failed: 'Falló — un cap devuelto', boostersLeft: '{n, plural, one{# booster} other{# boosters}} restante(s)',
+    blocked: 'Este cap no se puede fusionar ({reason}). Quítalo del mercado o del stake, o elige tres caps libres registrados.',
+    reasonConsumed: 'ya fusionado en cadena', reasonUnregistered: 'aún no registrado como hoja V2', reasonOwner: 'pertenece a otra cartera',
   },
   arena: {
     title: 'Cap Slam', subtitle: '3v3 · al mejor de 3 · poder × ventaja de elemento × suerte. Lo resuelve el servidor con las semillas comprometidas de ambos jugadores; las apuestas se liquidan on-chain.',
