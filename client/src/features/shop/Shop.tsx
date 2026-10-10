@@ -197,7 +197,7 @@ export default function Shop() {
               <div className="tiny muted pack-cap">{capLeft !== null ? t('services.dailyLeft', { n: capLeft }) : '\u00a0'}</div>
 
               <CleanZone className="pack-price">
-                <KV k={t('ui.price')} v={fmtCents(econ.priceUsdCents)} />
+                <KV k={t('ui.price')} v={`${fmtCents(econ.priceUsdCents)} · ${fmtSol(solLamportsForUsdCents(econ.priceUsdCents))}`} />
                 {econ.priceCgMicro
                   ? <KV k={t('ui.or')} v={fmtAmount(BigInt(econ.priceCgMicro), 'CG')} />
                   : /* Two packs are deliberately SOL/USDC-only (see packs.ts). Saying so is the

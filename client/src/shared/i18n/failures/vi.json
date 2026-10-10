@@ -11,7 +11,7 @@
   "chip_core_OddsSumInvalid": "Tổng xác suất phải bằng 10.000 điểm cơ bản",
   "chip_core_OddsGuardRail": "Xác suất bậc cao nhất vượt giới hạn",
   "chip_core_FeeTooHigh": "Phí vượt giới hạn cứng",
-  "chip_core_StalePrice": "Giá Pyth đã cũ hoặc không hợp lệ",
+  "chip_core_StalePrice": "Chương trình on-chain vẫn kiểm tra Pyth — cần nâng cấp chip_core",
   "chip_core_Slippage": "Số SOL thấp hơn báo giá: trượt giá",
   "chip_core_RandomnessExpired": "Cam kết ngẫu nhiên phải được ghi ở slot trước",
   "chip_core_RandomnessAlreadyRevealed": "Giá trị ngẫu nhiên đã công bố: không thể cam kết giá trị đã biết",

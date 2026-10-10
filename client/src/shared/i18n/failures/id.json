@@ -11,7 +11,7 @@
   "chip_core_OddsSumInvalid": "Jumlah peluang harus 10.000 basis poin",
   "chip_core_OddsGuardRail": "Peluang tingkat tertinggi melebihi batas",
   "chip_core_FeeTooHigh": "Biaya melebihi batas mutlak",
-  "chip_core_StalePrice": "Harga Pyth usang atau tidak valid",
+  "chip_core_StalePrice": "Program on-chain masih cek Pyth — chip_core perlu di-upgrade",
   "chip_core_Slippage": "Jumlah SOL di bawah penawaran: slippage",
   "chip_core_RandomnessExpired": "Komitmen keacakan harus dibuat pada slot sebelumnya",
   "chip_core_RandomnessAlreadyRevealed": "Keacakan sudah diungkap: tidak boleh mengikat nilai yang diketahui",

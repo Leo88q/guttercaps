@@ -11,7 +11,7 @@
   "chip_core_OddsSumInvalid": "Сумма вероятностей должна быть 10 000 базисных пунктов",
   "chip_core_OddsGuardRail": "Вероятности высших редкостей превышают допустимый предел",
   "chip_core_FeeTooHigh": "Комиссия превышает жёсткий предел",
-  "chip_core_StalePrice": "Цена Pyth устарела или недействительна",
+  "chip_core_StalePrice": "Ончейн-программа ещё проверяет Pyth — нужен апгрейд chip_core",
   "chip_core_Slippage": "Сумма SOL ниже цены расчёта: проскальзывание",
   "chip_core_RandomnessExpired": "Случайное значение должно быть зафиксировано в предыдущем слоте",
   "chip_core_RandomnessAlreadyRevealed": "Случайное значение уже раскрыто: нельзя фиксировать известный результат",

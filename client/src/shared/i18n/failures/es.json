@@ -11,7 +11,7 @@
   "chip_core_OddsSumInvalid": "Las probabilidades deben sumar 10.000 puntos básicos",
   "chip_core_OddsGuardRail": "Las probabilidades de niveles superiores superan el límite",
   "chip_core_FeeTooHigh": "La comisión supera el límite estricto",
-  "chip_core_StalePrice": "Precio Pyth desactualizado o no válido",
+  "chip_core_StalePrice": "El programa on-chain aún consulta Pyth — hay que actualizar chip_core",
   "chip_core_Slippage": "Importe SOL inferior a la cotización: deslizamiento",
   "chip_core_RandomnessExpired": "El compromiso de aleatoriedad debe ser del slot anterior",
   "chip_core_RandomnessAlreadyRevealed": "Aleatoriedad ya revelada: no se puede fijar un valor conocido",

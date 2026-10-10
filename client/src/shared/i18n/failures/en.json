@@ -11,7 +11,7 @@
   "chip_core_OddsSumInvalid": "Odds must sum to 10 000 bps",
   "chip_core_OddsGuardRail": "Top-tier odds exceed the guard-rail",
   "chip_core_FeeTooHigh": "Fee exceeds hard cap",
-  "chip_core_StalePrice": "Pyth price too old or invalid",
+  "chip_core_StalePrice": "On-chain program still checks Pyth — this cluster needs a chip_core upgrade",
   "chip_core_Slippage": "SOL amount below quoted price (slippage)",
   "chip_core_RandomnessExpired": "Randomness account must be committed in the previous slot",
   "chip_core_RandomnessAlreadyRevealed": "Randomness already revealed — cannot commit to a known value",

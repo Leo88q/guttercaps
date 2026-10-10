@@ -11,7 +11,7 @@
   "chip_core_OddsSumInvalid": "Dapat 10,000 basis point ang kabuuang tsansa",
   "chip_core_OddsGuardRail": "Lampas sa limitasyon ang tsansa ng pinakamataas na antas",
   "chip_core_FeeTooHigh": "Lampas sa mahigpit na limitasyon ang bayad",
-  "chip_core_StalePrice": "Luma o hindi wasto ang presyo ng Pyth",
+  "chip_core_StalePrice": "Tinitingnan pa ng on-chain program ang Pyth — kailangan i-upgrade ang chip_core",
   "chip_core_Slippage": "Mas mababa ang SOL sa quote: pagdulas ng presyo",
   "chip_core_RandomnessExpired": "Dapat nasa nakaraang slot ang commitment ng randomness",
   "chip_core_RandomnessAlreadyRevealed": "Naibunyag na ang randomness: hindi maaaring i-commit ang alam nang halaga",

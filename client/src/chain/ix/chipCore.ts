@@ -438,7 +438,6 @@ export function buyPackIx(a: BuyPackArgs): TransactionInstruction {
   const [pending] = pendingPackPda(a.buyer, a.nonce);
   const [vault] = vaultPda();
   const payMint = payMintFor(a.currency, a);
-  const volatile = a.currency === Currency.SOL || a.currency === Currency.SKR;
   const data = ixData(
     'buy_pack',
     new BorshWriter().u8(a.sku).u8(a.qty).u8(a.currency).u64(a.nonce).u64(a.maxLamports).toBytes(),
@@ -454,7 +453,7 @@ export function buyPackIx(a: BuyPackArgs): TransactionInstruction {
       rw(a.randomness),
       ...commitAccountMetas({ kind: RNG_KIND.PACK, queue: a.queue, oracle: a.oracle }),
       a.currency === Currency.SOL ? rw(vault) : ro(vault), // vault lamports change only on the SOL path
-      optional(volatile ? a.priceUpdate : undefined, CHIP_CORE_ID, false),
+      optional(undefined, CHIP_CORE_ID, false), // frozen FX: price_update is always None
       optional(payMint ? ata(payMint, a.buyer) : undefined, CHIP_CORE_ID),
       optional(payMint ? ata(payMint, vault) : undefined, CHIP_CORE_ID),
       ro(TOKEN_PROGRAM_ID),
@@ -707,7 +706,6 @@ export function payServiceIx(a: PayServiceArgs): TransactionInstruction {
   const [ledger] = serviceLedgerPda(a.buyer);
   const [items] = playerItemsPda(a.buyer);
   const payMint = payMintFor(a.currency, a);
-  const volatile = a.currency === Currency.SOL || a.currency === Currency.SKR;
   const cg = a.currency === Currency.CG;
   if (a.refHash.length !== 32) throw new Error('refHash must be 32 bytes');
   return new TransactionInstruction({
@@ -719,7 +717,7 @@ export function payServiceIx(a: PayServiceArgs): TransactionInstruction {
       rw(ledgerPdaOf(a.buyer)[0]), // #12: vault_ledger (burn shard)
       rw(items),
       rw(a.treasury),
-      optional(volatile ? a.priceUpdate : undefined, CHIP_CORE_ID, false),
+      optional(undefined, CHIP_CORE_ID, false), // frozen FX: price_update is always None
       optional(payMint ? ata(payMint, a.buyer) : undefined, CHIP_CORE_ID),
       optional(payMint && !cg ? ata(payMint, a.treasury) : undefined, CHIP_CORE_ID),
       optional(cg ? a.cgMint : undefined, CHIP_CORE_ID),
