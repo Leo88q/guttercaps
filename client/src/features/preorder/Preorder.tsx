@@ -1,7 +1,6 @@
 // Beta pre-sale (docs/preorder-beta.md): while the game runs its devnet beta, a limited pack drop
-// is sold for MAINNET SOL to the team's multisig treasury; packs are granted on-chain at mainnet
-// launch and then open exactly like purchased ones. This screen is the whole buyer flow:
-// campaign → reserve → pay (address + amount + memo) → confirm with the payment signature → status.
+// is sold for MAINNET SOL to the team's Squads treasury; packs are granted on-chain at mainnet
+// launch. Two offers: a single Limited pack (0.30 SOL) and a founders chest of four (0.999 SOL).
 // Campaign activity only gates the reserve CTA — the page itself always renders.
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -49,6 +48,23 @@ function CopyRow({ value, hint }: { value: string; hint: string }) {
   );
 }
 
+type OfferId = 'pack' | 'chest';
+type OfferView = { id: OfferId; packs: number; priceLamports: string; total: number; remaining: number; sold: number; maxPerWallet: number; maxQty: number };
+
+function offersOf(c: { remaining?: number; total?: number; sold?: number; priceLamports?: string; offers?: OfferView[] } | undefined): { pack: OfferView; chest: OfferView | null } {
+  const listed = c?.offers ?? [];
+  const pack = listed.find((o) => o.id === 'pack');
+  const chest = listed.find((o) => o.id === 'chest') ?? null;
+  return {
+    pack: pack ?? {
+      id: 'pack', packs: 1, priceLamports: c?.priceLamports ?? '300000000',
+      total: c?.total ?? 500, remaining: c?.remaining ?? 0, sold: c?.sold ?? 0,
+      maxPerWallet: 5, maxQty: 5,
+    },
+    chest,
+  };
+}
+
 export default function Preorder() {
   const t = useT();
   const toast = useUiStore((s) => s.toast);
@@ -64,7 +80,7 @@ export default function Preorder() {
   const [signature, setSignature] = useState('');
 
   const reserve = useMutation({
-    mutationFn: (q: number) => api.post('/preorder/intent', { qty: q }),
+    mutationFn: (v: { offer: OfferId; qty: number }) => api.post('/preorder/intent', v),
     onSuccess: (res) => { setIntent(res); setSignature(''); qc.invalidateQueries({ queryKey: ['preorder'] }); },
     onError: (e) => toast({ kind: 'error', title: { key: 'errors.generic' }, error: e }),
   });
@@ -80,14 +96,21 @@ export default function Preorder() {
   });
 
   const c = campaign.data;
-  const maxQty = 5;
+  const { pack, chest } = offersOf(c);
   const sku = c?.sku ?? 3;
   const art = packArtUrl(sku);
-  const live = !!(c?.active && (c.remaining ?? 0) > 0);
-  const soldOut = !!(c?.active && (c.remaining ?? 0) <= 0);
+  const packLive = !!(c?.active && pack.remaining > 0);
+  const chestLive = !!(c?.active && (chest?.remaining ?? 0) > 0);
+  const anyLive = packLive || chestLive;
+  const soldOut = !!(c?.active && !anyLive);
 
   const statusKey = (s: string) =>
     s === 'paid' ? 'preorder.statusPaid' : s === 'granted' ? 'preorder.statusGranted' : s === 'expired' ? 'preorder.statusExpired' : 'preorder.statusIntent';
+
+  const goReserve = (offer: OfferId, n: number) => {
+    if (!connected) nav('/?connect=1&next=/preorder');
+    else reserve.mutate({ offer, qty: n });
+  };
 
   return (
     <div className="page page-bg page-bg-preorder stack">
@@ -99,22 +122,15 @@ export default function Preorder() {
 
       {campaign.isLoading && <Skeleton h={220} />}
 
-      <div className="card preorder-hero" data-testid="preorder-campaign">
-        {art && <img className="preorder-hero-art" src={art} alt={packName(sku)} />}
-        <div className="stack-sm">
-          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-            <Pill>{packName(sku)}</Pill>
-            {c && live && <Pill tone="ok">{t('preorder.left', { n: c.remaining, total: c.total })}</Pill>}
-            {soldOut && <Pill tone="danger">{t('preorder.soldOut')}</Pill>}
-            {!c?.active && <Pill>{t('preorder.ended')}</Pill>}
-          </div>
-          <div className="preorder-price">{c ? fmtSol(c.priceLamports) : '—'}</div>
-          <div className="tiny muted">{t('preorder.price')}</div>
-          {c && <Progress value={c.sold} max={c.total} tone="magenta" />}
-          {c && live && <div className="tiny muted">{t('preorder.left', { n: c.remaining, total: c.total })}</div>}
-          <p className="tiny">{t('preorder.refund')}</p>
-          {!live && <p className="tiny muted">{t('preorder.closedHint')}</p>}
+      <div className="card stack-sm" data-testid="preorder-campaign">
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <Pill>{packName(sku)}</Pill>
+          {anyLive && <Pill tone="ok">{t('preorder.twoOffers')}</Pill>}
+          {soldOut && <Pill tone="danger">{t('preorder.soldOut')}</Pill>}
+          {!c?.active && <Pill>{t('preorder.ended')}</Pill>}
         </div>
+        <p className="tiny">{t('preorder.refund')}</p>
+        {!anyLive && <p className="tiny muted">{t('preorder.closedHint')}</p>}
       </div>
 
       <div className="card" data-testid="preorder-how">
@@ -126,23 +142,60 @@ export default function Preorder() {
         </div>
       </div>
 
-      {c && c.active && c.remaining > 0 && (
-        <div className="card stack-sm" data-testid="preorder-reserve">
-          <div className="row" style={{ alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <span className="tiny muted">{t('preorder.qty')}:</span>
-            <div className="tabs">
-              {Array.from({ length: Math.min(maxQty, c.remaining) }, (_, i) => i + 1).map((n) => (
-                <Pill key={n} active={qty === n} onClick={() => setQty(n)}>{n}</Pill>
-              ))}
-            </div>
-            <strong>{t('preorder.total')}: {fmtSol((BigInt(c.priceLamports) * BigInt(qty)).toString())}</strong>
+      <div className="preorder-offers">
+        <div className="card stack-sm" data-testid={packLive ? 'preorder-reserve' : 'preorder-offer-pack'}>
+          {art && <img className="preorder-hero-art" src={art} alt={packName(sku)} />}
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <Pill>{t('preorder.packOffer')}</Pill>
+            {packLive && <Pill tone="ok">{t('preorder.left', { n: pack.remaining, total: pack.total })}</Pill>}
+            {c?.active && pack.remaining <= 0 && <Pill tone="danger">{t('preorder.soldOut')}</Pill>}
           </div>
-          <button className="btn" disabled={reserve.isPending} onClick={() => (connected ? reserve.mutate(qty) : nav('/?connect=1&next=/preorder'))}>
-            {reserve.isPending ? '…' : t('preorder.reserve')}
-          </button>
-          <p className="tiny muted">{t('preorder.perWallet', { n: 5 })} · {t('preorder.ttl', { h: Math.round((c.intentTtlS || 0) / 3600) })}</p>
+          <div className="preorder-price">{fmtSol(pack.priceLamports)}</div>
+          <div className="tiny muted">{t('preorder.packBlurb')}</div>
+          <Progress value={pack.sold} max={Math.max(1, pack.total)} tone="magenta" />
+          {packLive && (
+            <>
+              <div className="row" style={{ alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span className="tiny muted">{t('preorder.qty')}:</span>
+                <div className="tabs">
+                  {Array.from({ length: Math.min(pack.maxQty, pack.remaining) }, (_, i) => i + 1).map((n) => (
+                    <Pill key={n} active={qty === n} onClick={() => setQty(n)}>{n}</Pill>
+                  ))}
+                </div>
+                <strong>{t('preorder.total')}: {fmtSol((BigInt(pack.priceLamports) * BigInt(qty)).toString())}</strong>
+              </div>
+              <button className="btn" disabled={reserve.isPending} onClick={() => goReserve('pack', qty)}>
+                {reserve.isPending ? '…' : t('preorder.reserve')}
+              </button>
+              <p className="tiny muted">{t('preorder.perWallet', { n: pack.maxPerWallet })} · {t('preorder.ttl', { h: Math.round((c?.intentTtlS || 0) / 3600) })}</p>
+            </>
+          )}
         </div>
-      )}
+
+        {chest && (
+          <div className="card stack-sm" data-testid={chestLive ? 'preorder-reserve-chest' : 'preorder-offer-chest'}>
+            <div className="preorder-chest">
+              <img className="preorder-chest-img" src="/packs/chest.webp" alt={t('preorder.chestOffer')} />
+            </div>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+              <Pill>{t('preorder.chestOffer')}</Pill>
+              {chestLive && <Pill tone="ok">{t('preorder.left', { n: chest.remaining, total: chest.total })}</Pill>}
+              {c?.active && chest.remaining <= 0 && <Pill tone="danger">{t('preorder.soldOut')}</Pill>}
+            </div>
+            <div className="preorder-price">{fmtSol(chest.priceLamports)}</div>
+            <div className="tiny muted">{t('preorder.chestBlurb')}</div>
+            <Progress value={chest.sold} max={Math.max(1, chest.total)} tone="magenta" />
+            {chestLive && (
+              <>
+                <button className="btn" disabled={reserve.isPending} onClick={() => goReserve('chest', 1)}>
+                  {reserve.isPending ? '…' : t('preorder.reserveChest')}
+                </button>
+                <p className="tiny muted">{t('preorder.perWallet', { n: chest.maxPerWallet })} · {t('preorder.ttl', { h: Math.round((c?.intentTtlS || 0) / 3600) })}</p>
+              </>
+            )}
+          </div>
+        )}
+      </div>
 
       {intent && (
         <div className="card stack-sm" data-testid="preorder-pay">

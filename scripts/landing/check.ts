@@ -223,17 +223,21 @@ has('footer age badge', html, '18+');
 // move, the copy moves with them or this gate fails.
 {
   const cfg = readFileSync(resolve(root, 'backend/src/config.ts'), 'utf8');
-  const price = `${Number(cfg.match(/PREORDER_PRICE_LAMPORTS \?\? '(\d+)'/)![1]) / 1e9}`; // 999000000 → 0.999
-  const total = cfg.match(/Number\(env\.PREORDER_TOTAL \?\? (\d+)\)/)![1];                 // 500
-  const cap = cfg.match(/Number\(env\.PREORDER_MAX_PER_WALLET \?\? (\d+)\)/)![1];          // 5
+  const packPrice = `${(Number(cfg.match(/PREORDER_PRICE_LAMPORTS \?\? '(\d+)'/)![1]) / 1e9).toFixed(2)}`;
+  const chestPrice = `${Number(cfg.match(/PREORDER_CHEST_PRICE_LAMPORTS \?\? '(\d+)'/)![1]) / 1e9}`;
+  const packTotal = cfg.match(/Number\(env\.PREORDER_TOTAL \?\? (\d+)\)/)![1];
+  const chestTotal = cfg.match(/Number\(env\.PREORDER_CHEST_TOTAL \?\? (\d+)\)/)![1];
+  const packCap = cfg.match(/Number\(env\.PREORDER_MAX_PER_WALLET \?\? (\d+)\)/)![1];
   const presaleEn = en('presale.p');
-  has('presale total', presaleEn, `${total} packs`);
-  has('presale price', presaleEn, `${price} SOL`);
-  has('presale per-wallet cap', presaleEn, `max ${cap} per wallet`);
+  has('presale pack total', presaleEn, `${packTotal} singles`);
+  has('presale pack price', presaleEn, `${packPrice} SOL`);
+  has('presale chest total', presaleEn, `${chestTotal} founders chests`);
+  has('presale chest price', presaleEn, `${chestPrice} SOL`);
+  has('presale pack cap', presaleEn, `max ${packCap} per wallet`);
   const presaleRu = RU['presale.p'] ?? '';
-  has('presale total (ru)', presaleRu, `${total} паков`);
-  has('presale price (ru)', presaleRu, `${price.replace('.', ',')} SOL`);
-  has('presale per-wallet cap (ru)', presaleRu, `${cap} на кошелёк`);
+  has('presale pack price (ru)', presaleRu, `${packPrice.replace('.', ',')} SOL`);
+  has('presale chest price (ru)', presaleRu, `${chestPrice.replace('.', ',')} SOL`);
+  has('presale pack cap (ru)', presaleRu, `${packCap} на кошелёк`);
   has('presale section present', html, 'id="presale"');
 }
 

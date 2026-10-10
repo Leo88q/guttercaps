@@ -271,7 +271,7 @@ button.pill:hover{border-color:var(--st-lime)}
   .btn::after,.cg-btn-primary::after,.cg-btn-spill::after,.cg-btn-clean::after,.page-title::after,.shell-brand::after{animation:none}
 }
 .reduced-motion .btn::after,.reduced-motion .cg-btn-primary::after,.reduced-motion .cg-btn-spill::after,.reduced-motion .cg-btn-clean::after,
-.reduced-motion .page-title::after,.reduced-motion .shell-brand::after{animation:none}
+.reduced-motion .page-title::after,.reduced-motion .shell-brand::after,.reduced-motion .preorder-chest,.reduced-motion .preorder-chest::after{animation:none}
 
 /* ---------- founders pre-sale (/preorder) ---------- */
 .preorder-hero{display:grid;grid-template-columns:minmax(140px,220px) 1fr;gap:18px;align-items:center}
@@ -291,6 +291,28 @@ button.pill:hover{border-color:var(--st-lime)}
   border-radius:8px;padding:8px 10px}
 @media (max-width:640px){
   .preorder-hero,.preorder-steps{grid-template-columns:1fr}
+}
+.preorder-offers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:720px){.preorder-offers{grid-template-columns:1fr}}
+.preorder-chest{position:relative;isolation:isolate;transform-origin:50% 80%;
+  animation:preorder-chest-idle 3.4s ease-in-out infinite}
+.preorder-chest-img{width:100%;aspect-ratio:1;object-fit:cover;display:block;
+  border-radius:18px 40px 22px 36px/36px 20px 40px 24px;filter:url(#st-spray);
+  box-shadow:0 0 28px color-mix(in srgb,var(--st-pink) 40%,transparent)}
+.preorder-chest::after{content:"";position:absolute;inset:10% 8% auto;height:22%;pointer-events:none;
+  background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.4) 50%,transparent 65%);
+  mix-blend-mode:screen;animation:preorder-chest-shine 4.2s ease-in-out infinite}
+.preorder-chest:hover{animation:none;transform:rotate(-3deg) translateY(-10px) scale(1.03)}
+@keyframes preorder-chest-idle{
+  0%,100%{transform:rotate(-1.4deg) translateY(0)}
+  50%{transform:rotate(1.6deg) translateY(-8px)}
+}
+@keyframes preorder-chest-shine{
+  0%,100%{transform:translateX(-45%);opacity:.2}
+  50%{transform:translateX(45%);opacity:.65}
+}
+@media (prefers-reduced-motion:reduce){
+  .preorder-chest,.preorder-chest::after{animation:none}
 }
 
 /* empty fusion / picker circles: accent spray, not the raw generated "Slot" badge */

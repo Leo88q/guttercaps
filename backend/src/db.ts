@@ -209,7 +209,8 @@ CREATE TABLE IF NOT EXISTS preorders (
   ref_id      INTEGER PRIMARY KEY AUTOINCREMENT,  -- on-chain preorder_ref + payment memo id
   wallet      TEXT    NOT NULL,
   sku         INTEGER NOT NULL,
-  qty         INTEGER NOT NULL,
+  qty         INTEGER NOT NULL,                   -- Limited packs this row grants (chest = 4)
+  offer       TEXT    NOT NULL DEFAULT 'pack',    -- pack | chest
   lamports    TEXT    NOT NULL,
   status      TEXT    NOT NULL DEFAULT 'intent',  -- intent | paid | granted | expired
   tx_sig      TEXT,
@@ -998,6 +999,9 @@ export class Db {
       if (!qc.has(name)) this.raw.exec(`ALTER TABLE quest_completions ADD COLUMN ${name} INTEGER`);
     }
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_quest_completions_chip_unrooted ON quest_completions(chip_root_kind, wallet)`);
+    const po = new Set((this.raw.prepare('PRAGMA table_info(preorders)').all() as { name: string }[]).map((c) => c.name));
+    if (!po.has('offer')) this.raw.exec(`ALTER TABLE preorders ADD COLUMN offer TEXT NOT NULL DEFAULT 'pack'`);
+    this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_preorders_offer ON preorders(offer, status)`);
   }
 
   /** Prepared-statement cache — SQL text is the key. */

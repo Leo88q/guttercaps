@@ -328,16 +328,21 @@ export const SKR_USD_FALLBACK = Number(env.SKR_USD_FALLBACK ?? 0.0174);
 export const PREORDER_ACTIVE = env.PREORDER_ACTIVE !== 'false';
 /** Squads multisig vault receiving the pre-sale SOL. Empty string = campaign disabled regardless of PREORDER_ACTIVE. */
 export const PREORDER_TREASURY = env.PREORDER_TREASURY ?? '';
-/** Fixed SOL price per pack, lamports (u64 decimal string — never JS number math). */
-export const PREORDER_PRICE_LAMPORTS = env.PREORDER_PRICE_LAMPORTS ?? '999000000'; // 0.999 SOL dev default
+/** Fixed SOL price per single Limited pack, lamports (u64 decimal string — never JS number math). */
+export const PREORDER_PRICE_LAMPORTS = env.PREORDER_PRICE_LAMPORTS ?? '300000000'; // 0.30 SOL
 /** Which pack SKU the drop sells (3 = Limited Event Pack). */
 export const PREORDER_SKU = Number(env.PREORDER_SKU ?? 3);
-/** Total packs in the drop (mirrors the on-chain `PreorderDrop.total` opened at launch). */
+/** Total single-pack units in the drop. */
 export const PREORDER_TOTAL = Number(env.PREORDER_TOTAL ?? 500);
-/** Per-wallet cap enforced by the registry AND by the on-chain drop. */
+/** Per-wallet cap for the single-pack offer. */
 export const PREORDER_MAX_PER_WALLET = Number(env.PREORDER_MAX_PER_WALLET ?? 5);
-/** Max packs in one intent (the client's qty stepper stops here too). */
+/** Max packs in one single-pack intent. */
 export const PREORDER_MAX_QTY = Number(env.PREORDER_MAX_QTY ?? 5);
+/** Founders chest: 4 Limited packs, 0.999 SOL, 125 units, 1 per wallet. */
+export const PREORDER_CHEST_PRICE_LAMPORTS = env.PREORDER_CHEST_PRICE_LAMPORTS ?? '999000000';
+export const PREORDER_CHEST_TOTAL = Number(env.PREORDER_CHEST_TOTAL ?? 125);
+export const PREORDER_CHEST_PACKS = Number(env.PREORDER_CHEST_PACKS ?? 4);
+export const PREORDER_CHEST_MAX_PER_WALLET = Number(env.PREORDER_CHEST_MAX_PER_WALLET ?? 1);
 /** A payment memo the buyer attaches so a payment is unambiguous even across same-amount intents. */
 export const PREORDER_MEMO_PREFIX = env.PREORDER_MEMO_PREFIX ?? 'GC-PRE';
 /** How long an intent waits for its payment before it stops accepting one (72 h default). */

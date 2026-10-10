@@ -31,10 +31,10 @@ const LocationProbe = () => {
 };
 
 const campaign = (over: Record<string, unknown> = {}) => ({
-  active: true, sku: 3, priceLamports: '999000000', treasury: 'TreasuryVaULT11111111111111111111111111111',
+  active: true, sku: 3, priceLamports: '300000000', treasury: 'TreasuryVaULT11111111111111111111111111111',
   total: 500, remaining: 480, sold: 20, intentTtlS: 259200, ...over,
 });
-const intent = { refId: 7, wallet: 'W', sku: 3, qty: 3, lamports: '2997000000', treasury: campaign().treasury, memo: 'GC-PRE|7', expiresAt: 9999999999 };
+const intent = { refId: 7, wallet: 'W', sku: 3, qty: 3, offer: 'pack', lamports: '900000000', treasury: campaign().treasury, memo: 'GC-PRE|7', expiresAt: 9999999999 };
 
 function mount() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -89,9 +89,9 @@ it('reserve → pay → confirm: the exact payment data is shown and the confirm
 
   // choose qty 3 — the quoted total is price × qty, not a copy-pasted constant
   fireEvent.click(screen.getByText('3'));
-  expect(screen.getByTestId('preorder-reserve').textContent).toContain(fmtSol('2997000000'));
+  expect(screen.getByTestId('preorder-reserve').textContent).toContain(fmtSol('900000000'));
   fireEvent.click(screen.getByRole('button', { name: t('preorder.reserve') }));
-  await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/preorder/intent', { qty: 3 }));
+  await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/preorder/intent', { offer: 'pack', qty: 3 }));
 
   const pay = await screen.findByTestId('preorder-pay');
   expect(pay.textContent).toContain('GC-PRE|7');
@@ -127,4 +127,18 @@ it('the reservation list renders statuses from i18n and flags delivered drops', 
   expect(mine.textContent).toContain(t('preorder.statusPaid'));
   expect(mine.textContent).toContain(t('preorder.statusGranted'));
   expect(mine.textContent).toContain(t('preorder.grantedNote'));
+});
+
+it('the founders chest posts offer=chest and never shares the pack qty stepper', async () => {
+  mocks.connected = true;
+  mocks.campaign = campaign({
+    offers: [
+      { id: 'pack', packs: 1, priceLamports: '300000000', total: 500, remaining: 480, sold: 20, maxPerWallet: 5, maxQty: 5 },
+      { id: 'chest', packs: 4, priceLamports: '999000000', total: 125, remaining: 125, sold: 0, maxPerWallet: 1, maxQty: 1 },
+    ],
+  });
+  mocks.post.mockResolvedValueOnce({ ...intent, offer: 'chest', qty: 4, lamports: '999000000' });
+  mount();
+  fireEvent.click(screen.getByRole('button', { name: t('preorder.reserveChest') }));
+  await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/preorder/intent', { offer: 'chest', qty: 1 }));
 });

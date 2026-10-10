@@ -512,7 +512,9 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.get('/preorder/me', requireAuth, (req, res) => { res.json({ items: preorders.mine(db, req.session!.wallet) }); });
   v1.get('/preorder/registry', (_req, res) => { res.json(preorders.registrySnapshot(db)); });
   v1.post('/preorder/intent', requireAuth, accessGate('packs'), rl(POLICIES.mutate), wrap(async (req, res) => {
-    res.json(preorders.createIntent(db, req.session!.wallet, Number(req.body?.qty)));
+    const offer = req.body?.offer === 'chest' ? 'chest' as const : 'pack' as const;
+    const qty = offer === 'chest' ? 1 : Number(req.body?.qty);
+    res.json(preorders.createIntent(db, req.session!.wallet, qty, undefined, offer));
   }));
   v1.post('/preorder/confirm', requireAuth, accessGate('packs'), rl(POLICIES.claim), rl(POLICIES.claimNet), wrap(async (req, res) => {
     const refId = Number(req.body?.refId);

@@ -116,6 +116,15 @@ describe('campaign + intents', () => {
     expect(p.mine(db, w, T + 3601)[0].status).toBe('expired');
     expect(await rejectsCode(p.confirmPayment(db, w, 1, 'sig', async () => null, T + 3601))).toBe('not_payable');
   });
+  it('the founders chest is 4 Limited packs at the chest price, one per wallet', () => {
+    const w = kp();
+    const intent = p.createIntent(db, w, 1, T, 'chest');
+    expect(intent).toMatchObject({ offer: 'chest', qty: 4, lamports: '999000000' });
+    expect(p.campaign(db, T).offers.find((o) => o.id === 'chest')?.remaining).toBe(124);
+    expect(p.campaign(db, T).remaining).toBe(5); // singles pool is independent
+    expect(codeOf(() => p.createIntent(db, w, 1, T, 'chest'))).toBe('wallet_cap');
+    expect(codeOf(() => p.createIntent(db, kp(), 2, T, 'chest'))).toBe('bad_qty');
+  });
 });
 
 describe('confirmPayment', () => {

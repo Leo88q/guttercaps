@@ -465,29 +465,46 @@ on('post', '/quests/visit', () => ({ day: Math.floor(Date.now() / 86_400_000), i
 
 // ------------------------------------------------------------- beta pre-sale (docs/preorder-beta.md)
 const PREORDER_TREASURY = fakeKey('Tr');
-const PREORDER_PRICE = '999000000'; // 0.999 SOL
+const PREORDER_PRICE = '300000000'; // 0.30 SOL per single
+const PREORDER_CHEST_PRICE = '999000000';
 const PREORDER_TOTAL = 500;
+const PREORDER_CHEST_TOTAL = 125;
 const PREORDER_TTL_S = 72 * 3_600;
 let preorderSeq = 41;
-interface MockPreorder { ref_id: number; wallet: string; sku: number; qty: number; lamports: string; status: 'intent' | 'paid' | 'granted' | 'expired'; tx_sig: string | null; nonce: string | null; grant_sig: string | null; created_at: number; paid_at: number | null; granted_at: number | null }
+interface MockPreorder { ref_id: number; wallet: string; sku: number; qty: number; offer: 'pack' | 'chest'; lamports: string; status: 'intent' | 'paid' | 'granted' | 'expired'; tx_sig: string | null; nonce: string | null; grant_sig: string | null; created_at: number; paid_at: number | null; granted_at: number | null }
 const preorderRows: MockPreorder[] = [];
 const preorderStats = () => {
   const sold = preorderRows.filter((r) => r.status === 'paid' || r.status === 'granted').reduce((s, r) => s + r.qty, 0) + 137;
   const granted = preorderRows.filter((r) => r.status === 'granted').reduce((s, r) => s + r.qty, 0);
-  return { active: true, sku: 3, priceLamports: PREORDER_PRICE, treasury: PREORDER_TREASURY, total: PREORDER_TOTAL, remaining: Math.max(0, PREORDER_TOTAL - sold), sold, granted, memoPrefix: 'GC-PRE', intentTtlS: PREORDER_TTL_S };
+  const packSold = preorderRows.filter((r) => r.offer !== 'chest' && (r.status === 'paid' || r.status === 'granted')).reduce((s, r) => s + r.qty, 0) + 137;
+  const chestSold = preorderRows.filter((r) => r.offer === 'chest' && (r.status === 'paid' || r.status === 'granted')).length;
+  return {
+    active: true, sku: 3, priceLamports: PREORDER_PRICE, treasury: PREORDER_TREASURY, total: PREORDER_TOTAL,
+    remaining: Math.max(0, PREORDER_TOTAL - packSold), sold, granted, memoPrefix: 'GC-PRE', intentTtlS: PREORDER_TTL_S,
+    offers: [
+      { id: 'pack', packs: 1, priceLamports: PREORDER_PRICE, total: PREORDER_TOTAL, remaining: Math.max(0, PREORDER_TOTAL - packSold), sold: packSold, maxPerWallet: 5, maxQty: 5 },
+      { id: 'chest', packs: 4, priceLamports: PREORDER_CHEST_PRICE, total: PREORDER_CHEST_TOTAL, remaining: Math.max(0, PREORDER_CHEST_TOTAL - chestSold), sold: chestSold, maxPerWallet: 1, maxQty: 1 },
+    ],
+  };
 };
 const preorderItem = (r: MockPreorder) => ({ ...r, memo: `GC-PRE|${r.ref_id}`, expiresAt: r.created_at + PREORDER_TTL_S });
 on('get', '/preorder', () => preorderStats());
 on('get', '/preorder/me', () => ({ items: preorderRows.filter((r) => r.wallet === ME).map(preorderItem).reverse() }));
 on('get', '/preorder/registry', () => ({ campaign: preorderStats(), rows: preorderRows.filter((r) => r.status === 'paid' || r.status === 'granted').map((r) => ({ refId: r.ref_id, qty: r.qty, status: r.status, paidAt: r.paid_at, grantedAt: r.granted_at })) }));
 on('post', '/preorder/intent', (o) => {
-  const qty = Number((o.body as { qty?: number } | undefined)?.qty ?? 1);
-  if (!Number.isInteger(qty) || qty < 1 || qty > 5) throw Object.assign(new Error('qty must be 1..5'), { status: 400, code: 'bad_qty' });
-  const mine = preorderRows.filter((r) => r.wallet === ME && r.status !== 'expired').reduce((s, r) => s + r.qty, 0);
-  if (mine + qty > 5) throw Object.assign(new Error('At most 5 packs per wallet'), { status: 409, code: 'wallet_cap' });
-  const row: MockPreorder = { ref_id: ++preorderSeq, wallet: ME, sku: 3, qty, lamports: String(BigInt(PREORDER_PRICE) * BigInt(qty)), status: 'intent', tx_sig: null, nonce: null, grant_sig: null, created_at: Math.floor(Date.now() / 1000), paid_at: null, granted_at: null };
+  const body = (o.body ?? {}) as { qty?: number; offer?: string };
+  const offer = body.offer === 'chest' ? 'chest' as const : 'pack' as const;
+  const qty = offer === 'chest' ? 1 : Number(body.qty ?? 1);
+  if (offer === 'pack' && (!Number.isInteger(qty) || qty < 1 || qty > 5)) throw Object.assign(new Error('qty must be 1..5'), { status: 400, code: 'bad_qty' });
+  const minePacks = preorderRows.filter((r) => r.wallet === ME && r.offer !== 'chest' && r.status !== 'expired').reduce((s, r) => s + r.qty, 0);
+  const mineChests = preorderRows.filter((r) => r.wallet === ME && r.offer === 'chest' && r.status !== 'expired').length;
+  if (offer === 'pack' && minePacks + qty > 5) throw Object.assign(new Error('At most 5 packs per wallet'), { status: 409, code: 'wallet_cap' });
+  if (offer === 'chest' && mineChests >= 1) throw Object.assign(new Error('At most 1 chest per wallet'), { status: 409, code: 'wallet_cap' });
+  const packs = offer === 'chest' ? 4 : qty;
+  const lamports = offer === 'chest' ? PREORDER_CHEST_PRICE : String(BigInt(PREORDER_PRICE) * BigInt(qty));
+  const row: MockPreorder = { ref_id: ++preorderSeq, wallet: ME, sku: 3, qty: packs, offer, lamports, status: 'intent', tx_sig: null, nonce: null, grant_sig: null, created_at: Math.floor(Date.now() / 1000), paid_at: null, granted_at: null };
   preorderRows.push(row);
-  return { refId: row.ref_id, wallet: ME, sku: 3, qty, lamports: row.lamports, treasury: PREORDER_TREASURY, memo: `GC-PRE|${row.ref_id}`, expiresAt: row.created_at + PREORDER_TTL_S };
+  return { refId: row.ref_id, wallet: ME, sku: 3, qty: packs, offer, lamports: row.lamports, treasury: PREORDER_TREASURY, memo: `GC-PRE|${row.ref_id}`, expiresAt: row.created_at + PREORDER_TTL_S };
 });
 on('post', '/preorder/confirm', (o) => {
   const { refId, signature } = (o.body ?? {}) as { refId?: number; signature?: string };

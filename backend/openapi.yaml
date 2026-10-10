@@ -366,9 +366,9 @@ paths:
       summary: Reserve packs and get the payment instruction set
       description: |
         Creates an `intent` row and returns the exact payment data: the treasury address, the total in lamports
-        and the memo `GC-PRE|<refId>` to attach. The intent expires after `intentTtlS` unless confirmed. The
-        per-wallet cap counts intents too, so a wallet cannot reserve the whole drop without paying.
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [qty], properties: { qty: { type: integer, minimum: 1, maximum: 5 } } } } } }
+        and the memo `GC-PRE|<refId>` to attach. `offer` selects the single Limited pack or the founders chest
+        of 4 packs. The intent expires after `intentTtlS` unless confirmed. Per-wallet caps are per offer.
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { qty: { type: integer, minimum: 1, maximum: 5 }, offer: { type: string, enum: [pack, chest] } } } } } } }
       responses:
         '200': { description: reserved, content: { application/json: { schema: { $ref: '#/components/schemas/PreorderIntent' } } } }
         '400': { $ref: '#/components/responses/Error', description: 'bad_qty' }
@@ -1304,16 +1304,30 @@ components:
       type: object
       required: [active, sku, priceLamports, treasury, total, remaining, sold, granted, memoPrefix, intentTtlS]
       properties:
-        active: { type: boolean, description: 'campaign switched on AND treasury configured AND packs remain' }
+        active: { type: boolean, description: 'campaign switched on AND treasury configured AND at least one offer remains' }
         sku: { type: integer, description: 'pack SKU of the drop (3 = Limited)' }
-        priceLamports: { type: string, description: 'price of ONE pack in lamports (decimal string, u64)' }
+        priceLamports: { type: string, description: 'price of ONE single pack in lamports (decimal string, u64)' }
         treasury: { type: string, description: 'Squads multisig vault receiving the payments' }
-        total: { type: integer }
-        remaining: { type: integer, description: 'packs not yet reserved (granted + paid + intent all subtract)' }
-        sold: { type: integer, description: 'paid + granted packs' }
+        total: { type: integer, description: 'single-pack offer size (not including chests)' }
+        remaining: { type: integer, description: 'single packs not yet reserved' }
+        sold: { type: integer, description: 'paid + granted Limited packs across both offers' }
         granted: { type: integer, description: 'packs already delivered on-chain (PackGranted projection)' }
         memoPrefix: { type: string }
         intentTtlS: { type: integer }
+        offers:
+          type: array
+          items:
+            type: object
+            required: [id, packs, priceLamports, total, remaining, sold, maxPerWallet, maxQty]
+            properties:
+              id: { type: string, enum: [pack, chest] }
+              packs: { type: integer, description: 'Limited packs granted per reserved unit' }
+              priceLamports: { type: string }
+              total: { type: integer }
+              remaining: { type: integer }
+              sold: { type: integer }
+              maxPerWallet: { type: integer }
+              maxQty: { type: integer }
     PreorderIntent:
       type: object
       required: [refId, wallet, sku, qty, lamports, treasury, memo, expiresAt]
@@ -1321,8 +1335,9 @@ components:
         refId: { type: integer, description: 'the on-chain preorder_ref and the payment memo id' }
         wallet: { type: string }
         sku: { type: integer }
-        qty: { type: integer }
-        lamports: { type: string, description: 'total to send (price × qty), decimal string' }
+        qty: { type: integer, description: 'Limited packs this reservation grants (chest = 4)' }
+        offer: { type: string, enum: [pack, chest] }
+        lamports: { type: string, description: 'total to send, decimal string' }
         treasury: { type: string }
         memo: { type: string, description: 'attach to the payment, e.g. GC-PRE|42' }
         expiresAt: { type: integer, description: 'unix seconds; after that the intent stops accepting payments' }
