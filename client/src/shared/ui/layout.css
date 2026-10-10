@@ -2,7 +2,7 @@
    Palette/fonts come ONLY from theme.css tokens. */
 
 *, *::before, *::after { box-sizing: border-box; }
-html, body, #root { height: 100%; margin: 0; }
+html, body, #root { height: 100%; margin: 0; overflow: hidden; }
 body { -webkit-font-smoothing: antialiased; overscroll-behavior-y: none; }
 a { color: inherit; }
 button { font: inherit; }
@@ -20,14 +20,19 @@ img { max-width: 100%; display: block; }
 }
 
 /* ---------- shell ---------- */
-.shell { min-height: 100%; display: flex; flex-direction: column; }
+/* App chrome is a flex column of (scrollable body) + (in-flow tab bar). A position:fixed
+   bottom bar tracks the visual viewport, so on a phone / Chrome device-mode the bar jumps
+   in and out as the URL chrome shows or as a tall animated card pulses document height.
+   Overflow lives on .shell-body; html/body do not scroll. */
+.shell { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+.shell-body { order: 1; flex: 1; min-height: 0; overflow: auto; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
 .shell-header {
   position: sticky; top: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 10px 16px; background: rgba(22, 21, 26, 0.92); backdrop-filter: blur(10px); border-bottom: 1px solid var(--gc-line);
 }
 .shell-brand { font-family: var(--cg-font-display); font-size: 22px; letter-spacing: 0.04em; color: var(--cg-chrome); text-decoration: none; display: flex; align-items: center; gap: 8px; }
 .shell-brand small { font-family: var(--cg-font-mono); font-size: 10px; color: var(--gc-muted); letter-spacing: 0.1em; }
-.shell-main { flex: 1; padding-bottom: calc(var(--gc-nav-h) + var(--gc-safe-b) + 16px); position: relative; z-index: 0; }
+.shell-main { flex: 1; padding-bottom: 16px; position: relative; z-index: 0; }
 /* global backdrop so no page is plain black: dark asphalt texture, fixed behind
    all content (page-specific backdrops like arena/codex paint on top of it) */
 .shell-main::before {
@@ -42,7 +47,8 @@ img { max-width: 100%; display: block; }
      tab means bumping this; `smoke.test.tsx` fails if they disagree. The language picker used to be
      the 10th entry and now lives in the header next to the balance. */
   --gc-nav-tabs: 9;
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: grid;
+  order: 2; position: relative; left: auto; right: auto; bottom: auto; z-index: 30; display: grid;
+  flex-shrink: 0; width: 100%;
   grid-template-columns: repeat(var(--gc-nav-tabs), minmax(0, 1fr));
   height: calc(var(--gc-nav-h) + var(--gc-safe-b)); padding-bottom: var(--gc-safe-b);
   background: rgba(22, 21, 26, 0.96); border-top: 1px solid var(--gc-line);
@@ -61,8 +67,8 @@ img { max-width: 100%; display: block; }
 @media (min-width: 900px) {
   .shell { flex-direction: row; }
   .shell-header { position: sticky; }
-  .shell-nav { position: sticky; top: 0; bottom: auto; height: 100vh; width: 92px; grid-template-columns: 1fr; grid-auto-rows: 72px; align-content: start; padding-top: 12px; border-top: 0; border-right: 1px solid var(--gc-line); }
-  .shell-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .shell-nav { order: 0; position: relative; top: 0; bottom: auto; height: 100%; width: 92px; grid-template-columns: 1fr; grid-auto-rows: 72px; align-content: start; padding-top: 12px; border-top: 0; border-right: 1px solid var(--gc-line); }
+  .shell-body { order: 0; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
   .shell-main { padding-bottom: 32px; }
   .wait-pill { bottom: 24px; }
 }

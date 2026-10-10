@@ -59,6 +59,7 @@ export function Shell({ children }: { children: ReactNode }) {
   // rows on a phone (language + balance + wallet next to the brand), longer in ru/fil. Publish the real
   // height as --gc-header-h so the toast stack never lands on the controls it would otherwise cover.
   const shellRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
     const shell = shellRef.current;
@@ -72,7 +73,10 @@ export function Shell({ children }: { children: ReactNode }) {
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => { window.scrollTo({ top: 0 }); }, [loc.pathname]);
+  useEffect(() => {
+    bodyRef.current?.scrollTo({ top: 0 });
+    window.scrollTo({ top: 0 });
+  }, [loc.pathname]);
 
   return (
     <div className="shell" ref={shellRef}>
@@ -86,7 +90,7 @@ export function Shell({ children }: { children: ReactNode }) {
           </NavLink>
         ))}
       </nav>
-      <div className="shell-body">
+      <div className="shell-body" ref={bodyRef}>
         <header className="shell-header" ref={headerRef}>
           <Link to="/" className="shell-brand"><img src="/favicon.svg" width={24} height={24} alt="" aria-hidden />{t('home.heroTitle')} <small>GUTTER CITY</small></Link>
           <div className="row" style={{ gap: 8 }}>

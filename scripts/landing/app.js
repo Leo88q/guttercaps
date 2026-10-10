@@ -145,6 +145,10 @@
     }
     renderHowto();
     renderPacks();
+    document.querySelectorAll('[data-pack-art]').forEach((img) => {
+      const src = PACK_ART[img.dataset.packArt];
+      if (src && img.getAttribute('src') !== src) img.src = src;
+    });
     renderStats(lastStats);
     renderDistricts();
     renderTiers();

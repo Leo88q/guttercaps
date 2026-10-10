@@ -271,12 +271,12 @@ button.pill:hover{border-color:var(--st-lime)}
   .btn::after,.cg-btn-primary::after,.cg-btn-spill::after,.cg-btn-clean::after,.page-title::after,.shell-brand::after{animation:none}
 }
 .reduced-motion .btn::after,.reduced-motion .cg-btn-primary::after,.reduced-motion .cg-btn-spill::after,.reduced-motion .cg-btn-clean::after,
-.reduced-motion .page-title::after,.reduced-motion .shell-brand::after,.reduced-motion .preorder-chest,.reduced-motion .preorder-chest::after{animation:none}
+.reduced-motion .page-title::after,.reduced-motion .shell-brand::after,.reduced-motion .preorder-chest-img,.reduced-motion .preorder-chest::after{animation:none}
 
 /* ---------- founders pre-sale (/preorder) ---------- */
 .preorder-hero{display:grid;grid-template-columns:minmax(140px,220px) 1fr;gap:18px;align-items:center}
-.preorder-hero-art{width:100%;aspect-ratio:1;object-fit:cover;display:block;
-  border-radius:18px 40px 22px 36px/36px 20px 40px 24px;filter:url(#st-spray);
+.preorder-hero-art{width:100%;max-width:min(320px,100%);aspect-ratio:1;object-fit:cover;display:block;margin-inline:auto;
+  border-radius:18px 40px 22px 36px/36px 20px 40px 24px;
   box-shadow:0 0 28px color-mix(in srgb,var(--st-pink) 35%,transparent)}
 .preorder-price{font-family:var(--st-display);font-size:clamp(28px,5vw,48px);color:var(--st-lime);line-height:1;letter-spacing:.04em}
 .preorder-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:10px;counter-reset:pre-step}
@@ -294,25 +294,27 @@ button.pill:hover{border-color:var(--st-lime)}
 }
 .preorder-offers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 @media (max-width:720px){.preorder-offers{grid-template-columns:1fr}}
-.preorder-chest{position:relative;isolation:isolate;transform-origin:50% 80%;
-  animation:preorder-chest-idle 3.4s ease-in-out infinite}
+.preorder-chest{position:relative;isolation:isolate;overflow:hidden;contain:paint;
+  max-width:min(320px,100%);margin-inline:auto;
+  border-radius:18px 40px 22px 36px/36px 20px 40px 24px}
 .preorder-chest-img{width:100%;aspect-ratio:1;object-fit:cover;display:block;
-  border-radius:18px 40px 22px 36px/36px 20px 40px 24px;filter:url(#st-spray);
+  transform-origin:50% 80%;animation:preorder-chest-idle 3.4s ease-in-out infinite;
   box-shadow:0 0 28px color-mix(in srgb,var(--st-pink) 40%,transparent)}
 .preorder-chest::after{content:"";position:absolute;inset:10% 8% auto;height:22%;pointer-events:none;
   background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.4) 50%,transparent 65%);
   mix-blend-mode:screen;animation:preorder-chest-shine 4.2s ease-in-out infinite}
-.preorder-chest:hover{animation:none;transform:rotate(-3deg) translateY(-10px) scale(1.03)}
+.preorder-chest:hover .preorder-chest-img{animation:none;transform:rotate(-3deg) scale(1.03)}
 @keyframes preorder-chest-idle{
   0%,100%{transform:rotate(-1.4deg) translateY(0)}
-  50%{transform:rotate(1.6deg) translateY(-8px)}
+  50%{transform:rotate(1.6deg) translateY(-6px)}
 }
 @keyframes preorder-chest-shine{
   0%,100%{transform:translateX(-45%);opacity:.2}
   50%{transform:translateX(45%);opacity:.65}
 }
 @media (prefers-reduced-motion:reduce){
-  .preorder-chest,.preorder-chest::after{animation:none}
+  .preorder-chest-img,.preorder-chest::after{animation:none}
+  .preorder-chest:hover .preorder-chest-img{transform:none}
 }
 
 /* empty fusion / picker circles: accent spray, not the raw generated "Slot" badge */

@@ -74,7 +74,7 @@ LANDING_UI = {l: {k: v for k, v in client_catalog('ui', l).items() if k.startswi
 ART_TILE, ART_GUT, ART_PAD = 256, 12, 16
 ASSET_DIR = HERE / 'assets'
 PHOTOS, DISTRICT_ART, STEP_ART, GEN_ICONS, PACK_ART = {}, {}, {}, {}, {}
-PACK_ART_STEMS = {'starter', 'standard', 'premium', 'limited'}  # foil wrapper renders, scripts/landing/README
+PACK_ART_STEMS = {'starter', 'standard', 'premium', 'limited', 'chest'}  # foil wrappers + founders chest, scripts/landing/README
 if ASSET_DIR.is_dir():
     for _p in sorted(ASSET_DIR.glob('*.webp')):
         _uri = 'data:image/webp;base64,' + base64.b64encode(_p.read_bytes()).decode()
@@ -88,6 +88,8 @@ if ASSET_DIR.is_dir():
             PACK_ART[_p.stem] = _uri  # exposed to app.js as PACK_ART, NOT as wall photos
         else:
             PHOTOS[_p.stem] = _uri
+if any(k not in PACK_ART for k in PACK_ART_STEMS):
+    raise SystemExit('landing assets missing pack art: ' + ', '.join(sorted(PACK_ART_STEMS - PACK_ART.keys())))
 
 
 def photo_style():
@@ -389,6 +391,22 @@ BODY = f'''
   <div class="lamp-glow" style="top:-180px; left:12%; background: radial-gradient(circle, rgba(255,122,26,0.20), transparent 70%);"></div>
   <div class="wrap">
 {head_block('presale.h', 'presale.p', 'var(--orange)')}
+    <div class="presale-offers">
+      <article class="presale-offer">
+        <img class="presale-offer-art" data-pack-art="limited" alt="" width="640" height="640" loading="lazy" decoding="async">
+        <div class="presale-offer-name" data-i18n="presale.o1h">{t('presale.o1h')}</div>
+        <div class="presale-offer-price">0.30 SOL</div>
+        <p data-i18n="presale.o1p">{t('presale.o1p')}</p>
+      </article>
+      <article class="presale-offer">
+        <div class="presale-chest">
+          <img class="presale-offer-art" data-pack-art="chest" alt="" width="640" height="640" loading="lazy" decoding="async">
+        </div>
+        <div class="presale-offer-name" data-i18n="presale.o2h">{t('presale.o2h')}</div>
+        <div class="presale-offer-price">0.999 SOL</div>
+        <p data-i18n="presale.o2p">{t('presale.o2p')}</p>
+      </article>
+    </div>
     <div class="presale-grid">
       <div class="presale-card clean-zone"><h3 data-i18n="presale.c1h">{t('presale.c1h')}</h3><p data-i18n="presale.c1p">{t('presale.c1p')}</p></div>
       <div class="presale-card clean-zone"><h3 data-i18n="presale.c2h">{t('presale.c2h')}</h3><p data-i18n="presale.c2p">{t('presale.c2p')}</p></div>

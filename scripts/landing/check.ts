@@ -239,6 +239,13 @@ has('footer age badge', html, '18+');
   has('presale chest price (ru)', presaleRu, `${chestPrice.replace('.', ',')} SOL`);
   has('presale pack cap (ru)', presaleRu, `${packCap} на кошелёк`);
   has('presale section present', html, 'id="presale"');
+  has('presale offer cards', html, 'class="presale-offers"');
+  has('presale offer pack', en('presale.o1p'), `${packTotal} singles`);
+  has('presale offer pack price', en('presale.o1p'), `${packPrice} SOL`);
+  has('presale offer chest', en('presale.o2p'), `${chestTotal} chests`);
+  has('presale offer chest price', en('presale.o2p'), `${chestPrice} SOL`);
+  has('presale visual pack price', html, `>${packPrice} SOL<`);
+  has('presale visual chest price', html, `>${chestPrice} SOL<`);
 }
 
 // ---- i18n coverage: every EN key has a RU string, no empty strings ----
