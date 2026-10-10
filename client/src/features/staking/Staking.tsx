@@ -143,12 +143,12 @@ export default function Staking() {
           <div className="stack-sm">
             <span className="label">{t('ui.yourPositions')}</span>
             {positions.map((p) => (
-              <CleanZone key={p.tier} className="row between" style={{ padding: '8px 12px' }}>
-                <div>
+              <CleanZone key={p.tier} className="stake-row" style={{ padding: '8px 12px' }}>
+                <div className="stake-row-copy">
                   <div><b>{fmtCg(p.amount, 0)}</b> · {tierName(p.tier)}</div>
                   <div className="tiny muted">{t('ui.pending')} {fmtCg(p.pending, 3)} · {p.unlockAt > Date.now() ? t('ui.unlockIn', { time: countdown(p.unlockAt) }) : t('ui.unlocked')}</div>
                 </div>
-                <div className="row" style={{ gap: 6 }}>
+                <div className="stake-row-actions">
                   <button className="btn btn-sm" disabled={busy} onClick={() => run('staking.claim', async () => [ata(), unstakeCgIx({ owner: wallet!.publicKey, tier: p.tier, amount: 0n, cgMint: cgMint! })])}>{t('pass.claim')}</button>
                   <button className="btn btn-sm" onClick={() => { setUnstake({ tier: p.tier }); setUnAmount(''); }}>{t('staking.unstake')}</button>
                 </div>
@@ -160,22 +160,28 @@ export default function Staking() {
 
       {/* ---------- chips ---------- */}
       <div className="card stack">
-        <div className="row between">
-          <div><div className="strong">{t('ui.stakeCaps')}</div><div className="tiny muted">{t('ui.weightRule')}</div></div>
+        <div className="stake-row">
+          <div className="stake-row-copy"><div className="strong">{t('ui.stakeCaps')}</div><div className="tiny muted">{t('ui.weightRule')}</div></div>
           <button className="btn btn-sm" onClick={() => setPickChip(true)} disabled={stakeable.length === 0}>+ {t('ui.stakeCap')}</button>
         </div>
-        <CleanZone className="row between" style={{ padding: '8px 12px' }}>
-          <span>{t('ui.setBonus')}: <b className="cg-accent">×{fmtDecimal(setMult)}</b> <span className="muted">({t('screens.setsCount', { n: sets })})</span></span>
-          <Link to="/collection" className="tiny">{t('screens.completeSets')}</Link>
+        <CleanZone className="stake-row" style={{ padding: '8px 12px' }}>
+          <span className="stake-row-copy">{t('ui.setBonus')}: <b className="cg-accent">×{fmtDecimal(setMult)}</b> <span className="muted">({t('screens.setsCount', { n: sets })})</span></span>
+          <Link to="/collection" className="tiny" style={{ flexShrink: 0 }}>{t('screens.completeSets')}</Link>
         </CleanZone>
         {staked.length === 0 ? <Empty>{t('ui.noStaked', { amount: overview.data ? fmtCg(overview.data.chipPool?.budgetTodayMicro, 0) : '—', n: overview.data?.chipPool?.stakedChips ?? '—' })}</Empty> : (
           <div className="stack-sm">
             {staked.map((c) => {
               const api = meApi.data?.chipStakes?.find((s) => s.chip?.asset === c.asset);
               return (
-                <div key={c.asset} className="row between" style={{ flexWrap: 'wrap' }}>
-                  <div className="row"><span style={{ width: 60 }}><ChipArt collection={c.collection!} rarity={c.rarity!} imageUrl={chipImageOf(c)} skin={(c as { skin?: string | null }).skin} /></span><div><div className="small">{chipName(c.collection!, c.rarity!)} <span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span></div><div className="tiny muted mono">{t('staking.weight')} {c.stakeWeight} · {t('ui.pending')} {api ? fmtCg(api.pending, 3) : '…'}</div></div></div>
-                  <div className="row" style={{ gap: 6 }}>
+                <div key={c.asset} className="stake-row">
+                  <div className="stake-row-body">
+                    <span className="stake-row-art"><ChipArt collection={c.collection!} rarity={c.rarity!} imageUrl={chipImageOf(c)} skin={(c as { skin?: string | null }).skin} /></span>
+                    <div className="stake-row-copy">
+                      <div className="small">{chipName(c.collection!, c.rarity!)} <span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span></div>
+                      <div className="tiny muted mono">{t('staking.weight')} {c.stakeWeight} · {t('ui.pending')} {api ? fmtCg(api.pending, 3) : '…'}</div>
+                    </div>
+                  </div>
+                  <div className="stake-row-actions">
                     {/* No separate claim for a V2 chip stake: `unstake_compressed_chip` mints the
                         pending reward as it closes the stake, so claiming early would mean unstaking. */}
                     <button className="btn btn-sm" disabled={busy} onClick={() => run('staking.unstake', async () => [ata(), unstakeCompressedChipIx({ owner: wallet!.publicKey, claim: (await claimOf(c))!, cgMint: cgMint! })])}>{t('staking.unstake')}</button>

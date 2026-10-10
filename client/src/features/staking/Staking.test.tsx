@@ -189,6 +189,8 @@ describe('V2 chip staking', () => {
     seed(qc, true);
     mount(qc);
     const unstake = await screen.findByRole('button', { name: /Unstake/ });
+    expect(unstake.closest('.stake-row-actions')).not.toBeNull();
+    expect(unstake.closest('.stake-row')).not.toBeNull();
     fireEvent.click(unstake);
     await waitFor(() => expect(sent).toHaveLength(2));
 

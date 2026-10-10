@@ -715,3 +715,41 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 .wait-pill-hint { color: rgba(216,216,220,0.7); font-size: 12px; }
 .wait-pill-link { justify-self: start; font-size: 12px; color: var(--cg-cyan, #16E5D9); text-decoration: none; }
 .wait-pill-link:hover { text-decoration: underline; }
+
+/* Staking lists: Claim / Unstake / "+ stake a cap" stay on the same row as the
+   asset in every locale. The name wraps inside the leftover column; the actions
+   never wrap onto a second flex line. Global `.row.between { flex-wrap: wrap }`
+   is what dropped «Вывести» under a long chip name. */
+.stake-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  width: 100%;
+}
+.stake-row-body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.stake-row-art { flex: 0 0 60px; width: 60px; }
+.stake-row-copy { flex: 1 1 auto; min-width: 0; }
+.stake-row-copy .small,
+.stake-row-copy .strong,
+.stake-row-copy .tiny,
+.stake-row-copy b { overflow-wrap: anywhere; }
+.stake-row-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  align-items: center;
+}
+.stake-row > .btn,
+.stake-row-actions .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+  max-width: none;
+}
