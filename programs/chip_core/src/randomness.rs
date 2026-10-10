@@ -143,10 +143,14 @@ pub struct Randomness {
 }
 
 fn unpack(data: &[u8]) -> Result<Randomness> {
-    require!(data.len() >= RNG_ACCOUNT_SIZE, ChipError::RandomnessMismatch);
+    require!(
+        data.len() >= RNG_ACCOUNT_SIZE,
+        ChipError::RandomnessMismatch
+    );
     require!(data[..8] == RNG_DISC, ChipError::RandomnessMismatch);
     Ok(Randomness {
-        authority: Pubkey::try_from(&data[8..40]).map_err(|_| error!(ChipError::RandomnessMismatch))?,
+        authority: Pubkey::try_from(&data[8..40])
+            .map_err(|_| error!(ChipError::RandomnessMismatch))?,
         seed_slot: u64::from_le_bytes(data[40..48].try_into().unwrap()),
         reveal_slot: u64::from_le_bytes(data[48..56].try_into().unwrap()),
         value: data[56..88].try_into().unwrap(),
@@ -154,7 +158,10 @@ fn unpack(data: &[u8]) -> Result<Randomness> {
 }
 
 fn pack_into(data: &mut [u8], rnd: &Randomness) -> Result<()> {
-    require!(data.len() >= RNG_ACCOUNT_SIZE, ChipError::RandomnessMismatch);
+    require!(
+        data.len() >= RNG_ACCOUNT_SIZE,
+        ChipError::RandomnessMismatch
+    );
     data[..8].copy_from_slice(&RNG_DISC);
     data[8..40].copy_from_slice(rnd.authority.as_ref());
     data[40..48].copy_from_slice(&rnd.seed_slot.to_le_bytes());
@@ -312,7 +319,6 @@ pub fn init_owned<'info>(
     Ok(rnd)
 }
 
-
 /// Commit this slot. Switchboard queue/program keys are still checked (ELF pins) but not CPI'd.
 #[allow(clippy::too_many_arguments)]
 pub fn commit_owned<'info>(
@@ -326,13 +332,24 @@ pub fn commit_owned<'info>(
     _seeds: &[&[&[u8]]],
     clock_slot: u64,
 ) -> Result<Randomness> {
-    require_keys_eq!(*switchboard.key, SB_PROGRAM_ID, ChipError::RandomnessMismatch);
+    require_keys_eq!(
+        *switchboard.key,
+        SB_PROGRAM_ID,
+        ChipError::RandomnessMismatch
+    );
     require_keys_eq!(*queue.key, SB_QUEUE, ChipError::RandomnessMismatch);
-    require_keys_eq!(*recent_slothashes.key, SLOT_HASHES_ID, ChipError::RandomnessMismatch);
+    require_keys_eq!(
+        *recent_slothashes.key,
+        SLOT_HASHES_ID,
+        ChipError::RandomnessMismatch
+    );
     let before = parse_checked(randomness, program_id)?;
     assert_authority(&before, authority.key)?;
     assert_unused(&before)?;
-    let after = Randomness { seed_slot: clock_slot, ..before };
+    let after = Randomness {
+        seed_slot: clock_slot,
+        ..before
+    };
     pack_into(&mut randomness.try_borrow_mut_data()?, &after)?;
     assert_fresh_commit(&after, clock_slot)?;
     Ok(after)
@@ -365,11 +382,18 @@ pub fn reveal_owned<'info>(
     _seeds: &[&[&[u8]]],
 ) -> Result<Randomness> {
     require_keys_eq!(*a.queue.key, SB_QUEUE, ChipError::RandomnessMismatch);
-    require_keys_eq!(*a.recent_slothashes.key, SLOT_HASHES_ID, ChipError::RandomnessMismatch);
+    require_keys_eq!(
+        *a.recent_slothashes.key,
+        SLOT_HASHES_ID,
+        ChipError::RandomnessMismatch
+    );
     let before = parse_checked(&a.randomness, program_id)?;
     assert_authority(&before, a.authority.key)?;
     require!(before.seed_slot > 0, ChipError::RandomnessExpired);
-    require!(before.reveal_slot == 0, ChipError::RandomnessAlreadyRevealed);
+    require!(
+        before.reveal_slot == 0,
+        ChipError::RandomnessAlreadyRevealed
+    );
     let clock_slot = Clock::get()?.slot;
     let target = before.seed_slot.saturating_add(RNG_DELAY_SLOTS);
     #[cfg(feature = "localnet")]
@@ -393,7 +417,11 @@ pub fn reveal_owned<'info>(
             derive_value(a.randomness.key, before.seed_slot, &h)
         }
     };
-    let after = Randomness { reveal_slot: clock_slot, value: derived, ..before };
+    let after = Randomness {
+        reveal_slot: clock_slot,
+        value: derived,
+        ..before
+    };
     pack_into(&mut a.randomness.try_borrow_mut_data()?, &after)?;
     Ok(after)
 }
@@ -446,7 +474,11 @@ pub fn close_lut_owned<'info>(
     _lut_slot: u64,
     _seeds: &[&[&[u8]]],
 ) -> Result<()> {
-    require_keys_eq!(*switchboard.key, SB_PROGRAM_ID, ChipError::RandomnessMismatch);
+    require_keys_eq!(
+        *switchboard.key,
+        SB_PROGRAM_ID,
+        ChipError::RandomnessMismatch
+    );
     require!(
         a.randomness.data_is_empty() && *a.randomness.owner == system_program::ID,
         ChipError::RandomnessUsed
@@ -516,7 +548,12 @@ mod tests {
     #[test]
     fn pack_roundtrip_and_mix_is_domain_separated() {
         let auth = Pubkey::new_unique();
-        let src = Randomness { authority: auth, seed_slot: 9, reveal_slot: 17, value: [3u8; 32] };
+        let src = Randomness {
+            authority: auth,
+            seed_slot: 9,
+            reveal_slot: 17,
+            value: [3u8; 32],
+        };
         let mut buf = [0u8; RNG_ACCOUNT_SIZE];
         pack_into(&mut buf, &src).unwrap();
         assert_eq!(&buf[..8], &RNG_DISC);
