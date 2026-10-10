@@ -16,6 +16,8 @@ const ui = {
   "missing": "missing",
   "power": "power",
   "level": "level",
+  "lvMark": "LV",
+  "levelHint": "Caps mint at level 1. Each extra level is +2.5% power. Fusion raises rarity, not level — season XP is not live yet.",
   "stakeWeight": "stake weight",
   "listMarket": "List on market",
   "stakeCg": "Stake for $CG",

@@ -85,6 +85,7 @@ export function ChipDrawer({ chip, onClose }: { chip: Chip; onClose: () => void 
         <div className="grow stack-sm">
           <div style={{ color: rarityColor(chip.rarity!) }} className="strong">{rarityName(chip.rarity!)} · {collectionName(chip.collection!)} <ElementGlyph element={ELEMENT_OF_COLLECTION[chip.collection!]} /></div>
           <div className="small muted">{chipIndexText(chip.index) ?? t('ui.unnumbered')} · {t('ui.level')} {chip.level}/{prof.maxLevel} · {t('ui.power')} {chip.power} · {t('ui.stakeWeight')} {chip.stakeWeight}</div>
+          <div className="tiny muted">{t('ui.levelHint')}</div>
           <div className="small" style={{ lineHeight: 1.45 }}>{chipLore(chip.collection!, chip.rarity!)}</div>
           <div className="tag-list">
             {chip.flags?.founder && <span className="pill pill-ok">{t('collection.founderNote')}</span>}

@@ -111,6 +111,9 @@ const vi: Messages = {
     skipFight: 'Bỏ qua',
     watchingFight: 'Đang xem trận đấu',
     wagerSettling: 'Đang chờ tất toán on-chain',
+    hunting: 'Đang săn đối thủ',
+    huntBot: 'Bot vào khi đồng hồ về 0.',
+    huntFill: 'Đang điền bot…',
   },
   market: {
     title: 'Chợ', subtitle: 'Niêm yết không cần escrow: nắp vẫn nằm trong ví người bán, ở trạng thái đóng băng. Phí {fee}% + {royalty}% bản quyền, người bán trả. Định giá bằng SOL.',

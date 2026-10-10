@@ -98,13 +98,13 @@ export default function MatchReplay() {
           return (
             <div key={i} className={`round small${animate && i === visible - 1 ? ' fight-round-enter' : ''}`} style={{ padding: '8px 0', borderBottom: '1px solid var(--gc-line)' }}>
               <div className="row">
-                <span style={{ width: 54 }}><ChipArt collection={a.collection!} rarity={a.rarity!} imageUrl={chipImageOf(a)} skin={a.skin} /></span>
+                <span style={{ width: 54 }}><ChipArt collection={a.collection!} rarity={a.rarity!} imageUrl={chipImageOf(a)} skin={a.skin} level={a.level} /></span>
                 <div><div style={{ color: rarityColor(a.rarity!) }}>{chipName(a.collection!, a.rarity!)}</div><div className="tiny muted mono">{fmtDecimal(chipPower(a.rarity!, a.level!), 0)} × {t('ui.edge')} {fmtDecimal(1 + (r.elementEdge ?? 0))} × {t('ui.luck')} {fmtDecimal(r.luckA ?? 1)} = {fmtDecimal(pa, 0)}</div></div>
               </div>
               <div className="center"><div className="tiny muted">{t('ui.round')} {i + 1}</div><div style={{ color: aWins ? 'var(--cg-acid-green)' : 'var(--cg-neon-magenta)' }}>{aWins ? '◀' : '▶'}</div></div>
               <div className="row" style={{ justifyContent: 'flex-end', textAlign: 'right' }}>
                 <div><div style={{ color: rarityColor(b.rarity!) }}>{chipName(b.collection!, b.rarity!)} <ElementGlyph element={ELEMENT_OF_COLLECTION[b.collection!]} /></div><div className="tiny muted mono">{fmtDecimal(chipPower(b.rarity!, b.level!), 0)} × {t('ui.luck')} {fmtDecimal(r.luckB ?? 1)} = {fmtDecimal(pb, 0)}</div></div>
-                <span style={{ width: 54 }}><ChipArt collection={b.collection!} rarity={b.rarity!} imageUrl={chipImageOf(b)} skin={b.skin} /></span>
+                <span style={{ width: 54 }}><ChipArt collection={b.collection!} rarity={b.rarity!} imageUrl={chipImageOf(b)} skin={b.skin} level={b.level} /></span>
               </div>
             </div>
           );

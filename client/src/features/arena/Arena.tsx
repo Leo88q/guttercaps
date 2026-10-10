@@ -34,6 +34,7 @@ import { EXPLORER, LOOKUP_TABLE } from '@/app/config';
 import { useT } from '@/shared/i18n';
 import { loadTheme, ownedThemes, themeById } from '@/shared/lib/cosmetics';
 import { FightStage } from './FightStage';
+import { QueueHunt } from './QueueHunt';
 
 export default function Arena() {
   const t = useT();
@@ -58,7 +59,7 @@ export default function Arena() {
   const [squad, setSquad] = useState<Chip[]>([]);
   const [pick, setPick] = useState(false);
   const [wager, setWager] = useState<string | null>(null);
-  const [queued, setQueued] = useState<{ ticket: string; wait: number } | null>(null);
+  const [queued, setQueued] = useState<{ ticket: string; wait: number; at: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [lastMatch, setLastMatch] = useState<{ id: string; won: boolean | null } | null>(null);
   const [wagerFight, setWagerFight] = useState(false);
@@ -118,7 +119,7 @@ export default function Arena() {
       const r = await queue.mutateAsync({ squad: squad.map((c) => c.asset!), commit });
       setLastMatch(null);
       revealing.current = null;
-      setQueued({ ticket: r.ticket!, wait: r.estimatedWaitSec ?? 30 });
+      setQueued({ ticket: r.ticket!, wait: r.estimatedWaitSec ?? 30, at: Date.now() });
       toast({ kind: 'info', title: r.matchId ? { key: 'ui.opponentFound' } : { key: 'ui.inQueue' }, body: r.matchId ? { key: 'screens.opponentReveal' } : { key: 'screens.leagueWait', params: { league: leagueText(r.league ?? league), s: r.estimatedWaitSec ?? 30 } } });
       if (r.matchId) {
         openedMatch.current = r.matchId;
@@ -302,6 +303,7 @@ export default function Arena() {
           {squad.length > 0 && <button className="btn btn-sm btn-ghost" onClick={() => setSquad([])}>{t('ui.clear')}</button>}
         </div>
         <div className="tiny muted">{t('arena.ring')}</div>
+        <div className="tiny muted">{t('ui.levelHint')}</div>
 
         {current ? (
           <div className="stack-sm">
@@ -313,10 +315,12 @@ export default function Arena() {
             <div className="tiny muted">{t('arena.watchingFight')}</div>
           </div>
         ) : queued || me.data?.queue ? (
-          <div className="warn row between" style={introStyle}>
-            <span>{t('ui.queueStatus', { league: leagueName(me.data?.queue?.league ?? league), ticket: (queued?.ticket ?? me.data?.queue?.ticket ?? '').slice(0, 6), s: MATCHMAKING.botFillAfterSec })}</span>
-            <button className="btn btn-sm" onClick={async () => { await leave.mutateAsync(); setQueued(null); void me.refetch(); }}>{t('ui.leave')}</button>
-          </div>
+          <QueueHunt
+            league={leagueName(me.data?.queue?.league ?? league)}
+            startedAt={Date.parse(me.data?.queue?.joinedAt ?? '') || queued?.at || Date.now()}
+            onLeave={() => { void leave.mutateAsync().then(() => { setQueued(null); void me.refetch(); }); }}
+            style={introStyle}
+          />
         ) : (
           <div className="grid-2">
             <SprayNozzleButton disabled={!ready || busy || !connected} onClick={joinRanked}>{t('ui.rankedMatch')}</SprayNozzleButton>

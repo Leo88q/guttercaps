@@ -17,6 +17,8 @@ const ui = {
   "missing": "kurang",
   "power": "kekuatan",
   "level": "level",
+  "lvMark": "LV",
+  "levelHint": "Cap lahir di level 1. Setiap level ekstra +2,5% kekuatan. Fusion menaikkan raritas, bukan level — XP musim belum aktif.",
   "stakeWeight": "bobot staking",
   "listMarket": "Jual di pasar",
   "stakeCg": "Staking untuk $CG",

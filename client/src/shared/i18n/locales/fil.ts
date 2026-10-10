@@ -111,6 +111,9 @@ const fil: Messages = {
     skipFight: 'Laktawan',
     watchingFight: 'Pinapanood ang laban',
     wagerSettling: 'Hinihintay ang on-chain settlement',
+    hunting: 'Naghahanap ng kalaban',
+    huntBot: 'Papasok ang bot kapag 0 na ang oras.',
+    huntFill: 'Tinatapos ng bot…',
   },
   market: {
     title: 'Palengke', subtitle: 'Listing na walang escrow: nananatili ang caps sa wallet ng nagbebenta, naka-freeze. Fee na {fee}% + {royalty}% royalty, sagot ng nagbebenta. Presyo sa SOL.',

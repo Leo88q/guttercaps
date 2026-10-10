@@ -17,6 +17,8 @@ const ui = {
   "missing": "faltan",
   "power": "poder",
   "level": "nivel",
+  "lvMark": "NV",
+  "levelHint": "Las gorras salen en nivel 1. Cada nivel extra da +2,5% de poder. La fusión sube la rareza, no el nivel — el XP de temporada aún no está activo.",
   "stakeWeight": "peso de staking",
   "listMarket": "Poner a la venta",
   "stakeCg": "Hacer staking por $CG",

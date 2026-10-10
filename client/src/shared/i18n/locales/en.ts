@@ -116,6 +116,9 @@ const en = {
     skipFight: 'Skip',
     watchingFight: 'Watching the fight',
     wagerSettling: 'Waiting for on-chain settlement',
+    hunting: 'Hunting a rival',
+    huntBot: 'A bot drops in when the clock hits 0.',
+    huntFill: 'Filling with a bot…',
   },
   market: {
     title: 'Market', subtitle: "Escrow-free listings: caps stay in the seller's wallet, frozen. Fee {fee}% + {royalty}% royalty, paid by the seller. Priced in SOL.",

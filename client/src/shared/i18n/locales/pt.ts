@@ -111,6 +111,9 @@ const pt: Messages = {
     skipFight: 'Pular',
     watchingFight: 'Assistindo a luta',
     wagerSettling: 'Aguardando liquidação on-chain',
+    hunting: 'Caçando rival',
+    huntBot: 'Um bot entra quando o relógio chega a 0.',
+    huntFill: 'Preenchendo com um bot…',
   },
   market: {
     title: 'Mercado', subtitle: 'Anúncios sem escrow: os caps ficam congelados na carteira do vendedor. Taxa de {fee}% + {royalty}% de royalty, pagos pelo vendedor. Preços em SOL.',

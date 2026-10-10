@@ -17,6 +17,8 @@ const ui = {
   "missing": "kulang",
   "power": "lakas",
   "level": "antas",
+  "lvMark": "LV",
+  "levelHint": "Ang cap ay nagsisimula sa level 1. +2.5% power bawat extra level. Ang fusion ang nagpapataas ng rarity, hindi ng level — hindi pa live ang season XP.",
   "stakeWeight": "bigat sa staking",
   "listMarket": "Ibenta sa merkado",
   "stakeCg": "Mag-stake para sa $CG",

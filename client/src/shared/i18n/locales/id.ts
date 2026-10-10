@@ -111,6 +111,9 @@ const id: Messages = {
     skipFight: 'Lewati',
     watchingFight: 'Menonton pertandingan',
     wagerSettling: 'Menunggu settlement on-chain',
+    hunting: 'Mencari lawan',
+    huntBot: 'Bot masuk saat jam mencapai 0.',
+    huntFill: 'Mengisi dengan bot…',
   },
   market: {
     title: 'Pasar', subtitle: 'Listing tanpa escrow: caps tetap di dompet penjual, dibekukan. Biaya {fee}% + royalti {royalty}%, dibayar penjual. Harga dalam SOL.',

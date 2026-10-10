@@ -17,4 +17,5 @@ it('renders three slots per side even when a squad is empty', () => {
   expect(container.querySelectorAll('.fight-cap-b')).toHaveLength(3);
   expect(container.querySelectorAll('.fight-cap-b.live-slot')).toHaveLength(3);
   expect(container.querySelector('.fight-vs')?.textContent).toBe('VS');
+  expect(container.querySelector('.chip-lvl')?.textContent).toMatch(/1/);
 });

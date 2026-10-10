@@ -78,6 +78,7 @@ export default function ChipPage() {
             <div className="stat"><b className="mono">{c.level}/{prof.maxLevel}</b><span>{t('ui.level')}</span></div>
             <div className="stat"><b className="mono">{c.stakeWeight}</b><span>{t('ui.stakeWeight')}</span></div>
           </div>
+          <div className="tiny muted">{t('ui.levelHint')}</div>
           <div className="tiny muted">{t('ui.owner')} <a href={EXPLORER.account(c.owner!)} target="_blank" rel="noreferrer">{mine ? t('ui.you') : shortKey(c.owner)}</a> · {t('ui.asset')} <a href={EXPLORER.account(asset)} target="_blank" rel="noreferrer" className="row" style={{ gap: 3, display: 'inline-flex' }}>{shortKey(asset)} <ExternalIcon size={10} /></a>
             {c.flags?.staked && ` · ${t('collection.filters.staked')}`}{c.flags?.fusing && ` · ${t('ui.inFusion')}`}{c.lockUntil && new Date(c.lockUntil).getTime() > Date.now() && ` · ${t('ui.lockedUntil')} ${fmtLocale.date(c.lockUntil, getLocale())}`}</div>
         </div>

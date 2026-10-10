@@ -17,6 +17,8 @@ const ui = {
   "missing": "còn thiếu",
   "power": "sức mạnh",
   "level": "cấp",
+  "lvMark": "LV",
+  "levelHint": "Nắp ra mắt ở cấp 1. Mỗi cấp thêm +2,5% sức mạnh. Fusion tăng độ hiếm, không phải cấp — XP mùa chưa mở.",
   "stakeWeight": "trọng số staking",
   "listMarket": "Đăng bán trên chợ",
   "stakeCg": "Staking để nhận $CG",

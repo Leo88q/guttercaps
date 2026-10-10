@@ -103,7 +103,12 @@ export const ChipArt = memo(function ChipArt({ collection, rarity, index = null,
       {/* Labels belong to the rectangular tile, NOT the clipped circular artwork. */}
       {(level !== undefined || founder) && <div className="chip-labels">
         {founder && <span className="chip-founder-tag">{t('collection.founderBadge')}</span>}
-        {level !== undefined && <span className="chip-lvl">{t('screens.levelBadge', { n: level })}</span>}
+        {level !== undefined && (
+          <span className="chip-lvl" title={t('screens.levelBadge', { n: level })}>
+            <small>{t('ui.lvMark')}</small>
+            <b>{level}</b>
+          </span>
+        )}
       </div>}
       {badge && <span className="chip-badge">{badge}</span>}
     </div>
