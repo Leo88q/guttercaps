@@ -383,7 +383,7 @@ const HANDLERS: Record<string, Handler> = {
     const previous = key ? db.get<{ status: string; nonce: string; buyer: string }>(`SELECT status, nonce, buyer FROM compressed_claims WHERE claim = ?`, key) : undefined;
     const wasRegistered = previous?.status === 'registered';
     const changed = key ? Number(db.run(
-      `UPDATE compressed_claims SET status = CASE WHEN status = 'cancelled' THEN status ELSE 'registered' END, asset = ?, collection_idx = ?, rarity = ?, level = ?,
+      `UPDATE compressed_claims SET status = CASE WHEN status = 'cancelled' THEN status ELSE 'registered' END, asset = ?, collection_idx = ?, rarity = ?, level = MAX(level, ?),
          register_signature = ?, slot = ?, block_time = COALESCE(?, block_time)
        WHERE claim = ? AND owner = ?`,
       str(d.asset), num(d.collectionIdx), num(d.rarity), num(d.level), c.signature, c.slot, c.blockTime, key, buyer,
@@ -394,7 +394,7 @@ const HANDLERS: Record<string, Handler> = {
       db.run(`UPDATE compressed_settlements SET registered_claims = registered_claims + 1, last_signature = ?, last_slot = ?, block_time = COALESCE(?, block_time) WHERE buyer = ? AND nonce = ?`, c.signature, c.slot, c.blockTime, previous?.buyer ?? buyer, previous?.nonce ?? '');
     }
     db.run(
-      upsert('chips', COLS.chips, ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'level = excluded.level', 'flags = excluded.flags', 'lock_until = excluded.lock_until', 'updated_slot = excluded.updated_slot', 'origin_signature = excluded.origin_signature', 'minted_at = COALESCE(chips.minted_at, excluded.minted_at)']),
+      upsert('chips', COLS.chips, ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'level = MAX(chips.level, excluded.level)', 'flags = excluded.flags', 'lock_until = excluded.lock_until', 'updated_slot = excluded.updated_slot', 'origin_signature = excluded.origin_signature', 'minted_at = COALESCE(chips.minted_at, excluded.minted_at)']),
       str(d.asset), buyer, num(d.collectionIdx), num(d.rarity), num(d.level), num(d.flags), Number(d.lockUntil), 'compressed', c.signature, c.blockTime, c.slot,
     );
     // The mint number (`{symbol} #{game_index}`, market "Low #" / `indexMin`/`indexMax`). A compressed chip's

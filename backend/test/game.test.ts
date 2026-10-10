@@ -3,7 +3,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createHash, randomBytes } from 'node:crypto';
 import { Connection, Keypair, PublicKey } from '@solana/web3.js';
-import { ANTI_FARM, DAILY_QUESTS, FUSION_RECIPES, MATCH_REWARDS, MATCHMAKING, PERMANENT_QUESTS, QUEST_CHIP_TEMPLATES, WEEKLY_QUESTS, resolveFight, onChainSquadPower, type FighterChip } from '@guttercaps/economy';
+import { ANTI_FARM, CHIP_XP, DAILY_QUESTS, FUSION_RECIPES, MATCH_REWARDS, MATCHMAKING, PERMANENT_QUESTS, QUEST_CHIP_TEMPLATES, WEEKLY_QUESTS, resolveFight, onChainSquadPower, type FighterChip } from '@guttercaps/economy';
 import { Db } from '../src/db.ts';
 import { ingestTx } from '../src/ingest.ts';
 import { ServiceError } from '../src/services.ts';
@@ -347,6 +347,10 @@ describe('arena — ranked commit/reveal', () => {
     expect(Math.round(Math.abs(ra.rating - 1000))).toBe(20);
     expect(ra.rating + rb.rating).toBeCloseTo(2000, 6);
     const winnerReward = m.winner === alice ? m.rewardA : m.rewardB, loserReward = m.winner === alice ? m.rewardB : m.rewardA;
+    const winnerSquad = m.winner === alice ? sa : sb;
+    const loserSquad = m.winner === alice ? sb : sa;
+    expect(db.scalar(`SELECT lifetime FROM chip_xp WHERE asset = ?`, winnerSquad[0])).toBe(CHIP_XP.win);
+    expect(db.scalar(`SELECT lifetime FROM chip_xp WHERE asset = ?`, loserSquad[0])).toBe(CHIP_XP.loss);
     expect(winnerReward).toBe(String(MATCH_REWARDS.winCgMicro));
     expect(loserReward).toBe(String(MATCH_REWARDS.lossCgMicro));
     expect(arena.arenaMe(db, alice, T)).toMatchObject({ games: 1, rewardedMatchesLeft: 7, currentMatch: null });
@@ -375,6 +379,7 @@ describe('arena — ranked commit/reveal', () => {
     const before = {
       alice: arena.rating(db, alice, row.season), bob: arena.rating(db, bob, row.season),
       xp: db.scalar(`SELECT COALESCE(SUM(xp), 0) FROM pass_xp`), rewards: db.scalar(`SELECT COUNT(*) FROM pvp_rewards`),
+      chipXp: db.scalar(`SELECT COALESCE(SUM(lifetime), 0) FROM chip_xp`),
     };
     expect(before.alice.games).toBe(1); // the first settle really did move the ratings — this test is not vacuous
     // the concurrent caller still believes the match is unsettled
@@ -384,6 +389,7 @@ describe('arena — ranked commit/reveal', () => {
     expect(arena.rating(db, bob, row.season)).toEqual(before.bob);
     expect(db.scalar(`SELECT COALESCE(SUM(xp), 0) FROM pass_xp`)).toBe(before.xp);
     expect(db.scalar(`SELECT COUNT(*) FROM pvp_rewards`)).toBe(before.rewards);
+    expect(db.scalar(`SELECT COALESCE(SUM(lifetime), 0) FROM chip_xp`)).toBe(before.chipXp);
     // and the caller is told what the row says, not what its own fight computed
     expect(`${again.rewardA}`).toBe(row.reward_a);
     expect(`${again.rewardB}`).toBe(row.reward_b);

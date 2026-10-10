@@ -16,6 +16,7 @@ import { resolveCompressedChip } from '@/chain/flows/compressedChip';
 import { cancelCompressedAssetIx } from '@/chain/ix/market';
 import { listingBuyIxs, dasClient } from './payment';
 import { ChipArt } from '@/shared/ui/ChipArt';
+import { ChipXpMeter } from '@/shared/ui/ChipXp';
 import { ExternalIcon } from '@/shared/ui/action-icons';
 import { CleanZone, KV, Skeleton } from '@/shared/ui/primitives';
 import { CleanConfirmButton } from '@/shared/ui/buttons';
@@ -75,10 +76,10 @@ export default function ChipPage() {
           <p className="small" style={{ lineHeight: 1.5 }}>{chipLore(c.collection!, c.rarity!)}</p>
           <div className="grid-3">
             <div className="stat"><b className="mono">{c.power}</b><span>{t('ui.power')}</span></div>
-            <div className="stat"><b className="mono">{c.level}/{prof.maxLevel}</b><span>{t('ui.level')}</span></div>
+            <div className="stat"><b className="mono">{c.level}/{c.maxLevel ?? prof.maxLevel}</b><span>{t('ui.level')}</span></div>
             <div className="stat"><b className="mono">{c.stakeWeight}</b><span>{t('ui.stakeWeight')}</span></div>
           </div>
-          <div className="tiny muted">{t('ui.levelHint')}</div>
+          <ChipXpMeter rarity={c.rarity!} level={c.level} xp={c.xp} xpToNext={c.xpToNext} maxLevel={c.maxLevel ?? prof.maxLevel} />
           <div className="tiny muted">{t('ui.owner')} <a href={EXPLORER.account(c.owner!)} target="_blank" rel="noreferrer">{mine ? t('ui.you') : shortKey(c.owner)}</a> · {t('ui.asset')} <a href={EXPLORER.account(asset)} target="_blank" rel="noreferrer" className="row" style={{ gap: 3, display: 'inline-flex' }}>{shortKey(asset)} <ExternalIcon size={10} /></a>
             {c.flags?.staked && ` · ${t('collection.filters.staked')}`}{c.flags?.fusing && ` · ${t('ui.inFusion')}`}{c.lockUntil && new Date(c.lockUntil).getTime() > Date.now() && ` · ${t('ui.lockedUntil')} ${fmtLocale.date(c.lockUntil, getLocale())}`}</div>
         </div>

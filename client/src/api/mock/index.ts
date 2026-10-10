@@ -5,7 +5,7 @@ import { isRightsPath, mockRights } from './rights';
 import {
   PACKS, FUSION_RECIPES, BOOSTER, RARITY_PROFILES, LOCK_TIERS, DAILY_QUESTS, WEEKLY_QUESTS, PERMANENT_QUESTS, MATCHMAKING, SEASON, FEES, SERVICES, REFERRAL,
   packExpectedValueMult, probabilityAtLeast, effectiveOdds, bundlePriceCents, impliedApy, unitsForCents, maxUnitsWithSlippage, type PackId,
-  SKIN_BY_ID, PROFILE_THEME_BY_ID, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, PASS_TRACK, passTierForXp,
+  SKIN_BY_ID, PROFILE_THEME_BY_ID, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, PASS_TRACK, passTierForXp, xpToNext,
 } from '@guttercaps/economy';
 import { PYTH_PRICE_ACCOUNTS } from '@/chain/ids';
 import { COLLECTIONS } from '@/shared/lib/lore';
@@ -32,6 +32,7 @@ interface MockChip {
   flags: { staked: boolean; listed: boolean; fusing: boolean; soulbound: boolean; founder: boolean };
   lockUntil: string | null; power: number; stakeWeight: string;
   skin: string | null;
+  xp: number; xpToNext: number | null; maxLevel: number;
   art: { image: string; video?: string; vfxTier: number };
   listing?: { asset: string; seller: string; price: string; currency: 'SOL' | 'USDC'; priceUsd: number; createdAt: string };
 }
@@ -41,11 +42,15 @@ const SKR_USD = 0.0174;
 const floorUsd = (r: number) => Number((3.5 * RARITY_PROFILES[r].valueMult * 0.62).toFixed(2));
 
 function makeChip(collection: number, rarity: number, owner = ME, opts: Partial<MockChip> = {}): MockChip {
-  const level = 1 + Math.floor(rnd() * Math.min(6, RARITY_PROFILES[rarity].maxLevel - 1));
+  const maxLevel = RARITY_PROFILES[rarity].maxLevel;
+  const level = 1 + Math.floor(rnd() * Math.min(6, maxLevel - 1));
+  const need = xpToNext(level, maxLevel);
+  const xp = need ? Math.floor(rnd() * need) : 0;
   const power = Math.round(RARITY_PROFILES[rarity].basePower * (1 + 0.025 * (level - 1)));
   return {
     asset: fakeKey('As'), owner, collection, rarity, level, index: 1 + Math.floor(rnd() * 5000),
     flags: { staked: false, listed: false, fusing: false, soulbound: false, founder: false }, lockUntil: null, power, skin: null,
+    xp, xpToNext: need, maxLevel,
     stakeWeight: String(RARITY_PROFILES[rarity].stakeWeight), art: { image: `/art/${COLLECTIONS[collection]?.num ?? '01'}-${rarity}-256.webp`, vfxTier: RARITY_PROFILES[rarity].vfxTier },
     ...opts,
   };

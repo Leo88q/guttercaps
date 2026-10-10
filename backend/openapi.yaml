@@ -1204,6 +1204,9 @@ components:
         collection: { type: integer }
         rarity: { $ref: '#/components/schemas/Rarity' }
         level: { type: integer }
+        xp: { type: integer, description: 'unspent ranked XP toward the next level' }
+        xpToNext: { type: [integer, 'null'], description: 'XP cost of the next level; null at the rarity cap' }
+        maxLevel: { type: integer, description: 'rarity cap (Common 12 … Diamond 50)' }
         index: { type: [integer, 'null'], description: 'per-collection mint number (`Name #N`); null = not resolved on chain yet (core `open_pack` chips are back-filled by the crank within a sweep). Never a placeholder: #0 is a real chip' }
         flags: { type: object, properties: { staked: { type: boolean }, listed: { type: boolean }, fusing: { type: boolean }, soulbound: { type: boolean }, founder: { type: boolean, description: 'minted from a mainnet pre-sale pack — carries the permanent founder frame (docs/preorder-beta.md)' } } }
         lockUntil: { type: [string, 'null'], format: date-time }

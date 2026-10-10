@@ -1121,6 +1121,25 @@ model MatchEmote {
   @@map("match_emotes")
 }
 
+/// Ranked chip XP pool (unspent) + lifetime. Indexer-authoritative, like ratings.
+model ChipXp {
+  asset    String @id
+  xp       Int    @default(0)
+  lifetime Int    @default(0)
+
+  @@map("chip_xp")
+}
+
+/// Per-cap per-UTC-day XP toward CHIP_XP.dailyCap.
+model ChipXpLedger {
+  asset String
+  day   Int
+  xp    Int @default(0)
+
+  @@id([asset, day])
+  @@map("chip_xp_ledger")
+}
+
 /// Season-pass XP ledger: one row per wallet per season (ranked play only).
 model PassXp {
   wallet String

@@ -7,7 +7,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { PublicKey } from '@solana/web3.js';
 import { sha256 } from '@noble/hashes/sha256';
-import { MATCH_REWARDS, MATCHMAKING, SEASON } from '@guttercaps/economy';
+import { CHIP_XP, MATCH_REWARDS, MATCHMAKING, SEASON } from '@guttercaps/economy';
 import { useArenaMe, useMyChips, useMyServices, useSeason, useQueueArena, useLeaveQueue, useRevealNonce, type Chip } from '@/api/hooks';
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
 import { sendArenaTx } from '@/chain/flows/arenaTx';
@@ -303,7 +303,7 @@ export default function Arena() {
           {squad.length > 0 && <button className="btn btn-sm btn-ghost" onClick={() => setSquad([])}>{t('ui.clear')}</button>}
         </div>
         <div className="tiny muted">{t('arena.ring')}</div>
-        <div className="tiny muted">{t('ui.levelHint')}</div>
+        <div className="tiny muted">{t('ui.levelHow', { win: CHIP_XP.win, loss: CHIP_XP.loss })}</div>
 
         {current ? (
           <div className="stack-sm">

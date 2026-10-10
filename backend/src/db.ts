@@ -142,6 +142,18 @@ CREATE TABLE IF NOT EXISTS pass_xp (
   xp      INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (wallet, season)
 );
+-- Ranked chip XP (indexer-authoritative). Unspent pool + per-day cap ledger.
+CREATE TABLE IF NOT EXISTS chip_xp (
+  asset    TEXT    PRIMARY KEY,
+  xp       INTEGER NOT NULL DEFAULT 0,
+  lifetime INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS chip_xp_ledger (
+  asset TEXT    NOT NULL,
+  day   INTEGER NOT NULL,
+  xp    INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (asset, day)
+);
 CREATE TABLE IF NOT EXISTS pass_claims (
   wallet     TEXT    NOT NULL,
   season     INTEGER NOT NULL,

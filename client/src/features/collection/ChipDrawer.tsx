@@ -18,6 +18,7 @@ import { createAtaIdempotentIx } from '@/chain/ix/spl';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { ExternalIcon } from '@/shared/ui/action-icons';
 import { CleanZone, KV } from '@/shared/ui/primitives';
+import { ChipXpMeter } from '@/shared/ui/ChipXp';
 import { chipLore, chipName, rarityColor, rarityName, RARITY_PROFILES, ELEMENT_OF_COLLECTION, collectionName, chipImageOf } from '@/shared/lib/rarity';
 import { ElementGlyph } from '@/shared/ui/element-icons';
 import { ListModal } from '@/features/market/ListModal';
@@ -84,8 +85,8 @@ export function ChipDrawer({ chip, onClose }: { chip: Chip; onClose: () => void 
         <div style={{ width: 'min(198px, 100%)', flex: '0 0 auto' }}><ChipArt collection={chip.collection!} rarity={chip.rarity!} index={chip.index} level={chip.level} imageUrl={chipImageOf(chip, 512)} skin={chip.skin} crimp={rarityColor(chip.rarity!)} founder={!!chip.flags?.founder} /></div>
         <div className="grow stack-sm">
           <div style={{ color: rarityColor(chip.rarity!) }} className="strong">{rarityName(chip.rarity!)} · {collectionName(chip.collection!)} <ElementGlyph element={ELEMENT_OF_COLLECTION[chip.collection!]} /></div>
-          <div className="small muted">{chipIndexText(chip.index) ?? t('ui.unnumbered')} · {t('ui.level')} {chip.level}/{prof.maxLevel} · {t('ui.power')} {chip.power} · {t('ui.stakeWeight')} {chip.stakeWeight}</div>
-          <div className="tiny muted">{t('ui.levelHint')}</div>
+          <div className="small muted">{chipIndexText(chip.index) ?? t('ui.unnumbered')} · {t('ui.level')} {chip.level}/{chip.maxLevel ?? prof.maxLevel} · {t('ui.power')} {chip.power} · {t('ui.stakeWeight')} {chip.stakeWeight}</div>
+          <ChipXpMeter rarity={chip.rarity!} level={chip.level} xp={chip.xp} xpToNext={chip.xpToNext} maxLevel={chip.maxLevel ?? prof.maxLevel} />
           <div className="small" style={{ lineHeight: 1.45 }}>{chipLore(chip.collection!, chip.rarity!)}</div>
           <div className="tag-list">
             {chip.flags?.founder && <span className="pill pill-ok">{t('collection.founderNote')}</span>}

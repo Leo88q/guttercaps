@@ -33,6 +33,7 @@ import { type Db, now } from './db.ts';
 import { chipToApi, type ChipRow } from './queries.ts';
 import { ServiceError } from './services.ts';
 import { addPassXp } from './pass.ts';
+import { grantSquadXp } from './chip-xp.ts';
 import { finalizedHorizon } from './finality.ts';
 import { suspiciousPairToday, walletFlags } from './antifraud.ts';
 import { deviceLimited } from './human.ts';
@@ -411,6 +412,8 @@ export function settleMatch(db: Db, m: MatchRow, t: number, nowMs: number): Figh
     if (rewardB > 0n) db.run(insertIgnore('pvp_rewards', PVP_REWARD_COLS), m.id, m.b, rewardB.toString(), dayOf(t));
     if (!isBot(m.a)) addPassXp(db, m.season, m.a, fight.winner === 'A' ? PASS_XP.matchWin : PASS_XP.matchLoss);
     if (!isBot(m.b)) addPassXp(db, m.season, m.b, fight.winner === 'B' ? PASS_XP.matchWin : PASS_XP.matchLoss);
+    if (!isBot(m.a)) grantSquadXp(db, m.squad_a, fight.winner === 'A', t, m.a);
+    if (!isBot(m.b)) grantSquadXp(db, m.squad_b, fight.winner === 'B', t, m.b);
   });
   // the row is authoritative: either what this call just wrote or what the writer that won the race wrote
   const settled = db.get<MatchRow>(`SELECT * FROM matches WHERE id = ?`, m.id)!;

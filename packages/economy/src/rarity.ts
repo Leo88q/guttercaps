@@ -78,3 +78,41 @@ export const profile = (r: Rarity | RarityIndex): RarityProfile =>
 
 /** Level multiplier shared by PvP power and staking weight: +2.5% per level above 1. */
 export const levelMult = (level: number): number => 1 + 0.025 * Math.max(0, level - 1);
+
+/**
+ * Ranked chip XP (indexer-authoritative, same trust model as ratings / pass XP).
+ * Caps mint at 1; a win/loss of a ranked Cap Slam credits the three squad caps.
+ * Ranked power uses the new level; on-chain wagers still snapshot `claim.level` (mint 1)
+ * until a merkle `level_up` caller ships with chip_core.
+ */
+export const CHIP_XP = {
+  win: 10,
+  loss: 3,
+  /** Unspent XP one cap may earn from ranked play in one UTC day. 8 wins = the $CG match cap. */
+  dailyCap: 80,
+  /** XP to go from `level` → `level + 1`. */
+  cost(level: number): number {
+    return 10 * Math.max(1, level);
+  },
+} as const;
+
+/** Total XP needed for the next level, or `null` at the rarity cap. */
+export function xpToNext(level: number, maxLevel: number): number | null {
+  if (level >= maxLevel) return null;
+  return CHIP_XP.cost(level);
+}
+
+/** Spend `xp` starting at `level`, never past `maxLevel`. Remainder stays unspent. */
+export function applyChipXp(level: number, xp: number, maxLevel: number): { level: number; xp: number; gained: number } {
+  let lvl = Math.max(1, Math.floor(level) || 1);
+  let pool = Math.max(0, Math.floor(xp) || 0);
+  let gained = 0;
+  while (lvl < maxLevel) {
+    const cost = CHIP_XP.cost(lvl);
+    if (pool < cost) break;
+    pool -= cost;
+    lvl += 1;
+    gained += 1;
+  }
+  return { level: lvl, xp: pool, gained };
+}

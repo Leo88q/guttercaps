@@ -4718,6 +4718,12 @@ export interface components {
             collection?: number;
             rarity?: components["schemas"]["Rarity"];
             level?: number;
+            /** @description unspent ranked XP toward the next level */
+            xp?: number;
+            /** @description XP cost of the next level; null at the rarity cap */
+            xpToNext?: number | null;
+            /** @description rarity cap (Common 12 … Diamond 50) */
+            maxLevel?: number;
             /** @description per-collection mint number (`Name #N`); null = not resolved on chain yet (core `open_pack` chips are back-filled by the crank within a sweep). Never a placeholder: #0 is a real chip */
             index?: number | null;
             flags?: {

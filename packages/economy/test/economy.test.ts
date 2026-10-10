@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  PACKS, expandRandomness, effectiveOdds, rollRarity, uniformPool, FUSION_RECIPES, expectedBurn,
+  PACKS, expandRandomness, effectiveOdds, rollRarity, uniformPool, FUSION_RECIPES, expectedBurn, CHIP_XP, applyChipXp, xpToNext,
   guardedEmission, dailyEmission, fullSetBonusMult, matchWinProbability, elementEdge,
   RARITY_PROFILES, bundlePriceCents,
   REWARD_ROOT_KINDS, isSkrRootKind, isItemRootKind, ITEM_REWARDS, rootCurrency, skrPoolMonthlyFunding, BASELINE_SKR_ASSUMPTIONS, SKR_POOL_FUNDING, CURRENCIES,
@@ -279,4 +279,20 @@ test('arena oracle cap default (SEC-F06): one baseline day of wager pots, and th
   const rake = pvpDailyPotVolumeCg(a) * FEES.pvpRakeBps / 10_000;
   const rakeBurnShare = 1 - (FEES.pvpRakeTreasuryShareBps + FEES.pvpRakePoolShareBps) / 10_000;
   assert.ok(flows.burnedCg >= rake * rakeBurnShare, 'the burn total includes the rake burn slice');
+});
+
+test('ranked chip XP: cost curve, spend, and rarity caps', () => {
+  assert.equal(CHIP_XP.cost(1), 10);
+  assert.equal(CHIP_XP.cost(11), 110);
+  assert.equal(xpToNext(1, 12), 10);
+  assert.equal(xpToNext(12, 12), null);
+  assert.deepEqual(applyChipXp(1, 9, 12), { level: 1, xp: 9, gained: 0 });
+  assert.deepEqual(applyChipXp(1, 10, 12), { level: 2, xp: 0, gained: 1 });
+  assert.deepEqual(applyChipXp(1, 30, 12), { level: 3, xp: 0, gained: 2 }); // 10+20
+  assert.deepEqual(applyChipXp(11, 110, 12), { level: 12, xp: 0, gained: 1 });
+  assert.deepEqual(applyChipXp(12, 500, 12), { level: 12, xp: 500, gained: 0 });
+  // Common 1→12 = 10×(1+…+11) = 660 XP
+  assert.deepEqual(applyChipXp(1, 660, 12), { level: 12, xp: 0, gained: 11 });
+  assert.equal(RARITY_PROFILES[0].maxLevel, 12);
+  assert.equal(RARITY_PROFILES[8].maxLevel, 50);
 });
