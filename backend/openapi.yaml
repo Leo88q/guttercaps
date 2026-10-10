@@ -1528,7 +1528,7 @@ components:
         openBattles: { type: array, items: { type: object, properties: { battle: { type: string }, wagerCgMicro: { type: string }, status: { type: string }, powerA: { type: integer }, league: { type: integer }, createdAt: { type: [string, 'null'] } } } }
         currentMatch: { type: [object, 'null'], properties: { id: { type: string }, opponent: { type: string }, iRevealed: { type: boolean }, revealDeadline: { type: string, format: date-time } } }
         queue: { type: [object, 'null'], properties: { ticket: { type: string }, league: { type: integer }, joinedAt: { type: string, format: date-time } } }
-        recent: { type: array, items: { type: object, properties: { id: { type: string }, opponent: { type: string }, won: { type: boolean }, forfeit: { type: boolean }, reward: { type: string }, endedAt: { type: [string, 'null'] } } } }
+        recent: { type: array, items: { type: object, properties: { id: { type: string }, opponent: { type: string }, won: { type: boolean }, forfeit: { type: boolean }, reward: { type: string }, endedAt: { type: [string, 'null'] }, xp: { type: integer, description: chip XP this wallet's squad earned from the match }, leveled: { type: integer, description: how many of this wallet's squad caps promoted } } } } }
         pendingRewardMicro: { type: string, description: 'match rewards + season payouts not yet in a published root' }
         seasonGames: { type: integer }
         minGamesForPayout: { type: integer }

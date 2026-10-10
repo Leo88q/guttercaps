@@ -39,6 +39,7 @@ import { suspiciousPairToday, walletFlags } from './antifraud.ts';
 import { deviceLimited } from './human.ts';
 import { F_FUSING, F_LISTED } from './fusion.ts';
 import { insertIgnore, jsonAt} from './sql.ts';
+import { publish } from './bus.ts';
 
 /** both reward rows of one match share the shape; spelling it once keeps the pair in sync (sql.ts seam) */
 const PVP_REWARD_COLS = ['match_id', 'wallet', 'amount', 'day'] as const;
@@ -425,6 +426,9 @@ export function settleMatch(db: Db, m: MatchRow, t: number, nowMs: number): Figh
     if (!isBot(m.a)) grantSquadXp(db, m.squad_a, fight.winner === 'A', t, m.a, m.id);
     if (!isBot(m.b)) grantSquadXp(db, m.squad_b, fight.winner === 'B', t, m.b, m.id);
   });
+  if (applied > 0) {
+    publish({ wallets: [m.a, m.b].filter((w) => !isBot(w)), type: 'match_resolved', payload: { id: m.id, winner } });
+  }
   // the row is authoritative: either what this call just wrote or what the writer that won the race wrote
   const settled = db.get<MatchRow>(`SELECT * FROM matches WHERE id = ?`, m.id)!;
   return { ...fight, winner: settled.winner === m.a ? 'A' : 'B', rewardA: BigInt(settled.reward_a || '0'), rewardB: BigInt(settled.reward_b || '0') };
@@ -462,18 +466,21 @@ function forfeit(db: Db, m: MatchRow, t: number, nowMs: number) {
   // A forfeit is decided on `nonce_a|b` and `status`, and both writes say so in their WHERE clause, so the
   // loser of that race settles nothing (no rating change, no pass XP).
   if (!aOk && !bOk) {
-    db.run(`UPDATE matches SET status = 'cancelled', forfeit = 1, ended_at = ? WHERE id = ? AND status = 'revealing' AND seed IS NULL`, nowMs, m.id);
+    const cancelled = Number(db.run(`UPDATE matches SET status = 'cancelled', forfeit = 1, ended_at = ? WHERE id = ? AND status = 'revealing' AND seed IS NULL`, nowMs, m.id).changes);
+    if (cancelled > 0) publish({ wallets: [m.a, m.b].filter((w) => !isBot(w)), type: 'match_resolved', payload: { id: m.id } });
     return;
   }
   const winner = aOk ? m.a : m.b, loser = aOk ? m.b : m.a;
+  let applied = 0;
   db.tx(() => {
-    const applied = Number(db.run(`UPDATE matches SET status = 'resolved', forfeit = 1, winner = ?, ended_at = ? WHERE id = ? AND status = 'revealing' AND seed IS NULL`, winner, nowMs, m.id).changes);
+    applied = Number(db.run(`UPDATE matches SET status = 'resolved', forfeit = 1, winner = ?, ended_at = ? WHERE id = ? AND status = 'revealing' AND seed IS NULL`, winner, nowMs, m.id).changes);
     if (applied === 0) return;
     const rw = isBot(winner) ? BOT_RATING : rating(db, winner, m.season).rating, rl = isBot(loser) ? BOT_RATING : rating(db, loser, m.season).rating;
     applyRating(db, winner, m.season, rl, true, m.league, t);
     applyRating(db, loser, m.season, rw, false, m.league, t);
     if (!isBot(winner)) addPassXp(db, m.season, winner, PASS_XP.matchWin);
   });
+  if (applied > 0) publish({ wallets: [m.a, m.b].filter((w) => !isBot(w)), type: 'match_resolved', payload: { id: m.id, winner } });
 }
 
 export function matchApi(db: Db, id: string, viewer?: string) {
@@ -550,7 +557,10 @@ export function arenaMe(db: Db, wallet: string, t = now()) {
   const openBattles = db.all<{ battle: string; wager: string; status: string; power_a: number; created_at: number | null }>(`SELECT battle, wager, status, power_a, created_at FROM battles WHERE (challenger = ? OR opponent = ?) AND status IN ('open', 'accepted') ORDER BY slot DESC LIMIT 10`, wallet, wallet)
     .map((b) => ({ battle: b.battle, wagerCgMicro: b.wager, status: b.status, powerA: b.power_a, league: leagueOf(b.power_a), createdAt: b.created_at ? new Date(b.created_at * 1000).toISOString() : null }));
   const recent = db.all<MatchRow>(`SELECT * FROM matches WHERE (a = ? OR b = ?) AND status != 'revealing' ORDER BY started_at DESC LIMIT 10`, wallet, wallet)
-    .map((m) => ({ id: m.id, opponent: m.a === wallet ? m.b : m.a, won: m.winner === wallet, forfeit: m.forfeit === 1, reward: m.a === wallet ? m.reward_a : m.reward_b, endedAt: m.ended_at ? new Date(m.ended_at).toISOString() : null }));
+    .map((m) => {
+      const xp = matchXpForSquad(db, m.id, wallet === m.a ? m.squad_a : m.squad_b);
+      return { id: m.id, opponent: m.a === wallet ? m.b : m.a, won: m.winner === wallet, forfeit: m.forfeit === 1, reward: m.a === wallet ? m.reward_a : m.reward_b, endedAt: m.ended_at ? new Date(m.ended_at).toISOString() : null, xp: xp.xp, leveled: xp.leveled };
+    });
   return {
     rating: Math.round(r.rating * 10) / 10, rd: r.games < MATCHMAKING.settledAfterGames ? 150 : 60, league: r.league, games: r.games, wins: r.wins, streak: r.streak,
     rewardedMatchesLeft: Math.max(0, MATCH_REWARDS.dailyRewardedMatches - rewardedToday),

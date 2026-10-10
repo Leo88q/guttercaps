@@ -5241,6 +5241,10 @@ export interface components {
                 forfeit?: boolean;
                 reward?: string;
                 endedAt?: string | null;
+                /** @description chip XP this wallet's squad earned from the match */
+                xp?: number;
+                /** @description how many of this wallet's squad caps promoted */
+                leveled?: number;
             }[];
             /** @description match rewards + season payouts not yet in a published root */
             pendingRewardMicro?: string;

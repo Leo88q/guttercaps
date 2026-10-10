@@ -3,6 +3,7 @@ import { joinText, amountText } from '@/shared/i18n/message';
 // Cap Slam arena: squad builder (power, elements, synergy), ranked queue,
 // optional wager with on-chain escrow, season + rating overview.
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { PublicKey } from '@solana/web3.js';
@@ -39,6 +40,7 @@ import { QueueHunt } from './QueueHunt';
 
 export default function Arena() {
   const t = useT();
+  const qc = useQueryClient();
   const nav = useNavigate();
   const { connected } = useWallet();
   const me = useArenaMe();
@@ -102,10 +104,12 @@ export default function Arena() {
   useEffect(() => {
     const r = me.data?.recent?.[0];
     if (!r || !revealing.current || r.id !== revealing.current || lastMatch?.id === r.id) return;
-    setLastMatch({ id: r.id, won: r.won ?? null });
+    setLastMatch({ id: r.id, won: r.won ?? null, xp: r.xp });
     revealing.current = null;
+    void qc.invalidateQueries({ queryKey: ['me', 'chips'] });
+    void qc.invalidateQueries({ queryKey: ['chips'] });
     nav(`/arena/match/${r.id}?play=1`);
-  }, [me.data, lastMatch, nav]);
+  }, [me.data, lastMatch, nav, qc]);
   // server-side state wins over local memory (reload, second tab, ticket expiry)
   useEffect(() => { if (me.data && !me.data.queue && !me.data.currentMatch && queued) setQueued(null); }, [me.data, queued]);
 
@@ -300,7 +304,7 @@ export default function Arena() {
               <div key={i} className="stack-sm center" onClick={() => setPick(true)} style={{ cursor: 'pointer' }}>
                 {c ? <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c)} skin={c.skin} crimp={rarityColor(c.rarity!)} /> : <div className="slot squad-slot-empty live-slot" style={{ aspectRatio: 1 }}><span className="squad-slot-plus" aria-hidden="true">+</span></div>}
                 <div className="tiny">{c ? <><ElementGlyph element={ELEMENT_OF_COLLECTION[c.collection!]} /> {chipPower(c.rarity!, c.level!)} {t('ui.power')}</> : t('ui.pick')}</div>
-                {c ? <ChipXpMeter compact level={c.level} rarity={c.rarity!} xp={c.xp} xpToNext={c.xpToNext} maxLevel={c.maxLevel} /> : null}
+                {c ? <ChipXpMeter compact level={c.level} rarity={c.rarity!} xp={c.xp} xpToNext={c.xpToNext} maxLevel={c.maxLevel} xpToday={c.xpToday} xpDailyCap={c.xpDailyCap} /> : null}
               </div>
             );
           })}
@@ -353,7 +357,7 @@ export default function Arena() {
           <div className="strong">{t('ui.recentMatches')}</div>
           {me.data!.recent!.slice(0, 5).map((r) => (
             <Link key={r.id} to={`/arena/match/${r.id}`} className="row between small" style={{ textDecoration: 'none' }}>
-              <span>{r.won ? `◀ ${t('screens.win')}` : `▶ ${t('screens.loss')}`}{r.forfeit ? ` (${t('screens.forfeit')})` : ''} {t('ui.vs')} {r.opponent!.startsWith('bot:') ? t('ui.bot') : shortKey(r.opponent)}</span>
+              <span>{r.won ? `◀ ${t('screens.win')}` : `▶ ${t('screens.loss')}`}{r.forfeit ? ` (${t('screens.forfeit')})` : ''} {t('ui.vs')} {r.opponent!.startsWith('bot:') ? t('ui.bot') : shortKey(r.opponent)}{r.xp ? ` · ${t('ui.xpEarned', { n: r.xp })}` : ''}</span>
               <span className="mono muted">{r.reward && r.reward !== '0' ? `+${fmtCg(r.reward, 1)}` : '—'}</span>
             </Link>
           ))}
@@ -431,6 +435,7 @@ export default function Arena() {
                 <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c)} skin={c.skin} badge={c.flags?.staked ? t('collection.filters.staked') : undefined} selected={sel} dim={!sel && squad.length >= 3} />
                 <div className="chip-meta"><span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span> · {chipPower(c.rarity!, c.level!)} {t('ui.power')}</div>
                 <div className="tiny muted">{chipName(c.collection!, c.rarity!)}</div>
+                <ChipXpMeter compact level={c.level} rarity={c.rarity!} xp={c.xp} xpToNext={c.xpToNext} maxLevel={c.maxLevel} xpToday={c.xpToday} xpDailyCap={c.xpDailyCap} />
               </div>
             );
           })}

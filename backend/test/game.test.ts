@@ -363,6 +363,8 @@ describe('arena — ranked commit/reveal', () => {
     expect(loserReward).toBe(String(MATCH_REWARDS.lossCgMicro));
     expect(arena.arenaMe(db, alice, T)).toMatchObject({ games: 1, rewardedMatchesLeft: 7, currentMatch: null });
     expect(arena.arenaMe(db, m.winner!, T).wins).toBe(1);
+    expect(arena.arenaMe(db, alice, T).recent[0]).toMatchObject({ id, xp: m.winner === alice ? CHIP_XP.win * 3 : CHIP_XP.loss * 3, leveled: m.winner === alice ? 3 : 0 });
+    expect(arena.arenaMe(db, bob, T).recent[0]).toMatchObject({ id, xp: m.winner === bob ? CHIP_XP.win * 3 : CHIP_XP.loss * 3, leveled: m.winner === bob ? 3 : 0 });
     // the public rating board is this ladder: winner first, league column, `me` ranks the loser second; the previous season is addressable
     const lb = q.leaderboard(db, 'rating', 10, undefined, m.winner === alice ? bob : alice, season.id);
     expect(lb.season).toBe(season.id);
