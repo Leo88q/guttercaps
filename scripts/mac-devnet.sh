@@ -8,7 +8,8 @@
 #   bash scripts/mac-devnet.sh --only doctor       # one stage (or a comma list: --only verify,rust)
 #   bash scripts/mac-devnet.sh --skip rust         # everything except these
 #   bash scripts/mac-devnet.sh --yes               # do not ask before installing tools / creating a wallet
-#   bash scripts/mac-devnet.sh run                 # opt-in: backend + Pyth pusher + client against devnet, browser opens
+#   bash scripts/mac-devnet.sh run                 # opt-in: backend + client against devnet (Pyth pusher leftover, unused at checkout)
+#   bash scripts/mac-devnet.sh --cluster devnet    # accepted no-op (this script is always devnet; mainnet is refused)
 #   bash scripts/mac-devnet.sh faucet <wallet>     # opt-in: test SOL + SKR for the browser wallet (--sol N --skr N)
 #
 # Stages (the order is load-bearing, see the notes at each stage):
@@ -143,8 +144,8 @@ stage_title() {
     deploy) echo "деплой 4 программ в devnet" ;;
     setup) echo "инициализация on-chain (mints, config, коллекции…)" ;;
     env) echo ".env для клиента и бэкенда" ;;
-    pyth) echo "цены Pyth для оплаты SOL и SKR" ;;
-    run) echo "запуск бэкенда, pusher'а цен и клиента" ;;
+    pyth) echo "опциональный Pyth pusher (checkout его не использует)" ;;
+    run) echo "запуск бэкенда и клиента" ;;
     faucet) echo "тестовые SOL и SKR для кошелька" ;;
   esac
 }
@@ -177,6 +178,14 @@ while [ $# -gt 0 ]; do
     -y|--yes) ASSUME_YES=1; shift ;;
     --no-update) DO_UPDATE=0; shift ;;
     -h|--help) usage; exit 0 ;;
+    --cluster)
+      [ $# -ge 2 ] || die "--cluster требует имя кластера"
+      case "$2" in
+        devnet) shift 2 ;;
+        mainnet|mainnet-beta) die "mac-devnet.sh never touches mainnet" ;;
+        *) die "--cluster принимает только devnet (этот скрипт всегда ходит в devnet)" ;;
+      esac
+      ;;
     run) ONLY="run"; shift ;;
     faucet) ONLY="faucet"; shift; if [ $# -gt 0 ] && [ "${1#-}" = "$1" ]; then FAUCET_TARGET=$1; shift; fi ;;
     --sol) [ $# -ge 2 ] || die "--sol требует число"; FAUCET_SOL=${2//,/.}; shift 2 ;;   # 1,5 == 1.5
@@ -1462,8 +1471,8 @@ summary() {
   [ -n "$(state_get CG_MINT)" ] && info "\$CG mint: $(state_get CG_MINT)   lookup table: $(state_get LOOKUP_TABLE)"
   info "кошелёк деплоя / upgrade authority: $WALLET"
   info "ключи программ (храните копию!): $(keypair_dir)"
-  info "оплата SOL и SKR (цены Pyth): $PYTH_STATUS"
-  info "запустить приложение (вместе с pusher'ом цен): bash scripts/mac-devnet.sh run"
+  info "оплата SOL и SKR: фиксированный курс \$110 / \$0.016 (Pyth не нужен). $PYTH_STATUS"
+  info "запустить приложение: bash scripts/mac-devnet.sh --only run"
   info "тестовые SOL и SKR кошельку из браузера: bash scripts/mac-devnet.sh faucet <адрес>"
   info "лог этого запуска: $MAC_DEVNET_LOG"
   if ! git diff --quiet HEAD -- Anchor.toml 2>/dev/null; then
