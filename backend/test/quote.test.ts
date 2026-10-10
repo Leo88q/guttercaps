@@ -7,7 +7,7 @@ import { Keypair, PublicKey, type Connection } from '@solana/web3.js';
 import { ed25519 } from '@noble/curves/ed25519';
 import { sha256 } from '@noble/hashes/sha256';
 import type { Server } from 'node:http';
-import { PYTH_FEEDS, PYTH_SHARD_ID, PYTH_MAX_AGE_SECS, PYTH_PUSHER, unitsForCents } from '@guttercaps/economy';
+import { PYTH_FEEDS, PYTH_SHARD_ID, PYTH_MAX_AGE_SECS, PYTH_PUSHER, unitsForCents, FX, solLamportsForUsdCents, skrMicroForUsdCents } from '@guttercaps/economy';
 import { Db } from '../src/db.ts';
 import { ingestTx } from '../src/ingest.ts';
 import { createApp } from '../src/server.ts';
@@ -197,45 +197,38 @@ describe('POST /packs/quote', () => {
   it('requires auth (pity and caps are per wallet)', async () => {
     expect((await new Client().post('/v1/packs/quote', { sku: 1, qty: 1, currency: 'SOL' })).status).toBe(401);
   });
-  it('SOL: amount from our Pyth account, +1 % guard, account + expiry advertised', async () => {
+  it('SOL: frozen FX $110, exact lamports, no Pyth account', async () => {
     const c = new Client(); await signIn(c, alice);
     const r = await c.post('/v1/packs/quote', { sku: 1, qty: 1, currency: 'SOL' });
     expect(r.status).toBe(200);
     expect(r.headers.get('cache-control')).toBe('no-store');
-    expect(r.json).toMatchObject({ sku: 1, qty: 1, currency: 'SOL', amount: '39933333', maxLamports: '40332666', discountBps: 0, priceUsdCents: 599, priceUpdateAccount: SOL_ACC.toBase58(), rentReserveLamports: String(8_000_000 * 4), pityCounter: 0, hardPityIn: 60, pythUpdateData: [] });
-    expect(r.json.solUsd).toBeCloseTo(150, 6); expect(r.json.skrUsd).toBeCloseTo(0.0174, 8);
+    const amount = String(solLamportsForUsdCents(599));
+    expect(r.json).toMatchObject({ sku: 1, qty: 1, currency: 'SOL', amount, maxLamports: amount, discountBps: 0, priceUsdCents: 599, rentReserveLamports: String(8_000_000 * 4), pityCounter: 0, hardPityIn: 60, pythUpdateData: [] });
+    expect(r.json.priceUpdateAccount).toBeUndefined();
+    expect(r.json.solUsd).toBe(FX.solUsd); expect(r.json.skrUsd).toBe(FX.skrUsd);
     expect(r.json.effectiveOddsBps.reduce((a: number, b: number) => a + b, 0)).toBe(10_000);
     const validS = (Date.parse(r.json.expiresAt) - Date.now()) / 1000;
-    expect(validS).toBeGreaterThan(PYTH_MAX_AGE_SECS - 5 - 3); expect(validS).toBeLessThanOrEqual(PYTH_MAX_AGE_SECS);
+    expect(validS).toBeGreaterThan(3_600);
   });
-  it('SKR: bundle + promo discount, micro-SKR amount; USDC/$CG need no oracle', async () => {
+  it('SKR: bundle + promo discount, frozen $0.016; USDC/$CG unchanged', async () => {
     const c = new Client(); await signIn(c, alice);
     const skr = await c.post('/v1/packs/quote', { sku: 2, qty: 5, currency: 'SKR' });
     expect(skr.status).toBe(200);
     const cents = Math.floor((1499 * 5 * (10_000 - 1_200)) / 10_000);
-    expect(skr.json).toMatchObject({ discountBps: 1_200, priceUsdCents: cents, priceUpdateAccount: SKR_ACC.toBase58(), amount: String(unitsForCents(cents, 1_740_000n, -8, 6)) });
-    fake.accounts.clear(); _resetQuoteCache(); // no oracle at all
+    expect(skr.json).toMatchObject({ discountBps: 1_200, priceUsdCents: cents, amount: String(skrMicroForUsdCents(cents)) });
+    expect(skr.json.priceUpdateAccount).toBeUndefined();
+    fake.accounts.clear(); _resetQuoteCache(); // no oracle at all — checkout must not care
     const usdc = await c.post('/v1/packs/quote', { sku: 1, qty: 10, currency: 'USDC' });
     expect(usdc.status).toBe(200); expect(usdc.json.amount).toBe(String(Math.floor((599 * 10 * 8_800) / 10_000) * 10_000)); expect(usdc.json.priceUpdateAccount).toBeUndefined();
     const cg = await c.post('/v1/packs/quote', { sku: 1, qty: 1, currency: 'CG' });
     expect(cg.json.amount).toBe('900000000');
     expect((await c.post('/v1/packs/quote', { sku: 0, qty: 1, currency: 'CG' })).json.code).toBe('currency_not_accepted');
   });
-  it('503 price_unavailable when the on-chain price is stale, too close to expiry, or missing — never a made-up number', async () => {
+  it('never 503s SOL/SKR when Pyth is stale or missing — checkout is frozen FX', async () => {
     const c = new Client(); await signIn(c, alice);
-    setFresh(61, 5);
-    // the age is computed from the wall clock at request time, so a second may tick between arming the
-    // fixture and the quote (this test used to demand exactly `61 s old` and failed on that boundary in
-    // CI): what has to be exact is the reason and the 503, the number just has to be the real age.
-    let r = await c.post('/v1/packs/quote', { sku: 1, qty: 1, currency: 'SOL' });
-    expect(r.status).toBe(503); expect(r.json.code).toBe('price_unavailable'); expect(r.json.message).toMatch(/6[12] s old/);
-    expect((await c.post('/v1/packs/quote', { sku: 1, qty: 1, currency: 'SKR' })).status).toBe(200); // the other rail is fine
-    setFresh(PYTH_MAX_AGE_SECS - PYTH_PUSHER.quoteMinRemainingS + 1, 5); // 46 s: a buyer could not sign in time
-    r = await c.post('/v1/packs/quote', { sku: 1, qty: 1, currency: 'SOL' });
-    expect(r.status).toBe(503); expect(r.json.message).toMatch(/waiting for the next push/);
     fake.accounts.clear(); _resetQuoteCache();
-    r = await c.post('/v1/packs/quote', { sku: 1, qty: 1, currency: 'SKR' });
-    expect(r.status).toBe(503); expect(r.json.message).toMatch(/does not exist/);
+    expect((await c.post('/v1/packs/quote', { sku: 1, qty: 1, currency: 'SOL' })).status).toBe(200);
+    expect((await c.post('/v1/packs/quote', { sku: 1, qty: 1, currency: 'SKR' })).status).toBe(200);
   });
   it('validation + per-wallet caps from the indexer (starter once, limited 5/day)', async () => {
     const c = new Client(); await signIn(c, alice);
@@ -269,6 +262,8 @@ describe('POST /packs/quote', () => {
     expect(p.json.feeds.SOL).toMatchObject({ account: SOL_ACC.toBase58(), healthy: true });
     expect((await c.get('/v1/health')).json.prices.feeds.SOL.usd).toBeCloseTo(150, 6);
     const svc = await c.get('/v1/services');
-    expect(svc.json.priceSource).toBe('fallback'); // SKR row not cached in this test db
+    expect(svc.json.priceSource).toBe('fx');
+    expect(svc.json.solUsd).toBe(FX.solUsd);
+    expect(svc.json.skrUsd).toBe(FX.skrUsd);
   });
 });

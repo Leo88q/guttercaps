@@ -9,7 +9,7 @@ import { errorSnapshot, type ErrorSnapshot } from '../errorSnapshot';
 // skips whatever the crank (or an earlier attempt) already settled.
 import { Connection, PublicKey } from '@solana/web3.js';
 import { keccak_256 } from '@noble/hashes/sha3';
-import { PACKS, expandRandomness, type PackDef as EconPackDef } from '@guttercaps/economy';
+import { PACKS, BUNDLES, FEES, expandRandomness, solLamportsForUsdCents, skrMicroForUsdCents, type PackDef as EconPackDef } from '@guttercaps/economy';
 import { rpcEndpoints } from '@/app/rpcEndpoints';
 import { appLookupTables, fitsInTx, sendTx, type WalletLike } from '../tx';
 import { prepareClose, prepareCloseLut, prepareRandomness, prepareReveal, readRandomness, sendCloseLut } from '../switchboard';
@@ -53,7 +53,7 @@ interface PackFlowDeps {
   wallet: WalletLike;
   onState: (s: PackFlowState) => void;
   /** optional accelerators from the backend quote */
-  quote?: { priceUpdateAccount?: PublicKey; maxLamports?: bigint; switchboardQueue?: PublicKey };
+  quote?: { priceUpdateAccount?: PublicKey; maxLamports?: bigint; amount?: bigint; switchboardQueue?: PublicKey };
   /** our static Address Lookup Table (VITE_LOOKUP_TABLE) — lets reveal + open share one transaction */
   lookupTable?: PublicKey;
   /** DAS endpoint for the mint → register step (defaults to VITE_DAS_RPC_URL) */
@@ -61,6 +61,17 @@ interface PackFlowDeps {
 }
 
 export const SKU_IDS = ['starter', 'standard', 'premium', 'limited'] as const;
+
+/** Buyer cap at frozen FX when the quote API is down or still on Pyth. Same maths as quote.ts / buy_pack. */
+export function frozenCheckoutCap(sku: number, qty: number, currency: CurrencyCode): bigint {
+  if (currency !== Currency.SOL && currency !== Currency.SKR) return 0n;
+  const p = PACKS[SKU_IDS[sku]];
+  const bundlesAllowed = sku === 1 || sku === 2;
+  const bundleBps = bundlesAllowed ? ([...BUNDLES].reverse().find((b) => qty >= b.qty)?.discountBps ?? 0) : 0;
+  const discountBps = currency === Currency.SKR ? Math.min(bundleBps + FEES.skrPackDiscountBps, 3_000) : bundleBps;
+  const cents = Math.floor((p.priceUsdCents * qty * (10_000 - discountBps)) / 10_000);
+  return currency === Currency.SOL ? solLamportsForUsdCents(cents) : skrMicroForUsdCents(cents);
+}
 
 /** Convert on-chain PackDef → economy PackDef (so expandRandomness uses LIVE params, not defaults). */
 export function toEconPack(sku: number, p: PackDef): EconPackDef {
@@ -168,19 +179,21 @@ export class PackFlow {
       if (this.state.currency !== Currency.SOL && !payMint) throw new Error('This currency is not enabled on this cluster');
       if (payMint) ixs.push(createAtaIdempotentIx(wallet.publicKey, vaultOwner(), payMint));
 
-      const volatile = this.state.currency === Currency.SOL || this.state.currency === Currency.SKR;
-      const fallbackFeed = this.state.currency === Currency.SKR ? this.cfg.pythSkrUsdFeed : this.cfg.pythSolUsdFeed;
+      const cap = this.state.currency === Currency.SOL || this.state.currency === Currency.SKR;
       ixs.push(buyPackIx({
         buyer: wallet.publicKey,
         sku: this.state.sku,
         qty: this.state.qty,
         currency: this.state.currency,
         nonce: this.state.nonce,
-        maxLamports: volatile ? (this.deps.quote?.maxLamports ?? 0n) : 0n,
+        maxLamports: cap
+          ? (this.deps.quote?.maxLamports ?? this.deps.quote?.amount ?? frozenCheckoutCap(this.state.sku, this.state.qty, this.state.currency))
+          : 0n,
         randomness: rnd.randomness,
         queue: rnd.queue,
         oracle: rnd.oracle,
-        priceUpdate: volatile ? (this.deps.quote?.priceUpdateAccount ?? fallbackFeed) : undefined,
+        // frozen FX: price_update is unused; omit so Anchor treats the slot as None
+        priceUpdate: undefined,
         usdcMint: this.cfg.usdcMint,
         cgMint: this.cfg.cgMint,
         skrMint,

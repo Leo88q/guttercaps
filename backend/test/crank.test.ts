@@ -11,7 +11,7 @@ import {
   ARENA_ID, ASSOCIATED_TOKEN_PROGRAM_ID, CHIP_CORE_ID, MPL_ACCOUNT_COMPRESSION_ID, MPL_BUBBLEGUM_V2_ID, MPL_CORE_ID, MPL_NOOP_ID, RNG_KIND,
   SYSTEM_PROGRAM_ID, SYSVAR_SLOT_HASHES_ID, TOKEN_PROGRAM_ID, WSOL_MINT, assetPda, battlePda, bubblegumTreeMetaPda, chipStatePda, claimFusionPda,
   ADDRESS_LOOKUP_TABLE_PROGRAM_ID, closeRandomnessIx, closeRandomnessLutIx, collectionMetaPda, compressedClaimNonce, compressedMintClaimPda, compressedSettlementPda, configPda, decodeCompressedMintClaim,
-  decodeCompressedPackSettlement, decodeGameConfig, decodeOracleGateway, decodePendingPack, decodePlayerPity, decodeRandomness, finalizeCompressedPackIx, fuseClaimsRevealIx, fuseRevealIx,
+  decodeCompressedPackSettlement, decodeGameConfig, decodeOracleGateway, decodePendingPack, decodePlayerPity, decodeRandomness, deriveGcRngValue, finalizeCompressedPackIx, fuseClaimsRevealIx, fuseRevealIx,
   ixDiscriminator, mintCompressedChipIx, openCompressedPackIx, packSeed, pendingFusionPda, pendingPackPda, pityPda, registerCompressedChipIx,
   revealRandomnessIx, rngAuthPda, rngPda, sbLutPda, sbLutSignerPda, sbOracleStatsPda, sbRewardEscrow, sbStatePda, customErrorCode, vaultPda,
   allLedgerPdas, ledgerPdaOf,
@@ -22,7 +22,7 @@ import { clampCuPrice } from '../src/tx.ts';
 import {
   DEFAULT_PACK, FakeConnection, ProgramError, SB_OWNER, encodeBubblegumTreeMeta, encodeChipState, encodeCollectionMeta, encodeCompressedMintClaim,
   encodeCompressedPackSettlement, encodeGameConfig, encodeOracle, encodePendingClaimFusion, encodePendingFusion, encodePendingPack, encodePlayerPity,
-  encodeRandomness, encodeWagerBattle, pk,
+  encodeRandomness, encodeWagerBattle, pk, SLOT_HASH_BYTES,
 } from './chainFixtures.ts';
 import { tx } from './fixtures.ts';
 
@@ -446,16 +446,16 @@ describe('crank · instruction layouts (mirror programs/chip_core/src/instructio
     expect(configPda()[0]).toEqual(pda(['config'], CHIP));
     expect(sbStatePda()[0]).toEqual(pda(['STATE'], SB)); // on-chain seed of Switchboard's state account
   });
-  it('raw Switchboard decoders: RandomnessAccountData offsets + OracleAccountData.gateway_uri @3584 (NUL-trimmed)', () => {
+  it('raw RngAccount decoder: gc-rng01 layout (88 bytes) + OracleAccountData.gateway_uri @3584 (NUL-trimmed)', () => {
     const data = encodeRandomness({ authority: rngAuthPda(RNG_KIND.PACK)[0], queue: pk(), oracle: pk(), seedSlot: 123n, revealSlot: 130n, value: ORACLE_VALUE, lutSlot: 100n });
-    expect(hex(data.subarray(0, 8))).toBe('0a42e587dcefd972');
-    expect(data.length).toBe(480);
+    expect(hex(data.subarray(0, 8))).toBe(hex(new TextEncoder().encode('gc-rng01')));
+    expect(data.length).toBe(88);
     const r = decodeRandomness(data);
-    expect(r.seedSlot).toBe(123n); expect(r.revealSlot).toBe(130n); expect(r.lutSlot).toBe(100n); expect(hex(r.value)).toBe(hex(ORACLE_VALUE));
+    expect(r.seedSlot).toBe(123n); expect(r.revealSlot).toBe(130n); expect(r.lutSlot).toBe(0n); expect(hex(r.value)).toBe(hex(ORACLE_VALUE));
     expect(r.authority.equals(rngAuthPda(RNG_KIND.PACK)[0])).toBe(true);
     expect(decodeOracleGateway(encodeOracle('https://xyz.switchboard.xyz/'))).toBe('https://xyz.switchboard.xyz/');
     expect(() => decodeOracleGateway(data)).toThrow(/OracleAccountData/);
-    expect(() => decodeRandomness(encodeOracle('x'))).toThrow(/RandomnessAccountData/);
+    expect(() => decodeRandomness(encodeOracle('x'))).toThrow(/RngAccount/);
   });
   it('packSeed / toEconPack mirror packs.rs open_pack (keccak(value ‖ pack_no) only for bundles; LIVE odds)', () => {
     expect(hex(packSeed(ORACLE_VALUE, 1, 0))).toBe(hex(ORACLE_VALUE));
@@ -487,7 +487,7 @@ describe('crank · oracle gateway', () => {
     const rnd = decodeRandomness(encodeRandomness({ authority: pk(), queue: pk(), oracle: pk(), seedSlot: 4_000n, seedSlothash: new Uint8Array(32).fill(7) }));
     const r = await fetchGatewayReveal(f, `https://oracle-1.example.com${prefix}`, randomness, rnd, 'https://api.devnet.solana.com');
     expect(seen!.url).toBe(`https://oracle-1.example.com${prefix.replace(/\/+$/, '')}/gateway/api/v1/randomness_reveal`);
-    expect(seen!.body).toEqual({ slothash: Array(32).fill(7), randomness_key: hex(randomness.toBytes()), slot: 4000, rpc: 'https://api.devnet.solana.com' });
+    expect(seen!.body).toEqual({ slothash: Array(32).fill(0), randomness_key: hex(randomness.toBytes()), slot: 4000, rpc: 'https://api.devnet.solana.com' });
     expect(hex(r.signature)).toBe(hex(ORACLE_SIG)); expect(r.recoveryId).toBe(1); expect(hex(r.value)).toBe(hex(ORACLE_VALUE));
   });
   it('HTTP / network / malformed answers → GatewayError (retryable, never a tx)', async () => {
@@ -510,7 +510,7 @@ describe('crank · pack pipeline (V2)', () => {
     const log: string[] = [];
     const c = new Crank({ connection: asConn(w.conn), payer: w.payer, db: w.db, fetch: f, log: (s) => log.push(s), das });
     expect(await c.tick()).toBe(1);
-    expect(f.calls).toBe(1);
+    expect(f.calls).toBe(0);
     const discs = w.conn.sent.map((t) => t.ixs.slice(2).map((ix) => hex(ix.data.subarray(0, 8))));
     expect(discs[0]).toEqual([D.reveal, D.openC]); // 3-chip open is small enough to ride with the reveal, no LUT needed
     expect(discs.slice(1, 7)).toEqual([[D.mint], [D.register], [D.mint], [D.register], [D.mint], [D.register]]); // per-chip settle
@@ -521,7 +521,7 @@ describe('crank · pack pipeline (V2)', () => {
     expect(w.conn.sent[1].skipPreflight).toBe(false);
     const open = w.conn.sent[0].ixs[3];
     // collections passed == expandRandomness(value, live pack, pity=4, pool=10) — what open_compressed_pack re-derives
-    const rolls = expandRandomness(ORACLE_VALUE, toEconPack(1, DEFAULT_PACK), 4, 10);
+    const rolls = expandRandomness(deriveGcRngValue(w.randomness, w.commitSlot, SLOT_HASH_BYTES), toEconPack(1, DEFAULT_PACK), 4, 10);
     expect([open.keys[9], open.keys[12], open.keys[15]].map((k) => k.toBase58())).toEqual(rolls.map((r) => collectionMetaPda(r.collectionIdx)[0].toBase58()));
     expect(open.keys[10].equals(bubblegumTreeMetaPda(rolls[0].collectionIdx)[0])).toBe(true);
     // DAS: one resolve per chip, name `{symbol} #{game_index}`, collection = the rolled core
@@ -566,7 +566,7 @@ describe('crank · pack pipeline (V2)', () => {
     expect(hex(open.data.subarray(0, 8))).toBe(D.openC);
     expect(open.keys.length).toBe(8 + 3); // exactly one chip
     // the collection passed == expandRandomness(value, synthetic voucher def, pity irrelevant, pool = all 10)
-    const [roll] = expandRandomness(ORACLE_VALUE, voucherEconPack({ voucherOdds: voucher.odds }), 999, 10);
+    const [roll] = expandRandomness(deriveGcRngValue(w.randomness, w.commitSlot, SLOT_HASH_BYTES), voucherEconPack({ voucherOdds: voucher.odds }), 999, 10);
     expect(open.keys[9].equals(collectionMetaPda(roll.collectionIdx)[0])).toBe(true);
     expect(open.keys[10].equals(bubblegumTreeMetaPda(roll.collectionIdx)[0])).toBe(true);
     expect(roll.rarity).toBeLessThanOrEqual(3); // template 1 never rolls above Rare+
@@ -594,7 +594,7 @@ describe('crank · pack pipeline (V2)', () => {
     const econ = toEconPack(1, DEFAULT_PACK);
     for (const [i, openIx] of opens.entries()) {
       expect(openIx.data[16]).toBe(i);
-      const rolls = expandRandomness(packSeed(ORACLE_VALUE, 3, i), econ, 4 + i, 10);
+      const rolls = expandRandomness(packSeed(deriveGcRngValue(w.randomness, w.commitSlot, SLOT_HASH_BYTES), 3, i), econ, 4 + i, 10);
       expect(openIx.keys[9].equals(collectionMetaPda(rolls[0].collectionIdx)[0])).toBe(true);
     }
     const fin = w.conn.sent[w.conn.sent.length - 2];
@@ -674,25 +674,19 @@ describe('crank · pack pipeline (V2)', () => {
     expect(c.stats).toMatchObject({ finalizes: 1, closes: 1, errors: 0 });
   });
 
-  it('oracle not ready → GatewayError, exponential backoff, no transaction; later success', async () => {
+  it('rng delay not elapsed → no transaction; later success once SlotHashes has the target', async () => {
     runtime(w);
+    w.conn.slot = Number(w.commitSlot) + 4; // DELAY is 8
     let now = 1_000_000;
-    let ready = false;
-    const f: FetchLike = async (url, init) => (ready ? gateway()(url, init) : { ok: false, status: 404, text: async () => 'not yet' });
     const { das } = fakeDas();
     const log: string[] = [];
-    const c = new Crank({ connection: asConn(w.conn), payer: w.payer, db: w.db, fetch: f, das, log: (s) => log.push(s), now: () => now });
+    const c = new Crank({ connection: asConn(w.conn), payer: w.payer, db: w.db, fetch: gateway(), das, log: (s) => log.push(s), now: () => now });
     await c.tick();
     let job = c.job(jobKey(RNG_KIND.PACK, w.buyer, w.nonce))!;
-    expect(job.phase).toBe('pending'); expect(job.attempts).toBe(1); expect(job.next_at).toBe(now + 1_000); expect(job.last_error).toMatch(/gateway 404/);
+    expect(job.phase).toBe('pending');
     expect(w.conn.sent.length).toBe(0);
-    expect(await c.tick()).toBe(0); // not due yet
+    w.conn.slot = Number(w.commitSlot) + 9;
     now += 1_001;
-    await c.tick();
-    job = c.job(job.key)!;
-    expect(job.attempts).toBe(2); expect(job.next_at).toBe(now + 2_000);
-    expect(c.stats.gatewayErrors).toBe(2);
-    now += 2_001; ready = true;
     await c.tick();
     expect(c.job(job.key)!.phase).toBe('closed');
     expect(crankStatus(w.db, now)).toMatchObject({ closed: 1, healthy: true });
@@ -701,6 +695,7 @@ describe('crank · pack pipeline (V2)', () => {
   it('refund window open + oracle silent → phase stale (never cancels for the player), re-checked later; rent reclaimed after the refund', async () => {
     runtime(w);
     w.conn.slot = Number(w.commitSlot) + STALE_PACK_SLOTS + 1;
+    w.conn.del(SYSVAR_SLOT_HASHES_ID); // target hash has left the 512-slot window
     let now = 5_000_000;
     const log: string[] = [];
     const { das } = fakeDas();
@@ -1114,7 +1109,7 @@ describe('crank · fusions and wagers', () => {
     const c = new Crank({ connection: asConn(w.conn), payer: w.payer, db: w.db, fetch: gateway(), das: fakeDas().das });
     c.upsertJob(RNG_KIND.PACK, w.buyer, w.nonce, w.randomness, w.pending, 'pending', Number(w.commitSlot));
     expect(c.job(jobKey(RNG_KIND.PACK, w.buyer, w.nonce))!.lut_slot).toBeNull();
-    const expected = Number(w.commitSlot - 10n); // encodeRandomness defaults lutSlot = seedSlot − 10
+    const expected = 0; // in-house RNG PDA has no Switchboard LUT slot
     expect(await c.recordLutSlot(c.job(jobKey(RNG_KIND.PACK, w.buyer, w.nonce))!)).toBe(expected);
     expect(c.job(jobKey(RNG_KIND.PACK, w.buyer, w.nonce))!.lut_slot).toBe(expected);
     // a request whose account is already gone records nothing (and must not throw)

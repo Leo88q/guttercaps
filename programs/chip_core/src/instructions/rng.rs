@@ -117,6 +117,7 @@ pub fn init_randomness(
         address_lookup_table_program: ctx.accounts.address_lookup_table_program.to_account_info(),
     };
     randomness::init_owned(
+        ctx.program_id,
         &ctx.accounts.switchboard_program.to_account_info(),
         &a,
         recent_slot,
@@ -218,6 +219,7 @@ pub fn init_grant_randomness(
         address_lookup_table_program: ctx.accounts.address_lookup_table_program.to_account_info(),
     };
     randomness::init_owned(
+        ctx.program_id,
         &ctx.accounts.switchboard_program.to_account_info(),
         &a,
         recent_slot,
@@ -232,8 +234,8 @@ pub struct RevealRandomness<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
     // sentio-ignore-next-line SW002
-    /// CHECK: any chip_core-owned randomness account (authority checked in the helper).
-    #[account(mut)]
+    /// CHECK: program-owned RNG PDA (authority checked in the helper).
+    #[account(mut, owner = crate::ID @ ChipError::RandomnessMismatch)]
     pub randomness: UncheckedAccount<'info>,
     /// CHECK: `["rng_auth"]`.
     #[account(seeds = [RNG_AUTH_SEED], bump)]
@@ -289,6 +291,7 @@ pub fn reveal_randomness(
         program_state: ctx.accounts.program_state.to_account_info(),
     };
     randomness::reveal_owned(
+        ctx.program_id,
         &ctx.accounts.switchboard_program.to_account_info(),
         &a,
         &signature,
@@ -313,7 +316,7 @@ pub struct CloseRandomness<'info> {
     /// CHECK: `["rng", kind, owner, nonce]` and Switchboard-owned.
     #[account(
         mut,
-        owner = SB_PROGRAM_ID @ ChipError::RandomnessMismatch,
+        owner = crate::ID @ ChipError::RandomnessMismatch,
         seeds = [RNG_SEED, &[kind], owner.key().as_ref(), &nonce.to_le_bytes()],
         bump,
         seeds::program = crate::ID,
@@ -399,8 +402,10 @@ pub fn close_randomness(ctx: Context<CloseRandomness>, kind: u8, nonce: u64) -> 
         address_lookup_table_program: ctx.accounts.address_lookup_table_program.to_account_info(),
     };
     let returned = randomness::close_owned(
+        ctx.program_id,
         &ctx.accounts.switchboard_program.to_account_info(),
         &a,
+        &ctx.accounts.owner.to_account_info(),
         &[auth_seeds],
     )?;
     if returned > 0 {

@@ -110,10 +110,10 @@ export const FEES = {
  * SKR from the treasury-funded prize pool (see ./skrRewards.ts).
  */
 export const CURRENCIES = [
-  { code: 0, symbol: 'SOL',  decimals: 9, kind: 'volatile', oracle: 'pyth:SOL/USD',  packs: true,  market: true,  services: true,  wagers: false, rewards: false },
-  { code: 1, symbol: 'USDC', decimals: 6, kind: 'stable',   oracle: null,            packs: true,  market: true,  services: true,  wagers: false, rewards: false },
-  { code: 2, symbol: 'CG',   decimals: 6, kind: 'game',     oracle: null,            packs: true,  market: false, services: true,  wagers: true,  rewards: true },
-  { code: 3, symbol: 'SKR',  decimals: 6, kind: 'volatile', oracle: 'pyth:SKR/USD',  packs: true,  market: true,  services: true,  wagers: false, rewards: true },
+  { code: 0, symbol: 'SOL',  decimals: 9, kind: 'fixed',  oracle: 'fx:SOL/USD',  packs: true,  market: true,  services: true,  wagers: false, rewards: false },
+  { code: 1, symbol: 'USDC', decimals: 6, kind: 'stable', oracle: null,          packs: true,  market: false, services: true,  wagers: false, rewards: false },
+  { code: 2, symbol: 'CG',   decimals: 6, kind: 'game',   oracle: null,          packs: true,  market: false, services: true,  wagers: true,  rewards: true },
+  { code: 3, symbol: 'SKR',  decimals: 6, kind: 'fixed',  oracle: 'fx:SKR/USD',  packs: true,  market: false, services: true,  wagers: false, rewards: true },
 ] as const;
 export type CurrencyCode = (typeof CURRENCIES)[number]['code'];
 export const CURRENCY_BY_CODE = Object.fromEntries(CURRENCIES.map((c) => [c.code, c])) as Record<CurrencyCode, (typeof CURRENCIES)[number]>;

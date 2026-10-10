@@ -1,26 +1,15 @@
 // =============================================================================
-// GUTTERCAPS economy — price oracle policy (Pyth) — owner decision Q7
+// GUTTERCAPS economy — Pyth (monitoring / pusher only)
 // -----------------------------------------------------------------------------
-// SOL and SKR are *volatile* payment rails: every pack / service price is
-// fixed in USD cents and converted at checkout inside the transaction from a
-// Pyth `PriceUpdateV2` account. The program (chip_core) checks three things
-// and nothing else about that account:
+// Checkout no longer reads Pyth. Packs, paid services and the founder presale
+// convert USD cents at the frozen rates in `./fx.ts` (SOL = $110, SKR = $0.016)
+// inside the transaction. The `price_update` account slot stays on buy_pack /
+// pay_service so the IDL does not break; the handler ignores it.
 //
-//   1. owner == Pyth receiver program (`Account<PriceUpdateV2>`),
-//   2. feed id == the hard-coded SOL/USD or SKR/USD id below,
-//   3. publish_time + PYTH_MAX_AGE_SECS >= clock  (+ Full verification level).
-//
-// Consequently ANY push-oracle shard can be used. Owner decision (Q7): the
-// studio posts the prices itself — an own Pyth `price_pusher` instance pays
-// for updates into an own shard (PYTH_SHARD_ID), instead of relying on the
-// Pyth-sponsored shard-0 feeds whose 55 s heartbeat is too close to the 60 s
-// max age and which do not cover SKR/USD at all. The pusher parameters below
-// are chosen so the on-chain price is never older than ~45 s:
-//
-//   worst-case age ≈ timeDifference (30) + pushingFrequency (10) + landing (≈5)
-//
-// Everything here is mirrored in Rust (`chip_core::economy::SOL_PRICE_MAX_AGE_SECS`,
-// `SLIPPAGE_BPS`, feed ids in `instructions/packs.rs`) and pinned by sync-check.
+// This file is the leftover of owner decision Q7 (own pusher, 60 s max age):
+// `/prices`, the pusher yaml and GameConfig feed pubkeys still exist for ops
+// display. They must not gate a purchase. Feed ids stay pinned by sync-check
+// against the unused rust constants so a later revival cannot drift.
 // =============================================================================
 
 export interface PythFeed {

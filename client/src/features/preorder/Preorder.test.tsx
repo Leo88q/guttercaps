@@ -91,7 +91,7 @@ it('reserve → pay → confirm: the exact payment data is shown and the confirm
   fireEvent.click(screen.getByText('3'));
   expect(screen.getByTestId('preorder-reserve').textContent).toContain(fmtSol('900000000'));
   fireEvent.click(screen.getByRole('button', { name: t('preorder.reserve') }));
-  await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/preorder/intent', { offer: 'pack', qty: 3 }));
+  await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/preorder/intent', { offer: 'pack', qty: 3, currency: 'SOL' }));
 
   const pay = await screen.findByTestId('preorder-pay');
   expect(pay.textContent).toContain('GC-PRE|7');
@@ -140,5 +140,5 @@ it('the founders chest posts offer=chest and never shares the pack qty stepper',
   mocks.post.mockResolvedValueOnce({ ...intent, offer: 'chest', qty: 4, lamports: '999000000' });
   mount();
   fireEvent.click(screen.getByRole('button', { name: t('preorder.reserveChest') }));
-  await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/preorder/intent', { offer: 'chest', qty: 1 }));
+  await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/preorder/intent', { offer: 'chest', qty: 1, currency: 'SOL' }));
 });

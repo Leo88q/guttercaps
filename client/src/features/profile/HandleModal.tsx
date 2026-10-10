@@ -6,7 +6,7 @@ import { useConnection } from '@solana/wallet-adapter-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { SERVICE_BY_ID } from '@guttercaps/economy';
 import { claimWithRetry, api, isMock } from '@/api/client';
-import { useFloor, useHandleCheck, useMe } from '@/api/hooks';
+import { useHandleCheck, useMe } from '@/api/hooks';
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
 import { Currency, type CurrencyCode } from '@/chain/ix/chipCore';
 import { handleRefHash, payForService, quoteService } from '@/chain/flows/serviceFlow';
@@ -28,7 +28,6 @@ export function HandleModal({ onClose }: { onClose: () => void }) {
   const wallet = useWalletLike();
   const cfg = useGameConfig();
   const me = useMe();
-  const floor = useFloor();
   const qc = useQueryClient();
   const toast = useUiStore((s) => s.toast);
   const [input, setInput] = useState('');
@@ -47,8 +46,8 @@ export function HandleModal({ onClose }: { onClose: () => void }) {
   const currencies: CurrencyCode[] = [Currency.CG, Currency.SOL, Currency.USDC, ...(skrEnabled ? [Currency.SKR] : [])];
 
   const quote = useMemo(() => {
-    try { return quoteService(service.id, currency, { solUsd: floor.data?.solUsd, skrUsd: floor.data?.skrUsd }); } catch { return null; }
-  }, [service.id, currency, floor.data?.solUsd, floor.data?.skrUsd]);
+    try { return quoteService(service.id, currency); } catch { return null; }
+  }, [service.id, currency]);
 
   async function submit() {
     const handle = input.trim();

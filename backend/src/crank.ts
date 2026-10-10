@@ -51,9 +51,9 @@ import {
   ARENA_ID, BATTLE_STATUS, CHIP_CORE_ERR, CHIP_CORE_ID, COMPRESSED_CLAIM_PACK_STRIDE, RNG_KIND, accountDiscriminator, ata, battlePda, bubblegumTreeMetaPda, chipStatePda, claimFusionPda,
   closeRandomnessIx, closeRandomnessLutIx, collectionMetaPda, compressedClaimNonce, compressedMintClaimPda, compressedSettlementPda, configPda, decodeBubblegumTreeMeta,
   decodeChipState, decodeCollectionMeta, decodeCompressedMintClaim, decodeCompressedPackSettlement, decodeGameConfig, decodeOracleGateway, decodePendingClaimFusion,
-  decodePendingFusion, decodePendingPack, decodePlayerPity, createAtaIdempotentIx, decodeRandomness, decodeWagerBattle, finalizeCompressedPackIx, fuseClaimsRevealIx,
+  decodePendingFusion, decodePendingPack, decodePlayerPity, createAtaIdempotentIx, decodeRandomness, decodeWagerBattle, deriveGcRngValue, finalizeCompressedPackIx, fuseClaimsRevealIx,
   fuseRevealIx, mintCompressedChipIx, openCompressedPackIx, packSeed, pendingFusionPda, pendingPackPda, pityPda, registerCompressedChipIx, revealRandomnessIx,
-  rngPda, vaultPda,
+  rngPda, slothashAtOrBefore, SYSVAR_SLOT_HASHES_ID, RNG_DELAY_SLOTS, vaultPda,
   type BubblegumTreeMeta, type CollectionMeta, type CompressedMintClaim, type GameConfig, type PendingClaimFusion, type PendingFusion, type PendingPack,
   type RandomnessData, type RngKind, type WagerBattle,
 } from './chain.ts';
@@ -461,16 +461,29 @@ export class Crank {
 
   /**
    * Reveal-or-value for a committed account: returns the 32 bytes plus the reveal instruction to
-   * prepend when the chain does not have them yet. `null` = oracle has not answered (retry later).
+   * prepend when the chain does not have them yet. `null` = delay not elapsed / SlotHashes window
+   * has not yet published the target slot (retry later).
    */
   async reveal(kind: RngKind, randomnessKey: PublicKey, commitSlot: bigint): Promise<{ value: Uint8Array; ix?: ReturnType<typeof revealRandomnessIx> } | null> {
     const rnd = await this.randomness(randomnessKey);
     if (!rnd) throw new Error('randomness account missing');
     if (rnd.seedSlot !== commitSlot) throw new Error(`randomness seed_slot ${rnd.seedSlot} ≠ commit_slot ${commitSlot} (re-committed?)`);
     if (rnd.revealSlot > 0n) return { value: rnd.value };
-    const gateway = await this.gatewayOf(rnd.oracle);
-    const r = await fetchGatewayReveal(this.fetchFn, gateway, randomnessKey, rnd, this.gatewayRpc);
-    return { value: r.value, ix: revealRandomnessIx({ kind, payer: this.payer.publicKey, randomness: randomnessKey, oracle: rnd.oracle, queue: rnd.queue, ...r }) };
+    const clock = BigInt(await this.connection.getSlot('confirmed'));
+    const target = rnd.seedSlot + RNG_DELAY_SLOTS;
+    if (clock <= target) return null;
+    const sh = await this.connection.getAccountInfo(SYSVAR_SLOT_HASHES_ID, 'confirmed');
+    if (!sh) return null;
+    const hash = slothashAtOrBefore(new Uint8Array(sh.data), target);
+    if (!hash) return null;
+    const value = deriveGcRngValue(randomnessKey, rnd.seedSlot, hash);
+    return {
+      value,
+      ix: revealRandomnessIx({
+        kind, payer: this.payer.publicKey, randomness: randomnessKey, oracle: rnd.oracle, queue: rnd.queue,
+        signature: new Uint8Array(64), recoveryId: 0, value,
+      }),
+    };
   }
 
   /**
@@ -514,20 +527,15 @@ export class Crank {
     let value: Uint8Array | null = pending.revealed ? pending.value : null;
     let revealIx: ReturnType<typeof revealRandomnessIx> | undefined;
     if (!value) {
-      try {
-        const r = await this.reveal(RNG_KIND.PACK, pending.randomness, pending.commitSlot);
-        if (!r) return;
-        value = r.value; revealIx = r.ix;
-      } catch (e) {
-        if (e instanceof GatewayError && await this.isStale(pending.commitSlot)) {
-          // oracle window (1 h) is over and the refund window is open: the buyer refunds via cancel_stale_pack;
-          // we keep re-checking so the rent reclaim still happens afterwards (and a late oracle answer still opens the pack)
-          this.setPhase(job, 'stale', { next_at: this.now() + CRANK_STALE_RECHECK_MS, last_error: (e as Error).message });
+      const r = await this.reveal(RNG_KIND.PACK, pending.randomness, pending.commitSlot);
+      if (!r) {
+        if (await this.isStale(pending.commitSlot)) {
+          this.setPhase(job, 'stale', { next_at: this.now() + CRANK_STALE_RECHECK_MS, last_error: 'rng window missed (SlotHashes)' });
           this.log(`[crank] pack ${job.key} stale (commit slot ${pending.commitSlot}) — waiting for refund`);
-          return;
         }
-        throw e;
+        return;
       }
+      value = r.value; revealIx = r.ix;
     }
     const cfg = await this.gameConfig();
     const def = cfg.packs[pending.sku];
@@ -722,18 +730,14 @@ export class Crank {
     if (!data) { this.setPhase(job, 'settled'); return this.closeStep({ ...job, phase: 'settled' }); }
     const pending: PendingFusion = decodePendingFusion(data);
 
-    let r: Awaited<ReturnType<Crank['reveal']>>;
-    try {
-      r = await this.reveal(RNG_KIND.FUSION, pending.randomness, pending.commitSlot);
-    } catch (e) {
-      if (e instanceof GatewayError && await this.isStale(pending.commitSlot)) {
-        this.setPhase(job, 'stale', { next_at: this.now() + CRANK_STALE_RECHECK_MS, last_error: (e as Error).message });
+    const r = await this.reveal(RNG_KIND.FUSION, pending.randomness, pending.commitSlot);
+    if (!r) {
+      if (await this.isStale(pending.commitSlot)) {
+        this.setPhase(job, 'stale', { next_at: this.now() + CRANK_STALE_RECHECK_MS, last_error: 'rng window missed (SlotHashes)' });
         this.log(`[crank] fusion ${job.key} stale — waiting for cancel_stale_fusion`);
-        return;
       }
-      throw e;
+      return;
     }
-    if (!r) return;
 
     const materials = [];
     for (const asset of pending.materials) {
@@ -766,18 +770,14 @@ export class Crank {
     if (!data) { this.setPhase(job, 'settled'); return this.closeStep({ ...job, phase: 'settled' }); }
     const pending: PendingClaimFusion = decodePendingClaimFusion(data);
 
-    let r: Awaited<ReturnType<Crank['reveal']>>;
-    try {
-      r = await this.reveal(RNG_KIND.CLAIM_FUSION, pending.randomness, pending.commitSlot);
-    } catch (e) {
-      if (e instanceof GatewayError && await this.isStale(pending.commitSlot)) {
-        this.setPhase(job, 'stale', { next_at: this.now() + CRANK_STALE_RECHECK_MS, last_error: (e as Error).message });
+    const r = await this.reveal(RNG_KIND.CLAIM_FUSION, pending.randomness, pending.commitSlot);
+    if (!r) {
+      if (await this.isStale(pending.commitSlot)) {
+        this.setPhase(job, 'stale', { next_at: this.now() + CRANK_STALE_RECHECK_MS, last_error: 'rng window missed (SlotHashes)' });
         this.log(`[crank] claim fusion ${job.key} stale — waiting for cancel_stale_claim_fusion`);
-        return;
       }
-      throw e;
+      return;
     }
-    if (!r) return;
 
     // Materials are claim PDAs: existence preflight only (the instruction takes no per-material collection accounts).
     for (const claim of pending.materials) {
@@ -849,15 +849,12 @@ export class Crank {
     if (!data) { this.setPhase(job, 'closed', { last_error: 'battle account missing' }); return; }
     const b: WagerBattle = decodeWagerBattle(data);
     if (b.status === BATTLE_STATUS.RESOLVED || b.status === BATTLE_STATUS.CANCELLED) { this.setPhase(job, 'settled'); return this.closeStep({ ...job, phase: 'settled' }); }
-    let r: Awaited<ReturnType<Crank['reveal']>>;
-    try {
-      r = await this.reveal(RNG_KIND.BATTLE, b.randomness, b.commitSlot);
-    } catch (e) {
-      if (e instanceof GatewayError && await this.isStale(b.commitSlot)) {
-        this.setPhase(job, 'stale', { next_at: this.now() + CRANK_STALE_RECHECK_MS, last_error: (e as Error).message });
-        return;
+    const r = await this.reveal(RNG_KIND.BATTLE, b.randomness, b.commitSlot);
+    if (!r) {
+      if (await this.isStale(b.commitSlot)) {
+        this.setPhase(job, 'stale', { next_at: this.now() + CRANK_STALE_RECHECK_MS, last_error: 'rng window missed (SlotHashes)' });
       }
-      throw e;
+      return;
     }
     if (r?.ix) {
       const { signature } = await sendAndConfirm(this.connection, this.payer, [r.ix], { cuLimit: CU.REVEAL_ONLY, skipPreflight: true, lookupTables: this.lookupTables });

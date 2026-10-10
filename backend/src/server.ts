@@ -514,7 +514,8 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.post('/preorder/intent', requireAuth, accessGate('packs'), rl(POLICIES.mutate), wrap(async (req, res) => {
     const offer = req.body?.offer === 'chest' ? 'chest' as const : 'pack' as const;
     const qty = offer === 'chest' ? 1 : Number(req.body?.qty);
-    res.json(preorders.createIntent(db, req.session!.wallet, qty, undefined, offer));
+    const currency = preorders.parsePreorderCurrency(req.body?.currency);
+    res.json(preorders.createIntent(db, req.session!.wallet, qty, undefined, offer, currency));
   }));
   v1.post('/preorder/confirm', requireAuth, accessGate('packs'), rl(POLICIES.claim), rl(POLICIES.claimNet), wrap(async (req, res) => {
     const refId = Number(req.body?.refId);
@@ -544,7 +545,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     else res.json(r);
   });
 
-  // ------------------------------------------------------------ packs: quote (Pyth, our own pusher — docs/03 §2.9)
+  // ------------------------------------------------------------ packs: quote (frozen FX — SOL $110 / SKR $0.016)
   v1.post('/packs/quote', requireAuth, accessGate('packs'), rl(POLICIES.quote), wrap(async (req, res) => {
     // The legal gate lives here, not in the UI: `me().flags.geoRestricted` only changes the copy, and a
     // buyer who wants a pack will not be stopped by a disabled button (docs/09 §5.2 — "блок покупки, не блок игры").

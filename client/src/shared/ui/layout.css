@@ -209,12 +209,12 @@ img { max-width: 100%; display: block; }
   background: radial-gradient(120% 100% at 50% 0%, rgba(22,21,26,0.55), rgba(0,0,0,0.78));
   -webkit-backdrop-filter: blur(7px) saturate(1.15); backdrop-filter: blur(7px) saturate(1.15); }
 @media (min-width: 700px) { .modal-backdrop { align-items: center; } }
-.modal { background: var(--cg-asphalt); border: 1px solid var(--gc-line-strong); border-radius: 16px 16px 0 0; width: 100%; max-width: 520px; max-height: min(88dvh, calc(100dvh - 16px), 92vh); overflow: clip; padding: 18px 16px calc(18px + var(--gc-safe-b)); display: flex; flex-direction: column; min-height: 0; }
+.modal { background: var(--cg-asphalt); border: 1px solid var(--gc-line-strong); border-radius: 16px 16px 0 0; width: 100%; max-width: 520px; max-height: min(88dvh, calc(100dvh - 16px), 92vh); overflow: clip; padding: 18px 16px calc(18px + var(--gc-safe-b)); display: flex; flex-direction: column; min-height: 0; text-align: center; }
 @media (min-width: 700px) { .modal { border-radius: 16px; } }
-.modal-title { font-family: var(--cg-font-display); font-size: 22px; margin: 0 0 10px; flex: 0 0 auto; }
-.modal-body { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.modal-title { font-family: var(--cg-font-display); font-size: 22px; margin: 0 0 10px; flex: 0 0 auto; text-align: center; }
+.modal-body { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; text-align: center; }
 .modal-body .chip-card { min-width: 0; }
-.modal-foot { flex: 0 0 auto; padding-top: 12px; position: relative; z-index: 1; background: color-mix(in srgb, var(--cg-asphalt) 92%, transparent); }
+.modal-foot { flex: 0 0 auto; padding-top: 12px; position: relative; z-index: 1; background: color-mix(in srgb, var(--cg-asphalt) 92%, transparent); text-align: center; }
 
 /* ---------- toasts ---------- */
 /* top = the real header height (Shell.tsx keeps --gc-header-h in sync). A hard-coded 64px only holds while the
@@ -806,3 +806,31 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
   white-space: nowrap;
   max-width: none;
 }
+
+/* Every in-app dialog: copy is centered in every locale. KV rows stack so
+   long translations (vi/fil/id) wrap under the value instead of colliding. */
+.modal-body .label,
+.modal-body p,
+.modal-body .small,
+.modal-body .tiny,
+.modal-body .muted { text-align: center; }
+.modal-body .tag-list,
+.modal-body .row { justify-content: center; }
+.modal-body .odds-legend { text-align: center; }
+.modal .kv,
+.modal .cg-clean-zone .kv {
+  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+}
+.modal .kv > :first-child,
+.modal .kv > b {
+  flex: 0 1 auto;
+  width: 100%;
+  text-align: center;
+}
+.modal-body input,
+.modal-body textarea,
+.modal-body select { text-align: center; }

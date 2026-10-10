@@ -7,7 +7,7 @@ import { BorshWriter } from '../src/borsh.ts';
 import { base58Decode, base58Encode } from '../src/base58.ts';
 import { PROGRAMS, SWITCHBOARD_PROGRAM_ID } from '../src/config.ts';
 import {
-  ARENA_ID, CHIP_CORE_ID, ORACLE_ACCOUNT_SIZE, ORACLE_GATEWAY_URI_OFFSET, RANDOMNESS_ACCOUNT_SIZE, accountDiscriminator, type PackDef,
+  ARENA_ID, CHIP_CORE_ID, ORACLE_ACCOUNT_SIZE, ORACLE_GATEWAY_URI_OFFSET, RANDOMNESS_ACCOUNT_SIZE, SYSVAR_SLOT_HASHES_ID, accountDiscriminator, type PackDef,
 } from '../src/chain.ts';
 
 const disc = (name: string) => new BorshWriter().bytes(accountDiscriminator(name));
@@ -149,10 +149,28 @@ export function encodeSkrPool(o: { skrMint?: PublicKey; vault?: PublicKey; budge
 
 export interface RandomnessFields { authority: PublicKey; queue: PublicKey; oracle: PublicKey; seedSlot: bigint; revealSlot?: bigint; value?: Uint8Array; lutSlot?: bigint; seedSlothash?: Uint8Array }
 export function encodeRandomness(r: RandomnessFields): Uint8Array {
-  const w = disc('RandomnessAccountData').pubkey(r.authority).pubkey(r.queue).bytes(r.seedSlothash ?? new Uint8Array(32).fill(0xab)).u64(r.seedSlot).pubkey(r.oracle)
-    .u64(r.revealSlot ?? 0n).bytes(r.value ?? zero32).u64(r.lutSlot ?? r.seedSlot - 10n);
-  const head = w.toBytes();
-  const out = new Uint8Array(RANDOMNESS_ACCOUNT_SIZE); out.set(head, 0);
+  const out = new Uint8Array(RANDOMNESS_ACCOUNT_SIZE);
+  out.set(new TextEncoder().encode('gc-rng01'), 0);
+  out.set(r.authority.toBytes(), 8);
+  const dv = new DataView(out.buffer);
+  dv.setBigUint64(40, r.seedSlot, true);
+  dv.setBigUint64(48, r.revealSlot ?? 0n, true);
+  out.set(r.value ?? zero32, 56);
+  return out;
+}
+
+/** Newest-first SlotHashes sysvar. Default hash is 0x11… so crank mix is deterministic. */
+export const SLOT_HASH_BYTES = new Uint8Array(32).fill(0x11);
+export function encodeSlotHashes(newestSlot: bigint, n = 32, hash = SLOT_HASH_BYTES): Uint8Array {
+  const out = new Uint8Array(8 + n * 40);
+  const dv = new DataView(out.buffer);
+  dv.setBigUint64(0, BigInt(n), true);
+  for (let i = 0; i < n; i++) {
+    const slot = newestSlot - BigInt(i);
+    const off = 8 + i * 40;
+    dv.setBigUint64(off, slot < 0n ? 0n : slot, true);
+    out.set(hash, off + 8);
+  }
   return out;
 }
 
@@ -171,6 +189,15 @@ export class FakeConnection {
   accounts = new Map<string, { owner: PublicKey; data: Uint8Array }>();
   slot = 5_000;
   balanceLamports = 1_000_000_000;
+  constructor() {
+    // Cover commitSlot 4000 + DELAY 8 even though a real 512-entry window at slot 5000 would have dropped it.
+    this.set(SYSVAR_SLOT_HASHES_ID, encodeSlotHashes(4_999n, 32), SYSVAR_SLOT_HASHES_ID);
+    // Also pin the target slot 4008 explicitly as newest-after-head fallback by stuffing it at the end.
+    const sh = encodeSlotHashes(4_999n, 32);
+    const dv = new DataView(sh.buffer);
+    dv.setBigUint64(8 + 31 * 40, 4_008n, true);
+    this.set(SYSVAR_SLOT_HASHES_ID, sh, SYSVAR_SLOT_HASHES_ID);
+  }
   sent: { signature: string; ixs: DecodedIx[]; skipPreflight: boolean; err: ProgramError | null }[] = [];
   /** the "runtime": mutate `accounts` or throw ProgramError */
   onTx: (ixs: DecodedIx[]) => void = () => {};

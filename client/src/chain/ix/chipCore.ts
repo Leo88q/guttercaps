@@ -409,14 +409,14 @@ interface BuyPackArgs {
   qty: number;
   currency: CurrencyCode;
   nonce: bigint;
-  /** slippage guard for volatile currencies: max lamports (SOL) or max micro-SKR (SKR); pass 0n otherwise */
+  /** buyer cap for SOL lamports / micro-SKR (frozen FX amount); pass 0n otherwise */
   maxLamports: bigint;
   /** program-owned randomness PDA `["rng", 0, buyer, nonce]` created by `init_randomness` in the same tx */
   randomness: PublicKey;
   /** commit CPI accounts (SEC-C3 part 2): the pinned queue and the oracle chosen for this request */
   queue: PublicKey;
   oracle: PublicKey;
-  /** SOL / SKR path: Pyth PriceUpdateV2 account for the matching feed */
+  /** unused (frozen FX); kept so the IDL account list stays optional */
   priceUpdate?: PublicKey;
   /** mints from GameConfig */
   usdcMint: PublicKey;
@@ -691,7 +691,7 @@ interface PayServiceArgs {
   buyer: PublicKey;
   kind: number;
   currency: CurrencyCode;
-  /** max lamports / max micro-SKR for volatile currencies; 0n otherwise */
+  /** buyer cap for SOL lamports / micro-SKR at frozen FX; 0n otherwise */
   maxUnits: bigint;
   /** keccak(kind ‖ wallet ‖ canonical payload) — binds the payment to e.g. a handle string */
   refHash: Uint8Array;

@@ -8,8 +8,8 @@
 //   other payloads  = canonical JSON (sorted keys, no whitespace)
 import { keccak_256 } from '@noble/hashes/sha3';
 import { PublicKey } from '@solana/web3.js';
-import { SERVICES, SERVICE_BY_KIND, SKIN_BY_ID, PROFILE_THEME_BY_ID, EMOTE_PACK_BY_ID, COLLECTIONS, type ServiceDef } from '@guttercaps/economy';
-import { HANDLE_BLOCKLIST, HANDLE_CHANGE_COOLDOWN_S, HANDLE_MAX_RESERVATIONS, HANDLE_QUARANTINE_S, HANDLE_RE, HANDLE_RESERVE_MS, SKR_USD_FALLBACK, SOL_USD_FALLBACK } from './config.ts';
+import { SERVICES, SERVICE_BY_KIND, SKIN_BY_ID, PROFILE_THEME_BY_ID, EMOTE_PACK_BY_ID, COLLECTIONS, FX, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, type ServiceDef } from '@guttercaps/economy';
+import { HANDLE_BLOCKLIST, HANDLE_CHANGE_COOLDOWN_S, HANDLE_MAX_RESERVATIONS, HANDLE_QUARANTINE_S, HANDLE_RE, HANDLE_RESERVE_MS } from './config.ts';
 import { type Db, now } from './db.ts';
 import { FinalityError, requireFinalized } from './finality.ts';
 import { foldEq } from './sql.ts';
@@ -44,31 +44,24 @@ export class ServiceError extends Error {
 
 // ---------------------------------------------------------------- catalogue
 export interface Quotes { SOL: string; USDC: string; CG: string; SKR: string }
-export function quoteUsdCents(cents: number, solUsd: number, skrUsd: number): Quotes {
-  const usd = cents / 100;
+export function quoteUsdCents(cents: number, _solUsd?: number, _skrUsd?: number): Quotes {
   return {
-    SOL: String(Math.ceil((usd / solUsd) * 1e9 * 1.01)),   // +1 % slippage guard, like the client
-    USDC: String(cents * 10_000),
+    SOL: String(solLamportsForUsdCents(cents)),
+    USDC: String(usdcMicroForUsdCents(cents)),
     CG: String(cents * 1_000_000),                         // 1 ¢ ≙ 1 $CG (burned)
-    SKR: String(Math.ceil((usd / skrUsd) * 1e6 * 1.01)),
+    SKR: String(skrMicroForUsdCents(cents)),
   };
 }
 
-/**
- * USD display prices: the pyth-cache worker writes `oracle_prices` from OUR Pyth accounts every
- * 10 s (owner decision Q7); the env fallbacks only cover a fresh dev database. Never use these
- * for on-chain amounts — /packs/quote and the client re-price from the PriceUpdateV2 account.
- */
-export function prices(db: Db): { solUsd: number; skrUsd: number; source: 'pyth' | 'fallback' } {
-  const sol = db.get<{ usd: number }>(`SELECT usd FROM oracle_prices WHERE symbol = 'SOL'`)?.usd;
-  const skr = db.get<{ usd: number }>(`SELECT usd FROM oracle_prices WHERE symbol = 'SKR'`)?.usd;
-  return { solUsd: sol ?? SOL_USD_FALLBACK, skrUsd: skr ?? SKR_USD_FALLBACK, source: sol !== undefined && skr !== undefined ? 'pyth' : 'fallback' };
+/** Frozen FX for shop + display. Market P2P still lists in SOL; USD columns use these rates. */
+export function prices(_db?: Db): { solUsd: number; skrUsd: number; source: 'fx' } {
+  return { solUsd: FX.solUsd, skrUsd: FX.skrUsd, source: 'fx' };
 }
 
 export function catalogue(db: Db) {
   const { solUsd, skrUsd, source } = prices(db);
   return {
-    services: SERVICES.map((s) => ({ id: s.id, kind: s.kind, name: s.name, priceUsdCents: s.priceUsdCents, dailyCap: s.dailyCap, recurring: s.recurring, quotes: quoteUsdCents(s.priceUsdCents, solUsd, skrUsd) })),
+    services: SERVICES.map((s) => ({ id: s.id, kind: s.kind, name: s.name, priceUsdCents: s.priceUsdCents, dailyCap: s.dailyCap, recurring: s.recurring, quotes: quoteUsdCents(s.priceUsdCents) })),
     solUsd, skrUsd, priceSource: source,
   };
 }

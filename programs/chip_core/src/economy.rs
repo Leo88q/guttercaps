@@ -10,6 +10,7 @@
 
 pub const RANGE: u64 = 10_000;
 
+use crate::errors::ChipError;
 use anchor_lang::prelude::*;
 
 pub const RARITY_COUNT: usize = 9;
@@ -591,11 +592,59 @@ pub const SLIPPAGE_BPS: u16 = 100;
 /// (conf / price > 2 % ⇒ `PriceUncertain`). SOL sits at ≈ 0.05 % in normal markets and spikes to
 /// ≈ 1 % in crashes; SKR (thin book) hovers around 0.1–0.5 %. Anything above 2 % means the
 /// publishers disagree — the price is not a price. Mirrored in packages/economy PYTH_MAX_CONF_BPS.
+/// Unused at checkout (frozen FX below); kept so a later revival cannot drift from the TS pin.
 pub const PYTH_MAX_CONF_BPS: u64 = 200;
+
+/// Frozen checkout FX. Packs + services convert USD cents at these rates (no Pyth).
+/// Market P2P stays SOL-only. Mirrored in packages/economy `FX`.
+/// SOL = $110 ⇒ lamports = usd_cents × 1_000_000 / 11 (floor).
+pub const FX_SOL_USD: u64 = 110;
+/// SKR = $0.016 ⇒ micro-SKR = usd_cents × 625_000.
+pub const FX_SKR_MICRO_PER_USD_CENT: u64 = 625_000;
+/// USDC = $1 ⇒ micro-USDC = usd_cents × 10_000.
+pub const FX_USDC_MICRO_PER_USD_CENT: u64 = 10_000;
+
+/// Lamports charged for `usd_cents` at SOL = $110. Floor.
+pub fn fx_sol_lamports(usd_cents: u64) -> Result<u64> {
+    let v = (usd_cents as u128)
+        .checked_mul(1_000_000)
+        .ok_or(ChipError::Overflow)?
+        / 11;
+    u64::try_from(v).map_err(|_| error!(ChipError::Overflow))
+}
+/// Micro-SKR charged for `usd_cents` at SKR = $0.016.
+pub fn fx_skr_micro(usd_cents: u64) -> Result<u64> {
+    Ok(usd_cents
+        .checked_mul(FX_SKR_MICRO_PER_USD_CENT)
+        .ok_or(ChipError::Overflow)?)
+}
+/// Micro-USDC charged for `usd_cents` at USDC = $1.
+pub fn fx_usdc_micro(usd_cents: u64) -> Result<u64> {
+    Ok(usd_cents
+        .checked_mul(FX_USDC_MICRO_PER_USD_CENT)
+        .ok_or(ChipError::Overflow)?)
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frozen_fx_integer_floor() {
+        // Starter 199¢ → 18_090_909 lamports / 124_375_000 micro-SKR (no SKR promo)
+        assert_eq!(fx_sol_lamports(199).unwrap(), 18_090_909);
+        assert_eq!(fx_skr_micro(199).unwrap(), 124_375_000);
+        assert_eq!(fx_usdc_micro(199).unwrap(), 1_990_000);
+        // Standard 599¢
+        assert_eq!(fx_sol_lamports(599).unwrap(), 54_454_545);
+        assert_eq!(fx_skr_micro(599).unwrap(), 374_375_000);
+        // SKR 5 % on 599¢ = 569¢ (floor), not a float 355.656 SKR
+        let skr_cents = 599u64 * 9_500 / 10_000;
+        assert_eq!(skr_cents, 569);
+        assert_eq!(fx_skr_micro(skr_cents).unwrap(), 355_625_000);
+        // 1 cent still yields a positive SKR amount
+        assert_eq!(fx_skr_micro(1).unwrap(), 625_000);
+    }
 
     #[test]
     fn default_odds_sum_to_10_000() {

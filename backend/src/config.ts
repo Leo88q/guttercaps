@@ -30,6 +30,8 @@ export function programNameOf(id: PublicKey | string): ProgramName | undefined {
 
 /** Genuine SKR mint — never resolve by symbol (counterfeits exist). */
 export const SKR_MINT = new PublicKey('SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3');
+/** Circle USDC on mainnet — founder-presale SPL payments use this mint (override with USDC_MINT). */
+export const USDC_MINT = pk(env.USDC_MINT, 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
 
 export const RPC_URL = env.SOLANA_RPC_URL ?? 'https://api.devnet.solana.com';
 export const RPC_WS_URL = env.SOLANA_WS_URL; // optional; web3.js derives it from RPC_URL when unset

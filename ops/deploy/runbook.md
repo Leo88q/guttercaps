@@ -148,8 +148,9 @@ wildcard-CORS, `COOKIE_SECURE` без https, `:memory:` в проде, `EVENT_BU
 там, где живёт DNS. Два рабочих варианта:
 
 * TLS терминирует платформа (Cloudflare / Fly / ALB) — тогда `HTTP_BIND=127.0.0.1`, а наружу
-  смотрит их балансировщик; в `nginx.conf` включается комментарий про
-  `X-Forwarded-Proto`, и ничего больше менять не надо.
+  смотрит их балансировщик. `nginx.conf` уже читает `X-Forwarded-Proto` с края (`$edge_proto`)
+  и `CF-Connecting-IP` (real_ip). Не открывайте :8080 в мир. Пошаговый чеклист двух стендов
+  Hetzner + Cloudflare Tunnel (`guttercaps` / `guttercapsdev`): [`hetzner.md`](./hetzner.md).
 * TLS на этом же хосте — тогда сертификат от ACME (certbot/caddy) монтируется в контейнер, и
   раскомментируется блок `listen 443 ssl` в конце `nginx.conf`.
 

@@ -16,12 +16,13 @@
 //    count, and `PackGranted` events join back here through `preorder_ref = ref_id`.
 
 import { Connection, PublicKey, type TransactionInstruction } from '@solana/web3.js';
+import { skrMicroForUsdCents, usdcMicroForUsdCents, usdCentsFromSolLamports } from '@guttercaps/economy';
 import type { Db } from './db.ts';
 import { now } from './db.ts';
 import { ServiceError } from './services.ts';
-import { SWITCHBOARD_QUEUE } from './config.ts';
+import { SKR_MINT, SWITCHBOARD_QUEUE, USDC_MINT } from './config.ts';
 import {
-  closePreorderDropIx, grantPreorderPackIx, initGrantRandomnessIx, initPreorderDropIx,
+  ata, closePreorderDropIx, grantPreorderPackIx, initGrantRandomnessIx, initPreorderDropIx,
 } from './chain.ts';
 
 const env = process.env;
@@ -36,6 +37,7 @@ export interface PreorderRow {
   sku: number;
   qty: number;
   offer: PreorderOfferId;
+  currency: PreorderCurrency;
   lamports: string;
   status: PreorderStatus;
   tx_sig: string | null;
@@ -47,6 +49,33 @@ export interface PreorderRow {
 }
 
 export type PreorderOfferId = 'pack' | 'chest';
+export type PreorderCurrency = 'SOL' | 'USDC' | 'SKR';
+const PREORDER_CURRENCIES: readonly PreorderCurrency[] = ['SOL', 'USDC', 'SKR'];
+export function parsePreorderCurrency(v: unknown): PreorderCurrency {
+  const s = String(v ?? 'SOL').toUpperCase();
+  if ((PREORDER_CURRENCIES as readonly string[]).includes(s)) return s as PreorderCurrency;
+  throw new ServiceError(400, 'bad_currency', 'currency must be SOL | USDC | SKR');
+}
+
+/** Native units of `currency` for a SOL sticker price (0.30 / 0.999) at frozen FX. */
+export function preorderAmount(solLamports: string | bigint, currency: PreorderCurrency): string {
+  const lamports = BigInt(solLamports);
+  if (currency === 'SOL') return lamports.toString();
+  const cents = usdCentsFromSolLamports(lamports);
+  return currency === 'USDC' ? usdcMicroForUsdCents(cents).toString() : skrMicroForUsdCents(cents).toString();
+}
+
+export function preorderPrices(solLamports: string): Record<PreorderCurrency, string> {
+  return { SOL: solLamports, USDC: preorderAmount(solLamports, 'USDC'), SKR: preorderAmount(solLamports, 'SKR') };
+}
+
+/** Pay-to address: treasury wallet for SOL, its ATA for USDC/SKR. Never a second treasury pubkey. */
+export function preorderPayTo(treasury: string, currency: PreorderCurrency): { payTo: string; mint?: string } {
+  if (currency === 'SOL') return { payTo: treasury };
+  const owner = new PublicKey(treasury);
+  if (currency === 'USDC') return { payTo: ata(USDC_MINT, owner).toBase58(), mint: USDC_MINT.toBase58() };
+  return { payTo: ata(SKR_MINT, owner).toBase58(), mint: SKR_MINT.toBase58() };
+}
 
 export interface OfferDef {
   id: PreorderOfferId;
@@ -157,6 +186,7 @@ export interface CampaignOffer {
   id: PreorderOfferId;
   packs: number;
   priceLamports: string;
+  prices: Record<PreorderCurrency, string>;
   total: number;
   remaining: number;
   sold: number;
@@ -200,8 +230,8 @@ export function campaign(db: Db, t = now()): CampaignSummary {
     memoPrefix: cfg.memoPrefix,
     intentTtlS: cfg.intentTtlS,
     offers: [
-      { id: 'pack', packs: cfg.pack.packs, priceLamports: cfg.pack.priceLamports, total: cfg.pack.total, remaining: packRem, sold: packSold, maxPerWallet: cfg.pack.maxPerWallet, maxQty: cfg.pack.maxQty },
-      { id: 'chest', packs: cfg.chest.packs, priceLamports: cfg.chest.priceLamports, total: cfg.chest.total, remaining: chestRem, sold: chestSold, maxPerWallet: cfg.chest.maxPerWallet, maxQty: cfg.chest.maxQty },
+      { id: 'pack', packs: cfg.pack.packs, priceLamports: cfg.pack.priceLamports, prices: preorderPrices(cfg.pack.priceLamports), total: cfg.pack.total, remaining: packRem, sold: packSold, maxPerWallet: cfg.pack.maxPerWallet, maxQty: cfg.pack.maxQty },
+      { id: 'chest', packs: cfg.chest.packs, priceLamports: cfg.chest.priceLamports, prices: preorderPrices(cfg.chest.priceLamports), total: cfg.chest.total, remaining: chestRem, sold: chestSold, maxPerWallet: cfg.chest.maxPerWallet, maxQty: cfg.chest.maxQty },
     ],
   };
 }
@@ -212,14 +242,18 @@ export interface PreorderIntent {
   sku: number;
   qty: number;
   offer: PreorderOfferId;
+  currency: PreorderCurrency;
   lamports: string;
+  amount: string;
   treasury: string;
+  payTo: string;
+  mint?: string;
   memo: string;
   expiresAt: number;
 }
 
 /** `POST /preorder/intent` — reserve `qty` units of `offer`; the response is the payment instruction set. */
-export function createIntent(db: Db, wallet: string, qty: number, t = now(), offerId: PreorderOfferId = 'pack'): PreorderIntent {
+export function createIntent(db: Db, wallet: string, qty: number, t = now(), offerId: PreorderOfferId = 'pack', currency: PreorderCurrency = 'SOL'): PreorderIntent {
   const cfg = preorderConfig();
   if (!cfg.active) throw new ServiceError(410, 'campaign_closed', 'The pre-sale is not active');
   const offer = offerId === 'chest' ? cfg.chest : cfg.pack;
@@ -237,10 +271,12 @@ export function createIntent(db: Db, wallet: string, qty: number, t = now(), off
     }
   }
   const packs = offer.id === 'chest' ? offer.packs : qty;
-  const lamports = offer.id === 'chest' ? offer.priceLamports : (BigInt(offer.priceLamports) * BigInt(qty)).toString();
+  const solLamports = offer.id === 'chest' ? offer.priceLamports : (BigInt(offer.priceLamports) * BigInt(qty)).toString();
+  const lamports = preorderAmount(solLamports, currency);
+  const dest = preorderPayTo(cfg.treasury, currency);
   const r = db.run(
-    `INSERT INTO preorders (wallet, sku, qty, offer, lamports, status, created_at) VALUES (?, ?, ?, ?, ?, 'intent', ?)`,
-    wallet, cfg.sku, packs, offer.id, lamports, t,
+    `INSERT INTO preorders (wallet, sku, qty, offer, currency, lamports, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'intent', ?)`,
+    wallet, cfg.sku, packs, offer.id, currency, lamports, t,
   );
   const refId = Number(r.lastInsertRowid);
   return {
@@ -249,8 +285,12 @@ export function createIntent(db: Db, wallet: string, qty: number, t = now(), off
     sku: cfg.sku,
     qty: packs,
     offer: offer.id,
+    currency,
     lamports,
+    amount: lamports,
     treasury: cfg.treasury,
+    payTo: dest.payTo,
+    mint: dest.mint,
     memo: preorderMemo(cfg, refId),
     expiresAt: t + cfg.intentTtlS,
   };
@@ -261,7 +301,7 @@ export function createIntent(db: Db, wallet: string, qty: number, t = now(), off
 export interface ParsedPaymentTx {
   /** `meta.err == null` */
   ok: boolean;
-  transfers: { source: string; destination: string; lamports: bigint }[];
+  transfers: { source: string; destination: string; lamports: bigint; mint?: string }[];
   memos: string[];
 }
 
@@ -280,13 +320,15 @@ export interface PaymentCheck {
  */
 export function checkPayment(
   tx: ParsedPaymentTx,
-  a: { treasury: string; lamports: string; wallet: string; memo: string },
+  a: { treasury: string; lamports: string; wallet: string; memo: string; mint?: string },
 ): PaymentCheck {
   if (!tx.ok) return { ok: false, code: 'tx_failed' };
   const need = BigInt(a.lamports);
-  const hit = tx.transfers.filter((t) => t.destination === a.treasury && t.lamports >= need);
+  const destOk = (t: ParsedPaymentTx['transfers'][number]) => t.destination === a.treasury
+    && (!a.mint || !t.mint || t.mint === a.mint);
+  const hit = tx.transfers.filter((t) => destOk(t) && t.lamports >= need);
   if (hit.length === 0) {
-    return { ok: false, code: tx.transfers.some((t) => t.destination === a.treasury) ? 'amount_low' : 'no_transfer' };
+    return { ok: false, code: tx.transfers.some((t) => destOk(t)) ? 'amount_low' : 'no_transfer' };
   }
   if (tx.memos.length > 0) {
     return tx.memos.includes(a.memo) ? { ok: true, code: 'ok' } : { ok: false, code: 'memo_mismatch' };
@@ -317,8 +359,22 @@ export function parseRpcPayment(tx: unknown): ParsedPaymentTx | null {
         transfers.push({ source: String(p.info.source), destination: String(p.info.destination), lamports: BigInt(p.info.lamports ?? 0) });
       }
     }
+    if ((i.program === 'spl-token' || i.program === 'spl-token-2022') && i.parsed && typeof i.parsed === 'object') {
+      const p = i.parsed as { type?: string; info?: { source?: string; destination?: string; amount?: string; mint?: string; authority?: string; tokenAmount?: { amount?: string } } };
+      if ((p.type === 'transfer' || p.type === 'transferChecked') && p.info) {
+        const amt = p.info.tokenAmount?.amount ?? p.info.amount ?? '0';
+        transfers.push({
+          source: String(p.info.source),
+          destination: String(p.info.destination),
+          lamports: BigInt(amt),
+          mint: p.info.mint ? String(p.info.mint) : undefined,
+        });
+      }
+    }
   };
   for (const ix of t.transaction?.message?.instructions ?? []) visit(ix);
+  const inner = (t as { meta?: { innerInstructions?: { instructions?: unknown[] }[] } }).meta?.innerInstructions ?? [];
+  for (const g of inner) for (const ix of g.instructions ?? []) visit(ix);
   return { ok, transfers, memos };
 }
 
@@ -342,7 +398,9 @@ export async function confirmPayment(
   const cfg = preorderConfig();
   const tx = await fetchPayment(signature);
   if (!tx) throw new ServiceError(404, 'tx_not_found', 'Transaction not found on mainnet (finalized)');
-  const check = checkPayment(tx, { treasury: cfg.treasury, lamports: row.lamports, wallet, memo: preorderMemo(cfg, refId) });
+  const currency = (row.currency ?? 'SOL') as PreorderCurrency;
+  const dest = preorderPayTo(cfg.treasury, currency);
+  const check = checkPayment(tx, { treasury: dest.payTo, lamports: row.lamports, wallet, memo: preorderMemo(cfg, refId), mint: dest.mint });
   if (!check.ok) throw new ServiceError(422, `payment_${check.code}`, `Payment check failed: ${check.code}`);
 
   // One signature credits exactly one reservation. The check is explicit and the UNIQUE index on

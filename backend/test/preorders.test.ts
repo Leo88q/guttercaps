@@ -62,6 +62,12 @@ describe('checkPayment (pure rule)', () => {
     const fromExchange = { ...okTx, transfers: [transfer(kp(), TREASURY, 2_000_000_000n)] };
     expect(p.checkPayment(fromExchange, base)).toEqual({ ok: true, code: 'ok' });
   });
+  it('accepts an SPL transfer into the treasury ATA (USDC/SKR)', () => {
+    const dest = p.preorderPayTo(TREASURY, 'USDC');
+    const spl = { ok: true, transfers: [{ source: wallet, destination: dest.payTo, lamports: 110_000_000n, mint: dest.mint }], memos: ['GC-PRE|7'] };
+    expect(p.checkPayment(spl, { treasury: dest.payTo, lamports: '110000000', wallet, memo: 'GC-PRE|7', mint: dest.mint })).toEqual({ ok: true, code: 'ok' });
+    expect(p.checkPayment(spl, { ...base, treasury: TREASURY })).toMatchObject({ ok: false, code: 'no_transfer' });
+  });
 });
 
 describe('parseRpcPayment', () => {
@@ -78,6 +84,15 @@ describe('parseRpcPayment', () => {
     expect(p.parseRpcPayment(null)).toBeNull();
     expect(p.parseRpcPayment({ meta: { err: { code: 1 } }, transaction: { message: { instructions: [] } } })?.ok).toBe(false);
   });
+  it('extracts spl-token transfers (including inner instructions)', () => {
+    const rpc = {
+      meta: { err: null, innerInstructions: [{ instructions: [
+        { program: 'spl-token', parsed: { type: 'transferChecked', info: { source: 'SRC', destination: 'ATA', mint: 'USDC', tokenAmount: { amount: '33000000' } } } },
+      ] }] },
+      transaction: { message: { instructions: [] } },
+    };
+    expect(p.parseRpcPayment(rpc)).toEqual({ ok: true, transfers: [{ source: 'SRC', destination: 'ATA', lamports: 33_000_000n, mint: 'USDC' }], memos: [] });
+  });
 });
 
 describe('campaign + intents', () => {
@@ -89,11 +104,23 @@ describe('campaign + intents', () => {
   it('reserves packs and returns the payment data', () => {
     const w = kp();
     const intent = p.createIntent(db, w, 2, T);
-    expect(intent).toMatchObject({ qty: 2, lamports: '2000000000', treasury: TREASURY, memo: `GC-PRE|${intent.refId}` });
+    expect(intent).toMatchObject({ qty: 2, lamports: '2000000000', treasury: TREASURY, currency: 'SOL', payTo: TREASURY, memo: `GC-PRE|${intent.refId}` });
     expect(intent.expiresAt).toBe(T + 3600);
     const c = p.campaign(db, T);
     expect(c.remaining).toBe(3); // 5 − 2 reserved
     expect(c.sold).toBe(0);      // an intent is not a sale yet
+  });
+  it('USDC/SKR intents charge frozen FX into the same treasury ATAs', () => {
+    const w = kp();
+    // test env price is 1 SOL → $110 → 110 USDC / 6875 SKR
+    const usdc = p.createIntent(db, w, 1, T, 'pack', 'USDC');
+    expect(usdc).toMatchObject({ currency: 'USDC', lamports: p.preorderAmount('1000000000', 'USDC') });
+    expect(usdc.payTo).toBe(p.preorderPayTo(TREASURY, 'USDC').payTo);
+    expect(usdc.payTo).not.toBe(TREASURY);
+    const skr = p.createIntent(db, kp(), 1, T, 'pack', 'SKR');
+    expect(skr.lamports).toBe(p.preorderAmount('1000000000', 'SKR'));
+    expect(skr.payTo).toBe(p.preorderPayTo(TREASURY, 'SKR').payTo);
+    expect(p.campaign(db, T).offers[0].prices.USDC).toBe(p.preorderAmount('1000000000', 'USDC'));
   });
   it('rejects qty above the per-intent cap', () => {
     expect(codeOf(() => p.createIntent(db, kp(), 3, T))).toBe('bad_qty');

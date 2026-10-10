@@ -3,7 +3,7 @@
 // entitlement. Pure orchestration, no React.
 import { Connection, PublicKey } from '@solana/web3.js';
 import { keccak_256 } from '@noble/hashes/sha3';
-import { SERVICE_BY_ID, servicePriceCgMicro, type ServiceId } from '@guttercaps/economy';
+import { SERVICE_BY_ID, servicePriceCgMicro, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, type ServiceId } from '@guttercaps/economy';
 import { sendTx, type WalletLike } from '../tx';
 import { payServiceIx, Currency, type CurrencyCode } from '../ix/chipCore';
 import { createAtaIdempotentIx } from '../ix/spl';
@@ -35,23 +35,24 @@ export function serviceRefHash(kind: number, wallet: PublicKey, payload: string 
 export const handleRefHash = (kind: 0 | 1, wallet: PublicKey, handle: string) => serviceRefHash(kind, wallet, handle.trim().toLowerCase());
 
 interface ServiceQuote {
-  /** base units of `currency` the program will charge (client estimate; SOL/SKR are re-priced on-chain via Pyth) */
+  /** base units of `currency` the program will charge (frozen FX; SOL = $110, SKR = $0.016) */
   amount: bigint;
-  /** slippage guard passed as max_units (amount × 1.01 for volatile currencies, 0 otherwise) */
+  /** buyer cap passed as max_units (equals amount for SOL/SKR; 0 otherwise) */
   maxUnits: bigint;
 }
 
-/** Client-side quote; the backend /services quote is preferred when available. */
-export function quoteService(id: ServiceId, currency: CurrencyCode, prices: { solUsd?: number; skrUsd?: number }): ServiceQuote {
+/** Client-side quote. `prices` is ignored — checkout is frozen FX. Kept so call sites do not break. */
+export function quoteService(id: ServiceId, currency: CurrencyCode, _prices?: { solUsd?: number; skrUsd?: number }): ServiceQuote {
   const def = SERVICE_BY_ID[id];
-  const cents = BigInt(def.priceUsdCents);
-  if (currency === Currency.USDC) return { amount: cents * 10_000n, maxUnits: 0n };
+  const cents = def.priceUsdCents;
+  if (currency === Currency.USDC) return { amount: usdcMicroForUsdCents(cents), maxUnits: 0n };
   if (currency === Currency.CG) return { amount: BigInt(servicePriceCgMicro(def)), maxUnits: 0n };
-  const usd = currency === Currency.SOL ? prices.solUsd : prices.skrUsd;
-  if (!usd || usd <= 0) throw new Error('No price available for this currency yet');
-  const decimals = currency === Currency.SOL ? 9 : 6;
-  const amount = BigInt(Math.ceil((def.priceUsdCents / 100 / usd) * 10 ** decimals));
-  return { amount, maxUnits: (amount * 101n) / 100n };
+  if (currency === Currency.SOL) {
+    const amount = solLamportsForUsdCents(cents);
+    return { amount, maxUnits: amount };
+  }
+  const amount = skrMicroForUsdCents(cents);
+  return { amount, maxUnits: amount };
 }
 
 interface PayServiceParams {
@@ -61,7 +62,7 @@ interface PayServiceParams {
   currency: CurrencyCode;
   refHash: Uint8Array;
   quote: ServiceQuote;
-  /** Pyth PriceUpdateV2 account (SOL/USD or SKR/USD); falls back to the GameConfig feed accounts */
+  /** unused (frozen FX); kept so the IDL account list stays optional */
   priceUpdate?: PublicKey;
   cfg?: GameConfig;
 }
@@ -83,7 +84,7 @@ export async function payForService(p: PayServiceParams): Promise<{ signature: s
     maxUnits: p.quote.maxUnits,
     refHash: p.refHash,
     treasury: cfg.treasury,
-    priceUpdate: p.currency === Currency.SOL ? (p.priceUpdate ?? cfg.pythSolUsdFeed) : p.currency === Currency.SKR ? (p.priceUpdate ?? cfg.pythSkrUsdFeed) : undefined,
+    priceUpdate: undefined,
     usdcMint: cfg.usdcMint,
     cgMint: cfg.cgMint,
     skrMint,

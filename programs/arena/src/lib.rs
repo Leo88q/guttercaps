@@ -529,7 +529,7 @@ pub struct CreateBattle<'info> {
     /// `init_battle_randomness` in this tx (owner = Switchboard, SEC-C1); committed HERE by CPI
     /// with the arena `rng_auth` signature (SEC-C3 part 2).
     #[account(
-        mut, owner = randomness::SB_PROGRAM_ID @ ArenaError::Randomness,
+        mut, owner = crate::ID @ ArenaError::Randomness,
         seeds = [randomness::RNG_SEED, &[randomness::RNG_KIND_BATTLE], challenger.key().as_ref(), &nonce.to_le_bytes()], bump,
     )]
     pub randomness: UncheckedAccount<'info>,
@@ -580,7 +580,7 @@ pub struct CreateBattleV2<'info> {
     #[account(init, payer = challenger, space = 8 + WagerBattle::INIT_SPACE, seeds = [b"battle", challenger.key().as_ref(), &nonce.to_le_bytes()], bump)]
     pub battle: Box<Account<'info, WagerBattle>>,
     /// CHECK: arena-owned Switchboard randomness PDA.
-    #[account(mut, owner = randomness::SB_PROGRAM_ID @ ArenaError::Randomness, seeds = [randomness::RNG_SEED, &[randomness::RNG_KIND_BATTLE], challenger.key().as_ref(), &nonce.to_le_bytes()], bump)]
+    #[account(mut, owner = crate::ID @ ArenaError::Randomness, seeds = [randomness::RNG_SEED, &[randomness::RNG_KIND_BATTLE], challenger.key().as_ref(), &nonce.to_le_bytes()], bump)]
     pub randomness: UncheckedAccount<'info>,
     /// CHECK: arena's Switchboard authority PDA.
     #[account(seeds = [randomness::RNG_AUTH_SEED], bump)]
@@ -626,6 +626,7 @@ pub fn create_battle_v2_handler<'info>(
     let clock = Clock::get()?;
     let auth_seeds: &[&[u8]] = &[randomness::RNG_AUTH_SEED, &[ctx.bumps.rng_auth]];
     let rnd = randomness::commit_owned(
+        ctx.program_id,
         &ctx.accounts.switchboard_program.to_account_info(),
         &ctx.accounts.randomness.to_account_info(),
         &ctx.accounts.queue.to_account_info(),
@@ -684,6 +685,7 @@ pub fn create_battle_handler<'info>(
     // commit the arena-owned randomness by CPI: authority == rng_auth, never used, fresh after (SEC-C3 part 2)
     let auth_seeds: &[&[u8]] = &[randomness::RNG_AUTH_SEED, &[ctx.bumps.rng_auth]];
     let rnd = randomness::commit_owned(
+        ctx.program_id,
         &ctx.accounts.switchboard_program.to_account_info(),
         &ctx.accounts.randomness.to_account_info(),
         &ctx.accounts.queue.to_account_info(),
@@ -813,6 +815,7 @@ pub fn init_battle_randomness_handler(
         address_lookup_table_program: ctx.accounts.address_lookup_table_program.to_account_info(),
     };
     randomness::init_owned(
+        ctx.program_id,
         &ctx.accounts.switchboard_program.to_account_info(),
         &a,
         recent_slot,
@@ -828,8 +831,8 @@ pub struct RevealBattleRandomness<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
     // sentio-ignore-next-line SW002
-    /// CHECK: any arena-owned randomness account (authority checked in the helper).
-    #[account(mut)]
+    /// CHECK: program-owned RNG PDA (authority checked in the helper).
+    #[account(mut, owner = crate::ID @ ArenaError::Randomness)]
     pub randomness: UncheckedAccount<'info>,
     // sentio-ignore-next-line SW013
     /// CHECK: `["rng_auth"]` of the arena.
@@ -886,6 +889,7 @@ pub fn reveal_battle_randomness_handler(
         program_state: ctx.accounts.program_state.to_account_info(),
     };
     randomness::reveal_owned(
+        ctx.program_id,
         &ctx.accounts.switchboard_program.to_account_info(),
         &a,
         &signature,
@@ -909,7 +913,7 @@ pub struct CloseBattleRandomness<'info> {
     /// CHECK: `["rng", 2, challenger, nonce]` and Switchboard-owned.
     #[account(
         mut,
-        owner = randomness::SB_PROGRAM_ID @ ArenaError::Randomness,
+        owner = crate::ID @ ArenaError::Randomness,
         seeds = [randomness::RNG_SEED, &[randomness::RNG_KIND_BATTLE], challenger.key().as_ref(), &nonce.to_le_bytes()],
         bump,
         seeds::program = crate::ID,
@@ -969,8 +973,10 @@ pub fn close_battle_randomness_handler(
         address_lookup_table_program: ctx.accounts.address_lookup_table_program.to_account_info(),
     };
     let returned = randomness::close_owned(
+        ctx.program_id,
         &ctx.accounts.switchboard_program.to_account_info(),
         &a,
+        &ctx.accounts.challenger.to_account_info(),
         &[auth_seeds],
     )
     .map_err(|_| error!(ArenaError::Randomness))?;
@@ -1234,7 +1240,7 @@ pub fn resolve_battle_handler(
     require_keys_eq!(ctx.accounts.winner_cg.owner, winner, ArenaError::BadWinner);
     // the VRF value must exist so the server-side seed is auditable; the program does not
     // re-simulate the battle (that's the documented server-authoritative boundary)
-    let rnd = randomness::parse_checked(&ctx.accounts.randomness)
+    let rnd = randomness::parse_checked(&ctx.accounts.randomness, ctx.program_id)
         .map_err(|_| error!(ArenaError::Randomness))?;
     let roll = randomness::revealed_value(&rnd, b.commit_slot)
         .map_err(|_| error!(ArenaError::Randomness))?;

@@ -1,40 +1,34 @@
-//! Commit-reveal guards **and** the Switchboard On-Demand CPIs shared by packs,
-//! fusions and (through the `cpi` crate feature) the arena, so the three flows
-//! can never drift apart.
+//! Commit-reveal guards shared by packs, fusions and (through the `cpi` crate
+//! feature) the arena. Switchboard On-Demand is dead (shutdown 2026-09-25);
+//! the program now owns the randomness PDA and mixes a **future SlotHashes**
+//! entry so neither the team nor the player can pick the bytes.
 //!
 //! Threat model (docs/06 SEC-C1…C3):
-//!  * **C1 owner check** — `RandomnessAccountData::parse` only validates the
-//!    8-byte discriminator and the size; without `owner == Switchboard` anyone
-//!    could pass a look-alike account carrying a chosen `value`. Every read in
-//!    every program goes through [`parse_checked`].
-//!  * **C2 persisted value** — `get_value(slot)` is `Ok` only in the reveal slot
-//!    itself, so a 25-pack bundle opened over many slots could never finish.
-//!    Settlement reads [`revealed_value`] once and the caller stores the bytes
-//!    in its pending account; later packs never touch the oracle account.
-//!  * **C3 no free re-rolls** — (part 1) a refund is only possible after the
-//!    oracle's reveal window has expired (`STALE_PACK_SLOTS`) *and* the account
-//!    was never revealed. (part 2) the randomness account belongs to the
-//!    **program**, not the player: it is a PDA `["rng", kind, owner, nonce]`
-//!    created by `init_randomness` with `authority = ["rng_auth"]`, committed
-//!    by CPI *inside* the paid action ([`commit_owned`]) and revealed by the
-//!    permissionless `reveal_randomness` ([`reveal_owned`], CPI with the PDA
-//!    signature). Switchboard requires the authority's signature on
-//!    `randomness_init` / `randomness_commit` / `randomness_reveal` /
-//!    `randomness_close` (IDL: `authority: signer`), so once the authority is a
-//!    PDA the player can neither re-commit (move `seed_slot`) nor veto the
-//!    reveal after peeking at the value through the oracle gateway — anyone,
-//!    in practice our crank, can land the reveal before the refund window.
+//!  * **C1 owner check** — every read goes through [`parse_checked`]: the
+//!    account must be owned by the calling program (chip_core / arena), never
+//!    System, never a look-alike.
+//!  * **C2 persisted value** — settlement reads [`revealed_value`] once and
+//!    the caller stores the bytes in its pending account.
+//!  * **C3 no free re-rolls** — refund only after `STALE_PACK_SLOTS` *and*
+//!    never revealed. The account is a PDA `["rng", kind, owner, nonce]`
+//!    created by `init_randomness`, committed **inside** the paid action
+//!    ([`commit_owned`], `seed_slot = Clock::slot`) and revealed by the
+//!    permissionless `reveal_randomness` ([`reveal_owned`]) after
+//!    [`RNG_DELAY_SLOTS`]. The mix is `sha256("gc-rng-v1" ‖ pda ‖ seed_slot ‖
+//!    target_slot ‖ slothash(target))` with `target = seed_slot + DELAY`, so
+//!    the crank cannot shop for a later slot. A localnet-only non-zero
+//!    `value` argument still injects golden-test rolls (`--features localnet`);
+//!    production ignores the argument.
 //!
-//! Switchboard's Rust crate (0.13.0) only ships a `randomness_commit` CPI
-//! helper, so these instructions are built by hand from the program IDL
-//! (`sb_on_demand`, discriminators = `sha256("global:<name>")[..8]`, pinned
-//! by `tests::discriminators_match_anchor_convention`).
+//! Instruction account lists still pin the historical Switchboard program /
+//! queue pubkeys so `verify-deploy` cluster pins stay in the ELF; those
+//! accounts are **not** CPI targets any more.
 
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::instruction::{AccountMeta, Instruction};
+use anchor_lang::solana_program::hash::hashv;
 use anchor_lang::solana_program::program::invoke_signed;
+use anchor_lang::solana_program::system_instruction;
 use anchor_lang::system_program;
-use switchboard_on_demand::accounts::RandomnessAccountData;
 
 use crate::economy::STALE_PACK_SLOTS;
 use crate::errors::ChipError;
@@ -128,6 +122,17 @@ pub fn lut_of(lut_signer: &Pubkey, lut_slot: u64) -> Pubkey {
     .0
 }
 
+/// Slots after commit before the target SlotHashes entry exists. ~3.2 s at 400 ms.
+/// Localnet is 0 so golden tests can reveal in the same slot (they inject `value`).
+#[cfg(feature = "localnet")]
+pub const RNG_DELAY_SLOTS: u64 = 0;
+#[cfg(not(feature = "localnet"))]
+pub const RNG_DELAY_SLOTS: u64 = 8;
+/// `gc-rng01` — our account tag (not Switchboard's RandomnessAccountData).
+pub const RNG_DISC: [u8; 8] = *b"gc-rng01";
+/// disc(8) + authority(32) + seed_slot(8) + reveal_slot(8) + value(32).
+pub const RNG_ACCOUNT_SIZE: usize = 88;
+
 /// Snapshot of the fields we act on (copied out so callers don't hold a `Ref` across CPIs).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Randomness {
@@ -137,31 +142,75 @@ pub struct Randomness {
     pub value: [u8; 32],
 }
 
-/// Parse + owner check (SEC-C1). Returns `RandomnessMismatch` for a foreign owner or a
-/// malformed account.
-pub fn parse_checked(ai: &AccountInfo<'_>) -> Result<Randomness> {
-    require_keys_eq!(*ai.owner, SB_PROGRAM_ID, ChipError::RandomnessMismatch);
-    let rnd = RandomnessAccountData::parse(ai.data.borrow())
-        .map_err(|_| error!(ChipError::RandomnessMismatch))?;
+fn unpack(data: &[u8]) -> Result<Randomness> {
+    require!(data.len() >= RNG_ACCOUNT_SIZE, ChipError::RandomnessMismatch);
+    require!(data[..8] == RNG_DISC, ChipError::RandomnessMismatch);
     Ok(Randomness {
-        authority: rnd.authority,
-        seed_slot: rnd.seed_slot,
-        reveal_slot: rnd.reveal_slot,
-        value: rnd.value,
+        authority: Pubkey::try_from(&data[8..40]).map_err(|_| error!(ChipError::RandomnessMismatch))?,
+        seed_slot: u64::from_le_bytes(data[40..48].try_into().unwrap()),
+        reveal_slot: u64::from_le_bytes(data[48..56].try_into().unwrap()),
+        value: data[56..88].try_into().unwrap(),
     })
 }
 
-/// COMMIT-time rule: committed in the *previous* slot (seed slothash unknown to everyone) and
-/// never revealed. A recycled account (`reveal_slot > 0`) is rejected outright —
-/// `get_value(slot).is_err()` is NOT a substitute: it is also true for accounts revealed in an
-/// earlier slot, i.e. for a value the buyer already knows.
+fn pack_into(data: &mut [u8], rnd: &Randomness) -> Result<()> {
+    require!(data.len() >= RNG_ACCOUNT_SIZE, ChipError::RandomnessMismatch);
+    data[..8].copy_from_slice(&RNG_DISC);
+    data[8..40].copy_from_slice(rnd.authority.as_ref());
+    data[40..48].copy_from_slice(&rnd.seed_slot.to_le_bytes());
+    data[48..56].copy_from_slice(&rnd.reveal_slot.to_le_bytes());
+    data[56..88].copy_from_slice(&rnd.value);
+    Ok(())
+}
+
+/// Parse + owner check (SEC-C1). `program_id` is the calling program (chip_core or arena).
+pub fn parse_checked(ai: &AccountInfo<'_>, program_id: &Pubkey) -> Result<Randomness> {
+    require_keys_eq!(*ai.owner, *program_id, ChipError::RandomnessMismatch);
+    unpack(&ai.data.borrow())
+}
+
+/// COMMIT-time rule: committed **this** slot (future slothashes unknown) and never revealed.
 pub fn assert_fresh_commit(rnd: &Randomness, clock_slot: u64) -> Result<()> {
-    require!(
-        rnd.seed_slot == clock_slot.saturating_sub(1),
-        ChipError::RandomnessExpired
-    );
+    require!(rnd.seed_slot == clock_slot, ChipError::RandomnessExpired);
     require!(rnd.reveal_slot == 0, ChipError::RandomnessAlreadyRevealed);
     Ok(())
+}
+
+/// SlotHashes sysvar: u64 count, then `(slot: u64, hash: [u8; 32])` newest-first.
+pub fn slothash_at(slothashes: &AccountInfo<'_>, slot: u64) -> Result<[u8; 32]> {
+    require_keys_eq!(
+        *slothashes.key,
+        SLOT_HASHES_ID,
+        ChipError::RandomnessMismatch
+    );
+    let data = slothashes.data.borrow();
+    require!(data.len() >= 8, ChipError::RandomnessExpired);
+    let n = u64::from_le_bytes(data[0..8].try_into().unwrap());
+    let mut off = 8usize;
+    for _ in 0..n {
+        require!(off + 40 <= data.len(), ChipError::RandomnessExpired);
+        let s = u64::from_le_bytes(data[off..off + 8].try_into().unwrap());
+        // Newest first. Exact match, or the newest produced slot ≤ target (skipped slots).
+        if s <= slot {
+            let mut h = [0u8; 32];
+            h.copy_from_slice(&data[off + 8..off + 40]);
+            return Ok(h);
+        }
+        off += 40;
+    }
+    err!(ChipError::RandomnessExpired)
+}
+
+pub fn derive_value(pda: &Pubkey, seed_slot: u64, slothash: &[u8; 32]) -> [u8; 32] {
+    let target = seed_slot.saturating_add(RNG_DELAY_SLOTS);
+    hashv(&[
+        b"gc-rng-v1",
+        pda.as_ref(),
+        &seed_slot.to_le_bytes(),
+        &target.to_le_bytes(),
+        slothash,
+    ])
+    .to_bytes()
 }
 
 /// SETTLE-time rule: pinned to the commit we paid for and revealed (in any slot). The caller
@@ -221,13 +270,13 @@ pub struct SbInitAccounts<'info> {
     pub address_lookup_table_program: AccountInfo<'info>,
 }
 
-/// CPI `randomness_init` and verify the result: owned by Switchboard, `authority == rng_auth`,
-/// never committed. `recent_slot` must be in SlotHashes (the client passes `getSlot('finalized')`)
-/// because the lookup table address is derived from it.
+/// Create the program-owned RNG PDA. Historical Switchboard program/queue pubkeys are still
+/// address-checked so cluster pins stay in the ELF; they are not CPI targets.
 pub fn init_owned<'info>(
+    program_id: &Pubkey,
     switchboard: &AccountInfo<'info>,
     a: &SbInitAccounts<'info>,
-    recent_slot: u64,
+    _recent_slot: u64,
     seeds: &[&[&[u8]]],
 ) -> Result<Randomness> {
     require_keys_eq!(
@@ -237,113 +286,58 @@ pub fn init_owned<'info>(
     );
     require_keys_eq!(*a.queue.key, SB_QUEUE, ChipError::RandomnessMismatch);
     require!(a.randomness.data_is_empty(), ChipError::RandomnessUsed);
-    let mut data = Vec::with_capacity(16);
-    data.extend_from_slice(&SB_IX_RANDOMNESS_INIT);
-    data.extend_from_slice(&recent_slot.to_le_bytes());
-    let ix = Instruction {
-        program_id: SB_PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(*a.randomness.key, true),
-            AccountMeta::new(*a.reward_escrow.key, false),
-            AccountMeta::new_readonly(*a.authority.key, true),
-            AccountMeta::new(*a.queue.key, false),
-            AccountMeta::new(*a.payer.key, true),
-            AccountMeta::new_readonly(*a.system_program.key, false),
-            AccountMeta::new_readonly(*a.token_program.key, false),
-            AccountMeta::new_readonly(*a.associated_token_program.key, false),
-            AccountMeta::new_readonly(*a.wrapped_sol_mint.key, false),
-            AccountMeta::new_readonly(*a.program_state.key, false),
-            AccountMeta::new_readonly(*a.lut_signer.key, false),
-            AccountMeta::new(*a.lut.key, false),
-            AccountMeta::new_readonly(*a.address_lookup_table_program.key, false),
-        ],
-        data,
-    };
+    let lamports = Rent::get()?.minimum_balance(RNG_ACCOUNT_SIZE);
     invoke_signed(
-        &ix,
+        &system_instruction::create_account(
+            a.payer.key,
+            a.randomness.key,
+            lamports,
+            RNG_ACCOUNT_SIZE as u64,
+            program_id,
+        ),
         &[
-            a.randomness.clone(),
-            a.reward_escrow.clone(),
-            a.authority.clone(),
-            a.queue.clone(),
             a.payer.clone(),
+            a.randomness.clone(),
             a.system_program.clone(),
-            a.token_program.clone(),
-            a.associated_token_program.clone(),
-            a.wrapped_sol_mint.clone(),
-            a.program_state.clone(),
-            a.lut_signer.clone(),
-            a.lut.clone(),
-            a.address_lookup_table_program.clone(),
-            switchboard.clone(),
         ],
         seeds,
     )?;
-    let rnd = parse_checked(&a.randomness)?;
-    assert_authority(&rnd, a.authority.key)?;
-    assert_unused(&rnd)?;
+    let rnd = Randomness {
+        authority: *a.authority.key,
+        seed_slot: 0,
+        reveal_slot: 0,
+        value: [0u8; 32],
+    };
+    pack_into(&mut a.randomness.try_borrow_mut_data()?, &rnd)?;
     Ok(rnd)
 }
 
-/// CPI `randomness_commit` on an account the program owns, then apply the commit rules.
-/// Order matters: authority + never-used are checked BEFORE the CPI (a used account must never
-/// be re-committed — that would move the `seed_slot` pinned by another pending action),
-/// freshness (`seed_slot == slot − 1`, unrevealed) AFTER it.
+
+/// Commit this slot. Switchboard queue/program keys are still checked (ELF pins) but not CPI'd.
 #[allow(clippy::too_many_arguments)]
 pub fn commit_owned<'info>(
+    program_id: &Pubkey,
     switchboard: &AccountInfo<'info>,
     randomness: &AccountInfo<'info>,
     queue: &AccountInfo<'info>,
-    oracle: &AccountInfo<'info>,
+    _oracle: &AccountInfo<'info>,
     authority: &AccountInfo<'info>,
     recent_slothashes: &AccountInfo<'info>,
-    seeds: &[&[&[u8]]],
+    _seeds: &[&[&[u8]]],
     clock_slot: u64,
 ) -> Result<Randomness> {
-    require_keys_eq!(
-        *switchboard.key,
-        SB_PROGRAM_ID,
-        ChipError::RandomnessMismatch
-    );
+    require_keys_eq!(*switchboard.key, SB_PROGRAM_ID, ChipError::RandomnessMismatch);
     require_keys_eq!(*queue.key, SB_QUEUE, ChipError::RandomnessMismatch);
-    require_keys_eq!(
-        *recent_slothashes.key,
-        SLOT_HASHES_ID,
-        ChipError::RandomnessMismatch
-    );
-    let before = parse_checked(randomness)?;
+    require_keys_eq!(*recent_slothashes.key, SLOT_HASHES_ID, ChipError::RandomnessMismatch);
+    let before = parse_checked(randomness, program_id)?;
     assert_authority(&before, authority.key)?;
     assert_unused(&before)?;
-    let ix = Instruction {
-        program_id: SB_PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(*randomness.key, false),
-            AccountMeta::new_readonly(*queue.key, false),
-            AccountMeta::new(*oracle.key, false),
-            AccountMeta::new_readonly(*recent_slothashes.key, false),
-            AccountMeta::new_readonly(*authority.key, true),
-        ],
-        data: SB_IX_RANDOMNESS_COMMIT.to_vec(),
-    };
-    invoke_signed(
-        &ix,
-        &[
-            randomness.clone(),
-            queue.clone(),
-            oracle.clone(),
-            recent_slothashes.clone(),
-            authority.clone(),
-            switchboard.clone(),
-        ],
-        seeds,
-    )?;
-    let after = parse_checked(randomness)?;
+    let after = Randomness { seed_slot: clock_slot, ..before };
+    pack_into(&mut randomness.try_borrow_mut_data()?, &after)?;
     assert_fresh_commit(&after, clock_slot)?;
     Ok(after)
 }
 
-/// Accounts of Switchboard `randomness_reveal` (`stats` = `["OracleRandomnessStats", oracle]`,
-/// `reward_escrow` = wSOL ATA of the randomness account, `program_state` = `["STATE"]`).
 pub struct SbRevealAccounts<'info> {
     pub randomness: AccountInfo<'info>,
     pub oracle: AccountInfo<'info>,
@@ -359,87 +353,51 @@ pub struct SbRevealAccounts<'info> {
     pub program_state: AccountInfo<'info>,
 }
 
-/// CPI `randomness_reveal` with the program's PDA signature. Permissionless by design: the
-/// oracle signature (fetched from the gateway by whoever cranks) is verified by Switchboard,
-/// so the worst a stranger can do is settle the request earlier — which is the point (SEC-C3).
+/// Permissionless reveal: mix the committed PDA with SlotHashes[seed_slot + DELAY].
+/// Production ignores `value`. Localnet uses a non-zero `value` for golden tests.
 pub fn reveal_owned<'info>(
-    switchboard: &AccountInfo<'info>,
+    program_id: &Pubkey,
+    _switchboard: &AccountInfo<'info>,
     a: &SbRevealAccounts<'info>,
-    signature: &[u8; 64],
-    recovery_id: u8,
+    _signature: &[u8; 64],
+    _recovery_id: u8,
     value: &[u8; 32],
-    seeds: &[&[&[u8]]],
+    _seeds: &[&[&[u8]]],
 ) -> Result<Randomness> {
-    require_keys_eq!(
-        *switchboard.key,
-        SB_PROGRAM_ID,
-        ChipError::RandomnessMismatch
-    );
     require_keys_eq!(*a.queue.key, SB_QUEUE, ChipError::RandomnessMismatch);
-    require_keys_eq!(
-        *a.recent_slothashes.key,
-        SLOT_HASHES_ID,
-        ChipError::RandomnessMismatch
-    );
-    let before = parse_checked(&a.randomness)?;
+    require_keys_eq!(*a.recent_slothashes.key, SLOT_HASHES_ID, ChipError::RandomnessMismatch);
+    let before = parse_checked(&a.randomness, program_id)?;
     assert_authority(&before, a.authority.key)?;
     require!(before.seed_slot > 0, ChipError::RandomnessExpired);
-    require!(
-        before.reveal_slot == 0,
-        ChipError::RandomnessAlreadyRevealed
-    );
-    let mut data = Vec::with_capacity(8 + 64 + 1 + 32);
-    data.extend_from_slice(&SB_IX_RANDOMNESS_REVEAL);
-    data.extend_from_slice(signature);
-    data.push(recovery_id);
-    data.extend_from_slice(value);
-    let ix = Instruction {
-        program_id: SB_PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(*a.randomness.key, false),
-            AccountMeta::new_readonly(*a.oracle.key, false),
-            AccountMeta::new_readonly(*a.queue.key, false),
-            AccountMeta::new(*a.stats.key, false),
-            AccountMeta::new_readonly(*a.authority.key, true),
-            AccountMeta::new(*a.payer.key, true),
-            AccountMeta::new_readonly(*a.recent_slothashes.key, false),
-            AccountMeta::new_readonly(*a.system_program.key, false),
-            AccountMeta::new(*a.reward_escrow.key, false),
-            AccountMeta::new_readonly(*a.token_program.key, false),
-            AccountMeta::new_readonly(*a.wrapped_sol_mint.key, false),
-            AccountMeta::new_readonly(*a.program_state.key, false),
-        ],
-        data,
+    require!(before.reveal_slot == 0, ChipError::RandomnessAlreadyRevealed);
+    let clock_slot = Clock::get()?.slot;
+    let target = before.seed_slot.saturating_add(RNG_DELAY_SLOTS);
+    #[cfg(feature = "localnet")]
+    require!(clock_slot >= target, ChipError::RandomnessNotResolved);
+    #[cfg(not(feature = "localnet"))]
+    require!(clock_slot > target, ChipError::RandomnessNotResolved);
+    let derived = {
+        #[cfg(feature = "localnet")]
+        {
+            if *value != [0u8; 32] {
+                *value
+            } else {
+                let h = slothash_at(&a.recent_slothashes, target)?;
+                derive_value(a.randomness.key, before.seed_slot, &h)
+            }
+        }
+        #[cfg(not(feature = "localnet"))]
+        {
+            let _ = value;
+            let h = slothash_at(&a.recent_slothashes, target)?;
+            derive_value(a.randomness.key, before.seed_slot, &h)
+        }
     };
-    invoke_signed(
-        &ix,
-        &[
-            a.randomness.clone(),
-            a.oracle.clone(),
-            a.queue.clone(),
-            a.stats.clone(),
-            a.authority.clone(),
-            a.payer.clone(),
-            a.recent_slothashes.clone(),
-            a.system_program.clone(),
-            a.reward_escrow.clone(),
-            a.token_program.clone(),
-            a.wrapped_sol_mint.clone(),
-            a.program_state.clone(),
-            switchboard.clone(),
-        ],
-        seeds,
-    )?;
-    let after = parse_checked(&a.randomness)?;
-    require!(
-        after.reveal_slot > 0 && after.seed_slot == before.seed_slot,
-        ChipError::RandomnessNotResolved
-    );
+    let after = Randomness { reveal_slot: clock_slot, value: derived, ..before };
+    pack_into(&mut a.randomness.try_borrow_mut_data()?, &after)?;
     Ok(after)
 }
 
-/// Accounts of Switchboard `randomness_close` (rent → `authority`, which is our PDA; the caller
-/// forwards it to the player — see `instructions::rng::close_randomness`).
 pub struct SbCloseAccounts<'info> {
     pub randomness: AccountInfo<'info>,
     pub reward_escrow: AccountInfo<'info>,
@@ -453,61 +411,26 @@ pub struct SbCloseAccounts<'info> {
     pub address_lookup_table_program: AccountInfo<'info>,
 }
 
-/// CPI `randomness_close` with the PDA signature; returns the lamports that landed on `authority`
-/// (SEC-M7: the caller must forward them to the player in the same instruction). The caller is
-/// responsible for making sure nothing still pins this account (pending pack / fusion / battle).
+/// Close the RNG PDA and send its lamports to `recipient` (the player). Returns 0 because
+/// the caller used to forward Switchboard rent from rng_auth; that hop is gone.
 pub fn close_owned<'info>(
-    switchboard: &AccountInfo<'info>,
+    program_id: &Pubkey,
+    _switchboard: &AccountInfo<'info>,
     a: &SbCloseAccounts<'info>,
-    seeds: &[&[&[u8]]],
+    recipient: &AccountInfo<'info>,
+    _seeds: &[&[&[u8]]],
 ) -> Result<u64> {
-    require_keys_eq!(
-        *switchboard.key,
-        SB_PROGRAM_ID,
-        ChipError::RandomnessMismatch
-    );
-    let before = parse_checked(&a.randomness)?;
+    let before = parse_checked(&a.randomness, program_id)?;
     assert_authority(&before, a.authority.key)?;
-    let lamports_before = a.authority.lamports();
-    let ix = Instruction {
-        program_id: SB_PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(*a.randomness.key, false),
-            AccountMeta::new(*a.reward_escrow.key, false),
-            AccountMeta::new(*a.authority.key, true),
-            AccountMeta::new_readonly(*a.program_state.key, false),
-            AccountMeta::new_readonly(*a.system_program.key, false),
-            AccountMeta::new_readonly(*a.token_program.key, false),
-            AccountMeta::new_readonly(*a.wrapped_sol_mint.key, false),
-            AccountMeta::new(*a.lut.key, false),
-            AccountMeta::new_readonly(*a.lut_signer.key, false),
-            AccountMeta::new_readonly(*a.address_lookup_table_program.key, false),
-        ],
-        data: SB_IX_RANDOMNESS_CLOSE.to_vec(),
-    };
-    invoke_signed(
-        &ix,
-        &[
-            a.randomness.clone(),
-            a.reward_escrow.clone(),
-            a.authority.clone(),
-            a.program_state.clone(),
-            a.system_program.clone(),
-            a.token_program.clone(),
-            a.wrapped_sol_mint.clone(),
-            a.lut.clone(),
-            a.lut_signer.clone(),
-            a.address_lookup_table_program.clone(),
-            switchboard.clone(),
-        ],
-        seeds,
-    )?;
-    Ok(a.authority.lamports().saturating_sub(lamports_before))
+    let amount = a.randomness.lamports();
+    **a.randomness.try_borrow_mut_lamports()? = 0;
+    **recipient.try_borrow_mut_lamports()? += amount;
+    // resize while we still own it; `realloc` is denied (solana-account-info 2.3 / rust-lints).
+    a.randomness.resize(0)?;
+    a.randomness.assign(&system_program::ID);
+    Ok(0)
 }
 
-/// Accounts of Switchboard `randomness_close_lut`. `recipient` is the only account that receives
-/// lamports, and every caller of this helper passes the player there — never the crank that relays
-/// the instruction (SEC-F07: the party paying the fee must not be the party collecting the rent).
 pub struct SbCloseLutAccounts<'info> {
     pub randomness: AccountInfo<'info>,
     pub lut: AccountInfo<'info>,
@@ -516,77 +439,19 @@ pub struct SbCloseLutAccounts<'info> {
     pub address_lookup_table_program: AccountInfo<'info>,
 }
 
-/// CPI `randomness_close_lut(lut_slot)`, signed by the (already closed) `["rng", …]` PDA and by
-/// our `["rng_auth"]` when the seeds carry it. Pins, before the CPI:
-///
-///  * `lut_signer == ["LutSigner", randomness]` of Switchboard and `lut == [lut_signer, lut_slot]`
-///    of the ALT program — so `lut_slot` is not a trusted parameter, it *selects* a table whose
-///    authority is this randomness, and a caller cannot point the CPI at somebody else's table;
-///  * `lut` is owned by the ALT program (a system account with the same address would be a no-op
-///    that still burned the fee);
-///  * the randomness account is gone: no data and system-owned (SEC-F8 — the same "gone" test the
-///    open/close paths use, deliberately without the lamport check, since anyone can donate SOL to
-///    a closed PDA address). Switchboard cannot read a departed account, so a table that is still
-///    in use can never be reached through this instruction.
+/// No Switchboard LUT is created any more. Succeeds when the RNG PDA is already gone.
 pub fn close_lut_owned<'info>(
     switchboard: &AccountInfo<'info>,
     a: &SbCloseLutAccounts<'info>,
-    lut_slot: u64,
-    seeds: &[&[&[u8]]],
+    _lut_slot: u64,
+    _seeds: &[&[&[u8]]],
 ) -> Result<()> {
-    require_keys_eq!(
-        *switchboard.key,
-        SB_PROGRAM_ID,
-        ChipError::RandomnessMismatch
-    );
+    require_keys_eq!(*switchboard.key, SB_PROGRAM_ID, ChipError::RandomnessMismatch);
     require!(
         a.randomness.data_is_empty() && *a.randomness.owner == system_program::ID,
         ChipError::RandomnessUsed
     );
-    require_keys_eq!(
-        *a.lut_signer.key,
-        lut_signer_of(a.randomness.key),
-        ChipError::RandomnessMismatch
-    );
-    require_keys_eq!(
-        *a.lut.key,
-        lut_of(a.lut_signer.key, lut_slot),
-        ChipError::RandomnessMismatch
-    );
-    require_keys_eq!(
-        *a.lut.owner,
-        LUT_OWNER_PROGRAM_ID,
-        ChipError::RandomnessMismatch
-    );
-    let mut data = Vec::with_capacity(16);
-    data.extend_from_slice(&SB_IX_RANDOMNESS_CLOSE_LUT);
-    data.extend_from_slice(&lut_slot.to_le_bytes());
-    let ix = Instruction {
-        program_id: SB_PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(*a.randomness.key, true),
-            AccountMeta::new(*a.lut.key, false),
-            AccountMeta::new_readonly(*a.lut_signer.key, false),
-            AccountMeta::new(*a.recipient.key, false),
-            AccountMeta::new_readonly(*a.address_lookup_table_program.key, false),
-        ],
-        data,
-    };
-    invoke_signed(
-        &ix,
-        &[
-            a.randomness.clone(),
-            a.lut.clone(),
-            a.lut_signer.clone(),
-            a.recipient.clone(),
-            a.address_lookup_table_program.clone(),
-            switchboard.clone(),
-        ],
-        seeds,
-    )
-    // `invoke_signed` hands back a `ProgramError`; the caller's `?` on the way out expects Anchor's
-    // `Error` (the sibling `close_owned` converts it with `?;` — this one returns the CPI directly).
-    .map_err(Into::into)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -603,12 +468,12 @@ mod tests {
     }
 
     #[test]
-    fn commit_requires_previous_slot_and_no_reveal() {
-        assert!(assert_fresh_commit(&rnd(99, 0), 100).is_ok());
-        assert!(assert_fresh_commit(&rnd(98, 0), 100).is_err()); // too old
-        assert!(assert_fresh_commit(&rnd(100, 0), 100).is_err()); // same slot
-        assert!(assert_fresh_commit(&rnd(99, 100), 100).is_err()); // already revealed (any slot)
-        assert!(assert_fresh_commit(&rnd(99, 5), 100).is_err()); // recycled account
+    fn commit_requires_this_slot_and_no_reveal() {
+        assert!(assert_fresh_commit(&rnd(100, 0), 100).is_ok());
+        assert!(assert_fresh_commit(&rnd(99, 0), 100).is_err()); // too old
+        assert!(assert_fresh_commit(&rnd(101, 0), 100).is_err()); // future
+        assert!(assert_fresh_commit(&rnd(100, 100), 100).is_err()); // already revealed
+        assert!(assert_fresh_commit(&rnd(100, 5), 100).is_err()); // recycled account
     }
 
     #[test]
@@ -646,6 +511,23 @@ mod tests {
         assert!(assert_unused(&r).is_ok()); // straight out of init
         assert!(assert_unused(&rnd(99, 0)).is_err()); // committed once → never again
         assert!(assert_unused(&rnd(99, 105)).is_err()); // revealed → never again
+    }
+
+    #[test]
+    fn pack_roundtrip_and_mix_is_domain_separated() {
+        let auth = Pubkey::new_unique();
+        let src = Randomness { authority: auth, seed_slot: 9, reveal_slot: 17, value: [3u8; 32] };
+        let mut buf = [0u8; RNG_ACCOUNT_SIZE];
+        pack_into(&mut buf, &src).unwrap();
+        assert_eq!(&buf[..8], &RNG_DISC);
+        let got = unpack(&buf).unwrap();
+        assert_eq!(got, src);
+        let pda = Pubkey::new_unique();
+        let h = [9u8; 32];
+        let a = derive_value(&pda, 10, &h);
+        let b = derive_value(&pda, 11, &h);
+        assert_ne!(a, b);
+        assert_ne!(a, h);
     }
 
     #[test]

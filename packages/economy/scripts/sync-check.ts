@@ -14,6 +14,7 @@ import { MATCHMAKING, MATCH_REWARDS, WAGER } from '../src/pvp.ts';
 import { REWARD_ROOT_KINDS, SKR_ROOT_KIND_BASE, DEFAULT_MAX_SKR_ROOT_BUDGET_MICRO, ITEM_ROOT_KIND_BASE, ITEM_REWARDS, CHIP_ROOT_KIND_BASE, CHIP_VOUCHER_REWARDS } from '../src/skrRewards.ts';
 import { QUEST_CHIP_TEMPLATES, DAILY_QUESTS, WEEKLY_QUESTS, PERMANENT_QUESTS } from '../src/faucets.ts';
 import { PYTH_FEEDS, PYTH_MAX_AGE_SECS, PYTH_SLIPPAGE_BPS, PYTH_MAX_CONF_BPS, PYTH_PUSHER, PYTH_WORST_CASE_AGE_S, PYTH_PROGRAMS } from '../src/oracle.ts';
+import { FX } from '../src/fx.ts';
 
 const root = resolve(import.meta.dirname, '../../..');
 /**
@@ -82,6 +83,9 @@ check('stale pack slots (client)', int(line(rs('client/src/chain/ix/chipCore.ts'
 
 // ---- price oracle (Pyth) — owner decision Q7: own pusher, 60 s max age, 1 % slippage ----
 const packsRs = rs('programs/chip_core/src/instructions/packs.rs');
+check('fx sol usd (rust)', int(line(econ, /FX_SOL_USD: u64 = ([\d_]+)/)), FX.solUsd);
+check('fx skr micro per usd cent (rust)', int(line(econ, /FX_SKR_MICRO_PER_USD_CENT: u64 = ([\d_]+)/)), FX.skrMicroPerUsdCent);
+check('fx usdc micro per usd cent (rust)', int(line(econ, /FX_USDC_MICRO_PER_USD_CENT: u64 = ([\d_]+)/)), FX.usdcMicroPerUsdCent);
 check('pyth max age (rust)', int(line(econ, /SOL_PRICE_MAX_AGE_SECS: u64 = ([\d_]+)/)), PYTH_MAX_AGE_SECS);
 check('pyth slippage bps (rust)', int(line(econ, /SLIPPAGE_BPS: u16 = ([\d_]+)/)), PYTH_SLIPPAGE_BPS);
 check('pyth max conf bps (rust, SEC-M2)', int(line(econ, /PYTH_MAX_CONF_BPS: u64 = ([\d_]+)/)), PYTH_MAX_CONF_BPS);
@@ -96,10 +100,12 @@ const pythRs = rs('programs/chip_core/src/pyth.rs');
 const servicesRs = rs('programs/chip_core/src/instructions/services.rs');
 check('pyth receiver id (rust)', line(pythRs, /pub const PYTH_RECEIVER: Pubkey = pubkey!\("([^"]+)"\)/), PYTH_PROGRAMS.receiver);
 check('price_update stays an UncheckedAccount (idl-build)', /price_update:\s*Option<Account<'info,\s*PriceUpdateV2>>/.test(packsRs + servicesRs), false);
-check('price_update is owner-pinned + loaded (both price paths)', (packsRs.match(/owner = crate::pyth::PYTH_RECEIVER @ ChipError::StalePrice/g) ?? []).length + (servicesRs.match(/owner = crate::pyth::PYTH_RECEIVER @ ChipError::StalePrice/g) ?? []).length, 2);
+check('price_update is not owner-pinned (checkout ignores it)', (packsRs.match(/owner = crate::pyth::PYTH_RECEIVER @ ChipError::StalePrice/g) ?? []).length + (servicesRs.match(/owner = crate::pyth::PYTH_RECEIVER @ ChipError::StalePrice/g) ?? []).length, 0);
 const pythLoads = (packsRs.match(/crate::pyth::load\(/g) ?? []).length + (servicesRs.match(/crate::pyth::load\(/g) ?? []).length;
-check('pyth::load on every oracle read (SOL + SKR, packs + services)', pythLoads, 4);
-check('Pyth account is bound to GameConfig (packs + services)', (packsRs.includes('require_keys_eq!(supplied.key(), expected, ChipError::StalePrice)') && servicesRs.includes('require_keys_eq!(supplied.key(), expected, ChipError::StalePrice)')), true);
+check('checkout does not load Pyth (packs + services)', pythLoads, 0);
+check('buy_pack/pay_service do not require GameConfig Pyth feeds', !(packsRs.includes('require_keys_eq!(supplied.key(), expected, ChipError::StalePrice)') || servicesRs.includes('require_keys_eq!(supplied.key(), expected, ChipError::StalePrice)')), true);
+check('buy_pack uses frozen FX', packsRs.includes('fx_sol_lamports') && packsRs.includes('fx_skr_micro'), true);
+check('pay_service uses frozen FX', servicesRs.includes('fx_sol_lamports') && servicesRs.includes('fx_skr_micro'), true);
 const fusionRs = rs('programs/chip_core/src/instructions/fusion.rs');
 check('redundant Core Attributes plugin removed from mint paths', (packsRs + fusionRs).includes('Plugin::Attributes'), false);
 const idsTs = rs('client/src/chain/ids.ts');

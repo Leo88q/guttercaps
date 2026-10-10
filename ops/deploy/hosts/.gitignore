@@ -1,0 +1,6 @@
+# Filled copies of the *.example templates. The examples stay tracked; a paste of
+# SESSION_SECRET / RPC keys into this directory must not be one `git add -A` away
+# from the public repo (same reason ops/deploy/secrets/ ignores *).
+*
+!.gitignore
+!*.example

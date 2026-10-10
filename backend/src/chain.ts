@@ -11,7 +11,7 @@ import { PublicKey, TransactionInstruction, type AccountMeta } from '@solana/web
 import { sha256 } from '@noble/hashes/sha256';
 import { keccak_256 } from '@noble/hashes/sha3';
 import { BorshReader, BorshWriter } from './borsh.ts';
-import { PROGRAMS, SWITCHBOARD_PROGRAM_ID } from './config.ts';
+import { PROGRAMS, SWITCHBOARD_PROGRAM_ID, SWITCHBOARD_QUEUE } from './config.ts';
 
 // ---------------------------------------------------------------- ids
 export const CHIP_CORE_ID = PROGRAMS.chip_core;
@@ -309,19 +309,55 @@ export function decodeWagerBattle(data: Uint8Array): WagerBattle {
   };
 }
 
-// ---------------------------------------------------------------- Switchboard accounts (raw layouts, no SDK)
+// ---------------------------------------------------------------- in-house RNG PDA (programs/chip_core/src/randomness.rs)
+/** Matches `RNG_DELAY_SLOTS` on chain. */
+export const RNG_DELAY_SLOTS = 8n;
+const RNG_DISC = enc('gc-rng01');
 /**
- * `RandomnessAccountData` (sb_on_demand IDL, bytemuck, 480 bytes): authority @8, queue @40,
- * seed_slothash @72, seed_slot @104, oracle @112, reveal_slot @144, value @152, lut_slot @184.
+ * Program-owned RngAccount: disc @0, authority @8, seed_slot @40, reveal_slot @48, value @56 (88 bytes).
+ * `queue` / `oracle` / `lutSlot` are dummy fields so existing ix builders keep compiling.
  */
-export const RANDOMNESS_ACCOUNT_SIZE = 480;
+export const RANDOMNESS_ACCOUNT_SIZE = 88;
 export interface RandomnessData {
   authority: PublicKey; queue: PublicKey; seedSlothash: Uint8Array; seedSlot: bigint; oracle: PublicKey; revealSlot: bigint; value: Uint8Array; lutSlot: bigint;
 }
 export function decodeRandomness(data: Uint8Array): RandomnessData {
-  const r = expectDiscriminator(data, 'RandomnessAccountData');
-  if (data.length < RANDOMNESS_ACCOUNT_SIZE) throw new Error(`RandomnessAccountData: ${data.length} bytes`);
-  return { authority: r.pubkey(), queue: r.pubkey(), seedSlothash: r.bytes(32), seedSlot: r.u64(), oracle: r.pubkey(), revealSlot: r.u64(), value: r.bytes(32), lutSlot: r.u64() };
+  if (data.length < RANDOMNESS_ACCOUNT_SIZE) throw new Error(`RngAccount: ${data.length} bytes`);
+  for (let i = 0; i < 8; i++) if (data[i] !== RNG_DISC[i]) throw new Error('RngAccount discriminator mismatch');
+  const r = new BorshReader(data, 8);
+  const authority = r.pubkey();
+  const seedSlot = r.u64();
+  const revealSlot = r.u64();
+  const value = r.bytes(32);
+  const queue = new PublicKey(SWITCHBOARD_QUEUE);
+  return { authority, queue, seedSlothash: new Uint8Array(32), seedSlot, oracle: queue, revealSlot, value, lutSlot: 0n };
+}
+
+function u64leBuf(n: bigint): Uint8Array {
+  return new BorshWriter().u64(n).toBytes();
+}
+
+/** Same mix as `chip_core::randomness::derive_value`. */
+export function deriveGcRngValue(pda: PublicKey, seedSlot: bigint, slothash: Uint8Array): Uint8Array {
+  const target = seedSlot + RNG_DELAY_SLOTS;
+  const parts = [enc('gc-rng-v1'), pda.toBytes(), u64leBuf(seedSlot), u64leBuf(target), slothash];
+  const all = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let o = 0;
+  for (const p of parts) { all.set(p, o); o += p.length; }
+  return sha256(all);
+}
+
+/** Newest SlotHashes entry with `slot <= target`. */
+export function slothashAtOrBefore(data: Uint8Array, target: bigint): Uint8Array | null {
+  if (data.length < 8) return null;
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const n = dv.getBigUint64(0, true);
+  if (n < 1n || n > 512n || data.length < 8 + Number(n) * 40) return null;
+  for (let i = 0; i < Number(n); i++) {
+    const slot = dv.getBigUint64(8 + i * 40, true);
+    if (slot <= target) return data.subarray(8 + i * 40 + 8, 8 + i * 40 + 40);
+  }
+  return null;
 }
 
 /** `OracleAccountData` (4816 bytes): gateway_uri[64] @3584 (NUL-padded), authority @3440, queue @3472. */

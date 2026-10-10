@@ -12,7 +12,7 @@ import { stakeCompressedChipIx, unstakeCompressedChipIx } from '@/chain/ix/staki
 import { closeRandomnessIx, initRandomnessIx, rngAccounts } from '@/chain/ix/rng';
 import { ARENA_ID, TOKEN_PROGRAM_ID } from '@/chain/ids';
 import { RNG_KIND, arenaConfigPda, ata, battlePda, seasonPoolAuthPda } from '@/chain/pdas';
-import { BATTLE_ORACLE, SB_MOCK_ID, SB_ORACLE, SB_QUEUE, TREASURY, binariesPresent, getEnv, tokenBalance, type Env } from './helpers/env';
+import { BATTLE_ORACLE, SB_ORACLE, SB_QUEUE, TREASURY, binariesPresent, getEnv, tokenBalance, type Env } from './helpers/env';
 import { Err, expectAnyFail, expectFail } from './helpers/expect';
 import { mintCompressedChips, nextNonce, stageClaim, valueOf } from './helpers/flows';
 import { forgeRandomness, randomnessAccount, revealIx } from './helpers/sbmock';
@@ -116,7 +116,7 @@ suite('T-L-A arena', () => {
     const rnd = (await randomnessAccount(env.chain, r.rng.randomness))!;
     expect(bt.commitSlot).toBe(rnd.seedSlot);
     expect(rnd.authority.equals(r.rng.rngAuth)).toBe(true);
-    expect((await env.chain.getAccount(r.rng.randomness))!.owner.equals(SB_MOCK_ID)).toBe(true);
+    expect((await env.chain.getAccount(r.rng.randomness))!.owner.equals(ARENA_ID)).toBe(true);
     expect(leagueOf(powerA)).toBeGreaterThanOrEqual(0);
     // MIN_SQUAD_POWER: three Commons (300) → SquadTooWeak
     const weak = await env.player({ usdc: 10_000_000_000n, cg: 1_000n * CG });
@@ -188,7 +188,7 @@ suite('T-L-A arena', () => {
     const real = (await env.chain.getAccount(r.rng.randomness))!;
     await env.chain.setAccount(r.rng.randomness, { owner: Keypair.generate().publicKey, data: real.data, lamports: real.lamports });
     await expectFail(env.chain.send([resolveBattleIx({ oracle: BATTLE_ORACLE.publicKey, challenger: a.publicKey, nonce: r.nonce, randomness: r.rng.randomness, winner: a.publicKey, resultHash: valueOf('h'), cgMint: env.mints.cg, seasonPool, treasuryCg })], { signers: [BATTLE_ORACLE] }), Err.arena('Randomness'), 'owner swapped');
-    await env.chain.setAccount(r.rng.randomness, { owner: SB_MOCK_ID, data: real.data, lamports: real.lamports });
+    await env.chain.setAccount(r.rng.randomness, { owner: ARENA_ID, data: real.data, lamports: real.lamports });
     await env.chain.send([revealIx({ kind: RNG_KIND.BATTLE, payer: env.admin.publicKey, randomness: r.rng.randomness, value: valueOf('A05') })], { signers: [env.admin] });
     await env.chain.send([resolveBattleIx({ oracle: BATTLE_ORACLE.publicKey, challenger: a.publicKey, nonce: r.nonce, randomness: r.rng.randomness, winner: a.publicKey, resultHash: valueOf('h'), cgMint: env.mints.cg, seasonPool, treasuryCg })], { signers: [BATTLE_ORACLE] });
   }, 600_000);

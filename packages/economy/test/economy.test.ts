@@ -8,6 +8,7 @@ import {
   skrPoolDueMicro, marketFeeTreasuryPartMicro, SKR_TREASURY_WALLET, SKR,
   unitsForCents, maxUnitsWithSlippage, pythPriceToUsd, pusherCostSolPerMonth, PYTH_FEEDS, PYTH_MAX_AGE_SECS, PYTH_PUSHER, PYTH_WORST_CASE_AGE_S, PYTH_SHARD_ID,
   effectivePythPrice, confBps, PythConfidenceError, PYTH_MAX_CONF_BPS,
+  FX, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, usdCentsFromSolLamports,
   resolveFight, botSquad, onChainSquadPower, onChainChipPower, squadSynergy, fightSquadPower, MATCHMAKING, elementOfCollection, type FighterChip,
   SEASON, seasonPayoutByRank,
   pvpDailyPotVolumeCg, ARENA_ORACLE_DAILY_CAP_DEFAULT_CG, BASELINE_ASSUMPTIONS, dailyFlows, FEES,
@@ -160,6 +161,28 @@ test('SKR pool funding policy is the owner\'s 15/10/5 and the due amount is exac
   assert.match(SKR_TREASURY_WALLET, /^[1-9A-HJ-NP-Za-km-z]{43,44}$/);
 });
 
+test('frozen checkout FX: integer floor, no floats', () => {
+  assert.equal(FX.solUsd, 110);
+  assert.equal(FX.skrUsd, 0.016);
+  assert.equal(solLamportsForUsdCents(199), 18_090_909n);
+  assert.equal(skrMicroForUsdCents(199), 124_375_000n);
+  assert.equal(usdcMicroForUsdCents(199), 1_990_000n);
+  assert.equal(solLamportsForUsdCents(599), 54_454_545n);
+  assert.equal(skrMicroForUsdCents(599), 374_375_000n);
+  const skrCents = Math.floor((599 * 9_500) / 10_000);
+  assert.equal(skrCents, 569);
+  assert.equal(skrMicroForUsdCents(skrCents), 355_625_000n);
+  assert.equal(usdCentsFromSolLamports(300_000_000n), 3_300n);
+  assert.equal(usdCentsFromSolLamports(999_000_000n), 10_989n);
+  assert.equal(usdcMicroForUsdCents(3_300n), 33_000_000n);
+  assert.equal(skrMicroForUsdCents(3_300n), 2_062_500_000n);
+  assert.equal(usdcMicroForUsdCents(10_989n), 109_890_000n);
+  assert.equal(skrMicroForUsdCents(10_989n), 6_868_125_000n);
+  assert.equal(CURRENCIES.find((c) => c.symbol === 'USDC')?.market, false);
+  assert.equal(CURRENCIES.find((c) => c.symbol === 'SKR')?.market, false);
+  assert.equal(CURRENCIES.find((c) => c.symbol === 'SOL')?.market, true);
+});
+
 test('Pyth policy (Q7 — own pusher): units_for_cents integers, slippage guard and the pusher timing budget', () => {
   // 4.99 USD at $150.00 (expo −8) → 0.033266666 SOL, floored like the program
   assert.equal(unitsForCents(499, 15_000_000_000n, -8, 9), 33_266_666n);
@@ -183,7 +206,7 @@ test('Pyth policy (Q7 — own pusher): units_for_cents integers, slippage guard 
   // feed ids and currency codes agree with tokenomics
   assert.equal(PYTH_FEEDS.SKR.feedIdHex, SKR.pythFeedIdHex);
   assert.deepEqual([PYTH_FEEDS.SOL.currency, PYTH_FEEDS.SKR.currency], [0, 3]);
-  assert.deepEqual(CURRENCIES.filter((c) => c.oracle).map((c) => c.oracle), ['pyth:SOL/USD', 'pyth:SKR/USD']);
+  assert.deepEqual(CURRENCIES.filter((c) => c.oracle).map((c) => c.oracle), ['fx:SOL/USD', 'fx:SKR/USD']);
   // timing budget: worst-case on-chain age < alert < max age; a quote must still have ≥ 15 s of life
   assert.equal(PYTH_MAX_AGE_SECS, 60);
   assert.equal(PYTH_WORST_CASE_AGE_S, PYTH_PUSHER.timeDifferenceS + PYTH_PUSHER.pushingFrequencyS + 5);

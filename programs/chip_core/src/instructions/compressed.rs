@@ -409,7 +409,7 @@ pub fn open_compressed_pack<'info>(
     let base = if ctx.accounts.pending.revealed {
         ctx.accounts.pending.value
     } else {
-        let rnd = randomness::parse_checked(&ctx.accounts.randomness)?;
+        let rnd = randomness::parse_checked(&ctx.accounts.randomness, ctx.program_id)?;
         let value = randomness::revealed_value(&rnd, ctx.accounts.pending.commit_slot)?;
         ctx.accounts.pending.value = value;
         ctx.accounts.pending.revealed = true;
@@ -861,7 +861,7 @@ pub struct FuseClaimsCommit<'info> {
     /// `init_randomness` in this tx and committed HERE by CPI (SEC-C3 part 2). Kind 3, never
     /// kind 1: a Core fusion and a claim fusion must not share one randomness PDA on any nonce.
     #[account(
-        mut, owner = randomness::SB_PROGRAM_ID @ ChipError::RandomnessMismatch,
+        mut, owner = crate::ID @ ChipError::RandomnessMismatch,
         seeds = [randomness::RNG_SEED, &[randomness::RNG_KIND_CLAIM_FUSION], owner.key().as_ref(), &nonce.to_le_bytes()], bump,
     )]
     pub randomness: UncheckedAccount<'info>,
@@ -1006,6 +1006,7 @@ pub fn fuse_claims_commit<'info>(
 
     let auth_seeds: &[&[u8]] = &[randomness::RNG_AUTH_SEED, &[ctx.bumps.rng_auth]];
     let rnd = randomness::commit_owned(
+        ctx.program_id,
         &ctx.accounts.switchboard_program.to_account_info(),
         &ctx.accounts.randomness.to_account_info(),
         &ctx.accounts.queue.to_account_info(),
@@ -1111,7 +1112,7 @@ pub fn fuse_claims_reveal<'info>(
 
     // Reveal is read in any slot after `reveal_slot` (persisted field), so a
     // crank or the player can settle whenever the reveal tx has landed (SEC-C2).
-    let rnd = randomness::parse_checked(&ctx.accounts.randomness)?;
+    let rnd = randomness::parse_checked(&ctx.accounts.randomness, ctx.program_id)?;
     let value = randomness::revealed_value(&rnd, ctx.accounts.pending.commit_slot)?;
     let roll = uniform_bps(&value, 0);
     let threshold = success_threshold(recipe, ctx.accounts.pending.boosted);
@@ -1335,7 +1336,7 @@ pub fn cancel_stale_claim_fusion<'info>(
 ) -> Result<()> {
     let clock = Clock::get()?;
     // Same rule as cancel_stale_fusion (SEC-C3): only an un-revealed request whose oracle window expired.
-    let rnd = randomness::parse_checked(&ctx.accounts.randomness)?;
+    let rnd = randomness::parse_checked(&ctx.accounts.randomness, ctx.program_id)?;
     randomness::assert_refundable(&rnd, ctx.accounts.pending.commit_slot, clock.slot)?;
 
     // SEC-M3: the oracle never answered → the fee goes back, 100 %

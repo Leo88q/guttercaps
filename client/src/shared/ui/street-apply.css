@@ -168,7 +168,7 @@ button.pill:hover{border-color:var(--st-lime)}
   font-family:var(--st-drip);font-size:34px;line-height:1.05;letter-spacing:.02em;color:var(--cg-chrome);
   text-shadow:0 2px 0 rgba(0,0,0,.45)}
 .page-title::after{opacity:.5}
-.modal-title{font-family:var(--st-drip);font-size:24px;line-height:1.05;color:var(--cg-chrome);
+.modal-title{font-family:var(--st-drip);font-size:24px;line-height:1.05;color:var(--cg-chrome);text-align:center;
   text-shadow:0 2px 0 rgba(0,0,0,.45)}
 .label{font-family:var(--st-ui);font-weight:600}
 .table th{font-family:var(--st-ui);letter-spacing:.06em;font-weight:600}
@@ -180,7 +180,7 @@ button.pill:hover{border-color:var(--st-lime)}
 
 /* ---------- modal: glass + spray stroke (inset — overflow would clip a negative one) ---------- */
 .modal-backdrop{background:rgba(8,8,12,.62);-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px)}
-.modal{position:relative;isolation:isolate;background:var(--st-glass);border:0;overflow:clip;
+.modal{position:relative;isolation:isolate;background:var(--st-glass);border:0;overflow:clip;text-align:center;
   border-radius:22px 34px 24px 38px/30px 24px 34px 26px;
   -webkit-backdrop-filter:blur(14px) saturate(1.4);backdrop-filter:blur(14px) saturate(1.4);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.12),inset 0 0 40px rgba(0,0,0,.25)}

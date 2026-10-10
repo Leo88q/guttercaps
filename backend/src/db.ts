@@ -211,6 +211,7 @@ CREATE TABLE IF NOT EXISTS preorders (
   sku         INTEGER NOT NULL,
   qty         INTEGER NOT NULL,                   -- Limited packs this row grants (chest = 4)
   offer       TEXT    NOT NULL DEFAULT 'pack',    -- pack | chest
+  currency    TEXT    NOT NULL DEFAULT 'SOL',     -- SOL | USDC | SKR (lamports column = native units of this)
   lamports    TEXT    NOT NULL,
   status      TEXT    NOT NULL DEFAULT 'intent',  -- intent | paid | granted | expired
   tx_sig      TEXT,
@@ -1001,6 +1002,7 @@ export class Db {
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_quest_completions_chip_unrooted ON quest_completions(chip_root_kind, wallet)`);
     const po = new Set((this.raw.prepare('PRAGMA table_info(preorders)').all() as { name: string }[]).map((c) => c.name));
     if (!po.has('offer')) this.raw.exec(`ALTER TABLE preorders ADD COLUMN offer TEXT NOT NULL DEFAULT 'pack'`);
+    if (!po.has('currency')) this.raw.exec(`ALTER TABLE preorders ADD COLUMN currency TEXT NOT NULL DEFAULT 'SOL'`);
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_preorders_offer ON preorders(offer, status)`);
   }
 

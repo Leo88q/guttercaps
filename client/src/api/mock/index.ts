@@ -4,7 +4,7 @@ import { isRightsPath, mockRights } from './rights';
 // and shared/lib/lore so what you see matches the modelled numbers.
 import {
   PACKS, FUSION_RECIPES, BOOSTER, RARITY_PROFILES, LOCK_TIERS, DAILY_QUESTS, WEEKLY_QUESTS, PERMANENT_QUESTS, MATCHMAKING, SEASON, FEES, SERVICES, REFERRAL,
-  packExpectedValueMult, probabilityAtLeast, effectiveOdds, bundlePriceCents, impliedApy, unitsForCents, maxUnitsWithSlippage, type PackId,
+  packExpectedValueMult, probabilityAtLeast, effectiveOdds, bundlePriceCents, impliedApy, FX, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, usdCentsFromSolLamports, type PackId,
   SKIN_BY_ID, PROFILE_THEME_BY_ID, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, PASS_TRACK, passTierForXp, xpToNext, CHIP_XP,
 } from '@guttercaps/economy';
 import { PYTH_PRICE_ACCOUNTS } from '@/chain/ids';
@@ -37,8 +37,8 @@ interface MockChip {
   listing?: { asset: string; seller: string; price: string; currency: 'SOL' | 'USDC'; priceUsd: number; createdAt: string };
 }
 
-const SOL_USD = 152.3;
-const SKR_USD = 0.0174;
+const SOL_USD = FX.solUsd;
+const SKR_USD = FX.skrUsd;
 const floorUsd = (r: number) => Number((3.5 * RARITY_PROFILES[r].valueMult * 0.62).toFixed(2));
 
 function makeChip(collection: number, rarity: number, owner = ME, opts: Partial<MockChip> = {}): MockChip {
@@ -176,7 +176,7 @@ const entitlements: { id: string; kind: number; payload: Record<string, unknown>
 on('get', '/me/services', () => ({ entitlements, dailyLeft: { '7': 3, '0': 1, '1': 1 } }));
 on('get', '/services', () => ({
   services: SERVICES.map((sv) => ({ id: sv.id, kind: sv.kind, name: sv.name, priceUsdCents: sv.priceUsdCents, dailyCap: sv.dailyCap, recurring: sv.recurring, quotes: {
-    SOL: String(Math.round((sv.priceUsdCents / 100 / SOL_USD) * 1e9 * 1.01)), USDC: String(sv.priceUsdCents * 10_000), CG: String(sv.priceUsdCents * 1_000_000), SKR: String(Math.round((sv.priceUsdCents / 100 / SKR_USD) * 1e6 * 1.01)),
+    SOL: String(solLamportsForUsdCents(sv.priceUsdCents)), USDC: String(usdcMicroForUsdCents(sv.priceUsdCents)), CG: String(sv.priceUsdCents * 1_000_000), SKR: String(skrMicroForUsdCents(sv.priceUsdCents)),
   } })),
   solUsd: SOL_USD, skrUsd: SKR_USD,
 }));
@@ -262,19 +262,16 @@ on('post', '/packs/quote', (o) => {
   const discountBps = b.currency === 'SKR' ? Math.min(bundleBps + FEES.skrPackDiscountBps, 3_000) : bundleBps;
   const cents = b.currency === 'SKR' ? Math.floor((p.priceUsdCents * b.qty * (10_000 - discountBps)) / 10_000) : baseCents;
   const pity = me().pity.counters[b.sku];
-  const volatile = b.currency === 'SOL' || b.currency === 'SKR';
-  // same integer formula as chip_core::units_for_cents, priced from a synthetic Pyth update (expo −8)
-  const pyth = b.currency === 'SKR' ? { price: BigInt(Math.round(SKR_USD * 1e8)), decimals: 6, account: PYTH_PRICE_ACCOUNTS.SKR.toBase58() } : { price: BigInt(Math.round(SOL_USD * 1e8)), decimals: 9, account: PYTH_PRICE_ACCOUNTS.SOL.toBase58() };
-  const amount = volatile ? unitsForCents(cents, pyth.price, -8, pyth.decimals)
-    : b.currency === 'USDC' ? BigInt(cents * 10_000)
+  const amount = b.currency === 'SOL' ? solLamportsForUsdCents(cents)
+    : b.currency === 'SKR' ? skrMicroForUsdCents(cents)
+    : b.currency === 'USDC' ? usdcMicroForUsdCents(cents)
     : BigInt(Math.floor(((p.priceCgMicro ?? 0) * b.qty * (10_000 - discountBps)) / 10_000));
-  const priceAgeS = 5 + Math.floor(rnd() * 25); // our pusher posts every ≈ 30 s
+  const cap = b.currency === 'SOL' || b.currency === 'SKR';
   return {
-    sku: b.sku, qty: b.qty, currency: b.currency, amount: String(amount), maxLamports: volatile ? String(maxUnitsWithSlippage(amount)) : '0', discountBps, priceUsdCents: cents,
+    sku: b.sku, qty: b.qty, currency: b.currency, amount: String(amount), maxLamports: cap ? String(amount) : '0', discountBps, priceUsdCents: cents,
     rentReserveLamports: String(8_000_000 * p.chips * b.qty), solUsd: SOL_USD, skrUsd: SKR_USD, pythUpdateData: [],
-    ...(volatile ? { priceUpdateAccount: pyth.account, priceAgeS } : {}),
     effectiveOddsBps: effectiveOdds(p, pity), pityCounter: pity, hardPityIn: p.pity ? Math.max(0, p.pity.hardAt - pity) : 0,
-    nonce: String(Date.now()), accounts: {}, switchboardQueue: 'EYiAmGSdsQTuCw413V5BzaruWuCCSDgTPtBGvLkXHbe7', expiresAt: iso(volatile ? (60 - priceAgeS) * 1000 : 300_000),
+    nonce: String(Date.now()), accounts: {}, switchboardQueue: 'EYiAmGSdsQTuCw413V5BzaruWuCCSDgTPtBGvLkXHbe7', expiresAt: iso(24 * 3_600_000),
   };
 });
 on('post', '/packs/verify', (o) => {
@@ -471,7 +468,13 @@ const PREORDER_TOTAL = 500;
 const PREORDER_CHEST_TOTAL = 125;
 const PREORDER_TTL_S = 72 * 3_600;
 let preorderSeq = 41;
-interface MockPreorder { ref_id: number; wallet: string; sku: number; qty: number; offer: 'pack' | 'chest'; lamports: string; status: 'intent' | 'paid' | 'granted' | 'expired'; tx_sig: string | null; nonce: string | null; grant_sig: string | null; created_at: number; paid_at: number | null; granted_at: number | null }
+interface MockPreorder { ref_id: number; wallet: string; sku: number; qty: number; offer: 'pack' | 'chest'; currency: 'SOL' | 'USDC' | 'SKR'; lamports: string; status: 'intent' | 'paid' | 'granted' | 'expired'; tx_sig: string | null; nonce: string | null; grant_sig: string | null; created_at: number; paid_at: number | null; granted_at: number | null }
+const mockPreorderAmount = (solLamports: string, currency: 'SOL' | 'USDC' | 'SKR') => {
+  if (currency === 'SOL') return solLamports;
+  const cents = usdCentsFromSolLamports(solLamports);
+  return currency === 'USDC' ? usdcMicroForUsdCents(cents).toString() : skrMicroForUsdCents(cents).toString();
+};
+const mockPreorderPrices = (solLamports: string) => ({ SOL: solLamports, USDC: mockPreorderAmount(solLamports, 'USDC'), SKR: mockPreorderAmount(solLamports, 'SKR') });
 const preorderRows: MockPreorder[] = [];
 const preorderStats = () => {
   const sold = preorderRows.filter((r) => r.status === 'paid' || r.status === 'granted').reduce((s, r) => s + r.qty, 0) + 137;
@@ -482,8 +485,8 @@ const preorderStats = () => {
     active: true, sku: 3, priceLamports: PREORDER_PRICE, treasury: PREORDER_TREASURY, total: PREORDER_TOTAL,
     remaining: Math.max(0, PREORDER_TOTAL - packSold), sold, granted, memoPrefix: 'GC-PRE', intentTtlS: PREORDER_TTL_S,
     offers: [
-      { id: 'pack', packs: 1, priceLamports: PREORDER_PRICE, total: PREORDER_TOTAL, remaining: Math.max(0, PREORDER_TOTAL - packSold), sold: packSold, maxPerWallet: 5, maxQty: 5 },
-      { id: 'chest', packs: 4, priceLamports: PREORDER_CHEST_PRICE, total: PREORDER_CHEST_TOTAL, remaining: Math.max(0, PREORDER_CHEST_TOTAL - chestSold), sold: chestSold, maxPerWallet: 1, maxQty: 1 },
+      { id: 'pack', packs: 1, priceLamports: PREORDER_PRICE, prices: mockPreorderPrices(PREORDER_PRICE), total: PREORDER_TOTAL, remaining: Math.max(0, PREORDER_TOTAL - packSold), sold: packSold, maxPerWallet: 5, maxQty: 5 },
+      { id: 'chest', packs: 4, priceLamports: PREORDER_CHEST_PRICE, prices: mockPreorderPrices(PREORDER_CHEST_PRICE), total: PREORDER_CHEST_TOTAL, remaining: Math.max(0, PREORDER_CHEST_TOTAL - chestSold), sold: chestSold, maxPerWallet: 1, maxQty: 1 },
     ],
   };
 };
@@ -492,8 +495,9 @@ on('get', '/preorder', () => preorderStats());
 on('get', '/preorder/me', () => ({ items: preorderRows.filter((r) => r.wallet === ME).map(preorderItem).reverse() }));
 on('get', '/preorder/registry', () => ({ campaign: preorderStats(), rows: preorderRows.filter((r) => r.status === 'paid' || r.status === 'granted').map((r) => ({ refId: r.ref_id, qty: r.qty, status: r.status, paidAt: r.paid_at, grantedAt: r.granted_at })) }));
 on('post', '/preorder/intent', (o) => {
-  const body = (o.body ?? {}) as { qty?: number; offer?: string };
+  const body = (o.body ?? {}) as { qty?: number; offer?: string; currency?: string };
   const offer = body.offer === 'chest' ? 'chest' as const : 'pack' as const;
+  const currency = (body.currency === 'USDC' || body.currency === 'SKR' ? body.currency : 'SOL') as 'SOL' | 'USDC' | 'SKR';
   const qty = offer === 'chest' ? 1 : Number(body.qty ?? 1);
   if (offer === 'pack' && (!Number.isInteger(qty) || qty < 1 || qty > 5)) throw Object.assign(new Error('qty must be 1..5'), { status: 400, code: 'bad_qty' });
   const minePacks = preorderRows.filter((r) => r.wallet === ME && r.offer !== 'chest' && r.status !== 'expired').reduce((s, r) => s + r.qty, 0);
@@ -501,10 +505,11 @@ on('post', '/preorder/intent', (o) => {
   if (offer === 'pack' && minePacks + qty > 5) throw Object.assign(new Error('At most 5 packs per wallet'), { status: 409, code: 'wallet_cap' });
   if (offer === 'chest' && mineChests >= 1) throw Object.assign(new Error('At most 1 chest per wallet'), { status: 409, code: 'wallet_cap' });
   const packs = offer === 'chest' ? 4 : qty;
-  const lamports = offer === 'chest' ? PREORDER_CHEST_PRICE : String(BigInt(PREORDER_PRICE) * BigInt(qty));
-  const row: MockPreorder = { ref_id: ++preorderSeq, wallet: ME, sku: 3, qty: packs, offer, lamports, status: 'intent', tx_sig: null, nonce: null, grant_sig: null, created_at: Math.floor(Date.now() / 1000), paid_at: null, granted_at: null };
+  const solLamports = offer === 'chest' ? PREORDER_CHEST_PRICE : String(BigInt(PREORDER_PRICE) * BigInt(qty));
+  const lamports = mockPreorderAmount(solLamports, currency);
+  const row: MockPreorder = { ref_id: ++preorderSeq, wallet: ME, sku: 3, qty: packs, offer, currency, lamports, status: 'intent', tx_sig: null, nonce: null, grant_sig: null, created_at: Math.floor(Date.now() / 1000), paid_at: null, granted_at: null };
   preorderRows.push(row);
-  return { refId: row.ref_id, wallet: ME, sku: 3, qty: packs, offer, lamports: row.lamports, treasury: PREORDER_TREASURY, memo: `GC-PRE|${row.ref_id}`, expiresAt: row.created_at + PREORDER_TTL_S };
+  return { refId: row.ref_id, wallet: ME, sku: 3, qty: packs, offer, currency, lamports: row.lamports, amount: row.lamports, treasury: PREORDER_TREASURY, payTo: PREORDER_TREASURY, memo: `GC-PRE|${row.ref_id}`, expiresAt: row.created_at + PREORDER_TTL_S };
 });
 on('post', '/preorder/confirm', (o) => {
   const { refId, signature } = (o.body ?? {}) as { refId?: number; signature?: string };

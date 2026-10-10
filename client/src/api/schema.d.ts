@@ -4882,9 +4882,15 @@ export interface components {
             wallet: string;
             sku: number;
             qty: number;
-            /** @description total to send (price × qty), decimal string */
+            /** @description SOL | USDC | SKR */
+            currency?: "SOL" | "USDC" | "SKR";
+            /** @description total to send (price × qty), decimal string of the chosen currency */
             lamports: string;
+            amount?: string;
             treasury: string;
+            /** @description treasury wallet (SOL) or its ATA (USDC/SKR) */
+            payTo?: string;
+            mint?: string;
             /** @description attach to the payment, e.g. GC-PRE|42 */
             memo: string;
             /** @description unix seconds; after that the intent stops accepting payments */
@@ -4895,6 +4901,7 @@ export interface components {
             wallet: string;
             sku: number;
             qty: number;
+            currency?: "SOL" | "USDC" | "SKR";
             lamports: string;
             /** @enum {string} */
             status: "intent" | "paid" | "granted" | "expired";

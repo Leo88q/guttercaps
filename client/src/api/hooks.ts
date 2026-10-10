@@ -74,8 +74,7 @@ export function useQuote(sku: number, qty: number, currency: 'SOL' | 'USDC' | 'C
     queryKey: qk.quote(sku, qty, currency),
     enabled: useAuthenticated() && enabled,
     queryFn: () => api.post('/packs/quote', { sku, qty, currency }),
-    staleTime: 20_000,
-    refetchInterval: 25_000,
+    staleTime: 24 * 60 * 60 * 1000,
     retry: false,
   });
 }

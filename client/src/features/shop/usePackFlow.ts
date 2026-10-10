@@ -20,7 +20,7 @@ interface StartArgs {
   sku: number;
   qty: number;
   currency: CurrencyCode;
-  quote?: { priceUpdateAccount?: string; maxLamports?: string; switchboardQueue?: string };
+  quote?: { priceUpdateAccount?: string; maxLamports?: string; amount?: string; switchboardQueue?: string };
 }
 
 /** Deterministic 32-byte "roll" for the reveal animation (watch mode never sees the oracle value). */
@@ -106,7 +106,8 @@ export function usePackFlow() {
       connection, wallet, onState: bind(w), lookupTable: LOOKUP_TABLE,
       quote: args.quote ? {
         priceUpdateAccount: args.quote.priceUpdateAccount ? new PublicKey(args.quote.priceUpdateAccount) : undefined,
-        maxLamports: args.quote.maxLamports ? BigInt(args.quote.maxLamports) : undefined,
+        maxLamports: args.quote.maxLamports ? BigInt(args.quote.maxLamports) : args.quote.amount ? BigInt(args.quote.amount) : undefined,
+        amount: args.quote.amount ? BigInt(args.quote.amount) : undefined,
         switchboardQueue: args.quote.switchboardQueue ? new PublicKey(args.quote.switchboardQueue) : undefined,
       } : undefined,
     }, { sku: args.sku, qty: args.qty, currency: args.currency });
