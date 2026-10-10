@@ -1140,6 +1140,18 @@ model ChipXpLedger {
   @@map("chip_xp_ledger")
 }
 
+/// XP this cap earned from one match (ranked or wager). Settle-once / resolver retries no-op on the PK.
+model ChipXpAward {
+  matchId   String @map("match_id")
+  asset     String
+  xp        Int
+  fromLevel Int    @map("from_level")
+  toLevel   Int    @map("to_level")
+
+  @@id([matchId, asset])
+  @@map("chip_xp_awards")
+}
+
 /// Season-pass XP ledger: one row per wallet per season (ranked play only).
 model PassXp {
   wallet String

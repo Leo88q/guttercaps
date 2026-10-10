@@ -154,6 +154,15 @@ CREATE TABLE IF NOT EXISTS chip_xp_ledger (
   xp    INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (asset, day)
 );
+-- Per-match grant (ranked + wager). PK makes settle-once / resolver retries a no-op.
+CREATE TABLE IF NOT EXISTS chip_xp_awards (
+  match_id   TEXT    NOT NULL,
+  asset      TEXT    NOT NULL,
+  xp         INTEGER NOT NULL,
+  from_level INTEGER NOT NULL,
+  to_level   INTEGER NOT NULL,
+  PRIMARY KEY (match_id, asset)
+);
 CREATE TABLE IF NOT EXISTS pass_claims (
   wallet     TEXT    NOT NULL,
   season     INTEGER NOT NULL,

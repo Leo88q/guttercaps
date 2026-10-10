@@ -33,7 +33,7 @@ import { type Db, now } from './db.ts';
 import { chipToApi, type ChipRow } from './queries.ts';
 import { ServiceError } from './services.ts';
 import { addPassXp } from './pass.ts';
-import { grantSquadXp } from './chip-xp.ts';
+import { grantSquadXp, matchXpForSquad } from './chip-xp.ts';
 import { finalizedHorizon } from './finality.ts';
 import { suspiciousPairToday, walletFlags } from './antifraud.ts';
 import { deviceLimited } from './human.ts';
@@ -356,7 +356,11 @@ export function reveal(db: Db, wallet: string, id: string, body: unknown, t = no
   const m = db.get<MatchRow>(`SELECT * FROM matches WHERE id = ?`, id);
   if (!m) throw new ServiceError(404, 'not_found', 'unknown match');
   if (m.a !== wallet && m.b !== wallet) throw new ServiceError(403, 'not_a_player', 'you are not in this match');
-  if (m.status !== 'revealing') return { ok: true, status: m.status, matchId: m.id, resolved: m.status === 'resolved' };
+  if (m.status !== 'revealing') {
+    const squadJson = wallet === m.a ? m.squad_a : m.squad_b;
+    const xp = matchXpForSquad(db, m.id, squadJson);
+    return { ok: true, status: m.status, matchId: m.id, resolved: m.status === 'resolved', winner: m.winner, xp: xp.xp, leveled: xp.leveled };
+  }
   const nonce = (body as { nonce?: unknown } | undefined)?.nonce;
   if (!isHex(nonce) || nonce.length < 16 || nonce.length > 128) throw new ServiceError(400, 'bad_nonce', 'nonce must be 8..64 bytes of hex');
   const side: 'a' | 'b' = m.a === wallet ? 'a' : 'b';
@@ -366,7 +370,13 @@ export function reveal(db: Db, wallet: string, id: string, body: unknown, t = no
   if (already && already !== nonce.toLowerCase()) throw new ServiceError(409, 'already_revealed', 'a different nonce was already revealed');
   db.run(`UPDATE matches SET ${side === 'a' ? 'nonce_a' : 'nonce_b'} = ? WHERE id = ?`, nonce.toLowerCase(), id);
   const fresh = db.get<MatchRow>(`SELECT * FROM matches WHERE id = ?`, id)!;
-  if (fresh.nonce_a && fresh.nonce_b) { const r = settleMatch(db, fresh, t, nowMs); return { ok: true, status: 'resolved', matchId: id, resolved: true, winner: r.winner }; }
+  if (fresh.nonce_a && fresh.nonce_b) {
+    settleMatch(db, fresh, t, nowMs);
+    const settled = db.get<MatchRow>(`SELECT * FROM matches WHERE id = ?`, id)!;
+    const squadJson = wallet === settled.a ? settled.squad_a : settled.squad_b;
+    const xp = matchXpForSquad(db, id, squadJson);
+    return { ok: true, status: 'resolved', matchId: id, resolved: true, winner: settled.winner, xp: xp.xp, leveled: xp.leveled };
+  }
   return { ok: true, status: 'revealing', matchId: id, resolved: false, waitingFor: side === 'a' ? 'b' : 'a' };
 }
 
@@ -412,8 +422,8 @@ export function settleMatch(db: Db, m: MatchRow, t: number, nowMs: number): Figh
     if (rewardB > 0n) db.run(insertIgnore('pvp_rewards', PVP_REWARD_COLS), m.id, m.b, rewardB.toString(), dayOf(t));
     if (!isBot(m.a)) addPassXp(db, m.season, m.a, fight.winner === 'A' ? PASS_XP.matchWin : PASS_XP.matchLoss);
     if (!isBot(m.b)) addPassXp(db, m.season, m.b, fight.winner === 'B' ? PASS_XP.matchWin : PASS_XP.matchLoss);
-    if (!isBot(m.a)) grantSquadXp(db, m.squad_a, fight.winner === 'A', t, m.a);
-    if (!isBot(m.b)) grantSquadXp(db, m.squad_b, fight.winner === 'B', t, m.b);
+    if (!isBot(m.a)) grantSquadXp(db, m.squad_a, fight.winner === 'A', t, m.a, m.id);
+    if (!isBot(m.b)) grantSquadXp(db, m.squad_b, fight.winner === 'B', t, m.b, m.id);
   });
   // the row is authoritative: either what this call just wrote or what the writer that won the race wrote
   const settled = db.get<MatchRow>(`SELECT * FROM matches WHERE id = ?`, m.id)!;
@@ -471,11 +481,16 @@ export function matchApi(db: Db, id: string, viewer?: string) {
   if (!m) return undefined;
   const s = db.get<SeasonRow>(`SELECT * FROM seasons WHERE id = ?`, m.season);
   const squadA = JSON.parse(m.squad_a) as FighterChip[], squadB = JSON.parse(m.squad_b) as FighterChip[];
+  const awards = db.all<{ asset: string; xp: number; from_level: number; to_level: number }>(`SELECT asset, xp, from_level, to_level FROM chip_xp_awards WHERE match_id = ?`, id);
+  const byAsset = new Map(awards.map((a) => [a.asset, a]));
   const toChip = (c: FighterChip) => {
-    const row = db.get<ChipRow>(`SELECT * FROM chips WHERE asset = ?`, c.asset);
+    const row = db.get<ChipRow>(`SELECT chips.*, COALESCE(x.xp, 0) AS xp FROM chips LEFT JOIN chip_xp x ON x.asset = chips.asset WHERE chips.asset = ?`, c.asset);
+    const award = byAsset.get(c.asset);
+    // Fight snapshot `c.level` stays on the payload so a post-match auto-level does not rewrite the replay.
     // A chip the indexer does not know (a synthetic bot chip, or a match whose asset never landed here):
     // the number is unknown, so it is `null` — never a placeholder `#0`, which is a real chip (SEC-B3).
-    return row ? chipToApi(row) : { asset: c.asset, owner: isBot(c.asset.split('-')[0]) ? 'bot' : '', collection: c.collection, rarity: c.rarity, level: c.level, index: null, flags: { staked: false, listed: false, fusing: false, soulbound: false }, lockUntil: null, power: onChainSquadPower([c]), stakeWeight: '0' };
+    const base = row ? chipToApi(row) : { asset: c.asset, owner: isBot(c.asset.split('-')[0]) ? 'bot' : '', collection: c.collection, rarity: c.rarity, level: c.level, index: null, flags: { staked: false, listed: false, fusing: false, soulbound: false }, lockUntil: null, power: onChainSquadPower([c]), stakeWeight: '0', xp: 0, xpToNext: null as number | null };
+    return { ...base, level: c.level, xpGained: award?.xp ?? 0, leveledTo: award && award.to_level > award.from_level ? award.to_level : null };
   };
   const rounds = m.rounds ? (JSON.parse(m.rounds) as FightResult['rounds']).map((r) => ({ ...r, winner: r.winner === 'A' ? m.a : m.b })) : [];
   const done = m.status !== 'revealing';

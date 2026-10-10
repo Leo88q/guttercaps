@@ -23,7 +23,8 @@
 import { createHash } from 'node:crypto';
 import { Connection, Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
 import { onChainSquadPower, resolveFight, type FighterChip, type FightRound } from '@guttercaps/economy';
-import { db as sharedDb, type Db } from './db.ts';
+import { db as sharedDb, now, type Db } from './db.ts';
+import { grantSquadXp } from './chip-xp.ts';
 import { BorshWriter } from './borsh.ts';
 import { PROGRAMS } from './config.ts';
 import {
@@ -117,15 +118,22 @@ export async function resolveOne(d: ResolverDeps, battleKey: PublicKey): Promise
   const ix = resolveBattleIx({ oracle: d.oracle.publicKey, challenger: b.challenger, nonce: b.nonce, randomness: b.randomness, cgMint: cfg.cgMint, winner, seasonPool: cfg.seasonPool, treasuryCg: cfg.treasuryCg, resultHash: hash });
   const { signature } = await sendAndConfirm(d.connection, d.oracle, [ix], { cuLimit: CU_RESOLVE_BATTLE });
   // keep the round list so /arena/matches/:battle can replay a wager battle exactly like a ranked one
-  d.db.run(
+  const matchId = battleKey.toBase58();
+  const inserted = Number(d.db.run(
     // every value is a parameter now (the literals were inline in the VALUES list): same row, and the
     // statement shape is what `sql.ts` guarantees across dialects
     insertIgnore('matches', ['id', 'season', 'a', 'b', 'squad_a', 'squad_b', 'power_a', 'power_b', 'league', 'commit_a', 'commit_b', 'nonce_a', 'nonce_b', 'seed', 'rounds', 'winner', 'wager', 'battle_pda', 'resolve_sig', 'status', 'started_at', 'ended_at', 'rewarded']),
-    battleKey.toBase58(), 0, b.challenger.toBase58(), b.opponent.toBase58(), JSON.stringify(squadA), JSON.stringify(squadB), b.powerA, b.powerB, leagueOfPower(b.powerA),
-    '', '', '', '', Buffer.from(rnd.value).toString('hex'), JSON.stringify(fight.rounds), winner.toBase58(), b.wager.toString(), battleKey.toBase58(), signature, 'resolved',
+    matchId, 0, b.challenger.toBase58(), b.opponent.toBase58(), JSON.stringify(squadA), JSON.stringify(squadB), b.powerA, b.powerB, leagueOfPower(b.powerA),
+    '', '', '', '', Buffer.from(rnd.value).toString('hex'), JSON.stringify(fight.rounds), winner.toBase58(), b.wager.toString(), matchId, signature, 'resolved',
     Number(b.acceptedAt) * 1000, Date.now(), 0,
-  );
-  d.log?.(`[battle-resolver] resolve_battle ${battleKey.toBase58()} winner ${winner.toBase58()} → ${signature}`);
+  ).changes);
+  // first insert only: ranked-style chip XP (indexer-authoritative). claim.level stays mint 1.
+  if (inserted > 0) {
+    const t = now();
+    grantSquadXp(d.db, JSON.stringify(squadA), fight.winner === 'A', t, b.challenger.toBase58(), matchId);
+    grantSquadXp(d.db, JSON.stringify(squadB), fight.winner === 'B', t, b.opponent.toBase58(), matchId);
+  }
+  d.log?.(`[battle-resolver] resolve_battle ${matchId} winner ${winner.toBase58()} → ${signature}`);
   return { kind: 'resolved', signature, winner: winner.toBase58() };
 }
 const leagueOfPower = (p: number) => [800, 1400, 2400, 4000, 7000, Infinity].findIndex((u) => p < u);

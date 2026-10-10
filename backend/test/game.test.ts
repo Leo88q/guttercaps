@@ -333,6 +333,9 @@ describe('arena — ranked commit/reveal', () => {
     const m = arena.matchApi(db, id)!;
     expect(m.status).toBe('resolved');
     expect([alice, bob]).toContain(m.winner);
+    expect(done.winner).toBe(m.winner);
+    expect(done.xp).toBe(m.winner === bob ? CHIP_XP.win * 3 : CHIP_XP.loss * 3);
+    expect(done.leveled).toBe(m.winner === bob ? 3 : 0);
     expect(m.rounds.length).toBeGreaterThanOrEqual(2);
     // re-derive the seed and the fight from the public record + the season secret
     const season = arena.currentSeason(db, T);
@@ -351,6 +354,11 @@ describe('arena — ranked commit/reveal', () => {
     const loserSquad = m.winner === alice ? sb : sa;
     expect(db.scalar(`SELECT lifetime FROM chip_xp WHERE asset = ?`, winnerSquad[0])).toBe(CHIP_XP.win);
     expect(db.scalar(`SELECT lifetime FROM chip_xp WHERE asset = ?`, loserSquad[0])).toBe(CHIP_XP.loss);
+    expect(db.scalar(`SELECT COUNT(*) FROM chip_xp_awards WHERE match_id = ?`, id)).toBe(6);
+    const winnerChip = m.winner === alice ? m.squadA[0] : m.squadB[0];
+    const loserChip = m.winner === alice ? m.squadB[0] : m.squadA[0];
+    expect(winnerChip).toMatchObject({ level: 1, xpGained: CHIP_XP.win, leveledTo: 2 });
+    expect(loserChip).toMatchObject({ level: 1, xpGained: CHIP_XP.loss, leveledTo: null });
     expect(winnerReward).toBe(String(MATCH_REWARDS.winCgMicro));
     expect(loserReward).toBe(String(MATCH_REWARDS.lossCgMicro));
     expect(arena.arenaMe(db, alice, T)).toMatchObject({ games: 1, rewardedMatchesLeft: 7, currentMatch: null });

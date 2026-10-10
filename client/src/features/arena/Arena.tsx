@@ -23,6 +23,7 @@ import { battlePda } from '@/chain/pdas';
 import { BATTLE_STATUS, decodeWagerBattle, type WagerBattle } from '@/chain/accounts';
 import { RNG_KIND, freshNonce } from '@/chain/pdas';
 import { ChipArt } from '@/shared/ui/ChipArt';
+import { ChipXpMeter } from '@/shared/ui/ChipXp';
 import { CleanZone, KV, Modal, Pill, Stat, Skeleton } from '@/shared/ui/primitives';
 import { SprayNozzleButton, CleanConfirmButton } from '@/shared/ui/buttons';
 import { leagueName, chipPower, squadPower, squadSynergy, ELEMENT_OF_COLLECTION, rarityColor, rarityName, chipName, chipImageOf } from '@/shared/lib/rarity';
@@ -61,7 +62,7 @@ export default function Arena() {
   const [wager, setWager] = useState<string | null>(null);
   const [queued, setQueued] = useState<{ ticket: string; wait: number; at: number } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [lastMatch, setLastMatch] = useState<{ id: string; won: boolean | null } | null>(null);
+  const [lastMatch, setLastMatch] = useState<{ id: string; won: boolean | null; xp?: number } | null>(null);
   const [wagerFight, setWagerFight] = useState(false);
   const revealing = useRef<string | null>(null);
   const openedMatch = useRef<string | null>(null);
@@ -81,8 +82,17 @@ export default function Arena() {
       .then((r) => {
         if (r?.resolved) {
           const won = r.winner === wallet?.publicKey.toBase58();
-          setLastMatch({ id: currentId, won });
-          toast({ kind: won ? 'money' : 'info', title: won ? { key: 'arena.youWon' } : { key: 'arena.youLost' }, body: joinText([{ key: 'ui.vs' }, ' ', currentOpponent.startsWith('bot:') ? { key: 'ui.bot' } : currentOpponent.slice(0, 6)]) });
+          setLastMatch({ id: currentId, won, xp: r.xp });
+          toast({
+            kind: won ? 'money' : 'info',
+            title: won ? { key: 'arena.youWon' } : { key: 'arena.youLost' },
+            body: joinText([
+              { key: 'ui.vs' },
+              ' ',
+              currentOpponent.startsWith('bot:') ? { key: 'ui.bot' } : currentOpponent.slice(0, 6),
+              ...(typeof r.xp === 'number' && r.xp > 0 ? [' · ', { key: 'ui.xpEarned' as const, params: { n: r.xp } }] : []),
+            ]),
+          });
           nav(`/arena/match/${currentId}?play=1`);
         } else toast({ kind: 'info', title: { key: 'ui.seedRevealed' }, body: { key: 'ui.waitingOpponent' } });
       })
@@ -290,6 +300,7 @@ export default function Arena() {
               <div key={i} className="stack-sm center" onClick={() => setPick(true)} style={{ cursor: 'pointer' }}>
                 {c ? <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c)} skin={c.skin} crimp={rarityColor(c.rarity!)} /> : <div className="slot squad-slot-empty live-slot" style={{ aspectRatio: 1 }}><span className="squad-slot-plus" aria-hidden="true">+</span></div>}
                 <div className="tiny">{c ? <><ElementGlyph element={ELEMENT_OF_COLLECTION[c.collection!]} /> {chipPower(c.rarity!, c.level!)} {t('ui.power')}</> : t('ui.pick')}</div>
+                {c ? <ChipXpMeter compact level={c.level} rarity={c.rarity!} xp={c.xp} xpToNext={c.xpToNext} maxLevel={c.maxLevel} /> : null}
               </div>
             );
           })}
@@ -331,7 +342,7 @@ export default function Arena() {
         {!connected && <div className="muted small">{t('ui.connectPlay')}</div>}
         {lastMatch && (
           <div className="row between small" style={{ color: lastMatch.won ? 'var(--cg-acid-green)' : 'var(--cg-neon-magenta)' }}>
-            <span>{lastMatch.won === null ? t('ui.matchFinished') : lastMatch.won ? t('arena.youWon') : t('arena.youLost')}</span>
+            <span>{lastMatch.won === null ? t('ui.matchFinished') : lastMatch.won ? t('arena.youWon') : t('arena.youLost')}{lastMatch.xp ? ` · ${t('ui.xpEarned', { n: lastMatch.xp })}` : ''}</span>
             <Link to={`/arena/match/${lastMatch.id}?play=1`} className="btn btn-sm">{t('arena.replay')}</Link>
           </div>
         )}

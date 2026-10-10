@@ -7,12 +7,14 @@ export function ChipXpMeter({
   xp,
   xpToNext: need,
   maxLevel,
+  compact,
 }: {
   level?: number | null;
   rarity: number;
   xp?: number | null;
   xpToNext?: number | null;
   maxLevel?: number | null;
+  compact?: boolean;
 }) {
   const t = useT();
   const cap = maxLevel ?? RARITY_PROFILES[rarity]?.maxLevel ?? 12;
@@ -29,7 +31,7 @@ export function ChipXpMeter({
       <div className="progress magenta" role="meter" aria-valuemin={0} aria-valuemax={cost} aria-valuenow={unspent}>
         <i style={{ width: `${pct}%` }} />
       </div>
-      <div className="tiny muted">{t('ui.levelHint', { win: CHIP_XP.win, loss: CHIP_XP.loss, cost, max: cap })}</div>
+      {!compact && <div className="tiny muted">{t('ui.levelHint', { win: CHIP_XP.win, loss: CHIP_XP.loss, cost, max: cap })}</div>}
     </div>
   );
 }

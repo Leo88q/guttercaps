@@ -76,12 +76,32 @@ export default function MatchReplay() {
       <div className="round" style={{ alignItems: 'start' }}>
         <div className="stack-sm">
           <div className="small strong">{iAmA ? t('ui.you') : shortKey(d.a)}</div>
-          <div className="squad">{d.squadA?.map((c) => <div key={c.asset}><ChipArt collection={c.collection!} rarity={c.rarity!} level={c.level} imageUrl={chipImageOf(c)} skin={c.skin} /></div>)}</div>
+          <div className="squad">{d.squadA?.map((c) => (
+            <div key={c.asset} className="stack-sm center">
+              <ChipArt collection={c.collection!} rarity={c.rarity!} level={c.level} imageUrl={chipImageOf(c)} skin={c.skin} />
+              {typeof c.xpGained === 'number' && c.xpGained > 0 && (
+                <div className="tiny" style={{ color: 'var(--cg-neon-magenta)' }}>
+                  {t('ui.xpGained', { n: c.xpGained })}
+                  {c.leveledTo != null ? ` · ${t('ui.leveledUp', { n: c.leveledTo })}` : ''}
+                </div>
+              )}
+            </div>
+          ))}</div>
         </div>
         <div className="vs">{t('ui.vs')}</div>
         <div className="stack-sm">
           <div className="small strong">{!iAmA && me === d.b ? t('ui.you') : d.b?.startsWith('bot:') ? t('ui.bot') : shortKey(d.b)}</div>
-          <div className="squad">{d.squadB?.map((c) => <div key={c.asset}><ChipArt collection={c.collection!} rarity={c.rarity!} level={c.level} imageUrl={chipImageOf(c)} skin={c.skin} /></div>)}</div>
+          <div className="squad">{d.squadB?.map((c) => (
+            <div key={c.asset} className="stack-sm center">
+              <ChipArt collection={c.collection!} rarity={c.rarity!} level={c.level} imageUrl={chipImageOf(c)} skin={c.skin} />
+              {typeof c.xpGained === 'number' && c.xpGained > 0 && (
+                <div className="tiny" style={{ color: 'var(--cg-neon-magenta)' }}>
+                  {t('ui.xpGained', { n: c.xpGained })}
+                  {c.leveledTo != null ? ` · ${t('ui.leveledUp', { n: c.leveledTo })}` : ''}
+                </div>
+              )}
+            </div>
+          ))}</div>
         </div>
       </div>
 

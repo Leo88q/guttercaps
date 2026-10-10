@@ -2433,6 +2433,10 @@ export interface paths {
                             winner?: string;
                             /** @enum {string} */
                             waitingFor?: "a" | "b";
+                            /** @description chip XP granted to this wallet's squad from this match */
+                            xp?: number;
+                            /** @description how many of this wallet's squad caps promoted */
+                            leveled?: number;
                         };
                     };
                 };
@@ -4724,6 +4728,10 @@ export interface components {
             xpToNext?: number | null;
             /** @description rarity cap (Common 12 … Diamond 50) */
             maxLevel?: number;
+            /** @description XP this cap earned from this match (match payloads only; 0 otherwise) */
+            xpGained?: number;
+            /** @description new level if this match promoted the cap; null otherwise */
+            leveledTo?: number | null;
             /** @description per-collection mint number (`Name #N`); null = not resolved on chain yet (core `open_pack` chips are back-filled by the crank within a sweep). Never a placeholder: #0 is a real chip */
             index?: number | null;
             flags?: {

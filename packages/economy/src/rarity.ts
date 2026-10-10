@@ -88,7 +88,7 @@ export const levelMult = (level: number): number => 1 + 0.025 * Math.max(0, leve
 export const CHIP_XP = {
   win: 10,
   loss: 3,
-  /** Unspent XP one cap may earn from ranked play in one UTC day. 8 wins = the $CG match cap. */
+  /** Unspent XP one cap may earn from ranked / wager play in one UTC day. 8 wins = the $CG match cap. */
   dailyCap: 80,
   /** XP to go from `level` → `level + 1`. */
   cost(level: number): number {

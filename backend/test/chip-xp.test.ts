@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CHIP_XP, applyChipXp } from '@guttercaps/economy';
 import { Db } from '../src/db.ts';
-import { creditChipXp, grantSquadXp } from '../src/chip-xp.ts';
+import { creditChipXp, grantSquadXp, matchXpForSquad } from '../src/chip-xp.ts';
 
 const kp = () => {
   const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -53,5 +53,18 @@ describe('ranked chip XP', () => {
     db.run(`UPDATE chips SET burned_at = 1 WHERE asset = ?`, dead);
     creditChipXp(db, dead, CHIP_XP.win, 0);
     expect(db.get(`SELECT 1 FROM chip_xp WHERE asset = ?`, dead)).toBeUndefined();
+  });
+
+  it('records per-match awards once and does not double-credit the same match', () => {
+    const db = new Db(':memory:');
+    const owner = kp();
+    const a = mint(db, owner, 0);
+    const match = 'm1';
+    grantSquadXp(db, JSON.stringify([{ asset: a }]), true, 1_800_000_000, owner, match);
+    grantSquadXp(db, JSON.stringify([{ asset: a }]), true, 1_800_000_000, owner, match);
+    expect(db.scalar(`SELECT COUNT(*) FROM chip_xp_awards WHERE match_id = ?`, match)).toBe(1);
+    expect(db.get<{ xp: number; from_level: number; to_level: number }>(`SELECT xp, from_level, to_level FROM chip_xp_awards WHERE match_id = ? AND asset = ?`, match, a)).toEqual({ xp: CHIP_XP.win, from_level: 1, to_level: 2 });
+    expect(matchXpForSquad(db, match, JSON.stringify([{ asset: a }]))).toEqual({ xp: CHIP_XP.win, leveled: 1 });
+    expect(db.get<{ lifetime: number }>(`SELECT lifetime FROM chip_xp WHERE asset = ?`, a)!.lifetime).toBe(CHIP_XP.win);
   });
 });
