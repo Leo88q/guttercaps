@@ -123,10 +123,42 @@ img { max-width: 100%; display: block; }
 .progress.trust > i { background: var(--cg-trust-blue); }
 .skeleton { background: linear-gradient(90deg, rgba(255,255,255,0.04), rgba(255,255,255,0.09), rgba(255,255,255,0.04)); background-size: 200% 100%; animation: sk 1.2s linear infinite; border-radius: 8px; min-height: 16px; }
 @keyframes sk { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-.empty { position: relative; overflow: hidden; text-align: center; color: var(--gc-muted); padding: 40px 16px; border: 1px dashed var(--gc-line-strong); border-radius: var(--gc-radius); }
-.empty::before { content: ''; position: absolute; left: 50%; top: 50%; width: 190px; height: 190px; transform: translate(-50%, -50%);
-  border: 2px dashed var(--gc-line-strong); border-radius: 50%; opacity: 0.55; pointer-events: none; }
-.empty > * { position: relative; }
+.empty {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  text-align: center;
+  color: var(--gc-muted);
+  padding: 48px 20px 40px;
+  border: 0;
+  border-radius: 18px 34px 20px 38px / 30px 20px 36px 22px;
+  min-height: 140px;
+  display: grid;
+  place-items: center;
+}
+.empty-compact { padding: 28px 16px; min-height: 108px; background: transparent; }
+.empty-copy { position: relative; z-index: 1; max-width: 28em; line-height: 1.4; }
+/* spinning spray ring — same language as empty fusion / squad slots */
+.empty::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 132px;
+  height: 132px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.55;
+  background: conic-gradient(from 0deg, transparent 0 42%, var(--cg-neon-magenta) 52%, var(--cg-neon-cyan) 62%, transparent 78%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+}
+.empty-compact::after { width: 88px; height: 88px; opacity: 0.4; }
+@media (prefers-reduced-motion: no-preference) {
+  .empty::after { animation: live-slot-spin 2.8s linear infinite; }
+}
 .tag-list { display: flex; gap: 6px; flex-wrap: wrap; }
 .tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
@@ -320,7 +352,8 @@ img { max-width: 100%; display: block; }
 .bench .slot { aspect-ratio: 1; border-radius: 50%; border: 2px dashed color-mix(in srgb, var(--gc-line-strong) 70%, transparent); display: grid; place-items: center; color: var(--gc-muted); font-size: 12px; cursor: pointer; }
 /* empty slot = the generated spray badge (still fully clickable, + on top) */
 .bench .slot.slot-empty,
-.chip-card .slot.slot-empty {
+.chip-card .slot.slot-empty,
+.slot.slot-empty {
   aspect-ratio: 1;
   border: none;
   border-radius: 50%;
@@ -330,10 +363,12 @@ img { max-width: 100%; display: block; }
   transition: filter 0.15s ease, transform 0.15s ease;
 }
 .bench .slot.slot-empty:hover,
-.chip-card .slot.slot-empty:hover { filter: brightness(1.25); transform: translateY(-1px); }
+.chip-card .slot.slot-empty:hover,
+.slot.slot-empty:hover { filter: brightness(1.25); transform: translateY(-1px); }
 .chip-card:active .slot.slot-empty { transform: scale(0.94); }
 .bench .slot.slot-empty .slot-hint, .bench .slot.slot-empty > span,
-.chip-card .slot.slot-empty .slot-hint {
+.chip-card .slot.slot-empty .slot-hint,
+.slot.slot-empty .slot-hint {
   font-family: var(--cg-font-mono); font-size: 11px; color: var(--cg-chrome); opacity: 0.9;
 }
 .bench .slot.filled { border-style: solid; }

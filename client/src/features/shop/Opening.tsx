@@ -10,6 +10,7 @@ import type { CurrencyCode } from '@/chain/ix/chipCore';
 import { PackStepper } from './PackStepper';
 import { usePackFlow } from './usePackFlow';
 import { ChipArt } from '@/shared/ui/ChipArt';
+import { Empty } from '@/shared/ui/primitives';
 import { ChevronRightIcon } from '@/shared/ui/action-icons';
 import { chipName, rarityName, rarityColor, chipArtUrl } from '@/shared/lib/rarity';
 import { useUiStore } from '@/app/store/ui';
@@ -48,7 +49,7 @@ export default function Opening() {
     return (
       <div className="page page-bg page-bg-shop">
         <h1 className="page-title">{t('opening.title')}</h1>
-        <div className="empty">{t('ui.noPurchase')}{pending.data ? ` ${t('screens.reconnectPackBuyer')}` : ''} <Link to="/shop">{t('ui.backShop')}</Link></div>
+        <Empty>{t('ui.noPurchase')}{pending.data ? ` ${t('screens.reconnectPackBuyer')}` : ''} <Link to="/shop">{t('ui.backShop')}</Link></Empty>
       </div>
     );
   }

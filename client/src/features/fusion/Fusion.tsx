@@ -22,7 +22,7 @@ import { useTxStore, fusionId } from '@/app/store/txs';
 import { useUiStore } from '@/app/store/ui';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { CloseIcon } from '@/shared/ui/action-icons';
-import { CleanZone, KV, Modal, Pill, Skeleton } from '@/shared/ui/primitives';
+import { CleanZone, Empty, KV, Modal, Pill, Skeleton } from '@/shared/ui/primitives';
 import { CleanConfirmButton, SprayCapToggle } from '@/shared/ui/buttons';
 import { chipName, collectionName, rarityColor, rarityName, collectionColor, chipArtUrl, chipImageOf } from '@/shared/lib/rarity';
 import { fmtCg, fmtPct, fmtSol, secondsToHuman } from '@/shared/lib/format';
@@ -73,14 +73,23 @@ export default function Fusion() {
   const recipe = from !== undefined ? FUSION_RECIPES[from] : undefined;
   const sameRarity = filled.every((c) => c.rarity === from);
   const sameCol = filled.every((c) => c.collection === filled[0]?.collection);
-  const ruleOk = !recipe || recipe.rule === 'any' || sameCol;
+  // On-chain `any` recipes still accept mixed districts; the bench does not recommend or load them.
+  const ruleOk = !recipe || sameCol;
   const cols = Array.from(new Set(filled.map((c) => c.collection!)));
   const effectiveResultCol = recipe?.rule === 'same-collection' ? filled[0]?.collection ?? null : resultCol ?? cols[0] ?? null;
   const ready = filled.length === 3 && sameRarity && ruleOk && !!recipe && effectiveResultCol !== null;
   const chance = recipe ? successBps(recipe.from, booster) : 0;
   const boosters = items.data?.boosters ?? 0;
   const breaksSet = filled.some((c) => (grid.data?.cells?.[c.collection!]?.[c.rarity!] ?? 0) === 1);
-  const eligibleForSlot = (i: number) => all.filter((c) => !slots.some((s, j) => j !== i && s?.asset === c.asset) && (from === undefined || i === 0 || c.rarity === from) && (!recipe || recipe.rule === 'any' || i === 0 || c.collection === filled[0]?.collection));
+  const eligibleForSlot = (i: number) => all.filter((c) => {
+    if (slots.some((s, j) => j !== i && s?.asset === c.asset)) return false;
+    const others = slots.filter((s, j): s is Chip => j !== i && !!s);
+    const r = others[0]?.rarity;
+    const col = others[0]?.collection;
+    if (r !== undefined && c.rarity !== r) return false;
+    if (col !== undefined && c.collection !== col) return false;
+    return true;
+  });
 
   // The worker registered the result chip — find its Bubblegum leaf id in the refetched chip list.
   // The indexer's projection of CompressedChipRegistered can lag the on-chain flag flip by seconds,
@@ -238,7 +247,7 @@ export default function Fusion() {
         </div>
         <div className="bench-arrow">↓</div>
         <div className="row" style={{ justifyContent: 'center', gap: 16, flexWrap: 'wrap' }}>
-          <div style={{ width: 180 }}>{recipe && effectiveResultCol !== null ? <ChipArt collection={effectiveResultCol} rarity={recipe.to} imageUrl={chipArtUrl(effectiveResultCol, recipe.to, 512)} crimp={rarityColor(recipe.to)} /> : <div className="slot" style={{ width: 180 }}>?</div>}</div>
+          <div style={{ width: 180 }}>{recipe && effectiveResultCol !== null ? <ChipArt collection={effectiveResultCol} rarity={recipe.to} imageUrl={chipArtUrl(effectiveResultCol, recipe.to, 512)} crimp={rarityColor(recipe.to)} /> : <div className="slot slot-empty live-slot" style={{ width: 180, height: 180 }}><span className="slot-hint">?</span></div>}</div>
           <div className="stack-sm">
             {recipe ? (
               <>
@@ -287,7 +296,7 @@ export default function Fusion() {
             <button className="btn btn-sm" onClick={() => setSlots(s.materials!.slice(0, 3) as Chip[])}>{t('ui.load')}</button>
           </div>
         ))}
-        {suggest.data?.length === 0 && <div className="muted small">{t('ui.noTriples')}</div>}
+        {!suggest.isLoading && suggest.data?.length === 0 && <Empty compact>{t('ui.noTriples')}</Empty>}
       </div>
 
       <div className="card">
@@ -302,7 +311,7 @@ export default function Fusion() {
           <div className="strong">{t('ui.presets')} <span className="muted small mono">{presets.length}/{maxPresets}</span></div>
           <button className="btn btn-sm" disabled={filled.length !== 3 || presets.length >= maxPresets} onClick={() => setPresets([...presets, { nameKind: 'auto', rarity: from ?? 0, slots: [slots[0]?.asset ?? null, slots[1]?.asset ?? null, slots[2]?.asset ?? null], resultCol: effectiveResultCol, savedAt: Date.now() }])}>{t('ui.saveCurrent')}</button>
         </div>
-        {presets.length === 0 && <div className="muted small">{t('ui.presetHint')}</div>}
+        {presets.length === 0 && <Empty compact>{t('ui.presetHint')}</Empty>}
         {presets.map((pr, i) => (
           <div key={i} className="row between small" data-testid="fusion-preset">
             <span>{presetName(pr)} <span className="muted">→ {pr.resultCol !== null && pr.resultCol !== undefined ? collectionName(pr.resultCol) : '?'}</span></span>

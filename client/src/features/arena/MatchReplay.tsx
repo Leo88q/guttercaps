@@ -5,7 +5,7 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { useMatch, useMyServices, usePostEmote, type MatchEmote } from '@/api/hooks';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { ExternalIcon } from '@/shared/ui/action-icons';
-import { Skeleton } from '@/shared/ui/primitives';
+import { Empty, Skeleton } from '@/shared/ui/primitives';
 import { chipName, chipPower, ELEMENT_OF_COLLECTION, rarityColor, chipImageOf } from '@/shared/lib/rarity';
 import { ElementGlyph } from '@/shared/ui/element-icons';
 import { fmtCg, fmtDecimal, shortKey } from '@/shared/lib/format';
@@ -46,7 +46,7 @@ export default function MatchReplay() {
   }, [d, cut, rounds.length, skipped]);
 
   if (m.isLoading) return <div className="page page-bg page-bg-arena stack"><Skeleton h={200} /><Skeleton h={200} /></div>;
-  if (!d) return <div className="page page-bg page-bg-arena"><div className="empty">{t('ui.matchNotFound')}</div></div>;
+  if (!d) return <div className="page page-bg page-bg-arena"><Empty>{t('ui.matchNotFound')}</Empty></div>;
   const me = publicKey?.toBase58();
   const iAmA = me === d.a;
   const won = d.winner === me;

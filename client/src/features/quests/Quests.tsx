@@ -228,6 +228,9 @@ export default function Quests() {
               <div className="small muted">{t('quests.queuedHint', { amount: queuedAmount })}</div>
             </div>
           )}
+          {claimable.length === 0 && vouchers.length === 0 && waiting && (
+            <CleanConfirmButton disabled data-testid="quest-claim-wait">{t('quests.claim')}</CleanConfirmButton>
+          )}
           {heldReason && <div className="warn">{reasonText(heldReason)}</div>}
           {claimable.length === 0 && vouchers.length === 0 && !waiting && <div className="small muted">{t('quests.empty')}</div>}
           <div className="tiny muted">{t('quests.freeCaps', { daily: fmtCg(ANTI_FARM.dailyQuestRewardCapCgMicro, 0), weekly: fmtCg(ANTI_FARM.weeklyQuestRewardCapCgMicro, 0), chips: ANTI_FARM.freeChipsPerWalletPerWeek })}</div>

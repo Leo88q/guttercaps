@@ -354,10 +354,17 @@ on('get', '/market/offers', () => []);
 
 on('get', '/fusion/recipes', () => FUSION_RECIPES.map((r) => ({ from: r.from, to: r.to, rule: r.rule, successBps: r.successBps, refundOnFail: r.refundOnFail, feeCgMicro: String(r.feeCgMicro), resultLockSeconds: r.resultLockSeconds, boosterBonusBps: BOOSTER.bonusBps, boosterCapBps: BOOSTER.capBps })));
 on('get', '/fusion/suggest', () => {
-  const byR = new Map<number, MockChip[]>();
-  for (const c of chips) if (!c.flags.staked && !c.flags.listed && !c.flags.soulbound) byR.set(c.rarity, [...(byR.get(c.rarity) ?? []), c]);
   const out: unknown[] = [];
-  for (const [r, list] of byR) if (list.length >= 3 && r < 8) out.push({ materials: list.slice(0, 3), recipe: r, resultCollection: list[0].collection, breaksSet: false });
+  const free = chips.filter((c) => !c.flags.staked && !c.flags.listed && !c.flags.soulbound && c.rarity < 8);
+  const groups = new Map<string, MockChip[]>();
+  for (const c of free) {
+    const k = `${c.rarity}:${c.collection}`;
+    groups.set(k, [...(groups.get(k) ?? []), c]);
+  }
+  for (const list of groups.values()) {
+    if (list.length < 3) continue;
+    out.push({ materials: list.slice(0, 3), recipe: list[0].rarity, resultCollection: list[0].collection, breaksSet: false });
+  }
   return out;
 });
 on('post', '/fusion/plan', (o) => {

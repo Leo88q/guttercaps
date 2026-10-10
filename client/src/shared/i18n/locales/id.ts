@@ -126,6 +126,8 @@ const id: Messages = {
     filters: { collection: 'Distrik', rarity: 'Tingkat', currency: 'Mata uang', sort: 'Urutkan', missing: 'Kurang di set saya' },
     sort: { priceAsc: 'Harga ↑', priceDesc: 'Harga ↓', newest: 'Terbaru', rarityDesc: 'Tingkat ↓', indexAsc: 'Indeks ↑' },
     empty: 'Tidak ada yang dijual dengan filter ini.',
+    noFloor: 'Belum ada harga dasar — belum ada yang trade.',
+    noSales: 'Belum ada penjualan.',
   },
   staking: {
     title: 'Staking', subtitle: 'Reward berasal dari emisi harian tetap yang dibagi pro-rata berdasarkan bobot — APY adalah hasil, bukan janji. Emisi dibatasi burn guard.',

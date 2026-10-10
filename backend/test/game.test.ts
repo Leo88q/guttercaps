@@ -120,18 +120,21 @@ describe('fusion planner', () => {
     expect(p2.warnings).toContain('breaks_set');
   });
 
-  it('suggest: groups free chips per recipe rule, keeps sets intact when protectSets, ignores busy chips', () => {
-    // 3 commons of districts 0/1/2 + 3 Common+ of one district + 3 Common+ of mixed districts (not fusable together)
-    mint(db, w.bob, [{ rarity: 0, collection: 0 }, { rarity: 0, collection: 1 }, { rarity: 0, collection: 2 }]);
+  it('suggest: same-district triples only, keeps sets intact when protectSets, ignores busy chips', () => {
+    // `any` recipe (Common): a same-district triple + mixed leftovers that must not be suggested
+    mint(db, w.bob, [{ rarity: 0, collection: 2 }, { rarity: 0, collection: 2 }, { rarity: 0, collection: 2 }]);
+    mint(db, w.bob, [{ rarity: 0, collection: 0 }, { rarity: 0, collection: 0 }, { rarity: 0, collection: 0 }]);
+    // same-collection recipe (Common+): one district has a triple, mixed districts do not
     mint(db, w.bob, [{ rarity: 1, collection: 4 }, { rarity: 1, collection: 4 }, { rarity: 1, collection: 4 }]);
     mint(db, w.bob, [{ rarity: 1, collection: 5 }, { rarity: 1, collection: 6 }, { rarity: 1, collection: 7 }]);
-    // district 0 is two tiers away from a full set → its only Common is set-critical
+    // district 0 is two tiers away from a full set → its lone Common is set-critical (and not a triple)
     mint(db, w.bob, Array.from({ length: 6 }, (_, i) => ({ rarity: i + 3, collection: 0 })));
     const s = fusion.suggest(db, w.bob, false);
-    expect(s.map((x) => x.resultRarity).sort()).toEqual(['Common+', 'Rare']);
-    // with set protection the district-0 Common is kept → only two spare commons → only the Common+ triple remains
+    expect(s.map((x) => x.resultRarity).sort()).toEqual(['Common+', 'Common+', 'Rare']);
+    expect(s.every((x) => new Set(x.materials.map((m) => m.collection)).size === 1)).toBe(true);
+    // district 0 commons would break a near-complete set → protectSets drops that triple
     const guarded = fusion.suggest(db, w.bob, true);
-    expect(guarded.map((x) => x.resultRarity)).toEqual(['Rare']);
+    expect(guarded.map((x) => x.resultRarity).sort()).toEqual(['Common+', 'Rare']);
     // staked chips never appear
     const staked = mint(db, w.bob, [{ rarity: 3, collection: 9 }, { rarity: 3, collection: 9 }, { rarity: 3, collection: 9 }]);
     ingestTx(tx([{ program: 'staking', name: 'Staked', data: { owner: w.bob, kind: 1, key: staked[0], amount: '1', weight: '1', unlockAt: '0' } }]), db);

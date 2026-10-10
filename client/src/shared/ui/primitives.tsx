@@ -90,8 +90,8 @@ export function Skeleton({ h = 16, w = '100%', style }: { h?: number; w?: number
   return <div className="skeleton" style={{ height: h, width: w, ...style }} />;
 }
 
-export function Empty({ children }: { children: ReactNode }) {
-  return <div className="empty">{children}</div>;
+export function Empty({ children, compact }: { children: ReactNode; compact?: boolean }) {
+  return <div className={`empty${compact ? ' empty-compact' : ''}`}><span className="empty-copy">{children}</span></div>;
 }
 
 export function Stat({ label, value, mono = true, icon }: { label: string; value: ReactNode; mono?: boolean; icon?: ReactNode }) {

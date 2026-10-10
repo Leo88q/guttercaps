@@ -131,6 +131,8 @@ const en = {
     filters: { collection: 'District', rarity: 'Tier', currency: 'Currency', sort: 'Sort', missing: 'Missing for my set' },
     sort: { priceAsc: 'Price ↑', priceDesc: 'Price ↓', newest: 'Newest', rarityDesc: 'Tier ↓', indexAsc: 'Index ↑' },
     empty: 'Nothing listed with these filters.',
+    noFloor: 'No floor yet — nothing has traded.',
+    noSales: 'No sales yet.',
   },
   staking: {
     title: 'Staking', subtitle: 'Rewards come from a fixed daily emission split pro-rata by weight — APY is an output, not a promise. Emission is capped by the burn guard.',

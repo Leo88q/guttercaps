@@ -18,7 +18,7 @@ import { listingBuyIxs, dasClient } from './payment';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { ChipXpMeter } from '@/shared/ui/ChipXp';
 import { ExternalIcon } from '@/shared/ui/action-icons';
-import { CleanZone, KV, Skeleton } from '@/shared/ui/primitives';
+import { CleanZone, Empty, KV, Skeleton } from '@/shared/ui/primitives';
 import { CleanConfirmButton } from '@/shared/ui/buttons';
 import { chipLore, chipName, collectionName, rarityColor, rarityName, RARITY_PROFILES, ELEMENT_OF_COLLECTION, chipImageOf } from '@/shared/lib/rarity';
 import { ElementGlyph } from '@/shared/ui/element-icons';
@@ -43,7 +43,7 @@ export default function ChipPage() {
 
   if (q.isLoading) return <div className="page page-bg page-bg-market stack"><Skeleton h={220} /><Skeleton h={120} /></div>;
   const c = q.data;
-  if (!c) return <div className="page page-bg page-bg-market"><div className="empty">{t('ui.capNotFound')}</div></div>;
+  if (!c) return <div className="page page-bg page-bg-market"><Empty>{t('ui.capNotFound')}</Empty></div>;
 
   const mine = !!publicKey && c.owner === publicKey.toBase58();
   const l = c.listing;

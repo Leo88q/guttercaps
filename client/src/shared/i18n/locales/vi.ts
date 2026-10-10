@@ -126,6 +126,8 @@ const vi: Messages = {
     filters: { collection: 'Quận', rarity: 'Bậc', currency: 'Tiền tệ', sort: 'Sắp xếp', missing: 'Còn thiếu cho bộ của tôi' },
     sort: { priceAsc: 'Giá ↑', priceDesc: 'Giá ↓', newest: 'Mới nhất', rarityDesc: 'Bậc ↓', indexAsc: 'Số ↑' },
     empty: 'Không có gì với bộ lọc này.',
+    noFloor: 'Chưa có giá sàn — chưa ai bán.',
+    noSales: 'Chưa có giao dịch.',
   },
   staking: {
     title: 'Staking', subtitle: 'Phần thưởng đến từ lượng phát hành cố định mỗi ngày, chia theo tỷ lệ trọng số — APY là kết quả, không phải lời hứa. Phát hành bị giới hạn bởi burn guard.',

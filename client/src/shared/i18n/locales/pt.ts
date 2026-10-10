@@ -126,6 +126,8 @@ const pt: Messages = {
     filters: { collection: 'Distrito', rarity: 'Nível', currency: 'Moeda', sort: 'Ordenar', missing: 'Faltando no meu set' },
     sort: { priceAsc: 'Preço ↑', priceDesc: 'Preço ↓', newest: 'Mais novos', rarityDesc: 'Nível ↓', indexAsc: 'Índice ↑' },
     empty: 'Nada anunciado com esses filtros.',
+    noFloor: 'Ainda sem piso — ninguém negociou.',
+    noSales: 'Ainda sem vendas.',
   },
   staking: {
     title: 'Staking', subtitle: 'As recompensas vêm de uma emissão diária fixa dividida pro rata por peso — o APY é um resultado, não uma promessa. A emissão é limitada pelo burn guard.',

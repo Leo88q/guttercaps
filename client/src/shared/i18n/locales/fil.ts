@@ -126,6 +126,8 @@ const fil: Messages = {
     filters: { collection: 'Distrito', rarity: 'Tier', currency: 'Currency', sort: 'Ayusin', missing: 'Kulang sa set ko' },
     sort: { priceAsc: 'Presyo ↑', priceDesc: 'Presyo ↓', newest: 'Pinakabago', rarityDesc: 'Tier ↓', indexAsc: 'Index ↑' },
     empty: 'Walang nakalista sa mga filter na ito.',
+    noFloor: 'Wala pang floor — walang trade.',
+    noSales: 'Wala pang benta.',
   },
   staking: {
     title: 'Staking', subtitle: 'Galing ang rewards sa fixed na daily emission na hinahati pro-rata ayon sa weight — resulta ang APY, hindi pangako. Nililimitahan ng burn guard ang emission.',
