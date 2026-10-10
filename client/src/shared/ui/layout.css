@@ -350,26 +350,36 @@ img { max-width: 100%; display: block; }
 /* ---------- fusion bench ---------- */
 .bench { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; align-items: center; }
 .bench .slot { aspect-ratio: 1; border-radius: 50%; border: 2px dashed color-mix(in srgb, var(--gc-line-strong) 70%, transparent); display: grid; place-items: center; color: var(--gc-muted); font-size: 12px; cursor: pointer; }
-/* empty slot = the generated spray badge (still fully clickable, + on top) */
+/* empty slot = spray-stencil circle + spinning live-slot ring, not baked graffiti art */
 .bench .slot.slot-empty,
 .chip-card .slot.slot-empty,
 .slot.slot-empty {
   aspect-ratio: 1;
   border: none;
   border-radius: 50%;
-  background: url('/icons/gen/slot-empty.webp') center / cover no-repeat;
+  background:
+    radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--cg-neon-magenta) 22%, transparent), transparent 64%),
+    radial-gradient(circle at 50% 50%, #1a181f 0 46%, #0c0b10 78%);
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, var(--cg-neon-magenta) 45%, transparent),
+    0 0 16px color-mix(in srgb, var(--cg-neon-magenta) 22%, transparent);
   display: grid;
   place-items: center;
   transition: filter 0.15s ease, transform 0.15s ease;
 }
 .bench .slot.slot-empty:hover,
 .chip-card .slot.slot-empty:hover,
-.slot.slot-empty:hover { filter: brightness(1.25); transform: translateY(-1px); }
+.slot.slot-empty:hover { filter: brightness(1.18); transform: translateY(-1px); }
 .chip-card:active .slot.slot-empty { transform: scale(0.94); }
 .bench .slot.slot-empty .slot-hint, .bench .slot.slot-empty > span,
 .chip-card .slot.slot-empty .slot-hint,
 .slot.slot-empty .slot-hint {
-  font-family: var(--cg-font-mono); font-size: 11px; color: var(--cg-chrome); opacity: 0.9;
+  font-family: var(--cg-font-display);
+  font-size: clamp(22px, 7vw, 36px);
+  line-height: 1;
+  color: var(--cg-chrome);
+  opacity: 0.92;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.85);
 }
 .bench .slot.filled { border-style: solid; }
 .bench-arrow { text-align: center; font-size: 24px; color: var(--gc-muted); }
@@ -780,8 +790,9 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 .stake-row-actions {
   display: flex;
   flex: 0 0 auto;
-  gap: 6px;
+  gap: 12px;
   align-items: center;
+  padding-right: 2px;
 }
 .stake-row > .btn,
 .stake-row-actions .btn {

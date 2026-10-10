@@ -240,8 +240,8 @@ export default function Fusion() {
       <div className="card stack">
         <div className="bench">
           {slots.map((s, i) => (
-            <div key={i} className={`slot ${s ? 'filled' : 'slot-empty live-slot'}`} onClick={() => setPickFor(i)} style={s ? { border: 'none' } : undefined}>
-              {s ? <ChipArt collection={s.collection!} rarity={s.rarity!} index={s.index} level={s.level} size="100%" imageUrl={chipImageOf(s)} skin={s.skin} crimp={rarityColor(s.rarity!)} /> : <span className="slot-hint">+ {t('ui.slot')} {i + 1}</span>}
+            <div key={i} className={`slot ${s ? 'filled' : 'slot-empty live-slot'}`} onClick={() => setPickFor(i)} style={s ? { border: 'none' } : undefined} aria-label={`${t('ui.slot')} ${i + 1}`}>
+              {s ? <ChipArt collection={s.collection!} rarity={s.rarity!} index={s.index} level={s.level} size="100%" imageUrl={chipImageOf(s)} skin={s.skin} crimp={rarityColor(s.rarity!)} /> : <span className="slot-hint" aria-hidden>+</span>}
             </div>
           ))}
         </div>
@@ -347,7 +347,7 @@ export default function Fusion() {
             ))}
             {eligibleForSlot(pickFor).length === 0 && !slots[pickFor] && (
               <div className="chip-card">
-                <LivePickerSlot>+ {t('ui.slot')} {pickFor + 1}</LivePickerSlot>
+                <LivePickerSlot>+</LivePickerSlot>
                 <div className="chip-meta" style={{ textAlign: 'center' }}>{t('ui.noEligible')}</div>
               </div>
             )}
