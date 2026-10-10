@@ -48,7 +48,7 @@ const id: Messages = {
   },
   shop: {
     geoBlocked: 'Pack acak tidak tersedia di wilayah Anda ({regions}). Cap tertentu di Pasar tetap untuk Anda.',
-    title: 'Toko pack', subtitle: 'Setiap drop diundi dari keacakan Switchboard yang bisa Anda verifikasi. Peluang di bawah per slot; slot terakhir selalu memenuhi floor.',
+    title: 'Toko pack', subtitle: 'Setiap drop diundi on-chain dari SlotHashes yang bisa Anda verifikasi. Peluang di bawah per slot; slot terakhir selalu memenuhi floor.',
     buy: 'Beli {name}', quantity: 'Jumlah', payWith: 'Bayar dengan', burned75: '75% dibakar', seekerDiscount: '−{pct}% Seeker',
     skrNoMint: 'belum aktif di cluster ini',
     cgLimitedOnly: 'pack acara — hanya SOL/USDC',
@@ -236,7 +236,7 @@ const id: Messages = {
     fraud: { explainer: 'Sinyal terbuka dari detektor (win-trading, wash trade, bot quest, multi-akun, cincin perangkat), skor tertinggi dulu. Satu resolusi menutup semua sinyal terbuka untuk dompet itu.', empty: 'Antrean kosong.', note: 'catatan (≤ 280)', resolved: '{n, plural, other{# sinyal ditutup}}', failed: 'Gagal menyelesaikan' },
     audit: { when: 'kapan', who: 'siapa', action: 'aksi', target: 'target', empty: 'Belum ada baris audit.' },
   },
-  verify: { title: 'Terbukti adil', subtitle: 'Tempel transaksi pembukaan pack. Kami membaca byte keacakan Switchboard dari event on-chain dan menjalankan ulang ekspansi persis seperti yang dipakai program.', placeholder: 'Tanda tangan transaksi', check: 'Verifikasi', match: 'Cocok dengan hasil on-chain', mismatch: 'Tidak cocok — mohon laporkan' },
+  verify: { title: 'Terbukti adil', subtitle: 'Tempel transaksi pembukaan pack. Kami membaca roll on-chain SlotHashes dari event dan menjalankan ulang ekspansi persis seperti yang dipakai program.', placeholder: 'Tanda tangan transaksi', check: 'Verifikasi', match: 'Cocok dengan hasil on-chain', mismatch: 'Tidak cocok — mohon laporkan' },
   codex: { title: 'Delapan Distrik' },
   errors: { rejected: 'Anda menolak tanda tangan', insufficient: 'Saldo tidak cukup', network: 'Kesalahan jaringan — coba lagi', stale: 'Kuotasi kedaluwarsa — segarkan', generic: 'Terjadi kesalahan' },
   legal: { title: 'Legal', terms: 'Ketentuan Layanan', privacy: 'Privasi', updated: 'Berlaku sejak {date}', canonical: 'Teks bahasa Inggris adalah versi resmi; terjemahan hanya untuk kemudahan.', ages: 'Hanya 18+', noSaleIn: 'tidak ada penjualan pack di', verify: 'Verifikasi undian', notFound: 'Dokumen itu tidak ada. Yang tersedia:' },

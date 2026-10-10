@@ -329,15 +329,10 @@ paths:
       tags: [packs]
       summary: Price quote + everything needed to build buy_pack
       description: |
-        Returns the SOL / SKR amount computed from the studio's own Pyth push-oracle accounts (shard 0xCA75, posted by
-        our price pusher — ops/pyth-pusher/) with the exact integer formula of chip_core::units_for_cents, the 1 %
-        slippage guard (`maxLamports`), the `priceUpdateAccount` the client must pass to buy_pack, $CG/USDC amounts,
-        the caller's effective odds (pity applied), the Switchboard queue and the PDA set. Bundle and SKR promo
-        discounts are stacked additively and capped at 30 %.
-        The quote is never synthesised: if the on-chain price is older than 45 s (60 s max age minus the 15 s a buyer
-        needs to sign) or the account is missing/unverified the endpoint answers **503 price_unavailable** and the
-        client hides that rail. `expiresAt` is when the current on-chain update would fail the age check.
-        `pythUpdateData` is always empty in the push model (kept for a future pull-model fallback).
+        Frozen FX checkout (SOL = $110, SKR = $0.016, USDC = $1). Amounts are the same integer formula as
+        `chip_core::fx_sol_lamports` / `fx_skr_micro` / `fx_usdc_micro`. Pyth is not read; a stale feed must never
+        503 a purchase. `maxLamports` is the exact SOL/SKR amount (0 for USDC/$CG). `priceUpdateAccount` is omitted.
+        Bundle and SKR promo discounts stack additively, capped at 30 %. Pity and daily caps are per wallet.
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [sku, qty, currency], properties: { sku: { type: integer, minimum: 0, maximum: 3 }, qty: { type: integer, minimum: 1, maximum: 25 }, currency: { type: string, enum: [SOL, USDC, CG, SKR] } } } } } }
       responses:
         '200': { description: quote, content: { application/json: { schema: { $ref: '#/components/schemas/PackQuote' } } } }
@@ -346,7 +341,6 @@ paths:
         '403': { $ref: '#/components/responses/Error', description: 'geo_blocked — randomised packs are not sold in this region (`GEO_GATE=shop`, `GEO_RESTRICT_COUNTRIES`; backend/src/geo.ts). The country comes from the edge header, never from the client. Only the purchase is gated: market, staking, arena and every read endpoint keep working.' }
         '409': { description: starter_claimed — one Starter per wallet }
         '429': { description: daily_cap — Limited 5 / day }
-        '503': { $ref: '#/components/responses/Error', description: 'price_unavailable — Pyth account stale / missing / unverified, or its confidence interval is wider than 2 % of the price (SEC-M2 — the program would reject with PriceUncertain); retry after the next push (≤ 30 s)' }
   /preorder:
     get:
       tags: [packs]
@@ -1365,16 +1359,16 @@ components:
         sku: { type: integer }
         qty: { type: integer }
         currency: { type: string }
-        amount: { type: string, description: 'lamports / micro-USDC / micro-CG / micro-SKR incl. bundle (and SKR promo) discount — floor(cents × 10^(decimals-2) × 10^-expo / price), same integers as the program' }
-        maxLamports: { type: string, description: 'amount × 1.01 for SOL and SKR (0 otherwise); slippage guard passed to buy_pack (max_lamports = max units of the volatile currency)' }
+        amount: { type: string, description: 'lamports / micro-USDC / micro-CG / micro-SKR after discounts, frozen FX (SOL=$110, SKR=$0.016, USDC=$1)' }
+        maxLamports: { type: string, description: 'exact SOL lamports / micro-SKR (0 for USDC/$CG); passed to buy_pack as max_lamports' }
         priceUsdCents: { type: integer, description: 'USD price after discounts (what the program converts)' }
         rentReserveLamports: { type: string }
-        solUsd: { type: number, description: 'Pyth SOL/USD at quote time (from our push-oracle account)' }
-        skrUsd: { type: number, description: 'Pyth SKR/USD at quote time (from our push-oracle account)' }
-        priceAgeS: { type: integer, description: 'age of the on-chain update used (SOL/SKR only); program rejects > 60 s' }
+        solUsd: { type: number, description: 'frozen SOL/USD ($110)' }
+        skrUsd: { type: number, description: 'frozen SKR/USD ($0.016)' }
+        priceAgeS: { type: integer, description: 'unused (frozen FX)' }
         discountBps: { type: integer, description: 'total discount applied (bundle + SKR promo, capped 3000)' }
-        priceUpdateAccount: { $ref: '#/components/schemas/Pubkey', description: 'PriceUpdateV2 account to pass as price_update (our shard 0xCA75); absent for USDC/$CG' }
-        pythUpdateData: { type: array, items: { type: string }, description: 'always [] in the push model (our pusher posts ahead of time); reserved for a pull-model fallback' }
+        priceUpdateAccount: { $ref: '#/components/schemas/Pubkey', description: 'unused; omitted at frozen FX checkout' }
+        pythUpdateData: { type: array, items: { type: string }, description: 'always []' }
         effectiveOddsBps: { type: array, items: { type: integer } }
         pityCounter: { type: integer }
         hardPityIn: { type: integer }

@@ -53,7 +53,7 @@ const en = {
   },
   shop: {
     geoBlocked: 'Randomised packs are not available in your region ({regions}). Specific caps on the Market are still for you.',
-    title: 'Pack shop', subtitle: 'Every drop is rolled from Switchboard randomness you can verify. Odds below are per cap slot; the last slot always meets the floor.',
+    title: 'Pack shop', subtitle: 'Every drop is rolled on-chain from SlotHashes you can verify. Odds below are per cap slot; the last slot always meets the floor.',
     buy: 'Buy {name}', quantity: 'Quantity', payWith: 'Pay with', burned75: '75% burned', seekerDiscount: '−{pct}% Seeker',
     skrNoMint: 'not enabled on this cluster',
     cgLimitedOnly: 'event pack — SOL/USDC only',
@@ -248,7 +248,7 @@ const en = {
     audit: { when: 'when', who: 'who', action: 'action', target: 'target', empty: 'No audit rows yet.' },
   },
   verify: {
-    title: 'Provably fair', subtitle: 'Paste a pack-open transaction. We read the Switchboard randomness bytes from the on-chain event and re-run the exact expansion the program used.',
+    title: 'Provably fair', subtitle: 'Paste a pack-open transaction. We read the on-chain SlotHashes roll from the event and re-run the exact expansion the program used.',
     placeholder: 'Transaction signature', check: 'Verify', match: 'Matches on-chain result', mismatch: 'Does not match — please report this',
   },
   codex: { title: 'The Eight Districts' },

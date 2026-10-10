@@ -48,7 +48,7 @@ const es: Messages = {
   },
   shop: {
     geoBlocked: 'Los sobres aleatorios no están disponibles en tu región ({regions}). Las chapas concretas del Mercado siguen siendo para ti.',
-    title: 'Tienda de sobres', subtitle: 'Cada drop se sortea con aleatoriedad de Switchboard que puedes verificar. Las probabilidades son por ranura; la última siempre cumple el mínimo.',
+    title: 'Tienda de sobres', subtitle: 'Cada drop se sortea on-chain con SlotHashes que puedes verificar. Las probabilidades son por ranura; la última siempre cumple el mínimo.',
     buy: 'Comprar {name}', quantity: 'Cantidad', payWith: 'Pagar con', burned75: '75% quemado', seekerDiscount: '−{pct}% Seeker',
     skrNoMint: 'no activado en este clúster',
     cgLimitedOnly: 'pack de evento — solo SOL/USDC',
@@ -236,7 +236,7 @@ const es: Messages = {
     fraud: { explainer: 'Señales abiertas de los detectores (win-trading, wash trades, bots de misiones, multicuentas, anillos de dispositivos), mayor puntuación primero. Una resolución cierra todas las señales abiertas de esa billetera.', empty: 'La cola está vacía.', note: 'nota (≤ 280)', resolved: '{n, plural, one{# señal cerrada} other{# señales cerradas}}', failed: 'No se pudo resolver' },
     audit: { when: 'cuándo', who: 'quién', action: 'acción', target: 'objetivo', empty: 'Aún no hay filas de auditoría.' },
   },
-  verify: { title: 'Demostrablemente justo', subtitle: 'Pega una transacción de apertura de sobre. Leemos los bytes de aleatoriedad de Switchboard del evento on-chain y repetimos exactamente la expansión que usó el programa.', placeholder: 'Firma de la transacción', check: 'Verificar', match: 'Coincide con el resultado on-chain', mismatch: 'No coincide — por favor repórtalo' },
+  verify: { title: 'Demostrablemente justo', subtitle: 'Pega una transacción de apertura de sobre. Leemos el roll on-chain de SlotHashes del evento y repetimos exactamente la expansión que usó el programa.', placeholder: 'Firma de la transacción', check: 'Verificar', match: 'Coincide con el resultado on-chain', mismatch: 'No coincide — por favor repórtalo' },
   codex: { title: 'Los Ocho Distritos' },
   errors: { rejected: 'Rechazaste la firma', insufficient: 'Saldo insuficiente', network: 'Error de red — inténtalo de nuevo', stale: 'La cotización expiró — actualiza', generic: 'Algo salió mal' },
   legal: { title: 'Legal', terms: 'Términos del servicio', privacy: 'Privacidad', updated: 'Vigente desde {date}', canonical: 'El texto en inglés es la versión oficial; las traducciones son una cortesía.', ages: 'Solo 18+', noSaleIn: 'sin venta de sobres en', verify: 'Verificar un sorteo', notFound: 'Ese documento no existe. Los dos que sí:' },

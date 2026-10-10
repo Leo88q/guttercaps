@@ -48,7 +48,7 @@ const fil: Messages = {
   },
   shop: {
     geoBlocked: 'Hindi available sa rehiyon mo ang mga random na pack ({regions}). Nananatiling para sa iyo ang mga tiyak na cap sa Merkado.',
-    title: 'Tindahan ng pack', subtitle: 'Bawat drop ay galing sa Switchboard randomness na puwede mong i-verify. Ang tsansa sa ibaba ay bawat slot; laging umaabot sa floor ang huling slot.',
+    title: 'Tindahan ng pack', subtitle: 'Bawat drop ay galing sa on-chain SlotHashes na puwede mong i-verify. Ang tsansa sa ibaba ay bawat slot; laging umaabot sa floor ang huling slot.',
     buy: 'Bilhin ang {name}', quantity: 'Dami', payWith: 'Bayaran gamit ang', burned75: '75% sinusunog', seekerDiscount: '−{pct}% Seeker',
     skrNoMint: 'hindi pa-activate sa cluster na ito',
     cgLimitedOnly: 'event pack — SOL/USDC lang',
@@ -236,7 +236,7 @@ const fil: Messages = {
     fraud: { explainer: 'Mga bukas na signal mula sa mga detector (win-trading, wash trade, quest bot, multi-account, device ring), pinakamataas na score muna. Isang resolusyon ang nagsasara ng lahat ng bukas na signal ng wallet na iyon.', empty: 'Walang laman ang queue.', note: 'tala (≤ 280)', resolved: '{n, plural, one{# signal ang isinara} other{# signal ang isinara}}', failed: 'Hindi ma-resolve' },
     audit: { when: 'kailan', who: 'sino', action: 'aksyon', target: 'target', empty: 'Wala pang audit row.' },
   },
-  verify: { title: 'Mapapatunayang patas', subtitle: 'I-paste ang pack-open na transaksyon. Babasahin namin ang Switchboard randomness bytes mula sa on-chain event at uulitin ang eksaktong expansion na ginamit ng program.', placeholder: 'Transaction signature', check: 'I-verify', match: 'Tugma sa on-chain na resulta', mismatch: 'Hindi tugma — paki-report' },
+  verify: { title: 'Mapapatunayang patas', subtitle: 'I-paste ang pack-open na transaksyon. Babasahin namin ang on-chain SlotHashes roll mula sa event at uulitin ang eksaktong expansion na ginamit ng program.', placeholder: 'Transaction signature', check: 'I-verify', match: 'Tugma sa on-chain na resulta', mismatch: 'Hindi tugma — paki-report' },
   codex: { title: 'Ang Walong Distrito' },
   errors: { rejected: 'Tinanggihan mo ang pirma', insufficient: 'Kulang ang balanse', network: 'Network error — subukan ulit', stale: 'Nag-expire ang quote — i-refresh', generic: 'May nagkamali' },
   legal: { title: 'Legal', terms: 'Mga Tuntunin ng Serbisyo', privacy: 'Privacy', updated: 'Epektibo noong {date}', canonical: 'Ang bersyon sa Ingles ang opisyal; ang mga pagsasalin ay para sa kaginhawaan lamang.', ages: '18+ lamang', noSaleIn: 'walang benta ng pack sa', verify: 'Beripikahin ang draw', notFound: 'Wala ang dokumentong iyan. Ang dalawang meron:' },

@@ -13,7 +13,7 @@ import { PACKS, BUNDLES, FEES, FX, effectiveOdds, solLamportsForUsdCents, skrMic
 import { QUOTE_CACHE_MS, SWITCHBOARD_QUEUE } from './config.ts';
 import { randomBytes } from 'node:crypto';
 import { type Db, now } from './db.ts';
-import { configuredPriceAccounts, fetchFeeds, type PythAccounts } from './pyth.ts';
+import { fetchFeeds, type PythAccounts } from './pyth.ts';
 import { ServiceError } from './services.ts';
 
 export const SKUS: PackId[] = ['starter', 'standard', 'premium', 'limited'];

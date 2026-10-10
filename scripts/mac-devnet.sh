@@ -25,7 +25,7 @@
 #              reserve; `--max-len` is the exact ELF length, so ProgramData is not allocated at 2x.
 #   setup      `npm run setup` (mints, config, collections, emission, arena) + lookup table
 #   env        client/.env.local + backend/.env for this deployment
-#   pyth       SOL/SKR payments: Pyth API key, pusher wallet, the pusher in Docker, proof that fresh prices are on chain
+#   pyth       leftover Hermes pusher (optional). Checkout is frozen FX — SOL/SKR do not need Pyth.
 #   run        (opt-in) start backend + pusher + client dev server
 #   faucet     (opt-in) `faucet <wallet>`: devnet SOL + stand-in SKR for a wallet that will play in the browser
 #

@@ -48,7 +48,7 @@ const vi: Messages = {
   },
   shop: {
     geoBlocked: 'Gói ngẫu nhiên không khả dụng ở khu vực của bạn ({regions}). Các chip cụ thể trên Chợ vẫn dành cho bạn.',
-    title: 'Cửa hàng gói', subtitle: 'Mỗi lượt rơi được quay từ ngẫu nhiên Switchboard mà bạn có thể kiểm chứng. Tỷ lệ bên dưới tính theo ô; ô cuối luôn đạt mức sàn.',
+    title: 'Cửa hàng gói', subtitle: 'Mỗi lượt rơi được quay on-chain từ SlotHashes mà bạn có thể kiểm chứng. Tỷ lệ bên dưới tính theo ô; ô cuối luôn đạt mức sàn.',
     buy: 'Mua {name}', quantity: 'Số lượng', payWith: 'Thanh toán bằng', burned75: 'đốt 75%', seekerDiscount: '−{pct}% Seeker',
     skrNoMint: 'chưa bật trên cụm này',
     cgLimitedOnly: 'gói sự kiện — chỉ SOL/USDC',
@@ -236,7 +236,7 @@ const vi: Messages = {
     fraud: { explainer: 'Tín hiệu mở từ các bộ dò (win-trading, wash trade, bot nhiệm vụ, đa tài khoản, vòng thiết bị), điểm cao trước. Một quyết định sẽ đóng mọi tín hiệu mở của ví đó.', empty: 'Hàng đợi trống.', note: 'ghi chú (≤ 280)', resolved: '{n, plural, other{đã đóng # tín hiệu}}', failed: 'Không xử lý được' },
     audit: { when: 'khi nào', who: 'ai', action: 'hành động', target: 'mục tiêu', empty: 'Chưa có dòng kiểm toán nào.' },
   },
-  verify: { title: 'Công bằng có thể kiểm chứng', subtitle: 'Dán giao dịch mở gói. Chúng tôi đọc các byte ngẫu nhiên Switchboard từ sự kiện on-chain và chạy lại đúng phép mở rộng mà chương trình đã dùng.', placeholder: 'Chữ ký giao dịch', check: 'Kiểm tra', match: 'Khớp với kết quả on-chain', mismatch: 'Không khớp — vui lòng báo cáo' },
+  verify: { title: 'Công bằng có thể kiểm chứng', subtitle: 'Dán giao dịch mở gói. Chúng tôi đọc roll on-chain SlotHashes từ sự kiện và chạy lại đúng phép mở rộng mà chương trình đã dùng.', placeholder: 'Chữ ký giao dịch', check: 'Kiểm tra', match: 'Khớp với kết quả on-chain', mismatch: 'Không khớp — vui lòng báo cáo' },
   codex: { title: 'Tám Quận' },
   errors: { rejected: 'Bạn đã từ chối ký', insufficient: 'Không đủ số dư', network: 'Lỗi mạng — thử lại', stale: 'Báo giá hết hạn — làm mới', generic: 'Đã xảy ra lỗi' },
   legal: { title: 'Pháp lý', terms: 'Điều khoản sử dụng', privacy: 'Quyền riêng tư', updated: 'Hiệu lực từ {date}', canonical: 'Bản tiếng Anh là bản chính thức; các bản dịch chỉ để tham khảo.', ages: 'Chỉ 18+', noSaleIn: 'không bán gói tại', verify: 'Kiểm tra một lượt mở', notFound: 'Không có tài liệu này. Hai tài liệu có sẵn:' },
