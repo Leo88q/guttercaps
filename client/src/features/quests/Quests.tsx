@@ -79,9 +79,30 @@ export default function Quests() {
   // The streak card above already tracks it — leaving the row in the daily list
   // makes the day look unfinished after every other daily is done.
   const list = (quests.data ?? []).filter((q) => q.cadence === tab && q.id !== 'd_streak7');
-  const ready = (claims.data ?? []).filter((c) => isClaimReady(c));
+  const openLeaves = (claims.data ?? []).filter((c) => !c.claimed);
+  const ready = openLeaves.filter((c) => isClaimReady(c));
+  const pendingLeaves = openLeaves.filter((c) => !isClaimReady(c));
   const claimable = ready.filter((c) => !isChipRootKind(c.kind!));   // one tx for every $CG / SKR / booster leaf
   const vouchers = ready.filter((c) => isChipRootKind(c.kind!));     // one tx EACH: the claim commits a randomness request (like buy_pack)
+  const queuedQuests = (quests.data ?? []).filter((q) => q.claimable);
+  const heldReason = queuedQuests.find((q) => q.ineligibleReason)?.ineligibleReason ?? null;
+  const queuedOk = queuedQuests.filter((q) => !q.ineligibleReason);
+  const queuedCg = queuedOk.reduce((s, q) => s + BigInt(q.rewardCgMicro ?? '0'), 0n);
+  const queuedBoosters = queuedOk.reduce((s, q) => s + (q.rewardBooster ?? 0), 0);
+  const queuedVouchers = queuedOk.filter((q) => q.rewardChip).length;
+  const queuedAmount = queuedCg > 0n || queuedBoosters > 0
+    ? resolveUiText(rewardTotalText(queuedCg, 0n, BigInt(queuedBoosters)))
+    : queuedVouchers > 0 ? t('quests.chipLeaves', { n: queuedVouchers }) : fmtCg(0n, 0);
+  const waiting = pendingLeaves.length > 0 || queuedOk.length > 0 || !!heldReason;
+  const pendingNote = (c: ClaimLeaf) => {
+    if (typeof c.claimableAt === 'string') {
+      const at = Date.parse(c.claimableAt);
+      if (Number.isFinite(at) && at > Date.now()) return t('quests.pendingUnlock', { time: countdown(c.claimableAt) });
+    }
+    return t('quests.pendingPayout');
+  };
+  const questQueued = (q: (typeof list)[number]) => !q.ineligibleReason && (q.claimable
+    || q.rooted === false || (!!q.rewardChip && q.chipRooted === false) || (!!q.rewardBooster && q.boosterRooted === false));
   const sumOf = (pick: (kind: number) => boolean) => claimable.filter((c) => pick(c.kind!)).reduce((s, c) => s + BigInt(c.amountMicro ?? '0'), 0n);
   const totalCg = sumOf((k) => !isSkrRootKind(k) && !isItemRootKind(k));
   const totalSkr = sumOf(isSkrRootKind);
@@ -177,7 +198,9 @@ export default function Quests() {
               <div className="grow"><KV k={t('quests.rootEpoch', { kind: rootKindLabel(c.kind!), epoch: c.epoch! })} v={fmtRoot(c.kind!, c.amountMicro)} /></div>
             </div>
           ))}
-          <CleanConfirmButton disabled={busy || claimable.length === 0} onClick={claimAll}>{claimable.length > 1 ? t('quests.claimAll', { n: claimable.length }) : t('quests.claim')}</CleanConfirmButton>
+          {claimable.length > 0 && (
+            <CleanConfirmButton disabled={busy} onClick={claimAll}>{claimable.length > 1 ? t('quests.claimAll', { n: claimable.length }) : t('quests.claim')}</CleanConfirmButton>
+          )}
           {vouchers.map((c) => (
             <div key={`${c.kind}-${c.epoch}`} className="stack-sm" data-testid="voucher-claim">
               <div className="row" style={{ gap: 10, alignItems: 'center' }}>
@@ -188,7 +211,25 @@ export default function Quests() {
               <div className="tiny muted">{t('quests.voucherHint', { days: QUEST_CHIP_TEMPLATES[Number(c.amountMicro ?? 0)]?.soulboundDays ?? 0 })}</div>
             </div>
           ))}
-          {claimable.length === 0 && vouchers.length === 0 && <div className="small muted">{t('quests.empty')}</div>}
+          {pendingLeaves.map((c) => (
+            <div key={`pending-${c.kind}-${c.epoch}`} className="row" style={{ gap: 8 }} data-testid="quest-pending">
+              <RewardGlyph kind={kindGlyph(c.kind!)} size={16} />
+              <div className="grow"><KV k={t('quests.rootEpoch', { kind: rootKindLabel(c.kind!), epoch: c.epoch! })} v={fmtRoot(c.kind!, c.amountMicro)} /></div>
+              <span className="tiny muted">{pendingNote(c)}</span>
+            </div>
+          ))}
+          {queuedOk.length > 0 && pendingLeaves.length === 0 && (
+            <div className="stack-sm" data-testid="quest-queued">
+              <div className="reward-chips">
+                {queuedCg > 0n && <span className="reward-chip"><CgCoinIcon size={16} /> {fmtCg(queuedCg)}</span>}
+                {queuedBoosters > 0 && <span className="reward-chip"><BoosterIcon size={16} /> {t('quests.boosterLeaf', { n: queuedBoosters })}</span>}
+                {queuedVouchers > 0 && <span className="reward-chip"><VoucherIcon size={16} /> {t('quests.chipLeaves', { n: queuedVouchers })}</span>}
+              </div>
+              <div className="small muted">{t('quests.queuedHint', { amount: queuedAmount })}</div>
+            </div>
+          )}
+          {heldReason && <div className="warn">{reasonText(heldReason)}</div>}
+          {claimable.length === 0 && vouchers.length === 0 && !waiting && <div className="small muted">{t('quests.empty')}</div>}
           <div className="tiny muted">{t('quests.freeCaps', { daily: fmtCg(ANTI_FARM.dailyQuestRewardCapCgMicro, 0), weekly: fmtCg(ANTI_FARM.weeklyQuestRewardCapCgMicro, 0), chips: ANTI_FARM.freeChipsPerWalletPerWeek })}</div>
           <div className="tiny muted">{t('quests.skrPool', { weekly: SKR_ANTI_FARM.weeklyQuestCapSkr, season: SKR_ANTI_FARM.seasonCapSkr })}</div>
           <div className="tiny muted">{t('quests.boosterHint')}</div>
@@ -239,7 +280,7 @@ export default function Quests() {
                     </div>
                   )}
                 </div>
-                {q.claimable ? <span className="pill pill-ok">{t('quests.inNextRoot')}</span> : done ? <span className="pill">{t('quests.done')}</span> : null}
+                {questQueued(q) ? <span className="pill pill-ok">{t('quests.inNextRoot')}</span> : done ? <span className="pill">{t('quests.done')}</span> : null}
               </div>
             );
           })}
