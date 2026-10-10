@@ -1403,16 +1403,20 @@ mac_backend_env() {
   # shellcheck disable=SC1091
   set -a; . backend/.env || return 1; set +a
   # Respect an explicit WORKERS list (including an intentionally empty/API-only one).
-  export WORKERS="${WORKERS-crank,pyth,battle}"
+  export WORKERS="${WORKERS-crank,pyth,battle,reward}"
   # Deployer is only a candidate on Mac Devnet, never implicitly trusted as battle authority.
   # The read-only preflight below must verify this key against ArenaConfig before launch.
   export BATTLE_ORACLE_KEYPAIR="${BATTLE_ORACLE_KEYPAIR:-$WALLET}"
+  # Quest/season oracles default to the same Mac wallet that `setup` wrote into EmissionState.
+  # Production must use dedicated keys; a missing pair makes the reward worker crash-loop.
+  export QUEST_ORACLE_KEYPAIR="${QUEST_ORACLE_KEYPAIR:-$WALLET}"
+  export SEASON_ORACLE_KEYPAIR="${SEASON_ORACLE_KEYPAIR:-$WALLET}"
 }
 
 stage_run() {
   [ -f backend/.env ] && [ -f client/.env.local ] || die "нет backend/.env и client/.env.local — сначала: bash scripts/mac-devnet.sh --only env"
   say "  проверка battle worker: Devnet, ArenaConfig, signer и запас SOL (без транзакций)"
-  ( mac_backend_env && node --import tsx scripts/mac-battle-preflight.mts ) || die "battle preflight не прошёл. Проверьте код выше; ключи/полный .env не публикуйте. Для осознанного запуска без арены задайте WORKERS=crank,pyth в backend/.env."
+  ( mac_backend_env && node --import tsx scripts/mac-battle-preflight.mts ) || die "battle preflight не прошёл. Проверьте код выше; ключи/полный .env не публикуйте. Для осознанного запуска без арены задайте WORKERS=crank,pyth в backend/.env. Без reward квестные выплаты не публикуются."
   mkdir -p target/mac-devnet/logs
   local blog="target/mac-devnet/logs/backend.log"
   say "  бэкенд (API + индексатор + выбранные workers) -> лог $blog"
@@ -1428,6 +1432,7 @@ stage_run() {
   sleep 6
   kill -0 "$BACKEND_PID" 2>/dev/null || { tail -20 "$blog"; die "бэкенд не запустился (лог выше)"; }
   ok "бэкенд запущен (pid $BACKEND_PID), http://127.0.0.1:8787"
+  say "  workers по умолчанию: crank,pyth,battle,reward — квестные выплаты публикуются сразу после старта, «Забрать» через 1 ч (ончейн-таймлок)"
   pyth_for_run
   ( sleep 6; is_macos && open "http://localhost:5173" ) >/dev/null 2>&1 &
   say "  клиент: http://localhost:5173 (Ctrl+C остановит всё). Кошелёк в браузере переключите на Devnet."

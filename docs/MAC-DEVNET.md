@@ -405,10 +405,11 @@ Reveal и crank продолжают использовать URI закомми
 
 ### Запуск обработчика боёв на Mac Devnet
 
-`mac-devnet.sh run` теперь выбирает `crank,pyth,battle`, **если `WORKERS` не задан**.
+`mac-devnet.sh run` теперь выбирает `crank,pyth,battle,reward`, **если `WORKERS` не задан**.
 Глобальный default backend вне этого Mac-скрипта остаётся `crank,pyth`.
 Явный `WORKERS` из окружения/backend `.env` сохраняется, включая пустой список.
 Если в нём нет `battle`, запуск явно предупреждает, что автоматического завершения боёв не будет.
+Если нет `reward`, квестные $CG / бустеры / ваучеры остаются «в очереди» и кнопка «Забрать» не активируется.
 
 Перед запуском backend выполняется `scripts/mac-battle-preflight.mts`:
 - читает genesis и требует Devnet;
@@ -433,10 +434,14 @@ Deployer допускается лишь после совпадения его 
 
 **Важно:** read-only только предварительная проверка. После успешного старта worker подписывает
 Devnet `resolve_battle` для уже принятых подходящих боёв; новые ставки он не создаёт.
-В `target/mac-devnet/logs/backend.log` должны появиться `main: started` с `workers=crank,pyth,battle`
-и строка `[battle-resolver] oracle …`. Это подтверждение запуска, не доказательство успешного settlement.
+В `target/mac-devnet/logs/backend.log` должны появиться `main: started` с `workers=crank,pyth,battle,reward`,
+строка `[battle-resolver] oracle …` и `[reward-oracle] quests …`. Это подтверждение запуска, не доказательство
+успешного settlement / публикации корня.
 Для завершения боя всё ещё нужны reveal, проиндексированные squads и все проверки on-chain.
-Деплой программ и повторный setup для этого изменения не нужны.
+Квестные выплаты: первый цикл reward-oracle идёт сразу при старте; «Забрать» открывается через 1 ч
+ончейн-таймлока после `publish_root`. `QUEST_ORACLE_KEYPAIR` / `SEASON_ORACLE_KEYPAIR` по умолчанию —
+`$WALLET` (тот же ключ, что `setup` записал в EmissionState). Деплой программ и повторный setup
+для этого изменения не нужны.
 
 ## 8. Если что-то пошло не так
 
