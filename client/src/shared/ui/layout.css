@@ -319,13 +319,21 @@ img { max-width: 100%; display: block; }
 .bench { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; align-items: center; }
 .bench .slot { aspect-ratio: 1; border-radius: 50%; border: 2px dashed color-mix(in srgb, var(--gc-line-strong) 70%, transparent); display: grid; place-items: center; color: var(--gc-muted); font-size: 12px; cursor: pointer; }
 /* empty slot = the generated spray badge (still fully clickable, + on top) */
-.bench .slot.slot-empty {
+.bench .slot.slot-empty,
+.chip-card .slot.slot-empty {
+  aspect-ratio: 1;
   border: none;
+  border-radius: 50%;
   background: url('/icons/gen/slot-empty.webp') center / cover no-repeat;
+  display: grid;
+  place-items: center;
   transition: filter 0.15s ease, transform 0.15s ease;
 }
-.bench .slot.slot-empty:hover { filter: brightness(1.25); transform: translateY(-1px); }
-.bench .slot.slot-empty .slot-hint, .bench .slot.slot-empty > span {
+.bench .slot.slot-empty:hover,
+.chip-card .slot.slot-empty:hover { filter: brightness(1.25); transform: translateY(-1px); }
+.chip-card:active .slot.slot-empty { transform: scale(0.94); }
+.bench .slot.slot-empty .slot-hint, .bench .slot.slot-empty > span,
+.chip-card .slot.slot-empty .slot-hint {
   font-family: var(--cg-font-mono); font-size: 11px; color: var(--cg-chrome); opacity: 0.9;
 }
 .bench .slot.filled { border-style: solid; }
@@ -366,7 +374,7 @@ img { max-width: 100%; display: block; }
 .live-slot > * { position: relative; z-index: 1; }
 @media (prefers-reduced-motion: no-preference) {
   .live-slot::before { animation: live-slot-spin 2.8s linear infinite; }
-  .squad-slot-plus, .live-slot .slot-hint { animation: live-slot-pulse 1.8s ease-in-out infinite; }
+  .squad-slot-plus, .live-slot .slot-hint, .live-slot-label { animation: live-slot-pulse 1.8s ease-in-out infinite; }
 }
 @keyframes live-slot-spin { to { transform: rotate(360deg); } }
 @keyframes live-slot-pulse { 0%, 100% { opacity: 0.55; transform: scale(1); } 50% { opacity: 1; transform: scale(1.08); } }

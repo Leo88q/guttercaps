@@ -190,7 +190,7 @@ export default function Arena() {
         const recent = await recentLookupSlots(connection);
         minContextSlot = recent.contextSlot;
         return [initRandomnessIx({ ...rnd, recentSlot: BigInt(recent.slots[0]) }), ix];
-      }, { lookupTable: LOOKUP_TABLE, minContextSlot: () => minContextSlot });
+      }, { lookupTable: LOOKUP_TABLE, minContextSlot: () => minContextSlot, spend: { currency: 2 } });
       toast({ kind: 'money', title: { key: 'screens.wagerOpen' }, body: { key: 'screens.escrowWaiting', params: { amount: amountText(amountMicro, 'CG') } }, href: EXPLORER.tx(signature) });
       // the invite IS the PDA seed, so the challenger can hand it over and the opponent lands straight
       // on the accept panel below
@@ -264,7 +264,7 @@ export default function Arena() {
           squad: proofs, delegates: proofs.map((x) => x.delegate), cgMint: cfg.data!.cgMint,
         });
         return [ix];
-      }, { lookupTable: LOOKUP_TABLE });
+      }, { lookupTable: LOOKUP_TABLE, spend: { currency: 2 } });
       toast({ kind: 'money', title: { key: 'arena.acceptOpened' }, body: { key: 'screens.escrowed', params: { amount: amountText(battle.wager, 'CG') } }, href: EXPLORER.tx(signature) });
       setBattle(null); setInvite(null);
       setWagerFight(true);

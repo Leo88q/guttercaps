@@ -3,7 +3,7 @@ import { ErrorNotice } from '@/shared/ui/ErrorNotice';
 import { phaseLabel } from '@/shared/lib/presentation';
 // Fusion bench: 3 slots → 1 result. Rule (any / same-collection) per recipe,
 // success chance, booster toggle, fee (burned), result lock, set-break warning.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -324,17 +324,39 @@ export default function Fusion() {
       >
         {pickFor !== null && (
           <div className="grid-auto" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(144px, 47%), 1fr))' }}>
-            {slots[pickFor] && <div className="chip-card" onClick={() => setSlots((s) => s.map((x, j) => (j === pickFor ? null : x)))}><div className="slot" style={{ aspectRatio: 1, borderRadius: '50%', display: 'grid', placeItems: 'center' }}><CloseIcon size={16} /></div><div className="chip-meta row" style={{ gap: 4, justifyContent: 'center' }}><CloseIcon size={11} />{t('ui.clear')}</div></div>}
+            {slots[pickFor] && (
+              <div className="chip-card" role="button" data-testid="fusion-clear" onClick={() => setSlots((s) => s.map((x, j) => (j === pickFor ? null : x)))}>
+                <LivePickerSlot><CloseIcon size={22} /></LivePickerSlot>
+                <div className="chip-meta row live-slot-label" style={{ gap: 4, justifyContent: 'center' }}><CloseIcon size={11} />{t('ui.clear')}</div>
+              </div>
+            )}
             {eligibleForSlot(pickFor).map((c) => (
               <div key={c.asset} className="chip-card" onClick={() => setSlots((s) => s.map((x, j) => (j === pickFor ? c : x)))}>
                 <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c)} skin={c.skin} selected={slots[pickFor]?.asset === c.asset} />
                 <div className="chip-meta"><span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span> · {chipName(c.collection!, c.rarity!)}</div>
               </div>
             ))}
-            {eligibleForSlot(pickFor).length === 0 && <div className="empty">{t('ui.noEligible')}</div>}
+            {eligibleForSlot(pickFor).length === 0 && !slots[pickFor] && (
+              <div className="chip-card">
+                <LivePickerSlot>+ {t('ui.slot')} {pickFor + 1}</LivePickerSlot>
+                <div className="chip-meta" style={{ textAlign: 'center' }}>{t('ui.noEligible')}</div>
+              </div>
+            )}
+            {eligibleForSlot(pickFor).length === 0 && slots[pickFor] && (
+              <div className="tiny muted" style={{ gridColumn: '1 / -1' }}>{t('ui.noEligible')}</div>
+            )}
           </div>
         )}
       </Modal>
+    </div>
+  );
+}
+
+/** Empty / clear tile in the slot picker: same spinning street ring as the bench. */
+function LivePickerSlot({ children }: { children: ReactNode }) {
+  return (
+    <div className="slot slot-empty live-slot">
+      <span className="slot-hint">{children}</span>
     </div>
   );
 }

@@ -30,9 +30,15 @@ interface SendOptions {
   status?: boolean;
   onSigned?: (signature: string) => void;
   onSent?: (signature: string) => void;
+  /** Which rail this send was debiting, so Tokenkeg `insufficient funds` can name the token. */
+  spend?: SpendContext;
 }
 
+/** 0 SOL · 1 USDC · 2 $CG · 3 SKR. `switchable` means the UI offered another rail. */
+export type SpendContext = { currency: 0 | 1 | 2 | 3; switchable?: boolean };
+
 export class TxError extends Error {
+  spend?: SpendContext;
   constructor(public readonly cause: unknown, public readonly logs?: string[], public readonly signature?: string) {
     super(errorSnapshot(cause).message);
   }
@@ -208,6 +214,9 @@ export async function sendTx(
         throw e instanceof TxError ? e : new TxError(e, undefined, submittedSignature);
       }
     }
+  } catch (e) {
+    if (opts.spend && e && typeof e === 'object') (e as TxError).spend = opts.spend;
+    throw e;
   } finally {
     // phase-guarded: never erase a connect/signin status owned by the wallet bridge
     if (reportStatus) clearWait(...TX_PHASES);

@@ -3,7 +3,7 @@
 // in separate transactions instead of splitting off randomness or dropping proof nodes.
 import { AddressLookupTableAccount, AddressLookupTableProgram, PublicKey, SendTransactionError, type Connection, type TransactionInstruction } from '@solana/web3.js';
 import { sha256 } from '@noble/hashes/sha256';
-import { appLookupTables, fitsInTx, sendTx, TxError, type WalletLike } from '../tx';
+import { appLookupTables, fitsInTx, sendTx, TxError, type SpendContext, type WalletLike } from '../tx';
 import { checkTransactionAccess } from '../access';
 import { recentLookupSlots } from '../lookupTableSlots';
 
@@ -107,6 +107,7 @@ export async function sendArenaTx(connection: Connection, wallet: WalletLike, bu
   onPrepare?: () => void;
   /** Read after build(), which may refresh slot-dependent instructions. */
   minContextSlot?: () => number | undefined;
+  spend?: SpendContext;
 } = {}) {
   let tables = await appLookupTables(connection, opts.lookupTable);
   let retriedFinalSlot = false;
@@ -115,7 +116,7 @@ export async function sendArenaTx(connection: Connection, wallet: WalletLike, bu
     const ixs = await build();
     if (fitsInTx(wallet.publicKey, ixs, tables)) {
       try {
-        return await sendTx(connection, wallet, ixs, { cuLimit: 400_000, lookupTables: tables, minContextSlot: Math.max(opts.minContextSlot?.() ?? 0, ...tables.map(table => table.state.lastExtendedSlot + 1)) });
+        return await sendTx(connection, wallet, ixs, { cuLimit: 400_000, lookupTables: tables, minContextSlot: Math.max(opts.minContextSlot?.() ?? 0, ...tables.map(table => table.state.lastExtendedSlot + 1)), spend: opts.spend });
       } catch (error) {
         // Atomic randomness init has its own ALT create CPI. Rebuild proofs + slot too,
         // but only if the whole final transaction was explicitly rejected by preflight.

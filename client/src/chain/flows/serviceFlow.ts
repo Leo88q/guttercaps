@@ -88,6 +88,6 @@ export async function payForService(p: PayServiceParams): Promise<{ signature: s
     cgMint: cfg.cgMint,
     skrMint,
   }));
-  const { signature } = await sendTx(p.connection, p.wallet, ixs, { cuLimit: 120_000 });
+  const { signature } = await sendTx(p.connection, p.wallet, ixs, { cuLimit: 120_000, spend: { currency: p.currency, switchable: true } });
   return { signature, kind: def.kind };
 }

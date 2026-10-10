@@ -75,7 +75,10 @@ export default function Quests() {
   const fmtRoot = (...args: Parameters<typeof rewardText>) => resolveUiText(rewardText(...args));
   /** The face each reward kind wears in the rewards panel (reward-icons set). */
   const kindGlyph = (kind: number): RewardKind => isChipRootKind(kind) ? 'voucher' : isItemRootKind(kind) ? 'booster' : isSkrRootKind(kind) ? 'skr' : 'cg';
-  const list = (quests.data ?? []).filter((q) => q.cadence === tab);
+  // d_streak7 is a 7-day meta reward (DAILY_QUESTS[4]), not a same-day daily.
+  // The streak card above already tracks it — leaving the row in the daily list
+  // makes the day look unfinished after every other daily is done.
+  const list = (quests.data ?? []).filter((q) => q.cadence === tab && q.id !== 'd_streak7');
   const ready = (claims.data ?? []).filter((c) => isClaimReady(c));
   const claimable = ready.filter((c) => !isChipRootKind(c.kind!));   // one tx for every $CG / SKR / booster leaf
   const vouchers = ready.filter((c) => isChipRootKind(c.kind!));     // one tx EACH: the claim commits a randomness request (like buy_pack)
@@ -154,6 +157,9 @@ export default function Quests() {
           <div className="row between"><span className="row strong" style={{ gap: 8 }}><StreakIcon size={18} />{t('quests.streak')}</span><span className="mono">{streak.data?.days ?? 0}/7</span></div>
           <Progress value={streak.data?.days ?? 0} max={7} tone="orange" />
           <div className="tiny muted">{t('quests.streakHint', { time: streak.data ? countdown(streak.data.resetsAt!) : '—' })}</div>
+          <div className="tiny muted quest-rewards">
+            <span className="quest-reward"><VoucherIcon size={14} /> + {t('quests.capRoll')} ({oddsText(QUEST_CHIP_TEMPLATES[0].odds)})</span>
+          </div>
         </div>
         <CleanZone className="stack-sm">
           <div className="row" style={{ gap: 8 }}><StashIcon size={18} /><span className="label">{t('quests.claimable')}</span></div>

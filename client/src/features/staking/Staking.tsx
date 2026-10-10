@@ -63,7 +63,7 @@ export default function Staking() {
     if (!wallet || !cgMint) { toast({ kind: 'error', title: { key: 'screens.cgNotConfigured' } }); return; }
     setBusy(true);
     try {
-      const { signature } = await sendTx(connection, wallet, await build(), { cuLimit: 250_000 });
+      const { signature } = await sendTx(connection, wallet, await build(), { cuLimit: 250_000, spend: { currency: 2 } });
       toast({ kind: 'money', title: { key: 'screens.transactionDone', params: { action: { key: kind } } }, href: EXPLORER.tx(signature) });
       void qc.invalidateQueries({ queryKey: ['staking'] });
       void qc.invalidateQueries({ queryKey: ['chain'] });

@@ -11,7 +11,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { PublicKey } from '@solana/web3.js';
 import { useChipDetail } from '@/api/hooks';
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
-import { sendTx } from '@/chain/tx';
+import { sendTx, type SpendContext } from '@/chain/tx';
 import { resolveCompressedChip } from '@/chain/flows/compressedChip';
 import { cancelCompressedAssetIx } from '@/chain/ix/market';
 import { listingBuyIxs, dasClient } from './payment';
@@ -49,12 +49,12 @@ export default function ChipPage() {
   const l = c.listing;
   const prof = RARITY_PROFILES[c.rarity!];
   const feeBps = cfg.data?.marketFeeBps ?? MARKET_FEE_BPS;
-  async function tx(kind: MessageKey, build: () => Promise<import('@solana/web3.js').TransactionInstruction[]>) {
+  async function tx(kind: MessageKey, build: () => Promise<import('@solana/web3.js').TransactionInstruction[]>, spend?: SpendContext) {
     if (isMock()) { toast({ kind: 'money', title: { key: 'screens.transactionDemo', params: { action: { key: kind } } }, body: { key: 'screens.simulated' } }); return; }
     if (!wallet || !cfg.data) { toast({ kind: 'error', title: { key: 'common.connectWallet' } }); return; }
     setBusy(true);
     try {
-      const { signature } = await sendTx(connection, wallet, await build(), { cuLimit: 300_000 });
+      const { signature } = await sendTx(connection, wallet, await build(), { cuLimit: 300_000, spend });
       toast({ kind: 'money', title: { key: 'screens.transactionDone', params: { action: { key: kind } } }, href: EXPLORER.tx(signature) });
       void qc.invalidateQueries({ queryKey: ['market'] });
       void qc.invalidateQueries({ queryKey: ['chips', asset] });
@@ -96,7 +96,7 @@ export default function ChipPage() {
               <CleanConfirmButton disabled={busy || l.currency !== 'SOL'} onClick={() => tx('market.buy', async () => {
                 const r = await ref();
                 return listingBuyIxs({ buyer: wallet!.publicKey, seller: new PublicKey(l.seller!), asset: r.asset, resolved: r, treasury: cfg.data!.treasury, buyback: cfg.data!.buybackWallet, expectedPrice: BigInt(l.price!), listingCurrency: l.currency === 'SOL' ? 0 : 1 });
-              })}>{t('ui.buyFor', { amount: fmtAmount(l.price!, l.currency!) })}</CleanConfirmButton>
+              }, { currency: 0 })}>{t('ui.buyFor', { amount: fmtAmount(l.price!, l.currency!) })}</CleanConfirmButton>
               <div className="tiny muted">{t('screens.pricePinned', { amount: fmtAmount(l.price!, l.currency!) })}</div>
             </>
           )}

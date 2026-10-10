@@ -188,6 +188,7 @@ export class PackFlow {
 
       const { signature } = await sendTx(connection, wallet, ixs, {
         cuLimit: 500_000,
+        spend: { currency: this.state.currency, switchable: true },
         onSent: (sig) => this.set({ buySignature: sig }),
       });
       this.set({ phase: 'committed', buySignature: signature });

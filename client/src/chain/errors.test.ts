@@ -11,7 +11,7 @@ import source from '@/shared/i18n/failures/source.json';
 import { API_ERROR_KEYS } from '@/api/errorCatalog';
 import { ApiError } from '@/api/client';
 import catalog from './errorCatalog.json';
-import { ARENA_ID, CHIP_CORE_ID, MARKET_ID, STAKING_ID } from './ids';
+import { ARENA_ID, CHIP_CORE_ID, MARKET_ID, STAKING_ID, TOKEN_PROGRAM_ID } from './ids';
 import { humanizeTxError, describeProgramError, isBlockhashExpired } from './errors';
 import { parseCustomError } from './anchor';
 import { errorSnapshot, originalErrorText } from './errorSnapshot';
@@ -137,8 +137,34 @@ describe('error attribution and recovery safety', () => {
     expect(describeProgramError(6000, '11111111111111111111111111111111')).toBeUndefined();
     const text = humanizeTxError({ message: 'custom program error: 0x1', logs: ['Program 11111111111111111111111111111111 failed: custom program error: 0x1'] });
     expect(text).not.toContain(t('ui.insufficientSol'));
+    expect(text).not.toContain(t('ui.insufficientToken'));
     expect(text).toContain('11111111111111111111111111111111');
     expect(text).toContain('0x1');
+  });
+  it('names the missing token for Tokenkeg insufficient funds and keeps the program log as evidence', async () => {
+    const tokenkeg = TOKEN_PROGRAM_ID.toBase58();
+    const raw = {
+      message: 'Transaction simulation failed: Error processing Instruction 2: custom program error: 0x1',
+      logs: [
+        `Program ${tokenkeg} invoke [1]`,
+        `Program ${tokenkeg} failed: custom program error: 0x1`,
+        'Program log: Error: insufficient funds',
+      ],
+    };
+    expect(humanizeTxError(raw)).toBe(t('ui.insufficientToken'));
+    expect(humanizeTxError(raw)).not.toContain(tokenkeg);
+    expect(originalErrorText(raw)).toContain('insufficient funds');
+    const cg = new TxError(raw);
+    cg.spend = { currency: 2, switchable: true };
+    for (const locale of LOCALES) {
+      await setLocale(locale);
+      expect(humanizeTxError(cg)).toBe(t('ui.insufficientPaySwitch', { token: '$CG' }));
+      expect(humanizeTxError(errorSnapshot(cg))).toBe(t('ui.insufficientPaySwitch', { token: '$CG' }));
+    }
+    const persisted = JSON.parse(JSON.stringify(errorSnapshot(cg)));
+    expect(humanizeTxError(persisted)).toBe(t('ui.insufficientPaySwitch', { token: '$CG' }));
+    expect(humanizeTxError({ ...raw, spend: { currency: 2 } })).toBe(t('ui.insufficientPay', { token: '$CG' }));
+    expect(humanizeTxError({ message: 'Transfer: insufficient lamports 12, need 5000', spend: { currency: 2, switchable: true } })).toBe(t('ui.insufficientFeeSol', { token: '$CG' }));
   });
   it('prioritizes the innermost CPI code, including decimal logs and inconsistent outer prose', () => {
     const error = { message: 'expired: custom program error: 6000', logs: [

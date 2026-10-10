@@ -8,7 +8,7 @@ import { rpcEndpoints } from '@/app/rpcEndpoints';
 import { appLookupTables, fitsInTx, sendTx, type WalletLike } from '../tx';
 import { prepareClose, prepareCloseLut, prepareRandomness, prepareReveal, readRandomness, sendCloseLut } from '../switchboard';
 import {
-  cancelStaleClaimFusionIx, closeExpiredClaimIx, fuseClaimsCommitIx, fuseClaimsRevealIx, fuseCompressedClaimsIx, STALE_PACK_SLOTS,
+  cancelStaleClaimFusionIx, closeExpiredClaimIx, Currency, fuseClaimsCommitIx, fuseClaimsRevealIx, fuseCompressedClaimsIx, STALE_PACK_SLOTS,
 } from '../ix/chipCore';
 import { RNG_KIND, claimFusionPda, compressedMintClaimPda, freshNonce } from '../pdas';
 import {
@@ -106,7 +106,7 @@ export class ClaimFusionFlow {
             cgMint: this.cfg.cgMint,
             materialClaims: this.state.materials,
           }),
-        ], { cuLimit: 400_000 });
+        ], { cuLimit: 400_000, spend: { currency: Currency.CG } });
         const resultClaim = compressedMintClaimPda(wallet.publicKey, nonce)[0];
         this.set({
           phase: 'settling',
@@ -136,7 +136,7 @@ export class ClaimFusionFlow {
           owner: wallet.publicKey, nonce, resultCollectionIdx: this.state.resultCollectionIdx, useBooster: this.state.boosted,
           randomness: rnd.randomness, queue: rnd.queue, oracle: rnd.oracle, cgMint: this.cfg.cgMint, materials: this.state.materials,
         }),
-      ], { cuLimit: 600_000 });
+      ], { cuLimit: 600_000, spend: { currency: Currency.CG } });
       const ev = findEvent(logs, 'ClaimFusionCommitted', readClaimFusionCommitted);
       if (!ev) throw new Error('commit transaction landed without a ClaimFusionCommitted event');
       this.set({ phase: 'committed', signatures: [signature] });

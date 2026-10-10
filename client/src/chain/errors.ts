@@ -3,9 +3,44 @@ import { t, type MessageKey } from '@/shared/i18n';
 import { API_ERROR_KEYS } from '@/api/errorCatalog';
 import english from '@/shared/i18n/failures/en.json';
 import catalog from './errorCatalog.json';
-import { ARENA_ID, CHIP_CORE_ID, MARKET_ID, STAKING_ID } from './ids';
+import { ARENA_ID, CHIP_CORE_ID, MARKET_ID, STAKING_ID, TOKEN_PROGRAM_ID } from './ids';
 import { parseCustomError } from './anchor';
-import { errorSnapshot } from './errorSnapshot';
+import { errorSnapshot, type ErrorSnapshot } from './errorSnapshot';
+
+const TOKEN_2022_PROGRAM_ID = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
+const TOKEN_NAMES = ['SOL', 'USDC', '$CG', 'SKR'] as const;
+
+function isTokenProgram(id?: string): boolean {
+  return id === TOKEN_PROGRAM_ID.toBase58() || id === TOKEN_2022_PROGRAM_ID;
+}
+
+function spendOf(e: ErrorSnapshot): { currency: 0 | 1 | 2 | 3; switchable: boolean } | undefined {
+  if (!e.spend) return undefined;
+  return { currency: e.spend.currency, switchable: e.spend.switchable === true };
+}
+
+/**
+ * Tokenkeg `0x1` / "insufficient funds" and system "insufficient lamports".
+ * Named before unknown custom-program dumps so the toast is not a raw simulation log.
+ */
+function describeBalanceError(e: ErrorSnapshot, custom?: { code: number; programId?: string }): string | undefined {
+  const blob = [e.message, ...(e.logs ?? [])].join('\n');
+  const spend = spendOf(e);
+  const tokenShort = /insufficient funds/i.test(blob) || (custom?.code === 1 && isTokenProgram(custom.programId));
+  const solShort = /insufficient lamports/i.test(blob);
+  if (solShort && !tokenShort) {
+    if (spend && spend.currency !== 0) return t('ui.insufficientFeeSol', { token: TOKEN_NAMES[spend.currency] });
+    if (spend?.switchable) return t('ui.insufficientPaySwitch', { token: TOKEN_NAMES[0] });
+    if (spend) return t('ui.insufficientPay', { token: TOKEN_NAMES[0] });
+    return t('ui.insufficientSol');
+  }
+  if (tokenShort) {
+    if (!spend) return t('ui.insufficientToken');
+    const token = TOKEN_NAMES[spend.currency];
+    return spend.switchable ? t('ui.insufficientPaySwitch', { token }) : t('ui.insufficientPay', { token });
+  }
+  return undefined;
+}
 
 const PROGRAMS = [
   { id: CHIP_CORE_ID.toBase58(), name: 'chip_core' as const },
@@ -55,6 +90,8 @@ export function humanizeTxError(error: unknown): string {
   if (e.code === 'confirmation_unknown') return t('failures.confirmationUnknown');
   // Structured on-chain failures take precedence over incidental words in a wallet's prose.
   const custom = parseCustomError(e);
+  const balance = describeBalanceError(e, custom);
+  if (balance) return balance;
   if (custom) {
     const known = describeProgramError(custom.code, custom.programId);
     if (known) return known;
@@ -63,8 +100,6 @@ export function humanizeTxError(error: unknown): string {
   const flowMessage = describeFlowError(e.message);
   if (flowMessage) return flowMessage;
   if (/User rejected|rejected the request|declined/i.test(e.message)) return t('errors.rejected');
-  if (/insufficient lamports/i.test(e.message)) return t('ui.insufficientSol');
-  if (/insufficient funds/i.test(e.message)) return t('errors.insufficient');
   if (isBlockhashExpired(e)) return t('ui.signatureExpired');
   if (/Transaction too large/i.test(e.message)) return t('ui.largeTx');
   if (/^(?:Failed to fetch|NetworkError when attempting to fetch resource\.?|Load failed|fetch failed)$/.test(e.message)) return t('failures.network');

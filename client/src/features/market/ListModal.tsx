@@ -64,7 +64,7 @@ export function ListModal({ chip, onClose }: { chip: Chip; onClose: () => void }
         seller: wallet.publicKey, asset: r.asset, collectionIdx: r.collectionIdx, claim: r.claim,
         price, currency: SOL,
       })];
-      const { signature } = await sendTx(connection, wallet, ixs, { cuLimit: 400_000 });
+      const { signature } = await sendTx(connection, wallet, ixs, { cuLimit: 400_000, spend: { currency: 2 } });
       toast({ kind: 'money', title: { key: 'market.listed' }, body: joinText([amountText(price, 'SOL'), " · ", { key: 'market.feeBurned', params: { amount: amountText(LISTING_FEE_CG, 'CG') } }]), href: EXPLORER.tx(signature) });
       void qc.invalidateQueries({ queryKey: ['market'] });
       void qc.invalidateQueries({ queryKey: ['me'] });

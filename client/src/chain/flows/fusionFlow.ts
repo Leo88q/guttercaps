@@ -4,7 +4,7 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import { FUSION_RECIPES, BOOSTER } from '@guttercaps/economy';
 import { appLookupTables, fitsInTx, sendTx, type WalletLike } from '../tx';
 import { prepareClose, prepareCloseLut, prepareRandomness, prepareReveal, readRandomness, sendCloseLut } from '../switchboard';
-import { cancelStaleFusionIx, fuseIx, fuseRevealIx, STALE_PACK_SLOTS, type FuseMaterial } from '../ix/chipCore';
+import { cancelStaleFusionIx, Currency, fuseIx, fuseRevealIx, STALE_PACK_SLOTS, type FuseMaterial } from '../ix/chipCore';
 import { RNG_KIND, freshNonce, pendingFusionPda } from '../pdas';
 import { decodePendingFusion, readChipFused, type ChipFusedEvent, type GameConfig } from '../accounts';
 import { findEvent } from '../anchor';
@@ -71,7 +71,7 @@ export class FusionFlow {
         owner: wallet.publicKey, nonce: this.state.nonce, useBooster: this.state.boosted, rng,
         materials: this.state.materials, resultCollectionIdx: this.state.resultCollectionIdx, cgMint: this.cfg.cgMint, coreCollectionOf: coreOf,
       }));
-      const { signature, logs } = await sendTx(connection, wallet, ixs, { cuLimit: atomic ? 700_000 : 500_000 });
+      const { signature, logs } = await sendTx(connection, wallet, ixs, { cuLimit: atomic ? 700_000 : 500_000, spend: { currency: Currency.CG } });
       if (atomic) {
         const ev = findEvent(logs, 'ChipFused', readChipFused);
         this.set({ phase: 'done', signatures: [signature], result: ev });
