@@ -12,7 +12,8 @@ import { FUSION_RECIPES, BOOSTER } from '@guttercaps/economy';
 import { useMyChips, useFusionSuggest, useGrid, useMyServices, type Chip } from '@/api/hooks';
 import { KIND, loadPresets, owns, savePresets, presetName, type FusionPreset } from '@/shared/lib/cosmetics';
 import { usePlayerItems, useWalletLike } from '@/chain/hooks';
-import { decodeCompressedChipState, decodeCompressedMintClaim, claimFusionBlock, type CompressedMintClaim } from '@/chain/accounts';
+import { decodeCompressedChipState, decodeCompressedMintClaim, type CompressedMintClaim } from '@/chain/accounts';
+import { planClaimFusion, type FusionPlanBlock } from '@/chain/flows/fusionPlan';
 import { compressedChipStatePda } from '@/chain/pdas';
 import { qk } from '@/api/keys';
 import { ClaimFusionFlow } from '@/chain/flows/claimFusionFlow';
@@ -124,19 +125,23 @@ export default function Fusion() {
       if (cStateInfos.every((info) => !!info)) {
         const materialClaims = cStateInfos.map((info) => decodeCompressedChipState(new Uint8Array(info!.data)).claim);
         const claimInfos = await connection.getMultipleAccountsInfo(materialClaims, 'confirmed');
-        const reasonOf = (block: NonNullable<ReturnType<typeof claimFusionBlock>>) => (
+        const reasonOf = (block: FusionPlanBlock) => (
           block === 'listed' ? t('collection.filters.listed')
             : block === 'staked' ? t('collection.filters.staked')
               : block === 'locked' ? t('collection.filters.locked')
                 : block === 'consumed' ? t('fusion.reasonConsumed')
                   : block === 'owner' ? t('fusion.reasonOwner')
-                    : t('fusion.reasonUnregistered')
+                    : block === 'mixed' ? t('ui.sameDistrict')
+                      : block === 'rarity' ? t('ui.sameTier')
+                        : t('fusion.reasonUnregistered')
         );
+        const decoded = [];
         for (let i = 0; i < 3; i++) {
           if (!claimInfos[i]) throw new Error(t('fusion.blocked', { reason: t('fusion.reasonUnregistered') }));
-          const block = claimFusionBlock(decodeCompressedMintClaim(new Uint8Array(claimInfos[i]!.data)), wallet.publicKey);
-          if (block) throw new Error(t('fusion.blocked', { reason: reasonOf(block) }));
+          decoded.push(decodeCompressedMintClaim(new Uint8Array(claimInfos[i]!.data)));
         }
+        const plan = planClaimFusion(decoded, wallet.publicKey, effectiveResultCol!);
+        if (plan.block) throw new Error(t('fusion.blocked', { reason: reasonOf(plan.block) }));
         const cf = new ClaimFusionFlow(
           {
             connection,
@@ -169,7 +174,7 @@ export default function Fusion() {
               });
             },
           },
-          { recipe: recipe.from, boosted: booster, materials: materialClaims, resultCollectionIdx: effectiveResultCol! },
+          { recipe: plan.recipeFrom, boosted: booster, materials: materialClaims, resultCollectionIdx: plan.resultCollectionIdx },
         );
         await cf.fuse();
         if (cf.state.phase === 'committed') await cf.reveal();
@@ -192,7 +197,7 @@ export default function Fusion() {
         let outAsset = cf.state.settledAsset?.toBase58();
         if (!outAsset && settledClaim) outAsset = await findRegisteredChip(settledClaim);
         outAsset ??= r?.resultClaim?.toBase58();
-        if (r?.success && outAsset) { enqueue([{ id: outAsset, asset: outAsset, rarity: recipe.to, collectionIdx: effectiveResultCol!, fused: true }]); toast({ kind: 'success', title: { key: 'fusion.success' }, href: EXPLORER.tx(cf.state.signatures.at(-1)!) }); }
+        if (r?.success && outAsset) { enqueue([{ id: outAsset, asset: outAsset, rarity: FUSION_RECIPES[plan.recipeFrom]!.to, collectionIdx: plan.resultCollectionIdx, fused: true }]); toast({ kind: 'success', title: { key: 'fusion.success' }, href: EXPLORER.tx(cf.state.signatures.at(-1)!) }); }
         else if (r) toast({ kind: 'error', title: { key: 'fusion.failed' }, body: { key: 'screens.fusionRoll', params: { roll: percentText(r.rollBps), threshold: percentText(r.thresholdBps) } }, href: EXPLORER.tx(cf.state.signatures.at(-1)!) });
         setSlots([null, null, null]);
         if (cf.state.randomness) { try { await cf.reclaimRent(); } catch { /* optional */ } }

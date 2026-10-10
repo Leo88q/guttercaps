@@ -12,12 +12,13 @@ import {
 } from '../ix/chipCore';
 import { RNG_KIND, claimFusionPda, compressedMintClaimPda, freshNonce } from '../pdas';
 import {
-  claimFusionBlock, decodeCompressedMintClaim, decodePendingClaimFusion, readClaimFusionCommitted, readClaimFusionRevealed,
+  decodeCompressedMintClaim, decodePendingClaimFusion, readClaimFusionCommitted, readClaimFusionRevealed,
   type ClaimFusionRevealedEvent, type CompressedMintClaim, type GameConfig,
 } from '../accounts';
 import { findEvent } from '../anchor';
 import { DasClient } from '../das';
 import { settleClaim } from './claimSettle';
+import { planClaimFusion } from './fusionPlan';
 import { fetchCollectionMetas, fetchGameConfig, fetchTreeMetas } from './packFlow';
 
 type ClaimFusionPhase = 'idle' | 'signing' | 'committed' | 'revealing' | 'settling' | 'done' | 'stale' | 'error';
@@ -74,29 +75,27 @@ export class ClaimFusionFlow {
       this.cfg ??= await fetchGameConfig(connection);
       const nonce = await this.pickFreeNonce();
       this.set({ nonce });
-      const recipe = FUSION_RECIPES[this.state.recipe];
       const claimInfos = await connection.getMultipleAccountsInfo(this.state.materials, 'confirmed');
+      const claims: CompressedMintClaim[] = [];
       for (let i = 0; i < this.state.materials.length; i++) {
         const info = claimInfos[i];
         if (!info) throw new Error(`fusion material claim missing: ${this.state.materials[i].toBase58()}`);
-        const claim = decodeCompressedMintClaim(new Uint8Array(info.data));
-        const block = claimFusionBlock(claim, wallet.publicKey);
-        if (block) {
-          throw Object.assign(new Error(`fusion blocked: ${block}`), {
-            code: 'fusion_blocked',
-            details: {
-              reason: block,
-              claim: this.state.materials[i].toBase58(),
-              minted: claim.minted,
-              registered: claim.registered,
-              consumed: claim.consumed,
-              listed: claim.listed,
-              staked: claim.staked,
-              lockUntil: claim.lockUntil.toString(),
-            },
-          });
-        }
+        claims.push(decodeCompressedMintClaim(new Uint8Array(info.data)));
       }
+      const plan = planClaimFusion(claims, wallet.publicKey, this.state.resultCollectionIdx);
+      if (plan.block) {
+        throw Object.assign(new Error(`fusion blocked: ${plan.block}`), {
+          code: 'fusion_blocked',
+          details: {
+            reason: plan.block,
+            claims: this.state.materials.map((k) => k.toBase58()),
+            collections: claims.map((c) => c.collectionIdx),
+            rarities: claims.map((c) => c.rarity),
+          },
+        });
+      }
+      this.set({ resultCollectionIdx: plan.resultCollectionIdx, recipe: plan.recipeFrom });
+      const recipe = FUSION_RECIPES[plan.recipeFrom];
       if (recipe && recipe.successBps === 10_000) {
         this.set({ phase: 'signing' });
         const { signature } = await sendTx(connection, wallet, [
