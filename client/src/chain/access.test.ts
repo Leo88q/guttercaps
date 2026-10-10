@@ -18,6 +18,11 @@ describe('first-party transaction guard', () => {
     await expect(checkTransactionAccess('wallet',[ix('buy_pack')])).rejects.toBe(e);
     expect(request).toHaveBeenCalledWith('post','/me/compliance/check',{body:{wallet:'wallet',feature:'packs'}});
   });
+  it('does not block a signing wallet when only the HTTP session is gone', async () => {
+    vi.mocked(request).mockRejectedValue({ status: 401, code: 'unauthenticated' });
+    await checkTransactionAccess('wallet', [ix('buy_pack')]);
+    expect(request).toHaveBeenCalled();
+  });
   it('does not exempt an unknown new managed instruction', () => expect(transactionFeatures([ix('future_purchase')])).toEqual(['services']));
   it('leaves unrelated program instructions alone', () => expect(transactionFeatures([ix('buy_pack',SystemProgram.programId)])).toEqual([]));
   it('does not contact a real API in explicit mock mode', async () => {vi.mocked(isMock).mockReturnValue(true);await checkTransactionAccess('wallet',[ix('buy_pack')]);expect(request).not.toHaveBeenCalled();});

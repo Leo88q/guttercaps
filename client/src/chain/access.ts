@@ -31,5 +31,16 @@ export function transactionFeatures(ixs: TransactionInstruction[]): AccessFeatur
 }
 export async function checkTransactionAccess(wallet: string, ixs: TransactionInstruction[]) {
   if (isMock()) return;
-  for (const feature of transactionFeatures(ixs)) await request('post', '/me/compliance/check', { body: { feature, wallet } });
+  for (const feature of transactionFeatures(ixs)) {
+    try {
+      await request('post', '/me/compliance/check', { body: { feature, wallet } });
+    } catch (e) {
+      // A dropped HTTP session is not a ban. The wallet is already connected this
+      // visit — do not force a second SIWS "connect" before the transaction the
+      // player tapped. Real denials (403 / age_required / …) still abort.
+      const status = e && typeof e === 'object' ? (e as { status?: number }).status : undefined;
+      if (status === 401) continue;
+      throw e;
+    }
+  }
 }
