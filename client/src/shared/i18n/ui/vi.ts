@@ -25,6 +25,7 @@ const ui = {
   "xpGained": "+{n} XP",
   "leveledUp": "Lv {n}",
   "xpEarned": "Đội +{n} XP",
+  "xpToday": "{xp} / {cap} XP hôm nay",
   "stakeWeight": "trọng số staking",
   "listMarket": "Đăng bán trên chợ",
   "stakeCg": "Staking để nhận $CG",

@@ -68,8 +68,9 @@ export function creditChipXp(db: Db, asset: string, amount: number, day: number)
   const next = applyChipXp(chip.level, unspent + grant, profile(chip.rarity as RarityIndex).maxLevel);
   db.run(POOL_UPSERT, asset, next.xp, grant);
   if (next.level > chip.level) {
+    // Ranked power only. `compressed_claims.level` is the on-chain mint (always 1 until merkle
+    // level_up) — writing XP into it made wager resolve compare lv 2+ against mint-1 power.
     db.run(`UPDATE chips SET level = ? WHERE asset = ? AND burned_at IS NULL AND level < ?`, next.level, asset, next.level);
-    db.run(`UPDATE compressed_claims SET level = ? WHERE asset = ? AND level < ?`, next.level, asset, next.level);
   }
   return { granted: grant, fromLevel, toLevel: next.level };
 }

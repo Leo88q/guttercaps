@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CHIP_XP, applyChipXp } from '@guttercaps/economy';
 import { Db } from '../src/db.ts';
 import { creditChipXp, grantSquadXp, matchXpForSquad } from '../src/chip-xp.ts';
+import { myChips } from '../src/queries.ts';
 
 const kp = () => {
   const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -66,5 +67,14 @@ describe('ranked chip XP', () => {
     expect(db.get<{ xp: number; from_level: number; to_level: number }>(`SELECT xp, from_level, to_level FROM chip_xp_awards WHERE match_id = ? AND asset = ?`, match, a)).toEqual({ xp: CHIP_XP.win, from_level: 1, to_level: 2 });
     expect(matchXpForSquad(db, match, JSON.stringify([{ asset: a }]))).toEqual({ xp: CHIP_XP.win, leveled: 1 });
     expect(db.get<{ lifetime: number }>(`SELECT lifetime FROM chip_xp WHERE asset = ?`, a)!.lifetime).toBe(CHIP_XP.win);
+  });
+
+  it('exposes today\'s XP toward the daily cap on /me/chips', () => {
+    const db = new Db(':memory:');
+    const owner = kp();
+    const a = mint(db, owner, 0);
+    grantSquadXp(db, JSON.stringify([{ asset: a }]), true, Math.floor(Date.now() / 1000), owner);
+    const item = myChips(db, owner, {}).items[0];
+    expect(item).toMatchObject({ xpToday: CHIP_XP.win, xpDailyCap: CHIP_XP.dailyCap, level: 2 });
   });
 });

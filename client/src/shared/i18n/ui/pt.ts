@@ -25,6 +25,7 @@ const ui = {
   "xpGained": "+{n} XP",
   "leveledUp": "Nv. {n}",
   "xpEarned": "Esquadrão +{n} XP",
+  "xpToday": "{xp} / {cap} XP hoje",
   "stakeWeight": "peso de staking",
   "listMarket": "Anunciar no mercado",
   "stakeCg": "Fazer staking por $CG",

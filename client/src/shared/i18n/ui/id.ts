@@ -25,6 +25,7 @@ const ui = {
   "xpGained": "+{n} XP",
   "leveledUp": "Lv {n}",
   "xpEarned": "Skuad +{n} XP",
+  "xpToday": "{xp} / {cap} XP hari ini",
   "stakeWeight": "bobot staking",
   "listMarket": "Jual di pasar",
   "stakeCg": "Staking untuk $CG",

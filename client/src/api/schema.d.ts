@@ -4728,6 +4728,10 @@ export interface components {
             xpToNext?: number | null;
             /** @description rarity cap (Common 12 … Diamond 50) */
             maxLevel?: number;
+            /** @description XP this cap earned during the current UTC day toward xpDailyCap */
+            xpToday?: number;
+            /** @description per-cap UTC-day XP cap (CHIP_XP.dailyCap) */
+            xpDailyCap?: number;
             /** @description XP this cap earned from this match (match payloads only; 0 otherwise) */
             xpGained?: number;
             /** @description new level if this match promoted the cap; null otherwise */

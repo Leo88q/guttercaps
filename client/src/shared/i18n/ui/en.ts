@@ -24,6 +24,7 @@ const ui = {
   "xpGained": "+{n} XP",
   "leveledUp": "Lv {n}",
   "xpEarned": "Squad +{n} XP",
+  "xpToday": "{xp} / {cap} XP today",
   "stakeWeight": "stake weight",
   "listMarket": "List on market",
   "stakeCg": "Stake for $CG",

@@ -1273,6 +1273,12 @@ describe('battle resolver', () => {
     const assets = mint(db, owner, [{ rarity: 1, collection: 2 }, { rarity: 2, collection: 3 }, { rarity: 0, collection: 4 }]);
     const sq = squadFromDb(db, assets.map((a) => new PublicKey(a)))!;
     expect(sq.map((c) => [c.collection, c.rarity])).toEqual([[2, 1], [3, 2], [4, 0]]);
+    expect(sq.every((c) => c.level === 1)).toBe(true);
+    // ranked XP writes chips.level; the wager fight must still hash mint-1 power (SEC-B30)
+    db.run(`UPDATE chips SET level = 9 WHERE asset = ?`, assets[0]);
+    const afterXp = squadFromDb(db, assets.map((a) => new PublicKey(a)))!;
+    expect(afterXp[0].level).toBe(1);
+    expect(onChainSquadPower(afterXp)).toBe(onChainSquadPower(sq));
     expect(squadFromDb(db, [new PublicKey(kp())])).toBeUndefined();
   });
 });

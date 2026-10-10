@@ -25,6 +25,7 @@ const ui = {
   "xpGained": "+{n} XP",
   "leveledUp": "Lv {n}",
   "xpEarned": "Squad +{n} XP",
+  "xpToday": "{xp} / {cap} XP ngayon",
   "stakeWeight": "bigat sa staking",
   "listMarket": "Ibenta sa merkado",
   "stakeCg": "Mag-stake para sa $CG",

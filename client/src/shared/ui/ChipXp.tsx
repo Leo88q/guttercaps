@@ -7,6 +7,8 @@ export function ChipXpMeter({
   xp,
   xpToNext: need,
   maxLevel,
+  xpToday,
+  xpDailyCap,
   compact,
 }: {
   level?: number | null;
@@ -14,6 +16,8 @@ export function ChipXpMeter({
   xp?: number | null;
   xpToNext?: number | null;
   maxLevel?: number | null;
+  xpToday?: number | null;
+  xpDailyCap?: number | null;
   compact?: boolean;
 }) {
   const t = useT();
@@ -21,8 +25,16 @@ export function ChipXpMeter({
   const lvl = level ?? 1;
   const unspent = xp ?? 0;
   const cost = need ?? xpToNext(lvl, cap);
+  const today = (
+    <div className="tiny muted">{t('ui.xpToday', { xp: xpToday ?? 0, cap: xpDailyCap ?? CHIP_XP.dailyCap })}</div>
+  );
   if (cost == null) {
-    return <div className="tiny muted">{t('ui.levelMaxed', { max: cap })}</div>;
+    return (
+      <div className="stack-sm">
+        <div className="tiny muted">{t('ui.levelMaxed', { max: cap })}</div>
+        {!compact && today}
+      </div>
+    );
   }
   const pct = Math.min(100, Math.round((unspent / cost) * 100));
   return (
@@ -32,6 +44,7 @@ export function ChipXpMeter({
         <i style={{ width: `${pct}%` }} />
       </div>
       {!compact && <div className="tiny muted">{t('ui.levelHint', { win: CHIP_XP.win, loss: CHIP_XP.loss, cost, max: cap })}</div>}
+      {!compact && today}
     </div>
   );
 }

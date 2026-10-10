@@ -167,7 +167,12 @@ export const useRevealNonce = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (b: { id: string; nonce: string }) => api.post('/arena/matches/{id}/reveal', { nonce: b.nonce }, { path: { id: b.id } }),
-    onSuccess: (_r, b) => { void qc.invalidateQueries({ queryKey: qk.arenaMe }); void qc.invalidateQueries({ queryKey: qk.match(b.id) }); },
+    onSuccess: (_r, b) => {
+      void qc.invalidateQueries({ queryKey: qk.arenaMe });
+      void qc.invalidateQueries({ queryKey: qk.match(b.id) });
+      void qc.invalidateQueries({ queryKey: ['me', 'chips'] });
+      void qc.invalidateQueries({ queryKey: ['chips'] });
+    },
   });
 };
 

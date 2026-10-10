@@ -32,7 +32,7 @@ interface MockChip {
   flags: { staked: boolean; listed: boolean; fusing: boolean; soulbound: boolean; founder: boolean };
   lockUntil: string | null; power: number; stakeWeight: string;
   skin: string | null;
-  xp: number; xpToNext: number | null; maxLevel: number;
+  xp: number; xpToNext: number | null; maxLevel: number; xpToday?: number; xpDailyCap?: number;
   art: { image: string; video?: string; vfxTier: number };
   listing?: { asset: string; seller: string; price: string; currency: 'SOL' | 'USDC'; priceUsd: number; createdAt: string };
 }

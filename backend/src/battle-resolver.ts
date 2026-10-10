@@ -69,6 +69,14 @@ export function resolveBattleIx(a: { oracle: PublicKey; challenger: PublicKey; n
 }
 
 
+/**
+ * On-chain `claim.level` until merkle `level_up` ships. Ranked XP writes `chips.level` and must not
+ * feed this fight: after one Cap Slam win the projection is lv 2+, while `create_battle` /
+ * `accept_battle` still hashed mint-1 power. Using the ranked level here trips SEC-B30 forever
+ * (skip → cancel_stale). Fusion still burns the asset, which returns `undefined` below.
+ */
+const WAGER_ON_CHAIN_LEVEL = 1;
+
 export function squadFromDb(db: Db, assets: readonly PublicKey[]): FighterChip[] | undefined {
   const out: FighterChip[] = [];
   for (const a of assets) {
@@ -76,7 +84,7 @@ export function squadFromDb(db: Db, assets: readonly PublicKey[]): FighterChip[]
     // trail, not an input for a fight that decides the pot.
     const r = db.get<ChipRow>(`SELECT * FROM chips WHERE asset = ? AND burned_at IS NULL`, a.toBase58());
     if (!r) return undefined;
-    out.push({ asset: r.asset, collection: r.collection_idx, rarity: r.rarity, level: r.level });
+    out.push({ asset: r.asset, collection: r.collection_idx, rarity: r.rarity, level: WAGER_ON_CHAIN_LEVEL });
   }
   return out;
 }

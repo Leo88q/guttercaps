@@ -1207,6 +1207,8 @@ components:
         xp: { type: integer, description: 'unspent ranked XP toward the next level' }
         xpToNext: { type: [integer, 'null'], description: 'XP cost of the next level; null at the rarity cap' }
         maxLevel: { type: integer, description: 'rarity cap (Common 12 … Diamond 50)' }
+        xpToday: { type: integer, description: 'XP this cap earned during the current UTC day toward xpDailyCap' }
+        xpDailyCap: { type: integer, description: 'per-cap UTC-day XP cap (CHIP_XP.dailyCap)' }
         xpGained: { type: integer, description: 'XP this cap earned from this match (match payloads only; 0 otherwise)' }
         leveledTo: { type: [integer, 'null'], description: 'new level if this match promoted the cap; null otherwise' }
         index: { type: [integer, 'null'], description: 'per-collection mint number (`Name #N`); null = not resolved on chain yet (core `open_pack` chips are back-filled by the crank within a sweep). Never a placeholder: #0 is a real chip' }

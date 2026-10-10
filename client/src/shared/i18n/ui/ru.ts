@@ -25,6 +25,7 @@ const ui = {
   "xpGained": "+{n} XP",
   "leveledUp": "Ур. {n}",
   "xpEarned": "Отряд +{n} XP",
+  "xpToday": "{xp} / {cap} XP сегодня",
   "stakeWeight": "вес стейкинга",
   "listMarket": "Выставить на маркет",
   "stakeCg": "Стейкать за $CG",
