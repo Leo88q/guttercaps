@@ -231,7 +231,7 @@ export default function Fusion() {
       <div className="card stack">
         <div className="bench">
           {slots.map((s, i) => (
-            <div key={i} className={`slot ${s ? 'filled' : 'slot-empty'}`} onClick={() => setPickFor(i)} style={s ? { border: 'none' } : undefined}>
+            <div key={i} className={`slot ${s ? 'filled' : 'slot-empty live-slot'}`} onClick={() => setPickFor(i)} style={s ? { border: 'none' } : undefined}>
               {s ? <ChipArt collection={s.collection!} rarity={s.rarity!} index={s.index} level={s.level} size="100%" imageUrl={chipImageOf(s)} skin={s.skin} crimp={rarityColor(s.rarity!)} /> : <span className="slot-hint">+ {t('ui.slot')} {i + 1}</span>}
             </div>
           ))}

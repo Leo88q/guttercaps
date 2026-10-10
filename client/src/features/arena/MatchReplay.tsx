@@ -1,5 +1,6 @@
 // /arena/match/:id — round-by-round replay with the fairness data exposed.
-import { Link, useParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useMatch, useMyServices, usePostEmote, type MatchEmote } from '@/api/hooks';
 import { ChipArt } from '@/shared/ui/ChipArt';
@@ -13,18 +14,43 @@ import { useT, fmtLocale, getLocale } from '@/shared/i18n';
 import { EMOTE_PACK_BY_ID, EMOTE_PACK_OF } from '@guttercaps/economy';
 import { ownedPacks, emoteLabel } from '@/shared/lib/cosmetics';
 import { useUiStore } from '@/app/store/ui';
+import { FightStage } from './FightStage';
+
+function reduceMotion(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+}
 
 export default function MatchReplay() {
   const t = useT();
   const { id = '' } = useParams();
+  const loc = useLocation();
   const m = useMatch(id);
   const { publicKey } = useWallet();
-  if (m.isLoading) return <div className="page page-bg page-bg-arena stack"><Skeleton h={200} /><Skeleton h={200} /></div>;
+  const wantPlay = (loc.state as { play?: boolean } | null)?.play === true
+    || new URLSearchParams(loc.search).get('play') === '1';
   const d = m.data;
+  const rounds = d?.rounds ?? [];
+  const awaiting = d?.status === 'revealing';
+  const sawLive = useRef(wantPlay || awaiting);
+  if (wantPlay || awaiting) sawLive.current = true;
+  const [cut, setCut] = useState(0);
+  const [skipped, setSkipped] = useState(false);
+  const animate = Boolean(d) && !skipped && !reduceMotion() && sawLive.current;
+  const visible = !d ? 0 : animate ? Math.min(cut, rounds.length) : rounds.length;
+
+  useEffect(() => {
+    if (!d || d.status === 'revealing' || skipped || reduceMotion() || !sawLive.current) return;
+    if (cut >= rounds.length) return;
+    const timer = window.setTimeout(() => setCut((n) => n + 1), cut === 0 ? 500 : 1400);
+    return () => window.clearTimeout(timer);
+  }, [d, cut, rounds.length, skipped]);
+
+  if (m.isLoading) return <div className="page page-bg page-bg-arena stack"><Skeleton h={200} /><Skeleton h={200} /></div>;
   if (!d) return <div className="page page-bg page-bg-arena"><div className="empty">{t('ui.matchNotFound')}</div></div>;
   const me = publicKey?.toBase58();
   const iAmA = me === d.a;
   const won = d.winner === me;
+  const liveIdx = awaiting ? undefined : visible > 0 ? visible - 1 : 0;
 
   return (
     <div className="page page-bg page-bg-arena stack">
@@ -35,6 +61,17 @@ export default function MatchReplay() {
         </div>
         <Link to="/arena" className="btn btn-sm">{t('common.back')}</Link>
       </div>
+
+      <div className="row between">
+        <div className="tiny muted" role="status">
+          {awaiting ? t('ui.waitingSeeds') : animate && visible < rounds.length ? t('arena.watchingFight') : null}
+        </div>
+        {animate && visible < rounds.length && (
+          <button className="btn btn-sm" onClick={() => { setSkipped(true); setCut(rounds.length); }}>{t('arena.skipFight')}</button>
+        )}
+      </div>
+
+      <FightStage left={d.squadA} right={d.squadB} liveIndex={liveIdx} looping={awaiting || (animate && visible < rounds.length)} />
 
       <div className="round" style={{ alignItems: 'start' }}>
         <div className="stack-sm">
@@ -51,7 +88,7 @@ export default function MatchReplay() {
       <MatchTags id={d.id ?? ''} a={d.a ?? ''} b={d.b} emotes={d.emotes ?? []} me={me} />
 
       <div className="card stack-sm">
-        {(d.rounds ?? []).map((r, i) => {
+        {(d.rounds ?? []).slice(0, visible).map((r, i) => {
           const a = d.squadA?.find((c) => c.asset === r.attacker) ?? d.squadA?.[i];
           const b = d.squadB?.find((c) => c.asset === r.defender) ?? d.squadB?.[i];
           if (!a || !b) return null;
@@ -59,7 +96,7 @@ export default function MatchReplay() {
           const pb = chipPower(b.rarity!, b.level!) * (r.luckB ?? 1);
           const aWins = r.winner === d.a;
           return (
-            <div key={i} className="round small" style={{ padding: '8px 0', borderBottom: '1px solid var(--gc-line)' }}>
+            <div key={i} className={`round small${animate && i === visible - 1 ? ' fight-round-enter' : ''}`} style={{ padding: '8px 0', borderBottom: '1px solid var(--gc-line)' }}>
               <div className="row">
                 <span style={{ width: 54 }}><ChipArt collection={a.collection!} rarity={a.rarity!} imageUrl={chipImageOf(a)} skin={a.skin} /></span>
                 <div><div style={{ color: rarityColor(a.rarity!) }}>{chipName(a.collection!, a.rarity!)}</div><div className="tiny muted mono">{fmtDecimal(chipPower(a.rarity!, a.level!), 0)} × {t('ui.edge')} {fmtDecimal(1 + (r.elementEdge ?? 0))} × {t('ui.luck')} {fmtDecimal(r.luckA ?? 1)} = {fmtDecimal(pa, 0)}</div></div>

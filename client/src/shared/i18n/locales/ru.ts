@@ -108,6 +108,9 @@ const ru: Messages = {
     inviteCopied: 'Ссылка-приглашение скопирована',
     battleWager: 'Ставка',
     battleStatus: 'Статус',
+    skipFight: 'Пропустить',
+    watchingFight: 'Идёт бой',
+    wagerSettling: 'Ждём ончейн-расчёт',
   },
   market: {
     title: 'Маркет', subtitle: 'Листинги без эскроу: фишка остаётся в кошельке продавца замороженной. Комиссия {fee}% + роялти {royalty}% платит продавец. Цены в SOL.',

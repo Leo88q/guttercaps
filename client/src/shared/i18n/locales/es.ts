@@ -108,6 +108,9 @@ const es: Messages = {
     inviteCopied: 'Enlace de invitación copiado',
     battleWager: 'Apuesta',
     battleStatus: 'Estado',
+    skipFight: 'Saltar',
+    watchingFight: 'Viendo el combate',
+    wagerSettling: 'Esperando el cierre on-chain',
   },
   market: {
     title: 'Mercado', subtitle: 'Listados sin escrow: los caps quedan congelados en la billetera del vendedor. Comisión {fee}% + {royalty}% de regalía, a cargo del vendedor. Precios en SOL.',

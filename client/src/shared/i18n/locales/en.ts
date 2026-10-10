@@ -113,6 +113,9 @@ const en = {
     inviteCopied: 'Invite link copied',
     battleWager: 'Wager',
     battleStatus: 'Status',
+    skipFight: 'Skip',
+    watchingFight: 'Watching the fight',
+    wagerSettling: 'Waiting for on-chain settlement',
   },
   market: {
     title: 'Market', subtitle: "Escrow-free listings: caps stay in the seller's wallet, frozen. Fee {fee}% + {royalty}% royalty, paid by the seller. Priced in SOL.",

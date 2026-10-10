@@ -108,6 +108,9 @@ const fil: Messages = {
     inviteCopied: 'Nakopya ang invite link',
     battleWager: 'Taya',
     battleStatus: 'Status',
+    skipFight: 'Laktawan',
+    watchingFight: 'Pinapanood ang laban',
+    wagerSettling: 'Hinihintay ang on-chain settlement',
   },
   market: {
     title: 'Palengke', subtitle: 'Listing na walang escrow: nananatili ang caps sa wallet ng nagbebenta, naka-freeze. Fee na {fee}% + {royalty}% royalty, sagot ng nagbebenta. Presyo sa SOL.',

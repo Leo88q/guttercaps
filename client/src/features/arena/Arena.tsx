@@ -3,7 +3,7 @@ import { joinText, amountText } from '@/shared/i18n/message';
 // Cap Slam arena: squad builder (power, elements, synergy), ranked queue,
 // optional wager with on-chain escrow, season + rating overview.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { PublicKey } from '@solana/web3.js';
 import { sha256 } from '@noble/hashes/sha256';
@@ -33,9 +33,11 @@ import { isMock } from '@/api/client';
 import { EXPLORER, LOOKUP_TABLE } from '@/app/config';
 import { useT } from '@/shared/i18n';
 import { loadTheme, ownedThemes, themeById } from '@/shared/lib/cosmetics';
+import { FightStage } from './FightStage';
 
 export default function Arena() {
   const t = useT();
+  const nav = useNavigate();
   const { connected } = useWallet();
   const me = useArenaMe();
   const season = useSeason();
@@ -59,7 +61,9 @@ export default function Arena() {
   const [queued, setQueued] = useState<{ ticket: string; wait: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [lastMatch, setLastMatch] = useState<{ id: string; won: boolean | null } | null>(null);
+  const [wagerFight, setWagerFight] = useState(false);
   const revealing = useRef<string | null>(null);
+  const openedMatch = useRef<string | null>(null);
 
   // commit–reveal, second half: as soon as the server paired us, reveal the nonce we committed to.
   // The nonce lives in sessionStorage so a page reload between queue and pairing still resolves.
@@ -74,18 +78,23 @@ export default function Arena() {
     setQueued(null);
     revealNonce.mutateAsync({ id: currentId, nonce })
       .then((r) => {
-        if (r?.resolved) { const won = r.winner === wallet?.publicKey.toBase58(); setLastMatch({ id: currentId, won }); toast({ kind: won ? 'money' : 'info', title: won ? { key: 'arena.youWon' } : { key: 'arena.youLost' }, body: joinText([{ key: 'ui.vs' }, " ", currentOpponent.startsWith('bot:') ? { key: 'ui.bot' } : currentOpponent.slice(0, 6)]) }); }
-        else toast({ kind: 'info', title: { key: 'ui.seedRevealed' }, body: { key: 'ui.waitingOpponent' } });
+        if (r?.resolved) {
+          const won = r.winner === wallet?.publicKey.toBase58();
+          setLastMatch({ id: currentId, won });
+          toast({ kind: won ? 'money' : 'info', title: won ? { key: 'arena.youWon' } : { key: 'arena.youLost' }, body: joinText([{ key: 'ui.vs' }, ' ', currentOpponent.startsWith('bot:') ? { key: 'ui.bot' } : currentOpponent.slice(0, 6)]) });
+          nav(`/arena/match/${currentId}?play=1`);
+        } else toast({ kind: 'info', title: { key: 'ui.seedRevealed' }, body: { key: 'ui.waitingOpponent' } });
       })
       .catch((e) => { revealing.current = null; toast({ kind: 'error', title: { key: 'ui.revealFailed' }, error: e }); });
-  }, [currentId, currentRevealed, currentOpponent, revealNonce, toast, wallet, t]);
+  }, [currentId, currentRevealed, currentOpponent, revealNonce, toast, wallet, t, nav]);
   // the opponent revealed after us → the match resolved server-side; surface the result once
   useEffect(() => {
     const r = me.data?.recent?.[0];
     if (!r || !revealing.current || r.id !== revealing.current || lastMatch?.id === r.id) return;
     setLastMatch({ id: r.id, won: r.won ?? null });
     revealing.current = null;
-  }, [me.data, lastMatch]);
+    nav(`/arena/match/${r.id}?play=1`);
+  }, [me.data, lastMatch, nav]);
   // server-side state wins over local memory (reload, second tab, ticket expiry)
   useEffect(() => { if (me.data && !me.data.queue && !me.data.currentMatch && queued) setQueued(null); }, [me.data, queued]);
 
@@ -111,6 +120,10 @@ export default function Arena() {
       revealing.current = null;
       setQueued({ ticket: r.ticket!, wait: r.estimatedWaitSec ?? 30 });
       toast({ kind: 'info', title: r.matchId ? { key: 'ui.opponentFound' } : { key: 'ui.inQueue' }, body: r.matchId ? { key: 'screens.opponentReveal' } : { key: 'screens.leagueWait', params: { league: leagueText(r.league ?? league), s: r.estimatedWaitSec ?? 30 } } });
+      if (r.matchId) {
+        openedMatch.current = r.matchId;
+        nav(`/arena/match/${r.matchId}?play=1`);
+      }
     } catch (e) {
       toast({ kind: 'error', title: { key: 'ui.queueFailed' }, error: e });
     } finally { setBusy(false); }
@@ -239,6 +252,7 @@ export default function Arena() {
       }, { lookupTable: LOOKUP_TABLE });
       toast({ kind: 'money', title: { key: 'arena.acceptOpened' }, body: { key: 'screens.escrowed', params: { amount: amountText(battle.wager, 'CG') } }, href: EXPLORER.tx(signature) });
       setBattle(null); setInvite(null);
+      setWagerFight(true);
     } catch (e) {
       toast({ kind: 'error', title: { key: 'arena.acceptFailed' }, error: annotateArenaProofError(e, traces), href: e instanceof TxError && e.signature ? EXPLORER.tx(e.signature) : undefined });
     } finally { setBusy(false); }
@@ -273,7 +287,7 @@ export default function Arena() {
             const c = squad[i];
             return (
               <div key={i} className="stack-sm center" onClick={() => setPick(true)} style={{ cursor: 'pointer' }}>
-                {c ? <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c)} skin={c.skin} crimp={rarityColor(c.rarity!)} /> : <div className="slot squad-slot-empty" style={{ aspectRatio: 1 }}><span className="squad-slot-plus" aria-hidden="true">+</span></div>}
+                {c ? <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c)} skin={c.skin} crimp={rarityColor(c.rarity!)} /> : <div className="slot squad-slot-empty live-slot" style={{ aspectRatio: 1 }}><span className="squad-slot-plus" aria-hidden="true">+</span></div>}
                 <div className="tiny">{c ? <><ElementGlyph element={ELEMENT_OF_COLLECTION[c.collection!]} /> {chipPower(c.rarity!, c.level!)} {t('ui.power')}</> : t('ui.pick')}</div>
               </div>
             );
@@ -290,9 +304,13 @@ export default function Arena() {
         <div className="tiny muted">{t('arena.ring')}</div>
 
         {current ? (
-          <div className="warn row between" style={introStyle}>
-            <span>{current.iRevealed ? t('screens.opponentWait', { opponent: current.opponent.startsWith('bot:') ? t('ui.bot') : shortKey(current.opponent), time: countdown(current.revealDeadline) }) : t('screens.opponentReveal')}</span>
-            <Link to={`/arena/match/${current.id}`} className="btn btn-sm">{t('ui.open')}</Link>
+          <div className="stack-sm">
+            <div className="warn row between" style={introStyle}>
+              <span>{current.iRevealed ? t('screens.opponentWait', { opponent: current.opponent.startsWith('bot:') ? t('ui.bot') : shortKey(current.opponent), time: countdown(current.revealDeadline) }) : t('screens.opponentReveal')}</span>
+              <Link to={`/arena/match/${current.id}?play=1`} className="btn btn-sm">{t('ui.open')}</Link>
+            </div>
+            <FightStage left={squad} right={[]} looping />
+            <div className="tiny muted">{t('arena.watchingFight')}</div>
           </div>
         ) : queued || me.data?.queue ? (
           <div className="warn row between" style={introStyle}>
@@ -310,7 +328,7 @@ export default function Arena() {
         {lastMatch && (
           <div className="row between small" style={{ color: lastMatch.won ? 'var(--cg-acid-green)' : 'var(--cg-neon-magenta)' }}>
             <span>{lastMatch.won === null ? t('ui.matchFinished') : lastMatch.won ? t('arena.youWon') : t('arena.youLost')}</span>
-            <Link to={`/arena/match/${lastMatch.id}`} className="btn btn-sm">{t('arena.replay')}</Link>
+            <Link to={`/arena/match/${lastMatch.id}?play=1`} className="btn btn-sm">{t('arena.replay')}</Link>
           </div>
         )}
       </div>
@@ -378,7 +396,13 @@ export default function Arena() {
         )}
       </div>
 
-      <Modal open={pick} onClose={() => setPick(false)} title={t('ui.pickSquad')} wide>
+      <Modal
+        open={pick}
+        onClose={() => setPick(false)}
+        title={t('ui.pickSquad')}
+        wide
+        footer={<button className="btn btn-block" onClick={() => setPick(false)}>{t('ui.doneCount', { n: squad.length })}</button>}
+      >
         <div className="stack-sm" style={{ marginBottom: 12 }} aria-live="polite">
           <div className="mono">{t('ui.squadPower')}: {fmtDecimal(power, 0)} / {MIN_SQUAD_POWER} · {squad.length}/3</div>
           {squadHint && <div className="warn small">{squadHint}</div>}
@@ -396,7 +420,18 @@ export default function Arena() {
             );
           })}
         </div>
-        <button className="btn btn-block" style={{ marginTop: 12 }} onClick={() => setPick(false)}>{t('ui.doneCount', { n: squad.length })}</button>
+      </Modal>
+
+      <Modal
+        open={wagerFight}
+        onClose={() => setWagerFight(false)}
+        title={t('arena.watchingFight')}
+        footer={<button className="btn btn-block" onClick={() => setWagerFight(false)}>{t('arena.skipFight')}</button>}
+      >
+        <div className="stack-sm">
+          <FightStage left={squad} right={[]} looping />
+          <div className="small muted" role="status">{t('arena.wagerSettling')}</div>
+        </div>
       </Modal>
 
       <Modal open={wager !== null} onClose={() => setWager(null)} title={t('ui.wagerBattle')}>

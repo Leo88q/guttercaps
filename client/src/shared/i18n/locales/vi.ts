@@ -108,6 +108,9 @@ const vi: Messages = {
     inviteCopied: 'Đã sao chép lời mời',
     battleWager: 'Cược',
     battleStatus: 'Trạng thái',
+    skipFight: 'Bỏ qua',
+    watchingFight: 'Đang xem trận đấu',
+    wagerSettling: 'Đang chờ tất toán on-chain',
   },
   market: {
     title: 'Chợ', subtitle: 'Niêm yết không cần escrow: nắp vẫn nằm trong ví người bán, ở trạng thái đóng băng. Phí {fee}% + {royalty}% bản quyền, người bán trả. Định giá bằng SOL.',

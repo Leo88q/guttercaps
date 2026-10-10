@@ -108,6 +108,9 @@ const id: Messages = {
     inviteCopied: 'Tautan undangan disalin',
     battleWager: 'Taruhan',
     battleStatus: 'Status',
+    skipFight: 'Lewati',
+    watchingFight: 'Menonton pertandingan',
+    wagerSettling: 'Menunggu settlement on-chain',
   },
   market: {
     title: 'Pasar', subtitle: 'Listing tanpa escrow: caps tetap di dompet penjual, dibekukan. Biaya {fee}% + royalti {royalty}%, dibayar penjual. Harga dalam SOL.',

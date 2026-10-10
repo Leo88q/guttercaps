@@ -146,7 +146,7 @@ function RowFrag({ ci, have, cells, active, activeR, onRow, onCell }: { ci: numb
       <div className="cgrid-cells">
         {cells.map((n, ri) => (
           <div key={ri} className="cgrid-slot">
-            <div className={`cell ${n > 0 ? 'owned' : 'missing'}`} style={{ borderColor: n > 0 ? rarityColor(ri) : undefined, outline: active && activeR === ri ? `2px solid ${color}` : undefined }} onClick={() => onCell(ri)} title={`${chipName(ci, ri)} · ${rarityName(ri)} · ${t('ui.ownedCount', { n })}`}>
+            <div className={`cell ${n > 0 ? 'owned' : 'missing live-slot'}`} style={{ borderColor: n > 0 ? rarityColor(ri) : undefined, outline: active && activeR === ri ? `2px solid ${color}` : undefined }} onClick={() => onCell(ri)} title={`${chipName(ci, ri)} · ${rarityName(ri)} · ${t('ui.ownedCount', { n })}`}>
               {n > 0 ? <ChipArt collection={ci} rarity={ri} size="100%" imageUrl={chipArtUrl(ci, ri)} /> : <span className="tiny muted cell-empty">{rarityName(ri)}</span>}
               {n > 0 && <span className={`count ${n > 1 ? 'multi' : ''}`}>{n}</span>}
             </div>
