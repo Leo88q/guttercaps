@@ -315,13 +315,19 @@ export default function Fusion() {
         {maxPresets === 1 && <div className="tiny muted">{t('ui.moreSlots')} <Link to="/shop?tab=services">{t('services.names.extraBenchSlots')}</Link> {t('ui.inExtras')}</div>}
       </div>
 
-      <Modal open={pickFor !== null} onClose={() => setPickFor(null)} title={t('ui.slotNumber', { n: (pickFor ?? 0) + 1 })} wide>
+      <Modal
+        open={pickFor !== null}
+        onClose={() => setPickFor(null)}
+        title={t('ui.slotNumber', { n: (pickFor ?? 0) + 1 })}
+        wide
+        footer={<button className="btn btn-block" onClick={() => setPickFor(null)}>{t('ui.done')}</button>}
+      >
         {pickFor !== null && (
           <div className="grid-auto" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(144px, 47%), 1fr))' }}>
-            {slots[pickFor] && <div className="chip-card" onClick={() => { setSlots((s) => s.map((x, j) => (j === pickFor ? null : x))); setPickFor(null); }}><div className="slot" style={{ aspectRatio: 1, borderRadius: '50%', display: 'grid', placeItems: 'center' }}><CloseIcon size={16} /></div><div className="chip-meta row" style={{ gap: 4, justifyContent: 'center' }}><CloseIcon size={11} />{t('ui.clear')}</div></div>}
+            {slots[pickFor] && <div className="chip-card" onClick={() => setSlots((s) => s.map((x, j) => (j === pickFor ? null : x)))}><div className="slot" style={{ aspectRatio: 1, borderRadius: '50%', display: 'grid', placeItems: 'center' }}><CloseIcon size={16} /></div><div className="chip-meta row" style={{ gap: 4, justifyContent: 'center' }}><CloseIcon size={11} />{t('ui.clear')}</div></div>}
             {eligibleForSlot(pickFor).map((c) => (
-              <div key={c.asset} className="chip-card" onClick={() => { setSlots((s) => s.map((x, j) => (j === pickFor ? c : x))); setPickFor(null); }}>
-                <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c)} skin={c.skin} />
+              <div key={c.asset} className="chip-card" onClick={() => setSlots((s) => s.map((x, j) => (j === pickFor ? c : x)))}>
+                <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c)} skin={c.skin} selected={slots[pickFor]?.asset === c.asset} />
                 <div className="chip-meta"><span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span> · {chipName(c.collection!, c.rarity!)}</div>
               </div>
             ))}

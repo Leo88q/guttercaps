@@ -174,6 +174,7 @@ const ui = {
   "codexIntro": "Every collection is a district of Gutter City: its own scene, its own myth, nine caps from a first sketch to a one-of-a-kind legend.",
   "pickSquad": "Pick your squad (3)",
   "doneCount": "Done ({n}/3)",
+  "done": "Done",
   "queueStatus": "Searching in {league} · ticket {ticket} · bot joins after {s} s",
   "seedRevealed": "Seed revealed",
   "waitingOpponent": "Waiting for the opponent to reveal…",

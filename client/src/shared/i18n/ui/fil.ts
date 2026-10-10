@@ -175,6 +175,7 @@ const ui = {
   "codexIntro": "Bawat koleksiyon ay distrito ng Gutter City: sariling kultura at alamat, siyam na takip mula unang guhit hanggang natatanging alamat.",
   "pickSquad": "Piliin ang koponan (3)",
   "doneCount": "Tapos ({n}/3)",
+  "done": "Tapos",
   "queueStatus": "Naghahanap sa {league} · ticket {ticket} · sasali ang bot makalipas ang {s} s",
   "seedRevealed": "Ibinunyag na ang seed",
   "waitingOpponent": "Hinihintay ang seed ng kalaban…",

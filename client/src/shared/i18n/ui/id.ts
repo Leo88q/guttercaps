@@ -175,6 +175,7 @@ const ui = {
   "codexIntro": "Setiap koleksi adalah distrik Gutter City: budaya dan mitos sendiri, sembilan tutup dari sketsa pertama hingga legenda unik.",
   "pickSquad": "Pilih tim (3)",
   "doneCount": "Selesai ({n}/3)",
+  "done": "Selesai",
   "queueStatus": "Mencari di {league} · tiket {ticket} · bot bergabung setelah {s} dtk",
   "seedRevealed": "Seed diungkap",
   "waitingOpponent": "Menunggu lawan mengungkap seed…",

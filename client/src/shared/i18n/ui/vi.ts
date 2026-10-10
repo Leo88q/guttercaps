@@ -175,6 +175,7 @@ const ui = {
   "codexIntro": "Mỗi bộ sưu tập là một khu phố Gutter City: văn hóa, huyền thoại riêng, chín nắp từ nét vẽ đầu tiên đến huyền thoại độc nhất.",
   "pickSquad": "Chọn đội (3)",
   "doneCount": "Xong ({n}/3)",
+  "done": "Xong",
   "queueStatus": "Đang tìm ở {league} · vé {ticket} · máy vào sau {s} giây",
   "seedRevealed": "Đã công bố hạt giống",
   "waitingOpponent": "Đang chờ đối thủ công bố hạt giống…",

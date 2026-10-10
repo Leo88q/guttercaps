@@ -175,6 +175,7 @@ const ui = {
   "codexIntro": "Cada coleção é um bairro de Gutter City: sua cena, seu mito, nove tampinhas do primeiro esboço a uma lenda única.",
   "pickSquad": "Escolha seu time (3)",
   "doneCount": "Pronto ({n}/3)",
+  "done": "Pronto",
   "queueStatus": "Buscando em {league} · ticket {ticket} · bot entra após {s} s",
   "seedRevealed": "Semente revelada",
   "waitingOpponent": "Aguardando a semente do oponente…",
