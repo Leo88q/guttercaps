@@ -1,13 +1,13 @@
 // "How the city works" — in-game guide. Copy lives in ./copy.ts (7 languages);
 // every number is filled from @guttercaps/economy so it tracks the on-chain params.
 import { Link } from 'react-router-dom';
-import { PACKS, FUSION_RECIPES, BOOSTER, FEES, LOCK_TIERS, COLLECTIONS } from '@guttercaps/economy';
+import { PACKS, FUSION_RECIPES, BOOSTER, FEES, LOCK_TIERS, COLLECTIONS, CHIP_XP, RARITY_PROFILES, levelMult } from '@guttercaps/economy';
 import { useLocale } from '@/shared/i18n';
 import { fmtCents, fmtCg, fmtPct } from '@/shared/lib/format';
 import { GUIDE_COPY } from './copy';
 
 const ACCENTS = ['var(--cg-acid-green)', 'var(--cg-hot-magenta, #FF2E8A)', 'var(--cg-electric-orange)', 'var(--cg-cyan, #16E5D9)'];
-const LINKS: Record<string, string> = { collect: '/codex', packs: '/shop', fusion: '/fusion', trade: '/market', stake: '/staking', coin: '/quests', free: '/quests' };
+const LINKS: Record<string, string> = { collect: '/codex', packs: '/shop', fusion: '/fusion', slam: '/arena', trade: '/market', stake: '/staking', coin: '/quests', free: '/quests' };
 
 function fill(s: string, v: Record<string, string>) { return s.replace(/\{(\w+)\}/g, (m, k) => v[k] ?? m); }
 
@@ -26,6 +26,9 @@ export default function Guide() {
     listingFee: fmtCg(FEES.listingFeeCgMicro, 1), marketFee: fmtPct(FEES.marketplaceFeeBps, 1), royalty: fmtPct(FEES.creatorRoyaltyBps, 1),
     d30: mult(LOCK_TIERS.d30.boost), d90: mult(LOCK_TIERS.d90.boost), d180: mult(LOCK_TIERS.d180.boost),
     p30: fmtPct(LOCK_TIERS.d30.earlyExitPenaltyBps, 0), p90: fmtPct(LOCK_TIERS.d90.earlyExitPenaltyBps, 0), p180: fmtPct(LOCK_TIERS.d180.earlyExitPenaltyBps, 0),
+    xpWin: String(CHIP_XP.win), xpLoss: String(CHIP_XP.loss), xpDay: String(CHIP_XP.dailyCap), xpCost: String(CHIP_XP.cost(1)),
+    commonMax: String(RARITY_PROFILES[0].maxLevel), diamondMax: String(RARITY_PROFILES[8].maxLevel),
+    levelPct: String((levelMult(2) - 1) * 100),
   };
   return (
     <div className="page page-bg page-bg-codex stack" data-testid="guide">

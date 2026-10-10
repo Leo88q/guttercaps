@@ -5,7 +5,7 @@ import { useMe, useGrid, useQuests, usePendingOps, useStreak, useSeason } from '
 import { PreorderBanner } from '@/features/preorder/PreorderBanner';
 import { usePity } from '@/chain/hooks';
 import { useActiveOps } from '@/app/store/txs';
-import { PACKS } from '@guttercaps/economy';
+import { PACKS, CHIP_XP } from '@guttercaps/economy';
 import { fmtCg, countdown } from '@/shared/lib/format';
 import { useCollections } from '@/shared/lib/lore';
 import { collectionColor } from '@/shared/lib/rarity';
@@ -138,6 +138,14 @@ function Landing({ onConnect }: { onConnect: () => void }) {
         <div className="card"><GenBadge name="nav-collect" size={30} /><div className="strong">{t('ui.collect')}</div><div className="small muted">{t('ui.collectHint')}</div></div>
         <div className="card"><GenBadge name="mech-fusion" size={30} /><div className="strong">{t('fusion.fuse')}</div><div className="small muted">{t('ui.fuseHint')}</div></div>
         <div className="card"><GenBadge name="mech-slam" size={30} /><div className="strong">{t('ui.slam')}</div><div className="small muted">{t('ui.slamHint')}</div></div>
+      </div>
+      <div className="card" style={{ maxWidth: 720, margin: '0 auto', textAlign: 'left' }}>
+        <div className="strong">{t('ui.levelUp')}</div>
+        <div className="small muted">{t('ui.levelLanding', { win: CHIP_XP.win, loss: CHIP_XP.loss, cap: CHIP_XP.dailyCap })}</div>
+        <div className="row" style={{ marginTop: 10, gap: 8, justifyContent: 'flex-start' }}>
+          <Link to="/guide" className="btn btn-sm">{t('nav.guide')}</Link>
+          <Link to="/arena" className="btn btn-sm btn-ghost">{t('nav.arena')}</Link>
+        </div>
       </div>
       <p className="tiny muted">{t('ui.wallets')}: Phantom · Solflare · Backpack · Mobile Wallet Adapter</p>
     </div>
