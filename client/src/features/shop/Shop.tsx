@@ -51,7 +51,10 @@ export default function Shop() {
   // Merge sources: on-chain GameConfig (authoritative) → API catalog → economy defaults
   const packs = useMemo(() => {
     return SKU_IDS.map((id, sku) => {
-      const econ = cfg.data ? toEconPack(sku, cfg.data.packs[sku]) : PACKS[id];
+      const onchain = cfg.data ? toEconPack(sku, cfg.data.packs[sku]) : PACKS[id];
+      // Frozen FX stickers live in PACKS. A GameConfig decode of $0.50 (50¢, the admin floor)
+      // is never a real SKU price — Starter is $1.99. Keep odds/enabled from chain.
+      const econ = onchain.priceUsdCents >= 100 ? onchain : { ...onchain, priceUsdCents: PACKS[id].priceUsdCents, priceCgMicro: PACKS[id].priceCgMicro };
       const api = catalog.data?.packs?.find((p: PackSku) => p.sku === sku);
       // Default-on when nothing says otherwise: on-chain GameConfig is authoritative when it loads,
       // the API catalog is authoritative when it answers, and with neither (offline demo, API down)

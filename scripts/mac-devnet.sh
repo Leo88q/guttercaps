@@ -202,6 +202,14 @@ if [ -z "$REPO" ] || [ ! -f "$REPO/Anchor.toml" ]; then
   exit 2
 fi
 cd "$REPO" || exit 2
+# Public api.devnet.solana.com throttles deploys. Reuse the RPC that already
+# runs the API / battle preflight unless the caller set DEVNET_RPC_URL.
+if [ -z "${DEVNET_RPC_URL:-}" ]; then
+  env_rpc=""
+  [ -f backend/.env ] && env_rpc=$(sed -n 's/^SOLANA_RPC_URL=//p' backend/.env | head -1 | tr -d '\r')
+  [ -z "$env_rpc" ] && [ -f client/.env.local ] && env_rpc=$(sed -n 's/^VITE_RPC_URL=//p' client/.env.local | head -1 | tr -d '\r')
+  case "$env_rpc" in http://*|https://*) RPC_URL=$env_rpc ;; esac
+fi
 STATE="$REPO/target/mac-devnet/state.env"
 PYTH_DIR="$REPO/target/mac-devnet/pyth"
 PYTH_LOG="$REPO/target/mac-devnet/logs/pyth-pusher.log"
@@ -223,7 +231,11 @@ on_exit() {
     printf '\n[x] Остановился на этапе "%s" (код %s).\n' "$CURRENT_STAGE" "$rc"
     printf '    Лог: %s\n' "$MAC_DEVNET_LOG"
     printf '    Исправьте причину (текст ошибки выше) и продолжите с этого места:\n'
-    printf '      bash scripts/mac-devnet.sh --from %s\n' "$CURRENT_STAGE"
+    if [ -n "$ONLY" ]; then
+      printf '      PROGRAMS=%s BRANCH=%s bash scripts/mac-devnet.sh --only %s\n' "$PROGRAMS" "$BRANCH" "$CURRENT_STAGE"
+    else
+      printf '      bash scripts/mac-devnet.sh --from %s\n' "$CURRENT_STAGE"
+    fi
   fi
   [ "${PYTH_STARTED:-0}" = 1 ] && pyth_stop
   sleep 0.3
@@ -760,7 +772,7 @@ ensure_funds() { # $1 = lamports needed
     done
     [ "$bal" -ge "$need" ] && return 0
   fi
-  die "SOL не хватает. Пополните кошелёк и продолжите: bash scripts/mac-devnet.sh --from deploy"
+  die "SOL не хватает. Пополните кошелёк и продолжите: PROGRAMS=$PROGRAMS bash scripts/mac-devnet.sh --only deploy"
 }
 
 deploy_program() { # $1 = program
@@ -944,7 +956,7 @@ stage_deploy() {
   local p
   DEPLOY_KEYS_DIR=$(keypair_dir)
   require_program_keys
-  deploy_plan || die "не удалось узнать rent-ставку кластера через RPC ($RPC_URL) — бюджет не посчитан. Свой RPC: DEVNET_RPC_URL=… Повторить: bash scripts/mac-devnet.sh --from deploy"
+  deploy_plan || die "не удалось узнать rent-ставку кластера через RPC ($RPC_URL) — бюджет не посчитан. Свой RPC: DEVNET_RPC_URL=… Повторить: PROGRAMS=$PROGRAMS bash scripts/mac-devnet.sh --only deploy"
   ensure_funds "$NEED"
   for p in $PROGRAMS; do deploy_program "$p"; done
   local verify=""
@@ -1196,7 +1208,7 @@ pyth_preflight() { # stage toolchain: ask for the key up front, so that the long
       info "Docker установлен, но не запущен — этап pyth запустит Docker Desktop"
     fi
   else
-    info "Pyth: ключа нет — SOL/SKR-оплата будет выключена (USDC и \$CG работают). Позже: bash scripts/mac-devnet.sh --only pyth"
+    info "Pyth pusher не нужен: checkout по фиксированному курсу SOL=\$110 / SKR=\$0.016"
   fi
 }
 
@@ -1381,15 +1393,15 @@ pyth_watch() { # background: say once when fresh prices are on chain (or that th
 
 pyth_for_run() { # the pusher belongs to the session: fresh prices while the app is open, stopped together with it
   if ! pyth_obtain_key noask; then
-    if [ "$PYTH_KEY_WHY" = denied ]; then warn "Pyth: Hermes отклонил сохранённый ключ — SOL/SKR-оплата выключена. Новый ключ: bash scripts/mac-devnet.sh --only pyth"
-    else info "Pyth: ключа нет — SOL/SKR-оплата выключена (USDC и \$CG работают). Включить: bash scripts/mac-devnet.sh --only pyth"; fi
+    if [ "$PYTH_KEY_WHY" = denied ]; then info "Pyth pusher пропущен (ключ Hermes отклонён). Checkout без него: SOL=\$110 / SKR=\$0.016"
+    else info "Pyth pusher не нужен: checkout по фиксированному курсу SOL=\$110 / SKR=\$0.016"; fi
     return 0
   fi
-  if ! pyth_docker_ready; then warn "Pyth: Docker не запущен — SOL/SKR-оплата выключена"; return 0; fi
+  if ! pyth_docker_ready; then info "Pyth pusher пропущен (нет Docker). Checkout без него: SOL=\$110 / SKR=\$0.016"; return 0; fi
   have solana || return 0
   ensure_devnet
   pyth_prepare
-  pyth_start || { warn "Pyth: pusher не запустился (сообщение docker выше) — SOL/SKR-оплата выключена"; return 0; }
+  pyth_start || { info "Pyth pusher не запустился. Checkout без него: SOL=\$110 / SKR=\$0.016"; return 0; }
   ok "pusher цен Pyth запущен (лог: $PYTH_LOG); первые цены появятся примерно через минуту"
   pyth_watch &
   PYTH_WATCH_PID=$!
