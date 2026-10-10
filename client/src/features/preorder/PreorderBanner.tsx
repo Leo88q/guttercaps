@@ -26,19 +26,19 @@ export function PreorderBanner({ testId, variant = 'home' }: { testId: string; v
     <Link
       to="/preorder"
       data-testid={testId}
-      className="card preorder-banner"
-      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, textDecoration: 'none', marginBottom: variant === 'shop' ? 16 : undefined, borderColor: 'rgba(255,122,26,0.4)' }}
+      className={`card preorder-banner${variant === 'shop' ? ' preorder-banner-shop' : ''}`}
+      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, textDecoration: 'none' }}
     >
       {variant === 'shop' && live ? (
         <>
-          <div style={{ fontSize: 13, color: '#ddd' }}>{t('preorder.shopBanner')}</div>
+          <div className="tiny">{t('preorder.shopBanner')}</div>
           <Pill tone="ok">{t('preorder.shopCta')} →</Pill>
         </>
       ) : (
         <>
           <div>
-            <strong style={{ fontSize: 14 }}>{t('preorder.title')}</strong>
-            <div className="tiny" style={{ marginTop: 2 }}>{status}</div>
+            <strong>{t('preorder.title')}</strong>
+            <div className="tiny muted" style={{ marginTop: 2 }}>{status}</div>
           </div>
           <ChevronRightIcon size={20} />
         </>

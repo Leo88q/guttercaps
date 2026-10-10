@@ -99,6 +99,7 @@ export type PreorderIntent = ResponseOf<'/preorder/intent', 'post'>;
 
 
 export const usePreorderCampaign = () => useQuery({ queryKey: ['preorder'], queryFn: () => api.get('/preorder'), staleTime: 30_000 });
+export const usePreorderRegistry = () => useQuery({ queryKey: ['preorder', 'registry'], queryFn: () => api.get('/preorder/registry'), staleTime: 60_000 });
 export function useMyPreorders() {
   const status = useSessionStore((s) => s.status);
   return useQuery({ queryKey: ['preorder', 'me'], queryFn: () => api.get('/preorder/me'), enabled: status === 'authenticated', staleTime: 15_000 });

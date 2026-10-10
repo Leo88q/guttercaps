@@ -256,6 +256,11 @@ const fil: Messages = {
     refund: 'Kung hindi live ang mainnet sa published launch date → ibabalik ang bawat bayad 1:1 mula sa parehong multisig vault. Pampubliko ang registry sa ibaba.',
     shopBanner: 'Naka-pre-sale na ang mga Limited Event Pack: 0.999 SOL bawat isa, ipapamahagi sa paglunsad ng mainnet.', shopCta: 'Pumunta sa pre-sale',
     registry: 'Pampublikong registry', confirmed: 'Na-verify ang bayad — kasali ka na.',
+    how: 'Paano ito gumagana',
+    stepPay: 'Magbayad ng mainnet SOL ngayon.',
+    stepHold: 'Naka-reserve ang mga pack hanggang launch.',
+    stepOpen: 'Buksan sa mainnet tulad ng kahit anong pack.',
+    closedHint: 'Sarado na ang drop. Naka-lista pa rin ang existing reservations.',
   },
   footer: { legal: 'Legal', ages: '18+' },
 

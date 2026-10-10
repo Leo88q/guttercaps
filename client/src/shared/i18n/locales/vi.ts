@@ -256,6 +256,11 @@ const vi: Messages = {
     refund: 'Nếu mainnet chưa hoạt động vào ngày ra mắt đã công bố → mọi khoản thanh toán được hoàn 1:1 từ cùng kho multisig. Sổ đăng ký bên dưới là công khai.',
     shopBanner: 'Limited Event Pack đang bán trước: 0,999 SOL mỗi gói, phát khi mainnet ra mắt.', shopCta: 'Đến trang bán trước',
     registry: 'Sổ đăng ký công khai', confirmed: 'Đã xác minh thanh toán — bạn đã được ghi nhận.',
+    how: 'Cách hoạt động',
+    stepPay: 'Thanh toán SOL mainnet hôm nay.',
+    stepHold: 'Pack được giữ đến ngày ra mắt.',
+    stepOpen: 'Mở chúng trên mainnet như pack thường.',
+    closedHint: 'Drop đã đóng. Các chỗ đã đặt vẫn được liệt kê.',
   },
   footer: { legal: 'Pháp lý', ages: '18+' },
 

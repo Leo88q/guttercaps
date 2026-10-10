@@ -552,6 +552,7 @@ img { max-width: 100%; display: block; }
 .page-bg-home { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-home.jpg); }
 .page-bg-collection { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-collection.jpg); }
 .page-bg-shop { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-shop.jpg); }
+.page-bg-preorder { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-shop.jpg); }
 .page-bg-market { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-market.jpg); }
 .page-bg-fusion { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-fusion.jpg); }
 .page-bg-staking { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-staking.jpg); }

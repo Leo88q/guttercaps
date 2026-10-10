@@ -256,6 +256,11 @@ const id: Messages = {
     refund: 'Jika mainnet belum live pada tanggal peluncuran yang diumumkan → setiap pembayaran dikembalikan 1:1 dari vault multisig yang sama. Registri di bawah bersifat publik.',
     shopBanner: 'Limited Event Pack sedang pre-sale: 0,999 SOL per pack, dikirim saat mainnet meluncur.', shopCta: 'Ke pre-sale',
     registry: 'Registri publik', confirmed: 'Pembayaran terverifikasi — kamu terdaftar.',
+    how: 'Cara kerjanya',
+    stepPay: 'Bayar SOL mainnet hari ini.',
+    stepHold: 'Pack tetap dipesan sampai peluncuran.',
+    stepOpen: 'Buka di mainnet seperti pack biasa.',
+    closedHint: 'Drop ditutup. Reservasi yang ada tetap tercantum.',
   },
   footer: { legal: 'Legal', ages: '18+' },
 

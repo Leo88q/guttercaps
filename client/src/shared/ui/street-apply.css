@@ -2,8 +2,8 @@
    this file re-skins the app's own classes (.card .btn .pill .modal …) with
    the same techniques: spray-can frames, paint-blob buttons, goo drips,
    transparent glass over the per-page backdrop art. Loaded last, wins ties.
-   Money UI (.cg-clean-zone, .cg-btn-clean, .toast-money) stays deliberately
-   clean — no paint, no drips, tabular numerals. */
+   Money panels keep tabular numerals; confirm / stake / claim buttons are
+   street paint (lime blob) or stencil — never white chrome pills. */
 
 :root{
   /* the 13-layer goo-drip stack from the kit, shared by every dripping ::after */
@@ -29,6 +29,7 @@
 .page-bg-collection{--st-accent:var(--st-lime)}
 .page-bg-codex{--st-accent:var(--st-teal)}
 .page-bg-shop{--st-accent:var(--st-pink)}
+.page-bg-preorder{--st-accent:var(--st-pink)}
 .page-bg-fusion{--st-accent:var(--st-orange)}
 .page-bg-staking{--st-accent:var(--st-lime)}
 .page-bg-quests{--st-accent:var(--st-teal)}
@@ -44,6 +45,7 @@
 .page-bg-home{background-image:linear-gradient(rgba(13,12,16,.30),rgba(13,12,16,.30)),url(/bg/game-home.jpg)}
 .page-bg-collection{background-image:linear-gradient(rgba(13,12,16,.30),rgba(13,12,16,.30)),url(/bg/game-collection.jpg)}
 .page-bg-shop{background-image:linear-gradient(rgba(13,12,16,.30),rgba(13,12,16,.30)),url(/bg/game-shop.jpg)}
+.page-bg-preorder{background-image:linear-gradient(rgba(13,12,16,.30),rgba(13,12,16,.30)),url(/bg/game-shop.jpg)}
 .page-bg-market{background-image:linear-gradient(rgba(13,12,16,.30),rgba(13,12,16,.30)),url(/bg/game-market.jpg)}
 .page-bg-fusion{background-image:linear-gradient(rgba(13,12,16,.30),rgba(13,12,16,.30)),url(/bg/game-fusion.jpg)}
 .page-bg-staking{background-image:linear-gradient(rgba(13,12,16,.30),rgba(13,12,16,.30)),url(/bg/game-staking.jpg)}
@@ -67,14 +69,14 @@
   background:radial-gradient(ellipse at center,var(--pack-glow,rgba(22,229,217,.18)),transparent 70%)}
 
 /* ---------- shared paint blob + shared goo drips ---------- */
-.btn::before,.cg-btn-primary::before,.cg-btn-spill::before{content:"";position:absolute;inset:-2px -5px;z-index:-1;
+.btn::before,.cg-btn-primary::before,.cg-btn-spill::before,.cg-btn-clean::before{content:"";position:absolute;inset:-2px -5px;z-index:-1;
   border-radius:22px 40px 24px 44px/40px 26px 44px 28px;filter:url(#st-spray);
   background:radial-gradient(ellipse 70% 90% at 30% 35%,rgba(255,255,255,.38),transparent 60%),radial-gradient(ellipse at 85% 92%,rgba(0,0,0,.24),transparent 55%),var(--b);
   box-shadow:0 0 10px color-mix(in srgb,var(--b) 42%,transparent),0 0 24px color-mix(in srgb,var(--b) 18%,transparent)}
-.btn::after,.cg-btn-primary::after,.cg-btn-spill::after,.page-title::after,.shell-brand::after{content:"";position:absolute;left:7%;right:7%;top:calc(100% - 4px);height:76px;
+.btn::after,.cg-btn-primary::after,.cg-btn-spill::after,.cg-btn-clean::after,.page-title::after,.shell-brand::after{content:"";position:absolute;left:7%;right:7%;top:calc(100% - 4px);height:76px;
   z-index:-1;pointer-events:none;transform-origin:50% 0;filter:url(#st-goo);animation:st-run 9s ease-in-out infinite alternate;background:var(--st-drip-stack)}
 /* modals scroll: full drips would add dead scroll room — keep the stems short */
-.modal .btn::after,.modal .cg-btn-primary::after,.modal .cg-btn-spill::after{height:30px}
+.modal .btn::after,.modal .cg-btn-primary::after,.modal .cg-btn-spill::after,.modal .cg-btn-clean::after{height:30px}
 
 /* ---------- primary buttons: paint + drips ---------- */
 .btn{--b:var(--st-pink);--p:var(--b);position:relative;isolation:isolate;
@@ -134,20 +136,18 @@
 .btn-ghost::before{background:color-mix(in srgb,var(--b) 15%,transparent);
   box-shadow:inset 0 0 0 4px var(--b),inset 0 0 22px color-mix(in srgb,var(--b) 40%,transparent),0 0 18px color-mix(in srgb,var(--b) 45%,transparent)}
 
-/* ---------- clean zone: money UI — no paint, no drips, tabular numerals ---------- */
-.cg-btn-clean{position:relative;isolation:isolate;background:none;border:0;border-radius:8px;cursor:pointer;
-  min-height:48px;padding:.8em 2.8em .8em 2em;color:#0d1220;
-  font-family:var(--st-num);font-weight:600;font-size:1rem;letter-spacing:0;text-transform:none;
-  font-variant-numeric:tabular-nums;transition:none}
-.cg-btn-clean::before{content:"";position:absolute;inset:0;z-index:-1;background:#fff;border-radius:8px}
-.cg-btn-clean:hover,.cg-btn-clean:active{transform:none}
-.cg-btn-clean:focus-visible{outline:3px dashed var(--cg-trust-blue);outline-offset:4px}
-/* any plain button that ends up inside a money panel is forced clean too */
-.cg-clean-zone .btn,.cg-clean-zone .cg-btn-primary{--b:#fff;color:#0d1220;font-family:var(--st-num);font-weight:600;
-  font-size:.95rem;letter-spacing:0;text-transform:none;text-shadow:none;min-height:44px;font-variant-numeric:tabular-nums}
-.cg-clean-zone .btn::before,.cg-clean-zone .cg-btn-primary::before{inset:0;background:#fff;border-radius:8px;filter:none;box-shadow:none}
-.cg-clean-zone .btn::after,.cg-clean-zone .cg-btn-primary::after{display:none}
-.cg-clean-zone .btn:hover,.cg-clean-zone .cg-btn-primary:hover{transform:none}
+/* ---------- confirm / stake / claim: lime paint blob (same silhouette as primary) ---------- */
+.cg-btn-clean{--b:var(--st-lime);--p:var(--b);position:relative;isolation:isolate;background:none;border:0;border-radius:0;
+  min-height:48px;padding:.7em 2.8em .7em 1.7em;color:var(--st-ink);cursor:pointer;
+  font-family:var(--st-display);font-weight:400;font-size:1rem;line-height:1.1;letter-spacing:.07em;text-transform:uppercase;
+  font-variant-numeric:tabular-nums;transition:transform .15s ease;overflow:visible}
+.cg-btn-clean:hover{transform:rotate(-1.2deg) translateY(-2px)}
+.cg-btn-clean:active{transform:translate(1px,2px) scale(.98)}
+.cg-btn-clean:focus-visible{outline:3px dashed var(--st-lime);outline-offset:8px}
+.cg-btn-clean:disabled,.cg-btn-clean.cg-btn-disabled{opacity:.45;cursor:not-allowed;filter:grayscale(.7);transform:none}
+.cg-btn-clean .cg-check-stamp{color:var(--st-ink)}
+/* money panels: numbers stay tabular; inner .btn / .btn-sm keep street stencil, not white fill */
+.cg-clean-zone{font-variant-numeric:tabular-nums}
 
 /* ---------- pills: tiny glass chips, lime paint when active ---------- */
 .pill{background:rgba(16,16,22,.5);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
@@ -268,7 +268,27 @@ button.pill:hover{border-color:var(--st-lime)}
 
 /* ---------- reduced motion: freeze the paint ---------- */
 @media (prefers-reduced-motion:reduce){
-  .btn::after,.cg-btn-primary::after,.cg-btn-spill::after,.page-title::after,.shell-brand::after{animation:none}
+  .btn::after,.cg-btn-primary::after,.cg-btn-spill::after,.cg-btn-clean::after,.page-title::after,.shell-brand::after{animation:none}
 }
-.reduced-motion .btn::after,.reduced-motion .cg-btn-primary::after,.reduced-motion .cg-btn-spill::after,
+.reduced-motion .btn::after,.reduced-motion .cg-btn-primary::after,.reduced-motion .cg-btn-spill::after,.reduced-motion .cg-btn-clean::after,
 .reduced-motion .page-title::after,.reduced-motion .shell-brand::after{animation:none}
+
+/* ---------- founders pre-sale (/preorder) ---------- */
+.preorder-hero{display:grid;grid-template-columns:minmax(140px,220px) 1fr;gap:18px;align-items:center}
+.preorder-hero-art{width:100%;aspect-ratio:1;object-fit:cover;display:block;
+  border-radius:18px 40px 22px 36px/36px 20px 40px 24px;filter:url(#st-spray);
+  box-shadow:0 0 28px color-mix(in srgb,var(--st-pink) 35%,transparent)}
+.preorder-price{font-family:var(--st-display);font-size:clamp(28px,5vw,48px);color:var(--st-lime);line-height:1;letter-spacing:.04em}
+.preorder-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:10px;counter-reset:pre-step}
+.preorder-step{padding:4px 2px}
+.preorder-step::before{counter-increment:pre-step;content:counter(pre-step, decimal-leading-zero);
+  display:block;font-family:var(--st-display);font-size:28px;line-height:1;color:var(--st-pink);margin-bottom:6px}
+.preorder-banner{text-decoration:none}
+.preorder-banner-shop{margin-bottom:16px}
+.preorder-pay-row{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}
+.preorder-pay-row code{flex:1;min-width:0;word-break:break-all;font-family:var(--cg-font-mono);font-size:12px;
+  background:rgba(0,0,0,.35);border:1px solid color-mix(in srgb,var(--st-pink) 35%,transparent);
+  border-radius:8px;padding:8px 10px}
+@media (max-width:640px){
+  .preorder-hero,.preorder-steps{grid-template-columns:1fr}
+}

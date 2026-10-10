@@ -272,6 +272,11 @@ const en = {
     refund: 'Mainnet not live by the published launch date → every payment is refunded 1:1 from the same multisig vault. The registry below is public.',
     shopBanner: 'Limited Event Packs are on pre-sale now: 0.999 SOL each, delivered at mainnet launch.', shopCta: 'To the pre-sale',
     registry: 'Public registry', confirmed: 'Payment verified — you are in.',
+    how: 'How it works',
+    stepPay: 'Pay mainnet SOL today.',
+    stepHold: 'Packs stay reserved until launch.',
+    stepOpen: 'Open them on mainnet like any pack.',
+    closedHint: 'The drop is closed. Existing reservations stay listed.',
   },
   footer: { legal: 'Legal', ages: '18+' },
 

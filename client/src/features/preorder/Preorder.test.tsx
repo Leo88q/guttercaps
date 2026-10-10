@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/api/hooks', () => ({
   usePreorderCampaign: () => ({ data: mocks.campaign, isLoading: false }),
   useMyPreorders: () => ({ data: { items: mocks.items }, isLoading: false }),
+  usePreorderRegistry: () => ({ data: { campaign: mocks.campaign, rows: [] }, isLoading: false }),
 }));
 vi.mock('@/api/client', () => ({ api: { post: mocks.post }, isMock: () => true }));
 vi.mock('@solana/wallet-adapter-react', () => ({ useWallet: () => ({ connected: mocks.connected, publicKey: null }) }));
@@ -58,6 +59,9 @@ it('a switched-off or exhausted campaign shows its end state and never offers a 
   mount();
   expect(document.body.textContent).toContain(t('preorder.ended'));
   expect(screen.queryByTestId('preorder-reserve')).toBeNull();
+  expect(screen.getByTestId('preorder-campaign')).toBeTruthy();
+  expect(screen.getByTestId('preorder-how').textContent).toContain(t('preorder.how'));
+  expect(screen.getByTestId('preorder-mine').textContent).toContain(t('preorder.empty'));
   cleanup();
 
   mocks.campaign = campaign({ remaining: 0, sold: 500 });

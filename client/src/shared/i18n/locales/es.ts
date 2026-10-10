@@ -256,6 +256,11 @@ const es: Messages = {
     refund: 'Si mainnet no está en vivo para la fecha publicada, cada pago se reembolsa 1:1 desde el mismo multisig. El registro de abajo es público.',
     shopBanner: 'Los Packs de Evento Limitados están en preventa: 0,999 SOL cada uno, entrega en el lanzamiento de mainnet.', shopCta: 'A la preventa',
     registry: 'Registro público', confirmed: 'Pago verificado — estás dentro.',
+    how: 'Cómo funciona',
+    stepPay: 'Paga SOL de mainnet hoy.',
+    stepHold: 'Los packs quedan reservados hasta el lanzamiento.',
+    stepOpen: 'Ábrelos en mainnet como cualquier pack.',
+    closedHint: 'El drop está cerrado. Las reservas existentes siguen listadas.',
   },
   footer: { legal: 'Legal', ages: '18+' },
 
