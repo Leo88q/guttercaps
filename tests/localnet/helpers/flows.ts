@@ -4,7 +4,7 @@
 // calls, so scenarios stay independent.
 import { Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
 import { createAssociatedTokenAccountIdempotentInstruction } from '@solana/spl-token';
-import { FUSION_RECIPES, PACKS, expandRandomness, uniformBps } from '@guttercaps/economy';
+import { FUSION_RECIPES, PACKS, expandRandomness, skrMicroForUsdCents, solLamportsForUsdCents, uniformBps } from '@guttercaps/economy';
 import { findEvent } from '@/chain/anchor';
 import { decodePendingPack, decodePlayerPity, readPackOpened, readCompressedClaimsCreated, readClaimFusionRevealed, decodeChipState, decodeCompressedMintClaim, decodePendingClaimFusion, type PackOpenedEvent, type CompressedClaimsCreatedEvent, type ClaimFusionRevealedEvent, type PendingPack, type PendingClaimFusion, type ChipState, type CompressedMintClaim } from '@/chain/accounts';
 import { Currency, buyPackIx, openPackIx, openCompressedPackIx, cancelStalePackIx, stageCompressedChipIx, fuseClaimsCommitIx, fuseClaimsRevealIx, cancelStaleClaimFusionIx, type CurrencyCode } from '@/chain/ix/chipCore';
@@ -14,7 +14,6 @@ import { RNG_KIND, assetPda, chipStatePda, claimFusionPda, compressedMintClaimPd
 import { packSeed, toEconPack, voucherEconPack } from '@/chain/flows/packFlow';
 import type { Chain, TxResult } from './chain';
 import { SB_ORACLE, SB_QUEUE, type Env } from './env';
-import { refreshPyth, unitsForCents } from './pyth';
 import { revealIx, valueOf } from './sbmock';
 
 export const SKU = { STARTER: 0, STANDARD: 1, PREMIUM: 2, LIMITED: 3 } as const;
@@ -25,40 +24,43 @@ export const nextNonce = () => ++nonceCounter;
 
 export interface BuyResult { nonce: bigint; randomness: PublicKey; pending: PublicKey; tx: TxResult; paid: bigint }
 
-/** Expected units for a SOL / SKR purchase at the fixture prices (same math as the program). */
+/**
+ * Expected units for a purchase at the fixture prices — the program's own math: the bundle / SKR
+ * discount applies to the USD cents first, then the frozen checkout FX converts them
+ * (SOL = $110, SKR = $0.016, USDC = $1; packages/economy `fx.ts` ↔ chip_core `economy::fx_*`).
+ */
 export function quoteUnits(env: Env, sku: number, qty: number, currency: CurrencyCode): bigint {
   const def = env.config.packs[sku];
   const bundle = qty >= 25 ? 1800 : qty >= 10 ? 1200 : qty >= 5 ? 700 : 0;
   let discount = sku === SKU.LIMITED || sku === SKU.STARTER ? 0 : bundle;
   if (currency === Currency.SKR) discount = Math.min(discount + env.config.skrDiscountBps, 3000);
   const cents = (BigInt(def.priceUsdCents) * BigInt(qty) * BigInt(10_000 - discount)) / 10_000n;
-  if (currency === Currency.SOL) return unitsForCents(cents, env.pyth.sol);
-  if (currency === Currency.SKR) return unitsForCents(cents, env.pyth.skr);
+  if (currency === Currency.SOL) return solLamportsForUsdCents(cents);
+  if (currency === Currency.SKR) return skrMicroForUsdCents(cents);
   if (currency === Currency.USDC) return cents * 10_000n;
   return (def.priceCgMicro * BigInt(qty) * BigInt(10_000 - discount)) / 10_000n;
 }
 
 /**
- * `init_randomness + buy_pack` in ONE transaction (exactly what PackFlow.buy sends).
- * Refreshes the Pyth fixtures first so the 60 s window holds after clock warps.
+ * `init_randomness + buy_pack` in ONE transaction (exactly what PackFlow.buy sends). Checkout is
+ * frozen FX: no Pyth account is passed or read, and the SOL / SKR cap defaults to the exact price
+ * (the client's `frozenCheckoutCap`, the backend quote's `maxLamports`).
  */
-export async function buyPack(env: Env, buyer: Keypair, o: { sku: number; qty?: number; currency?: CurrencyCode; nonce?: bigint; maxUnits?: bigint; priceUpdate?: PublicKey; extraIxs?: TransactionInstruction[]; skipInit?: boolean; randomness?: PublicKey; stalePrice?: bigint; conf?: Partial<Record<'sol' | 'skr', bigint>> }): Promise<BuyResult> {
+export async function buyPack(env: Env, buyer: Keypair, o: { sku: number; qty?: number; currency?: CurrencyCode; nonce?: bigint; maxUnits?: bigint; extraIxs?: TransactionInstruction[]; skipInit?: boolean; randomness?: PublicKey }): Promise<BuyResult> {
   const { chain } = env;
   const qty = o.qty ?? 1;
   const currency = o.currency ?? Currency.SOL;
   const nonce = o.nonce ?? nextNonce();
   const rng = rngAccounts(RNG_KIND.PACK, buyer.publicKey, nonce);
   const randomness = o.randomness ?? rng.randomness;
-  if (chain.kind === 'litesvm') await refreshPyth(chain, env.pyth, { ageS: o.stalePrice ?? 0n, conf: o.conf });
   const volatile = currency === Currency.SOL || currency === Currency.SKR;
   const quoted = volatile ? quoteUnits(env, o.sku, qty, currency) : 0n;
   const ixs: TransactionInstruction[] = [...(o.extraIxs ?? [])];
   if (!o.skipInit) ixs.push(initRandomnessIx({ ...rng, queue: SB_QUEUE, recentSlot: (await chain.slot()) - 1n }));
   ixs.push(buyPackIx({
     buyer: buyer.publicKey, sku: o.sku, qty, currency, nonce,
-    maxLamports: volatile ? (o.maxUnits ?? (quoted * 101n) / 100n) : 0n,
+    maxLamports: volatile ? (o.maxUnits ?? quoted) : 0n,
     randomness, queue: SB_QUEUE, oracle: SB_ORACLE,
-    priceUpdate: volatile ? (o.priceUpdate ?? (currency === Currency.SKR ? env.pyth.skr.account : env.pyth.sol.account)) : undefined,
     usdcMint: env.mints.usdc, cgMint: env.mints.cg, skrMint: env.mints.skr,
   }));
   const tx = await chain.send(ixs, { signers: [buyer], label: `buy_pack sku=${o.sku} qty=${qty} cur=${currency}` });

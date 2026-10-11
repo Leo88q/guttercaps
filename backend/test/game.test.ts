@@ -1362,8 +1362,12 @@ describe('anti-fraud detectors', () => {
     for (const asset of mint(db, alice, [{ rarity: 1, collection: 7 }, { rarity: 1, collection: 7 }], { blockTime: T - 3600 })) sold(asset, alice, bob, '5000000');
 
     /** The claim market's own order: create → list → sell (pre-mint) → the buyer mints and registers. */
+    // Nonces are sequential, never random: the claim PDA is (origin, nonce), and both x → y sales share their
+    // origin — a random pick from 900..998 collided once in 99 runs, folded the two claims into one and left a
+    // single claim-keyed sale row (the `COUNT(*) … = 2` below went red on CI with nothing else changed).
+    let nextNonce = 900;
     const preMintSale = (origin: string, buyer: string, register: boolean) => {
-      const nonce = String(900 + Math.floor(Math.random() * 99));
+      const nonce = String(nextNonce++);
       const claim = compressedMintClaimPda(new PublicKey(origin), BigInt(nonce))[0].toBase58();
       ingestTx(tx([{ program: 'chip_core', name: 'CompressedClaimsCreated', data: { buyer: origin, nonce, packNo: 0, claimNonces: [nonce, '0', '0', '0', '0'], count: 1 } }], { blockTime: t += 60 }), db);
       ingestTx(tx([

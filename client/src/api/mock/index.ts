@@ -70,6 +70,17 @@ const inventoryPlan: [number, number][] = [[0, 14], [1, 9], [2, 7], [3, 4], [4, 
 for (const [r, n] of inventoryPlan) for (let i = 0; i < n; i++) chips.push(makeChip(Math.floor(rnd() * COLLECTIONS.length), r));
 // one COMPLETE set for NIGHTMOTH (9/9) so the district-banner cosmetic is previewable
 for (let r = 0; r <= 8; r++) if (!chips.some((c) => c.collection === 0 && c.rarity === r)) chips.push(makeChip(0, r));
+// Fusion suggestions are one district only (backend `suggest`), so a probabilistic (85 %) bench
+// triple needs same-district epics: three to fuse plus one that stays, because the backend never
+// suggests a triple that would break a complete set. Top NIGHTMOTH's epics up to four with copies
+// of the first one — fixed asset ids and mint numbers, no draw from `rnd()`, so every other piece
+// of seeded mock data (inventory, listings, request-time values) stays exactly what it was.
+{
+  const epic = chips.find((c) => c.collection === 0 && c.rarity === 4)!;
+  for (let k = chips.filter((c) => c.collection === 0 && c.rarity === 4).length; k < 4; k++) {
+    chips.push({ ...epic, flags: { ...epic.flags }, asset: `AsMockNightmothEpic${'ABCD'[k]}`.padEnd(44, 'X'), index: 4_001 + k });
+  }
+}
 chips[0].flags.staked = true; chips[1].flags.staked = true; chips[2].flags.staked = true;
 chips[5].flags.soulbound = true; chips[5].lockUntil = iso(3 * 86_400_000);
 chips[0].flags.founder = true; // pre-sale founder frame demo (docs/preorder-beta.md)

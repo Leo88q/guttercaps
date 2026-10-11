@@ -140,15 +140,29 @@ function RowFrag({ ci, have, cells, active, activeR, onCell }: { ci: number; hav
         <Progress value={have} max={9} tone={have === 9 ? 'acid' : undefined} />
       </div>
       <div className="cgrid-cells">
-        {cells.map((n, ri) => (
-          <div key={ri} className="cgrid-slot">
-            <div className={`cell ${n > 0 ? 'owned' : 'missing live-slot'}`} style={{ borderColor: n > 0 ? rarityColor(ri) : undefined, outline: active && activeR === ri ? `2px solid ${color}` : undefined }} onClick={() => onCell(ri)} title={`${chipName(ci, ri)} · ${rarityName(ri)} · ${t('ui.ownedCount', { n })}`}>
-              {n > 0 ? <ChipArt collection={ci} rarity={ri} size="100%" imageUrl={chipArtUrl(ci, ri)} /> : <span className="tiny muted cell-empty">{rarityName(ri)}</span>}
-              {n > 0 && <span className={`count ${n > 1 ? 'multi' : ''}`}>{n}</span>}
+        {cells.map((n, ri) => {
+          const label = `${chipName(ci, ri)} · ${rarityName(ri)} · ${t('ui.ownedCount', { n })}`;
+          return (
+            <div key={ri} className="cgrid-slot">
+              {/* The album cell is the only way into a cap's drawer (the card list under the grid is
+                  gone), so it has to be reachable and operable from the keyboard, not only by tap. */}
+              <div
+                className={`cell ${n > 0 ? 'owned' : 'missing live-slot'}`}
+                role="button"
+                tabIndex={0}
+                aria-label={label}
+                style={{ borderColor: n > 0 ? rarityColor(ri) : undefined, outline: active && activeR === ri ? `2px solid ${color}` : undefined }}
+                onClick={() => onCell(ri)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onCell(ri); } }}
+                title={label}
+              >
+                {n > 0 ? <ChipArt collection={ci} rarity={ri} size="100%" imageUrl={chipArtUrl(ci, ri)} /> : <span className="tiny muted cell-empty">{rarityName(ri)}</span>}
+                {n > 0 && <span className={`count ${n > 1 ? 'multi' : ''}`}>{n}</span>}
+              </div>
+              <span className="cell-rarity" style={{ color: rarityColor(ri) }}>{rarityName(ri)}</span>
             </div>
-            <span className="cell-rarity" style={{ color: rarityColor(ri) }}>{rarityName(ri)}</span>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
