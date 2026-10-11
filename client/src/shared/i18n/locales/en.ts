@@ -302,6 +302,7 @@ const en = {
     chestOffer: 'Founders chest',
     chestBlurb: '4 Limited packs + founder frames. Shop value $119.96 — 0.999 SOL / 109.89 USDC / 6 868.125 SKR, one chest per wallet.',
     reserveChest: 'Reserve chest',
+    founderFrame: 'Every cap from this chest wears a permanent founder frame — origin, not extra power.',
   },
   footer: { legal: 'Legal', ages: '18+' },
 

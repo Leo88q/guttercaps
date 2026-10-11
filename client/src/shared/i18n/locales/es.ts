@@ -285,6 +285,7 @@ const es: Messages = {
     chestOffer: 'Cofre de fundadores',
     chestBlurb: '4 packs Limited + marcos de fundador. En la tienda $119,96 — 0,999 SOL, un cofre por billetera.',
     reserveChest: 'Reservar cofre',
+    founderFrame: 'Cada chapa de este cofre lleva un marco de fundador permanente — origen, no poder extra.',
   },
   footer: { legal: 'Legal', ages: '18+' },
 

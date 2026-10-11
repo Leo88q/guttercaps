@@ -412,6 +412,7 @@ BODY = f'''
       <div class="presale-card clean-zone"><h3 data-i18n="presale.c2h">{t('presale.c2h')}</h3><p data-i18n="presale.c2p">{t('presale.c2p')}</p></div>
       <div class="presale-card clean-zone"><h3 data-i18n="presale.c3h">{t('presale.c3h')}</h3><p data-i18n="presale.c3p">{t('presale.c3p')}</p></div>
       <div class="presale-card clean-zone"><h3 data-i18n="presale.c4h">{t('presale.c4h')}</h3><p data-i18n="presale.c4p">{t('presale.c4p')}</p></div>
+      <div class="presale-card clean-zone"><h3 data-i18n="presale.c5h">{t('presale.c5h')}</h3><p data-i18n="presale.c5p">{t('presale.c5p')}</p></div>
     </div>
     <div class="presale-cta">
       <a class="btn-spray btn-spray-lg" data-link="presale" href="#" onclick="fireSpray(this)"><span class="mist-puff"></span><span data-i18n="presale.cta">{t('presale.cta')}</span></a>

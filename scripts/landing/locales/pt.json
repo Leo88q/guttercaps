@@ -215,13 +215,13 @@
   "skr.treasury": "Tesouro (SKR)",
   "skr.funding": "Financia o fundo de prêmios semanalmente · registro:",
   "presale.h": "Pré-venda <span class=\"tag-accent\">fundadora</span>",
-  "presale.p": "O beta é gratuito e roda em devnet; a mainnet chega após a auditoria. Até lá, duas ofertas de Packs de Evento Limitados são vendidas por SOL real: 500 unidades a 0,30 SOL (máx. 5 por carteira) e 125 baús fundadores de 4 packs a 0,999 SOL (máx. 1 por carteira). Você paga hoje, os packs são entregues on-chain no lançamento da mainnet e você mesmo os abre — os mesmos SlotHashes on-chain, as mesmas odds publicadas.",
+  "presale.p": "O beta é gratuito e roda em devnet; a mainnet chega após a auditoria. Até lá, duas ofertas de Packs de Evento Limitados são vendidas por SOL, USDC ou SKR reais: 500 unidades a 0,30 SOL (máx. 5 por carteira) e 125 baús fundadores de 4 packs a 0,999 SOL (máx. 1 por carteira). Tampas desses packs levam uma moldura de fundador permanente. Você paga hoje, os packs são entregues on-chain no lançamento da mainnet e você mesmo os abre — os mesmos SlotHashes on-chain, as mesmas odds publicadas.",
   "presale.o1h": "Limited Event Pack",
   "presale.o1p": "500 avulsos · 0,30 SOL · máx. 5 por carteira",
   "presale.o2h": "Baú fundador ×4",
   "presale.o2p": "125 baús · 0,999 SOL · máx. 1 por carteira",
   "presale.c1h": "Pague agora — abra no lançamento",
-  "presale.c1p": "O SOL vai para a multisig da equipe (2-de-3) com o memo no estilo GC-PRE|42. No lançamento da mainnet os packs são concedidos on-chain em ordem de reserva e chegam à sua carteira como packs pendentes que você mesmo abre.",
+  "presale.c1p": "SOL, USDC ou SKR vai para a multisig da equipe (2-de-3) — USDC e SKR para as ATAs do mesmo tesouro — com o memo tipo GC-PRE|42. No lançamento da mainnet os packs são concedidos on-chain na ordem de reserva e chegam à sua carteira como packs pendentes que você abre.",
   "presale.c2h": "O preço fica travado em SOL",
   "presale.c2p": "No lançamento o Pack de Evento Limitado custa $29,99 à taxa congelada de SOL ($110). Os packs avulsos da pré-venda custam 0,30 SOL fixos; o baú fundador custa 0,999 SOL por 4 packs — sem conversão nem slippage. 500 avulsos e 125 baús, 1000 packs on-chain.",
   "presale.c3h": "5 caps, piso Rare+",
@@ -231,7 +231,7 @@
   "presale.cta": "Reservar packs no app",
   "presale.note": "É uma compra antecipada de packs de mainnet, não uma venda de token: você recebe exatamente os packs que reservou, entregues no lançamento. O beta em devnet continua gratuito para todos.",
   "faq.q10": "O que é a pré-venda?",
-  "faq.a10": "Duas ofertas de Packs de Evento Limitados vendidas por SOL de mainnet enquanto o jogo roda o beta gratuito em devnet: 500 unidades a 0,30 SOL (máx. 5 por carteira) e 125 baús fundadores de 4 packs a 0,999 SOL (máx. 1 por carteira). O pagamento vai para a multisig da equipe (2-de-3) com um memo; os packs são concedidos on-chain no lançamento da mainnet na ordem de reserva, e você mesmo os abre com os mesmos SlotHashes on-chain de qualquer compra. A campanha pode ser desligada a qualquer momento; o registro público de reservas é a base para reembolsos.",
+  "faq.a10": "Duas ofertas de Packs de Evento Limitados vendidas por SOL, USDC ou SKR de mainnet enquanto o jogo roda o beta gratuito em devnet: 500 unidades a 0,30 SOL (máx. 5 por carteira) e 125 baús fundadores de 4 packs a 0,999 SOL (máx. 1 por carteira). O pagamento vai para a multisig da equipe (2-de-3) com um memo; USDC e SKR nas ATAs do mesmo tesouro. Tampas desses packs levam uma moldura de fundador permanente. Os packs são concedidos on-chain no lançamento da mainnet na ordem de reserva, e você mesmo os abre com os mesmos SlotHashes on-chain de qualquer compra. A campanha pode ser desligada a qualquer momento; o registro público de reservas é a base para reembolsos.",
   "faq.q9": "O código é aberto?",
   "faq.a9": "Os quatro programas Anchor, o pacote de economia com testes de invariantes, o indexador e o app estão no repositório indicado abaixo. Os números desta página são conferidos contra esse pacote.",
   "nav.why": "Por que vale a pena",
@@ -251,5 +251,7 @@
   "why.v4p": "Cada Limited Event Pack alimenta o fundo da temporada, e o tesouro SKR reforça toda semana. O registro é público e on-chain.",
   "mech.7h": "Bueiro e Verificar",
   "mech.7p": "Toda manhã a cidade pede que você levante uma grade. Esse check-in é o login diário — 2 $CG, resgatados nas Missões. Cada pack dessas ruas é rolado com SlotHashes on-chain; cole a transação em Verificar e refaça as raridades que o programa mintou. Ninguém, inclusive nós, escolhe o drop.",
-  "mech.7f": "2 $CG/dia · SlotHashes em Verificar"
+  "mech.7f": "2 $CG/dia · SlotHashes em Verificar",
+  "presale.c5h": "Moldura de fundador, para sempre",
+  "presale.c5p": "Cada tampa de um pack da pré-venda ou de um dos 125 baús leva uma moldura de fundador dourada. É origem, não poder extra — mesma fusão, mesmo stake, mesma luta. Aparece na janela de revelação, na coleção e no mercado."
 }

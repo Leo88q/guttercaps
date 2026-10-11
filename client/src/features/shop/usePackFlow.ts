@@ -64,7 +64,7 @@ function toTracked(wallet: string, s: PackFlowState, prev?: TrackedPack): Tracke
   return {
     ...(prev ?? { id: packId(wallet, s.nonce), wallet, createdAt: Date.now(), updatedAt: Date.now() }),
     phase: s.phase, sku: s.sku, qty: s.qty, currency: s.currency, nonce: s.nonce.toString(), randomness: s.randomness?.toBase58(),
-    buySignature: s.buySignature, openSignatures: s.openSignatures, error: s.error, errorDiagnostic: s.errorDiagnostic, revealAttempt: s.revealAttempt, updatedAt: Date.now(),
+    buySignature: s.buySignature, openSignatures: s.openSignatures, error: s.error, errorDiagnostic: s.errorDiagnostic, revealAttempt: s.revealAttempt, preorder: s.preorder, updatedAt: Date.now(),
     opened: s.opened.map((o) => ({ assets: o.assets.map((a) => a.toBase58()), rarities: o.rarities, collections: o.collections, roll: hex(o.roll), pityBefore: o.pityBefore, pityAfter: o.pityAfter })),
   };
 }
@@ -93,7 +93,7 @@ export function usePackFlow() {
   }, [upsert]);
 
   const pushReveals = useCallback((s: PackFlowState, fromIndex: number) => {
-    const items = s.opened.slice(fromIndex).flatMap((o, pi) => o.assets.map((asset, i) => ({ id: `${asset.toBase58()}-${pi}-${i}`, asset: asset.toBase58(), rarity: o.rarities[i], collectionIdx: o.collections[i], sku: s.sku })));
+    const items = s.opened.slice(fromIndex).flatMap((o, pi) => o.assets.map((asset, i) => ({ id: `${asset.toBase58()}-${pi}-${i}`, asset: asset.toBase58(), rarity: o.rarities[i], collectionIdx: o.collections[i], sku: s.sku, founder: s.preorder })));
     if (items.length) enqueueReveal(items);
   }, [enqueueReveal]);
 

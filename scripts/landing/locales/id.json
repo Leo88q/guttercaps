@@ -215,13 +215,13 @@
   "skr.treasury": "Kas (SKR)",
   "skr.funding": "Mendanai pool hadiah mingguan · buku besar:",
   "presale.h": "Pre-sale <span class=\"tag-accent\">pendiri</span>",
-  "presale.p": "Beta gratis dan berjalan di devnet; mainnet hadir setelah audit. Sampai saat itu dua penawaran Limited Event Pack dijual dengan SOL sungguhan: 500 pack satuan 0,30 SOL (maks. 5 per wallet) dan 125 peti pendiri isi 4 pack seharga 0,999 SOL (maks. 1 per wallet). Kamu membayar hari ini, pack dikirim on-chain saat mainnet meluncur, dan kamu membukanya sendiri — SlotHashes on-chain yang sama, odds yang sama yang dipublikasikan.",
+  "presale.p": "Beta gratis dan berjalan di devnet; mainnet hadir setelah audit. Sampai saat itu dua penawaran Limited Event Pack dijual dengan SOL, USDC, atau SKR sungguhan: 500 pack satuan 0,30 SOL (maks. 5 per wallet) dan 125 peti pendiri isi 4 pack seharga 0,999 SOL (maks. 1 per wallet). Cap dari pack itu memakai bingkai pendiri permanen. Kamu membayar hari ini, pack dikirim on-chain saat mainnet meluncur, dan kamu membukanya sendiri — SlotHashes on-chain yang sama, odds yang sama yang dipublikasikan.",
   "presale.o1h": "Limited Event Pack",
   "presale.o1p": "500 pack satuan · 0,30 SOL · maks. 5 per wallet",
   "presale.o2h": "Peti pendiri ×4",
   "presale.o2p": "125 peti · 0,999 SOL · maks. 1 per wallet",
   "presale.c1h": "Bayar sekarang — buka saat peluncuran",
-  "presale.c1p": "SOL masuk ke multisig tim (2-dari-3) dengan memo bergaya GC-PRE|42. Saat mainnet meluncur, pack diberikan on-chain sesuai urutan reservasi dan masuk ke wallet-mu sebagai pack tertunda yang kamu buka sendiri.",
+  "presale.c1p": "SOL, USDC, atau SKR ke multisig tim (2-dari-3) — USDC dan SKR ke ATA treasuri yang sama — dengan memo gaya GC-PRE|42. Saat mainnet rilis, pack diberikan on-chain sesuai urutan reservasi dan masuk wallet sebagai pack tertunda yang kamu buka sendiri.",
   "presale.c2h": "Harga terkunci dalam SOL",
   "presale.c2p": "Saat peluncuran, Limited Event Pack berharga $29,99 pada kurs SOL beku ($110). Pack satuan pra-penjualan tetap 0,30 SOL; peti pendiri 0,999 SOL untuk 4 pack — tanpa konversi, tanpa slippage. 500 satuan dan 125 peti, 1000 pack on-chain.",
   "presale.c3h": "5 cap, batas bawah Rare+",
@@ -231,7 +231,7 @@
   "presale.cta": "Reservasi pack di aplikasi",
   "presale.note": "Ini pembelian awal pack mainnet, bukan penjualan token: kamu menerima tepat pack yang kamu reservasi, dikirim saat peluncuran. Beta devnet tetap gratis untuk semua.",
   "faq.q10": "Apa itu pre-sale?",
-  "faq.a10": "Dua penawaran Limited Event Pack dijual dengan SOL mainnet selama game menjalankan beta gratis di devnet: 500 pack satuan 0,30 SOL (maks. 5 per wallet) dan 125 peti pendiri isi 4 pack seharga 0,999 SOL (maks. 1 per wallet). Pembayaran ke multisig tim (2-dari-3) dengan memo; pack diberikan on-chain saat mainnet meluncur sesuai urutan reservasi, dan kamu membukanya sendiri dengan SlotHashes on-chain yang sama seperti pembelian apa pun. Kampanye bisa dimatikan kapan saja; registri reservasi publik adalah dasar refund.",
+  "faq.a10": "Dua penawaran Limited Event Pack dijual dengan SOL, USDC, atau SKR mainnet selama game menjalankan beta gratis di devnet: 500 pack satuan 0,30 SOL (maks. 5 per wallet) dan 125 peti pendiri isi 4 pack seharga 0,999 SOL (maks. 1 per wallet). Pembayaran ke multisig tim (2-dari-3) dengan memo; USDC dan SKR ke ATA treasuri yang sama. Cap dari pack itu memakai bingkai pendiri permanen. Pack diberikan on-chain saat mainnet meluncur sesuai urutan reservasi, dan kamu membukanya sendiri dengan SlotHashes on-chain yang sama seperti pembelian apa pun. Kampanye bisa dimatikan kapan saja; registri reservasi publik adalah dasar refund.",
   "faq.q9": "Apakah kodenya terbuka?",
   "faq.a9": "Empat program Anchor, paket ekonomi dengan tes invarian, pengindeks, dan aplikasi ada di repositori di bawah. Angka halaman ini diperiksa terhadap paket tersebut.",
   "nav.why": "Kenapa worth it",
@@ -251,5 +251,7 @@
   "why.v4p": "Setiap Limited Event Pack mengisi pool musim, dan perbendaharaan SKR menambahnya tiap minggu. Buku besarnya publik dan on-chain.",
   "mech.7h": "Saluran got &amp; Verifikasi",
   "mech.7p": "Setiap pagi kota minta kamu angkat tutup got. Check-in itu login harian — 2 $CG, diklaim di Misi. Setiap pack dari jalan itu diundi dari SlotHashes on-chain; tempel transaksi buka di Verifikasi dan hitung ulang raritas yang program mint. Tidak ada, termasuk kami, yang memilih drop.",
-  "mech.7f": "2 $CG/hari · SlotHashes di Verifikasi"
+  "mech.7f": "2 $CG/hari · SlotHashes di Verifikasi",
+  "presale.c5h": "Bingkai pendiri, selamanya",
+  "presale.c5p": "Setiap cap dari pack pra-penjualan atau salah satu dari 125 peti memakai bingkai pendiri emas. Itu asal, bukan kekuatan extra — fusi sama, stake sama, lawan sama. Terlihat di jendela buka pack, koleksi, dan pasar."
 }

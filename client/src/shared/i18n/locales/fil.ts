@@ -285,6 +285,7 @@ const fil: Messages = {
     chestOffer: 'Founders chest',
     chestBlurb: '4 Limited packs + founder frames. Shop value $119.96 — 0.999 SOL, isang chest bawat wallet.',
     reserveChest: 'I-reserve ang chest',
+    founderFrame: 'Bawat cap mula sa chest na ito ay may permanenteng founder frame — pinagmulan, hindi extra power.',
   },
   footer: { legal: 'Legal', ages: '18+' },
 

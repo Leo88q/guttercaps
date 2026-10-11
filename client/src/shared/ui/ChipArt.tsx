@@ -30,6 +30,8 @@ interface ChipArtProps {
   /** pre-sale origin (docs/preorder-beta.md): permanent founder foil frame + badge */
   founder?: boolean;
 }
+/** Permanent pre-sale foil — pass through to ChipArt wherever a real chip is drawn. */
+export const isFounderChip = (c?: { flags?: { founder?: boolean } } | null) => !!c?.flags?.founder;
 
 export const ChipArt = memo(function ChipArt({ collection, rarity, index = null, level, size = '100%', imageUrl, fallbackUrl, selected, dim, badge, skin, onClick, title, className = '', crimp, founder }: ChipArtProps) {
   const t = useT();

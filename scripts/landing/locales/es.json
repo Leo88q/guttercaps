@@ -215,13 +215,13 @@
   "skr.treasury": "Tesorería (SKR)",
   "skr.funding": "Financia el fondo de premios semanalmente · registro:",
   "presale.h": "Preventa <span class=\"tag-accent\">fundacional</span>",
-  "presale.p": "La beta es gratuita y corre en devnet; la mainnet llega tras la auditoría. Hasta entonces hay dos ofertas de Packs de Evento Limitados por SOL real: 500 unidades a 0,30 SOL (máx. 5 por billetera) y 125 cofres fundadores de 4 packs a 0,999 SOL (máx. 1 por billetera). Pagas hoy, los packs se entregan on-chain en el lanzamiento de mainnet y los abres tú mismo: los mismos SlotHashes on-chain, las mismas probabilidades publicadas.",
+  "presale.p": "La beta es gratuita y corre en devnet; la mainnet llega tras la auditoría. Hasta entonces hay dos ofertas de Packs de Evento Limitados por SOL, USDC o SKR reales: 500 unidades a 0,30 SOL (máx. 5 por billetera) y 125 cofres fundadores de 4 packs a 0,999 SOL (máx. 1 por billetera). Las chapas de esos packs llevan un marco de fundador permanente. Pagas hoy, los packs se entregan on-chain en el lanzamiento de mainnet y los abres tú mismo: los mismos SlotHashes on-chain, las mismas probabilidades publicadas.",
   "presale.o1h": "Limited Event Pack",
   "presale.o1p": "500 sueltos · 0,30 SOL · máx. 5 por billetera",
   "presale.o2h": "Cofre fundador ×4",
   "presale.o2p": "125 cofres · 0,999 SOL · máx. 1 por billetera",
   "presale.c1h": "Paga ahora — abre en el lanzamiento",
-  "presale.c1p": "El SOL va a la multisig del equipo (2-de-3) con el memo tipo GC-PRE|42. En el lanzamiento de mainnet los packs se otorgan on-chain en orden de reserva y llegan a tu billetera como packs pendientes que abres tú mismo.",
+  "presale.c1p": "SOL, USDC o SKR va a la multisig del equipo (2-de-3) — USDC y SKR a las ATA de esa misma tesorería — con el memo tipo GC-PRE|42. En el lanzamiento de mainnet los packs se otorgan on-chain en orden de reserva y llegan a tu billetera como packs pendientes que abres tú mismo.",
   "presale.c2h": "El precio queda fijado en SOL",
   "presale.c2p": "En el lanzamiento el Pack de Evento Limitado cuesta 29,99 $ al tipo congelado de SOL (110 $). Los packs sueltos de la preventa cuestan 0,30 SOL fijos; el cofre fundador cuesta 0,999 SOL por 4 packs, sin conversión ni deslizamiento. 500 sueltos y 125 cofres, 1000 packs on-chain.",
   "presale.c3h": "5 caps, piso Rare+",
@@ -231,7 +231,7 @@
   "presale.cta": "Reservar packs en la app",
   "presale.note": "Es una compra anticipada de packs de mainnet, no una venta de tokens: recibes exactamente los packs que reservaste, entregados en el lanzamiento. La beta de devnet sigue siendo gratuita para todos.",
   "faq.q10": "¿Qué es la preventa?",
-  "faq.a10": "Dos ofertas de Packs de Evento Limitados vendidas por SOL de mainnet mientras el juego corre su beta gratis en devnet: 500 unidades a 0,30 SOL (máx. 5 por billetera) y 125 cofres fundadores de 4 packs a 0,999 SOL (máx. 1 por billetera). El pago va a la multisig del equipo (2-de-3) con un memo; los packs se otorgan on-chain en el lanzamiento de mainnet en orden de reserva, y los abres tú mismo con los mismos SlotHashes on-chain que cualquier compra. La campaña se puede apagar en cualquier momento; el registro público de reservas es la base de los reembolsos.",
+  "faq.a10": "Dos ofertas de Packs de Evento Limitados vendidas por SOL, USDC o SKR de mainnet mientras el juego corre su beta gratis en devnet: 500 unidades a 0,30 SOL (máx. 5 por billetera) y 125 cofres fundadores de 4 packs a 0,999 SOL (máx. 1 por billetera). El pago va a la multisig del equipo (2-de-3) con un memo; USDC y SKR a las ATA de esa tesorería. Las chapas de esos packs llevan un marco de fundador permanente. Los packs se otorgan on-chain en el lanzamiento de mainnet en orden de reserva, y los abres tú mismo con los mismos SlotHashes on-chain que cualquier compra. La campaña se puede apagar en cualquier momento; el registro público de reservas es la base de los reembolsos.",
   "faq.q9": "¿El código es abierto?",
   "faq.a9": "Los cuatro programas Anchor, el paquete económico con pruebas de invariantes, el indexador y la app están en el repositorio de abajo. Los números de esta página se verifican con ese paquete.",
   "nav.why": "Por qué conviene",
@@ -251,5 +251,7 @@
   "why.v4p": "Cada Limited Event Pack alimenta el pozo de la temporada, y el tesoro SKR lo recarga cada semana. El registro es público y on-chain.",
   "mech.7h": "Desagüe y Verificar",
   "mech.7p": "Cada mañana la ciudad te pide levantar una reja. Ese check-in es el login diario — 2 $CG, reclamados en Misiones. Cada pack de esas calles se tira con SlotHashes on-chain; pega la transacción en Verificar y recalcula las rarezas que minteó el programa. Nadie, ni nosotros, elige el drop.",
-  "mech.7f": "2 $CG/día · SlotHashes en Verificar"
+  "mech.7f": "2 $CG/día · SlotHashes en Verificar",
+  "presale.c5h": "Marco de fundador, para siempre",
+  "presale.c5p": "Cada chapa de un pack de preventa o de uno de los 125 cofres lleva un marco de fundador dorado. Es origen, no poder extra: misma fusión, mismo stake, misma pelea. Se ve en la ventana de revelado, en la colección y en el mercado."
 }

@@ -46,6 +46,8 @@ export interface PackFlowState {
   error?: string;
   errorDiagnostic?: ErrorSnapshot;
   revealAttempt?: number;
+  /** PendingPack.preorder — every chip from this purchase wears the founder frame */
+  preorder?: boolean;
 }
 
 interface PackFlowDeps {
@@ -246,7 +248,7 @@ export class PackFlow {
         };
       }
       const randomness = pending.randomness;
-      this.set({ randomness, phase: 'revealing' });
+      this.set({ randomness, phase: 'revealing', preorder: pending.preorder });
 
       // Do we already have the value? Persisted in PendingPack by the first open (SEC-C2: bundles
       // never re-read the oracle account), else on the randomness account (crank / earlier attempt).

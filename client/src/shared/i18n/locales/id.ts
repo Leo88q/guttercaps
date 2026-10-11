@@ -285,6 +285,7 @@ const id: Messages = {
     chestOffer: 'Peti pendiri',
     chestBlurb: '4 pack Limited + bingkai pendiri. Harga toko $119,96 — 0,999 SOL, satu peti per wallet.',
     reserveChest: 'Pesan peti',
+    founderFrame: 'Setiap cap dari peti ini memakai bingkai pendiri permanen — asal, bukan kekuatan extra.',
   },
   footer: { legal: 'Legal', ages: '18+' },
 

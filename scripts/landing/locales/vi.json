@@ -215,13 +215,13 @@
   "skr.treasury": "Ngân quỹ (SKR)",
   "skr.funding": "Nạp quỹ thưởng hằng tuần · sổ cái:",
   "presale.h": "Bán trước <span class=\"tag-accent\">dành cho người tiên phong</span>",
-  "presale.p": "Bản beta miễn phí và chạy trên devnet; mainnet sẽ có sau kiểm toán. Từ nay có hai lựa chọn Limited Event Pack bằng SOL thật: 500 gói lẻ 0,30 SOL (tối đa 5 mỗi ví) và 125 rương founder 4 gói giá 0,999 SOL (tối đa 1 mỗi ví). Bạn trả tiền hôm nay, gói được phát on-chain khi mainnet ra mắt và chính bạn mở chúng — cùng SlotHashes on-chain, cùng tỷ lệ đã công bố.",
+  "presale.p": "Bản beta miễn phí và chạy trên devnet; mainnet sẽ có sau kiểm toán. Từ nay có hai lựa chọn Limited Event Pack bằng SOL, USDC hoặc SKR thật: 500 gói lẻ 0,30 SOL (tối đa 5 mỗi ví) và 125 rương founder 4 gói giá 0,999 SOL (tối đa 1 mỗi ví). Nắp từ các gói đó mang khung founder vĩnh viễn. Bạn trả tiền hôm nay, gói được phát on-chain khi mainnet ra mắt và chính bạn mở chúng — cùng SlotHashes on-chain, cùng tỷ lệ đã công bố.",
   "presale.o1h": "Limited Event Pack",
   "presale.o1p": "500 gói lẻ · 0,30 SOL · tối đa 5 mỗi ví",
   "presale.o2h": "Rương founder ×4",
   "presale.o2p": "125 rương · 0,999 SOL · tối đa 1 mỗi ví",
   "presale.c1h": "Thanh toán bây giờ — mở khi ra mắt",
-  "presale.c1p": "SOL chuyển vào ví multisig của đội (2-trong-3) kèm memo dạng GC-PRE|42. Khi mainnet ra mắt, các gói được phát on-chain theo thứ tự đặt trước và nằm trong ví của bạn dưới dạng gói chờ để tự mở.",
+  "presale.c1p": "SOL, USDC hoặc SKR đến ví đa chữ ký của đội (2-trong-3) — USDC và SKR vào ATA của cùng kho bạc — kèm memo kiểu GC-PRE|42. Khi mainnet ra mắt, gói được cấp on-chain theo thứ tự đặt chỗ và nằm trong ví bạn như pack chờ, bạn tự mở.",
   "presale.c2h": "Giá chốt bằng SOL",
   "presale.c2p": "Khi ra mắt, Limited Event Pack giá 29,99 USD theo tỷ giá SOL đóng băng (110 USD). Gói lẻ pre-sale cố định 0,30 SOL; rương founder 0,999 SOL cho 4 gói — không quy đổi, không trượt giá. 500 gói lẻ và 125 rương, 1000 gói on-chain.",
   "presale.c3h": "5 nắp, sàn Rare+",
@@ -231,7 +231,7 @@
   "presale.cta": "Đặt gói trong ứng dụng",
   "presale.note": "Đây là mua trước gói mainnet, không phải bán token: bạn nhận đúng những gói đã đặt, phát vào lúc ra mắt. Bản beta devnet vẫn miễn phí cho tất cả.",
   "faq.q10": "Bán trước là gì?",
-  "faq.a10": "Hai lựa chọn Limited Event Pack bán bằng SOL mainnet khi game chạy beta miễn phí trên devnet: 500 gói lẻ 0,30 SOL (tối đa 5 mỗi ví) và 125 rương founder 4 gói giá 0,999 SOL (tối đa 1 mỗi ví). Thanh toán vào ví multisig của đội (2-trong-3) kèm memo; gói được phát on-chain khi mainnet ra mắt theo thứ tự đặt chỗ, và bạn tự mở với cùng SlotHashes on-chain như mọi lần mua. Chiến dịch có thể tắt bất cứ lúc nào; sổ đăng ký công khai là căn cứ hoàn tiền.",
+  "faq.a10": "Hai lựa chọn Limited Event Pack bán bằng SOL, USDC hoặc SKR mainnet khi game chạy beta miễn phí trên devnet: 500 gói lẻ 0,30 SOL (tối đa 5 mỗi ví) và 125 rương founder 4 gói giá 0,999 SOL (tối đa 1 mỗi ví). Thanh toán vào ví đa chữ ký của đội (2-trong-3) kèm memo; USDC và SKR vào ATA cùng kho bạc. Nắp từ các gói đó mang khung founder vĩnh viễn. Gói được phát on-chain khi mainnet ra mắt theo thứ tự đặt chỗ, và bạn tự mở với cùng SlotHashes on-chain như mọi lần mua. Chiến dịch có thể tắt bất cứ lúc nào; sổ đăng ký công khai là căn cứ hoàn tiền.",
   "faq.q9": "Mã nguồn có mở không?",
   "faq.a9": "Bốn chương trình Anchor, gói kinh tế với kiểm thử bất biến, bộ chỉ mục và ứng dụng nằm trong kho mã bên dưới. Số liệu trang này được đối chiếu với gói đó.",
   "nav.why": "Vì sao đáng chơi",
@@ -251,5 +251,7 @@
   "why.v4p": "Mỗi Limited Event Pack nạp quỹ mùa giải, và kho bạc SKR bổ sung hằng tuần. Sổ cái công khai và on-chain.",
   "mech.7h": "Cống &amp; Xác minh",
   "mech.7p": "Mỗi sáng thành phố nhờ bạn nâng một nắp cống. Đó là đăng nhập hằng ngày — 2 $CG, nhận ở Nhiệm vụ. Mọi pack từ những phố đó lăn từ SlotHashes on-chain; dán giao dịch mở vào Xác minh và tính lại độ hiếm chương trình đã mint. Không ai, kể cả chúng tôi, chọn drop.",
-  "mech.7f": "2 $CG/ngày · SlotHashes trên Xác minh"
+  "mech.7f": "2 $CG/ngày · SlotHashes trên Xác minh",
+  "presale.c5h": "Khung founder, mãi mãi",
+  "presale.c5p": "Mỗi nắp từ pack pre-sale hoặc một trong 125 rương mang khung founder vàng. Đó là nguồn gốc, không thêm sức mạnh — cùng fusion, cùng stake, cùng trận. Hiện trong cửa sổ mở pack, bộ sưu tập và chợ."
 }

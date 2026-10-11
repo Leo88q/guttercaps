@@ -285,6 +285,7 @@ const vi: Messages = {
     chestOffer: 'Rương founder',
     chestBlurb: '4 pack Limited + khung founder. Giá cửa hàng $119,96 — 0,999 SOL, một rương mỗi ví.',
     reserveChest: 'Đặt rương',
+    founderFrame: 'Mỗi nắp từ rương này mang khung founder vĩnh viễn — nguồn gốc, không thêm sức mạnh.',
   },
   footer: { legal: 'Pháp lý', ages: '18+' },
 

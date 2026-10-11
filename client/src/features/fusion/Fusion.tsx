@@ -241,7 +241,7 @@ export default function Fusion() {
         <div className="bench">
           {slots.map((s, i) => (
             <div key={i} className={`slot ${s ? 'filled' : 'slot-empty live-slot'}`} onClick={() => setPickFor(i)} style={s ? { border: 'none' } : undefined} aria-label={`${t('ui.slot')} ${i + 1}`}>
-              {s ? <ChipArt collection={s.collection!} rarity={s.rarity!} index={s.index} level={s.level} size="100%" imageUrl={chipImageOf(s)} skin={s.skin} crimp={rarityColor(s.rarity!)} /> : <span className="slot-hint" aria-hidden>+</span>}
+              {s ? <ChipArt collection={s.collection!} rarity={s.rarity!} index={s.index} level={s.level} size="100%" imageUrl={chipImageOf(s)} skin={s.skin} crimp={rarityColor(s.rarity!)} founder={!!s.flags?.founder} /> : <span className="slot-hint" aria-hidden>+</span>}
             </div>
           ))}
         </div>
@@ -341,7 +341,7 @@ export default function Fusion() {
             )}
             {eligibleForSlot(pickFor).map((c) => (
               <div key={c.asset} className="chip-card" onClick={() => setSlots((s) => s.map((x, j) => (j === pickFor ? c : x)))}>
-                <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c)} skin={c.skin} selected={slots[pickFor]?.asset === c.asset} />
+                <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c)} skin={c.skin} selected={slots[pickFor]?.asset === c.asset} founder={!!c.flags?.founder} />
                 <div className="chip-meta"><span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span> · {chipName(c.collection!, c.rarity!)}</div>
               </div>
             ))}

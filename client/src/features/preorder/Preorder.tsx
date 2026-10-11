@@ -205,6 +205,12 @@ export default function Preorder() {
             <div className="preorder-price">{fmtAmount(priceOf(chest, currency), currency)}</div>
             <div className="tiny muted">{t('preorder.chestBlurb')}</div>
             <Progress value={chest.sold} max={Math.max(1, chest.total)} tone="magenta" />
+            <div className="founder-wall" aria-label={t('preorder.left', { n: chest.remaining, total: chest.total })}>
+              {Array.from({ length: chest.total }, (_, i) => (
+                <span key={i} className={`founder-slot${i < chest.sold ? ' taken' : ''}`} />
+              ))}
+            </div>
+            <p className="tiny muted" style={{ margin: 0 }}>{t('preorder.founderFrame')}</p>
             {chestLive && (
               <>
                 <button className="btn" disabled={reserve.isPending} onClick={() => goReserve('chest', 1)}>

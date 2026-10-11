@@ -23,9 +23,9 @@ export function RevealQueue() {
     return (
       <div className="modal-backdrop" onClick={done} style={{ zIndex: 90 }}>
         <div className="modal center stack" onClick={(e) => e.stopPropagation()}>
-          <div style={{ width: 270, margin: '0 auto' }}><ChipArt collection={head.collectionIdx} rarity={head.rarity} index={head.index} level={head.level} imageUrl={chipArtUrl(head.collectionIdx, head.rarity, 512)} crimp={rarityColor(head.rarity)} /></div>
+          <div style={{ width: 270, margin: '0 auto' }}><ChipArt collection={head.collectionIdx} rarity={head.rarity} index={head.index} level={head.level} imageUrl={chipArtUrl(head.collectionIdx, head.rarity, 512)} crimp={rarityColor(head.rarity)} founder={head.founder} /></div>
           <div className="cg-heading" style={{ fontSize: 22 }}>{chipName(head.collectionIdx, head.rarity)}</div>
-          <div className="muted">{rarityName(head.rarity)}{head.fused ? ` · ${t('fusion.success')}` : ''} · {queue.length - 1} {t('ui.more')}</div>
+          <div className="muted">{rarityName(head.rarity)}{head.founder ? ` · ${t('collection.founderBadge')}` : ''}{head.fused ? ` · ${t('fusion.success')}` : ''} · {queue.length - 1} {t('ui.more')}</div>
           <button className="btn btn-block" onClick={done}>{t('ui.next')}</button>
         </div>
       </div>
@@ -37,10 +37,11 @@ export function RevealQueue() {
       key={head.id}
       rarity={head.rarity}
       chipName={chipName(head.collectionIdx, head.rarity)}
-      chipArt={<ChipArt collection={head.collectionIdx} rarity={head.rarity} index={head.index} level={head.level} imageUrl={chipArtUrl(head.collectionIdx, head.rarity, 512)} crimp={rarityColor(head.rarity)} />}
+      chipArt={<ChipArt collection={head.collectionIdx} rarity={head.rarity} index={head.index} level={head.level} imageUrl={chipArtUrl(head.collectionIdx, head.rarity, 512)} crimp={rarityColor(head.rarity)} founder={head.founder} />}
       isOnChain
       remaining={queue.length - 1}
       sku={head.sku}
+      founder={head.founder}
       onDone={done}
     />
   );

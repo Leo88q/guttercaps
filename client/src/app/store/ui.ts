@@ -14,6 +14,8 @@ interface RevealItem {
   fused?: boolean;
   /** pack SKU the chip rolled from — selects the wrapper art in the reveal animation */
   sku?: number;
+  /** pre-sale origin: the reveal window shows the founder frame (docs/preorder-beta.md) */
+  founder?: boolean;
 }
 
 export interface Toast {

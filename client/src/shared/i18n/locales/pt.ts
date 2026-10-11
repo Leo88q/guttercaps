@@ -285,6 +285,7 @@ const pt: Messages = {
     chestOffer: 'Baú dos fundadores',
     chestBlurb: '4 packs Limited + molduras de fundador. Na loja $119,96 — 0,999 SOL, um baú por carteira.',
     reserveChest: 'Reservar baú',
+    founderFrame: 'Cada tampa deste baú leva uma moldura de fundador permanente — origem, não poder extra.',
   },
   footer: { legal: 'Jurídico', ages: '18+' },
 
