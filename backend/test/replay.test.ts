@@ -332,7 +332,7 @@ describe('LT-3 invariants: the projections agree with the raw log', () => {
   const parity: readonly [string, string, string | string[]][] = [
     // SEC-B31: both compressed markets move lamports and change hands, so they are sales too — one row each
     ['sales', 'sales', ['ChipSold', 'CompressedClaimSold', 'CompressedAssetSold']],
-    ['pack_opens', 'pack_opens', 'PackOpened'],
+    ['pack_opens', 'pack_opens', ['PackOpened', 'CompressedPackOpened']],
     ['emission_days', 'emission_days', 'DayClosed'],
     ['fusions', 'fusions', ['ChipFused', 'CompressedClaimsFused', 'ClaimFusionRevealed']], // SEC-G04 + H3: every fusion path lands here
     ['service_payments', 'service_payments', 'ServicePaid'],

@@ -392,6 +392,28 @@ export function readCompressedClaimsCreated(r: BorshReader): CompressedClaimsCre
   return { ...e, claimNonces: e.claimNonces.slice(0, e.count) };
 }
 
+/** Live compressed open — same economic payload as PackOpened, claim nonces instead of Core assets. */
+export interface CompressedPackOpenedEvent {
+  buyer: PublicKey; nonce: bigint; sku: number; packNo: number; count: number;
+  claimNonces: bigint[]; rarities: number[]; collections: number[];
+  roll: Uint8Array; pityBefore: number; pityAfter: number; voucher: boolean;
+}
+export function readCompressedPackOpened(r: BorshReader): CompressedPackOpenedEvent {
+  const e = {
+    buyer: r.pubkey(), nonce: r.u64(), sku: r.u8(), packNo: r.u8(), count: r.u8(),
+    claimNonces: r.array(MAX_CHIPS_PER_PACK, () => r.u64()),
+    rarities: r.array(MAX_CHIPS_PER_PACK, () => r.u8()),
+    collections: r.array(MAX_CHIPS_PER_PACK, () => r.u8()),
+    roll: r.bytes(32), pityBefore: r.u16(), pityAfter: r.u16(), voucher: r.bool(),
+  };
+  return {
+    ...e,
+    claimNonces: e.claimNonces.slice(0, e.count),
+    rarities: e.rarities.slice(0, e.count),
+    collections: e.collections.slice(0, e.count),
+  };
+}
+
 interface CompressedPackSettledEvent { buyer: PublicKey; nonce: bigint; refunded: boolean }
 export function readCompressedPackSettled(r: BorshReader): CompressedPackSettledEvent {
   return { buyer: r.pubkey(), nonce: r.u64(), refunded: r.bool() };

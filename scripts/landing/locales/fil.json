@@ -248,5 +248,8 @@
   "why.v3h": "Gumagawa ang mga takip, hindi nakatambak",
   "why.v3p": "Binabayaran ng Cap Slam battles ng $CG ang panalo, kaya mong ibenta sa market ang nakuha mo, at ang staking at quests ay nagbibigay ng rewards habang wala ka.",
   "why.v4h": "Ang prize pool ay totoong pera",
-  "why.v4p": "Bawat Limited Event Pack ay nagpopondo sa season pool, at dinadagdagan ito ng SKR treasury linggo-linggo. Pampubliko at on-chain ang ledger."
+  "why.v4p": "Bawat Limited Event Pack ay nagpopondo sa season pool, at dinadagdagan ito ng SKR treasury linggo-linggo. Pampubliko at on-chain ang ledger.",
+  "mech.7h": "Alkantarilya at Verify",
+  "mech.7p": "Tuwing umaga hinihiling ng lungsod na itaas mo ang rehas. Iyon ang daily login — 2 $CG, i-claim sa Mga Quest. Bawat pack mula sa mga kalye iyon ay galing sa on-chain SlotHashes; i-paste ang open transaction sa Verify at ulitin ang rarities na minint ng program. Walang sino, pati kami, ang pumipili ng drop.",
+  "mech.7f": "2 $CG/araw · SlotHashes sa Verify"
 }

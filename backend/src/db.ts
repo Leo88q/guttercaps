@@ -255,7 +255,8 @@ CREATE TABLE IF NOT EXISTS preorder_drops (
   closed_at      INTEGER
 );
 CREATE TABLE IF NOT EXISTS pack_opens (
-  signature   TEXT PRIMARY KEY,
+  signature   TEXT    NOT NULL,
+  event_index INTEGER NOT NULL DEFAULT 0,
   buyer       TEXT    NOT NULL,
   sku         INTEGER NOT NULL,
   nonce       TEXT    NOT NULL,
@@ -265,11 +266,14 @@ CREATE TABLE IF NOT EXISTS pack_opens (
   collections TEXT    NOT NULL,   -- JSON number[]
   roll_hex    TEXT    NOT NULL,
   pity_before INTEGER NOT NULL,
-  pity_after  INTEGER NOT NULL,
+  pity_after INTEGER NOT NULL,
   slot        INTEGER NOT NULL,
-  block_time  INTEGER
+  block_time  INTEGER,
+  pack_no     INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (signature, event_index)
 );
 CREATE INDEX IF NOT EXISTS idx_pack_opens_buyer ON pack_opens(buyer, slot);
+CREATE INDEX IF NOT EXISTS idx_pack_opens_nonce ON pack_opens(buyer, nonce, pack_no);
 
 -- Bubblegum V2 pack settlement is asynchronous: claims are created first,
 -- minted in a later transaction, and only become economically settled after
@@ -1008,6 +1012,10 @@ export class Db {
     if (!po.has('offer')) this.raw.exec(`ALTER TABLE preorders ADD COLUMN offer TEXT NOT NULL DEFAULT 'pack'`);
     if (!po.has('currency')) this.raw.exec(`ALTER TABLE preorders ADD COLUMN currency TEXT NOT NULL DEFAULT 'SOL'`);
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_preorders_offer ON preorders(offer, status)`);
+    const pk = new Set((this.raw.prepare('PRAGMA table_info(pack_opens)').all() as { name: string }[]).map((c) => c.name));
+    if (!pk.has('pack_no')) this.raw.exec(`ALTER TABLE pack_opens ADD COLUMN pack_no INTEGER NOT NULL DEFAULT 0`);
+    if (!pk.has('event_index')) this.raw.exec(`ALTER TABLE pack_opens ADD COLUMN event_index INTEGER NOT NULL DEFAULT 0`);
+    this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_pack_opens_nonce ON pack_opens(buyer, nonce, pack_no)`);
   }
 
   /** Prepared-statement cache — SQL text is the key. */

@@ -248,5 +248,8 @@
   "why.v3h": "Nắp sinh lời, không nằm im",
   "why.v3p": "Trận Cap Slam trả $CG cho người thắng, chợ cho phép bán đồ rơi, còn staking và nhiệm vụ nhỏ giọt phần thưởng khi bạn vắng mặt.",
   "why.v4h": "Quỹ thưởng là tiền thật",
-  "why.v4p": "Mỗi Limited Event Pack nạp quỹ mùa giải, và kho bạc SKR bổ sung hằng tuần. Sổ cái công khai và on-chain."
+  "why.v4p": "Mỗi Limited Event Pack nạp quỹ mùa giải, và kho bạc SKR bổ sung hằng tuần. Sổ cái công khai và on-chain.",
+  "mech.7h": "Cống &amp; Xác minh",
+  "mech.7p": "Mỗi sáng thành phố nhờ bạn nâng một nắp cống. Đó là đăng nhập hằng ngày — 2 $CG, nhận ở Nhiệm vụ. Mọi pack từ những phố đó lăn từ SlotHashes on-chain; dán giao dịch mở vào Xác minh và tính lại độ hiếm chương trình đã mint. Không ai, kể cả chúng tôi, chọn drop.",
+  "mech.7f": "2 $CG/ngày · SlotHashes trên Xác minh"
 }

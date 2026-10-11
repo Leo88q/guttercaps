@@ -458,8 +458,12 @@ pub fn open_compressed_pack<'info>(
 
     let buyer = ctx.accounts.pending.buyer;
     let mut claim_nonces = [0u64; MAX_CHIPS_PER_PACK];
+    let mut rarities = [0u8; MAX_CHIPS_PER_PACK];
+    let mut collections = [0u8; MAX_CHIPS_PER_PACK];
     for i in 0..chips {
         let rolled_chip = rolled[i].ok_or(ChipError::Overflow)?;
+        rarities[i] = rolled_chip.rarity.index();
+        collections[i] = rolled_chip.collection_idx;
         let accounts = &ctx.remaining_accounts[i * 3..i * 3 + 3];
         let claim_ai = &accounts[0];
         let collection_ai = &accounts[1];
@@ -619,12 +623,31 @@ pub fn open_compressed_pack<'info>(
         .opened
         .checked_add(1)
         .ok_or(ChipError::Overflow)?;
+    let pity_after = ctx.accounts.pity.counters[ctx.accounts.pending.sku as usize];
     emit!(CompressedClaimsCreated {
         buyer,
         nonce,
         pack_no,
         claim_nonces,
         count: chips as u8,
+    });
+    // After ClaimsCreated so historical log parsers that stop at the first
+    // compressed event still see the claim-creation payload. Verify and
+    // `/packs/verify` read this companion: the 32-byte pack seed (`bytes`,
+    // the same value `expand` used) plus rarities/districts.
+    emit!(CompressedPackOpened {
+        buyer,
+        nonce,
+        sku: ctx.accounts.pending.sku,
+        pack_no,
+        count: chips as u8,
+        claim_nonces,
+        rarities,
+        collections,
+        roll: bytes,
+        pity_before,
+        pity_after,
+        voucher: is_voucher,
     });
     Ok(())
 }
@@ -1424,6 +1447,26 @@ pub struct CompressedClaimsCreated {
     pub pack_no: u8,
     pub claim_nonces: [u64; MAX_CHIPS_PER_PACK],
     pub count: u8,
+}
+
+/// Provably-fair open for the live compressed path. Emitted in the same
+/// transaction as `CompressedClaimsCreated`. Layout is additive — old
+/// `CompressedClaimsCreated` logs still decode; this event is what Verify
+/// and `/packs/verify` recompute from.
+#[event]
+pub struct CompressedPackOpened {
+    pub buyer: Pubkey,
+    pub nonce: u64,
+    pub sku: u8,
+    pub pack_no: u8,
+    pub count: u8,
+    pub claim_nonces: [u64; MAX_CHIPS_PER_PACK],
+    pub rarities: [u8; MAX_CHIPS_PER_PACK],
+    pub collections: [u8; MAX_CHIPS_PER_PACK],
+    pub roll: [u8; 32],
+    pub pity_before: u16,
+    pub pity_after: u16,
+    pub voucher: bool,
 }
 
 #[derive(Accounts)]

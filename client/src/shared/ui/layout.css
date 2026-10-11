@@ -576,6 +576,18 @@ img { max-width: 100%; display: block; }
 .page-bg-leaderboard { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-leaderboard.jpg); }
 .page-bg-profile { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-profile.jpg); }
 .page-bg-verify { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-verify.jpg); }
+.page-bg-drain { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-drain.jpg); }
+.drain-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 12px; }
+.drain-tile { text-align: center; padding: 14px 10px; cursor: pointer; }
+.drain-tile:disabled { cursor: default; opacity: 0.85; }
+.drain-tile.featured { box-shadow: 0 0 0 1px var(--cg-cyan, #16E5D9); }
+.drain-tile.picked { box-shadow: 0 0 0 1px var(--cg-acid-green, #B6FF3C); }
+.drain-grate { width: 160px; height: 160px; border-radius: 50%; object-fit: cover; transition: transform .7s ease, filter .7s; }
+.drain-grate.lift { transform: translateY(-18px) rotate(-8deg); filter: brightness(1.25); }
+.drain-grate-sm { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; }
+@media (prefers-reduced-motion: reduce) {
+  .drain-grate, .drain-grate.lift { transition: none; transform: none; }
+}
 .page-bg-language { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-language.jpg); }
 
 /* codex district banner: wide scene crop above the lore */

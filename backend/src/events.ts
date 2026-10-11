@@ -47,6 +47,11 @@ export const EVENT_SPECS: readonly EventSpec[] = [
   spec('chip_core', 'CompressedClaimsCreated', [
     ['buyer', 'pubkey'], ['nonce', 'u64'], ['packNo', 'u8'], ['claimNonces', ['u64', MAX_CHIPS_PER_PACK]], ['count', 'u8'],
   ]),
+  spec('chip_core', 'CompressedPackOpened', [
+    ['buyer', 'pubkey'], ['nonce', 'u64'], ['sku', 'u8'], ['packNo', 'u8'], ['count', 'u8'],
+    ['claimNonces', ['u64', MAX_CHIPS_PER_PACK]], ['rarities', ['u8', MAX_CHIPS_PER_PACK]], ['collections', ['u8', MAX_CHIPS_PER_PACK]],
+    ['roll', 'bytes32'], ['pityBefore', 'u16'], ['pityAfter', 'u16'], ['voucher', 'bool'],
+  ]),
   spec('chip_core', 'CompressedClaimCancelled', [['buyer', 'pubkey'], ['nonce', 'u64'], ['claimNonce', 'u64']]),
   spec('chip_core', 'CompressedPackSettled', [['buyer', 'pubkey'], ['nonce', 'u64'], ['refunded', 'bool']]),
   // SEC-B34: both carry the claim PDA as their last field. `buyer` / `owner` is the claim's *current*

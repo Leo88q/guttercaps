@@ -21,6 +21,7 @@ describe('transaction and reward presentation', () => {
       expect(tierName(2)).toBe(t('common.day', { n: 90 }));
       expect(tierName(-1)).toBe(t('common.unavailable'));
       expect(originLabel('voucher')).toBe(t('screens.questVoucher'));
+      expect(originLabel('compressed')).toBe(t('screens.originCompressed'));
       expect(originLabel('fusion')).toBe(t('screens.originFusion'));
       expect(rootKindLabel(6)).toBe(`${t('screens.pvpSeason')} · SKR`);
       expect(rootKindLabel(7)).toBe(`${t('screens.events')} · SKR`);
@@ -31,6 +32,8 @@ describe('transaction and reward presentation', () => {
       expect(describeFlowError('collection 5 missing')).toBe(t('screens.errCollection', { n: 5 }));
       expect(describeFlowError('collection 5 has no active Bubblegum tree')).toBe(t('screens.errTree', { n: 5 }));
       expect(describeFlowError('open transaction landed without a CompressedClaimsCreated event')).toBe(t('screens.errEvent', { event: 'CompressedClaimsCreated' }));
+      expect(describeFlowError('open transaction landed without a CompressedPackOpened event')).toBe(t('screens.errEvent', { event: 'CompressedPackOpened' }));
+      expect(describeFlowError('No PackOpened event in this transaction')).toBe(t('screens.errPackEvent'));
       expect(describeFlowError('2 of 15 chips are still unsettled (expired claims must be cancelled first) — re-run after cancelling')).toBe(t('screens.errUnsettled', { n: 2, total: 15 }));
       // Unknown diagnostics must not be fabricated or silently misclassified.
       expect(describeFlowError('RPC E123: unexpected response')).toBeUndefined();

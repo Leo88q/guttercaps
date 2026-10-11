@@ -366,7 +366,7 @@ export function chipDetail(db: Db, asset: string) {
   const px = prices(db);
   const listing = db.get<{ seller: string; price: string; currency: number; created_at: number | null }>(`SELECT seller, price, currency, created_at FROM listings WHERE asset = ?`, asset);
   const sales = history(db, { asset }).items;
-  const open = (r.origin === 'pack' || r.origin === 'voucher') && r.origin_signature ? db.get<{ roll_hex: string }>(`SELECT roll_hex FROM pack_opens WHERE signature = ?`, r.origin_signature) : undefined;
+  const open = (r.origin === 'pack' || r.origin === 'voucher' || r.origin === 'compressed') && r.origin_signature ? db.get<{ roll_hex: string }>(`SELECT roll_hex FROM pack_opens WHERE signature = ?`, r.origin_signature) : undefined;
   const fusion = r.origin === 'fusion' && r.origin_signature ? db.get<{ recipe: number }>(`SELECT recipe FROM fusions WHERE signature = ? AND result = ?`, r.origin_signature, asset) : undefined;
   return {
     ...chipToApi(r),

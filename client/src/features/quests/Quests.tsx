@@ -3,7 +3,7 @@ import { rewardText, rewardTotalText, rewardOddsText } from '@/shared/lib/reward
 import { rootKindLabel } from '@/shared/lib/presentation';
 // Daily / weekly / permanent quests, streak, and Merkle claims (claim_root / claim_skr_root / claim_item_root / claim_chip_root).
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
@@ -261,6 +261,11 @@ export default function Quests() {
                     {q.resetsAt && tab !== 'permanent' && <span>· {t('quests.resetsIn', { time: countdown(q.resetsAt) })}</span>}
                     {q.ineligibleReason && <span style={{ color: 'var(--cg-orange-soft)' }}> · {reasonText(q.ineligibleReason)}</span>}
                   </div>
+                  {q.id === 'd_login' && (
+                    <div>
+                      <Link to="/drain" className="pill pill-ok" data-testid="drain-link">{t('drain.check')}</Link>
+                    </div>
+                  )}
                   {PARTNER_LINKS[q.id ?? ''] && (
                     <div>
                       <a

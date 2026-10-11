@@ -135,6 +135,10 @@ T = {
   'mech.6p': ('An @handle for $1.99, cap skins, profile themes, arena emotes, instant reveal, a $9.99 cosmetic season pass. None of it touches odds, power or yield — it is how the studio earns without selling advantage.',
               '@хэндл за $1.99, скины фишек, темы профиля, эмоции арены, мгновенное вскрытие, косметический сезонный пропуск за $9.99. Ничто из этого не влияет на шансы, силу или доход — так студия зарабатывает, не продавая преимущество.'),
   'mech.6f': ('$0.99 – $9.99 · SOL / USDC / SKR / $CG', '$0.99 – $9.99 · SOL / USDC / SKR / $CG'),
+  'mech.7h': ('Drain &amp; Verify', 'Ливнёвки и проверка'),
+  'mech.7p': ('Every morning the city asks you to lift a grate. That check-in is the daily login — 2 $CG, claimed on Quests. Every pack pulled from those streets is rolled from on-chain SlotHashes; paste the open transaction on Verify and recompute the exact rarities the program minted. Nobody, including us, picks the drop.',
+              'Каждое утро город просит поднять решётку. Это ежедневный логин — 2 $CG, клейм в квестах. Каждый пак с этих улиц крутится из ончейн-SlotHashes: вставьте транзакцию открытия в «Проверку» и пересчитайте редкости, которые заминтила программа. Никто, включая нас, не выбирает дроп.'),
+  'mech.7f': ('2 $CG/day · SlotHashes on Verify', '2 $CG/день · SlotHashes в «Проверке»'),
   'mech.badge': ('live on devnet', 'живьём на devnet'),
 
   'rules.h': ('Rules &amp; <span class="tag-accent">fairness</span>', 'Правила и <span class="tag-accent">честность</span>'),

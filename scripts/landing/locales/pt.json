@@ -248,5 +248,8 @@
   "why.v3h": "Caps rendem, não ficam paradas",
   "why.v3p": "Batalhas no Cap Slam pagam $CG ao vencedor, o mercado deixa vender o que cair, e staking + quests pingam recompensas enquanto você está fora.",
   "why.v4h": "O fundo de prêmios é dinheiro real",
-  "why.v4p": "Cada Limited Event Pack alimenta o fundo da temporada, e o tesouro SKR reforça toda semana. O registro é público e on-chain."
+  "why.v4p": "Cada Limited Event Pack alimenta o fundo da temporada, e o tesouro SKR reforça toda semana. O registro é público e on-chain.",
+  "mech.7h": "Bueiro e Verificar",
+  "mech.7p": "Toda manhã a cidade pede que você levante uma grade. Esse check-in é o login diário — 2 $CG, resgatados nas Missões. Cada pack dessas ruas é rolado com SlotHashes on-chain; cole a transação em Verificar e refaça as raridades que o programa mintou. Ninguém, inclusive nós, escolhe o drop.",
+  "mech.7f": "2 $CG/dia · SlotHashes em Verificar"
 }

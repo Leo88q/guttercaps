@@ -22,7 +22,7 @@ const COLS = {
   servicePayments: ['signature', 'event_index', 'buyer', 'kind', 'currency', 'amount', 'burned', 'ref_hash', 'slot', 'block_time'],
   packPurchases: ['buyer', 'nonce', 'sku', 'qty', 'currency', 'amount', 'randomness', 'signature', 'slot', 'block_time'],
   vouchers: ['wallet', 'nonce', 'template', 'randomness', 'signature', 'slot', 'block_time'],
-  packOpens: ['signature', 'buyer', 'sku', 'nonce', 'count', 'assets', 'rarities', 'collections', 'roll_hex', 'pity_before', 'pity_after', 'slot', 'block_time'],
+  packOpens: ['signature', 'event_index', 'buyer', 'sku', 'nonce', 'count', 'assets', 'rarities', 'collections', 'roll_hex', 'pity_before', 'pity_after', 'slot', 'block_time', 'pack_no'],
   fusions: ['signature', 'event_index', 'owner', 'recipe', 'materials', 'result', 'success', 'roll_bps', 'threshold_bps', 'fee_burned', 'slot', 'block_time', 'nonce'],
   chips: ['asset', 'owner', 'collection_idx', 'rarity', 'level', 'flags', 'lock_until', 'origin', 'origin_signature', 'minted_at', 'updated_slot'],
   paramsChanges: ['signature', 'admin', 'version', 'slot', 'block_time'],
@@ -279,6 +279,23 @@ const HANDLERS: Record<string, Handler> = {
       buyer, nonce, buyer, nonce,
     );
   },
+  CompressedPackOpened(db, e, c) {
+    const d = e.data;
+    const count = num(d.count);
+    const buyer = str(d.buyer);
+    const nonce = str(d.nonce);
+    const rarities = (d.rarities as number[]).slice(0, count);
+    const collections = (d.collections as number[]).slice(0, count);
+    const claimNonces = (d.claimNonces as string[]).slice(0, count);
+    const assets = claimNonces.map((n) => compressedMintClaimPda(new PublicKey(buyer), BigInt(n))[0].toBase58());
+    touchBySpec(db, e, c);
+    db.run(
+      insertIgnore('pack_opens', COLS.packOpens),
+      c.signature, e.eventIndex, buyer, num(d.sku), nonce, count, j(assets), j(rarities), j(collections), str(d.roll), num(d.pityBefore), num(d.pityAfter), c.slot, c.blockTime, num(d.packNo),
+    );
+    if (d.voucher === true) db.run(`UPDATE vouchers SET status = 'opened' WHERE wallet = ? AND nonce = ?`, buyer, nonce);
+    else db.run(`UPDATE pack_purchases SET opened = opened + 1, status = CASE WHEN opened + 1 >= qty THEN 'opened' ELSE status END WHERE buyer = ? AND nonce = ?`, buyer, nonce);
+  },
   CompressedClaimCancelled(db, e, c) {
     const d = e.data;
     const buyer = str(d.buyer);
@@ -380,7 +397,7 @@ const HANDLERS: Record<string, Handler> = {
     // program's own rule (`register_compressed_chip` requires `claim.buyer == owner`), so a replayed
     // registration from a wallet that has since sold the claim cannot take the row over.
     const key = resolveClaimPda(db, typeof d.claim === 'string' ? d.claim : undefined, buyer, claimNonce);
-    const previous = key ? db.get<{ status: string; nonce: string; buyer: string }>(`SELECT status, nonce, buyer FROM compressed_claims WHERE claim = ?`, key) : undefined;
+    const previous = key ? db.get<{ status: string; nonce: string; buyer: string; pack_no: number }>(`SELECT status, nonce, buyer, pack_no FROM compressed_claims WHERE claim = ?`, key) : undefined;
     const wasRegistered = previous?.status === 'registered';
     const changed = key ? Number(db.run(
       `UPDATE compressed_claims SET status = CASE WHEN status = 'cancelled' THEN status ELSE 'registered' END, asset = ?, collection_idx = ?, rarity = ?, level = MAX(level, ?),
@@ -393,9 +410,12 @@ const HANDLERS: Record<string, Handler> = {
     if (changed > 0 && !wasRegistered && previous?.status !== 'cancelled') {
       db.run(`UPDATE compressed_settlements SET registered_claims = registered_claims + 1, last_signature = ?, last_slot = ?, block_time = COALESCE(?, block_time) WHERE buyer = ? AND nonce = ?`, c.signature, c.slot, c.blockTime, previous?.buyer ?? buyer, previous?.nonce ?? '');
     }
+    const openSig = previous
+      ? db.get<{ signature: string }>(`SELECT signature FROM pack_opens WHERE buyer = ? AND nonce = ? AND pack_no = ?`, previous.buyer, previous.nonce, previous.pack_no)?.signature
+      : undefined;
     db.run(
       upsert('chips', COLS.chips, ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'level = MAX(chips.level, excluded.level)', 'flags = excluded.flags', 'lock_until = excluded.lock_until', 'updated_slot = excluded.updated_slot', 'origin_signature = excluded.origin_signature', 'minted_at = COALESCE(chips.minted_at, excluded.minted_at)']),
-      str(d.asset), buyer, num(d.collectionIdx), num(d.rarity), num(d.level), num(d.flags), Number(d.lockUntil), 'compressed', c.signature, c.blockTime, c.slot,
+      str(d.asset), buyer, num(d.collectionIdx), num(d.rarity), num(d.level), num(d.flags), Number(d.lockUntil), 'compressed', openSig ?? c.signature, c.blockTime, c.slot,
     );
     // The mint number (`{symbol} #{game_index}`, market "Low #" / `indexMin`/`indexMax`). A compressed chip's
     // registration event carries it, so this row never enters the crank's back-fill queue.
@@ -423,7 +443,7 @@ const HANDLERS: Record<string, Handler> = {
     touchBySpec(db, e, c);
     db.run(
       insertIgnore('pack_opens', COLS.packOpens),
-      c.signature, buyer, num(d.sku), str(d.nonce), count, j(assets), j(rarities), j(collections), str(d.roll), num(d.pityBefore), num(d.pityAfter), c.slot, c.blockTime,
+      c.signature, e.eventIndex, buyer, num(d.sku), str(d.nonce), count, j(assets), j(rarities), j(collections), str(d.roll), num(d.pityBefore), num(d.pityAfter), c.slot, c.blockTime, 0,
     );
     // (#28) a voucher open carries sku 0 too — the (wallet, nonce) tells them apart; its lock comes from the template
     const voucher = num(d.sku) === 0 ? db.get<{ template: number }>(`SELECT template FROM vouchers WHERE wallet = ? AND nonce = ?`, buyer, str(d.nonce)) : undefined;
@@ -836,7 +856,7 @@ const HANDLERS: Record<string, Handler> = {
  */
 export const WALLET_TOUCH_FIELDS: Record<string, readonly string[]> = {
   ServicePaid: ['buyer'], PackBought: ['buyer'], VoucherIssued: ['wallet'], PackOpened: ['buyer'], PackGranted: ['beneficiary'],
-  CompressedClaimsCreated: ['buyer'], CompressedClaimCancelled: ['buyer'], CompressedChipMinted: ['buyer'], CompressedPackSettled: ['buyer'],
+  CompressedClaimsCreated: ['buyer'], CompressedPackOpened: ['buyer'], CompressedClaimCancelled: ['buyer'], CompressedChipMinted: ['buyer'], CompressedPackSettled: ['buyer'],
   // SEC-B31: the compressed claim/V2 market and its state events name a wallet that may be new to us — a
   // buyer of a claim, a seller listing one, a chip's new owner after a transfer, an admin staging a claim.
   CompressedChipStaged: ['buyer'], CompressedClaimTransferred: ['to'], CompressedClaimListed: ['seller'],
@@ -884,6 +904,7 @@ export function patchLateTimes(db: Db, e: RawEvent, c: EventCtx): number {
     case 'PackGranted': fill('preorder_grants', 'block_time'); fill('pack_purchases', 'block_time'); break;
     case 'PreorderDropOpened': fill('preorder_drops', 'block_time'); break;
     case 'PackOpened':
+    case 'CompressedPackOpened':
       fill('pack_opens', 'block_time');
       // the chips this open minted carry the same origin signature
       n += changed(`UPDATE chips SET minted_at = ? WHERE origin_signature = ? AND minted_at IS NULL`, blockTime, sig);

@@ -36,6 +36,7 @@
 .page-bg-leaderboard{--st-accent:var(--st-orange)}
 .page-bg-profile{--st-accent:var(--st-pink)}
 .page-bg-verify{--st-accent:var(--st-teal)}
+.page-bg-drain{--st-accent:var(--st-teal)}
 .page-bg-language{--st-accent:var(--st-lime)}
 .page-bg-home{--st-accent:var(--st-pink)}
 
@@ -53,6 +54,7 @@
 .page-bg-leaderboard{background-image:linear-gradient(rgba(13,12,16,.30),rgba(13,12,16,.30)),url(/bg/game-leaderboard.jpg)}
 .page-bg-profile{background-image:linear-gradient(rgba(13,12,16,.30),rgba(13,12,16,.30)),url(/bg/game-profile.jpg)}
 .page-bg-verify{background-image:linear-gradient(rgba(13,12,16,.30),rgba(13,12,16,.30)),url(/bg/game-verify.jpg)}
+.page-bg-drain{background-image:linear-gradient(rgba(13,12,16,.30),rgba(13,12,16,.30)),url(/bg/game-drain.jpg)}
 .page-bg-language{background-image:linear-gradient(rgba(13,12,16,.30),rgba(13,12,16,.30)),url(/bg/game-language.jpg)}
 
 /* ---------- cards: transparent glass inside, spray-can stroke outside ---------- */

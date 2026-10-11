@@ -122,4 +122,26 @@ describe('SEC-B6 pack verifier', () => {
     expect(r.json.matches).toBe(false);
     expect(String(r.json.note)).toMatch(/not 32 bytes/);
   });
+
+  it('a compressed open with the SlotHashes seed reproduces like PackOpened', async () => {
+    const buyer = kp();
+    const bytes = roll(0x62);
+    const rarities = honest(1, bytes, 0);
+    const t = tx([{
+      program: 'chip_core', name: 'CompressedPackOpened',
+      data: {
+        buyer, sku: 1, nonce: '9', packNo: 0, count: rarities.length,
+        claimNonces: ['10', '11', '12', '13', '14'],
+        rarities: [...rarities, 0, 0, 0, 0, 0].slice(0, 5),
+        collections: [1, 2, 3, 4, 5],
+        roll: rollHex(bytes), pityBefore: 0, pityAfter: 1, voucher: false,
+      },
+    }]);
+    ingestTx(t, db);
+    const r = await verify(t.signature);
+    expect(r.status).toBe(200);
+    expect(r.json.matches).toBe(true);
+    expect(r.json.recomputed).toHaveLength(4);
+    expect(r.json.assumed).toMatchObject({ basis: 'published-defaults', sku: 1, chips: 4 });
+  });
 });

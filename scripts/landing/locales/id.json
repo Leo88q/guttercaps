@@ -248,5 +248,8 @@
   "why.v3h": "Tutup bekerja, tidak menganggur",
   "why.v3p": "Pertarungan Cap Slam membayar $CG ke pemenang, market membolehkan menjual hasil drop, dan staking plus quest meneteskan hadiah saat kamu pergi.",
   "why.v4h": "Hadiah musim adalah uang nyata",
-  "why.v4p": "Setiap Limited Event Pack mengisi pool musim, dan perbendaharaan SKR menambahnya tiap minggu. Buku besarnya publik dan on-chain."
+  "why.v4p": "Setiap Limited Event Pack mengisi pool musim, dan perbendaharaan SKR menambahnya tiap minggu. Buku besarnya publik dan on-chain.",
+  "mech.7h": "Saluran got &amp; Verifikasi",
+  "mech.7p": "Setiap pagi kota minta kamu angkat tutup got. Check-in itu login harian — 2 $CG, diklaim di Misi. Setiap pack dari jalan itu diundi dari SlotHashes on-chain; tempel transaksi buka di Verifikasi dan hitung ulang raritas yang program mint. Tidak ada, termasuk kami, yang memilih drop.",
+  "mech.7f": "2 $CG/hari · SlotHashes di Verifikasi"
 }

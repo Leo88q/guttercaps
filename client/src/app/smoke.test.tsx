@@ -56,7 +56,7 @@ beforeAll(() => {
 });
 
 const PUBLIC: [string, RegExp][] = [
-  ['/', /GUTTERCAPS/i], ['/market', /Market/], ['/codex', /Eight Districts/], ['/arena', /Cap Slam/], ['/leaderboard/rating', /Leaderboard/], ['/verify', /Provably fair/], ['/shop', /Pack shop/], ['/collection', /Collection/],
+  ['/', /GUTTERCAPS/i], ['/market', /Market/], ['/codex', /Eight Districts/], ['/arena', /Cap Slam/], ['/leaderboard/rating', /Leaderboard/], ['/verify', /Provably fair/], ['/drain', /The drains/], ['/shop', /Pack shop/], ['/collection', /Collection/],
   ['/language', /Tiếng Việt/], ['/shop?tab=services', /Season pass/],
 ];
 
@@ -363,7 +363,7 @@ describe('shop tab strip (the axe aria-required-children regression, docs/09 §5
 });
 
 describe('all locales, authenticated route matrix (mock only)', () => {
-  const matrix = ['/', '/collection', '/shop', '/shop?tab=services', '/fusion', '/arena', '/market', '/staking', '/quests', '/profile', '/leaderboard', '/codex', '/verify', '/admin', '/admin?tab=kpi', '/admin?tab=simulate', '/admin?tab=fraud', '/admin?tab=kill', '/admin?tab=audit'];
+  const matrix = ['/', '/collection', '/shop', '/shop?tab=services', '/fusion', '/arena', '/market', '/staking', '/quests', '/profile', '/leaderboard', '/codex', '/verify', '/drain', '/admin', '/admin?tab=kpi', '/admin?tab=simulate', '/admin?tab=fraud', '/admin?tab=kill', '/admin?tab=audit'];
   for (const locale of ['en', 'ru', 'pt', 'es', 'vi', 'id', 'fil'] as const) {
     it(`${locale}: renders every player screen without missing keys or crashes`, async () => {
       const { setLocale, t, LOCALE_META } = await import('@/shared/i18n');

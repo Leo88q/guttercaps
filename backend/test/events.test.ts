@@ -54,6 +54,11 @@ describe('event codec', () => {
     expect(encodeEvent('PackOpened', sample(s)).length).toBe(8 + 32 + 1 + 8 + 160 + 5 + 5 + 1 + 32 + 2 + 2);
   });
 
+  it('CompressedPackOpened is 8 + 32+8+1+1+1 + 5·8 + 5 + 5 + 32 + 2 + 2 + 1 bytes', () => {
+    const s = EVENT_SPECS.find((x) => x.name === 'CompressedPackOpened')!;
+    expect(encodeEvent('CompressedPackOpened', sample(s)).length).toBe(8 + 32 + 8 + 1 + 1 + 1 + 40 + 5 + 5 + 32 + 2 + 2 + 1);
+  });
+
   it('rejects unknown discriminators and other programs', () => {
     const bytes = encodeEvent('ChipSold', sample(EVENT_SPECS.find((x) => x.name === 'ChipSold')!));
     expect(decodeEvent('market', bytes)?.name).toBe('ChipSold');

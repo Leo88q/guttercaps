@@ -457,8 +457,14 @@ on('get', '/quests/claims', () => [
   // chip voucher root (kind 9 = quest caps, backlog #28) — amountMicro is the voucher TEMPLATE (0 = 7-day streak cap); claim_chip_root CPIs chip_core open_voucher → a free 1-cap pack
   { kind: 9, epoch: 12, currency: 'CHIP', rootPda: fakeKey('Rc'), amountMicro: '0', proof: ['ee'.repeat(32)], claimableAt: iso(-10_000), claimed: false, published: true, memo: ['d_streak7@d20713', 'template:0'] },
 ]);
-on('get', '/quests/streak', () => ({ days: 4, total: 11, nextChipAt: 7, resetsAt: iso(9 * 3_600_000), todayDone: false }));
-on('post', '/quests/login', () => ({ day: Math.floor(Date.now() / 86_400_000), inserted: false }));
+let mockLoginDay = -1;
+on('get', '/quests/streak', () => ({ days: mockLoginDay === Math.floor(Date.now() / 86_400_000) ? 5 : 4, total: 11, nextChipAt: 7, resetsAt: iso(9 * 3_600_000), todayDone: mockLoginDay === Math.floor(Date.now() / 86_400_000) }));
+on('post', '/quests/login', () => {
+  const day = Math.floor(Date.now() / 86_400_000);
+  const inserted = mockLoginDay !== day;
+  mockLoginDay = day;
+  return { day, inserted };
+});
 on('post', '/quests/visit', () => ({ day: Math.floor(Date.now() / 86_400_000), inserted: true }));
 
 // ------------------------------------------------------------- beta pre-sale (docs/preorder-beta.md)

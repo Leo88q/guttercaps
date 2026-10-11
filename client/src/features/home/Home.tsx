@@ -81,6 +81,15 @@ export default function Home() {
         <SprayNozzleButton style={{ width: '100%', fontSize: 16 }}>{t('ui.openPack')}</SprayNozzleButton>
       </Link>
 
+      <Link to="/drain" className="card card-hover row" style={{ textDecoration: 'none' }} data-testid="home-drain">
+        <img src="/art/drain-grate.png" width={44} height={44} alt="" style={{ borderRadius: '50%' }} />
+        <div className="grow">
+          <div className="strong">{t('drain.title')}</div>
+          <div className="tiny muted">{t('drain.subtitle')}</div>
+        </div>
+        <ChevronRightIcon size={14} />
+      </Link>
+
       <div className="grid-2">
         <Link to="/quests" className="card card-hover row" style={{ textDecoration: 'none' }}>
           <GenBadge name="mech-quests" size={28} />
@@ -129,6 +138,7 @@ function Landing({ onConnect }: { onConnect: () => void }) {
       <p className="muted" style={{ maxWidth: 480, margin: '0 auto' }}>
         {t('ui.homeIntro')}
       </p>
+      <Link to="/drain" className="btn btn-ghost">{t('drain.title')}</Link>
       <div className="row" style={{ justifyContent: 'center', gap: 12 }}>
         <SprayNozzleButton onClick={onConnect}>{t('common.connectWallet')}</SprayNozzleButton>
         <Link to="/market" className="btn">{t('home.heroSecondary')}</Link>

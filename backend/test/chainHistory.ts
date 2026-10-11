@@ -248,6 +248,14 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
           },
         },
         {
+          program: 'chip_core', name: 'CompressedPackOpened', data: {
+            buyer: actor, nonce: compressedNonce, sku: 1, packNo: 0, count: 1,
+            claimNonces: pad5([compressedClaimNonce], '0'),
+            rarities: pad5([2], 0), collections: pad5([1], 0),
+            roll: hex32(0xab), pityBefore: 0, pityAfter: 1, voucher: false,
+          },
+        },
+        {
           program: 'chip_core', name: 'CompressedClaimCancelled', data: {
             buyer: actor, nonce: compressedNonce, claimNonce: compressedClaimNonce,
           },
@@ -499,9 +507,16 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
         const asset = fixtureAddr(seed, 'compressed-asset', 1 + i);
         const collection = Math.floor(rnd() * 8);
         const rarity = Math.floor(rnd() * 5);
-        yield* emit([{ program: 'chip_core', name: 'CompressedClaimsCreated', data: {
-          buyer: owner, nonce: settleNonce, packNo: 0, claimNonces: pad5([cn], '0'), count: 1,
-        } }]);
+        yield* emit([
+          { program: 'chip_core', name: 'CompressedClaimsCreated', data: {
+            buyer: owner, nonce: settleNonce, packNo: 0, claimNonces: pad5([cn], '0'), count: 1,
+          } },
+          { program: 'chip_core', name: 'CompressedPackOpened', data: {
+            buyer: owner, nonce: settleNonce, sku: 1, packNo: 0, count: 1,
+            claimNonces: pad5([cn], '0'), rarities: pad5([rarity], 0), collections: pad5([collection], 0),
+            roll: hex32(i), pityBefore: 0, pityAfter: 1, voucher: false,
+          } },
+        ]);
         yield* emit([{ program: 'chip_core', name: 'CompressedChipMinted', data: {
           buyer: owner, collectionIdx: collection, claimNonce: cn, rarity, level: 1, gameIndex: String(cn), claim,
         } }]);

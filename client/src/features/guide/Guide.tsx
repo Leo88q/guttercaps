@@ -7,7 +7,7 @@ import { fmtCents, fmtCg, fmtPct } from '@/shared/lib/format';
 import { GUIDE_COPY } from './copy';
 
 const ACCENTS = ['var(--cg-acid-green)', 'var(--cg-hot-magenta, #FF2E8A)', 'var(--cg-electric-orange)', 'var(--cg-cyan, #16E5D9)'];
-const LINKS: Record<string, string> = { collect: '/codex', packs: '/shop', fusion: '/fusion', slam: '/arena', trade: '/market', stake: '/staking', coin: '/quests', free: '/quests' };
+const LINKS: Record<string, string> = { collect: '/codex', packs: '/shop', drain: '/drain', fusion: '/fusion', slam: '/arena', trade: '/market', stake: '/staking', coin: '/quests', free: '/quests' };
 
 function fill(s: string, v: Record<string, string>) { return s.replace(/\{(\w+)\}/g, (m, k) => v[k] ?? m); }
 

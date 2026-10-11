@@ -5,7 +5,7 @@ import golden from '../../../packages/economy/golden/pack_expand.json';
 import { BorshReader, BorshWriter, u64le } from './borsh';
 import { accountDiscriminator, ixDiscriminator, eventsFromLogs, findEvent, optional, parseCustomError, concat, eventDiscriminator } from './anchor';
 import {
-  decodeChipState, decodeGameConfig, decodePendingPack, decodePendingClaimFusion, decodePlayerPity, decodeListing, decodeTokenStake, decodeVaultLedger, decodeCompressedAssetListing, decodeCompressedPackSettlement, decodeCompressedMintClaim, sumLedgers, readPackOpened, readCompressedClaimsCreated, readCompressedPackSettled, readClaimFusionRevealed, chipIsFree, claimIsListable, claimFusionBlock, CHIP_FLAG,
+  decodeChipState, decodeGameConfig, decodePendingPack, decodePendingClaimFusion, decodePlayerPity, decodeListing, decodeTokenStake, decodeVaultLedger, decodeCompressedAssetListing, decodeCompressedPackSettlement, decodeCompressedMintClaim, sumLedgers, readPackOpened, readCompressedClaimsCreated, readCompressedPackOpened, readCompressedPackSettled, readClaimFusionRevealed, chipIsFree, claimIsListable, claimFusionBlock, CHIP_FLAG,
 } from './accounts';
 import { vaultPda, assetPda, chipStatePda, collectionMetaPda, configPda, pendingPackPda, claimFusionPda, compressedMintClaimPda, compressedSettlementPda, bubblegumTreeConfigPda, compressedChipStatePda, bubblegumTreeMetaPda, pityPda, pendingFusionPda, battlePda, ata, freshNonce, rewardRootPda, rewarderPda, playerItemsPda, skrPoolPda, emissionPda, seasonPoolAuthPda, RNG_KIND, rngAuthPda, rngPda, sbLutPda, sbLutSignerPda, sbStatePda, sbOracleStatsPda, sbRewardEscrow, LEDGER_SHARDS, allLedgerPdas, ledgerPda, ledgerPdaOf, ledgerShardOf } from './pdas';
 import { fitsInTx } from './tx';
@@ -221,6 +221,25 @@ describe('compressed settlement layouts', () => {
     expect(event.count).toBe(3);
     expect(event.claimNonces).toEqual([100n, 101n, 102n]);
     expect(event.buyer.equals(buyer)).toBe(true);
+  });
+
+  it('decodes CompressedPackOpened with the pack seed and rarities', () => {
+    const buyer = Keypair.generate().publicKey;
+    const roll = Uint8Array.from({ length: 32 }, (_, i) => i + 1);
+    const w = new BorshWriter().pubkey(buyer).u64(7n).u8(1).u8(0).u8(2);
+    [10n, 11n, 0n, 0n, 0n].forEach((n) => w.u64(n));
+    [3, 1, 0, 0, 0].forEach((n) => w.u8(n));
+    [2, 5, 0, 0, 0].forEach((n) => w.u8(n));
+    w.bytes(roll).u16(4).u16(5).bool(false);
+    const payload = concat(eventDiscriminator('CompressedPackOpened'), w.toBytes());
+    const logs = [`Program data: ${btoa(String.fromCharCode(...payload))}`];
+    const event = findEvent(logs, 'CompressedPackOpened', readCompressedPackOpened)!;
+    expect(event.sku).toBe(1);
+    expect(event.count).toBe(2);
+    expect(event.rarities).toEqual([3, 1]);
+    expect(event.collections).toEqual([2, 5]);
+    expect(event.roll).toEqual(roll);
+    expect(event.voucher).toBe(false);
   });
 });
 

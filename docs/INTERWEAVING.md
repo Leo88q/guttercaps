@@ -44,12 +44,14 @@ treasury snapshot is committed to the repo.
 
 ## 4. i-06: Unified Events
 
-- The event taxonomy is whatever the four programs emit — **60 events**, all declared and decoded by
+- The event taxonomy is whatever the four programs emit — **63 events**, all declared and decoded by
   `backend/src/events.ts` (`EVENT_SPECS`), listed with meanings and proposed hub mappings in
   `watchtower/events/event-catalog.json`. Names invented for earlier drafts of this document
   (`CapShot`, `ChipMinted`) have no emitter and were dropped.
 - First-action mapping: the hub expects `PackOpened`; the live event is `CompressedClaimsCreated`
-  (the legacy `PackOpened` struct is declared but emitted nowhere). Pending hub sign-off — see
+  (the legacy `PackOpened` struct is declared but emitted nowhere). The same transaction also
+  emits `CompressedPackOpened` (32-byte SlotHashes seed + rarities) for `/verify` — that is a
+  companion payload, not a second first-action. Pending hub sign-off — see
   `WATCHTOWER_HANDOFF.md` blocker B2.
 - **Deduplication** matches the hub contract: `cluster:slot:signature:instructionIndex:innerIndex`
   (backend uniqueness key `(signature, ix_index, event_index)`, `backend/src/db.ts`).

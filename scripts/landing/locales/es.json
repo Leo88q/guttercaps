@@ -248,5 +248,8 @@
   "why.v3h": "Las chapas trabajan, no se quedan quietas",
   "why.v3p": "Las batallas de Cap Slam pagan $CG al ganador, el mercado te deja vender lo que sacas, y el staking más las misiones gotean recompensas mientras no estás.",
   "why.v4h": "El pozo de premios es dinero real",
-  "why.v4p": "Cada Limited Event Pack alimenta el pozo de la temporada, y el tesoro SKR lo recarga cada semana. El registro es público y on-chain."
+  "why.v4p": "Cada Limited Event Pack alimenta el pozo de la temporada, y el tesoro SKR lo recarga cada semana. El registro es público y on-chain.",
+  "mech.7h": "Desagüe y Verificar",
+  "mech.7p": "Cada mañana la ciudad te pide levantar una reja. Ese check-in es el login diario — 2 $CG, reclamados en Misiones. Cada pack de esas calles se tira con SlotHashes on-chain; pega la transacción en Verificar y recalcula las rarezas que minteó el programa. Nadie, ni nosotros, elige el drop.",
+  "mech.7f": "2 $CG/día · SlotHashes en Verificar"
 }

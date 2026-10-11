@@ -221,7 +221,7 @@ describe('POST /packs/quote', () => {
     const usdc = await c.post('/v1/packs/quote', { sku: 1, qty: 10, currency: 'USDC' });
     expect(usdc.status).toBe(200); expect(usdc.json.amount).toBe(String(Math.floor((599 * 10 * 8_800) / 10_000) * 10_000)); expect(usdc.json.priceUpdateAccount).toBeUndefined();
     const cg = await c.post('/v1/packs/quote', { sku: 1, qty: 1, currency: 'CG' });
-    expect(cg.json.amount).toBe('900000000');
+    expect(cg.json.amount).toBe('2700000000');
     expect((await c.post('/v1/packs/quote', { sku: 0, qty: 1, currency: 'CG' })).json.code).toBe('currency_not_accepted');
   });
   it('never 503s SOL/SKR when Pyth is stale or missing — checkout is frozen FX', async () => {

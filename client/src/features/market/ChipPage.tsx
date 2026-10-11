@@ -120,7 +120,7 @@ export default function ChipPage() {
         {c.provenance ? (
           <div className="small"> {t('ui.origin')}: <b>{originLabel(c.provenance.origin)}</b>{c.provenance.recipe !== undefined && c.provenance.origin === 'fusion' && ` (${t('screens.originRecipe', { recipe: c.provenance.recipe, rarity: rarityName(c.rarity!) })})`} ·{' '}
             {c.provenance.signature && <a href={EXPLORER.tx(c.provenance.signature)} target="_blank" rel="noreferrer" className="row" style={{ gap: 3, display: 'inline-flex' }}>{t('ui.transaction')} <ExternalIcon size={10} /></a>}{' '}
-            {(c.provenance.origin === 'pack' || c.provenance.origin === 'voucher') && c.provenance.signature && <Link to={`/verify/${c.provenance.signature}`}>· {t('ui.verifyRoll')}</Link>}
+            {(c.provenance.origin === 'pack' || c.provenance.origin === 'voucher' || c.provenance.origin === 'compressed') && c.provenance.signature && <Link to={`/verify/${c.provenance.signature}`}>· {t('ui.verifyRoll')}</Link>}
             {c.provenance.rollHex && <div className="verify-hex mono muted" style={{ marginTop: 4 }}>{t('ui.roll')} {c.provenance.rollHex}</div>}
           </div>
         ) : <div className="small muted">{t('ui.indexing')}</div>}
