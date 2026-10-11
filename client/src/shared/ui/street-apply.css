@@ -90,7 +90,12 @@
 .btn:hover{transform:rotate(-1.2deg) translateY(-2px)}
 .btn:active{transform:translate(1px,2px) scale(.98)}
 .btn:focus-visible{outline:3px dashed var(--st-lime);outline-offset:8px}
-.btn:disabled{opacity:.45;cursor:not-allowed;filter:grayscale(.7);transform:none}
+/* disabled = faded stencil plate on dark asphalt, never a grey blob */
+.btn:disabled{opacity:.6;cursor:not-allowed;filter:none;transform:none;
+  color:color-mix(in srgb,var(--cg-chrome) 42%,transparent);text-shadow:none}
+.btn:disabled::before{background:rgba(14,13,18,.6);
+  box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--cg-chrome) 18%,transparent),inset 0 0 18px rgba(0,0,0,.5)}
+.btn:disabled::after{display:none}
 
 .cg-btn-primary{--b:var(--st-pink);--p:var(--b);position:relative;isolation:isolate;background:none;border:0;border-radius:0;
   min-height:52px;padding:.75em 1.9em;color:var(--st-ink);
@@ -148,7 +153,15 @@
 .cg-btn-clean:hover{transform:rotate(-1.2deg) translateY(-2px)}
 .cg-btn-clean:active{transform:translate(1px,2px) scale(.98)}
 .cg-btn-clean:focus-visible{outline:3px dashed var(--st-lime);outline-offset:8px}
-.cg-btn-clean:disabled,.cg-btn-clean.cg-btn-disabled{opacity:.45;cursor:not-allowed;filter:grayscale(.7);transform:none}
+.cg-btn-clean:disabled,.cg-btn-clean.cg-btn-disabled,
+.cg-btn-primary:disabled,.cg-btn-primary.cg-btn-disabled{opacity:.62;cursor:not-allowed;filter:none;transform:none;
+  color:color-mix(in srgb,var(--cg-chrome) 42%,transparent);text-shadow:none}
+.cg-btn-clean:disabled::before,.cg-btn-clean.cg-btn-disabled::before,
+.cg-btn-primary:disabled::before,.cg-btn-primary.cg-btn-disabled::before{background:rgba(14,13,18,.6);
+  box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--cg-chrome) 18%,transparent),inset 0 0 18px rgba(0,0,0,.5)}
+.cg-btn-clean:disabled::after,.cg-btn-clean.cg-btn-disabled::after,
+.cg-btn-primary:disabled::after,.cg-btn-primary.cg-btn-disabled::after{display:none}
+.cg-btn-clean:disabled .cg-check-stamp{color:inherit}
 .cg-btn-clean .cg-check-stamp{color:var(--st-ink)}
 /* money panels: numbers stay tabular; inner .btn / .btn-sm keep street stencil, not white fill */
 .cg-clean-zone{font-variant-numeric:tabular-nums}
@@ -338,3 +351,48 @@ button.pill:hover{border-color:var(--st-lime)}
   text-shadow:0 2px 10px rgba(0,0,0,.9),0 0 14px color-mix(in srgb,var(--st-accent) 50%,transparent);
 }
 .stake-row-actions .btn-sm{letter-spacing:.06em;padding:.55em .95em}
+
+/* ---------- clean zones: asphalt glass with a faint accent spray, not grey plastic ----------
+   The base .cg-clean-zone (theme.css) is a flat grey panel — it reads as an
+   unstyled widget against the street skin. Keep the tabular numbers and tight
+   type, but give it the same glass + uneven spray radius as .card. */
+.cg-clean-zone{
+  background:linear-gradient(165deg,rgba(18,17,23,.80),rgba(10,10,14,.88));
+  border:1px solid color-mix(in srgb,var(--st-accent,var(--st-teal)) 30%,transparent);
+  border-radius:14px 22px 15px 24px/20px 14px 22px 16px;
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),inset 0 0 26px rgba(0,0,0,.38),
+    0 0 10px color-mix(in srgb,var(--st-accent,var(--st-teal)) 10%,transparent);
+}
+.cg-clean-zone .kv{color:color-mix(in srgb,var(--cg-chrome) 88%,transparent)}
+
+/* ---------- staked-cap rows: idle note is amber stencil, never magenta glow ---------- */
+.stake-idle{color:var(--st-orange);font-family:var(--st-num);letter-spacing:.05em;
+  background:none;box-shadow:none;border:0;padding:0;text-shadow:0 1px 0 rgba(0,0,0,.6)}
+.stake-chip-row{
+  background:linear-gradient(165deg,rgba(18,17,23,.72),rgba(10,10,14,.85));
+  border:1px solid color-mix(in srgb,var(--st-accent,var(--st-lime)) 26%,transparent);
+  border-radius:12px 20px 13px 22px/18px 12px 20px 14px;
+  padding:10px 12px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05),inset 0 0 22px rgba(0,0,0,.35);
+}
+
+/* ---------- recipes table: fixed columns, stacked tiers, no arrows, no spill ----------
+   table-layout:fixed keeps every locale inside its column; the from/to tiers
+   stack as two lines so long names (Легендарная+, Алмазная) never push width. */
+.recipes-table{table-layout:fixed}
+.recipes-table th,.recipes-table td{vertical-align:top;overflow-wrap:anywhere}
+.recipes-table th:nth-child(1),.recipes-table td:nth-child(1){width:32%}
+.recipes-table th:nth-child(2),.recipes-table td:nth-child(2){width:22%}
+.recipes-table th:nth-child(3),.recipes-table td:nth-child(3){width:14%}
+.recipes-table th:nth-child(4),.recipes-table td:nth-child(4){width:17%}
+.recipes-table th:nth-child(5),.recipes-table td:nth-child(5){width:15%}
+.recipe-step span{display:block}
+.recipe-step span+span{margin-top:3px}
+
+/* ---------- drain: header + tiles share one centered axis ---------- */
+.page-bg-drain .page-title,.page-bg-drain .page-sub{text-align:center}
+.page-bg-drain .drain-grid img{display:block;margin-inline:auto}
+
+/* ---------- services grid: equal cards, buy buttons on one level ---------- */
+.grid-3>.card>.cg-btn-primary,.grid-3>.card>.btn{margin-top:auto}

@@ -62,7 +62,7 @@ export default function Drain() {
 
   return (
     <div className="page page-bg page-bg-drain stack">
-      <div>
+      <div style={{ textAlign: 'center' }}>
         <h1 className="page-title">{t('drain.title')}</h1>
         <p className="page-sub">{t('drain.subtitle')}</p>
       </div>
@@ -92,7 +92,7 @@ export default function Drain() {
       </div>
 
       <div>
-        <div className="strong" style={{ marginBottom: 10 }}>{t('drain.pick')}</div>
+        <div className="strong" style={{ marginBottom: 10, textAlign: 'center' }}>{t('drain.pick')}</div>
         <div className="drain-grid">
           {COLLECTIONS.map((c, i) => {
             const isFeatured = i === featured;

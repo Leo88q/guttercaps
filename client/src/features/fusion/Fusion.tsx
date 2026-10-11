@@ -301,8 +301,8 @@ export default function Fusion() {
 
       <div className="card">
         <div className="strong" style={{ marginBottom: 8 }}>{t('ui.recipes')}</div>
-        <div className="table-scroll"><table className="table"><thead><tr><th>{t('ui.step')}</th><th>{t('ui.rule')}</th><th>{t('ui.success')}</th><th>{t('ui.fee')}</th><th>{t('ui.lock')}</th></tr></thead><tbody>
-          {FUSION_RECIPES.map((r) => <tr key={r.from}><td><span style={{ color: rarityColor(r.from) }}>{rarityName(r.from)}</span> → <span style={{ color: rarityColor(r.to) }}>{rarityName(r.to)}</span></td><td className="muted">{t(r.rule === 'any' ? 'ui.anyDistrict' : 'ui.sameDistrictRule')}</td><td className="mono">{fmtPct(r.successBps, 0)}</td><td className="mono">{fmtCg(r.feeCgMicro, 1)}</td><td className="muted">{secondsToHuman(r.resultLockSeconds)}</td></tr>)}
+        <div className="table-scroll"><table className="table recipes-table"><thead><tr><th>{t('ui.step')}</th><th>{t('ui.rule')}</th><th>{t('ui.success')}</th><th>{t('ui.fee')}</th><th>{t('ui.lock')}</th></tr></thead><tbody>
+          {FUSION_RECIPES.map((r) => <tr key={r.from}><td className="recipe-step"><span style={{ color: rarityColor(r.from) }}>{rarityName(r.from)}</span><span style={{ color: rarityColor(r.to) }}>{rarityName(r.to)}</span></td><td className="muted">{t(r.rule === 'any' ? 'ui.anyDistrict' : 'ui.sameDistrictRule')}</td><td className="mono">{fmtPct(r.successBps, 0)}</td><td className="mono">{fmtCg(r.feeCgMicro, 1)}</td><td className="muted">{secondsToHuman(r.resultLockSeconds)}</td></tr>)}
         </tbody></table></div>
       </div>
 
