@@ -19,7 +19,7 @@
 #     `npm run ops:buildenv` (scripts/deploy-build-env.ts), which lists every problem and writes nothing on
 #     failure. Set them as repository variables — the names are exactly the keys of ops/deploy/.env.example.
 #     Until the id ceremony writes `programs/program-ids.json`, only `cluster: devnet` builds (the mainnet
-#     path is refused by `guard-mainnet`, step 6).
+#     path is refused by `guard-mainnet`, step 6 of `images`; a push to main is skipped by the `freeze` job).
 #   * it does not build for arm64. The compose file is a single-host amd64 deploy; a second architecture
 #     doubles the publish time and the surface for images nobody runs.
 #
@@ -83,8 +83,50 @@ env:
   VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
 
 jobs:
+  # Whether a push has anything to publish yet — decided before the job below spends a runner on it. A push
+  # builds `mainnet-beta` (a push has no inputs), and SEC-F05 (`guard-mainnet`, step 6 of `images`) refuses a
+  # mainnet image until the id ceremony commits the freeze record `programs/program-ids.json`. Without this
+  # gate every push to main that touched client/backend/packages ran `npm ci` and then failed on that guard:
+  # red on every main commit since 2026-09-18, for a reason no commit can fix, which only teaches people to
+  # read past red. Such a push is now *skipped*, with a warning saying why. What did not change:
+  #   * the guard itself — it still runs inside `images` on every build that gets there;
+  #   * a manual dispatch for mainnet-beta and a release tag (`v*`) still fail on it: that is someone asking
+  #     for a mainnet image, and before the ceremony the answer is still a loud no;
+  #   * the first push after `manifest` commits the record builds, pushes and pins as before.
+  freeze:
+    name: is there a mainnet deploy to build? (freeze record, SEC-F05)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      build: ${{ steps.record.outputs.build }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: programs
+
+      - name: freeze record present, or not a branch push
+        id: record
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF}" == refs/heads/* && ! -f programs/program-ids.json ]]; then
+            msg="no freeze record (programs/program-ids.json): a push builds mainnet-beta, and guard-mainnet refuses that until the id ceremony (ops/deploy/runbook.md §1.1). Nothing was built, pushed or pinned."
+            echo "::warning title=images skipped::${msg}"
+            {
+              echo "### Images"
+              echo
+              echo "skipped — ${msg}"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
   images:
     name: build · push · pin — api, client, backup
+    needs: freeze
+    if: needs.freeze.outputs.build == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -132,7 +174,8 @@ jobs:
           # the ids cut from the cold keypairs at the ceremony). The gate asks where the ids came from, not
           # whether they look like placeholders: `apply` keeps every copy agreeing, so a tree that never saw a
           # deploy keypair still agrees with itself. `ops:buildenv` then checks the vars against that record.
-          # Until the ceremony this fails every mainnet run — by design, see ops/deploy/runbook.md §1.1.
+          # Until the ceremony this fails every mainnet run that gets here — by design, see ops/deploy/runbook.md
+          # §1.1. A push to main does not get here before the ceremony: the `freeze` job skips it.
           if [[ "$CLUSTER" == "mainnet-beta" ]]; then npm run program-ids -- guard-mainnet; fi
           npm run ops:buildenv -- --cluster "$CLUSTER" --out /tmp/build.env
           {
