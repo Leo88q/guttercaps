@@ -304,7 +304,12 @@ pub struct StakeCompressedChip<'info> {
     pub system_program: Program<'info, System>,
 }
 
-fn compressed_chip_weight(claim: &CompressedMintClaim, sets: u8, last_played: i64, now: i64) -> u128 {
+fn compressed_chip_weight(
+    claim: &CompressedMintClaim,
+    sets: u8,
+    last_played: i64,
+    now: i64,
+) -> u128 {
     claim.rarity.stake_weight() as u128 * MICRO as u128 * level_mult_bps(claim.level) as u128
         / 10_000
         * SetBonus::mult_bps(sets) as u128
