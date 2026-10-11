@@ -710,8 +710,7 @@ pub fn fuse_compressed_claims<'info>(
     for (i, claim_ai) in ctx.remaining_accounts.iter().enumerate() {
         require!(claim_ai.is_writable, ChipError::AccountNotWritable);
         require_keys_eq!(*claim_ai.owner, crate::ID, ChipError::InvalidChipState);
-        let claim =
-            CompressedMintClaim::try_deserialize_compat(&claim_ai.try_borrow_data()?)?;
+        let claim = CompressedMintClaim::try_deserialize_compat(&claim_ai.try_borrow_data()?)?;
         require!(
             claim.buyer == ctx.accounts.owner.key(),
             ChipError::NotAssetOwner
@@ -954,8 +953,7 @@ pub fn fuse_claims_commit<'info>(
     for (i, claim_ai) in ctx.remaining_accounts.iter().enumerate() {
         require!(claim_ai.is_writable, ChipError::AccountNotWritable);
         require_keys_eq!(*claim_ai.owner, crate::ID, ChipError::InvalidChipState);
-        let claim =
-            CompressedMintClaim::try_deserialize_compat(&claim_ai.try_borrow_data()?)?;
+        let claim = CompressedMintClaim::try_deserialize_compat(&claim_ai.try_borrow_data()?)?;
         require!(claim.buyer == owner_key, ChipError::NotAssetOwner);
         require!(
             !claim.consumed && !claim.listed && !claim.staked,
