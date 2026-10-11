@@ -876,7 +876,7 @@ CI (`.github/workflows/ci.yml`, **добавлен** — см. бэклог #16)
 | T-U-08 | i18n: длина строк VI/ID/RU ≤ 1.6 × EN для кнопок (флаг на дизайн-проверку) | `i18n.test.ts` |
 | T-U-09 | economy: `probabilityAtLeast`, `packExpectedValueMult` для 4 SKU в допусках `docs/02 §2.3` (EV Standard ≈ 0.65) | `economy.test.ts` |
 | T-U-10 | economy: faucet-инвариант «бесплатный игрок ≤ 20 % ценности медианного платящего» (пересчёт из `docs/02 §3`) | |
-| T-U-11 | economy: `guardedEmission` при burn = 0 равно 30 % cap; при burn = cap/1.25 — cap | |
+| T-U-11 | economy: `guardedEmission` при burn = 0 равно 2 % cap; при burn = cap/1.25 — cap | |
 
 ### 3.3 Rust host-тесты (без BPF) — T-R
 
@@ -900,7 +900,7 @@ CI (`.github/workflows/ci.yml`, **добавлен** — см. бэклог #16)
 | T-R-14 | arena | `league(power)` границы; `validate_squad` дубликаты/флаги (через фикстуры AccountInfo) |
 | T-R-15 | arena | rake 5 % = 40/40/20 при pot нечётном (пыль сгорает); cap: `paid_today + pot > cap` → успешный pause, battle остаётся Accepted (`cancel_stale` возвращает); `== cap` — settle, затем pause |
 | T-R-16 | staking | `daily_schedule_cap(year)` = 18/15/12/10/8/6/5/4 % × 550 M / 365; сумма 8 лет ≤ 550 M |
-| T-R-17 | staking | `guarded_daily`: floor 30 %, burn × 1.25, ≤ cap |
+| T-R-17 | staking | `guarded_daily`: floor 2 %, burn × 1.25, ≤ cap |
 | T-R-18 | staking | сплит 30/15/17/23/15: Σ = 10 000, `set_split` Δ ≤ 1 000 |
 | T-R-19 | staking | тиры: boost 1.0/1.5/2.2/3.0, penalty 0/5/10/15 %, lock 0/30/90/180 д |
 | T-R-20 | staking | MasterChef: `acc_reward_per_weight` при stake/unstake/claim — сумма выплат ≤ бюджет за период (симуляция 1 000 шагов) |
@@ -1017,7 +1017,7 @@ T-D-01 smoke после каждого деплоя (buy → open → verify, р
 | Джекпот стейкинга (10 фишек/нед) | вес = stake weight; VRF сезона; SB 7 д | backend job тест (nightly) |
 | Сезон PvP (фишка по лиге, SB 14 д) | 1/сезон/кошелёк; корень сезона с бюджетом pvpSeason 23 % | S10–S12 |
 | Рефералы (5 % трат, cap 200 $CG) — **реализовано**: `backend/src/referrals.ts` (`settleReferrals` в каждом цикле reward-oracle по финализированному горизонту → `referral_rewards` → корень **kind 4** (`eventsReserve`, подпись `season_oracle`, `budget ≤ slice_budget[4]` on-chain); `/me/referrals` дашборд; правила в `REFERRAL` (`packages/economy/src/faucets.ts`): считаются только **вскрытые** покупки sku > 0 за SOL/USDC/SKR (не $CG), spend = прайс × qty × бандл (× SKR-скидка), 1 ¢ ≙ 1 $CG; реферал получает приветственный бонус 149 $CG после первого платного пака) | начисление только по `PackBought` реферала с реальной оплатой; self-referral с того же устройства не окупается (реферал = 4-й+ кошелёк → `device_limit`, сигнал `device_ring`) ✅ | T-B-48, T-B-49 ✅ |
-| Эмиссия $CG в целом | guarded (floor 30 % / burn × 1.25), сплит, `tick_day` раз в день, неистраченное не переносится, **M1** для burn-фида | S01, S05, T-R-16..18, I4 |
+| Эмиссия $CG в целом | guarded (floor 2 % / burn × 1.25), сплит, `tick_day` раз в день, неистраченное не переносится, **M1** для burn-фида | S01, S05, T-R-16..18, I4 |
 | Стоки | 75 % $CG паков burn, 100 % fusion fee burn, listing fee burn, ⅓ market fee buyback-burn, early-exit burn, 40 % rake burn — все эмитят `BurnReported`/учитываются в burn-агрегате | T-B-50 |
 
 ### 3.11 Экономические симуляции (не блокируют, но входят в приёмку G-7)

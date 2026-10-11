@@ -109,10 +109,6 @@ const NO_LITESVM: Record<string, string> = {
   // The Bubblegum-V2 mint/register pair. It is the client's working pipeline
   // (packFlow → DAS resolve → claimSettle) but no scenario drives it on chain: it needs a DAS
   // read to resolve the leaf, which LiteSVM cannot serve. Tracked in the report §6.
-  // Staking's compressed-chip claim and the alive-stake pulse have client/keeper builders but no LiteSVM
-  // scenario yet. Their builders are exercised in unit tests; the scenario is the outstanding gap.
-  claim_compressed_chip: 'no LiteSVM scenario yet — the builder is covered by client/src/features/staking/Staking.test.tsx',
-  pulse_chip_play: 'no LiteSVM scenario yet — the keeper-signed pulse is covered by backend/test/play-oracle.test.ts (pulseChipPlayIx)',
   mint_compressed_chip: 'needs a DAS read to resolve the minted leaf — LiteSVM cannot serve it',
   register_compressed_chip: 'needs a DAS read to resolve the minted leaf — LiteSVM cannot serve it',
   // `pay_service` burns a daily-capped service allocation; the cap is asserted statically in

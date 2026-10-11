@@ -412,7 +412,7 @@ pub fn mint_to_user_from<'info>(
 //
 // `burn_today` is clamped to BURN_SANITY_MULT × today's schedule cap: the
 // guard cannot exceed the schedule anyway, so a lying/buggy oracle can at
-// most lift emission from the 30 % floor to 100 % of the schedule.
+// most lift emission from the 2 % floor to 100 % of the schedule.
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]

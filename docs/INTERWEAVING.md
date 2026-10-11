@@ -33,7 +33,7 @@ hub-facing data contract is now `WATCHTOWER_HANDOFF.md` + `watchtower/events/eve
 Real, test-pinned rules (unchanged from before):
 
 1. $CG minting is capped by the emission guard (`programs/staking`): ≤ 1.25× the 7-day average burn,
-   floored at 30% of the scheduled emission (`packages/economy`, `npm run economy:check`).
+   floored at 2% of the scheduled emission (`packages/economy`, `npm run economy:check`).
 2. Arena wager escrows hold both stakes in a PDA-owned token account before resolution
    (`programs/arena/src/lib.rs`).
 3. SKR prize pool invariant: `funded >= paid + reserved + withdrawn`

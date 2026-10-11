@@ -496,6 +496,13 @@ on('post', '/quests/visit', () => ({ day: Math.floor(Date.now() / 86_400_000), i
 
 // ------------------------------------------------------------- beta pre-sale (docs/preorder-beta.md)
 const PREORDER_TREASURY = fakeKey('Tr');
+// Mirrors backend `preorderPayTo`: SOL pays the treasury wallet; USDC/SKR pay the treasury's token account
+// for that mint. The token accounts are derived from the treasury key (deterministic, so the mock's random
+// sequence is not shifted); they are display stand-ins, not real ATAs.
+const PREORDER_MINTS = { USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', SKR: 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3' } as const;
+const PREORDER_TOKEN_ACCOUNTS = { USDC: 'Tu' + PREORDER_TREASURY.slice(2), SKR: 'Ts' + PREORDER_TREASURY.slice(2) } as const;
+const mockPreorderPayTo = (currency: 'SOL' | 'USDC' | 'SKR'): { payTo: string; mint?: string } =>
+  currency === 'SOL' ? { payTo: PREORDER_TREASURY } : { payTo: PREORDER_TOKEN_ACCOUNTS[currency], mint: PREORDER_MINTS[currency] };
 const PREORDER_PRICE = '300000000'; // 0.30 SOL per single
 const PREORDER_CHEST_PRICE = '999000000';
 const PREORDER_TOTAL = 500;
@@ -543,7 +550,8 @@ on('post', '/preorder/intent', (o) => {
   const lamports = mockPreorderAmount(solLamports, currency);
   const row: MockPreorder = { ref_id: ++preorderSeq, wallet: ME, sku: 3, qty: packs, offer, currency, lamports, status: 'intent', tx_sig: null, nonce: null, grant_sig: null, created_at: Math.floor(Date.now() / 1000), paid_at: null, granted_at: null };
   preorderRows.push(row);
-  return { refId: row.ref_id, wallet: ME, sku: 3, qty: packs, offer, currency, lamports: row.lamports, amount: row.lamports, treasury: PREORDER_TREASURY, payTo: PREORDER_TREASURY, memo: `GC-PRE|${row.ref_id}`, expiresAt: row.created_at + PREORDER_TTL_S };
+  const dest = mockPreorderPayTo(currency);
+  return { refId: row.ref_id, wallet: ME, sku: 3, qty: packs, offer, currency, lamports: row.lamports, amount: row.lamports, treasury: PREORDER_TREASURY, ...dest, memo: `GC-PRE|${row.ref_id}`, expiresAt: row.created_at + PREORDER_TTL_S };
 });
 on('post', '/preorder/confirm', (o) => {
   const { refId, signature } = (o.body ?? {}) as { refId?: number; signature?: string };
