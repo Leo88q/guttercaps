@@ -225,7 +225,12 @@ describe('SEC-B53 the referral payee is checked at the ingress, not held up by a
   });
   it('junk, self-referral and blank referrers are ignored, not written', async () => {
     store.reset();
-    for (const bad of ['not-a-solana-address', '0OIl'.repeat(8), referrer.slice(0, 20), `${referrer}x`]) {
+    // One character past an address must be past the *longest* one. `${referrer}x` was junk only when the
+    // random key happened to encode to 44 characters: a 43-character key small enough that the extra digit
+    // still fits 32 bytes (≈ 1 key in 80) made it a valid address, stored — and the test red on CI with
+    // nothing changed. 32 × 0xff encodes to 44 characters, so this one is always 45: over the length.
+    const longest = base58Encode(new Uint8Array(32).fill(0xff));
+    for (const bad of ['not-a-solana-address', '0OIl'.repeat(8), referrer.slice(0, 20), `${longest}x`]) {
       const kp = Keypair.generate();
       expect(await signInWith(kp, bad)).toBe(200); // a broken campaign link must not block the sign-in
       expect(stored(kp)).toBeNull();
