@@ -96,11 +96,21 @@ describe('battle resolver (SEC-B30)', () => {
     expect(logs.some((l) => l.startsWith('[battle-resolver] ALERT'))).toBe(false);
   });
 
-  it('refuses to resolve when a squad chip was levelled up after the opponent matched', async () => {
+  it('a level-up after the opponent matched cannot move the fight: the wager is priced at on-chain level 1', async () => {
     mintSquads();
     chainAccepted();
-    // the only ways a chip's power can move: a fusion levels the target up (arena flags nothing meanwhile)
+    // ranked XP / fusion can raise `chips.level`, but the battle is computed from the on-chain level the
+    // accept was signed against (WAGER_ON_CHAIN_LEVEL), so the recorded power still matches and it resolves
     db.run(`UPDATE chips SET level = level + 1 WHERE asset = ?`, A[0]!.toBase58());
+    const out = await resolveOne(deps(), battleKey);
+    expect(out.kind).toBe('resolved');
+  });
+  it('refuses to resolve when a squad chip changed after acceptance (power no longer matches the recorded)', async () => {
+    mintSquads();
+    chainAccepted();
+    // a squad chip whose rarity moved after the opponent matched: the recomputed power no longer equals the
+    // power the battle account recorded, so the guard refuses and nothing is settled
+    db.run(`UPDATE chips SET rarity = CASE WHEN rarity >= 7 THEN 0 ELSE rarity + 1 END WHERE asset = ?`, A[0]!.toBase58());
     const out = await resolveOne(deps(), battleKey);
     expect(out.kind).toBe('skipped');
     expect(out.kind === 'skipped' && out.reason).toMatch(/does not match the recorded/);

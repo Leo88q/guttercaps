@@ -157,7 +157,8 @@ describe('public API', () => {
     const plan = await c.post('/v1/fusion/plan', { materials: assets, resultCollection: 2 });
     expect(plan.status).toBe(200);
     expect(plan.json).toMatchObject({ resultRarity: 'Rare+', resultCollection: 2, needsRandomness: false, feeCgMicro: '30000000' });
-    expect((await c.get('/v1/fusion/suggest')).json).toHaveLength(1);
+    // the three materials span two districts (1, 2, 1): the bench never auto-suggests a cross-district triple
+    expect((await c.get('/v1/fusion/suggest')).json).toEqual([]);
     // arena: bad commit → 422; good commit → ticket; leave → 204
     expect((await c.post('/v1/arena/queue', { squad: assets, commit: 'nope' })).status).toBe(422);
     const q = await c.post('/v1/arena/queue', { squad: assets, commit: 'ab'.repeat(32) });

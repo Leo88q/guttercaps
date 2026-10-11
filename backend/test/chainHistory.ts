@@ -606,7 +606,10 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
       }
       yield* emit([
         { program: 'chip_core', name: 'CompressedClaimListedSet', data: { claim, buyer: c.owner, listed: true } },
-        c.registered && c.asset
+        // only a live leaf that the claim's owner still holds can be listed as an asset: a chip that was
+        // sold on the Core market or fused away is no longer that owner's to list (on chain the listing
+        // instruction would fail; the simulator must not emit it)
+        c.registered && c.asset && !chips.get(c.asset)?.burned && chips.get(c.asset)?.owner === c.owner
           ? { program: 'market', name: 'CompressedAssetListed', data: { asset: c.asset, claim, seller: c.owner, price, currency: 0 } }
           : { program: 'market', name: 'CompressedClaimListed', data: { claim, seller: c.owner, price, currency: 0 } },
       ], { cpiFrom: 'market' });

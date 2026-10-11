@@ -148,6 +148,7 @@ vi.mock('@/api/hooks', () => ({
   useStakingOverview: () => ({ data: { emission: {}, tokenPool: {}, chipPool: {} }, isLoading: false }),
   useStakingMe: () => ({ data: { chipStakes: [], tokenStakes: [], setBonus: { onChainSets: 0 } } }),
   useMyChips: () => ({ data: { pages: [{ items: [CHIP.staked ? chip(true) : chip(false)], nextCursor: null }] } }),
+  useGutterPot: () => ({ data: undefined, isLoading: false }),
 }));
 
 beforeAll(() => {

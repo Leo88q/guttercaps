@@ -45,12 +45,12 @@ export default function Drain() {
     const district = picked;
     try {
       if (!reduced) await new Promise((r) => setTimeout(r, 900));
-      await api.post('/quests/login', {});
+      await api.post('/quests/login');
       writeDrainCheck(wallet, district, day);
       setChecked({ day, district });
       void qc.invalidateQueries({ queryKey: ['quests'] });
       void qc.invalidateQueries({ queryKey: ['quests', 'streak'] });
-      toast({ kind: 'success', title: { key: 'drain.charge' }, body: { key: 'drain.reward', params: { n: amountText(LOGIN_CG, 'CG') } } });
+      toast({ kind: 'success', title: { key: 'drain.charge' }, body: { key: 'drain.reward', params: { n: amountText(BigInt(LOGIN_CG), 'CG') } } });
     } catch (e) {
       toast({ kind: 'error', title: { key: 'drain.title' }, error: e });
     } finally {

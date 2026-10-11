@@ -287,7 +287,7 @@ describe('instruction builders', () => {
     expect(ix.keys[10].pubkey.equals(SYSVAR_SLOT_HASHES_ID)).toBe(true);
     expect(ix.keys[11].pubkey.equals(vaultPda()[0]) && ix.keys[11].isWritable).toBe(true); // SOL path: vault receives lamports
     expect(ix.keys[13].pubkey.equals(CHIP_CORE_ID)).toBe(true); // buyer_token absent for SOL
-    expect(ix.keys[12].pubkey.equals(CHIP_CORE_ID)).toBe(false); // price_update present
+    expect(ix.keys[12].pubkey.equals(CHIP_CORE_ID)).toBe(true); // price_update is None: frozen FX, BuyPack never reads Pyth
     expect(hex(new Uint8Array(ix.data).slice(0, 8))).toBe(hex(ixDiscriminator('buy_pack')));
     const r = new BorshReader(new Uint8Array(ix.data), 8);
     expect(r.u8()).toBe(1); expect(r.u8()).toBe(5); expect(r.u8()).toBe(0); expect(r.u64()).toBe(9n); expect(r.u64()).toBe(1_000n);
@@ -295,7 +295,7 @@ describe('instruction builders', () => {
     const skr = Keypair.generate().publicKey;
     const ix2 = buyPackIx({ buyer, sku: 1, qty: 1, currency: Currency.SKR, nonce: 1n, maxLamports: 500_000_000n, randomness: rng, queue, oracle, priceUpdate: Keypair.generate().publicKey, usdcMint: mint, cgMint: mint, skrMint: skr });
     expect(ix2.keys[11].isWritable).toBe(false);
-    expect(ix2.keys[12].pubkey.equals(CHIP_CORE_ID)).toBe(false);
+    expect(ix2.keys[12].pubkey.equals(CHIP_CORE_ID)).toBe(true); // frozen FX: price_update None on SKR too
     expect(ix2.keys[13].pubkey.equals(CHIP_CORE_ID)).toBe(false);
     expect(new Uint8Array(ix2.data)[10]).toBe(3);
   });
@@ -929,7 +929,7 @@ describe('economy glue', () => {
     expect(chip.keys[9].pubkey.equals(rngAuthPda(RNG_KIND.PACK)[0])).toBe(true);
     expect(chip.keys[11].pubkey.equals(queue) && chip.keys[12].pubkey.equals(oracle) && chip.keys[12].isWritable).toBe(true);
     expect(chip.keys[14].pubkey.equals(CHIP_CORE_ID)).toBe(true);
-    expect(() => claimChipRootIx({ ...base, kind: 9, amount: 4n, nonce: 1n, queue, oracle })).toThrow(/0\.\.3/);
+    expect(() => claimChipRootIx({ ...base, kind: 9, amount: 5n, nonce: 1n, queue, oracle })).toThrow(/0\.\.4/); // MAX_CHIP_TEMPLATE = 4
     expect(() => claimChipRootIx({ ...base, kind: 8, amount: 1n, nonce: 1n, queue, oracle })).toThrow(/not a chip voucher root/);
     expect(() => claimAnyRootIx({ ...base, kind: 9, cgMint })).toThrow(/claimChipRootIx/);
   });

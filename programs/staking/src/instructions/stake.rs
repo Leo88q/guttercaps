@@ -182,6 +182,13 @@ pub fn unstake_cg(ctx: Context<UnstakeCg>, tier: u8, amount: u64) -> Result<()> 
     let s = &mut ctx.accounts.stake;
     let pending = pool.pending(s.weight, s.reward_debt)?;
     if pending > 0 {
+        // A6 default-then-pin: a fresh wallet_day (owner == default) is adopted for s.owner; an existing one must
+        // already belong to them. take_daily_cap enforces the same pin — this makes the handler state it itself.
+        if ctx.accounts.wallet_day.owner == Pubkey::default() {
+            ctx.accounts.wallet_day.owner = s.owner;
+            ctx.accounts.wallet_day.bump = ctx.bumps.wallet_day;
+        }
+        require_keys_eq!(ctx.accounts.wallet_day.owner, s.owner, StakeError::NotOwner);
         let paid = take_daily_cap(
             &mut ctx.accounts.wallet_day,
             s.owner,
@@ -603,6 +610,13 @@ pub fn unstake_compressed_chip(ctx: Context<UnstakeCompressedChip>) -> Result<()
     let c = &ctx.accounts.cstake;
     let pending = pool.pending(c.weight, c.reward_debt)?;
     if pending > 0 {
+        // A6 default-then-pin: a fresh wallet_day (owner == default) is adopted for c.owner; an existing one must
+        // already belong to them. take_daily_cap enforces the same pin — this makes the handler state it itself.
+        if ctx.accounts.wallet_day.owner == Pubkey::default() {
+            ctx.accounts.wallet_day.owner = c.owner;
+            ctx.accounts.wallet_day.bump = ctx.bumps.wallet_day;
+        }
+        require_keys_eq!(ctx.accounts.wallet_day.owner, c.owner, StakeError::NotOwner);
         let paid = take_daily_cap(
             &mut ctx.accounts.wallet_day,
             c.owner,

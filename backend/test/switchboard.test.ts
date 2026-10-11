@@ -41,10 +41,11 @@ describe('Switchboard service (no wallet or transaction)', () => {
     const report = await w.service.health();
     expect(report).toMatchObject({ ready: true, probes: [{ gateway: 'https://141.95.35.110.xip.switchboard-oracles.xyz', healthy: true }] });
     expect(w.gateway).toHaveBeenNthCalledWith(1, base.slice(0, -1), 'healthy_oracles');
-    await w.service.reveal(randomness.toBase58());
-    expect(w.gateway).toHaveBeenNthCalledWith(2, base.slice(0, -1), 'randomness_reveal', expect.objectContaining({
-      slot: 4000, randomness_key: randomness.toBuffer().toString('hex'), slothash: Array(32).fill(0xab),
-    }));
+    // the in-house randomness account names no Switchboard oracle (decodeRandomness), so a reveal cannot be
+    // routed to any gateway: it fails closed before the HTTP call, and nothing is sent
+    await expect(w.service.reveal(randomness.toBase58())).rejects.toMatchObject({ code: 'switchboard_oracle_binding' });
+    expect(w.gateway).toHaveBeenCalledTimes(1);
+    expect(w.gateway).not.toHaveBeenCalledWith(expect.anything(), 'randomness_reveal', expect.anything());
     expect(w.conn.sent).toHaveLength(0);
   });
   it('skips an unhealthy gateway and selects another live, on-chain eligible oracle', async () => {
@@ -83,10 +84,10 @@ describe('Switchboard service (no wallet or transaction)', () => {
     expect(result).toMatchObject({ ready: true, oracle: oracle.toBase58(), discovery: { ok: true, gatewayCount: 1 },
       probes: [{ healthy: true, code: 'ok', directCode: 'gateway_timeout', healthGateway: 'https://pool.example.com' }] });
     // Discovery changes only health inspection. Reveal STILL goes to the committed oracle's URI.
+    // (and the in-house randomness account names no Switchboard oracle, so the reveal itself fails closed)
     w.gateway.mockClear(); w.gateway.mockResolvedValue(payload);
-    await w.service.reveal(randomness.toBase58());
-    expect(w.gateway).toHaveBeenCalledTimes(1);
-    expect(w.gateway).toHaveBeenCalledWith('https://oracle.example.com', 'randomness_reveal', expect.any(Object));
+    await expect(w.service.reveal(randomness.toBase58())).rejects.toMatchObject({ code: 'switchboard_oracle_binding' });
+    expect(w.gateway).not.toHaveBeenCalledWith(expect.anything(), 'randomness_reveal', expect.anything());
     expect(w.conn.sent).toHaveLength(0);
   });
   it('on-chain fallback remains available when registry DNS fails', async () => {
@@ -154,12 +155,13 @@ describe('Switchboard service (no wallet or transaction)', () => {
     expect((await w.service.health()).ready).toBe(false);
     expect(w.load).toHaveBeenCalledTimes(2);
   });
-  it('relays exactly the committed oracle/seed with only a public RPC URL', async () => {
-    const w = world(); const result = await w.service.reveal(randomness.toBase58());
-    expect(result).toEqual({ ...payload, randomness: randomness.toBase58(), oracle: oracle.toBase58(), queue: queue.toBase58() });
-    expect(w.gateway).toHaveBeenCalledWith('https://oracle.example.com', 'randomness_reveal', {
-      slot: 4000, randomness_key: randomness.toBuffer().toString('hex'), slothash: Array(32).fill(0xab), rpc: 'https://api.devnet.solana.com',
-    });
+  it('refuses to relay a reveal when the randomness account carries no committed Switchboard oracle', async () => {
+    // Switchboard On-Demand is shut down (programs/chip_core/src/randomness.rs): the in-house RngAccount has
+    // no oracle field, so there is no committed oracle to relay to — the request fails closed with no RPC,
+    // no gateway call and no transaction.
+    const w = world();
+    await expect(w.service.reveal(randomness.toBase58())).rejects.toMatchObject({ code: 'switchboard_oracle_binding' });
+    expect(w.gateway).not.toHaveBeenCalled();
     expect(w.conn.sent).toHaveLength(0); expect(w.load).not.toHaveBeenCalled();
   });
   it.each(['owner', 'authority', 'queue', 'oracle-owner', 'oracle-queue', 'uncommitted', 'revealed'] as const)('rejects %s mismatch BEFORE gateway HTTP', async problem => {

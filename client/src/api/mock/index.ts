@@ -6,6 +6,7 @@ import {
   PACKS, FUSION_RECIPES, BOOSTER, RARITY_PROFILES, LOCK_TIERS, DAILY_QUESTS, WEEKLY_QUESTS, PERMANENT_QUESTS, MATCHMAKING, SEASON, FEES, SERVICES, REFERRAL,
   packExpectedValueMult, probabilityAtLeast, effectiveOdds, bundlePriceCents, impliedApy, FX, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, usdCentsFromSolLamports, type PackId,
   SKIN_BY_ID, PROFILE_THEME_BY_ID, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, PASS_TRACK, passTierForXp, xpToNext, CHIP_XP,
+  EMISSION_GUARD,
 } from '@guttercaps/economy';
 import { PYTH_PRICE_ACCOUNTS } from '@/chain/ids';
 import { COLLECTIONS } from '@/shared/lib/lore';
@@ -504,7 +505,7 @@ let preorderSeq = 41;
 interface MockPreorder { ref_id: number; wallet: string; sku: number; qty: number; offer: 'pack' | 'chest'; currency: 'SOL' | 'USDC' | 'SKR'; lamports: string; status: 'intent' | 'paid' | 'granted' | 'expired'; tx_sig: string | null; nonce: string | null; grant_sig: string | null; created_at: number; paid_at: number | null; granted_at: number | null }
 const mockPreorderAmount = (solLamports: string, currency: 'SOL' | 'USDC' | 'SKR') => {
   if (currency === 'SOL') return solLamports;
-  const cents = usdCentsFromSolLamports(solLamports);
+  const cents = usdCentsFromSolLamports(BigInt(solLamports));
   return currency === 'USDC' ? usdcMicroForUsdCents(cents).toString() : skrMicroForUsdCents(cents).toString();
 };
 const mockPreorderPrices = (solLamports: string) => ({ SOL: solLamports, USDC: mockPreorderAmount(solLamports, 'USDC'), SKR: mockPreorderAmount(solLamports, 'SKR') });
@@ -674,7 +675,7 @@ on('post', '/admin/simulate', (o) => {
     year, assumptions: a, baseline, scenario,
     delta: Object.fromEntries(Object.keys(scenario).map((k) => [k, +((scenario as Record<string, number>)[k] - (baseline as Record<string, number>)[k]).toFixed(2)])),
     slices: ['chipStaking', 'tokenStaking', 'quests', 'pvpSeason', 'eventsReserve'].map((name, i) => ({ name, bps: split[i], cgPerDay: Math.round((scenario.emissionCg * split[i]) / 10_000) })),
-    guard: { floorShare: 0.3, burnMultiple: 1.25, emissionAtZeroBurnCg: Math.round(scenario.scheduleCapCg * 0.3) },
+    guard: { floorShare: EMISSION_GUARD.floorShare, burnMultiple: EMISSION_GUARD.burnMultiple, emissionAtZeroBurnCg: Math.round(scenario.scheduleCapCg * EMISSION_GUARD.floorShare) },
     packs: SKUS.map((id) => ({ id, evCommonEq: +packExpectedValueMult(PACKS[id]).toFixed(2), pLegend: +probabilityAtLeast(PACKS[id], 6).toFixed(4) })),
     rarityValueMult: RARITY_PROFILES.map((r) => r.valueMult),
   };

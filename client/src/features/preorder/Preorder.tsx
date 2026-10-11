@@ -56,7 +56,7 @@ type OfferView = { id: OfferId; packs: number; priceLamports: string; prices?: R
 
 function amountOf(solLamports: string, currency: PayCurrency): string {
   if (currency === 'SOL') return solLamports;
-  const cents = usdCentsFromSolLamports(solLamports);
+  const cents = usdCentsFromSolLamports(BigInt(solLamports));
   return currency === 'USDC' ? usdcMicroForUsdCents(cents).toString() : skrMicroForUsdCents(cents).toString();
 }
 function priceOf(offer: OfferView, currency: PayCurrency): string {

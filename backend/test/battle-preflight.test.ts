@@ -67,7 +67,7 @@ it.each([undefined, 'crank,pyth', ''])('Mac defaults only an unset WORKERS, pres
   const env = { ...process.env }; delete env.WORKERS; delete env.BATTLE_ORACLE_KEYPAIR; delete env.SESSION_SECRET;
   const run = spawnSync('bash', ['-c', `${shellFunction}\nWALLET='/fallback.json'\n(mac_backend_env && printf '%s|%s\\n' "$WORKERS" "$BATTLE_ORACLE_KEYPAIR")\nprintf 'parent=%s' "\${SESSION_SECRET-unset}"`], { cwd: dir, env, encoding: 'utf8' });
   expect(run.status).toBe(0);
-  expect(run.stdout).toBe(`${workers === undefined ? 'crank,pyth,battle' : workers}|/configured key.json\nparent=unset`);
+  expect(run.stdout).toBe(`${workers === undefined ? 'crank,pyth,battle,reward' : workers}|/configured key.json\nparent=unset`);
 });
 it('Mac passes its deployer only as a preflight candidate when no battle key is configured', () => {
   const dir = temp(); mkdirSync(join(dir, 'backend')); writeFileSync(join(dir, 'backend/.env'), '');

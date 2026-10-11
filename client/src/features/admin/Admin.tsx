@@ -1,3 +1,4 @@
+import { EMISSION_GUARD } from '@guttercaps/economy';
 import { ErrorNotice } from '@/shared/ui/ErrorNotice';
 import { diagnosticText, warningText, fraudSignalLabel } from '@/shared/lib/diagnostic';
 // Ops panel (docs/03 §3.5) — live economy tuning without a redeploy.
@@ -335,7 +336,7 @@ function SimulateTab() {
             </tbody>
           </table>
           </div>
-          <div className="tiny muted" style={{ padding: 10 }}>{t('admin.sim.guard', { floor: Math.round((report.guard?.floorShare ?? 0.3) * 100), mult: report.guard?.burnMultiple ?? 1.25, zero: fmtNum(report.guard?.emissionAtZeroBurnCg) })}</div>
+          <div className="tiny muted" style={{ padding: 10 }}>{t('admin.sim.guard', { floor: Math.round((report.guard?.floorShare ?? EMISSION_GUARD.floorShare) * 100), mult: report.guard?.burnMultiple ?? 1.25, zero: fmtNum(report.guard?.emissionAtZeroBurnCg) })}</div>
         </div>
       )}
     </div>

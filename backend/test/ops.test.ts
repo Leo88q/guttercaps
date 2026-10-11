@@ -246,7 +246,7 @@ describe('wire: on-chain event → client frame', () => {
       expect(m!.type).toBe('sale');
       expect(m!.wallets.sort()).toEqual([buyer, seller].sort());
       expect(m!.payload.seller).toBe(seller);
-      expect(m!.payload.priceUsd).toBe(300); // 1.5 SOL × $200 — the same math as GET /v1/market/listings
+      expect(m!.payload.priceUsd).toBe(165); // 1.5 SOL × $110 (frozen FX, economy FX.solUsd) — the same math as GET /v1/market/listings
       expect(m!.payload.viaOffer).toBe(true);
     } finally { d.close(); }
   });
@@ -276,11 +276,11 @@ describe('wire: on-chain event → client frame', () => {
       expect(sold.type).toBe('sale');
       expect(sold.wallets.sort()).toEqual([buyer, seller].sort());
       expect(sold.payload).toMatchObject({ asset, seller, buyer, currency: 0 });
-      expect(sold.payload.priceUsd).toBe(200); // 1 SOL × $200, the same math as the Core sale path
+      expect(sold.payload.priceUsd).toBe(110); // 1 SOL × $110 (frozen FX), the same math as the Core sale path
       const soldClaim = ev('CompressedClaimSold', { claim, seller, buyer, price: '500000000', fee: '0', royalty: '0' });
       expect(soldClaim.type).toBe('sale');
       expect(soldClaim.payload.asset).toBeUndefined();
-      expect(soldClaim.payload.priceUsd).toBe(100);
+      expect(soldClaim.payload.priceUsd).toBe(55); // 0.5 SOL × $110 (frozen FX)
       // the cancel is chip_core's flag event alone
       expect(ev('CompressedClaimListedSet', { claim, buyer: seller, listed: false })).toMatchObject({ type: 'listing_changed', payload: { claim, listed: false } });
       expect(ev('CompressedClaimStakedSet', { claim, buyer: seller, staked: true })).toMatchObject({ type: 'stake_changed', payload: { claim, staked: true } });
