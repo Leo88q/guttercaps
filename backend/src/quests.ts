@@ -44,9 +44,10 @@ import { insertIgnore } from './sql.ts';
 
 export const ALL_QUESTS: readonly QuestDef[] = [...DAILY_QUESTS, ...WEEKLY_QUESTS, ...PERMANENT_QUESTS];
 export const questById = (id: string) => ALL_QUESTS.find((q) => q.id === id);
-const DAY = 86_400, WEEK = 7 * DAY;
+export const DAY = 86_400;
+export const WEEK = 7 * DAY;
 /** Weeks start Monday 00:00 UTC (1970-01-05 was a Monday → offset 4 days). */
-const WEEK_EPOCH_OFFSET = 4 * DAY;
+export const WEEK_EPOCH_OFFSET = 4 * DAY;
 
 export const dayIndex = (t: number) => Math.floor(t / DAY);
 export const weekIndex = (t: number) => Math.floor((t - WEEK_EPOCH_OFFSET) / WEEK);

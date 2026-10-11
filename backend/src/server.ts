@@ -34,6 +34,7 @@ import { finalityStatus } from './finality.ts';
 import * as q from './queries.ts';
 import * as fusion from './fusion.ts';
 import * as staking from './staking.ts';
+import * as gutterPot from './gutterPot.ts';
 import * as arena from './arena.ts';
 import * as quests from './quests.ts';
 import { rewardOracleStatus } from './reward-oracle.ts';
@@ -628,6 +629,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.get('/staking/overview', (_req, res) => { res.json(staking.overview(db)); });
   v1.get('/staking/me', requireAuth, (req, res) => { res.json(staking.me(db, req.session!.wallet)); });
   v1.post('/staking/estimate', (req, res) => { res.json(staking.estimate(db, staking.validateEstimate(req.body))); });
+  v1.get('/staking/pot', (req, res) => { res.json(gutterPot.view(db, req.session?.wallet)); });
 
   // ------------------------------------------------------------ arena (server-authoritative ranked; wagers are on chain)
   v1.get('/arena/seasons/current', (_req, res) => { res.json(arena.seasonApi(db)); });

@@ -53,10 +53,11 @@ import { finalizedHorizon } from './finality.ts';
 import { loadKeypair } from './crank.ts';
 import { sendAndConfirm } from './tx.ts';
 import { buildRewardTree, toHex } from './merkle.ts';
+import { settleGutterPot } from './gutterPot.ts';
 import { activeWallets, settleWallet, skrEligibility, weekIndex } from './quests.ts';
 import { KIND_REFERRALS, settleReferrals } from './referrals.ts';
 import { rankedSeasonWallets, settleSeason, unsettledSeasons, type SeasonRow } from './arena.ts';
-import { ANTI_FARM, CHIP_VOUCHER_REWARDS, ITEM_REWARDS, QUEST_CHIP_TEMPLATES, SKR_ANTI_FARM, SKR_MICRO, SKR_POOL_SPLIT, seasonPayoutByRank } from '@guttercaps/economy';
+import { ANTI_FARM, CHIP_VOUCHER_REWARDS, GUTTER_POT, ITEM_REWARDS, QUEST_CHIP_TEMPLATES, SKR_ANTI_FARM, SKR_MICRO, SKR_POOL_SPLIT, seasonPayoutByRank } from '@guttercaps/economy';
 import { recordSignals, runDetectors } from './antifraud.ts';
 import { emissionPda } from './burn-oracle.ts';
 
@@ -410,9 +411,9 @@ export function buildItemBatch(db: Db, t = now(), min = ITEM_MIN_BATCH): Batch |
   return batch;
 }
 
-/** Chip voucher rows (quest completions with a chip reward) not yet in a kind-9 root, oldest first. */
+/** Chip voucher rows (quest completions with a chip reward) not yet in a kind-9 root. Gutter Pot first so the raffle is not starved by a same-week streak chip. */
 export function pendingVoucherRows(db: Db): { wallet: string; quest_id: string; period_key: string; reward_chip: string; completed_at: number }[] {
-  return db.all(`SELECT wallet, quest_id, period_key, reward_chip, completed_at FROM quest_completions WHERE chip_root_kind IS NULL AND reward_chip IS NOT NULL ORDER BY completed_at, wallet, quest_id, period_key`);
+  return db.all(`SELECT wallet, quest_id, period_key, reward_chip, completed_at FROM quest_completions WHERE chip_root_kind IS NULL AND reward_chip IS NOT NULL ORDER BY CASE quest_id WHEN ? THEN 0 ELSE 1 END, completed_at, wallet, quest_id, period_key`, GUTTER_POT.id);
 }
 /** Template id of a stored `reward_chip` JSON ({ template, odds, soulboundDays }); rows written before #28 carry no template → matched by odds. */
 export function voucherTemplateOf(rewardChip: string): number | undefined {
@@ -425,7 +426,8 @@ export function voucherTemplateOf(rewardChip: string): number | undefined {
 }
 /** Vouchers a wallet was rooted (kind 9) in the 7 days ending at `t` — the `ANTI_FARM.freeChipsPerWalletPerWeek` window. */
 export function vouchersRootedThisWeek(db: Db, wallet: string, t = now()): number {
-  return db.scalar(`SELECT COUNT(*) FROM quest_completions WHERE wallet = ? AND chip_root_kind = ? AND completed_at > ?`, wallet, KIND_CHIP_VOUCHERS, t - 7 * 86_400);
+  // Gutter Pot is extra to the streak+weekly cap — do not let a raffle win block a quest chip or vice versa.
+  return db.scalar(`SELECT COUNT(*) FROM quest_completions WHERE wallet = ? AND chip_root_kind = ? AND completed_at > ? AND quest_id <> ?`, wallet, KIND_CHIP_VOUCHERS, t - 7 * 86_400, GUTTER_POT.id);
 }
 
 /**
@@ -442,7 +444,7 @@ export function buildChipBatch(db: Db, t = now(), min = CHIP_MIN_BATCH): Batch |
   for (const r of pendingVoucherRows(db)) {
     if (perWallet.has(r.wallet)) continue; // one voucher per wallet per epoch — the next one carries over
     if (perWallet.size >= CHIP_VOUCHER_REWARDS.maxRootBudget) break;
-    if (vouchersRootedThisWeek(db, r.wallet, t) >= ANTI_FARM.freeChipsPerWalletPerWeek) continue; // weekly free-chip cap
+    if (r.quest_id !== GUTTER_POT.id && vouchersRootedThisWeek(db, r.wallet, t) >= ANTI_FARM.freeChipsPerWalletPerWeek) continue; // weekly free-chip cap (quest chips only)
     const template = voucherTemplateOf(r.reward_chip);
     if (template === undefined || template > CHIP_VOUCHER_REWARDS.maxTemplate) continue; // unknown shape: left for ops (visible in /health)
     perWallet.set(r.wallet, { amount: BigInt(template), memo: [`${r.quest_id}@${r.period_key}`, `template:${template}`], row: r });
@@ -504,6 +506,8 @@ export async function runOnce(d: OracleDeps, t = now()): Promise<{ settled: numb
   const signals = recordSignals(d.db, runDetectors(d.db, t), t);
   let settled = 0;
   for (const w of activeWallets(d.db, t - 8 * 86_400)) settled += settleWallet(d.db, w, t, horizon);
+  try { settleGutterPot(d.db, t, horizon); }
+  catch (e) { d.log?.(`[reward-oracle] ALERT gutter pot draw failed: ${(e as Error).message}`); }
   // referrals (kind 4): every finalized, opened, real-revenue purchase of a referee that has no row yet
   const referrals = settleReferrals(d.db, t, horizon);
   const seasons: number[] = [];
@@ -574,6 +578,11 @@ export function rewardOracleStatus(db: Db) {
     unrootedBoosters: { count: boosterRows.reduce((s, r) => s + r.reward_booster, 0), wallets: new Set(boosterRows.map((r) => r.wallet)).size },
     // backlog #28: quest chips owed but not yet in a kind-9 root (`unknownTemplate` rows need ops attention — their reward_chip matches no template)
     unrootedVouchers: { count: voucherRows.length, wallets: new Set(voucherRows.map((r) => r.wallet)).size, unknownTemplate: voucherRows.filter((r) => voucherTemplateOf(r.reward_chip) === undefined).length },
+    gutterPot: (() => {
+      const last = db.get<{ week: number; drawn_at: number; wallets: number }>(`SELECT week, drawn_at, wallets FROM gutter_pot_draws ORDER BY week DESC LIMIT 1`);
+      const closed = weekIndex(now()) - 1;
+      return { lastWeek: last?.week ?? null, closedWeek: closed, drawn: last?.week === closed, wallets: last?.wallets ?? 0 };
+    })(),
     // SEC-L5: settled seasons whose 20 % rake share is not recycled into slice_budget[3] yet (fund_slice retried every cycle)
     unfundedRake: { seasons: rake.seasons, micro: rake.targetMicro.toString() },
     // SKR prize pool: last periods paid per kind and the settled seasons still waiting for a funded pool

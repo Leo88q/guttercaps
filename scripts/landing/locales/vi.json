@@ -232,6 +232,8 @@
   "presale.note": "Đây là mua trước gói mainnet, không phải bán token: bạn nhận đúng những gói đã đặt, phát vào lúc ra mắt. Bản beta devnet vẫn miễn phí cho tất cả.",
   "faq.q10": "Bán trước là gì?",
   "faq.a10": "Hai lựa chọn Limited Event Pack bán bằng SOL, USDC hoặc SKR mainnet khi game chạy beta miễn phí trên devnet: 500 gói lẻ 0,30 SOL (tối đa 5 mỗi ví) và 125 rương founder 4 gói giá 0,999 SOL (tối đa 1 mỗi ví). Thanh toán vào ví đa chữ ký của đội (2-trong-3) kèm memo; USDC và SKR vào ATA cùng kho bạc. Nắp từ các gói đó mang khung founder vĩnh viễn. Gói được phát on-chain khi mainnet ra mắt theo thứ tự đặt chỗ, và bạn tự mở với cùng SlotHashes on-chain như mọi lần mua. Chiến dịch có thể tắt bất cứ lúc nào; sổ đăng ký công khai là căn cứ hoàn tiền.",
+  "faq.q11": "Gutter Pot là gì?",
+  "faq.a11": "Vòng quay tuần cho người stake nắp. Trọng số vé là trọng số stake sống lúc thứ Hai 00:00 UTC; khoá $CG không tính. Mười ví độc nhất nhận voucher Rare / Rare+ / Epic (50 / 40 / 10), lăn on-chain từ SlotHashes, khoá 7 ngày. Seed công bố là sha256 của tuần, slot, tổng và danh sách vé — cùng đầu vào luôn ra cùng mười ví. Đây là thêm ngoài hai nắp miễn phí nhiệm vụ mỗi tuần; nhận voucher ở Nhiệm vụ.",
   "faq.q9": "Mã nguồn có mở không?",
   "faq.a9": "Bốn chương trình Anchor, gói kinh tế với kiểm thử bất biến, bộ chỉ mục và ứng dụng nằm trong kho mã bên dưới. Số liệu trang này được đối chiếu với gói đó.",
   "nav.why": "Vì sao đáng chơi",
@@ -252,6 +254,9 @@
   "mech.7h": "Cống &amp; Xác minh",
   "mech.7p": "Mỗi sáng thành phố nhờ bạn nâng một nắp cống. Đó là đăng nhập hằng ngày — 2 $CG, nhận ở Nhiệm vụ. Mọi pack từ những phố đó lăn từ SlotHashes on-chain; dán giao dịch mở vào Xác minh và tính lại độ hiếm chương trình đã mint. Không ai, kể cả chúng tôi, chọn drop.",
   "mech.7f": "2 $CG/ngày · SlotHashes trên Xác minh",
+  "mech.8h": "Gutter Pot",
+  "mech.8p": "Stake một nắp, có vé. Mỗi thứ Hai 00:00 UTC thành phố rút mười người stake nắp, theo trọng số stake. Mỗi người thắng nhận voucher Rare / Rare+ / Epic (50 / 40 / 10) lăn on-chain từ SlotHashes, khoá 7 ngày. Khoá $CG không mua vé. Thêm ngoài hai nắp miễn phí nhiệm vụ mỗi tuần.",
+  "mech.8f": "10 người thắng · Rare–Epic · 7 ngày",
   "presale.c5h": "Khung founder, mãi mãi",
   "presale.c5p": "Mỗi nắp từ pack pre-sale hoặc một trong 125 rương mang khung founder vàng. Đó là nguồn gốc, không thêm sức mạnh — cùng fusion, cùng stake, cùng trận. Hiện trong cửa sổ mở pack, bộ sưu tập và chợ."
 }

@@ -178,6 +178,7 @@ export const useRevealNonce = () => {
 
 export const useStakingOverview = () => useQuery({ queryKey: qk.stakingOverview, queryFn: () => api.get('/staking/overview'), staleTime: 30_000 });
 export const useStakingMe = () => useQuery({ queryKey: qk.stakingMe, queryFn: () => api.get('/staking/me'), enabled: useAuthenticated(), staleTime: 15_000 });
+export const useGutterPot = () => useQuery({ queryKey: qk.stakingPot, queryFn: () => api.get('/staking/pot'), staleTime: 15_000 });
 
 export const useQuests = () => useQuery({ queryKey: qk.quests, queryFn: () => api.get('/quests'), enabled: useAuthenticated(), staleTime: 30_000 });
 /** Proof-of-human pass (Turnstile, T-B-49) — quest / SKR settlement waits until it is verified. */

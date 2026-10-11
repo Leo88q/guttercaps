@@ -87,11 +87,12 @@ export const ITEM_REWARDS = { maxRootBudget: 1_000, maxClaim: 10 } as const;
  *  - `maxTemplate`: highest template id a leaf may carry (`QUEST_CHIP_TEMPLATES.length − 1`, faucets.ts).
  *  - `perLeaf`: exactly ONE voucher per leaf — a wallet owed two chips gets the second in the next epoch
  *    (the leaf amount is the template id, so it cannot also be a count).
- * The chip itself is minted by chip_core's VRF pack flow (`open_voucher` → Switchboard → `open_pack`), so
+ * The chip itself is minted by chip_core's pack flow (`open_voucher` → SlotHashes → `open_pack`), so
  * free chips have no mint authority and the same on-chain audit trail as paid ones. Weekly per-wallet cap
- * (`ANTI_FARM.freeChipsPerWalletPerWeek`) is enforced by the oracle when it builds the batch.
+ * (`ANTI_FARM.freeChipsPerWalletPerWeek`) is enforced by the oracle for quest chips; Gutter Pot (template 4)
+ * is excluded from that cap.
  */
-export const CHIP_VOUCHER_REWARDS = { maxRootBudget: 500, maxTemplate: 3, perLeaf: 1 } as const;
+export const CHIP_VOUCHER_REWARDS = { maxRootBudget: 500, maxTemplate: 4, perLeaf: 1 } as const;
 
 /**
  * Per-root ceiling in micro-SKR (100 000 SKR ≈ $1.7 k at $0.017). Bounds the

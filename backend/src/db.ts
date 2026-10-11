@@ -881,6 +881,20 @@ CREATE TABLE IF NOT EXISTS privacy_restrictions (
   erased_at INTEGER,
   resumed_at INTEGER
 );
+-- Gutter Pot weekly raffle (named staking jackpot). Snapshot + published seed; winners claim via kind-9 template 4.
+CREATE TABLE IF NOT EXISTS gutter_pot_draws (
+  week          INTEGER PRIMARY KEY,     -- weekIndex (Monday 00:00 UTC)
+  drawn_at      INTEGER NOT NULL,        -- unix s the oracle snapshotted
+  slot          INTEGER NOT NULL,        -- finalizedHorizon used in the seed
+  seed_hex      TEXT    NOT NULL,        -- sha256(gutter-pot:v1:week:slot:totalWeight:wallets:ticketsHash)
+  tickets_hash  TEXT    NOT NULL,        -- sha256 of sorted wallet:weight lines
+  total_weight  TEXT    NOT NULL,
+  wallets       INTEGER NOT NULL,
+  winners       TEXT    NOT NULL,        -- JSON [{wallet, weight}]
+  tickets       TEXT    NOT NULL         -- JSON [{wallet, weight}] snapshot for audit / recompute
+);
+CREATE INDEX IF NOT EXISTS idx_gutter_pot_drawn ON gutter_pot_draws(drawn_at);
+
 CREATE TABLE IF NOT EXISTS oracle_prices (
   symbol       TEXT PRIMARY KEY,           -- SOL | SKR
   usd          REAL    NOT NULL,

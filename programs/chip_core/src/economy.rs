@@ -173,7 +173,7 @@ pub struct VoucherDef {
     pub soulbound_days: u8,
 }
 
-pub const VOUCHER_DEFS: [VoucherDef; 4] = [
+pub const VOUCHER_DEFS: [VoucherDef; 5] = [
     VoucherDef {
         odds_bps: [8000, 1800, 200, 0, 0, 0, 0, 0, 0],
         soulbound_days: 3,
@@ -190,6 +190,10 @@ pub const VOUCHER_DEFS: [VoucherDef; 4] = [
         odds_bps: [0, 0, 5000, 4000, 1000, 0, 0, 0, 0],
         soulbound_days: 14,
     }, // 3 five referrals converted
+    VoucherDef {
+        odds_bps: [0, 0, 5000, 4000, 1000, 0, 0, 0, 0],
+        soulbound_days: 7,
+    }, // 4 Gutter Pot weekly staking raffle
 ];
 
 /// Starter chips cannot be listed, fused as material, or staked until this many days elapse.

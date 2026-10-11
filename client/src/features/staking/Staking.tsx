@@ -7,7 +7,7 @@ import { useConnection } from '@solana/wallet-adapter-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { PublicKey } from '@solana/web3.js';
 import { LOCK_TIERS, STAKE_CLAIM_CAPS, fullSetBonusMult, impliedApy } from '@guttercaps/economy';
-import { useStakingOverview, useStakingMe, useMyChips, type Chip } from '@/api/hooks';
+import { useStakingOverview, useStakingMe, useMyChips, useGutterPot, type Chip } from '@/api/hooks';
 import { useGameConfig, useStakingChain, useWalletLike, useBalances } from '@/chain/hooks';
 import { pendingReward } from '@/chain/accounts';
 import { sendTx, TxError } from '@/chain/tx';
@@ -31,6 +31,7 @@ export default function Staking() {
   const t = useT();
   const overview = useStakingOverview();
   const meApi = useStakingMe();
+  const pot = useGutterPot();
   const chips = useMyChips({});
   const cfg = useGameConfig();
   const [emission, pools, tstakes, setBonus, walletDay] = useStakingChain();
@@ -112,6 +113,15 @@ export default function Staking() {
         <h1 className="page-title">{t('staking.title')}</h1>
         <p className="page-sub">{t('staking.subtitle')}</p>
       </div>
+
+      <Link to="/pot" className="card card-hover row" style={{ textDecoration: 'none' }}>
+        <img src="/art/gutter-pot.png" width={44} height={44} alt="" className="pot-art-sm" />
+        <div className="grow">
+          <div className="strong">{t('pot.title')}</div>
+          <div className="tiny muted">{t('pot.winners', { n: pot.data?.winnersPerWeek ?? 10 })} · {t('pot.odds')}</div>
+        </div>
+        {pot.data?.me?.wonLast && pot.data.me.pendingClaim ? <span className="pill pill-ok">{t('pot.won')}</span> : null}
+      </Link>
 
       <div className="grid-3">
         <div className="card"><Stat label={t('ui.dayYear')} value={overview.isLoading ? <Skeleton h={22} w={60} /> : `${fmtDecimal(emission.data?.dayIndex ?? overview.data?.emission?.dayIndex ?? 0, 0)} / ${t('screens.year', { n: (overview.data?.emission?.year ?? 0) + 1 })}`} /></div>

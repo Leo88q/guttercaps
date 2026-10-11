@@ -1223,3 +1223,18 @@ model PrivacyRestriction {
   resumedAt Int? @map("resumed_at")
   @@map("privacy_restrictions")
 }
+
+// Gutter Pot weekly raffle snapshot (oracle-settled; winners claim kind-9 template 4).
+model GutterPotDraw {
+  week         Int    @id
+  drawnAt      Int    @map("drawn_at")
+  slot         Int
+  seedHex      String @map("seed_hex")
+  ticketsHash  String @map("tickets_hash")
+  totalWeight  String @map("total_weight")
+  wallets      Int
+  winners      String // JSON [{wallet, weight}]
+  tickets      String // JSON [{wallet, weight}]
+  @@index([drawnAt])
+  @@map("gutter_pot_draws")
+}

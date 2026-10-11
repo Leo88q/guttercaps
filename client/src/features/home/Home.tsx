@@ -90,6 +90,15 @@ export default function Home() {
         <ChevronRightIcon size={14} />
       </Link>
 
+      <Link to="/pot" className="card card-hover row" style={{ textDecoration: 'none' }} data-testid="home-pot">
+        <img src="/art/gutter-pot.png" width={44} height={44} alt="" className="pot-art-sm" />
+        <div className="grow">
+          <div className="strong">{t('pot.title')}</div>
+          <div className="tiny muted">{t('pot.subtitle')}</div>
+        </div>
+        <ChevronRightIcon size={14} />
+      </Link>
+
       <div className="grid-2">
         <Link to="/quests" className="card card-hover row" style={{ textDecoration: 'none' }}>
           <GenBadge name="mech-quests" size={28} />
@@ -139,6 +148,7 @@ function Landing({ onConnect }: { onConnect: () => void }) {
         {t('ui.homeIntro')}
       </p>
       <Link to="/drain" className="btn btn-ghost">{t('drain.title')}</Link>
+      <Link to="/pot" className="btn btn-ghost">{t('pot.title')}</Link>
       <div className="row" style={{ justifyContent: 'center', gap: 12 }}>
         <SprayNozzleButton onClick={onConnect}>{t('common.connectWallet')}</SprayNozzleButton>
         <Link to="/market" className="btn">{t('home.heroSecondary')}</Link>

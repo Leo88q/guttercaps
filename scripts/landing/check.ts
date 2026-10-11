@@ -122,6 +122,11 @@ const loginCg = (DAILY_QUESTS.find((q) => q.id === 'd_login')!.rewardCgMicro) / 
 has('drain daily cg', en('mech.7p'), `${loginCg} $CG`);
 has('drain slothashes', en('mech.7p'), 'SlotHashes');
 has('drain fact', en('mech.7f'), `${loginCg} $CG/day`);
+has('gutter pot winners', en('mech.8p'), 'ten chip-stakers');
+has('gutter pot odds', en('mech.8p'), '50 / 40 / 10');
+has('gutter pot soulbound', en('mech.8p'), 'soulbound 7 days');
+has('gutter pot slothashes', en('mech.8p'), 'SlotHashes');
+has('gutter pot fact', en('mech.8f'), '10 winners');
 const quests = en('mech.5p');
 has('daily quest cap', quests, `${ANTI_FARM.dailyQuestRewardCapCgMicro / 1e6} $CG a day`);
 has('weekly quest cap', quests, `${ANTI_FARM.weeklyQuestRewardCapCgMicro / 1e6} a week`);

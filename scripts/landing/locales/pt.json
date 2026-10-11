@@ -232,6 +232,8 @@
   "presale.note": "É uma compra antecipada de packs de mainnet, não uma venda de token: você recebe exatamente os packs que reservou, entregues no lançamento. O beta em devnet continua gratuito para todos.",
   "faq.q10": "O que é a pré-venda?",
   "faq.a10": "Duas ofertas de Packs de Evento Limitados vendidas por SOL, USDC ou SKR de mainnet enquanto o jogo roda o beta gratuito em devnet: 500 unidades a 0,30 SOL (máx. 5 por carteira) e 125 baús fundadores de 4 packs a 0,999 SOL (máx. 1 por carteira). O pagamento vai para a multisig da equipe (2-de-3) com um memo; USDC e SKR nas ATAs do mesmo tesouro. Tampas desses packs levam uma moldura de fundador permanente. Os packs são concedidos on-chain no lançamento da mainnet na ordem de reserva, e você mesmo os abre com os mesmos SlotHashes on-chain de qualquer compra. A campanha pode ser desligada a qualquer momento; o registro público de reservas é a base para reembolsos.",
+  "faq.q11": "O que é o Gutter Pot?",
+  "faq.a11": "Um sorteio semanal entre quem faz staking de caps. O peso do ticket é o peso vivo do stake na segunda 00:00 UTC; locks de $CG não contam. Dez carteiras únicas ganham um voucher Rare / Rare+ / Epic (50 / 40 / 10), rolado on-chain com SlotHashes e preso 7 dias. A seed publicada é sha256 da semana, do slot, dos totais e da lista de tickets — a mesma entrada sempre dá as mesmas dez carteiras. É extra aos dois caps grátis de missões por semana; resgate o voucher nas Missões.",
   "faq.q9": "O código é aberto?",
   "faq.a9": "Os quatro programas Anchor, o pacote de economia com testes de invariantes, o indexador e o app estão no repositório indicado abaixo. Os números desta página são conferidos contra esse pacote.",
   "nav.why": "Por que vale a pena",
@@ -252,6 +254,9 @@
   "mech.7h": "Bueiro e Verificar",
   "mech.7p": "Toda manhã a cidade pede que você levante uma grade. Esse check-in é o login diário — 2 $CG, resgatados nas Missões. Cada pack dessas ruas é rolado com SlotHashes on-chain; cole a transação em Verificar e refaça as raridades que o programa mintou. Ninguém, inclusive nós, escolhe o drop.",
   "mech.7f": "2 $CG/dia · SlotHashes em Verificar",
+  "mech.8h": "Gutter Pot",
+  "mech.8p": "Faça stake de um cap e ganhe um ticket. Toda segunda às 00:00 UTC a cidade sorteia dez stakers de caps, ponderados pelo peso do stake. Cada vencedor resgata um voucher Rare / Rare+ / Epic (50 / 40 / 10) rolado on-chain com SlotHashes, preso 7 dias. Locks de $CG não compram ticket. Extra aos dois caps grátis de missões por semana.",
+  "mech.8f": "10 vencedores · Rare–Epic · 7 dias",
   "presale.c5h": "Moldura de fundador, para sempre",
   "presale.c5p": "Cada tampa de um pack da pré-venda ou de um dos 125 baús leva uma moldura de fundador dourada. É origem, não poder extra — mesma fusão, mesmo stake, mesma luta. Aparece na janela de revelação, na coleção e no mercado."
 }

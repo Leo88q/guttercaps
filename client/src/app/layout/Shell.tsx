@@ -134,6 +134,7 @@ export function Shell({ children }: { children: ReactNode }) {
             <Link to="/legal/privacy">{t('legal.privacy')}</Link>
             <Link to="/preorder">{t('preorder.title')}</Link>
             <Link to="/drain">{t('drain.title')}</Link>
+            <Link to="/pot">{t('pot.title')}</Link>
             <Link to="/verify">{t('legal.verify')}</Link>
             <span className="mono">{LEGAL_EFFECTIVE}</span>
           </footer>

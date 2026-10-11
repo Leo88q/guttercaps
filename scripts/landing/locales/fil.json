@@ -232,6 +232,8 @@
   "presale.note": "Advance purchase ito ng mga mainnet pack, hindi token sale: matatanggap mo ang eksaktong mga pack na na-reserve mo, na ipapamahagi sa paglunsad. Manatiling libre ang devnet beta para sa lahat.",
   "faq.q10": "Ano ang pre-sale?",
   "faq.a10": "Dalawang Limited Event Pack na ibinebenta sa mainnet SOL, USDC o SKR habang tumatakbo ang libreng devnet beta: 500 singles sa 0.30 SOL (max 5 bawat wallet) at 125 founders chests ng 4 packs sa 0.999 SOL (max 1 bawat wallet). Ang bayad ay sa team multisig (2-of-3) na may memo; USDC at SKR sa ATAs ng iyon ding treasury. May permanenteng founder frame ang mga cap. Igrant on-chain ang packs sa mainnet launch ayon sa reservation order, at ikaw ang magbubukas gamit ang parehong on-chain SlotHashes. Maaaring i-off ang campaign anytime; ang public reservation registry ang basehan ng refund.",
+  "faq.q11": "Ano ang Gutter Pot?",
+  "faq.a11": "Lingguhang raffle sa mga chip staker. Ang bigat ng ticket ay ang live chip-stake weight sa Lunes 00:00 UTC; hindi binibilang ang $CG lock. Sampung natatanging wallet ang mananalo ng Rare / Rare+ / Epic voucher (50 / 40 / 10), nire-roll on-chain mula sa SlotHashes at nakatali ng 7 araw. Ang published seed ay sha256 ng linggo, slot, totals at listahan ng ticket — parehong input, parehong sampung wallet. Dagdag ito sa dalawang libreng quest cap kada linggo; i-claim ang voucher sa Mga Quest.",
   "faq.q9": "Bukas ba ang source code?",
   "faq.a9": "Nasa repository sa ibaba ang apat na Anchor program, economy package na may invariant test, indexer at app. Sinusuri ang mga bilang ng pahinang ito laban sa package na iyon.",
   "nav.why": "Bakit sulit",
@@ -252,6 +254,9 @@
   "mech.7h": "Alkantarilya at Verify",
   "mech.7p": "Tuwing umaga hinihiling ng lungsod na itaas mo ang rehas. Iyon ang daily login — 2 $CG, i-claim sa Mga Quest. Bawat pack mula sa mga kalye iyon ay galing sa on-chain SlotHashes; i-paste ang open transaction sa Verify at ulitin ang rarities na minint ng program. Walang sino, pati kami, ang pumipili ng drop.",
   "mech.7f": "2 $CG/araw · SlotHashes sa Verify",
+  "mech.8h": "Gutter Pot",
+  "mech.8p": "Mag-stake ng cap, may ticket. Tuwing Lunes 00:00 UTC ang lungsod ay pumipili ng sampung chip staker, ayon sa bigat ng stake. Bawat panalo ay magcla-claim ng Rare / Rare+ / Epic voucher (50 / 40 / 10) na nire-roll on-chain mula sa SlotHashes, nakatali 7 araw. Hindi bumibili ng ticket ang $CG lock. Dagdag sa dalawang libreng quest cap kada linggo.",
+  "mech.8f": "10 panalo · Rare–Epic · 7 araw",
   "presale.c5h": "Founder frame, magpakailanman",
   "presale.c5p": "Bawat cap mula sa pre-sale pack o isa sa 125 chests ay may gintong founder frame. Pinagmulan ito, hindi extra power — parehong fusion, stake, at laban. Makikita sa reveal window, collection, at market."
 }

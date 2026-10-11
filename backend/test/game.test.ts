@@ -218,7 +218,7 @@ describe('staking read-model', () => {
     const small = staking.estimate(db, staking.validateEstimate({ amountCgMicro: '1000000000', tier: 3 }));
     const big = staking.estimate(db, staking.validateEstimate({ amountCgMicro: '100000000000000', tier: 3 }));
     expect(small.apyPct).toBeGreaterThan(big.apyPct);
-    expect(small).toMatchObject({ earlyExitPenaltyBps: 1500, boostBps: 30_000, indicativeApyRange: [36, 90] });
+    expect(small).toMatchObject({ earlyExitPenaltyBps: 1500, boostBps: 30_000, indicativeApyRange: [14, 32] });
     // Common lvl 1, 0 sets, played now → 1e6; idle (no play) → ×0.25. Rare lvl 5, 2 sets → 5e6 × 1.1 × 1.24
     const now = Math.floor(Date.now() / 1000);
     expect(staking.chipWeightRaw(0, 1, 0, now)).toBe(1_000_000n);
@@ -1233,7 +1233,7 @@ describe('reward oracle · SKR prize pool (kinds 5 / 6)', () => {
     wAll(alice); wAll(bob);
     // no pool account → the $CG cycle runs, SKR is skipped silently
     let r = await oracle.runOnce({ connection: asConn(conn), db, questOracle, seasonOracle, minBatchMicro: 1n }, T);
-    expect(r.built.filter((b) => b.kind >= 5)).toEqual([]);
+    expect(r.built.filter((b) => b.kind === 5 || b.kind === 6)).toEqual([]);
     expect(db.get(`SELECT 1 FROM skr_allotments`)).toBeUndefined();
     // pool on chain, but the emission's quest oracle is another key → the Seeker week is NOT built with our key
     poolOn(conn, { budget: 1_000n * SKR, questOracle: Keypair.generate().publicKey, seasonOracle: seasonOracle.publicKey });

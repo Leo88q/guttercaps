@@ -12,7 +12,7 @@ import { FEES, SKR, YEARLY_EMISSION_PCT_OF_PLAY, EMISSION_SPLIT, EMISSION_GUARD,
 import { SERVICES, SERVICES_DAILY_CAP_RUST } from '../src/services.ts';
 import { MATCHMAKING, MATCH_REWARDS, WAGER } from '../src/pvp.ts';
 import { REWARD_ROOT_KINDS, SKR_ROOT_KIND_BASE, DEFAULT_MAX_SKR_ROOT_BUDGET_MICRO, ITEM_ROOT_KIND_BASE, ITEM_REWARDS, CHIP_ROOT_KIND_BASE, CHIP_VOUCHER_REWARDS } from '../src/skrRewards.ts';
-import { QUEST_CHIP_TEMPLATES, DAILY_QUESTS, WEEKLY_QUESTS, PERMANENT_QUESTS } from '../src/faucets.ts';
+import { QUEST_CHIP_TEMPLATES, DAILY_QUESTS, WEEKLY_QUESTS, PERMANENT_QUESTS, GUTTER_POT } from '../src/faucets.ts';
 import { PYTH_FEEDS, PYTH_MAX_AGE_SECS, PYTH_SLIPPAGE_BPS, PYTH_MAX_CONF_BPS, PYTH_PUSHER, PYTH_WORST_CASE_AGE_S, PYTH_PROGRAMS } from '../src/oracle.ts';
 import { FX } from '../src/fx.ts';
 
@@ -213,6 +213,9 @@ QUEST_CHIP_TEMPLATES.forEach((tpl, i) => {
   check(`voucher[${i}].odds sum`, tpl.odds.reduce((a, b) => a + b, 0), 10_000);
   check(`voucher[${i}].soulboundDays`, Number(r[2]), tpl.soulboundDays);
 });
+check('Gutter Pot template id', GUTTER_POT.template, 4);
+check('Gutter Pot template row', QUEST_CHIP_TEMPLATES[GUTTER_POT.template], { template: 4, odds: GUTTER_POT.odds, soulboundDays: GUTTER_POT.soulboundDays });
+check('Gutter Pot winners / week', GUTTER_POT.winnersPerWeek, 10);
 // every quest chip reward must be one of the templates (the oracle roots the template id, not the odds)
 for (const q of [...DAILY_QUESTS, ...WEEKLY_QUESTS, ...PERMANENT_QUESTS]) {
   if (q.rewardChip) check(`quest ${q.id} rewardChip is template ${q.rewardChip.template}`, QUEST_CHIP_TEMPLATES[q.rewardChip.template], q.rewardChip);

@@ -427,6 +427,32 @@ on('get', '/staking/me', () => ({
   setBonus: { onChainSets: 0, computedSets: 0, multBps: 10_000, syncPending: false },
   totalPendingMicro: '4870000',
 }));
+on('get', '/staking/pot', () => {
+  const week = 2912;
+  const weekStartsAt = week * 7 * 86_400 + 4 * 86_400;
+  return {
+    week,
+    weekStartsAt,
+    weekEndsAt: weekStartsAt + 7 * 86_400,
+    winnersPerWeek: 10,
+    soulboundDays: 7,
+    template: 4,
+    oddsBps: [0, 0, 5000, 4000, 1000, 0, 0, 0, 0],
+    seedPrefix: 'gutter-pot:v1',
+    live: { wallets: 18420, totalWeight: '1420000000000' },
+    lastDraw: {
+      week: week - 1,
+      drawnAt: weekStartsAt - 60,
+      slot: 312_000_000,
+      seedHex: 'a'.repeat(64),
+      ticketsHash: 'b'.repeat(64),
+      totalWeight: '1380000000000',
+      wallets: 17_900,
+      winners: [{ wallet: ME, weight: '8800000' }],
+    },
+    me: { weight: '8800000', shareBps: 6, wonLast: true, pendingClaim: true },
+  };
+});
 on('post', '/staking/estimate', (o) => {
   const b = o.body as { amountCgMicro: string; tier: number };
   const tier = (['flex', 'd30', 'd90', 'd180'] as const)[b.tier];

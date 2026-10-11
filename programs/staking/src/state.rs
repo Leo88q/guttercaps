@@ -77,7 +77,7 @@ pub const CHIP_KIND_VOUCHERS: u8 = 9;
 /// 1 h revoke window ≈ 500 chips, most of them Commons (template odds), all soulbound for days.
 pub const MAX_CHIP_ROOT_BUDGET: u64 = 500;
 /// Highest template id a leaf may carry (`VOUCHER_DEFS.len() − 1`); chip_core re-checks (`InvalidVoucher`).
-pub const MAX_CHIP_TEMPLATE: u64 = 3;
+pub const MAX_CHIP_TEMPLATE: u64 = 4;
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug, InitSpace)]
 #[repr(u8)]

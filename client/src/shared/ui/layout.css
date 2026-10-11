@@ -580,6 +580,12 @@ img { max-width: 100%; display: block; }
 .page-bg-profile { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-profile.jpg); }
 .page-bg-verify { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-verify.jpg); }
 .page-bg-drain { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-drain.jpg); }
+.page-bg-pot { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-pot.jpg); }
+.pot-art { width: 160px; height: 160px; border-radius: 50%; object-fit: cover; }
+.pot-art-sm { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
+.pot-winners { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; text-align: left; }
+.pot-winners li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 8px; border-radius: 8px; background: color-mix(in srgb, var(--cg-asphalt) 70%, transparent); }
+.pot-winners li.me { box-shadow: 0 0 0 1px var(--cg-acid-green, #B6FF3C); }
 .drain-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 12px; }
 .drain-tile { text-align: center; padding: 14px 10px; cursor: pointer; }
 .drain-tile:disabled { cursor: default; opacity: 0.85; }

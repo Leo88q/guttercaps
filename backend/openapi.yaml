@@ -719,6 +719,12 @@ paths:
       responses:
         '200': { description: estimate, content: { application/json: { schema: { type: object, properties: { apyPct: { type: number }, dailyCgMicro: { type: string }, unlockAt: { type: string, format: date-time }, earlyExitPenaltyBps: { type: integer }, boostBps: { type: integer }, minStakeCgMicro: { type: string }, indicativeApyRange: { type: array, items: { type: number } }, emissionSource: { type: string, enum: [chain, schedule] } } } } } }
         '400': { $ref: '#/components/responses/Error' }
+  /staking/pot:
+    get:
+      tags: [staking]
+      security: []
+      summary: Gutter Pot — weekly weighted raffle among chip stakers (10 Rare–Epic vouchers, template 4). Public; `me` is filled when a session cookie is present.
+      responses: { '200': { description: pot, content: { application/json: { schema: { $ref: '#/components/schemas/GutterPot' } } } } }
 
   # ------------------------------------------------------------------ quests
   /quests:
@@ -1574,12 +1580,42 @@ components:
         setBonus: { type: object, properties: { onChainSets: { type: integer }, computedSets: { type: integer }, multBps: { type: integer }, syncPending: { type: boolean } } }
         totalPendingMicro: { type: string }
         pendingEstimated: { type: boolean }
+    GutterPot:
+      type: object
+      properties:
+        week: { type: integer }
+        weekStartsAt: { type: integer }
+        weekEndsAt: { type: integer }
+        winnersPerWeek: { type: integer }
+        soulboundDays: { type: integer }
+        template: { type: integer }
+        oddsBps: { type: array, items: { type: integer } }
+        seedPrefix: { type: string }
+        live: { type: object, properties: { wallets: { type: integer }, totalWeight: { type: string } } }
+        lastDraw:
+          type: [object, 'null']
+          properties:
+            week: { type: integer }
+            drawnAt: { type: integer }
+            slot: { type: integer }
+            seedHex: { type: string }
+            ticketsHash: { type: string }
+            totalWeight: { type: string }
+            wallets: { type: integer }
+            winners: { type: array, items: { type: object, properties: { wallet: { type: string }, weight: { type: string } } } }
+        me:
+          type: [object, 'null']
+          properties:
+            weight: { type: string }
+            shareBps: { type: integer }
+            wonLast: { type: boolean }
+            pendingClaim: { type: boolean }
     Quest:
       type: object
       properties: { id: { type: string }, cadence: { type: string }, title: { type: string }, description: { type: string }, metric: { type: string }, target: { type: integer }, value: { type: integer }, rewardCgMicro: { type: string }, rewardChip: { type: [object, 'null'], description: 'quest chip voucher template { template, odds[9] bps, soulboundDays } — rooted into a kind-9 chip root (one voucher per wallet per epoch) and delivered by claim_chip_root → chip_core open_voucher → open_pack (VRF-minted, soulbound for soulboundDays)' }, rewardBooster: { type: integer, description: 'fusion boosters granted on completion — rooted into a kind-8 item root and delivered by claim_item_root (chip_core PlayerItems)' }, completedAt: { type: [string, 'null'] }, claimable: { type: boolean, description: 'done and waiting for the next reward root' }, rooted: { type: boolean, description: 'the $CG leaf (kind 2) is in a root' }, boosterRooted: { type: boolean, description: 'the booster leaf (kind 8) is in a root' }, chipRooted: { type: boolean, description: 'the chip voucher leaf (kind 9) is in a root' }, creditedCgMicro: { type: [string, 'null'], description: 'micro-$CG actually credited after daily/weekly caps' }, ineligibleReason: { type: [string, 'null'], enum: [account_too_new, play_10_matches_or_buy_a_pack, rewards_paused, device_limit, human_check_required, null], description: 'why finished quests are not paid; human_check_required = pass the Turnstile challenge (POST /me/human) — settlement waits' }, resetsAt: { type: [string, 'null'], format: date-time } }
     ClaimLeaf:
       type: object
-      properties: { kind: { type: integer, description: '2 quests · 3 PvP season · 4 events ($CG, minted from emission) · 5 quests · 6 season · 7 events (SKR, prize pool) · 8 fusion boosters (ITEM — claim_item_root delivers into chip_core PlayerItems by CPI) · 9 quest chip vouchers (CHIP — claim_chip_root CPIs chip_core open_voucher; the chip is VRF-minted by the pack crank)' }, epoch: { type: integer }, currency: { type: string, enum: [CG, SKR, ITEM, CHIP], description: 'ITEM leaves carry a unit COUNT in amountMicro (boosters, ≤ 10 per leaf); CHIP leaves carry the voucher TEMPLATE id (0..3, one chip per leaf) — neither is micro-tokens' }, rootPda: { $ref: '#/components/schemas/Pubkey' }, amountMicro: { type: string, description: 'micro-units of the currency; for ITEM roots the item count; for CHIP roots the voucher template id' }, proof: { type: array, items: { type: string } }, root: { type: string }, claimableAt: { type: [string, 'null'], format: date-time }, claimed: { type: boolean }, published: { type: boolean }, memo: { description: 'which quests / matches the leaf pays' } }
+      properties: { kind: { type: integer, description: '2 quests · 3 PvP season · 4 events ($CG, minted from emission) · 5 quests · 6 season · 7 events (SKR, prize pool) · 8 fusion boosters (ITEM — claim_item_root delivers into chip_core PlayerItems by CPI) · 9 quest chip vouchers (CHIP — claim_chip_root CPIs chip_core open_voucher; the chip is VRF-minted by the pack crank)' }, epoch: { type: integer }, currency: { type: string, enum: [CG, SKR, ITEM, CHIP], description: 'ITEM leaves carry a unit COUNT in amountMicro (boosters, ≤ 10 per leaf); CHIP leaves carry the voucher TEMPLATE id (0..4, one chip per leaf) — neither is micro-tokens' }, rootPda: { $ref: '#/components/schemas/Pubkey' }, amountMicro: { type: string, description: 'micro-units of the currency; for ITEM roots the item count; for CHIP roots the voucher template id' }, proof: { type: array, items: { type: string } }, root: { type: string }, claimableAt: { type: [string, 'null'], format: date-time }, claimed: { type: boolean }, published: { type: boolean }, memo: { description: 'which quests / matches the leaf pays' } }
     SkrPool:
       type: object
       properties:

@@ -21,6 +21,7 @@ const Profile = lazy(() => import('@/features/profile/Profile'));
 const Codex = lazy(() => import('@/features/codex/Codex'));
 const Verify = lazy(() => import('@/features/verify/Verify'));
 const Drain = lazy(() => import('@/features/drain/Drain'));
+const Pot = lazy(() => import('@/features/pot/Pot'));
 const Preorder = lazy(() => import('@/features/preorder/Preorder'));
 const Admin = lazy(() => import('@/features/admin/Admin'));
 const Language = lazy(() => import('@/features/language/Language'));
@@ -74,6 +75,7 @@ export const routes: RouteObject[] = [
       { path: 'guide', element: S(<Guide />) },
       { path: 'verify/:signature?', element: S(<Verify />) },
       { path: 'drain', element: S(<Drain />) },
+      { path: 'pot', element: S(<Pot />) },
       { path: 'language', element: S(<Language />) },
       // Legal docs are reachable at three URLs on purpose: /legal/terms is the canonical one, and the two
       // short aliases are what a store listing, a receipt footer or a printed QR code will point at.

@@ -2762,6 +2762,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/staking/pot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Gutter Pot — weekly weighted raffle among chip stakers (10 Rare–Epic vouchers, template 4). Public; `me` is filled when a session cookie is present. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description pot */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GutterPot"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/quests": {
         parameters: {
             query?: never;
@@ -5348,6 +5384,39 @@ export interface components {
             };
             totalPendingMicro?: string;
             pendingEstimated?: boolean;
+        };
+        GutterPot: {
+            week?: number;
+            weekStartsAt?: number;
+            weekEndsAt?: number;
+            winnersPerWeek?: number;
+            soulboundDays?: number;
+            template?: number;
+            oddsBps?: number[];
+            seedPrefix?: string;
+            live?: {
+                wallets?: number;
+                totalWeight?: string;
+            };
+            lastDraw?: {
+                week?: number;
+                drawnAt?: number;
+                slot?: number;
+                seedHex?: string;
+                ticketsHash?: string;
+                totalWeight?: string;
+                wallets?: number;
+                winners?: {
+                    wallet?: string;
+                    weight?: string;
+                }[];
+            } | null;
+            me?: {
+                weight?: string;
+                shareBps?: number;
+                wonLast?: boolean;
+                pendingClaim?: boolean;
+            } | null;
         };
         Quest: {
             id?: string;

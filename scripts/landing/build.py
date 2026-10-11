@@ -550,6 +550,7 @@ BODY = f'''
 {mech_card(5, '📋')}
 {mech_card(6, '🎨')}
 {mech_card(7, '🕳️')}
+{mech_card(8, '🍲')}
     </div>
   </div>
 </section>
