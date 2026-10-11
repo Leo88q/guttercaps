@@ -287,9 +287,6 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     const result = await switchboard.health();
     res.status(result.ready ? 200 : 503).json(result);
   }));
-  v1.get('/switchboard/reveal/:randomness', rl({ name: 'switchboard-reveal', limit: 30, windowMs: 60_000, by: 'ip' }), asyncRoute(async (req, res) => {
-    res.json(await switchboard.reveal(req.params.randomness));
-  }));
   const wrap = (fn: (req: Request, res: Response) => unknown) => (req: Request, res: Response, next: NextFunction) => {
     Promise.resolve(fn(req, res)).catch(next);
   };

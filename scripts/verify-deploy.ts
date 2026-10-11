@@ -1,5 +1,5 @@
 // Verifies that a program artifact — or the program already on chain — is the build the cluster needs
-// (SEC-F19 from SECURITY-ECON-AUDIT-2026-09-21; the "reminder" line that `program-ids guard-mainnet`
+// (SEC-F19 from economic audit 2026-09-21; the "reminder" line that `program-ids guard-mainnet`
 // prints becomes a check here).
 //
 // What nothing else catches: `anchor build -- --features devnet` (or `localnet`) yields a chip_core.so /

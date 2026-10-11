@@ -1,4 +1,4 @@
-// SEC-B4 (SECURITY-AUDIT-2026-09-26.md): the app's webfonts are self-hosted and *must stay* usable.
+// SEC-B4 (audit 2026-09-26): the app's webfonts are self-hosted and *must stay* usable.
 //
 // The defect this file exists for is not hypothetical: the app used to import sixteen
 // `@fontsource/<family>/<subset>-<weight>.css` files, and those per-subset stylesheets carry no

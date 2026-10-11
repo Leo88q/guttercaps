@@ -91,7 +91,7 @@ export const secondsToHuman = (sec: number) => sec === 0 ? t('common.none')
 
 /**
  * Mint number of a chip (`Name #N`). `chips.game_index` is resolved on chain — the API reports
- * `index: null` until it is (see SEC-B3 / shape #27 in SECURITY-AUDIT-2026-09-26.md), and `#null`
+ * `index: null` until it is (see SEC-B3 / shape #27 in audit 2026-09-26), and `#null`
  * or a placeholder `#0` would both be lies: `#0` is the first chip ever minted in that district.
  * Returns `null` so the caller can drop the fragment instead of rendering it.
  */

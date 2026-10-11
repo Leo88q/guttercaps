@@ -1,4 +1,4 @@
-// Static gates for the HTTP input boundary (SEC-B2 / SEC-B3, SECURITY-AUDIT-2026-09-26.md).
+// Static gates for the HTTP input boundary (SEC-B2 / SEC-B3, audit 2026-09-26).
 //
 // The Rust gates next door (anchor-invariants.test.ts) cover the programs. This file covers the
 // *other* half of the same failure family: a value that arrives as text from the network and reaches

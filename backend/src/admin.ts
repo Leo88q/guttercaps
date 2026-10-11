@@ -16,7 +16,7 @@
 // before the response leaves, including denied ones (`denied:` prefix).
 import { PublicKey, TransactionInstruction } from '@solana/web3.js';
 import {
-  BASELINE_ASSUMPTIONS, EMISSION_SPLIT, FEES, PACKS, RARITY_PROFILES, STANDARD_EV_TARGET, dailyFlows, guardedEmission, impliedCommonFloorUsd,
+  BASELINE_ASSUMPTIONS, EMISSION_GUARD, EMISSION_SPLIT, FEES, PACKS, RARITY_PROFILES, STANDARD_EV_TARGET, dailyFlows, guardedEmission, impliedCommonFloorUsd,
   packExpectedValueMult, probabilityAtLeast, type FlowAssumptions,
 } from '@guttercaps/economy';
 import type { Connection } from '@solana/web3.js';
@@ -398,7 +398,7 @@ export function simulate(body: { assumptions?: Partial<FlowAssumptions>; year?: 
     year, assumptions: a, baseline, scenario,
     delta: Object.fromEntries(Object.keys(scenario).map((k) => [k, +((scenario as unknown as Record<string, number>)[k] - (baseline as unknown as Record<string, number>)[k]).toFixed(2)])),
     slices,
-    guard: { floorShare: 0.30, burnMultiple: 1.25, emissionAtZeroBurnCg: Math.round(guardedEmission(scenario.scheduleCapCg, 0)) },
+    guard: { floorShare: EMISSION_GUARD.floorShare, burnMultiple: EMISSION_GUARD.burnMultiple, emissionAtZeroBurnCg: Math.round(guardedEmission(scenario.scheduleCapCg, 0)) },
     packs: Object.values(PACKS).map((p) => ({ id: p.id, evCommonEq: +packExpectedValueMult(p).toFixed(2), pLegend: +probabilityAtLeast(p, 6).toFixed(4) })),
     rarityValueMult: RARITY_PROFILES.map((r) => r.valueMult),
   };

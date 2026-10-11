@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PublicKey, type Connection } from '@solana/web3.js';
 import { createSwitchboardService, liveOracle } from '../src/switchboard.ts';
-import { gatewayBaseUrl, publicAddress, revealPayload, SwitchboardError } from '../src/switchboard-gateway.ts';
+import { gatewayBaseUrl, publicAddress, SwitchboardError } from '../src/switchboard-gateway.ts';
 import { SWITCHBOARD_QUEUE, SWITCHBOARD_PROGRAM_ID } from '../src/config.ts';
 import { rngAuthPda, RNG_KIND } from '../src/chain.ts';
 import { FakeConnection, encodeRandomness, encodeOracle, pk } from './chainFixtures.ts';
@@ -31,7 +31,7 @@ describe('Switchboard service (no wallet or transaction)', () => {
     expect(w.load).toHaveBeenCalledTimes(1); expect(w.gateway).toHaveBeenCalledTimes(1);
     expect(w.conn.sent).toHaveLength(0);
   });
-  it('preserves the same prefixed base for health and committed reveal, without exposing the path in health JSON', async () => {
+  it('preserves the same prefixed base for health, without exposing the path in health JSON', async () => {
     const w = world();
     // Synthetic prefix on the host reported by the user; not a guess of the live path.
     const base = 'https://141.95.35.110.xip.switchboard-oracles.xyz/rpc/';
@@ -41,11 +41,9 @@ describe('Switchboard service (no wallet or transaction)', () => {
     const report = await w.service.health();
     expect(report).toMatchObject({ ready: true, probes: [{ gateway: 'https://141.95.35.110.xip.switchboard-oracles.xyz', healthy: true }] });
     expect(w.gateway).toHaveBeenNthCalledWith(1, base.slice(0, -1), 'healthy_oracles');
-    await w.service.reveal(randomness.toBase58());
-    expect(w.gateway).toHaveBeenNthCalledWith(2, base.slice(0, -1), 'randomness_reveal', expect.objectContaining({
-      slot: 4000, randomness_key: randomness.toBuffer().toString('hex'), slothash: Array(32).fill(0xab),
-    }));
     expect(w.conn.sent).toHaveLength(0);
+    // reveal is no longer part of the service (the legacy relay was removed)
+    expect(w.service).not.toHaveProperty('reveal');
   });
   it('skips an unhealthy gateway and selects another live, on-chain eligible oracle', async () => {
     const w = world(), other = pk().toBase58();
@@ -82,11 +80,7 @@ describe('Switchboard service (no wallet or transaction)', () => {
     expect(w.registry).toHaveBeenCalledWith('devnet');
     expect(result).toMatchObject({ ready: true, oracle: oracle.toBase58(), discovery: { ok: true, gatewayCount: 1 },
       probes: [{ healthy: true, code: 'ok', directCode: 'gateway_timeout', healthGateway: 'https://pool.example.com' }] });
-    // Discovery changes only health inspection. Reveal STILL goes to the committed oracle's URI.
-    w.gateway.mockClear(); w.gateway.mockResolvedValue(payload);
-    await w.service.reveal(randomness.toBase58());
-    expect(w.gateway).toHaveBeenCalledTimes(1);
-    expect(w.gateway).toHaveBeenCalledWith('https://oracle.example.com', 'randomness_reveal', expect.any(Object));
+    // Discovery changes only health inspection.
     expect(w.conn.sent).toHaveLength(0);
   });
   it('on-chain fallback remains available when registry DNS fails', async () => {
@@ -154,26 +148,6 @@ describe('Switchboard service (no wallet or transaction)', () => {
     expect((await w.service.health()).ready).toBe(false);
     expect(w.load).toHaveBeenCalledTimes(2);
   });
-  it('relays exactly the committed oracle/seed with only a public RPC URL', async () => {
-    const w = world(); const result = await w.service.reveal(randomness.toBase58());
-    expect(result).toEqual({ ...payload, randomness: randomness.toBase58(), oracle: oracle.toBase58(), queue: queue.toBase58() });
-    expect(w.gateway).toHaveBeenCalledWith('https://oracle.example.com', 'randomness_reveal', {
-      slot: 4000, randomness_key: randomness.toBuffer().toString('hex'), slothash: Array(32).fill(0xab), rpc: 'https://api.devnet.solana.com',
-    });
-    expect(w.conn.sent).toHaveLength(0); expect(w.load).not.toHaveBeenCalled();
-  });
-  it.each(['owner', 'authority', 'queue', 'oracle-owner', 'oracle-queue', 'uncommitted', 'revealed'] as const)('rejects %s mismatch BEFORE gateway HTTP', async problem => {
-    const w = world();
-    if (problem === 'owner') w.conn.set(randomness, encodeRandomness(w.fields), pk());
-    if (problem === 'authority') w.conn.set(randomness, encodeRandomness({ ...w.fields, authority: pk() }), SWITCHBOARD_PROGRAM_ID);
-    if (problem === 'queue') w.conn.set(randomness, encodeRandomness({ ...w.fields, queue: pk() }), SWITCHBOARD_PROGRAM_ID);
-    if (problem === 'uncommitted') w.conn.set(randomness, encodeRandomness({ ...w.fields, seedSlot: 0n, lutSlot: 0n }), SWITCHBOARD_PROGRAM_ID);
-    if (problem === 'revealed') w.conn.set(randomness, encodeRandomness({ ...w.fields, revealSlot: 4001n }), SWITCHBOARD_PROGRAM_ID);
-    if (problem === 'oracle-owner') w.conn.set(oracle, encodeOracle('https://oracle.example.com'), pk());
-    if (problem === 'oracle-queue') w.conn.set(oracle, encodeOracle('https://oracle.example.com'), SWITCHBOARD_PROGRAM_ID);
-    await expect(w.service.reveal(randomness.toBase58())).rejects.toBeInstanceOf(SwitchboardError);
-    expect(w.gateway).not.toHaveBeenCalled();
-  });
   it('does not expose RPC error text or endpoint credentials', async () => {
     const w = world(); w.load.mockRejectedValue(new Error('https://secret.invalid?api-key=PRIVATE'));
     await expect(w.service.health()).rejects.toMatchObject({ code: 'switchboard_rpc_unavailable', message: 'switchboard_rpc_unavailable' });
@@ -200,7 +174,5 @@ describe('gateway boundary', () => {
   it('requires the selected oracle, unrestricted pull-oracle service and strict bytes', () => {
     expect(liveOracle(health(), pk().toBase58())).toBe(false);
     const h = health(); h.oracles[0].oracle_config.restricted = true; expect(liveOracle(h, oracle.toBase58())).toBe(false);
-    expect(revealPayload(payload)).toEqual(payload);
-    for (const bad of [{ ...payload, recovery_id: 256 }, { ...payload, value: Array(32).fill(-1) }, { ...payload, value: Array(32).fill(1.5) }, { ...payload, signature: 'x'.repeat(88) }]) expect(() => revealPayload(bad)).toThrow('gateway_schema');
   });
 });

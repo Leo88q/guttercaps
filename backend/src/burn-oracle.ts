@@ -1,10 +1,10 @@
 /**
  * Burn oracle (SEC-M1, docs/06 §2.1) — keeps the staking emission guard alive.
  *
- * The guard mints per day at most min(cap, 0.30·cap + 1.25·burn7d), but the $CG destroyed by
+ * The guard mints per day at most min(cap, 0.02·cap + 1.25·burn7d), but the $CG destroyed by
  * chip_core (pack-in-$CG, fusion fees, paid services), market (listing fee) and arena (rake burn)
  * is only *emitted as events* in v1 — none of those programs CPI `staking.report_burn`, so without
- * this keeper `burn7d` stays 0 and emission is stuck at the 30 % floor forever.
+ * this keeper `burn7d` stays 0 and emission is stuck at the 2 % floor forever.
  *
  * What it does, once per BURN_ORACLE_INTERVAL_MS:
  *   1. sums the burns the indexer has seen since the last report (`burns` rows written from
@@ -20,7 +20,7 @@
  *      on-chain clamp (3 × daily cap) bounds the damage of any double count. The cursor never steps
  *      over a burn that was not counted in this report (SEC-B29).
  *
- * Safety: the oracle can only *raise* the guard from 30 % towards 100 % of the schedule — it can
+ * Safety: the oracle can only *raise* the guard from 2 % towards 100 % of the schedule — it can
  * never mint by itself, never exceed the schedule, and the admin can clear the key at any time.
  */
 import { Connection, Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
@@ -82,7 +82,7 @@ export interface PendingBurn { amount: bigint; maxRowid: number; rows: number; d
  * programs are indexed by independent cursors, so a lagging program can index a low-slot burn after another
  * program indexed a later one. `maxRowid` therefore stops just before the first uncounted burn above the
  * horizon (`deferredRows` says how much is waiting behind it) and a later pass picks those up — instead of
- * a burn that never gets reported and an emission floor stuck at 30 %.
+ * a burn that never gets reported and an emission floor stuck at 2 %.
  */
 export function pendingBurn(db: Db, lastRowid: number, horizon = finalizedHorizon(db)): PendingBurn {
   db.raw.exec(SCHEMA);

@@ -93,86 +93,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/switchboard/reveal/{randomness}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Relay an oracle-signed reveal for our committed randomness account
-         * @description Accepts only the account public key, never a URL, RPC or arbitrary body. Validates Switchboard owner,
-         *     pinned queue, our authority and committed oracle binding. Calls only that oracle's HTTPS gateway.
-         *     The client wraps the response into an instruction; Switchboard verifies its signature on chain.
-         *     No signing keys or transaction submission in this endpoint. 30 requests/min/IP, bounded concurrency.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    randomness: components["schemas"]["Pubkey"];
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Oracle response (still requires on-chain verification) */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            randomness: components["schemas"]["Pubkey"];
-                            oracle: components["schemas"]["Pubkey"];
-                            queue: components["schemas"]["Pubkey"];
-                            /** @description 64-byte secp256k1 signature in base64 */
-                            signature: string;
-                            recovery_id: number;
-                            value: number[];
-                        };
-                    };
-                };
-                /** @description Invalid account key */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Not committed or already revealed; reread chain state */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Rate limit; see Retry-After */
-                429: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Gateway/RPC unavailable or bounded concurrency exhausted */
-                503: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/auth/siws/nonce": {
         parameters: {
             query?: never;
@@ -1093,15 +1013,10 @@ export interface paths {
         put?: never;
         /**
          * Price quote + everything needed to build buy_pack
-         * @description Returns the SOL / SKR amount computed from the studio's own Pyth push-oracle accounts (shard 0xCA75, posted by
-         *     our price pusher — ops/pyth-pusher/) with the exact integer formula of chip_core::units_for_cents, the 1 %
-         *     slippage guard (`maxLamports`), the `priceUpdateAccount` the client must pass to buy_pack, $CG/USDC amounts,
-         *     the caller's effective odds (pity applied), the Switchboard queue and the PDA set. Bundle and SKR promo
-         *     discounts are stacked additively and capped at 30 %.
-         *     The quote is never synthesised: if the on-chain price is older than 45 s (60 s max age minus the 15 s a buyer
-         *     needs to sign) or the account is missing/unverified the endpoint answers **503 price_unavailable** and the
-         *     client hides that rail. `expiresAt` is when the current on-chain update would fail the age check.
-         *     `pythUpdateData` is always empty in the push model (kept for a future pull-model fallback).
+         * @description Frozen FX checkout (SOL = $110, SKR = $0.016, USDC = $1). Amounts are the same integer formula as
+         *     `chip_core::fx_sol_lamports` / `fx_skr_micro` / `fx_usdc_micro`. Pyth is not read; a stale feed must never
+         *     503 a purchase. `maxLamports` is the exact SOL/SKR amount (0 for USDC/$CG). `priceUpdateAccount` is omitted.
+         *     Bundle and SKR promo discounts stack additively, capped at 30 %. Pity and daily caps are per wallet.
          */
         post: {
             parameters: {
@@ -1154,8 +1069,6 @@ export interface paths {
                     };
                     content?: never;
                 };
-                /** @description price_unavailable — Pyth account stale / missing / unverified, or its confidence interval is wider than 2 % of the price (SEC-M2 — the program would reject with PriceUncertain); retry after the next push (≤ 30 s) */
-                503: components["responses"]["Error"];
             };
         };
         delete?: never;
@@ -1219,8 +1132,8 @@ export interface paths {
         /**
          * Reserve packs and get the payment instruction set
          * @description Creates an `intent` row and returns the exact payment data: the treasury address, the total in lamports
-         *     and the memo `GC-PRE|<refId>` to attach. The intent expires after `intentTtlS` unless confirmed. The
-         *     per-wallet cap counts intents too, so a wallet cannot reserve the whole drop without paying.
+         *     and the memo `GC-PRE|<refId>` to attach. `offer` selects the single Limited pack or the founders chest
+         *     of 4 packs. The intent expires after `intentTtlS` unless confirmed. Per-wallet caps are per offer.
          */
         post: {
             parameters: {
@@ -1232,7 +1145,14 @@ export interface paths {
             requestBody: {
                 content: {
                     "application/json": {
-                        qty: number;
+                        qty?: number;
+                        /** @enum {string} */
+                        offer?: "pack" | "chest";
+                        /**
+                         * @default SOL
+                         * @enum {string}
+                         */
+                        currency?: "SOL" | "USDC" | "SKR";
                     };
                 };
             };
@@ -2433,9 +2353,9 @@ export interface paths {
                             winner?: string;
                             /** @enum {string} */
                             waitingFor?: "a" | "b";
-                            /** @description chip XP granted to this wallet's squad from this match */
+                            /** @description chip XP granted to this wallets squad from this match */
                             xp?: number;
-                            /** @description how many of this wallet's squad caps promoted */
+                            /** @description how many of this wallets squad caps promoted */
                             leveled?: number;
                         };
                     };
@@ -4768,6 +4688,13 @@ export interface components {
             xpToday?: number;
             /** @description per-cap UTC-day XP cap (CHIP_XP.dailyCap) */
             xpDailyCap?: number;
+            /**
+             * Format: date-time
+             * @description last Cap Slam that used this cap; null = never — idle stake weight 25 %
+             */
+            lastPlayed?: string | null;
+            /** @description true when lastPlayed is older than STAKE_CLAIM_CAPS.aliveWindowDays */
+            idle?: boolean;
             /** @description XP this cap earned from this match (match payloads only; 0 otherwise) */
             xpGained?: number;
             /** @description new level if this match promoted the cap; null otherwise */
@@ -4805,10 +4732,10 @@ export interface components {
         ChipDetail: components["schemas"]["Chip"] & {
             provenance?: {
                 /**
-                 * @description voucher = free quest chip (#28) — VRF-rolled through the same open_pack as a pack; rollHex is its roll
+                 * @description voucher = free quest chip (#28) — VRF-rolled through the same open_pack as a pack; rollHex is its roll; compressed = minted from a compressed pack claim (projections: origin = compressed)
                  * @enum {string}
                  */
-                origin?: "pack" | "fusion" | "voucher";
+                origin?: "pack" | "fusion" | "voucher" | "compressed";
                 signature?: string;
                 rollHex?: string;
                 recipe?: number;
@@ -4894,38 +4821,63 @@ export interface components {
             evPct?: number;
         };
         PreorderCampaign: {
-            /** @description campaign switched on AND treasury configured AND packs remain */
+            /** @description campaign switched on AND treasury configured AND at least one offer remains */
             active: boolean;
             /** @description pack SKU of the drop (3 = Limited) */
             sku: number;
-            /** @description price of ONE pack in lamports (decimal string, u64) */
+            /** @description price of ONE single pack in lamports (decimal string, u64) */
             priceLamports: string;
             /** @description Squads multisig vault receiving the payments */
             treasury: string;
+            /** @description single-pack offer size (not including chests) */
             total: number;
-            /** @description packs not yet reserved (granted + paid + intent all subtract) */
+            /** @description single packs not yet reserved */
             remaining: number;
-            /** @description paid + granted packs */
+            /** @description paid + granted Limited packs across both offers */
             sold: number;
             /** @description packs already delivered on-chain (PackGranted projection) */
             granted: number;
             memoPrefix: string;
             intentTtlS: number;
+            offers?: {
+                /** @enum {string} */
+                id: "pack" | "chest";
+                /** @description Limited packs granted per reserved unit */
+                packs: number;
+                priceLamports: string;
+                /** @description the same price in every pay currency (native units) */
+                prices: {
+                    SOL: string;
+                    USDC: string;
+                    SKR: string;
+                };
+                total: number;
+                remaining: number;
+                sold: number;
+                maxPerWallet: number;
+                maxQty: number;
+            }[];
         };
         PreorderIntent: {
             /** @description the on-chain preorder_ref and the payment memo id */
             refId: number;
             wallet: string;
             sku: number;
+            /** @description Limited packs this reservation grants (chest = 4) */
             qty: number;
-            /** @description SOL | USDC | SKR */
-            currency?: "SOL" | "USDC" | "SKR";
-            /** @description total to send (price × qty), decimal string of the chosen currency */
+            /** @enum {string} */
+            offer: "pack" | "chest";
+            /** @enum {string} */
+            currency: "SOL" | "USDC" | "SKR";
+            /** @description total to send in the chosen currency (native units; lamports for SOL), decimal string */
             lamports: string;
-            amount?: string;
+            /** @description same as lamports — the amount to send in the chosen currency */
+            amount: string;
+            /** @description Squads multisig vault that owns the payment destination */
             treasury: string;
-            /** @description treasury wallet (SOL) or its ATA (USDC/SKR) */
-            payTo?: string;
+            /** @description the address to send to: the treasury for SOL, its associated token account for USDC / SKR */
+            payTo: string;
+            /** @description SPL mint for USDC / SKR; absent for SOL */
             mint?: string;
             /** @description attach to the payment, e.g. GC-PRE|42 */
             memo: string;
@@ -4937,7 +4889,10 @@ export interface components {
             wallet: string;
             sku: number;
             qty: number;
-            currency?: "SOL" | "USDC" | "SKR";
+            /** @enum {string} */
+            offer: "pack" | "chest";
+            /** @enum {string} */
+            currency: "SOL" | "USDC" | "SKR";
             lamports: string;
             /** @enum {string} */
             status: "intent" | "paid" | "granted" | "expired";
@@ -4956,24 +4911,24 @@ export interface components {
             sku?: number;
             qty?: number;
             currency?: string;
-            /** @description lamports / micro-USDC / micro-CG / micro-SKR incl. bundle (and SKR promo) discount — floor(cents × 10^(decimals-2) × 10^-expo / price), same integers as the program */
+            /** @description lamports / micro-USDC / micro-CG / micro-SKR after discounts, frozen FX (SOL=$110, SKR=$0.016, USDC=$1) */
             amount?: string;
-            /** @description amount × 1.01 for SOL and SKR (0 otherwise); slippage guard passed to buy_pack (max_lamports = max units of the volatile currency) */
+            /** @description exact SOL lamports / micro-SKR (0 for USDC/$CG); passed to buy_pack as max_lamports */
             maxLamports?: string;
             /** @description USD price after discounts (what the program converts) */
             priceUsdCents?: number;
             rentReserveLamports?: string;
-            /** @description Pyth SOL/USD at quote time (from our push-oracle account) */
+            /** @description frozen SOL/USD ($110) */
             solUsd?: number;
-            /** @description Pyth SKR/USD at quote time (from our push-oracle account) */
+            /** @description frozen SKR/USD ($0.016) */
             skrUsd?: number;
-            /** @description age of the on-chain update used (SOL/SKR only); program rejects > 60 s */
+            /** @description unused (frozen FX) */
             priceAgeS?: number;
             /** @description total discount applied (bundle + SKR promo, capped 3000) */
             discountBps?: number;
-            /** @description PriceUpdateV2 account to pass as price_update (our shard 0xCA75); absent for USDC/$CG */
+            /** @description unused; omitted at frozen FX checkout */
             priceUpdateAccount?: components["schemas"]["Pubkey"];
-            /** @description always [] in the push model (our pusher posts ahead of time); reserved for a pull-model fallback */
+            /** @description always [] */
             pythUpdateData?: string[];
             effectiveOddsBps?: number[];
             pityCounter?: number;
@@ -5341,7 +5296,7 @@ export interface components {
                 mintedTotalMicro?: string;
                 splitBps?: number[];
                 /**
-                 * @description schedule = no DayClosed indexed yet (30 % floor assumed)
+                 * @description schedule = no DayClosed indexed yet (2 % floor assumed)
                  * @enum {string}
                  */
                 source?: "chain" | "schedule";
@@ -5357,6 +5312,12 @@ export interface components {
                 totalWeight?: string;
                 budgetTodayMicro?: string;
                 dailyPerWeightUnit?: string;
+            };
+            claimCaps?: {
+                chipDailyCg?: number;
+                tokenDailyCg?: number;
+                aliveWindowDays?: number;
+                idleWeight?: number;
             };
         };
         StakingMe: {
@@ -5455,7 +5416,7 @@ export interface components {
             kind?: number;
             epoch?: number;
             /**
-             * @description ITEM leaves carry a unit COUNT in amountMicro (boosters, ≤ 10 per leaf); CHIP leaves carry the voucher TEMPLATE id (0..3, one chip per leaf) — neither is micro-tokens
+             * @description ITEM leaves carry a unit COUNT in amountMicro (boosters, ≤ 10 per leaf); CHIP leaves carry the voucher TEMPLATE id (0..4, one chip per leaf) — neither is micro-tokens
              * @enum {string}
              */
             currency?: "CG" | "SKR" | "ITEM" | "CHIP";

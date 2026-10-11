@@ -253,7 +253,7 @@ npm run backend:crank      # то же: отдельный запуск нуже
 ### 3.2 алерты
 
 `ops/monitoring/alerts.yml` — правила; `npm run ops:prometheus` поднимает Prometheus **и**
-Alertmanager с ними (H-1, AUDIT-2026-10-02). Профиль `monitoring` включён не во всех деплоях,
+Alertmanager с ними (H-1, аудит 2026-10-02). Профиль `monitoring` включён не во всех деплоях,
 поэтому проверять так:
 
 ```bash

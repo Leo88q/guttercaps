@@ -33,7 +33,7 @@ hub-facing data contract is now `WATCHTOWER_HANDOFF.md` + `watchtower/events/eve
 Real, test-pinned rules (unchanged from before):
 
 1. $CG minting is capped by the emission guard (`programs/staking`): ≤ 1.25× the 7-day average burn,
-   floored at 30% of the scheduled emission (`packages/economy`, `npm run economy:check`).
+   floored at 2% of the scheduled emission (`packages/economy`, `npm run economy:check`).
 2. Arena wager escrows hold both stakes in a PDA-owned token account before resolution
    (`programs/arena/src/lib.rs`).
 3. SKR prize pool invariant: `funded >= paid + reserved + withdrawn`
@@ -68,7 +68,7 @@ treasury snapshot is committed to the repo.
 - Alert definitions and runbooks live in `docs/ALERT_CATALOG.md` and are cross-checked against
   `package.json` by `tests/security/indexer-gaps.test.ts`. Prometheus rules: `ops/monitoring/alerts.yml`
   (28 rules); severity ladder P1 page / P2 high / P3 medium as defined there.
-- Delivery note (audit AUDIT-2026-10-02 H-1): `ops/monitoring/prometheus.yml` still has empty
+- Delivery note (audit 2026-10-02 H-1): `ops/monitoring/prometheus.yml` still has empty
   Alertmanager targets — until a receiver is configured, P1 rules fire into the void. This is a
   production blocker tracked in `WATCHTOWER_HANDOFF.md`.
 

@@ -1,4 +1,4 @@
-// H-1 gate (AUDIT-2026-10-02): "the rules exist, so the pager works".
+// H-1 gate (audit 2026-10-02): "the rules exist, so the pager works".
 //
 // ops/monitoring/alerts.yml grew to 30 rules with severities, thresholds and runbook references, and
 // two things made all of it decorative:

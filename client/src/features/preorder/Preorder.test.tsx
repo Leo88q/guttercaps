@@ -7,7 +7,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setLocale, t } from '@/shared/i18n';
-import { fmtSol } from '@/shared/lib/format';
+import { fmtAmount, fmtSol } from '@/shared/lib/format';
+import { skrMicroForUsdCents, usdCentsFromSolLamports, usdcMicroForUsdCents } from '@guttercaps/economy';
 import { useUiStore } from '@/app/store/ui';
 
 const mocks = vi.hoisted(() => ({
@@ -141,4 +142,31 @@ it('the founders chest posts offer=chest and never shares the pack qty stepper',
   mount();
   fireEvent.click(screen.getByRole('button', { name: t('preorder.reserveChest') }));
   await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/preorder/intent', { offer: 'chest', qty: 1, currency: 'SOL' }));
+});
+
+// Non-SOL payment: the price is the SOL sticker converted at frozen FX (the same conversion the backend quotes),
+// and the pay card must point at the treasury's token account for that mint — paying USDC/SKR to the SOL
+// treasury address would strand the funds, so the treasury wallet must never be the destination here.
+it.each([
+  ['USDC', (sol: bigint) => usdcMicroForUsdCents(usdCentsFromSolLamports(sol))],
+  ['SKR', (sol: bigint) => skrMicroForUsdCents(usdCentsFromSolLamports(sol))],
+] as const)('%s reservation: quoted at frozen FX, pay card shows the treasury token account and its mint', async (currency, quote) => {
+  mocks.connected = true;
+  mocks.campaign = campaign();
+  const native = quote(300_000_000n).toString();
+  expect(native).not.toBe('300000000');
+  const payTo = `TokAcc${currency}${'1'.repeat(37)}`;
+  const mint = `Mint${currency}${'1'.repeat(38)}`;
+  mocks.post.mockResolvedValueOnce({ ...intent, qty: 1, currency, lamports: native, amount: native, payTo, mint });
+  mount();
+
+  fireEvent.click(screen.getByRole('button', { name: currency }));
+  expect(screen.getByTestId('preorder-reserve').textContent).toContain(fmtAmount(native, currency));
+  fireEvent.click(screen.getByRole('button', { name: t('preorder.reserve') }));
+  await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/preorder/intent', { offer: 'pack', qty: 1, currency }));
+
+  const pay = await screen.findByTestId('preorder-pay');
+  expect(pay.textContent).toContain(payTo);
+  expect(pay.textContent).toContain(fmtAmount(native, currency));
+  expect(pay.textContent).not.toContain(intent.treasury);
 });

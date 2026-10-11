@@ -1,4 +1,4 @@
-// M-6 gate (AUDIT-2026-10-02): one delivery path, and the headers live in it.
+// M-6 gate (audit 2026-10-02): one delivery path, and the headers live in it.
 //
 // `client/public/_headers` and `_redirects` were Cloudflare Pages conventions sitting in a tree whose
 // real delivery path is `ops/deploy/nginx.conf`. `_headers` carried only Cache-Control (no CSP, no

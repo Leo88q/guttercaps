@@ -1,5 +1,5 @@
 // SEC-B31 gate — "an event a program emits is state the indexer owes the read model".
-// SECURITY-AUDIT-2026-09-26-checklist.md, SECURITY.md.
+// audit 2026-09-26 checklist, SECURITY.md.
 //
 // The bug this file exists for: eight events were emitted by the four programs and never decoded. Nothing
 // failed — a transaction log the decoder cannot read is not an error, it is silence. Downstream that silence
@@ -100,6 +100,10 @@ const WIRE_ONLY: Record<string, string> = {
   // SEC-B22: `ParamsPatched` carries the new parameter values so a user can see *what* changed; the read model
   // counts changes from `ParamsChanged` (`params_changes`), and the ws feed maps it onto `params_changed`.
   ParamsPatched: 'wire.ts',
+  // ClaimCapped is the companion of Claimed: `paid` is already projected into `claims` by Claimed, and the
+  // surplus (pending − paid) stays in the pool, so the read model has nothing to add. It is a wire-only
+  // signal: wire.ts forwards it and invalidates `reward_claimed` so the client re-reads the capped pending.
+  ClaimCapped: 'wire.ts',
   // SEC-A2 (2026-10-02, M-11): the arena paused *itself* — `resolve_battle` flipping `paused` when the
   // battle oracle hit its own daily cap. It maps to `params_changed` (the client re-reads `paused` off
   // the config), and the operator's signal is the `arena_paused` gauge in backend/src/oracle-metrics.ts

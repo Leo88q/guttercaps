@@ -35,7 +35,7 @@
 | Серверное/он-чейн состояние | **TanStack Query 5** | кэш + инвалидация по WS-событиям индексатора; retry/backoff; `placeholderData` для мгновенных переходов |
 | Клиентское состояние | **Zustand 5** (3 стора: `ui`, `session`, `txs`) | нет сложных редьюсеров, много асинхронных источников; стор `txs` держит in-flight транзакции и переживает перезагрузку (persist) |
 | Кошельки | `@solana/wallet-adapter-react` + Wallet Standard авто-детект (Phantom/Solflare/Backpack регистрируются сами) + `registerMwa` | не тащим `wallet-adapter-wallets` (−400 KB) |
-| Рандом | `@switchboard-xyz/on-demand` 3.10 — только выбор оракула (`Queue.selectRandomnessOracle`) и gateway-запрос reveal (`revealIx` → payload); init/commit/reveal/close идут через **наши** инструкции (`chain/ix/rng.ts`, SEC-C3 ч. 2) | тот же SDK, что и крон-кранк бэкенда |
+| Рандом | `@switchboard-xyz/on-demand` 3.10 — только выбор оракула (`Queue.selectRandomnessOracle`) и разбор reveal-инструкции (`revealPayloadFromIx`); gateway-запрос reveal делает только крон бэкенда (HTTP-реле удалено); init/commit/reveal/close идут через **наши** инструкции (`chain/ix/rng.ts`, SEC-C3 ч. 2) | тот же SDK, что и крон-кранк бэкенда |
 | Хэши | `@noble/hashes` (sha256 для дискриминаторов, keccak для sub-seed бандла и Merkle-листов) | без Node-полифиллов |
 | Типы API | `openapi-typescript` → `src/api/schema.d.ts` (`npm run api:types`) | единый контракт с бэкендом |
 | Тесты | vitest (кодеки, PDA, golden-векторы экспансии) | e2e (Playwright) — в Фазе 6 |

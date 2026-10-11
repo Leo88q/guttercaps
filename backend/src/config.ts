@@ -197,7 +197,7 @@ export function assertProductionConfig(): void {
   // compliant in review and sells to nobody/everybody depending on who reads the code first.
   const geoProblem = geoMisconfiguration();
   if (geoProblem) problems.push(`GEO: ${geoProblem}`);
-  // SEC-A7 (2026-10-02, M-13 in AUDIT-2026-10-02.md): age and market gating defaulted to OFF,
+  // SEC-A7 (2026-10-02, M-13 in audit 2026-10-02): age and market gating defaulted to OFF,
   // *including in production* (`COMPLIANCE_ENFORCE ?? '0'`). A deploy that inherited the default
   // sold paid loot boxes to every country and every age with nothing in the logs to say so — and
   // `access-policy.json` already carries the real policy (packs denied in BE/NL, minimumAge 18),

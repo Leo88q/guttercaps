@@ -1,3 +1,4 @@
+import { EMISSION_GUARD } from '@guttercaps/economy';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 // T-B-46 — admin service: allowlist + CSRF gate, audit log (incl. denials), set_params / set_split
@@ -279,7 +280,9 @@ describe('kill switch, simulate, kpi, fraud', () => {
     expect(s.delta.burnedCg).toBeCloseTo(s.scenario.burnedCg - s.baseline.burnedCg, 1);
     expect(s.slices.map((x) => x.name)).toEqual(['chipStaking', 'tokenStaking', 'quests', 'pvpSeason', 'eventsReserve']);
     expect(s.slices[2].cgPerDay).toBe(Math.round((s.scenario.emissionCg * 2000) / 10_000));
-    expect(s.guard.emissionAtZeroBurnCg).toBe(Math.round(s.scenario.scheduleCapCg * 0.1));
+    // the guard floor is the economy's (2 % of schedule, EMISSION_GUARD / GUARD_FLOOR_BPS), never a hand-typed copy
+    expect(s.guard.floorShare).toBe(EMISSION_GUARD.floorShare);
+    expect(s.guard.emissionAtZeroBurnCg).toBe(Math.round(s.scenario.scheduleCapCg * EMISSION_GUARD.floorShare));
     expect(() => admin.simulate({ assumptions: { nope: 1 } as never })).toThrow(/unknown or non-numeric/);
     const a = new Client(); await signIn(a, ADMIN);
     expect((await a.post('/v1/admin/simulate', { assumptions: { payingShare: -1 } })).status).toBe(422);

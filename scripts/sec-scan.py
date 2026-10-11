@@ -5,7 +5,7 @@
 # targets, init_if_needed, close, remaining_accounts, lamport moves, casts and indexing.
 #
 # It prints RAW HITS ONLY (≈1 200 at HEAD) — every hit needs a human verdict. The triage of the
-# 2026-09-23 run, hit by hit, lives in SECURITY-SCAN-TRIAGE-2026-09-23.md. Nothing here is a CI
+# 2026-09-23 run, hit by hit, lives in scan triage 2026-09-23. Nothing here is a CI
 # gate: the point is reproducibility of the numbers, not a lint.
 #
 #   python3 scripts/sec-scan.py programs > /tmp/scan.out

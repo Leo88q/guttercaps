@@ -6,6 +6,7 @@ import {
   PACKS, FUSION_RECIPES, BOOSTER, RARITY_PROFILES, LOCK_TIERS, DAILY_QUESTS, WEEKLY_QUESTS, PERMANENT_QUESTS, MATCHMAKING, SEASON, FEES, SERVICES, REFERRAL,
   packExpectedValueMult, probabilityAtLeast, effectiveOdds, bundlePriceCents, impliedApy, FX, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, usdCentsFromSolLamports, type PackId,
   SKIN_BY_ID, PROFILE_THEME_BY_ID, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, PASS_TRACK, passTierForXp, xpToNext, CHIP_XP,
+  EMISSION_GUARD,
 } from '@guttercaps/economy';
 import { PYTH_PRICE_ACCOUNTS } from '@/chain/ids';
 import { COLLECTIONS } from '@/shared/lib/lore';
@@ -495,6 +496,13 @@ on('post', '/quests/visit', () => ({ day: Math.floor(Date.now() / 86_400_000), i
 
 // ------------------------------------------------------------- beta pre-sale (docs/preorder-beta.md)
 const PREORDER_TREASURY = fakeKey('Tr');
+// Mirrors backend `preorderPayTo`: SOL pays the treasury wallet; USDC/SKR pay the treasury's token account
+// for that mint. The token accounts are derived from the treasury key (deterministic, so the mock's random
+// sequence is not shifted); they are display stand-ins, not real ATAs.
+const PREORDER_MINTS = { USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', SKR: 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3' } as const;
+const PREORDER_TOKEN_ACCOUNTS = { USDC: 'Tu' + PREORDER_TREASURY.slice(2), SKR: 'Ts' + PREORDER_TREASURY.slice(2) } as const;
+const mockPreorderPayTo = (currency: 'SOL' | 'USDC' | 'SKR'): { payTo: string; mint?: string } =>
+  currency === 'SOL' ? { payTo: PREORDER_TREASURY } : { payTo: PREORDER_TOKEN_ACCOUNTS[currency], mint: PREORDER_MINTS[currency] };
 const PREORDER_PRICE = '300000000'; // 0.30 SOL per single
 const PREORDER_CHEST_PRICE = '999000000';
 const PREORDER_TOTAL = 500;
@@ -504,7 +512,7 @@ let preorderSeq = 41;
 interface MockPreorder { ref_id: number; wallet: string; sku: number; qty: number; offer: 'pack' | 'chest'; currency: 'SOL' | 'USDC' | 'SKR'; lamports: string; status: 'intent' | 'paid' | 'granted' | 'expired'; tx_sig: string | null; nonce: string | null; grant_sig: string | null; created_at: number; paid_at: number | null; granted_at: number | null }
 const mockPreorderAmount = (solLamports: string, currency: 'SOL' | 'USDC' | 'SKR') => {
   if (currency === 'SOL') return solLamports;
-  const cents = usdCentsFromSolLamports(solLamports);
+  const cents = usdCentsFromSolLamports(BigInt(solLamports));
   return currency === 'USDC' ? usdcMicroForUsdCents(cents).toString() : skrMicroForUsdCents(cents).toString();
 };
 const mockPreorderPrices = (solLamports: string) => ({ SOL: solLamports, USDC: mockPreorderAmount(solLamports, 'USDC'), SKR: mockPreorderAmount(solLamports, 'SKR') });
@@ -542,7 +550,8 @@ on('post', '/preorder/intent', (o) => {
   const lamports = mockPreorderAmount(solLamports, currency);
   const row: MockPreorder = { ref_id: ++preorderSeq, wallet: ME, sku: 3, qty: packs, offer, currency, lamports, status: 'intent', tx_sig: null, nonce: null, grant_sig: null, created_at: Math.floor(Date.now() / 1000), paid_at: null, granted_at: null };
   preorderRows.push(row);
-  return { refId: row.ref_id, wallet: ME, sku: 3, qty: packs, offer, currency, lamports: row.lamports, amount: row.lamports, treasury: PREORDER_TREASURY, payTo: PREORDER_TREASURY, memo: `GC-PRE|${row.ref_id}`, expiresAt: row.created_at + PREORDER_TTL_S };
+  const dest = mockPreorderPayTo(currency);
+  return { refId: row.ref_id, wallet: ME, sku: 3, qty: packs, offer, currency, lamports: row.lamports, amount: row.lamports, treasury: PREORDER_TREASURY, ...dest, memo: `GC-PRE|${row.ref_id}`, expiresAt: row.created_at + PREORDER_TTL_S };
 });
 on('post', '/preorder/confirm', (o) => {
   const { refId, signature } = (o.body ?? {}) as { refId?: number; signature?: string };
@@ -674,7 +683,7 @@ on('post', '/admin/simulate', (o) => {
     year, assumptions: a, baseline, scenario,
     delta: Object.fromEntries(Object.keys(scenario).map((k) => [k, +((scenario as Record<string, number>)[k] - (baseline as Record<string, number>)[k]).toFixed(2)])),
     slices: ['chipStaking', 'tokenStaking', 'quests', 'pvpSeason', 'eventsReserve'].map((name, i) => ({ name, bps: split[i], cgPerDay: Math.round((scenario.emissionCg * split[i]) / 10_000) })),
-    guard: { floorShare: 0.3, burnMultiple: 1.25, emissionAtZeroBurnCg: Math.round(scenario.scheduleCapCg * 0.3) },
+    guard: { floorShare: EMISSION_GUARD.floorShare, burnMultiple: EMISSION_GUARD.burnMultiple, emissionAtZeroBurnCg: Math.round(scenario.scheduleCapCg * EMISSION_GUARD.floorShare) },
     packs: SKUS.map((id) => ({ id, evCommonEq: +packExpectedValueMult(PACKS[id]).toFixed(2), pLegend: +probabilityAtLeast(PACKS[id], 6).toFixed(4) })),
     rarityValueMult: RARITY_PROFILES.map((r) => r.valueMult),
   };

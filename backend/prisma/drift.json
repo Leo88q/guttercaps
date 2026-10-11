@@ -90,10 +90,6 @@
       "note": "db.ts §projections (rebuildable: npm run rebuild) writes pack_opens.count and the target table has no such column"
     },
     {
-      "key": "column:pack_opens.pack_no:absent-in-sqlite",
-      "note": "pack_opens.pack_no exists only in the target: SQLite derives it at read time, or the model is stale"
-    },
-    {
       "key": "column:pack_opens.roll_bytes:absent-in-sqlite",
       "note": "pack_opens.roll_bytes exists only in the target: SQLite derives it at read time, or the model is stale"
     },

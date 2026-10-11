@@ -1,5 +1,5 @@
 // SEC-B29 gate — "a report the chain cannot take back must not be built from an event the chain can take back".
-// SECURITY-AUDIT-2026-09-27-checklist.md, SECURITY.md.
+// audit 2026-09-27 checklist, SECURITY.md.
 //
 // The burn oracle sums indexed burns and sends `staking.report_burn(delta)`, which adds to `burn_today` and
 // to the 7-day ring the emission guard reads (`0.30·cap + 1.25·burn7d`). That call is irreversible: the

@@ -21,7 +21,7 @@ ROOT = HERE.parents[1]
 OUT = ROOT / 'guttercaps-landing.html'
 
 # ---------------------------------------------------------------------- fonts
-# SEC-B4 (SECURITY-AUDIT-2026-09-26.md): the landing used to load its webfonts from fonts.googleapis.com.
+# SEC-B4 (audit 2026-09-26): the landing used to load its webfonts from fonts.googleapis.com.
 # That was the page's only third-party request, it carried every visitor's IP (while /legal/privacy
 # promises no third-party analytics), and the app's own CSP (`font-src 'self' data:`, ops/deploy/nginx.conf)
 # blocked the same URL in production anyway. The fonts are now vendored in the repo
@@ -292,7 +292,7 @@ HEAD = f'''<!doctype html>
 <meta name="twitter:title" content="{TITLE[0]}" />
 <meta name="twitter:description" content="{DESC[0]}" />
 <meta name="twitter:image" content="{SITE}/assets/og-guttercaps.png" />
-<!-- SEC-B4 (SECURITY-AUDIT-2026-09-26.md): the landing is served by a static host whose response
+<!-- SEC-B4 (audit 2026-09-26): the landing is served by a static host whose response
      headers we do not control, so the only policy we can ship with the page is a meta tag. It blocks
      everything and names what the page really needs — including its own inline styles and the one
      endpoint the live counters read. There is no third-party origin left: the webfonts are inlined

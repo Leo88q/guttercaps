@@ -1,4 +1,4 @@
-# `vendor/mpl-core` — provenance of the vendored subset (M-8, AUDIT-2026-10-02)
+# `vendor/mpl-core` — provenance of the vendored subset (M-8, audit 2026-10-02)
 
 **This file is the record the supply-chain gate requires.** `tests/security/supply-chain.test.ts`
 fails the build when a `[patch.crates-io]` entry in the root `Cargo.toml` points at a path that has no

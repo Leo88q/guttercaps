@@ -303,9 +303,9 @@ confirmed hash в finalized bank не выдаётся за неисправно
 
 ### Switchboard: серверный доступ вместо браузерного CORS
 
-Выбор оракула и HTTP reveal больше не идут из браузера на Crossbar / внешний gateway.
-Клиент использует `/v1/switchboard/health` и `/v1/switchboard/reveal/<randomness>` через обычный
-Vite/nginx API proxy. Backend читает закреплённую очередь, проверяет владельцев аккаунтов,
+Выбор оракула больше не идёт из браузера на Crossbar / внешний gateway.
+Клиент использует `/v1/switchboard/health` через обычный
+Vite/nginx API proxy. HTTP-реле reveal (`/v1/switchboard/reveal/<randomness>`) удалено; reveal выполняет только on-chain крон бэкенда. Backend читает закреплённую очередь, проверяет владельцев аккаунтов,
 heartbeat и срок SGX verification. Для live-health используется серверный discovery из SDK:
 `https://crossbar.switchboard.xyz/gateways?network=devnet` (mainnet — соответствующий параметр).
 Его ответы объединяются с gateway URI участников on-chain очереди. Crossbar не обязателен:

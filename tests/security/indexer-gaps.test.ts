@@ -1,5 +1,5 @@
 // SEC-B27 gate — "a transaction the RPC will not serve is recorded, not skipped".
-// SECURITY-AUDIT-2026-09-26.md / SECURITY-AUDIT-2026-09-27-checklist.md.
+// audit 2026-09-26 / audit 2026-09-27 checklist.
 //
 // `getSignaturesForAddress` lists signatures; the transaction itself is a second call and
 // `getTransaction` legitimately answers `null` (older than the provider's retention, or a transient

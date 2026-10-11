@@ -3,7 +3,7 @@
 // Three off-chain keys act for the game: the burn oracle (staking.report_burn), the reward oracle
 // (publish_*_root / fund_slice) and the battle oracle (arena.resolve_battle). Each already has a
 // `/health` block; nothing paged on them. That matters because two of the three fail *silently* on
-// chain (SECURITY-ECON-AUDIT-2026-09-21 F-02 / F-06):
+// chain (economic audit 2026-09-21 F-02 / F-06):
 //   * a dead burn keeper leaves `burn_today ≈ 0`, so the emission guard decays to its 30 % floor and
 //     the chain looks perfectly healthy while emission is under-paid by 70 %;
 //   * a leaked battle-oracle key resolves wager battles in the attacker's favour up to the daily cap,

@@ -15,7 +15,7 @@ pub const MIN_SPLIT_INTERVAL: i64 = 7 * DAY;
 pub const GUARD_FLOOR_BPS: u64 = 200; // 0.02 × cap
 pub const GUARD_BURN_MULT_BPS: u64 = 12_500; // 1.25 × trailing burn
 /// SEC-M1 sanity clamp for `report_burn`: `burn_today` never exceeds this multiple of the
-/// day's schedule cap. The guard saturates at `cap` once the 7-day average passes 0.56 × cap,
+/// day's schedule cap. The guard saturates at `cap` once the 7-day average passes 0.78 × cap (= (1 − 0.02) / 1.25),
 /// so nothing above 3 × cap can change the emission — a lying oracle is bounded by the schedule.
 pub const BURN_SANITY_MULT: u64 = 3;
 pub const ROOT_TIMELOCK: i64 = 3_600;

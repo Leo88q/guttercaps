@@ -336,7 +336,7 @@ IP, device fingerprint, чаты, cookies, платёжные данные.
   `PHANTOM_PAYMENT_ISSUED` финальности), `docs/DISASTER_RECOVERY.md` (S3/экспортер → реальные бэкапы и
   `GET /v1/health`) и `scripts/verify-addresses.ts` (старые иды → иды из `backend/src/config.ts`)
   переписаны и остаются под гейтом `tests/security/indexer-gaps.test.ts`.
-- **D4 — историческое.** `AUDIT-2026-10-02.md` делался на снапшоте со старым идом `GCRhrg…`; текущие иды —
+- **D4 — историческое.** аудит 2026-10-02 делался на снапшоте со старым идом `GCRhrg…`; текущие иды —
   из `declare_id!`, не из текста аудита. `QWEN.md` (шпаргалка с несуществующими путями `programs/guttercaps/…`)
   удалён.
 

@@ -1,4 +1,4 @@
-// Vendor the webfonts the product actually renders (SEC-B4 in SECURITY-AUDIT-2026-09-26.md).
+// Vendor the webfonts the product actually renders (SEC-B4 in audit 2026-09-26).
 //
 // Why this exists at all: the landing used to load its fonts from `fonts.googleapis.com` and the app
 // silently fell back to system fonts, because `ops/deploy/nginx.conf` ships `font-src 'self' data:` and

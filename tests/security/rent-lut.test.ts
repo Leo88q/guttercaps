@@ -1,4 +1,4 @@
-// SEC-M8 gate — the second half of a request's Switchboard rent (backlog #23). SECURITY-AUDIT-2026-09-26.md.
+// SEC-M8 gate — the second half of a request's Switchboard rent (backlog #23). audit 2026-09-26.
 //
 // Every pack / fusion / battle pays for three Switchboard accounts: the randomness account, its wSOL
 // reward escrow and an Address Lookup Table (~0.0015 SOL). `close_randomness` (SEC-M7) reclaims the

@@ -42,6 +42,8 @@ export const WIRE_TYPE: Record<string, string> = {
   Staked: 'stake_changed',
   Unstaked: 'stake_changed',
   Claimed: 'reward_claimed',
+  // companion to Claimed: the cap cut the pending amount, so the client re-reads its reward state (the same route)
+  ClaimCapped: 'reward_claimed',
   RootClaimed: 'reward_claimed',
   VoucherIssued: 'quest_progress',
   BattleCreated: 'match_found',

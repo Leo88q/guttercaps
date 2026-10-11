@@ -1,4 +1,4 @@
-// T-L-SEC — adversarial transactions against the live programs (SECURITY-AUDIT-2026-09-25.md).
+// T-L-SEC — adversarial transactions against the live programs (audit 2026-09-25).
 //
 // Pattern: build a VALID instruction with the production client builders, change exactly ONE
 // detail an attacker controls (drop a signature, swap a program id, substitute an account they

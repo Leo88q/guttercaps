@@ -35,7 +35,7 @@ export const YEARLY_EMISSION_PCT_OF_PLAY = [18, 15, 12, 10, 8, 6, 5, 4] as const
 
 /**
  * Activity-indexed guard ("burn-and-mint"): the program mints per day at most
- *   min( scheduleCap, 0.30 × scheduleCap + 1.25 × trailing-7d-avg-daily-burn )
+ *   min( scheduleCap, 0.02 × scheduleCap + 1.25 × trailing-7d-avg-daily-burn )
  * so emission can never run far ahead of what the economy actually destroys.
  * The 2% floor bootstraps a new economy without printing a pack-a-day to
  * a 50-wallet launch; 1.25× lets net supply grow slowly
@@ -44,7 +44,7 @@ export const YEARLY_EMISSION_PCT_OF_PLAY = [18, 15, 12, 10, 8, 6, 5, 4] as const
  * are recorded in-program (`record_internal_burn`), while the other programs'
  * burns (fusion, pack-in-CG, listing fee, rake) are delivered hourly by the
  * backend burn-oracle keeper (`report_burn`, clamped to BURN_SANITY_MULT × cap
- * so a lying oracle can lift emission from the 30% floor to 100% of schedule,
+ * so a lying oracle can lift emission from the 2% floor to 100% of schedule,
  * never beyond). Direct ["burn_reporter"] CPIs from chip_core/market/arena are
  * the planned v2 and are currently unused — SEC-F02 of the 2026-09-21 audit.
  */

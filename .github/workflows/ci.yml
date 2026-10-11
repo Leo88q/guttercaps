@@ -81,7 +81,7 @@ jobs:
         # fail the build, it changes what `open_pack` reads out of a `PendingPack`. The gate compares
         # programs/** against reports/state-layout.json and fails the commit that moves a layout.
         run: npm run state:layout -- --selftest && npm run state:layout
-      - name: static Anchor security gates (tests/security — SECURITY-AUDIT-2026-09-25.md)
+      - name: static Anchor security gates (tests/security — audit 2026-09-25)
         # Checklist rules over programs/*/src with zero hits at HEAD (init/payer/seeds/space, program ids,
         # token mint binding, close targets, remaining_accounts dedupe, admin events, error-table and
         # instruction-name drift). No toolchain needed; every exception is an allowlist entry with a reason.
@@ -473,7 +473,7 @@ jobs:
         run: |
           if [ -f Cargo.lock ]; then locked=--locked; else locked=; fi
           sh scripts/ci-run-logged.sh /tmp/cargo-test.log cargo test $locked --workspace
-      # L-1 (AUDIT-2026-10-02): the same tests in release mode. The two are not redundant — LiteSVM
+      # L-1 (audit 2026-10-02): the same tests in release mode. The two are not redundant — LiteSVM
       # loading a release `.so` is not the same as running the crate's own `#[test]`s in release, and
       # `debug_assert!` is compiled out there, so a release-only panic (an evaluation-order dependence
       # the slow debug build hides, an overflow that only the optimizer reaches) shows up here first.
@@ -492,7 +492,7 @@ jobs:
     name: rust · cargo audit against the shipped lock
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    # M-2 (AUDIT-2026-10-02): the npm half of the tree has had an advisory gate for a while
+    # M-2 (audit 2026-10-02): the npm half of the tree has had an advisory gate for a while
     # (`npm run audit:gate`, SEC-F12 — every high/critical advisory fails unless it is in the dated,
     # justified ACCEPTED list of scripts/audit-gate.ts), and the Rust half had nothing at all. The
     # `security` job's "npm audit" name described half a job.

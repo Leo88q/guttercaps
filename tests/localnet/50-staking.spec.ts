@@ -5,14 +5,14 @@ import { createAssociatedTokenAccountIdempotentInstruction, createTransferInstru
 import { ixData, ro, rw, signer } from '@/chain/anchor';
 import { BorshWriter } from '@/chain/borsh';
 import {
-  decodeCompressedChipStake, decodeCompressedMintClaim, decodeEmissionState, decodePlayerItems, decodePool, decodeRewardRoot, decodeSetBonus, decodeSkrPool, decodeTokenStake,
+  decodeChipPlay, decodeCompressedChipStake, decodeCompressedMintClaim, decodeEmissionState, decodePlayerItems, decodePool, decodeRewardRoot, decodeSetBonus, decodeSkrPool, decodeTokenStake,
 } from '@/chain/accounts';
 import { CHIP_CORE_ID, STAKING_ID, SYSTEM_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@/chain/ids';
 import { MarketCurrency, listCompressedIx } from '@/chain/ix/market';
-import { claimChipRootIx, claimItemRootIx, claimRootIx, claimSkrRootIx, fundSkrIx, fundSliceIx, stakeCgIx, stakeCompressedChipIx, unstakeCgIx, unstakeCompressedChipIx } from '@/chain/ix/staking';
+import { claimChipRootIx, claimCompressedChipIx, pulseChipPlayIx, claimItemRootIx, claimRootIx, claimSkrRootIx, fundSkrIx, fundSliceIx, stakeCgIx, stakeCompressedChipIx, unstakeCgIx, unstakeCompressedChipIx } from '@/chain/ix/staking';
 import { closeRandomnessIx, initRandomnessIx, rngAccounts } from '@/chain/ix/rng';
 import { buildRewardTree } from '@/chain/merkle';
-import { RNG_KIND, ata, chipPoolPda, compressedChipStakePda, compressedMintClaimPda, claimReceiptPda, configPda, emissionPda, pendingPackPda, playerItemsPda, rewardRootPda, rewarderPda, seasonPoolAuthPda, setBonusPda, skrPoolPda, tokenPoolPda, tokenStakePda } from '@/chain/pdas';
+import { RNG_KIND, ata, chipPlayPda, chipPoolPda, compressedChipStakePda, compressedMintClaimPda, claimReceiptPda, configPda, emissionPda, pendingPackPda, playerItemsPda, rewardRootPda, rewarderPda, seasonPoolAuthPda, setBonusPda, skrPoolPda, tokenPoolPda, tokenStakePda } from '@/chain/pdas';
 import { EMISSION_SPLIT, QUEST_CHIP_TEMPLATES, RARITY_PROFILES, STARTER_SOULBOUND_DAYS } from '@guttercaps/economy';
 import { QUEST_ORACLE, SB_ORACLE, SB_QUEUE, SEASON_ORACLE, SET_ORACLE, TREASURY, binariesPresent, getEnv, mintCg, tokenBalance, type Env } from './helpers/env';
 import { Err, expectAnyFail, expectFail, lamportsClose } from './helpers/expect';
@@ -115,9 +115,9 @@ suite('T-L-S staking', () => {
     await env.chain.send([tickDayIx(env.admin.publicKey)], { signers: [env.admin] });
     const e1 = await emission();
     const cp = await pool('chip'); const tp = await pool('token');
-    // year 0: play bucket 550 M × 18 % / 365 = 271 232.876… $CG/day; guard with 0 burn → 10 % floor
+    // year 0: play bucket 550 M × 18 % / 365 = 271 232.876… $CG/day; guard with 0 burn → 2 % floor (GUARD_FLOOR_BPS = 200)
     const dailyCap = (550_000_000n * CG * 18n) / 100n / 365n;
-    const guarded = (dailyCap * 1000n) / 10_000n;
+    const guarded = (dailyCap * 200n) / 10_000n;
     expect(cp.budgetRemaining).toBe((guarded * BigInt(e0.splitBps[0])) / 10_000n);
     expect(tp.budgetRemaining).toBe((guarded * BigInt(e0.splitBps[1])) / 10_000n);
     expect(cp.budgetPerSec).toBe(cp.budgetRemaining / DAY);
@@ -240,10 +240,10 @@ suite('T-L-S staking', () => {
     expect(e2.burnToday).toBe(0n);
     expect(e2.burnRing.reduce((s, x) => s + x, 0n)).toBeGreaterThanOrEqual(e1.burnToday);
     const avg = e2.burnRing.reduce((s, x) => s + x, 0n) / 7n;
-    const guarded = (dailyCap * 1000n) / 10_000n + (avg * 12_500n) / 10_000n;
+    const guarded = (dailyCap * 200n) / 10_000n + (avg * 12_500n) / 10_000n;
     const cp = await pool('chip');
-    // 3 × cap in one ring slot → 7-day average 0.43 × cap → guard = 0.10 + 1.25 × 0.43 ≈ 0.64 × cap (below the ceiling): the guard really moved off the floor
-    expect(guarded).toBeGreaterThan((dailyCap * 1000n) / 10_000n);
+    // 3 × cap in one ring slot → 7-day average 0.43 × cap → guard = 0.02 + 1.25 × 0.43 ≈ 0.56 × cap (below the ceiling): the guard really moved off the floor
+    expect(guarded).toBeGreaterThan((dailyCap * 200n) / 10_000n);
     expect(cp.budgetRemaining).toBe(((guarded < dailyCap ? guarded : dailyCap) * BigInt(e2.splitBps[0])) / 10_000n);
   });
 
@@ -646,4 +646,68 @@ suite('T-L-S staking', () => {
     expect(e3.recycledMinted).toBe(e2.recycledMinted + 3n * CG);
     expect(e3.recycledMinted).toBeLessThanOrEqual(e3.recycledTotal);
   });
+
+  // S14–S15 close the two staking instructions that had no LiteSVM scenario (tests/security/coverage-matrix).
+  // The pulse is the alive-stake signal: `pulse_chip_play` (season or set oracle) stamps `ChipPlay.last_played`,
+  // and `claim_compressed_chip` re-weighs the stake from it — full weight within ALIVE_WINDOW_SECS (7 d),
+  // IDLE_WEIGHT_BPS (25 %) after that. Level 1 and no set bonus make the expected weights exact.
+  it('S14 pulse_chip_play: the set oracle attests a play; last_played only moves forward; future, zero and non-oracle pulses refused', async () => {
+    const chipKey = Keypair.generate().publicKey; // the play PDA is bound to any chip key (claim or Core asset)
+    const now = await env.chain.now();
+    const pulse = (ts: bigint, oracle: PublicKey = SET_ORACLE.publicKey, signers: Keypair[] = [SET_ORACLE, env.admin]) =>
+      env.chain.send([pulseChipPlayIx({ oracle, payer: env.admin.publicKey, chipKey, ts })], { signers });
+    const play = async () => decodeChipPlay((await env.chain.getAccount(chipPlayPda(chipKey)[0]))!.data);
+    await pulse(now - 600n);
+    expect((await play()).chip.equals(chipKey)).toBe(true);
+    expect((await play()).lastPlayed).toBe(now - 600n);
+    // an older attestation never moves the play backwards …
+    await pulse(now - 900n);
+    expect((await play()).lastPlayed).toBe(now - 600n);
+    // … a newer one does
+    await pulse(now - 60n);
+    expect((await play()).lastPlayed).toBe(now - 60n);
+    // ts must be > 0 and ≤ now + 60
+    await expectFail(pulse(now + 3600n), Err.staking('FuturePlay'), 'future play');
+    await expectFail(pulse(0n), Err.staking('FuturePlay'), 'zero timestamp');
+    // only the season or set oracle may attest; the admin is neither
+    await expectFail(pulse(now - 30n, env.admin.publicKey, [env.admin]), Err.staking('BadOracle'), 'admin is not an oracle');
+  });
+
+  it('S15 claim_compressed_chip: a pulsed stake harvests at full weight; idle for 7 d drops it to 25 %; same-instant re-claim is NothingToClaim; a stranger cannot harvest', async () => {
+    if (!env.chain.canWarp) return;
+    const chips = await mintCompressedChips(env, staker, 1, valueOf('S15'));
+    const c = chips[0];
+    const fullWeight = BigInt(RARITY_PROFILES[c.rarity].stakeWeight) * CG; // level 1, no set bonus, alive
+    await env.chain.send([stakeCompressedChipIx({ owner: staker.publicKey, claim: c.claim })], { signers: [staker] });
+    await env.chain.send([pulseChipPlayIx({ oracle: SET_ORACLE.publicKey, payer: env.admin.publicKey, chipKey: c.claim, ts: await env.chain.now() })], { signers: [SET_ORACLE, env.admin] });
+    const weightOf = async () => decodeCompressedChipStake((await env.chain.getAccount(compressedChipStakePda(c.claim)[0]))!.data).weight;
+    const claimIx = () => claimCompressedChipIx({ owner: staker.publicKey, claim: c.claim, cgMint: env.mints.cg });
+
+    // 1. an hour later, with a fresh pulse: the harvest pays and the weight stays at full
+    await env.chain.warpSeconds(3600n);
+    await env.chain.send([tickDayIx(env.admin.publicKey)], { signers: [env.admin] });
+    const b0 = await tokenBalance(env.chain, env.mints.cg, staker.publicKey);
+    await env.chain.send([claimIx()], { signers: [staker] });
+    expect((await tokenBalance(env.chain, env.mints.cg, staker.publicKey)) - b0).toBeGreaterThan(0n);
+    expect(await weightOf()).toBe(fullWeight);
+    // the harvest moved the reward debt to now: a same-instant re-claim has nothing to take
+    await expectFail(env.chain.send([claimIx()], { signers: [staker] }), Err.staking('NothingToClaim'), 'second claim, same instant');
+    // the claim does not unstake
+    expect(decodeCompressedMintClaim((await env.chain.getAccount(c.claim))!.data).staked).toBe(true);
+
+    // 2. a stranger cannot harvest someone else's stake (cstake has_one = owner)
+    const stranger = await env.player({ cg: CG });
+    await expectAnyFail(env.chain.send([claimCompressedChipIx({ owner: stranger.publicKey, claim: c.claim, cgMint: env.mints.cg })], { signers: [stranger] }), 'stranger harvests');
+
+    // 3. no pulse for a full alive window: the next harvest re-weighs the stake at IDLE_WEIGHT_BPS
+    await env.chain.warpSeconds(7n * DAY + 1n);
+    await env.chain.send([tickDayIx(env.admin.publicKey)], { signers: [env.admin] });
+    const b1 = await tokenBalance(env.chain, env.mints.cg, staker.publicKey);
+    await env.chain.send([claimIx()], { signers: [staker] });
+    expect((await tokenBalance(env.chain, env.mints.cg, staker.publicKey)) - b1).toBeGreaterThan(0n);
+    expect(await weightOf()).toBe((fullWeight * 2_500n) / 10_000n);
+
+    await env.chain.send([unstakeCompressedChipIx({ owner: staker.publicKey, claim: c.claim, cgMint: env.mints.cg })], { signers: [staker] });
+    expect(await env.chain.getAccount(compressedChipStakePda(c.claim)[0])).toBeNull();
+  }, 600_000);
 });
