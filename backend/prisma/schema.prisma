@@ -253,6 +253,7 @@ model PackOpen {
   buyer       String
   nonce       BigInt
   packNo      Int      @map("pack_no")
+  eventIndex  Int      @default(0) @map("event_index")
   sku         Int
   assets      String[]
   rarities    Int[]
