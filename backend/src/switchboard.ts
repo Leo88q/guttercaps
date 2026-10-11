@@ -1,7 +1,7 @@
 import { Connection, PublicKey } from '@solana/web3.js';
 import { SWITCHBOARD_PROGRAM_ID as PROGRAM, SWITCHBOARD_QUEUE } from './config.ts';
-import { decodeRandomness, decodeOracleGateway, rngAuthPda, RNG_KIND } from './chain.ts';
-import { gatewayBaseUrl, readGateway, readGatewayRegistry, parseGatewayRegistry, revealPayload, SwitchboardError, type GatewayRead } from './switchboard-gateway.ts';
+import { decodeOracleGateway } from './chain.ts';
+import { gatewayBaseUrl, readGateway, readGatewayRegistry, parseGatewayRegistry, SwitchboardError, type GatewayRead } from './switchboard-gateway.ts';
 
 const QUEUE = new PublicKey(SWITCHBOARD_QUEUE);
 const DEVNET = 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG';
@@ -143,32 +143,6 @@ export function createSwitchboardService(connection: () => Connection, deps: {
     }
     return inFlight;
   }
-  async function reveal(address: string) {
-    let key: PublicKey;
-    try { key = new PublicKey(address); if (key.toBase58() !== address) throw new Error(); }
-    catch { throw new SwitchboardError('bad_pubkey', 400); }
-    return limited(async () => {
-      const conn = connection();
-      const info = await conn.getAccountInfo(key, 'confirmed');
-      if (!info?.owner.equals(PROGRAM)) throw new SwitchboardError('switchboard_randomness_owner', 400);
-      const rnd = decodeRandomness(info.data);
-      if (!rnd.queue.equals(QUEUE) || ![RNG_KIND.PACK, RNG_KIND.BATTLE].some(kind => rnd.authority.equals(rngAuthPda(kind)[0]))) {
-        throw new SwitchboardError('switchboard_randomness_binding', 400);
-      }
-      if (rnd.seedSlot === 0n || rnd.seedSlot > BigInt(Number.MAX_SAFE_INTEGER)) throw new SwitchboardError('switchboard_not_committed', 409);
-      if (rnd.revealSlot > 0n) throw new SwitchboardError('switchboard_already_revealed', 409);
-      const oracle = await conn.getAccountInfo(rnd.oracle, 'confirmed');
-      if (!oracle?.owner.equals(PROGRAM) || oracle.data.length < 3504 || !new PublicKey(oracle.data.subarray(3472, 3504)).equals(QUEUE)) {
-        throw new SwitchboardError('switchboard_oracle_binding', 400);
-      }
-      // Always the COMMITTED oracle. Never switch oracle/slothash to rescue a failed reveal.
-      const raw = await gateway(gatewayBaseUrl(decodeOracleGateway(oracle.data)), 'randomness_reveal', {
-        slothash: Array.from(rnd.seedSlothash), randomness_key: key.toBuffer().toString('hex'), slot: Number(rnd.seedSlot),
-        rpc: PROGRAM.toBase58() === 'SBondMDrcV3K4kxZR1HNVT7osZxAHVHgYXL5Ze1oMUv' ? 'https://api.mainnet-beta.solana.com' : 'https://api.devnet.solana.com',
-      });
-      return { randomness: address, oracle: rnd.oracle.toBase58(), queue: rnd.queue.toBase58(), ...revealPayload(raw) };
-    });
-  }
-  return { health, reveal };
+  return { health };
 }
 function safeOrigin(uri: string): string | null { try { return new URL(gatewayBaseUrl(uri)).origin; } catch { return null; } }

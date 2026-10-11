@@ -22,9 +22,9 @@ it('is a public, uncached-by-browser read that returns 503 rather than false rea
   expect(res.status).toBe(503); expect(res.headers.get('cache-control')).toContain('no-store');
   expect(await res.json()).toMatchObject({ ready: false, oracle: null });
 });
-it('rejects a URL in place of a randomness key and exposes only a safe code', async () => {
+it('has no reveal relay route: a URL in the path is never forwarded to the gateway', async () => {
   const res = await fetch(`${base}/reveal/${encodeURIComponent('https://127.0.0.1?key=SECRET')}`);
-  expect(res.status).toBe(400); expect(await res.json()).toEqual({ code: 'bad_pubkey', message: 'bad_pubkey' });
+  expect(res.status).toBe(404);
 });
 it('enforces the per-IP readiness budget even though health is single-flighted', async () => {
   for (let i = 0; i < 11; i++) expect((await fetch(`${base}/health`)).status).toBe(503);

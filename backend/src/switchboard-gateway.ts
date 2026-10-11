@@ -34,7 +34,7 @@ export function gatewayBaseUrl(uri: string): string {
   return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
 }
 export type GatewayTrace = (event: { stage: 'start' | 'dns_start' | 'dns_done' | 'socket' | 'reused_socket' | 'tcp' | 'tls' | 'headers' | 'body' | 'error'; ms: number; status?: number; errorCode?: string }) => void;
-export type GatewayRead = (base: string, operation: 'healthy_oracles' | 'randomness_reveal', body?: unknown, trace?: GatewayTrace) => Promise<unknown>;
+export type GatewayRead = (base: string, operation: 'healthy_oracles', body?: unknown, trace?: GatewayTrace) => Promise<unknown>;
 
 export const readGateway: GatewayRead = async (base, operation, body, observer) => {
   // A leading-slash URL resolved against a base would discard its path prefix.
@@ -120,13 +120,3 @@ async function readJson(url: URL, body?: unknown, observer?: GatewayTrace): Prom
   });
 }
 
-export function revealPayload(raw: unknown) {
-  const j = raw as { signature?: unknown; recovery_id?: unknown; value?: unknown } | null;
-  if (!j || typeof j.signature !== 'string' || !/^[A-Za-z0-9+/]{86}==$/.test(j.signature) ||
-      Buffer.from(j.signature, 'base64').length !== 64 ||
-      !Number.isInteger(j.recovery_id) || (j.recovery_id as number) < 0 || (j.recovery_id as number) > 3 ||
-      !Array.isArray(j.value) || j.value.length !== 32 || j.value.some(x => !Number.isInteger(x) || x < 0 || x > 255)) {
-    throw new SwitchboardError('gateway_schema');
-  }
-  return { signature: j.signature, recovery_id: j.recovery_id as number, value: j.value as number[] };
-}
