@@ -2,7 +2,7 @@
 //!
 //! Holds the $CG mint authority (EmissionState PDA). Two MasterChef pools
 //! (token / chip) plus Merkle reward roots for quests, PvP seasons and
-//! events. Daily budget = min(schedule, 0.30·schedule + 1.25·burn7d).
+//! events. Daily budget = min(schedule, 0.02·schedule + 1.25·burn7d).
 //!
 //! Second reward currency: SKR (Seeker). The game cannot mint SKR, so SKR
 //! rewards are paid from a treasury-funded prize pool (`SkrPool`) through
@@ -177,6 +177,12 @@ pub mod staking {
     pub fn claim_chip(ctx: Context<ClaimChip>) -> Result<()> {
         instructions::claim_chip(ctx)
     }
+    pub fn claim_compressed_chip(ctx: Context<ClaimCompressedChip>) -> Result<()> {
+        instructions::claim_compressed_chip(ctx)
+    }
+    pub fn pulse_chip_play(ctx: Context<PulseChipPlay>, ts: i64) -> Result<()> {
+        instructions::pulse_chip_play(ctx, ts)
+    }
     pub fn sync_set_bonus(ctx: Context<SyncSetBonus>, sets: u8) -> Result<()> {
         instructions::sync_set_bonus(ctx, sets)
     }
@@ -215,7 +221,7 @@ mod tests {
             schedule_minted: [0; 8],
             burn_ring: [0; 7],
             burn_today: 0,
-            split_bps: [2000, 1000, 2200, 3300, 1500],
+            split_bps: [2000, 500, 2200, 3300, 2000],
             split_changed_at: 0,
             slice_budget: [0; 5],
             paused: false,
@@ -226,11 +232,11 @@ mod tests {
             recycled_minted: 0,
         };
         let cap = EmissionState::daily_schedule_cap(0);
-        assert_eq!(e.guarded_daily(0), cap / 10);
+        assert_eq!(e.guarded_daily(0), cap / 50);
         e.burn_ring = [cap; 7];
         assert_eq!(e.guarded_daily(0), cap);
         e.burn_ring = [117_433 * MICRO; 7]; // baseline burn from the TS report
-        assert_eq!(e.guarded_daily(0) / MICRO, 173_914); // 10 % floor + 1.25 × burn
+        assert_eq!(e.guarded_daily(0) / MICRO, 152_215); // 2 % floor + 1.25 × burn
     }
 
     #[test]

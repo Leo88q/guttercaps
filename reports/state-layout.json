@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "fingerprint": "5c0ebd299f8f5a306871a07a9b6afcde92e559f95b08067bf2eab3dbf8d9d35a",
+  "fingerprint": "833ac7b43646e2b008b3c7cb0ef61aa60a5df4cd74c36ccdf63f7631f5971252",
   "accounts": [
     {
       "program": "arena",
@@ -424,6 +424,26 @@
         "weight: u128",
         "reward_debt: u128",
         "staked_at: i64",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "staking",
+      "name": "WalletStakeDay",
+      "fields": [
+        "owner: Pubkey",
+        "day: u32",
+        "token_claimed: u64",
+        "chip_claimed: u64",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "staking",
+      "name": "ChipPlay",
+      "fields": [
+        "chip: Pubkey",
+        "last_played: i64",
         "bump: u8"
       ]
     },

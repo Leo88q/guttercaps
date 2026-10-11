@@ -770,6 +770,15 @@ const HANDLERS: Record<string, Handler> = {
     const d = e.data;
     db.run(insertIgnore('claims', COLS.claims), c.signature, e.eventIndex, str(d.owner), num(d.kind), str(d.amount), c.slot, c.blockTime);
   },
+  ClaimCapped() {
+    // Companion to Claimed: `paid` is already in `claims`. Surplus stays in the pool.
+  },
+  PlayPulsed(db, e) {
+    const d = e.data;
+    const ts = Number(d.lastPlayed);
+    if (!Number.isFinite(ts) || ts <= 0) return;
+    db.run(`UPDATE chips SET last_played = CASE WHEN last_played IS NULL OR last_played < ? THEN ? ELSE last_played END, play_pulsed_at = ? WHERE asset = ?`, ts, ts, ts, str(d.key));
+  },
   RootPublished(db, e, c) {
     const d = e.data;
     db.run(

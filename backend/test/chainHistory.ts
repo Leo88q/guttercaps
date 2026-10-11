@@ -605,6 +605,8 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
       if (!epoch) continue;
       yield* emit([{ program: 'staking', name: 'RootClaimed', data: { kind, epoch, wallet: actor, amount: usd(rnd, 1, 500) } }]);
       yield* emit([{ program: 'staking', name: 'Claimed', data: { owner: actor, kind, amount: usd(rnd, 1, 500) } }]);
+      yield* emit([{ program: 'staking', name: 'ClaimCapped', data: { owner: actor, kind, pending: usd(rnd, 1, 800), paid: usd(rnd, 1, 500) } }]);
+      yield* emit([{ program: 'staking', name: 'PlayPulsed', data: { key: actor, lastPlayed: String(blockTime()) } }]);
       if (rnd() < 0.25) yield* emit([{ program: 'chip_core', name: 'ServicePaid', data: { buyer: actor, kind: 0, currency: 2, amount: '199000000', burned: '199000000', refHash: hex32(i) } }]);
       continue;
     }

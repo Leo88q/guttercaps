@@ -146,14 +146,15 @@ describe('staking read-model', () => {
   let db: Db; let w: ReturnType<typeof world>;
   beforeEach(() => { db = new Db(':memory:'); w = world(); for (const t of w.txs) ingestTx(t, db); });
 
-  it('overview before the first tick_day: schedule floor (10 %), pool totals from Staked events, split 20/10/22/33/15', () => {
+  it('overview before the first tick_day: schedule floor (2 %), pool totals from Staked events, split 20/5/22/33/20', () => {
     const o = staking.overview(db);
     expect(o.emission.source).toBe('schedule');
-    expect(BigInt(o.emission.scheduleCapMicro) - BigInt(o.emission.guardedMicro) * 10n).toBeLessThan(10n); // floor(cap × 0.10)
-    expect(o.emission.splitBps).toEqual([2000, 1000, 2200, 3300, 1500]);
+    expect(BigInt(o.emission.scheduleCapMicro) - BigInt(o.emission.guardedMicro) * 50n).toBeLessThan(50n); // floor(cap × 0.02)
+    expect(o.emission.splitBps).toEqual([2000, 500, 2200, 3300, 2000]);
+    expect(o.claimCaps).toEqual({ chipDailyCg: 30, tokenDailyCg: 15, aliveWindowDays: 7, idleWeight: 0.25 });
     expect(o.tokenPool).toMatchObject({ tvlMicro: '500000000', totalWeight: '750000000' });
     expect(o.chipPool).toMatchObject({ stakedChips: 1, totalWeight: '2000' });
-    expect(BigInt(o.tokenPool.budgetTodayMicro)).toBe((BigInt(o.emission.guardedMicro) * 10n) / 100n);
+    expect(BigInt(o.tokenPool.budgetTodayMicro)).toBe((BigInt(o.emission.guardedMicro) * 5n) / 100n);
     expect(o.tokenPool.apyByTier).toHaveLength(4);
     expect(o.tokenPool.apyByTier[3]).toBeGreaterThan(o.tokenPool.apyByTier[0]);
   });
@@ -173,10 +174,10 @@ describe('staking read-model', () => {
     let m = staking.me(db, owner.toBase58());
     expect(m.tokenStakes[0]).toMatchObject({ tier: 2, amount: '1000000000', weight: '2200000000', earlyExitPenalty: '100000000', pending: '0' });
     expect(m.pendingEstimated).toBe(true);
-    // a day closed 2 days ago with a 100 $CG guarded budget → token pool got 10 $CG over 24 h; this stake holds 2.2e9 of 2.95e9 weight
+    // a day closed 2 days ago with a 100 $CG guarded budget → token pool got 5 $CG over 24 h; this stake holds 2.2e9 of 2.95e9 weight
     ingestTx(tx([{ program: 'staking', name: 'DayClosed', data: { dayIndex: 1, year: 0, scheduleCap: '271232876712', guarded: '100000000', burn7dAvg: '0', sliceBudget: ['0', '0', '0', '0', '0'] } }], { blockTime: t - 2 * 86_400 }), db);
     m = staking.me(db, owner.toBase58());
-    const expected = (2_200_000_000n * 10_000_000n) / 2_950_000_000n;
+    const expected = (2_200_000_000n * 5_000_000n) / 2_950_000_000n;
     expect(BigInt(m.tokenStakes[0].pending)).toBe(expected);
     expect(m.totalPendingMicro).toBe(expected.toString());
     // set bonus: on-chain 0 sets vs computed 0 → no sync pending; after a full set arrives it flips
@@ -218,9 +219,11 @@ describe('staking read-model', () => {
     const big = staking.estimate(db, staking.validateEstimate({ amountCgMicro: '100000000000000', tier: 3 }));
     expect(small.apyPct).toBeGreaterThan(big.apyPct);
     expect(small).toMatchObject({ earlyExitPenaltyBps: 1500, boostBps: 30_000, indicativeApyRange: [36, 90] });
-    // Common lvl 1, 0 sets → 1e6; Rare lvl 5, 2 sets → 5e6 × 1.1 × 1.24
-    expect(staking.chipWeightRaw(0, 1, 0)).toBe(1_000_000n);
-    expect(staking.chipWeightRaw(2, 5, 2)).toBe((5_000_000n * 11_000n) / 10_000n * 12_400n / 10_000n);
+    // Common lvl 1, 0 sets, played now → 1e6; idle (no play) → ×0.25. Rare lvl 5, 2 sets → 5e6 × 1.1 × 1.24
+    const now = Math.floor(Date.now() / 1000);
+    expect(staking.chipWeightRaw(0, 1, 0, now)).toBe(1_000_000n);
+    expect(staking.chipWeightRaw(0, 1, 0, 0)).toBe(250_000n);
+    expect(staking.chipWeightRaw(2, 5, 2, now)).toBe((5_000_000n * 11_000n) / 10_000n * 12_400n / 10_000n);
     expect(staking.setBonusMultBps(10)).toBe(17_000);
   });
 });

@@ -478,6 +478,18 @@ export function decodeSetBonus(data: Uint8Array): SetBonus {
   return { owner: r.pubkey(), completedSets: r.u8(), updatedAt: r.i64(), bump: r.u8() };
 }
 
+export interface WalletStakeDay { owner: PublicKey; day: number; tokenClaimed: bigint; chipClaimed: bigint; bump: number }
+export function decodeWalletStakeDay(data: Uint8Array): WalletStakeDay {
+  const r = expectDiscriminator(data, 'WalletStakeDay');
+  return { owner: r.pubkey(), day: r.u32(), tokenClaimed: r.u64(), chipClaimed: r.u64(), bump: r.u8() };
+}
+
+export interface ChipPlay { chip: PublicKey; lastPlayed: bigint; bump: number }
+export function decodeChipPlay(data: Uint8Array): ChipPlay {
+  const r = expectDiscriminator(data, 'ChipPlay');
+  return { chip: r.pubkey(), lastPlayed: r.i64(), bump: r.u8() };
+}
+
 export interface RewardRoot { kind: number; epoch: number; root: Uint8Array; budget: bigint; claimed: bigint; publishedAt: bigint; publisher: PublicKey; revoked: boolean; bump: number }
 export function decodeRewardRoot(data: Uint8Array): RewardRoot {
   const r = expectDiscriminator(data, 'RewardRoot');

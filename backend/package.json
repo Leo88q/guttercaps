@@ -13,6 +13,7 @@
     "pyth-cache": "node --no-warnings=ExperimentalWarning --import tsx src/pyth-cache.ts",
     "crank": "node --no-warnings=ExperimentalWarning --import tsx src/crank.ts",
     "burn-oracle": "node --no-warnings=ExperimentalWarning --import tsx src/burn-oracle.ts",
+    "play-oracle": "node --no-warnings=ExperimentalWarning --import tsx src/play-oracle.ts",
     "finality": "node --no-warnings=ExperimentalWarning --import tsx src/finality.ts",
     "reward-oracle": "node --no-warnings=ExperimentalWarning --import tsx src/reward-oracle.ts",
     "battle-resolver": "node --no-warnings=ExperimentalWarning --import tsx src/battle-resolver.ts",

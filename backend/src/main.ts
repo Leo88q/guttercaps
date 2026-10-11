@@ -16,6 +16,7 @@ import { startServe, type ServeHandle } from './serve.ts';
 import { crank } from './crank.ts';
 import { pythCache } from './pyth-cache.ts';
 import { burnOracle } from './burn-oracle.ts';
+import { playOracle } from './play-oracle.ts';
 import { rewardOracle } from './reward-oracle.ts';
 import { battleResolver } from './battle-resolver.ts';
 import { installShutdown } from './shutdown.ts';
@@ -32,6 +33,7 @@ export const WORKER_TASKS: Record<string, Task> = {
   burn: (l) => burnOracle(l),
   reward: (l) => rewardOracle(l),
   battle: (l) => battleResolver(l),
+  play: (l) => playOracle(l),
 };
 
 export interface MainHandle { serve: ServeHandle; stop: () => Promise<void> }

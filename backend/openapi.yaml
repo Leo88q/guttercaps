@@ -1203,6 +1203,8 @@ components:
         maxLevel: { type: integer, description: 'rarity cap (Common 12 … Diamond 50)' }
         xpToday: { type: integer, description: 'XP this cap earned during the current UTC day toward xpDailyCap' }
         xpDailyCap: { type: integer, description: 'per-cap UTC-day XP cap (CHIP_XP.dailyCap)' }
+        lastPlayed: { type: [string, 'null'], format: date-time, description: 'last Cap Slam that used this cap; null = never — idle stake weight 25 %' }
+        idle: { type: boolean, description: 'true when lastPlayed is older than STAKE_CLAIM_CAPS.aliveWindowDays' }
         xpGained: { type: integer, description: 'XP this cap earned from this match (match payloads only; 0 otherwise)' }
         leveledTo: { type: [integer, 'null'], description: 'new level if this match promoted the cap; null otherwise' }
         index: { type: [integer, 'null'], description: 'per-collection mint number (`Name #N`); null = not resolved on chain yet (core `open_pack` chips are back-filled by the crank within a sweep). Never a placeholder: #0 is a real chip' }
@@ -1560,9 +1562,10 @@ components:
     StakingOverview:
       type: object
       properties:
-        emission: { type: object, properties: { dayIndex: { type: integer }, year: { type: integer }, scheduleCapMicro: { type: string }, guardedMicro: { type: string }, burn7dAvgMicro: { type: string }, mintedTotalMicro: { type: string }, splitBps: { type: array, items: { type: integer } }, source: { type: string, enum: [chain, schedule], description: 'schedule = no DayClosed indexed yet (30 % floor assumed)' } } }
+        emission: { type: object, properties: { dayIndex: { type: integer }, year: { type: integer }, scheduleCapMicro: { type: string }, guardedMicro: { type: string }, burn7dAvgMicro: { type: string }, mintedTotalMicro: { type: string }, splitBps: { type: array, items: { type: integer } }, source: { type: string, enum: [chain, schedule], description: 'schedule = no DayClosed indexed yet (2 % floor assumed)' } } }
         tokenPool: { type: object, properties: { tvlMicro: { type: string }, totalWeight: { type: string }, budgetTodayMicro: { type: string }, apyByTier: { type: array, items: { type: number } } } }
         chipPool: { type: object, properties: { stakedChips: { type: integer }, totalWeight: { type: string }, budgetTodayMicro: { type: string }, dailyPerWeightUnit: { type: string } } }
+        claimCaps: { type: object, properties: { chipDailyCg: { type: number }, tokenDailyCg: { type: number }, aliveWindowDays: { type: integer }, idleWeight: { type: number } } }
     StakingMe:
       type: object
       properties:

@@ -50,6 +50,14 @@ pub struct StakeCg<'info> {
     pub vault_cg: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
+    #[account(
+        init_if_needed,
+        payer = owner,
+        space = 8 + WalletStakeDay::INIT_SPACE,
+        seeds = [b"wday", owner.key().as_ref()],
+        bump
+    )]
+    pub wallet_day: Box<Account<'info, WalletStakeDay>>,
 }
 
 pub fn stake_cg(ctx: Context<StakeCg>, tier: u8, amount: u64) -> Result<()> {
@@ -64,19 +72,38 @@ pub fn stake_cg(ctx: Context<StakeCg>, tier: u8, amount: u64) -> Result<()> {
     if s.weight > 0 {
         let pending = pool.pending(s.weight, s.reward_debt)?;
         if pending > 0 {
-            mint_to_user(
-                &mut ctx.accounts.emission,
-                &ctx.accounts.cg_mint.to_account_info(),
-                &ctx.accounts.owner_cg.to_account_info(),
-                &ctx.accounts.token_program.to_account_info(),
-                pending,
+            let owner = ctx.accounts.owner.key();
+            let paid = take_daily_cap(
+                &mut ctx.accounts.wallet_day,
+                owner,
                 now,
+                0,
+                pending,
+                ctx.bumps.wallet_day,
             )?;
+            if paid > 0 {
+                mint_to_user(
+                    &mut ctx.accounts.emission,
+                    &ctx.accounts.cg_mint.to_account_info(),
+                    &ctx.accounts.owner_cg.to_account_info(),
+                    &ctx.accounts.token_program.to_account_info(),
+                    paid,
+                    now,
+                )?;
+            }
             emit!(Claimed {
-                owner: ctx.accounts.owner.key(),
+                owner,
                 kind: 0,
-                amount: pending
+                amount: paid
             });
+            if paid < pending {
+                emit!(ClaimCapped {
+                    owner,
+                    kind: 0,
+                    pending,
+                    paid
+                });
+            }
         }
     } else {
         s.owner = ctx.accounts.owner.key();
@@ -136,6 +163,15 @@ pub struct UnstakeCg<'info> {
     #[account(mut, token::mint = emission.cg_mint, token::authority = emission)]
     pub vault_cg: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
+    #[account(
+        init_if_needed,
+        payer = owner,
+        space = 8 + WalletStakeDay::INIT_SPACE,
+        seeds = [b"wday", owner.key().as_ref()],
+        bump
+    )]
+    pub wallet_day: Box<Account<'info, WalletStakeDay>>,
 }
 
 /// `amount` = 0 → claim only. Early exit burns the tier penalty from principal.
@@ -146,19 +182,37 @@ pub fn unstake_cg(ctx: Context<UnstakeCg>, tier: u8, amount: u64) -> Result<()> 
     let s = &mut ctx.accounts.stake;
     let pending = pool.pending(s.weight, s.reward_debt)?;
     if pending > 0 {
-        mint_to_user(
-            &mut ctx.accounts.emission,
-            &ctx.accounts.cg_mint.to_account_info(),
-            &ctx.accounts.owner_cg.to_account_info(),
-            &ctx.accounts.token_program.to_account_info(),
-            pending,
+        let paid = take_daily_cap(
+            &mut ctx.accounts.wallet_day,
+            s.owner,
             now,
+            0,
+            pending,
+            ctx.bumps.wallet_day,
         )?;
+        if paid > 0 {
+            mint_to_user(
+                &mut ctx.accounts.emission,
+                &ctx.accounts.cg_mint.to_account_info(),
+                &ctx.accounts.owner_cg.to_account_info(),
+                &ctx.accounts.token_program.to_account_info(),
+                paid,
+                now,
+            )?;
+        }
         emit!(Claimed {
             owner: s.owner,
             kind: 0,
-            amount: pending
+            amount: paid
         });
+        if paid < pending {
+            emit!(ClaimCapped {
+                owner: s.owner,
+                kind: 0,
+                pending,
+                paid
+            });
+        }
     }
     let mut penalty = 0u64;
     if amount > 0 {
@@ -238,25 +292,37 @@ pub struct StakeCompressedChip<'info> {
     pub stake_auth: UncheckedAccount<'info>,
     #[account(mut)]
     pub claim: Account<'info, CompressedMintClaim>,
+    #[account(
+        init_if_needed,
+        payer = owner,
+        space = 8 + ChipPlay::INIT_SPACE,
+        seeds = [b"chipplay", claim.key().as_ref()],
+        bump
+    )]
+    pub play: Box<Account<'info, ChipPlay>>,
     pub chip_core: Program<'info, ChipCore>,
     pub system_program: Program<'info, System>,
 }
 
-fn compressed_chip_weight(claim: &CompressedMintClaim, sets: u8) -> u128 {
+fn compressed_chip_weight(claim: &CompressedMintClaim, sets: u8, last_played: i64, now: i64) -> u128 {
     claim.rarity.stake_weight() as u128 * MICRO as u128 * level_mult_bps(claim.level) as u128
         / 10_000
         * SetBonus::mult_bps(sets) as u128
+        / 10_000
+        * alive_mult_bps(last_played, now) as u128
         / 10_000
 }
 
 /// Weight of a Core chip. Survives the 2026-10-01 Core-market / Core-staking pruning because
 /// `claim_chip` still needs it: a `ChipStake` opened before the migration keeps its level-ups and
 /// set-bonus changes re-weighed on every claim, and this is that arithmetic.
-pub fn chip_weight(chip: &ChipState, sets: u8) -> u128 {
+pub fn chip_weight(chip: &ChipState, sets: u8, last_played: i64, now: i64) -> u128 {
     chip.rarity.stake_weight() as u128 * MICRO as u128 // base unit scaled 1e6 for precision
         * level_mult_bps(chip.level) as u128
         / 10_000
         * SetBonus::mult_bps(sets) as u128
+        / 10_000
+        * alive_mult_bps(last_played, now) as u128
         / 10_000
 }
 
@@ -309,7 +375,16 @@ pub fn stake_compressed_chip(ctx: Context<StakeCompressedChip>) -> Result<()> {
     )?;
     let pool = &mut ctx.accounts.pool;
     pool.update(now)?;
-    let weight = compressed_chip_weight(&ctx.accounts.claim, sb.completed_sets);
+    if ctx.accounts.play.chip == Pubkey::default() {
+        ctx.accounts.play.chip = ctx.accounts.claim.key();
+        ctx.accounts.play.bump = ctx.bumps.play;
+    }
+    let weight = compressed_chip_weight(
+        &ctx.accounts.claim,
+        sb.completed_sets,
+        ctx.accounts.play.last_played,
+        now,
+    );
     let c = &mut ctx.accounts.cstake;
     c.owner = ctx.accounts.owner.key();
     c.claim = ctx.accounts.claim.key();
@@ -370,6 +445,14 @@ pub struct StakeCompressedChipV2<'info> {
     /// CHECK: fixed MPL Account Compression program.
     #[account(address = MPL_ACCOUNT_COMPRESSION_ID)]
     pub compression_program: UncheckedAccount<'info>,
+    #[account(
+        init_if_needed,
+        payer = owner,
+        space = 8 + ChipPlay::INIT_SPACE,
+        seeds = [b"chipplay", claim.key().as_ref()],
+        bump
+    )]
+    pub play: Box<Account<'info, ChipPlay>>,
     pub chip_core: Program<'info, ChipCore>,
     pub system_program: Program<'info, System>,
 }
@@ -443,7 +526,16 @@ pub fn stake_compressed_chip_v2<'info>(
     )?;
     let pool = &mut ctx.accounts.pool;
     pool.update(now)?;
-    let weight = compressed_chip_weight(&ctx.accounts.claim, sb.completed_sets);
+    if ctx.accounts.play.chip == Pubkey::default() {
+        ctx.accounts.play.chip = ctx.accounts.claim.key();
+        ctx.accounts.play.bump = ctx.bumps.play;
+    }
+    let weight = compressed_chip_weight(
+        &ctx.accounts.claim,
+        sb.completed_sets,
+        ctx.accounts.play.last_played,
+        now,
+    );
     let c = &mut ctx.accounts.cstake;
     c.owner = ctx.accounts.owner.key();
     c.claim = ctx.accounts.claim.key();
@@ -489,6 +581,14 @@ pub struct UnstakeCompressedChip<'info> {
     pub chip_core: Program<'info, ChipCore>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
+    #[account(
+        init_if_needed,
+        payer = owner,
+        space = 8 + WalletStakeDay::INIT_SPACE,
+        seeds = [b"wday", owner.key().as_ref()],
+        bump
+    )]
+    pub wallet_day: Box<Account<'info, WalletStakeDay>>,
 }
 
 pub fn unstake_compressed_chip(ctx: Context<UnstakeCompressedChip>) -> Result<()> {
@@ -498,19 +598,37 @@ pub fn unstake_compressed_chip(ctx: Context<UnstakeCompressedChip>) -> Result<()
     let c = &ctx.accounts.cstake;
     let pending = pool.pending(c.weight, c.reward_debt)?;
     if pending > 0 {
-        mint_to_user(
-            &mut ctx.accounts.emission,
-            &ctx.accounts.cg_mint.to_account_info(),
-            &ctx.accounts.owner_cg.to_account_info(),
-            &ctx.accounts.token_program.to_account_info(),
-            pending,
+        let paid = take_daily_cap(
+            &mut ctx.accounts.wallet_day,
+            c.owner,
             now,
+            1,
+            pending,
+            ctx.bumps.wallet_day,
         )?;
+        if paid > 0 {
+            mint_to_user(
+                &mut ctx.accounts.emission,
+                &ctx.accounts.cg_mint.to_account_info(),
+                &ctx.accounts.owner_cg.to_account_info(),
+                &ctx.accounts.token_program.to_account_info(),
+                paid,
+                now,
+            )?;
+        }
         emit!(Claimed {
             owner: c.owner,
             kind: 1,
-            amount: pending
+            amount: paid
         });
+        if paid < pending {
+            emit!(ClaimCapped {
+                owner: c.owner,
+                kind: 1,
+                pending,
+                paid
+            });
+        }
     }
     pool.total_weight = pool
         .total_weight
@@ -558,9 +676,26 @@ pub struct ClaimChip<'info> {
     #[account(mut, token::mint = emission.cg_mint, token::authority = owner)]
     pub owner_cg: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
+    #[account(
+        init_if_needed,
+        payer = owner,
+        space = 8 + WalletStakeDay::INIT_SPACE,
+        seeds = [b"wday", owner.key().as_ref()],
+        bump
+    )]
+    pub wallet_day: Box<Account<'info, WalletStakeDay>>,
+    #[account(
+        init_if_needed,
+        payer = owner,
+        space = 8 + ChipPlay::INIT_SPACE,
+        seeds = [b"chipplay", cstake.asset.as_ref()],
+        bump
+    )]
+    pub play: Box<Account<'info, ChipPlay>>,
 }
 
-/// Claim and re-weigh (level-ups / set bonus changes take effect here).
+/// Claim and re-weigh (level-ups / set bonus / alive-stake take effect here).
 pub fn claim_chip(ctx: Context<ClaimChip>) -> Result<()> {
     require_keys_eq!(
         ctx.accounts.set_bonus.owner,
@@ -573,22 +708,192 @@ pub fn claim_chip(ctx: Context<ClaimChip>) -> Result<()> {
     let c = &mut ctx.accounts.cstake;
     let pending = pool.pending(c.weight, c.reward_debt)?;
     require!(pending > 0, StakeError::NothingToClaim);
-    mint_to_user(
-        &mut ctx.accounts.emission,
-        &ctx.accounts.cg_mint.to_account_info(),
-        &ctx.accounts.owner_cg.to_account_info(),
-        &ctx.accounts.token_program.to_account_info(),
-        pending,
+    if ctx.accounts.play.chip == Pubkey::default() {
+        ctx.accounts.play.chip = c.asset;
+        ctx.accounts.play.bump = ctx.bumps.play;
+    }
+    let paid = take_daily_cap(
+        &mut ctx.accounts.wallet_day,
+        c.owner,
         now,
+        1,
+        pending,
+        ctx.bumps.wallet_day,
     )?;
-    let w = chip_weight(&ctx.accounts.chip, ctx.accounts.set_bonus.completed_sets);
+    if paid > 0 {
+        mint_to_user(
+            &mut ctx.accounts.emission,
+            &ctx.accounts.cg_mint.to_account_info(),
+            &ctx.accounts.owner_cg.to_account_info(),
+            &ctx.accounts.token_program.to_account_info(),
+            paid,
+            now,
+        )?;
+    }
+    let w = chip_weight(
+        &ctx.accounts.chip,
+        ctx.accounts.set_bonus.completed_sets,
+        ctx.accounts.play.last_played,
+        now,
+    );
     pool.total_weight = pool.total_weight - c.weight + w;
     c.weight = w;
     c.reward_debt = (w * pool.acc_reward_per_weight) / ACC_PRECISION;
     emit!(Claimed {
         owner: c.owner,
         kind: 1,
-        amount: pending
+        amount: paid
+    });
+    if paid < pending {
+        emit!(ClaimCapped {
+            owner: c.owner,
+            kind: 1,
+            pending,
+            paid
+        });
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Compressed claim harvest (re-weigh alive-stake without unstaking)
+// ---------------------------------------------------------------------------
+
+#[derive(Accounts)]
+pub struct ClaimCompressedChip<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    #[account(mut, seeds = [b"emission"], bump = emission.bump, constraint = !emission.paused @ StakeError::Paused)]
+    pub emission: Box<Account<'info, EmissionState>>,
+    #[account(mut, seeds = [b"chip_pool"], bump = pool.bump)]
+    pub pool: Box<Account<'info, Pool>>,
+    #[account(mut, seeds = [b"compressed_cstake", claim.key().as_ref()], bump = cstake.bump, has_one = owner, has_one = claim)]
+    pub cstake: Box<Account<'info, CompressedChipStake>>,
+    #[account(seeds = [b"setbonus", owner.key().as_ref()], bump = set_bonus.bump)]
+    pub set_bonus: Box<Account<'info, SetBonus>>,
+    pub claim: Account<'info, CompressedMintClaim>,
+    #[account(
+        init_if_needed,
+        payer = owner,
+        space = 8 + ChipPlay::INIT_SPACE,
+        seeds = [b"chipplay", claim.key().as_ref()],
+        bump
+    )]
+    pub play: Box<Account<'info, ChipPlay>>,
+    #[account(
+        init_if_needed,
+        payer = owner,
+        space = 8 + WalletStakeDay::INIT_SPACE,
+        seeds = [b"wday", owner.key().as_ref()],
+        bump
+    )]
+    pub wallet_day: Box<Account<'info, WalletStakeDay>>,
+    #[account(mut, address = emission.cg_mint)]
+    pub cg_mint: Account<'info, Mint>,
+    #[account(mut, token::mint = emission.cg_mint, token::authority = owner)]
+    pub owner_cg: Account<'info, TokenAccount>,
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
+}
+
+pub fn claim_compressed_chip(ctx: Context<ClaimCompressedChip>) -> Result<()> {
+    require_keys_eq!(
+        ctx.accounts.set_bonus.owner,
+        ctx.accounts.owner.key(),
+        StakeError::NotOwner
+    );
+    let now = Clock::get()?.unix_timestamp;
+    let pool = &mut ctx.accounts.pool;
+    pool.update(now)?;
+    let c = &mut ctx.accounts.cstake;
+    let pending = pool.pending(c.weight, c.reward_debt)?;
+    require!(pending > 0, StakeError::NothingToClaim);
+    if ctx.accounts.play.chip == Pubkey::default() {
+        ctx.accounts.play.chip = ctx.accounts.claim.key();
+        ctx.accounts.play.bump = ctx.bumps.play;
+    }
+    let paid = take_daily_cap(
+        &mut ctx.accounts.wallet_day,
+        c.owner,
+        now,
+        1,
+        pending,
+        ctx.bumps.wallet_day,
+    )?;
+    if paid > 0 {
+        mint_to_user(
+            &mut ctx.accounts.emission,
+            &ctx.accounts.cg_mint.to_account_info(),
+            &ctx.accounts.owner_cg.to_account_info(),
+            &ctx.accounts.token_program.to_account_info(),
+            paid,
+            now,
+        )?;
+    }
+    let w = compressed_chip_weight(
+        &ctx.accounts.claim,
+        ctx.accounts.set_bonus.completed_sets,
+        ctx.accounts.play.last_played,
+        now,
+    );
+    pool.total_weight = pool.total_weight - c.weight + w;
+    c.weight = w;
+    c.reward_debt = (w * pool.acc_reward_per_weight) / ACC_PRECISION;
+    emit!(Claimed {
+        owner: c.owner,
+        kind: 1,
+        amount: paid
+    });
+    if paid < pending {
+        emit!(ClaimCapped {
+            owner: c.owner,
+            kind: 1,
+            pending,
+            paid
+        });
+    }
+    Ok(())
+}
+
+#[derive(Accounts)]
+pub struct PulseChipPlay<'info> {
+    pub oracle: Signer<'info>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(
+        seeds = [b"emission"],
+        bump = emission.bump,
+        constraint = (emission.season_oracle == oracle.key()
+            || emission.set_oracle == oracle.key()) @ StakeError::BadOracle
+    )]
+    pub emission: Box<Account<'info, EmissionState>>,
+    /// CHECK: claim or Core asset pubkey the play PDA is bound to.
+    pub chip_key: UncheckedAccount<'info>,
+    #[account(
+        init_if_needed,
+        payer = payer,
+        space = 8 + ChipPlay::INIT_SPACE,
+        seeds = [b"chipplay", chip_key.key().as_ref()],
+        bump
+    )]
+    pub play: Box<Account<'info, ChipPlay>>,
+    pub system_program: Program<'info, System>,
+}
+
+pub fn pulse_chip_play(ctx: Context<PulseChipPlay>, ts: i64) -> Result<()> {
+    let now = Clock::get()?.unix_timestamp;
+    require!(ts > 0 && ts <= now + 60, StakeError::FuturePlay);
+    let p = &mut ctx.accounts.play;
+    if p.chip == Pubkey::default() {
+        p.chip = ctx.accounts.chip_key.key();
+        p.bump = ctx.bumps.play;
+    }
+    if ts > p.last_played {
+        p.last_played = ts;
+    }
+    emit!(PlayPulsed {
+        key: p.chip,
+        last_played: p.last_played
     });
     Ok(())
 }

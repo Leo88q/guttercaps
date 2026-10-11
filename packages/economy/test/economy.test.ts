@@ -88,9 +88,9 @@ test('fusion: 8 recipes chain 0→8, always 3 materials, alternating collection 
   assert.equal(+expectedBurn(FUSION_RECIPES[7]).toFixed(2), 5); // 50% with 1 refund
 });
 
-test('emission guard is a ceiling, floors at 10% of the schedule', () => {
+test('emission guard is a ceiling, floors at 2% of the schedule', () => {
   const cap = dailyEmission(0);
-  assert.equal(guardedEmission(cap, 0), 0.1 * cap);
+  assert.equal(guardedEmission(cap, 0), 0.02 * cap);
   assert.equal(guardedEmission(cap, cap * 10), cap);
 });
 

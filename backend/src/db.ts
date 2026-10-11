@@ -116,7 +116,9 @@ CREATE TABLE IF NOT EXISTS chips (
   burned_at        INTEGER,                      -- consumed by a fusion
   updated_slot     INTEGER NOT NULL DEFAULT 0,
   game_index       TEXT,                         -- per-collection mint number (Name #N, u64 as decimal); NULL = not resolved yet
-  index_attempts   INTEGER NOT NULL DEFAULT 0    -- back-fill attempts; the row is parked once it reaches INDEX_ATTEMPTS
+  index_attempts   INTEGER NOT NULL DEFAULT 0,   -- back-fill attempts; the row is parked once it reaches INDEX_ATTEMPTS
+  last_played      INTEGER,                      -- unix: last Cap Slam (alive-stake)
+  play_pulsed_at   INTEGER                       -- last_played copied onto ChipPlay
 );
 CREATE INDEX IF NOT EXISTS idx_chips_owner ON chips(owner, burned_at);
 CREATE INDEX IF NOT EXISTS idx_chips_arch  ON chips(collection_idx, rarity, burned_at);
@@ -936,6 +938,8 @@ export class Db {
         ) WHERE game_index IS NULL AND EXISTS (SELECT 1 FROM compressed_claims cc WHERE cc.asset = chips.asset AND cc.game_index IS NOT NULL)`);
     }
     if (!ch.has('index_attempts')) this.raw.exec(`ALTER TABLE chips ADD COLUMN index_attempts INTEGER NOT NULL DEFAULT 0`);
+    if (!ch.has('last_played')) this.raw.exec(`ALTER TABLE chips ADD COLUMN last_played INTEGER`);
+    if (!ch.has('play_pulsed_at')) this.raw.exec(`ALTER TABLE chips ADD COLUMN play_pulsed_at INTEGER`);
     // backlog #23: the lookup-table half of the Switchboard rent. `lut_slot` rides along with the job
     // (the randomness account is already gone when the table becomes closable), `lut_closed_at` marks
     // the batch that reclaimed it — the crank only touches jobs that are `closed` and not yet flagged.

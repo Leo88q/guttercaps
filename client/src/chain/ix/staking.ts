@@ -7,8 +7,8 @@ import { BorshWriter } from '../borsh';
 import { ixData, ro, rw, signer } from '../anchor';
 import { CHIP_CORE_ID, MPL_ACCOUNT_COMPRESSION_ID, STAKING_ID, SYSTEM_PROGRAM_ID, TOKEN_PROGRAM_ID } from '../ids';
 import {
-  ata, chipPoolPda, claimReceiptPda, compressedChipStakePda, configPda, emissionPda, pendingPackPda, pityPda, playerItemsPda, rewardRootPda,
-  rewarderPda, RNG_KIND, rngAuthPda, rngPda, seasonPoolAuthPda, setBonusPda, skrPoolPda, stakeAuthPda, tokenPoolPda, tokenStakePda,
+  ata, chipPlayPda, chipPoolPda, claimReceiptPda, compressedChipStakePda, configPda, emissionPda, pendingPackPda, pityPda, playerItemsPda, rewardRootPda,
+  rewarderPda, RNG_KIND, rngAuthPda, rngPda, seasonPoolAuthPda, setBonusPda, skrPoolPda, stakeAuthPda, tokenPoolPda, tokenStakePda, walletStakeDayPda,
 } from '../pdas';
 import { SWITCHBOARD_ON_DEMAND_ID, SYSVAR_SLOT_HASHES_ID } from '../ids';
 import { CHIP_VOUCHER_REWARDS, ITEM_REWARDS, isChipRootKind, isItemRootKind, isSkrRootKind } from '@guttercaps/economy';
@@ -27,7 +27,7 @@ export function stakeCgIx(a: { owner: PublicKey; tier: number; amount: bigint; c
     keys: [
       signer(a.owner), rw(emission), rw(tokenPoolPda()[0]), rw(tokenStakePda(a.owner, a.tier)[0]),
       rw(a.cgMint), rw(ata(a.cgMint, a.owner)), rw(ata(a.cgMint, emission)),
-      ro(TOKEN_PROGRAM_ID), ro(SYSTEM_PROGRAM_ID),
+      ro(TOKEN_PROGRAM_ID), ro(SYSTEM_PROGRAM_ID), rw(walletStakeDayPda(a.owner)[0]),
     ],
     data: Buffer.from(ixData('stake_cg', new BorshWriter().u8(a.tier).u64(a.amount).toBytes())),
   });
@@ -52,6 +52,7 @@ export function unstakeCgIx(a: { owner: PublicKey; tier: number; amount: bigint;
     keys: [
       signer(a.owner), rw(emission), rw(tokenPoolPda()[0]), rw(tokenStakePda(a.owner, a.tier)[0]),
       rw(a.cgMint), rw(ata(a.cgMint, a.owner)), rw(ata(a.cgMint, emission)), ro(TOKEN_PROGRAM_ID),
+      ro(SYSTEM_PROGRAM_ID), rw(walletStakeDayPda(a.owner)[0]),
     ],
     data: Buffer.from(ixData('unstake_cg', new BorshWriter().u8(a.tier).u64(a.amount).toBytes())),
   });
@@ -65,7 +66,7 @@ export function stakeCompressedChipIx(a: { owner: PublicKey; claim: PublicKey })
     programId: STAKING_ID,
     keys: [
       signer(a.owner), rw(emissionPda()[0]), rw(chipPoolPda()[0]), rw(compressedChipStakePda(a.claim)[0]),
-      rw(setBonusPda(a.owner)[0]), ro(stakeAuthPda()[0]), rw(a.claim), ro(CHIP_CORE_ID), ro(SYSTEM_PROGRAM_ID),
+      rw(setBonusPda(a.owner)[0]), ro(stakeAuthPda()[0]), rw(a.claim), rw(chipPlayPda(a.claim)[0]), ro(CHIP_CORE_ID), ro(SYSTEM_PROGRAM_ID),
     ],
     data: Buffer.from(ixData('stake_compressed_chip')),
   });
@@ -97,7 +98,7 @@ export function stakeCompressedChipV2Ix(a: {
     keys: [
       signer(a.owner), rw(emissionPda()[0]), rw(chipPoolPda()[0]), rw(compressedChipStakePda(a.claim)[0]),
       rw(setBonusPda(a.owner)[0]), ro(stakeAuthPda()[0]), rw(a.claim), ro(a.chip), ro(a.merkleTree),
-      ro(MPL_ACCOUNT_COMPRESSION_ID), ro(CHIP_CORE_ID), ro(SYSTEM_PROGRAM_ID),
+      ro(MPL_ACCOUNT_COMPRESSION_ID), rw(chipPlayPda(a.claim)[0]), ro(CHIP_CORE_ID), ro(SYSTEM_PROGRAM_ID),
       ...a.proof.proofNodes.map(ro),
     ],
     data: Buffer.from(ixData('stake_compressed_chip_v2', w)),
@@ -110,13 +111,34 @@ export function unstakeCompressedChipIx(a: { owner: PublicKey; claim: PublicKey;
     keys: [
       signer(a.owner), rw(emissionPda()[0]), rw(chipPoolPda()[0]), rw(compressedChipStakePda(a.claim)[0]),
       ro(stakeAuthPda()[0]), rw(a.claim), rw(a.cgMint), rw(ata(a.cgMint, a.owner)), ro(CHIP_CORE_ID),
-      ro(TOKEN_PROGRAM_ID), ro(SYSTEM_PROGRAM_ID),
+      ro(TOKEN_PROGRAM_ID), ro(SYSTEM_PROGRAM_ID), rw(walletStakeDayPda(a.owner)[0]),
     ],
     data: Buffer.from(ixData('unstake_compressed_chip')),
   });
 }
 
+export function claimCompressedChipIx(a: { owner: PublicKey; claim: PublicKey; cgMint: PublicKey }): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: STAKING_ID,
+    keys: [
+      signer(a.owner), rw(emissionPda()[0]), rw(chipPoolPda()[0]), rw(compressedChipStakePda(a.claim)[0]),
+      ro(setBonusPda(a.owner)[0]), ro(a.claim), rw(chipPlayPda(a.claim)[0]), rw(walletStakeDayPda(a.owner)[0]),
+      rw(a.cgMint), rw(ata(a.cgMint, a.owner)), ro(TOKEN_PROGRAM_ID), ro(SYSTEM_PROGRAM_ID),
+    ],
+    data: Buffer.from(ixData('claim_compressed_chip')),
+  });
+}
 
+export function pulseChipPlayIx(a: { oracle: PublicKey; payer: PublicKey; chipKey: PublicKey; ts: bigint }): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: STAKING_ID,
+    keys: [
+      signer(a.oracle), signer(a.payer), ro(emissionPda()[0]), ro(a.chipKey),
+      rw(chipPlayPda(a.chipKey)[0]), ro(SYSTEM_PROGRAM_ID),
+    ],
+    data: Buffer.from(ixData('pulse_chip_play', new BorshWriter().i64(a.ts).toBytes())),
+  });
+}
 
 /** $CG Merkle claim (kinds 2..4) — mints from the emission slice. Rejects SKR / item kinds: use `claimSkrRootIx` / `claimItemRootIx`. */
 export function claimRootIx(a: { wallet: PublicKey; kind: number; epoch: number; amount: bigint; proof: Uint8Array[]; cgMint: PublicKey }): TransactionInstruction {

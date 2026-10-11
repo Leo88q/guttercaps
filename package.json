@@ -17,6 +17,7 @@
     "backend:pyth-cache": "npm --prefix backend run pyth-cache",
     "backend:crank": "npm --prefix backend run crank",
     "backend:burn-oracle": "npm --prefix backend run burn-oracle",
+    "backend:play-oracle": "npm --prefix backend run play-oracle",
     "backend:reward-oracle": "npm --prefix backend run reward-oracle",
     "backend:battle-resolver": "npm --prefix backend run battle-resolver",
     "backend:antifraud": "npm --prefix backend run antifraud --",

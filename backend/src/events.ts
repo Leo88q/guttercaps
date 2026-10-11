@@ -160,6 +160,8 @@ export const EVENT_SPECS: readonly EventSpec[] = [
   spec('staking', 'Staked', [['owner', 'pubkey'], ['kind', 'u8'], ['key', 'pubkey'], ['amount', 'u64'], ['weight', 'u128'], ['unlockAt', 'i64']]),
   spec('staking', 'Unstaked', [['owner', 'pubkey'], ['kind', 'u8'], ['key', 'pubkey'], ['amount', 'u64'], ['penaltyBurned', 'u64']]),
   spec('staking', 'Claimed', [['owner', 'pubkey'], ['kind', 'u8'], ['amount', 'u64']]),
+  spec('staking', 'ClaimCapped', [['owner', 'pubkey'], ['kind', 'u8'], ['pending', 'u64'], ['paid', 'u64']]),
+  spec('staking', 'PlayPulsed', [['key', 'pubkey'], ['lastPlayed', 'i64']]),
   spec('staking', 'RootPublished', [['kind', 'u8'], ['epoch', 'u32'], ['root', 'bytes32'], ['budget', 'u64']]),
   spec('staking', 'RootRevoked', [['kind', 'u8'], ['epoch', 'u32']]),
   spec('staking', 'RootClaimed', [['kind', 'u8'], ['epoch', 'u32'], ['wallet', 'pubkey'], ['amount', 'u64']]),

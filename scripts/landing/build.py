@@ -495,10 +495,10 @@ BODY = f'''
         <h3 data-i18n="eco.emission">{t('eco.emission')}</h3>
         <div class="bars">
 {bar('eco.e1', 20, '#16E5D9')}
-{bar('eco.e2', 10, '#2E8BFF')}
+{bar('eco.e2', 5, '#2E8BFF')}
 {bar('eco.e3', 22, '#B6FF3C')}
 {bar('eco.e4', 33, '#FF2E8A')}
-{bar('eco.e5', 15, '#FF7A1A')}
+{bar('eco.e5', 20, '#FF7A1A')}
         </div>
         <h3 class="mt" data-i18n="eco.sinks">{t('eco.sinks')}</h3>
         <div class="bars">

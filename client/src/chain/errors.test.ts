@@ -36,7 +36,7 @@ describe('source synchronization', () => {
         count++;
       });
     }
-    expect(count).toBe(118); // 113 + SEC-A6 StakeError::SkrWithdrawRate + 4 presale Preorder* errors
+    expect(count).toBe(119); // 118 + StakeError::FuturePlay (alive-stake pulse)
     // Pin the framework identities to the installed SDK too, not just our translated hand table.
     const framework = {
       InstructionMissing: 100, InstructionFallbackNotFound: 101, ConstraintMut: 2000,

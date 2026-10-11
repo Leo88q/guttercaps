@@ -416,7 +416,8 @@ on('post', '/arena/matches/{id}/emotes', (o, p) => {
 on('post', '/arena/matches/{id}/reveal', (_o, p) => ({ ok: true, status: 'resolved', matchId: p.id, resolved: true, winner: ME, xp: CHIP_XP.win * 3, leveled: 1 }));
 
 on('get', '/staking/overview', () => ({
-  emission: { dayIndex: 143, year: 0, scheduleCapMicro: '271232876712', guardedMicro: '198000000000', burn7dAvgMicro: '93000000000', mintedTotalMicro: '28900000000000', splitBps: [2000, 1000, 2200, 3300, 1500] },
+  emission: { dayIndex: 143, year: 0, scheduleCapMicro: '271232876712', guardedMicro: '198000000000', burn7dAvgMicro: '93000000000', mintedTotalMicro: '28900000000000', splitBps: [2000, 500, 2200, 3300, 2000] },
+  claimCaps: { chipDailyCg: 30, tokenDailyCg: 15, aliveWindowDays: 7, idleWeight: 0.25 },
   tokenPool: { tvlMicro: '38200000000000', totalWeight: '68760000000000', budgetTodayMicro: '29700000000', apyByTier: (['flex', 'd30', 'd90', 'd180'] as const).map((t) => Number(impliedApy(10_000, t, 68_760_000, 29_700).toFixed(1))) },
   chipPool: { stakedChips: 18420, totalWeight: '1420000', budgetTodayMicro: '59400000000', dailyPerWeightUnit: '41830' },
 }));

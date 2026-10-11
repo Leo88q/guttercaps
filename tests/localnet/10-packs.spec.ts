@@ -91,7 +91,7 @@ suite('T-L-C packs', () => {
     const u = await buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.USDC });
     expect(u.paid).toBe(5_990_000n);
     const c = await buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.CG });
-    expect(c.paid).toBe(900_000_000n);
+    expect(c.paid).toBe(2_700_000_000n);
     const s = await buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.SKR });
     // $5.99 − 5 % SKR promo = $5.6905 → 569 cents (integer) at $0.0174 − 0.1 % conf (SEC-M2: price − conf)
     expect(s.paid).toBe((569n * 1_000_000n * 100_000_000n) / 100n / (1_740_000n - 1_740n));

@@ -199,8 +199,16 @@ describe('V2 chip staking', () => {
     expect(sent[1].data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('unstake_compressed_chip')));
     // the unstake handler reads no proof, so the resolver must not fetch one
     expect(dasCalls).toBe(0);
-    // the reward is minted by the unstake itself, so there is no separate claim button to click
-    expect(screen.queryByRole('button', { name: /Claim/ })).toBeNull();
+  });
+
+  it('claiming a staked cap signs `claim_compressed_chip` without a DAS proof', async () => {
+    const qc = new QueryClient();
+    seed(qc, true);
+    mount(qc);
+    fireEvent.click(await screen.findByRole('button', { name: /Claim/ }));
+    await waitFor(() => expect(sent).toHaveLength(2));
+    expect(sent[1].data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('claim_compressed_chip')));
+    expect(dasCalls).toBe(0);
   });
 
   it('a cap the resolver refuses is reported, and nothing is signed', async () => {

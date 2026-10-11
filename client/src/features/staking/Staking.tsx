@@ -6,13 +6,13 @@ import { Link } from 'react-router-dom';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { PublicKey } from '@solana/web3.js';
-import { LOCK_TIERS, fullSetBonusMult, impliedApy } from '@guttercaps/economy';
+import { LOCK_TIERS, STAKE_CLAIM_CAPS, fullSetBonusMult, impliedApy } from '@guttercaps/economy';
 import { useStakingOverview, useStakingMe, useMyChips, type Chip } from '@/api/hooks';
 import { useGameConfig, useStakingChain, useWalletLike, useBalances } from '@/chain/hooks';
 import { pendingReward } from '@/chain/accounts';
 import { sendTx, TxError } from '@/chain/tx';
 import { resolveCompressedChip, resolveCompressedUnstakeClaim } from '@/chain/flows/compressedChip';
-import { stakeCgIxs, unstakeCgIx, stakeCompressedChipV2Ix, unstakeCompressedChipIx, unstakePenalty, MIN_STAKE_MICRO } from '@/chain/ix/staking';
+import { stakeCgIxs, unstakeCgIx, stakeCompressedChipV2Ix, unstakeCompressedChipIx, claimCompressedChipIx, unstakePenalty, MIN_STAKE_MICRO } from '@/chain/ix/staking';
 import { dasClient } from '@/features/market/payment';
 import { createAtaIdempotentIx } from '@/chain/ix/spl';
 import { CleanZone, KV, Modal, Pill, Stat, Skeleton, Empty } from '@/shared/ui/primitives';
@@ -33,7 +33,7 @@ export default function Staking() {
   const meApi = useStakingMe();
   const chips = useMyChips({});
   const cfg = useGameConfig();
-  const [emission, pools, tstakes, setBonus] = useStakingChain();
+  const [emission, pools, tstakes, setBonus, walletDay] = useStakingChain();
   const wallet = useWalletLike();
   const { connection } = useConnection();
   const qc = useQueryClient();
@@ -119,6 +119,22 @@ export default function Staking() {
         <div className="card"><Stat label={t('ui.burnAvg')} value={overview.data ? fmtCg(overview.data.emission?.burn7dAvgMicro, 0) : '—'} /></div>
       </div>
 
+      {(() => {
+        const today = Math.floor(Date.now() / 1000 / 86_400);
+        const d = walletDay.data;
+        const fresh = d && d.day === today;
+        const tok = fresh ? Number(d.tokenClaimed) / 1e6 : 0;
+        const chip = fresh ? Number(d.chipClaimed) / 1e6 : 0;
+        return (
+          <div className="card stack-sm">
+            <div className="strong">{t('ui.stakeDailyCap')}</div>
+            <KV k={`$CG · ${STAKE_CLAIM_CAPS.tokenDailyCg} / ${t('ui.day')}`} v={`${fmtDecimal(tok, 1, 0)} / ${STAKE_CLAIM_CAPS.tokenDailyCg}`} />
+            <KV k={`${t('ui.stakeCaps')} · ${STAKE_CLAIM_CAPS.chipDailyCg} / ${t('ui.day')}`} v={`${fmtDecimal(chip, 1, 0)} / ${STAKE_CLAIM_CAPS.chipDailyCg}`} />
+            <div className="tiny muted">{t('ui.stakeCapHint')}</div>
+          </div>
+        );
+      })()}
+
       {/* ---------- $CG ---------- */}
       <div className="card stack">
         <div className="row between"><span className="strong">{t('staking.stake')} $CG</span><span className="muted small">{t('ui.balance')} {fmtUnits(bal.data?.cg ?? 0n, 6, 0)} $CG</span></div>
@@ -177,13 +193,12 @@ export default function Staking() {
                   <div className="stake-row-body">
                     <span className="stake-row-art"><ChipArt collection={c.collection!} rarity={c.rarity!} imageUrl={chipImageOf(c)} skin={(c as { skin?: string | null }).skin} /></span>
                     <div className="stake-row-copy">
-                      <div className="small">{chipName(c.collection!, c.rarity!)} <span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span></div>
+                      <div className="small">{chipName(c.collection!, c.rarity!)} <span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span>{(c as { idle?: boolean }).idle ? <span className="tiny danger"> · <img src="/art/idle-stake.png" alt="" width={18} height={18} style={{ verticalAlign: 'middle' }} /> {t('ui.idleStake')}</span> : null}</div>
                       <div className="tiny muted mono">{t('staking.weight')} {c.stakeWeight} · {t('ui.pending')} {api ? fmtCg(api.pending, 3) : '…'}</div>
                     </div>
                   </div>
                   <div className="stake-row-actions">
-                    {/* No separate claim for a V2 chip stake: `unstake_compressed_chip` mints the
-                        pending reward as it closes the stake, so claiming early would mean unstaking. */}
+                    <button className="btn btn-sm" disabled={busy} onClick={() => run('staking.claim', async () => [ata(), claimCompressedChipIx({ owner: wallet!.publicKey, claim: (await claimOf(c))!, cgMint: cgMint! })])}>{t('pass.claim')}</button>
                     <button className="btn btn-sm" disabled={busy} onClick={() => run('staking.unstake', async () => [ata(), unstakeCompressedChipIx({ owner: wallet!.publicKey, claim: (await claimOf(c))!, cgMint: cgMint! })])}>{t('staking.unstake')}</button>
                   </div>
                 </div>

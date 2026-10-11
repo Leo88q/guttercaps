@@ -215,7 +215,7 @@ pub const DEFAULT_PACKS: [PackDef; 4] = [
     PackDef {
         chips: 4,
         price_usd_cents: 599,
-        price_cg_micro: 900_000_000,
+        price_cg_micro: 2_700_000_000,
         odds_bps: [4500, 2500, 1500, 800, 450, 180, 50, 18, 2],
         floor: 1,
         daily_cap: 0,
@@ -229,7 +229,7 @@ pub const DEFAULT_PACKS: [PackDef; 4] = [
     PackDef {
         chips: 5,
         price_usd_cents: 1499,
-        price_cg_micro: 2_250_000_000,
+        price_cg_micro: 6_750_000_000,
         odds_bps: [2320, 2600, 2250, 1600, 800, 310, 90, 25, 5],
         floor: 2,
         daily_cap: 0,

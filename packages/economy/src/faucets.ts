@@ -40,7 +40,7 @@ export interface QuestDef {
 }
 
 // Daily: ~14 $CG total (cap 15). No chip drop — dailies pay in $CG only, and the
-// $CG itself is the bridge to packs (900 $CG = one Standard pack ≈ 2.5 months
+// $CG itself is the bridge to packs (2 700 $CG = one Standard pack ≈ 7.5 months
 // of perfect dailies). A 7-day streak grants ONE Common-tier roll.
 // ORDER MATTERS: the streak / weekly-meta math below reads DAILY_QUESTS[4] and
 // WEEKLY_QUESTS[4] — the meta quests must stay at index 4, new entries go after.
@@ -162,7 +162,7 @@ export function freeValueReport(paidCommonsPerWeek: number, activeStakers = 5000
   // (8 rewarded matches/day at 50% WR: 4×2 + 4×0.5 = 10/day) ≈ 204 $CG/week
   // → 0.27 Standard packs/week when spent on packs.
   const cgPerWeek = (12 * 7) + 50 + (10 * 7);
-  const cgAsCommons = (cgPerWeek / 900) * paidCommonsPerWeek / 2; // /2: paid baseline is 2 packs
+  const cgAsCommons = (cgPerWeek / 2700) * paidCommonsPerWeek / 2; // /2: paid baseline is 2 packs
   const freeCommonsPerWeek = streakChipEv + weeklyChipEv + jackpotEvPerWallet + cgAsCommons;
   return {
     streakChipEv: +streakChipEv.toFixed(2),

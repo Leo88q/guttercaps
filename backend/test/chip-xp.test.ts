@@ -75,6 +75,21 @@ describe('ranked chip XP', () => {
     const a = mint(db, owner, 0);
     grantSquadXp(db, JSON.stringify([{ asset: a }]), true, Math.floor(Date.now() / 1000), owner);
     const item = myChips(db, owner, {}).items[0];
-    expect(item).toMatchObject({ xpToday: CHIP_XP.win, xpDailyCap: CHIP_XP.dailyCap, level: 2 });
+    expect(item).toMatchObject({ xpToday: CHIP_XP.win, xpDailyCap: CHIP_XP.dailyCap, level: 2, idle: false });
+    expect(item.lastPlayed).toBeTruthy();
+  });
+
+  it('stamps last_played on a fight even when XP is already at the daily cap; a week-old pulse is idle', () => {
+    const db = new Db(':memory:');
+    const owner = kp();
+    const a = mint(db, owner, 0);
+    expect(myChips(db, owner, {}).items[0].idle).toBe(true);
+    const now = Math.floor(Date.now() / 1000);
+    creditChipXp(db, a, CHIP_XP.dailyCap, Math.floor(now / 86_400));
+    grantSquadXp(db, JSON.stringify([{ asset: a }]), true, now, owner);
+    expect(db.scalar(`SELECT last_played FROM chips WHERE asset = ?`, a)).toBe(now);
+    expect(myChips(db, owner, {}).items[0].idle).toBe(false);
+    db.run(`UPDATE chips SET last_played = ? WHERE asset = ?`, now - 8 * 86_400, a);
+    expect(myChips(db, owner, {}).items[0].idle).toBe(true);
   });
 });

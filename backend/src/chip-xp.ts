@@ -33,6 +33,7 @@ export function grantSquadXp(db: Db, squadJson: string, won: boolean, t: number,
     if (typeof asset !== 'string' || !asset || asset.startsWith('bot:')) continue;
     if (matchId && db.get(`SELECT 1 FROM chip_xp_awards WHERE match_id = ? AND asset = ?`, matchId, asset)) continue;
     const r = creditChipXp(db, asset, amount, day);
+    db.run(`UPDATE chips SET last_played = ? WHERE asset = ? AND (last_played IS NULL OR last_played < ?)`, t, asset, t);
     if (matchId && r.granted > 0) {
       db.run(AWARD_INSERT, matchId, asset, r.granted, r.fromLevel, r.toLevel);
     }

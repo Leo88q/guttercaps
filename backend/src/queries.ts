@@ -2,7 +2,7 @@
 // projection over the tables in db.ts; nothing touches the chain.
 import { clampInt } from './params.ts';
 import {
-  RARITY_PROFILES, CHIP_XP, levelMult, xpToNext, PACKS, BUNDLES, effectiveOdds, expandRandomness, probabilityAtLeast, packExpectedValueMult, type PackDef, type PackId,
+  RARITY_PROFILES, CHIP_XP, aliveStakeMult, levelMult, xpToNext, PACKS, BUNDLES, effectiveOdds, expandRandomness, probabilityAtLeast, packExpectedValueMult, type PackDef, type PackId,
   SKR_POOL_FUNDING, SKR_TREASURY_WALLET, skrPoolDueMicro, marketFeeTreasuryPartMicro,
   PYTH_MAX_AGE_SECS, PYTH_PUSHER, QUEST_CHIP_TEMPLATES, COLLECTIONS,
 } from '@guttercaps/economy';
@@ -51,7 +51,7 @@ export function toUsd(amount: string, currency: number, px: { solUsd: number; sk
   }
 }
 
-export interface ChipRow { asset: string; owner: string; collection_idx: number; rarity: number; level: number; flags: number; lock_until: number; origin: string; origin_signature: string | null; skin: string | null; minted_at: number | null; burned_at: number | null; game_index: string | null; xp?: number; xp_today?: number }
+export interface ChipRow { asset: string; owner: string; collection_idx: number; rarity: number; level: number; flags: number; lock_until: number; origin: string; origin_signature: string | null; skin: string | null; minted_at: number | null; burned_at: number | null; game_index: string | null; xp?: number; xp_today?: number; last_played?: number | null }
 
 /**
  * `chips.game_index` is the per-collection mint number, stored as TEXT (u64, same convention as
@@ -81,12 +81,14 @@ export function chipToApi(r: ChipRow) {
     lockUntil: r.lock_until > 0 ? iso(r.lock_until) : null,
     skin: r.skin ?? null,
     power: Math.round(p.basePower * lm),
-    stakeWeight: String(Math.round(p.stakeWeight * lm * 1000)),
+    stakeWeight: String(Math.round(p.stakeWeight * lm * aliveStakeMult(r.last_played ?? 0) * 1000)),
     xp: r.xp ?? 0,
     xpToNext: xpToNext(r.level, p.maxLevel),
     maxLevel: p.maxLevel,
     xpToday: r.xp_today ?? 0,
     xpDailyCap: CHIP_XP.dailyCap,
+    lastPlayed: r.last_played && r.last_played > 0 ? iso(r.last_played) : null,
+    idle: aliveStakeMult(r.last_played ?? 0) < 1,
   };
 }
 

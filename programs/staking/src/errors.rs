@@ -70,4 +70,6 @@ pub enum StakeError {
     BadMint,
     #[msg("SKR withdrawals are limited to one call per slot")]
     SkrWithdrawRate,
+    #[msg("Play pulse timestamp is in the future")]
+    FuturePlay,
 }

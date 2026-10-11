@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 import { PACKS, BUNDLES, STALE_PACK_SLOTS, STARTER_SOULBOUND_DAYS } from '../src/packs.ts';
 import { RARITY_PROFILES } from '../src/rarity.ts';
 import { FUSION_RECIPES, BOOSTER } from '../src/fusion.ts';
-import { LOCK_TIERS, fullSetBonusMult } from '../src/staking.ts';
+import { LOCK_TIERS, STAKE_CLAIM_CAPS, fullSetBonusMult } from '../src/staking.ts';
 import { FEES, SKR, YEARLY_EMISSION_PCT_OF_PLAY, EMISSION_SPLIT, EMISSION_GUARD, CG_HARD_CAP } from '../src/tokenomics.ts';
 import { SERVICES, SERVICES_DAILY_CAP_RUST } from '../src/services.ts';
 import { MATCHMAKING, MATCH_REWARDS, WAGER } from '../src/pvp.ts';
@@ -179,6 +179,10 @@ check('tier penalties', nums(line(stakingState, /TIER_PENALTY_BPS: \[u64; TIER_C
 check('tier locks (days)', line(stakingState, /TIER_LOCK_SECS: \[i64; TIER_COUNT\] = \[([^\]]+)\]/).split(',').map((s) => (s.trim() === '0' ? 0 : Number(s.trim().split('*')[0]))),
   tiers.map((t) => LOCK_TIERS[t].lockSeconds / 86_400));
 check('set bonus cap', int(line(stakingState, /SET_BONUS_CAP_BPS: u64 = ([\d_]+)/)), Math.round(fullSetBonusMult(10) * 1e4));
+check('chip daily claim cap', int(line(stakingState, /CHIP_STAKE_DAILY_CAP_MICRO: u64 = ([\d_]+) \* MICRO/)), STAKE_CLAIM_CAPS.chipDailyCg);
+check('token daily claim cap', int(line(stakingState, /TOKEN_STAKE_DAILY_CAP_MICRO: u64 = ([\d_]+) \* MICRO/)), STAKE_CLAIM_CAPS.tokenDailyCg);
+check('alive window days', int(line(stakingState, /ALIVE_WINDOW_SECS: i64 = ([\d_]+) \* DAY/)), STAKE_CLAIM_CAPS.aliveWindowDays);
+check('idle weight bps', int(line(stakingState, /IDLE_WEIGHT_BPS: u64 = ([\d_]+)/)) / 1e4, STAKE_CLAIM_CAPS.idleWeight);
 const splitTs = [EMISSION_SPLIT.chipStaking, EMISSION_SPLIT.tokenStaking, EMISSION_SPLIT.quests, EMISSION_SPLIT.pvpSeason, EMISSION_SPLIT.eventsReserve].map((p) => p * 100);
 const splitRs = nums(line(rs('programs/staking/src/lib.rs'), /split_bps: \[([^\]]+)\], split_changed_at/));
 check('emission split (test fixture)', splitRs, splitTs);

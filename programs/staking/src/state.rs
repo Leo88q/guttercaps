@@ -12,7 +12,7 @@ pub const ACC_PRECISION: u128 = 1_000_000_000_000; // 1e12
 pub const SPLIT_COUNT: usize = 5; // chip / token / quests / pvp / events
 pub const MAX_SPLIT_DELTA_BPS: u16 = 1_000; // ±10 pp per change
 pub const MIN_SPLIT_INTERVAL: i64 = 7 * DAY;
-pub const GUARD_FLOOR_BPS: u64 = 1_000; // 0.10 × cap
+pub const GUARD_FLOOR_BPS: u64 = 200; // 0.02 × cap
 pub const GUARD_BURN_MULT_BPS: u64 = 12_500; // 1.25 × trailing burn
 /// SEC-M1 sanity clamp for `report_burn`: `burn_today` never exceeds this multiple of the
 /// day's schedule cap. The guard saturates at `cap` once the 7-day average passes 0.56 × cap,
@@ -33,6 +33,12 @@ pub fn early_exit_penalty(amount: u64, penalty_bps: u64) -> u64 {
     ((amount as u128 * bps).div_ceil(10_000)) as u64
 }
 pub const MIN_STAKE_MICRO: u64 = 10 * MICRO;
+/// Per-wallet daily claim caps (launch cash rails). Excess pending is not minted.
+pub const CHIP_STAKE_DAILY_CAP_MICRO: u64 = 30 * MICRO;
+pub const TOKEN_STAKE_DAILY_CAP_MICRO: u64 = 15 * MICRO;
+/// A chip that has not been in a Cap Slam for this long keeps 25 % stake weight.
+pub const ALIVE_WINDOW_SECS: i64 = 7 * DAY;
+pub const IDLE_WEIGHT_BPS: u64 = 2_500;
 pub const SET_BONUS_CAP_BPS: u64 = 17_000;
 /// Reward-root kinds: 0..4 are $CG emission slices (`Slice`), 5..7 are SKR prize-pool roots
 /// (quests / season / events) paid from `SkrPool` — never minted. Mirrored in
@@ -135,7 +141,7 @@ impl EmissionState {
         let s: u128 = self.burn_ring.iter().map(|&b| b as u128).sum();
         (s / 7) as u64
     }
-    /// min(cap, 0.10·cap + 1.25·burn7d)
+    /// min(cap, 0.02·cap + 1.25·burn7d)
     pub fn guarded_daily(&self, year: usize) -> u64 {
         let cap = Self::daily_schedule_cap(year) as u128;
         let g = cap * GUARD_FLOOR_BPS as u128 / 10_000
@@ -224,6 +230,68 @@ pub struct CompressedChipStake {
     pub reward_debt: u128,
     pub staked_at: i64,
     pub bump: u8,
+}
+
+/// `["wday", wallet]` — rolling UTC-day claim counters (token + chip).
+#[account]
+#[derive(InitSpace)]
+pub struct WalletStakeDay {
+    pub owner: Pubkey,
+    pub day: u32,
+    pub token_claimed: u64,
+    pub chip_claimed: u64,
+    pub bump: u8,
+}
+
+/// `["chipplay", claim_or_asset]` — last Cap Slam that used this chip (oracle-attested).
+#[account]
+#[derive(InitSpace)]
+pub struct ChipPlay {
+    pub chip: Pubkey,
+    pub last_played: i64,
+    pub bump: u8,
+}
+
+pub fn alive_mult_bps(last_played: i64, now: i64) -> u64 {
+    if last_played > 0 && now.saturating_sub(last_played) <= ALIVE_WINDOW_SECS {
+        10_000
+    } else {
+        IDLE_WEIGHT_BPS
+    }
+}
+
+/// Mint at most the remaining daily quota. Excess is never minted (stays out of supply).
+pub fn take_daily_cap(
+    acc: &mut WalletStakeDay,
+    owner: Pubkey,
+    now: i64,
+    kind: u8,
+    pending: u64,
+    bump: u8,
+) -> Result<u64> {
+    let today = (now / DAY) as u32;
+    if acc.owner == Pubkey::default() {
+        acc.owner = owner;
+        acc.bump = bump;
+        acc.day = today;
+    }
+    require_keys_eq!(acc.owner, owner, crate::errors::StakeError::NotOwner);
+    if acc.day != today {
+        acc.day = today;
+        acc.token_claimed = 0;
+        acc.chip_claimed = 0;
+    }
+    let (used, cap) = if kind == 0 {
+        (&mut acc.token_claimed, TOKEN_STAKE_DAILY_CAP_MICRO)
+    } else {
+        (&mut acc.chip_claimed, CHIP_STAKE_DAILY_CAP_MICRO)
+    };
+    let room = cap.saturating_sub(*used);
+    let pay = pending.min(room);
+    *used = used
+        .checked_add(pay)
+        .ok_or(crate::errors::StakeError::Overflow)?;
+    Ok(pay)
 }
 
 /// `["setbonus", wallet]` — completed sets proven by the set-oracle (indexer)
@@ -398,6 +466,18 @@ pub struct PauseChanged {
 pub struct PauserChanged {
     pub by: Pubkey,
     pub pauser: Pubkey,
+}
+#[event]
+pub struct ClaimCapped {
+    pub owner: Pubkey,
+    pub kind: u8,
+    pub pending: u64,
+    pub paid: u64,
+}
+#[event]
+pub struct PlayPulsed {
+    pub key: Pubkey,
+    pub last_played: i64,
 }
 /// `set_oracles`: the resulting oracle set. These keys publish reward roots and burn reports, so a
 /// rotation is money-relevant and must be visible off-chain the moment it lands.

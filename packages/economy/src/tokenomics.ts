@@ -37,7 +37,8 @@ export const YEARLY_EMISSION_PCT_OF_PLAY = [18, 15, 12, 10, 8, 6, 5, 4] as const
  * Activity-indexed guard ("burn-and-mint"): the program mints per day at most
  *   min( scheduleCap, 0.30 × scheduleCap + 1.25 × trailing-7d-avg-daily-burn )
  * so emission can never run far ahead of what the economy actually destroys.
- * The 30% floor bootstraps a new economy; 1.25× lets net supply grow slowly
+ * The 2% floor bootstraps a new economy without printing a pack-a-day to
+ * a 50-wallet launch; 1.25× lets net supply grow slowly
  * with real activity. On-chain: EmissionState keeps a 7-slot ring buffer of
  * daily burn totals. Feeding that buffer is NOT oracle-free: unstake penalties
  * are recorded in-program (`record_internal_burn`), while the other programs'
@@ -47,7 +48,7 @@ export const YEARLY_EMISSION_PCT_OF_PLAY = [18, 15, 12, 10, 8, 6, 5, 4] as const
  * never beyond). Direct ["burn_reporter"] CPIs from chip_core/market/arena are
  * the planned v2 and are currently unused — SEC-F02 of the 2026-09-21 audit.
  */
-export const EMISSION_GUARD = { floorShare: 0.10, burnMultiple: 1.25 } as const;
+export const EMISSION_GUARD = { floorShare: 0.02, burnMultiple: 1.25 } as const;
 export const guardedEmission = (scheduleCap: number, trailingDailyBurn: number) =>
   Math.min(scheduleCap, EMISSION_GUARD.floorShare * scheduleCap + EMISSION_GUARD.burnMultiple * trailingDailyBurn);
 
@@ -58,10 +59,10 @@ export const dailyEmission = (year: number) => yearlyEmission(year) / 365;
 /** How the daily emission is split between faucets (sum = 100). Admin-tunable within ±10pp without redeploy. */
 export const EMISSION_SPLIT = {
   chipStaking: 20,
-  tokenStaking: 10,
+  tokenStaking: 5,
   quests: 22,
   pvpSeason: 33,     // ~60% per-match rewards, ~40% season ladder payouts
-  eventsReserve: 15, // seasonal events, referrals, jackpots, tournaments
+  eventsReserve: 20, // seasonal events, referrals, jackpots, tournaments (absorbs the 5 pp cut from token staking)
 } as const;
 
 // -----------------------------------------------------------------------------
@@ -164,7 +165,7 @@ export const BASELINE_ASSUMPTIONS: FlowAssumptions = {
   marketplaceVolumeCgPerDauPerDay: 40,
 };
 
-const STANDARD_PACK_CG = 900;
+const STANDARD_PACK_CG = 2700;
 
 /** Σ of wager pots (both stakes, before rake) resolved per day under `a` — 120 000 $CG at baseline. */
 export function pvpDailyPotVolumeCg(a: FlowAssumptions = BASELINE_ASSUMPTIONS): number {
