@@ -1,4 +1,4 @@
-// Deploy-surface gate (SEC-B47, SEC-B48, SEC-B50, SECURITY-AUDIT-2026-09-26.md).
+// Deploy-surface gate (SEC-B47, SEC-B48, SEC-B50, audit 2026-09-26).
 //
 // The three findings this file exists for are all "the artifact is correct, the thing that consumes it
 // is not":

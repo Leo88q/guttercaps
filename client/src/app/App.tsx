@@ -1,7 +1,7 @@
 import { RouterProvider } from 'react-router-dom';
 import { Providers } from './providers';
 import { router } from './router';
-// Webfonts (SEC-B4, SECURITY-AUDIT-2026-09-26.md): one generated stylesheet, self-hosted from
+// Webfonts (SEC-B4, audit 2026-09-26): one generated stylesheet, self-hosted from
 // `public/fonts/`, instead of sixteen `@fontsource/<family>/<subset>-<weight>.css` imports. Those
 // per-subset files carry no `unicode-range`, so every subset of a family matched every character and the
 // last `@font-face` won — Inter's cyrillic face was shadowed by latin (RU text fell back to the system

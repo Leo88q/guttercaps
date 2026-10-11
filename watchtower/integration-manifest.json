@@ -181,7 +181,7 @@
     },
     {
       "id": "D4",
-      "file": "AUDIT-2026-10-02.md, QWEN.md",
+      "file": "audit 2026-10-02, QWEN.md",
       "issue": "The audit inspected a shallow clone still carrying chip_core id GCRhrg…; the current tree carries J68G8… (ids changed after that snapshot). QWEN.md pointed at nonexistent paths (programs/guttercaps/src/lib.rs).",
       "handling": "Audit findings remain valid as findings; program-id statements must come from declare_id! (QWEN.md deleted 2026-10-06)."
     }

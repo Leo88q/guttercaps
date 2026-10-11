@@ -1,4 +1,4 @@
-// CSP ↔ code gate (SEC-B9, SECURITY-AUDIT-2026-09-26.md).
+// CSP ↔ code gate (SEC-B9, audit 2026-09-26).
 //
 // The production CSP lives in `ops/deploy/nginx.conf` and the things it must allow live in the client
 // bundle. Nothing connected the two, and they disagreed in both directions:

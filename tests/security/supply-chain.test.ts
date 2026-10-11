@@ -1,4 +1,4 @@
-// Supply-chain gate (SEC-B12, SECURITY-AUDIT-2026-09-26.md).
+// Supply-chain gate (SEC-B12, audit 2026-09-26).
 //
 // `package-lock.json` shipped with 705 of its 1 097 registry packages carrying neither `resolved` nor
 // `integrity` — a lock node that pins a *version string* and nothing else. `npm ci` in that state asks

@@ -207,7 +207,7 @@ services:
     logging: *logging
     networks: [internal]
 
-  # H-1 (AUDIT-2026-10-02): the delivery half of the alert rules. Prometheus has mounted
+  # H-1 (audit 2026-10-02): the delivery half of the alert rules. Prometheus has mounted
   # ops/monitoring/alerts.yml for weeks with an empty `alertmanagers.targets` *and* no `rule_files`
   # entry, so the rules were neither loaded nor sent anywhere — they were a document. Same
   # `monitoring` profile as Prometheus, so both come up together or neither does.

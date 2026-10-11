@@ -3,7 +3,7 @@
 // It is NOT a Rust parser: it understands exactly the shapes this repository uses — `#[derive(Accounts)]`
 // structs with `#[account(...)]` field attributes, `#[program]` modules, `#[event]` / `#[account]` /
 // `#[error_code]` items and top-level `fn` bodies — which is enough to turn the Solana/Anchor audit
-// checklist (docs: SECURITY-AUDIT-2026-09-25.md) into gates that run in a second, without a toolchain.
+// checklist (docs: audit 2026-09-25) into gates that run in a second, without a toolchain.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 

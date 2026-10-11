@@ -1,4 +1,4 @@
-// SEC-B13 gate — "a missing block_time must never mean 1970". SECURITY-AUDIT-2026-09-26.md.
+// SEC-B13 gate — "a missing block_time must never mean 1970". audit 2026-09-26.
 //
 // The websocket subscription delivers transaction logs WITHOUT a block time, so a projection row can be
 // written from an event whose time is not known yet; the timed re-read (`patchLateTimes`) heals it later.

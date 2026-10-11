@@ -1,6 +1,6 @@
 # Alertmanager for the compose stack (docs/09 §4.1, runbook.md §3.2).
 #
-# H-1 (AUDIT-2026-10-02): ops/monitoring/alerts.yml grew to ~20 rules with severities, thresholds and
+# H-1 (audit 2026-10-02): ops/monitoring/alerts.yml grew to ~20 rules with severities, thresholds and
 # runbook references, and nothing was listening. Prometheus evaluated every one of them, kept the
 # state, and threw the notifications away — `alerting.alertmanagers.targets` was `[]`, with a comment
 # saying "fill with your Alertmanager once one exists". The rules were a dashboard, not an alert, and

@@ -1,4 +1,4 @@
-// SEC-B6 (SECURITY-AUDIT-2026-09-26.md): the provably-fair verifier must actually verify.
+// SEC-B6 (audit 2026-09-26): the provably-fair verifier must actually verify.
 //
 // `/packs/verify` used to answer `matches: true` unconditionally — it recomputed nothing, so the UI showed a
 // "recomputation matches the on-chain result" badge for any transaction, and a third party calling the API

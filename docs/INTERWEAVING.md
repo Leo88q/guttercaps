@@ -68,7 +68,7 @@ treasury snapshot is committed to the repo.
 - Alert definitions and runbooks live in `docs/ALERT_CATALOG.md` and are cross-checked against
   `package.json` by `tests/security/indexer-gaps.test.ts`. Prometheus rules: `ops/monitoring/alerts.yml`
   (28 rules); severity ladder P1 page / P2 high / P3 medium as defined there.
-- Delivery note (audit AUDIT-2026-10-02 H-1): `ops/monitoring/prometheus.yml` still has empty
+- Delivery note (audit 2026-10-02 H-1): `ops/monitoring/prometheus.yml` still has empty
   Alertmanager targets — until a receiver is configured, P1 rules fire into the void. This is a
   production blocker tracked in `WATCHTOWER_HANDOFF.md`.
 

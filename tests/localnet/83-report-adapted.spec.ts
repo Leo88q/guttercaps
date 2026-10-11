@@ -1,6 +1,6 @@
 // T-L-R — the external "A1–A16" report (written against a hypothetical `programs/game/`) adapted to
 // chip_core / market / staking / arena. Only the ideas that map onto real instructions are here; the
-// rest is answered in SECURITY-AUDIT-2026-09-25.md §"Отчёт A1–A16". Static halves: anchor-invariants
+// rest is answered in audit 2026-09-25, section "Отчёт A1–A16". Static halves: anchor-invariants
 // "A2/A8 `%`" gate + economy.rs `a8_draws_are_unbiased_rejection_samples`.
 //
 //   R-A1   u64::MAX amounts never wrap: stake, wager, market price

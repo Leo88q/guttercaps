@@ -1,5 +1,5 @@
 // Supply-chain repair: `package-lock.json` shipped 705 of its 1 097 registry packages with neither
-// `resolved` nor `integrity` (SEC-B12, SECURITY-AUDIT-2026-09-26.md). A lock node in that state pins a
+// `resolved` nor `integrity` (SEC-B12, audit 2026-09-26). A lock node in that state pins a
 // *version string* and nothing else: `npm ci` asks the registry for `name@version`, takes whatever
 // tarball comes back, and has no hash to compare it to — the exact shape of the `@solana/web3.js`
 // 1.95.6/1.95.7 incident, where a republished tarball under an existing version number reached every

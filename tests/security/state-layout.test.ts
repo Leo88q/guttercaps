@@ -1,4 +1,4 @@
-// Static gate: persisted on-chain account layouts (SEC-B7, SECURITY-AUDIT-2026-09-26.md).
+// Static gate: persisted on-chain account layouts (SEC-B7, audit 2026-09-26).
 //
 // `reports/state-layout.json` freezes the field list of every `#[account]` struct in `programs/**`. An
 // upgrade that adds, removes, reorders or retypes a field changes what the bytes at an existing account

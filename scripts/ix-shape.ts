@@ -1,4 +1,4 @@
-// M-3 (AUDIT-2026-10-02): the instruction-argument shapes of the programs, cross-checked against the
+// M-3 (audit 2026-10-02): the instruction-argument shapes of the programs, cross-checked against the
 // manual Borsh encoding at every call site.
 //
 // The finding was "no IDL, instructions are encoded by hand". `anchor build` produces an IDL and the

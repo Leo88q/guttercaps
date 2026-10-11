@@ -116,7 +116,7 @@ export interface ListingFilter {
   indexMin?: number; indexMax?: number;
   currency?: 'SOL' | 'USDC' | 'SKR'; priceMaxUsd?: number; missingForMySet?: boolean;
   /**
-   * SEC-B3 (SECURITY-AUDIT-2026-09-26.md) removed `index_asc` ("Low #") because the `chips` projection
+   * SEC-B3 (audit 2026-09-26) removed `index_asc` ("Low #") because the `chips` projection
    * had no game index and the API silently answered price order instead. Shape #27 projected it
    * (`backend/src/projections.ts` + `Crank.resolveChipIndexes`), so the sort and the two range filters
    * are honoured again; a chip with `index: null` (not resolved on chain yet) sorts last.

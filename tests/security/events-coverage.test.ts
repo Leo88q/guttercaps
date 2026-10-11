@@ -1,5 +1,5 @@
 // SEC-B31 gate — "an event a program emits is state the indexer owes the read model".
-// SECURITY-AUDIT-2026-09-26-checklist.md, SECURITY.md.
+// audit 2026-09-26 checklist, SECURITY.md.
 //
 // The bug this file exists for: eight events were emitted by the four programs and never decoded. Nothing
 // failed — a transaction log the decoder cannot read is not an error, it is silence. Downstream that silence

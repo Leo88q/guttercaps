@@ -1,5 +1,5 @@
 // Static security gates for the four Anchor programs — the Solana/Anchor audit checklist
-// (SECURITY-AUDIT-2026-09-25.md, items A1–E30) turned into assertions over the source tree.
+// (audit 2026-09-25, items A1–E30) turned into assertions over the source tree.
 //
 //   node --experimental-strip-types --test tests/security/*.test.ts      (npm run security:static)
 //

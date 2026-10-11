@@ -113,7 +113,7 @@ images (CI)  проводка: публикация guttercaps-{api,client,backu
 | G-1 P0 security | SEC-C1/C2/C3/H1/H2 + T-L-* зелёные | ⛔ блок | G-0 закрыт, T-L-часть зелёная в CI; осталось: T-D-04 (CPI reveal на devnet) + повторный внутренний ревью |
 | G-2 Localnet | сценарии зелёные в CI (91 → 92 с SEC-M8/C13b) | ✅ **закрыт** — job `localnet · 92 scenarios` зелёный на run 36057965923 | история: красный на 79 и 81 (`Failed to add program: Offset or value is out of bounds` в LiteSVM `addProgramFromFile` — ни один бизнес-сценарий не проверялся); вылечено проверкой ELF вместо проверки пути (`helpers/elf.ts`, `binariesPresent`) + ключ кэша фикстур `-v2` (см. §3.3) |
 | G-3 Devnet soak | 14 дней, ≥10 000 паков | ⛔ не начат | нет деплоя, нет devnet-ключа, нет `scripts/load`-ботов |
-| G-4 Аудит | отчёт, Critical/High закрыты | ⛔ не начат | пакет аудита выпущен и использован (аудит 2026-10-02, `AUDIT-2026-10-02.md`), frozen commit/тег не проставлялись; скоуп выровнен 2026-09-24 (`docs/06` G-4 — ~5.8 k LOC, построчный) |
+| G-4 Аудит | отчёт, Critical/High закрыты | ⛔ не начат | пакет аудита выпущен и использован (аудит 2026-10-02), frozen commit/тег не проставлялись; скоуп выровнен 2026-09-24 (`docs/06` G-4 — ~5.8 k LOC, построчный) |
 | G-5 Ключи/операции | Squads, pauser, runbook, алерты I1–I8 | 🟡 код · 2026-09-17 | мультисиги/pauser-ключи — по-прежнему владелец; в репозитории: `ops/deploy/runbook.md` (§0–§8, RU), `ops/monitoring/alerts.yml` — 15 алертов сверх I1–I8, `ops/backup/`, compose с секретами через `secrets:` |
 | G-6 Нагрузка | LT-1..LT-6, таблица CU | 🟡 LT-1 + LT-3(фикстуры) · 2026-09-17 | `scripts/load/lt1.js` (k6) + `login.mjs` (реальный SIWS-хендшейк) + job `load-smoke`; LT-2..LT-6 осознанно не написаны — им нужны валидатор/соак/PvP-контур, список причин в `scripts/load/README.md`. Таблица CU ЗАПОЛНЕНА измеренными (LiteSVM, 810 tx / 76 форм, run 36042755006 · 2026-09-24; `docs/06 §4.2` + артефакт `cu-summary` + `tests/localnet/helpers/cu.ts`); legacy-формы — оценки до T-D-03 |
 | G-7 Продукт/право | ToS/Privacy, шансы, dApp Store | 🟡 код · 2026-09-17 | ToS/Privacy есть: чистовик владельца 2026-10-06.1 в 7 локалях, без юрлица и контактов, цифры из `@guttercaps/economy`; баннер «не вычитано» убран, `LEGAL_REVIEWED` остаётся false как внутренний флаг отчёта readiness, гео-гейт работает (блокирует покупку, не игру), age-подтверждение 18+ есть. Не закрыто: юрзаключение, art-мастера 72 фишек, баннер/скриншоты для Publisher Portal (§5.3) |
@@ -608,7 +608,7 @@ npm run schema:check         # prisma ⇄ DDL: 56 таблиц / 61 модель
 | Логи GitHub Actions | `*.blob.core.windows.net` недоступен (EOF); восстановление по `gh api …/jobs` (статусы шагов) и `…/annotations` (тексты падений) — так и были найдены оба бага §5.4 |
 
 
-## 9. Заголовки и SPA-редиректы: один путь доставки (M-6, AUDIT-2026-10-02)
+## 9. Заголовки и SPA-редиректы: один путь доставки (M-6, аудит 2026-10-02)
 
 **Заголовки приложения — ответственность `ops/deploy/nginx.conf`, и только его.** В дереве больше
 нет `client/public/_headers` и `client/public/_redirects`: это конвенции Cloudflare Pages, и их

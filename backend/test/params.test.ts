@@ -1,4 +1,4 @@
-// SEC-B2 (SECURITY-AUDIT-2026-09-26.md) — hostile query parameters on the public API.
+// SEC-B2 (audit 2026-09-26) — hostile query parameters on the public API.
 //
 // What went wrong before this file existed, and why it is a test and not just a patch:
 //
@@ -246,7 +246,7 @@ describe('a 4xx is the whole contract — no route may answer 5xx on a hostile q
   const KEYS = ['limit', 'cursor', 'offset', 'season', 'collection', 'rarity', 'rarityMin', 'levelMin', 'indexMin', 'priceMaxUsd', 'qty', 'page', 'sort', 'currency', 'status'];
   const VALUES = ['abc', '1.5', '-1', '1e999', '9'.repeat(40), '', '1'];
 
-  // The shape of this sweep is quoted in docs/06 §2.2 and SECURITY-AUDIT-2026-09-26.md. Those numbers
+  // The shape of this sweep is quoted in docs/06 §2.2 and audit 2026-09-26. Those numbers
   // were wrong once (docs said 18×16×7 while the file swept 19×15×7 with an extra repeated-parameter
   // request per key), which is exactly the kind of drift a reader cannot check by eye — so the shape is
   // asserted here: change the sweep, and this test tells you which documents to update.
