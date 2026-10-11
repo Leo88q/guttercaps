@@ -98,8 +98,11 @@ for (const [locale, tag] of languages) test(`${locale}: handle availability, uns
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
-  await page.goto('/collection?s=free');
-  const card = page.locator('.chip-card[role=button]').first();
+  // A cap's drawer opens from its album cell (there is no card list under the grid any more).
+  // The first district is the mock's complete NIGHTMOTH set, and none of its caps is staked,
+  // listed or locked — so its first owned cell opens a free cap that can be listed.
+  await page.goto('/collection');
+  const card = page.locator('.cgrid-district').first().locator('.cell.owned[role=button]').first();
   await expect(card).toBeVisible();
   expect(await card.evaluate(el => getComputedStyle(el).animationName)).toBe('none');
   await card.focus();

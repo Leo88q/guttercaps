@@ -13,7 +13,7 @@ import { sbLutPda, sbLutSignerPda } from '@/chain/pdas';
 import { SB_MOCK_ID, SB_ORACLE, SB_QUEUE, TREASURY, binariesPresent, encodePacks, getEnv, setParamsIx, setPausedIx, tokenBalance, type Env } from './helpers/env';
 import { Err, expectAnyFail, expectFail, lamportsClose } from './helpers/expect';
 import { Currency, SKU, ataOf, buyPack, cancelStale, loadPending, loadPity, openCompressedPack, openCompressedPackInstruction, quoteUnits, revealAndOpenCompressedAll, revealPack, valueOf, vaultKey } from './helpers/flows';
-import { forgePriceAccount, refreshPyth } from './helpers/pyth';
+import { refreshPyth } from './helpers/pyth';
 import { encodeRngAccount, forgeRandomness, mockInitIx, randomnessAccount, revealIx } from './helpers/sbmock';
 
 const bins = binariesPresent();
@@ -53,32 +53,28 @@ suite('T-L-C packs', () => {
     }
   });
 
-  it('C02 Standard in SOL through Pyth: lamports = units_for_cents(price − conf) ± 1; max_lamports below quote → Slippage; stale price → StalePrice; conf > 2 % → PriceUncertain (SEC-M2); foreign owner → rejected', async () => {
+  it('C02 Standard in SOL at the frozen FX: lamports = floor(cents × 1 000 000 / 11) (SOL = $110), the exact price is accepted, max_lamports one below → Slippage; a stale, low-confidence Pyth feed neither blocks nor reprices checkout', async () => {
     const buyer = await env.player();
     const vault = vaultKey();
     const vaultBefore = await env.chain.balance(vault);
     const b = await buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.SOL });
     const expected = quoteUnits(env, SKU.STANDARD, 1, Currency.SOL);
-    // $4.99 at $150.00 with the fixture's 0.1 % conf → charged at $149.85 (price − conf): 0.033299966 SOL
-    expect(expected).toBe((599n * 1_000_000_000n * 100_000_000n) / 100n / (15_000_000_000n - 15_000_000n));
-    expect(expected).toBeGreaterThan((599n * 1_000_000_000n * 100_000_000n) / 100n / 15_000_000_000n); // the buyer never gets the optimistic edge
+    // $5.99 at SOL = $110 → 599 × 1 000 000 / 11 = 54 454 545 lamports (floor) — chip_core economy::fx_sol_lamports
+    expect(expected).toBe(54_454_545n);
+    expect(b.paid).toBe(expected);
     expect(lamportsClose(await env.chain.balance(vault), vaultBefore + expected, 1n)).toBe(true);
     const pending = (await loadPending(env.chain, b.pending))!;
     expect(pending.paidLamports).toBe(expected);
     expect(await env.chain.balance(b.pending)).toBeGreaterThanOrEqual(3n * RENT_RESERVE_PER_CHIP);
-    await expectFail(buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.SOL, maxUnits: expected - 1n }), Err.chip('Slippage'), 'max below quote');
+    await expectFail(buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.SOL, maxUnits: expected - 1n }), Err.chip('Slippage'), 'max below price');
     if (warp()) {
-      await expectFail(buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.SOL, stalePrice: 61n }), Err.chip('StalePrice'), 'price 61 s old');
-      // SEC-M2: conf/price = 2 % + 1 unit → PriceUncertain; exactly 2 % → accepted (and priced at price − conf)
-      await expectFail(buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.SOL, conf: { sol: 300_000_001n } }), Err.chip('PriceUncertain'), 'conf 2 % + 1');
-      const wide = await buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.SOL, conf: { sol: 300_000_000n }, maxUnits: (expected * 105n) / 100n });
-      expect((await loadPending(env.chain, wide.pending))!.paidLamports).toBe((599n * 1_000_000_000n * 100_000_000n) / 100n / (15_000_000_000n - 300_000_000n));
-      const fake = await forgePriceAccount(env.chain, env.pyth.sol, Keypair.generate().publicKey);
-      await expectFail(buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.SOL, priceUpdate: fake }), Err.chip('StalePrice'), 'foreign price owner');
+      // No oracle at checkout: a feed 61 s old with a 2 % + 1 confidence band — StalePrice and
+      // PriceUncertain (SEC-M2) before the freeze — changes neither the outcome nor the price.
+      await refreshPyth(env.chain, env.pyth, { ageS: 61n, conf: { sol: 300_000_001n, skr: 34_801n } });
+      const frozen = await buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.SOL });
+      expect((await loadPending(env.chain, frozen.pending))!.paidLamports).toBe(expected);
       await refreshPyth(env.chain, env.pyth);
     }
-    // SKR feed passed for a SOL purchase → feed id mismatch → StalePrice
-    await expectFail(buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.SOL, priceUpdate: env.pyth.skr.account }), Err.chip('StalePrice'), 'wrong feed');
     expect(PYTH_RECEIVER_ID.toBase58()).toBe('rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ');
   });
 
@@ -93,8 +89,8 @@ suite('T-L-C packs', () => {
     const c = await buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.CG });
     expect(c.paid).toBe(2_700_000_000n);
     const s = await buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.SKR });
-    // $5.99 − 5 % SKR promo = $5.6905 → 569 cents (integer) at $0.0174 − 0.1 % conf (SEC-M2: price − conf)
-    expect(s.paid).toBe((569n * 1_000_000n * 100_000_000n) / 100n / (1_740_000n - 1_740n));
+    // $5.99 − 5 % SKR promo = $5.6905 → 569 cents (integer) at SKR = $0.016 → 569 × 625 000 micro-SKR (economy::fx_skr_micro)
+    expect(s.paid).toBe(355_625_000n);
     expect(s.paid).toBe(quoteUnits(env, SKU.STANDARD, 1, Currency.SKR));
     expect(await tokenBalance(env.chain, env.mints.usdc, vault)).toBe(before.usdc + u.paid);
     expect(await tokenBalance(env.chain, env.mints.cg, vault)).toBe(before.cg + c.paid);

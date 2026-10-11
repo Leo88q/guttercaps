@@ -116,7 +116,9 @@ for (const [locale, tag, native, claimed, fuse, boosters] of locales) {
     expect(records[2].slots).toHaveLength(3);
     expect(records[2].slots.every((slot: unknown) => typeof slot === 'string')).toBe(true);
     // Load a probabilistic recipe too: these labels only appear after choosing three caps.
-    await page.getByTestId('fusion-suggestions').getByRole('button', { name: ui.load, exact: true }).nth(4).click();
+    // Suggestions are one district per triple and ordered by rarity, so the mock's NIGHTMOTH epic
+    // triple (Epic → Epic+, 85 %) is the last row; the assertions below prove it is the random one.
+    await page.getByTestId('fusion-suggestions').getByRole('button', { name: ui.load, exact: true }).last().click();
     await expect(page.getByText(screens.fusionRandom, { exact: true })).toBeVisible();
     const percent = new Intl.NumberFormat(tag, { style: 'percent', maximumFractionDigits: 0 }).format(0.85);
     await expect(page.getByRole('button', { name: `${fuse} (${percent})`, exact: true })).toBeVisible();

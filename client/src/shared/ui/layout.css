@@ -301,6 +301,7 @@ img { max-width: 100%; display: block; }
 /* empty cells keep a faint dashed placeholder ring so missing caps still read as slots */
 .cgrid .cell.missing { border: 0; background: radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--cg-neon-magenta) 16%, transparent), transparent 68%); }
 .cgrid .cell:hover { transform: scale(1.06); }
+.cgrid .cell:focus-visible { outline: 2px solid var(--cg-neon-cyan); outline-offset: 3px; }
 .cgrid .cell.owned { border: none; background: none; }
 .cgrid .cell.owned.live-slot::before { display: none; }
 .cgrid .cell .count { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--cg-chrome); color: var(--cg-asphalt); font-size: 10px; font-weight: 700; display: grid; place-items: center; padding: 0 4px; font-family: var(--cg-font-mono); }
