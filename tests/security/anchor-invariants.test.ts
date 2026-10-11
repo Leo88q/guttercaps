@@ -329,11 +329,14 @@ test('A5/E27 manual create_account always funds the rent-exempt minimum', () => 
   assert.deepEqual(bad, []);
 });
 
-test('B10 randomness never derives from the clock (commit-reveal via Switchboard only)', () => {
-  for (const rel of ['programs/chip_core/src/randomness.rs', 'programs/chip_core/src/economy.rs']) {
-    const code = stripComments(src(rel)).replace(/#\[cfg\(test\)\][\s\S]*$/, '');
-    assert.doesNotMatch(code, /unix_timestamp|Clock::get|\.slot\b(?!_)/, rel);
-  }
+test('B10 randomness mixes a delayed SlotHashes entry, not unix_timestamp', () => {
+  const code = stripComments(src('programs/chip_core/src/randomness.rs')).replace(/#\[cfg\(test\)\][\s\S]*$/, '');
+  assert.doesNotMatch(code, /unix_timestamp/, 'programs/chip_core/src/randomness.rs');
+  assert.match(code, /SLOT_HASHES_ID/);
+  assert.match(code, /RNG_DELAY_SLOTS/);
+  assert.match(code, /gc-rng-v1/);
+  const econ = stripComments(src('programs/chip_core/src/economy.rs')).replace(/#\[cfg\(test\)\][\s\S]*$/, '');
+  assert.doesNotMatch(econ, /unix_timestamp|Clock::get/, 'programs/chip_core/src/economy.rs');
 });
 
 // Report A2/A8 ("`slot % N` rarity is biased and predictable"): a bare modulo over a random byte or

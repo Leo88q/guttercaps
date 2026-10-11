@@ -87,14 +87,14 @@ export const PACKS: Record<PackId, PackDef> = {
   },
   standard: {
     id: 'standard', name: 'Standard Pack', chips: 4,
-    priceUsdCents: 599, priceCgMicro: 900_000_000, // 900 $CG
+    priceUsdCents: 599, priceCgMicro: 2_700_000_000, // 2 700 $CG — 3× so $CG is a whale sink, not a SOL substitute
     oddsBps: STANDARD_ODDS, floor: 1, dailyCap: null,
     pity: { tier: 6 /* Legend */, hardAt: 60, softStart: 30, softStepBps: 25 },
     pool: 'all', purchasable: true,
   },
   premium: {
     id: 'premium', name: 'Premium Pack', chips: 5,
-    priceUsdCents: 1499, priceCgMicro: 2_250_000_000, // 2 250 $CG
+    priceUsdCents: 1499, priceCgMicro: 6_750_000_000, // 6 750 $CG — 3×, same ratio to Standard
     oddsBps: PREMIUM_ODDS, floor: 2, dailyCap: null,
     pity: { tier: 6, hardAt: 40, softStart: 20, softStepBps: 40 },
     pool: 'all', purchasable: true,

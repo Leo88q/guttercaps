@@ -10,7 +10,7 @@ afterEach(() => resetWaitForTest());
 
 function fixture() {
   const connection = {
-    getLatestBlockhash: vi.fn().mockResolvedValue({ blockhash: CHIP_CORE_ID.toBase58(), lastValidBlockHeight: 123 }),
+    getLatestBlockhashAndContext: vi.fn().mockResolvedValue({ context: { slot: 100 }, value: { blockhash: CHIP_CORE_ID.toBase58(), lastValidBlockHeight: 123 } }),
     sendRawTransaction: vi.fn().mockResolvedValue('test-only'),
     confirmTransaction: vi.fn().mockResolvedValue({ value: { err: null } }),
     getTransaction: vi.fn().mockResolvedValue({ meta: { logMessages: [] } }),

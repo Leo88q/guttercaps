@@ -8,10 +8,10 @@ import { resolve } from 'node:path';
 import { PACKS, BUNDLES } from '../../packages/economy/src/packs.ts';
 import { RARITY_PROFILES } from '../../packages/economy/src/rarity.ts';
 import { FUSION_RECIPES, BOOSTER } from '../../packages/economy/src/fusion.ts';
-import { LOCK_TIERS } from '../../packages/economy/src/staking.ts';
+import { LOCK_TIERS, STAKE_CLAIM_CAPS } from '../../packages/economy/src/staking.ts';
 import { ALLOCATION, FEES, SKR, SINKS, EMISSION_SPLIT, EMISSION_GUARD, YEARLY_EMISSION_PCT_OF_PLAY } from '../../packages/economy/src/tokenomics.ts';
 import { WAGER, MATCH_REWARDS, SEASON } from '../../packages/economy/src/pvp.ts';
-import { ANTI_FARM } from '../../packages/economy/src/faucets.ts';
+import { ANTI_FARM, DAILY_QUESTS } from '../../packages/economy/src/faucets.ts';
 import { SERVICES } from '../../packages/economy/src/services.ts';
 import { SKR_POOL_FUNDING, SKR_TREASURY_WALLET } from '../../packages/economy/src/skrRewards.ts';
 import { STALE_PACK_SLOTS } from '../../packages/economy/src/packs.ts';
@@ -112,8 +112,21 @@ has('season length', pvp, `${SEASON.weeks === 6 ? 'Six' : SEASON.weeks}-week`);
 has('pvp fact', en('mech.2f'), `rake ${pct(WAGER.rakeBps)} % · ${MATCH_REWARDS.dailyRewardedMatches} rewarded matches/day`);
 const staking = en('mech.3p');
 has('lock boosts', staking, (['flex', 'd30', 'd90', 'd180'] as const).map((k) => LOCK_TIERS[k].boost.toFixed(1)).join(' / '));
+has('chip daily claim cap', staking, `${STAKE_CLAIM_CAPS.chipDailyCg} $CG/day from caps`);
+has('token daily claim cap', staking, `${STAKE_CLAIM_CAPS.tokenDailyCg} $CG/day from $CG locks`);
+has('idle stake window', staking, `${STAKE_CLAIM_CAPS.aliveWindowDays} days`);
+has('idle stake weight', staking, `${STAKE_CLAIM_CAPS.idleWeight * 100} %`);
 has('early exit', staking, `${LOCK_TIERS.d30.earlyExitPenaltyBps / 100}–${LOCK_TIERS.d180.earlyExitPenaltyBps / 100} %`);
 has('stake weight range', staking, `weight ${RARITY_PROFILES[0].stakeWeight} → ${RARITY_PROFILES[8].stakeWeight.toLocaleString('en-US').replace(',', ' ')}`);
+const loginCg = (DAILY_QUESTS.find((q) => q.id === 'd_login')!.rewardCgMicro) / 1e6;
+has('drain daily cg', en('mech.7p'), `${loginCg} $CG`);
+has('drain slothashes', en('mech.7p'), 'SlotHashes');
+has('drain fact', en('mech.7f'), `${loginCg} $CG/day`);
+has('gutter pot winners', en('mech.8p'), 'ten chip-stakers');
+has('gutter pot odds', en('mech.8p'), '50 / 40 / 10');
+has('gutter pot soulbound', en('mech.8p'), 'soulbound 7 days');
+has('gutter pot slothashes', en('mech.8p'), 'SlotHashes');
+has('gutter pot fact', en('mech.8f'), '10 winners');
 const quests = en('mech.5p');
 has('daily quest cap', quests, `${ANTI_FARM.dailyQuestRewardCapCgMicro / 1e6} $CG a day`);
 has('weekly quest cap', quests, `${ANTI_FARM.weeklyQuestRewardCapCgMicro / 1e6} a week`);
@@ -223,18 +236,29 @@ has('footer age badge', html, '18+');
 // move, the copy moves with them or this gate fails.
 {
   const cfg = readFileSync(resolve(root, 'backend/src/config.ts'), 'utf8');
-  const price = `${Number(cfg.match(/PREORDER_PRICE_LAMPORTS \?\? '(\d+)'/)![1]) / 1e9}`; // 999000000 → 0.999
-  const total = cfg.match(/Number\(env\.PREORDER_TOTAL \?\? (\d+)\)/)![1];                 // 500
-  const cap = cfg.match(/Number\(env\.PREORDER_MAX_PER_WALLET \?\? (\d+)\)/)![1];          // 5
+  const packPrice = `${(Number(cfg.match(/PREORDER_PRICE_LAMPORTS \?\? '(\d+)'/)![1]) / 1e9).toFixed(2)}`;
+  const chestPrice = `${Number(cfg.match(/PREORDER_CHEST_PRICE_LAMPORTS \?\? '(\d+)'/)![1]) / 1e9}`;
+  const packTotal = cfg.match(/Number\(env\.PREORDER_TOTAL \?\? (\d+)\)/)![1];
+  const chestTotal = cfg.match(/Number\(env\.PREORDER_CHEST_TOTAL \?\? (\d+)\)/)![1];
+  const packCap = cfg.match(/Number\(env\.PREORDER_MAX_PER_WALLET \?\? (\d+)\)/)![1];
   const presaleEn = en('presale.p');
-  has('presale total', presaleEn, `${total} packs`);
-  has('presale price', presaleEn, `${price} SOL`);
-  has('presale per-wallet cap', presaleEn, `max ${cap} per wallet`);
+  has('presale pack total', presaleEn, `${packTotal} singles`);
+  has('presale pack price', presaleEn, `${packPrice} SOL`);
+  has('presale chest total', presaleEn, `${chestTotal} founders chests`);
+  has('presale chest price', presaleEn, `${chestPrice} SOL`);
+  has('presale pack cap', presaleEn, `max ${packCap} per wallet`);
   const presaleRu = RU['presale.p'] ?? '';
-  has('presale total (ru)', presaleRu, `${total} паков`);
-  has('presale price (ru)', presaleRu, `${price.replace('.', ',')} SOL`);
-  has('presale per-wallet cap (ru)', presaleRu, `${cap} на кошелёк`);
+  has('presale pack price (ru)', presaleRu, `${packPrice.replace('.', ',')} SOL`);
+  has('presale chest price (ru)', presaleRu, `${chestPrice.replace('.', ',')} SOL`);
+  has('presale pack cap (ru)', presaleRu, `${packCap} на кошелёк`);
   has('presale section present', html, 'id="presale"');
+  has('presale offer cards', html, 'class="presale-offers"');
+  has('presale offer pack', en('presale.o1p'), `${packTotal} singles`);
+  has('presale offer pack price', en('presale.o1p'), `${packPrice} SOL`);
+  has('presale offer chest', en('presale.o2p'), `${chestTotal} chests`);
+  has('presale offer chest price', en('presale.o2p'), `${chestPrice} SOL`);
+  has('presale visual pack price', html, `>${packPrice} SOL<`);
+  has('presale visual chest price', html, `>${chestPrice} SOL<`);
 }
 
 // ---- i18n coverage: every EN key has a RU string, no empty strings ----

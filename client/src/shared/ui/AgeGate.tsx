@@ -58,14 +58,14 @@ export function AgeGateDialog({ gate }: { gate: AgeGate }) {
   return (
     <Modal open onClose={gate.decline} title={t('age.title')}>
       <div className="stack">
-        <div className="row" style={{ gap: 12, alignItems: 'center' }}>
+        <div className="row" style={{ gap: 12, alignItems: 'center', justifyContent: 'center' }}>
           <span className="gc-age" aria-hidden>18+</span>
-          <p style={{ margin: 0 }}>{t('age.body', { age: AGE_MIN })}</p>
+          <p style={{ margin: 0, textAlign: 'center' }}>{t('age.body', { age: AGE_MIN })}</p>
         </div>
-        <p className="muted small">
+        <p className="muted small" style={{ textAlign: 'center' }}>
           <Link to="/legal/terms">{t('age.termsLink')}</Link>
         </p>
-        <div className="row" style={{ gap: 8, justifyContent: 'flex-end' }}>
+        <div className="row" style={{ gap: 8, justifyContent: 'center' }}>
           <button type="button" className="btn" onClick={gate.decline}>{t('age.deny')}</button>
           <button type="button" className="cg-btn-primary" onClick={gate.accept} autoFocus>{t('age.confirm', { age: AGE_MIN })}</button>
         </div>

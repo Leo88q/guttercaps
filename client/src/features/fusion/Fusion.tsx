@@ -3,7 +3,7 @@ import { ErrorNotice } from '@/shared/ui/ErrorNotice';
 import { phaseLabel } from '@/shared/lib/presentation';
 // Fusion bench: 3 slots → 1 result. Rule (any / same-collection) per recipe,
 // success chance, booster toggle, fee (burned), result lock, set-break warning.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -12,7 +12,8 @@ import { FUSION_RECIPES, BOOSTER } from '@guttercaps/economy';
 import { useMyChips, useFusionSuggest, useGrid, useMyServices, type Chip } from '@/api/hooks';
 import { KIND, loadPresets, owns, savePresets, presetName, type FusionPreset } from '@/shared/lib/cosmetics';
 import { usePlayerItems, useWalletLike } from '@/chain/hooks';
-import { decodeCompressedChipState, type CompressedMintClaim } from '@/chain/accounts';
+import { decodeCompressedChipState, decodeCompressedMintClaim, type CompressedMintClaim } from '@/chain/accounts';
+import { planClaimFusion, type FusionPlanBlock } from '@/chain/flows/fusionPlan';
 import { compressedChipStatePda } from '@/chain/pdas';
 import { qk } from '@/api/keys';
 import { ClaimFusionFlow } from '@/chain/flows/claimFusionFlow';
@@ -21,7 +22,7 @@ import { useTxStore, fusionId } from '@/app/store/txs';
 import { useUiStore } from '@/app/store/ui';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { CloseIcon } from '@/shared/ui/action-icons';
-import { CleanZone, KV, Modal, Pill, Skeleton } from '@/shared/ui/primitives';
+import { CleanZone, Empty, KV, Modal, Pill, Skeleton } from '@/shared/ui/primitives';
 import { CleanConfirmButton, SprayCapToggle } from '@/shared/ui/buttons';
 import { chipName, collectionName, rarityColor, rarityName, collectionColor, chipArtUrl, chipImageOf } from '@/shared/lib/rarity';
 import { fmtCg, fmtPct, fmtSol, secondsToHuman } from '@/shared/lib/format';
@@ -72,14 +73,23 @@ export default function Fusion() {
   const recipe = from !== undefined ? FUSION_RECIPES[from] : undefined;
   const sameRarity = filled.every((c) => c.rarity === from);
   const sameCol = filled.every((c) => c.collection === filled[0]?.collection);
-  const ruleOk = !recipe || recipe.rule === 'any' || sameCol;
+  // On-chain `any` recipes still accept mixed districts; the bench does not recommend or load them.
+  const ruleOk = !recipe || sameCol;
   const cols = Array.from(new Set(filled.map((c) => c.collection!)));
   const effectiveResultCol = recipe?.rule === 'same-collection' ? filled[0]?.collection ?? null : resultCol ?? cols[0] ?? null;
   const ready = filled.length === 3 && sameRarity && ruleOk && !!recipe && effectiveResultCol !== null;
   const chance = recipe ? successBps(recipe.from, booster) : 0;
   const boosters = items.data?.boosters ?? 0;
   const breaksSet = filled.some((c) => (grid.data?.cells?.[c.collection!]?.[c.rarity!] ?? 0) === 1);
-  const eligibleForSlot = (i: number) => all.filter((c) => !slots.some((s, j) => j !== i && s?.asset === c.asset) && (from === undefined || i === 0 || c.rarity === from) && (!recipe || recipe.rule === 'any' || i === 0 || c.collection === filled[0]?.collection));
+  const eligibleForSlot = (i: number) => all.filter((c) => {
+    if (slots.some((s, j) => j !== i && s?.asset === c.asset)) return false;
+    const others = slots.filter((s, j): s is Chip => j !== i && !!s);
+    const r = others[0]?.rarity;
+    const col = others[0]?.collection;
+    if (r !== undefined && c.rarity !== r) return false;
+    if (col !== undefined && c.collection !== col) return false;
+    return true;
+  });
 
   // The worker registered the result chip — find its Bubblegum leaf id in the refetched chip list.
   // The indexer's projection of CompressedChipRegistered can lag the on-chain flag flip by seconds,
@@ -123,6 +133,24 @@ export default function Fusion() {
       );
       if (cStateInfos.every((info) => !!info)) {
         const materialClaims = cStateInfos.map((info) => decodeCompressedChipState(new Uint8Array(info!.data)).claim);
+        const claimInfos = await connection.getMultipleAccountsInfo(materialClaims, 'confirmed');
+        const reasonOf = (block: FusionPlanBlock) => (
+          block === 'listed' ? t('collection.filters.listed')
+            : block === 'staked' ? t('collection.filters.staked')
+              : block === 'locked' ? t('collection.filters.locked')
+                : block === 'consumed' ? t('fusion.reasonConsumed')
+                  : block === 'owner' ? t('fusion.reasonOwner')
+                    : block === 'mixed' ? t('ui.sameDistrict')
+                      : block === 'rarity' ? t('ui.sameTier')
+                        : t('fusion.reasonUnregistered')
+        );
+        const decoded = [];
+        for (let i = 0; i < 3; i++) {
+          if (!claimInfos[i]) throw new Error(t('fusion.blocked', { reason: t('fusion.reasonUnregistered') }));
+          decoded.push(decodeCompressedMintClaim(new Uint8Array(claimInfos[i]!.data)));
+        }
+        const plan = planClaimFusion(decoded, wallet.publicKey, effectiveResultCol!);
+        if (plan.block) throw new Error(t('fusion.blocked', { reason: reasonOf(plan.block) }));
         const cf = new ClaimFusionFlow(
           {
             connection,
@@ -155,7 +183,7 @@ export default function Fusion() {
               });
             },
           },
-          { recipe: recipe.from, boosted: booster, materials: materialClaims, resultCollectionIdx: effectiveResultCol! },
+          { recipe: plan.recipeFrom, boosted: booster, materials: materialClaims, resultCollectionIdx: plan.resultCollectionIdx },
         );
         await cf.fuse();
         if (cf.state.phase === 'committed') await cf.reveal();
@@ -178,7 +206,7 @@ export default function Fusion() {
         let outAsset = cf.state.settledAsset?.toBase58();
         if (!outAsset && settledClaim) outAsset = await findRegisteredChip(settledClaim);
         outAsset ??= r?.resultClaim?.toBase58();
-        if (r?.success && outAsset) { enqueue([{ id: outAsset, asset: outAsset, rarity: recipe.to, collectionIdx: effectiveResultCol!, fused: true }]); toast({ kind: 'success', title: { key: 'fusion.success' }, href: EXPLORER.tx(cf.state.signatures.at(-1)!) }); }
+        if (r?.success && outAsset) { enqueue([{ id: outAsset, asset: outAsset, rarity: FUSION_RECIPES[plan.recipeFrom]!.to, collectionIdx: plan.resultCollectionIdx, fused: true }]); toast({ kind: 'success', title: { key: 'fusion.success' }, href: EXPLORER.tx(cf.state.signatures.at(-1)!) }); }
         else if (r) toast({ kind: 'error', title: { key: 'fusion.failed' }, body: { key: 'screens.fusionRoll', params: { roll: percentText(r.rollBps), threshold: percentText(r.thresholdBps) } }, href: EXPLORER.tx(cf.state.signatures.at(-1)!) });
         setSlots([null, null, null]);
         if (cf.state.randomness) { try { await cf.reclaimRent(); } catch { /* optional */ } }
@@ -212,14 +240,14 @@ export default function Fusion() {
       <div className="card stack">
         <div className="bench">
           {slots.map((s, i) => (
-            <div key={i} className={`slot ${s ? 'filled' : 'slot-empty'}`} onClick={() => setPickFor(i)} style={s ? { border: 'none' } : undefined}>
-              {s ? <ChipArt collection={s.collection!} rarity={s.rarity!} index={s.index} level={s.level} size="100%" imageUrl={chipImageOf(s)} skin={s.skin} crimp={rarityColor(s.rarity!)} /> : <span className="slot-hint">+ {t('ui.slot')} {i + 1}</span>}
+            <div key={i} className={`slot ${s ? 'filled' : 'slot-empty live-slot'}`} onClick={() => setPickFor(i)} style={s ? { border: 'none' } : undefined} aria-label={`${t('ui.slot')} ${i + 1}`}>
+              {s ? <ChipArt collection={s.collection!} rarity={s.rarity!} index={s.index} level={s.level} size="100%" imageUrl={chipImageOf(s)} skin={s.skin} crimp={rarityColor(s.rarity!)} founder={!!s.flags?.founder} /> : <span className="slot-hint" aria-hidden>+</span>}
             </div>
           ))}
         </div>
         <div className="bench-arrow">↓</div>
         <div className="row" style={{ justifyContent: 'center', gap: 16, flexWrap: 'wrap' }}>
-          <div style={{ width: 180 }}>{recipe && effectiveResultCol !== null ? <ChipArt collection={effectiveResultCol} rarity={recipe.to} imageUrl={chipArtUrl(effectiveResultCol, recipe.to, 512)} crimp={rarityColor(recipe.to)} /> : <div className="slot" style={{ width: 180 }}>?</div>}</div>
+          <div style={{ width: 180 }}>{recipe && effectiveResultCol !== null ? <ChipArt collection={effectiveResultCol} rarity={recipe.to} imageUrl={chipArtUrl(effectiveResultCol, recipe.to, 512)} crimp={rarityColor(recipe.to)} /> : <div className="slot slot-empty live-slot" style={{ width: 180, height: 180 }}><span className="slot-hint">?</span></div>}</div>
           <div className="stack-sm">
             {recipe ? (
               <>
@@ -268,7 +296,7 @@ export default function Fusion() {
             <button className="btn btn-sm" onClick={() => setSlots(s.materials!.slice(0, 3) as Chip[])}>{t('ui.load')}</button>
           </div>
         ))}
-        {suggest.data?.length === 0 && <div className="muted small">{t('ui.noTriples')}</div>}
+        {!suggest.isLoading && suggest.data?.length === 0 && <Empty compact>{t('ui.noTriples')}</Empty>}
       </div>
 
       <div className="card">
@@ -283,7 +311,7 @@ export default function Fusion() {
           <div className="strong">{t('ui.presets')} <span className="muted small mono">{presets.length}/{maxPresets}</span></div>
           <button className="btn btn-sm" disabled={filled.length !== 3 || presets.length >= maxPresets} onClick={() => setPresets([...presets, { nameKind: 'auto', rarity: from ?? 0, slots: [slots[0]?.asset ?? null, slots[1]?.asset ?? null, slots[2]?.asset ?? null], resultCol: effectiveResultCol, savedAt: Date.now() }])}>{t('ui.saveCurrent')}</button>
         </div>
-        {presets.length === 0 && <div className="muted small">{t('ui.presetHint')}</div>}
+        {presets.length === 0 && <Empty compact>{t('ui.presetHint')}</Empty>}
         {presets.map((pr, i) => (
           <div key={i} className="row between small" data-testid="fusion-preset">
             <span>{presetName(pr)} <span className="muted">→ {pr.resultCol !== null && pr.resultCol !== undefined ? collectionName(pr.resultCol) : '?'}</span></span>
@@ -296,20 +324,48 @@ export default function Fusion() {
         {maxPresets === 1 && <div className="tiny muted">{t('ui.moreSlots')} <Link to="/shop?tab=services">{t('services.names.extraBenchSlots')}</Link> {t('ui.inExtras')}</div>}
       </div>
 
-      <Modal open={pickFor !== null} onClose={() => setPickFor(null)} title={t('ui.slotNumber', { n: (pickFor ?? 0) + 1 })} wide>
+      <Modal
+        open={pickFor !== null}
+        onClose={() => setPickFor(null)}
+        title={t('ui.slotNumber', { n: (pickFor ?? 0) + 1 })}
+        wide
+        footer={<button className="btn btn-block" onClick={() => setPickFor(null)}>{t('ui.done')}</button>}
+      >
         {pickFor !== null && (
           <div className="grid-auto" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(144px, 47%), 1fr))' }}>
-            {slots[pickFor] && <div className="chip-card" onClick={() => { setSlots((s) => s.map((x, j) => (j === pickFor ? null : x))); setPickFor(null); }}><div className="slot" style={{ aspectRatio: 1, borderRadius: '50%', display: 'grid', placeItems: 'center' }}><CloseIcon size={16} /></div><div className="chip-meta row" style={{ gap: 4, justifyContent: 'center' }}><CloseIcon size={11} />{t('ui.clear')}</div></div>}
+            {slots[pickFor] && (
+              <div className="chip-card" role="button" data-testid="fusion-clear" onClick={() => setSlots((s) => s.map((x, j) => (j === pickFor ? null : x)))}>
+                <LivePickerSlot><CloseIcon size={22} /></LivePickerSlot>
+                <div className="chip-meta row live-slot-label" style={{ gap: 4, justifyContent: 'center' }}><CloseIcon size={11} />{t('ui.clear')}</div>
+              </div>
+            )}
             {eligibleForSlot(pickFor).map((c) => (
-              <div key={c.asset} className="chip-card" onClick={() => { setSlots((s) => s.map((x, j) => (j === pickFor ? c : x))); setPickFor(null); }}>
-                <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c)} skin={c.skin} />
+              <div key={c.asset} className="chip-card" onClick={() => setSlots((s) => s.map((x, j) => (j === pickFor ? c : x)))}>
+                <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c)} skin={c.skin} selected={slots[pickFor]?.asset === c.asset} founder={!!c.flags?.founder} />
                 <div className="chip-meta"><span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span> · {chipName(c.collection!, c.rarity!)}</div>
               </div>
             ))}
-            {eligibleForSlot(pickFor).length === 0 && <div className="empty">{t('ui.noEligible')}</div>}
+            {eligibleForSlot(pickFor).length === 0 && !slots[pickFor] && (
+              <div className="chip-card">
+                <LivePickerSlot>+</LivePickerSlot>
+                <div className="chip-meta" style={{ textAlign: 'center' }}>{t('ui.noEligible')}</div>
+              </div>
+            )}
+            {eligibleForSlot(pickFor).length === 0 && slots[pickFor] && (
+              <div className="tiny muted" style={{ gridColumn: '1 / -1' }}>{t('ui.noEligible')}</div>
+            )}
           </div>
         )}
       </Modal>
+    </div>
+  );
+}
+
+/** Empty / clear tile in the slot picker: same spinning street ring as the bench. */
+function LivePickerSlot({ children }: { children: ReactNode }) {
+  return (
+    <div className="slot slot-empty live-slot">
+      <span className="slot-hint">{children}</span>
     </div>
   );
 }

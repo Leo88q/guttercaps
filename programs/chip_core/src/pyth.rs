@@ -14,7 +14,7 @@
 //! deserialise step is `AccountDeserialize::try_deserialize` — the 8-byte `PriceUpdateV2::DISCRIMINATOR`
 //! check **and** borsh, exactly the call anchor's `Account::try_from_unchecked` makes. Everything above
 //! that — feed id, `Full` verification level, `publish_time` freshness, the ±2 % confidence guard — stays
-//! in `instructions::packs::oracle_price`, unchanged from before.
+//! historically in `instructions::packs::oracle_price`. Checkout is frozen FX and does not load this.
 //!
 //! (Written as prose rather than a numbered list on purpose: the list was `1.` / `2./3.` with folded
 //! continuation lines, and rustdoc's `doc_lazy_continuation` + `doc_overindented_list_items` lints read

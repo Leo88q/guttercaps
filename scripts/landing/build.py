@@ -74,7 +74,7 @@ LANDING_UI = {l: {k: v for k, v in client_catalog('ui', l).items() if k.startswi
 ART_TILE, ART_GUT, ART_PAD = 256, 12, 16
 ASSET_DIR = HERE / 'assets'
 PHOTOS, DISTRICT_ART, STEP_ART, GEN_ICONS, PACK_ART = {}, {}, {}, {}, {}
-PACK_ART_STEMS = {'starter', 'standard', 'premium', 'limited'}  # foil wrapper renders, scripts/landing/README
+PACK_ART_STEMS = {'starter', 'standard', 'premium', 'limited', 'chest'}  # foil wrappers + founders chest, scripts/landing/README
 if ASSET_DIR.is_dir():
     for _p in sorted(ASSET_DIR.glob('*.webp')):
         _uri = 'data:image/webp;base64,' + base64.b64encode(_p.read_bytes()).decode()
@@ -88,6 +88,8 @@ if ASSET_DIR.is_dir():
             PACK_ART[_p.stem] = _uri  # exposed to app.js as PACK_ART, NOT as wall photos
         else:
             PHOTOS[_p.stem] = _uri
+if any(k not in PACK_ART for k in PACK_ART_STEMS):
+    raise SystemExit('landing assets missing pack art: ' + ', '.join(sorted(PACK_ART_STEMS - PACK_ART.keys())))
 
 
 def photo_style():
@@ -389,11 +391,28 @@ BODY = f'''
   <div class="lamp-glow" style="top:-180px; left:12%; background: radial-gradient(circle, rgba(255,122,26,0.20), transparent 70%);"></div>
   <div class="wrap">
 {head_block('presale.h', 'presale.p', 'var(--orange)')}
+    <div class="presale-offers">
+      <article class="presale-offer">
+        <img class="presale-offer-art" data-pack-art="limited" alt="" width="640" height="640" loading="lazy" decoding="async">
+        <div class="presale-offer-name" data-i18n="presale.o1h">{t('presale.o1h')}</div>
+        <div class="presale-offer-price">0.30 SOL</div>
+        <p data-i18n="presale.o1p">{t('presale.o1p')}</p>
+      </article>
+      <article class="presale-offer">
+        <div class="presale-chest">
+          <img class="presale-offer-art" data-pack-art="chest" alt="" width="640" height="640" loading="lazy" decoding="async">
+        </div>
+        <div class="presale-offer-name" data-i18n="presale.o2h">{t('presale.o2h')}</div>
+        <div class="presale-offer-price">0.999 SOL</div>
+        <p data-i18n="presale.o2p">{t('presale.o2p')}</p>
+      </article>
+    </div>
     <div class="presale-grid">
       <div class="presale-card clean-zone"><h3 data-i18n="presale.c1h">{t('presale.c1h')}</h3><p data-i18n="presale.c1p">{t('presale.c1p')}</p></div>
       <div class="presale-card clean-zone"><h3 data-i18n="presale.c2h">{t('presale.c2h')}</h3><p data-i18n="presale.c2p">{t('presale.c2p')}</p></div>
       <div class="presale-card clean-zone"><h3 data-i18n="presale.c3h">{t('presale.c3h')}</h3><p data-i18n="presale.c3p">{t('presale.c3p')}</p></div>
       <div class="presale-card clean-zone"><h3 data-i18n="presale.c4h">{t('presale.c4h')}</h3><p data-i18n="presale.c4p">{t('presale.c4p')}</p></div>
+      <div class="presale-card clean-zone"><h3 data-i18n="presale.c5h">{t('presale.c5h')}</h3><p data-i18n="presale.c5p">{t('presale.c5p')}</p></div>
     </div>
     <div class="presale-cta">
       <a class="btn-spray btn-spray-lg" data-link="presale" href="#" onclick="fireSpray(this)"><span class="mist-puff"></span><span data-i18n="presale.cta">{t('presale.cta')}</span></a>
@@ -477,10 +496,10 @@ BODY = f'''
         <h3 data-i18n="eco.emission">{t('eco.emission')}</h3>
         <div class="bars">
 {bar('eco.e1', 20, '#16E5D9')}
-{bar('eco.e2', 10, '#2E8BFF')}
+{bar('eco.e2', 5, '#2E8BFF')}
 {bar('eco.e3', 22, '#B6FF3C')}
 {bar('eco.e4', 33, '#FF2E8A')}
-{bar('eco.e5', 15, '#FF7A1A')}
+{bar('eco.e5', 20, '#FF7A1A')}
         </div>
         <h3 class="mt" data-i18n="eco.sinks">{t('eco.sinks')}</h3>
         <div class="bars">
@@ -530,6 +549,8 @@ BODY = f'''
 {mech_card(4, '🏷️')}
 {mech_card(5, '📋')}
 {mech_card(6, '🎨')}
+{mech_card(7, '🕳️')}
+{mech_card(8, '🍲')}
     </div>
   </div>
 </section>

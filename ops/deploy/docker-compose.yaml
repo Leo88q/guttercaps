@@ -98,7 +98,12 @@ services:
       # never opened (docs/06 §3.3). Add burn/reward/battle when their keypairs are mounted.
       WORKERS: ${WORKERS:-crank,pyth}
       API_INGEST: "1"
-      CRANK_KEYPAIR: ${CRANK_KEYPAIR_PATH:-/run/secrets/crank_keypair}
+      # In-container path of the compose file-secret (`/run/secrets/<secret name>`).
+      # `CRANK_KEYPAIR_PATH` is the *host* file for `secrets.crank_keypair.file` only.
+      # Interpolating it here pointed the process at `./secrets/crank_keypair.json`
+      # inside the image (that path does not exist), so a follow-the-example deploy
+      # never opened packs.
+      CRANK_KEYPAIR: /run/secrets/crank_keypair
       # Legal gating of paid randomised packs stays off until counsel signs off (docs/09 §5.2 + §7).
       # It is here, and not in backend/.env, because turning it on is a deployment decision that needs the
       # edge to be Cloudflare: `GEO_GATE=shop` alone does nothing — see backend/src/geo.ts.

@@ -11,7 +11,7 @@ import source from '@/shared/i18n/failures/source.json';
 import { API_ERROR_KEYS } from '@/api/errorCatalog';
 import { ApiError } from '@/api/client';
 import catalog from './errorCatalog.json';
-import { ARENA_ID, CHIP_CORE_ID, MARKET_ID, STAKING_ID } from './ids';
+import { ARENA_ID, CHIP_CORE_ID, MARKET_ID, STAKING_ID, TOKEN_PROGRAM_ID } from './ids';
 import { humanizeTxError, describeProgramError, isBlockhashExpired } from './errors';
 import { parseCustomError } from './anchor';
 import { errorSnapshot, originalErrorText } from './errorSnapshot';
@@ -36,7 +36,7 @@ describe('source synchronization', () => {
         count++;
       });
     }
-    expect(count).toBe(118); // 113 + SEC-A6 StakeError::SkrWithdrawRate + 4 presale Preorder* errors
+    expect(count).toBe(119); // 118 + StakeError::FuturePlay (alive-stake pulse)
     // Pin the framework identities to the installed SDK too, not just our translated hand table.
     const framework = {
       InstructionMissing: 100, InstructionFallbackNotFound: 101, ConstraintMut: 2000,
@@ -113,13 +113,58 @@ for (const locale of LOCALES) {
 }
 
 describe('error attribution and recovery safety', () => {
+  it('translates a known preflight blockhash rejection without claiming payment was sent', async () => {
+    const error = new TxError({ code: 'blockhash_rejected', message: 'Simulation failed. Transaction simulation failed: Blockhash not found', logs: [] });
+    for (const locale of LOCALES) {
+      await setLocale(locale);
+      expect(humanizeTxError(error)).toBe(t('failures.blockhashRejected'));
+      expect(humanizeTxError(errorSnapshot(error))).not.toBe(t('failures.confirmationUnknown'));
+    }
+    expect(originalErrorText(error)).toContain('Blockhash not found');
+  });
+  it('keeps an unknown submitted confirmation distinct from an unsubmitted expiry', async () => {
+    const error = new TxError({ code: 'confirmation_unknown', message: 'Submitted, confirmation unknown', details: 'Signature has expired: block height exceeded' }, undefined, 'test-signature');
+    for (const locale of LOCALES) {
+      await setLocale(locale);
+      expect(humanizeTxError(error)).toBe(t('failures.confirmationUnknown'));
+      expect(humanizeTxError(errorSnapshot(error))).toBe(t('failures.confirmationUnknown'));
+    }
+    expect(error.signature).toBe('test-signature');
+    expect(originalErrorText(error)).toContain('block height exceeded');
+  });
   it('does not guess ownership or mislabel unknown token program error 0x1 as SOL balance', () => {
     expect(describeProgramError(6000)).toBeUndefined();
     expect(describeProgramError(6000, '11111111111111111111111111111111')).toBeUndefined();
     const text = humanizeTxError({ message: 'custom program error: 0x1', logs: ['Program 11111111111111111111111111111111 failed: custom program error: 0x1'] });
     expect(text).not.toContain(t('ui.insufficientSol'));
+    expect(text).not.toContain(t('ui.insufficientToken'));
     expect(text).toContain('11111111111111111111111111111111');
     expect(text).toContain('0x1');
+  });
+  it('names the missing token for Tokenkeg insufficient funds and keeps the program log as evidence', async () => {
+    const tokenkeg = TOKEN_PROGRAM_ID.toBase58();
+    const raw = {
+      message: 'Transaction simulation failed: Error processing Instruction 2: custom program error: 0x1',
+      logs: [
+        `Program ${tokenkeg} invoke [1]`,
+        `Program ${tokenkeg} failed: custom program error: 0x1`,
+        'Program log: Error: insufficient funds',
+      ],
+    };
+    expect(humanizeTxError(raw)).toBe(t('ui.insufficientToken'));
+    expect(humanizeTxError(raw)).not.toContain(tokenkeg);
+    expect(originalErrorText(raw)).toContain('insufficient funds');
+    const cg = new TxError(raw);
+    cg.spend = { currency: 2, switchable: true };
+    for (const locale of LOCALES) {
+      await setLocale(locale);
+      expect(humanizeTxError(cg)).toBe(t('ui.insufficientPaySwitch', { token: '$CG' }));
+      expect(humanizeTxError(errorSnapshot(cg))).toBe(t('ui.insufficientPaySwitch', { token: '$CG' }));
+    }
+    const persisted = JSON.parse(JSON.stringify(errorSnapshot(cg)));
+    expect(humanizeTxError(persisted)).toBe(t('ui.insufficientPaySwitch', { token: '$CG' }));
+    expect(humanizeTxError({ ...raw, spend: { currency: 2 } })).toBe(t('ui.insufficientPay', { token: '$CG' }));
+    expect(humanizeTxError({ message: 'Transfer: insufficient lamports 12, need 5000', spend: { currency: 2, switchable: true } })).toBe(t('ui.insufficientFeeSol', { token: '$CG' }));
   });
   it('prioritizes the innermost CPI code, including decimal logs and inconsistent outer prose', () => {
     const error = { message: 'expired: custom program error: 6000', logs: [
@@ -153,6 +198,23 @@ describe('error attribution and recovery safety', () => {
     const api = JSON.parse(JSON.stringify(errorSnapshot(new TxError(new ApiError(409, 'payment_pending', 'raw pending')))));
     expect(humanizeTxError(api)).toBe(t('failures.paymentPending'));
   });
+  it('surfaces stored vs derived Bubblegum asset ids without implying a wager was sent', async () => {
+    const error = {
+      code: 'invalid_bubblegum_asset',
+      message: 'chip asset does not match Bubblegum leaf id\nLeft: LeftAddr\nRight: RightAddr',
+      details: { left: 'LeftAddr', right: 'RightAddr', tree: 'TreeAddr', leafIndex: 7, leafNonce: '7' },
+    };
+    for (const locale of LOCALES) {
+      await setLocale(locale);
+      const text = humanizeTxError(error);
+      expect(text).toBe(t('failures.invalidBubblegumAsset', { left: 'LeftAddr', right: 'RightAddr' }));
+      expect(text).toContain('Left: LeftAddr');
+      expect(text).toContain('Right: RightAddr');
+      expect(text.toLowerCase()).not.toMatch(/escrow|sent a wager|wager was sent and/);
+    }
+    expect(originalErrorText(error)).toContain('TreeAddr');
+    expect(humanizeTxError({ code: 'invalid_bubblegum_asset', message: 'fallback only' })).toBe('fallback only');
+  });
   it('preserves long unknown errors, resists prototype keys and safely snapshots cyclic causes', () => {
     const long = 'vendor diagnostic '.repeat(50);
     expect(humanizeTxError(new Error(long))).toBe(long);
@@ -168,7 +230,7 @@ describe('error attribution and recovery safety', () => {
 describe('sendTx retry boundary (mock RPC and signature)', () => {
   function fixture() {
     const connection = {
-      getLatestBlockhash: vi.fn().mockResolvedValue({ blockhash: CHIP_CORE_ID.toBase58(), lastValidBlockHeight: 123 }),
+      getLatestBlockhashAndContext: vi.fn().mockResolvedValue({ context: { slot: 100 }, value: { blockhash: CHIP_CORE_ID.toBase58(), lastValidBlockHeight: 123 } }),
       sendRawTransaction: vi.fn().mockResolvedValue('test-only'),
       confirmTransaction: vi.fn().mockResolvedValue({ value: { err: null } }),
       getTransaction: vi.fn().mockResolvedValue({ meta: { logMessages: [] } }),
@@ -180,14 +242,15 @@ describe('sendTx retry boundary (mock RPC and signature)', () => {
     const { connection, wallet } = fixture();
     connection.sendRawTransaction.mockRejectedValue({ message: 'Offer expired', logs: [`Program ${MARKET_ID} failed: custom program error: 6004`] });
     await expect(sendTx(connection as unknown as Connection, wallet, [], { cuLimit: 10000, cuPrice: 1 })).rejects.toBeInstanceOf(TxError);
-    expect(connection.getLatestBlockhash).toHaveBeenCalledTimes(1);
+    expect(connection.getLatestBlockhashAndContext).toHaveBeenCalledTimes(1);
     expect(connection.sendRawTransaction).toHaveBeenCalledTimes(1);
   });
-  it('rebuilds exactly once for a genuinely expired blockhash', async () => {
+  it('rebuilds once if the wallet refuses an expired blockhash before any send', async () => {
     const { connection, wallet } = fixture();
-    connection.sendRawTransaction.mockRejectedValueOnce(new Error('Blockhash not found'));
+    const sign = wallet.signTransaction;
+    wallet.signTransaction = vi.fn(sign).mockRejectedValueOnce(new Error('Blockhash not found'));
     await expect(sendTx(connection as unknown as Connection, wallet, [], { cuLimit: 10000, cuPrice: 1 })).resolves.toHaveProperty('signature');
-    expect(connection.getLatestBlockhash).toHaveBeenCalledTimes(2);
-    expect(connection.sendRawTransaction).toHaveBeenCalledTimes(2);
+    expect(connection.getLatestBlockhashAndContext).toHaveBeenCalledTimes(2);
+    expect(connection.sendRawTransaction).toHaveBeenCalledTimes(1);
   });
 });

@@ -142,9 +142,11 @@ upgrade authority == кошелёк деплоя. Независимо пере�
 `open_pack` (MPL-Core путь) удалён до заглушки с гейтом `params_version == 0`, который недостижим после миграции
 на Bubblegum V2 (`programs/chip_core/src/instructions/packs.rs:642-673`). Поэтому `PackOpened` в каталоге помечен
 `unavailable` (декларировано без эмиттера; исторические логи — если такой деплой когда-либо существовал — всё ещё
-декодируются). Реальная цепочка первого действия: `PackBought` → `CompressedClaimsCreated` →
-`CompressedPackSettled` (+ `CompressedChipMinted`/`Registered` на минт ассетов). Хаб-слот «первое действие»
-предлагается закрыть `CompressedClaimsCreated`; переименование ончейн-события без согласования не делается.
+декодируются). Реальная цепочка первого действия: `PackBought` → `CompressedClaimsCreated` (+ companion
+`CompressedPackOpened` в той же транзакции: 32-байтный SlotHashes-сид и редкости для `/verify`, это **не**
+второе first-action) → `CompressedPackSettled` (+ `CompressedChipMinted`/`Registered` на минт ассетов).
+Хаб-слот «первое действие» предлагается закрыть `CompressedClaimsCreated`; переименование ончейн-события
+без согласования не делается.
 
 ### Общие события хаба — фактическое наличие
 

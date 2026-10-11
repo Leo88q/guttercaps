@@ -18,11 +18,15 @@ export type QuestPeriod = 'daily' | 'weekly' | 'permanent';
  * one chip, no floor, no pity, all districts) + the soulbound window of the minted chip.
  */
 export interface ChipVoucherTemplate { template: number; odds: readonly number[]; soulboundDays: number }
+/** Gutter Pot weekly raffle odds (Rare / Rare+ / Epic). Shared with template 4; referrals (template 3) use the same table with a longer soulbound window. */
+const GUTTER_POT_ODDS = [0, 0, 5000, 4000, 1000, 0, 0, 0, 0] as const;
+
 export const QUEST_CHIP_TEMPLATES: readonly ChipVoucherTemplate[] = [
   { template: 0, odds: [8000, 1800, 200, 0, 0, 0, 0, 0, 0],    soulboundDays: 3 },  // 7-day streak
   { template: 1, odds: [3000, 5000, 1800, 200, 0, 0, 0, 0, 0], soulboundDays: 7 },  // all weeklies
   { template: 2, odds: [0, 0, 0, 0, 10000, 0, 0, 0, 0],        soulboundDays: 30 }, // 500 wins — the only free Epic
-  { template: 3, odds: [0, 0, 5000, 4000, 1000, 0, 0, 0, 0],   soulboundDays: 14 }, // 5 paying referrals
+  { template: 3, odds: GUTTER_POT_ODDS,                        soulboundDays: 14 }, // 5 paying referrals
+  { template: 4, odds: GUTTER_POT_ODDS,                        soulboundDays: 7 },  // Gutter Pot weekly staking raffle
 ];
 const voucher = (template: number): ChipVoucherTemplate => QUEST_CHIP_TEMPLATES[template];
 
@@ -40,7 +44,7 @@ export interface QuestDef {
 }
 
 // Daily: ~14 $CG total (cap 15). No chip drop — dailies pay in $CG only, and the
-// $CG itself is the bridge to packs (900 $CG = one Standard pack ≈ 2.5 months
+// $CG itself is the bridge to packs (2 700 $CG = one Standard pack ≈ 7.5 months
 // of perfect dailies). A 7-day streak grants ONE Common-tier roll.
 // ORDER MATTERS: the streak / weekly-meta math below reads DAILY_QUESTS[4] and
 // WEEKLY_QUESTS[4] — the meta quests must stay at index 4, new entries go after.
@@ -128,13 +132,27 @@ export const REFERRAL = {
   requirement: 'referee buys ≥ 1 paid pack (SOL / USDC / SKR) and opens it; both wallets pass device dedupe; referrer is reward-eligible',
 } as const;
 
-/** Chip-staking jackpot: 10 Rare..Epic chips raffled weekly among staked wallets — ticket weight = stake weight. */
-export const STAKING_JACKPOT = { odds: [0, 0, 5000, 4000, 1000, 0, 0, 0, 0] as const, winnersPerWeek: 10, soulboundDays: 7 };
+/**
+ * Gutter Pot — named weekly raffle among **chip** stakers (not $CG locks).
+ * Ticket = live chip-stake `weight` at the Monday 00:00 UTC snapshot; 10 unique wallets;
+ * each winner claims a kind-9 voucher (template 4). Outside `ANTI_FARM.freeChipsPerWalletPerWeek`
+ * (that cap is streak + weekly quest chips only).
+ */
+export const GUTTER_POT = {
+  id: 'gutter_pot',
+  template: 4,
+  odds: GUTTER_POT_ODDS,
+  winnersPerWeek: 10,
+  soulboundDays: 7,
+  seedPrefix: 'gutter-pot:v1',
+} as const;
+/** @deprecated use `GUTTER_POT` — same numbers, old name. */
+export const STAKING_JACKPOT = GUTTER_POT;
 
 export const ANTI_FARM = {
   dailyQuestRewardCapCgMicro: 15_000_000,
   weeklyQuestRewardCapCgMicro: 120_000_000,
-  freeChipsPerWalletPerWeek: 2,          // hard cap across all free sources (streak + weekly)
+  freeChipsPerWalletPerWeek: 2,          // hard cap on quest chips (streak + weekly); Gutter Pot is extra
   minAccountAgeForRewardsSec: 24 * 3600, // wallet must have ≥1 paid pack OR be 24h old with 10 matches
   deviceFingerprintDedupe: true,
   /** Wallets that may earn rewards from one device (salted client fingerprint); the newer ones beyond this get `device_limit`. */
@@ -162,7 +180,7 @@ export function freeValueReport(paidCommonsPerWeek: number, activeStakers = 5000
   // (8 rewarded matches/day at 50% WR: 4×2 + 4×0.5 = 10/day) ≈ 204 $CG/week
   // → 0.27 Standard packs/week when spent on packs.
   const cgPerWeek = (12 * 7) + 50 + (10 * 7);
-  const cgAsCommons = (cgPerWeek / 900) * paidCommonsPerWeek / 2; // /2: paid baseline is 2 packs
+  const cgAsCommons = (cgPerWeek / 2700) * paidCommonsPerWeek / 2; // /2: paid baseline is 2 packs
   const freeCommonsPerWeek = streakChipEv + weeklyChipEv + jackpotEvPerWallet + cgAsCommons;
   return {
     streakChipEv: +streakChipEv.toFixed(2),

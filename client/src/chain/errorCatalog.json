@@ -403,6 +403,10 @@
     {
       "name": "SkrWithdrawRate",
       "key": "staking_SkrWithdrawRate"
+    },
+    {
+      "name": "FuturePlay",
+      "key": "staking_FuturePlay"
     }
   ],
   "arena": [

@@ -22,7 +22,14 @@ const INVALIDATE: Record<string, (qc: QueryClient, e: Event) => void> = {
   reward_claimed: (qc) => { void qc.invalidateQueries({ queryKey: ['quests'] }); void qc.invalidateQueries({ queryKey: ['chain', 'balances'] }); void qc.invalidateQueries({ queryKey: qk.me }); },
   quest_progress: (qc) => { void qc.invalidateQueries({ queryKey: qk.quests }); void qc.invalidateQueries({ queryKey: qk.streak }); },
   match_found: (qc) => { void qc.invalidateQueries({ queryKey: qk.arenaMe }); },
-  match_resolved: (qc, e) => { void qc.invalidateQueries({ queryKey: qk.arenaMe }); const id = e.payload?.id as string | undefined; if (id) void qc.invalidateQueries({ queryKey: qk.match(id) }); void qc.invalidateQueries({ queryKey: ['leaderboard'] }); },
+  match_resolved: (qc, e) => {
+    void qc.invalidateQueries({ queryKey: qk.arenaMe });
+    const id = e.payload?.id as string | undefined;
+    if (id) void qc.invalidateQueries({ queryKey: qk.match(id) });
+    void qc.invalidateQueries({ queryKey: ['leaderboard'] });
+    void qc.invalidateQueries({ queryKey: ['me', 'chips'] });
+    void qc.invalidateQueries({ queryKey: ['chips'] });
+  },
   day_closed: (qc) => { void qc.invalidateQueries({ queryKey: ['staking'] }); void qc.invalidateQueries({ queryKey: chainKeys.emission }); },
   params_changed: (qc) => { void qc.invalidateQueries({ queryKey: chainKeys.config }); void qc.invalidateQueries({ queryKey: qk.packs }); },
 };

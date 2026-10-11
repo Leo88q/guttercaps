@@ -3,7 +3,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createHash, randomBytes } from 'node:crypto';
 import { Connection, Keypair, PublicKey } from '@solana/web3.js';
-import { ANTI_FARM, DAILY_QUESTS, FUSION_RECIPES, MATCH_REWARDS, MATCHMAKING, PERMANENT_QUESTS, QUEST_CHIP_TEMPLATES, WEEKLY_QUESTS, resolveFight, onChainSquadPower, type FighterChip } from '@guttercaps/economy';
+import { ANTI_FARM, CHIP_XP, DAILY_QUESTS, FUSION_RECIPES, MATCH_REWARDS, MATCHMAKING, PERMANENT_QUESTS, QUEST_CHIP_TEMPLATES, WEEKLY_QUESTS, resolveFight, onChainSquadPower, type FighterChip } from '@guttercaps/economy';
 import { Db } from '../src/db.ts';
 import { ingestTx } from '../src/ingest.ts';
 import { ServiceError } from '../src/services.ts';
@@ -120,18 +120,21 @@ describe('fusion planner', () => {
     expect(p2.warnings).toContain('breaks_set');
   });
 
-  it('suggest: groups free chips per recipe rule, keeps sets intact when protectSets, ignores busy chips', () => {
-    // 3 commons of districts 0/1/2 + 3 Common+ of one district + 3 Common+ of mixed districts (not fusable together)
-    mint(db, w.bob, [{ rarity: 0, collection: 0 }, { rarity: 0, collection: 1 }, { rarity: 0, collection: 2 }]);
+  it('suggest: same-district triples only, keeps sets intact when protectSets, ignores busy chips', () => {
+    // `any` recipe (Common): a same-district triple + mixed leftovers that must not be suggested
+    mint(db, w.bob, [{ rarity: 0, collection: 2 }, { rarity: 0, collection: 2 }, { rarity: 0, collection: 2 }]);
+    mint(db, w.bob, [{ rarity: 0, collection: 0 }, { rarity: 0, collection: 0 }, { rarity: 0, collection: 0 }]);
+    // same-collection recipe (Common+): one district has a triple, mixed districts do not
     mint(db, w.bob, [{ rarity: 1, collection: 4 }, { rarity: 1, collection: 4 }, { rarity: 1, collection: 4 }]);
     mint(db, w.bob, [{ rarity: 1, collection: 5 }, { rarity: 1, collection: 6 }, { rarity: 1, collection: 7 }]);
-    // district 0 is two tiers away from a full set → its only Common is set-critical
+    // district 0 is two tiers away from a full set → its lone Common is set-critical (and not a triple)
     mint(db, w.bob, Array.from({ length: 6 }, (_, i) => ({ rarity: i + 3, collection: 0 })));
     const s = fusion.suggest(db, w.bob, false);
-    expect(s.map((x) => x.resultRarity).sort()).toEqual(['Common+', 'Rare']);
-    // with set protection the district-0 Common is kept → only two spare commons → only the Common+ triple remains
+    expect(s.map((x) => x.resultRarity).sort()).toEqual(['Common+', 'Common+', 'Rare']);
+    expect(s.every((x) => new Set(x.materials.map((m) => m.collection)).size === 1)).toBe(true);
+    // district 0 commons would break a near-complete set → protectSets drops that triple
     const guarded = fusion.suggest(db, w.bob, true);
-    expect(guarded.map((x) => x.resultRarity)).toEqual(['Rare']);
+    expect(guarded.map((x) => x.resultRarity).sort()).toEqual(['Common+', 'Rare']);
     // staked chips never appear
     const staked = mint(db, w.bob, [{ rarity: 3, collection: 9 }, { rarity: 3, collection: 9 }, { rarity: 3, collection: 9 }]);
     ingestTx(tx([{ program: 'staking', name: 'Staked', data: { owner: w.bob, kind: 1, key: staked[0], amount: '1', weight: '1', unlockAt: '0' } }]), db);
@@ -143,14 +146,15 @@ describe('staking read-model', () => {
   let db: Db; let w: ReturnType<typeof world>;
   beforeEach(() => { db = new Db(':memory:'); w = world(); for (const t of w.txs) ingestTx(t, db); });
 
-  it('overview before the first tick_day: schedule floor (10 %), pool totals from Staked events, split 20/10/22/33/15', () => {
+  it('overview before the first tick_day: schedule floor (2 %), pool totals from Staked events, split 20/5/22/33/20', () => {
     const o = staking.overview(db);
     expect(o.emission.source).toBe('schedule');
-    expect(BigInt(o.emission.scheduleCapMicro) - BigInt(o.emission.guardedMicro) * 10n).toBeLessThan(10n); // floor(cap × 0.10)
-    expect(o.emission.splitBps).toEqual([2000, 1000, 2200, 3300, 1500]);
+    expect(BigInt(o.emission.scheduleCapMicro) - BigInt(o.emission.guardedMicro) * 50n).toBeLessThan(50n); // floor(cap × 0.02)
+    expect(o.emission.splitBps).toEqual([2000, 500, 2200, 3300, 2000]);
+    expect(o.claimCaps).toEqual({ chipDailyCg: 30, tokenDailyCg: 15, aliveWindowDays: 7, idleWeight: 0.25 });
     expect(o.tokenPool).toMatchObject({ tvlMicro: '500000000', totalWeight: '750000000' });
     expect(o.chipPool).toMatchObject({ stakedChips: 1, totalWeight: '2000' });
-    expect(BigInt(o.tokenPool.budgetTodayMicro)).toBe((BigInt(o.emission.guardedMicro) * 10n) / 100n);
+    expect(BigInt(o.tokenPool.budgetTodayMicro)).toBe((BigInt(o.emission.guardedMicro) * 5n) / 100n);
     expect(o.tokenPool.apyByTier).toHaveLength(4);
     expect(o.tokenPool.apyByTier[3]).toBeGreaterThan(o.tokenPool.apyByTier[0]);
   });
@@ -170,10 +174,10 @@ describe('staking read-model', () => {
     let m = staking.me(db, owner.toBase58());
     expect(m.tokenStakes[0]).toMatchObject({ tier: 2, amount: '1000000000', weight: '2200000000', earlyExitPenalty: '100000000', pending: '0' });
     expect(m.pendingEstimated).toBe(true);
-    // a day closed 2 days ago with a 100 $CG guarded budget → token pool got 10 $CG over 24 h; this stake holds 2.2e9 of 2.95e9 weight
+    // a day closed 2 days ago with a 100 $CG guarded budget → token pool got 5 $CG over 24 h; this stake holds 2.2e9 of 2.95e9 weight
     ingestTx(tx([{ program: 'staking', name: 'DayClosed', data: { dayIndex: 1, year: 0, scheduleCap: '271232876712', guarded: '100000000', burn7dAvg: '0', sliceBudget: ['0', '0', '0', '0', '0'] } }], { blockTime: t - 2 * 86_400 }), db);
     m = staking.me(db, owner.toBase58());
-    const expected = (2_200_000_000n * 10_000_000n) / 2_950_000_000n;
+    const expected = (2_200_000_000n * 5_000_000n) / 2_950_000_000n;
     expect(BigInt(m.tokenStakes[0].pending)).toBe(expected);
     expect(m.totalPendingMicro).toBe(expected.toString());
     // set bonus: on-chain 0 sets vs computed 0 → no sync pending; after a full set arrives it flips
@@ -214,10 +218,12 @@ describe('staking read-model', () => {
     const small = staking.estimate(db, staking.validateEstimate({ amountCgMicro: '1000000000', tier: 3 }));
     const big = staking.estimate(db, staking.validateEstimate({ amountCgMicro: '100000000000000', tier: 3 }));
     expect(small.apyPct).toBeGreaterThan(big.apyPct);
-    expect(small).toMatchObject({ earlyExitPenaltyBps: 1500, boostBps: 30_000, indicativeApyRange: [36, 90] });
-    // Common lvl 1, 0 sets → 1e6; Rare lvl 5, 2 sets → 5e6 × 1.1 × 1.24
-    expect(staking.chipWeightRaw(0, 1, 0)).toBe(1_000_000n);
-    expect(staking.chipWeightRaw(2, 5, 2)).toBe((5_000_000n * 11_000n) / 10_000n * 12_400n / 10_000n);
+    expect(small).toMatchObject({ earlyExitPenaltyBps: 1500, boostBps: 30_000, indicativeApyRange: [14, 32] });
+    // Common lvl 1, 0 sets, played now → 1e6; idle (no play) → ×0.25. Rare lvl 5, 2 sets → 5e6 × 1.1 × 1.24
+    const now = Math.floor(Date.now() / 1000);
+    expect(staking.chipWeightRaw(0, 1, 0, now)).toBe(1_000_000n);
+    expect(staking.chipWeightRaw(0, 1, 0, 0)).toBe(250_000n);
+    expect(staking.chipWeightRaw(2, 5, 2, now)).toBe((5_000_000n * 11_000n) / 10_000n * 12_400n / 10_000n);
     expect(staking.setBonusMultBps(10)).toBe(17_000);
   });
 });
@@ -333,6 +339,9 @@ describe('arena — ranked commit/reveal', () => {
     const m = arena.matchApi(db, id)!;
     expect(m.status).toBe('resolved');
     expect([alice, bob]).toContain(m.winner);
+    expect(done.winner).toBe(m.winner);
+    expect(done.xp).toBe(m.winner === bob ? CHIP_XP.win * 3 : CHIP_XP.loss * 3);
+    expect(done.leveled).toBe(m.winner === bob ? 3 : 0);
     expect(m.rounds.length).toBeGreaterThanOrEqual(2);
     // re-derive the seed and the fight from the public record + the season secret
     const season = arena.currentSeason(db, T);
@@ -347,10 +356,21 @@ describe('arena — ranked commit/reveal', () => {
     expect(Math.round(Math.abs(ra.rating - 1000))).toBe(20);
     expect(ra.rating + rb.rating).toBeCloseTo(2000, 6);
     const winnerReward = m.winner === alice ? m.rewardA : m.rewardB, loserReward = m.winner === alice ? m.rewardB : m.rewardA;
+    const winnerSquad = m.winner === alice ? sa : sb;
+    const loserSquad = m.winner === alice ? sb : sa;
+    expect(db.scalar(`SELECT lifetime FROM chip_xp WHERE asset = ?`, winnerSquad[0])).toBe(CHIP_XP.win);
+    expect(db.scalar(`SELECT lifetime FROM chip_xp WHERE asset = ?`, loserSquad[0])).toBe(CHIP_XP.loss);
+    expect(db.scalar(`SELECT COUNT(*) FROM chip_xp_awards WHERE match_id = ?`, id)).toBe(6);
+    const winnerChip = m.winner === alice ? m.squadA[0] : m.squadB[0];
+    const loserChip = m.winner === alice ? m.squadB[0] : m.squadA[0];
+    expect(winnerChip).toMatchObject({ level: 1, xpGained: CHIP_XP.win, leveledTo: 2 });
+    expect(loserChip).toMatchObject({ level: 1, xpGained: CHIP_XP.loss, leveledTo: null });
     expect(winnerReward).toBe(String(MATCH_REWARDS.winCgMicro));
     expect(loserReward).toBe(String(MATCH_REWARDS.lossCgMicro));
     expect(arena.arenaMe(db, alice, T)).toMatchObject({ games: 1, rewardedMatchesLeft: 7, currentMatch: null });
     expect(arena.arenaMe(db, m.winner!, T).wins).toBe(1);
+    expect(arena.arenaMe(db, alice, T).recent[0]).toMatchObject({ id, xp: m.winner === alice ? CHIP_XP.win * 3 : CHIP_XP.loss * 3, leveled: m.winner === alice ? 3 : 0 });
+    expect(arena.arenaMe(db, bob, T).recent[0]).toMatchObject({ id, xp: m.winner === bob ? CHIP_XP.win * 3 : CHIP_XP.loss * 3, leveled: m.winner === bob ? 3 : 0 });
     // the public rating board is this ladder: winner first, league column, `me` ranks the loser second; the previous season is addressable
     const lb = q.leaderboard(db, 'rating', 10, undefined, m.winner === alice ? bob : alice, season.id);
     expect(lb.season).toBe(season.id);
@@ -375,6 +395,7 @@ describe('arena — ranked commit/reveal', () => {
     const before = {
       alice: arena.rating(db, alice, row.season), bob: arena.rating(db, bob, row.season),
       xp: db.scalar(`SELECT COALESCE(SUM(xp), 0) FROM pass_xp`), rewards: db.scalar(`SELECT COUNT(*) FROM pvp_rewards`),
+      chipXp: db.scalar(`SELECT COALESCE(SUM(lifetime), 0) FROM chip_xp`),
     };
     expect(before.alice.games).toBe(1); // the first settle really did move the ratings — this test is not vacuous
     // the concurrent caller still believes the match is unsettled
@@ -384,6 +405,7 @@ describe('arena — ranked commit/reveal', () => {
     expect(arena.rating(db, bob, row.season)).toEqual(before.bob);
     expect(db.scalar(`SELECT COALESCE(SUM(xp), 0) FROM pass_xp`)).toBe(before.xp);
     expect(db.scalar(`SELECT COUNT(*) FROM pvp_rewards`)).toBe(before.rewards);
+    expect(db.scalar(`SELECT COALESCE(SUM(lifetime), 0) FROM chip_xp`)).toBe(before.chipXp);
     // and the caller is told what the row says, not what its own fight computed
     expect(`${again.rewardA}`).toBe(row.reward_a);
     expect(`${again.rewardB}`).toBe(row.reward_b);
@@ -1211,7 +1233,7 @@ describe('reward oracle · SKR prize pool (kinds 5 / 6)', () => {
     wAll(alice); wAll(bob);
     // no pool account → the $CG cycle runs, SKR is skipped silently
     let r = await oracle.runOnce({ connection: asConn(conn), db, questOracle, seasonOracle, minBatchMicro: 1n }, T);
-    expect(r.built.filter((b) => b.kind >= 5)).toEqual([]);
+    expect(r.built.filter((b) => b.kind === 5 || b.kind === 6)).toEqual([]);
     expect(db.get(`SELECT 1 FROM skr_allotments`)).toBeUndefined();
     // pool on chain, but the emission's quest oracle is another key → the Seeker week is NOT built with our key
     poolOn(conn, { budget: 1_000n * SKR, questOracle: Keypair.generate().publicKey, seasonOracle: seasonOracle.publicKey });
@@ -1259,6 +1281,12 @@ describe('battle resolver', () => {
     const assets = mint(db, owner, [{ rarity: 1, collection: 2 }, { rarity: 2, collection: 3 }, { rarity: 0, collection: 4 }]);
     const sq = squadFromDb(db, assets.map((a) => new PublicKey(a)))!;
     expect(sq.map((c) => [c.collection, c.rarity])).toEqual([[2, 1], [3, 2], [4, 0]]);
+    expect(sq.every((c) => c.level === 1)).toBe(true);
+    // ranked XP writes chips.level; the wager fight must still hash mint-1 power (SEC-B30)
+    db.run(`UPDATE chips SET level = 9 WHERE asset = ?`, assets[0]);
+    const afterXp = squadFromDb(db, assets.map((a) => new PublicKey(a)))!;
+    expect(afterXp[0].level).toBe(1);
+    expect(onChainSquadPower(afterXp)).toBe(onChainSquadPower(sq));
     expect(squadFromDb(db, [new PublicKey(kp())])).toBeUndefined();
   });
 });

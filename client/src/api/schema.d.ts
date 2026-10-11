@@ -4,6 +4,175 @@
  */
 
 export interface paths {
+    "/switchboard/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read-only Switchboard readiness, before creating a purchase or wager
+         * @description Server reads the pinned queue and checks verified, fresh members against their live gateway health.
+         *     Server-side SDK gateway discovery with on-chain fallback; merged live health is matched to the pinned queue.
+         *     No wallet signature or transaction. Cached for five seconds; 12 requests/min/IP.
+         *     A ready response is point-in-time availability, not a guarantee of later reveal or settlement.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description At least one eligible oracle is live */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ready: boolean;
+                            /** Format: date-time */
+                            checkedAt: string;
+                            genesis: string;
+                            program: components["schemas"]["Pubkey"];
+                            queue: components["schemas"]["Pubkey"];
+                            oracle: string | null;
+                            queueMembers: number;
+                            eligibleMembers: number;
+                            discovery?: {
+                                ok?: boolean;
+                                gatewayCount?: number;
+                                code?: string;
+                            };
+                            gatewayChecks?: {
+                                gateway?: string | null;
+                                /** @enum {string} */
+                                source?: "registry" | "on_chain";
+                                code?: string;
+                            }[];
+                            probes: {
+                                oracle?: string;
+                                gateway?: string | null;
+                                healthGateway?: string | null;
+                                directCode?: string;
+                                healthy?: boolean;
+                                code?: string;
+                            }[];
+                        };
+                    };
+                };
+                /** @description Rate limit; see Retry-After */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description No live oracle, RPC/cluster failure, or concurrency limit; no transaction submitted */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/switchboard/reveal/{randomness}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Relay an oracle-signed reveal for our committed randomness account
+         * @description Accepts only the account public key, never a URL, RPC or arbitrary body. Validates Switchboard owner,
+         *     pinned queue, our authority and committed oracle binding. Calls only that oracle's HTTPS gateway.
+         *     The client wraps the response into an instruction; Switchboard verifies its signature on chain.
+         *     No signing keys or transaction submission in this endpoint. 30 requests/min/IP, bounded concurrency.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    randomness: components["schemas"]["Pubkey"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Oracle response (still requires on-chain verification) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            randomness: components["schemas"]["Pubkey"];
+                            oracle: components["schemas"]["Pubkey"];
+                            queue: components["schemas"]["Pubkey"];
+                            /** @description 64-byte secp256k1 signature in base64 */
+                            signature: string;
+                            recovery_id: number;
+                            value: number[];
+                        };
+                    };
+                };
+                /** @description Invalid account key */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not committed or already revealed; reread chain state */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Rate limit; see Retry-After */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Gateway/RPC unavailable or bounded concurrency exhausted */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/siws/nonce": {
         parameters: {
             query?: never;
@@ -2264,6 +2433,10 @@ export interface paths {
                             winner?: string;
                             /** @enum {string} */
                             waitingFor?: "a" | "b";
+                            /** @description chip XP granted to this wallet's squad from this match */
+                            xp?: number;
+                            /** @description how many of this wallet's squad caps promoted */
+                            leveled?: number;
                         };
                     };
                 };
@@ -2583,6 +2756,42 @@ export interface paths {
                 400: components["responses"]["Error"];
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/staking/pot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Gutter Pot — weekly weighted raffle among chip stakers (10 Rare–Epic vouchers, template 4). Public; `me` is filled when a session cookie is present. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description pot */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GutterPot"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4549,6 +4758,20 @@ export interface components {
             collection?: number;
             rarity?: components["schemas"]["Rarity"];
             level?: number;
+            /** @description unspent ranked XP toward the next level */
+            xp?: number;
+            /** @description XP cost of the next level; null at the rarity cap */
+            xpToNext?: number | null;
+            /** @description rarity cap (Common 12 … Diamond 50) */
+            maxLevel?: number;
+            /** @description XP this cap earned during the current UTC day toward xpDailyCap */
+            xpToday?: number;
+            /** @description per-cap UTC-day XP cap (CHIP_XP.dailyCap) */
+            xpDailyCap?: number;
+            /** @description XP this cap earned from this match (match payloads only; 0 otherwise) */
+            xpGained?: number;
+            /** @description new level if this match promoted the cap; null otherwise */
+            leveledTo?: number | null;
             /** @description per-collection mint number (`Name #N`); null = not resolved on chain yet (core `open_pack` chips are back-filled by the crank within a sweep). Never a placeholder: #0 is a real chip */
             index?: number | null;
             flags?: {
@@ -4695,9 +4918,15 @@ export interface components {
             wallet: string;
             sku: number;
             qty: number;
-            /** @description total to send (price × qty), decimal string */
+            /** @description SOL | USDC | SKR */
+            currency?: "SOL" | "USDC" | "SKR";
+            /** @description total to send (price × qty), decimal string of the chosen currency */
             lamports: string;
+            amount?: string;
             treasury: string;
+            /** @description treasury wallet (SOL) or its ATA (USDC/SKR) */
+            payTo?: string;
+            mint?: string;
             /** @description attach to the payment, e.g. GC-PRE|42 */
             memo: string;
             /** @description unix seconds; after that the intent stops accepting payments */
@@ -4708,6 +4937,7 @@ export interface components {
             wallet: string;
             sku: number;
             qty: number;
+            currency?: "SOL" | "USDC" | "SKR";
             lamports: string;
             /** @enum {string} */
             status: "intent" | "paid" | "granted" | "expired";
@@ -5054,6 +5284,10 @@ export interface components {
                 forfeit?: boolean;
                 reward?: string;
                 endedAt?: string | null;
+                /** @description chip XP this wallet's squad earned from the match */
+                xp?: number;
+                /** @description how many of this wallet's squad caps promoted */
+                leveled?: number;
             }[];
             /** @description match rewards + season payouts not yet in a published root */
             pendingRewardMicro?: string;
@@ -5150,6 +5384,39 @@ export interface components {
             };
             totalPendingMicro?: string;
             pendingEstimated?: boolean;
+        };
+        GutterPot: {
+            week?: number;
+            weekStartsAt?: number;
+            weekEndsAt?: number;
+            winnersPerWeek?: number;
+            soulboundDays?: number;
+            template?: number;
+            oddsBps?: number[];
+            seedPrefix?: string;
+            live?: {
+                wallets?: number;
+                totalWeight?: string;
+            };
+            lastDraw?: {
+                week?: number;
+                drawnAt?: number;
+                slot?: number;
+                seedHex?: string;
+                ticketsHash?: string;
+                totalWeight?: string;
+                wallets?: number;
+                winners?: {
+                    wallet?: string;
+                    weight?: string;
+                }[];
+            } | null;
+            me?: {
+                weight?: string;
+                shareBps?: number;
+                wonLast?: boolean;
+                pendingClaim?: boolean;
+            } | null;
         };
         Quest: {
             id?: string;

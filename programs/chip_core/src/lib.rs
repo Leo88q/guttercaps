@@ -277,8 +277,8 @@ pub mod chip_core {
     }
 
     // ----- packs -----
-    /// currency: 0 SOL (needs price_update SOL/USD), 1 USDC, 2 $CG, 3 SKR (needs price_update SKR/USD).
-    /// `max_lamports` = slippage guard for volatile currencies (max lamports / max micro-SKR).
+    /// currency: 0 SOL, 1 USDC, 2 $CG, 3 SKR. Frozen FX (SOL = $110, SKR = $0.016); `price_update` is unused.
+    /// `max_lamports` = buyer cap for SOL lamports / micro-SKR.
     pub fn buy_pack(
         ctx: Context<BuyPack>,
         sku: u8,

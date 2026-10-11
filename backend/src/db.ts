@@ -116,7 +116,9 @@ CREATE TABLE IF NOT EXISTS chips (
   burned_at        INTEGER,                      -- consumed by a fusion
   updated_slot     INTEGER NOT NULL DEFAULT 0,
   game_index       TEXT,                         -- per-collection mint number (Name #N, u64 as decimal); NULL = not resolved yet
-  index_attempts   INTEGER NOT NULL DEFAULT 0    -- back-fill attempts; the row is parked once it reaches INDEX_ATTEMPTS
+  index_attempts   INTEGER NOT NULL DEFAULT 0,   -- back-fill attempts; the row is parked once it reaches INDEX_ATTEMPTS
+  last_played      INTEGER,                      -- unix: last Cap Slam (alive-stake)
+  play_pulsed_at   INTEGER                       -- last_played copied onto ChipPlay
 );
 CREATE INDEX IF NOT EXISTS idx_chips_owner ON chips(owner, burned_at);
 CREATE INDEX IF NOT EXISTS idx_chips_arch  ON chips(collection_idx, rarity, burned_at);
@@ -141,6 +143,27 @@ CREATE TABLE IF NOT EXISTS pass_xp (
   season  INTEGER NOT NULL,
   xp      INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (wallet, season)
+);
+-- Ranked chip XP (indexer-authoritative). Unspent pool + per-day cap ledger.
+CREATE TABLE IF NOT EXISTS chip_xp (
+  asset    TEXT    PRIMARY KEY,
+  xp       INTEGER NOT NULL DEFAULT 0,
+  lifetime INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS chip_xp_ledger (
+  asset TEXT    NOT NULL,
+  day   INTEGER NOT NULL,
+  xp    INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (asset, day)
+);
+-- Per-match grant (ranked + wager). PK makes settle-once / resolver retries a no-op.
+CREATE TABLE IF NOT EXISTS chip_xp_awards (
+  match_id   TEXT    NOT NULL,
+  asset      TEXT    NOT NULL,
+  xp         INTEGER NOT NULL,
+  from_level INTEGER NOT NULL,
+  to_level   INTEGER NOT NULL,
+  PRIMARY KEY (match_id, asset)
 );
 CREATE TABLE IF NOT EXISTS pass_claims (
   wallet     TEXT    NOT NULL,
@@ -188,7 +211,9 @@ CREATE TABLE IF NOT EXISTS preorders (
   ref_id      INTEGER PRIMARY KEY AUTOINCREMENT,  -- on-chain preorder_ref + payment memo id
   wallet      TEXT    NOT NULL,
   sku         INTEGER NOT NULL,
-  qty         INTEGER NOT NULL,
+  qty         INTEGER NOT NULL,                   -- Limited packs this row grants (chest = 4)
+  offer       TEXT    NOT NULL DEFAULT 'pack',    -- pack | chest
+  currency    TEXT    NOT NULL DEFAULT 'SOL',     -- SOL | USDC | SKR (lamports column = native units of this)
   lamports    TEXT    NOT NULL,
   status      TEXT    NOT NULL DEFAULT 'intent',  -- intent | paid | granted | expired
   tx_sig      TEXT,
@@ -230,7 +255,8 @@ CREATE TABLE IF NOT EXISTS preorder_drops (
   closed_at      INTEGER
 );
 CREATE TABLE IF NOT EXISTS pack_opens (
-  signature   TEXT PRIMARY KEY,
+  signature   TEXT    NOT NULL,
+  event_index INTEGER NOT NULL DEFAULT 0,
   buyer       TEXT    NOT NULL,
   sku         INTEGER NOT NULL,
   nonce       TEXT    NOT NULL,
@@ -240,11 +266,14 @@ CREATE TABLE IF NOT EXISTS pack_opens (
   collections TEXT    NOT NULL,   -- JSON number[]
   roll_hex    TEXT    NOT NULL,
   pity_before INTEGER NOT NULL,
-  pity_after  INTEGER NOT NULL,
+  pity_after INTEGER NOT NULL,
   slot        INTEGER NOT NULL,
-  block_time  INTEGER
+  block_time  INTEGER,
+  pack_no     INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (signature, event_index)
 );
 CREATE INDEX IF NOT EXISTS idx_pack_opens_buyer ON pack_opens(buyer, slot);
+CREATE INDEX IF NOT EXISTS idx_pack_opens_nonce ON pack_opens(buyer, nonce, pack_no);
 
 -- Bubblegum V2 pack settlement is asynchronous: claims are created first,
 -- minted in a later transaction, and only become economically settled after
@@ -852,6 +881,20 @@ CREATE TABLE IF NOT EXISTS privacy_restrictions (
   erased_at INTEGER,
   resumed_at INTEGER
 );
+-- Gutter Pot weekly raffle (named staking jackpot). Snapshot + published seed; winners claim via kind-9 template 4.
+CREATE TABLE IF NOT EXISTS gutter_pot_draws (
+  week          INTEGER PRIMARY KEY,     -- weekIndex (Monday 00:00 UTC)
+  drawn_at      INTEGER NOT NULL,        -- unix s the oracle snapshotted
+  slot          INTEGER NOT NULL,        -- finalizedHorizon used in the seed
+  seed_hex      TEXT    NOT NULL,        -- sha256(gutter-pot:v1:week:slot:totalWeight:wallets:ticketsHash)
+  tickets_hash  TEXT    NOT NULL,        -- sha256 of sorted wallet:weight lines
+  total_weight  TEXT    NOT NULL,
+  wallets       INTEGER NOT NULL,
+  winners       TEXT    NOT NULL,        -- JSON [{wallet, weight}]
+  tickets       TEXT    NOT NULL         -- JSON [{wallet, weight}] snapshot for audit / recompute
+);
+CREATE INDEX IF NOT EXISTS idx_gutter_pot_drawn ON gutter_pot_draws(drawn_at);
+
 CREATE TABLE IF NOT EXISTS oracle_prices (
   symbol       TEXT PRIMARY KEY,           -- SOL | SKR
   usd          REAL    NOT NULL,
@@ -913,6 +956,8 @@ export class Db {
         ) WHERE game_index IS NULL AND EXISTS (SELECT 1 FROM compressed_claims cc WHERE cc.asset = chips.asset AND cc.game_index IS NOT NULL)`);
     }
     if (!ch.has('index_attempts')) this.raw.exec(`ALTER TABLE chips ADD COLUMN index_attempts INTEGER NOT NULL DEFAULT 0`);
+    if (!ch.has('last_played')) this.raw.exec(`ALTER TABLE chips ADD COLUMN last_played INTEGER`);
+    if (!ch.has('play_pulsed_at')) this.raw.exec(`ALTER TABLE chips ADD COLUMN play_pulsed_at INTEGER`);
     // backlog #23: the lookup-table half of the Switchboard rent. `lut_slot` rides along with the job
     // (the randomness account is already gone when the table becomes closable), `lut_closed_at` marks
     // the batch that reclaimed it — the crank only touches jobs that are `closed` and not yet flagged.
@@ -977,6 +1022,14 @@ export class Db {
       if (!qc.has(name)) this.raw.exec(`ALTER TABLE quest_completions ADD COLUMN ${name} INTEGER`);
     }
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_quest_completions_chip_unrooted ON quest_completions(chip_root_kind, wallet)`);
+    const po = new Set((this.raw.prepare('PRAGMA table_info(preorders)').all() as { name: string }[]).map((c) => c.name));
+    if (!po.has('offer')) this.raw.exec(`ALTER TABLE preorders ADD COLUMN offer TEXT NOT NULL DEFAULT 'pack'`);
+    if (!po.has('currency')) this.raw.exec(`ALTER TABLE preorders ADD COLUMN currency TEXT NOT NULL DEFAULT 'SOL'`);
+    this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_preorders_offer ON preorders(offer, status)`);
+    const pk = new Set((this.raw.prepare('PRAGMA table_info(pack_opens)').all() as { name: string }[]).map((c) => c.name));
+    if (!pk.has('pack_no')) this.raw.exec(`ALTER TABLE pack_opens ADD COLUMN pack_no INTEGER NOT NULL DEFAULT 0`);
+    if (!pk.has('event_index')) this.raw.exec(`ALTER TABLE pack_opens ADD COLUMN event_index INTEGER NOT NULL DEFAULT 0`);
+    this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_pack_opens_nonce ON pack_opens(buyer, nonce, pack_no)`);
   }
 
   /** Prepared-statement cache — SQL text is the key. */

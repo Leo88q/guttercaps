@@ -12,7 +12,7 @@ import { useUiStore } from '@/app/store/ui';
 let modalLocks = 0;
 let originalOverflow = '';
 
-export function Modal({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title?: string; children: ReactNode; wide?: boolean }) {
+export function Modal({ open, onClose, title, children, wide, footer }: { open: boolean; onClose: () => void; title?: string; children: ReactNode; wide?: boolean; footer?: ReactNode }) {
   const titleId = useId();
   const dialog = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
@@ -40,7 +40,9 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
     };
     window.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
-    (focusable()[0] ?? dialog.current)?.focus();
+    // Footer actions (Done) sit outside the scroll body. Focusing them must not
+    // jump the cap grid past its title before the user sees the first rows.
+    (focusable()[0] ?? dialog.current)?.focus({ preventScroll: true });
     return () => {
       window.removeEventListener('keydown', onKey);
       if (--modalLocks === 0) document.body.style.overflow = originalOverflow;
@@ -52,7 +54,8 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
     <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={dialog} tabIndex={-1} className="modal" role="dialog" aria-modal="true" aria-labelledby={title ? titleId : undefined} style={wide ? { maxWidth: 760 } : undefined}>
         {title && <h3 id={titleId} className="modal-title">{title}</h3>}
-        {children}
+        <div className="modal-body">{children}</div>
+        {footer ? <div className="modal-foot">{footer}</div> : null}
       </div>
     </div>,
     document.body,
@@ -87,8 +90,8 @@ export function Skeleton({ h = 16, w = '100%', style }: { h?: number; w?: number
   return <div className="skeleton" style={{ height: h, width: w, ...style }} />;
 }
 
-export function Empty({ children }: { children: ReactNode }) {
-  return <div className="empty">{children}</div>;
+export function Empty({ children, compact }: { children: ReactNode; compact?: boolean }) {
+  return <div className={`empty${compact ? ' empty-compact' : ''}`}><span className="empty-copy">{children}</span></div>;
 }
 
 export function Stat({ label, value, mono = true, icon }: { label: string; value: ReactNode; mono?: boolean; icon?: ReactNode }) {

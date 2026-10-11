@@ -66,7 +66,7 @@
 .st-crimp{--r:var(--st-teal);display:inline-grid;place-items:center;padding:9px;border-radius:50%;
   background:repeating-conic-gradient(#d8dbe0 0 6deg,#7d828c 6deg 12deg);
   box-shadow:0 0 0 2px var(--st-ink),0 0 26px color-mix(in srgb,var(--r) 65%,transparent),0 0 60px color-mix(in srgb,var(--r) 25%,transparent),inset 0 0 0 2px rgba(255,255,255,.35)}
-.st-crimp>*{border-radius:50%;overflow:hidden;box-shadow:0 0 0 3px var(--st-ink),0 0 0 6px var(--r)}
+.st-crimp>*{border-radius:50%;overflow:visible;box-shadow:0 0 0 3px var(--st-ink),0 0 0 6px var(--r)}
 
 /* ---------- КНОПКИ: пятно краски неровной плотности + потёки ---------- */
 .st-btn{--b:var(--st-pink);--p:var(--b);position:relative;isolation:isolate;display:inline-flex;align-items:center;justify-content:center;

@@ -13,7 +13,7 @@ export function tierName(tier: number): string {
   return days === undefined ? t('common.unavailable') : days === 0 ? t('staking.flexible') : t('common.day', { n: days });
 }
 const ORIGINS: Record<string, MessageKey> = {
-  pack: 'screens.originPack', fusion: 'screens.originFusion', quest: 'screens.originQuest', voucher: 'screens.questVoucher', season: 'screens.originSeason',
+  pack: 'screens.originPack', compressed: 'screens.originCompressed', fusion: 'screens.originFusion', quest: 'screens.originQuest', voucher: 'screens.questVoucher', season: 'screens.originSeason',
 };
 export const originLabel = (origin?: string) => t(ORIGINS[origin ?? ''] ?? 'screens.originUnknown');
 const ROOT_KINDS: Record<number, MessageKey> = {

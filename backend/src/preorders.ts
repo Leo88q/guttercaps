@@ -16,12 +16,13 @@
 //    count, and `PackGranted` events join back here through `preorder_ref = ref_id`.
 
 import { Connection, PublicKey, type TransactionInstruction } from '@solana/web3.js';
+import { skrMicroForUsdCents, usdcMicroForUsdCents, usdCentsFromSolLamports } from '@guttercaps/economy';
 import type { Db } from './db.ts';
 import { now } from './db.ts';
 import { ServiceError } from './services.ts';
-import { SWITCHBOARD_QUEUE } from './config.ts';
+import { SKR_MINT, SWITCHBOARD_QUEUE, USDC_MINT } from './config.ts';
 import {
-  closePreorderDropIx, grantPreorderPackIx, initGrantRandomnessIx, initPreorderDropIx,
+  ata, closePreorderDropIx, grantPreorderPackIx, initGrantRandomnessIx, initPreorderDropIx,
 } from './chain.ts';
 
 const env = process.env;
@@ -35,6 +36,8 @@ export interface PreorderRow {
   wallet: string;
   sku: number;
   qty: number;
+  offer: PreorderOfferId;
+  currency: PreorderCurrency;
   lamports: string;
   status: PreorderStatus;
   tx_sig: string | null;
@@ -43,6 +46,45 @@ export interface PreorderRow {
   created_at: number;
   paid_at: number | null;
   granted_at: number | null;
+}
+
+export type PreorderOfferId = 'pack' | 'chest';
+export type PreorderCurrency = 'SOL' | 'USDC' | 'SKR';
+const PREORDER_CURRENCIES: readonly PreorderCurrency[] = ['SOL', 'USDC', 'SKR'];
+export function parsePreorderCurrency(v: unknown): PreorderCurrency {
+  const s = String(v ?? 'SOL').toUpperCase();
+  if ((PREORDER_CURRENCIES as readonly string[]).includes(s)) return s as PreorderCurrency;
+  throw new ServiceError(400, 'bad_currency', 'currency must be SOL | USDC | SKR');
+}
+
+/** Native units of `currency` for a SOL sticker price (0.30 / 0.999) at frozen FX. */
+export function preorderAmount(solLamports: string | bigint, currency: PreorderCurrency): string {
+  const lamports = BigInt(solLamports);
+  if (currency === 'SOL') return lamports.toString();
+  const cents = usdCentsFromSolLamports(lamports);
+  return currency === 'USDC' ? usdcMicroForUsdCents(cents).toString() : skrMicroForUsdCents(cents).toString();
+}
+
+export function preorderPrices(solLamports: string): Record<PreorderCurrency, string> {
+  return { SOL: solLamports, USDC: preorderAmount(solLamports, 'USDC'), SKR: preorderAmount(solLamports, 'SKR') };
+}
+
+/** Pay-to address: treasury wallet for SOL, its ATA for USDC/SKR. Never a second treasury pubkey. */
+export function preorderPayTo(treasury: string, currency: PreorderCurrency): { payTo: string; mint?: string } {
+  if (currency === 'SOL') return { payTo: treasury };
+  const owner = new PublicKey(treasury);
+  if (currency === 'USDC') return { payTo: ata(USDC_MINT, owner).toBase58(), mint: USDC_MINT.toBase58() };
+  return { payTo: ata(SKR_MINT, owner).toBase58(), mint: SKR_MINT.toBase58() };
+}
+
+export interface OfferDef {
+  id: PreorderOfferId;
+  /** Limited packs granted per reserved unit (1 for a single, 4 for a chest). */
+  packs: number;
+  priceLamports: string;
+  total: number;
+  maxPerWallet: number;
+  maxQty: number;
 }
 
 export interface PreorderConfig {
@@ -55,43 +97,81 @@ export interface PreorderConfig {
   maxQty: number;
   memoPrefix: string;
   intentTtlS: number;
+  pack: OfferDef;
+  chest: OfferDef;
 }
 
 /** Effective campaign config — read lazily (tests stub env). Empty treasury or zero price disables the campaign. */
 export function preorderConfig(): PreorderConfig {
   const active = env.PREORDER_ACTIVE !== 'false';
   const treasury = env.PREORDER_TREASURY ?? '';
-  const priceLamports = env.PREORDER_PRICE_LAMPORTS ?? '999000000'; // 0.999 SOL dev default
+  const priceLamports = env.PREORDER_PRICE_LAMPORTS ?? '300000000'; // 0.30 SOL per single
+  const pack: OfferDef = {
+    id: 'pack',
+    packs: 1,
+    priceLamports,
+    total: Number(env.PREORDER_TOTAL ?? 500),
+    maxPerWallet: Number(env.PREORDER_MAX_PER_WALLET ?? 5),
+    maxQty: Number(env.PREORDER_MAX_QTY ?? 5),
+  };
+  const chest: OfferDef = {
+    id: 'chest',
+    packs: Number(env.PREORDER_CHEST_PACKS ?? 4),
+    priceLamports: env.PREORDER_CHEST_PRICE_LAMPORTS ?? '999000000',
+    total: Number(env.PREORDER_CHEST_TOTAL ?? 125),
+    maxPerWallet: Number(env.PREORDER_CHEST_MAX_PER_WALLET ?? 1),
+    maxQty: 1,
+  };
   return {
     active: active && treasury.length > 0 && BigInt(priceLamports || '0') > 0n,
     sku: Number(env.PREORDER_SKU ?? 3),
     priceLamports,
     treasury,
-    total: Number(env.PREORDER_TOTAL ?? 500),
-    maxPerWallet: Number(env.PREORDER_MAX_PER_WALLET ?? 5),
-    maxQty: Number(env.PREORDER_MAX_QTY ?? 5),
+    total: pack.total,
+    maxPerWallet: pack.maxPerWallet,
+    maxQty: pack.maxQty,
     memoPrefix: env.PREORDER_MEMO_PREFIX ?? 'GC-PRE',
     intentTtlS: Number(env.PREORDER_INTENT_TTL_S ?? 72 * 3_600),
+    pack,
+    chest,
   };
 }
 
+export const offerOf = (id: string | undefined): OfferDef =>
+  id === 'chest' ? preorderConfig().chest : preorderConfig().pack;
+
 export const preorderMemo = (cfg: Pick<PreorderConfig, 'memoPrefix'>, refId: number) => `${cfg.memoPrefix}|${refId}`;
 
-/** How many packs the registry already owes one wallet in any live state (intent counts too: it reserves the cap). */
-export function reservedByWallet(db: Db, wallet: string, t = now()): number {
+const LIVE = `status IN ('intent', 'paid', 'granted')`;
+
+/** Units reserved of one offer. Pack units = SUM(qty); chest units = COUNT(rows). */
+export function reservedOfferUnits(db: Db, offer: PreorderOfferId, wallet?: string, t = now()): number {
   expireIntents(db, t);
-  const row = db.get<{ n: number }>(
-    `SELECT COALESCE(SUM(qty), 0) AS n FROM preorders WHERE wallet = ? AND status IN ('intent', 'paid', 'granted')`,
-    wallet,
-  );
+  if (offer === 'pack') {
+    const row = wallet
+      ? db.get<{ n: number }>(`SELECT COALESCE(SUM(qty), 0) AS n FROM preorders WHERE offer = 'pack' AND ${LIVE} AND wallet = ?`, wallet)
+      : db.get<{ n: number }>(`SELECT COALESCE(SUM(qty), 0) AS n FROM preorders WHERE offer = 'pack' AND ${LIVE}`);
+    return row?.n ?? 0;
+  }
+  const row = wallet
+    ? db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM preorders WHERE offer = 'chest' AND ${LIVE} AND wallet = ?`, wallet)
+    : db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM preorders WHERE offer = 'chest' AND ${LIVE}`);
   return row?.n ?? 0;
 }
 
-/** Packs still available in the drop: on-chain grants + paid/intent reservations all subtract. */
+/** How many single-pack units this wallet already holds in any live state. */
+export function reservedByWallet(db: Db, wallet: string, t = now()): number {
+  return reservedOfferUnits(db, 'pack', wallet, t);
+}
+
+/** Single Limited packs still available. */
 export function remainingPacks(db: Db, t = now()): number {
-  expireIntents(db, t);
-  const reserved = db.get<{ n: number }>(`SELECT COALESCE(SUM(qty), 0) AS n FROM preorders WHERE status IN ('intent', 'paid', 'granted')`);
-  return Math.max(0, preorderConfig().total - (reserved?.n ?? 0));
+  return Math.max(0, preorderConfig().pack.total - reservedOfferUnits(db, 'pack', undefined, t));
+}
+
+/** Founders chests still available. */
+export function remainingChests(db: Db, t = now()): number {
+  return Math.max(0, preorderConfig().chest.total - reservedOfferUnits(db, 'chest', undefined, t));
 }
 
 /** Lazy expiry: intents older than the TTL that were never paid stop accepting payments. */
@@ -100,6 +180,18 @@ export function expireIntents(db: Db, t = now()): number {
   return Number(
     db.run(`UPDATE preorders SET status = 'expired' WHERE status = 'intent' AND created_at + ? < ?`, cfg.intentTtlS, t).changes,
   );
+}
+
+export interface CampaignOffer {
+  id: PreorderOfferId;
+  packs: number;
+  priceLamports: string;
+  prices: Record<PreorderCurrency, string>;
+  total: number;
+  remaining: number;
+  sold: number;
+  maxPerWallet: number;
+  maxQty: number;
 }
 
 export interface CampaignSummary {
@@ -113,25 +205,34 @@ export interface CampaignSummary {
   granted: number;
   memoPrefix: string;
   intentTtlS: number;
+  offers: CampaignOffer[];
 }
 
 /** `GET /preorder` — public campaign state (the client's preorder rail). */
 export function campaign(db: Db, t = now()): CampaignSummary {
   const cfg = preorderConfig();
   expireIntents(db, t);
+  const packRem = remainingPacks(db, t);
+  const chestRem = remainingChests(db, t);
+  const packSold = db.get<{ n: number }>(`SELECT COALESCE(SUM(qty), 0) AS n FROM preorders WHERE offer = 'pack' AND status IN ('paid', 'granted')`)?.n ?? 0;
+  const chestSold = db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM preorders WHERE offer = 'chest' AND status IN ('paid', 'granted')`)?.n ?? 0;
   const sold = db.get<{ n: number }>(`SELECT COALESCE(SUM(qty), 0) AS n FROM preorders WHERE status IN ('paid', 'granted')`)?.n ?? 0;
   const granted = db.get<{ n: number }>(`SELECT COALESCE(SUM(qty), 0) AS n FROM preorder_grants`)?.n ?? 0;
   return {
-    active: cfg.active && remainingPacks(db, t) > 0,
+    active: cfg.active && (packRem > 0 || chestRem > 0),
     sku: cfg.sku,
     priceLamports: cfg.priceLamports,
     treasury: cfg.treasury,
-    total: cfg.total,
-    remaining: remainingPacks(db, t),
+    total: cfg.pack.total,
+    remaining: packRem,
     sold,
     granted,
     memoPrefix: cfg.memoPrefix,
     intentTtlS: cfg.intentTtlS,
+    offers: [
+      { id: 'pack', packs: cfg.pack.packs, priceLamports: cfg.pack.priceLamports, prices: preorderPrices(cfg.pack.priceLamports), total: cfg.pack.total, remaining: packRem, sold: packSold, maxPerWallet: cfg.pack.maxPerWallet, maxQty: cfg.pack.maxQty },
+      { id: 'chest', packs: cfg.chest.packs, priceLamports: cfg.chest.priceLamports, prices: preorderPrices(cfg.chest.priceLamports), total: cfg.chest.total, remaining: chestRem, sold: chestSold, maxPerWallet: cfg.chest.maxPerWallet, maxQty: cfg.chest.maxQty },
+    ],
   };
 }
 
@@ -140,34 +241,56 @@ export interface PreorderIntent {
   wallet: string;
   sku: number;
   qty: number;
+  offer: PreorderOfferId;
+  currency: PreorderCurrency;
   lamports: string;
+  amount: string;
   treasury: string;
+  payTo: string;
+  mint?: string;
   memo: string;
   expiresAt: number;
 }
 
-/** `POST /preorder/intent` — reserve `qty` packs; the response is the payment instruction set. */
-export function createIntent(db: Db, wallet: string, qty: number, t = now()): PreorderIntent {
+/** `POST /preorder/intent` — reserve `qty` units of `offer`; the response is the payment instruction set. */
+export function createIntent(db: Db, wallet: string, qty: number, t = now(), offerId: PreorderOfferId = 'pack', currency: PreorderCurrency = 'SOL'): PreorderIntent {
   const cfg = preorderConfig();
   if (!cfg.active) throw new ServiceError(410, 'campaign_closed', 'The pre-sale is not active');
-  if (!Number.isInteger(qty) || qty < 1 || qty > cfg.maxQty) throw new ServiceError(400, 'bad_qty', `qty must be 1..${cfg.maxQty}`);
-  if (remainingPacks(db, t) < qty) throw new ServiceError(409, 'sold_out', 'The drop is sold out');
-  if (reservedByWallet(db, wallet, t) + qty > cfg.maxPerWallet) {
-    throw new ServiceError(409, 'wallet_cap', `At most ${cfg.maxPerWallet} packs per wallet`);
+  const offer = offerId === 'chest' ? cfg.chest : cfg.pack;
+  if (offer.id === 'chest') {
+    if (qty !== 1) throw new ServiceError(400, 'bad_qty', 'chest qty must be 1');
+    if (remainingChests(db, t) < 1) throw new ServiceError(409, 'sold_out', 'The chest drop is sold out');
+    if (reservedOfferUnits(db, 'chest', wallet, t) + 1 > offer.maxPerWallet) {
+      throw new ServiceError(409, 'wallet_cap', `At most ${offer.maxPerWallet} chest per wallet`);
+    }
+  } else {
+    if (!Number.isInteger(qty) || qty < 1 || qty > offer.maxQty) throw new ServiceError(400, 'bad_qty', `qty must be 1..${offer.maxQty}`);
+    if (remainingPacks(db, t) < qty) throw new ServiceError(409, 'sold_out', 'The drop is sold out');
+    if (reservedByWallet(db, wallet, t) + qty > offer.maxPerWallet) {
+      throw new ServiceError(409, 'wallet_cap', `At most ${offer.maxPerWallet} packs per wallet`);
+    }
   }
-  const lamports = (BigInt(cfg.priceLamports) * BigInt(qty)).toString();
+  const packs = offer.id === 'chest' ? offer.packs : qty;
+  const solLamports = offer.id === 'chest' ? offer.priceLamports : (BigInt(offer.priceLamports) * BigInt(qty)).toString();
+  const lamports = preorderAmount(solLamports, currency);
+  const dest = preorderPayTo(cfg.treasury, currency);
   const r = db.run(
-    `INSERT INTO preorders (wallet, sku, qty, lamports, status, created_at) VALUES (?, ?, ?, ?, 'intent', ?)`,
-    wallet, cfg.sku, qty, lamports, t,
+    `INSERT INTO preorders (wallet, sku, qty, offer, currency, lamports, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'intent', ?)`,
+    wallet, cfg.sku, packs, offer.id, currency, lamports, t,
   );
   const refId = Number(r.lastInsertRowid);
   return {
     refId,
     wallet,
     sku: cfg.sku,
-    qty,
+    qty: packs,
+    offer: offer.id,
+    currency,
     lamports,
+    amount: lamports,
     treasury: cfg.treasury,
+    payTo: dest.payTo,
+    mint: dest.mint,
     memo: preorderMemo(cfg, refId),
     expiresAt: t + cfg.intentTtlS,
   };
@@ -178,7 +301,7 @@ export function createIntent(db: Db, wallet: string, qty: number, t = now()): Pr
 export interface ParsedPaymentTx {
   /** `meta.err == null` */
   ok: boolean;
-  transfers: { source: string; destination: string; lamports: bigint }[];
+  transfers: { source: string; destination: string; lamports: bigint; mint?: string }[];
   memos: string[];
 }
 
@@ -197,13 +320,15 @@ export interface PaymentCheck {
  */
 export function checkPayment(
   tx: ParsedPaymentTx,
-  a: { treasury: string; lamports: string; wallet: string; memo: string },
+  a: { treasury: string; lamports: string; wallet: string; memo: string; mint?: string },
 ): PaymentCheck {
   if (!tx.ok) return { ok: false, code: 'tx_failed' };
   const need = BigInt(a.lamports);
-  const hit = tx.transfers.filter((t) => t.destination === a.treasury && t.lamports >= need);
+  const destOk = (t: ParsedPaymentTx['transfers'][number]) => t.destination === a.treasury
+    && (!a.mint || !t.mint || t.mint === a.mint);
+  const hit = tx.transfers.filter((t) => destOk(t) && t.lamports >= need);
   if (hit.length === 0) {
-    return { ok: false, code: tx.transfers.some((t) => t.destination === a.treasury) ? 'amount_low' : 'no_transfer' };
+    return { ok: false, code: tx.transfers.some((t) => destOk(t)) ? 'amount_low' : 'no_transfer' };
   }
   if (tx.memos.length > 0) {
     return tx.memos.includes(a.memo) ? { ok: true, code: 'ok' } : { ok: false, code: 'memo_mismatch' };
@@ -234,8 +359,22 @@ export function parseRpcPayment(tx: unknown): ParsedPaymentTx | null {
         transfers.push({ source: String(p.info.source), destination: String(p.info.destination), lamports: BigInt(p.info.lamports ?? 0) });
       }
     }
+    if ((i.program === 'spl-token' || i.program === 'spl-token-2022') && i.parsed && typeof i.parsed === 'object') {
+      const p = i.parsed as { type?: string; info?: { source?: string; destination?: string; amount?: string; mint?: string; authority?: string; tokenAmount?: { amount?: string } } };
+      if ((p.type === 'transfer' || p.type === 'transferChecked') && p.info) {
+        const amt = p.info.tokenAmount?.amount ?? p.info.amount ?? '0';
+        transfers.push({
+          source: String(p.info.source),
+          destination: String(p.info.destination),
+          lamports: BigInt(amt),
+          mint: p.info.mint ? String(p.info.mint) : undefined,
+        });
+      }
+    }
   };
   for (const ix of t.transaction?.message?.instructions ?? []) visit(ix);
+  const inner = (t as { meta?: { innerInstructions?: { instructions?: unknown[] }[] } }).meta?.innerInstructions ?? [];
+  for (const g of inner) for (const ix of g.instructions ?? []) visit(ix);
   return { ok, transfers, memos };
 }
 
@@ -259,7 +398,9 @@ export async function confirmPayment(
   const cfg = preorderConfig();
   const tx = await fetchPayment(signature);
   if (!tx) throw new ServiceError(404, 'tx_not_found', 'Transaction not found on mainnet (finalized)');
-  const check = checkPayment(tx, { treasury: cfg.treasury, lamports: row.lamports, wallet, memo: preorderMemo(cfg, refId) });
+  const currency = (row.currency ?? 'SOL') as PreorderCurrency;
+  const dest = preorderPayTo(cfg.treasury, currency);
+  const check = checkPayment(tx, { treasury: dest.payTo, lamports: row.lamports, wallet, memo: preorderMemo(cfg, refId), mint: dest.mint });
   if (!check.ok) throw new ServiceError(422, `payment_${check.code}`, `Payment check failed: ${check.code}`);
 
   // One signature credits exactly one reservation. The check is explicit and the UNIQUE index on
@@ -360,8 +501,9 @@ export function proposeDrop(body: Record<string, unknown>): PreorderProposal {
   const sku = Number(body.sku ?? preorderConfig().sku);
   const instructions: PreorderProposal['instructions'] = [];
   if (action === 'open') {
-    const total = Number(body.total ?? preorderConfig().total);
-    const maxPerWallet = Number(body.maxPerWallet ?? preorderConfig().maxPerWallet);
+    const cfg = preorderConfig();
+    const total = Number(body.total ?? (cfg.pack.total + cfg.chest.total * cfg.chest.packs));
+    const maxPerWallet = Number(body.maxPerWallet ?? (cfg.pack.maxPerWallet + cfg.chest.packs * cfg.chest.maxPerWallet));
     if (!Number.isInteger(total) || total <= 0) throw new ServiceError(400, 'bad_request', 'total must be a positive integer');
     if (!Number.isInteger(maxPerWallet) || maxPerWallet < 0) throw new ServiceError(400, 'bad_request', 'maxPerWallet must be ≥ 0');
     instructions.push(ixToJson(initPreorderDropIx({ admin, sku, total, maxPerWallet }), 'init_preorder_drop'));

@@ -2,7 +2,7 @@
    Palette/fonts come ONLY from theme.css tokens. */
 
 *, *::before, *::after { box-sizing: border-box; }
-html, body, #root { height: 100%; margin: 0; }
+html, body, #root { height: 100%; margin: 0; overflow: hidden; }
 body { -webkit-font-smoothing: antialiased; overscroll-behavior-y: none; }
 a { color: inherit; }
 button { font: inherit; }
@@ -20,14 +20,19 @@ img { max-width: 100%; display: block; }
 }
 
 /* ---------- shell ---------- */
-.shell { min-height: 100%; display: flex; flex-direction: column; }
+/* App chrome is a flex column of (scrollable body) + (in-flow tab bar). A position:fixed
+   bottom bar tracks the visual viewport, so on a phone / Chrome device-mode the bar jumps
+   in and out as the URL chrome shows or as a tall animated card pulses document height.
+   Overflow lives on .shell-body; html/body do not scroll. */
+.shell { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+.shell-body { order: 1; flex: 1; min-height: 0; overflow: auto; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
 .shell-header {
   position: sticky; top: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 10px 16px; background: rgba(22, 21, 26, 0.92); backdrop-filter: blur(10px); border-bottom: 1px solid var(--gc-line);
 }
 .shell-brand { font-family: var(--cg-font-display); font-size: 22px; letter-spacing: 0.04em; color: var(--cg-chrome); text-decoration: none; display: flex; align-items: center; gap: 8px; }
 .shell-brand small { font-family: var(--cg-font-mono); font-size: 10px; color: var(--gc-muted); letter-spacing: 0.1em; }
-.shell-main { flex: 1; padding-bottom: calc(var(--gc-nav-h) + var(--gc-safe-b) + 16px); position: relative; z-index: 0; }
+.shell-main { flex: 1; padding-bottom: 16px; position: relative; z-index: 0; }
 /* global backdrop so no page is plain black: dark asphalt texture, fixed behind
    all content (page-specific backdrops like arena/codex paint on top of it) */
 .shell-main::before {
@@ -42,7 +47,8 @@ img { max-width: 100%; display: block; }
      tab means bumping this; `smoke.test.tsx` fails if they disagree. The language picker used to be
      the 10th entry and now lives in the header next to the balance. */
   --gc-nav-tabs: 9;
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: grid;
+  order: 2; position: relative; left: auto; right: auto; bottom: auto; z-index: 30; display: grid;
+  flex-shrink: 0; width: 100%;
   grid-template-columns: repeat(var(--gc-nav-tabs), minmax(0, 1fr));
   height: calc(var(--gc-nav-h) + var(--gc-safe-b)); padding-bottom: var(--gc-safe-b);
   background: rgba(22, 21, 26, 0.96); border-top: 1px solid var(--gc-line);
@@ -61,8 +67,8 @@ img { max-width: 100%; display: block; }
 @media (min-width: 900px) {
   .shell { flex-direction: row; }
   .shell-header { position: sticky; }
-  .shell-nav { position: sticky; top: 0; bottom: auto; height: 100vh; width: 92px; grid-template-columns: 1fr; grid-auto-rows: 72px; align-content: start; padding-top: 12px; border-top: 0; border-right: 1px solid var(--gc-line); }
-  .shell-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .shell-nav { order: 0; position: relative; top: 0; bottom: auto; height: 100%; width: 92px; grid-template-columns: 1fr; grid-auto-rows: 72px; align-content: start; padding-top: 12px; border-top: 0; border-right: 1px solid var(--gc-line); }
+  .shell-body { order: 0; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
   .shell-main { padding-bottom: 32px; }
   .wait-pill { bottom: 24px; }
 }
@@ -123,10 +129,42 @@ img { max-width: 100%; display: block; }
 .progress.trust > i { background: var(--cg-trust-blue); }
 .skeleton { background: linear-gradient(90deg, rgba(255,255,255,0.04), rgba(255,255,255,0.09), rgba(255,255,255,0.04)); background-size: 200% 100%; animation: sk 1.2s linear infinite; border-radius: 8px; min-height: 16px; }
 @keyframes sk { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-.empty { position: relative; overflow: hidden; text-align: center; color: var(--gc-muted); padding: 40px 16px; border: 1px dashed var(--gc-line-strong); border-radius: var(--gc-radius); }
-.empty::before { content: ''; position: absolute; left: 50%; top: 50%; width: 190px; height: 190px; transform: translate(-50%, -50%);
-  border: 2px dashed var(--gc-line-strong); border-radius: 50%; opacity: 0.55; pointer-events: none; }
-.empty > * { position: relative; }
+.empty {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  text-align: center;
+  color: var(--gc-muted);
+  padding: 48px 20px 40px;
+  border: 0;
+  border-radius: 18px 34px 20px 38px / 30px 20px 36px 22px;
+  min-height: 140px;
+  display: grid;
+  place-items: center;
+}
+.empty-compact { padding: 28px 16px; min-height: 108px; background: transparent; }
+.empty-copy { position: relative; z-index: 1; max-width: 28em; line-height: 1.4; }
+/* spinning spray ring — same language as empty fusion / squad slots */
+.empty::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 132px;
+  height: 132px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.55;
+  background: conic-gradient(from 0deg, transparent 0 42%, var(--cg-neon-magenta) 52%, var(--cg-neon-cyan) 62%, transparent 78%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+}
+.empty-compact::after { width: 88px; height: 88px; opacity: 0.4; }
+@media (prefers-reduced-motion: no-preference) {
+  .empty::after { animation: live-slot-spin 2.8s linear infinite; }
+}
 .tag-list { display: flex; gap: 6px; flex-wrap: wrap; }
 .tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
@@ -171,9 +209,12 @@ img { max-width: 100%; display: block; }
   background: radial-gradient(120% 100% at 50% 0%, rgba(22,21,26,0.55), rgba(0,0,0,0.78));
   -webkit-backdrop-filter: blur(7px) saturate(1.15); backdrop-filter: blur(7px) saturate(1.15); }
 @media (min-width: 700px) { .modal-backdrop { align-items: center; } }
-.modal { background: var(--cg-asphalt); border: 1px solid var(--gc-line-strong); border-radius: 16px 16px 0 0; width: 100%; max-width: 520px; max-height: 92vh; overflow: auto; padding: 18px 16px calc(18px + var(--gc-safe-b)); }
+.modal { background: var(--cg-asphalt); border: 1px solid var(--gc-line-strong); border-radius: 16px 16px 0 0; width: 100%; max-width: 520px; max-height: min(88dvh, calc(100dvh - 16px), 92vh); overflow: clip; padding: 18px 16px calc(18px + var(--gc-safe-b)); display: flex; flex-direction: column; min-height: 0; text-align: center; }
 @media (min-width: 700px) { .modal { border-radius: 16px; } }
-.modal-title { font-family: var(--cg-font-display); font-size: 22px; margin: 0 0 10px; }
+.modal-title { font-family: var(--cg-font-display); font-size: 22px; margin: 0 0 10px; flex: 0 0 auto; text-align: center; }
+.modal-body { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; text-align: center; }
+.modal-body .chip-card { min-width: 0; }
+.modal-foot { flex: 0 0 auto; padding-top: 12px; position: relative; z-index: 1; background: color-mix(in srgb, var(--cg-asphalt) 92%, transparent); text-align: center; }
 
 /* ---------- toasts ---------- */
 /* top = the real header height (Shell.tsx keeps --gc-header-h in sync). A hard-coded 64px only holds while the
@@ -188,10 +229,28 @@ img { max-width: 100%; display: block; }
 .toast-money { border-left-color: var(--cg-trust-blue); font-family: var(--cg-font-mono); }
 
 /* ---------- chip card ---------- */
-.chip-tile { position: relative; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; overflow: hidden; isolation: isolate; }
+.chip-tile { position: relative; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; overflow: visible; isolation: isolate; }
 .chip-tile svg { width: 100%; height: 100%; display: block; }
-.chip-tile .chip-lvl { position: absolute; bottom: 6%; right: 8%; font-family: var(--cg-font-mono); font-size: 10px; background: rgba(0,0,0,0.6); padding: 1px 5px; border-radius: 4px; }
-.chip-tile .chip-badge { position: absolute; top: 6%; left: 8%; font-size: 10px; padding: 1px 6px; border-radius: 4px; background: rgba(0,0,0,0.6); }
+/* Clip only the art: circular overflow used to cut off both the level number and status text. */
+.st-crimp > .chip-tile { overflow: visible; }
+.chip-face { position: relative; width: 100%; height: 100%; border-radius: inherit; overflow: hidden; }
+.chip-labels { position: absolute; bottom: 7%; right: 3%; z-index: 2; pointer-events: none; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.chip-tile .chip-badge { position: absolute; top: 0; left: 0; max-width: 100%; z-index: 1; color: var(--cg-chrome); font-size: 11px; line-height: 1.3; background: rgba(0,0,0,0.72); padding: 2px 6px; border-radius: 4px; }
+/* spray-stencil level plaque — not a black rectangle */
+.chip-lvl {
+  position: relative; isolation: isolate; display: grid; justify-items: center; gap: 0;
+  min-width: 26px; padding: 4px 7px 3px; line-height: 0.92; color: #14060c;
+  font-family: var(--cg-font-display); transform: rotate(-8deg);
+  background: none; overflow: visible;
+}
+.chip-lvl small { font-size: 7px; letter-spacing: 0.14em; font-weight: 700; }
+.chip-lvl b { font-size: 13px; font-weight: 700; }
+.chip-lvl::before {
+  content: ""; position: absolute; inset: -2px -5px; z-index: -1;
+  background: linear-gradient(145deg, #ff6ec4 0%, #ff2e8a 46%, #16e5d9 100%);
+  clip-path: polygon(7% 18%, 90% 0, 100% 76%, 9% 100%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
 /* Founder frame (docs/preorder-beta.md): pre-sale chips carry a permanent foil border + tag. */
 .chip-tile .chip-founder { position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
   border: 2px solid transparent;
@@ -199,7 +258,7 @@ img { max-width: 100%; display: block; }
   -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor; mask-composite: exclude;
   box-shadow: inset 0 0 10px rgba(255,170,60,0.35); }
-.chip-tile .chip-founder-tag { position: absolute; bottom: 4%; right: 6%; font-size: 8px; letter-spacing: 0.08em; font-weight: 700;
+.chip-tile .chip-founder-tag { font-size: 10px; overflow-wrap: anywhere; letter-spacing: 0.08em; font-weight: 700;
   padding: 1px 5px; border-radius: 4px; color: #1a1206;
   background: linear-gradient(120deg, #ffd678, #ff9a3c); box-shadow: 0 0 8px rgba(255,170,60,0.6); }
 .chip-tile.selected { outline: 3px solid var(--cg-acid-green); outline-offset: 2px; }
@@ -222,20 +281,52 @@ img { max-width: 100%; display: block; }
 .reduced-motion .vfx-3, .reduced-motion .vfx-4 { animation: none; }
 @keyframes pulse-glow { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.25); } }
 
-/* ---------- collection grid 10×9 ---------- */
-.cgrid { display: grid; grid-template-columns: 132px repeat(9, minmax(74px, 1fr)); gap: 8px; align-items: center; min-width: 860px; }
+/* ---------- collection grid: 8 districts × 9 rarities ---------- */
+/* Desktop keeps the spreadsheet (label + 9 caps). Below 860px that matrix is
+   wider than the phone and used to clip; each district becomes a 3×3 album. */
+.cgrid { display: flex; flex-direction: column; gap: 8px; min-width: 860px; }
 .cgrid-wrap { overflow-x: auto; padding-bottom: 8px; }
+.cgrid-rarity-heads, .cgrid-district {
+  display: grid; grid-template-columns: 132px repeat(9, minmax(74px, 1fr));
+  gap: 8px; align-items: center;
+}
+.cgrid-cells { display: contents; }
+.cgrid-slot { min-width: 0; }
+.cgrid .cell-rarity { display: none; }
 .cgrid .head { font-size: 10.5px; text-align: center; color: var(--gc-muted); letter-spacing: 0.06em; }
-.cgrid .rowhead { font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
+.cgrid .rowhead { font-size: 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cgrid .rowhead .progress { width: 100%; max-width: 100%; }
 .cgrid .rowhead b { font-size: 12.5px; }
 .cgrid .cell { position: relative; aspect-ratio: 1; border-radius: 50%; border: none; display: grid; place-items: center; cursor: pointer; transition: transform 0.1s ease; }
 /* empty cells keep a faint dashed placeholder ring so missing caps still read as slots */
-.cgrid .cell.missing { border: 1px dashed var(--gc-line-strong); }
+.cgrid .cell.missing { border: 0; background: radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--cg-neon-magenta) 16%, transparent), transparent 68%); }
 .cgrid .cell:hover { transform: scale(1.06); }
-.cgrid .cell.owned { border: none; }
-.cgrid .cell.missing { opacity: 0.55; }
+.cgrid .cell.owned { border: none; background: none; }
+.cgrid .cell.owned.live-slot::before { display: none; }
 .cgrid .cell .count { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--cg-chrome); color: var(--cg-asphalt); font-size: 10px; font-weight: 700; display: grid; place-items: center; padding: 0 4px; font-family: var(--cg-font-mono); }
 .cgrid .cell .count.multi { background: var(--cg-acid-green); }
+@media (max-width: 859px) {
+  .cgrid { min-width: 0; gap: 0; }
+  .cgrid-wrap { overflow: visible; padding-bottom: 0; }
+  .cgrid-rarity-heads { display: none; }
+  .cgrid-district {
+    display: flex; flex-direction: column; align-items: stretch; gap: 10px;
+    min-width: 0; padding: 14px 2px 16px; border-top: 1px solid var(--gc-line);
+    grid-template-columns: none;
+  }
+  .cgrid-rarity-heads + .cgrid-district { border-top: 0; padding-top: 2px; }
+  .cgrid-district.is-active {
+    margin: 0 -8px; padding-left: 10px; padding-right: 10px; border-radius: 14px;
+    background: color-mix(in srgb, var(--district, var(--cg-neon-cyan)) 10%, transparent);
+    box-shadow: inset 3px 0 0 var(--district, var(--cg-neon-cyan));
+  }
+  .cgrid-cells { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 10px; }
+  .cgrid-slot { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+  .cgrid .cell { width: 100%; }
+  .cgrid .cell-rarity { display: block; font-size: 10px; line-height: 1.2; text-align: center; letter-spacing: 0.02em; }
+  .cgrid .cell .cell-empty { display: none; }
+  .cgrid .rowhead b { font-size: 15px; }
+}
 
 /* ---------- codex district strip: one scrollable row on desktop, two wrapping
    rows on phones (9 chips = 5 + 4, fully visible, no sideways scrolling) ---------- */
@@ -253,7 +344,6 @@ img { max-width: 100%; display: block; }
 /* ---------- pack shop ---------- */
 .pack-card { position: relative; overflow: hidden; }
 .pack-card .pack-art { width: 100%; height: 150px; object-fit: cover; border-radius: 14px; border: 1px solid rgba(216,216,220,0.1); }
-.pack-card::before { content: ''; position: absolute; inset: -40% -20% auto; height: 70%; background: radial-gradient(ellipse at center, var(--pack-glow, rgba(22,229,217,0.18)), transparent 70%); pointer-events: none; }
 .odds-bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,0.06); }
 .odds-bar i { display: block; height: 100%; }
 .odds-legend { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px 10px; font-size: 11px; font-family: var(--cg-font-mono); }
@@ -266,15 +356,36 @@ img { max-width: 100%; display: block; }
 /* ---------- fusion bench ---------- */
 .bench { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; align-items: center; }
 .bench .slot { aspect-ratio: 1; border-radius: 50%; border: 2px dashed color-mix(in srgb, var(--gc-line-strong) 70%, transparent); display: grid; place-items: center; color: var(--gc-muted); font-size: 12px; cursor: pointer; }
-/* empty slot = the generated spray badge (still fully clickable, + on top) */
-.bench .slot.slot-empty {
+/* empty slot = spray-stencil circle + spinning live-slot ring, not baked graffiti art */
+.bench .slot.slot-empty,
+.chip-card .slot.slot-empty,
+.slot.slot-empty {
+  aspect-ratio: 1;
   border: none;
-  background: linear-gradient(rgba(22, 21, 26, 0.42), rgba(22, 21, 26, 0.42)), url('/icons/gen/slot-empty.webp') center / cover no-repeat;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--cg-neon-magenta) 22%, transparent), transparent 64%),
+    radial-gradient(circle at 50% 50%, #1a181f 0 46%, #0c0b10 78%);
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, var(--cg-neon-magenta) 45%, transparent),
+    0 0 16px color-mix(in srgb, var(--cg-neon-magenta) 22%, transparent);
+  display: grid;
+  place-items: center;
   transition: filter 0.15s ease, transform 0.15s ease;
 }
-.bench .slot.slot-empty:hover { filter: brightness(1.25); transform: translateY(-1px); }
-.bench .slot.slot-empty .slot-hint, .bench .slot.slot-empty > span {
-  font-family: var(--cg-font-mono); font-size: 11px; color: var(--cg-chrome); opacity: 0.9;
+.bench .slot.slot-empty:hover,
+.chip-card .slot.slot-empty:hover,
+.slot.slot-empty:hover { filter: brightness(1.18); transform: translateY(-1px); }
+.chip-card:active .slot.slot-empty { transform: scale(0.94); }
+.bench .slot.slot-empty .slot-hint, .bench .slot.slot-empty > span,
+.chip-card .slot.slot-empty .slot-hint,
+.slot.slot-empty .slot-hint {
+  font-family: var(--cg-font-display);
+  font-size: clamp(22px, 7vw, 36px);
+  line-height: 1;
+  color: var(--cg-chrome);
+  opacity: 0.92;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.85);
 }
 .bench .slot.filled { border-style: solid; }
 .bench-arrow { text-align: center; font-size: 24px; color: var(--gc-muted); }
@@ -284,20 +395,123 @@ img { max-width: 100%; display: block; }
 /* empty squad pick slot: generated spray-stencil circle art, «+» stays pressable via the wrapper */
 .squad-slot-empty {
   border-radius: 50%;
-  border: 2px dashed var(--gc-line-strong);
+  border: 0;
   display: grid;
   place-items: center;
-  background: url('/icons/gen/arena-slot.webp') center / cover no-repeat, var(--gc-card);
-  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.55);
-  transition: border-color 0.15s ease;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--cg-neon-magenta) 20%, transparent), transparent 70%);
+  transition: filter 0.15s ease;
 }
-.stack-sm.center:hover .squad-slot-empty { border-color: var(--cg-neon-magenta); }
+.stack-sm.center:hover .squad-slot-empty { filter: brightness(1.2); }
 .squad-slot-plus {
   font-family: var(--cg-font-display);
   font-size: 30px;
   line-height: 1;
-  color: var(--gc-muted);
+  color: var(--cg-chrome);
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.85);
+}
+/* empty circle that is alive: spinning spray ring, not a black disc */
+.live-slot { position: relative; isolation: isolate; overflow: hidden; border-radius: 50%; }
+.live-slot::before {
+  content: "";
+  position: absolute;
+  inset: -38%;
+  z-index: 0;
+  pointer-events: none;
+  background: conic-gradient(from 0deg, transparent 0 42%, var(--cg-neon-magenta) 52%, var(--cg-neon-cyan) 62%, transparent 78%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+}
+.live-slot > * { position: relative; z-index: 1; }
+@media (prefers-reduced-motion: no-preference) {
+  .live-slot::before { animation: live-slot-spin 2.8s linear infinite; }
+  .squad-slot-plus, .live-slot .slot-hint, .live-slot-label { animation: live-slot-pulse 1.8s ease-in-out infinite; }
+}
+@keyframes live-slot-spin { to { transform: rotate(360deg); } }
+@keyframes live-slot-pulse { 0%, 100% { opacity: 0.55; transform: scale(1); } 50% { opacity: 1; transform: scale(1.08); } }
+
+.fight-stage {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0 10px;
+  overflow: visible;
+}
+.fight-trio { display: flex; justify-content: center; gap: 6px; min-width: 0; overflow: visible; }
+.fight-cap { width: min(22vw, 68px); aspect-ratio: 1; overflow: visible; }
+.fight-cap.live-slot { border-radius: 50%; overflow: hidden; background: radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--cg-neon-magenta) 18%, transparent), transparent 70%); }
+.fight-cap .chip-lvl, .round .chip-lvl { min-width: 22px; padding: 2px 5px; }
+.fight-cap .chip-lvl b, .round .chip-lvl b { font-size: 11px; }
+.fight-cap .chip-lvl small, .round .chip-lvl small { font-size: 6px; }
+.round > .row > span { overflow: visible; }
+.fight-vs { font-family: var(--cg-font-display); font-size: 22px; color: var(--cg-neon-magenta); text-align: center; }
+.hunt-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    "radar copy clock"
+    "leave leave leave";
+  gap: 6px 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 10% 50%, color-mix(in srgb, var(--cg-neon-cyan) 22%, transparent), transparent 46%),
+    color-mix(in srgb, var(--cg-neon-magenta) 12%, var(--cg-asphalt));
+  border: 1px solid color-mix(in srgb, var(--cg-neon-magenta) 45%, transparent);
+}
+.hunt-radar {
+  grid-area: radar;
+  width: 48px; height: 48px; border-radius: 50%;
+  position: relative;
+  background: radial-gradient(circle, color-mix(in srgb, var(--cg-neon-cyan) 70%, #fff) 0 8%, transparent 9%);
+}
+.hunt-radar::before, .hunt-radar::after {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--cg-neon-cyan) 85%, #fff);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hunt-radar::before { animation: hunt-ping 1.7s ease-out infinite; }
+  .hunt-radar::after { animation: hunt-ping 1.7s ease-out infinite 0.55s; }
+}
+@keyframes hunt-ping {
+  0% { transform: scale(0.35); opacity: 0.85; }
+  100% { transform: scale(1.08); opacity: 0; }
+}
+.hunt-copy { grid-area: copy; min-width: 0; }
+.hunt-title { font-family: var(--cg-font-display); font-size: 18px; color: var(--cg-chrome); line-height: 1.1; }
+.hunt-league { font-size: 13px; color: var(--cg-neon-cyan); }
+.hunt-clock {
+  grid-area: clock;
+  font-family: var(--cg-font-display);
+  font-size: 36px;
+  line-height: 1;
+  color: var(--cg-neon-magenta);
+  min-width: 1.35em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.hunt-leave { grid-area: leave; justify-self: end; }
+@media (prefers-reduced-motion: no-preference) {
+  .fight-cap.is-clash.fight-cap-a { animation: fight-slam-l 0.55s ease; }
+  .fight-cap.is-clash.fight-cap-b { animation: fight-slam-r 0.55s ease; }
+  .fight-vs { animation: live-slot-pulse 0.9s ease-in-out infinite; }
+  .fight-round-enter { animation: fight-in 0.4s ease both; }
+}
+@keyframes fight-slam-l {
+  0% { transform: translateX(0) rotate(0); }
+  40% { transform: translateX(16px) rotate(10deg) scale(1.08); }
+  100% { transform: translateX(0); }
+}
+@keyframes fight-slam-r {
+  0% { transform: translateX(0) rotate(0); }
+  40% { transform: translateX(-16px) rotate(-10deg) scale(1.08); }
+  100% { transform: translateX(0); }
+}
+@keyframes fight-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
 }
 .round { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center; }
 .vs { font-family: var(--cg-font-display); font-size: 18px; color: var(--cg-neon-magenta); }
@@ -354,6 +568,10 @@ img { max-width: 100%; display: block; }
 .page-bg-home { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-home.jpg); }
 .page-bg-collection { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-collection.jpg); }
 .page-bg-shop { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-shop.jpg); }
+.page-bg-preorder { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-shop.jpg); }
+.founder-wall { display: grid; grid-template-columns: repeat(25, minmax(0, 1fr)); gap: 3px; margin-top: 8px; }
+.founder-slot { aspect-ratio: 1; border-radius: 2px; background: rgba(255,214,120,0.14); border: 1px solid rgba(255,214,120,0.32); }
+.founder-slot.taken { background: linear-gradient(140deg, #ffd678, #ff9a3c); border-color: transparent; }
 .page-bg-market { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-market.jpg); }
 .page-bg-fusion { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-fusion.jpg); }
 .page-bg-staking { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-staking.jpg); }
@@ -361,6 +579,24 @@ img { max-width: 100%; display: block; }
 .page-bg-leaderboard { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-leaderboard.jpg); }
 .page-bg-profile { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-profile.jpg); }
 .page-bg-verify { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-verify.jpg); }
+.page-bg-drain { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-drain.jpg); }
+.page-bg-pot { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-pot.jpg); }
+.pot-art { width: 160px; height: 160px; border-radius: 50%; object-fit: cover; }
+.pot-art-sm { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
+.pot-winners { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; text-align: left; }
+.pot-winners li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 8px; border-radius: 8px; background: color-mix(in srgb, var(--cg-asphalt) 70%, transparent); }
+.pot-winners li.me { box-shadow: 0 0 0 1px var(--cg-acid-green, #B6FF3C); }
+.drain-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 12px; }
+.drain-tile { text-align: center; padding: 14px 10px; cursor: pointer; }
+.drain-tile:disabled { cursor: default; opacity: 0.85; }
+.drain-tile.featured { box-shadow: 0 0 0 1px var(--cg-cyan, #16E5D9); }
+.drain-tile.picked { box-shadow: 0 0 0 1px var(--cg-acid-green, #B6FF3C); }
+.drain-grate { width: 160px; height: 160px; border-radius: 50%; object-fit: cover; transition: transform .7s ease, filter .7s; }
+.drain-grate.lift { transform: translateY(-18px) rotate(-8deg); filter: brightness(1.25); }
+.drain-grate-sm { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; }
+@media (prefers-reduced-motion: reduce) {
+  .drain-grate, .drain-grate.lift { transition: none; transform: none; }
+}
 .page-bg-language { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-language.jpg); }
 
 /* codex district banner: wide scene crop above the lore */
@@ -473,24 +709,27 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 }
 
 /* ---------- Pack shop: equal-height cards + gamified odds shelf ---------- */
+/* Each card spans the same 11 shared rows: art, heading, badges, fan, odds bar,
+   odds grid, legendary chance, pity, cap, price and CTA. Subgrid aligns actual content
+   heights instead of clipping translations or guessing spacers for one locale. */
 .pack-grid { align-items: stretch; }
-/* min-width:0 — a grid item's automatic minimum is its min-content (the long localized
-   pack title), which would push tracks wider than the page; the card clips instead. */
-.pack-grid > .pack-card { display: flex; flex-direction: column; height: 100%; min-width: 0; }
-.pack-card-foot { margin-top: auto; }
-.pity-none { opacity: .55; }
-/* One row of four identical frames: every card reserves the same vertical zones, so the
-   sections below — gems, legend %, pity, cap line, price, button — share one baseline
-   across the row regardless of how many gems/pity lines the SKU actually has. */
+.pack-grid > .pack-card {
+  display: grid; grid-template-columns: minmax(0, 1fr); grid-row: span 11; grid-template-rows: subgrid;
+  gap: 12px; min-width: 0; overflow: visible;
+}
+.pack-grid > .card.pack-card::after { left: 0; right: 0; }
 .pack-head { min-width: 0; }
 .pack-card .cg-heading { hyphens: auto; overflow-wrap: break-word; }
-/* subtitle = exactly 2 lines (clamped): 1-line and 2-line descriptions keep the same height */
-.pack-grid .pack-sub { min-height: calc(2 * 1.35em); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-/* the gems grid is always 3 rows tall: Starter rolls 6 gems over the same 3×3 grid as the
-   9-gem packs, so the legend-% row below never starts one row higher on one card */
-.pack-grid .odds-gems { grid-template-rows: repeat(3, minmax(48px, auto)); }
-/* packs without pity reserve the pity zone (row + progress bar ≈ 17 + 6 + 8 px) */
-.pack-grid .pack-pity-spacer { min-height: 31px; }
+.pack-grid .pack-sub { line-height: 1.35; }
+.pack-badges { min-height: 32px; display: flex; align-items: start; flex-wrap: wrap; gap: 6px; }
+.pack-grid .odds-gems { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(5, minmax(54px, 1fr)); }
+.pack-grid .pack-price { align-self: stretch; }
+.pack-buy { display: flex; }
+.pack-buy > button { width: 100%; height: 100%; min-height: 56px; padding-inline: 12px; overflow-wrap: normal; font-size: 15px; }
+.pity-none { opacity: .55; }
+@supports not (grid-template-rows: subgrid) {
+  .pack-grid > .pack-card { grid-template-rows: auto; }
+}
 
 /* the shelf: a recessed metal rail the coloured bar sits in */
 .odds-shelf { position: relative; padding: 4px; border-radius: 999px;
@@ -523,11 +762,11 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
   background: linear-gradient(160deg, color-mix(in srgb, var(--gem) 16%, #16141b), #111015 70%);
   border: 1px solid color-mix(in srgb, var(--gem) 38%, transparent);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 2px 6px rgba(0,0,0,.35); }
-.odds-gem-dot { grid-row: 1 / span 2; width: 12px; height: 12px; transform: rotate(45deg); border-radius: 3px;
+.odds-gem-dot { grid-row: 2; grid-column: 1; width: 12px; height: 12px; transform: rotate(45deg); border-radius: 3px;
   background: radial-gradient(circle at 30% 30%, #fff 0%, color-mix(in srgb, var(--gem) 70%, #fff) 25%, var(--gem) 60%, color-mix(in srgb, var(--gem) 55%, #000) 100%);
   box-shadow: 0 0 8px color-mix(in srgb, var(--gem) 70%, transparent); }
-.odds-gem-name { color: var(--gem); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.odds-gem-pct { color: #e8e8ec; font-variant-numeric: tabular-nums; }
+.odds-gem-name { grid-row: 1; grid-column: 1 / -1; color: var(--gem); font-weight: 700; white-space: normal; overflow-wrap: anywhere; line-height: 1.2; }
+.odds-gem-pct { grid-row: 2; grid-column: 2; color: #e8e8ec; font-variant-numeric: tabular-nums; }
 .odds-gem-meter { grid-column: 1 / -1; height: 3px; margin-top: 4px; border-radius: 3px; background: rgba(255,255,255,.07); overflow: hidden; }
 .odds-gem-meter i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, color-mix(in srgb, var(--gem) 60%, transparent), var(--gem)); box-shadow: 0 0 6px var(--gem); }
 @media (max-width: 380px) { .odds-gems { grid-template-columns: repeat(2, 1fr); } }
@@ -549,3 +788,70 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 .wait-pill-hint { color: rgba(216,216,220,0.7); font-size: 12px; }
 .wait-pill-link { justify-self: start; font-size: 12px; color: var(--cg-cyan, #16E5D9); text-decoration: none; }
 .wait-pill-link:hover { text-decoration: underline; }
+
+/* Staking lists: Claim / Unstake / "+ stake a cap" stay on the same row as the
+   asset in every locale. The name wraps inside the leftover column; the actions
+   never wrap onto a second flex line. Global `.row.between { flex-wrap: wrap }`
+   is what dropped «Вывести» under a long chip name. */
+.stake-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  width: 100%;
+}
+.stake-row-body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.stake-row-art { flex: 0 0 60px; width: 60px; }
+.stake-row-copy { flex: 1 1 auto; min-width: 0; }
+.stake-row-copy .small,
+.stake-row-copy .strong,
+.stake-row-copy .tiny,
+.stake-row-copy b { overflow-wrap: anywhere; }
+.stake-row-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 12px;
+  align-items: center;
+  padding-right: 2px;
+}
+.stake-row > .btn,
+.stake-row-actions .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+  max-width: none;
+}
+
+/* Every in-app dialog: copy is centered in every locale. KV rows stack so
+   long translations (vi/fil/id) wrap under the value instead of colliding. */
+.modal-body .label,
+.modal-body p,
+.modal-body .small,
+.modal-body .tiny,
+.modal-body .muted { text-align: center; }
+.modal-body .tag-list,
+.modal-body .row { justify-content: center; }
+.modal-body .odds-legend { text-align: center; }
+.modal .kv,
+.modal .cg-clean-zone .kv {
+  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+}
+.modal .kv > :first-child,
+.modal .kv > b {
+  flex: 0 1 auto;
+  width: 100%;
+  text-align: center;
+}
+.modal-body input,
+.modal-body textarea,
+.modal-body select { text-align: center; }

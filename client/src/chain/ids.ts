@@ -18,12 +18,9 @@ export const ADDRESS_LOOKUP_TABLE_PROGRAM_ID = new PublicKey('AddressLookupTab1e
 export const WSOL_MINT = new PublicKey('So11111111111111111111111111111111111111112');
 
 /**
- * Pyth (owner decision Q7 — the studio posts SOL/USD and SKR/USD itself, ops/pyth-pusher/).
- * `/packs/quote` returns the exact PriceUpdateV2 account to pass as `price_update`; when the
- * API is unreachable the flow falls back to `GameConfig.pyth_*_feed`, which the admin points
- * at the same accounts (`npm run pyth-pusher -- set-params-args`). The program accepts ANY
- * account owned by the receiver that carries the right feed id, Full verification and a
- * publish_time ≤ 60 s old — the shard is a routing detail, not a trust boundary.
+ * Pyth leftover (pusher / GameConfig feed pubkeys). Checkout does not read these:
+ * packs, services and the founder presale convert at frozen FX (SOL = $110, SKR = $0.016).
+ * `price_update` on buy_pack / pay_service is unused and may be omitted.
  */
 export const PYTH_RECEIVER_ID = new PublicKey('rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ');
 export const PYTH_PUSH_ORACLE_ID = new PublicKey('pythWSnswVUd12oZpeFP8e9CVaEqJg25g1Vtc2biRsT');

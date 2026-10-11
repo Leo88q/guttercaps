@@ -17,7 +17,7 @@ import { createHash } from 'node:crypto';
 import { Keypair, PublicKey, SystemProgram, TransactionInstruction } from '@solana/web3.js';
 import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { BorshReader, BorshWriter } from '@/chain/borsh';
-import { expectDiscriminator, ixData, ro, rw, signer } from '@/chain/anchor';
+import { ixData, ro, rw, signer } from '@/chain/anchor';
 import { ADDRESS_LOOKUP_TABLE_PROGRAM_ID, SWITCHBOARD_ON_DEMAND_ID, WSOL_MINT } from '@/chain/ids';
 import { rngAccounts, revealRandomnessIx, closeRandomnessIx, initRandomnessIx } from '@/chain/ix/rng';
 import { RNG_KIND } from '@/chain/pdas';
@@ -27,8 +27,8 @@ import { SB_ORACLE, SB_QUEUE } from './env';
 
 export { RNG_KIND, rngAccounts, initRandomnessIx, closeRandomnessIx };
 
-export const RANDOMNESS_SIZE = 480;
-export const RANDOMNESS_DISC = Uint8Array.from([10, 66, 229, 135, 220, 239, 217, 114]);
+export const RANDOMNESS_SIZE = 88;
+export const RANDOMNESS_DISC = new TextEncoder().encode('gc-rng01');
 export const ZERO_SIG = new Uint8Array(64);
 
 export interface RandomnessData {
@@ -36,9 +36,13 @@ export interface RandomnessData {
 }
 
 export function decodeRandomness(data: Uint8Array): RandomnessData {
-  const r: BorshReader = expectDiscriminator(data, 'RandomnessAccountData');
-  if (data.length < RANDOMNESS_SIZE) throw new Error(`RandomnessAccountData: ${data.length} bytes`);
-  return { authority: r.pubkey(), queue: r.pubkey(), seedSlothash: r.bytes(32), seedSlot: r.u64(), oracle: r.pubkey(), revealSlot: r.u64(), value: r.bytes(32), lutSlot: r.u64() };
+  if (data.length < RANDOMNESS_SIZE) throw new Error(`RngAccount: ${data.length} bytes`);
+  for (let i = 0; i < 8; i++) if (data[i] !== RANDOMNESS_DISC[i]) throw new Error('RngAccount discriminator mismatch');
+  const r = new BorshReader(data, 8);
+  return {
+    authority: r.pubkey(), seedSlot: r.u64(), revealSlot: r.u64(), value: r.bytes(32),
+    queue: SB_QUEUE, oracle: SB_ORACLE, seedSlothash: new Uint8Array(32), lutSlot: 0n,
+  };
 }
 
 export async function randomnessAccount(chain: Chain, key: PublicKey): Promise<RandomnessData | null> {
@@ -46,15 +50,21 @@ export async function randomnessAccount(chain: Chain, key: PublicKey): Promise<R
   return a && a.data.length ? decodeRandomness(a.data) : null;
 }
 
-/** Encode a full 472-byte payload (everything after the discriminator) for `set_raw` / `forgeRandomness`. */
+/** Encode the 80 bytes after the discriminator for `forgeRandomness` / LiteSVM setAccount. */
 export function encodeRandomnessPayload(d: Partial<RandomnessData>): Uint8Array {
-  const w = new BorshWriter()
-    .pubkey(d.authority ?? PublicKey.default).pubkey(d.queue ?? SB_QUEUE).bytes(d.seedSlothash ?? new Uint8Array(32)).u64(d.seedSlot ?? 0n)
-    .pubkey(d.oracle ?? SB_ORACLE).u64(d.revealSlot ?? 0n).bytes(d.value ?? new Uint8Array(32)).u64(d.lutSlot ?? 0n);
-  const head = w.toBytes();
-  const out = new Uint8Array(RANDOMNESS_SIZE - 8);
-  out.set(head, 0);
-  return out;
+  return new BorshWriter()
+    .pubkey(d.authority ?? PublicKey.default)
+    .u64(d.seedSlot ?? 0n)
+    .u64(d.revealSlot ?? 0n)
+    .bytes(d.value ?? new Uint8Array(32))
+    .toBytes();
+}
+
+export function encodeRngAccount(d: Partial<RandomnessData>): Uint8Array {
+  const data = new Uint8Array(RANDOMNESS_SIZE);
+  data.set(RANDOMNESS_DISC, 0);
+  data.set(encodeRandomnessPayload(d), 8);
+  return data;
 }
 
 /** Deterministic 32-byte "oracle value" for a scenario (e.g. `valueOf('C07')`).
@@ -108,9 +118,7 @@ export function setRawIx(a: { payer: PublicKey; randomness: PublicKey; payload: 
 export async function forgeRandomness(chain: Chain, a: { owner: PublicKey; kind: RngKind; seedSlot: bigint; revealSlot: bigint; value: Uint8Array; address?: PublicKey }): Promise<PublicKey> {
   const address = a.address ?? Keypair.generate().publicKey;
   const authority = rngAccounts(a.kind, PublicKey.default, 0n).rngAuth;
-  const data = new Uint8Array(RANDOMNESS_SIZE);
-  data.set(RANDOMNESS_DISC, 0);
-  data.set(encodeRandomnessPayload({ authority, seedSlot: a.seedSlot, revealSlot: a.revealSlot, value: a.value }), 8);
+  const data = encodeRngAccount({ authority, seedSlot: a.seedSlot, revealSlot: a.revealSlot, value: a.value });
   await chain.setAccount(address, { owner: a.owner, data });
   return address;
 }

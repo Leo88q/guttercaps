@@ -1,3 +1,5 @@
+import { createSwitchboardService, switchboardConnection } from './switchboard.ts';
+import { SwitchboardError } from './switchboard-gateway.ts';
 // REST API — backend/openapi.yaml served from indexed events + local state: auth, profile,
 // inventory, packs catalogue + Pyth quotes, market, leaderboards, paid services, fusion planner,
 // staking read-model, the server-authoritative arena (queue / reveal / matches / seasons) and
@@ -32,6 +34,7 @@ import { finalityStatus } from './finality.ts';
 import * as q from './queries.ts';
 import * as fusion from './fusion.ts';
 import * as staking from './staking.ts';
+import * as gutterPot from './gutterPot.ts';
 import * as arena from './arena.ts';
 import * as quests from './quests.ts';
 import { rewardOracleStatus } from './reward-oracle.ts';
@@ -67,6 +70,7 @@ const LISTING_SORTS = ['price_asc', 'price_desc', 'rarity_desc', 'newest', 'inde
 
 export interface AppOptions {
   connection?: () => Connection;
+  switchboard?: ReturnType<typeof createSwitchboardService>;
   compliancePolicy?: compliance.AccessPolicy;
   complianceEnforce?: boolean;
   limiter?: Limiter;
@@ -278,6 +282,14 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   app.use((req, res, next) => (req.method === 'GET' || req.method === 'HEAD' ? rl(POLICIES.read)(req, res, next) : rl(POLICIES.mutate)(req, res, next)));
 
   const v1 = express.Router();
+  const switchboard = deps.switchboard ?? createSwitchboardService(() => switchboardConnection(connection()));
+  v1.get('/switchboard/health', rl({ name: 'switchboard-health', limit: 12, windowMs: 60_000, by: 'ip' }), asyncRoute(async (_req, res) => {
+    const result = await switchboard.health();
+    res.status(result.ready ? 200 : 503).json(result);
+  }));
+  v1.get('/switchboard/reveal/:randomness', rl({ name: 'switchboard-reveal', limit: 30, windowMs: 60_000, by: 'ip' }), asyncRoute(async (req, res) => {
+    res.json(await switchboard.reveal(req.params.randomness));
+  }));
   const wrap = (fn: (req: Request, res: Response) => unknown) => (req: Request, res: Response, next: NextFunction) => {
     Promise.resolve(fn(req, res)).catch(next);
   };
@@ -501,7 +513,10 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.get('/preorder/me', requireAuth, (req, res) => { res.json({ items: preorders.mine(db, req.session!.wallet) }); });
   v1.get('/preorder/registry', (_req, res) => { res.json(preorders.registrySnapshot(db)); });
   v1.post('/preorder/intent', requireAuth, accessGate('packs'), rl(POLICIES.mutate), wrap(async (req, res) => {
-    res.json(preorders.createIntent(db, req.session!.wallet, Number(req.body?.qty)));
+    const offer = req.body?.offer === 'chest' ? 'chest' as const : 'pack' as const;
+    const qty = offer === 'chest' ? 1 : Number(req.body?.qty);
+    const currency = preorders.parsePreorderCurrency(req.body?.currency);
+    res.json(preorders.createIntent(db, req.session!.wallet, qty, undefined, offer, currency));
   }));
   v1.post('/preorder/confirm', requireAuth, accessGate('packs'), rl(POLICIES.claim), rl(POLICIES.claimNet), wrap(async (req, res) => {
     const refId = Number(req.body?.refId);
@@ -531,7 +546,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     else res.json(r);
   });
 
-  // ------------------------------------------------------------ packs: quote (Pyth, our own pusher — docs/03 §2.9)
+  // ------------------------------------------------------------ packs: quote (frozen FX — SOL $110 / SKR $0.016)
   v1.post('/packs/quote', requireAuth, accessGate('packs'), rl(POLICIES.quote), wrap(async (req, res) => {
     // The legal gate lives here, not in the UI: `me().flags.geoRestricted` only changes the copy, and a
     // buyer who wants a pack will not be stopped by a disabled button (docs/09 §5.2 — "блок покупки, не блок игры").
@@ -614,6 +629,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.get('/staking/overview', (_req, res) => { res.json(staking.overview(db)); });
   v1.get('/staking/me', requireAuth, (req, res) => { res.json(staking.me(db, req.session!.wallet)); });
   v1.post('/staking/estimate', (req, res) => { res.json(staking.estimate(db, staking.validateEstimate(req.body))); });
+  v1.get('/staking/pot', (req, res) => { res.json(gutterPot.view(db, req.session?.wallet)); });
 
   // ------------------------------------------------------------ arena (server-authoritative ranked; wagers are on chain)
   v1.get('/arena/seasons/current', (_req, res) => { res.json(arena.seasonApi(db)); });
@@ -718,6 +734,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   app.use('/', v1); // legacy paths (/leaderboard, /stats, /wallet/:address/events) keep working for the landing page
 
   app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
+    if (err instanceof SwitchboardError) { res.status(err.status).json({ code: err.code, message: err.code }); return; }
     if (err instanceof ServiceError) { res.status(err.status).json({ code: err.code, message: err.message, ...(err.details !== undefined ? { details: err.details } : {}) }); return; }
     if (err instanceof AuthError) { res.status(err.status).json({ code: err.code, message: err.message }); return; }
     const msg = (err as Error)?.message ?? String(err);

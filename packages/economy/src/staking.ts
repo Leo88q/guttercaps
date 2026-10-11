@@ -35,11 +35,31 @@ export interface LockTierDef {
 const DAY = 86_400;
 
 export const LOCK_TIERS: Record<LockTier, LockTierDef> = {
-  flex: { id: 'flex', lockSeconds: 0,         boost: 1.0, earlyExitPenaltyBps: 0,    targetApyRange: [12, 30] },
-  d30:  { id: 'd30',  lockSeconds: 30 * DAY,  boost: 1.5, earlyExitPenaltyBps: 500,  targetApyRange: [18, 45] },
-  d90:  { id: 'd90',  lockSeconds: 90 * DAY,  boost: 2.2, earlyExitPenaltyBps: 1000, targetApyRange: [26, 66] },
-  d180: { id: 'd180', lockSeconds: 180 * DAY, boost: 3.0, earlyExitPenaltyBps: 1500, targetApyRange: [36, 90] },
+  flex: { id: 'flex', lockSeconds: 0,         boost: 1.0, earlyExitPenaltyBps: 0,    targetApyRange: [4, 12] },
+  d30:  { id: 'd30',  lockSeconds: 30 * DAY,  boost: 1.5, earlyExitPenaltyBps: 500,  targetApyRange: [6, 18] },
+  d90:  { id: 'd90',  lockSeconds: 90 * DAY,  boost: 2.2, earlyExitPenaltyBps: 1000, targetApyRange: [10, 24] },
+  d180: { id: 'd180', lockSeconds: 180 * DAY, boost: 3.0, earlyExitPenaltyBps: 1500, targetApyRange: [14, 32] },
 };
+
+/**
+ * Launch cash rails (mirrored on-chain in programs/staking). Per-wallet daily
+ * claim caps stop a 50-DAU network from printing a Standard pack per staker per
+ * day. Alive-stake: a chip that has not been in a Cap Slam for `aliveWindowDays`
+ * keeps 25 % weight — AFK farm dies, fighters keep the full share.
+ */
+export const STAKE_CLAIM_CAPS = {
+  chipDailyCg: 30,
+  tokenDailyCg: 15,
+  aliveWindowDays: 7,
+  idleWeight: 0.25,
+} as const;
+
+export function aliveStakeMult(lastPlayedAt: number | null | undefined, now = Date.now() / 1000): number {
+  if (!lastPlayedAt || lastPlayedAt <= 0) return STAKE_CLAIM_CAPS.idleWeight;
+  return (now - lastPlayedAt) <= STAKE_CLAIM_CAPS.aliveWindowDays * DAY
+    ? 1
+    : STAKE_CLAIM_CAPS.idleWeight;
+}
 
 /**
  * Modelled mid-Y1 token-staking TVL for the indicative APY bands: ~40M $CG

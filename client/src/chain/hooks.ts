@@ -5,11 +5,11 @@ import { useQuery, useQueries } from '@tanstack/react-query';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { PublicKey } from '@solana/web3.js';
 import {
-  configPda, emissionPda, pendingPackPda, pityPda, playerItemsPda, tokenStakePda, tokenPoolPda, chipPoolPda, setBonusPda, ata,
+  configPda, emissionPda, pendingPackPda, pityPda, playerItemsPda, tokenStakePda, tokenPoolPda, chipPoolPda, setBonusPda, walletStakeDayPda, ata,
 } from './pdas';
 import {
   decodeEmissionState, decodeGameConfig, decodePendingPack, decodePlayerItems, decodePlayerPity, decodePool, decodeSetBonus,
-  decodeTokenAmount, decodeTokenStake, type GameConfig,
+  decodeTokenAmount, decodeTokenStake, decodeWalletStakeDay, type GameConfig,
 } from './accounts';
 import type { WalletLike } from './tx';
 
@@ -24,6 +24,7 @@ export const chainKeys = {
   pools: ['chain', 'pools'] as const,
   tokenStakes: (w: string) => ['chain', 'tstakes', w] as const,
   setBonus: (w: string) => ['chain', 'setbonus', w] as const,
+  walletDay: (w: string) => ['chain', 'wday', w] as const,
 };
 
 /** Wallet adapter → the minimal signer interface used by chain/tx.ts */
@@ -143,6 +144,12 @@ export function useStakingChain() {
         enabled: !!publicKey,
         queryFn: async () => { const i = await connection.getAccountInfo(setBonusPda(publicKey!)[0], 'confirmed'); return i ? decodeSetBonus(new Uint8Array(i.data)) : null; },
         staleTime: 60_000,
+      },
+      {
+        queryKey: chainKeys.walletDay(w),
+        enabled: !!publicKey,
+        queryFn: async () => { const i = await connection.getAccountInfo(walletStakeDayPda(publicKey!)[0], 'confirmed'); return i ? decodeWalletStakeDay(new Uint8Array(i.data)) : null; },
+        staleTime: 15_000,
       },
     ],
   });

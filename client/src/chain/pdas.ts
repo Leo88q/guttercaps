@@ -34,9 +34,9 @@ export const compressedSettlementPda = (buyer: PublicKey, nonce: bigint) => find
 export const compressedListingPda = (claim: PublicKey) => find([enc('compressed_listing'), claim.toBytes()], MARKET_ID);
 /** Listing for an already-registered Bubblegum V2 asset. */
 export const compressedAssetListingPda = (asset: PublicKey) => find([enc('compressed_asset_listing'), asset.toBytes()], MARKET_ID);
-/** Bubblegum V2 leaf asset PDA `["asset", tree, leafIndex LE]`. */
+/** Bubblegum V2 leaf asset PDA `["asset", tree, u64 LE index]` — same as `deriveBubblegumLeafAssetId`. */
 export const bubblegumLeafAssetPda = (merkleTree: PublicKey, leafIndex: number) =>
-  find([enc('asset'), merkleTree.toBytes(), u32le(leafIndex)], MPL_BUBBLEGUM_V2_ID);
+  find([enc('asset'), merkleTree.toBytes(), u64le(BigInt(leafIndex >>> 0))], MPL_BUBBLEGUM_V2_ID);
 export const bubblegumTreeConfigPda = (merkleTree: PublicKey) => find([merkleTree.toBytes()], MPL_BUBBLEGUM_V2_ID);
 export const pendingPackPda = (buyer: PublicKey, nonce: bigint) => find([enc('pending'), buyer.toBytes(), u64le(nonce)], CHIP_CORE_ID);
 export const pityPda = (wallet: PublicKey) => find([enc('pity'), wallet.toBytes()], CHIP_CORE_ID);
@@ -89,6 +89,8 @@ export const tokenStakePda = (owner: PublicKey, tier: number) => find([enc('tsta
 export const chipStakePda = (asset: PublicKey) => find([enc('cstake'), asset.toBytes()], STAKING_ID);
 export const compressedChipStakePda = (claim: PublicKey) => find([enc('compressed_cstake'), claim.toBytes()], STAKING_ID);
 export const setBonusPda = (owner: PublicKey) => find([enc('setbonus'), owner.toBytes()], STAKING_ID);
+export const walletStakeDayPda = (owner: PublicKey) => find([enc('wday'), owner.toBytes()], STAKING_ID);
+export const chipPlayPda = (chipKey: PublicKey) => find([enc('chipplay'), chipKey.toBytes()], STAKING_ID);
 export const rewardRootPda = (kind: number, epoch: number) => find([enc('root'), u8(kind), u32le(epoch)], STAKING_ID);
 export const claimReceiptPda = (root: PublicKey, wallet: PublicKey) => find([enc('claim'), root.toBytes(), wallet.toBytes()], STAKING_ID);
 /** SKR prize pool (reward currency #2) — vault = ata(skrMint, skrPool). */

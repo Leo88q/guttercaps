@@ -5,12 +5,12 @@ import golden from '../../../packages/economy/golden/pack_expand.json';
 import { BorshReader, BorshWriter, u64le } from './borsh';
 import { accountDiscriminator, ixDiscriminator, eventsFromLogs, findEvent, optional, parseCustomError, concat, eventDiscriminator } from './anchor';
 import {
-  decodeChipState, decodeGameConfig, decodePendingPack, decodePendingClaimFusion, decodePlayerPity, decodeListing, decodeTokenStake, decodeVaultLedger, decodeCompressedAssetListing, decodeCompressedPackSettlement, decodeCompressedMintClaim, sumLedgers, readPackOpened, readCompressedClaimsCreated, readCompressedPackSettled, readClaimFusionRevealed, chipIsFree, claimIsListable, CHIP_FLAG,
+  decodeChipState, decodeGameConfig, decodePendingPack, decodePendingClaimFusion, decodePlayerPity, decodeListing, decodeTokenStake, decodeVaultLedger, decodeCompressedAssetListing, decodeCompressedPackSettlement, decodeCompressedMintClaim, sumLedgers, readPackOpened, readCompressedClaimsCreated, readCompressedPackOpened, readCompressedPackSettled, readClaimFusionRevealed, chipIsFree, claimIsListable, claimFusionBlock, CHIP_FLAG,
 } from './accounts';
 import { vaultPda, assetPda, chipStatePda, collectionMetaPda, configPda, pendingPackPda, claimFusionPda, compressedMintClaimPda, compressedSettlementPda, bubblegumTreeConfigPda, compressedChipStatePda, bubblegumTreeMetaPda, pityPda, pendingFusionPda, battlePda, ata, freshNonce, rewardRootPda, rewarderPda, playerItemsPda, skrPoolPda, emissionPda, seasonPoolAuthPda, RNG_KIND, rngAuthPda, rngPda, sbLutPda, sbLutSignerPda, sbStatePda, sbOracleStatsPda, sbRewardEscrow, LEDGER_SHARDS, allLedgerPdas, ledgerPda, ledgerPdaOf, ledgerShardOf } from './pdas';
 import { fitsInTx } from './tx';
 import { buyPackIx, openPackIx, payServiceIx, Currency, fuseIx, mintCompressedChipIx, createBubblegumTreeIx, openCompressedPackIx, registerCompressedChipIx, cancelCompressedClaimIx, finalizeCompressedPackIx, fuseClaimsCommitIx, fuseClaimsRevealIx, cancelStaleClaimFusionIx, closeExpiredClaimIx } from './ix/chipCore';
-import { v2LeafHash, foldCompressionProof, discoverLeafNonce, verifyBubblegumProofLocal } from './bubblegum';
+import { v2LeafHash, foldCompressionProof, discoverLeafNonce, verifyBubblegumProofLocal, deriveBubblegumLeafAssetId } from './bubblegum';
 import { DasClient } from './das';
 import { initRandomnessIx, revealRandomnessIx, closeRandomnessIx, closeRandomnessLutIx, commitAccountMetas, rngAccounts } from './ix/rng';
 import { createBattleIx, acceptBattleIx, createCompressedBattleV2Ix, acceptCompressedBattleV2Ix, type CompressedArenaChipProof } from './ix/arena';
@@ -221,6 +221,25 @@ describe('compressed settlement layouts', () => {
     expect(event.count).toBe(3);
     expect(event.claimNonces).toEqual([100n, 101n, 102n]);
     expect(event.buyer.equals(buyer)).toBe(true);
+  });
+
+  it('decodes CompressedPackOpened with the pack seed and rarities', () => {
+    const buyer = Keypair.generate().publicKey;
+    const roll = Uint8Array.from({ length: 32 }, (_, i) => i + 1);
+    const w = new BorshWriter().pubkey(buyer).u64(7n).u8(1).u8(0).u8(2);
+    [10n, 11n, 0n, 0n, 0n].forEach((n) => w.u64(n));
+    [3, 1, 0, 0, 0].forEach((n) => w.u8(n));
+    [2, 5, 0, 0, 0].forEach((n) => w.u8(n));
+    w.bytes(roll).u16(4).u16(5).bool(false);
+    const payload = concat(eventDiscriminator('CompressedPackOpened'), w.toBytes());
+    const logs = [`Program data: ${btoa(String.fromCharCode(...payload))}`];
+    const event = findEvent(logs, 'CompressedPackOpened', readCompressedPackOpened)!;
+    expect(event.sku).toBe(1);
+    expect(event.count).toBe(2);
+    expect(event.rarities).toEqual([3, 1]);
+    expect(event.collections).toEqual([2, 5]);
+    expect(event.roll).toEqual(roll);
+    expect(event.voucher).toBe(false);
   });
 });
 
@@ -657,9 +676,9 @@ describe('V2 market: resolver → builder round trip', () => {
   // each side separately left the join untested: a resolver that named a tree the builder does not
   // accept would pass both suites and fail at the wallet.
   const leaf = async () => {
-    const asset = Keypair.generate().publicKey;
-    const claim = Keypair.generate().publicKey;
     const merkleTree = Keypair.generate().publicKey;
+    const asset = deriveBubblegumLeafAssetId(merkleTree, 6);
+    const claim = Keypair.generate().publicKey;
     const coreCollection = Keypair.generate().publicKey;
     const owner = Keypair.generate().publicKey;
     const chip = new BorshWriter().pubkey(asset).pubkey(claim).u8(3).pubkey(merkleTree).u32(6).u64(6n);
@@ -1159,6 +1178,9 @@ describe('H3 claim fusion (client mirror)', () => {
     expect(claimIsListable(decodeCompressedMintClaim(buf(2_000n, true)), 1_000)).toBe(false); // Starter window
     expect(claimIsListable(decodeCompressedMintClaim(buf(2_000n, true)), 2_000)).toBe(true);
     expect(claimIsListable(decodeCompressedMintClaim(buf(0n, false)), 1_000)).toBe(false); // unregistered
+    expect(claimFusionBlock(decodeCompressedMintClaim(buf(0n, true)), buyer, 1_000)).toBeUndefined();
+    expect(claimFusionBlock(decodeCompressedMintClaim(buf(0n, false)), buyer, 1_000)).toBe('unregistered');
+    expect(claimFusionBlock(decodeCompressedMintClaim(buf(0n, true)), Keypair.generate().publicKey, 1_000)).toBe('owner');
   });
 
   it('decodes the CompressedPackSettled and ClaimFusionRevealed events', () => {
@@ -1237,8 +1259,15 @@ describe('client DAS resolveClaimAsset (mint → register bridge)', () => {
     const calls: string[] = [];
     let polls = 0;
     const fetchImpl = (async (_url: string, init: { body: string }) => {
-      const req = JSON.parse(init.body) as { id: number; method: string };
+      const req = JSON.parse(init.body) as { id: number; method: string; params: Record<string, unknown> };
       calls.push(req.method);
+      expect(Array.isArray(req.params)).toBe(false);
+      if (req.method === 'getAssetsByOwner') expect(req.params).toEqual({
+        ownerAddress: buyer.toBase58(), page: 1, limit: 1000,
+        sortBy: { sortBy: 'created', sortDirection: 'desc' },
+        displayOptions: { showUnverifiedCollections: true, showCollectionMetadata: false },
+      });
+      else expect(req.params).toEqual({ id: assetPk.toBase58() });
       if (req.method === 'getAssetsByOwner') {
         const items = itemsByPoll[Math.min(polls, itemsByPoll.length - 1)];
         polls++;

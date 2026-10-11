@@ -523,16 +523,67 @@ test('each deploy-surface rule fails on a deliberately broken input', () => {
 });
 
 
-test('API Docker build smoke imports TypeScript with its production loader on Node 22.13', () => {
+test('API Docker build smoke imports TypeScript with its production loader on Node 24.21', () => {
   const dockerfile = read('ops/deploy/Dockerfile.api');
   const check = (text: string) => {
     const command = text.split('\n').find(line => line.includes("import('@guttercaps/economy')"));
     assert.ok(command, 'economy workspace import smoke must remain in the image build');
-    assert.match(command, /node --import tsx --input-type=module/, 'Node 22.13 needs the TypeScript loader');
+    assert.match(command, /node --import tsx --input-type=module/, 'Node 24.21 needs the TypeScript loader');
+    assert.match(dockerfile, /ARG NODE_IMAGE=node:24\.21\.\d+-slim/, 'Dockerfile.api pin must match the node:sqlite assertion in the same file');
   };
   check(dockerfile);
   const backend = JSON.parse(read('backend/package.json'));
   assert.ok(backend.dependencies.tsx, 'tsx must survive npm ci --omit=dev');
   assert.throws(() => check(dockerfile.replace('--import tsx --input-type=module', '--input-type=module')),
     /TypeScript loader/);
+});
+
+test('compose crank secret: host path is not the in-container path', () => {
+  // CRANK_KEYPAIR_PATH is the file on the VPS; compose mounts it at /run/secrets/crank_keypair.
+  // Interpolating the host path into CRANK_KEYPAIR makes the process look for
+  // ./secrets/crank_keypair.json inside the image, which does not exist — packs never open.
+  assert.match(COMPOSE, /^\s+CRANK_KEYPAIR:\s+\/run\/secrets\/crank_keypair\s*$/m,
+    'CRANK_KEYPAIR must be the compose file-secret mount');
+  assert.match(COMPOSE, /file:\s+\$\{CRANK_KEYPAIR_PATH:-\.\/secrets\/crank_keypair\.json\}/,
+    'CRANK_KEYPAIR_PATH is the host file for secrets.crank_keypair');
+  assert.doesNotMatch(COMPOSE, /CRANK_KEYPAIR:\s+\$\{CRANK_KEYPAIR_PATH/,
+    'interpolating the host path into CRANK_KEYPAIR points at a file that does not exist in the image');
+  const broken = COMPOSE.replace(
+    'CRANK_KEYPAIR: /run/secrets/crank_keypair',
+    'CRANK_KEYPAIR: ${CRANK_KEYPAIR_PATH:-/run/secrets/crank_keypair}',
+  );
+  assert.notEqual(broken, COMPOSE, 'the interpolation mutation must actually apply');
+  assert.throws(
+    () => assert.doesNotMatch(broken, /CRANK_KEYPAIR:\s+\$\{CRANK_KEYPAIR_PATH/,
+      'interpolating the host path into CRANK_KEYPAIR points at a file that does not exist in the image'),
+    /interpolating the host path/,
+  );
+});
+
+test('host env overlays are tracked; filled copies are not', () => {
+  for (const ex of [
+    'ops/deploy/hosts/guttercaps.env.example',
+    'ops/deploy/hosts/guttercapsdev.env.example',
+    'ops/deploy/hosts/backend.guttercaps.env.example',
+    'ops/deploy/hosts/backend.guttercapsdev.env.example',
+  ]) {
+    assert.equal(wouldAdd(ex), true, `${ex} is the template operators copy from — it must stay tracked`);
+  }
+  for (const filled of [
+    'ops/deploy/hosts/guttercaps.env',
+    'ops/deploy/hosts/guttercapsdev.env',
+    'ops/deploy/hosts/backend.guttercaps.env',
+    'ops/deploy/hosts/secrets.env',
+  ]) {
+    assert.equal(wouldAdd(filled), false, `${filled} would be staged by git add -A — a filled overlay is secrets`);
+  }
+});
+
+test('Cloudflare tunnel edge: loopback bind, CF-Connecting-IP, edge proto', () => {
+  assert.match(COMPOSE, /HTTP_BIND:-\s*127\.0\.0\.1/, 'compose must default the published port to loopback');
+  const nginx = read('ops/deploy/nginx.conf');
+  assert.match(nginx, /real_ip_header CF-Connecting-IP/, 'player IP behind cloudflared is CF-Connecting-IP');
+  assert.match(nginx, /proxy_set_header X-Forwarded-Proto \$edge_proto/, '$scheme on :8080 is http');
+  assert.match(nginx, /proxy_set_header X-Forwarded-For \$remote_addr/, 'do not append a client-supplied XFF after real_ip');
+  assert.doesNotMatch(nginx.replace(/#[^\n]*/g, ''), /X-Forwarded-Proto \$scheme/, 'active proto must not be $scheme');
 });

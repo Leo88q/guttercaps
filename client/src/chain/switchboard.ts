@@ -1,78 +1,37 @@
-// Switchboard On-Demand randomness for pack opens, risky fusions and wagers.
+// In-house SlotHashes commit–reveal for pack opens, risky fusions and wagers.
 //
-// SEC-C3 part 2: the randomness account is a PDA of OUR program (`["rng", kind,
-// owner, nonce]`) whose Switchboard `authority` is the program's `["rng_auth"]`
-// PDA. The client therefore never holds a randomness keypair and never signs a
-// Switchboard instruction itself:
-//   init   → `init_randomness` (chip_core) / `init_battle_randomness` (arena) — CPI randomness_init
-//   commit → done INSIDE buy_pack / fuse / create_battle (CPI, PDA-signed)
-//   reveal → `reveal_randomness` / `reveal_battle_randomness` (permissionless relay of the
-//            oracle gateway response; CPI randomness_reveal, PDA-signed) — the crank or the player
-//   close  → `close_randomness` / `close_battle_randomness` (rent back to the player, SEC-M7)
-//   table  → `close_randomness_lut` / `close_battle_randomness_lut` (the Address Lookup Table's rent,
-//            one ALT deactivation cooldown later — backlog #23; also swept by our crank)
-// The SDK (~250 KB) is only used to pick a healthy oracle and to talk to the oracle gateway,
-// so it stays behind dynamic imports.
+// The randomness account is a PDA of OUR program (`["rng", kind, owner, nonce]`),
+// authority `["rng_auth"]`. Init/commit/reveal/close stay the same instruction
+// names so the IDL and ix builders don't change; production ignores the client
+// `value` and mixes `sha256("gc-rng-v1" ‖ pda ‖ seed_slot ‖ target ‖ slothash)`.
 import { Connection, PublicKey, type TransactionInstruction } from '@solana/web3.js';
 import { CLUSTER } from '@/app/config';
-import { expectDiscriminator, hasDiscriminator } from './anchor';
-import { SWITCHBOARD_ON_DEMAND_ID, SWITCHBOARD_QUEUE } from './ids';
+import { SWITCHBOARD_QUEUE, SYSVAR_SLOT_HASHES_ID } from './ids';
 import { closeRandomnessIx, closeRandomnessLutIx, initRandomnessIx, revealRandomnessIx, rngAccounts, type RngAccounts } from './ix/rng';
-import type { RngKind } from './pdas';
+import { rngAuthPda, type RngKind } from './pdas';
+import { recentLookupSlots } from './lookupTableSlots';
+import { SwitchboardUnavailable } from './switchboardRelay';
+import { sha256 } from '@noble/hashes/sha256';
 import { sendTx, type WalletLike } from './tx';
 
-const RANDOMNESS_ACCOUNT_SIZE = 480;
-const ORACLE_GATEWAY_URI_OFFSET = 3584;
+/** Matches programs/chip_core/src/randomness.rs `RNG_DELAY_SLOTS`. */
+export const RNG_DELAY_SLOTS = 8n;
+const RNG_DISC = new TextEncoder().encode('gc-rng01');
+const RANDOMNESS_ACCOUNT_SIZE = 88;
 
 function decodeRandomnessAccount(data: Uint8Array) {
-  const r = expectDiscriminator(data, 'RandomnessAccountData');
-  if (data.length < RANDOMNESS_ACCOUNT_SIZE) throw new Error(`RandomnessAccountData: ${data.length} bytes`);
+  if (data.length < RANDOMNESS_ACCOUNT_SIZE) throw new Error(`RngAccount: ${data.length} bytes`);
+  for (let i = 0; i < 8; i++) if (data[i] !== RNG_DISC[i]) throw new Error('RngAccount discriminator mismatch');
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
   return {
-    authority: r.pubkey(),
-    queue: r.pubkey(),
-    seedSlothash: r.bytes(32),
-    seedSlot: r.u64(),
-    oracle: r.pubkey(),
-    revealSlot: r.u64(),
-    value: r.bytes(32),
-    lutSlot: r.u64(),
+    authority: new PublicKey(data.subarray(8, 40)),
+    seedSlot: dv.getBigUint64(40, true),
+    revealSlot: dv.getBigUint64(48, true),
+    value: data.subarray(56, 88),
+    queue: defaultQueue(),
+    oracle: defaultQueue(),
+    lutSlot: 0n,
   };
-}
-
-function decodeOracleGateway(data: Uint8Array): string {
-  if (!hasDiscriminator(data, 'OracleAccountData')) throw new Error('Account discriminator mismatch: expected OracleAccountData');
-  if (data.length < ORACLE_GATEWAY_URI_OFFSET + 64) throw new Error(`OracleAccountData: ${data.length} bytes`);
-  const raw = data.subarray(ORACLE_GATEWAY_URI_OFFSET, ORACLE_GATEWAY_URI_OFFSET + 64);
-  let end = raw.indexOf(0);
-  if (end < 0) end = raw.length;
-  return new TextDecoder().decode(raw.subarray(0, end)).trim();
-}
-
-type Sb = typeof import('@switchboard-xyz/on-demand');
-type SbProgram = Awaited<ReturnType<Sb['AnchorUtils']['loadProgramFromConnection']>>;
-
-let sbMod: Promise<Sb> | undefined;
-const loadSb = () => (sbMod ??= import('@switchboard-xyz/on-demand'));
-
-const programCache = new WeakMap<Connection, Promise<SbProgram>>();
-
-async function sbProgram(connection: Connection, payer: PublicKey): Promise<SbProgram> {
-  let p = programCache.get(connection);
-  if (!p) {
-    p = (async () => {
-      const sb = await loadSb();
-      // A "wallet" that can't sign: we never let the SDK send; we only read and build.
-      const wallet = {
-        publicKey: payer,
-        signTransaction: async () => { throw new Error('read-only'); },
-        signAllTransactions: async () => { throw new Error('read-only'); },
-      };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return sb.AnchorUtils.loadProgramFromConnection(connection, wallet as any, SWITCHBOARD_ON_DEMAND_ID);
-    })();
-    programCache.set(connection, p);
-  }
-  return p;
 }
 
 function defaultQueue(): PublicKey {
@@ -87,33 +46,49 @@ interface RandomnessPrep extends RngAccounts {
   ixs: TransactionInstruction[];
 }
 
-/**
- * Pick a healthy randomness oracle from the queue (SDK health snapshots + on-chain heartbeat).
- * On localnet `sb_mock` ignores the oracle, so any key works.
- */
-async function selectOracle(connection: Connection, payer: PublicKey, queue: PublicKey = defaultQueue()): Promise<PublicKey> {
-  if (CLUSTER === 'localnet') return queue;
-  const sb = await loadSb();
-  const program = await sbProgram(connection, payer);
-  const { oracle } = await new sb.Queue(program, queue).selectRandomnessOracle();
-  return oracle.pubkey;
+function u64le(n: bigint): Uint8Array {
+  const b = new Uint8Array(8);
+  new DataView(b.buffer).setBigUint64(0, n, true);
+  return b;
+}
+
+/** Same mix as `chip_core::randomness::derive_value`. */
+export function deriveGcRngValue(pda: PublicKey, seedSlot: bigint, slothash: Uint8Array): Uint8Array {
+  const target = seedSlot + RNG_DELAY_SLOTS;
+  const parts = [new TextEncoder().encode('gc-rng-v1'), pda.toBytes(), u64le(seedSlot), u64le(target), slothash];
+  const all = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let o = 0;
+  for (const p of parts) { all.set(p, o); o += p.length; }
+  return sha256(all);
+}
+
+/** Newest SlotHashes entry with `slot <= target` (skipped slots fall back to the previous produced block). */
+export function slothashAtOrBefore(data: Uint8Array, target: bigint): Uint8Array | null {
+  if (data.length < 8) return null;
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const n = dv.getBigUint64(0, true);
+  if (n < 1n || n > 512n || data.length < 8 + Number(n) * 40) return null;
+  for (let i = 0; i < Number(n); i++) {
+    const slot = dv.getBigUint64(8 + i * 40, true);
+    if (slot <= target) return data.subarray(8 + i * 40 + 8, 8 + i * 40 + 40);
+  }
+  return null;
 }
 
 /** Build the init instruction for the program-owned randomness account of (kind, owner, nonce). */
 export async function prepareRandomness(
   connection: Connection, owner: PublicKey, kind: RngKind, nonce: bigint, queue: PublicKey = defaultQueue(),
 ): Promise<RandomnessPrep> {
-  const [oracle, recentSlot] = await Promise.all([selectOracle(connection, owner, queue), connection.getSlot('finalized')]);
+  const recentSlot = (await recentLookupSlots(connection)).slots[0];
   const acc = rngAccounts(kind, owner, nonce);
+  const oracle = queue;
   return { ...acc, queue, oracle, ixs: [initRandomnessIx({ ...acc, queue, recentSlot: BigInt(recentSlot) })] };
 }
 
 /**
- * Fetch the oracle's reveal for a committed account and wrap it into our permissionless
- * `reveal_randomness` instruction. The SDK waits ~3 s and calls the oracle gateway; we retry
- * with backoff because the oracle needs the committed slot to be finalized. Resolves to the
- * instruction plus the 32 revealed bytes (so the UI can pre-simulate the roll before the chain
- * confirms).
+ * Wait until `seed_slot + DELAY` is in SlotHashes, then wrap a permissionless
+ * `reveal_randomness` instruction. Production ignores the 32-byte argument;
+ * we still compute the mix here so the UI can pre-simulate the roll.
  */
 export async function prepareReveal(
   connection: Connection,
@@ -123,8 +98,7 @@ export async function prepareReveal(
   opts: { maxWaitMs?: number; onAttempt?: (n: number) => void } = {},
 ): Promise<{ ix: TransactionInstruction; value: Uint8Array }> {
   const deadline = Date.now() + (opts.maxWaitMs ?? 60_000);
-  const gatewayRpc = CLUSTER === 'mainnet-beta' ? 'https://api.mainnet-beta.solana.com' : 'https://api.devnet.solana.com';
-  let delay = 1_500;
+  let delay = 400;
   let attempt = 0;
   for (;;) {
     attempt++;
@@ -133,34 +107,31 @@ export async function prepareReveal(
       const rndInfo = await connection.getAccountInfo(randomness, 'confirmed');
       if (!rndInfo) throw new Error('randomness account not found yet');
       const rnd = decodeRandomnessAccount(new Uint8Array(rndInfo.data));
-      const oracleInfo = await connection.getAccountInfo(rnd.oracle, 'confirmed');
-      if (!oracleInfo) throw new Error(`oracle ${rnd.oracle.toBase58()} account not found`);
-      const gatewayUri = decodeOracleGateway(new Uint8Array(oracleInfo.data));
-      if (!/^https?:\/\//.test(gatewayUri)) throw new Error(`oracle ${rnd.oracle.toBase58()} has no gateway uri`);
-      const url = `${gatewayUri.replace(/\/+$/, '')}/gateway/api/v1/randomness_reveal`;
-      const hex = Array.from(randomness.toBytes(), (x) => x.toString(16).padStart(2, '0')).join('');
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ slothash: Array.from(rnd.seedSlothash), randomness_key: hex, slot: Number(rnd.seedSlot), rpc: gatewayRpc }),
-        signal: AbortSignal.timeout(10_000),
-      });
-      const text = await res.text();
-      if (!res.ok) throw new Error(`gateway ${res.status}: ${text.slice(0, 200)}`);
-      const j = JSON.parse(text) as { signature?: string; recovery_id?: number; value?: number[] };
-      const bin = atob(j.signature ?? '');
-      const signature = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) signature[i] = bin.charCodeAt(i);
-      const value = Uint8Array.from(j.value ?? []);
-      if (signature.length !== 64 || value.length !== 32 || typeof j.recovery_id !== 'number') {
-        throw new Error('gateway payload malformed');
+      if (!rnd.authority.equals(rngAuthPda(kind)[0])) throw new SwitchboardUnavailable({ stage: 'randomness_binding' });
+      if (rnd.revealSlot > 0n) {
+        const ix = revealRandomnessIx({
+          kind, payer, randomness, oracle: rnd.oracle, queue: rnd.queue,
+          signature: new Uint8Array(64), recoveryId: 0, value: new Uint8Array(rnd.value),
+        });
+        return { ix, value: new Uint8Array(rnd.value) };
       }
-      const ix = revealRandomnessIx({ kind, payer, randomness, oracle: rnd.oracle, queue: rnd.queue, signature, recoveryId: j.recovery_id, value });
+      if (rnd.seedSlot === 0n) throw new Error('randomness not committed yet');
+      const target = rnd.seedSlot + RNG_DELAY_SLOTS;
+      const { context, value: sh } = await connection.getAccountInfoAndContext(SYSVAR_SLOT_HASHES_ID, { commitment: 'confirmed' });
+      if (!sh) throw new Error('SlotHashes unavailable');
+      if (BigInt(context.slot) <= target) throw new Error('rng delay not elapsed');
+      const hash = slothashAtOrBefore(new Uint8Array(sh.data), target);
+      if (!hash) throw new Error('target slothash not in window');
+      const value = deriveGcRngValue(randomness, rnd.seedSlot, hash);
+      const ix = revealRandomnessIx({
+        kind, payer, randomness, oracle: rnd.oracle, queue: rnd.queue,
+        signature: new Uint8Array(64), recoveryId: 0, value,
+      });
       return { ix, value };
     } catch (e) {
       if (Date.now() + delay > deadline) throw e;
       await new Promise((f) => setTimeout(f, delay));
-      delay = Math.min(delay * 2, 8_000);
+      delay = Math.min(delay * 2, 2_000);
     }
   }
 }

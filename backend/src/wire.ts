@@ -17,6 +17,7 @@ import { toUsd } from './queries.ts';
 /** Event name → the client's invalidation key. Anything not listed still ships under its snake_case name. */
 export const WIRE_TYPE: Record<string, string> = {
   PackOpened: 'pack_opened',
+  CompressedPackOpened: 'pack_opened',
   ChipFused: 'chip_fused',
   CompressedClaimsFused: 'chip_fused',
   ClaimFusionRevealed: 'chip_fused',
@@ -131,7 +132,8 @@ export function wireEvent(db: Db, e: RawEvent, ctx: { slot?: number } = {}): Bus
     case 'BattleAccepted': payload = { id: s_('battle'), opponent: s_('opponent') }; break;
     case 'BattleResolved': payload = { id: s_('battle'), winner: s_('winner'), pot: s_('pot') }; break;
     case 'BattleCancelled': payload = { id: s_('battle'), status: 'cancelled' }; break;
-    case 'PackOpened': payload = { buyer: s_('buyer'), nonce: s_('nonce'), sku: n_('sku'), count: n_('count'), pityAfter: n_('pityAfter') }; break;
+    case 'PackOpened':
+    case 'CompressedPackOpened': payload = { buyer: s_('buyer'), nonce: s_('nonce'), sku: n_('sku'), count: n_('count'), pityAfter: n_('pityAfter') }; break;
     case 'PackCancelled': payload = { buyer: s_('buyer'), nonce: s_('nonce'), refunded: s_('refunded') }; break;
     case 'ChipFused': payload = { owner: s_('owner'), result: s_('result'), recipe: n_('recipe'), success: Boolean(d.success) }; break;
     // SEC-G04: same wire shape as ChipFused so the fusion toast / invalidation is one client code path.
@@ -142,6 +144,8 @@ export function wireEvent(db: Db, e: RawEvent, ctx: { slot?: number } = {}): Bus
     case 'Staked': payload = { owner: s_('owner'), kind: n_('kind'), key: s_('key'), amount: s_('amount') }; break;
     case 'Unstaked': payload = { owner: s_('owner'), kind: n_('kind'), key: s_('key'), amount: s_('amount'), penaltyBurned: s_('penaltyBurned') }; break;
     case 'Claimed': payload = { owner: s_('owner'), kind: n_('kind'), amount: s_('amount') }; break;
+    case 'ClaimCapped': payload = { owner: s_('owner'), kind: n_('kind'), pending: s_('pending'), paid: s_('paid') }; break;
+    case 'PlayPulsed': payload = { key: s_('key'), lastPlayed: s_('lastPlayed') }; break;
     case 'RootClaimed': payload = { wallet: s_('wallet'), kind: n_('kind'), epoch: n_('epoch'), amount: s_('amount') }; break;
     case 'RootPublished': payload = { kind: n_('kind'), epoch: n_('epoch'), budget: s_('budget') }; break;
     case 'ParamsChanged': payload = { admin: s_('admin'), version: n_('version') }; break;

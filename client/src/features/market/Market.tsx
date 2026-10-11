@@ -100,7 +100,7 @@ export default function Market() {
             const vsFloor = f && l.priceUsd ? Math.round(((l.priceUsd - f) / f) * 100) : null;
             return (
               <Link key={l.asset} to={`/market/${l.asset}`} className="chip-card card card-hover" style={{ textDecoration: 'none' }}>
-                <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c, 512)} skin={c.skin} crimp={rarityColor(c.rarity!)} />
+                <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c, 512)} skin={c.skin} crimp={rarityColor(c.rarity!)} founder={!!c.flags?.founder} />
                 <div className="chip-name">{chipName(c.collection!, c.rarity!)}</div>
                 <div className="chip-meta"><span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span>{chipIndexText(c.index) && <> · {chipIndexText(c.index)}</>} · {t('screens.levelBadge', { n: c.level ?? 0 })}</div>
                 <div className="cg-clean-zone" style={{ padding: '6px 8px' }}>
@@ -117,9 +117,17 @@ export default function Market() {
       <div className="grid-2">
         <div className="card">
           <div className="strong" style={{ marginBottom: 8 }}>{t('ui.floorTiers')}</div>
-          <div className="odds-legend" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-            {RARITIES.map((r, i) => { const col = (floor.data?.floors ?? []).map((row) => row[i]).filter((v): v is number => typeof v === 'number'); return <span key={r}><span style={{ color: rarityColor(i) }}>{rarityName(i)}</span> {fmtUsd(col.length ? Math.min(...col) : null)}</span>; })}
-          </div>
+          {(() => {
+            const floors = floor.data?.floors ?? [];
+            const hasFloor = floors.some((row) => Array.isArray(row) && row.some((v) => typeof v === 'number'));
+            if (floor.isLoading) return <Skeleton h={80} />;
+            if (!hasFloor) return <Empty compact>{t('market.noFloor')}</Empty>;
+            return (
+              <div className="odds-legend" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                {RARITIES.map((r, i) => { const col = floors.map((row) => row[i]).filter((v): v is number => typeof v === 'number'); return <span key={r}><span style={{ color: rarityColor(i) }}>{rarityName(i)}</span> {fmtUsd(col.length ? Math.min(...col) : null)}</span>; })}
+              </div>
+            );
+          })()}
         </div>
         <div className="card">
           <div className="strong" style={{ marginBottom: 8 }}>{t('market.sales')}</div>
@@ -131,6 +139,7 @@ export default function Market() {
               </div>
             ))}
             {sales.isLoading && <Skeleton h={80} />}
+            {!sales.isLoading && (sales.data?.items ?? []).length === 0 && <Empty compact>{t('market.noSales')}</Empty>}
           </div>
         </div>
       </div>

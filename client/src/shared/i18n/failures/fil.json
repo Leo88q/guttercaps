@@ -11,7 +11,7 @@
   "chip_core_OddsSumInvalid": "Dapat 10,000 basis point ang kabuuang tsansa",
   "chip_core_OddsGuardRail": "Lampas sa limitasyon ang tsansa ng pinakamataas na antas",
   "chip_core_FeeTooHigh": "Lampas sa mahigpit na limitasyon ang bayad",
-  "chip_core_StalePrice": "Luma o hindi wasto ang presyo ng Pyth",
+  "chip_core_StalePrice": "Tinitingnan pa ng on-chain program ang Pyth — kailangan i-upgrade ang chip_core",
   "chip_core_Slippage": "Mas mababa ang SOL sa quote: pagdulas ng presyo",
   "chip_core_RandomnessExpired": "Dapat nasa nakaraang slot ang commitment ng randomness",
   "chip_core_RandomnessAlreadyRevealed": "Naibunyag na ang randomness: hindi maaaring i-commit ang alam nang halaga",
@@ -91,6 +91,7 @@
   "staking_BeforeGenesis": "Hindi pa nagsisimula ang emission: now < genesis_ts",
   "staking_BadMint": "Dapat walang freeze authority ang $CG mint at pasok ang supply sa alokasyong hindi mula sa laro",
   "staking_SkrWithdrawRate": "Ang pag-withdraw ng SKR ay limitado sa isang tawag bawat slot",
+  "staking_FuturePlay": "Ang timestamp ng play pulse ay nasa hinaharap",
   "arena_WagerRange": "Labas sa saklaw na 5–5000 $CG ang pusta",
   "arena_BadStatus": "Wala ang laban sa inaasahang kalagayan",
   "arena_NotOwner": "Hindi pag-aari ng pumirma ang cap sa squad",
@@ -201,5 +202,10 @@
   "preorderMemoMismatch": "Hindi tugma ang payment memo sa reservation na ito.",
   "preorderUnknownPayer": "Walang memo — ipadala ang bayad mula sa connected wallet mo.",
   "preorderAlreadyConfirmed": "Na-credit na ang payment signature na ito sa isang reservation.",
-  "preorderNothingToDeliver": "Walang bayad na preorder na naghihintay ng delivery."
+  "preorderNothingToDeliver": "Walang bayad na preorder na naghihintay ng delivery.",
+  "confirmationUnknown": "Naipadala ang transaksyon pero wala pang kumpirmasyon. Suriin sa Explorer at i-refresh ang balanse bago subukang muli.",
+  "blockhashRejected": "Tinanggihan ng RPC ang transaksyon bago ito maisagawa: hindi nakita ang blockhash. Walang bayad na ginawa sa pagtatangkang ito. Subukan muli; kung mauulit, suriin ang RPC at network ng wallet.",
+  "proofUnavailable": "Hindi makuha ang Merkle proof ng chip. Suriin ang DAS endpoint at pahintulot sa access. Nasa teknikal na detalye ang error ng DAS at ng pagbawi mula sa tree.",
+  "switchboardUnavailable": "Hindi available pansamantala ang on-chain randomness. Huwag ulitin ang pagbili o pagtaya. Ipagpatuloy ang kasalukuyang operasyon kapag bumalik ang serbisyo; tingnan ang teknikal na detalye.",
+  "invalidBubblegumAsset": "Hindi tumutugma ang on-chain asset id ng chip sa Bubblegum leaf. Left: {left}. Right: {right}. Hindi binuksan ang wallet at walang taya na naipadala."
 }

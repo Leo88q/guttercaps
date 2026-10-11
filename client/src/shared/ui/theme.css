@@ -224,20 +224,8 @@ h1, h2, .cg-heading { text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4); }
 .cg-toggle.cg-on .cg-toggle-cap { background: rgba(22,229,217,0.25); box-shadow: 0 0 10px rgba(22,229,217,0.5); }
 .cg-toggle.cg-on .cg-toggle-cap::after { transform: translateX(18px); background: var(--cg-neon-cyan); }
 
-/* --- CLEAN ZONE variant: same silhouette, brushed chrome, checkmark stamp --- */
-.cg-btn-clean {
-  font-family: var(--cg-font-mono);
-  font-weight: 600;
-  color: #0d1220;
-  background: linear-gradient(160deg, #e8e8ec, #b8b8c0);
-  border: none;
-  border-radius: 999px;
-  padding: 13px 22px;
-  cursor: pointer;
-  position: relative;
-  transition: transform 0.08s ease;
-}
-.cg-btn-clean:active { transform: translateY(1px); }
+/* --- confirm button: paint blob is in street-apply.css; stamp animation stays here --- */
+.cg-btn-clean { position: relative; cursor: pointer; }
 .cg-btn-clean .cg-check-stamp {
   position: absolute; right: 10px; top: 50%; transform: translateY(-50%) scale(0);
   opacity: 0;

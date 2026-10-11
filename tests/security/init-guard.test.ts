@@ -134,3 +134,12 @@ test('setup.ts passes the ProgramData account to initialize / init_arena and pre
   assert.match(src, /BPFLoaderUpgradeab1e11111111111111111111111/);
 });
 
+
+// Localnet fixtures already provisioned this ATA, but the real setup omitted it:
+// stake_cg then fails Anchor 3012 at vault_cg on a fresh deployment.
+test('setup provisions the CG staking vault ATA, not only the pack vault and treasury', () => {
+  const src = readFileSync(new URL('../../scripts/setup.ts', import.meta.url), 'utf8');
+  const step = src.slice(src.indexOf('async function stepAtas('), src.indexOf('async function stepEmission('));
+  assert.match(step, /const stakingVault = ata\(mints\.cg, emissionPda\)/);
+  assert.match(step, /if \(!\(await exists\(conn, stakingVault\)\)\) ixs\.push\(createAssociatedTokenAccountIdempotentInstruction\(wallet\.publicKey, stakingVault, emissionPda, mints\.cg\)\)/);
+});

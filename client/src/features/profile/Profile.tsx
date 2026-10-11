@@ -1,3 +1,4 @@
+import { RpcDiagnostics } from './RpcDiagnostics';
 import { phaseLabel } from '@/shared/lib/presentation';
 import { skinText, emotePackName } from '@/shared/lib/cosmetics';
 import { useMemo, useState } from 'react';
@@ -197,6 +198,7 @@ export default function Profile() {
           <span className="label row" style={{ gap: 6, display: 'inline-flex' }}><ServerIcon size={14} />{t('profile.rpc', { cluster: CLUSTER, url: RPC_URL })}</span>
           <div className="row"><input className="input mono" placeholder="https://…" value={rpc} onChange={(e) => setRpc(e.target.value)} /><button className="btn" onClick={() => { ui.setRpcOverride(rpc || undefined); ui.toast({ kind: 'info', title: { key: 'profile.rpcSaved' }, body: { key: 'profile.reload' } }); }}>{t('common.save')}</button></div>
         </div>
+        <RpcDiagnostics />
         {FLAGS.debugPanel && (
           <div className="stack-sm" style={{ marginTop: 8 }}>
             <span className="label">{t('ui.debug')}</span>

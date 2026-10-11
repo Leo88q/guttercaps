@@ -73,7 +73,9 @@ export async function request<T = unknown>(method: Method, path: string, opts: R
   const text = await res.text();
   const json = text ? safeJson(text) : undefined;
   if (!res.ok) {
-    if (res.status === 401) useSessionStore.getState().clear();
+    // A 401 on the pre-sign compliance probe must not wipe SIWS: that re-opened
+    // the wallet "connect" sheet on every deal before the actual transaction.
+    if (res.status === 401 && !path.includes('/me/compliance/check')) useSessionStore.getState().clear();
     const e = json as { code?: string; message?: string; details?: unknown } | undefined;
     throw new ApiError(res.status, e?.code ?? `http_${res.status}`, e?.message ?? res.statusText, e?.details);
   }

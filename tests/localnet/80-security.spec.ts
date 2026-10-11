@@ -242,7 +242,7 @@ suite('T-L-SEC adversarial transactions', () => {
     const v0 = await env.chain.balance(victim.publicKey);
     await env.chain.send([closeRandomnessIx({ ...rngAccounts(RNG_KIND.PACK, victim.publicKey, b.nonce), payer: griefer.publicKey, lutSlot })], { signers: [griefer], label: 'close randomness' });
     expect(await env.chain.getAccount(b.randomness)).toBeNull();
-    expect((await env.chain.balance(victim.publicKey)) - v0).toBe(await env.chain.rentExempt(480));
+    expect((await env.chain.balance(victim.publicKey)) - v0).toBe(await env.chain.rentExempt(88));
   });
 
   // ------------------------------------------------------------------ C16 sweep conservation

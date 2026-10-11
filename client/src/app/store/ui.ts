@@ -14,6 +14,8 @@ interface RevealItem {
   fused?: boolean;
   /** pack SKU the chip rolled from — selects the wrapper art in the reveal animation */
   sku?: number;
+  /** pre-sale origin: the reveal window shows the founder frame (docs/preorder-beta.md) */
+  founder?: boolean;
 }
 
 export interface Toast {
@@ -78,7 +80,8 @@ export const useUiStore = create<UiState>()(
       toast: (t) => {
         const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         set({ toasts: [...get().toasts, { id, ...t }] });
-        const ttl = t.ttlMs ?? (t.kind === 'error' ? 8_000 : 4_500);
+        // Errors stay long enough to copy program logs (Left/Right, 6006, …). Success/info stay short.
+        const ttl = t.ttlMs ?? (t.kind === 'error' ? 120_000 : 4_500);
         if (ttl > 0) setTimeout(() => get().dismiss(id), ttl);
         return id;
       },

@@ -1,6 +1,6 @@
 {
-  "revision": "2026-10-06.1",
-  "sha256": "ddfada3bdc5084a2ad847c1c9ca5d1d9b84e19dc4ac6b0c52718846c2ee20f6c",
+  "revision": "2026-10-11.1",
+  "sha256": "c5110f2de4c2eaf087afda365fceef15d499ca9a1625f9fbc69d41588a311490",
   "docs": {
     "terms": {
       "slug": "terms",
@@ -26,7 +26,7 @@
           "h": "3. Nội dung gói, tỷ lệ đã công bố và kết quả có thể kiểm chứng",
           "p": [
             "Phân phối độ hiếm, bảo đảm mức tối thiểu và bộ đếm pity của mỗi gói được công bố trong cửa hàng trước khi bạn trả tiền và được định nghĩa trong mã: Starter Pack {starterCaps} thẻ, Standard Pack {standardCaps} thẻ, Premium Pack {premiumCaps} thẻ, Limited Event Pack {limitedCaps} thẻ. Chương trình trên chuỗi áp dụng đúng bảng đó, kể cả giới hạn cứng ở hai bậc hiếm nhất, nên tỷ lệ bạn đọc chính là tỷ lệ chương trình áp dụng.",
-            "Việc rút thẻ dùng một beacon ngẫu nhiên theo cơ chế commit–reveal (Switchboard on demand). Cả cam kết và phần tiết lộ đều ở trên chuỗi, nên kết quả trong quá khứ có thể được tính lại: màn hình xác minh phát lại đúng phần mở rộng mà chương trình đã thực hiện, và bạn có thể tự kiểm tra một lượt rút mà không cần hỏi chúng tôi điều gì.",
+            "Việc rút thẻ dùng SlotHashes on-chain: chương trình băm hạt giống cam kết khi thanh toán với hash slot. Cả cam kết và lượt quay suy ra đều ở trên chuỗi, nên kết quả trong quá khứ có thể được tính lại: màn hình xác minh phát lại đúng phần mở rộng mà chương trình đã thực hiện, và bạn có thể tự kiểm tra một lượt rút mà không cần hỏi chúng tôi điều gì.",
             "Bộ đếm pity được giữ riêng theo ví và theo loại gói, trên chuỗi. Bộ đếm giới hạn chuỗi xấu nhất có thể; nó không phải lời hứa về một lượt rút cụ thể và không làm thay đổi phân phối đã công bố của bất kỳ gói riêng lẻ nào."
           ]
         },
@@ -44,7 +44,7 @@
           "h": "5. Hoàn tiền, gói bị gián đoạn và hủy",
           "p": [
             "Sau khi một gói đã được mở, chương trình không thể đảo ngược kết quả rút: kết quả đã nằm trong bản ghi trên chuỗi. Điều này không xóa bỏ bất kỳ quyền hủy bỏ, rút lại, hoàn tiền hay quyền về sự phù hợp nào mà bạn có theo luật. Việc có áp dụng ngoại lệ cho nội dung số hay không, và ngoại lệ đó đòi hỏi sự đồng ý hay xác nhận nào, phụ thuộc vào từng thị trường, và không nội dung nào trong Điều khoản này từ bỏ quyền không thể từ bỏ.",
-            "Nếu phần tiết lộ ngẫu nhiên không bao giờ đến, gói vẫn chưa mở và khoản thanh toán vẫn nằm trong kho. Việc hoàn lại toàn bộ giá mua trở nên khả dụng khi cửa sổ oracle hết hạn mà yêu cầu vẫn chưa được tiết lộ: {staleSlots} slot, khoảng {staleMinutes} phút với 400 ms mỗi slot, và thời gian thực tế có thể khác. Điều kiện hoàn tiền được đọc từ chương trình, không do nhân viên hỗ trợ phán đoán; bạn là người ký giao dịch hủy, và phí mạng không được hoàn lại.",
+            "Nếu phần tiết lộ ngẫu nhiên không bao giờ đến, gói vẫn chưa mở và khoản thanh toán vẫn nằm trong kho. Việc hoàn lại toàn bộ giá mua trở nên khả dụng khi cửa sổ hết hạn mà yêu cầu vẫn chưa được tiết lộ: {staleSlots} slot, khoảng {staleMinutes} phút với 400 ms mỗi slot, và thời gian thực tế có thể khác. Điều kiện hoàn tiền được đọc từ chương trình, không do nhân viên hỗ trợ phán đoán; bạn là người ký giao dịch hủy, và phí mạng không được hoàn lại.",
             "Nếu chúng tôi ngừng bán một đợt vì cấu hình lỗi, khóa bị xâm phạm hoặc yêu cầu của cơ quan quản lý, chỉ riêng điều đó không làm mọi giao dịch mua trước đó trở nên được hoàn tiền: một lượt rút đã giao vẫn là đã giao, và đường hoàn tiền qua chương trình vẫn là đường tự động duy nhất. Khi một giao dịch mua đã trả tiền hoàn toàn không được giao, các biện pháp bảo vệ theo luật được áp dụng theo đúng quy định, và chúng tôi xem xét trường hợp đó thay vì giả vờ rằng nó không tồn tại.",
             "Thanh toán trên chuỗi không có chargeback thẻ, và chúng tôi không dựa vào điều đó. Yêu cầu hoàn tiền và yêu cầu rút lại hợp đồng có thể được gửi tại trung tâm quyền: nơi đây ghi nhận yêu cầu, cấp biên nhận tải về, theo dõi phản hồi của chúng tôi và tự nó không phê duyệt hay thực hiện khoản thanh toán nào. Đừng bao giờ gửi cụm từ hạt giống hay khóa riêng cho bất kỳ ai, kể cả người tự nhận là hỗ trợ của chúng tôi."
           ]
@@ -68,7 +68,7 @@
           "h": "8. Không tư vấn đầu tư, không bảo đảm giá trị, giới hạn trách nhiệm",
           "p": [
             "$CG là token trò chơi dành cho việc sử dụng trong trò chơi; việc nó có bị quản lý hay không phụ thuộc vào luật áp dụng cho bạn, và chúng tôi không quyết định câu hỏi đó bằng cách gọi nó là token tiện ích. Không nội dung nào trong trò chơi, cửa hàng, chợ hay đấu trường là tư vấn tài chính hay lời đề nghị đầu tư, và không gì bảo đảm giá, thanh khoản, lợi nhuận hay lợi tức. Tài sản số có thể về 0 và ở đó.",
-            "Dịch vụ được cung cấp «nguyên trạng» và «theo mức sẵn có», không có bảo đảm nào ngoài những bảo đảm mà luật yêu cầu, trong phạm vi tối đa mà luật nơi bạn sống cho phép. Mã hóa, chuỗi khối, oracle và trình duyệt đôi khi hỏng, và chúng tôi không hứa hoạt động liên tục hay không có lỗi.",
+            "Dịch vụ được cung cấp «nguyên trạng» và «theo mức sẵn có», không có bảo đảm nào ngoài những bảo đảm mà luật yêu cầu, trong phạm vi tối đa mà luật nơi bạn sống cho phép. Mã hóa, chuỗi khối, mạng và trình duyệt đôi khi hỏng, và chúng tôi không hứa hoạt động liên tục hay không có lỗi.",
             "Tổng trách nhiệm của chúng tôi cho một giao dịch mua được giới hạn ở số tiền bạn đã trả cho (các) gói liên quan. Mức giới hạn đó không áp dụng nơi luật cấm, và không bao giờ hạn chế các quyền không thể hạn chế — bao gồm quyền của người tiêu dùng, bảo đảm theo luật và các biện pháp khắc phục khi có gian dối hoặc cố ý."
           ]
         },
@@ -129,7 +129,7 @@
           "p": [
             "Cloudflare cung cấp CDN, WAF và thử thách Turnstile, và thấy siêu dữ liệu yêu cầu — bao gồm tiêu đề quốc gia mà chúng tôi dùng để phát hiện khu vực.",
             "Các nhà cung cấp RPC của Solana chuyển tiếp lượt đọc và giao dịch và có thể thấy địa chỉ IP, thời điểm yêu cầu, định danh ví và siêu dữ liệu kết nối khác, không chỉ dữ liệu công khai trên chuỗi. Nhà cung cấp thực tế mà dịch vụ đã triển khai sử dụng, vai trò của họ và mọi chuyển dữ liệu quốc tế cần được xác định cho lần triển khai đó.",
-            "Các dịch vụ giá và ngẫu nhiên — Pyth, Hermes và Switchboard — nhận yêu cầu có thể để lộ siêu dữ liệu mạng cho hạ tầng của họ ngoài kết quả trên chuỗi. Bản thân sự kiện trên chuỗi vốn công khai theo thiết kế.",
+            "Các nhà cung cấp RPC mô tả ở trên chuyển các lần đọc SlotHashes dùng cho lượt rút. Chúng tôi không gửi lượt quay gói tới oracle ngẫu nhiên hoặc giá bên thứ ba. Bản thân sự kiện trên chuỗi vốn công khai theo thiết kế.",
             "Không có SDK báo lỗi kiểu Sentry nào được tích hợp, và việc cấu hình DSN tự nó không thay đổi điều đó. Nhật ký vận hành của máy chủ có thể chứa định danh ví và chịu sự điều chỉnh về thời gian lưu và kiểm soát truy cập; mọi telemetry trong tương lai phải có danh mục dữ liệu đã kiểm chứng, bên nhận được nêu tên, căn cứ pháp lý và sự đồng ý nếu luật yêu cầu trước khi được bật."
           ]
         },

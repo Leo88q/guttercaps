@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { accountDiscriminator as disc } from '@/chain/anchor';
+import { errorSnapshot } from '../errorSnapshot';
+import { DasError } from '../das';
 import { BorshWriter } from '@/chain/borsh';
-import { bubblegumTreeMetaPda, compressedChipStatePda } from '@/chain/pdas';
-import { resolveCompressedChip, resolveCompressedSquad } from './compressedChip';
+import { bubblegumTreeMetaPda, compressedChipStatePda, compressedChipStakePda } from '@/chain/pdas';
+import { deriveBubblegumLeafAssetId } from '../bubblegum';
+import { resolveCompressedChip, resolveCompressedSquad, resolveCompressedUnstakeClaim } from './compressedChip';
 
 /** A real `CompressedChipState` buffer, byte for byte what chip_core stores. */
 function chipStateBytes(a: {
@@ -54,19 +57,25 @@ function dasProof(asset: PublicKey, merkleTree: PublicKey, leafIndex: bigint) {
   };
 }
 
-function env(over: { flags?: number; leafFlags?: number; lockUntil?: bigint; claim?: Record<string, unknown>; owner?: PublicKey; active?: boolean; leafIndex?: bigint; dasLeafIndex?: bigint; dasTree?: PublicKey; asset?: PublicKey; merkleTree?: PublicKey; treeConfig?: PublicKey; coreCollection?: PublicKey } = {}) {
-  const asset = over.asset ?? Keypair.generate().publicKey;
-  const claim = Keypair.generate().publicKey;
+function env(over: { flags?: number; leafFlags?: number; lockUntil?: bigint; claim?: Record<string, unknown>; owner?: PublicKey; stake?: { owner?: PublicKey; claim?: PublicKey }; active?: boolean; leafIndex?: bigint; dasLeafIndex?: bigint; dasTree?: PublicKey; asset?: PublicKey; merkleTree?: PublicKey; treeConfig?: PublicKey; coreCollection?: PublicKey } = {}) {
   const merkleTree = over.merkleTree ?? Keypair.generate().publicKey;
+  const leafIndex = over.leafIndex ?? 41n;
+  const asset = over.asset ?? deriveBubblegumLeafAssetId(merkleTree, leafIndex);
+  const claim = Keypair.generate().publicKey;
   const coreCollection = over.coreCollection ?? Keypair.generate().publicKey;
   const treeConfig = over.treeConfig ?? Keypair.generate().publicKey;
-  const leafIndex = over.leafIndex ?? 41n;
   const owner = over.owner ?? Keypair.generate().publicKey;
   const accounts = new Map<string, Uint8Array>([
     [compressedChipStatePda(asset)[0].toBase58(), chipStateBytes({ asset, claim, collectionIdx: 2, merkleTree, leafIndex: Number(leafIndex), leafNonce: leafIndex, flags: over.flags ?? 0, leafFlags: over.leafFlags ?? 0, lockUntil: over.lockUntil ?? 0n })],
     [bubblegumTreeMetaPda(2)[0].toBase58(), treeMetaBytes({ collectionIdx: 2, coreCollection, merkleTree, treeConfig, active: over.active ?? true })],
     [claim.toBase58(), claimBytes({ buyer: owner, ...over.claim })],
   ]);
+  if (over.stake) {
+    const w = new BorshWriter();
+    w.bytes(disc('CompressedChipStake'));
+    w.pubkey(over.stake.owner ?? owner).pubkey(over.stake.claim ?? claim).u128(1000n).u128(0n).i64(1n).u8(255);
+    accounts.set(compressedChipStakePda(claim)[0].toBase58(), w.toBytes());
+  }
   const connection = { getAccountInfo: vi.fn(async (k: PublicKey) => (accounts.has(k.toBase58()) ? { data: accounts.get(k.toBase58()) } : null)) };
   const das = { getAssetWithProof: vi.fn(async () => { const p = dasProof(asset, over.dasTree ?? merkleTree, over.dasLeafIndex ?? leafIndex); return { ...p, leafOwner: owner, leafDelegate: owner }; }) };
   return { asset, claim, merkleTree, coreCollection, treeConfig, leafIndex, owner, connection: connection as never, das: das as never };
@@ -96,6 +105,26 @@ describe('resolveCompressedChip', () => {
     const e = env();
     const connection = { getAccountInfo: vi.fn(async () => null) };
     await expect(resolveCompressedChip(connection as never, e.das, e.asset)).rejects.toThrow(/not registered/);
+  });
+
+  it('refuses a projection whose stored asset is not the Bubblegum leaf PDA, with both addresses', async () => {
+    const e = env({ asset: Keypair.generate().publicKey });
+    const err = await resolveCompressedChip(e.connection, e.das, e.asset).catch((error: unknown) => error) as { code?: string; message: string };
+    expect(err).toMatchObject({ code: 'invalid_bubblegum_asset' });
+    expect(err.message).toMatch(/Left:/);
+    expect(err.message).toMatch(/Right:/);
+    const snap = errorSnapshot(err);
+    expect(snap.details).toEqual(expect.objectContaining({
+      left: e.asset.toBase58(),
+      requested: e.asset.toBase58(),
+      tree: e.merkleTree.toBase58(),
+      leafIndex: Number(e.leafIndex),
+      leafNonce: e.leafIndex.toString(),
+    }));
+    expect((snap.details as { right: string }).right).toBe(deriveBubblegumLeafAssetId(e.merkleTree, e.leafIndex).toBase58());
+    expect((snap.details as { right: string }).right).not.toBe(e.asset.toBase58());
+    expect((snap.details as { fromIndexU32: string }).fromIndexU32).toBeTruthy();
+    expect((snap.details as { fromIndexU32: string }).fromIndexU32).not.toBe((snap.details as { fromIndex: string }).fromIndex);
   });
 
   it('refuses a chip whose collection has no active tree', async () => {
@@ -160,6 +189,15 @@ describe('resolveCompressedChip', () => {
     await expect(resolveCompressedChip(e.connection, e.das, e.asset, { owner: e.owner })).resolves.toMatchObject({ claimState: expect.objectContaining({ buyer: e.owner }) });
   });
 
+  it('keeps the full DAS proof but sends only nodes below the registered canopy', async () => {
+    const e = env();
+    const fullProof = { ...dasProof(e.asset, e.merkleTree, e.leafIndex), proof: Array.from({ length: 14 }, () => Keypair.generate().publicKey) };
+    const das = { getAssetWithProof: async () => fullProof };
+    const result = await resolveCompressedChip(e.connection, das as never, e.asset);
+    expect(result.proof.proof).toHaveLength(14);
+    expect(result.leaf.proofNodes).toEqual(fullProof.proof.slice(0, 6)); // depth 14 minus canopy 8
+  });
+
   it('takes a pre-fetched tree meta instead of reading it again', async () => {
     const e = env();
     const spy = vi.spyOn(e.connection as unknown as { getAccountInfo: () => void }, 'getAccountInfo');
@@ -170,21 +208,24 @@ describe('resolveCompressedChip', () => {
 
 describe('resolveCompressedSquad', () => {
   it('resolves every member in order', async () => {
-    const a = env();
+    const a = env({ leafIndex: 7n });
     // one collection, one tree — which is what a real deployment has
-    const b = env({ asset: Keypair.generate().publicKey, merkleTree: a.merkleTree, treeConfig: a.treeConfig, coreCollection: a.coreCollection });
+    const b = env({ leafIndex: 8n, merkleTree: a.merkleTree, treeConfig: a.treeConfig, coreCollection: a.coreCollection });
     const accounts = new Map<string, Uint8Array>([
       [bubblegumTreeMetaPda(2)[0].toBase58(), treeMetaBytes({ collectionIdx: 2, coreCollection: a.coreCollection, merkleTree: a.merkleTree, treeConfig: a.treeConfig, active: true })],
     ]);
     for (const e of [a, b]) {
-      accounts.set(compressedChipStatePda(e.asset)[0].toBase58(), chipStateBytes({ asset: e.asset, claim: e.claim, collectionIdx: 2, merkleTree: a.merkleTree, leafIndex: 7, leafNonce: 7n, flags: 0 }));
+      accounts.set(compressedChipStatePda(e.asset)[0].toBase58(), chipStateBytes({ asset: e.asset, claim: e.claim, collectionIdx: 2, merkleTree: a.merkleTree, leafIndex: Number(e.leafIndex), leafNonce: e.leafIndex, flags: 0 }));
       accounts.set(e.claim.toBase58(), claimBytes({ buyer: e.owner }));
     }
     const connection = { getAccountInfo: async (k: PublicKey) => (accounts.has(k.toBase58()) ? { data: accounts.get(k.toBase58()) } : null) };
-    const das = { getAssetWithProof: async (k: PublicKey) => dasProof(k, a.merkleTree, 7n) };
+    const das = { getAssetWithProof: async (k: PublicKey) => {
+      const e = [a, b].find(x => x.asset.equals(k))!;
+      return dasProof(k, a.merkleTree, e.leafIndex);
+    } };
     const squad = await resolveCompressedSquad(connection as never, das as never, [a.asset, b.asset]);
     expect(squad.map((s) => s.asset.toBase58())).toEqual([a.asset.toBase58(), b.asset.toBase58()]);
-    expect(squad.every((s) => s.leaf.index === 7)).toBe(true);
+    expect(squad.map((s) => s.leaf.index)).toEqual([7, 8]);
   });
 
   it('refuses the same chip twice — the arena would reject it as a duplicate anyway', async () => {
@@ -194,5 +235,64 @@ describe('resolveCompressedSquad', () => {
 
   it('refuses an empty squad rather than sending a short one', async () => {
     await expect(resolveCompressedSquad({} as never, {} as never, [])).rejects.toThrow(/at least one chip/);
+  });
+});
+
+
+describe('unstake exit path', () => {
+  it.each([0, 1])('resolves a staked claim with projection flags %s, even with an inactive tree', async (flags) => {
+    const e = env({ flags, leafFlags: 1, active: false, lockUntil: 9999999999n,
+      claim: { staked: true, lockUntil: 9999999999n }, stake: {} });
+    await expect(resolveCompressedUnstakeClaim(e.connection, e.asset, e.owner)).resolves.toEqual(e.claim);
+    const reads = vi.mocked((e.connection as unknown as { getAccountInfo: (key: PublicKey) => Promise<unknown> }).getAccountInfo).mock.calls.map(([key]) => key.toBase58());
+    expect(reads).toEqual([compressedChipStatePda(e.asset)[0].toBase58(), e.claim.toBase58(), compressedChipStakePda(e.claim)[0].toBase58()]);
+    expect((e.das as unknown as { getAssetWithProof: unknown }).getAssetWithProof).not.toHaveBeenCalled();
+  });
+
+  it('refuses another owner, a closed stake and a mismatched stake PDA payload', async () => {
+    const e = env({ claim: { staked: true }, stake: {} });
+    await expect(resolveCompressedUnstakeClaim(e.connection, e.asset, Keypair.generate().publicKey)).rejects.toThrow(/another wallet/);
+    for (const [over, error] of [
+      [{ claim: { staked: false }, stake: {} }, /no longer staked/],
+      [{ claim: { staked: true } }, /no active stake/],
+      [{ claim: { staked: true }, stake: { owner: Keypair.generate().publicKey } }, /another wallet or claim/],
+      [{ claim: { staked: true }, stake: { claim: Keypair.generate().publicKey } }, /another wallet or claim/],
+    ] as const) {
+      const bad = env(over);
+      await expect(resolveCompressedUnstakeClaim(bad.connection, bad.asset, bad.owner)).rejects.toThrow(error);
+    }
+  });
+});
+
+describe('arena-specific leaf rules', () => {
+  it.each([0, 1])('allows a staked squad member with projection flags %s, but not for staking / listing', async (flags) => {
+    const e = env({ flags, claim: { staked: true, lockUntil: 9999999999n } });
+    await expect(resolveCompressedSquad(e.connection, e.das, [e.asset], { owner: e.owner })).resolves.toHaveLength(1);
+    await expect(resolveCompressedChip(e.connection, e.das, e.asset, { owner: e.owner })).rejects.toThrow(/staked/);
+  });
+
+  it('does not relax listed, fusion, consumed or ownership guards for arena squads', async () => {
+    for (const [over, error] of [
+      [{ flags: 2 }, /listed/], [{ flags: 4 }, /fusion/],
+      [{ claim: { listed: true } }, /listed/], [{ claim: { consumed: true } }, /consumed/],
+    ] as const) {
+      const e = env(over);
+      await expect(resolveCompressedSquad(e.connection, e.das, [e.asset], { owner: e.owner })).rejects.toThrow(error);
+    }
+    const e = env({ claim: { staked: true } });
+    await expect(resolveCompressedSquad(e.connection, e.das, [e.asset], { owner: Keypair.generate().publicKey })).rejects.toThrow(/another wallet/);
+  });
+});
+
+it('preserves the original DAS failure when tree fallback cannot supply a proof', async () => {
+  const e = env();
+  const das = { getAssetWithProof: vi.fn().mockRejectedValue(new DasError('rpc', 'DAS getAsset RPC error -32602: Invalid params')) };
+  const error = await resolveCompressedChip(e.connection, das as never, e.asset).catch(err => err);
+  expect(errorSnapshot(error)).toMatchObject({
+    code: 'proof_unavailable', details: {
+      asset: e.asset.toBase58(),
+      das: { code: 'rpc', message: 'DAS getAsset RPC error -32602: Invalid params' },
+      tree: { message: 'Merkle tree account is unavailable' },
+    },
   });
 });

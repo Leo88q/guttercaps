@@ -4,8 +4,8 @@ import { isRightsPath, mockRights } from './rights';
 // and shared/lib/lore so what you see matches the modelled numbers.
 import {
   PACKS, FUSION_RECIPES, BOOSTER, RARITY_PROFILES, LOCK_TIERS, DAILY_QUESTS, WEEKLY_QUESTS, PERMANENT_QUESTS, MATCHMAKING, SEASON, FEES, SERVICES, REFERRAL,
-  packExpectedValueMult, probabilityAtLeast, effectiveOdds, bundlePriceCents, impliedApy, unitsForCents, maxUnitsWithSlippage, type PackId,
-  SKIN_BY_ID, PROFILE_THEME_BY_ID, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, PASS_TRACK, passTierForXp,
+  packExpectedValueMult, probabilityAtLeast, effectiveOdds, bundlePriceCents, impliedApy, FX, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, usdCentsFromSolLamports, type PackId,
+  SKIN_BY_ID, PROFILE_THEME_BY_ID, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, PASS_TRACK, passTierForXp, xpToNext, CHIP_XP,
 } from '@guttercaps/economy';
 import { PYTH_PRICE_ACCOUNTS } from '@/chain/ids';
 import { COLLECTIONS } from '@/shared/lib/lore';
@@ -32,20 +32,25 @@ interface MockChip {
   flags: { staked: boolean; listed: boolean; fusing: boolean; soulbound: boolean; founder: boolean };
   lockUntil: string | null; power: number; stakeWeight: string;
   skin: string | null;
+  xp: number; xpToNext: number | null; maxLevel: number; xpToday?: number; xpDailyCap?: number;
   art: { image: string; video?: string; vfxTier: number };
   listing?: { asset: string; seller: string; price: string; currency: 'SOL' | 'USDC'; priceUsd: number; createdAt: string };
 }
 
-const SOL_USD = 152.3;
-const SKR_USD = 0.0174;
+const SOL_USD = FX.solUsd;
+const SKR_USD = FX.skrUsd;
 const floorUsd = (r: number) => Number((3.5 * RARITY_PROFILES[r].valueMult * 0.62).toFixed(2));
 
 function makeChip(collection: number, rarity: number, owner = ME, opts: Partial<MockChip> = {}): MockChip {
-  const level = 1 + Math.floor(rnd() * Math.min(6, RARITY_PROFILES[rarity].maxLevel - 1));
+  const maxLevel = RARITY_PROFILES[rarity].maxLevel;
+  const level = 1 + Math.floor(rnd() * Math.min(6, maxLevel - 1));
+  const need = xpToNext(level, maxLevel);
+  const xp = need ? Math.floor(rnd() * need) : 0;
   const power = Math.round(RARITY_PROFILES[rarity].basePower * (1 + 0.025 * (level - 1)));
   return {
     asset: fakeKey('As'), owner, collection, rarity, level, index: 1 + Math.floor(rnd() * 5000),
     flags: { staked: false, listed: false, fusing: false, soulbound: false, founder: false }, lockUntil: null, power, skin: null,
+    xp, xpToNext: need, maxLevel,
     stakeWeight: String(RARITY_PROFILES[rarity].stakeWeight), art: { image: `/art/${COLLECTIONS[collection]?.num ?? '01'}-${rarity}-256.webp`, vfxTier: RARITY_PROFILES[rarity].vfxTier },
     ...opts,
   };
@@ -171,7 +176,7 @@ const entitlements: { id: string; kind: number; payload: Record<string, unknown>
 on('get', '/me/services', () => ({ entitlements, dailyLeft: { '7': 3, '0': 1, '1': 1 } }));
 on('get', '/services', () => ({
   services: SERVICES.map((sv) => ({ id: sv.id, kind: sv.kind, name: sv.name, priceUsdCents: sv.priceUsdCents, dailyCap: sv.dailyCap, recurring: sv.recurring, quotes: {
-    SOL: String(Math.round((sv.priceUsdCents / 100 / SOL_USD) * 1e9 * 1.01)), USDC: String(sv.priceUsdCents * 10_000), CG: String(sv.priceUsdCents * 1_000_000), SKR: String(Math.round((sv.priceUsdCents / 100 / SKR_USD) * 1e6 * 1.01)),
+    SOL: String(solLamportsForUsdCents(sv.priceUsdCents)), USDC: String(usdcMicroForUsdCents(sv.priceUsdCents)), CG: String(sv.priceUsdCents * 1_000_000), SKR: String(skrMicroForUsdCents(sv.priceUsdCents)),
   } })),
   solUsd: SOL_USD, skrUsd: SKR_USD,
 }));
@@ -257,19 +262,16 @@ on('post', '/packs/quote', (o) => {
   const discountBps = b.currency === 'SKR' ? Math.min(bundleBps + FEES.skrPackDiscountBps, 3_000) : bundleBps;
   const cents = b.currency === 'SKR' ? Math.floor((p.priceUsdCents * b.qty * (10_000 - discountBps)) / 10_000) : baseCents;
   const pity = me().pity.counters[b.sku];
-  const volatile = b.currency === 'SOL' || b.currency === 'SKR';
-  // same integer formula as chip_core::units_for_cents, priced from a synthetic Pyth update (expo −8)
-  const pyth = b.currency === 'SKR' ? { price: BigInt(Math.round(SKR_USD * 1e8)), decimals: 6, account: PYTH_PRICE_ACCOUNTS.SKR.toBase58() } : { price: BigInt(Math.round(SOL_USD * 1e8)), decimals: 9, account: PYTH_PRICE_ACCOUNTS.SOL.toBase58() };
-  const amount = volatile ? unitsForCents(cents, pyth.price, -8, pyth.decimals)
-    : b.currency === 'USDC' ? BigInt(cents * 10_000)
+  const amount = b.currency === 'SOL' ? solLamportsForUsdCents(cents)
+    : b.currency === 'SKR' ? skrMicroForUsdCents(cents)
+    : b.currency === 'USDC' ? usdcMicroForUsdCents(cents)
     : BigInt(Math.floor(((p.priceCgMicro ?? 0) * b.qty * (10_000 - discountBps)) / 10_000));
-  const priceAgeS = 5 + Math.floor(rnd() * 25); // our pusher posts every ≈ 30 s
+  const cap = b.currency === 'SOL' || b.currency === 'SKR';
   return {
-    sku: b.sku, qty: b.qty, currency: b.currency, amount: String(amount), maxLamports: volatile ? String(maxUnitsWithSlippage(amount)) : '0', discountBps, priceUsdCents: cents,
+    sku: b.sku, qty: b.qty, currency: b.currency, amount: String(amount), maxLamports: cap ? String(amount) : '0', discountBps, priceUsdCents: cents,
     rentReserveLamports: String(8_000_000 * p.chips * b.qty), solUsd: SOL_USD, skrUsd: SKR_USD, pythUpdateData: [],
-    ...(volatile ? { priceUpdateAccount: pyth.account, priceAgeS } : {}),
     effectiveOddsBps: effectiveOdds(p, pity), pityCounter: pity, hardPityIn: p.pity ? Math.max(0, p.pity.hardAt - pity) : 0,
-    nonce: String(Date.now()), accounts: {}, switchboardQueue: 'EYiAmGSdsQTuCw413V5BzaruWuCCSDgTPtBGvLkXHbe7', expiresAt: iso(volatile ? (60 - priceAgeS) * 1000 : 300_000),
+    nonce: String(Date.now()), accounts: {}, switchboardQueue: 'EYiAmGSdsQTuCw413V5BzaruWuCCSDgTPtBGvLkXHbe7', expiresAt: iso(24 * 3_600_000),
   };
 });
 on('post', '/packs/verify', (o) => {
@@ -349,10 +351,17 @@ on('get', '/market/offers', () => []);
 
 on('get', '/fusion/recipes', () => FUSION_RECIPES.map((r) => ({ from: r.from, to: r.to, rule: r.rule, successBps: r.successBps, refundOnFail: r.refundOnFail, feeCgMicro: String(r.feeCgMicro), resultLockSeconds: r.resultLockSeconds, boosterBonusBps: BOOSTER.bonusBps, boosterCapBps: BOOSTER.capBps })));
 on('get', '/fusion/suggest', () => {
-  const byR = new Map<number, MockChip[]>();
-  for (const c of chips) if (!c.flags.staked && !c.flags.listed && !c.flags.soulbound) byR.set(c.rarity, [...(byR.get(c.rarity) ?? []), c]);
   const out: unknown[] = [];
-  for (const [r, list] of byR) if (list.length >= 3 && r < 8) out.push({ materials: list.slice(0, 3), recipe: r, resultCollection: list[0].collection, breaksSet: false });
+  const free = chips.filter((c) => !c.flags.staked && !c.flags.listed && !c.flags.soulbound && c.rarity < 8);
+  const groups = new Map<string, MockChip[]>();
+  for (const c of free) {
+    const k = `${c.rarity}:${c.collection}`;
+    groups.set(k, [...(groups.get(k) ?? []), c]);
+  }
+  for (const list of groups.values()) {
+    if (list.length < 3) continue;
+    out.push({ materials: list.slice(0, 3), recipe: list[0].rarity, resultCollection: list[0].collection, breaksSet: false });
+  }
   return out;
 });
 on('post', '/fusion/plan', (o) => {
@@ -363,7 +372,7 @@ on('post', '/fusion/plan', (o) => {
   return { materials: mats, recipe: { ...r, feeCgMicro: String(r.feeCgMicro), boosterBonusBps: BOOSTER.bonusBps, boosterCapBps: BOOSTER.capBps }, resultCollection: b.resultCollection ?? mats[0]?.collection ?? 0, resultRarity: r.to, successBps, feeCgMicro: String(r.feeCgMicro), breaksSet: false, warnings: [], nonce: String(Date.now()), accounts: {}, needsRandomness: r.successBps < 10_000 };
 });
 
-on('get', '/arena/me', () => ({ rating: 1184, rd: 62, league: 2, games: 41, wins: 24, streak: 3, rewardedMatchesLeft: 5, seasonRank: 412, projectedBracket: 'top 20%', season: 3, openBattles: [], currentMatch: null, queue: null, recent: [{ id: 'm-demo-1', opponent: fakeKey(), won: true, forfeit: false, reward: '2000000', endedAt: iso(-3_600_000) }], pendingRewardMicro: '4500000' }));
+on('get', '/arena/me', () => ({ rating: 1184, rd: 62, league: 2, games: 41, wins: 24, streak: 3, rewardedMatchesLeft: 5, seasonRank: 412, projectedBracket: 'top 20%', season: 3, openBattles: [], currentMatch: null, queue: null, recent: [{ id: 'm-demo-1', opponent: fakeKey(), won: true, forfeit: false, reward: '2000000', endedAt: iso(-3_600_000), xp: CHIP_XP.win * 3, leveled: 1 }], pendingRewardMicro: '4500000' }));
 on('get', '/arena/seasons/current', () => ({ id: 3, startsAt: iso(-19 * 86_400_000), endsAt: new Date(seasonEnd).toISOString(), poolCgMicro: '412500000000', brackets: SEASON.payoutBrackets, serverSecretHash: 'a1'.repeat(32), serverSecret: null, previous: { id: 2, serverSecretHash: 'b2'.repeat(32), serverSecret: 'c3'.repeat(32) }, weeks: SEASON.weeks, chipRewardByLeague: SEASON.chipRewardByLeague, soulboundDays: SEASON.soulboundDays }));
 on('post', '/arena/queue', () => ({ ticket: fakeKey(), league: 2, squadPower: 1210, synergy: 1.08, estimatedWaitSec: 12, wsChannel: 'arena:mock', matchId: null }));
 on('delete', '/arena/queue', () => undefined);
@@ -376,7 +385,7 @@ on('post', '/arena/simulate', (o) => {
 on('get', '/arena/matches/{id}', (_o, p) => {
   const a = chips.filter((c) => !c.flags.listed).slice(0, 3); const b = listings.slice(0, 3);
   return {
-    id: p.id, season: 3, a: ME, b: b[0].owner, squadA: a, squadB: b, commitA: 'c'.repeat(64), commitB: 'd'.repeat(64), nonceA: 'n1', nonceB: 'n2', seed: 'e'.repeat(64),
+    id: p.id, season: 3, a: ME, b: b[0].owner, squadA: a.map((c, i) => ({ ...c, xpGained: CHIP_XP.win, leveledTo: i === 0 ? (c.level ?? 1) + 1 : null })), squadB: b.map((c) => ({ ...c, xpGained: CHIP_XP.loss, leveledTo: null })), commitA: 'c'.repeat(64), commitB: 'd'.repeat(64), nonceA: 'n1', nonceB: 'n2', seed: 'e'.repeat(64),
     rounds: [0, 1, 2].map((i) => ({ lane: i, attacker: a[i].asset, defender: b[i].asset, elementEdge: i === 1 ? 0.15 : 0, luckA: 0.5 + rnd(), luckB: 0.5 + rnd(), effA: a[i].power, effB: b[i].power, winner: i === 1 ? b[0].owner : ME })),
     winner: ME, wagerCgMicro: '0', rewarded: true, rewardA: '2000000', rewardB: '500000', status: 'resolved', forfeit: false, bot: false, powerA: 1210, powerB: 1180, league: 2,
     startedAt: iso(-3_700_000), endedAt: iso(-3_600_000), serverSecretHash: 'a1'.repeat(32), serverSecret: null, seedFormula: 'sha256(matchId ‖ nonceA ‖ nonceB ‖ serverSecret)',
@@ -404,10 +413,11 @@ on('post', '/arena/matches/{id}/emotes', (o, p) => {
   list.push(e);
   return e;
 });
-on('post', '/arena/matches/{id}/reveal', (_o, p) => ({ ok: true, status: 'resolved', matchId: p.id, resolved: true, winner: ME }));
+on('post', '/arena/matches/{id}/reveal', (_o, p) => ({ ok: true, status: 'resolved', matchId: p.id, resolved: true, winner: ME, xp: CHIP_XP.win * 3, leveled: 1 }));
 
 on('get', '/staking/overview', () => ({
-  emission: { dayIndex: 143, year: 0, scheduleCapMicro: '271232876712', guardedMicro: '198000000000', burn7dAvgMicro: '93000000000', mintedTotalMicro: '28900000000000', splitBps: [2000, 1000, 2200, 3300, 1500] },
+  emission: { dayIndex: 143, year: 0, scheduleCapMicro: '271232876712', guardedMicro: '198000000000', burn7dAvgMicro: '93000000000', mintedTotalMicro: '28900000000000', splitBps: [2000, 500, 2200, 3300, 2000] },
+  claimCaps: { chipDailyCg: 30, tokenDailyCg: 15, aliveWindowDays: 7, idleWeight: 0.25 },
   tokenPool: { tvlMicro: '38200000000000', totalWeight: '68760000000000', budgetTodayMicro: '29700000000', apyByTier: (['flex', 'd30', 'd90', 'd180'] as const).map((t) => Number(impliedApy(10_000, t, 68_760_000, 29_700).toFixed(1))) },
   chipPool: { stakedChips: 18420, totalWeight: '1420000', budgetTodayMicro: '59400000000', dailyPerWeightUnit: '41830' },
 }));
@@ -417,6 +427,32 @@ on('get', '/staking/me', () => ({
   setBonus: { onChainSets: 0, computedSets: 0, multBps: 10_000, syncPending: false },
   totalPendingMicro: '4870000',
 }));
+on('get', '/staking/pot', () => {
+  const week = 2912;
+  const weekStartsAt = week * 7 * 86_400 + 4 * 86_400;
+  return {
+    week,
+    weekStartsAt,
+    weekEndsAt: weekStartsAt + 7 * 86_400,
+    winnersPerWeek: 10,
+    soulboundDays: 7,
+    template: 4,
+    oddsBps: [0, 0, 5000, 4000, 1000, 0, 0, 0, 0],
+    seedPrefix: 'gutter-pot:v1',
+    live: { wallets: 18420, totalWeight: '1420000000000' },
+    lastDraw: {
+      week: week - 1,
+      drawnAt: weekStartsAt - 60,
+      slot: 312_000_000,
+      seedHex: 'a'.repeat(64),
+      ticketsHash: 'b'.repeat(64),
+      totalWeight: '1380000000000',
+      wallets: 17_900,
+      winners: [{ wallet: ME, weight: '8800000' }],
+    },
+    me: { weight: '8800000', shareBps: 6, wonLast: true, pendingClaim: true },
+  };
+});
 on('post', '/staking/estimate', (o) => {
   const b = o.body as { amountCgMicro: string; tier: number };
   const tier = (['flex', 'd30', 'd90', 'd180'] as const)[b.tier];
@@ -447,35 +483,66 @@ on('get', '/quests/claims', () => [
   // chip voucher root (kind 9 = quest caps, backlog #28) — amountMicro is the voucher TEMPLATE (0 = 7-day streak cap); claim_chip_root CPIs chip_core open_voucher → a free 1-cap pack
   { kind: 9, epoch: 12, currency: 'CHIP', rootPda: fakeKey('Rc'), amountMicro: '0', proof: ['ee'.repeat(32)], claimableAt: iso(-10_000), claimed: false, published: true, memo: ['d_streak7@d20713', 'template:0'] },
 ]);
-on('get', '/quests/streak', () => ({ days: 4, total: 11, nextChipAt: 7, resetsAt: iso(9 * 3_600_000), todayDone: false }));
-on('post', '/quests/login', () => ({ day: Math.floor(Date.now() / 86_400_000), inserted: false }));
+let mockLoginDay = -1;
+on('get', '/quests/streak', () => ({ days: mockLoginDay === Math.floor(Date.now() / 86_400_000) ? 5 : 4, total: 11, nextChipAt: 7, resetsAt: iso(9 * 3_600_000), todayDone: mockLoginDay === Math.floor(Date.now() / 86_400_000) }));
+on('post', '/quests/login', () => {
+  const day = Math.floor(Date.now() / 86_400_000);
+  const inserted = mockLoginDay !== day;
+  mockLoginDay = day;
+  return { day, inserted };
+});
 on('post', '/quests/visit', () => ({ day: Math.floor(Date.now() / 86_400_000), inserted: true }));
 
 // ------------------------------------------------------------- beta pre-sale (docs/preorder-beta.md)
 const PREORDER_TREASURY = fakeKey('Tr');
-const PREORDER_PRICE = '999000000'; // 0.999 SOL
+const PREORDER_PRICE = '300000000'; // 0.30 SOL per single
+const PREORDER_CHEST_PRICE = '999000000';
 const PREORDER_TOTAL = 500;
+const PREORDER_CHEST_TOTAL = 125;
 const PREORDER_TTL_S = 72 * 3_600;
 let preorderSeq = 41;
-interface MockPreorder { ref_id: number; wallet: string; sku: number; qty: number; lamports: string; status: 'intent' | 'paid' | 'granted' | 'expired'; tx_sig: string | null; nonce: string | null; grant_sig: string | null; created_at: number; paid_at: number | null; granted_at: number | null }
+interface MockPreorder { ref_id: number; wallet: string; sku: number; qty: number; offer: 'pack' | 'chest'; currency: 'SOL' | 'USDC' | 'SKR'; lamports: string; status: 'intent' | 'paid' | 'granted' | 'expired'; tx_sig: string | null; nonce: string | null; grant_sig: string | null; created_at: number; paid_at: number | null; granted_at: number | null }
+const mockPreorderAmount = (solLamports: string, currency: 'SOL' | 'USDC' | 'SKR') => {
+  if (currency === 'SOL') return solLamports;
+  const cents = usdCentsFromSolLamports(solLamports);
+  return currency === 'USDC' ? usdcMicroForUsdCents(cents).toString() : skrMicroForUsdCents(cents).toString();
+};
+const mockPreorderPrices = (solLamports: string) => ({ SOL: solLamports, USDC: mockPreorderAmount(solLamports, 'USDC'), SKR: mockPreorderAmount(solLamports, 'SKR') });
 const preorderRows: MockPreorder[] = [];
 const preorderStats = () => {
   const sold = preorderRows.filter((r) => r.status === 'paid' || r.status === 'granted').reduce((s, r) => s + r.qty, 0) + 137;
   const granted = preorderRows.filter((r) => r.status === 'granted').reduce((s, r) => s + r.qty, 0);
-  return { active: true, sku: 3, priceLamports: PREORDER_PRICE, treasury: PREORDER_TREASURY, total: PREORDER_TOTAL, remaining: Math.max(0, PREORDER_TOTAL - sold), sold, granted, memoPrefix: 'GC-PRE', intentTtlS: PREORDER_TTL_S };
+  const packSold = preorderRows.filter((r) => r.offer !== 'chest' && (r.status === 'paid' || r.status === 'granted')).reduce((s, r) => s + r.qty, 0) + 137;
+  const chestSold = preorderRows.filter((r) => r.offer === 'chest' && (r.status === 'paid' || r.status === 'granted')).length;
+  return {
+    active: true, sku: 3, priceLamports: PREORDER_PRICE, treasury: PREORDER_TREASURY, total: PREORDER_TOTAL,
+    remaining: Math.max(0, PREORDER_TOTAL - packSold), sold, granted, memoPrefix: 'GC-PRE', intentTtlS: PREORDER_TTL_S,
+    offers: [
+      { id: 'pack', packs: 1, priceLamports: PREORDER_PRICE, prices: mockPreorderPrices(PREORDER_PRICE), total: PREORDER_TOTAL, remaining: Math.max(0, PREORDER_TOTAL - packSold), sold: packSold, maxPerWallet: 5, maxQty: 5 },
+      { id: 'chest', packs: 4, priceLamports: PREORDER_CHEST_PRICE, prices: mockPreorderPrices(PREORDER_CHEST_PRICE), total: PREORDER_CHEST_TOTAL, remaining: Math.max(0, PREORDER_CHEST_TOTAL - chestSold), sold: chestSold, maxPerWallet: 1, maxQty: 1 },
+    ],
+  };
 };
 const preorderItem = (r: MockPreorder) => ({ ...r, memo: `GC-PRE|${r.ref_id}`, expiresAt: r.created_at + PREORDER_TTL_S });
 on('get', '/preorder', () => preorderStats());
 on('get', '/preorder/me', () => ({ items: preorderRows.filter((r) => r.wallet === ME).map(preorderItem).reverse() }));
 on('get', '/preorder/registry', () => ({ campaign: preorderStats(), rows: preorderRows.filter((r) => r.status === 'paid' || r.status === 'granted').map((r) => ({ refId: r.ref_id, qty: r.qty, status: r.status, paidAt: r.paid_at, grantedAt: r.granted_at })) }));
 on('post', '/preorder/intent', (o) => {
-  const qty = Number((o.body as { qty?: number } | undefined)?.qty ?? 1);
-  if (!Number.isInteger(qty) || qty < 1 || qty > 5) throw Object.assign(new Error('qty must be 1..5'), { status: 400, code: 'bad_qty' });
-  const mine = preorderRows.filter((r) => r.wallet === ME && r.status !== 'expired').reduce((s, r) => s + r.qty, 0);
-  if (mine + qty > 5) throw Object.assign(new Error('At most 5 packs per wallet'), { status: 409, code: 'wallet_cap' });
-  const row: MockPreorder = { ref_id: ++preorderSeq, wallet: ME, sku: 3, qty, lamports: String(BigInt(PREORDER_PRICE) * BigInt(qty)), status: 'intent', tx_sig: null, nonce: null, grant_sig: null, created_at: Math.floor(Date.now() / 1000), paid_at: null, granted_at: null };
+  const body = (o.body ?? {}) as { qty?: number; offer?: string; currency?: string };
+  const offer = body.offer === 'chest' ? 'chest' as const : 'pack' as const;
+  const currency = (body.currency === 'USDC' || body.currency === 'SKR' ? body.currency : 'SOL') as 'SOL' | 'USDC' | 'SKR';
+  const qty = offer === 'chest' ? 1 : Number(body.qty ?? 1);
+  if (offer === 'pack' && (!Number.isInteger(qty) || qty < 1 || qty > 5)) throw Object.assign(new Error('qty must be 1..5'), { status: 400, code: 'bad_qty' });
+  const minePacks = preorderRows.filter((r) => r.wallet === ME && r.offer !== 'chest' && r.status !== 'expired').reduce((s, r) => s + r.qty, 0);
+  const mineChests = preorderRows.filter((r) => r.wallet === ME && r.offer === 'chest' && r.status !== 'expired').length;
+  if (offer === 'pack' && minePacks + qty > 5) throw Object.assign(new Error('At most 5 packs per wallet'), { status: 409, code: 'wallet_cap' });
+  if (offer === 'chest' && mineChests >= 1) throw Object.assign(new Error('At most 1 chest per wallet'), { status: 409, code: 'wallet_cap' });
+  const packs = offer === 'chest' ? 4 : qty;
+  const solLamports = offer === 'chest' ? PREORDER_CHEST_PRICE : String(BigInt(PREORDER_PRICE) * BigInt(qty));
+  const lamports = mockPreorderAmount(solLamports, currency);
+  const row: MockPreorder = { ref_id: ++preorderSeq, wallet: ME, sku: 3, qty: packs, offer, currency, lamports, status: 'intent', tx_sig: null, nonce: null, grant_sig: null, created_at: Math.floor(Date.now() / 1000), paid_at: null, granted_at: null };
   preorderRows.push(row);
-  return { refId: row.ref_id, wallet: ME, sku: 3, qty, lamports: row.lamports, treasury: PREORDER_TREASURY, memo: `GC-PRE|${row.ref_id}`, expiresAt: row.created_at + PREORDER_TTL_S };
+  return { refId: row.ref_id, wallet: ME, sku: 3, qty: packs, offer, currency, lamports: row.lamports, amount: row.lamports, treasury: PREORDER_TREASURY, payTo: PREORDER_TREASURY, memo: `GC-PRE|${row.ref_id}`, expiresAt: row.created_at + PREORDER_TTL_S };
 });
 on('post', '/preorder/confirm', (o) => {
   const { refId, signature } = (o.body ?? {}) as { refId?: number; signature?: string };

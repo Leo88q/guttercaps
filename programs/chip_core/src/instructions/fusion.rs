@@ -549,6 +549,7 @@ pub fn fuse<'info>(
         .to_account_info();
     let auth_seeds: &[&[u8]] = &[randomness::RNG_AUTH_SEED, &[ctx.bumps.rng_auth]];
     let rnd = randomness::commit_owned(
+        ctx.program_id,
         &sb,
         &rnd_ai,
         &queue,
@@ -683,7 +684,7 @@ pub fn fuse_reveal<'info>(
 
     // Reveal is read in any slot after `reveal_slot` (persisted field, not `get_value(slot)`), so a
     // crank or the player can settle whenever the reveal tx has landed (SEC-C2).
-    let rnd = randomness::parse_checked(&ctx.accounts.randomness)?;
+    let rnd = randomness::parse_checked(&ctx.accounts.randomness, ctx.program_id)?;
     let value = randomness::revealed_value(&rnd, pending.commit_slot)?;
     let roll = uniform_bps(&value, 0);
     let threshold = success_threshold(recipe, pending.boosted);
@@ -883,7 +884,7 @@ pub fn cancel_stale_fusion<'info>(
     let clock = Clock::get()?;
     let pending = &ctx.accounts.pending;
     // Same rule as cancel_stale_pack (SEC-C3): only an un-revealed request whose oracle window expired.
-    let rnd = randomness::parse_checked(&ctx.accounts.randomness)?;
+    let rnd = randomness::parse_checked(&ctx.accounts.randomness, ctx.program_id)?;
     randomness::assert_refundable(&rnd, pending.commit_slot, clock.slot)?;
 
     // SEC-M3: the oracle never answered → the fee goes back, 100 %

@@ -1,13 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  PACKS, expandRandomness, effectiveOdds, rollRarity, uniformPool, FUSION_RECIPES, expectedBurn,
+  PACKS, expandRandomness, effectiveOdds, rollRarity, uniformPool, FUSION_RECIPES, expectedBurn, CHIP_XP, applyChipXp, xpToNext,
   guardedEmission, dailyEmission, fullSetBonusMult, matchWinProbability, elementEdge,
   RARITY_PROFILES, bundlePriceCents,
   REWARD_ROOT_KINDS, isSkrRootKind, isItemRootKind, ITEM_REWARDS, rootCurrency, skrPoolMonthlyFunding, BASELINE_SKR_ASSUMPTIONS, SKR_POOL_FUNDING, CURRENCIES,
   skrPoolDueMicro, marketFeeTreasuryPartMicro, SKR_TREASURY_WALLET, SKR,
   unitsForCents, maxUnitsWithSlippage, pythPriceToUsd, pusherCostSolPerMonth, PYTH_FEEDS, PYTH_MAX_AGE_SECS, PYTH_PUSHER, PYTH_WORST_CASE_AGE_S, PYTH_SHARD_ID,
   effectivePythPrice, confBps, PythConfidenceError, PYTH_MAX_CONF_BPS,
+  FX, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, usdCentsFromSolLamports,
   resolveFight, botSquad, onChainSquadPower, onChainChipPower, squadSynergy, fightSquadPower, MATCHMAKING, elementOfCollection, type FighterChip,
   SEASON, seasonPayoutByRank,
   pvpDailyPotVolumeCg, ARENA_ORACLE_DAILY_CAP_DEFAULT_CG, BASELINE_ASSUMPTIONS, dailyFlows, FEES,
@@ -87,9 +88,9 @@ test('fusion: 8 recipes chain 0→8, always 3 materials, alternating collection 
   assert.equal(+expectedBurn(FUSION_RECIPES[7]).toFixed(2), 5); // 50% with 1 refund
 });
 
-test('emission guard is a ceiling, floors at 10% of the schedule', () => {
+test('emission guard is a ceiling, floors at 2% of the schedule', () => {
   const cap = dailyEmission(0);
-  assert.equal(guardedEmission(cap, 0), 0.1 * cap);
+  assert.equal(guardedEmission(cap, 0), 0.02 * cap);
   assert.equal(guardedEmission(cap, cap * 10), cap);
 });
 
@@ -160,6 +161,28 @@ test('SKR pool funding policy is the owner\'s 15/10/5 and the due amount is exac
   assert.match(SKR_TREASURY_WALLET, /^[1-9A-HJ-NP-Za-km-z]{43,44}$/);
 });
 
+test('frozen checkout FX: integer floor, no floats', () => {
+  assert.equal(FX.solUsd, 110);
+  assert.equal(FX.skrUsd, 0.016);
+  assert.equal(solLamportsForUsdCents(199), 18_090_909n);
+  assert.equal(skrMicroForUsdCents(199), 124_375_000n);
+  assert.equal(usdcMicroForUsdCents(199), 1_990_000n);
+  assert.equal(solLamportsForUsdCents(599), 54_454_545n);
+  assert.equal(skrMicroForUsdCents(599), 374_375_000n);
+  const skrCents = Math.floor((599 * 9_500) / 10_000);
+  assert.equal(skrCents, 569);
+  assert.equal(skrMicroForUsdCents(skrCents), 355_625_000n);
+  assert.equal(usdCentsFromSolLamports(300_000_000n), 3_300n);
+  assert.equal(usdCentsFromSolLamports(999_000_000n), 10_989n);
+  assert.equal(usdcMicroForUsdCents(3_300n), 33_000_000n);
+  assert.equal(skrMicroForUsdCents(3_300n), 2_062_500_000n);
+  assert.equal(usdcMicroForUsdCents(10_989n), 109_890_000n);
+  assert.equal(skrMicroForUsdCents(10_989n), 6_868_125_000n);
+  assert.equal(CURRENCIES.find((c) => c.symbol === 'USDC')?.market, false);
+  assert.equal(CURRENCIES.find((c) => c.symbol === 'SKR')?.market, false);
+  assert.equal(CURRENCIES.find((c) => c.symbol === 'SOL')?.market, true);
+});
+
 test('Pyth policy (Q7 — own pusher): units_for_cents integers, slippage guard and the pusher timing budget', () => {
   // 4.99 USD at $150.00 (expo −8) → 0.033266666 SOL, floored like the program
   assert.equal(unitsForCents(499, 15_000_000_000n, -8, 9), 33_266_666n);
@@ -183,7 +206,7 @@ test('Pyth policy (Q7 — own pusher): units_for_cents integers, slippage guard 
   // feed ids and currency codes agree with tokenomics
   assert.equal(PYTH_FEEDS.SKR.feedIdHex, SKR.pythFeedIdHex);
   assert.deepEqual([PYTH_FEEDS.SOL.currency, PYTH_FEEDS.SKR.currency], [0, 3]);
-  assert.deepEqual(CURRENCIES.filter((c) => c.oracle).map((c) => c.oracle), ['pyth:SOL/USD', 'pyth:SKR/USD']);
+  assert.deepEqual(CURRENCIES.filter((c) => c.oracle).map((c) => c.oracle), ['fx:SOL/USD', 'fx:SKR/USD']);
   // timing budget: worst-case on-chain age < alert < max age; a quote must still have ≥ 15 s of life
   assert.equal(PYTH_MAX_AGE_SECS, 60);
   assert.equal(PYTH_WORST_CASE_AGE_S, PYTH_PUSHER.timeDifferenceS + PYTH_PUSHER.pushingFrequencyS + 5);
@@ -279,4 +302,20 @@ test('arena oracle cap default (SEC-F06): one baseline day of wager pots, and th
   const rake = pvpDailyPotVolumeCg(a) * FEES.pvpRakeBps / 10_000;
   const rakeBurnShare = 1 - (FEES.pvpRakeTreasuryShareBps + FEES.pvpRakePoolShareBps) / 10_000;
   assert.ok(flows.burnedCg >= rake * rakeBurnShare, 'the burn total includes the rake burn slice');
+});
+
+test('ranked chip XP: cost curve, spend, and rarity caps', () => {
+  assert.equal(CHIP_XP.cost(1), 10);
+  assert.equal(CHIP_XP.cost(11), 110);
+  assert.equal(xpToNext(1, 12), 10);
+  assert.equal(xpToNext(12, 12), null);
+  assert.deepEqual(applyChipXp(1, 9, 12), { level: 1, xp: 9, gained: 0 });
+  assert.deepEqual(applyChipXp(1, 10, 12), { level: 2, xp: 0, gained: 1 });
+  assert.deepEqual(applyChipXp(1, 30, 12), { level: 3, xp: 0, gained: 2 }); // 10+20
+  assert.deepEqual(applyChipXp(11, 110, 12), { level: 12, xp: 0, gained: 1 });
+  assert.deepEqual(applyChipXp(12, 500, 12), { level: 12, xp: 500, gained: 0 });
+  // Common 1→12 = 10×(1+…+11) = 660 XP
+  assert.deepEqual(applyChipXp(1, 660, 12), { level: 12, xp: 0, gained: 11 });
+  assert.equal(RARITY_PROFILES[0].maxLevel, 12);
+  assert.equal(RARITY_PROFILES[8].maxLevel, 50);
 });

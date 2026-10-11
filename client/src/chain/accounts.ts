@@ -235,6 +235,19 @@ export function decodeCompressedMintClaim(data: Uint8Array): CompressedMintClaim
 export const claimIsListable = (c: CompressedMintClaim, nowSec = Math.floor(Date.now() / 1000)) =>
   c.registered && !c.consumed && !c.listed && !c.staked && BigInt(nowSec) >= c.lockUntil;
 
+/** Why `fuse_compressed_claims` would throw InvalidChipState / ChipNotFree / NotAssetOwner. */
+export type ClaimFusionBlock = 'owner' | 'consumed' | 'listed' | 'staked' | 'locked' | 'unregistered';
+export function claimFusionBlock(c: CompressedMintClaim, owner: PublicKey, nowSec = Math.floor(Date.now() / 1000)): ClaimFusionBlock | undefined {
+  if (!c.buyer.equals(owner)) return 'owner';
+  if (c.consumed) return 'consumed';
+  if (c.listed) return 'listed';
+  if (c.staked) return 'staked';
+  if (BigInt(nowSec) < c.lockUntil) return 'locked';
+  if (c.minted && c.registered) return undefined;
+  if (!c.minted && c.settlement.equals(PublicKey.default) && BigInt(nowSec) < c.expiresAt) return undefined;
+  return 'unregistered';
+}
+
 export interface CompressedAssetListing {
   asset: PublicKey; claim: PublicKey; seller: PublicKey; merkleTree: PublicKey; treeConfig: PublicKey; coreCollection: PublicKey;
   collectionIdx: number; price: bigint; currency: number; createdAt: bigint; bump: number;
@@ -379,6 +392,28 @@ export function readCompressedClaimsCreated(r: BorshReader): CompressedClaimsCre
   return { ...e, claimNonces: e.claimNonces.slice(0, e.count) };
 }
 
+/** Live compressed open — same economic payload as PackOpened, claim nonces instead of Core assets. */
+export interface CompressedPackOpenedEvent {
+  buyer: PublicKey; nonce: bigint; sku: number; packNo: number; count: number;
+  claimNonces: bigint[]; rarities: number[]; collections: number[];
+  roll: Uint8Array; pityBefore: number; pityAfter: number; voucher: boolean;
+}
+export function readCompressedPackOpened(r: BorshReader): CompressedPackOpenedEvent {
+  const e = {
+    buyer: r.pubkey(), nonce: r.u64(), sku: r.u8(), packNo: r.u8(), count: r.u8(),
+    claimNonces: r.array(MAX_CHIPS_PER_PACK, () => r.u64()),
+    rarities: r.array(MAX_CHIPS_PER_PACK, () => r.u8()),
+    collections: r.array(MAX_CHIPS_PER_PACK, () => r.u8()),
+    roll: r.bytes(32), pityBefore: r.u16(), pityAfter: r.u16(), voucher: r.bool(),
+  };
+  return {
+    ...e,
+    claimNonces: e.claimNonces.slice(0, e.count),
+    rarities: e.rarities.slice(0, e.count),
+    collections: e.collections.slice(0, e.count),
+  };
+}
+
 interface CompressedPackSettledEvent { buyer: PublicKey; nonce: bigint; refunded: boolean }
 export function readCompressedPackSettled(r: BorshReader): CompressedPackSettledEvent {
   return { buyer: r.pubkey(), nonce: r.u64(), refunded: r.bool() };
@@ -463,6 +498,18 @@ export interface SetBonus { owner: PublicKey; completedSets: number; updatedAt: 
 export function decodeSetBonus(data: Uint8Array): SetBonus {
   const r = expectDiscriminator(data, 'SetBonus');
   return { owner: r.pubkey(), completedSets: r.u8(), updatedAt: r.i64(), bump: r.u8() };
+}
+
+export interface WalletStakeDay { owner: PublicKey; day: number; tokenClaimed: bigint; chipClaimed: bigint; bump: number }
+export function decodeWalletStakeDay(data: Uint8Array): WalletStakeDay {
+  const r = expectDiscriminator(data, 'WalletStakeDay');
+  return { owner: r.pubkey(), day: r.u32(), tokenClaimed: r.u64(), chipClaimed: r.u64(), bump: r.u8() };
+}
+
+export interface ChipPlay { chip: PublicKey; lastPlayed: bigint; bump: number }
+export function decodeChipPlay(data: Uint8Array): ChipPlay {
+  const r = expectDiscriminator(data, 'ChipPlay');
+  return { chip: r.pubkey(), lastPlayed: r.i64(), bump: r.u8() };
 }
 
 export interface RewardRoot { kind: number; epoch: number; root: Uint8Array; budget: bigint; claimed: bigint; publishedAt: bigint; publisher: PublicKey; revoked: boolean; bump: number }

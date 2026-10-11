@@ -7,7 +7,7 @@
 // share-of-pool × daily budget × elapsed time since the last claim, good enough for the list view
 // and flagged `pendingEstimated: true`.
 import { PublicKey } from '@solana/web3.js';
-import { EMISSION_SPLIT, LOCK_TIERS, RARITY_PROFILES, dailyEmission, impliedApy, levelMult, type LockTier } from '@guttercaps/economy';
+import { EMISSION_SPLIT, LOCK_TIERS, RARITY_PROFILES, STAKE_CLAIM_CAPS, aliveStakeMult, dailyEmission, impliedApy, levelMult, type LockTier } from '@guttercaps/economy';
 import { type Db, now } from './db.ts';
 import { chipToApi, iso, myGrid, type ChipRow } from './queries.ts';
 import { ServiceError } from './services.ts';
@@ -18,10 +18,11 @@ export const MICRO = 1_000_000n;
 /** staking::state — `SetBonus::mult_bps`: +12 % per set ≤ 5, +2 % beyond, cap 170 %. */
 export const setBonusMultBps = (sets: number): number => Math.min(17_000, 10_000 + 1_200 * Math.min(sets, 5) + 200 * Math.max(0, sets - 5));
 /** staking::stake::chip_weight — stake_weight × 1e6 × level_mult × set_mult (raw on-chain units). */
-export function chipWeightRaw(rarity: number, level: number, sets: number): bigint {
+export function chipWeightRaw(rarity: number, level: number, sets: number, lastPlayedAt?: number | null): bigint {
   const p = RARITY_PROFILES[rarity];
   const levelBps = 10_000n + 250n * BigInt(Math.max(1, level) - 1);
-  return (BigInt(p.stakeWeight) * MICRO * levelBps) / 10_000n * BigInt(setBonusMultBps(sets)) / 10_000n;
+  const aliveBps = BigInt(Math.round(aliveStakeMult(lastPlayedAt) * 10_000));
+  return (BigInt(p.stakeWeight) * MICRO * levelBps) / 10_000n * BigInt(setBonusMultBps(sets)) / 10_000n * aliveBps / 10_000n;
 }
 export const tokenStakePda = (owner: PublicKey, tier: number) => PublicKey.findProgramAddressSync([Buffer.from('tstake'), owner.toBytes(), Buffer.from([tier])], PROGRAMS.staking)[0];
 
@@ -29,12 +30,12 @@ const sumBig = (db: Db, sql: string, ...params: (string | number)[]) => db.all<{
 
 export interface EmissionDay { dayIndex: number; year: number; scheduleCapMicro: bigint; guardedMicro: bigint; burn7dAvgMicro: bigint; source: 'chain' | 'schedule' }
 
-/** Latest closed day; before the first `tick_day` is indexed the year-0 schedule floor (30 %) is assumed. */
+/** Latest closed day; before the first `tick_day` is indexed the year-0 schedule floor (2 %) is assumed. */
 export function latestEmissionDay(db: Db): EmissionDay {
   const r = db.get<{ day_index: number; year: number; schedule_cap: string; guarded: string; burn_7d_avg: string }>(`SELECT day_index, year, schedule_cap, guarded, burn_7d_avg FROM emission_days ORDER BY day_index DESC LIMIT 1`);
   if (r) return { dayIndex: r.day_index, year: r.year, scheduleCapMicro: BigInt(r.schedule_cap), guardedMicro: BigInt(r.guarded), burn7dAvgMicro: BigInt(r.burn_7d_avg), source: 'chain' };
   const cap = BigInt(Math.floor(dailyEmission(0) * 1e6));
-  return { dayIndex: 0, year: 0, scheduleCapMicro: cap, guardedMicro: (cap * 3_000n) / 10_000n, burn7dAvgMicro: 0n, source: 'schedule' };
+  return { dayIndex: 0, year: 0, scheduleCapMicro: cap, guardedMicro: (cap * 200n) / 10_000n, burn7dAvgMicro: 0n, source: 'schedule' };
 }
 
 export function poolTotals(db: Db) {
@@ -61,6 +62,12 @@ export function overview(db: Db) {
     emission: { dayIndex: e.dayIndex, year: e.year, scheduleCapMicro: e.scheduleCapMicro.toString(), guardedMicro: e.guardedMicro.toString(), burn7dAvgMicro: e.burn7dAvgMicro.toString(), mintedTotalMicro: minted.toString(), splitBps, source: e.source },
     tokenPool: { tvlMicro: p.tokenTvl.toString(), totalWeight: p.tokenWeight.toString(), budgetTodayMicro: tokenBudget.toString(), apyByTier },
     chipPool: { stakedChips: p.stakedChips, totalWeight: p.chipWeight.toString(), budgetTodayMicro: chipBudget.toString(), dailyPerWeightUnit: perUnit.toString() },
+    claimCaps: {
+      chipDailyCg: STAKE_CLAIM_CAPS.chipDailyCg,
+      tokenDailyCg: STAKE_CLAIM_CAPS.tokenDailyCg,
+      aliveWindowDays: STAKE_CLAIM_CAPS.aliveWindowDays,
+      idleWeight: STAKE_CLAIM_CAPS.idleWeight,
+    },
   };
 }
 

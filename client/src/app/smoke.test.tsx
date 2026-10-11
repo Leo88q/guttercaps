@@ -56,7 +56,7 @@ beforeAll(() => {
 });
 
 const PUBLIC: [string, RegExp][] = [
-  ['/', /GUTTERCAPS/i], ['/market', /Market/], ['/codex', /Eight Districts/], ['/arena', /Cap Slam/], ['/leaderboard/rating', /Leaderboard/], ['/verify', /Provably fair/], ['/shop', /Pack shop/], ['/collection', /Collection/],
+  ['/', /GUTTERCAPS/i], ['/market', /Market/], ['/codex', /Eight Districts/], ['/arena', /Cap Slam/], ['/leaderboard/rating', /Leaderboard/], ['/verify', /Provably fair/], ['/drain', /The drains/], ['/shop', /Pack shop/], ['/collection', /Collection/],
   ['/language', /Tiếng Việt/], ['/shop?tab=services', /Season pass/],
 ];
 
@@ -300,8 +300,11 @@ describe('payment rails: SKR is offered, and a rail that is off says why', () =>
     // empty one) and the 3-row gems grid the layout pins in CSS
     expect(container.querySelector('.pack-pity-spacer')).toBeTruthy();
     const css = readFileSync(resolve(import.meta.dirname, '../shared/ui/layout.css'), 'utf8');
-    expect(css).toMatch(/\.pack-grid \.odds-gems \{ grid-template-rows: repeat\(3/);
-    expect(css).toMatch(/\.pack-grid \.pack-pity-spacer \{ min-height/);
+    expect(css).toContain('grid-template-rows: repeat(5, minmax(54px, 1fr))');
+    // Shared intrinsic rows replace locale-specific spacer heights; Playwright checks geometry.
+    expect(css).toMatch(/grid-row: span 11; grid-template-rows: subgrid/);
+    expect(container.querySelectorAll('.pack-price')).toHaveLength(4);
+    expect(container.querySelectorAll('.pack-buy button')).toHaveLength(4);
     cleanup();
   });
 });
@@ -360,7 +363,7 @@ describe('shop tab strip (the axe aria-required-children regression, docs/09 §5
 });
 
 describe('all locales, authenticated route matrix (mock only)', () => {
-  const matrix = ['/', '/collection', '/shop', '/shop?tab=services', '/fusion', '/arena', '/market', '/staking', '/quests', '/profile', '/leaderboard', '/codex', '/verify', '/admin', '/admin?tab=kpi', '/admin?tab=simulate', '/admin?tab=fraud', '/admin?tab=kill', '/admin?tab=audit'];
+  const matrix = ['/', '/collection', '/shop', '/shop?tab=services', '/fusion', '/arena', '/market', '/staking', '/quests', '/profile', '/leaderboard', '/codex', '/verify', '/drain', '/admin', '/admin?tab=kpi', '/admin?tab=simulate', '/admin?tab=fraud', '/admin?tab=kill', '/admin?tab=audit'];
   for (const locale of ['en', 'ru', 'pt', 'es', 'vi', 'id', 'fil'] as const) {
     it(`${locale}: renders every player screen without missing keys or crashes`, async () => {
       const { setLocale, t, LOCALE_META } = await import('@/shared/i18n');

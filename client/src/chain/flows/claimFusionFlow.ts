@@ -4,11 +4,11 @@ import { errorSnapshot, type ErrorSnapshot } from '../errorSnapshot';
 // Pure orchestration: no React here; the UI subscribes through onState.
 import { Connection, PublicKey } from '@solana/web3.js';
 import { FUSION_RECIPES } from '@guttercaps/economy';
-import { DAS_RPC_URL } from '@/app/config';
+import { rpcEndpoints } from '@/app/rpcEndpoints';
 import { appLookupTables, fitsInTx, sendTx, type WalletLike } from '../tx';
 import { prepareClose, prepareCloseLut, prepareRandomness, prepareReveal, readRandomness, sendCloseLut } from '../switchboard';
 import {
-  cancelStaleClaimFusionIx, closeExpiredClaimIx, fuseClaimsCommitIx, fuseClaimsRevealIx, fuseCompressedClaimsIx, STALE_PACK_SLOTS,
+  cancelStaleClaimFusionIx, closeExpiredClaimIx, Currency, fuseClaimsCommitIx, fuseClaimsRevealIx, fuseCompressedClaimsIx, STALE_PACK_SLOTS,
 } from '../ix/chipCore';
 import { RNG_KIND, claimFusionPda, compressedMintClaimPda, freshNonce } from '../pdas';
 import {
@@ -18,6 +18,7 @@ import {
 import { findEvent } from '../anchor';
 import { DasClient } from '../das';
 import { settleClaim } from './claimSettle';
+import { planClaimFusion } from './fusionPlan';
 import { fetchCollectionMetas, fetchGameConfig, fetchTreeMetas } from './packFlow';
 
 type ClaimFusionPhase = 'idle' | 'signing' | 'committed' | 'revealing' | 'settling' | 'done' | 'stale' | 'error';
@@ -74,7 +75,27 @@ export class ClaimFusionFlow {
       this.cfg ??= await fetchGameConfig(connection);
       const nonce = await this.pickFreeNonce();
       this.set({ nonce });
-      const recipe = FUSION_RECIPES[this.state.recipe];
+      const claimInfos = await connection.getMultipleAccountsInfo(this.state.materials, 'confirmed');
+      const claims: CompressedMintClaim[] = [];
+      for (let i = 0; i < this.state.materials.length; i++) {
+        const info = claimInfos[i];
+        if (!info) throw new Error(`fusion material claim missing: ${this.state.materials[i].toBase58()}`);
+        claims.push(decodeCompressedMintClaim(new Uint8Array(info.data)));
+      }
+      const plan = planClaimFusion(claims, wallet.publicKey, this.state.resultCollectionIdx);
+      if (plan.block) {
+        throw Object.assign(new Error(`fusion blocked: ${plan.block}`), {
+          code: 'fusion_blocked',
+          details: {
+            reason: plan.block,
+            claims: this.state.materials.map((k) => k.toBase58()),
+            collections: claims.map((c) => c.collectionIdx),
+            rarities: claims.map((c) => c.rarity),
+          },
+        });
+      }
+      this.set({ resultCollectionIdx: plan.resultCollectionIdx, recipe: plan.recipeFrom });
+      const recipe = FUSION_RECIPES[plan.recipeFrom];
       if (recipe && recipe.successBps === 10_000) {
         this.set({ phase: 'signing' });
         const { signature } = await sendTx(connection, wallet, [
@@ -85,7 +106,7 @@ export class ClaimFusionFlow {
             cgMint: this.cfg.cgMint,
             materialClaims: this.state.materials,
           }),
-        ], { cuLimit: 400_000 });
+        ], { cuLimit: 400_000, spend: { currency: Currency.CG } });
         const resultClaim = compressedMintClaimPda(wallet.publicKey, nonce)[0];
         this.set({
           phase: 'settling',
@@ -115,7 +136,7 @@ export class ClaimFusionFlow {
           owner: wallet.publicKey, nonce, resultCollectionIdx: this.state.resultCollectionIdx, useBooster: this.state.boosted,
           randomness: rnd.randomness, queue: rnd.queue, oracle: rnd.oracle, cgMint: this.cfg.cgMint, materials: this.state.materials,
         }),
-      ], { cuLimit: 600_000 });
+      ], { cuLimit: 600_000, spend: { currency: Currency.CG } });
       const ev = findEvent(logs, 'ClaimFusionCommitted', readClaimFusionCommitted);
       if (!ev) throw new Error('commit transaction landed without a ClaimFusionCommitted event');
       this.set({ phase: 'committed', signatures: [signature] });
@@ -223,7 +244,7 @@ export class ClaimFusionFlow {
       const trees = await fetchTreeMetas(connection, Array.from({ length: this.cfg.collectionsCreated }, (_, i) => i));
       const settled = await settleClaim(
         {
-          connection, wallet, das: new DasClient({ endpoint: this.deps.dasEndpoint ?? DAS_RPC_URL }),
+          connection, wallet, das: new DasClient({ endpoint: this.deps.dasEndpoint ?? rpcEndpoints(connection.rpcEndpoint).das }),
           buyer: wallet.publicKey, metas, trees, lookupTables,
           onSignature: (sig) => this.set({ signatures: [...this.state.signatures, sig] }),
         },

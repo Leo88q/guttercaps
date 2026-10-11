@@ -61,6 +61,15 @@ for (const locale of LOCALES) it(`${locale}: reward receipts keep token atoms, b
   expect(fmtUsd(0.0123, 4)).toBe(new Intl.NumberFormat(LOCALE_META[locale].tag, { style: 'currency', currency: 'USD', minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(0.0123));
 });
 
+it('error toasts stay two minutes so program logs can be copied', () => {
+  vi.useFakeTimers();
+  act(() => { useUiStore.getState().toast({ kind: 'error', title: { key: 'fusion.failed' } }); });
+  act(() => vi.advanceTimersByTime(119_999));
+  expect(useUiStore.getState().toasts).toHaveLength(1);
+  act(() => vi.advanceTimersByTime(1));
+  expect(useUiStore.getState().toasts).toHaveLength(0);
+});
+
 it('locale changes do not extend the 4500ms notification lifetime', async () => {
   vi.useFakeTimers();
   act(() => { useUiStore.getState().toast({ kind: 'success', title: { key: 'common.copied' } }); });

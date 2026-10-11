@@ -6,7 +6,7 @@
 //!  * The randomness account is a chip_core PDA whose Switchboard authority is
 //!    `["rng_auth"]`: `buy_pack` commits it by CPI, so the buyer can neither
 //!    re-commit nor block the reveal (SEC-C3 part 2); after the CPI it must
-//!    have `seed_slot == slot − 1` and be unrevealed; its key is pinned in
+//!    have `seed_slot == Clock::slot` and be unrevealed; its key is pinned in
 //!    PendingPack.
 //!  * The historical `open_pack` implementation below is retained for audit
 //!    comparison only and is fail-closed while the full Bubblegum V2 path is
@@ -36,10 +36,8 @@ use anchor_spl::token::{self, Mint, Token, TokenAccount};
 use mpl_core::ID as MPL_CORE_ID;
 use pyth_solana_receiver_sdk::price_update::{get_feed_id_from_hex, PriceUpdateV2};
 
-// `price_update` below is a `/// CHECK:` account decoded by `crate::pyth::load` rather than an
-// `Account<'info, PriceUpdateV2>`: the SDK type has no `IdlBuild` impl and the orphan rule forbids
-// adding one here, which would break `anchor build` (docs/09 §1.1). Owner is pinned by the account
-// constraint, discriminator + borsh by the loader; feed id / age / confidence stay in `oracle_price`.
+// `price_update` stays an optional `/// CHECK:` slot so the IDL does not break. Checkout is frozen
+// FX and does not load Pyth. The SDK type still has no `IdlBuild` impl (docs/09 §1.1).
 
 use crate::economy::*;
 use crate::errors::ChipError;
@@ -54,14 +52,10 @@ pub const SOL_USD_FEED_HEX: &str =
 pub const SKR_USD_FEED_HEX: &str =
     "38846ec4d0dbe808091817f5c0d6ab8058e25422348ddf97db52b6c378a93bf9";
 
-/// SEC-M2: the price the program charges at, from a verified Pyth update.
-///   * age / feed / verification level — `get_price_no_older_than` (unchanged),
-///   * `conf × 10_000 > price × PYTH_MAX_CONF_BPS` ⇒ `PriceUncertain` (publishers disagree),
-///   * returns `price − conf`: the protocol-favouring edge of the interval, so a buyer never pays
-///     with a token valued at the optimistic end of a wide band. At a normal 0.05 % conf this
-///     costs the buyer 0.05 % — inside the 1 % slippage guard the quote already carries.
-///
-/// Mirrored bit-for-bit in packages/economy `effectivePythPrice` (backend quote + client).
+/// Historical Pyth reader. Checkout uses `fx_sol_lamports` / `fx_skr_micro` instead; this stays
+/// so the feed-id constants remain the single rust pin (`economy:check`) and a revival cannot
+/// silently change the formula. `price_update` on BuyPack is unused.
+#[allow(dead_code)]
 pub fn oracle_price(pu: &PriceUpdateV2, clock: &Clock, feed_hex: &str) -> Result<(i64, i32)> {
     let feed = get_feed_id_from_hex(feed_hex).map_err(|_| error!(ChipError::StalePrice))?;
     let p = pu
@@ -78,7 +72,8 @@ pub fn oracle_price(pu: &PriceUpdateV2, clock: &Clock, feed_hex: &str) -> Result
     Ok((effective, p.exponent))
 }
 
-/// Token units for `usd_cents` at a Pyth price: units = cents × 10^decimals × 10^|expo| / 100 / price.
+/// Token units for `usd_cents` at a Pyth price. Unused at checkout (frozen FX).
+#[allow(dead_code)]
 pub fn units_for_cents(usd_cents: u64, price: i64, exponent: i32, decimals: u32) -> Result<u64> {
     require!(price > 0, ChipError::StalePrice);
     let scale = 10u128.pow(exponent.unsigned_abs());
@@ -131,10 +126,10 @@ pub struct BuyPack<'info> {
     pub pending: Box<Account<'info, PendingPack>>,
 
     /// CHECK: program-owned Switchboard randomness account `["rng", 0, buyer, nonce]` created by
-    /// `init_randomness` in this tx (owner = SB_PROGRAM_ID, SEC-C1); committed HERE by CPI with the
+    /// `init_randomness` in this tx (owner = chip_core, SEC-C1); committed HERE with the
     /// `rng_auth` signature and pinned in PendingPack (SEC-C3 part 2).
     #[account(
-        mut, owner = randomness::SB_PROGRAM_ID @ ChipError::RandomnessMismatch,
+        mut, owner = crate::ID @ ChipError::RandomnessMismatch,
         seeds = [randomness::RNG_SEED, &[randomness::RNG_KIND_PACK], buyer.key().as_ref(), &nonce.to_le_bytes()], bump,
     )]
     pub randomness: UncheckedAccount<'info>,
@@ -162,9 +157,8 @@ pub struct BuyPack<'info> {
     #[account(seeds = [b"vault"], bump = config.vault_bump)]
     pub vault: UncheckedAccount<'info>,
 
-    // --- SOL / SKR path: Pyth price update (SOL/USD or SKR/USD, feed id checked in the handler) ---
-    /// CHECK: see the note on `oracle_price` — owner-pinned here, discriminator + borsh in `pyth::load`.
-    #[account(owner = crate::pyth::PYTH_RECEIVER @ ChipError::StalePrice)]
+    // --- unused: kept so the buy_pack account list / IDL stay stable. Checkout is frozen FX. ---
+    /// CHECK: ignored. Optional so existing clients may still pass a Pyth account (or nothing).
     pub price_update: Option<UncheckedAccount<'info>>,
 
     // --- SPL path (USDC, $CG or SKR — mint checked in the handler against `currency`) ---
@@ -192,28 +186,13 @@ pub fn buy_pack(
     let sku_e = PackSku::from_u8(sku).ok_or(ChipError::InvalidSku)?;
     let def = ctx.accounts.config.packs[sku as usize];
     require!(def.enabled, ChipError::SkuDisabled);
-    // A valid Pyth update is not enough: accept only the account selected by
-    // the multisig in GameConfig. This keeps quote, client and on-chain
-    // settlement on one authoritative push-oracle shard.
-    if currency == 0 || currency == 3 {
-        let expected = if currency == 0 {
-            ctx.accounts.config.pyth_sol_usd_feed
-        } else {
-            ctx.accounts.config.pyth_skr_usd_feed
-        };
-        let supplied = ctx
-            .accounts
-            .price_update
-            .as_ref()
-            .ok_or(ChipError::StalePrice)?;
-        require_keys_eq!(supplied.key(), expected, ChipError::StalePrice);
-    }
     let clock = Clock::get()?;
 
     // --- commit the program-owned randomness account by CPI (SEC-C3 part 2): authority = rng_auth,
-    // never committed before, and after the CPI `seed_slot == slot − 1` / unrevealed (randomness.rs) ---
+    // never committed before, and after the CPI `seed_slot == Clock::slot` / unrevealed (randomness.rs) ---
     let auth_seeds: &[&[u8]] = &[randomness::RNG_AUTH_SEED, &[ctx.bumps.rng_auth]];
     let rnd = randomness::commit_owned(
+        ctx.program_id,
         &ctx.accounts.switchboard_program.to_account_info(),
         &ctx.accounts.randomness.to_account_info(),
         &ctx.accounts.queue.to_account_info(),
@@ -317,15 +296,7 @@ pub fn buy_pack(
 
     let (paid_lamports, paid_usdc, paid_cg, paid_skr) = match currency {
         0 => {
-            let pu = crate::pyth::load(
-                ctx.accounts
-                    .price_update
-                    .as_ref()
-                    .ok_or(ChipError::StalePrice)?
-                    .as_ref(),
-            )?;
-            let (price, exponent) = oracle_price(&pu, &clock, SOL_USD_FEED_HEX)?;
-            let lamports = units_for_cents(usd_cents, price, exponent, 9)?;
+            let lamports = fx_sol_lamports(usd_cents)?;
             require!(lamports <= max_lamports, ChipError::Slippage);
             VaultLedger::require_writable(&ctx.accounts.vault.to_account_info())?;
             system_program::transfer(
@@ -341,7 +312,7 @@ pub fn buy_pack(
             (lamports, 0, 0, 0)
         }
         1 => {
-            let amount = usd_cents.checked_mul(10_000).ok_or(ChipError::Overflow)?; // cents → micro-USDC
+            let amount = fx_usdc_micro(usd_cents)?; // cents → micro-USDC
             spl_pay(ctx.accounts.config.usdc_mint, amount)?;
             (0, amount, 0, 0)
         }
@@ -359,20 +330,12 @@ pub fn buy_pack(
             (0, 0, amount, 0)
         }
         3 => {
-            // Seeker: volatile → priced through Pyth SKR/USD; `max_lamports` doubles as the max-SKR slippage guard
+            // Seeker: frozen FX ($0.016). `max_lamports` is the buyer cap (quote amount).
             require!(
                 ctx.accounts.config.skr_mint != Pubkey::default(),
                 ChipError::CurrencyNotAccepted
             );
-            let pu = crate::pyth::load(
-                ctx.accounts
-                    .price_update
-                    .as_ref()
-                    .ok_or(ChipError::StalePrice)?
-                    .as_ref(),
-            )?;
-            let (price, exponent) = oracle_price(&pu, &clock, SKR_USD_FEED_HEX)?;
-            let amount = units_for_cents(usd_cents, price, exponent, 6)?;
+            let amount = fx_skr_micro(usd_cents)?;
             require!(amount <= max_lamports, ChipError::Slippage);
             spl_pay(ctx.accounts.config.skr_mint, amount)?;
             (0, 0, 0, amount)
@@ -465,7 +428,7 @@ pub struct OpenVoucher<'info> {
     /// CHECK: program-owned Switchboard randomness account `["rng", 0, beneficiary, nonce]` created
     /// by `init_randomness` in this tx (same kind as a purchase so `close_randomness` reclaims it).
     #[account(
-        mut, owner = randomness::SB_PROGRAM_ID @ ChipError::RandomnessMismatch,
+        mut, owner = crate::ID @ ChipError::RandomnessMismatch,
         seeds = [randomness::RNG_SEED, &[randomness::RNG_KIND_PACK], beneficiary.key().as_ref(), &nonce.to_le_bytes()], bump,
     )]
     pub randomness: UncheckedAccount<'info>,
@@ -506,6 +469,7 @@ pub fn open_voucher(ctx: Context<OpenVoucher>, nonce: u64, template: u8) -> Resu
     // commit the program-owned randomness account by CPI — identical to buy_pack (SEC-C3 part 2)
     let auth_seeds: &[&[u8]] = &[randomness::RNG_AUTH_SEED, &[ctx.bumps.rng_auth]];
     let rnd = randomness::commit_owned(
+        ctx.program_id,
         &ctx.accounts.switchboard_program.to_account_info(),
         &ctx.accounts.randomness.to_account_info(),
         &ctx.accounts.queue.to_account_info(),
@@ -721,7 +685,7 @@ pub fn cancel_stale_pack(ctx: Context<CancelStalePack>, _nonce: u64) -> Result<(
     // SEC-C3: refund only after the oracle window expired AND the request was never revealed —
     // a revealed pack must be opened (the crank does it), never refunded.
     require!(!pending.revealed, ChipError::RandomnessAlreadyRevealed);
-    let rnd = randomness::parse_checked(&ctx.accounts.randomness)?;
+    let rnd = randomness::parse_checked(&ctx.accounts.randomness, ctx.program_id)?;
     randomness::assert_refundable(&rnd, pending.commit_slot, clock.slot)?;
 
     let (pl, pu, pc, ps) = (

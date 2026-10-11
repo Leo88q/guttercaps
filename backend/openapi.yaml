@@ -34,6 +34,91 @@ security:
   - cookieAuth: []
 
 paths:
+  /switchboard/health:
+    get:
+      security: []
+      summary: Read-only Switchboard readiness, before creating a purchase or wager
+      description: |
+        Server reads the pinned queue and checks verified, fresh members against their live gateway health.
+        Server-side SDK gateway discovery with on-chain fallback; merged live health is matched to the pinned queue.
+        No wallet signature or transaction. Cached for five seconds; 12 requests/min/IP.
+        A ready response is point-in-time availability, not a guarantee of later reveal or settlement.
+      responses:
+        '200':
+          description: At least one eligible oracle is live
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ready, checkedAt, genesis, program, queue, oracle, queueMembers, eligibleMembers, probes]
+                properties:
+                  ready: { type: boolean }
+                  checkedAt: { type: string, format: date-time }
+                  genesis: { type: string }
+                  program: { $ref: '#/components/schemas/Pubkey' }
+                  queue: { $ref: '#/components/schemas/Pubkey' }
+                  oracle: { type: [string, 'null'] }
+                  queueMembers: { type: integer }
+                  eligibleMembers: { type: integer }
+                  discovery:
+                    type: object
+                    properties:
+                      ok: { type: boolean }
+                      gatewayCount: { type: integer }
+                      code: { type: string }
+                  gatewayChecks:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        gateway: { type: [string, 'null'] }
+                        source: { type: string, enum: [registry, on_chain] }
+                        code: { type: string }
+                  probes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        oracle: { type: string }
+                        gateway: { type: [string, 'null'] }
+                        healthGateway: { type: [string, 'null'] }
+                        directCode: { type: string }
+                        healthy: { type: boolean }
+                        code: { type: string }
+        '503':
+          description: No live oracle, RPC/cluster failure, or concurrency limit; no transaction submitted
+          content: { application/json: { schema: { type: object, additionalProperties: true } } }
+        '429': { description: Rate limit; see Retry-After }
+  /switchboard/reveal/{randomness}:
+    get:
+      security: []
+      summary: Relay an oracle-signed reveal for our committed randomness account
+      description: |
+        Accepts only the account public key, never a URL, RPC or arbitrary body. Validates Switchboard owner,
+        pinned queue, our authority and committed oracle binding. Calls only that oracle's HTTPS gateway.
+        The client wraps the response into an instruction; Switchboard verifies its signature on chain.
+        No signing keys or transaction submission in this endpoint. 30 requests/min/IP, bounded concurrency.
+      parameters:
+        - { in: path, name: randomness, required: true, schema: { $ref: '#/components/schemas/Pubkey' } }
+      responses:
+        '200':
+          description: Oracle response (still requires on-chain verification)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [randomness, oracle, queue, signature, recovery_id, value]
+                properties:
+                  randomness: { $ref: '#/components/schemas/Pubkey' }
+                  oracle: { $ref: '#/components/schemas/Pubkey' }
+                  queue: { $ref: '#/components/schemas/Pubkey' }
+                  signature: { type: string, description: 64-byte secp256k1 signature in base64 }
+                  recovery_id: { type: integer, minimum: 0, maximum: 3 }
+                  value: { type: array, minItems: 32, maxItems: 32, items: { type: integer, minimum: 0, maximum: 255 } }
+        '400': { description: Invalid account key, owner, authority or queue binding }
+        '409': { description: Not committed or already revealed; reread chain state }
+        '429': { description: Rate limit; see Retry-After }
+        '503': { description: Gateway/RPC unavailable or bounded concurrency exhausted }
   # ------------------------------------------------------------------ auth
   /auth/siws/nonce:
     post:
@@ -244,15 +329,10 @@ paths:
       tags: [packs]
       summary: Price quote + everything needed to build buy_pack
       description: |
-        Returns the SOL / SKR amount computed from the studio's own Pyth push-oracle accounts (shard 0xCA75, posted by
-        our price pusher — ops/pyth-pusher/) with the exact integer formula of chip_core::units_for_cents, the 1 %
-        slippage guard (`maxLamports`), the `priceUpdateAccount` the client must pass to buy_pack, $CG/USDC amounts,
-        the caller's effective odds (pity applied), the Switchboard queue and the PDA set. Bundle and SKR promo
-        discounts are stacked additively and capped at 30 %.
-        The quote is never synthesised: if the on-chain price is older than 45 s (60 s max age minus the 15 s a buyer
-        needs to sign) or the account is missing/unverified the endpoint answers **503 price_unavailable** and the
-        client hides that rail. `expiresAt` is when the current on-chain update would fail the age check.
-        `pythUpdateData` is always empty in the push model (kept for a future pull-model fallback).
+        Frozen FX checkout (SOL = $110, SKR = $0.016, USDC = $1). Amounts are the same integer formula as
+        `chip_core::fx_sol_lamports` / `fx_skr_micro` / `fx_usdc_micro`. Pyth is not read; a stale feed must never
+        503 a purchase. `maxLamports` is the exact SOL/SKR amount (0 for USDC/$CG). `priceUpdateAccount` is omitted.
+        Bundle and SKR promo discounts stack additively, capped at 30 %. Pity and daily caps are per wallet.
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [sku, qty, currency], properties: { sku: { type: integer, minimum: 0, maximum: 3 }, qty: { type: integer, minimum: 1, maximum: 25 }, currency: { type: string, enum: [SOL, USDC, CG, SKR] } } } } } }
       responses:
         '200': { description: quote, content: { application/json: { schema: { $ref: '#/components/schemas/PackQuote' } } } }
@@ -261,7 +341,6 @@ paths:
         '403': { $ref: '#/components/responses/Error', description: 'geo_blocked — randomised packs are not sold in this region (`GEO_GATE=shop`, `GEO_RESTRICT_COUNTRIES`; backend/src/geo.ts). The country comes from the edge header, never from the client. Only the purchase is gated: market, staking, arena and every read endpoint keep working.' }
         '409': { description: starter_claimed — one Starter per wallet }
         '429': { description: daily_cap — Limited 5 / day }
-        '503': { $ref: '#/components/responses/Error', description: 'price_unavailable — Pyth account stale / missing / unverified, or its confidence interval is wider than 2 % of the price (SEC-M2 — the program would reject with PriceUncertain); retry after the next push (≤ 30 s)' }
   /preorder:
     get:
       tags: [packs]
@@ -281,9 +360,9 @@ paths:
       summary: Reserve packs and get the payment instruction set
       description: |
         Creates an `intent` row and returns the exact payment data: the treasury address, the total in lamports
-        and the memo `GC-PRE|<refId>` to attach. The intent expires after `intentTtlS` unless confirmed. The
-        per-wallet cap counts intents too, so a wallet cannot reserve the whole drop without paying.
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [qty], properties: { qty: { type: integer, minimum: 1, maximum: 5 } } } } } }
+        and the memo `GC-PRE|<refId>` to attach. `offer` selects the single Limited pack or the founders chest
+        of 4 packs. The intent expires after `intentTtlS` unless confirmed. Per-wallet caps are per offer.
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { qty: { type: integer, minimum: 1, maximum: 5 }, offer: { type: string, enum: [pack, chest] } } } } } } }
       responses:
         '200': { description: reserved, content: { application/json: { schema: { $ref: '#/components/schemas/PreorderIntent' } } } }
         '400': { $ref: '#/components/responses/Error', description: 'bad_qty' }
@@ -587,7 +666,7 @@ paths:
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [nonce], properties: { nonce: { type: string, description: 'hex, 8..64 bytes' } } } } } }
       responses:
-        '200': { description: accepted, content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, status: { type: string, enum: [revealing, resolved, cancelled] }, matchId: { type: string }, resolved: { type: boolean }, winner: { type: string }, waitingFor: { type: string, enum: [a, b] } } } } } }
+        '200': { description: accepted, content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, status: { type: string, enum: [revealing, resolved, cancelled] }, matchId: { type: string }, resolved: { type: boolean }, winner: { type: string }, waitingFor: { type: string, enum: [a, b] }, xp: { type: integer, description: chip XP granted to this wallets squad from this match }, leveled: { type: integer, description: how many of this wallets squad caps promoted } } } } } } }
         '400': { description: bad nonce / commit mismatch }
         '403': { description: not a player of this match }
         '409': { description: a different nonce was already revealed }
@@ -640,6 +719,12 @@ paths:
       responses:
         '200': { description: estimate, content: { application/json: { schema: { type: object, properties: { apyPct: { type: number }, dailyCgMicro: { type: string }, unlockAt: { type: string, format: date-time }, earlyExitPenaltyBps: { type: integer }, boostBps: { type: integer }, minStakeCgMicro: { type: string }, indicativeApyRange: { type: array, items: { type: number } }, emissionSource: { type: string, enum: [chain, schedule] } } } } } }
         '400': { $ref: '#/components/responses/Error' }
+  /staking/pot:
+    get:
+      tags: [staking]
+      security: []
+      summary: Gutter Pot — weekly weighted raffle among chip stakers (10 Rare–Epic vouchers, template 4). Public; `me` is filled when a session cookie is present.
+      responses: { '200': { description: pot, content: { application/json: { schema: { $ref: '#/components/schemas/GutterPot' } } } } }
 
   # ------------------------------------------------------------------ quests
   /quests:
@@ -1119,6 +1204,15 @@ components:
         collection: { type: integer }
         rarity: { $ref: '#/components/schemas/Rarity' }
         level: { type: integer }
+        xp: { type: integer, description: 'unspent ranked XP toward the next level' }
+        xpToNext: { type: [integer, 'null'], description: 'XP cost of the next level; null at the rarity cap' }
+        maxLevel: { type: integer, description: 'rarity cap (Common 12 … Diamond 50)' }
+        xpToday: { type: integer, description: 'XP this cap earned during the current UTC day toward xpDailyCap' }
+        xpDailyCap: { type: integer, description: 'per-cap UTC-day XP cap (CHIP_XP.dailyCap)' }
+        lastPlayed: { type: [string, 'null'], format: date-time, description: 'last Cap Slam that used this cap; null = never — idle stake weight 25 %' }
+        idle: { type: boolean, description: 'true when lastPlayed is older than STAKE_CLAIM_CAPS.aliveWindowDays' }
+        xpGained: { type: integer, description: 'XP this cap earned from this match (match payloads only; 0 otherwise)' }
+        leveledTo: { type: [integer, 'null'], description: 'new level if this match promoted the cap; null otherwise' }
         index: { type: [integer, 'null'], description: 'per-collection mint number (`Name #N`); null = not resolved on chain yet (core `open_pack` chips are back-filled by the crank within a sweep). Never a placeholder: #0 is a real chip' }
         flags: { type: object, properties: { staked: { type: boolean }, listed: { type: boolean }, fusing: { type: boolean }, soulbound: { type: boolean }, founder: { type: boolean, description: 'minted from a mainnet pre-sale pack — carries the permanent founder frame (docs/preorder-beta.md)' } } }
         lockUntil: { type: [string, 'null'], format: date-time }
@@ -1212,16 +1306,30 @@ components:
       type: object
       required: [active, sku, priceLamports, treasury, total, remaining, sold, granted, memoPrefix, intentTtlS]
       properties:
-        active: { type: boolean, description: 'campaign switched on AND treasury configured AND packs remain' }
+        active: { type: boolean, description: 'campaign switched on AND treasury configured AND at least one offer remains' }
         sku: { type: integer, description: 'pack SKU of the drop (3 = Limited)' }
-        priceLamports: { type: string, description: 'price of ONE pack in lamports (decimal string, u64)' }
+        priceLamports: { type: string, description: 'price of ONE single pack in lamports (decimal string, u64)' }
         treasury: { type: string, description: 'Squads multisig vault receiving the payments' }
-        total: { type: integer }
-        remaining: { type: integer, description: 'packs not yet reserved (granted + paid + intent all subtract)' }
-        sold: { type: integer, description: 'paid + granted packs' }
+        total: { type: integer, description: 'single-pack offer size (not including chests)' }
+        remaining: { type: integer, description: 'single packs not yet reserved' }
+        sold: { type: integer, description: 'paid + granted Limited packs across both offers' }
         granted: { type: integer, description: 'packs already delivered on-chain (PackGranted projection)' }
         memoPrefix: { type: string }
         intentTtlS: { type: integer }
+        offers:
+          type: array
+          items:
+            type: object
+            required: [id, packs, priceLamports, total, remaining, sold, maxPerWallet, maxQty]
+            properties:
+              id: { type: string, enum: [pack, chest] }
+              packs: { type: integer, description: 'Limited packs granted per reserved unit' }
+              priceLamports: { type: string }
+              total: { type: integer }
+              remaining: { type: integer }
+              sold: { type: integer }
+              maxPerWallet: { type: integer }
+              maxQty: { type: integer }
     PreorderIntent:
       type: object
       required: [refId, wallet, sku, qty, lamports, treasury, memo, expiresAt]
@@ -1229,8 +1337,9 @@ components:
         refId: { type: integer, description: 'the on-chain preorder_ref and the payment memo id' }
         wallet: { type: string }
         sku: { type: integer }
-        qty: { type: integer }
-        lamports: { type: string, description: 'total to send (price × qty), decimal string' }
+        qty: { type: integer, description: 'Limited packs this reservation grants (chest = 4)' }
+        offer: { type: string, enum: [pack, chest] }
+        lamports: { type: string, description: 'total to send, decimal string' }
         treasury: { type: string }
         memo: { type: string, description: 'attach to the payment, e.g. GC-PRE|42' }
         expiresAt: { type: integer, description: 'unix seconds; after that the intent stops accepting payments' }
@@ -1258,16 +1367,16 @@ components:
         sku: { type: integer }
         qty: { type: integer }
         currency: { type: string }
-        amount: { type: string, description: 'lamports / micro-USDC / micro-CG / micro-SKR incl. bundle (and SKR promo) discount — floor(cents × 10^(decimals-2) × 10^-expo / price), same integers as the program' }
-        maxLamports: { type: string, description: 'amount × 1.01 for SOL and SKR (0 otherwise); slippage guard passed to buy_pack (max_lamports = max units of the volatile currency)' }
+        amount: { type: string, description: 'lamports / micro-USDC / micro-CG / micro-SKR after discounts, frozen FX (SOL=$110, SKR=$0.016, USDC=$1)' }
+        maxLamports: { type: string, description: 'exact SOL lamports / micro-SKR (0 for USDC/$CG); passed to buy_pack as max_lamports' }
         priceUsdCents: { type: integer, description: 'USD price after discounts (what the program converts)' }
         rentReserveLamports: { type: string }
-        solUsd: { type: number, description: 'Pyth SOL/USD at quote time (from our push-oracle account)' }
-        skrUsd: { type: number, description: 'Pyth SKR/USD at quote time (from our push-oracle account)' }
-        priceAgeS: { type: integer, description: 'age of the on-chain update used (SOL/SKR only); program rejects > 60 s' }
+        solUsd: { type: number, description: 'frozen SOL/USD ($110)' }
+        skrUsd: { type: number, description: 'frozen SKR/USD ($0.016)' }
+        priceAgeS: { type: integer, description: 'unused (frozen FX)' }
         discountBps: { type: integer, description: 'total discount applied (bundle + SKR promo, capped 3000)' }
-        priceUpdateAccount: { $ref: '#/components/schemas/Pubkey', description: 'PriceUpdateV2 account to pass as price_update (our shard 0xCA75); absent for USDC/$CG' }
-        pythUpdateData: { type: array, items: { type: string }, description: 'always [] in the push model (our pusher posts ahead of time); reserved for a pull-model fallback' }
+        priceUpdateAccount: { $ref: '#/components/schemas/Pubkey', description: 'unused; omitted at frozen FX checkout' }
+        pythUpdateData: { type: array, items: { type: string }, description: 'always []' }
         effectiveOddsBps: { type: array, items: { type: integer } }
         pityCounter: { type: integer }
         hardPityIn: { type: integer }
@@ -1436,7 +1545,7 @@ components:
         openBattles: { type: array, items: { type: object, properties: { battle: { type: string }, wagerCgMicro: { type: string }, status: { type: string }, powerA: { type: integer }, league: { type: integer }, createdAt: { type: [string, 'null'] } } } }
         currentMatch: { type: [object, 'null'], properties: { id: { type: string }, opponent: { type: string }, iRevealed: { type: boolean }, revealDeadline: { type: string, format: date-time } } }
         queue: { type: [object, 'null'], properties: { ticket: { type: string }, league: { type: integer }, joinedAt: { type: string, format: date-time } } }
-        recent: { type: array, items: { type: object, properties: { id: { type: string }, opponent: { type: string }, won: { type: boolean }, forfeit: { type: boolean }, reward: { type: string }, endedAt: { type: [string, 'null'] } } } }
+        recent: { type: array, items: { type: object, properties: { id: { type: string }, opponent: { type: string }, won: { type: boolean }, forfeit: { type: boolean }, reward: { type: string }, endedAt: { type: [string, 'null'] }, xp: { type: integer, description: chip XP this wallet's squad earned from the match }, leveled: { type: integer, description: how many of this wallet's squad caps promoted } } } } }
         pendingRewardMicro: { type: string, description: 'match rewards + season payouts not yet in a published root' }
         seasonGames: { type: integer }
         minGamesForPayout: { type: integer }
@@ -1459,9 +1568,10 @@ components:
     StakingOverview:
       type: object
       properties:
-        emission: { type: object, properties: { dayIndex: { type: integer }, year: { type: integer }, scheduleCapMicro: { type: string }, guardedMicro: { type: string }, burn7dAvgMicro: { type: string }, mintedTotalMicro: { type: string }, splitBps: { type: array, items: { type: integer } }, source: { type: string, enum: [chain, schedule], description: 'schedule = no DayClosed indexed yet (30 % floor assumed)' } } }
+        emission: { type: object, properties: { dayIndex: { type: integer }, year: { type: integer }, scheduleCapMicro: { type: string }, guardedMicro: { type: string }, burn7dAvgMicro: { type: string }, mintedTotalMicro: { type: string }, splitBps: { type: array, items: { type: integer } }, source: { type: string, enum: [chain, schedule], description: 'schedule = no DayClosed indexed yet (2 % floor assumed)' } } }
         tokenPool: { type: object, properties: { tvlMicro: { type: string }, totalWeight: { type: string }, budgetTodayMicro: { type: string }, apyByTier: { type: array, items: { type: number } } } }
         chipPool: { type: object, properties: { stakedChips: { type: integer }, totalWeight: { type: string }, budgetTodayMicro: { type: string }, dailyPerWeightUnit: { type: string } } }
+        claimCaps: { type: object, properties: { chipDailyCg: { type: number }, tokenDailyCg: { type: number }, aliveWindowDays: { type: integer }, idleWeight: { type: number } } }
     StakingMe:
       type: object
       properties:
@@ -1470,12 +1580,42 @@ components:
         setBonus: { type: object, properties: { onChainSets: { type: integer }, computedSets: { type: integer }, multBps: { type: integer }, syncPending: { type: boolean } } }
         totalPendingMicro: { type: string }
         pendingEstimated: { type: boolean }
+    GutterPot:
+      type: object
+      properties:
+        week: { type: integer }
+        weekStartsAt: { type: integer }
+        weekEndsAt: { type: integer }
+        winnersPerWeek: { type: integer }
+        soulboundDays: { type: integer }
+        template: { type: integer }
+        oddsBps: { type: array, items: { type: integer } }
+        seedPrefix: { type: string }
+        live: { type: object, properties: { wallets: { type: integer }, totalWeight: { type: string } } }
+        lastDraw:
+          type: [object, 'null']
+          properties:
+            week: { type: integer }
+            drawnAt: { type: integer }
+            slot: { type: integer }
+            seedHex: { type: string }
+            ticketsHash: { type: string }
+            totalWeight: { type: string }
+            wallets: { type: integer }
+            winners: { type: array, items: { type: object, properties: { wallet: { type: string }, weight: { type: string } } } }
+        me:
+          type: [object, 'null']
+          properties:
+            weight: { type: string }
+            shareBps: { type: integer }
+            wonLast: { type: boolean }
+            pendingClaim: { type: boolean }
     Quest:
       type: object
       properties: { id: { type: string }, cadence: { type: string }, title: { type: string }, description: { type: string }, metric: { type: string }, target: { type: integer }, value: { type: integer }, rewardCgMicro: { type: string }, rewardChip: { type: [object, 'null'], description: 'quest chip voucher template { template, odds[9] bps, soulboundDays } — rooted into a kind-9 chip root (one voucher per wallet per epoch) and delivered by claim_chip_root → chip_core open_voucher → open_pack (VRF-minted, soulbound for soulboundDays)' }, rewardBooster: { type: integer, description: 'fusion boosters granted on completion — rooted into a kind-8 item root and delivered by claim_item_root (chip_core PlayerItems)' }, completedAt: { type: [string, 'null'] }, claimable: { type: boolean, description: 'done and waiting for the next reward root' }, rooted: { type: boolean, description: 'the $CG leaf (kind 2) is in a root' }, boosterRooted: { type: boolean, description: 'the booster leaf (kind 8) is in a root' }, chipRooted: { type: boolean, description: 'the chip voucher leaf (kind 9) is in a root' }, creditedCgMicro: { type: [string, 'null'], description: 'micro-$CG actually credited after daily/weekly caps' }, ineligibleReason: { type: [string, 'null'], enum: [account_too_new, play_10_matches_or_buy_a_pack, rewards_paused, device_limit, human_check_required, null], description: 'why finished quests are not paid; human_check_required = pass the Turnstile challenge (POST /me/human) — settlement waits' }, resetsAt: { type: [string, 'null'], format: date-time } }
     ClaimLeaf:
       type: object
-      properties: { kind: { type: integer, description: '2 quests · 3 PvP season · 4 events ($CG, minted from emission) · 5 quests · 6 season · 7 events (SKR, prize pool) · 8 fusion boosters (ITEM — claim_item_root delivers into chip_core PlayerItems by CPI) · 9 quest chip vouchers (CHIP — claim_chip_root CPIs chip_core open_voucher; the chip is VRF-minted by the pack crank)' }, epoch: { type: integer }, currency: { type: string, enum: [CG, SKR, ITEM, CHIP], description: 'ITEM leaves carry a unit COUNT in amountMicro (boosters, ≤ 10 per leaf); CHIP leaves carry the voucher TEMPLATE id (0..3, one chip per leaf) — neither is micro-tokens' }, rootPda: { $ref: '#/components/schemas/Pubkey' }, amountMicro: { type: string, description: 'micro-units of the currency; for ITEM roots the item count; for CHIP roots the voucher template id' }, proof: { type: array, items: { type: string } }, root: { type: string }, claimableAt: { type: [string, 'null'], format: date-time }, claimed: { type: boolean }, published: { type: boolean }, memo: { description: 'which quests / matches the leaf pays' } }
+      properties: { kind: { type: integer, description: '2 quests · 3 PvP season · 4 events ($CG, minted from emission) · 5 quests · 6 season · 7 events (SKR, prize pool) · 8 fusion boosters (ITEM — claim_item_root delivers into chip_core PlayerItems by CPI) · 9 quest chip vouchers (CHIP — claim_chip_root CPIs chip_core open_voucher; the chip is VRF-minted by the pack crank)' }, epoch: { type: integer }, currency: { type: string, enum: [CG, SKR, ITEM, CHIP], description: 'ITEM leaves carry a unit COUNT in amountMicro (boosters, ≤ 10 per leaf); CHIP leaves carry the voucher TEMPLATE id (0..4, one chip per leaf) — neither is micro-tokens' }, rootPda: { $ref: '#/components/schemas/Pubkey' }, amountMicro: { type: string, description: 'micro-units of the currency; for ITEM roots the item count; for CHIP roots the voucher template id' }, proof: { type: array, items: { type: string } }, root: { type: string }, claimableAt: { type: [string, 'null'], format: date-time }, claimed: { type: boolean }, published: { type: boolean }, memo: { description: 'which quests / matches the leaf pays' } }
     SkrPool:
       type: object
       properties:

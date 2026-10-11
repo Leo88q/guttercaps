@@ -11,13 +11,14 @@ import { useQueryClient } from '@tanstack/react-query';
 import { PublicKey } from '@solana/web3.js';
 import { useChipDetail } from '@/api/hooks';
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
-import { sendTx } from '@/chain/tx';
+import { sendTx, type SpendContext } from '@/chain/tx';
 import { resolveCompressedChip } from '@/chain/flows/compressedChip';
 import { cancelCompressedAssetIx } from '@/chain/ix/market';
 import { listingBuyIxs, dasClient } from './payment';
 import { ChipArt } from '@/shared/ui/ChipArt';
+import { ChipXpMeter } from '@/shared/ui/ChipXp';
 import { ExternalIcon } from '@/shared/ui/action-icons';
-import { CleanZone, KV, Skeleton } from '@/shared/ui/primitives';
+import { CleanZone, Empty, KV, Skeleton } from '@/shared/ui/primitives';
 import { CleanConfirmButton } from '@/shared/ui/buttons';
 import { chipLore, chipName, collectionName, rarityColor, rarityName, RARITY_PROFILES, ELEMENT_OF_COLLECTION, chipImageOf } from '@/shared/lib/rarity';
 import { ElementGlyph } from '@/shared/ui/element-icons';
@@ -42,18 +43,18 @@ export default function ChipPage() {
 
   if (q.isLoading) return <div className="page page-bg page-bg-market stack"><Skeleton h={220} /><Skeleton h={120} /></div>;
   const c = q.data;
-  if (!c) return <div className="page page-bg page-bg-market"><div className="empty">{t('ui.capNotFound')}</div></div>;
+  if (!c) return <div className="page page-bg page-bg-market"><Empty>{t('ui.capNotFound')}</Empty></div>;
 
   const mine = !!publicKey && c.owner === publicKey.toBase58();
   const l = c.listing;
   const prof = RARITY_PROFILES[c.rarity!];
   const feeBps = cfg.data?.marketFeeBps ?? MARKET_FEE_BPS;
-  async function tx(kind: MessageKey, build: () => Promise<import('@solana/web3.js').TransactionInstruction[]>) {
+  async function tx(kind: MessageKey, build: () => Promise<import('@solana/web3.js').TransactionInstruction[]>, spend?: SpendContext) {
     if (isMock()) { toast({ kind: 'money', title: { key: 'screens.transactionDemo', params: { action: { key: kind } } }, body: { key: 'screens.simulated' } }); return; }
     if (!wallet || !cfg.data) { toast({ kind: 'error', title: { key: 'common.connectWallet' } }); return; }
     setBusy(true);
     try {
-      const { signature } = await sendTx(connection, wallet, await build(), { cuLimit: 300_000 });
+      const { signature } = await sendTx(connection, wallet, await build(), { cuLimit: 300_000, spend });
       toast({ kind: 'money', title: { key: 'screens.transactionDone', params: { action: { key: kind } } }, href: EXPLORER.tx(signature) });
       void qc.invalidateQueries({ queryKey: ['market'] });
       void qc.invalidateQueries({ queryKey: ['chips', asset] });
@@ -75,9 +76,10 @@ export default function ChipPage() {
           <p className="small" style={{ lineHeight: 1.5 }}>{chipLore(c.collection!, c.rarity!)}</p>
           <div className="grid-3">
             <div className="stat"><b className="mono">{c.power}</b><span>{t('ui.power')}</span></div>
-            <div className="stat"><b className="mono">{c.level}/{prof.maxLevel}</b><span>{t('ui.level')}</span></div>
+            <div className="stat"><b className="mono">{c.level}/{c.maxLevel ?? prof.maxLevel}</b><span>{t('ui.level')}</span></div>
             <div className="stat"><b className="mono">{c.stakeWeight}</b><span>{t('ui.stakeWeight')}</span></div>
           </div>
+          <ChipXpMeter rarity={c.rarity!} level={c.level} xp={c.xp} xpToNext={c.xpToNext} maxLevel={c.maxLevel ?? prof.maxLevel} xpToday={c.xpToday} xpDailyCap={c.xpDailyCap} />
           <div className="tiny muted">{t('ui.owner')} <a href={EXPLORER.account(c.owner!)} target="_blank" rel="noreferrer">{mine ? t('ui.you') : shortKey(c.owner)}</a> · {t('ui.asset')} <a href={EXPLORER.account(asset)} target="_blank" rel="noreferrer" className="row" style={{ gap: 3, display: 'inline-flex' }}>{shortKey(asset)} <ExternalIcon size={10} /></a>
             {c.flags?.staked && ` · ${t('collection.filters.staked')}`}{c.flags?.fusing && ` · ${t('ui.inFusion')}`}{c.lockUntil && new Date(c.lockUntil).getTime() > Date.now() && ` · ${t('ui.lockedUntil')} ${fmtLocale.date(c.lockUntil, getLocale())}`}</div>
         </div>
@@ -94,7 +96,7 @@ export default function ChipPage() {
               <CleanConfirmButton disabled={busy || l.currency !== 'SOL'} onClick={() => tx('market.buy', async () => {
                 const r = await ref();
                 return listingBuyIxs({ buyer: wallet!.publicKey, seller: new PublicKey(l.seller!), asset: r.asset, resolved: r, treasury: cfg.data!.treasury, buyback: cfg.data!.buybackWallet, expectedPrice: BigInt(l.price!), listingCurrency: l.currency === 'SOL' ? 0 : 1 });
-              })}>{t('ui.buyFor', { amount: fmtAmount(l.price!, l.currency!) })}</CleanConfirmButton>
+              }, { currency: 0 })}>{t('ui.buyFor', { amount: fmtAmount(l.price!, l.currency!) })}</CleanConfirmButton>
               <div className="tiny muted">{t('screens.pricePinned', { amount: fmtAmount(l.price!, l.currency!) })}</div>
             </>
           )}
@@ -118,7 +120,7 @@ export default function ChipPage() {
         {c.provenance ? (
           <div className="small"> {t('ui.origin')}: <b>{originLabel(c.provenance.origin)}</b>{c.provenance.recipe !== undefined && c.provenance.origin === 'fusion' && ` (${t('screens.originRecipe', { recipe: c.provenance.recipe, rarity: rarityName(c.rarity!) })})`} ·{' '}
             {c.provenance.signature && <a href={EXPLORER.tx(c.provenance.signature)} target="_blank" rel="noreferrer" className="row" style={{ gap: 3, display: 'inline-flex' }}>{t('ui.transaction')} <ExternalIcon size={10} /></a>}{' '}
-            {(c.provenance.origin === 'pack' || c.provenance.origin === 'voucher') && c.provenance.signature && <Link to={`/verify/${c.provenance.signature}`}>· {t('ui.verifyRoll')}</Link>}
+            {(c.provenance.origin === 'pack' || c.provenance.origin === 'voucher' || c.provenance.origin === 'compressed') && c.provenance.signature && <Link to={`/verify/${c.provenance.signature}`}>· {t('ui.verifyRoll')}</Link>}
             {c.provenance.rollHex && <div className="verify-hex mono muted" style={{ marginTop: 4 }}>{t('ui.roll')} {c.provenance.rollHex}</div>}
           </div>
         ) : <div className="small muted">{t('ui.indexing')}</div>}

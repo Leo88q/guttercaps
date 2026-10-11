@@ -558,7 +558,7 @@ suite('T-L-S staking', () => {
     const ownerBefore = await env.chain.balance(wallet.publicKey);
     await env.chain.send([closeRandomnessIx({ ...rng, payer: env.admin.publicKey, lutSlot: lut })], { signers: [env.admin] });
     expect(await env.chain.getAccount(p.randomness)).toBeNull();
-    expect((await env.chain.balance(wallet.publicKey)) - ownerBefore).toBe(await env.chain.rentExempt(480));
+    expect((await env.chain.balance(wallet.publicKey)) - ownerBefore).toBe(await env.chain.rentExempt(88));
   });
 
   it('S18–S20 withdraw_skr only from unreserved budget; sync_skr_pool absorbs direct transfers; pause blocks publish/claim but not fund', async () => {

@@ -11,7 +11,7 @@
   "chip_core_OddsSumInvalid": "Las probabilidades deben sumar 10.000 puntos básicos",
   "chip_core_OddsGuardRail": "Las probabilidades de niveles superiores superan el límite",
   "chip_core_FeeTooHigh": "La comisión supera el límite estricto",
-  "chip_core_StalePrice": "Precio Pyth desactualizado o no válido",
+  "chip_core_StalePrice": "El programa on-chain aún consulta Pyth — hay que actualizar chip_core",
   "chip_core_Slippage": "Importe SOL inferior a la cotización: deslizamiento",
   "chip_core_RandomnessExpired": "El compromiso de aleatoriedad debe ser del slot anterior",
   "chip_core_RandomnessAlreadyRevealed": "Aleatoriedad ya revelada: no se puede fijar un valor conocido",
@@ -91,6 +91,7 @@
   "staking_BeforeGenesis": "La emisión aún no comenzó: now < genesis_ts",
   "staking_BadMint": "El mint $CG no debe tener autoridad de congelación; la oferta debe ajustarse a la asignación ajena al juego",
   "staking_SkrWithdrawRate": "Los retiros de SKR se limitan a una llamada por slot",
+  "staking_FuturePlay": "La marca de tiempo del pulso de juego está en el futuro",
   "arena_WagerRange": "Apuesta fuera del rango de 5–5000 $CG",
   "arena_BadStatus": "La batalla no está en el estado esperado",
   "arena_NotOwner": "El cap del escuadrón no pertenece al firmante",
@@ -201,5 +202,10 @@
   "preorderMemoMismatch": "El memo del pago no coincide con esta reserva.",
   "preorderUnknownPayer": "Sin memo adjunto: envía el pago desde tu billetera conectada.",
   "preorderAlreadyConfirmed": "Esta firma de pago ya fue acreditada a una reserva.",
-  "preorderNothingToDeliver": "No hay reservas pagadas esperando entrega."
+  "preorderNothingToDeliver": "No hay reservas pagadas esperando entrega.",
+  "confirmationUnknown": "La transacción se envió, pero no hay confirmación. Revísala en Explorer y actualiza tu saldo antes de reintentar.",
+  "blockhashRejected": "El RPC rechazó la transacción antes de ejecutarla: no encontró el blockhash. Este intento no realizó ningún pago. Reintenta; si persiste, comprueba el RPC y la red de la cartera.",
+  "proofUnavailable": "No se pudo obtener la prueba Merkle de la ficha. Comprueba la dirección DAS y sus permisos de acceso. Los detalles técnicos incluyen los errores de DAS y de reconstrucción desde el árbol.",
+  "switchboardUnavailable": "La aleatoriedad on-chain no está disponible. No repitas la compra o apuesta. Reanuda la operación existente tras la recuperación; consulta los detalles técnicos.",
+  "invalidBubblegumAsset": "El asset id on-chain de esta ficha no coincide con su hoja Bubblegum. Left: {left}. Right: {right}. No se abrió el monedero y no se envió ninguna apuesta."
 }

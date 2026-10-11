@@ -1,0 +1,132 @@
+// Server-only transport. No caller-supplied URL, redirects, private-network access,
+// or RPC credentials are allowed through the public Switchboard relay.
+import { lookup } from 'node:dns/promises';
+import { request } from 'node:https';
+import { BlockList, isIP } from 'node:net';
+
+export class SwitchboardError extends Error {
+  constructor(public code: string, public status = 503) { super(code); }
+}
+const blocked = new BlockList();
+for (const [ip, bits] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8],
+  ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.0.0.0', 24], ['192.0.2.0', 24],
+  ['192.168.0.0', 16], ['198.18.0.0', 15], ['198.51.100.0', 24], ['203.0.113.0', 24],
+  ['224.0.0.0', 4], ['240.0.0.0', 4]] as const) blocked.addSubnet(ip, bits, 'ipv4');
+const globalV6 = new BlockList(); globalV6.addSubnet('2000::', 3, 'ipv6');
+for (const [ip, bits] of [['2001::', 23], ['2001:db8::', 32], ['2002::', 16]] as const) blocked.addSubnet(ip, bits, 'ipv6');
+export function publicAddress(ip: string): boolean {
+  const family = isIP(ip);
+  return family === 4 ? !blocked.check(ip, 'ipv4') : family === 6 && globalV6.check(ip, 'ipv6') && !blocked.check(ip, 'ipv6');
+}
+/** The on-chain URI is a BASE URL, not necessarily an origin. Match the SDK's
+ * `<base>/gateway/api/v1/...` contract, retaining routing prefixes. Only callers
+ * that have verified the pinned on-chain account may supply this base. */
+export function gatewayBaseUrl(uri: string): string {
+  // Reject ambiguous inputs rather than letting WHATWG silently strip controls
+  // or turn backslashes into path/authority separators.
+  if (/[\u0000-\u0020\u007f\\]/.test(uri)) throw new SwitchboardError('unsafe_gateway');
+  let url: URL;
+  try { url = new URL(uri); } catch { throw new SwitchboardError('unsafe_gateway'); }
+  if (url.protocol !== 'https:' || url.username || url.password || url.port || url.search || url.hash ||
+      isIP(url.hostname.replace(/^\[|\]$/g, '')) || !url.hostname.includes('.')) {
+    throw new SwitchboardError('unsafe_gateway');
+  }
+  return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
+}
+export type GatewayTrace = (event: { stage: 'start' | 'dns_start' | 'dns_done' | 'socket' | 'reused_socket' | 'tcp' | 'tls' | 'headers' | 'body' | 'error'; ms: number; status?: number; errorCode?: string }) => void;
+export type GatewayRead = (base: string, operation: 'healthy_oracles' | 'randomness_reveal', body?: unknown, trace?: GatewayTrace) => Promise<unknown>;
+
+export const readGateway: GatewayRead = async (base, operation, body, observer) => {
+  // A leading-slash URL resolved against a base would discard its path prefix.
+  return readJson(new URL(`${gatewayBaseUrl(base)}/gateway/api/v1/${operation}`), body, observer);
+};
+
+/** SDK CrossbarClient.fetchGateways protocol, fixed public origin, never a user URL. */
+export async function readGatewayRegistry(network: 'devnet' | 'mainnet'): Promise<string[]> {
+  if (network !== 'devnet' && network !== 'mainnet') throw new SwitchboardError('switchboard_registry_network');
+  const raw = await readJson(new URL(`https://crossbar.switchboard.xyz/gateways?network=${network}`));
+  return parseGatewayRegistry(raw);
+}
+export function parseGatewayRegistry(raw: unknown): string[] {
+  if (!Array.isArray(raw) || raw.length > 64 || raw.some(uri => typeof uri !== 'string')) {
+    throw new SwitchboardError('switchboard_registry_schema');
+  }
+  // Apply exactly the same HTTPS/credential/path policy before any returned URL is used.
+  return [...new Set(raw.map(uri => gatewayBaseUrl(uri as string)))].slice(0, 16);
+}
+
+async function readJson(url: URL, body?: unknown, observer?: GatewayTrace): Promise<unknown> {
+  const started = performance.now();
+  const trace = (stage: Parameters<GatewayTrace>[0]['stage'], status?: number, errorCode?: string) => {
+    // Read-only diagnostic hook: no URLs, addresses, headers or response prose.
+    try { observer?.({ stage, ms: Math.round(performance.now() - started), ...(status === undefined ? {} : { status }), ...(errorCode === undefined ? {} : { errorCode }) }); }
+    catch { /* Observability must not affect the request. */ }
+  };
+  trace('start');
+  return new Promise((resolve, reject) => {
+    const req = request(url, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: { accept: 'application/json', 'content-type': 'application/json' },
+      // Pin the socket to the checked DNS result. A second resolution after validation
+      // would permit DNS rebinding. TLS still verifies the original hostname.
+      ...{ autoSelectFamily: false },
+      lookup: (hostname, _options, callback) => {
+        trace('dns_start');
+        void lookup(hostname, { all: true }).then(records => {
+          if (!records.length || records.some(r => !publicAddress(r.address))) {
+            callback(new SwitchboardError('unsafe_gateway'), '', 4); return;
+          }
+          trace('dns_done');
+          const r = records.find(r => r.family === 4) ?? records[0];
+          callback(null, r.address, r.family);
+        }, () => callback(new SwitchboardError('gateway_dns'), '', 4));
+      },
+    }, res => {
+      trace('headers', res.statusCode);
+      if (res.statusCode !== 200) {
+        res.destroy(); reject(new SwitchboardError(`gateway_http_${res.statusCode ?? 0}`)); return;
+      }
+      let size = 0; const chunks: Buffer[] = [];
+      res.on('data', (chunk: Buffer) => {
+        size += chunk.length;
+        if (size > 256 * 1024) req.destroy(new SwitchboardError('gateway_payload_too_large'));
+        else chunks.push(chunk);
+      });
+      res.on('error', () => reject(new SwitchboardError('gateway_network')));
+      res.on('end', () => {
+        trace('body');
+        try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
+        catch { reject(new SwitchboardError('gateway_schema')); }
+      });
+    });
+    if (observer) req.once('socket', socket => {
+      trace('socket');
+      if (!socket.connecting) { trace('reused_socket'); return; }
+      socket.once('connect', () => trace('tcp'));
+      socket.once('secureConnect', () => trace('tls'));
+    });
+    const timer = setTimeout(() => req.destroy(new SwitchboardError('gateway_timeout')), 8000);
+    req.on('close', () => clearTimeout(timer));
+    req.on('error', e => {
+      // Only fixed Node system/TLS codes, never error messages or certificate details.
+      const code = (e as NodeJS.ErrnoException).code;
+      const allowed = ['ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH', 'ENETUNREACH', 'EPIPE', 'EPROTO',
+        'CERT_HAS_EXPIRED', 'ERR_TLS_CERT_ALTNAME_INVALID', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'SELF_SIGNED_CERT_IN_CHAIN',
+        'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY'];
+      trace('error', undefined, code && allowed.includes(code) ? code : undefined);
+      reject(e instanceof SwitchboardError ? e : new SwitchboardError('gateway_network'));
+    });
+    req.end(body === undefined ? undefined : JSON.stringify(body));
+  });
+}
+
+export function revealPayload(raw: unknown) {
+  const j = raw as { signature?: unknown; recovery_id?: unknown; value?: unknown } | null;
+  if (!j || typeof j.signature !== 'string' || !/^[A-Za-z0-9+/]{86}==$/.test(j.signature) ||
+      Buffer.from(j.signature, 'base64').length !== 64 ||
+      !Number.isInteger(j.recovery_id) || (j.recovery_id as number) < 0 || (j.recovery_id as number) > 3 ||
+      !Array.isArray(j.value) || j.value.length !== 32 || j.value.some(x => !Number.isInteger(x) || x < 0 || x > 255)) {
+    throw new SwitchboardError('gateway_schema');
+  }
+  return { signature: j.signature, recovery_id: j.recovery_id as number, value: j.value as number[] };
+}

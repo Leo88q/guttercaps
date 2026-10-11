@@ -13,7 +13,7 @@
 // `accounts` returns the derived PDAs the client passes to `fuse` so the UI never re-derives them.
 import { PublicKey } from '@solana/web3.js';
 import { randomBytes } from 'node:crypto';
-import { BOOSTER, FUSION_RECIPES, RARITIES, COLLECTIONS, type FusionRecipe } from '@guttercaps/economy';
+import { BOOSTER, FUSION_RECIPES, RARITIES, type FusionRecipe } from '@guttercaps/economy';
 import { type Db, now } from './db.ts';
 import { chipToApi, myGrid, type ChipRow } from './queries.ts';
 import { ServiceError } from './services.ts';
@@ -141,9 +141,11 @@ export function plan(db: Db, owner: string, req: PlanRequest) {
 }
 
 /**
- * Auto-pick fusable triples from the inventory: free chips grouped by rarity (and by district for
- * same-collection steps), lowest level first (keep the levelled ones). With `protectSets` a triple
- * is skipped when it would take the last copy out of a completed / near-complete district set.
+ * Auto-pick fusable triples from the inventory: free chips grouped by rarity and district,
+ * lowest level first (keep the levelled ones). Even `any` recipes are suggested as one
+ * district — mixed-district triples are legal on-chain but the bench should not recommend
+ * them. With `protectSets` a triple is skipped when it would take the last copy out of a
+ * completed / near-complete district set.
  */
 export function suggest(db: Db, owner: string, protectSets = true) {
   const t = now();
@@ -154,9 +156,13 @@ export function suggest(db: Db, owner: string, protectSets = true) {
   for (let rarity = 0; rarity < 8; rarity++) {
     const recipe = FUSION_RECIPES[rarity];
     const pool = rows.filter((r) => r.rarity === rarity);
-    const groups: ChipRow[][] = recipe.rule === 'same-collection'
-      ? Array.from({ length: COLLECTIONS.length }, (_, c) => pool.filter((r) => r.collection_idx === c))
-      : [pool];
+    const byCol = new Map<number, ChipRow[]>();
+    for (const row of pool) {
+      const g = byCol.get(row.collection_idx) ?? [];
+      g.push(row);
+      byCol.set(row.collection_idx, g);
+    }
+    const groups = [...byCol.values()];
     for (const g of groups) {
       const free = [...g];
       while (free.length >= 3) {

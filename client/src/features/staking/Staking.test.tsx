@@ -17,8 +17,11 @@ import { MemoryRouter } from 'react-router-dom';
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { accountDiscriminator, ixDiscriminator } from '@/chain/anchor';
 import { BorshWriter } from '@/chain/borsh';
-import { bubblegumTreeMetaPda, compressedChipStatePda } from '@/chain/pdas';
+import { bubblegumTreeMetaPda, compressedChipStatePda, compressedChipStakePda } from '@/chain/pdas';
+import { deriveBubblegumLeafAssetId } from '@/chain/bubblegum';
 import { chainKeys } from '@/chain/hooks';
+import { ata, emissionPda } from '@/chain/pdas';
+import { ASSOCIATED_TOKEN_PROGRAM_ID } from '@/chain/ids';
 
 const OWNER = Keypair.generate().publicKey;
 const CG_MINT = Keypair.generate().publicKey;
@@ -26,12 +29,13 @@ const MERKLE_TREE = Keypair.generate().publicKey;
 const CORE_COLLECTION = Keypair.generate().publicKey;
 const TREE_CONFIG = Keypair.generate().publicKey;
 const CLAIM = Keypair.generate().publicKey;
-const ASSET = Keypair.generate().publicKey;
+const ASSET = deriveBubblegumLeafAssetId(MERKLE_TREE, 11);
 
 const sent: { programId: PublicKey; data: Uint8Array; keys: { pubkey: PublicKey }[] }[] = [];
 let dasCalls = 0;
 
-vi.mock('@/chain/tx', () => ({
+vi.mock('@/chain/tx', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/chain/tx')>(),
   sendTx: async (_c: unknown, _w: unknown, ixs: unknown[]) => {
     for (const ix of ixs as typeof sent) sent.push(ix);
     return { signature: '5'.repeat(64), logs: [] };
@@ -58,12 +62,18 @@ vi.mock('@solana/wallet-adapter-react', () => ({
   useWallet: () => ({ publicKey: OWNER, connected: true, signTransaction: async (tx: unknown) => tx }),
   useConnection: () => ({
     connection: {
-      // Only the three accounts a V2 leaf needs are answered; anything else stays null so the test
+      // Only the leaf identity / claim / stake accounts are answered; anything else stays null so the test
       // fails loudly if the screen starts reading an account it should not need.
       getAccountInfo: async (pk: PublicKey) => {
-        if (pk.equals(compressedChipStatePda(ASSET)[0])) return { data: Buffer.from(chipState(0)) };
+        if (pk.equals(compressedChipStatePda(ASSET)[0])) return { data: Buffer.from(chipState(CHIP.staked ? 1 : 0)) };
         if (pk.equals(bubblegumTreeMetaPda(3)[0])) return { data: Buffer.from(treeMeta()) };
-        if (pk.equals(CLAIM)) return { data: Buffer.from(claimAccount(false)) };
+        if (pk.equals(CLAIM)) return { data: Buffer.from(claimAccount(CHIP.staked)) };
+        if (pk.equals(compressedChipStakePda(CLAIM)[0]) && CHIP.staked) {
+          const w = new BorshWriter();
+          w.bytes(accountDiscriminator('CompressedChipStake'));
+          w.pubkey(OWNER).pubkey(CLAIM).u128(1000n).u128(0n).i64(1n).u8(200);
+          return { data: Buffer.from(w.toBytes()) };
+        }
         return null;
       },
       getMultipleAccountsInfo: async () => [],
@@ -76,6 +86,7 @@ vi.mock('@solana/wallet-adapter-react', () => ({
 }));
 
 import Staking from './Staking';
+import { ChipDrawer } from '@/features/collection/ChipDrawer';
 
 /** A real-shaped `CompressedChipState`. `stakedFlag` flips the bit the program sets on a stake. */
 function chipState(stakedFlag: number): Uint8Array {
@@ -178,6 +189,8 @@ describe('V2 chip staking', () => {
     seed(qc, true);
     mount(qc);
     const unstake = await screen.findByRole('button', { name: /Unstake/ });
+    expect(unstake.closest('.stake-row-actions')).not.toBeNull();
+    expect(unstake.closest('.stake-row')).not.toBeNull();
     fireEvent.click(unstake);
     await waitFor(() => expect(sent).toHaveLength(2));
 
@@ -186,8 +199,16 @@ describe('V2 chip staking', () => {
     expect(sent[1].data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('unstake_compressed_chip')));
     // the unstake handler reads no proof, so the resolver must not fetch one
     expect(dasCalls).toBe(0);
-    // the reward is minted by the unstake itself, so there is no separate claim button to click
-    expect(screen.queryByRole('button', { name: /Claim/ })).toBeNull();
+  });
+
+  it('claiming a staked cap signs `claim_compressed_chip` without a DAS proof', async () => {
+    const qc = new QueryClient();
+    seed(qc, true);
+    mount(qc);
+    fireEvent.click(await screen.findByRole('button', { name: /Claim/ }));
+    await waitFor(() => expect(sent).toHaveLength(2));
+    expect(sent[1].data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('claim_compressed_chip')));
+    expect(dasCalls).toBe(0);
   });
 
   it('a cap the resolver refuses is reported, and nothing is signed', async () => {
@@ -202,4 +223,36 @@ describe('V2 chip staking', () => {
     expect(sent).toHaveLength(0);
     vi.restoreAllMocks();
   });
+});
+
+
+it('the collection drawer also unstakes a genuinely staked cap without DAS', async () => {
+  const qc = new QueryClient();
+  seed(qc, true);
+  const onClose = vi.fn();
+  render(<QueryClientProvider client={qc}><MemoryRouter>
+    <ChipDrawer chip={chip(true)} onClose={onClose} />
+  </MemoryRouter></QueryClientProvider>);
+  fireEvent.click(screen.getByRole('button', { name: /Unstake/ }));
+  await waitFor(() => expect(sent).toHaveLength(2));
+  expect(sent[1].data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('unstake_compressed_chip')));
+  expect(dasCalls).toBe(0);
+  expect(onClose).toHaveBeenCalledOnce();
+});
+
+it('the first 30-day CG stake creates the shared vault before depositing, in one wallet transaction', async () => {
+  const qc = new QueryClient();
+  seed(qc, false);
+  mount(qc);
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: '1000' } });
+  fireEvent.click(await screen.findByRole('button', { name: /^Stake 30/ }));
+  await waitFor(() => expect(sent).toHaveLength(3));
+  expect(sent[0].programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)).toBe(true);
+  expect(sent[1].programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)).toBe(true);
+  expect(sent[1].keys[1].pubkey.equals(ata(CG_MINT, emissionPda()[0]))).toBe(true);
+  expect(sent[1].keys[2].pubkey.equals(emissionPda()[0])).toBe(true);
+  expect([...sent[1].data]).toEqual([1]); // CreateIdempotent, never a transfer to an arbitrary account
+  expect(sent[2].data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('stake_cg')));
+  expect(sent[2].data[8]).toBe(1); // 30 days; the fix must not change the chosen tier
+  expect(sent[2].keys[6].pubkey.equals(sent[1].keys[1].pubkey)).toBe(true);
 });

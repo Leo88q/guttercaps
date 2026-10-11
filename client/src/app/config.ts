@@ -94,7 +94,8 @@ export const LOOKUP_TABLE: PublicKey | undefined = env.VITE_LOOKUP_TABLE && env.
  * when the provider exposes DAS methods (Helius / Triton do; the public
  * cluster endpoints do not) — otherwise set VITE_DAS_RPC_URL.
  */
-export const DAS_RPC_URL: string = env.VITE_DAS_RPC_URL && env.VITE_DAS_RPC_URL.length > 0 ? env.VITE_DAS_RPC_URL : RPC_URL;
+export const DAS_RPC_OVERRIDE: string | undefined = env.VITE_DAS_RPC_URL && env.VITE_DAS_RPC_URL.length > 0 ? env.VITE_DAS_RPC_URL : undefined;
+export const DAS_RPC_URL: string = DAS_RPC_OVERRIDE ?? RPC_URL;
 
 export const EXPLORER = {
   tx: (sig: string) => `https://solscan.io/tx/${sig}${CLUSTER === 'mainnet-beta' ? '' : `?cluster=${CLUSTER === 'localnet' ? 'custom' : CLUSTER}`}`,

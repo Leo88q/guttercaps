@@ -9,5 +9,6 @@ export * from './faucets.ts';
 export * from './services.ts';
 export * from './skrRewards.ts';
 export * from './oracle.ts';
+export * from './fx.ts';
 export * from './lore.ts';
 export * from './cosmetics.ts';

@@ -13,17 +13,18 @@
 //     be stale in the way a cached indexer row can;
 //   * the Merkle path and root come from DAS, because only the indexer has them;
 //   * the delegate comes from DAS too, and is cross-checked against the on-chain flags — a chip
-//     that is listed or staked has a program-owned delegate and must not be re-used.
+//     that is listed cannot be re-used; arena squads explicitly allow staked chips.
 //
 // Nothing here signs. A caller that gets a `ResolvedCompressedChip` still has to build the
 // instruction, and the program still re-verifies the proof on chain.
 import { Connection, PublicKey } from '@solana/web3.js';
 import { DasClient } from '../das';
-import { decodeCompressedChipState, decodeCompressedMintClaim, type BubblegumTreeMeta, type CompressedChipState, type CompressedMintClaim } from '../accounts';
-import { bubblegumTreeMetaPda, compressedChipStatePda } from '../pdas';
+import { errorSnapshot } from '../errorSnapshot';
+import { decodeCompressedChipState, decodeCompressedMintClaim, decodeCompressedChipStake, type BubblegumTreeMeta, type CompressedChipState, type CompressedMintClaim } from '../accounts';
+import { bubblegumTreeMetaPda, compressedChipStatePda, compressedChipStakePda } from '../pdas';
 import { decodeBubblegumTreeMeta } from '../accounts';
 import type { CompressedLeafProof } from '../ix/chipCore';
-import { resolveRegisteredLeafFromTreeAccount, type BubblegumProof } from '../bubblegum';
+import { leafAssetIdCandidates, resolveRegisteredLeafFromTreeAccount, type BubblegumProof } from '../bubblegum';
 
 export interface ResolvedCompressedChip {
   /** the Bubblegum V2 asset id (the leaf) */
@@ -54,9 +55,8 @@ export interface ResolvedCompressedChip {
 /**
  * The on-chain half of a resolved leaf: everything except the Merkle path.
  *
- * Split out because the two V2 actions need different halves. `stake_compressed_chip_v2` re-verifies
- * the root, so it needs DAS; `unstake_compressed_chip` only needs the claim PDA, and paying for a
- * proof it never reads is a wasted round trip on every unstake click.
+ * Proof-backed actions resolve this before fetching DAS. The unstake exit instead uses
+ * `resolveCompressedUnstakeClaim`: it must accept a staked claim and needs no tree or proof.
  */
 export interface CompressedChipIdentity {
   asset: PublicKey;
@@ -71,6 +71,8 @@ export interface CompressedChipIdentity {
   leafNonce: bigint;
   claimState: CompressedMintClaim;
   chipState: CompressedChipState;
+  /** Top siblings are already stored in the on-chain canopy. */
+  proofLength: number;
 }
 
 /** The ChipState flag bits that mean "a program already holds this leaf". */
@@ -78,28 +80,49 @@ const F_LISTED = 1 << 1;
 const F_STAKED = 1 << 0;
 const F_FUSING = 1 << 2;
 
+/** Free-leaf actions stay strict by default; the arena permits staked / cooldown chips. */
+type ResolveOptions = { tree?: BubblegumTreeMeta; owner?: PublicKey; purpose?: 'free' | 'arena' };
+
 /**
- * Resolve `asset` (a registered Bubblegum V2 leaf) for a V2 instruction.
- *
- * Throws with a human message when the chip is not a registered V2 leaf, when its tree is not
- * active, or when a program currently holds it (listed / staked).
- *
- * Freshness is NOT checked here: the proof is resolved at call time and the programs re-verify the
- * root on chain, so a proof that went stale between resolving and signing is a failed transaction,
- * not a security hole. What IS checked is that DAS and the on-chain projection agree on the tree
- * and the leaf index — a mismatch there means the chip moved, and building an instruction from
- * either source alone would be wrong.
+ * Mirror arena/staking `chip.asset == leaf_asset_id(tree, leaf_index)` before a wallet
+ * prompt. `Left` is the stored projection; `Right` is the canonical Bubblegum PDA from
+ * the registered tree and index (same 8-byte LE seed as on chain). `fromNonce` is
+ * diagnostic only — mint_v2 uses `num_minted` as both nonce and append index.
  */
-/** The on-chain half of a leaf, with every program-side guard the V2 handlers apply. */
+function mismatch(left: PublicKey, right: PublicKey, extra: Record<string, unknown>) {
+  return Object.assign(new Error(`chip asset does not match Bubblegum leaf id\nLeft: ${left.toBase58()}\nRight: ${right.toBase58()}`), {
+    code: 'invalid_bubblegum_asset' as const,
+    details: { left: left.toBase58(), right: right.toBase58(), ...extra },
+  });
+}
+
+function assertCanonicalRegisteredAsset(requested: PublicKey, state: CompressedChipState): void {
+  const { fromIndex, fromIndexU32, fromNonce } = leafAssetIdCandidates(state.merkleTree, state.leafIndex, state.leafNonce);
+  const extra = {
+    requested: requested.toBase58(),
+    stored: state.asset.toBase58(),
+    fromIndex: fromIndex.toBase58(),
+    fromIndexU32: fromIndexU32.toBase58(),
+    fromNonce: fromNonce.toBase58(),
+    tree: state.merkleTree.toBase58(),
+    leafIndex: state.leafIndex,
+    leafNonce: state.leafNonce.toString(),
+  };
+  if (!state.asset.equals(requested)) throw mismatch(requested, state.asset, extra);
+  if (!state.asset.equals(fromIndex)) throw mismatch(state.asset, fromIndex, extra);
+}
+
+/** The proof-backed identity path. Do not use it for unstaking: that needs a live stake, not a free leaf. */
 export async function resolveCompressedChipIdentity(
   connection: Connection,
   asset: PublicKey,
-  opts: { tree?: BubblegumTreeMeta; owner?: PublicKey } = {},
+  opts: ResolveOptions = {},
 ): Promise<CompressedChipIdentity> {
   const chipKey = compressedChipStatePda(asset)[0];
   const info = await connection.getAccountInfo(chipKey, 'confirmed');
   if (!info) throw new Error('this chip is not registered as a Bubblegum V2 leaf yet — finish its pack settlement first');
   const state = decodeCompressedChipState(new Uint8Array(info.data));
+  assertCanonicalRegisteredAsset(asset, state);
 
   let tree = opts.tree;
   if (!tree) {
@@ -111,12 +134,13 @@ export async function resolveCompressedChipIdentity(
   if (!tree.merkleTree.equals(state.merkleTree)) throw new Error('the registered tree does not match the collection meta');
 
   if (state.flags & F_LISTED) throw new Error('this chip is listed — cancel the listing before using it again');
-  if (state.flags & F_STAKED) throw new Error('this chip is staked — unstake it before using it again');
+  if (opts.purpose !== 'arena' && (state.flags & F_STAKED)) throw new Error('this chip is staked — unstake it before using it again');
   if (state.flags & F_FUSING) throw new Error('this chip is mid-fusion — finish or cancel the fusion before using it');
   // `CompressedChipState::is_free` on chain also demands a clear leaf delegate and no active lock;
-  // mirroring it here turns a guaranteed revert into a readable message.
-  if (state.leafFlags & 0b11) throw new Error('this chip is still owned by a program delegate — reclaim it first');
-  if (state.lockUntil > BigInt(Math.floor(Date.now() / 1000))) throw new Error('this chip is locked — wait for the cooldown to end');
+  // mirror it for free-leaf actions only. Arena validate_compressed_squad_v2 permits
+  // staked / frozen / cooldown chips and verifies the supplied owner/delegate proof instead.
+  if (opts.purpose !== 'arena' && (state.leafFlags & 0b11)) throw new Error('this chip is still owned by a program delegate — reclaim it first');
+  if (opts.purpose !== 'arena' && state.lockUntil > BigInt(Math.floor(Date.now() / 1000))) throw new Error('this chip is locked — wait for the cooldown to end');
 
   // The claim is the economic receipt, and the V2 staking handler gates on its flags. Reading it
   // here is one extra account fetch that turns four separate program reverts into one message.
@@ -126,8 +150,8 @@ export async function resolveCompressedChipIdentity(
   if (!claimState.minted || !claimState.registered) throw new Error('this chip is not registered as a V2 leaf yet — finish its pack settlement first');
   if (claimState.consumed) throw new Error('this chip has been consumed by a fusion');
   if (claimState.listed) throw new Error('this chip is listed — cancel the listing before using it again');
-  if (claimState.staked) throw new Error('this chip is staked — unstake it before using it again');
-  if (claimState.lockUntil > BigInt(Math.floor(Date.now() / 1000))) throw new Error('this chip is locked — wait for the cooldown to end');
+  if (opts.purpose !== 'arena' && claimState.staked) throw new Error('this chip is staked — unstake it before using it again');
+  if (opts.purpose !== 'arena' && claimState.lockUntil > BigInt(Math.floor(Date.now() / 1000))) throw new Error('this chip is locked — wait for the cooldown to end');
 
   // When the caller says who is acting, the claim must name that wallet — `stake_compressed_chip_v2`
   // enforces `claim.buyer == owner` before anything else happens.
@@ -139,6 +163,7 @@ export async function resolveCompressedChipIdentity(
     asset, claim: state.claim, chip: chipKey, merkleTree: state.merkleTree,
     treeConfig: tree.treeConfig, coreCollection: tree.coreCollection, collectionIdx: state.collectionIdx,
     leafIndex: state.leafIndex, leafNonce: state.leafNonce, claimState, chipState: state,
+    proofLength: Math.max(1, tree.maxDepth - tree.canopy),
   };
 }
 
@@ -146,7 +171,8 @@ export async function resolveCompressedChipIdentity(
  * Resolve `asset` (a registered Bubblegum V2 leaf) for a V2 instruction.
  *
  * Throws with a human message when the chip is not a registered V2 leaf, when its tree is not
- * active, when a program currently holds it, or when the leaf has moved since it was registered.
+ * active, when a program currently holds it (except staked arena members), or when the leaf
+ * has moved since it was registered.
  *
  * Freshness is NOT checked here: the proof is resolved at call time and the programs re-verify the
  * root on chain, so a proof that went stale between resolving and signing is a failed transaction,
@@ -158,7 +184,7 @@ export async function resolveCompressedChip(
   connection: Connection,
   das: DasClient,
   asset: PublicKey,
-  opts: { tree?: BubblegumTreeMeta; owner?: PublicKey } = {},
+  opts: ResolveOptions = {},
 ): Promise<ResolvedCompressedChip> {
   const id = await resolveCompressedChipIdentity(connection, asset, opts);
 
@@ -166,22 +192,31 @@ export async function resolveCompressedChip(
   try {
     proof = await das.getAssetWithProof(asset);
   } catch (dasErr) {
-    const treeAcct = await connection.getAccountInfo(id.merkleTree, 'confirmed');
-    if (!treeAcct) throw dasErr;
-    proof = resolveRegisteredLeafFromTreeAccount({
-      assetId: asset,
-      owner: id.claimState.buyer,
-      delegate: id.claimState.buyer,
-      merkleTree: id.merkleTree,
-      leafIndex: id.leafIndex,
-      leafNonce: id.leafNonce,
-      dataHash: id.chipState.dataHash,
-      creatorHash: id.chipState.creatorHash,
-      collectionHash: id.chipState.collectionHash,
-      assetDataHash: id.chipState.assetDataHash,
-      flags: id.chipState.leafFlags,
-      treeAccountData: new Uint8Array(treeAcct.data),
-    });
+    try {
+      const treeAcct = await connection.getAccountInfo(id.merkleTree, 'confirmed');
+      if (!treeAcct) throw new Error('Merkle tree account is unavailable');
+      proof = resolveRegisteredLeafFromTreeAccount({
+        assetId: asset,
+        owner: id.claimState.buyer,
+        delegate: id.claimState.buyer,
+        merkleTree: id.merkleTree,
+        leafIndex: id.leafIndex,
+        leafNonce: id.leafNonce,
+        dataHash: id.chipState.dataHash,
+        creatorHash: id.chipState.creatorHash,
+        collectionHash: id.chipState.collectionHash,
+        assetDataHash: id.chipState.assetDataHash,
+        flags: id.chipState.leafFlags,
+        treeAccountData: new Uint8Array(treeAcct.data),
+      });
+    } catch (treeErr) {
+      // Missing changelog history used to hide the reason DAS failed (wrong params,
+      // HTTP 401, unsupported method, etc.). Keep BOTH without weakening root checks.
+      throw Object.assign(new Error('Could not obtain a Merkle proof from DAS or the tree account'), {
+        code: 'proof_unavailable',
+        details: { asset: asset.toBase58(), das: errorSnapshot(dasErr), tree: errorSnapshot(treeErr) },
+      });
+    }
   }
   if (!proof.merkleTree.equals(id.merkleTree)) throw new Error('DAS answered with a proof for a different tree');
   if (proof.leafIndex !== BigInt(id.leafIndex)) throw new Error('DAS answered with a different leaf index than the one registered on chain');
@@ -190,7 +225,7 @@ export async function resolveCompressedChip(
   const leaf: CompressedLeafProof = {
     root: proof.root, dataHash: proof.dataHash, creatorHash: proof.creatorHash,
     collectionHash: proof.collectionHash, assetDataHash: proof.assetDataHash, flags: proof.flags,
-    nonce: id.leafNonce, index: id.leafIndex, proofNodes: proof.proof,
+    nonce: id.leafNonce, index: id.leafIndex, proofNodes: proof.proof.slice(0, id.proofLength),
   };
   return { ...id, delegate: proof.leafDelegate, proof, leaf };
 }
@@ -210,6 +245,32 @@ export async function resolveCompressedSquad(
     seen.add(k);
   }
   const out: ResolvedCompressedChip[] = [];
-  for (const a of assets) out.push(await resolveCompressedChip(connection, das, a, opts));
+  for (const a of assets) out.push(await resolveCompressedChip(connection, das, a, { ...opts, purpose: 'arena' }));
   return out;
+}
+
+/**
+ * Resolve only what `unstake_compressed_chip` needs. The live stake PDA and claim bind the
+ * signer; neither a DAS proof, an active tree nor a free-leaf check belongs in an exit path.
+ * In particular `claim.staked` must be TRUE here, not false as for a new stake or a listing.
+ */
+export async function resolveCompressedUnstakeClaim(
+  connection: Connection, asset: PublicKey, owner: PublicKey,
+): Promise<PublicKey> {
+  const info = await connection.getAccountInfo(compressedChipStatePda(asset)[0], 'confirmed');
+  if (!info) throw new Error('this chip is not registered as a Bubblegum V2 leaf yet');
+  const chip = decodeCompressedChipState(new Uint8Array(info.data));
+  if (!chip.asset.equals(asset)) throw new Error('the registered chip does not match this asset');
+  const claimInfo = await connection.getAccountInfo(chip.claim, 'confirmed');
+  if (!claimInfo) throw new Error('this chip has no claim receipt');
+  const claim = decodeCompressedMintClaim(new Uint8Array(claimInfo.data));
+  if (!claim.buyer.equals(owner)) throw new Error('this chip belongs to another wallet');
+  if (!claim.staked) throw new Error('this chip is no longer staked — refresh your collection');
+  const stakeInfo = await connection.getAccountInfo(compressedChipStakePda(chip.claim)[0], 'confirmed');
+  if (!stakeInfo) throw new Error('this chip has no active stake — refresh your collection');
+  const stake = decodeCompressedChipStake(new Uint8Array(stakeInfo.data));
+  if (!stake.owner.equals(owner) || !stake.claim.equals(chip.claim)) {
+    throw new Error('this stake belongs to another wallet or claim');
+  }
+  return chip.claim;
 }

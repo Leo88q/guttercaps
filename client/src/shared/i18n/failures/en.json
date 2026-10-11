@@ -11,7 +11,7 @@
   "chip_core_OddsSumInvalid": "Odds must sum to 10 000 bps",
   "chip_core_OddsGuardRail": "Top-tier odds exceed the guard-rail",
   "chip_core_FeeTooHigh": "Fee exceeds hard cap",
-  "chip_core_StalePrice": "Pyth price too old or invalid",
+  "chip_core_StalePrice": "On-chain program still checks Pyth — this cluster needs a chip_core upgrade",
   "chip_core_Slippage": "SOL amount below quoted price (slippage)",
   "chip_core_RandomnessExpired": "Randomness account must be committed in the previous slot",
   "chip_core_RandomnessAlreadyRevealed": "Randomness already revealed — cannot commit to a known value",
@@ -91,6 +91,7 @@
   "staking_BeforeGenesis": "Emission has not started yet (now < genesis_ts)",
   "staking_BadMint": "$CG mint must have no freeze authority and a supply within the non-play allocation",
   "staking_SkrWithdrawRate": "SKR withdrawals are limited to one call per slot",
+  "staking_FuturePlay": "Play pulse timestamp is in the future",
   "arena_WagerRange": "Wager out of range (5–5000 $CG)",
   "arena_BadStatus": "Battle is not in the expected status",
   "arena_NotOwner": "Squad chip not owned by signer",
@@ -201,5 +202,10 @@
   "preorderMemoMismatch": "The payment memo does not match this reservation.",
   "preorderUnknownPayer": "No memo was attached — send the payment from your connected wallet.",
   "preorderAlreadyConfirmed": "This payment signature was already credited to a reservation.",
-  "preorderNothingToDeliver": "No paid preorders are awaiting delivery."
+  "preorderNothingToDeliver": "No paid preorders are awaiting delivery.",
+  "confirmationUnknown": "The transaction was sent, but confirmation is unavailable. Check it in Explorer and refresh your balance before trying again.",
+  "blockhashRejected": "RPC rejected the transaction before execution: blockhash not found. This attempt did not make a payment. Retry; if the error persists, check the RPC and wallet network.",
+  "proofUnavailable": "Could not obtain the chip’s Merkle proof. Check the DAS endpoint and its access permissions. Technical details contain both the DAS error and the tree fallback error.",
+  "switchboardUnavailable": "On-chain randomness is temporarily unavailable. Do not repeat a purchase or wager. Resume the existing operation after recovery; see the technical details.",
+  "invalidBubblegumAsset": "This cap’s on-chain asset id does not match its Bubblegum leaf. Left: {left}. Right: {right}. No wallet prompt and no wager were sent."
 }

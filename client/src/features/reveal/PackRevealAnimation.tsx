@@ -36,10 +36,11 @@ interface Props {
   remaining?: number;
   /** pack SKU — selects the foil wrapper art; absent (fusion / quest) falls back to the plain pack */
   sku?: number;
+  founder?: boolean;
   onDone: () => void;
 }
 
-export function PackRevealAnimation({ rarity, chipName, chipImageUrl, chipArt, isOnChain, remaining = 0, sku, onDone }: Props) {
+export function PackRevealAnimation({ rarity, chipName, chipImageUrl, chipArt, isOnChain, remaining = 0, sku, founder, onDone }: Props) {
   const t = useT();
   const [phase, setPhase] = useState<Phase>('buildup');
   const config = TIER_CONFIG[RARITIES[rarity]] ?? TIER_CONFIG.Common;
@@ -108,6 +109,7 @@ export function PackRevealAnimation({ rarity, chipName, chipImageUrl, chipArt, i
             <div className="reveal-chip-glow" />
             {chipArt ? <div className="reveal-chip-image">{chipArt}</div> : <img src={chipImageUrl} alt={chipName} className="reveal-chip-image" />}
             <p className="reveal-chip-rarity" style={{ color: config.glow }}>{rarityName(rarity)}</p>
+            {founder && <p className="reveal-chip-founder">{t('collection.founderNote')}</p>}
             <p className="reveal-chip-name">{chipName}</p>
             <button type="button" className="reveal-tap-hint btn btn-ghost" onClick={(event) => { event.stopPropagation(); onDone(); }}>{t('ui.continue')}{remaining > 0 && <> · {remaining} {t('ui.more')}</>}</button>
           </div>

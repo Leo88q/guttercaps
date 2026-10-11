@@ -211,7 +211,7 @@ export class DasClient {
     this.fetchImpl = options.fetchImpl ?? ((url, init) => fetch(url, init));
   }
 
-  private async rpc<T>(method: string, params: unknown[]): Promise<T> {
+  private async rpc<T>(method: string, params: Record<string, unknown>): Promise<T> {
     const id = this.nextId++;
     let response: Response;
     try {
@@ -235,8 +235,8 @@ export class DasClient {
   async getAssetWithProof(assetId: PublicKey | string): Promise<BubblegumProof> {
     const id = typeof assetId === 'string' ? pk(assetId, 'assetId') : assetId;
     const [assetRaw, proofRaw] = await Promise.all([
-      this.rpc<RawDasAsset>(DAS_GET_ASSET, [id.toBase58(), { showFungible: false, showInscription: false }]),
-      this.rpc<RawDasProof>(DAS_GET_ASSET_PROOF, [id.toBase58()]),
+      this.rpc<RawDasAsset>(DAS_GET_ASSET, { id: id.toBase58() }),
+      this.rpc<RawDasProof>(DAS_GET_ASSET_PROOF, { id: id.toBase58() }),
     ]);
     const asset = normalizeDasAsset(assetRaw);
     const proof = normalizeDasProof(proofRaw);
@@ -252,10 +252,10 @@ export class DasClient {
 
   async getAssetsByOwner(owner: PublicKey | string, page = 1, limit = 1000): Promise<{ total: number; items: DasAssetSummary[] }> {
     const id = typeof owner === 'string' ? pk(owner, 'owner') : owner;
-    const res = await this.rpc<RawDasOwnerPage>(DAS_GET_ASSETS_BY_OWNER, [
-      id.toBase58(),
-      { sortBy: { sortBy: 'created', sortDirection: 'desc' }, limit, page, options: { showUnverifiedCollections: true, showCollectionMetadata: false } },
-    ]);
+    const res = await this.rpc<RawDasOwnerPage>(DAS_GET_ASSETS_BY_OWNER, {
+      ownerAddress: id.toBase58(), sortBy: { sortBy: 'created', sortDirection: 'desc' }, limit, page,
+      displayOptions: { showUnverifiedCollections: true, showCollectionMetadata: false },
+    });
     const items = Array.isArray(res.items) ? res.items.map(normalizeDasAssetSummary) : [];
     return { total: Number(res.total ?? items.length), items };
   }

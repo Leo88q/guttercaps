@@ -74,8 +74,7 @@ export function useQuote(sku: number, qty: number, currency: 'SOL' | 'USDC' | 'C
     queryKey: qk.quote(sku, qty, currency),
     enabled: useAuthenticated() && enabled,
     queryFn: () => api.post('/packs/quote', { sku, qty, currency }),
-    staleTime: 20_000,
-    refetchInterval: 25_000,
+    staleTime: 24 * 60 * 60 * 1000,
     retry: false,
   });
 }
@@ -99,6 +98,7 @@ export type PreorderIntent = ResponseOf<'/preorder/intent', 'post'>;
 
 
 export const usePreorderCampaign = () => useQuery({ queryKey: ['preorder'], queryFn: () => api.get('/preorder'), staleTime: 30_000 });
+export const usePreorderRegistry = () => useQuery({ queryKey: ['preorder', 'registry'], queryFn: () => api.get('/preorder/registry'), staleTime: 60_000 });
 export function useMyPreorders() {
   const status = useSessionStore((s) => s.status);
   return useQuery({ queryKey: ['preorder', 'me'], queryFn: () => api.get('/preorder/me'), enabled: status === 'authenticated', staleTime: 15_000 });
@@ -167,12 +167,18 @@ export const useRevealNonce = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (b: { id: string; nonce: string }) => api.post('/arena/matches/{id}/reveal', { nonce: b.nonce }, { path: { id: b.id } }),
-    onSuccess: (_r, b) => { void qc.invalidateQueries({ queryKey: qk.arenaMe }); void qc.invalidateQueries({ queryKey: qk.match(b.id) }); },
+    onSuccess: (_r, b) => {
+      void qc.invalidateQueries({ queryKey: qk.arenaMe });
+      void qc.invalidateQueries({ queryKey: qk.match(b.id) });
+      void qc.invalidateQueries({ queryKey: ['me', 'chips'] });
+      void qc.invalidateQueries({ queryKey: ['chips'] });
+    },
   });
 };
 
 export const useStakingOverview = () => useQuery({ queryKey: qk.stakingOverview, queryFn: () => api.get('/staking/overview'), staleTime: 30_000 });
 export const useStakingMe = () => useQuery({ queryKey: qk.stakingMe, queryFn: () => api.get('/staking/me'), enabled: useAuthenticated(), staleTime: 15_000 });
+export const useGutterPot = () => useQuery({ queryKey: qk.stakingPot, queryFn: () => api.get('/staking/pot'), staleTime: 15_000 });
 
 export const useQuests = () => useQuery({ queryKey: qk.quests, queryFn: () => api.get('/quests'), enabled: useAuthenticated(), staleTime: 30_000 });
 /** Proof-of-human pass (Turnstile, T-B-49) — quest / SKR settlement waits until it is verified. */

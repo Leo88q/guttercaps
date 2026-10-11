@@ -34,9 +34,8 @@ export function SprayNozzleButton({ children, onClick, disabled, ...rest }: ObjB
   );
 }
 
-/** Clean-zone variant: wallet confirm, staking confirm, real-money purchase.
- *  Same silhouette family as SprayNozzleButton but chrome, with a checkmark
- *  stamp instead of mist — signals "this one spends real money." */
+/** Confirm / stake / claim: same paint-blob silhouette as primary, lime fill,
+ *  checkmark stamp instead of mist — signals "this one spends real money." */
 export function CleanConfirmButton({ children, onClick, disabled, ...rest }: ObjBtnProps) {
   const { fired, fire } = useFire(400, disabled);
   return (

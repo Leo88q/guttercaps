@@ -23,6 +23,7 @@ export const qk = {
   match: (id: string) => ['arena', 'match', id] as const,
   stakingOverview: ['staking', 'overview'] as const,
   stakingMe: ['staking', 'me'] as const,
+  stakingPot: ['staking', 'pot'] as const,
   quests: ['quests'] as const,
   human: ['me', 'human'] as const,
   claims: ['quests', 'claims'] as const,

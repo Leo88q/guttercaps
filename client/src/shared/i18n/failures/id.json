@@ -11,7 +11,7 @@
   "chip_core_OddsSumInvalid": "Jumlah peluang harus 10.000 basis poin",
   "chip_core_OddsGuardRail": "Peluang tingkat tertinggi melebihi batas",
   "chip_core_FeeTooHigh": "Biaya melebihi batas mutlak",
-  "chip_core_StalePrice": "Harga Pyth usang atau tidak valid",
+  "chip_core_StalePrice": "Program on-chain masih cek Pyth — chip_core perlu di-upgrade",
   "chip_core_Slippage": "Jumlah SOL di bawah penawaran: slippage",
   "chip_core_RandomnessExpired": "Komitmen keacakan harus dibuat pada slot sebelumnya",
   "chip_core_RandomnessAlreadyRevealed": "Keacakan sudah diungkap: tidak boleh mengikat nilai yang diketahui",
@@ -91,6 +91,7 @@
   "staking_BeforeGenesis": "Emisi belum dimulai: now < genesis_ts",
   "staking_BadMint": "Mint $CG tidak boleh memiliki otoritas pembekuan; pasokan harus dalam alokasi non-game",
   "staking_SkrWithdrawRate": "Penarikan SKR dibatasi satu panggilan per slot",
+  "staking_FuturePlay": "Stempel waktu pulsa permainan ada di masa depan",
   "arena_WagerRange": "Taruhan di luar rentang 5–5000 $CG",
   "arena_BadStatus": "Pertarungan tidak dalam status yang diharapkan",
   "arena_NotOwner": "Cap regu bukan milik penanda tangan",
@@ -201,5 +202,10 @@
   "preorderMemoMismatch": "Memo pembayaran tidak cocok dengan reservasi ini.",
   "preorderUnknownPayer": "Tanpa memo — kirim pembayaran dari wallet yang terhubung.",
   "preorderAlreadyConfirmed": "Signature pembayaran ini sudah dikreditkan ke sebuah reservasi.",
-  "preorderNothingToDeliver": "Tidak ada preorder lunas yang menunggu pengiriman."
+  "preorderNothingToDeliver": "Tidak ada preorder lunas yang menunggu pengiriman.",
+  "confirmationUnknown": "Transaksi sudah dikirim, tetapi konfirmasi belum tersedia. Periksa di Explorer dan perbarui saldo sebelum mencoba lagi.",
+  "blockhashRejected": "RPC menolak transaksi sebelum dieksekusi: blockhash tidak ditemukan. Percobaan ini tidak melakukan pembayaran. Coba lagi; jika tetap gagal, periksa RPC dan jaringan dompet.",
+  "proofUnavailable": "Bukti Merkle chip tidak dapat diperoleh. Periksa alamat DAS dan izin aksesnya. Detail teknis memuat kesalahan DAS dan pemulihan dari pohon.",
+  "switchboardUnavailable": "Keacakan on-chain sementara tidak tersedia. Jangan ulangi pembelian atau taruhan. Lanjutkan operasi yang sudah ada setelah pulih; lihat detail teknis.",
+  "invalidBubblegumAsset": "Asset id on-chain chip ini tidak cocok dengan daun Bubblegum. Left: {left}. Right: {right}. Dompet tidak diminta dan taruhan tidak dikirim."
 }

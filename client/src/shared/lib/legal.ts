@@ -70,9 +70,9 @@ export function formatLegalCopy(copy: LegalCopy, locale: string): LegalCopy {
 export const LEGAL_DOCS = formatLegalCopy(english as LegalCopy, 'en');
 export const LEGAL_IDS: LegalDocId[] = ['terms', 'privacy'];
 /** Effective date of the text above — the page shows it, and the store listing quotes it. */
-export const LEGAL_EFFECTIVE = '2026-10-06';
+export const LEGAL_EFFECTIVE = '2026-10-11';
 /** Separate revision: material corrections on the same day still re-ask for acknowledgement. */
-export const LEGAL_REVISION = '2026-10-06.1';
+export const LEGAL_REVISION = '2026-10-11.1';
 /** Internal readiness flag for `scripts/legal-readiness.mjs`. It is not rendered to players. */
 export const LEGAL_REVIEWED = false;
 

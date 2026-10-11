@@ -114,17 +114,15 @@ export function violations(files: Record<string, string>): string[] {
   const chain = files['backend/src/chain.ts'];
   const crank = files['backend/src/crank.ts'];
 
-  // 1. the shared CPI helper: the table address is derived, the ALT program owns it, and the
-  //    randomness account must be gone before anything is paid out.
+  // 1. in-house RNG never creates a Switchboard LUT. close_lut_owned is a no-op that MUST still
+  //    refuse while the RNG PDA is live (a live request's rent is not the caller's).
   const helper = chip.slice(chip.indexOf('pub fn close_lut_owned'));
-  if (!helper) bad.push('randomness.rs: close_lut_owned is gone — the only place that derives and pins the table');
-  for (const [what, re] of [
-    ['derives the LutSigner from the randomness account', /lut_signer_of\(a\.randomness\.key\)/],
-    ['derives the table address from the slot', /lut_of\(a\.lut_signer\.key,\s*lut_slot\)/],
-    ['requires the ALT program to own the table', /a\.lut\.owner,\s*LUT_OWNER_PROGRAM_ID/],
-    ['requires the randomness account to be closed (no data, system-owned)', /a\.randomness\.data_is_empty\(\)\s*&&\s*\*a\.randomness\.owner\s*==\s*system_program::ID/],
-  ] as const) {
-    if (!re.test(helper)) bad.push(`close_lut_owned no longer ${what}`);
+  if (!helper) bad.push('randomness.rs: close_lut_owned is gone');
+  if (!/a\.randomness\.data_is_empty\(\)\s*&&\s*\*a\.randomness\.owner\s*==\s*system_program::ID/.test(helper)) {
+    bad.push('close_lut_owned no longer requires the randomness account to be closed (no data, system-owned)');
+  }
+  if (/invoke|Instruction\s*\{/.test(helper.slice(0, 2500))) {
+    bad.push('close_lut_owned must not CPI (Switchboard is dead; no LUT is created)');
   }
 
   // 2. the instruction account structs pin the payout to the player, not to the caller.
@@ -171,22 +169,8 @@ export function violations(files: Record<string, string>): string[] {
     bad.push('crank: the lookup-table slot is never recorded — the table address cannot be derived later');
   if (!/lut_closed_at IS NULL/.test(crank)) bad.push('crank: reclaimed tables are not marked, so they would be re-sent forever');
 
-  // 6. G-0: the hand-built `randomness_close_lut` must carry exactly the SDK builder's accounts, in
-  //    the SDK's order. Our five are the only hand-assembled metas in the tree, so this is where an
-  //    SDK bump (rename, reorder, drop) has to fail — otherwise it surfaces as a devnet runtime error
-  //    in T-D-04, or worse, on mainnet.
-  const sdkNames = sdkCloseLutAccounts(files[SB_SDK] ?? '');
-  const rustNames = rustCloseLutAccounts(chip);
-  if (sdkNames.length === 0)
-    bad.push(`${SB_SDK}: no randomnessCloseLut accounts found — run \`npm ci\`, or the SDK builder moved`);
-  else if (sdkNames.join(',') !== CLOSE_LUT_META_ORDER.join(','))
-    bad.push(`SDK closeLutIx account order changed: ${sdkNames.join(', ')}`);
-  if (rustNames.length === 0) bad.push('randomness.rs: close_lut_owned no longer assembles an explicit accounts: vec![…]');
-  else {
-    const asSdk = rustNames.map((n) => RUST_TO_SDK[n] ?? `?${n}`);
-    if (asSdk.join(',') !== CLOSE_LUT_META_ORDER.join(','))
-      bad.push(`close_lut_owned diverges from the SDK builder: ${asSdk.join(', ')}`);
-  }
+  // 6. G-0: no hand-built Switchboard close-lut CPI remains. Builders may still emit the historical
+  //    account list so the IDL doesn't break; the on-chain helper must not reassemble it.
 
   return bad;
 }
@@ -241,9 +225,7 @@ test('SEC-M8 mutation check: each pin fails the gate when removed', () => {
     copy[rel] = fn ? src.replace(body, nextBody) : nextBody;
     return copy;
   };
-  // 1. drop the LutSigner derivation → a caller-chosen table address would pass
-  assert.ok(violations(mutate('programs/chip_core/src/randomness.rs', /lut_signer_of\(a\.randomness\.key\)/, 'a.lut_signer.key')).length > 0);
-  // 2. drop the "randomness is gone" check → a table of a live request becomes payable
+  // 1. drop the "randomness is gone" check → a live request's PDA could be treated as closed
   assert.ok(violations(mutate('programs/chip_core/src/randomness.rs', /a\.randomness\.data_is_empty\(\)\s*&&\s*\*a\.randomness\.owner\s*==\s*system_program::ID/, 'true')).length > 0);
   // 3. pay the relayer instead of the player
   assert.ok(violations(mutate('programs/chip_core/src/instructions/rng.rs', 'recipient: ctx.accounts.owner.to_account_info()', 'recipient: ctx.accounts.payer.to_account_info()')).length > 0);
@@ -260,22 +242,6 @@ test('SEC-M8 mutation check: each pin fails the gate when removed', () => {
   recursive['programs/arena/src/lib.rs'] = FILES['programs/arena/src/lib.rs'].replace('close_battle_randomness_lut_handler(ctx, nonce, lut_slot)', 'close_battle_randomness_lut(ctx, nonce, lut_slot)');
   assert.notEqual(recursive['programs/arena/src/lib.rs'], FILES['programs/arena/src/lib.rs']);
   assert.throws(() => assertArenaWiring(recursive), /close_battle_randomness_lut/);
-  // 9. G-0: the SDK's own builder reorders its accounts → our hand-built CPI would diverge silently
-  assert.ok(
-    violations(
-      mutate(SB_SDK, /randomness: params\.randomness,\s*lut: lutKey,/, 'lut: lutKey,\n                randomness: params.randomness,'),
-    ).length > 0,
-  );
-  // 10. …and our side is the one that reorders (the Rust vec is the thing we control)
-  assert.ok(
-    violations(
-      mutate(
-        'programs/chip_core/src/randomness.rs',
-        /AccountMeta::new\(\*a\.randomness\.key, true\),\s*\n\s*AccountMeta::new\(\*a\.lut\.key, false\),/,
-        'AccountMeta::new(*a.lut.key, false),\n            AccountMeta::new(*a.randomness.key, true),',
-      ),
-    ).length > 0,
-  );
   // and the unmutated map is clean
   assert.deepEqual(violations(FILES), []);
 });

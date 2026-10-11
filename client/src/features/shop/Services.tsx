@@ -1,3 +1,4 @@
+import { TxError } from '@/chain/tx';
 import { skinText, emotePackName } from '@/shared/lib/cosmetics';
 // "Extras" tab — the voluntary-spend catalogue (cosmetics, identity,
 // convenience, boosters). Every card states what the money does (burn vs
@@ -9,7 +10,7 @@ import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { EMOTE_PACKS, SERVICES, SKINS, type ServiceDef } from '@guttercaps/economy';
 import { claimWithRetry, api, isMock } from '@/api/client';
-import { useFloor, useGrid, useMyChips, useMyServices, useServices } from '@/api/hooks';
+import { useGrid, useMyChips, useMyServices, useServices } from '@/api/hooks';
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
 import { usePaymentRails } from '@/chain/rails';
 import { Currency, type CurrencyCode } from '@/chain/ix/chipCore';
@@ -90,7 +91,6 @@ function ServiceModal({ service, onClose }: { service: ServiceDef; onClose: () =
   const { connection } = useConnection();
   const wallet = useWalletLike();
   const cfg = useGameConfig();
-  const floor = useFloor();
   const qc = useQueryClient();
   const toast = useUiStore((s) => s.toast);
   const [currency, setCurrency] = useState<CurrencyCode>(Currency.CG);
@@ -121,8 +121,8 @@ function ServiceModal({ service, onClose }: { service: ServiceDef; onClose: () =
   const { skr: skrEnabled, skrWhy } = usePaymentRails();
   const currencies: CurrencyCode[] = [Currency.CG, Currency.SOL, Currency.USDC, ...(skrEnabled ? [Currency.SKR] : [])];
   const quote = useMemo(() => {
-    try { return quoteService(service.id, currency, { solUsd: floor.data?.solUsd, skrUsd: floor.data?.skrUsd }); } catch { return null; }
-  }, [service.id, currency, floor.data?.solUsd, floor.data?.skrUsd]);
+    try { return quoteService(service.id, currency); } catch { return null; }
+  }, [service.id, currency]);
 
   async function submit() {
     if (!quote || !payload) return;
@@ -144,7 +144,7 @@ function ServiceModal({ service, onClose }: { service: ServiceDef; onClose: () =
       toast({ kind: 'money', title: { key: 'services.bought' }, body: { key: `services.names.${service.id}` }, href: EXPLORER.tx(signature) });
       onClose();
     } catch (e) {
-      toast({ kind: 'error', title: { key: 'services.buyFailed' }, error: e });
+      toast({ kind: 'error', title: { key: 'services.buyFailed' }, error: e, href: e instanceof TxError && e.signature ? EXPLORER.tx(e.signature) : undefined });
     } finally {
       setBusy(false);
     }
@@ -206,7 +206,6 @@ function ServiceModal({ service, onClose }: { service: ServiceDef; onClose: () =
         <CleanZone>
           <KV k={t(`services.names.${service.id}`)} v={fmtCents(service.priceUsdCents)} />
           {quote ? <KV total accent k={t('common.youSign')} v={fmtAmount(quote.amount, currency)} /> : <div className="tiny muted">{t('services.noQuote')}</div>}
-          {(currency === Currency.SOL || currency === Currency.SKR) && quote && <KV k={t('shop.maxSlippage')} v={fmtAmount(quote.maxUnits, currency)} />}
         </CleanZone>
         <div className="tiny muted">{t('services.howItWorks')}</div>
         <CleanConfirmButton disabled={!quote || !payload || busy} onClick={submit}>{busy ? t('common.signing') : t('common.confirmSign')}</CleanConfirmButton>

@@ -23,11 +23,12 @@
 import { createHash } from 'node:crypto';
 import { Connection, Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
 import { onChainSquadPower, resolveFight, type FighterChip, type FightRound } from '@guttercaps/economy';
-import { db as sharedDb, type Db } from './db.ts';
+import { db as sharedDb, now, type Db } from './db.ts';
+import { grantSquadXp } from './chip-xp.ts';
 import { BorshWriter } from './borsh.ts';
 import { PROGRAMS } from './config.ts';
 import {
-  ARENA_ID, BATTLE_STATUS, TOKEN_PROGRAM_ID, ata, battlePda, decodeRandomness, decodeWagerBattle, expectDiscriminator, ixData, ro, rw, signer, type WagerBattle,
+  ARENA_ID, BATTLE_STATUS, TOKEN_PROGRAM_ID, ata, battlePda, decodeRandomness, decodeWagerBattle, ixData, ro, rw, signer, type WagerBattle,
 } from './chain.ts';
 import { getConnection, sleep } from './ingest.ts';
 import { loadKeypair } from './crank.ts';
@@ -40,7 +41,8 @@ export const BATTLE_ORACLE_KEYPAIR = env.BATTLE_ORACLE_KEYPAIR ?? '';
 export const BATTLE_RESOLVER_POLL_MS = Number(env.BATTLE_RESOLVER_POLL_MS ?? 5_000);
 export const CU_RESOLVE_BATTLE = 120_000;
 
-export const arenaConfigPda = () => PublicKey.findProgramAddressSync([Buffer.from('arena_config')], ARENA_ID);
+import { arenaConfigPda, decodeArenaConfig } from './arena-config.ts';
+export { arenaConfigPda, decodeArenaConfig, type ArenaConfig } from './arena-config.ts';
 
 const sha256 = (...parts: (Uint8Array | string)[]) => { const h = createHash('sha256'); for (const p of parts) h.update(p); return h.digest(); };
 
@@ -66,18 +68,14 @@ export function resolveBattleIx(a: { oracle: PublicKey; challenger: PublicKey; n
   });
 }
 
-export interface ArenaConfig {
-  admin: PublicKey; battleOracle: PublicKey; cgMint: PublicKey; seasonPool: PublicKey; treasuryCg: PublicKey; oracleDailyCap: bigint; oraclePaidToday: bigint; oracleDayStart: bigint; paused: boolean;
-  /** SEC-H2 hot pauser, appended last on chain; `PublicKey.default` = none (also for a pre-pauser account layout). */
-  pauser: PublicKey;
-}
-export function decodeArenaConfig(data: Uint8Array): ArenaConfig {
-  const r = expectDiscriminator(data, 'ArenaConfig');
-  const head = { admin: r.pubkey(), battleOracle: r.pubkey(), cgMint: r.pubkey(), seasonPool: r.pubkey(), treasuryCg: r.pubkey(), oracleDailyCap: r.u64(), oraclePaidToday: r.u64(), oracleDayStart: r.i64(), paused: r.bool() };
-  // bump (u8) then the appended pauser; tolerate a fixture / legacy layout that stops at `paused`
-  const pauser = r.remaining >= 33 ? (r.u8(), r.pubkey()) : PublicKey.default;
-  return { ...head, pauser };
-}
+
+/**
+ * On-chain `claim.level` until merkle `level_up` ships. Ranked XP writes `chips.level` and must not
+ * feed this fight: after one Cap Slam win the projection is lv 2+, while `create_battle` /
+ * `accept_battle` still hashed mint-1 power. Using the ranked level here trips SEC-B30 forever
+ * (skip → cancel_stale). Fusion still burns the asset, which returns `undefined` below.
+ */
+const WAGER_ON_CHAIN_LEVEL = 1;
 
 export function squadFromDb(db: Db, assets: readonly PublicKey[]): FighterChip[] | undefined {
   const out: FighterChip[] = [];
@@ -86,7 +84,7 @@ export function squadFromDb(db: Db, assets: readonly PublicKey[]): FighterChip[]
     // trail, not an input for a fight that decides the pot.
     const r = db.get<ChipRow>(`SELECT * FROM chips WHERE asset = ? AND burned_at IS NULL`, a.toBase58());
     if (!r) return undefined;
-    out.push({ asset: r.asset, collection: r.collection_idx, rarity: r.rarity, level: r.level });
+    out.push({ asset: r.asset, collection: r.collection_idx, rarity: r.rarity, level: WAGER_ON_CHAIN_LEVEL });
   }
   return out;
 }
@@ -128,15 +126,22 @@ export async function resolveOne(d: ResolverDeps, battleKey: PublicKey): Promise
   const ix = resolveBattleIx({ oracle: d.oracle.publicKey, challenger: b.challenger, nonce: b.nonce, randomness: b.randomness, cgMint: cfg.cgMint, winner, seasonPool: cfg.seasonPool, treasuryCg: cfg.treasuryCg, resultHash: hash });
   const { signature } = await sendAndConfirm(d.connection, d.oracle, [ix], { cuLimit: CU_RESOLVE_BATTLE });
   // keep the round list so /arena/matches/:battle can replay a wager battle exactly like a ranked one
-  d.db.run(
+  const matchId = battleKey.toBase58();
+  const inserted = Number(d.db.run(
     // every value is a parameter now (the literals were inline in the VALUES list): same row, and the
     // statement shape is what `sql.ts` guarantees across dialects
     insertIgnore('matches', ['id', 'season', 'a', 'b', 'squad_a', 'squad_b', 'power_a', 'power_b', 'league', 'commit_a', 'commit_b', 'nonce_a', 'nonce_b', 'seed', 'rounds', 'winner', 'wager', 'battle_pda', 'resolve_sig', 'status', 'started_at', 'ended_at', 'rewarded']),
-    battleKey.toBase58(), 0, b.challenger.toBase58(), b.opponent.toBase58(), JSON.stringify(squadA), JSON.stringify(squadB), b.powerA, b.powerB, leagueOfPower(b.powerA),
-    '', '', '', '', Buffer.from(rnd.value).toString('hex'), JSON.stringify(fight.rounds), winner.toBase58(), b.wager.toString(), battleKey.toBase58(), signature, 'resolved',
+    matchId, 0, b.challenger.toBase58(), b.opponent.toBase58(), JSON.stringify(squadA), JSON.stringify(squadB), b.powerA, b.powerB, leagueOfPower(b.powerA),
+    '', '', '', '', Buffer.from(rnd.value).toString('hex'), JSON.stringify(fight.rounds), winner.toBase58(), b.wager.toString(), matchId, signature, 'resolved',
     Number(b.acceptedAt) * 1000, Date.now(), 0,
-  );
-  d.log?.(`[battle-resolver] resolve_battle ${battleKey.toBase58()} winner ${winner.toBase58()} → ${signature}`);
+  ).changes);
+  // first insert only: ranked-style chip XP (indexer-authoritative). claim.level stays mint 1.
+  if (inserted > 0) {
+    const t = now();
+    grantSquadXp(d.db, JSON.stringify(squadA), fight.winner === 'A', t, b.challenger.toBase58(), matchId);
+    grantSquadXp(d.db, JSON.stringify(squadB), fight.winner === 'B', t, b.opponent.toBase58(), matchId);
+  }
+  d.log?.(`[battle-resolver] resolve_battle ${matchId} winner ${winner.toBase58()} → ${signature}`);
   return { kind: 'resolved', signature, winner: winner.toBase58() };
 }
 const leagueOfPower = (p: number) => [800, 1400, 2400, 4000, 7000, Infinity].findIndex((u) => p < u);
@@ -158,7 +163,8 @@ export async function resolveAll(d: ResolverDeps): Promise<{ resolved: number; s
 }
 
 export async function battleResolver(log: (s: string) => void = console.log) {
-  const oracle = loadKeypair(BATTLE_ORACLE_KEYPAIR || undefined);
+  if (!BATTLE_ORACLE_KEYPAIR) throw new Error('BATTLE_ORACLE_KEYPAIR is required; refusing to use the crank signer');
+  const oracle = loadKeypair(BATTLE_ORACLE_KEYPAIR);
   const connection = getConnection();
   const db = sharedDb();
   log(`[battle-resolver] oracle ${oracle.publicKey.toBase58()} · arena ${PROGRAMS.arena.toBase58()} · poll ${BATTLE_RESOLVER_POLL_MS} ms`);

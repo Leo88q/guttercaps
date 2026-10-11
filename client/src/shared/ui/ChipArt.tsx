@@ -30,6 +30,8 @@ interface ChipArtProps {
   /** pre-sale origin (docs/preorder-beta.md): permanent founder foil frame + badge */
   founder?: boolean;
 }
+/** Permanent pre-sale foil — pass through to ChipArt wherever a real chip is drawn. */
+export const isFounderChip = (c?: { flags?: { founder?: boolean } } | null) => !!c?.flags?.founder;
 
 export const ChipArt = memo(function ChipArt({ collection, rarity, index = null, level, size = '100%', imageUrl, fallbackUrl, selected, dim, badge, skin, onClick, title, className = '', crimp, founder }: ChipArtProps) {
   const t = useT();
@@ -52,6 +54,7 @@ export const ChipArt = memo(function ChipArt({ collection, rarity, index = null,
 
   const tile = (
     <div className={cls} style={style} onClick={onClick} title={title} role={onClick ? 'button' : undefined}>
+      <div className="chip-face">
       {showImage ? (
         <img src={imageUrl} alt={title ?? ''} loading="lazy" decoding="async" onError={() => setFailedUrl(imageUrl ?? null)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
       ) : showFallback ? (
@@ -97,9 +100,19 @@ export const ChipArt = memo(function ChipArt({ collection, rarity, index = null,
           </g>
         </svg>
       )}
-      {level !== undefined && <span className="chip-lvl">{t('screens.levelBadge', { n: level })}</span>}
+      {founder && <span className="chip-founder" aria-hidden />}
+      </div>
+      {/* Labels belong to the rectangular tile, NOT the clipped circular artwork. */}
+      {(level !== undefined || founder) && <div className="chip-labels">
+        {founder && <span className="chip-founder-tag">{t('collection.founderBadge')}</span>}
+        {level !== undefined && (
+          <span className="chip-lvl" title={t('screens.levelBadge', { n: level })}>
+            <small>{t('ui.lvMark')}</small>
+            <b>{level}</b>
+          </span>
+        )}
+      </div>}
       {badge && <span className="chip-badge">{badge}</span>}
-      {founder && <><span className="chip-founder" aria-hidden /><span className="chip-founder-tag">{t('collection.founderBadge')}</span></>}
     </div>
   );
   if (!crimp) return tile;

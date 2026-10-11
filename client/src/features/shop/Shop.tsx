@@ -3,8 +3,9 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { ExternalIcon } from '@/shared/ui/action-icons';
-import { PACKS, BUNDLES, bundlePriceCents, effectiveOdds, probabilityAtLeast, type PackId } from '@guttercaps/economy';
-import { useMe, usePackCatalog, usePreorderCampaign, useQuote, type PackSku } from '@/api/hooks';
+import { PACKS, BUNDLES, FX, bundlePriceCents, effectiveOdds, probabilityAtLeast, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, type PackId } from '@guttercaps/economy';
+import { useMe, usePackCatalog, useQuote, type PackSku } from '@/api/hooks';
+import { PreorderBanner } from '@/features/preorder/PreorderBanner';
 import type { components } from '@/api/schema';
 type PackQuote = components['schemas']['PackQuote'];
 import { useGameConfig, usePity } from '@/chain/hooks';
@@ -34,7 +35,6 @@ const CUR_LABEL = ['SOL', 'USDC', 'CG', 'SKR'] as const;
 
 export default function Shop() {
   const catalog = usePackCatalog();
-  const preorder = usePreorderCampaign();
   const cfg = useGameConfig();
   const me = useMe();
   const pity = usePity();
@@ -51,7 +51,10 @@ export default function Shop() {
   // Merge sources: on-chain GameConfig (authoritative) → API catalog → economy defaults
   const packs = useMemo(() => {
     return SKU_IDS.map((id, sku) => {
-      const econ = cfg.data ? toEconPack(sku, cfg.data.packs[sku]) : PACKS[id];
+      const onchain = cfg.data ? toEconPack(sku, cfg.data.packs[sku]) : PACKS[id];
+      // Frozen FX stickers live in PACKS. A GameConfig decode of $0.50 (50¢, the admin floor)
+      // is never a real SKU price — Starter is $1.99. Keep odds/enabled from chain.
+      const econ = onchain.priceUsdCents >= 100 ? onchain : { ...onchain, priceUsdCents: PACKS[id].priceUsdCents, priceCgMicro: PACKS[id].priceCgMicro };
       const api = catalog.data?.packs?.find((p: PackSku) => p.sku === sku);
       // Default-on when nothing says otherwise: on-chain GameConfig is authoritative when it loads,
       // the API catalog is authoritative when it answers, and with neither (offline demo, API down)
@@ -129,12 +132,7 @@ export default function Shop() {
       {tab === 'packs' && (
       <div role="tabpanel" id="shop-panel-packs" aria-labelledby="shop-tab-packs" tabIndex={0}>
 
-      {preorder.data?.active && preorder.data.remaining > 0 && (
-        <Link to="/preorder" data-testid="shop-preorder-banner" className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16, textDecoration: 'none', borderColor: 'rgba(255,122,26,0.4)' }}>
-          <div style={{ fontSize: 13, color: '#ddd' }}>{t('preorder.shopBanner')}</div>
-          <Pill tone="ok">{t('preorder.shopCta')} →</Pill>
-        </Link>
-      )}
+      <PreorderBanner testId="shop-preorder-banner" variant="shop" />
       {geoBlocked && (
         <div className="warn" style={{ marginBottom: 16 }}>
           {t('shop.geoBlocked', { regions: RESTRICTED_REGIONS.join(' / ') })} <Link to="/market">{t('nav.market')}</Link>
@@ -154,13 +152,15 @@ export default function Shop() {
           const disabled = !enabled || shopBlocked || !!cfg.data?.paused || starterGone || capLeft === 0;
           const glow = ['rgba(216,216,220,0.12)', 'rgba(22,229,217,0.18)', 'rgba(255,46,138,0.18)', 'rgba(255,122,26,0.22)'][sku];
           return (
-            <div key={sku} className="card pack-card stack" style={{ ['--pack-glow' as string]: glow, opacity: enabled ? 1 : 0.55 }}>
+            <div key={sku} className="card pack-card" style={{ ['--pack-glow' as string]: glow, opacity: enabled ? 1 : 0.55 }}>
               <img className="pack-art" src={packArtUrl(sku)} alt={packName(sku)} loading="lazy" />
               <div className="row between">
                 <div className="pack-head">
                   <div className="cg-heading" style={{ fontSize: 22 }}>{packName(sku)}</div>
                   <div className="muted small pack-sub">{t('shop.perPack', { n: econ.chips })} · {t('shop.floor', { rarity: rarityName(econ.floor) })} · {t(econ.pool === 'featured' ? 'ui.featuredOnly' : 'ui.allEight')}</div>
                 </div>
+              </div>
+              <div className="pack-badges">
                 {!enabled && <Pill>{t('ui.comingSoon')}</Pill>}
                 {id === 'starter' && <Pill tone="ok">{t('shop.starterOnce')}</Pill>}
               </div>
@@ -197,11 +197,10 @@ export default function Shop() {
                   {counter >= econ.pity.softStart && <div className="tiny" style={{ color: 'var(--cg-orange-soft)' }}>{t('ui.softPity', { pct: fmtPct(econ.pity.softStepBps * (counter - econ.pity.softStart + 1), 2) })}</div>}
                 </div>
               ) : <div className="pack-pity-spacer" aria-hidden />}
-              {capLeft !== null && <div className="tiny muted">{t('services.dailyLeft', { n: capLeft })}</div>}
+              <div className="tiny muted pack-cap">{capLeft !== null ? t('services.dailyLeft', { n: capLeft }) : '\u00a0'}</div>
 
-              <div className="pack-card-foot stack">
-              <CleanZone>
-                <KV k={t('ui.price')} v={fmtCents(econ.priceUsdCents)} />
+              <CleanZone className="pack-price">
+                <KV k={t('ui.price')} v={`${fmtCents(econ.priceUsdCents)} · ${fmtSol(solLamportsForUsdCents(econ.priceUsdCents))}`} />
                 {econ.priceCgMicro
                   ? <KV k={t('ui.or')} v={fmtAmount(BigInt(econ.priceCgMicro), 'CG')} />
                   : /* Two packs are deliberately SOL/USDC-only (see packs.ts). Saying so is the
@@ -211,9 +210,10 @@ export default function Shop() {
                 {api?.evPct !== undefined && <KV k={t('ui.modelFloor')} v={t('ui.ofPrice', { pct: Math.round(api.evPct) })} />}
               </CleanZone>
 
-              <SprayNozzleButton disabled={disabled} onClick={() => (connected ? setSel({ sku, qty: 1, currency: Currency.SOL }) : setVisible(true))}>
-                {starterGone ? t('ui.starterClaimed') : capLeft === 0 ? t('ui.capReached') : connected ? t('services.buy') : t('ui.connectBuy')}
-              </SprayNozzleButton>
+              <div className="pack-buy">
+                <SprayNozzleButton disabled={disabled} onClick={() => (connected ? setSel({ sku, qty: 1, currency: Currency.SOL }) : setVisible(true))}>
+                  {starterGone ? t('ui.starterClaimed') : capLeft === 0 ? t('ui.capReached') : connected ? t('services.buy') : t('ui.connectBuy')}
+                </SprayNozzleButton>
               </div>
             </div>
           );
@@ -242,8 +242,8 @@ export default function Shop() {
           onConfirm={async (quote) => {
             const s = sel;
             setSel(null);
-            // the quote carries the Pyth account + slippage guard the program will check (SOL/SKR); USDC/$CG need none
-            const nonce = await flow.start({ sku: s.sku, qty: s.qty, currency: s.currency, quote: quote ? { priceUpdateAccount: quote.priceUpdateAccount, maxLamports: quote.maxLamports, switchboardQueue: quote.switchboardQueue } : undefined });
+            // Frozen FX: maxLamports is the exact SOL/SKR amount (or 0 for USDC/$CG). Quote API is optional.
+            const nonce = await flow.start({ sku: s.sku, qty: s.qty, currency: s.currency, quote: quote ? { maxLamports: quote.maxLamports || quote.amount, amount: quote.amount, switchboardQueue: quote.switchboardQueue } : undefined });
             if (nonce !== undefined) nav(`/shop/opening/${nonce.toString()}`);
           }}
         />
@@ -280,14 +280,16 @@ function BuyModal({ sel, setSel, pack, counter, onConfirm }: {
   const cents = sel.currency === Currency.SKR ? skrCents : baseCents;
   const reserve = rentReserve(econ.chips, sel.qty);
   const odds = effectiveOdds(econ, counter);
-  const amount = quote.data?.amount ? BigInt(quote.data.amount) : undefined;
-  // SOL/SKR are converted on-chain from OUR Pyth account (owner decision Q7). Without a quote the
-  // transaction would carry max_lamports = 0 and fail with Slippage, so the button waits for one;
-  // the API answers 503 price_unavailable while the feed is stale (> 45 s) — usually for < 30 s.
-  const volatile = sel.currency === Currency.SOL || sel.currency === Currency.SKR;
-  const quoteErr = quote.error as { code?: string; status?: number } | null;
-  const priceDown = volatile && !quote.isLoading && !quote.data;
-  const canSign = !volatile || (!!quote.data?.priceUpdateAccount && !!quote.data?.maxLamports);
+  const cgAmount = econ.priceCgMicro
+    ? BigInt(Math.floor((econ.priceCgMicro * sel.qty * (10_000 - bundleBps)) / 10_000))
+    : undefined;
+  const localAmount = sel.currency === Currency.SOL ? solLamportsForUsdCents(cents)
+    : sel.currency === Currency.SKR ? skrMicroForUsdCents(cents)
+    : sel.currency === Currency.USDC ? usdcMicroForUsdCents(cents)
+    : sel.currency === Currency.CG ? cgAmount
+    : undefined;
+  const amount = localAmount;
+  const canSign = amount !== undefined;
 
   return (
     <Modal open onClose={() => setSel(null)} title={t('shop.buy', { name: packName(sel.sku) })}>
@@ -310,18 +312,16 @@ function BuyModal({ sel, setSel, pack, counter, onConfirm }: {
 
         <CleanZone className="cg-clean-pulse">
           <KV k={`${packName(sel.sku)} × ${sel.qty}`} v={sel.currency === Currency.SKR && skrCents !== baseCents ? `${fmtCents(skrCents)} (${t('shop.was', { price: fmtCents(baseCents) })})` : fmtCents(cents)} />
-          {sel.currency === Currency.SOL && <KV k={t('shop.solAtPyth')} v={quote.isLoading ? '…' : quote.data ? `${fmtSol(amount!)} (1 SOL = ${fmtUsd(quote.data.solUsd)})` : t('shop.quoteUnavailable')} />}
-          {sel.currency === Currency.SKR && <KV k={t('shop.skrAtPyth')} v={quote.isLoading ? '…' : quote.data?.amount ? `${fmtAmount(BigInt(quote.data.amount), 'SKR')} (1 SKR = ${fmtUsd(quote.data.skrUsd, 4)})` : t('shop.quoteUnavailable')} />}
-          {volatile && quote.data?.priceAgeS !== undefined && <KV k={t('shop.priceAge')} v={t('shop.priceAgeValue', { s: quote.data.priceAgeS })} />}
-          {sel.currency === Currency.USDC && <KV k="USDC" v={fmtAmount(BigInt(cents) * 10_000n, 'USDC')} />}
-          {sel.currency === Currency.CG && econ.priceCgMicro && <KV k="$CG" v={fmtAmount(quote.data?.amount ?? BigInt(Math.round(econ.priceCgMicro * sel.qty)), 'CG')} />}
+          {sel.currency === Currency.SOL && <KV k={t('shop.solAtPyth')} v={`${fmtSol(amount ?? 0n)} (1 SOL = ${fmtUsd(FX.solUsd)})`} />}
+          {sel.currency === Currency.SKR && <KV k={t('shop.skrAtPyth')} v={`${fmtAmount(amount ?? 0n, 'SKR')} (1 SKR = ${fmtUsd(FX.skrUsd, 4)})`} />}
+          {sel.currency === Currency.USDC && <KV k="USDC" v={fmtAmount(amount ?? usdcMicroForUsdCents(cents), 'USDC')} />}
+          {sel.currency === Currency.CG && econ.priceCgMicro && <KV k="$CG" v={fmtAmount(amount ?? cgAmount ?? 0n, 'CG')} />}
           <KV k={t('shop.rentReserve')} v={fmtSol(reserve)} />
           <KV k={t('shop.oracleFees')} v={`≈ ${fmtSol(3_000_000n)}`} />
-          {(sel.currency === Currency.SOL || sel.currency === Currency.SKR) && quote.data?.maxLamports && <KV k={t('shop.maxSlippage')} v={fmtAmount(BigInt(quote.data.maxLamports), sel.currency === Currency.SOL ? 'SOL' : 'SKR')} />}
           <KV total k={t('common.youSign')} v={
             sel.currency === Currency.SOL ? (amount !== undefined ? fmtSol(amount + reserve) : '—')
             : sel.currency === Currency.SKR ? (amount !== undefined ? `${fmtAmount(amount, 'SKR')} + ${fmtSol(reserve)}` : '—')
-            : `${fmtAmount(sel.currency === Currency.USDC ? BigInt(cents) * 10_000n : BigInt(quote.data?.amount ?? Math.round((econ.priceCgMicro ?? 0) * sel.qty)), sel.currency)} + ${fmtSol(reserve)}`
+            : `${fmtAmount(amount ?? 0n, sel.currency)} + ${fmtSol(reserve)}`
           } accent />
         </CleanZone>
 
@@ -331,14 +331,19 @@ function BuyModal({ sel, setSel, pack, counter, onConfirm }: {
         </div>
 
         <div className="tiny muted">{t('ui.packSignatures')}</div>
-        {priceDown && (
-          <div className="tiny" role="status" style={{ color: 'var(--cg-electric-orange)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span>{quoteErr?.code === 'price_unavailable' || quoteErr?.status === 503 ? t('shop.priceFeedDown') : t('shop.quoteFailed')}</span>
-            <button type="button" className="btn btn-ghost" style={{ minHeight: 32, padding: '0 10px' }} onClick={() => quote.refetch()}>{t('common.retry')}</button>
-          </div>
-        )}
 
-        <CleanConfirmButton onClick={() => onConfirm(quote.data)} disabled={volatile && (quote.isLoading || !canSign)}>
+        <CleanConfirmButton
+          onClick={() => {
+            if (amount === undefined) return;
+            const cap = sel.currency === Currency.SOL || sel.currency === Currency.SKR;
+            onConfirm({
+              ...(quote.data ?? {}),
+              amount: String(amount),
+              maxLamports: cap ? String(amount) : '0',
+            } as PackQuote);
+          }}
+          disabled={!canSign}
+        >
           {t('common.confirmSign')}
         </CleanConfirmButton>
       </div>

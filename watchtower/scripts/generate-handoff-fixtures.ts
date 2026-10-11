@@ -89,6 +89,16 @@ const CASES: FixtureCase[] = [
     data: { buyer: PLAYER_A, nonce: '900001', packNo: 0, claimNonces: ['700001', '700002', '700003', '700004', '700005'], count: 5 },
   },
   {
+    program: 'chip_core', name: 'CompressedPackOpened', watchtowerEventType: null,
+    meaning: 'Same open_compressed_pack transaction as CompressedClaimsCreated: 32-byte SlotHashes pack seed, sku, pack_no, pity, rarities and districts. Companion fairness payload for /verify and /packs/verify — not a second hub first-action.',
+    data: {
+      buyer: PLAYER_A, nonce: '900001', sku: 1, packNo: 0, count: 5,
+      claimNonces: ['700001', '700002', '700003', '700004', '700005'],
+      rarities: [0, 1, 2, 1, 0], collections: [3, 3, 3, 3, 3],
+      roll: hex32('pack-open-900001'), pityBefore: 0, pityAfter: 1, voucher: false,
+    },
+  },
+  {
     program: 'chip_core', name: 'CompressedPackSettled', watchtowerEventType: null,
     meaning: 'finalize_compressed_pack: every claim of the pack settlement was delivered; refunded=false. Lifecycle event — raw/unmapped.',
     data: { buyer: PLAYER_A, nonce: '900001', refunded: false },
@@ -176,9 +186,10 @@ const META: Record<string, Meta> = {
   // ── chip_core
   ServicePaid: { wt: 'PurchaseCompleted', meaning: 'Paid service (handle, cosmetics, boosters, season pass) settled on-chain. `kind` = ServiceKind, `currency` = Currency enum (0 SOL / 1 USDC / 2 CG / 3 SKR), `amount` raw units of that currency, `burned` = $CG portion burned, `refHash` = keccak of the canonical off-chain payload.', playerField: 'buyer', economy: 'sink,revenue' },
   PackBought: { wt: 'PackPurchased', meaning: 'Pack purchase committed: payment moved to the vault ledger, a PendingPack was created and Switchboard randomness requested. This is the purchase COMMIT — the pack is opened later by the crank (open_compressed_pack); a never-revealed pack is refundable (cancel_stale_pack).', playerField: 'buyer', economy: 'deposit' },
-  PackOpened: { wt: null, meaning: 'Legacy MPL-Core pack-open outcome (assets/rarities/roll/pity). DECLARED BUT NO LONGER EMITTED: the Core open_pack handler is gated to params_version==0 (unreachable since the Bubblegum V2 migration; programs/chip_core/src/instructions/packs.rs:663). The live equivalent is CompressedClaimsCreated + CompressedChipMinted.', playerField: 'buyer', status: 'unavailable', note: 'The event struct and codec entry remain (state.rs:517, events.ts) so historical logs — if any deployment ever emitted them — still decode. No emitter exists in the current program.' },
+  PackOpened: { wt: null, meaning: 'Legacy MPL-Core pack-open outcome (assets/rarities/roll/pity). DECLARED BUT NO LONGER EMITTED: the Core open_pack handler is gated to params_version==0 (unreachable since the Bubblegum V2 migration; programs/chip_core/src/instructions/packs.rs:663). The live equivalent is CompressedClaimsCreated (claims) + CompressedPackOpened (32-byte seed / rarities) + CompressedChipMinted.', playerField: 'buyer', status: 'unavailable', note: 'The event struct and codec entry remain (state.rs:517, events.ts) so historical logs — if any deployment ever emitted them — still decode. No emitter exists in the current program.' },
   PackCancelled: { wt: null, meaning: 'Stale pending pack cancelled (oracle never revealed): 100% refund from the vault. `refunded` is raw units of the paid currency.', playerField: 'buyer', economy: 'withdrawal' },
   CompressedClaimsCreated: { wt: 'PackOpened', meaning: 'V2 pack-opened moment: open_compressed_pack settled one pack of a purchase and created `count` mint claims with rolled rarities for the buyer (claim PDAs keyed by claimNonces). Proposed mapping for the hub first-action slot — subject to hub agreement.', playerField: 'buyer', economy: 'reward' },
+  CompressedPackOpened: { wt: null, meaning: 'Provably-fair payload for a compressed pack open (same tx as CompressedClaimsCreated, emitted after it): sku, pack_no, 32-byte SlotHashes pack seed, pity, rarities and districts. This is what /verify and /packs/verify recompute. Not a second hub first-action — that mapping stays on CompressedClaimsCreated.', playerField: 'buyer', economy: 'reward' },
   CompressedClaimCancelled: { wt: null, meaning: 'Buyer cancelled an unsettled compressed claim (refund path).', playerField: 'buyer', economy: 'withdrawal' },
   CompressedPackSettled: { wt: null, meaning: 'finalize_compressed_pack: all claims of a pending pack settlement delivered (refunded=false) or the settlement was unwound (refunded=true). Lifecycle/audit event.', playerField: 'buyer' },
   CompressedChipMinted: { wt: 'AssetMinted', meaning: 'A mint claim was converted into a Bubblegum V2 compressed chip (collection idx, rarity, level, sequential gameIndex). The `claim` PDA joins the mint back to its pack claim.', playerField: 'buyer', economy: 'mint' },
@@ -227,6 +238,8 @@ const META: Record<string, Meta> = {
   Staked: { wt: null, meaning: 'Chip or token staked: amount + staking weight (u128 — string!) + unlock_at. kind selects the pool.', playerField: 'owner', economy: 'deposit' },
   Unstaked: { wt: null, meaning: 'Unstaked with early-exit penalty burned (penaltyBurned micro-CG).', playerField: 'owner', economy: 'withdrawal,burn' },
   Claimed: { wt: 'RewardGranted', meaning: 'Emission reward claimed from a staking pool (micro-CG).', playerField: 'owner', economy: 'reward' },
+  ClaimCapped: { wt: null, meaning: 'Harvest hit the per-wallet daily cap (STAKE_CLAIM_CAPS): `paid` micro-CG actually transferred, `pending` left in the position. Companion to Claimed on a capped harvest — not a second RewardGranted.', playerField: 'owner', economy: 'reward' },
+  PlayPulsed: { wt: null, meaning: 'Alive-stake clock: `lastPlayed` unix seconds written on the position (Cap Slam / drain / battle). After 7 days without a pulse the idle multiplier (×0.25) applies. Not a hub reward.', playerField: 'key' },
   RootPublished: { wt: null, meaning: 'Merkle reward root published: kind 0–4 $CG emission slices, 5–7 SKR prize pool, 8 items, 9 chip vouchers; budget in micro units of the root currency.', playerField: null, economy: 'treasury' },
   RootRevoked: { wt: null, meaning: 'Reward root revoked before full claim.', playerField: null },
   RootClaimed: { wt: 'RewardGranted', meaning: 'Merkle leaf claimed by `wallet`: quests/season/events (CG or SKR), items, chip vouchers — currency follows the root kind (see RootPublished).', playerField: 'wallet', economy: 'reward' },

@@ -47,7 +47,7 @@ New `ChipError` variants (114 → 118 total, mirrored in `client/src/chain/error
 
 ## Backend
 
-- Config (`backend/src/config.ts`): `PREORDER_ACTIVE` (default on), `PREORDER_TREASURY` (empty = campaign disabled), `PREORDER_PRICE_LAMPORTS` (0.999 SOL default), `PREORDER_SKU=3`, `PREORDER_TOTAL=500`, `PREORDER_MAX_PER_WALLET=5`, `PREORDER_MAX_QTY=5`, `PREORDER_MEMO_PREFIX=GC-PRE`, `PREORDER_INTENT_TTL_S`, `MAINNET_RPC_URL`.
+- Config (`backend/src/config.ts`): `PREORDER_ACTIVE` (default on), `PREORDER_TREASURY` (empty = campaign disabled), `PREORDER_PRICE_LAMPORTS` (0.30 SOL per single Limited), `PREORDER_SKU=3`, `PREORDER_TOTAL=500`, `PREORDER_MAX_PER_WALLET=5`, `PREORDER_MAX_QTY=5`, plus the founders chest: `PREORDER_CHEST_PRICE_LAMPORTS` (0.999 SOL), `PREORDER_CHEST_TOTAL=125`, `PREORDER_CHEST_PACKS=4`, `PREORDER_CHEST_MAX_PER_WALLET=1`. `PREORDER_MEMO_PREFIX=GC-PRE`, `PREORDER_INTENT_TTL_S`, `MAINNET_RPC_URL`.
 - Routes: `GET /preorder` (campaign), `GET /preorder/registry`, `POST /preorder/intent`, `POST /preorder/confirm`, `GET /preorder/me` (auth), `GET /admin/preorders`, `POST /admin/preorders/drop` (`{action: open|close}`), `POST /admin/preorders/delivery` (all admin routes Squads-gated, audited).
 - `PackGranted` from a preorder grant projects into `pack_purchases` with currency 255 and amount `'0'` — portfolio and analytics see the pack without revenue distortion.
 - `backend/test/preorders.test.ts` covers intent/cap/expiry, every confirm failure code, idempotency, registry, drop open/close and delivery batching (25 tests; backend suite 555 green).

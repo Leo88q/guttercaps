@@ -9,6 +9,8 @@
 //                        + USDC / SKR stand-in mints (or reuse CG_MINT / USDC_MINT / SKR_MINT from env)
 //                mainnet: CG_MINT must be given (created by the treasury multisig); USDC/SKR are the real mints
 //   initialize   chip_core `initialize` (treasury / buyback / mints / Pyth accounts)
+//   packs        chip_core `set_params` — rewrite pack USD (and $CG) from packages/economy when on-chain
+//                prices are still the admin floor ($0.50). ELF upgrade does not touch GameConfig.
 //   ledgers      chip_core `init_ledger` × LEDGER_SHARDS — the VaultLedger liability shards (#12; permissionless, buy_pack needs them)
 //   collections  chip_core `create_collection` × 8 from packages/economy/src/lore.ts (Core collections, Royalties 250 bps)
 //   atas         vault / treasury / buyback token accounts for $CG, USDC, SKR (buy_pack / sweep_vault assume they exist)
@@ -45,6 +47,7 @@ import {
 // so importing it killed the setup stage with `ERR_MODULE_NOT_FOUND: Cannot find package '@/shared'` before
 // a single instruction was built. Same import as `scripts/art-pipeline.ts`.
 import { COLLECTIONS } from '../packages/economy/src/lore.ts';
+import { PACKS, type PackId } from '../packages/economy/src/packs.ts';
 import { ARENA_ORACLE_DAILY_CAP_DEFAULT_CG, EMISSION_SPLIT } from '../packages/economy/src/tokenomics.ts';
 import { assessPins, fetchDeployedProgram, sha256hex, trimPadding } from './verify-deploy.ts';
 import { assessExistingSingleton, expectedAdminsFromEnv, upgradeAuthorityProblem, type Singleton } from './init-guard.ts';
@@ -160,6 +163,40 @@ function readConfig(data: Buffer) {
   return { admin: pk(8), cgMint: pk(8 + 32 * 4), usdcMint: pk(8 + 32 * 5), skrMint: pk(8 + 32 * 6), collectionsCreated: data.readUInt8(collectionsCreatedOffset) };
 }
 
+/** Borsh `PackDef` (economy.rs) — 42 bytes. Offset: disc + 10 pubkeys + featured + paused. */
+const PACK_DEF_SIZE = 42;
+const PACKS_OFF = 8 + 32 * 10 + 1 + 1;
+const PACK_IDS: PackId[] = ['starter', 'standard', 'premium', 'limited'];
+
+async function stepPacks(conn: Connection, wallet: Keypair) {
+  const info = await conn.getAccountInfo(configPda, 'confirmed');
+  if (!info) throw new Error('run `initialize` first');
+  await existingIsOurs(conn, 'chip_core config', configPda, wallet);
+  if (info.data.length < PACKS_OFF + PACK_DEF_SIZE * 4) throw new Error(`GameConfig too small (${info.data.length} B) — cannot read packs`);
+  const packs = Buffer.from(info.data.subarray(PACKS_OFF, PACKS_OFF + PACK_DEF_SIZE * 4));
+  let need = false;
+  for (let i = 0; i < 4; i++) {
+    const o = i * PACK_DEF_SIZE;
+    const cents = packs.readUInt32LE(o + 1);
+    const cg = packs.readBigUInt64LE(o + 5);
+    const want = PACKS[PACK_IDS[i]];
+    console.log(`  ${PACK_IDS[i]}: ${cents}¢ on-chain (want ${want.priceUsdCents}¢, cg ${cg})`);
+    // $0.50 is the set_params floor, not a SKU. ELF upgrade never rewrites GameConfig.
+    if (cents < 100) {
+      packs.writeUInt32LE(want.priceUsdCents, o + 1);
+      packs.writeBigUInt64LE(BigInt(want.priceCgMicro ?? 0), o + 5);
+      need = true;
+    }
+  }
+  if (!need) {
+    console.log('  pack USD already ≥ $1 — skip set_params');
+    return;
+  }
+  // ParamsPatch: Some(packs) + 8 × None (market_fee … skr_discount)
+  const args = Buffer.concat([Buffer.from([1]), packs, Buffer.alloc(8)]);
+  await send(conn, wallet, [ix(CHIP_CORE, 'set_params', [signer(wallet.publicKey, false), rw(configPda)], args)], 'set_params packs (economy USD)');
+}
+
 // ---------------------------------------------------------------- steps
 async function stepMints(conn: Connection, wallet: Keypair) {
   const out = { cg: process.env.CG_MINT ? new PublicKey(process.env.CG_MINT) : undefined, usdc: envKey('USDC_MINT', MAINNET ? REAL_USDC : DEVNET_USDC), skr: process.env.SKR_MINT ? new PublicKey(process.env.SKR_MINT) : MAINNET ? REAL_SKR : undefined };
@@ -268,8 +305,12 @@ async function stepAtas(conn: Connection, wallet: Keypair, mints: { cg: PublicKe
       if (!(await exists(conn, ata(m, owner)))) ixs.push(createAssociatedTokenAccountIdempotentInstruction(wallet.publicKey, ata(m, owner), owner, m));
     }
   }
+  // stake_cg requires vault_cg to be an initialized TokenAccount. init_emission only
+  // creates emission + the two pools; do not confuse this vault with chip_core's vault.
+  const stakingVault = ata(mints.cg, emissionPda);
+  if (!(await exists(conn, stakingVault))) ixs.push(createAssociatedTokenAccountIdempotentInstruction(wallet.publicKey, stakingVault, emissionPda, mints.cg));
   if (ixs.length === 0) { console.log('  atas: all present — skip'); return; }
-  await send(conn, wallet, ixs, `create ${ixs.length} token accounts (vault / treasury / buyback)`);
+  await send(conn, wallet, ixs, `create ${ixs.length} token accounts (vault / treasury / buyback / staking)`);
 }
 
 async function stepEmission(conn: Connection, wallet: Keypair, cg: PublicKey) {
@@ -355,6 +396,7 @@ async function main() {
   const needsMints = !only || ['mints', 'initialize', 'atas', 'emission', 'arena'].includes(only);
   steps.push(['mints', async () => { mints = await stepMints(conn, wallet); }]);
   steps.push(['initialize', () => stepInitialize(conn, wallet, mints, treasury, buyback)]);
+  steps.push(['packs', () => stepPacks(conn, wallet)]);
   steps.push(['ledgers', () => stepLedgers(conn, wallet)]);
   steps.push(['collections', () => stepCollections(conn, wallet)]);
   steps.push(['trees', () => stepTrees(conn, wallet)]);

@@ -10,7 +10,7 @@ import { PublicKey } from '@solana/web3.js';
 import type { Chip } from '@/api/hooks';
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
 import { sendTx } from '@/chain/tx';
-import { resolveCompressedChip, resolveCompressedChipIdentity } from '@/chain/flows/compressedChip';
+import { resolveCompressedChip, resolveCompressedChipIdentity, resolveCompressedUnstakeClaim } from '@/chain/flows/compressedChip';
 import { thawChipIx } from '@/chain/ix/chipCore';
 import { stakeCompressedChipV2Ix, unstakeCompressedChipIx } from '@/chain/ix/staking';
 import { dasClient } from '@/features/market/payment';
@@ -18,6 +18,7 @@ import { createAtaIdempotentIx } from '@/chain/ix/spl';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { ExternalIcon } from '@/shared/ui/action-icons';
 import { CleanZone, KV } from '@/shared/ui/primitives';
+import { ChipXpMeter } from '@/shared/ui/ChipXp';
 import { chipLore, chipName, rarityColor, rarityName, RARITY_PROFILES, ELEMENT_OF_COLLECTION, collectionName, chipImageOf } from '@/shared/lib/rarity';
 import { ElementGlyph } from '@/shared/ui/element-icons';
 import { ListModal } from '@/features/market/ListModal';
@@ -74,7 +75,7 @@ export function ChipDrawer({ chip, onClose }: { chip: Chip; onClose: () => void 
    * this resolves the on-chain half and skips the DAS round trip entirely.
    */
   const unstake = async () => {
-    const claim = (await resolveCompressedChipIdentity(connection, new PublicKey(chip.asset!))).claim;
+    const claim = await resolveCompressedUnstakeClaim(connection, new PublicKey(chip.asset!), wallet!.publicKey);
     return [createAtaIdempotentIx(wallet!.publicKey, wallet!.publicKey, cfg.data!.cgMint), unstakeCompressedChipIx({ owner: wallet!.publicKey, claim, cgMint: cfg.data!.cgMint })];
   };
 
@@ -84,7 +85,8 @@ export function ChipDrawer({ chip, onClose }: { chip: Chip; onClose: () => void 
         <div style={{ width: 'min(198px, 100%)', flex: '0 0 auto' }}><ChipArt collection={chip.collection!} rarity={chip.rarity!} index={chip.index} level={chip.level} imageUrl={chipImageOf(chip, 512)} skin={chip.skin} crimp={rarityColor(chip.rarity!)} founder={!!chip.flags?.founder} /></div>
         <div className="grow stack-sm">
           <div style={{ color: rarityColor(chip.rarity!) }} className="strong">{rarityName(chip.rarity!)} · {collectionName(chip.collection!)} <ElementGlyph element={ELEMENT_OF_COLLECTION[chip.collection!]} /></div>
-          <div className="small muted">{chipIndexText(chip.index) ?? t('ui.unnumbered')} · {t('ui.level')} {chip.level}/{prof.maxLevel} · {t('ui.power')} {chip.power} · {t('ui.stakeWeight')} {chip.stakeWeight}</div>
+          <div className="small muted">{chipIndexText(chip.index) ?? t('ui.unnumbered')} · {t('ui.level')} {chip.level}/{chip.maxLevel ?? prof.maxLevel} · {t('ui.power')} {chip.power} · {t('ui.stakeWeight')} {chip.stakeWeight}</div>
+          <ChipXpMeter rarity={chip.rarity!} level={chip.level} xp={chip.xp} xpToNext={chip.xpToNext} maxLevel={chip.maxLevel ?? prof.maxLevel} xpToday={chip.xpToday} xpDailyCap={chip.xpDailyCap} />
           <div className="small" style={{ lineHeight: 1.45 }}>{chipLore(chip.collection!, chip.rarity!)}</div>
           <div className="tag-list">
             {chip.flags?.founder && <span className="pill pill-ok">{t('collection.founderNote')}</span>}

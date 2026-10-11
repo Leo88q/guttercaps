@@ -77,6 +77,22 @@ describe('ingest + projections', () => {
     expect(q.myChips(db, buyer, { status: 'locked' }).total).toBe(1);
   });
 
+  it('indexes CompressedPackOpened into pack_opens so /packs/verify can recompute', () => {
+    const buyer = kp();
+    const nonce = '88';
+    ingestTx(tx([{
+      program: 'chip_core', name: 'CompressedPackOpened',
+      data: {
+        buyer, sku: 1, nonce, packNo: 0, count: 2,
+        claimNonces: ['1', '2', '0', '0', '0'],
+        rarities: [0, 2, 0, 0, 0], collections: [3, 4, 0, 0, 0],
+        roll: hex32(0xab), pityBefore: 3, pityAfter: 4, voucher: false,
+      },
+    }]), db);
+    const row = db.get<{ sku: number; count: number; pack_no: number; roll_hex: string }>(`SELECT sku, count, pack_no, roll_hex FROM pack_opens WHERE buyer = ? AND nonce = ?`, buyer, nonce);
+    expect(row).toMatchObject({ sku: 1, count: 2, pack_no: 0, roll_hex: hex32(0xab) });
+  });
+
   it('is idempotent: re-ingesting the same transactions changes nothing', () => {
     const w = world();
     for (const t of w.txs) ingestTx(t, db);

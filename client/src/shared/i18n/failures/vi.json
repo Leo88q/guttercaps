@@ -11,7 +11,7 @@
   "chip_core_OddsSumInvalid": "Tổng xác suất phải bằng 10.000 điểm cơ bản",
   "chip_core_OddsGuardRail": "Xác suất bậc cao nhất vượt giới hạn",
   "chip_core_FeeTooHigh": "Phí vượt giới hạn cứng",
-  "chip_core_StalePrice": "Giá Pyth đã cũ hoặc không hợp lệ",
+  "chip_core_StalePrice": "Chương trình on-chain vẫn kiểm tra Pyth — cần nâng cấp chip_core",
   "chip_core_Slippage": "Số SOL thấp hơn báo giá: trượt giá",
   "chip_core_RandomnessExpired": "Cam kết ngẫu nhiên phải được ghi ở slot trước",
   "chip_core_RandomnessAlreadyRevealed": "Giá trị ngẫu nhiên đã công bố: không thể cam kết giá trị đã biết",
@@ -91,6 +91,7 @@
   "staking_BeforeGenesis": "Phát hành chưa bắt đầu: now < genesis_ts",
   "staking_BadMint": "Mint $CG không được có quyền đóng băng; nguồn cung phải trong phân bổ ngoài trò chơi",
   "staking_SkrWithdrawRate": "Rút SKR bị giới hạn một lần gọi mỗi slot",
+  "staking_FuturePlay": "Mốc thời gian xung chơi nằm trong tương lai",
   "arena_WagerRange": "Tiền cược ngoài phạm vi 5–5000 $CG",
   "arena_BadStatus": "Trận đấu không ở trạng thái yêu cầu",
   "arena_NotOwner": "Nắp trong đội không thuộc người ký",
@@ -201,5 +202,10 @@
   "preorderMemoMismatch": "Memo thanh toán không khớp với đơn đặt này.",
   "preorderUnknownPayer": "Không kèm memo — hãy thanh toán từ ví đã kết nối.",
   "preorderAlreadyConfirmed": "Chữ ký thanh toán này đã được ghi nhận cho một đơn đặt.",
-  "preorderNothingToDeliver": "Không có đơn bán trước đã thanh toán nào chờ phát."
+  "preorderNothingToDeliver": "Không có đơn bán trước đã thanh toán nào chờ phát.",
+  "confirmationUnknown": "Giao dịch đã gửi nhưng chưa có xác nhận. Kiểm tra trên Explorer và cập nhật số dư trước khi thử lại.",
+  "blockhashRejected": "RPC đã từ chối giao dịch trước khi thực thi: không tìm thấy blockhash. Lần thử này chưa thanh toán. Hãy thử lại; nếu lỗi vẫn còn, kiểm tra RPC và mạng của ví.",
+  "proofUnavailable": "Không lấy được bằng chứng Merkle của chip. Hãy kiểm tra địa chỉ DAS và quyền truy cập. Chi tiết kỹ thuật chứa lỗi DAS và lỗi khôi phục từ cây.",
+  "switchboardUnavailable": "Ngẫu nhiên on-chain tạm thời không khả dụng. Đừng mua hoặc cược lại. Tiếp tục thao tác hiện có sau khi dịch vụ phục hồi; xem chi tiết kỹ thuật.",
+  "invalidBubblegumAsset": "Asset id on-chain của chip không khớp với lá Bubblegum. Left: {left}. Right: {right}. Không mở ví và không gửi cược."
 }

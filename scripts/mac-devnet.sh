@@ -8,7 +8,8 @@
 #   bash scripts/mac-devnet.sh --only doctor       # one stage (or a comma list: --only verify,rust)
 #   bash scripts/mac-devnet.sh --skip rust         # everything except these
 #   bash scripts/mac-devnet.sh --yes               # do not ask before installing tools / creating a wallet
-#   bash scripts/mac-devnet.sh run                 # opt-in: backend + Pyth pusher + client against devnet, browser opens
+#   bash scripts/mac-devnet.sh run                 # opt-in: backend + client against devnet (Pyth pusher leftover, unused at checkout)
+#   bash scripts/mac-devnet.sh --cluster devnet    # accepted no-op (this script is always devnet; mainnet is refused)
 #   bash scripts/mac-devnet.sh faucet <wallet>     # opt-in: test SOL + SKR for the browser wallet (--sol N --skr N)
 #
 # Stages (the order is load-bearing, see the notes at each stage):
@@ -25,7 +26,7 @@
 #              reserve; `--max-len` is the exact ELF length, so ProgramData is not allocated at 2x.
 #   setup      `npm run setup` (mints, config, collections, emission, arena) + lookup table
 #   env        client/.env.local + backend/.env for this deployment
-#   pyth       SOL/SKR payments: Pyth API key, pusher wallet, the pusher in Docker, proof that fresh prices are on chain
+#   pyth       leftover Hermes pusher (optional). Checkout is frozen FX — SOL/SKR do not need Pyth.
 #   run        (opt-in) start backend + pusher + client dev server
 #   faucet     (opt-in) `faucet <wallet>`: devnet SOL + stand-in SKR for a wallet that will play in the browser
 #
@@ -33,6 +34,7 @@
 #   BRANCH=main             branch to sync (default main)           REMOTE=origin
 #   WALLET=~/.config/solana/id.json   deployer = upgrade authority = setup admin
 #   DEVNET_RPC_URL=https://api.devnet.solana.com   use your own devnet RPC if the public one throttles
+#   PROGRAMS="chip_core market staking arena"   subset to deploy (e.g. PROGRAMS=arena)
 #   PROGRAM_KEYS_DIR=DIR    directory holding the 4 <program>-keypair.json you deploy with
 #   REPO_DIR=DIR            repository root (default: detected)
 #   PYTH_API_KEY=KEY        Pyth API key for Hermes (else the saved one, else asked once); https://pythdata.app/signup
@@ -62,7 +64,7 @@ awk() { LC_ALL=C command awk "$@"; }
 
 ALL_STAGES="update doctor toolchain verify rust localnet ids build deploy setup env pyth"
 OPTIN_STAGES="run faucet"
-PROGRAMS="chip_core market staking arena"
+PROGRAMS=${PROGRAMS:-chip_core market staking arena}
 DEVNET_GENESIS="EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG"
 
 REMOTE=${REMOTE:-origin}
@@ -142,8 +144,8 @@ stage_title() {
     deploy) echo "деплой 4 программ в devnet" ;;
     setup) echo "инициализация on-chain (mints, config, коллекции…)" ;;
     env) echo ".env для клиента и бэкенда" ;;
-    pyth) echo "цены Pyth для оплаты SOL и SKR" ;;
-    run) echo "запуск бэкенда, pusher'а цен и клиента" ;;
+    pyth) echo "опциональный Pyth pusher (checkout его не использует)" ;;
+    run) echo "запуск бэкенда и клиента" ;;
     faucet) echo "тестовые SOL и SKR для кошелька" ;;
   esac
 }
@@ -176,6 +178,14 @@ while [ $# -gt 0 ]; do
     -y|--yes) ASSUME_YES=1; shift ;;
     --no-update) DO_UPDATE=0; shift ;;
     -h|--help) usage; exit 0 ;;
+    --cluster)
+      [ $# -ge 2 ] || die "--cluster требует имя кластера"
+      case "$2" in
+        devnet) shift 2 ;;
+        mainnet|mainnet-beta) die "mac-devnet.sh never touches mainnet" ;;
+        *) die "--cluster принимает только devnet (этот скрипт всегда ходит в devnet)" ;;
+      esac
+      ;;
     run) ONLY="run"; shift ;;
     faucet) ONLY="faucet"; shift; if [ $# -gt 0 ] && [ "${1#-}" = "$1" ]; then FAUCET_TARGET=$1; shift; fi ;;
     --sol) [ $# -ge 2 ] || die "--sol требует число"; FAUCET_SOL=${2//,/.}; shift 2 ;;   # 1,5 == 1.5
@@ -201,6 +211,14 @@ if [ -z "$REPO" ] || [ ! -f "$REPO/Anchor.toml" ]; then
   exit 2
 fi
 cd "$REPO" || exit 2
+# Public api.devnet.solana.com throttles deploys. Reuse the RPC that already
+# runs the API / battle preflight unless the caller set DEVNET_RPC_URL.
+if [ -z "${DEVNET_RPC_URL:-}" ]; then
+  env_rpc=""
+  [ -f backend/.env ] && env_rpc=$(sed -n 's/^SOLANA_RPC_URL=//p' backend/.env | head -1 | tr -d '\r')
+  [ -z "$env_rpc" ] && [ -f client/.env.local ] && env_rpc=$(sed -n 's/^VITE_RPC_URL=//p' client/.env.local | head -1 | tr -d '\r')
+  case "$env_rpc" in http://*|https://*) RPC_URL=$env_rpc ;; esac
+fi
 STATE="$REPO/target/mac-devnet/state.env"
 PYTH_DIR="$REPO/target/mac-devnet/pyth"
 PYTH_LOG="$REPO/target/mac-devnet/logs/pyth-pusher.log"
@@ -222,7 +240,11 @@ on_exit() {
     printf '\n[x] Остановился на этапе "%s" (код %s).\n' "$CURRENT_STAGE" "$rc"
     printf '    Лог: %s\n' "$MAC_DEVNET_LOG"
     printf '    Исправьте причину (текст ошибки выше) и продолжите с этого места:\n'
-    printf '      bash scripts/mac-devnet.sh --from %s\n' "$CURRENT_STAGE"
+    if [ -n "$ONLY" ]; then
+      printf '      PROGRAMS=%s BRANCH=%s bash scripts/mac-devnet.sh --only %s\n' "$PROGRAMS" "$BRANCH" "$CURRENT_STAGE"
+    else
+      printf '      bash scripts/mac-devnet.sh --from %s\n' "$CURRENT_STAGE"
+    fi
   fi
   [ "${PYTH_STARTED:-0}" = 1 ] && pyth_stop
   sleep 0.3
@@ -759,7 +781,7 @@ ensure_funds() { # $1 = lamports needed
     done
     [ "$bal" -ge "$need" ] && return 0
   fi
-  die "SOL не хватает. Пополните кошелёк и продолжите: bash scripts/mac-devnet.sh --from deploy"
+  die "SOL не хватает. Пополните кошелёк и продолжите: PROGRAMS=$PROGRAMS bash scripts/mac-devnet.sh --only deploy"
 }
 
 deploy_program() { # $1 = program
@@ -772,7 +794,13 @@ deploy_program() { # $1 = program
     cap=$(program_show_field "$show" "Data Length" | awk '{print $1}')
     if [ -n "$cap" ] && [ "$len" -gt "$cap" ]; then
       grow=$((len - cap))
-      say "  новая версия больше ($len > $cap): расширяю программу на $grow байт"
+      # BPFLoader Upgradeable rejects ExtendProgram under 10240 bytes unless extending to max size.
+      if [ "$grow" -lt 10240 ]; then
+        say "  новая версия больше ($len > $cap): лоадер не принимает extend на $grow байт (< 10240) — расширяю на 10240"
+        grow=10240
+      else
+        say "  новая версия больше ($len > $cap): расширяю программу на $grow байт"
+      fi
       run solana program extend "$id" "$grow" -u "$RPC_URL" -k "$WALLET"
     fi
     # identical bytes already on chain (a re-run, or a program this change did not touch): nothing to upload
@@ -937,12 +965,20 @@ stage_deploy() {
   local p
   DEPLOY_KEYS_DIR=$(keypair_dir)
   require_program_keys
-  deploy_plan || die "не удалось узнать rent-ставку кластера через RPC ($RPC_URL) — бюджет не посчитан. Свой RPC: DEVNET_RPC_URL=… Повторить: bash scripts/mac-devnet.sh --from deploy"
+  deploy_plan || die "не удалось узнать rent-ставку кластера через RPC ($RPC_URL) — бюджет не посчитан. Свой RPC: DEVNET_RPC_URL=… Повторить: PROGRAMS=$PROGRAMS bash scripts/mac-devnet.sh --only deploy"
   ensure_funds "$NEED"
   for p in $PROGRAMS; do deploy_program "$p"; done
-  step "проверка on-chain: байты == локальный .so, upgrade authority, пины Switchboard"
+  local verify=""
+  for p in $PROGRAMS; do
+    case "$p" in chip_core|arena) verify="${verify:+$verify,}$p" ;; esac
+  done
+  if [ -z "$verify" ]; then
+    info "verify-deploy onchain пропущен: в PROGRAMS нет chip_core/arena"
+    return 0
+  fi
+  step "проверка on-chain: байты == локальный .so, upgrade authority, пины Switchboard ($verify)"
   run env PROGRAM_CHIP_CORE="$(declared_id chip_core)" PROGRAM_ARENA="$(declared_id arena)" \
-    npm run verify-deploy -- onchain --cluster devnet --rpc "$RPC_URL" --authority "$WALLET_PUB"
+    npm run verify-deploy -- onchain --cluster devnet --rpc "$RPC_URL" --authority "$WALLET_PUB" --programs "$verify"
 }
 
 # ================================================================== stage: setup
@@ -1181,7 +1217,7 @@ pyth_preflight() { # stage toolchain: ask for the key up front, so that the long
       info "Docker установлен, но не запущен — этап pyth запустит Docker Desktop"
     fi
   else
-    info "Pyth: ключа нет — SOL/SKR-оплата будет выключена (USDC и \$CG работают). Позже: bash scripts/mac-devnet.sh --only pyth"
+    info "Pyth pusher не нужен: checkout по фиксированному курсу SOL=\$110 / SKR=\$0.016"
   fi
 }
 
@@ -1366,15 +1402,15 @@ pyth_watch() { # background: say once when fresh prices are on chain (or that th
 
 pyth_for_run() { # the pusher belongs to the session: fresh prices while the app is open, stopped together with it
   if ! pyth_obtain_key noask; then
-    if [ "$PYTH_KEY_WHY" = denied ]; then warn "Pyth: Hermes отклонил сохранённый ключ — SOL/SKR-оплата выключена. Новый ключ: bash scripts/mac-devnet.sh --only pyth"
-    else info "Pyth: ключа нет — SOL/SKR-оплата выключена (USDC и \$CG работают). Включить: bash scripts/mac-devnet.sh --only pyth"; fi
+    if [ "$PYTH_KEY_WHY" = denied ]; then info "Pyth pusher пропущен (ключ Hermes отклонён). Checkout без него: SOL=\$110 / SKR=\$0.016"
+    else info "Pyth pusher не нужен: checkout по фиксированному курсу SOL=\$110 / SKR=\$0.016"; fi
     return 0
   fi
-  if ! pyth_docker_ready; then warn "Pyth: Docker не запущен — SOL/SKR-оплата выключена"; return 0; fi
+  if ! pyth_docker_ready; then info "Pyth pusher пропущен (нет Docker). Checkout без него: SOL=\$110 / SKR=\$0.016"; return 0; fi
   have solana || return 0
   ensure_devnet
   pyth_prepare
-  pyth_start || { warn "Pyth: pusher не запустился (сообщение docker выше) — SOL/SKR-оплата выключена"; return 0; }
+  pyth_start || { info "Pyth pusher не запустился. Checkout без него: SOL=\$110 / SKR=\$0.016"; return 0; }
   ok "pusher цен Pyth запущен (лог: $PYTH_LOG); первые цены появятся примерно через минуту"
   pyth_watch &
   PYTH_WATCH_PID=$!
@@ -1383,15 +1419,32 @@ pyth_for_run() { # the pusher belongs to the session: fresh prices while the app
 BACKEND_PID=""
 stop_backend() { local rc=$?; [ -n "$BACKEND_PID" ] && { kill -- "-$BACKEND_PID" 2>/dev/null || kill "$BACKEND_PID" 2>/dev/null; BACKEND_PID=""; }; return "$rc"; }
 
+# Called only in a subshell: backend secrets must not enter Vite's environment.
+mac_backend_env() {
+  # shellcheck disable=SC1091
+  set -a; . backend/.env || return 1; set +a
+  # Respect an explicit WORKERS list (including an intentionally empty/API-only one).
+  export WORKERS="${WORKERS-crank,pyth,battle,reward}"
+  # Deployer is only a candidate on Mac Devnet, never implicitly trusted as battle authority.
+  # The read-only preflight below must verify this key against ArenaConfig before launch.
+  export BATTLE_ORACLE_KEYPAIR="${BATTLE_ORACLE_KEYPAIR:-$WALLET}"
+  # Quest/season oracles default to the same Mac wallet that `setup` wrote into EmissionState.
+  # Production must use dedicated keys; a missing pair makes the reward worker crash-loop.
+  export QUEST_ORACLE_KEYPAIR="${QUEST_ORACLE_KEYPAIR:-$WALLET}"
+  export SEASON_ORACLE_KEYPAIR="${SEASON_ORACLE_KEYPAIR:-$WALLET}"
+}
+
 stage_run() {
   [ -f backend/.env ] && [ -f client/.env.local ] || die "нет backend/.env и client/.env.local — сначала: bash scripts/mac-devnet.sh --only env"
+  say "  проверка battle worker: Devnet, ArenaConfig, signer и запас SOL (без транзакций)"
+  ( mac_backend_env && node --import tsx scripts/mac-battle-preflight.mts ) || die "battle preflight не прошёл. Проверьте код выше; ключи/полный .env не публикуйте. Для осознанного запуска без арены задайте WORKERS=crank,pyth в backend/.env. Без reward квестные выплаты не публикуются."
   mkdir -p target/mac-devnet/logs
   local blog="target/mac-devnet/logs/backend.log"
-  say "  бэкенд (API + индексатор + crank) -> лог $blog"
+  say "  бэкенд (API + индексатор + выбранные workers) -> лог $blog"
   # own process group (set -m), so stopping the backend also stops the node child that npm spawned
   set -m
   # shellcheck disable=SC1091
-  ( set -a; . backend/.env; set +a; exec npm run backend:start ) > "$blog" 2>&1 &
+  ( mac_backend_env || exit 1; exec npm run backend:start ) > "$blog" 2>&1 &
   BACKEND_PID=$!
   set +m
   # the trap strings are single-quoted on purpose: they must see the variable at exit time, not now
@@ -1400,6 +1453,7 @@ stage_run() {
   sleep 6
   kill -0 "$BACKEND_PID" 2>/dev/null || { tail -20 "$blog"; die "бэкенд не запустился (лог выше)"; }
   ok "бэкенд запущен (pid $BACKEND_PID), http://127.0.0.1:8787"
+  say "  workers по умолчанию: crank,pyth,battle,reward — квестные выплаты публикуются сразу после старта, «Забрать» через 1 ч (ончейн-таймлок)"
   pyth_for_run
   ( sleep 6; is_macos && open "http://localhost:5173" ) >/dev/null 2>&1 &
   say "  клиент: http://localhost:5173 (Ctrl+C остановит всё). Кошелёк в браузере переключите на Devnet."
@@ -1417,8 +1471,8 @@ summary() {
   [ -n "$(state_get CG_MINT)" ] && info "\$CG mint: $(state_get CG_MINT)   lookup table: $(state_get LOOKUP_TABLE)"
   info "кошелёк деплоя / upgrade authority: $WALLET"
   info "ключи программ (храните копию!): $(keypair_dir)"
-  info "оплата SOL и SKR (цены Pyth): $PYTH_STATUS"
-  info "запустить приложение (вместе с pusher'ом цен): bash scripts/mac-devnet.sh run"
+  info "оплата SOL и SKR: фиксированный курс \$110 / \$0.016 (Pyth не нужен). $PYTH_STATUS"
+  info "запустить приложение: bash scripts/mac-devnet.sh --only run"
   info "тестовые SOL и SKR кошельку из браузера: bash scripts/mac-devnet.sh faucet <адрес>"
   info "лог этого запуска: $MAC_DEVNET_LOG"
   if ! git diff --quiet HEAD -- Anchor.toml 2>/dev/null; then

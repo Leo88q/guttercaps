@@ -145,7 +145,7 @@ pub struct GrantPreorderPack<'info> {
     /// CHECK: program-owned Switchboard randomness account `["rng", 0, beneficiary, nonce]` created
     /// by `init_grant_randomness` in this tx (same kind as a purchase so `close_randomness` reclaims it).
     #[account(
-        mut, owner = randomness::SB_PROGRAM_ID @ ChipError::RandomnessMismatch,
+        mut, owner = crate::ID @ ChipError::RandomnessMismatch,
         seeds = [randomness::RNG_SEED, &[randomness::RNG_KIND_PACK], beneficiary.key().as_ref(), &nonce.to_le_bytes()], bump,
     )]
     pub randomness: UncheckedAccount<'info>,
@@ -226,6 +226,7 @@ pub fn grant_preorder_pack(
     // so a granted pack opens provably fair exactly like a purchased one
     let auth_seeds: &[&[u8]] = &[randomness::RNG_AUTH_SEED, &[ctx.bumps.rng_auth]];
     let rnd = randomness::commit_owned(
+        ctx.program_id,
         &ctx.accounts.switchboard_program.to_account_info(),
         &ctx.accounts.randomness.to_account_info(),
         &ctx.accounts.queue.to_account_info(),

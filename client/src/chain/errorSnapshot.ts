@@ -7,6 +7,8 @@ export interface ErrorSnapshot {
   programId?: string;
   logs?: string[];
   details?: unknown;
+  /** Payment rail that was debiting when this failed (0 SOL · 1 USDC · 2 $CG · 3 SKR). */
+  spend?: { currency: 0 | 1 | 2 | 3; switchable?: boolean };
 }
 
 export function errorSnapshot(error: unknown): ErrorSnapshot {
@@ -24,6 +26,10 @@ export function errorSnapshot(error: unknown): ErrorSnapshot {
     if (typeof e.status === 'number') result.status = e.status;
     if (typeof e.programId === 'string') result.programId = e.programId;
     if (Array.isArray(e.logs)) result.logs = e.logs.filter((s): s is string => typeof s === 'string');
+    if (!result.spend) {
+      const nested = e.details && typeof e.details === 'object' ? (e.details as { spend?: unknown }).spend : undefined;
+      result.spend = asSpend(e.spend) ?? asSpend(nested);
+    }
     if (e.details !== undefined) {
       // JSON-safe, with integer atoms kept as strings. Circular diagnostics become readable text.
       try { result.details = JSON.parse(JSON.stringify(e.details, (_, v) => typeof v === 'bigint' ? v.toString() : v)); }
@@ -43,6 +49,15 @@ export function errorSnapshot(error: unknown): ErrorSnapshot {
     current = e.cause;
   }
   return result;
+}
+
+function asSpend(value: unknown): ErrorSnapshot['spend'] {
+  if (!value || typeof value !== 'object') return undefined;
+  const currency = (value as { currency?: unknown }).currency;
+  if (currency !== 0 && currency !== 1 && currency !== 2 && currency !== 3) return undefined;
+  return (value as { switchable?: unknown }).switchable === true
+    ? { currency, switchable: true }
+    : { currency };
 }
 
 export function originalErrorText(error: unknown): string {

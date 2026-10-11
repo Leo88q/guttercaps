@@ -184,11 +184,11 @@ export function artifactCommand(cluster: Cluster, dir: string): number {
   return failed ? 1 : 0;
 }
 
-export async function onchainCommand(cluster: Cluster, rpc: string, dir: string, ids: Record<string, PublicKey>, authority?: PublicKey): Promise<number> {
+export async function onchainCommand(cluster: Cluster, rpc: string, dir: string, ids: Record<string, PublicKey>, authority?: PublicKey, programs: readonly string[] = PINNED_PROGRAMS): Promise<number> {
   const { Connection } = await import('@solana/web3.js');
   const conn = new Connection(rpc, 'confirmed');
   let failed = 0;
-  for (const p of PINNED_PROGRAMS) {
+  for (const p of programs) {
     const id = ids[p];
     try {
       const d = await fetchDeployedProgram(conn, id);
@@ -360,13 +360,15 @@ async function cli(argv: string[]): Promise<number> {
     if (section[i] !== cluster) continue;
     for (const m of section[i + 1].matchAll(/^(\w+)\s*=\s*"([^"]+)"/gm)) ids[m[1]] = new PublicKey(m[2]);
   }
-  for (const p of PINNED_PROGRAMS) {
+  const programs = (opt('programs') ?? PINNED_PROGRAMS.join(',')).split(',').map((s) => s.trim()).filter(Boolean);
+  for (const p of programs) {
+    if (!(PINNED_PROGRAMS as readonly string[]).includes(p)) { console.error(`unknown program '${p}' (pinned: ${PINNED_PROGRAMS.join(', ')})`); return 2; }
     const env = process.env[`PROGRAM_${p.toUpperCase()}`];
     if (env) ids[p] = new PublicKey(env);
     if (!ids[p]) { console.error(`no id for ${p}: not in Anchor.toml [programs.${cluster}] and PROGRAM_${p.toUpperCase()} unset`); return 2; }
   }
   const authority = opt('authority') ? new PublicKey(opt('authority')!) : undefined;
-  return onchainCommand(cluster, rpc, dir, ids, authority);
+  return onchainCommand(cluster, rpc, dir, ids, authority, programs);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

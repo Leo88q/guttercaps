@@ -3,9 +3,9 @@
 //! `ServiceKind` in any accepted currency:
 //!
 //!  * $CG  → 100 % burned (sink; reported to the emission guard)
-//!  * SOL  → 100 % straight to the treasury (Squads vault), priced via Pyth SOL/USD
+//!  * SOL  → 100 % straight to the treasury (Squads vault), frozen FX SOL = $110
 //!  * USDC → 100 % treasury ATA
-//!  * SKR  → 100 % treasury ATA, priced via Pyth SKR/USD
+//!  * SKR  → 100 % treasury ATA, frozen FX SKR = $0.016
 //!
 //! What the player receives is *not* stored here except for boosters (which
 //! live in PlayerItems and gate fusion). Handles, skins, themes, passes are
@@ -21,9 +21,6 @@
 
 use crate::economy::*;
 use crate::errors::ChipError;
-use crate::instructions::packs::{
-    oracle_price, units_for_cents, SKR_USD_FEED_HEX, SOL_USD_FEED_HEX,
-};
 use crate::state::*;
 use anchor_lang::prelude::*;
 use anchor_lang::system_program;
@@ -65,11 +62,8 @@ pub struct PayService<'info> {
     #[account(mut, address = config.treasury @ ChipError::Unauthorized)]
     pub treasury: UncheckedAccount<'info>,
 
-    // --- volatile currencies (SOL / SKR): Pyth price update ---
-    /// CHECK: Pyth PriceUpdateV2. `crate::pyth::load` re-does what `Account<PriceUpdateV2>` would
-    /// (discriminator + borsh); the typed form is unusable because the SDK type has no `IdlBuild`
-    /// impl and the orphan rule forbids adding it here (docs/09 §1.1).
-    #[account(owner = crate::pyth::PYTH_RECEIVER @ ChipError::StalePrice)]
+    // --- unused: kept so the pay_service account list / IDL stay stable. Checkout is frozen FX. ---
+    /// CHECK: ignored. Optional so existing clients may still pass a Pyth account (or nothing).
     pub price_update: Option<UncheckedAccount<'info>>,
 
     // --- SPL legs (USDC / SKR → treasury ATA; $CG → burn) ---
@@ -84,7 +78,7 @@ pub struct PayService<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// `max_units` = slippage guard for volatile currencies (max lamports / max micro-SKR the buyer accepts).
+/// `max_units` = buyer cap for SOL lamports / micro-SKR at frozen FX.
 pub fn pay_service(
     ctx: Context<PayService>,
     kind: u8,
@@ -93,19 +87,6 @@ pub fn pay_service(
     ref_hash: [u8; 32],
 ) -> Result<()> {
     let svc = ServiceKind::from_u8(kind).ok_or(ChipError::InvalidService)?;
-    if currency == 0 || currency == 3 {
-        let expected = if currency == 0 {
-            ctx.accounts.config.pyth_sol_usd_feed
-        } else {
-            ctx.accounts.config.pyth_skr_usd_feed
-        };
-        let supplied = ctx
-            .accounts
-            .price_update
-            .as_ref()
-            .ok_or(ChipError::StalePrice)?;
-        require_keys_eq!(supplied.key(), expected, ChipError::StalePrice);
-    }
     let clock = Clock::get()?;
     let cents = svc.price_usd_cents();
 
@@ -176,15 +157,7 @@ pub fn pay_service(
 
     let (amount, burned) = match currency {
         0 => {
-            let pu = crate::pyth::load(
-                ctx.accounts
-                    .price_update
-                    .as_ref()
-                    .ok_or(ChipError::StalePrice)?
-                    .as_ref(),
-            )?;
-            let (price, exponent) = oracle_price(&pu, &clock, SOL_USD_FEED_HEX)?;
-            let lamports = units_for_cents(cents, price, exponent, 9)?;
+            let lamports = fx_sol_lamports(cents)?;
             require!(lamports <= max_units, ChipError::Slippage);
             system_program::transfer(
                 CpiContext::new(
@@ -199,7 +172,7 @@ pub fn pay_service(
             (lamports, 0)
         }
         1 => {
-            let a = cents.checked_mul(10_000).ok_or(ChipError::Overflow)?;
+            let a = fx_usdc_micro(cents)?;
             spl(ctx.accounts.config.usdc_mint, a, true)?;
             (a, 0)
         }
@@ -213,15 +186,7 @@ pub fn pay_service(
                 ctx.accounts.config.skr_mint != Pubkey::default(),
                 ChipError::CurrencyNotAccepted
             );
-            let pu = crate::pyth::load(
-                ctx.accounts
-                    .price_update
-                    .as_ref()
-                    .ok_or(ChipError::StalePrice)?
-                    .as_ref(),
-            )?;
-            let (price, exponent) = oracle_price(&pu, &clock, SKR_USD_FEED_HEX)?;
-            let a = units_for_cents(cents, price, exponent, 6)?;
+            let a = fx_skr_micro(cents)?;
             require!(a <= max_units, ChipError::Slippage);
             spl(ctx.accounts.config.skr_mint, a, true)?;
             (a, 0)

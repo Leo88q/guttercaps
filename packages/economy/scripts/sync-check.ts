@@ -7,13 +7,14 @@ import { resolve } from 'node:path';
 import { PACKS, BUNDLES, STALE_PACK_SLOTS, STARTER_SOULBOUND_DAYS } from '../src/packs.ts';
 import { RARITY_PROFILES } from '../src/rarity.ts';
 import { FUSION_RECIPES, BOOSTER } from '../src/fusion.ts';
-import { LOCK_TIERS, fullSetBonusMult } from '../src/staking.ts';
+import { LOCK_TIERS, STAKE_CLAIM_CAPS, fullSetBonusMult } from '../src/staking.ts';
 import { FEES, SKR, YEARLY_EMISSION_PCT_OF_PLAY, EMISSION_SPLIT, EMISSION_GUARD, CG_HARD_CAP } from '../src/tokenomics.ts';
 import { SERVICES, SERVICES_DAILY_CAP_RUST } from '../src/services.ts';
 import { MATCHMAKING, MATCH_REWARDS, WAGER } from '../src/pvp.ts';
 import { REWARD_ROOT_KINDS, SKR_ROOT_KIND_BASE, DEFAULT_MAX_SKR_ROOT_BUDGET_MICRO, ITEM_ROOT_KIND_BASE, ITEM_REWARDS, CHIP_ROOT_KIND_BASE, CHIP_VOUCHER_REWARDS } from '../src/skrRewards.ts';
-import { QUEST_CHIP_TEMPLATES, DAILY_QUESTS, WEEKLY_QUESTS, PERMANENT_QUESTS } from '../src/faucets.ts';
+import { QUEST_CHIP_TEMPLATES, DAILY_QUESTS, WEEKLY_QUESTS, PERMANENT_QUESTS, GUTTER_POT } from '../src/faucets.ts';
 import { PYTH_FEEDS, PYTH_MAX_AGE_SECS, PYTH_SLIPPAGE_BPS, PYTH_MAX_CONF_BPS, PYTH_PUSHER, PYTH_WORST_CASE_AGE_S, PYTH_PROGRAMS } from '../src/oracle.ts';
+import { FX } from '../src/fx.ts';
 
 const root = resolve(import.meta.dirname, '../../..');
 /**
@@ -82,6 +83,9 @@ check('stale pack slots (client)', int(line(rs('client/src/chain/ix/chipCore.ts'
 
 // ---- price oracle (Pyth) — owner decision Q7: own pusher, 60 s max age, 1 % slippage ----
 const packsRs = rs('programs/chip_core/src/instructions/packs.rs');
+check('fx sol usd (rust)', int(line(econ, /FX_SOL_USD: u64 = ([\d_]+)/)), FX.solUsd);
+check('fx skr micro per usd cent (rust)', int(line(econ, /FX_SKR_MICRO_PER_USD_CENT: u64 = ([\d_]+)/)), FX.skrMicroPerUsdCent);
+check('fx usdc micro per usd cent (rust)', int(line(econ, /FX_USDC_MICRO_PER_USD_CENT: u64 = ([\d_]+)/)), FX.usdcMicroPerUsdCent);
 check('pyth max age (rust)', int(line(econ, /SOL_PRICE_MAX_AGE_SECS: u64 = ([\d_]+)/)), PYTH_MAX_AGE_SECS);
 check('pyth slippage bps (rust)', int(line(econ, /SLIPPAGE_BPS: u16 = ([\d_]+)/)), PYTH_SLIPPAGE_BPS);
 check('pyth max conf bps (rust, SEC-M2)', int(line(econ, /PYTH_MAX_CONF_BPS: u64 = ([\d_]+)/)), PYTH_MAX_CONF_BPS);
@@ -96,10 +100,12 @@ const pythRs = rs('programs/chip_core/src/pyth.rs');
 const servicesRs = rs('programs/chip_core/src/instructions/services.rs');
 check('pyth receiver id (rust)', line(pythRs, /pub const PYTH_RECEIVER: Pubkey = pubkey!\("([^"]+)"\)/), PYTH_PROGRAMS.receiver);
 check('price_update stays an UncheckedAccount (idl-build)', /price_update:\s*Option<Account<'info,\s*PriceUpdateV2>>/.test(packsRs + servicesRs), false);
-check('price_update is owner-pinned + loaded (both price paths)', (packsRs.match(/owner = crate::pyth::PYTH_RECEIVER @ ChipError::StalePrice/g) ?? []).length + (servicesRs.match(/owner = crate::pyth::PYTH_RECEIVER @ ChipError::StalePrice/g) ?? []).length, 2);
+check('price_update is not owner-pinned (checkout ignores it)', (packsRs.match(/owner = crate::pyth::PYTH_RECEIVER @ ChipError::StalePrice/g) ?? []).length + (servicesRs.match(/owner = crate::pyth::PYTH_RECEIVER @ ChipError::StalePrice/g) ?? []).length, 0);
 const pythLoads = (packsRs.match(/crate::pyth::load\(/g) ?? []).length + (servicesRs.match(/crate::pyth::load\(/g) ?? []).length;
-check('pyth::load on every oracle read (SOL + SKR, packs + services)', pythLoads, 4);
-check('Pyth account is bound to GameConfig (packs + services)', (packsRs.includes('require_keys_eq!(supplied.key(), expected, ChipError::StalePrice)') && servicesRs.includes('require_keys_eq!(supplied.key(), expected, ChipError::StalePrice)')), true);
+check('checkout does not load Pyth (packs + services)', pythLoads, 0);
+check('buy_pack/pay_service do not require GameConfig Pyth feeds', !(packsRs.includes('require_keys_eq!(supplied.key(), expected, ChipError::StalePrice)') || servicesRs.includes('require_keys_eq!(supplied.key(), expected, ChipError::StalePrice)')), true);
+check('buy_pack uses frozen FX', packsRs.includes('fx_sol_lamports') && packsRs.includes('fx_skr_micro'), true);
+check('pay_service uses frozen FX', servicesRs.includes('fx_sol_lamports') && servicesRs.includes('fx_skr_micro'), true);
 const fusionRs = rs('programs/chip_core/src/instructions/fusion.rs');
 check('redundant Core Attributes plugin removed from mint paths', (packsRs + fusionRs).includes('Plugin::Attributes'), false);
 const idsTs = rs('client/src/chain/ids.ts');
@@ -173,6 +179,10 @@ check('tier penalties', nums(line(stakingState, /TIER_PENALTY_BPS: \[u64; TIER_C
 check('tier locks (days)', line(stakingState, /TIER_LOCK_SECS: \[i64; TIER_COUNT\] = \[([^\]]+)\]/).split(',').map((s) => (s.trim() === '0' ? 0 : Number(s.trim().split('*')[0]))),
   tiers.map((t) => LOCK_TIERS[t].lockSeconds / 86_400));
 check('set bonus cap', int(line(stakingState, /SET_BONUS_CAP_BPS: u64 = ([\d_]+)/)), Math.round(fullSetBonusMult(10) * 1e4));
+check('chip daily claim cap', int(line(stakingState, /CHIP_STAKE_DAILY_CAP_MICRO: u64 = ([\d_]+) \* MICRO/)), STAKE_CLAIM_CAPS.chipDailyCg);
+check('token daily claim cap', int(line(stakingState, /TOKEN_STAKE_DAILY_CAP_MICRO: u64 = ([\d_]+) \* MICRO/)), STAKE_CLAIM_CAPS.tokenDailyCg);
+check('alive window days', int(line(stakingState, /ALIVE_WINDOW_SECS: i64 = ([\d_]+) \* DAY/)), STAKE_CLAIM_CAPS.aliveWindowDays);
+check('idle weight bps', int(line(stakingState, /IDLE_WEIGHT_BPS: u64 = ([\d_]+)/)) / 1e4, STAKE_CLAIM_CAPS.idleWeight);
 const splitTs = [EMISSION_SPLIT.chipStaking, EMISSION_SPLIT.tokenStaking, EMISSION_SPLIT.quests, EMISSION_SPLIT.pvpSeason, EMISSION_SPLIT.eventsReserve].map((p) => p * 100);
 const splitRs = nums(line(rs('programs/staking/src/lib.rs'), /split_bps: \[([^\]]+)\], split_changed_at/));
 check('emission split (test fixture)', splitRs, splitTs);
@@ -203,6 +213,9 @@ QUEST_CHIP_TEMPLATES.forEach((tpl, i) => {
   check(`voucher[${i}].odds sum`, tpl.odds.reduce((a, b) => a + b, 0), 10_000);
   check(`voucher[${i}].soulboundDays`, Number(r[2]), tpl.soulboundDays);
 });
+check('Gutter Pot template id', GUTTER_POT.template, 4);
+check('Gutter Pot template row', QUEST_CHIP_TEMPLATES[GUTTER_POT.template], { template: 4, odds: GUTTER_POT.odds, soulboundDays: GUTTER_POT.soulboundDays });
+check('Gutter Pot winners / week', GUTTER_POT.winnersPerWeek, 10);
 // every quest chip reward must be one of the templates (the oracle roots the template id, not the odds)
 for (const q of [...DAILY_QUESTS, ...WEEKLY_QUESTS, ...PERMANENT_QUESTS]) {
   if (q.rewardChip) check(`quest ${q.id} rewardChip is template ${q.rewardChip.template}`, QUEST_CHIP_TEMPLATES[q.rewardChip.template], q.rewardChip);

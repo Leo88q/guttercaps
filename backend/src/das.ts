@@ -360,7 +360,7 @@ export class DasClient {
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
-  private async rpc<T>(method: string, params: unknown[]): Promise<T> {
+  private async rpc<T>(method: string, params: Record<string, unknown>): Promise<T> {
     const id = this.nextId++;
     let response: Response;
     try {
@@ -383,21 +383,21 @@ export class DasClient {
 
   async getAsset(assetId: PublicKey | string): Promise<NormalizedDasAsset> {
     const id = typeof assetId === 'string' ? pk(assetId, 'assetId') : assetId;
-    const asset = normalizeDasAsset(await this.rpc<RawDasAsset>(DAS_GET_ASSET, [id.toBase58(), { showFungible: false, showInscription: false }]));
+    const asset = normalizeDasAsset(await this.rpc<RawDasAsset>(DAS_GET_ASSET, { id: id.toBase58() }));
     if (!asset.assetId.equals(id)) throw new DasError('mismatch', 'DAS returned a different asset id than requested');
     return asset;
   }
 
   async getAssetProof(assetId: PublicKey | string): Promise<NormalizedDasProof> {
     const id = typeof assetId === 'string' ? pk(assetId, 'assetId') : assetId;
-    return normalizeDasProof(await this.rpc<RawDasProof>(DAS_GET_ASSET_PROOF, [id.toBase58()]));
+    return normalizeDasProof(await this.rpc<RawDasProof>(DAS_GET_ASSET_PROOF, { id: id.toBase58() }));
   }
 
   async getAssetWithProof(assetId: PublicKey | string): Promise<DasAssetWithProof> {
     const id = typeof assetId === 'string' ? pk(assetId, 'assetId') : assetId;
     const [assetRaw, proof] = await Promise.all([
-      this.rpc<RawDasAsset>(DAS_GET_ASSET, [id.toBase58(), { showFungible: false, showInscription: false }]),
-      this.rpc<RawDasProof>(DAS_GET_ASSET_PROOF, [id.toBase58()]),
+      this.rpc<RawDasAsset>(DAS_GET_ASSET, { id: id.toBase58() }),
+      this.rpc<RawDasProof>(DAS_GET_ASSET_PROOF, { id: id.toBase58() }),
     ]);
     const combined = combineDasAssetProof(assetRaw, proof);
     if (!combined.asset.assetId.equals(id)) throw new DasError('mismatch', 'DAS returned a different asset id than requested');
@@ -406,10 +406,10 @@ export class DasClient {
 
   async getAssetsByOwner(owner: PublicKey | string, page = 1, limit = 1000): Promise<{ total: number; items: DasAssetSummary[] }> {
     const id = typeof owner === 'string' ? pk(owner, 'owner') : owner;
-    const res = await this.rpc<RawDasOwnerPage>(DAS_GET_ASSETS_BY_OWNER, [
-      id.toBase58(),
-      { sortBy: { sortBy: 'created', sortDirection: 'desc' }, limit, page, options: { showUnverifiedCollections: true, showCollectionMetadata: false } },
-    ]);
+    const res = await this.rpc<RawDasOwnerPage>(DAS_GET_ASSETS_BY_OWNER, {
+      ownerAddress: id.toBase58(), sortBy: { sortBy: 'created', sortDirection: 'desc' }, limit, page,
+      displayOptions: { showUnverifiedCollections: true, showCollectionMetadata: false },
+    });
     const items = Array.isArray(res.items) ? res.items.map(normalizeDasAssetSummary) : [];
     return { total: Number(res.total ?? items.length), items };
   }
