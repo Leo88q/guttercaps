@@ -1,0 +1,143 @@
+{
+  "project": "GUTTERCAPS · NIGHT MOTH · The Wall Remembers",
+  "district": {
+    "id": "01",
+    "name": "Night Moth",
+    "territory": "The Old Industrial Quarter",
+    "accent": "#16E5D9",
+    "rule": "No locations, heroes or palette accents from other districts"
+  },
+  "format": {
+    "aspect_ratio": "9:16",
+    "master_px": [1080, 1920],
+    "full_bleed": true,
+    "top_bottom_scrims": false,
+    "final_files": "jpg/*.jpg",
+    "quality": 92
+  },
+  "visual_style": "Stylized GUTTERCAPS stencil-noir screen-print illustration: asphalt charcoal #16151A–#2A2830, cyan #16E5D9, rare sodium amber; angular shadow shapes, hand-painted brick and metal, distressed stencil edges, restrained halftone and spray grain. Natural proportions. No letterbox, black bars, border or baked titles.",
+  "story": "In the Old Industrial Quarter, Moth paints an anonymous stencil mural on a new-moon night. The city buffs it by morning, but local Keepers preserve the image.",
+  "edit_order": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+  "frames": [
+    {
+      "n": 1,
+      "time": "23:40",
+      "title": "New Moon",
+      "file": "jpg/frame-01-new-moon.jpg",
+      "prompt": "prompts/01-new-moon.txt",
+      "beat": "Moth enters the Old Industrial Quarter and approaches a blank warehouse wall.",
+      "camera": "Slow vertical crane down through rooftops to the full-body figure and wet pavement.",
+      "layers": ["foreground pipes", "Moth and wall", "warehouse roofs, chimneys and crescent moon"],
+      "sfx": "rain, boiler hum",
+      "transition": "Follow Moth toward the blank wall."
+    },
+    {
+      "n": 2,
+      "time": "23:42",
+      "title": "The Wall",
+      "file": "jpg/frame-02-the-wall.jpg",
+      "prompt": "prompts/02-the-wall.txt",
+      "beat": "Moth examines buffed paint ghosts left on the same warehouse wall.",
+      "camera": "Over-shoulder push-in; rack focus from the glove to old paint layers.",
+      "layers": ["pipe edge", "Moth's shoulder and glove", "scuffed wall and fire escape"],
+      "sfx": "rain on brick",
+      "transition": "Match the empty wall to the cut-paper stencil."
+    },
+    {
+      "n": 3,
+      "time": "23:45",
+      "title": "The Stencil",
+      "file": "jpg/frame-03-the-stencil.jpg",
+      "prompt": "prompts/03-the-stencil.txt",
+      "beat": "In the warehouse boiler room, Moth unfolds a moth carrying a tiny briefcase stencil.",
+      "camera": "Table-height diagonal close-to-medium shot; focus hands, stencil, then eyes.",
+      "layers": ["table and hands", "Moth", "boiler, pipes and cyan work light"],
+      "sfx": "paper unfold, can click",
+      "transition": "Cut on the stencil silhouette to the ladder rails."
+    },
+    {
+      "n": 4,
+      "time": "23:48",
+      "title": "The Climb",
+      "file": "jpg/frame-04-the-climb.jpg",
+      "prompt": "prompts/04-the-climb.txt",
+      "beat": "Moth carries the stencil kit up the warehouse service ladder.",
+      "camera": "Low-angle tilt upward, holding the whole figure and ladder in frame.",
+      "layers": ["drain and wet ground", "Moth on ladder", "fire escapes, pipes and windows"],
+      "sfx": "metal ladder creak, boots on rungs",
+      "transition": "Tilt to the wall at the maintenance platform."
+    },
+    {
+      "n": 5,
+      "time": "23:50",
+      "title": "First Coat",
+      "file": "jpg/frame-05-first-coat.jpg",
+      "prompt": "prompts/05-first-coat.txt",
+      "beat": "The first controlled cyan pass lands on the wall.",
+      "camera": "Slow side dolly; aerosol briefly crosses the lens.",
+      "layers": ["catwalk rail", "Moth, both hands and stencil", "brick and industrial windows"],
+      "sfx": "aerosol hiss",
+      "transition": "Spray mist wipes into the rain."
+    },
+    {
+      "n": 6,
+      "time": "23:54",
+      "title": "Second Rain",
+      "file": "jpg/frame-06-second-rain.jpg",
+      "prompt": "prompts/06-second-rain.txt",
+      "beat": "Moth peels the stencil away and reveals the complete cyan moth image.",
+      "camera": "Track the stencil edge, then rack focus to the wall and Moth's eyes.",
+      "layers": ["paper edge", "Moth and mural", "rainy alley, pipes and catwalk"],
+      "sfx": "paper peel, rain on metal",
+      "transition": "A wet reflection leads toward the Keepers' camera."
+    },
+    {
+      "n": 7,
+      "time": "23:56",
+      "title": "The Keepers",
+      "file": "jpg/frame-07-the-keepers.jpg",
+      "prompt": "prompts/07-the-keepers.txt",
+      "beat": "Two local Keepers document the mural while Moth watches from the catwalk.",
+      "camera": "Low over-shoulder composition; one flash, then focus on the photo.",
+      "layers": ["camera and Keepers", "mural", "Moth on the catwalk and warehouse"],
+      "sfx": "shutter click, single flash",
+      "transition": "Flash match-cut to early-morning wash lights."
+    },
+    {
+      "n": 8,
+      "time": "05:10",
+      "title": "The Buff",
+      "file": "jpg/frame-08-the-buff.jpg",
+      "prompt": "prompts/08-the-buff.txt",
+      "beat": "An unmarked city wash truck erases the mural; Keepers protect the photograph; Moth does not confront the crew.",
+      "camera": "Lateral move through falling water; the cyan image fades to a ghost outline.",
+      "layers": ["water droplets", "Keepers, wall and Moth above", "plain wash truck and warehouse depth"],
+      "sfx": "water pump, wash spray, low motor",
+      "transition": "Water curtain closes frame."
+    },
+    {
+      "n": 9,
+      "time": "05:20",
+      "title": "The Archive",
+      "file": "jpg/frame-09-the-archive.jpg",
+      "prompt": "prompts/09-the-archive.txt",
+      "beat": "The Keepers pin the saved photograph among earlier abstract moth images in a hidden room beneath the same warehouse.",
+      "camera": "Slow move through the doorway; settle focus on the new photograph.",
+      "layers": ["doorframe and pipes", "Keepers and photo wall", "cyan-lit stairwell with Moth silhouette"],
+      "sfx": "pin into board, humming lamp",
+      "transition": "Match the photograph's cyan moth to the image on a camera screen."
+    },
+    {
+      "n": 10,
+      "time": "05:40",
+      "title": "The Wall Remembers",
+      "file": "jpg/frame-10-the-wall-remembers.jpg",
+      "prompt": "prompts/10-the-wall-remembers.txt",
+      "beat": "The real wall is nearly blank, but the Keeper's camera preserves the mural; Moth watches the Quarter wake.",
+      "camera": "Pull back from the saved photo to the ghost mark, Moth, and the dawn rooftops.",
+      "layers": ["camera/photo", "Moth, Keeper and wall", "water tower, chimneys and pale morning sky"],
+      "sfx": "rain subsides, distant first tram",
+      "transition": "Hold for an editorial title card; do not bake text into the artwork."
+    }
+  ]
+}

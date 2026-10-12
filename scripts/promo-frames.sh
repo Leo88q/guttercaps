@@ -1,70 +1,70 @@
 #!/usr/bin/env bash
-# GUTTERCAPS — vertical promo frames (9:16) for shorts / reels / TikTok covers.
+# GUTTERCAPS — vertical promo-frame processor.
 #
-# Two sets live in the tree: `heroes` (default below — the GUTTER CITY crew frames) and
-# `promo` (the earlier district/cap key art; run with SRC=art_drafts/raw/promo OUT=art_drafts/promo).
+# Default set: the GUTTER CITY heroes (`art_drafts/raw/promo/heroes/` →
+# `art_drafts/promo/heroes/`). Override SRC and OUT for another batch.
+# FULLBLEED=1 skips social safe-area scrims; the finished art reaches every edge.
 #
-# Turns raw model generations from `$SRC` (default: `art_drafts/raw/promo/heroes/`)
-# into upload-ready 1080×1920 masters in `$OUT` (default: `art_drafts/promo/heroes/`) + JPEGs in `$OUT/jpg/`:
+# Usage:
+#   bash scripts/promo-frames.sh                  # all raw frames, default safe-area scrims
+#   bash scripts/promo-frames.sh 03               # only frame-03-*
+#   FULLBLEED=1 SRC=raw/path OUT=out/path bash scripts/promo-frames.sh
 #
-#   crop → 9:16 → Lanczos upscale to 1080×1920 → grade to the asphalt palette →
-#   top/bottom scrim (room for hook text + caption UI) → film grain → light
-#   unsharp → PNG master + JPEG q92.
-#
-# The palette grade keeps every frame in the client's dark surfaces (asphalt
-# #16151A…#2A2830, magenta #FF2E8A, cyan #16E5D9, acid #B6FF3C, orange #FF7A1A —
-# trust-blue #2E8BFF stays money-only, see docs/07-art-spec.md). The scrims exist
-# for a reason: TikTok/Reels/Shorts paint their own UI (progress bar,
-# handle, caption box) over the bottom ~18% and the right edge, so the artwork must
-# already be dark there — otherwise the hook text has to sit on a bright sky.
-#
-# Usage:  bash scripts/promo-frames.sh            # all raw frames in SRC
-#         bash scripts/promo-frames.sh 11         # only frame-11-*
-#
-# Requires ImageMagick 6 (`convert`). No network.
+# ImageMagick 6 required. Raw model images are centered-cropped to 9:16 and
+# exported at exactly 1080×1920. No letterbox is ever added.
 set -euo pipefail
-
 cd "$(dirname "$0")/.."
 
-# Sets: `promo` (district/cap key art) and `heroes` (GUTTER CITY crew frames).
-# Override with SRC=… OUT=… for a new batch.
 SRC=${SRC:-art_drafts/raw/promo/heroes}
 OUT=${OUT:-art_drafts/promo/heroes}
+FULLBLEED=${FULLBLEED:-0}
+GRAIN=${GRAIN:-0.30}
 JPEG=$OUT/jpg
 W=1080
 H=1920
-# 768 / 9 × 16 = 1365.33 — crop the tall raw to the true 9:16 band, off the top.
+CROP_W=768
 CROP_H=1365
 
 mkdir -p "$JPEG"
 FILTER="${1:-}"
-
 frames=("$SRC"/frame-*.png)
 if [ -n "$FILTER" ]; then
   frames=("$SRC"/frame-"$FILTER"-*.png)
 fi
 
 for src in "${frames[@]}"; do
+  [ -f "$src" ] || continue
   base=$(basename "$src" .png)
   png="$OUT/$base.png"
   jpg="$JPEG/$base.jpg"
-
   echo "→ $base"
-  convert "$src" \
-    -crop "768x${CROP_H}+0+0" +repage \
-    -resize "${W}x${H}!" \
-    -modulate 103,108,100 \
-    -sigmoidal-contrast 2x50% \
-    -unsharp 0x0.8+0.6+0.02 \
-    \( -size "${W}x470" gradient:'#00000000-#000000A8' -gravity south \) -compose over -composite \
-    \( -size "${W}x430" gradient:'#000000A8-#00000000' -gravity north \) -compose over -composite \
-    \( +clone -attenuate 0.30 +noise Gaussian -colorspace Gray \) \
-      -compose overlay -define compose:args=80 -composite \
-    -quality 92 "$png"
 
-  # Master stays PNG (lossless, for editing); the JPEG is what gets uploaded.
+  args=(
+    "$src"
+    -gravity center -crop "${CROP_W}x${CROP_H}+0+0" +repage
+    -resize "${W}x${H}!"
+    -modulate 103,108,100
+    -sigmoidal-contrast 2x50%
+    -unsharp 0x0.8+0.6+0.02
+  )
+
+  if [ "$FULLBLEED" != "1" ]; then
+    args+=(
+      '(' -size "${W}x470" "gradient:#00000000-#000000A8" -gravity south ')'
+      -compose over -composite
+      '(' -size "${W}x430" "gradient:#000000A8-#00000000" -gravity north ')'
+      -compose over -composite
+    )
+  fi
+
+  args+=(
+    '(' +clone -attenuate "$GRAIN" +noise Gaussian -colorspace Gray ')'
+    -compose overlay -define compose:args=80 -composite
+    -quality 92 "$png"
+  )
+  convert "${args[@]}"
   convert "$png" -quality 92 -strip "$jpg"
   identify -format '   %f  %wx%h  %b\n' "$png" "$jpg"
 done
 
-echo "✔ done — masters in $OUT, uploads in $JPEG"
+echo "✔ masters in $OUT; JPEGs in $JPEG"
