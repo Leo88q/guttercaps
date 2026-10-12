@@ -76,13 +76,20 @@ fn claim_compat_checked(
 }
 
 /// Close a compat claim exactly where Anchor's `close = buyer` used to run: the
-/// rent goes to `dest` and the body is zeroed, so the PDA can never be read back
-/// as a live claim (a zeroed discriminator also fails `try_deserialize_compat`).
-/// This is the same `AccountInfo::close` the constraint called, only moved into
-/// the handler, because an `UncheckedAccount` gets no `AccountsExit` pass.
-fn close_compat_claim(claim: &UncheckedAccount<'_>, dest: &AccountInfo) -> Result<()> {
-    claim.to_account_info().close(dest.clone())?;
-    Ok(())
+/// rent goes to `dest`, and the account is emptied and handed to the system
+/// program, so the PDA can never be read back as a live claim.
+///
+/// `AccountInfo` has no `close` method — only Anchor's `Account<T>` does, and an
+/// `UncheckedAccount` gets no `AccountsExit` pass to run it — so this delegates to
+/// the crate's canonical close, `fusion::close_state`, which already encodes the
+/// order the runtime requires: zero the lamports, `resize(0)` while the account is
+/// still ours, and only then `assign` it away. Both arguments share one `'info`
+/// because `close_state` relates them.
+fn close_compat_claim<'info>(
+    claim: &UncheckedAccount<'info>,
+    dest: &AccountInfo<'info>,
+) -> Result<()> {
+    super::fusion::close_state(&claim.to_account_info(), dest)
 }
 
 #[derive(Accounts)]

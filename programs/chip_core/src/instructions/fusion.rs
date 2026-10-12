@@ -207,7 +207,10 @@ fn burn_asset<'info>(
     Ok(())
 }
 
-fn close_state<'info>(state_ai: &AccountInfo<'info>, to: &AccountInfo<'info>) -> Result<()> {
+pub(crate) fn close_state<'info>(
+    state_ai: &AccountInfo<'info>,
+    to: &AccountInfo<'info>,
+) -> Result<()> {
     let lam = state_ai.lamports();
     **state_ai.try_borrow_mut_lamports()? = 0;
     **to.try_borrow_mut_lamports()? += lam;
