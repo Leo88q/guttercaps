@@ -57,7 +57,7 @@ const es: Messages = {
     priceAge: 'Antigüedad del precio', priceAgeValue: '{s} s (válido ≤ 60 s on-chain)', priceFeedDown: 'El feed de precios se está actualizando — reintenta en unos segundos.', quoteFailed: 'No se pudo obtener la cotización.',
     rentReserve: 'Reserva de rent (se devuelve al abrir)', oracleFees: 'Comisiones de red (est.)', maxSlippage: 'Máximo (protección del 1%)',
     oddsNow: 'Tus probabilidades ahora (pity {n})', oneSignature: ui.packSignatures,
-    perPack: '{n, plural, one{# cap} other{# caps}} por sobre', floor: 'mínimo {rarity}', starterOnce: 'una vez por billetera', dailyCap: 'límite {n}/día',
+    perPack: '{n, plural, one{# cap} other{# caps}} por sobre', floor: 'mínimo {rarity}', starterOnce: 'una vez por billetera', limitedPerks: 'potenciador + 2 boletos de XP al día', dailyCap: 'límite {n}/día',
     pityIn: '{rarity} garantizado en {n}', packDisabled: 'desactivado por ahora', was: 'antes {price}',
     tabs: { packs: 'Sobres', services: 'Extras' },
   },

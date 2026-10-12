@@ -57,7 +57,7 @@ const ru: Messages = {
     priceAge: 'Возраст цены', priceAgeValue: '{s} с (ончейн-лимит 60 с)', priceFeedDown: 'Ценовой фид обновляется — повторите через несколько секунд.', quoteFailed: 'Не удалось получить котировку.',
     rentReserve: 'Резерв ренты (вернётся после открытия)', oracleFees: 'Сеть (оценка)', maxSlippage: 'Максимум к оплате',
     oddsNow: 'Ваши шансы сейчас (pity {n})', oneSignature: ui.packSignatures,
-    perPack: '{n, plural, one{# фишка} few{# фишки} many{# фишек} other{# фишки}} в паке', floor: 'флор {rarity}', starterOnce: 'раз на кошелёк', dailyCap: 'лимит {n}/день',
+    perPack: '{n, plural, one{# фишка} few{# фишки} many{# фишек} other{# фишки}} в паке', floor: 'флор {rarity}', starterOnce: 'раз на кошелёк', limitedPerks: 'бустер + 2 XP-билета каждый день', dailyCap: 'лимит {n}/день',
     pityIn: 'гарантия {rarity} через {n}', packDisabled: 'временно отключён', was: 'было {price}',
     tabs: { packs: 'Паки', services: 'Дополнительно' },
   },

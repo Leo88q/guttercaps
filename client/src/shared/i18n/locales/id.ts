@@ -57,7 +57,7 @@ const id: Messages = {
     priceAge: 'Usia harga', priceAgeValue: '{s} dtk (berlaku ≤ 60 dtk on-chain)', priceFeedDown: 'Feed harga sedang diperbarui — coba lagi beberapa detik lagi.', quoteFailed: 'Kuotasi tidak bisa diambil.',
     rentReserve: 'Cadangan rent (dikembalikan setelah dibuka)', oracleFees: 'Biaya jaringan (perkiraan)', maxSlippage: 'Maks (pelindung slippage 1%)',
     oddsNow: 'Peluang Anda sekarang (pity {n})', oneSignature: ui.packSignatures,
-    perPack: '{n, plural, other{# cap}} per pack', floor: 'floor {rarity}', starterOnce: 'sekali per dompet', dailyCap: 'batas {n}/hari',
+    perPack: '{n, plural, other{# cap}} per pack', floor: 'floor {rarity}', starterOnce: 'sekali per dompet', limitedPerks: 'booster + 2 tiket XP per hari', dailyCap: 'batas {n}/hari',
     pityIn: '{rarity} dijamin dalam {n}', packDisabled: 'sedang dinonaktifkan', was: 'sebelumnya {price}',
     tabs: { packs: 'Pack', services: 'Ekstra' },
   },

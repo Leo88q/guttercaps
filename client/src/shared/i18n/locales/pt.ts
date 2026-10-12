@@ -57,7 +57,7 @@ const pt: Messages = {
     priceAge: 'Idade do preço', priceAgeValue: '{s} s (válido ≤ 60 s on-chain)', priceFeedDown: 'O feed de preços está atualizando — tente de novo em alguns segundos.', quoteFailed: 'Não foi possível obter a cotação.',
     rentReserve: 'Reserva de rent (devolvida após abrir)', oracleFees: 'Taxas de rede (est.)', maxSlippage: 'Máximo (proteção de 1%)',
     oddsNow: 'Suas chances agora (pity {n})', oneSignature: ui.packSignatures,
-    perPack: '{n, plural, one{# cap} other{# caps}} por pacote', floor: 'piso {rarity}', starterOnce: 'uma vez por carteira', dailyCap: 'limite {n}/dia',
+    perPack: '{n, plural, one{# cap} other{# caps}} por pacote', floor: 'piso {rarity}', starterOnce: 'uma vez por carteira', limitedPerks: 'reforço + 2 bilhetes de XP por dia', dailyCap: 'limite {n}/dia',
     pityIn: '{rarity} garantido em {n}', packDisabled: 'desativado no momento', was: 'antes {price}',
     tabs: { packs: 'Pacotes', services: 'Extras' },
   },

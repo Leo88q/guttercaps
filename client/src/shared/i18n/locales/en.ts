@@ -62,7 +62,7 @@ const en = {
     priceAge: 'Price age', priceAgeValue: '{s} s (valid ≤ 60 s on-chain)', priceFeedDown: 'Price feed is catching up — try again in a few seconds.', quoteFailed: 'Could not fetch a quote.',
     rentReserve: 'Rent reserve (returned after open)', oracleFees: 'Network fees (est.)', maxSlippage: 'Max you will pay',
     oddsNow: 'Your odds right now (pity {n})', oneSignature: ui.packSignatures,
-    perPack: '{n, plural, one{# cap} other{# caps}} per pack', floor: 'floor {rarity}', starterOnce: 'once per wallet', dailyCap: '{n}/day cap',
+    perPack: '{n, plural, one{# cap} other{# caps}} per pack', floor: 'floor {rarity}', starterOnce: 'once per wallet', limitedPerks: 'daily booster + 2 XP tickets', dailyCap: '{n}/day cap',
     pityIn: 'guaranteed {rarity} in {n}', packDisabled: 'currently disabled', was: 'was {price}',
     tabs: { packs: 'Packs', services: 'Extras' },
   },

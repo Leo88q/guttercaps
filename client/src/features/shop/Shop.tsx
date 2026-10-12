@@ -163,6 +163,7 @@ export default function Shop() {
               <div className="pack-badges">
                 {!enabled && <Pill>{t('ui.comingSoon')}</Pill>}
                 {id === 'starter' && <Pill tone="ok">{t('shop.starterOnce')}</Pill>}
+                {id === 'limited' && <Pill tone="ok">{t('shop.limitedPerks')}</Pill>}
               </div>
 
               <div className="pack-fan" aria-hidden>

@@ -57,7 +57,7 @@ const fil: Messages = {
     priceAge: 'Edad ng presyo', priceAgeValue: '{s} s (valid ≤ 60 s on-chain)', priceFeedDown: 'Ina-update pa ang price feed — subukan ulit sa ilang segundo.', quoteFailed: 'Hindi makuha ang quote.',
     rentReserve: 'Rent reserve (ibabalik pagkabukas)', oracleFees: 'Network fees (tantiya)', maxSlippage: 'Max (1% slippage guard)',
     oddsNow: 'Tsansa mo ngayon (pity {n})', oneSignature: ui.packSignatures,
-    perPack: '{n, plural, one{# cap} other{# caps}} bawat pack', floor: 'floor {rarity}', starterOnce: 'isang beses bawat wallet', dailyCap: 'limit {n}/araw',
+    perPack: '{n, plural, one{# cap} other{# caps}} bawat pack', floor: 'floor {rarity}', starterOnce: 'isang beses bawat wallet', limitedPerks: 'araw-araw na booster + 2 XP ticket', dailyCap: 'limit {n}/araw',
     pityIn: 'garantisadong {rarity} sa {n}', packDisabled: 'pansamantalang naka-off', was: 'dati {price}',
     tabs: { packs: 'Packs', services: 'Extras' },
   },

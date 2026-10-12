@@ -57,7 +57,7 @@ const vi: Messages = {
     priceAge: 'Tuổi giá', priceAgeValue: '{s} giây (hợp lệ ≤ 60 giây on-chain)', priceFeedDown: 'Nguồn giá đang cập nhật — thử lại sau vài giây.', quoteFailed: 'Không lấy được báo giá.',
     rentReserve: 'Tiền cọc rent (hoàn lại sau khi mở)', oracleFees: 'Phí mạng (ước tính)', maxSlippage: 'Tối đa (bảo vệ trượt giá 1%)',
     oddsNow: 'Tỷ lệ của bạn lúc này (pity {n})', oneSignature: ui.packSignatures,
-    perPack: '{n, plural, other{# nắp}} mỗi gói', floor: 'sàn {rarity}', starterOnce: 'một lần mỗi ví', dailyCap: 'giới hạn {n}/ngày',
+    perPack: '{n, plural, other{# nắp}} mỗi gói', floor: 'sàn {rarity}', starterOnce: 'một lần mỗi ví', limitedPerks: 'booster + 2 vé XP mỗi ngày', dailyCap: 'giới hạn {n}/ngày',
     pityIn: 'đảm bảo {rarity} sau {n}', packDisabled: 'tạm tắt', was: 'trước {price}',
     tabs: { packs: 'Gói', services: 'Thêm' },
   },
