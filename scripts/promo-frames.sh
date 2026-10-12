@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # GUTTERCAPS — vertical promo frames (9:16) for shorts / reels / TikTok covers.
 #
+# Two sets live in the tree: `heroes` (default below — the GUTTER CITY crew frames) and
+# `promo` (the earlier district/cap key art; run with SRC=art_drafts/raw/promo OUT=art_drafts/promo).
+#
 # Turns the raw model generations in `art_drafts/raw/promo/frame-*.png` (768×1376)
 # into upload-ready 1080×1920 masters + JPEGs in `art_drafts/promo/`:
 #
@@ -23,8 +26,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-SRC=art_drafts/raw/promo
-OUT=art_drafts/promo
+# Sets: `promo` (district/cap key art) and `heroes` (GUTTER CITY crew frames).
+# Override with SRC=… OUT=… for a new batch.
+SRC=${SRC:-art_drafts/raw/promo/heroes}
+OUT=${OUT:-art_drafts/promo/heroes}
 JPEG=$OUT/jpg
 W=1080
 H=1920

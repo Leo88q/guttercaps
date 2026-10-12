@@ -1,0 +1,139 @@
+{
+  "$comment": "GUTTER CITY — character bible for the promo story world. One 'hero' per district of the game GUTTERCAPS (districts 01–07 + the meta-district 10 City Myths). Every frame in this set is a chapter of the same night: rain, gangster-chill, nobody running. Lore anchors come from packages/economy/src/lore.ts; the palette and the 'no readable text / no brands' rules from docs/07-art-spec.md. Keep the LOOK fields verbatim in every prompt — that is what keeps a character identical across frames (see continuity_block).",
+  "world": {
+    "name": "GUTTER CITY",
+    "premise": "A city that never dries. Every district has one figure the others measure themselves against — they are not cap collectors, the caps are just how the city keeps score. The drama happens between the floods, quietly: who paints where, who owns the block, who remembers.",
+    "tone": "Gangster chill: laid-back, confident, dry humour, quiet power. Nobody runs, nobody shouts, violence stays off-screen and mostly implied. Rain is a character. The city is the crew's living room.",
+    "palette": "asphalt #16151A–#2A2830 + district accent; trust-blue #2E8BFF is money UI and never appears in art",
+    "night_rules": [
+      "All frames are the same night, between 23:40 and 04:10 — the storm front moves across the city west→east",
+      "Rain intensity grades the drama: drizzle = chill, sheet rain = turning point",
+      "Every location is wet, reflective, and lit by exactly one dominant source",
+      "No readable text anywhere: names, tags and neon stay abstract, the UI/localization carries the words"
+    ]
+  },
+  "continuity_block": "Vertical 9:16 cinematic key art for GUTTER CITY — the street-crew drama of the game GUTTERCAPS. Style: semi-realistic painted graphic-novel realism, thick graphic shadows, subtle halftone, spray-paint grit, wet surfaces, volumetric haze, heavy 35 mm grain, low-key cinematic lighting; soaked night, rain. Palette: asphalt black #16151A–#2A2830 with a {ACCENT} accent. Camera: eye level, the hero in the middle third, dark uncluttered top third (title space), dark wet bottom third (subtitle space). Mood: gangster chill — laid-back, confident, quiet power; nobody running, nobody shouting, tension implied. The image is about people, never about objects: no bottle caps as the hero of the frame. No readable text anywhere — graffiti, neon, patches and labels are abstract shapes. No logos, no real brands, no celebrity likenesses, no coins or banknotes, no weapons aimed at people. Not cartoonish, not anime, not flat vector, not pastel, not daylight.",
+  "characters": [
+    {
+      "id": "01",
+      "name": "MOTH",
+      "name_ru": "Мотылёк",
+      "district": "01 · Night Moth",
+      "district_ru": "01 · Ночной Мотылёк",
+      "role": "The stencil legend — unknown to everyone, the reason the city believes in匿名 anonymous art",
+      "look": "slender, hooded paint-stained work coat, mismatched gloves, courier bag of stencil rolls, respirator mask hand-painted with a small white moth, spray cans in a hip holster",
+      "signature": "the moth mask; comes out only in rain; leaves the cap at the base of the piece",
+      "chill": "doesn't speak in public — the piece talks, he smokes on the roof and watches the first viewer arrive",
+      "secret": "nobody in the city has ever seen the face, including the crews that buy his stencils",
+      "signature_line": "«Муниципалитет стирает стены. Я возвращаю их.» / “The city buffs walls. I put them back.”",
+      "arc_ep1": "finishes «Второй дождь» on the warehouse wall, then watches the crew find it"
+    },
+    {
+      "id": "02",
+      "name": "SPOKE",
+      "name_ru": "Спица",
+      "district": "02 · Asphalt Devils",
+      "district_ru": "02 · Асфальтовые Дьяволы",
+      "role": "BMX captain of the drained pools — broke his arm twice and still runs the bowl",
+      "look": "wiry, baggy hoodie, bandana at the neck, taped elbow, fresh white cast covered in abstract marker scribbles, battered unbranded sneakers, BMX leaning nearby",
+      "signature": "the cast, re-scribbled every week by whoever lands a new trick",
+      "chill": "coaches from the coping instead of riding: calls the next rider with a nod",
+      "secret": "has never told the crew the pool gets demolished for condos in spring",
+      "signature_line": "«Тот, кто убирает за тобой воду, делает это по ошибке.» / “The man who clears the water for you is making a mistake.”",
+      "arc_ep1": "hands the bowl to the youngest rider for the night's last run"
+    },
+    {
+      "id": "03",
+      "name": "RAIL",
+      "name_ru": "Рельс",
+      "district": "03 · Rail Kings",
+      "district_ru": "03 · Короли Рельсов",
+      "role": "Train writer and keeper of the sighting log — the man who decides what counts",
+      "look": "heavy-built, worn leather jacket under a plain hi-vis vest, worker's cap, headlamp switched off, thick gloves, battered logbook, pencil behind the ear",
+      "signature": "the logbook — every stop of every painted car, and it can't be edited after the fact",
+      "chill": "speaks in departure times and car numbers; drinks tea from a thermos on a crate",
+      "secret": "one car in the log has no exit station recorded — it has never stopped",
+      "signature_line": "«Вагон уедет без нас. Всё, что у нас есть, — имя на нём.» / “The car leaves without us. All we get is the name on it.”",
+      "arc_ep1": "logs the 04:10, drinks his tea, and stops two of his crew from torching the yard"
+    },
+    {
+      "id": "04",
+      "name": "RUSTY STITCH",
+      "name_ru": "Ржавый Стежок",
+      "district": "04 · Gutter Soles",
+      "district_ru": "04 · Подошвы из Ливнёвки",
+      "role": "The cobbler under the overpass — the eldest authority of the city, fixes what the flood ruins",
+      "look": "broad older man, grey stubble, flat cap, canvas apron over a knit cardigan, brass loupe on a cord, ink-stained fingers, awl and a spool of ice-blue waxed thread",
+      "signature": "the ice-blue thread — one seam and a pair is 'his', and fakes can't buy it",
+      "chill": "kettle always on; judges people by their soles, not by their crews",
+      "secret": "keeps a box of pairs that nobody ever came back for — one of them belongs to Moth",
+      "signature_line": "«Паводок забирает — я возвращаю. Так город и держится.» / “The flood takes, I put back. That's how the city stays up.”",
+      "arc_ep1": "keeps the stall open through the storm and stitches by lantern light"
+    },
+    {
+      "id": "05",
+      "name": "MUTE",
+      "name_ru": "Мьют",
+      "district": "05 · Boombox Block",
+      "district_ru": "05 · Бумбокс-Квартал",
+      "role": "The block's DJ and its quiet boss — sound is how this district does politics",
+      "look": "stocky, fur-collar coat over an old tracksuit, big headphones around the neck, calm half-smile, hands in pockets",
+      "signature": "the boombox on the top step with a cable running up the tapped streetlamp",
+      "chill": "says maybe four sentences per night; answers with a track choice",
+      "secret": "is the only person who has heard the Chronicler's full archive read aloud",
+      "signature_line": "«Скажи это в микрофон. Я поставлю бит.» / “Say it into the mic. I'll bring the beat.”",
+      "arc_ep1": "opens the round table with one record — the night's truce is mixed, not negotiated"
+    },
+    {
+      "id": "06",
+      "name": "BEASTKEEPER",
+      "name_ru": "Поводырь",
+      "district": "06 · Gutter Beasts",
+      "district_ru": "06 · Звери Ливнёвки",
+      "role": "The only human the under-city trusts — feeds the pigeons, the one-eyed cat and the raccoon squad",
+      "look": "sturdy, hooded raincoat covered in small abstract patches, three days of stubble, a raccoon on one shoulder, the one-eyed ginger cat in one arm, a pigeon on the hood",
+      "signature": "talks to animals in a low voice; the animals answer by doing exactly what they were about to do anyway",
+      "chill": "feeds first, asks later; the city's animal network is his intelligence service",
+      "secret": "knows where the thing under the city lives, and leaves scraps at that manhole every Sunday",
+      "signature_line": "«Я не главный. Главный — тот, кого вы не видели.» / “I'm not in charge. The one you haven't seen is.”",
+      "arc_ep1": "gets warned by the animals that the storm is turning, and passes it down the table"
+    },
+    {
+      "id": "07",
+      "name": "PLAYER ONE",
+      "name_ru": "Игрок Первый",
+      "district": "07 · Pixel Basement",
+      "district_ru": "07 · Пиксельный Подвал",
+      "role": "The high-score champion of a cabinet that officially doesn't exist",
+      "look": "lean, old-school tracksuit with plain stripes, towel around the neck, big headphones, hair tied back, one token balanced between two fingers",
+      "signature": "the token he never spends; the initials scratched into a board that was never wiped",
+      "chill": "never checks who's behind him; the room's silence is his status bar",
+      "secret": "he has seen the door at the end of the arcade open — twice",
+      "signature_line": "«Счёт не врёт. Врут только люди, которые его записывают.» / “The score never lies. Only the people who write it down do.”",
+      "arc_ep1": "refuses to play for the table and instead shows what he saw behind the door"
+    },
+    {
+      "id": "10",
+      "name": "THE CHRONICLER",
+      "name_ru": "Хроникёр",
+      "district": "10 · City Myths",
+      "district_ru": "10 · Городские Мифы",
+      "role": "Keeper of the city's stories — writes down what the districts would rather forget",
+      "look": "hooded heavy coat and scarf, ink-stained fingers, battered manual typewriter on a crate, storm lantern, notebook weighted against the wind, three crows",
+      "signature": "the typewriter on the rooftop; the crows are his index",
+      "chill": "arrives in every district's story exactly once, never in the middle of a fight",
+      "secret": "the archive is the real reason the districts have never gone to open war — everyone is afraid of their own page",
+      "signature_line": "«Ночь, когда город не спал, кто-то должен записать.» / “Someone has to write down the night the city didn't sleep.”",
+      "arc_ep1": "opens the episode ('этой ночью…') and closes it with the last page"
+    }
+  ],
+  "crew_support": "Anonymous crews and background silhouettes: keep faces hidden (hoods, lamps, backs). Crowd extras exist to give scale, never to steal the frame. Same extras must not appear twice in adjacent frames.",
+  "episode": {
+    "id": "EP-01",
+    "title": "НОЧЬ, КОГДА ГОРОД НЕ СПАЛ",
+    "title_en": "The Night the City Didn't Sleep",
+    "logline": "One storm night across Gutter City: a rumour goes district to district that someone has tagged the Invisible Car — and by 4 a.m. eight crews meet around one table to decide whether the city burns or just waits out the rain.",
+    "runtime": "≈60 с (10 × 5–7 с) или укороченная версия 30 с (кадры 01, 03, 05, 07, 09, 10)",
+    "frames": "этот набор: frame-01 … frame-10 (по одному кадру на главу/сцену)"
+  }
+}
