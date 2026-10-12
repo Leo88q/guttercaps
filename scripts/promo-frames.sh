@@ -4,8 +4,8 @@
 # Two sets live in the tree: `heroes` (default below — the GUTTER CITY crew frames) and
 # `promo` (the earlier district/cap key art; run with SRC=art_drafts/raw/promo OUT=art_drafts/promo).
 #
-# Turns the raw model generations in `art_drafts/raw/promo/frame-*.png` (768×1376)
-# into upload-ready 1080×1920 masters + JPEGs in `art_drafts/promo/`:
+# Turns raw model generations from `$SRC` (default: `art_drafts/raw/promo/heroes/`)
+# into upload-ready 1080×1920 masters in `$OUT` (default: `art_drafts/promo/heroes/`) + JPEGs in `$OUT/jpg/`:
 #
 #   crop → 9:16 → Lanczos upscale to 1080×1920 → grade to the asphalt palette →
 #   top/bottom scrim (room for hook text + caption UI) → film grain → light
@@ -13,13 +13,13 @@
 #
 # The palette grade keeps every frame in the client's dark surfaces (asphalt
 # #16151A…#2A2830, magenta #FF2E8A, cyan #16E5D9, acid #B6FF3C, orange #FF7A1A —
-# trust-blue #2E8BFF stays money-only, see docs/07-art-spec.md). The scrims and the
-# vignette exist for a reason: TikTok/Reels/Shorts paint their own UI (progress bar,
+# trust-blue #2E8BFF stays money-only, see docs/07-art-spec.md). The scrims exist
+# for a reason: TikTok/Reels/Shorts paint their own UI (progress bar,
 # handle, caption box) over the bottom ~18% and the right edge, so the artwork must
 # already be dark there — otherwise the hook text has to sit on a bright sky.
 #
-# Usage:  bash scripts/promo-frames.sh            # all frames
-#         bash scripts/promo-frames.sh 03         # only frame-03-*
+# Usage:  bash scripts/promo-frames.sh            # all raw frames in SRC
+#         bash scripts/promo-frames.sh 11         # only frame-11-*
 #
 # Requires ImageMagick 6 (`convert`). No network.
 set -euo pipefail

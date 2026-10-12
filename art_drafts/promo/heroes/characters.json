@@ -6,9 +6,9 @@
     "tone": "Gangster chill: laid-back, confident, dry humour, quiet power. Nobody runs, nobody shouts, violence stays off-screen and mostly implied. Rain is a character. The city is the crew's living room.",
     "palette": "asphalt #16151A–#2A2830 + district accent; trust-blue #2E8BFF is money UI and never appears in art",
     "night_rules": [
-      "All frames are the same night, between 23:40 and 04:10 — the storm front moves across the city west→east",
-      "Rain intensity grades the drama: drizzle = chill, sheet rain = turning point",
-      "Every location is wet, reflective, and lit by exactly one dominant source",
+      "All frames belong to one night, from the storm's arrival at 23:35 to blue dawn at 05:40; the storm front moves west→east",
+      "Rain intensity grades the drama: drizzle = chill, sheet rain = turning point; frame 16 is the first quiet post-storm dawn",
+      "Wet reflections carry through the night; each close scene has one dominant source, while the city master may use soft district lights",
       "No readable text anywhere: names, tags and neon stay abstract, the UI/localization carries the words"
     ]
   },
@@ -133,7 +133,7 @@
     "title": "НОЧЬ, КОГДА ГОРОД НЕ СПАЛ",
     "title_en": "The Night the City Didn't Sleep",
     "logline": "One storm night across Gutter City: a rumour goes district to district that someone has tagged the Invisible Car — and by 4 a.m. eight crews meet around one table to decide whether the city burns or just waits out the rain.",
-    "runtime": "≈60 с (10 × 5–7 с) или укороченная версия 30 с (кадры 01, 03, 05, 07, 09, 10)",
-    "frames": "этот набор: frame-01 … frame-10 (по одному кадру на главу/сцену)"
+    "runtime": "Базовый монтаж ≈60 с (10 глав × 5–7 с); расширенный монтаж ≈60–75 с (20 кадров, 2–4 с на план); короткая версия ≈30 с",
+    "frames": "frame-01 … frame-10 = основные главы; frame-11 … frame-20 = дополнительные планы и сцены для монтажа; edit order описан в EPISODE-01.md"
   }
 }
