@@ -171,10 +171,7 @@ pub fn transfer_compressed_claim(
         CompressedMintClaim::try_deserialize_compat(&ctx.accounts.claim.try_borrow_data()?)?;
     require_keys_eq!(claim.buyer, expected_seller, ChipError::NotAssetOwner);
     require!(
-        claim.listed
-            && (!claim.minted || claim.registered)
-            && !claim.consumed
-            && !claim.staked,
+        claim.listed && (!claim.minted || claim.registered) && !claim.consumed && !claim.staked,
         ChipError::InvalidChipState
     );
     // SEC-F01: same settlement gate as set_compressed_claim_listed — defense in depth against a
