@@ -445,10 +445,10 @@ pub fn set_params(ctx: Context<AdminOnly>, patch: ParamsPatch) -> Result<()> {
             require!(p.floor < RARITY_COUNT as u8, ChipError::OddsGuardRail);
             require!(p.pity_tier < RARITY_COUNT as u8, ChipError::OddsGuardRail);
             require!(p.odds_bps[0] >= 500, ChipError::OddsGuardRail); // Common ≥ 5 % always
-            // TOP-TIER RULE (2026-10): Legend/Legend+/Diamond drop from NO pack — the top three
-            // tiers exist only through fusion (FUSION_GATE). Not admin-tunable: re-enabling a
-            // Legend faucet needs a program deploy (48 h timelock + public diff). Pity may never
-            // guarantee above Epic+ for the same reason.
+                                                                      // TOP-TIER RULE (2026-10): Legend/Legend+/Diamond drop from NO pack — the top three
+                                                                      // tiers exist only through fusion (FUSION_GATE). Not admin-tunable: re-enabling a
+                                                                      // Legend faucet needs a program deploy (48 h timelock + public diff). Pity may never
+                                                                      // guarantee above Epic+ for the same reason.
             require!(
                 p.odds_bps[6] == 0 && p.odds_bps[7] == 0 && p.odds_bps[8] == 0,
                 ChipError::OddsGuardRail
