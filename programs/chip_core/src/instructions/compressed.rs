@@ -79,8 +79,11 @@ pub struct StageCompressedChip<'info> {
 #[derive(Accounts)]
 pub struct SetCompressedClaimListed<'info> {
     pub caller: Signer<'info>,
-    #[account(mut)]
-    pub claim: Box<Account<'info, CompressedMintClaim>>,
+    /// CHECK: owner-checked by the constraint; the body is decoded with
+    /// `try_deserialize_compat` in the handler — live pre-`founder` claims are
+    /// one byte short of the current layout and fail Anchor's strict decode.
+    #[account(mut, owner = crate::ID)]
+    pub claim: UncheckedAccount<'info>,
 }
 
 pub fn set_compressed_claim_listed(
@@ -97,21 +100,19 @@ pub fn set_compressed_claim_listed(
         market_auth,
         ChipError::NotProgramCaller
     );
-    require_keys_eq!(
-        ctx.accounts.claim.buyer,
-        expected_owner,
-        ChipError::NotAssetOwner
-    );
+    let mut claim =
+        CompressedMintClaim::try_deserialize_compat(&ctx.accounts.claim.try_borrow_data()?)?;
+    require_keys_eq!(claim.buyer, expected_owner, ChipError::NotAssetOwner);
     if listed {
         require!(
-            (!ctx.accounts.claim.minted || ctx.accounts.claim.registered)
-                && !ctx.accounts.claim.consumed
-                && !ctx.accounts.claim.listed
-                && !ctx.accounts.claim.staked
+            (!claim.minted || claim.registered)
+                && !claim.consumed
+                && !claim.listed
+                && !claim.staked
                 // Soulbound / fusion-locked claims cannot be listed (mirrors the
                 // Core `F_SOULBOUND` gate in the market program). Un-listing stays
                 // open so a lock can never trap a live listing.
-                && Clock::get()?.unix_timestamp >= ctx.accounts.claim.lock_until,
+                && Clock::get()?.unix_timestamp >= claim.lock_until,
             ChipError::InvalidChipState
         );
         // SEC-F01: a pack claim still bound to a live CompressedPackSettlement may only trade
@@ -121,19 +122,22 @@ pub fn set_compressed_claim_listed(
         // are unsatisfiable for everyone after a transfer, so the purchase liability would lock
         // in the vault permanently. Legacy/admin-staged claims carry settlement == default and
         // are exempt: they have no settlement to brick.
-        if ctx.accounts.claim.settlement != Pubkey::default() {
+        if claim.settlement != Pubkey::default() {
             require!(
-                ctx.accounts.claim.minted && ctx.accounts.claim.registered,
+                claim.minted && claim.registered,
                 ChipError::InvalidChipState
             );
         }
     } else {
-        require!(ctx.accounts.claim.listed, ChipError::InvalidChipState);
+        require!(claim.listed, ChipError::InvalidChipState);
     }
-    ctx.accounts.claim.listed = listed;
+    claim.listed = listed;
+    let mut data = ctx.accounts.claim.try_borrow_mut_data()?;
+    claim.write_compat(&mut data[8..])?;
+    drop(data);
     emit!(CompressedClaimListedSet {
         claim: ctx.accounts.claim.key(),
-        buyer: ctx.accounts.claim.buyer,
+        buyer: claim.buyer,
         listed
     });
     Ok(())
@@ -142,8 +146,11 @@ pub fn set_compressed_claim_listed(
 #[derive(Accounts)]
 pub struct TransferCompressedClaim<'info> {
     pub caller: Signer<'info>,
-    #[account(mut)]
-    pub claim: Box<Account<'info, CompressedMintClaim>>,
+    /// CHECK: owner-checked by the constraint; the body is decoded with
+    /// `try_deserialize_compat` in the handler — live pre-`founder` claims are
+    /// one byte short of the current layout and fail Anchor's strict decode.
+    #[account(mut, owner = crate::ID)]
+    pub claim: UncheckedAccount<'info>,
 }
 
 pub fn transfer_compressed_claim(
@@ -160,28 +167,29 @@ pub fn transfer_compressed_claim(
         market_auth,
         ChipError::NotProgramCaller
     );
-    require_keys_eq!(
-        ctx.accounts.claim.buyer,
-        expected_seller,
-        ChipError::NotAssetOwner
-    );
+    let mut claim =
+        CompressedMintClaim::try_deserialize_compat(&ctx.accounts.claim.try_borrow_data()?)?;
+    require_keys_eq!(claim.buyer, expected_seller, ChipError::NotAssetOwner);
     require!(
-        ctx.accounts.claim.listed
-            && (!ctx.accounts.claim.minted || ctx.accounts.claim.registered)
-            && !ctx.accounts.claim.consumed
-            && !ctx.accounts.claim.staked,
+        claim.listed
+            && (!claim.minted || claim.registered)
+            && !claim.consumed
+            && !claim.staked,
         ChipError::InvalidChipState
     );
     // SEC-F01: same settlement gate as set_compressed_claim_listed — defense in depth against a
     // listing created before the gate existed (or by a future caller that skips the list path).
-    if ctx.accounts.claim.settlement != Pubkey::default() {
+    if claim.settlement != Pubkey::default() {
         require!(
-            ctx.accounts.claim.minted && ctx.accounts.claim.registered,
+            claim.minted && claim.registered,
             ChipError::InvalidChipState
         );
     }
-    ctx.accounts.claim.buyer = new_owner;
-    ctx.accounts.claim.listed = false;
+    claim.buyer = new_owner;
+    claim.listed = false;
+    let mut data = ctx.accounts.claim.try_borrow_mut_data()?;
+    claim.write_compat(&mut data[8..])?;
+    drop(data);
     emit!(CompressedClaimTransferred {
         claim: ctx.accounts.claim.key(),
         from: expected_seller,

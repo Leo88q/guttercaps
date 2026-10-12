@@ -87,6 +87,15 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   on mainnet yet — every live account is devnet state created after this change or disposable test
   data; a leftover devnet account from before this change fails to deserialize (close/re-init, same
   posture as SkrPool above). Nothing existing is reinterpreted.
+  **CompressedMintClaim (2026-10-12, compat read/write):** the strict `Account<CompressedMintClaim>`
+  on live claim accounts was replaced by owner-checked `UncheckedAccount` + decode via
+  `try_deserialize_compat` (pads only the trailing `founder` bool) in staking (stake V1/V2, unstake,
+  claim), market (list/cancel/buy on both the claim and the V2-asset path) and the chip_core claim
+  CPIs (`set_compressed_claim_staked`, `set_compressed_claim_listed`, `transfer_compressed_claim`),
+  plus the fusion material paths. Mutations are written back with `write_compat`, which keeps a
+  pre-`founder` account at its allocated size (trailing bool truncated) instead of overrunning it.
+  Leftover short devnet accounts therefore stay stakeable/listable/fusable without re-init;
+  full-size accounts serialize unchanged.
 - **SEC-B6 (2026-09-26): the API verifier checks rarities, not districts.** `POST /packs/verify`
   recomputes the rarity sequence from the emitted randomness and compares it with the mint, but it cannot
   recompute *which district* a chip landed in: the pool (`collections_created`, the featured district) is
