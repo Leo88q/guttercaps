@@ -218,7 +218,7 @@ const ru: Messages = {
     params: {
       unavailable: 'Состояние сети недоступно: {error}', version: 'версия параметров', slot: 'прочитано на слоте', paused: 'на паузе', liabilities: 'Обязательства хранилища (Σ шардов леджера)', burnedTotal: 'сожжено всего',
       shards: 'шардов леджера: {n} · не инициализировано: {missing}', shardsMissing: 'запустите `setup ledgers` перед sweep_vault', globals: 'Глобальные комиссии', marketFee: 'Комиссия маркета, bps', skrDiscount: 'Скидка SKR на паки, bps', featured: 'Район недели', keep: 'оставить',
-      split: 'Распределение эмиссии (bps)', splitRule: '±{delta} bps за изменение · следующее возможно {next}', sliceBudget: 'сегодня', packs: 'Паки (SKU)', packsRule: 'Сумма шансов = 10000 · Common ≥ {common}% · Legend+ + Diamond ≤ {top2}% для Starter/Standard (×2 для Premium/Limited) · цена $0,50–$500',
+      split: 'Распределение эмиссии (bps)', splitRule: '±{delta} bps за изменение · следующее возможно {next}', sliceBudget: 'сегодня', packs: 'Паки (SKU)', packsRule: 'Сумма шансов = 10000 · Common ≥ {common}% · Legend и выше не выпадают — шансы тиров 6–8 должны быть 0 · цена $0,50–$500',
       price: 'цена, ¢', note: 'Заметка (попадёт в журнал аудита)', checking: 'Проверяем…', propose: 'Проверить и закодировать', clear: 'Очистить черновик', nothingSent: 'Отсюда ничего не отправляется в сеть.', history: 'Недавние set_params', noHistory: 'Изменений параметров пока не проиндексировано.',
     },
     kill: {

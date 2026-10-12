@@ -110,7 +110,7 @@ describe('params: read + propose', () => {
     expect(r.status).toBe(200);
     expect(r.json.gameConfig).toMatchObject({ marketFeeBps: 750, skrDiscountBps: 500, collectionsCreated: 10, paramsVersion: 1 });
     expect(r.json.gameConfig.packs).toHaveLength(4);
-    expect(r.json.gameConfig.packs[1]).toMatchObject({ sku: 1, chips: 3, priceUsdCents: 499, oddsBps: [4500, 2500, 1500, 800, 450, 180, 50, 18, 2], pity: { tier: 6, hardAt: 60, softStart: 30, softStepBps: 25 } });
+    expect(r.json.gameConfig.packs[1]).toMatchObject({ sku: 1, chips: 3, priceUsdCents: 499, oddsBps: [4570, 2500, 1500, 800, 450, 180, 0, 0, 0], pity: { tier: 6, hardAt: 60, softStart: 30, softStepBps: 25 } });
     expect(r.json.emission).toMatchObject({ admin: CHAIN_ADMIN.toBase58(), pauser: PAUSER.toBase58(), dayIndex: 39, splitBps: [3000, 1500, 1700, 2300, 1500] });
     expect(r.json.emission.burn7dAvgMicro).toBe('7000000');
     expect(r.json.guardRails.maxMarketFeeBps).toBe(1000);
@@ -146,13 +146,13 @@ describe('params: read + propose', () => {
     expect(decodeEmissionState(conn.get(emissionPda()[0])!).splitBps[3]).toBe(2300);
   });
 
-  it('guard-rails: every set_params require! + error path is mirrored (odds sum, Common ≥ 5 %, top-2 cap per sku, price/pity bands, fee/discount caps, featured range, zero keys, $CG band, version ceiling) + economy warnings', async () => {
+  it('guard-rails: every set_params require! + error path is mirrored (odds sum, Common ≥ 5 %, tiers 6–8 zero, price/pity bands, fee/discount caps, featured range, zero keys, $CG band, version ceiling) + economy warnings', async () => {
     const c = await admin.fetchChainParams(conn as unknown as Connection);
     const bad = admin.proposeParams(c, {
       packs: [
         { sku: 1, oddsBps: [4500, 2500, 1500, 800, 450, 180, 50, 18, 3] },                 // sum 10001
         { sku: 1, oddsBps: [400, 6600, 1500, 800, 450, 180, 50, 18, 2] },                  // Common < 500
-        { sku: 0, oddsBps: [3000, 3000, 2500, 1100, 150, 50, 0, 100, 101] },               // top2 201 > 200 for sku 0
+        { sku: 0, oddsBps: [3000, 3000, 2500, 1100, 150, 50, 0, 100, 101] },               // tiers 6–8 must be 0 (Legend+ never drops)
         { sku: 3, oddsBps: [2200, 2400, 2400, 1600, 850, 350, 120, 50, 30], priceUsdCents: 60_000 }, // > $500
         { sku: 2, pity: { tier: 6, hardAt: 5, softStart: 3, softStepBps: 25 } },          // hardAt < 10
         { sku: 2, chips: 6 },
@@ -166,8 +166,8 @@ describe('params: read + propose', () => {
       'packs[0].oddsBps:OddsSumInvalid', 'packs[1].oddsBps[0]:OddsGuardRail', 'packs[2].oddsBps:OddsGuardRail', 'packs[3].priceUsdCents:OddsGuardRail',
       'packs[4].pity:OddsGuardRail', 'packs[5].chips:InvalidQuantity', 'marketFeeBps:FeeTooHigh', 'skrDiscountBps:FeeTooHigh', 'featuredCollection:InvalidCollection',
     ]));
-    // premium/limited get the 2× top-2 cap: 400 bps passes the program but trips the economy band
-    const generous = admin.proposeParams(c, { packs: [{ sku: 2, oddsBps: [2800, 2600, 2250, 1400, 600, 250, 70, 25, 5].map((o, i) => (i === 7 ? 200 : i === 8 ? 200 : i === 0 ? 2430 : o)) }] }, T0);
+    // tiers 6–8 stay zero even on premium — a thin top end passes the program but trips the EV/price band
+    const generous = admin.proposeParams(c, { packs: [{ sku: 2, oddsBps: [2900, 2600, 2250, 1400, 600, 250, 0, 0, 0] }] }, T0);
     expect(generous.violations).toEqual([]);
     expect(generous.ok).toBe(true);
     expect(generous.warnings.join(' ')).toMatch(/EV\/price/);

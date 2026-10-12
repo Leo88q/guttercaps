@@ -23,7 +23,7 @@ export default function Guide() {
     limited: fmtCents(PACKS.limited.priceUsdCents),
     boosterBonus: String(BOOSTER.bonusBps / 100), boosterCap: String(BOOSTER.capBps / 100),
     fusionFee0: fmtCg(FUSION_RECIPES[0].feeCgMicro, 1),
-    listingFee: fmtCg(FEES.listingFeeCgMicro, 1), marketFee: fmtPct(FEES.marketplaceFeeBps, 1), royalty: fmtPct(FEES.creatorRoyaltyBps, 1),
+    listingFee: `${fmtCg(FEES.listingFeeMinCgMicro, 0)}–${fmtCg(FEES.listingFeeMaxCgMicro, 0)}`, listingFeePct: fmtPct(FEES.listingFeeBps, 1), marketFee: fmtPct(FEES.marketplaceFeeBps, 1), royalty: fmtPct(FEES.creatorRoyaltyBps, 1),
     d30: mult(LOCK_TIERS.d30.boost), d90: mult(LOCK_TIERS.d90.boost), d180: mult(LOCK_TIERS.d180.boost),
     p30: fmtPct(LOCK_TIERS.d30.earlyExitPenaltyBps, 0), p90: fmtPct(LOCK_TIERS.d90.earlyExitPenaltyBps, 0), p180: fmtPct(LOCK_TIERS.d180.earlyExitPenaltyBps, 0),
     xpWin: String(CHIP_XP.win), xpLoss: String(CHIP_XP.loss), xpDay: String(CHIP_XP.dailyCap), xpCost: String(CHIP_XP.cost(1)),

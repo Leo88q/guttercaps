@@ -218,7 +218,7 @@ const es: Messages = {
     params: {
       unavailable: 'Estado de la cadena no disponible: {error}', version: 'versión de parámetros', slot: 'leído en el slot', paused: 'pausado', liabilities: 'Pasivos de la bóveda (Σ shards del libro)', burnedTotal: 'quemado total',
       shards: '{n} shards del libro · {missing} sin inicializar', shardsMissing: 'ejecuta `setup ledgers` antes de sweep_vault', globals: 'Comisiones globales', marketFee: 'Comisión del mercado (bps)', skrDiscount: 'Descuento SKR en sobres (bps)', featured: 'Distrito destacado', keep: 'mantener',
-      split: 'Reparto de emisión (bps)', splitRule: '±{delta} bps por cambio · próximo cambio permitido {next}', sliceBudget: 'hoy', packs: 'SKUs de sobres', packsRule: 'Las probabilidades deben sumar 10000 · Common ≥ {common}% · Legend+ + Diamond ≤ {top2}% en Starter/Standard (×2 en Premium/Limited) · precio $0,50–$500',
+      split: 'Reparto de emisión (bps)', splitRule: '±{delta} bps por cambio · próximo cambio permitido {next}', sliceBudget: 'hoy', packs: 'SKUs de sobres', packsRule: 'Las probabilidades deben sumar 10000 · Common ≥ {common}% · Legend y superiores nunca caen — los niveles 6–8 deben ser 0 · precio $0,50–$500',
       price: 'precio ¢', note: 'Nota (va al registro de auditoría)', checking: 'Comprobando…', propose: 'Comprobar y codificar', clear: 'Limpiar borrador', nothingSent: 'Desde aquí no se envía nada a la cadena.', history: 'set_params recientes', noHistory: 'Aún no hay cambios de parámetros indexados.',
     },
     kill: {

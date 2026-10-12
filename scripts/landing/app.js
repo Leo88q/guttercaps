@@ -185,7 +185,7 @@
       const lines = [tr('pack.caps', { n: caps, rarity: tierName(floor) })];
       if (i === 0) lines.push(tr('pack.lock', { days: 7 }), tr('pack.noPity'));
       else {
-        lines.push(tr('pack.hard', { rarity: tierName(6), n: p.hardAt }));
+        lines.push(tr('pack.hard', { rarity: tierName(5), n: p.hardAt }));
         lines.push(i === 3 ? tr('pack.limit', { n: p.dailyCap }) : tr('pack.soft', { n: p.softStart }));
       }
       lines.push(i === 3 ? tr('pack.pool') : 'SOL · USDC · SKR' + (p.cg ? ' · $CG' : ''));

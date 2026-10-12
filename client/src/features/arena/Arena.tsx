@@ -461,7 +461,7 @@ export default function Arena() {
           <div className="small muted">{t('arena.squadLocked')}</div>
           <div className="tag-list">{[5, 25, 100, 500].map((v) => <Pill key={v} active={wager === String(v)} onClick={() => setWager(String(v))}>{v} $CG</Pill>)}</div>
           <CleanZone>
-            <input className="input mono" inputMode="decimal" placeholder="5 – 5000" value={wager ?? ''} onChange={(e) => setWager(e.target.value)} />
+            <input className="input mono" inputMode="decimal" placeholder="25 – 25000" value={wager ?? ''} onChange={(e) => setWager(e.target.value)} />
             {(() => { const a = parseUnits(wager ?? '', 6); if (!a) return null; const s = wagerSplit(a); return <>
               <KV k={t('ui.yourStake')} v={fmtCg(a)} />
               <KV k={t('arena.pot')} v={fmtCg(s.pot)} />

@@ -1,6 +1,6 @@
 {
-  "revision": "2026-10-11.1",
-  "sha256": "c5110f2de4c2eaf087afda365fceef15d499ca9a1625f9fbc69d41588a311490",
+  "revision": "2026-10-12.1",
+  "sha256": "390179837de3b07e2ea45fcfeaddd8374abc6cb2a397639772adbbfdf835fc19",
   "docs": {
     "terms": {
       "slug": "terms",
@@ -34,7 +34,7 @@
           "h": "4. Precios, comisiones y qué se quema",
           "p": [
             "Los sobres se pagan en SOL, USDC, $CG o SKR, y el precio que firmas es el precio que pagas. Los precios, descuentos y la configuración de los sobres se fijan dentro de los límites que aplican los programas, y la cotización que se te muestra antes de firmar es la que vale.",
-            "Las ventas en el mercado descuentan una comisión de protocolo — {marketFee} % por defecto, con un tope estricto on-chain del {marketCap} % — más un royalty de creador aparte del {royalty} %, a cargo del vendedor. Alrededor del {buyback} % de la comisión de protocolo se destina a recompra y quema; el resto y el royalty van a la tesorería. Crear un anuncio también quema {listingBurn} $CG. Las cifras vigentes se muestran antes de firmar, y las comisiones aquí descritas son las que cobran los programas.",
+            "Las ventas en el mercado descuentan una comisión de protocolo — {marketFee} % por defecto, con un tope estricto on-chain del {marketCap} % — más un royalty de creador aparte del {royalty} %, a cargo del vendedor. Alrededor del {buyback} % de la comisión de protocolo se destina a recompra y quema; el resto y el royalty van a la tesorería.Crear un anuncio también quema una comisión anti-spam proporcional — 0,5 % del precio, entre {listingBurnMin} y {listingBurnMax} $CG, todo quemado. Las cifras vigentes se muestran antes de firmar, y las comisiones aquí descritas son las que cobran los programas.",
             "Las apuestas de arena pagan un rake del {arenaRake} % del bote: el {arenaTreasury} % del rake va a la tesorería, el {arenaPool} % forma el premio de la temporada y el {arenaBurn} % restante se quema. El rake se aplica solo a la apuesta; las fichas que llevas a un combate no se ven afectadas.",
             "Los sobres pagados en $CG queman el {cgBurn} % del precio, y los sobres pagados en SKR reciben un {skrDiscount} % de descuento. La quema es un cambio en la oferta del token, no una comisión que nos quedemos, y ocurre on-chain en la misma transacción de la compra.",
             "Las comisiones de red de Solana y el alquiler que abre las cuentas de un sobre corren por tu cuenta, no por la nuestra. El alquiler reservado mientras un sobre está en trámite se te devuelve cuando se cierran las cuentas. Las comisiones de red nunca se reembolsan: se pagan a la red, no a nosotros."

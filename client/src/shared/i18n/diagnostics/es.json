@@ -10,7 +10,7 @@
   "quantity": "Un sobre debe contener entre 1 y {max} caps.",
   "rarityRange": "El índice de rareza debe estar entre 0 y {max}.",
   "commonFloor": "La probabilidad Común debe ser de al menos {min} puntos básicos.",
-  "topOdds": "Los dos niveles superiores suman {sum} puntos básicos y superan el límite de {max} para SKU {sku}.",
+  "topOdds": "Legend y superiores suman {sum} puntos básicos y superan el límite de {max} para SKU {sku}.",
   "usdRange": "El precio debe estar entre {min} y {max} USD.",
   "pityGuard": "Se requiere: hardAt ≥ {minHard}, softStart ≤ hardAt, softStepBps ≤ {maxStep}.",
   "u64": "El precio debe ser una cadena decimal dentro del rango de 64 bits sin signo.",

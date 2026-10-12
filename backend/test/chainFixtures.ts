@@ -15,10 +15,10 @@ export const zero32 = new Uint8Array(32);
 export const pk = () => Keypair.generate().publicKey;
 
 export const DEFAULT_PACK: PackDef = {
-  chips: 3, priceUsdCents: 499, priceCgMicro: 750_000_000n, oddsBps: [4500, 2500, 1500, 800, 450, 180, 50, 18, 2], floor: 1, dailyCap: 0,
+  chips: 3, priceUsdCents: 499, priceCgMicro: 750_000_000n, oddsBps: [4570, 2500, 1500, 800, 450, 180, 0, 0, 0], floor: 1, dailyCap: 0, // economy v3: tiers 6–8 are zero everywhere
   pityTier: 6, pityHardAt: 60, pitySoftStart: 30, pitySoftStepBps: 25, featuredOnly: false, enabled: true,
 };
-export const PREMIUM_PACK: PackDef = { ...DEFAULT_PACK, chips: 5, priceUsdCents: 1299, oddsBps: [2800, 2600, 2250, 1400, 600, 250, 70, 25, 5], floor: 2, pityHardAt: 40, pitySoftStart: 20 };
+export const PREMIUM_PACK: PackDef = { ...DEFAULT_PACK, chips: 5, priceUsdCents: 1299, oddsBps: [2900, 2600, 2250, 1400, 600, 250, 0, 0, 0], floor: 2, pityHardAt: 40, pitySoftStart: 20 };
 
 function packDef(w: BorshWriter, p: PackDef) {
   w.u8(p.chips).u32(p.priceUsdCents).u64(p.priceCgMicro);

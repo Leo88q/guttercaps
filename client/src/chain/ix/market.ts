@@ -29,7 +29,6 @@ export function marketCurrencyOfApi(apiCode: number): MarketCurrencyCode {
     default: throw new Error(`currency code ${apiCode} is not listable on the market`);
   }
 }
-export const LISTING_FEE_CG = 500_000n; // 0.5 $CG burned on list
 /** Default protocol fee; the live value is GameConfig.marketFeeBps (≤ 10 %). */
 export const MARKET_FEE_BPS = 750;
 export const FEE_BUYBACK_SHARE_BPS = 3_333;

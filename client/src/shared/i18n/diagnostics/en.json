@@ -10,7 +10,7 @@
   "quantity": "A pack must contain between 1 and {max} caps.",
   "rarityRange": "The rarity index must be between 0 and {max}.",
   "commonFloor": "Common odds must be at least {min} bps.",
-  "topOdds": "The top two tiers total {sum} bps, exceeding the {max} bps cap for SKU {sku}.",
+  "topOdds": "Legend and above total {sum} bps, exceeding the {max} bps cap for SKU {sku}.",
   "usdRange": "The price must be between {min} and {max} USD.",
   "pityGuard": "Required: hardAt ≥ {minHard}, softStart ≤ hardAt, softStepBps ≤ {maxStep}.",
   "u64": "The price must be a decimal string within the unsigned 64-bit range.",

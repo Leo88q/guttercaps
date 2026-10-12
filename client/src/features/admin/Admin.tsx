@@ -199,7 +199,7 @@ function ParamsTab() {
 
       <div className="card stack-sm">
         <div className="strong">{t('admin.params.packs')}</div>
-        <div className="tiny muted">{t('admin.params.packsRule', { common: (gr.minCommonBps ?? 500) / 100, top2: (gr.maxTop2BpsStandard ?? 200) / 100 })}</div>
+        <div className="tiny muted">{t('admin.params.packsRule', { common: (gr.minCommonBps ?? 500) / 100 })}</div>
         <div style={{ overflowX: 'auto' }}>
           <table className="table">
             <thead><tr><th>SKU</th><th>{t('admin.params.price')}</th>{RARITIES.map((r, i) => <th key={r} style={{ textAlign: 'right' }}>{rarityName(i)}</th>)}<th>Σ</th><th>{t('screens.dailyLimit')}</th><th>{t('screens.enabled')}</th></tr></thead>

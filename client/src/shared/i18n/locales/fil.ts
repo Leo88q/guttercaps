@@ -218,7 +218,7 @@ const fil: Messages = {
     params: {
       unavailable: 'Hindi makuha ang chain state: {error}', version: 'bersyon ng params', slot: 'nabasa sa slot', paused: 'naka-pause', liabilities: 'Mga pananagutan ng vault (Σ ledger shards)', burnedTotal: 'kabuuang na-burn',
       shards: '{n} ledger shard · {missing} hindi pa naka-initialize', shardsMissing: 'patakbuhin ang `setup ledgers` bago ang sweep_vault', globals: 'Mga global na bayarin', marketFee: 'Market fee (bps)', skrDiscount: 'SKR pack discount (bps)', featured: 'Tampok na distrito', keep: 'panatilihin',
-      split: 'Hati ng emission (bps)', splitRule: '±{delta} bps bawat pagbabago · susunod na pagbabago pinapayagan {next}', sliceBudget: 'ngayon', packs: 'Mga pack SKU', packsRule: 'Dapat 10000 ang kabuuan ng odds · Common ≥ {common}% · Legend+ + Diamond ≤ {top2}% sa Starter/Standard (×2 sa Premium/Limited) · presyo $0.50–$500',
+      split: 'Hati ng emission (bps)', splitRule: '±{delta} bps bawat pagbabago · susunod na pagbabago pinapayagan {next}', sliceBudget: 'ngayon', packs: 'Mga pack SKU', packsRule: 'Dapat 10000 ang kabuuan ng odds · Common ≥ {common}% · Hindi kailanman bumabagsak ang Legend pataas — dapat 0 ang tier 6–8 · presyo $0.50–$500',
       price: 'presyo ¢', note: 'Tala (mapupunta sa audit log)', checking: 'Sinusuri…', propose: 'Suriin at i-encode', clear: 'Burahin ang draft', nothingSent: 'Walang ipinapadala on-chain mula rito.', history: 'Kamakailang set_params', noHistory: 'Wala pang na-index na pagbabago ng parameter.',
     },
     kill: {

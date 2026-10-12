@@ -166,8 +166,8 @@ describe('authenticated routes (fake wallet + mock SIWS)', () => {
     mount('/admin');
     // table paints once GET /admin/params lands (the mock wallet is `isAdmin`)
     await waitFor(() => expect(screen.getByText(/Recent set_params/)).toBeTruthy(), { timeout: 6000 });
-    // Standard (sku 1) Legend+ = 900 bps → sum ≠ 10000 AND top-2 cap → 422 guard_rail rendered inline, no instructions
-    const inputs = screen.getAllByPlaceholderText('18');
+    // Standard (sku 1): Common+ 2400 bps → 900 → sum ≠ 10000 → 422 guard_rail rendered inline, no instructions
+    const inputs = screen.getAllByPlaceholderText('2400');
     fireEvent.change(inputs[0], { target: { value: '900' } });
     fireEvent.click(screen.getByText(/Check & encode/));
     await waitFor(() => expect(screen.getByTestId('proposal')).toBeTruthy(), { timeout: 6000 });

@@ -1,6 +1,6 @@
 {
-  "revision": "2026-10-11.1",
-  "sha256": "c5110f2de4c2eaf087afda365fceef15d499ca9a1625f9fbc69d41588a311490",
+  "revision": "2026-10-12.1",
+  "sha256": "390179837de3b07e2ea45fcfeaddd8374abc6cb2a397639772adbbfdf835fc19",
   "docs": {
     "terms": {
       "slug": "terms",
@@ -34,7 +34,7 @@
           "h": "4. Presyo, bayarin at kung ano ang sinusunog",
           "p": [
             "Ang mga pack ay binabayaran sa SOL, USDC, $CG o SKR, at ang presyong pinipirmahan mo ang presyong binabayaran mo. Ang mga presyo, diskwento at konfigurasyon ng pack ay itinatakda sa loob ng mga limitasyong ipinapatupad ng mga program, at ang quote na ipinapakita bago ka pumirma ang namamayani.",
-            "Ang mga benta sa pamilihan ay nagbabawas ng bayad sa protocol — {marketFee} % bilang default, na may mahigpit na on-chain na kisame na {marketCap} % — at hiwalay na {royalty} % na royalty ng lumikha mula sa nagbebenta. Humigit-kumulang {buyback} % ng bayad sa protocol ay napupunta sa buyback-and-burn; ang natitira at ang royalty ay napupunta sa treasury. Ang paggawa ng listing ay nagsusunog din ng {listingBurn} $CG. Ang mga kasalukuyang bilang ay ipinapakita bago ka pumirma, at ang mga bayad na inilalarawan dito ay ang mga bayad na sinisingil ng mga program.",
+            "Ang mga benta sa pamilihan ay nagbabawas ng bayad sa protocol — {marketFee} % bilang default, na may mahigpit na on-chain na kisame na {marketCap} % — at hiwalay na {royalty} % na royalty ng lumikha mula sa nagbebenta. Humigit-kumulang {buyback} % ng bayad sa protocol ay napupunta sa buyback-and-burn; ang natitira at ang royalty ay napupunta sa treasury.Ang paggawa ng listing ay nagsusunog din ng proporsyonal na bayad laban sa spam — 0.5 % ng presyo, sa pagitan ng {listingBurnMin} at {listingBurnMax} $CG, lahat ay nasusunog. Ang mga kasalukuyang bilang ay ipinapakita bago ka pumirma, at ang mga bayad na inilalarawan dito ay ang mga bayad na sinisingil ng mga program.",
             "Ang mga taya sa arena ay may rake na {arenaRake} % ng pot: {arenaTreasury} % ng rake ay napupunta sa treasury, {arenaPool} % ang bumubuo sa premyo ng season, at ang natitirang {arenaBurn} % ay sinusunog. Ang rake ay para lamang sa taya; hindi naaapektuhan ang mga chip na dinadala mo sa laban.",
             "Ang mga pack na binayaran sa $CG ay nagsusunog ng {cgBurn} % ng presyo, at ang mga pack na binayaran sa SKR ay may {skrDiscount} % na diskwento. Ang pagsunog ay pagbabago sa suplay ng token, hindi bayad na kinikita namin, at nangyayari ito on-chain sa parehong transaksyon ng pagbili.",
             "Ang mga bayad sa network ng Solana at ang rent na nagbubukas ng mga account ng pack ay ikaw ang nagbabayad, hindi kami. Ang rent na nakalaan habang pinoproseso ang pack ay ibinabalik sa iyo kapag nagsara ang mga account. Hindi kailanman naibabalik ang mga bayad sa network — binabayaran ang mga ito sa network, hindi sa amin."

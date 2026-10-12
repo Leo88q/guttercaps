@@ -1675,7 +1675,7 @@ components:
         bpsDenom: { type: integer }
         maxChipsPerPack: { type: integer }
         minCommonBps: { type: integer, description: Common odds floor (500 = 5 %) }
-        maxTop2BpsStandard: { type: integer, description: 'Legend+ + Diamond cap per slot on sku 0/1; ×2 on sku 2/3' }
+        maxTopTierBps: { type: integer, description: 'Legend-and-above (tiers 6–8) odds cap for every pack SKU — 0 in economy v3' }
         priceCentsRange: { type: array, items: { type: integer }, minItems: 2, maxItems: 2 }
         pity: { type: object, properties: { minHardAt: { type: integer }, maxSoftStepBps: { type: integer } } }
         maxMarketFeeBps: { type: integer }

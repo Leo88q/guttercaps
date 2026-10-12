@@ -10,7 +10,7 @@
   "quantity": "Gói phải có từ 1 đến {max} nắp.",
   "rarityRange": "Chỉ số độ hiếm phải từ 0 đến {max}.",
   "commonFloor": "Xác suất Phổ thông phải ít nhất {min} điểm cơ bản.",
-  "topOdds": "Hai bậc cao nhất có tổng {sum} điểm cơ bản, vượt mức {max} cho SKU {sku}.",
+  "topOdds": "Legend trở lên có tổng {sum} điểm cơ bản, vượt mức {max} cho SKU {sku}.",
   "usdRange": "Giá phải từ {min} đến {max} USD.",
   "pityGuard": "Yêu cầu: hardAt ≥ {minHard}, softStart ≤ hardAt, softStepBps ≤ {maxStep}.",
   "u64": "Giá phải là chuỗi thập phân trong phạm vi số nguyên 64 bit không dấu.",

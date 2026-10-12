@@ -207,5 +207,8 @@
   "blockhashRejected": "O RPC rejeitou a transação antes da execução: blockhash não encontrado. Esta tentativa não efetuou pagamento. Tente novamente; se persistir, verifique o RPC e a rede da carteira.",
   "proofUnavailable": "Não foi possível obter a prova Merkle da ficha. Verifique o endereço DAS e as permissões de acesso. Os detalhes técnicos incluem os erros do DAS e da reconstrução pela árvore.",
   "switchboardUnavailable": "A aleatoriedade on-chain está indisponível. Não repita a compra ou aposta. Retome a operação existente após a recuperação; veja os detalhes técnicos.",
-  "invalidBubblegumAsset": "O asset id on-chain desta ficha não corresponde à folha Bubblegum. Left: {left}. Right: {right}. A carteira não foi pedida e nenhuma aposta foi enviada."
+  "invalidBubblegumAsset": "O asset id on-chain desta ficha não corresponde à folha Bubblegum. Left: {left}. Right: {right}. A carteira não foi pedida e nenhuma aposta foi enviada.",
+  "noXpTicket": "Nenhum ticket de XP sobrando hoje — tickets vêm com packs Limited e expiram à meia-noite UTC.",
+  "missingAsset": "Escolha qual tampinha deve receber o XP.",
+  "chipNotFound": "Esta tampinha não está na sua carteira (ou não está mais ativa)."
 }

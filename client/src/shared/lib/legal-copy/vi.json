@@ -1,6 +1,6 @@
 {
-  "revision": "2026-10-11.1",
-  "sha256": "c5110f2de4c2eaf087afda365fceef15d499ca9a1625f9fbc69d41588a311490",
+  "revision": "2026-10-12.1",
+  "sha256": "390179837de3b07e2ea45fcfeaddd8374abc6cb2a397639772adbbfdf835fc19",
   "docs": {
     "terms": {
       "slug": "terms",
@@ -34,7 +34,7 @@
           "h": "4. Giá, phí và những gì bị đốt",
           "p": [
             "Gói được thanh toán bằng SOL, USDC, $CG hoặc SKR, và mức giá bạn ký là mức giá bạn trả. Giá, ưu đãi và cấu hình gói được đặt trong giới hạn mà các chương trình thực thi, và báo giá hiển thị trước khi bạn ký là báo giá có hiệu lực.",
-            "Giao dịch trên chợ trừ phí giao thức — mặc định {marketFee} %, với mức trần cứng trên chuỗi là {marketCap} % — cùng khoản royalty tác giả riêng {royalty} % do người bán chịu. Khoảng {buyback} % phí giao thức dành cho mua lại và đốt; phần còn lại cùng royalty chuyển vào kho bạc. Tạo một tin đăng cũng đốt {listingBurn} $CG. Các con số hiện hành được hiển thị trước khi ký, và các mức phí mô tả ở đây chính là mức phí mà các chương trình thu.",
+            "Giao dịch trên chợ trừ phí giao thức — mặc định {marketFee} %, với mức trần cứng trên chuỗi là {marketCap} % — cùng khoản royalty tác giả riêng {royalty} % do người bán chịu. Khoảng {buyback} % phí giao thức dành cho mua lại và đốt; phần còn lại cùng royalty chuyển vào kho bạc.Tạo một tin đăng cũng đốt một khoản phí chống spam tỷ lệ thuận — 0,5 % giá bán, từ {listingBurnMin} đến {listingBurnMax} $CG, đốt toàn bộ. Các con số hiện hành được hiển thị trước khi ký, và các mức phí mô tả ở đây chính là mức phí mà các chương trình thu.",
             "Cược ở đấu trường chịu rake {arenaRake} % của quỹ cược: {arenaTreasury} % của rake vào kho bạc, {arenaPool} % tạo quỹ thưởng mùa giải, và {arenaBurn} % còn lại bị đốt. Rake chỉ áp dụng cho khoản cược; số thẻ bạn mang vào trận không bị ảnh hưởng.",
             "Gói thanh toán bằng $CG đốt {cgBurn} % giá, và gói thanh toán bằng SKR được giảm {skrDiscount} %. Việc đốt là thay đổi nguồn cung token, không phải khoản phí chúng tôi giữ lại, và diễn ra trên chuỗi trong chính giao dịch mua.",
             "Phí mạng Solana và tiền thuê mở các tài khoản của gói do bạn trả, không phải chúng tôi. Tiền thuê được giữ trong lúc gói đang xử lý sẽ được trả lại cho bạn khi các tài khoản đóng. Phí mạng không bao giờ được hoàn lại — chúng được trả cho mạng lưới, không phải cho chúng tôi."

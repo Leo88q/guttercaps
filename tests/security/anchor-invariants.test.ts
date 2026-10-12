@@ -436,7 +436,7 @@ const secB23Violations = (rust: string, econ: string, panelRaw: string, stake = 
   const guard = panel.slice(guardStart, panel.indexOf('} as const;', guardStart)).replace(/\s+/g, ' ');
   const num = (re: RegExp, hay: string) => { const m = re.exec(hay); return m ? Number(m[1]!.replace(/_/g, '')) : NaN; };
   for (const [konst, field] of [
-    ['BPS_DENOM', 'bpsDenom'], ['MAX_CHIPS_PER_PACK', 'maxChipsPerPack'], ['MAX_TOP2_BPS_STANDARD', 'maxTop2BpsStandard'],
+    ['BPS_DENOM', 'bpsDenom'], ['MAX_CHIPS_PER_PACK', 'maxChipsPerPack'], ['MAX_TOP_TIER_BPS', 'maxTopTierBps'],
     ['MAX_MARKET_FEE_BPS', 'maxMarketFeeBps'], ['MAX_SKR_DISCOUNT_BPS', 'maxSkrDiscountBps'], ['MAX_PACK_CG_PRICE_MICRO', 'maxPackCgPriceMicro'],
   ] as const) {
     const v = num(new RegExp(`pub const ${konst}: \\w+ = ([\\d_]+);`), econ);

@@ -10,7 +10,8 @@ import { useFloor } from '@/api/hooks';
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
 import { sendTx } from '@/chain/tx';
 import { resolveCompressedChip } from '@/chain/flows/compressedChip';
-import { listCompressedAssetIx, saleSplit, minPriceFor, LISTING_FEE_CG, MARKET_FEE_BPS, ROYALTY_BPS, MarketCurrency } from '@/chain/ix/market';
+import { listCompressedAssetIx, saleSplit, minPriceFor, MARKET_FEE_BPS, ROYALTY_BPS, MarketCurrency } from '@/chain/ix/market';
+import { listingFeeCgMicro } from '@guttercaps/economy';
 import { CleanZone, KV, Modal } from '@/shared/ui/primitives';
 import { CleanConfirmButton } from '@/shared/ui/buttons';
 import { fmtAmount, fmtCg, fmtUsd, fmtDecimal, parseUnits } from '@/shared/lib/format';
@@ -50,6 +51,7 @@ export function ListModal({ chip, onClose }: { chip: Chip; onClose: () => void }
   const floorUsd = floor.data?.floors?.[chip.collection!]?.[chip.rarity!] ?? null;
   const feeBps = cfg.data?.marketFeeBps ?? MARKET_FEE_BPS;
   const split = price ? saleSplit(price, feeBps) : null;
+  const listingFee = listingFeeCgMicro(Math.round(priceUsd * 100)); // 0.5 % of the ask, 2–100 $CG
 
   async function submit() {
     if (!valid || price === null) return;
@@ -65,7 +67,7 @@ export function ListModal({ chip, onClose }: { chip: Chip; onClose: () => void }
         price, currency: SOL,
       })];
       const { signature } = await sendTx(connection, wallet, ixs, { cuLimit: 400_000, spend: { currency: 2 } });
-      toast({ kind: 'money', title: { key: 'market.listed' }, body: joinText([amountText(price, 'SOL'), " · ", { key: 'market.feeBurned', params: { amount: amountText(LISTING_FEE_CG, 'CG') } }]), href: EXPLORER.tx(signature) });
+      toast({ kind: 'money', title: { key: 'market.listed' }, body: joinText([amountText(price, 'SOL'), " · ", { key: 'market.feeBurned', params: { amount: amountText(listingFee, 'CG') } }]), href: EXPLORER.tx(signature) });
       void qc.invalidateQueries({ queryKey: ['market'] });
       void qc.invalidateQueries({ queryKey: ['me'] });
       onClose();
@@ -90,7 +92,7 @@ export function ListModal({ chip, onClose }: { chip: Chip; onClose: () => void }
             <KV k={t('market.royalty', { pct: ROYALTY_BPS / 100 })} v={`− ${fmtAmount(split.royalty, 'SOL')}`} />
             <KV k={t('market.youReceive')} v={fmtAmount(split.seller, 'SOL')} total accent />
           </>}
-          <KV k={t('market.listingFee')} v={fmtCg(LISTING_FEE_CG)} />
+          <KV k={t('market.listingFee')} v={fmtCg(listingFee)} />
         </CleanZone>
         <div className="tiny muted">{t('market.frozenNote')}</div>
         <div className="tiny muted">{t('market.solOnly')}</div>

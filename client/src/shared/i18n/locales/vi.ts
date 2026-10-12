@@ -218,7 +218,7 @@ const vi: Messages = {
     params: {
       unavailable: 'Không đọc được trạng thái chuỗi: {error}', version: 'phiên bản tham số', slot: 'đọc tại slot', paused: 'đang dừng', liabilities: 'Nợ của kho (Σ các shard sổ cái)', burnedTotal: 'đã đốt tổng cộng',
       shards: '{n} shard sổ cái · {missing} chưa khởi tạo', shardsMissing: 'chạy `setup ledgers` trước sweep_vault', globals: 'Phí toàn cục', marketFee: 'Phí chợ (bps)', skrDiscount: 'Giảm giá gói bằng SKR (bps)', featured: 'Khu nổi bật', keep: 'giữ nguyên',
-      split: 'Phân bổ phát hành (bps)', splitRule: '±{delta} bps mỗi lần · lần đổi tiếp theo được phép {next}', sliceBudget: 'hôm nay', packs: 'SKU gói', packsRule: 'Tỷ lệ phải cộng thành 10000 · Common ≥ {common}% · Legend+ + Diamond ≤ {top2}% với Starter/Standard (×2 với Premium/Limited) · giá $0,50–$500',
+      split: 'Phân bổ phát hành (bps)', splitRule: '±{delta} bps mỗi lần · lần đổi tiếp theo được phép {next}', sliceBudget: 'hôm nay', packs: 'SKU gói', packsRule: 'Tỷ lệ phải cộng thành 10000 · Common ≥ {common}% · Legend trở lên không bao giờ rơi — tier 6–8 phải bằng 0 · giá $0,50–$500',
       price: 'giá ¢', note: 'Ghi chú (vào nhật ký kiểm toán)', checking: 'Đang kiểm tra…', propose: 'Kiểm tra & mã hóa', clear: 'Xóa bản nháp', nothingSent: 'Không có gì được gửi lên chuỗi từ đây.', history: 'set_params gần đây', noHistory: 'Chưa có thay đổi tham số nào được lập chỉ mục.',
     },
     kill: {
