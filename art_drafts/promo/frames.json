@@ -1,0 +1,232 @@
+{
+  "$comment": "GUTTERCAPS — vertical social frames (9:16, 1080×1920). One entry per short/reel cover. Lore anchors come from packages/economy/src/lore.ts, the palette and the chip-face rules from docs/07-art-spec.md and client theme.css. `hook` text is what the editor burns in on top of the frame (never baked into the art).",
+  "spec": {
+    "canvas": "1080x1920 (9:16)",
+    "master": "art_drafts/promo/frame-*.png",
+    "upload": "art_drafts/promo/jpg/frame-*.jpg",
+    "raw": "art_drafts/raw/promo/frame-*.png (768×1376 model output)",
+    "palette": {
+      "asphalt": "#16151A…#2A2830",
+      "magenta": "#FF2E8A",
+      "cyan": "#16E5D9",
+      "acid": "#B6FF3C",
+      "orange": "#FF7A1A",
+      "trust": "#9AD9FF",
+      "banned": "#2E8BFF (trust-blue — money UI only, never in art)"
+    },
+    "safe_zones": {
+      "top": "0–430 px darkened — hook title",
+      "middle": "430–1330 px — subject, must read in a 1-second swipe",
+      "bottom": "1330–1920 px darkened — caption/subtitle UI + the platform's own controls"
+    },
+    "rules": [
+      "No readable text, letters or numbers inside the artwork (localizing 7 languages + no drift from lore).",
+      "Every cap face mirrors the district chip art (moth / BMX / freight car / sneaker seam / boombox / raccoons / neon door / holo city).",
+      "Rim material follows the tier ladder: scratched zinc → wet zinc → steel → oil-slick → magenta enamel → crackle orange → bronze → glowing bronze → prism/holo.",
+      "No real brands, no celebrity likenesses, no coins/banknotes, no swooshes."
+    ]
+  },
+  "frames": [
+    {
+      "id": "01",
+      "file": "frame-01-night-moth",
+      "district": "01 · Night Moth",
+      "district_ru": "Ночной Мотылёк",
+      "location": "The Old Industrial Quarter",
+      "element": "shadow",
+      "lore_anchor": "The anonymous stencil painter who reappears every new moon; the Keepers photograph each piece and find a single bottle cap at its base — the first charged chip (04-5 tier-line starts at 'Quick Moth').",
+      "hook": { "ru": "On every new moon, the city wakes up to a new moth.", "en": "Every new moon, the city wakes up to a new moth." },
+      "beats": [
+        "0.0–2.5 s — rain on a dead-end street, moth stencil half-washed by a second storm, drips running down the metal",
+        "2.5–6.0 s — slow push-in: the cap in the gutter, rim bites the lamp light, the puddle mirrors the piece",
+        "6.0–9.0 s — hold on the cap face, hook text burns in: «Every drain holds a charge»"
+      ],
+      "sfx": "rain loop, distant transformer hum, one spray-can hiss on the cut",
+      "caption_ru": "Каждое новолуние город просыпается с новой бабочкой на стене. Кто-то оставляет рядом одну крышку — первую «заряженную» фишку города. Район 01 · Ночной Мотылёк.",
+      "caption_en": "Every new moon the city wakes up to a new moth — and one bottle cap left at the base. District 01 · Night Moth.",
+      "hashtags": ["#guttercaps", "#streetart", "#graffiti", "#solana", "#bottlecaps", "#dappstore", "#seeker"],
+      "prompt_ref": "prompts/01-night-moth.txt"
+    },
+    {
+      "id": "02",
+      "file": "frame-02-asphalt-devils",
+      "district": "02 · Asphalt Devils",
+      "district_ru": "Асфальтовые Дьяволы",
+      "location": "The Drained Pools",
+      "element": "wheels",
+      "lore_anchor": "A drought emptied the public pools, bored teens turned the bowls into an unlicensed skate park; the pools are gone, the caps carrying each trick's name are still the district's currency.",
+      "hook": { "ru": "They drained the pools. We kept the coping.", "en": "They drained the pools. We kept the coping." },
+      "beats": [
+        "0.0–2.0 s — rain over the empty bowl, sodium lights, the fence with torn mesh",
+        "2.0–5.5 s — the rider clears the fence in slow-motion, droplets freeze around the tyres",
+        "5.5–9.0 s — land, the debris settles, the cap rests on the wet coping with a magenta rim glow"
+      ],
+      "sfx": "freehub clicks, tyres on wet concrete, crowd whoop on the landing, then rain",
+      "caption_ru": "Когда-то тут был городской бассейн. Теперь это чаша для тех, кто прыгает через забор — и фишки, названные их трюками. Район 02 · Асфальтовые Дьяволы.",
+      "caption_en": "It used to be a public pool. Now the coping belongs to whoever clears the fence. District 02 · Asphalt Devils.",
+      "hashtags": ["#guttercaps", "#bmx", "#skate", "#poolskating", "#streetart", "#solana"],
+      "prompt_ref": "prompts/02-asphalt-devils.txt"
+    },
+    {
+      "id": "03",
+      "file": "frame-03-rail-kings",
+      "district": "03 · Rail Kings",
+      "district_ru": "Короли Рельсов",
+      "location": "The Freight Yard",
+      "element": "steel",
+      "lore_anchor": "Crews fight for a car, not a wall — a whole train carries the name into cities the crew will never visit; the sighting log lives on-chain and can't be edited after the fact.",
+      "hook": { "ru": "A piece only counts when the car leaves the city.", "en": "A piece only counts when the car leaves the city." },
+      "beats": [
+        "0.0–2.5 s — fog, empty rails converging, one floodlight halo, red signal",
+        "2.5–6.0 s — tilt down the fresh magenta throw-up on the boxcar, wet and glossy",
+        "6.0–9.0 s — the cap on the ballast, approaching train glow in the fog, hook text"
+      ],
+      "sfx": "far-off horn, rail joint clack, gravel crunch, spray hiss on the drop",
+      "caption_ru": "Здесь дерутся не за стену, а за вагон: имя уезжает в города, где тебя никогда не будет. Журнал наблюдений теперь нельзя отредактировать. Район 03 · Короли Рельсов.",
+      "caption_en": "They fight for a car, not a wall — the name rides into cities the crew will never see. District 03 · Rail Kings.",
+      "hashtags": ["#guttercaps", "#trainbombing", "#graffiti", "#freightyard", "#solana", "#streetculture"],
+      "prompt_ref": "prompts/03-rail-kings.txt"
+    },
+    {
+      "id": "04",
+      "file": "frame-04-gutter-sole",
+      "district": "04 · Gutter Soles",
+      "district_ru": "Подошвы из Ливнёвки",
+      "location": "The Overpass Market",
+      "element": "wheels",
+      "lore_anchor": "Every flood season drowns half the flea market under the overpass; divers fish waterlogged pairs out of the drain and Rusty Stitch revives them with a signature thread colour. Fakes are why provenance matters most here.",
+      "hook": { "ru": "Half the market is underwater. The other half is worth saving.", "en": "Half the market is underwater. The other half is worth saving." },
+      "beats": [
+        "0.0–2.0 s — water sheeting off the girders, flooded stalls, lamps on the expressway reflected in the water",
+        "2.0–5.5 s — the cobbler's bench: clamp, awls, the second thread pulled through the seam",
+        "5.5–9.0 s — cap on the bench, orange crackle rim, hook text over the dark top"
+      ],
+      "sfx": "pouring rain, water slap under the tyres of passing cars, thread pull, lantern hiss",
+      "caption_ru": "Каждый паводок топит половину рынка — а «Ржавый стежок» возвращает пары к жизни своей ниткой. Фейки здесь не переживают проверку. Район 04 · Подошвы из Ливнёвки.",
+      "caption_en": "Every flood drowns half the market. Rusty Stitch pulls it back with one signature thread. District 04 · Gutter Soles.",
+      "hashtags": ["#guttercaps", "#sneakerculture", "#restoration", "#streetmarket", "#solana"],
+      "prompt_ref": "prompts/04-gutter-sole.txt",
+      "status": "regen-queued — raw output had a light cap face (spec bans bright discs); the prompt now pins an asphalt-black face with an orange crackle rim."
+    },
+    {
+      "id": "05",
+      "file": "frame-05-boombox-block",
+      "district": "05 · Boombox Block",
+      "district_ru": "Бумбокс-Квартал",
+      "location": "The Block",
+      "element": "noise",
+      "lore_anchor": "Every summer the block throws a party on power borrowed from a streetlamp; chips started here as literal battle-winner tokens.",
+      "hook": { "ru": "The lamp is still paying for that party.", "en": "The lamp is still paying for that party." },
+      "beats": [
+        "0.0–2.0 s — acid-yellow lamp cuts the drizzle above the crowd, cable coils down the pole",
+        "2.0–5.5 s — the breaker hits the peak of the windmill on flattened cardboard; the cap spins under him",
+        "5.5–9.0 s — freeze, crowd silhouettes, hook text"
+      ],
+      "sfx": "kick + breakbeat, bass through a speaker grille rattle, crowd noise, chain-link clink",
+      "caption_ru": "Каждое лето квартал устраивает вечеринку на свете, украденном у фонаря. Никто не считает это преступлением — это традиция. Район 05 · Бумбокс-Квартал.",
+      "caption_en": "Every summer the block runs a party off power borrowed from a street lamp. Nobody calls that a crime — they call it tradition. District 05 · Boombox Block.",
+      "hashtags": ["#guttercaps", "#blockparty", "#breaking", "#hiphop", "#boombox", "#solana"],
+      "prompt_ref": "prompts/05-boombox-block.txt"
+    },
+    {
+      "id": "06",
+      "file": "frame-06-gutter-beasts",
+      "district": "06 · Gutter Beasts",
+      "district_ru": "Звери Ливнёвки",
+      "location": "The Sewers & Back Alleys",
+      "element": "shadow",
+      "lore_anchor": "The hidden animal kingdom under the city: a one-eyed cat running a block, a pigeon flock that votes on rooftops, raccoons hitting dumpsters with military timing — spirits of the street, never villains.",
+      "hook": { "ru": "Under the city, someone else is running the block.", "en": "Under the city, someone else runs the block." },
+      "beats": [
+        "0.0–2.5 s — steam from the open manhole, string lights, wet cobbles, cyan puddles",
+        "2.5–6.0 s — the heist plays out: bag out of the dumpster, the runner, the lookout on the lid",
+        "6.0–9.0 s — the lookout turns and looks straight at the camera, cyan eye-shine, hook text"
+      ],
+      "sfx": "dripping pipes, bin lid clang, clawed paws on wet stone, a single pigeon coo",
+      "caption_ru": "В городе всегда рассказывали про звериное королевство под ним: одноглазый кот, голубиное голосование на крышах, еноты с военной точностью. Они не злодеи — просто духи улиц. Район 06 · Звери Ливнёвки.",
+      "caption_en": "The city always told stories about the kingdom underneath it: raccoons on military timing, a cat running a block. Not villains — street spirits. District 06 · Gutter Beasts.",
+      "hashtags": ["#guttercaps", "#raccoon", "#urbanwildlife", "#rainyday", "#solana"],
+      "prompt_ref": "prompts/06-gutter-beasts.txt"
+    },
+    {
+      "id": "07",
+      "file": "frame-07-pixel-basement",
+      "district": "07 · Pixel Basement",
+      "district_ru": "Пиксельный Подвал",
+      "location": "The Basement Arcades",
+      "element": "noise",
+      "lore_anchor": "When the real arcades shut down the cabinets got rebuilt in basements nobody advertises; the games are half-broken and half-invented, and the door to a level nobody was supposed to find is the district's Epic.",
+      "hook": { "ru": "There is a level nobody was supposed to find.", "en": "There's a level nobody was supposed to find." },
+      "beats": [
+        "0.0–2.5 s — dripping tunnel, dead cabinets, one CRT still warm",
+        "2.5–6.0 s — push through to the steel door bleeding magenta light; cables and cold vapour in the gap",
+        "6.0–9.0 s — the cap on the control panel, oil-slick steel rim, hook text"
+      ],
+      "sfx": "CRT whine, coin drop, distant arcade chiptune, electrical crackle from the doorway",
+      "caption_ru": "Под городом есть подвал, о котором не пишут. Дверь приоткрыта, оттуда тянет холодом и светом — это уровень, который никто не должен был найти. Район 07 · Пиксельный Подвал.",
+      "caption_en": "Under the city there's a basement nobody advertises. The door is ajar and the light is magenta — a level nobody was supposed to find. District 07 · Pixel Basement.",
+      "hashtags": ["#guttercaps", "#arcade", "#retrogaming", "#neon", "#solana"],
+      "prompt_ref": "prompts/07-pixel-basement.txt"
+    },
+    {
+      "id": "08",
+      "file": "frame-08-city-myths",
+      "district": "10 · City Myths",
+      "district_ru": "Городские Мифы",
+      "location": "The whole city",
+      "element": "paint",
+      "lore_anchor": "The meta-collection: the folklore of the other seven districts written down — the rumours about Moth, the arguments about the Invisible Car — and its Diamond chip closes the loop back to Collection 01.",
+      "hook": { "ru": "Every legend starts as a rumour nobody wrote down.", "en": "Every legend starts as a rumour nobody wrote down." },
+      "beats": [
+        "0.0–2.5 s — storm over the skyline, lightning, wet parapet, torn paper scraps skating in the wind",
+        "2.5–6.0 s — the hooded writer at the parapet, can in hand, crows watching; the cap rises over the city with a holo rim",
+        "6.0–9.0 s — the prism rim scatters rainbow facets across the rooftops, hook text"
+      ],
+      "sfx": "wind over a rooftop, far thunder, spray hiss, paper flapping, crows",
+      "caption_ru": "Здесь записывают слухи всех семи районов: про Мотылька, про Невидимый Вагон, про то, что живёт под городом. Последняя фишка серии замыкает круг на первый район. Район 10 · Городские Мифы.",
+      "caption_en": "This is where the rumours about all seven districts get written down — and the Diamond closes the loop straight back to District 01. District 10 · City Myths.",
+      "hashtags": ["#guttercaps", "#urbanlegends", "#streetart", "#worldbuilding", "#solana"],
+      "prompt_ref": "prompts/08-city-myths.txt"
+    },
+    {
+      "id": "09",
+      "file": "frame-09-fusion-3to1",
+      "district": "game mechanic · Fusion",
+      "district_ru": "Механика · Фьюжн",
+      "location": "Fusion workbench",
+      "element": "cross-district",
+      "lore_anchor": "3 → 1 fusion, eight recipes: cross-district 'recharge' and same-district 'new story'. The chips orbiting the bench are the real district faces (moth, wheel, freight car).",
+      "hook": { "ru": "3 → 1. Nothing gets wasted.", "en": "3 → 1. Nothing gets wasted." },
+      "beats": [
+        "0.0–2.0 s — the bench, magnet wall, arcs snapping between the coils",
+        "2.0–5.5 s — three caps spiral in, the new cap forms white-hot in the ring of sparks",
+        "5.5–9.0 s — the fused cap lands, paint drips upward, hook text + «3 → 1»"
+      ],
+      "sfx": "induction coil whine, metal shriek, welding arc snaps, a satisfying clack on the landing",
+      "caption_ru": "Три фишки — одна новая история. Кросс-районный «перезаряд» или продолжение в своём районе: сгоревший металл никуда не пропадает. Механика фьюжна.",
+      "caption_en": "Three caps, one new story — cross-district recharge or a same-district sequel. The mechanic: 3 → 1 fusion.",
+      "hashtags": ["#guttercaps", "#fusion", "#gameplay", "#solana", "#trading", "#gaming"],
+      "prompt_ref": "prompts/09-fusion-3to1.txt"
+    },
+    {
+      "id": "10",
+      "file": "frame-10-cap-slam-3v3",
+      "district": "game mechanic · Cap Slam",
+      "district_ru": "Механика · Кэп Слэм",
+      "location": "Slam arena",
+      "element": "cross-district",
+      "lore_anchor": "Cap Slam: 3v3 squads, best-of-3, five district elements in a ring (paint > steel > wheels > noise > shadow), rewards paid in $CG.",
+      "hook": { "ru": "Squad of three. Best of three. Payout on-chain.", "en": "Squad of three. Best of three. Paid on-chain." },
+      "beats": [
+        "0.0–2.5 s — floodlights, containers, the crowd's phone lights, chalk lanes on wet asphalt",
+        "2.5–6.0 s — 3 vs 3 collision: shockwave ring of droplets and sparks, elemental glyphs burning in the puddles",
+        "6.0–9.0 s — the impact holds, everything freezes for half a second, hook text + «3v3»"
+      ],
+      "sfx": "crowd roar, metal impact with a deep thud, arcane crackle on the glyphs, slow-motion reverb on the freeze",
+      "caption_ru": "Отряд из трёх, до двух побед, награда в $CG. Пять стихий районов по кругу — и подписанный сид, который потом можно проверить. Режим Cap Slam.",
+      "caption_en": "A squad of three, best-of-three, paid in $CG — five district elements in a ring and a published seed you can verify later. Cap Slam.",
+      "hashtags": ["#guttercaps", "#pvp", "#esports", "#solana", "#gaming", "#playtoearn"],
+      "prompt_ref": "prompts/10-cap-slam-3v3.txt"
+    }
+  ]
+}
