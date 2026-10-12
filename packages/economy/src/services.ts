@@ -7,7 +7,9 @@
 //     capped at 3 / wallet / day; a booster only trims variance on a fusion
 //     the player was already going to do — see docs/02-economy.md §5.)
 //  2. Every service can be paid in SOL / USDC / SKR (→ 100 % treasury) or
-//     $CG (→ 100 % burned). Parity anchor: 1 US cent ≙ 1 $CG for services.
+//     $CG (→ 100 % burned). Price anchor: 1 US cent ≙ 6 $CG for services —
+//     a deliberate ~33% premium over the pack parity (≈4.5 CG/cent), so
+//     fiat/SKR is the cheaper rail and $CG spend is a premium burn sink.
 //  3. Prices are USD-denominated so they don't drift with SOL/SKR. Volatile
 //     currencies are converted at checkout via Pyth (same path as packs).
 //  4. Mirrored on-chain in programs/chip_core/src/economy.rs (ServiceKind);
@@ -40,7 +42,13 @@ export interface ServiceDef {
   blurb: string;
 }
 
-export const CG_MICRO_PER_CENT = 1_000_000;
+/**
+ * $CG price of one US cent of service (v3, 2026-10): 6 $CG per cent — a ~33%
+ * premium over the pack-parity floor (≈4.5 CG/cent). Paying the studio in
+ * SOL/USDC/SKR stays the cheapest rail; paying in $CG costs more but every
+ * coin is burned, so the premium is the price of voting with the game token.
+ */
+export const CG_MICRO_PER_CENT = 6_000_000;
 
 export const SERVICES: readonly ServiceDef[] = [
   { id: 'handle',          kind: 0, rustName: 'Handle',          priceUsdCents: 199, dailyCap: 1,  fulfilment: 'entitlement', recurring: false, name: '@handle',            blurb: 'Unique name on leaderboards, arena and your public profile URL.' },

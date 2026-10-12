@@ -169,5 +169,7 @@ export const MATCH_REWARDS = {
   minSquadPowerForRewards: 400,
 } as const;
 
-/** Wagers: escrow both stakes; rake 5%; the loser's chip is NOT lost (chips are never at risk in v1). */
-export const WAGER = { minCgMicro: 5_000_000, maxCgMicro: 5_000_000_000, rakeBps: 500 } as const; // rake split: 40% treasury / 40% burn / 20% season pool
+/** Wagers: escrow both stakes; rake 5%; the loser's chip is NOT lost (chips are never at risk in v1).
+ *  v3 (2026-10): range raised to 25–25 000 $CG — small wagers were free noise (no skin in the
+ *  game), and the old 5 000 cap kept whales out of the arena. */
+export const WAGER = { minCgMicro: 25_000_000, maxCgMicro: 25_000_000_000, rakeBps: 500 } as const; // rake split: 40% treasury / 40% burn / 20% season pool

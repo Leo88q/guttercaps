@@ -49,7 +49,12 @@ use chip_core::state::{
 
 declare_id!("5skEmmhgFYn5xjHEdrcsiQ68kUg5kvhXKhjWTWSppjfo");
 
-pub const LISTING_FEE_CG: u64 = 500_000; // 0.5 $CG (6 dp)
+/// Listing fee v3 (2026-10): proportional anti-spam — 0.5% of the ask in $CG,
+/// clamped to [2, 100] $CG, 100% burned (mirrored in packages/economy `FEES.listingFeeBps`
+/// / `listingFeeMinCgMicro` / `listingFeeMaxCgMicro`, pinned by sync-check).
+pub const LISTING_FEE_BPS: u64 = 50;
+pub const LISTING_FEE_MIN_CG: u64 = 2_000_000;
+pub const LISTING_FEE_MAX_CG: u64 = 100_000_000;
 /// Default protocol fee; the live value is `GameConfig.market_fee_bps` (≤ MAX_MARKET_FEE_BPS = 10 %).
 pub const FEE_BPS: u16 = 750;
 /// Share of the protocol fee that goes to the buyback-burn wallet; the rest → treasury.
@@ -533,8 +538,11 @@ pub struct ListCompressed<'info> {
         bump,
     )]
     pub listing: Account<'info, CompressedListing>,
-    #[account(mut)]
-    pub claim: Account<'info, CompressedMintClaim>,
+    /// CHECK: owner-checked by the constraint; the body is decoded in the
+    /// handler with `try_deserialize_compat` — live pre-`founder` claims are
+    /// one byte short of the current layout and fail Anchor's strict decode.
+    #[account(mut, owner = chip_core::ID)]
+    pub claim: UncheckedAccount<'info>,
     // sentio-ignore-next-line SW013
     /// CHECK: PDA signer recognized by chip_core for compressed claim transitions.
     #[account(seeds = [b"market_auth"], bump)]
@@ -552,7 +560,8 @@ pub fn list_compressed_handler(
     // currency this path cannot settle is told *that*, whatever price they sent.
     require_sol_claim_market(currency)?;
     require!(price >= currency.min_price(), MarketError::PriceTooLow);
-    let claim = &ctx.accounts.claim;
+    let claim =
+        CompressedMintClaim::try_deserialize_compat(&ctx.accounts.claim.try_borrow_data()?)?;
     require!(
         claim.buyer == ctx.accounts.seller.key()
             && !claim.minted
@@ -568,7 +577,7 @@ pub fn list_compressed_handler(
         Clock::get()?.unix_timestamp >= claim.lock_until,
         MarketError::ChipLocked
     );
-    let claim_key = claim.key();
+    let claim_key = ctx.accounts.claim.key();
     let market_auth_seeds: &[&[u8]] = &[b"market_auth", &[ctx.bumps.market_auth]];
     chip_core::cpi::set_compressed_claim_listed(
         CpiContext::new_with_signer(
@@ -609,8 +618,10 @@ pub struct CancelCompressed<'info> {
         bump = listing.bump,
     )]
     pub listing: Account<'info, CompressedListing>,
-    #[account(mut, address = listing.claim)]
-    pub claim: Account<'info, CompressedMintClaim>,
+    /// CHECK: bound to the listing by `address`; owner-checked by the
+    /// constraint; body decoded in the handler with `try_deserialize_compat`.
+    #[account(mut, address = listing.claim, owner = chip_core::ID)]
+    pub claim: UncheckedAccount<'info>,
     // sentio-ignore-next-line SW013
     /// CHECK: PDA signer recognized by chip_core for compressed claim transitions.
     #[account(seeds = [b"market_auth"], bump)]
@@ -625,10 +636,10 @@ pub fn cancel_compressed_handler(ctx: Context<CancelCompressed>) -> Result<()> {
         ctx.accounts.seller.key(),
         MarketError::NotSeller
     );
+    let claim =
+        CompressedMintClaim::try_deserialize_compat(&ctx.accounts.claim.try_borrow_data()?)?;
     require!(
-        ctx.accounts.claim.buyer == ctx.accounts.seller.key()
-            && ctx.accounts.claim.listed
-            && !ctx.accounts.claim.staked,
+        claim.buyer == ctx.accounts.seller.key() && claim.listed && !claim.staked,
         MarketError::CompressedClaimNotTradable
     );
     let seeds: &[&[u8]] = &[b"market_auth", &[ctx.bumps.market_auth]];
@@ -658,8 +669,10 @@ pub struct BuyCompressed<'info> {
         bump = listing.bump,
     )]
     pub listing: Account<'info, CompressedListing>,
-    #[account(mut, address = listing.claim)]
-    pub claim: Account<'info, CompressedMintClaim>,
+    /// CHECK: bound to the listing by `address`; owner-checked by the
+    /// constraint; body decoded in the handler with `try_deserialize_compat`.
+    #[account(mut, address = listing.claim, owner = chip_core::ID)]
+    pub claim: UncheckedAccount<'info>,
     /// CHECK: the seller is bound by the listing and receives the seller leg.
     #[account(mut, address = listing.seller)]
     pub seller: UncheckedAccount<'info>,
@@ -703,13 +716,15 @@ pub fn buy_compressed_handler(ctx: Context<BuyCompressed>, expected_price: u64) 
         ctx.accounts.buyer.key() != listing.seller,
         MarketError::SelfTrade
     );
+    let claim =
+        CompressedMintClaim::try_deserialize_compat(&ctx.accounts.claim.try_borrow_data()?)?;
     require!(
-        ctx.accounts.claim.buyer == listing.seller
-            && ctx.accounts.claim.listed
-            && !ctx.accounts.claim.minted
-            && !ctx.accounts.claim.consumed
-            && !ctx.accounts.claim.staked
-            && Clock::get()?.unix_timestamp < ctx.accounts.claim.expires_at,
+        claim.buyer == listing.seller
+            && claim.listed
+            && !claim.minted
+            && !claim.consumed
+            && !claim.staked
+            && Clock::get()?.unix_timestamp < claim.expires_at,
         MarketError::CompressedClaimNotTradable
     );
     let (seller_amount, buyback_amount, treasury_fee, royalty) =
@@ -831,8 +846,11 @@ pub struct ListCompressedAsset<'info> {
     pub chip: Account<'info, CompressedChipState>,
     #[account(seeds = [b"collection", &[chip.collection_idx]], bump = collection.bump, seeds::program = chip_core::ID)]
     pub collection: Account<'info, CollectionMeta>,
-    #[account(mut, address = chip.claim)]
-    pub claim: Account<'info, CompressedMintClaim>,
+    /// CHECK: bound to the registered projection by `address`; owner-checked
+    /// by the constraint; body decoded in the handler with
+    /// `try_deserialize_compat` — pre-`founder` claims are one byte short.
+    #[account(mut, address = chip.claim, owner = chip_core::ID)]
+    pub claim: UncheckedAccount<'info>,
     // sentio-ignore-next-line SW013
     /// CHECK: PDA signer recognized by chip_core for the claim transition.
     #[account(seeds = [b"market_auth"], bump)]
@@ -849,20 +867,22 @@ pub fn list_compressed_asset_handler(
     // SEC-B28: same rule as `list_compressed` — the V2 asset path is settled by lamport transfers too.
     require_sol_claim_market(currency)?;
     require!(price >= currency.min_price(), MarketError::PriceTooLow);
+    let claim =
+        CompressedMintClaim::try_deserialize_compat(&ctx.accounts.claim.try_borrow_data()?)?;
     require!(
-        ctx.accounts.claim.buyer == ctx.accounts.seller.key()
-            && ctx.accounts.claim.minted
-            && ctx.accounts.claim.registered
-            && !ctx.accounts.claim.consumed
-            && !ctx.accounts.claim.listed
-            && !ctx.accounts.claim.staked,
+        claim.buyer == ctx.accounts.seller.key()
+            && claim.minted
+            && claim.registered
+            && !claim.consumed
+            && !claim.listed
+            && !claim.staked,
         MarketError::CompressedClaimNotTradable
     );
     // Soulbound / fusion-locked chips cannot be listed (mirrors the Core
     // `F_SOULBOUND` gate; the claim lock is the authority, the chip copy is
     // checked too so a stale registration cannot bypass it).
     require!(
-        Clock::get()?.unix_timestamp >= ctx.accounts.claim.lock_until
+        Clock::get()?.unix_timestamp >= claim.lock_until
             && Clock::get()?.unix_timestamp >= ctx.accounts.chip.lock_until,
         MarketError::ChipLocked
     );
@@ -872,8 +892,8 @@ pub fn list_compressed_asset_handler(
         MarketError::CompressedClaimNotTradable
     );
     require!(
-        ctx.accounts.claim.collection_idx == ctx.accounts.chip.collection_idx
-            && ctx.accounts.claim.collection_idx == ctx.accounts.collection.idx,
+        claim.collection_idx == ctx.accounts.chip.collection_idx
+            && claim.collection_idx == ctx.accounts.collection.idx,
         MarketError::CompressedClaimNotTradable
     );
     let seeds: &[&[u8]] = &[b"market_auth", &[ctx.bumps.market_auth]];
@@ -927,8 +947,10 @@ pub struct CancelCompressedAsset<'info> {
         bump = listing.bump,
     )]
     pub listing: Account<'info, CompressedAssetListing>,
-    #[account(mut, address = listing.claim)]
-    pub claim: Account<'info, CompressedMintClaim>,
+    /// CHECK: bound to the listing by `address`; owner-checked by the
+    /// constraint; body decoded in the handler with `try_deserialize_compat`.
+    #[account(mut, address = listing.claim, owner = chip_core::ID)]
+    pub claim: UncheckedAccount<'info>,
     // sentio-ignore-next-line SW013
     /// CHECK: PDA signer recognized by chip_core for the claim transition.
     #[account(seeds = [b"market_auth"], bump)]
@@ -943,8 +965,10 @@ pub fn cancel_compressed_asset_handler(ctx: Context<CancelCompressedAsset>) -> R
         ctx.accounts.seller.key(),
         MarketError::NotSeller
     );
+    let claim =
+        CompressedMintClaim::try_deserialize_compat(&ctx.accounts.claim.try_borrow_data()?)?;
     require!(
-        ctx.accounts.claim.buyer == ctx.accounts.seller.key() && ctx.accounts.claim.listed,
+        claim.buyer == ctx.accounts.seller.key() && claim.listed,
         MarketError::CompressedClaimNotTradable
     );
     let seeds: &[&[u8]] = &[b"market_auth", &[ctx.bumps.market_auth]];
@@ -984,8 +1008,10 @@ pub struct BuyCompressedAsset<'info> {
         bump = listing.bump,
     )]
     pub listing: Box<Account<'info, CompressedAssetListing>>,
-    #[account(mut, address = listing.claim)]
-    pub claim: Box<Account<'info, CompressedMintClaim>>,
+    /// CHECK: bound to the listing by `address`; owner-checked by the
+    /// constraint; body decoded in the handler with `try_deserialize_compat`.
+    #[account(mut, address = listing.claim, owner = chip_core::ID)]
+    pub claim: UncheckedAccount<'info>,
     #[account(
         mut,
         seeds = [b"compressed_chip", listing.asset.as_ref()],
@@ -1060,13 +1086,15 @@ pub fn buy_compressed_asset_handler<'info>(
         ctx.accounts.buyer.key() != listing.seller,
         MarketError::SelfTrade
     );
+    let claim =
+        CompressedMintClaim::try_deserialize_compat(&ctx.accounts.claim.try_borrow_data()?)?;
     require!(
-        ctx.accounts.claim.buyer == listing.seller
-            && ctx.accounts.claim.minted
-            && ctx.accounts.claim.registered
-            && ctx.accounts.claim.listed
-            && !ctx.accounts.claim.consumed
-            && !ctx.accounts.claim.staked,
+        claim.buyer == listing.seller
+            && claim.minted
+            && claim.registered
+            && claim.listed
+            && !claim.consumed
+            && !claim.staked,
         MarketError::CompressedClaimNotTradable
     );
     require!(

@@ -29,19 +29,20 @@ test('pity never breaks the 10 000 sum and never drains Common below 5%', () => 
 test('rollRarity maps boundaries correctly', () => {
   const o = PACKS.standard.oddsBps;
   assert.equal(rollRarity(0, o), 0);
-  assert.equal(rollRarity(4499, o), 0);
-  assert.equal(rollRarity(4500, o), 1);
-  assert.equal(rollRarity(9999, o), 8);
+  assert.equal(rollRarity(4199, o), 0);
+  assert.equal(rollRarity(4200, o), 1);
+  assert.equal(rollRarity(9999, o), 5); // top tiers carry zero mass — Epic+ is the ceiling
 });
 
 test('soft pity shifts exact bps from Common into ≥tier (hand-computed from economy.rs)', () => {
-  // standard: tier 6, softStart 30, step 25. counter 30 → 1 step, extra 25 over top mass 70:
-  // +17/+6/+0, remainder 2 back to Common.
-  assert.deepEqual(effectiveOdds(PACKS.standard, 30), [4477, 2500, 1500, 800, 450, 180, 67, 24, 2]);
-  // counter 59 (last pack before hard pity) → 30 steps, extra 750: +535/+192/+21, remainder 2.
-  assert.deepEqual(effectiveOdds(PACKS.standard, 59), [3752, 2500, 1500, 800, 450, 180, 585, 210, 23]);
+  // standard v3: tier 5 (Epic+), softStart 30, step 25. Legend+ never drops, so the
+  // whole extra mass lands on tier 5 (top mass 300 → single bucket, no remainder).
+  // counter 30 → 1 step, extra 25 → Epic+ 325.
+  assert.deepEqual(effectiveOdds(PACKS.standard, 30), [4175, 2400, 1600, 900, 600, 325, 0, 0, 0]);
+  // counter 59 (last pack before hard pity) → 30 steps, extra 750 → Epic+ 1050.
+  assert.deepEqual(effectiveOdds(PACKS.standard, 59), [3450, 2400, 1600, 900, 600, 1050, 0, 0, 0]);
   // the Common drain is capped at 5 % (extra ≤ odds[0] − 500), whatever the counter.
-  assert.deepEqual(effectiveOdds(PACKS.standard, 200), [501, 2500, 1500, 800, 450, 180, 2907, 1046, 116]);
+  assert.deepEqual(effectiveOdds(PACKS.standard, 200), [500, 2400, 1600, 900, 600, 4000, 0, 0, 0]);
   // below softStart the table is untouched; starter has no pity at all.
   assert.deepEqual(effectiveOdds(PACKS.standard, 29), [...PACKS.standard.oddsBps]);
   assert.deepEqual(effectiveOdds(PACKS.starter, 1000), [...PACKS.starter.oddsBps]);
@@ -71,10 +72,10 @@ test('expandRandomness is deterministic, honours floor and hard pity', () => {
   const a = expandRandomness(vrf, PACKS.standard, 0, 10);
   const b = expandRandomness(vrf, PACKS.standard, 0, 10);
   assert.deepEqual(a, b);
-  assert.equal(a.length, 4);
-  assert.equal(a[3].rarity, PACKS.standard.floor, 'last slot is lifted to the floor');
+  assert.equal(a.length, 5);
+  assert.equal(a[4].rarity, PACKS.standard.floor, 'last slot is lifted to the floor');
   const pity = expandRandomness(vrf, PACKS.standard, 59, 10);
-  assert.equal(pity[3].rarity, 6, 'hard pity forces Legend on the last slot');
+  assert.equal(pity[4].rarity, 5, 'hard pity forces Epic+ on the last slot');
 });
 
 test('fusion: 8 recipes chain 0→8, always 3 materials, alternating collection rule', () => {
@@ -85,7 +86,7 @@ test('fusion: 8 recipes chain 0→8, always 3 materials, alternating collection 
     assert.ok(r.refundOnFail < r.materials);
   });
   assert.equal(expectedBurn(FUSION_RECIPES[0]), 3);
-  assert.equal(+expectedBurn(FUSION_RECIPES[7]).toFixed(2), 5); // 50% with 1 refund
+  assert.equal(+expectedBurn(FUSION_RECIPES[7]).toFixed(2), 6); // 40% with 1 refund — the god tax
 });
 
 test('emission guard is a ceiling, floors at 2% of the schedule', () => {

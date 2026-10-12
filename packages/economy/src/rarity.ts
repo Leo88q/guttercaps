@@ -87,14 +87,27 @@ export const levelMult = (level: number): number => 1 + 0.025 * Math.max(0, leve
  */
 export const CHIP_XP = {
   win: 10,
-  loss: 3,
-  /** Unspent XP one cap may earn from ranked / wager play in one UTC day. 8 wins = the $CG match cap. */
-  dailyCap: 80,
+  /** Ranked loss. Negative: losses now shave XP and can demote a cap (see `applyChipXpDelta`). */
+  loss: -6,
+  /** Unspent XP one cap may earn from ranked / wager play in one UTC day (losses are uncapped). 20 wins. */
+  dailyCap: 200,
+  /**
+   * Level checkpoints ("saved stars"): a loss can never demote a cap below the
+   * nearest multiple of this below its current level (floor: level 1). A cap that
+   * reaches a checkpoint never loses it — e.g. Legend+ max 40 IS a checkpoint, so
+   * a fusion-ready Legend+ is safe from any losing streak.
+   */
+  checkpointEvery: 10,
   /** XP to go from `level` → `level + 1`. */
   cost(level: number): number {
     return 10 * Math.max(1, level);
   },
 } as const;
+
+/** Nearest checkpoint at or below `level` — the floor a loss may demote to (never under 1). */
+export function checkpointLevel(level: number): number {
+  return Math.max(1, Math.floor(Math.max(1, level) / CHIP_XP.checkpointEvery) * CHIP_XP.checkpointEvery);
+}
 
 /** Total XP needed for the next level, or `null` at the rarity cap. */
 export function xpToNext(level: number, maxLevel: number): number | null {
@@ -115,4 +128,42 @@ export function applyChipXp(level: number, xp: number, maxLevel: number): { leve
     gained += 1;
   }
   return { level: lvl, xp: pool, gained };
+}
+
+/**
+ * Apply a signed XP delta from one match result (win +10 / loss −6).
+ * Losses drain the unspent pool first, then demote level by level — but never
+ * below `checkpointLevel(startLevel)`: the XP that would fall under a saved
+ * checkpoint simply evaporates (absorbed loss, no debt — the design decision
+ * keeps checkpoints a pure safety net and gives losing-on-purpose zero upside:
+ * the real penalty for slumping is the Glicko rating, not XP).
+ */
+export function applyChipXpDelta(level: number, xp: number, delta: number, maxLevel: number): { level: number; xp: number } {
+  const lvl0 = Math.max(1, Math.floor(level) || 1);
+  const pool0 = Math.max(0, Math.floor(xp) || 0);
+  if (delta >= 0) return applyChipXp(lvl0, pool0 + delta, maxLevel);
+  const floor = checkpointLevel(lvl0);
+  let lvl = lvl0;
+  let pool = pool0 + delta; // delta < 0
+  while (pool < 0 && lvl > floor) {
+    lvl -= 1; // undo the level-up cost of the level we are leaving
+    pool += CHIP_XP.cost(lvl);
+  }
+  if (pool < 0) pool = 0; // absorbed at the checkpoint
+  return { level: lvl, xp: pool };
+}
+
+/**
+ * Fusion XP conservation: the three materials' lifetime XP carries into the
+ * result — the grind you already did is not thrown away. The result is capped
+ * at its own rarity cap; whatever does not fit is burned (no XP refunds, no
+ * XP trading). Materials' levels are validated by `fusionGateOk` (max-level
+ * requirement from Legend upward), so by the time this runs the carry is
+ * simply "start the result at level 1 with `totalXp` in the pool".
+ */
+export function carryFusionXp(materialsXp: readonly number[], maxLevel: number): { level: number; xp: number } {
+  const total = materialsXp.reduce((s, x) => s + Math.max(0, Math.floor(x) || 0), 0);
+  const r = applyChipXp(1, total, maxLevel);
+  // Any remainder sits unspent at the rarity cap — it buys nothing (no levels left), never transfers out.
+  return { level: r.level, xp: r.xp };
 }

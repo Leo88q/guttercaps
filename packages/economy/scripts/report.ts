@@ -28,17 +28,20 @@ for (const pack of Object.values(PACKS)) {
   const ratio = evUsd / (pack.priceUsdCents / 100);
   console.log(`  ${pack.name}: ${pack.chips} chips, $${(pack.priceUsdCents / 100).toFixed(2)}  EV=${ev.toFixed(2)} Common-eq  (≈$${evUsd.toFixed(2)} → ${pct(ratio, 0)} of price)`);
   console.log(`     P(≥Rare)=${pct(probabilityAtLeast(pack, 2))}  P(≥Epic)=${pct(probabilityAtLeast(pack, 4))}  P(≥Legend)=${pct(probabilityAtLeast(pack, 6), 3)}  P(Diamond)=${pct(probabilityAtLeast(pack, 8), 3)}`);
-  if (pack.id !== 'starter') check(ratio >= 0.55 && ratio <= 0.75, `${pack.id}: EV/price in [55%,75%] (got ${pct(ratio, 0)})`);
-  else check(ratio > 1, `${pack.id}: starter is intentionally +EV (acquisition cost) (got ${pct(ratio, 0)})`);
+  if (pack.id === 'starter') check(ratio > 1, `${pack.id}: starter is intentionally +EV (acquisition cost) (got ${pct(ratio, 0)})`);
+  else if (pack.id === 'limited') check(ratio >= 0.28 && ratio <= 0.40, `${pack.id}: documented exception — sells featured access + purchase perks (PACK_PERKS), not EV; band [28%,40%] (got ${pct(ratio, 0)})`);
+  else check(ratio >= 0.55 && ratio <= 0.75, `${pack.id}: EV/price in [55%,75%] (got ${pct(ratio, 0)})`);
+  if (pack.id !== 'starter') check(probabilityAtLeast(pack, 6 as never) === 0, `${pack.id}: no Legend/Legend+/Diamond from packs — fusion only`);
 }
 console.log('\n  Odds table (bps per slot):');
 console.table(Object.fromEntries(Object.values(PACKS).map((p) => [p.id, Object.fromEntries(p.oddsBps.map((b, i) => [RARITY_PROFILES[i].name, `${(b / 100).toFixed(2)}%`]))])));
 
-console.log('\n  Pity curve (standard pack, P(≥Legend) per pack by counter):');
 const std = PACKS.standard;
+const pityTier = std.pity!.tier;
+console.log(`\n  Pity curve (standard pack, P(≥tier ${pityTier} = ${RARITY_PROFILES[pityTier].name}) per pack by counter):`);
 for (const c of [0, 29, 30, 40, 50, 59]) {
   const o = effectiveOdds(std, c);
-  const pSlot = o.slice(6).reduce((a, b) => a + b, 0) / 10_000;
+  const pSlot = o.slice(pityTier).reduce((a, b) => a + b, 0) / 10_000;
   console.log(`     counter=${c.toString().padStart(2)} → per-slot ${pct(pSlot, 2)}  per-pack ${pct(1 - Math.pow(1 - pSlot, std.chips), 2)}${c + 1 >= std.pity!.hardAt ? '  (HARD PITY → 100%)' : ''}`);
   check(o.reduce((a, b) => a + b, 0) === 10_000, `pity odds still sum to 10 000 at counter=${c}`);
 }
@@ -53,9 +56,17 @@ console.table(FUSION_RECIPES.map((r) => ({
   feeCg: r.feeCgMicro / 1e6, 'E[burn]': +expectedBurn(r).toFixed(2), 'E[burn] boosted': +expectedBurn(r, true).toFixed(2),
   lockH: r.resultLockSeconds / 3600,
 })));
-console.log('  Per-step parity: value(N+1)/value(N) vs E[burn] — must sit in [0.8, 1.0]');
+console.log('  Per-step parity: value(N+1)/value(N) vs E[burn] — [0.8, 1.0]; the god step is a documented exception');
 console.table(fusionParityReport());
-for (const row of fusionParityReport()) check(row.parity >= 0.8 && row.parity <= 1.0, `${row.step}: parity in [0.8,1.0] (got ${row.parity})`);
+for (const row of fusionParityReport()) {
+  // Legend+ → Diamond is deliberately WORSE than parity (the "god tax": 40% success +
+  // 200 000 $CG fee + max-level materials). Crafting a Diamond must never be the cheap
+  // route — band [0.7, 0.85] pins it as a tax, not a typo.
+  const top = row.step.startsWith('Legend+');
+  const lo = top ? 0.7 : 0.8;
+  const hi = top ? 0.85 : 1.0;
+  check(row.parity >= lo && row.parity <= hi, `${row.step}: parity in [${lo},${hi}] (got ${row.parity})`);
+}
 console.log(`  Commons needed for one Diamond via pure fusion: ${commonsPerTier(8).toFixed(0)}  (boosted every step: ${commonsPerTier(8, true).toFixed(0)})`);
 console.log(`  → at the implied floor that is ≈ $${(commonsPerTier(8) * commonFloorUsd).toFixed(0)} of Commons, or ${(commonsPerTier(8) / packExpectedValueMult(PACKS.standard)).toFixed(0)} Standard packs' worth of EV.`);
 

@@ -56,13 +56,15 @@ export const playBucketTokens = () => (CG_HARD_CAP * 55) / 100;
 export const yearlyEmission = (year: number) => (playBucketTokens() * (YEARLY_EMISSION_PCT_OF_PLAY[year] ?? 0)) / 100;
 export const dailyEmission = (year: number) => yearlyEmission(year) / 365;
 
-/** How the daily emission is split between faucets (sum = 100). Admin-tunable within ±10pp without redeploy. */
+/** How the daily emission is split between faucets (sum = 100). Admin-tunable within ±10pp without redeploy.
+ *  v3 (2026-10): passive income halved, active play doubled — a chip must EARN its keep
+ *  in the arena; staking is a bonus, not a salary. */
 export const EMISSION_SPLIT = {
-  chipStaking: 20,
-  tokenStaking: 5,
-  quests: 22,
-  pvpSeason: 33,     // ~60% per-match rewards, ~40% season ladder payouts
-  eventsReserve: 20, // seasonal events, referrals, jackpots, tournaments (absorbs the 5 pp cut from token staking)
+  chipStaking: 15,
+  tokenStaking: 2,
+  quests: 25,
+  pvpSeason: 38,     // ~60% per-match rewards, ~40% season ladder payouts
+  eventsReserve: 20, // seasonal events, referrals, jackpots, tournaments
 } as const;
 
 // -----------------------------------------------------------------------------
@@ -77,7 +79,7 @@ export const SINKS = [
   { source: 'PvP wager rake (5%)',      burnPct: 40,  treasuryPct: 40, note: 'Remaining 20% tops up the season prize pool' },
   { source: 'Early-unstake penalty',    burnPct: 100, treasuryPct: 0,  note: '5-15% of principal' },
   { source: 'Cosmetics / handles in $CG', burnPct: 100, treasuryPct: 0, note: 'Vanity sink — the same items are also sold for SOL/USDC/SKR (→ treasury)' },
-  { source: 'Listing fee (0.5 $CG)',    burnPct: 100, treasuryPct: 0,  note: 'Anti-spam for marketplace listings' },
+  { source: 'Listing fee (0.5% of ask, 2–100 $CG)', burnPct: 100, treasuryPct: 0, note: 'Proportional anti-spam for marketplace listings' },
 ] as const;
 
 /**
@@ -100,10 +102,23 @@ export const FEES = {
   pvpRakeBps: 500,             // 5% of the pot
   pvpRakeTreasuryShareBps: 4_000, // 40% of rake → treasury
   pvpRakePoolShareBps: 2_000,     // 20% of rake → season prize pool (rest burned)
-  listingFeeCgMicro: 500_000,  // 0.5 $CG
+  // Listing fee (v3): proportional anti-spam — 0.5% of the ask, clamped to
+  // [2, 100] $CG, 100% burned. A flat fee let whales list 100k-$CG gods for
+  // pennies; a proportional fee makes wash-listing real money.
+  listingFeeBps: 50,
+  listingFeeMinCgMicro: 2_000_000,
+  listingFeeMaxCgMicro: 100_000_000,
   cgPackBurnBps: 7500,         // 75% of a $CG pack price is burned, 25% → treasury
   skrPackDiscountBps: 500,     // 5% off packs paid in SKR (Seeker ecosystem promo; live-tunable 0–15%)
 } as const;
+
+/** Marketplace listing fee for an ask of `priceCgMicro` — 0.5%, clamped to [2, 100] $CG, 100% burn. */
+export function listingFeeCgMicro(priceCgMicro: bigint | number): bigint {
+  const fee = (BigInt(priceCgMicro) * BigInt(FEES.listingFeeBps)) / 10_000n;
+  if (fee < BigInt(FEES.listingFeeMinCgMicro)) return BigInt(FEES.listingFeeMinCgMicro);
+  if (fee > BigInt(FEES.listingFeeMaxCgMicro)) return BigInt(FEES.listingFeeMaxCgMicro);
+  return fee;
+}
 
 /**
  * Payment rails. Codes are shared by every program (chip_core, market) and the API.
@@ -158,7 +173,7 @@ export const BASELINE_ASSUMPTIONS: FlowAssumptions = {
   activeSpendShare: 0.6,
   stakerSpendShare: 0.2,
   fusionsPerDauPerDay: 0.1,
-  avgFusionFeeCg: 10,
+  avgFusionFeeCg: 30, // v3 fee ladder; the mix stays heavily Common→Common+ (25 $CG)
   pvpMatchesPerDauPerDay: 2,
   wageredShare: 0.3,
   avgWagerCg: 20,

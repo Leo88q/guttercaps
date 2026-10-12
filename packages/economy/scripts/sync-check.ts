@@ -9,7 +9,7 @@ import { RARITY_PROFILES } from '../src/rarity.ts';
 import { FUSION_RECIPES, BOOSTER } from '../src/fusion.ts';
 import { LOCK_TIERS, STAKE_CLAIM_CAPS, fullSetBonusMult } from '../src/staking.ts';
 import { FEES, SKR, YEARLY_EMISSION_PCT_OF_PLAY, EMISSION_SPLIT, EMISSION_GUARD, CG_HARD_CAP } from '../src/tokenomics.ts';
-import { SERVICES, SERVICES_DAILY_CAP_RUST } from '../src/services.ts';
+import { SERVICES, SERVICES_DAILY_CAP_RUST, CG_MICRO_PER_CENT } from '../src/services.ts';
 import { MATCHMAKING, MATCH_REWARDS, WAGER } from '../src/pvp.ts';
 import { REWARD_ROOT_KINDS, SKR_ROOT_KIND_BASE, DEFAULT_MAX_SKR_ROOT_BUDGET_MICRO, ITEM_ROOT_KIND_BASE, ITEM_REWARDS, CHIP_ROOT_KIND_BASE, CHIP_VOUCHER_REWARDS } from '../src/skrRewards.ts';
 import { QUEST_CHIP_TEMPLATES, DAILY_QUESTS, WEEKLY_QUESTS, PERMANENT_QUESTS, GUTTER_POT } from '../src/faucets.ts';
@@ -235,6 +235,7 @@ check('skr pack discount', Number(line(econ, /DEFAULT_SKR_DISCOUNT_BPS: u16 = ([
 check('skr feed id', line(rs('programs/chip_core/src/instructions/packs.rs'), /SKR_USD_FEED_HEX: &str = "([0-9a-f]+)"/), SKR.pythFeedIdHex);
 check('rake treasury share', Number(line(arena, /RAKE_TREASURY_BPS: u64 = ([\d_]+)/).replace(/_/g, '')), FEES.pvpRakeTreasuryShareBps);
 check('rake pool share', Number(line(arena, /RAKE_POOL_BPS: u64 = ([\d_]+)/).replace(/_/g, '')), FEES.pvpRakePoolShareBps);
+check('cg micro per cent (rust)', int(line(econ, /CG_MICRO_PER_CENT: u64 = ([\d_]+)/)), CG_MICRO_PER_CENT);
 // paid services: every ServiceKind price on-chain must equal the TS catalogue
 const svcRs = line(econ, /pub fn price_usd_cents\(self\) -> u64 \{\s*match self \{([\s\S]*?)\}\s*\}/);
 const svcPrices = Object.fromEntries(Array.from(svcRs.matchAll(/Self::(\w+) => (\d+)/g)).map((m) => [m[1], Number(m[2])]));
@@ -242,7 +243,9 @@ check('service catalogue', svcPrices, Object.fromEntries(SERVICES.map((x) => [x.
 const capRs = line(econ, /pub fn daily_cap\(self\) -> u8 \{ match self \{([^}]+)\}/);
 check('service daily caps', capRs.replace(/\s+/g, ' ').trim().replace(/,+$/, ''), SERVICES_DAILY_CAP_RUST);
 check('royalty bps', Number(line(market, /ROYALTY_BPS: u16 = (\d+)/)), FEES.creatorRoyaltyBps);
-check('listing fee', Number(line(market, /LISTING_FEE_CG: u64 = ([\d_]+)/).replace(/_/g, '')), FEES.listingFeeCgMicro);
+check('listing fee bps', Number(line(market, /LISTING_FEE_BPS: u64 = ([\d_]+)/).replace(/_/g, '')), FEES.listingFeeBps);
+check('listing fee min', Number(line(market, /LISTING_FEE_MIN_CG: u64 = ([\d_]+)/).replace(/_/g, '')), FEES.listingFeeMinCgMicro);
+check('listing fee max', Number(line(market, /LISTING_FEE_MAX_CG: u64 = ([\d_]+)/).replace(/_/g, '')), FEES.listingFeeMaxCgMicro);
 check('pvp rake', Number(line(arena, /RAKE_BPS: u64 = (\d+)/)), FEES.pvpRakeBps);
 check('wager min', int(line(arena, /MIN_WAGER: u64 = ([\d_]+) \* MICRO/)) * 1e6, WAGER.minCgMicro);
 check('wager max', int(line(arena, /MAX_WAGER: u64 = ([\d_]+) \* MICRO/)) * 1e6, WAGER.maxCgMicro);
