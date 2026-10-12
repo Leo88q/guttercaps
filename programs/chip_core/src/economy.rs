@@ -670,20 +670,23 @@ mod tests {
             );
             assert!(o[0] >= 500);
         }
-        // byte-identical to packages/economy effectiveOdds: counter 40 → per-slot ≥Legend = 343 bps
+        // byte-identical to packages/economy effectiveOdds: standard v3 pity_tier 5 (Epic+),
+        // softStart 30, step 25. All extra mass shifts into tier 5 (top-3 tiers are 0).
+        // counter 40 → 11 steps, extra 275 → Epic+ = 300 + 275 = 575 bps.
         let o = effective_odds(std, 40);
-        assert_eq!(o, [4227, 2500, 1500, 800, 450, 180, 246, 88, 9]);
+        assert_eq!(o, [3925, 2400, 1600, 900, 600, 575, 0, 0, 0]);
+        // counter 59 (last pack before hard pity) → 30 steps, extra 750 → Epic+ = 1050 bps.
         let o = effective_odds(std, 59);
-        assert_eq!(o[6] as u32 + o[7] as u32 + o[8] as u32, 818);
+        assert_eq!(o, [3450, 2400, 1600, 900, 600, 1050, 0, 0, 0]);
     }
 
     #[test]
     fn roll_boundaries() {
         let o = DEFAULT_PACKS[1].odds_bps;
         assert_eq!(roll_rarity(0, &o), Rarity::Common);
-        assert_eq!(roll_rarity(4499, &o), Rarity::Common);
-        assert_eq!(roll_rarity(4500, &o), Rarity::CommonPlus);
-        assert_eq!(roll_rarity(9999, &o), Rarity::Diamond);
+        assert_eq!(roll_rarity(4199, &o), Rarity::Common);
+        assert_eq!(roll_rarity(4200, &o), Rarity::CommonPlus);
+        assert_eq!(roll_rarity(9999, &o), Rarity::EpicPlus);
     }
 
     #[test]
@@ -691,12 +694,11 @@ mod tests {
         let bytes = [0u8; 32];
         let pool = [0u8, 1, 2];
         let r = expand(&bytes, &DEFAULT_PACKS[1], 0, &pool);
-        // Standard holds 4 chips since 2026-09-29: the floor lifts the last (4th) slot
-        assert_eq!(r[2].unwrap().rarity, Rarity::Common);
-        assert_eq!(r[3].unwrap().rarity, Rarity::CommonPlus);
-        assert!(r[4].is_none());
+        // Standard holds 5 chips (economy v3): floor lifts the last (5th) slot to CommonPlus
+        assert_eq!(r[3].unwrap().rarity, Rarity::Common);
+        assert_eq!(r[4].unwrap().rarity, Rarity::CommonPlus);
         let r = expand(&bytes, &DEFAULT_PACKS[1], 59, &pool);
-        assert_eq!(r[3].unwrap().rarity, Rarity::Legend);
+        assert_eq!(r[4].unwrap().rarity, Rarity::EpicPlus);
     }
 
     #[test]

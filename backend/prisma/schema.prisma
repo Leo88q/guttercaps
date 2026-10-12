@@ -248,6 +248,17 @@ model Voucher {
   @@map("vouchers")
 }
 
+model PackPerk {
+  wallet          String
+  day             Int
+  boostersGranted Int    @default(0) @map("boosters_granted")
+  ticketsGranted  Int    @default(0) @map("tickets_granted")
+  ticketsUsed     Int    @default(0) @map("tickets_used")
+
+  @@id([wallet, day])
+  @@map("pack_perks")
+}
+
 model PackOpen {
   signature   String   @id
   buyer       String
