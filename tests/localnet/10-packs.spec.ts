@@ -186,7 +186,7 @@ suite('T-L-C packs', () => {
     const { ix, rolled } = await openCompressedPackInstruction(env, buyer.publicKey, b.nonce, 0, value, buyer.publicKey);
     const tx = await env.chain.send([revealIx({ kind: RNG_KIND.PACK, payer: buyer.publicKey, randomness: b.randomness, value }), ix], { signers: [buyer], label: 'reveal+open_compressed' });
     const ev = findEvent(tx.logs, 'CompressedClaimsCreated', readCompressedClaimsCreated)!;
-    expect(ev.count).toBe(4);
+    expect(ev.count).toBe(PACKS.standard.chips);
     expect(rolled.map((r) => r.collectionIdx)).toEqual(expect.any(Array));
     expect((await loadPity(env.chain, buyer.publicKey))!.counters[SKU.STANDARD]).toBe(pityBefore + (rolled.some((r) => r.rarity >= 6) ? 0 : 1));
     for (let i = 0; i < ev.count; i++) {
@@ -277,7 +277,7 @@ suite('T-L-C packs', () => {
     // (b) at open: a legit purchase, but the pending account is pinned to ITS randomness — a forged revealed account elsewhere is rejected by the pin
     const b = await buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.USDC });
     const forged = await forgeRandomness(env.chain, { owner: Keypair.generate().publicKey, kind: RNG_KIND.PACK, seedSlot: (await loadPending(env.chain, b.pending))!.commitSlot, revealSlot: await env.chain.slot(), value: valueOf('C10') });
-    const { ix } = await openCompressedPackInstruction(env, buyer.publicKey, b.nonce, 0, valueOf('C10'), buyer.publicKey, { collectionOverride: [0, 0, 0, 0] });
+    const { ix } = await openCompressedPackInstruction(env, buyer.publicKey, b.nonce, 0, valueOf('C10'), buyer.publicKey, { collectionOverride: Array.from({ length: PACKS.standard.chips }, () => 0) });
     ix.keys[3] = { ...ix.keys[3], pubkey: forged };
     await expectFail(env.chain.send([ix], { signers: [buyer] }), Err.chip('RandomnessMismatch'), 'forged at open');
     // (c) even the REAL pinned address, if its owner were swapped, fails the owner check
@@ -399,7 +399,7 @@ suite('T-L-C packs', () => {
     const wrong = rolled.map((r) => (r.collectionIdx + 1) % env.config.collectionsCreated);
     await expectFail(openCompressedPack(env, buyer.publicKey, b.nonce, 0, value, env.admin, { collectionOverride: wrong }), Err.chip('InvalidCollection'), 'shifted collections');
     const short = openCompressedPackIx({ payer: env.admin.publicKey, buyer: buyer.publicKey, nonce: b.nonce, packNo: 0, chips: 2, randomness: b.randomness, collectionIdx: rolled.slice(0, 2).map((r) => r.collectionIdx) });
-    await expectFail(env.chain.send([short], { signers: [env.admin] }), Err.chip('InvalidQuantity'), '2 of 3 claims');
+    await expectFail(env.chain.send([short], { signers: [env.admin] }), Err.chip('InvalidQuantity'), 'fewer claims than the pack rolled');
     await openCompressedPack(env, buyer.publicKey, b.nonce, 0, value);
   });
 
