@@ -43,8 +43,9 @@ describe('ingest + projections', () => {
     expect(db.scalar(`SELECT COUNT(*) FROM stakes WHERE active = 1`)).toBe(2);
     const st = q.stats(db);
     expect(st).toMatchObject({ chipsMinted: 7, chipsAlive: 4, packsOpened: 2, totalBattlesResolved: 1, fusions: 1, sales: 1, chipsCurrentlyStaked: 1, tokenStakedMicro: '500000000', servicesSold: 1 });
-    // fusion fee + service payment (chip_core BurnReported) + 0.5 $CG listing fee (market) + 2 $CG rake burn (arena)
-    expect(st.burnedCgMicro).toBe(String(2_500_000 + 199_000_000 + 500_000 + 2_000_000));
+    // fusion fee + service payment (chip_core BurnReported) + listing fee (market, 0.1 SOL ≈ 11¢ →
+    // economy v3 proportional fee floors at 2 $CG) + 2 $CG rake burn (arena)
+    expect(st.burnedCgMicro).toBe(String(2_500_000 + 199_000_000 + 2_000_000 + 2_000_000));
 
     // pack open result + pity
     const open = q.packOpen(db, w.packSig)!;

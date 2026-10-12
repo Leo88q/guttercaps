@@ -1,7 +1,7 @@
 // Chip XP: play Cap Slam (ranked or wager) with a cap in the squad → XP → auto level-up.
 // Same trust model as ratings / pass XP (indexer-authoritative). On-chain
 // `claim.level` stays at mint 1 until a merkle level_up caller ships with chip_core.
-import { CHIP_XP, applyChipXp, profile, type RarityIndex } from '@guttercaps/economy';
+import { CHIP_XP, applyChipXp, applyChipXpDelta, profile, type RarityIndex } from '@guttercaps/economy';
 import { type Db } from './db.ts';
 import { insertIgnore, upsert } from './sql.ts';
 import { deviceLimited } from './human.ts';
@@ -56,21 +56,41 @@ export function matchXpForSquad(db: Db, matchId: string, squadJson: string): { x
   return { xp, leveled };
 }
 
-export function creditChipXp(db: Db, asset: string, amount: number, day: number): ChipXpCredit {
+/**
+ * Apply one XP event to a chip.
+ *  - gains (win +10, XP tickets): capped by CHIP_XP.dailyCap per UTC day unless
+ *    `bypassDailyCap` (perk tickets — PACK_PERKS);
+ *  - losses (−6): demote level by level but NEVER below the chip's checkpoint
+ *    (every CHIP_XP.checkpointEvery levels, floor 1); the damage that would fall
+ *    under a checkpoint evaporates (economy v3 design). Losses are not capped.
+ */
+export function creditChipXp(db: Db, asset: string, amount: number, day: number, opts: { bypassDailyCap?: boolean } = {}): ChipXpCredit {
   const chip = db.get<{ level: number; rarity: number; burned_at: number | null }>(`SELECT level, rarity, burned_at FROM chips WHERE asset = ?`, asset);
   const fromLevel = chip?.level ?? 1;
-  if (amount <= 0 || !chip || chip.burned_at != null) return { granted: 0, fromLevel, toLevel: fromLevel };
-  const today = db.get<{ xp: number }>(`SELECT xp FROM chip_xp_ledger WHERE asset = ? AND day = ?`, asset, day)?.xp ?? 0;
-  const room = CHIP_XP.dailyCap - today;
-  if (room <= 0) return { granted: 0, fromLevel, toLevel: fromLevel };
-  const grant = Math.min(amount, room);
-  db.run(LEDGER_UPSERT, asset, day, grant);
+  if (amount === 0 || !chip || chip.burned_at != null) return { granted: 0, fromLevel, toLevel: fromLevel };
+  const maxLevel = profile(chip.rarity as RarityIndex).maxLevel;
   const unspent = db.get<{ xp: number }>(`SELECT xp FROM chip_xp WHERE asset = ?`, asset)?.xp ?? 0;
-  const next = applyChipXp(chip.level, unspent + grant, profile(chip.rarity as RarityIndex).maxLevel);
+  if (amount < 0) {
+    const next = applyChipXpDelta(chip.level, unspent, amount, maxLevel);
+    db.run(POOL_UPSERT, asset, next.xp, 0);
+    if (next.level !== chip.level) {
+      // Ranked power only. `compressed_claims.level` is the on-chain mint (always 1 until merkle
+      // level_up) — writing XP into it made wager resolve compare lv 2+ against mint-1 power.
+      db.run(`UPDATE chips SET level = ? WHERE asset = ? AND burned_at IS NULL`, next.level, asset);
+    }
+    return { granted: 0, fromLevel, toLevel: next.level };
+  }
+  let grant = amount;
+  if (!opts.bypassDailyCap) {
+    const today = db.get<{ xp: number }>(`SELECT xp FROM chip_xp_ledger WHERE asset = ? AND day = ?`, asset, day)?.xp ?? 0;
+    const room = CHIP_XP.dailyCap - today;
+    if (room <= 0) return { granted: 0, fromLevel, toLevel: fromLevel };
+    grant = Math.min(amount, room);
+    db.run(LEDGER_UPSERT, asset, day, grant);
+  }
+  const next = applyChipXp(chip.level, unspent + grant, maxLevel);
   db.run(POOL_UPSERT, asset, next.xp, grant);
   if (next.level > chip.level) {
-    // Ranked power only. `compressed_claims.level` is the on-chain mint (always 1 until merkle
-    // level_up) — writing XP into it made wager resolve compare lv 2+ against mint-1 power.
     db.run(`UPDATE chips SET level = ? WHERE asset = ? AND burned_at IS NULL AND level < ?`, next.level, asset, next.level);
   }
   return { granted: grant, fromLevel, toLevel: next.level };

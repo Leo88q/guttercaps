@@ -249,6 +249,21 @@ paths:
         '200': { description: entitlement, content: { application/json: { schema: { $ref: '#/components/schemas/Entitlement' } } } }
         '402': { $ref: '#/components/responses/Error', description: 'no_pass — the season pass itself is a paid service' }
         '409': { $ref: '#/components/responses/Error', description: 'tier_locked / already_claimed / not_owner / set_not_completed' }
+  /me/pack-perks:
+    get:
+      tags: [me]
+      summary: Today's Limited-pack purchase perks (economy v3) — booster/day + XP tickets left
+      responses:
+        '200': { description: perks, content: { application/json: { schema: { $ref: '#/components/schemas/PackPerks' } } } }
+  /me/pack-perks/xp-ticket:
+    post:
+      tags: [me]
+      summary: Redeem one XP ticket on an owned chip (+100 XP above the daily cap; tickets expire at midnight UTC)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [asset], properties: { asset: { type: string } } } } } }
+      responses:
+        '200': { description: applied, content: { application/json: { schema: { type: object, properties: { asset: { type: string }, xp: { type: integer }, fromLevel: { type: integer }, toLevel: { type: integer } } } } } }
+        '404': { $ref: '#/components/responses/Error', description: 'chip_not_found' }
+        '409': { $ref: '#/components/responses/Error', description: 'no_ticket' }
   /me/human:
     get:
       tags: [me]
@@ -1497,6 +1512,14 @@ components:
         side: { type: string, enum: [a, b] }
         emote: { type: string, description: 'emote id from economy EMOTE_PACKS' }
         at: { type: string, format: date-time }
+    PackPerks:
+      type: object
+      properties:
+        day: { type: integer }
+        boosters: { type: integer }
+        tickets: { type: integer }
+        ticketsLeft: { type: integer }
+        ticketXp: { type: integer }
     PassState:
       type: object
       properties:

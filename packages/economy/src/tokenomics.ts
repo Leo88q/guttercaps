@@ -112,9 +112,13 @@ export const FEES = {
   skrPackDiscountBps: 500,     // 5% off packs paid in SKR (Seeker ecosystem promo; live-tunable 0–15%)
 } as const;
 
-/** Marketplace listing fee for an ask of `priceCgMicro` — 0.5%, clamped to [2, 100] $CG, 100% burn. */
-export function listingFeeCgMicro(priceCgMicro: bigint | number): bigint {
-  const fee = (BigInt(priceCgMicro) * BigInt(FEES.listingFeeBps)) / 10_000n;
+/**
+ * Marketplace listing fee for an ask worth `askUsdCents` — 0.5% of the ask at 1 $CG per
+ * US cent (anti-spam pricing, deliberately NOT the 6-per-cent cosmetic rate: a $400 ask
+ * pays the 2 $CG floor, a $20 000 god pays the 100 $CG cap), clamped, 100% burn.
+ */
+export function listingFeeCgMicro(askUsdCents: bigint | number): bigint {
+  const fee = (BigInt(askUsdCents) * 1_000_000n * BigInt(FEES.listingFeeBps)) / 10_000n; // micro-$CG at 1 CG/cent
   if (fee < BigInt(FEES.listingFeeMinCgMicro)) return BigInt(FEES.listingFeeMinCgMicro);
   if (fee > BigInt(FEES.listingFeeMaxCgMicro)) return BigInt(FEES.listingFeeMaxCgMicro);
   return fee;

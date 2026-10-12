@@ -7,7 +7,8 @@
 // projection sees each event exactly once even when backfill and the live
 // listener overlap.
 import { PublicKey } from '@solana/web3.js';
-import { FEES, QUEST_CHIP_TEMPLATES } from '@guttercaps/economy';
+import { FX, QUEST_CHIP_TEMPLATES, listingFeeCgMicro } from '@guttercaps/economy';
+import { grantPackPerks } from './pack-perks.ts';
 import type { Db } from './db.ts';
 import { rootCurrency, type EventData, type RawEvent } from './events.ts';
 import { insertIgnore, upsert } from './sql.ts';
@@ -50,6 +51,14 @@ export interface EventCtx {
 }
 
 type Handler = (db: Db, e: RawEvent, c: EventCtx) => void;
+
+/** Ask price → US cents at the frozen studio FX (market wire currencies: 0 SOL, 1 USDC, 2 SKR). */
+function askUsdCents(currency: number, price: bigint | string | number): number {
+  const p = BigInt(price);
+  if (currency === 1) return Number(p / BigInt(FX.usdcMicroPerUsdCent));
+  if (currency === 2) return Number(p / BigInt(FX.skrMicroPerUsdCent));
+  return Number((p * BigInt(FX.solUsd)) / 1_000_000_000n);
+}
 
 const str = (v: unknown) => String(v);
 const num = (v: unknown) => Number(v);
@@ -190,6 +199,8 @@ const HANDLERS: Record<string, Handler> = {
       insertIgnore('pack_purchases', COLS.packPurchases),
       str(d.buyer), str(d.nonce), num(d.sku), num(d.qty), num(d.currency), str(d.amount), str(d.randomness), c.signature, c.slot, c.blockTime,
     );
+    // Limited-pack purchase perks (economy v3): 1 booster/day + up to 2 XP tickets/day, idempotent.
+    grantPackPerks(db, str(d.buyer), num(d.sku), c.blockTime ?? undefined);
   },
   /** (#28) A free quest-chip PendingPack — tracked apart from purchases; its `PackOpened` arrives with `sku = 0`. */
   VoucherIssued(db, e, c) {
@@ -620,9 +631,10 @@ const HANDLERS: Record<string, Handler> = {
       str(d.asset), str(d.seller), str(d.price), num(d.currency), c.blockTime, c.slot, c.signature,
     );
     setChipFlag(db, str(d.asset), CHIP_FLAG_LISTED, true, c.slot);
-    // `list` burns the fixed 0.5 $CG listing fee (market/src/lib.rs LISTING_FEE_CG, no event of its own) —
-    // counted here so the burn oracle (SEC-M1) and /stats see it
-    db.run(insertIgnore('burns', COLS.burns), c.signature, e.eventIndex, 'market', 'listing_fee', String(FEES.listingFeeCgMicro), c.slot, c.blockTime);
+    // `list` burns the proportional listing fee (economy v3: 0.5% of the ask at 1 CG/cent,
+    // clamped [2, 100] $CG — market/src/lib.rs LISTING_FEE_BPS/MIN/MAX, no event of its own) —
+    // counted here so the burn oracle (SEC-M1) and /stats see it.
+    db.run(insertIgnore('burns', COLS.burns), c.signature, e.eventIndex, 'market', 'listing_fee', String(listingFeeCgMicro(askUsdCents(num(d.currency), str(d.price)))), c.slot, c.blockTime);
   },
   ListingUpdated(db, e, c) {
     const d = e.data;
