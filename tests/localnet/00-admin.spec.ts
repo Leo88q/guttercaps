@@ -68,8 +68,11 @@ suite('T-L-G admin', () => {
     await expectFail(env.chain.send([setParamsIx(admin, { featuredCollection: 10 })], { signers: [env.admin] }), Err.chip('InvalidCollection'), 'featured ≥ created');
     const odds = [...env.config.packs[1].oddsBps]; odds[0] += 1;
     await expectFail(env.chain.send([setParamsIx(admin, { packs: encodePacks(env, { 1: { oddsBps: odds } }) })], { signers: [env.admin] }), Err.chip('OddsSumInvalid'), 'odds ≠ 10 000');
-    const top = [...env.config.packs[1].oddsBps]; top[0] -= 300; top[7] += 300; // Legend+ + Diamond = 320 bps > 200 on Standard
-    await expectFail(env.chain.send([setParamsIx(admin, { packs: encodePacks(env, { 1: { oddsBps: top } }) })], { signers: [env.admin] }), Err.chip('OddsGuardRail'), 'top-2 guard rail');
+    // economy v3: Legend/Legend+/Diamond (tiers 6-8) drop from NO pack — `admin.rs` requires
+    // odds_bps[6] == odds_bps[7] == odds_bps[8] == 0 (MAX_TOP_TIER_BPS = 0; they exist only
+    // through fusion now). Moving 300 bps into the Diamond slot must therefore be refused.
+    const top = [...env.config.packs[1].oddsBps]; top[0] -= 300; top[7] += 300;
+    await expectFail(env.chain.send([setParamsIx(admin, { packs: encodePacks(env, { 1: { oddsBps: top } }) })], { signers: [env.admin] }), Err.chip('OddsGuardRail'), 'top-tier guard rail (tiers 6-8 must stay 0)');
     const cheap = encodePacks(env, { 1: { priceUsdCents: 49 } });
     await expectFail(env.chain.send([setParamsIx(admin, { packs: cheap })], { signers: [env.admin] }), Err.chip('OddsGuardRail'), 'price < $0.50');
     const pity = encodePacks(env, { 1: { pityHardAt: 5 } });

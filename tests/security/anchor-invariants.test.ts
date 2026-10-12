@@ -275,8 +275,71 @@ test('E28 every `close = X` pays the rent to a bound party (has_one / address / 
     if (!bound) bad.push(`${where(s, f)}: rent goes to '${target}' which is not bound to the closed account`);
     if (coreType(tf.type).kind !== 'Signer' && !has(tf, /^address\s*=/)) bad.push(`${where(s, f)}: close target neither signer nor address-pinned`);
   }
-  assert.ok(n >= 11, `close sites seen: ${n}`);
+  // 2026-10-13 (the 3003 compat decode reaches close/cancel): `CloseExpiredClaim.claim` and
+  // `CancelCompressedClaim.claim` stopped being `Account<CompressedMintClaim>`. A live pre-`founder`
+  // claim is one byte short of INIT_SPACE, so Anchor's strict decode answered AccountDidNotDeserialize
+  // (3003) and a legacy claim could never be closed or cancelled — its refund share stayed locked in
+  // the settlement forever. Anchor's `close = X` cannot ride an account the handler decodes by hand,
+  // so both refunds moved into the handler as `close_compat_claim`, which calls the same
+  // `AccountInfo::close` the constraint called. Count 12 → 10; E28b below is the replacement gate for
+  // those two sites and holds them to the same two properties this rule checks.
+  assert.ok(n >= 10, `close sites seen: ${n}`);
   assert.deepEqual(bad, []);
+});
+
+test('E28b the hand-written compat claim closes still pay the rent to the PDA-bound buyer signer', () => {
+  const callers = fns.filter((f) => /close_compat_claim\(/.test(f.body)).map((f) => f.name).sort();
+  assert.deepEqual(callers, ['cancel_compressed_claim', 'close_expired_claim'],
+    'the hand-written claim closes are exactly the two the 3003 compat decode moved out of `close = X`');
+  for (const structName of ['CloseExpiredClaim', 'CancelCompressedClaim']) {
+    const s = structs.find((x) => x.name === structName);
+    assert.ok(s, `${structName}: struct not found`);
+    const claim = s!.fields.find((f) => f.name === 'claim');
+    const buyer = s!.fields.find((f) => f.name === 'buyer');
+    assert.ok(claim && buyer, `${structName}: claim/buyer slots`);
+    // a strict `Account<CompressedMintClaim>` back in this slot IS the 3003 regression
+    assert.equal(coreType(claim!.type).kind, 'UncheckedAccount', `${where(s!, claim)}: must stay compat-decoded`);
+    assert.ok(has(claim!, /^owner\s*=/), `${where(s!, claim)}: needs an owner pin before the body is read`);
+    // E28's binding property: the recipient is the signer the claim PDA is seeded from
+    assert.match(constraintValue(claim!, 'seeds') ?? '', /buyer\.key\(\)/,
+      `${where(s!, claim)}: claim PDA must be seeded by the buyer it refunds`);
+    assert.equal(coreType(buyer!.type).kind, 'Signer', `${where(s!, buyer)}: rent recipient must be a signer`);
+    assert.ok(has(buyer!, /^mut$/), `${where(s!, buyer)}: recipient must be mut to receive the rent`);
+    // and the handler really re-establishes what `has_one = buyer` used to guarantee. The address
+    // itself is still proven by the `seeds` + `bump` constraints asserted above, so the decoded
+    // body only owes the caller the holder check.
+    const body = handlerBody(s!);
+    assert.match(body, /claim_compat_checked\(/, `${structName}: handler must re-check has_one = buyer on the decoded body`);
+    assert.match(body, /close_compat_claim\(&ctx\.accounts\.claim, &ctx\.accounts\.buyer\.to_account_info\(\)\)/,
+      `${structName}: the rent must go to the bound buyer, not to an account the caller picked`);
+  }
+});
+
+// The 3003 regression gate. `CompressedMintClaim` gained `founder` after live devnet claims had
+// already been allocated, so those accounts sit one byte short of INIT_SPACE and Anchor's strict
+// `Account<CompressedMintClaim>` answers AccountDidNotDeserialize (3003) before any handler runs —
+// which surfaces as a market/staking bug and bricks the claim on that path. Every read/update slot
+// now takes an owner-checked `UncheckedAccount` and decodes with `try_deserialize_compat`; only
+// `init` slots may stay strict, because an `init` account is allocated at the CURRENT size and can
+// never be short. Four such slots were still strict at 2026-10-13 (mint / register / cancel / close),
+// i.e. after the compat decode had already landed for market, staking and fusion — so this rule is
+// what stops the next appended field from re-opening the same hole one instruction at a time.
+test('SEC-3003 no strict `Account<CompressedMintClaim>` outside `init` slots', () => {
+  const strict: string[] = [];
+  let initSlots = 0;
+  for (const s of structs) for (const f of s.fields) {
+    const t = coreType(f.type);
+    if (t.kind !== 'Account' || t.inner !== 'CompressedMintClaim') continue;
+    if (isInit(f)) initSlots++;
+    else strict.push(`${where(s, f)}: strict decode of a possibly pre-\`founder\` claim`);
+  }
+  assert.deepEqual(strict, [], 'a non-init claim slot must be an owner-checked UncheckedAccount decoded with try_deserialize_compat');
+  assert.equal(initSlots, 2, 'the only strict claim slots are the two `init` ones (stage + fusion result)');
+  // floors, so deleting the compat machinery is as loud as adding a strict slot back
+  const calls = files.reduce((n, f) => n + (f.code.match(/try_deserialize_compat\(/g) ?? []).length, 0);
+  const writes = files.reduce((n, f) => n + (f.code.match(/write_compat\(/g) ?? []).length, 0);
+  assert.ok(calls >= 24, `try_deserialize_compat call sites: ${calls}`);
+  assert.ok(writes >= 9, `write_compat call sites: ${writes}`);
 });
 
 // E29: Anchor 0.31 has no `dup` constraint; remaining_accounts are never deduplicated. Every handler

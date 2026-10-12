@@ -15,7 +15,7 @@
   "eventType": "BattleCreated",
   "sourceEventName": "BattleCreated",
   "proposedWatchtowerEventType": "WagerCreated",
-  "meaning": "Challenger created a wagered battle; the wager (micro-CG, range 5–5000 CG) moved into the PDA-owned escrow. VRF randomness account attached.",
+  "meaning": "Challenger created a wagered battle; the wager (micro-CG, range 25–25000 CG) moved into the PDA-owned escrow. VRF randomness account attached.",
   "payload": {
     "battle": "7bGrdYjRxSuDiTJg71ATkXtosyypRKsDXknQj7y5sCrk",
     "challenger": "6MhoS4GbPb9H5cm1CpaXGmsJJPA9fAWhifd8HZcyAXys",

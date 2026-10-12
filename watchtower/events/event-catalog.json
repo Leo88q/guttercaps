@@ -2614,7 +2614,7 @@
       "watchtowerEventType": "WagerCreated",
       "sourceKind": "onchain",
       "emitter": "arena program (anchor emit!)",
-      "meaning": "Wagered battle created: challenger escrowed `wager` micro-CG (range 5–5000 CG, enforced MIN_WAGER..MAX_WAGER) into the PDA-owned escrow; VRF randomness attached.",
+      "meaning": "Wagered battle created: challenger escrowed `wager` micro-CG (range 25–25000 CG, enforced MIN_WAGER..MAX_WAGER) into the PDA-owned escrow; VRF randomness attached.",
       "payloadFields": [
         {
           "name": "battle",

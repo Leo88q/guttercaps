@@ -36,7 +36,7 @@ suite('T-L-C packs', () => {
     await expectFail(buyPack(env, buyer, { sku: SKU.STARTER, currency: Currency.SOL }), Err.chip('StarterAlreadyClaimed'), 'second starter');
     await expectFail(buyPack(env, buyer, { sku: SKU.STARTER, qty: 2, currency: Currency.USDC }), Err.chip('StarterAlreadyClaimed'), 'starter qty 2');
     const [open] = await revealAndOpenCompressedAll(env, buyer, b, valueOf('C01'));
-    expect(open.event.count).toBe(4);
+    expect(open.event.count).toBe(PACKS.starter.chips);
     const settlementKey = compressedSettlementPda(buyer.publicKey, b.nonce)[0];
     const now = await env.chain.now();
     for (let i = 0; i < open.event.count; i++) {
@@ -166,10 +166,10 @@ suite('T-L-C packs', () => {
     try {
       await expectFail(buyPack(env, buyer, { sku: SKU.STANDARD, currency: Currency.USDC }), Err.chip('Paused'));
       const [open] = await revealAndOpenCompressedAll(env, buyer, b, valueOf('C06'));
-      expect(open.event.count).toBe(4);
+      expect(open.event.count).toBe(PACKS.standard.chips);
       expect((await loadPending(env.chain, b.pending))!.opened).toBe(1);
       const settlement = decodeCompressedPackSettlement((await env.chain.getAccount(compressedSettlementPda(buyer.publicKey, b.nonce)[0]))!.data);
-      expect(settlement.totalClaims).toBe(4);
+      expect(settlement.totalClaims).toBe(PACKS.standard.chips);
     } finally {
       await env.chain.send([setPausedIx(env.admin.publicKey, false)], { signers: [env.admin] });
     }
@@ -202,7 +202,7 @@ suite('T-L-C packs', () => {
     rolled.forEach((r) => { delta[r.collectionIdx] -= 1n; });
     expect(delta.every((d) => d === 0n)).toBe(true);
     expect((await loadPending(env.chain, b.pending))!.opened).toBe(1);
-    expect(decodeCompressedPackSettlement((await env.chain.getAccount(compressedSettlementPda(buyer.publicKey, b.nonce)[0]))!.data).totalClaims).toBe(4);
+    expect(decodeCompressedPackSettlement((await env.chain.getAccount(compressedSettlementPda(buyer.publicKey, b.nonce)[0]))!.data).totalClaims).toBe(PACKS.standard.chips);
     expect((await env.ledger()).liabUsdc).toBe(led.liabUsdc);
     const rnd = (await randomnessAccount(env.chain, b.randomness))!;
     expect(rnd.revealSlot).toBeGreaterThan(0n);
@@ -228,7 +228,7 @@ suite('T-L-C packs', () => {
       expect(p!.revealed).toBe(true);
       expect(Array.from(p!.value)).toEqual(Array.from(value));
       const settlement = decodeCompressedPackSettlement((await env.chain.getAccount(compressedSettlementPda(buyer.publicKey, b.nonce)[0]))!.data);
-      expect(settlement.totalClaims).toBe((packNo + 1) * 4);
+      expect(settlement.totalClaims).toBe((packNo + 1) * PACKS.standard.chips);
       for (const claimNonce of r.event.claimNonces) {
         const claim = decodeCompressedMintClaim((await env.chain.getAccount(compressedMintClaimPda(buyer.publicKey, claimNonce)[0]))!.data);
         expect(claim.settlement.equals(compressedSettlementPda(buyer.publicKey, b.nonce)[0])).toBe(true);
@@ -252,7 +252,7 @@ suite('T-L-C packs', () => {
     let claims = 0;
     for (let i = 0; i < 25; i++) {
       const r = await openCompressedPack(env, buyer.publicKey, b.nonce, i, value, cranker);
-      expect(r.event.count).toBe(5);
+      expect(r.event.count).toBe(PACKS.premium.chips);
       claims += r.event.count;
       if (r.tx.cu > maxCu) maxCu = r.tx.cu;
     }
@@ -262,7 +262,7 @@ suite('T-L-C packs', () => {
     expect(crankerBefore - crankerAfter).toBeLessThan(25n * 200_000n);
     expect(claims).toBe(125);
     expect((await loadPending(env.chain, b.pending))!.opened).toBe(25);
-    expect(decodeCompressedPackSettlement((await env.chain.getAccount(compressedSettlementPda(buyer.publicKey, b.nonce)[0]))!.data).totalClaims).toBe(125);
+    expect(decodeCompressedPackSettlement((await env.chain.getAccount(compressedSettlementPda(buyer.publicKey, b.nonce)[0]))!.data).totalClaims).toBe(25 * PACKS.premium.chips);
     console.info(`[T-L-C09] max open_compressed_pack CU (5 claims) = ${maxCu}`);
   });
 
@@ -305,7 +305,7 @@ suite('T-L-C packs', () => {
     await expectFail(cancelStale(env, buyer, b, env.mints.usdc), Err.chip('RandomnessAlreadyRevealed'), 'cancel after reveal');
     await env.chain.warpSlots(1_000n);
     const r = await openCompressedPack(env, buyer.publicKey, b.nonce, 0, valueOf('C12'));
-    expect(r.event.count).toBe(4);
+    expect(r.event.count).toBe(PACKS.standard.chips);
     expect((await loadPending(env.chain, b.pending))!.opened).toBe(1);
   });
 
@@ -387,7 +387,7 @@ suite('T-L-C packs', () => {
     expect((await loadPending(env.chain, b.pending))!.opened).toBe(1);
     await openCompressedPack(env, buyer.publicKey, b.nonce, 1, value);
     expect((await loadPending(env.chain, b.pending))!.opened).toBe(2);
-    expect(decodeCompressedPackSettlement((await env.chain.getAccount(compressedSettlementPda(buyer.publicKey, b.nonce)[0]))!.data).totalClaims).toBe(8);
+    expect(decodeCompressedPackSettlement((await env.chain.getAccount(compressedSettlementPda(buyer.publicKey, b.nonce)[0]))!.data).totalClaims).toBe(2 * PACKS.standard.chips);
   });
 
   it('C15 wrong remaining_accounts: a collection/tree account that does not match the roll → InvalidCollection; wrong count → InvalidQuantity', async () => {
@@ -403,41 +403,48 @@ suite('T-L-C packs', () => {
     await openCompressedPack(env, buyer.publicKey, b.nonce, 0, value);
   });
 
-  it('C16 pity: after hard_at − 1 Standard packs without a Legend the next one guarantees ≥ Legend on the last slot (pity counter pre-seeded by earlier opens in this run)', async () => {
+  it('C16 pity: after hard_at − 1 Standard packs without an Epic+ the next one guarantees ≥ Epic+ on the last slot (pity counter pre-seeded by earlier opens in this run)', async () => {
     const buyer = await env.player({ usdc: 100_000_000_000n });
     const hardAt = env.config.packs[SKU.STANDARD].pityHardAt; // 60
-    // drive the counter up with a value that never rolls ≥ Legend: pick per-pack values by search
+    // drive the counter up with a value that never rolls ≥ the pity tier: pick per-pack values by search
     const econ = toEconPack(SKU.STANDARD, env.config.packs[SKU.STANDARD]);
-    const noLegend = (pity: number) => { for (let s = 0; s < 5000; s++) { const v = valueOf('C16-none', s); if (expandRandomness(v, econ, pity, 10).every((r) => r.rarity < 6)) return v; } throw new Error('no value'); };
+    // economy v3: both halves of this assertion are READ, not remembered. The pity tier came down
+    // from Legend (6) to Epic+ (5) — Legend/Legend+/Diamond now exist only through fusion, and
+    // `admin.rs` refuses to re-enable them (`odds_bps[6..8] == 0`, `pity_tier <= 5`). The
+    // guaranteed slot is the LAST chip, which moved index 3 → 4 when Standard went 4 → 5 chips.
+    const pityTier: number = econ.pity!.tier;
+    const lastSlot = PACKS.standard.chips - 1;
+    const noTop = (pity: number) => { for (let s = 0; s < 5000; s++) { const v = valueOf('C16-none', s); if (expandRandomness(v, econ, pity, 10).every((r) => r.rarity < pityTier)) return v; } throw new Error('no value'); };
     // bundles of 25 + 25 + 9 = 59 opens; the same 32-byte value serves a whole bundle because sub-seeds are keccak-derived → search per pack instead
     let counter = (await loadPity(env.chain, buyer.publicKey))?.counters[SKU.STANDARD] ?? 0;
     const need = hardAt - 1 - counter;
     for (let done = 0; done < need;) {
       const qty = Math.min(25, need - done);
       const b = await buyPack(env, buyer, { sku: SKU.STANDARD, qty, currency: Currency.USDC });
-      // find one base value whose every sub-seed avoids Legend at the counters it will see
+      // find one base value whose every sub-seed stays below the pity tier at the counters it will see
       let base: Uint8Array | undefined;
       for (let s = 0; s < 20_000 && !base; s++) {
         const v = valueOf('C16-bundle', s);
         let ok = true;
-        for (let p = 0; p < qty && ok; p++) ok = expandRandomness(packSeed(v, qty, p), econ, counter + p, 10).every((r) => r.rarity < 6);
+        for (let p = 0; p < qty && ok; p++) ok = expandRandomness(packSeed(v, qty, p), econ, counter + p, 10).every((r) => r.rarity < pityTier);
         if (ok) base = v;
       }
-      if (!base) throw new Error('no bundle value without Legend');
+      if (!base) throw new Error('no bundle value below the pity tier');
       await revealPack(env, b, base);
       for (let p = 0; p < qty; p++) await openCompressedPack(env, buyer.publicKey, b.nonce, p, base);
       done += qty; counter += qty;
     }
     expect((await loadPity(env.chain, buyer.publicKey))!.counters[SKU.STANDARD]).toBe(hardAt - 1);
-    // the 60th: pick a value whose raw roll is < Legend on the last slot → program must lift it to Legend
+    // the 60th: pick a value whose raw roll is < the pity tier on the last slot → program must lift it
     const b = await buyPack(env, buyer, { sku: SKU.STANDARD, qty: 1, currency: Currency.USDC });
-    const v = noLegend(0);
+    const v = noTop(0);
     const raw = expandRandomness(v, { ...econ, pity: null }, 0, 10);
-    expect(raw[3].rarity).toBeLessThan(6);
+    expect(raw[lastSlot].rarity).toBeLessThan(pityTier);
     const [r] = await revealAndOpenCompressedAll(env, buyer, b, v);
-    expect(r.rolled[3].rarity).toBeGreaterThanOrEqual(6);
+    expect(r.rolled[lastSlot].rarity).toBeGreaterThanOrEqual(pityTier);
     expect((await loadPity(env.chain, buyer.publicKey))!.counters[SKU.STANDARD]).toBe(0);
     expect(PACKS.standard.pity?.hardAt).toBe(hardAt);
+    expect(PACKS.standard.pity?.tier).toBe(pityTier);
   }, 600_000);
 
   it('C17 rng PDA (SEC-C3 part 2): authority ≠ rng_auth → RandomnessAuthority; already committed → RandomnessUsed; non-PDA address → seeds error', async () => {
@@ -496,7 +503,7 @@ suite('T-L-C packs', () => {
     expect(Array.from(rnd.value)).toEqual(Array.from(valueOf('C19')));
     await expectFail(revealPack(env, b, valueOf('other'), stranger), Err.chip('RandomnessAlreadyRevealed'), 'second reveal');
     const r = await openCompressedPack(env, buyer.publicKey, b.nonce, 0, valueOf('C19'), stranger);
-    expect(r.event.count).toBe(4);
+    expect(r.event.count).toBe(PACKS.standard.chips);
     expect((await loadPending(env.chain, b.pending))!.opened).toBe(1);
     // a reveal for a never-committed account (init only) → RandomnessExpired (seed_slot == 0)
     const nonce = 4711n;
