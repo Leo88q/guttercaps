@@ -725,7 +725,9 @@ mod tests {
             assert_eq!(r.same_collection, i % 2 == 1);
             assert!(r.refund_on_fail < MATERIALS_PER_FUSION as u8);
         }
-        assert_eq!(success_threshold(&FUSION_RECIPES[7], true), 6_500);
+        // FUSION_RECIPES[7] (LegendPlus -> Diamond) has success_bps 4_000 in v3.
+        // Boosted: 4_000 + 1_500 = 5_500.
+        assert_eq!(success_threshold(&FUSION_RECIPES[7], true), 5_500);
         assert_eq!(success_threshold(&FUSION_RECIPES[6], true), 8_500);
         assert_eq!(success_threshold(&FUSION_RECIPES[0], true), 10_000);
     }
