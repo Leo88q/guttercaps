@@ -128,7 +128,7 @@ suite('T-L-R external report A1–A16, adapted', () => {
   });
 
   it('R-A6 zero / out-of-range amounts: stake 0 → BelowMinimum, wager 0 / MIN−1 / MAX+1 → WagerRange; the bounds themselves are accepted', async () => {
-    const p = await env.player({ sol: 5n * SOL, cg: 10_000n * CG });
+    const p = await env.player({ sol: 5n * SOL, cg: MAX_WAGER + 1_000n * CG });
     await expectFail(env.chain.send([stakeCgIx({ owner: p.publicKey, tier: 0, amount: 0n, cgMint: env.mints.cg })], { signers: [p] }), Err.staking('BelowMinimum'), 'stake 0');
     const claims = await squad(p);
     for (const w of [0n, MIN_WAGER - 1n, MAX_WAGER + 1n]) {

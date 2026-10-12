@@ -159,7 +159,7 @@ pub enum ArenaError {
     Paused,
     #[msg("Unauthorized")]
     Unauthorized,
-    #[msg("Wager out of range (5–5000 $CG)")]
+    #[msg("Wager out of range (25–25000 $CG)")]
     WagerRange,
     #[msg("Battle is not in the expected status")]
     BadStatus,

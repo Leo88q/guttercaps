@@ -9,7 +9,7 @@ import { errorSnapshot, type ErrorSnapshot } from '../errorSnapshot';
 // skips whatever the crank (or an earlier attempt) already settled.
 import { Connection, PublicKey } from '@solana/web3.js';
 import { keccak_256 } from '@noble/hashes/sha3';
-import { PACKS, BUNDLES, FEES, expandRandomness, solLamportsForUsdCents, skrMicroForUsdCents, type PackDef as EconPackDef } from '@guttercaps/economy';
+import { PACKS, BUNDLES, FEES, expandRandomness, solLamportsForUsdCents, skrMicroForUsdCents, type PackDef as EconPackDef, type RarityIndex } from '@guttercaps/economy';
 import { rpcEndpoints } from '@/app/rpcEndpoints';
 import { appLookupTables, fitsInTx, sendTx, type WalletLike } from '../tx';
 import { prepareClose, prepareCloseLut, prepareRandomness, prepareReveal, readRandomness, sendCloseLut } from '../switchboard';
@@ -86,7 +86,10 @@ export function toEconPack(sku: number, p: PackDef): EconPackDef {
     oddsBps: p.oddsBps,
     floor: p.floor as EconPackDef['floor'],
     dailyCap: p.dailyCap === 0 ? null : p.dailyCap,
-    pity: p.pityTier === 0 ? null : { tier: p.pityTier as 6, hardAt: p.pityHardAt, softStart: p.pitySoftStart, softStepBps: p.pitySoftStepBps },
+    // `pityTier` arrives as a bare u8 from the chain; narrow it to the rarity union. NOT `as 6` —
+    // economy v3 lowered every pack's hard pity from Legend (6) to Epic+ (5), because Legend and
+    // above are fusion-only now, so pinning the literal here would mis-type the real config.
+    pity: p.pityTier === 0 ? null : { tier: p.pityTier as RarityIndex, hardAt: p.pityHardAt, softStart: p.pitySoftStart, softStepBps: p.pitySoftStepBps },
     pool: p.featuredOnly ? 'featured' : 'all',
   };
 }

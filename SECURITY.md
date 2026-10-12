@@ -96,6 +96,25 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   pre-`founder` account at its allocated size (trailing bool truncated) instead of overrunning it.
   Leftover short devnet accounts therefore stay stakeable/listable/fusable without re-init;
   full-size accounts serialize unchanged.
+  **CompressedMintClaim (2026-10-13, the remaining chip_core read paths):** the four chip_core
+  handlers that still decoded a live claim strictly — `close_expired_claim`,
+  `cancel_compressed_claim`, `mint_compressed_chip` and `register_compressed_chip` — were the last
+  places where a pre-`founder` account could raise Anchor 3003 (`AccountDidNotDeserialize`) on a
+  read. Each now takes an owner-checked `UncheckedAccount` and decodes through
+  `claim_compat_checked`, which keeps the PDA `seeds` + `bump` proof (so `ConstraintSeeds` / 2006 is
+  unchanged) and re-asserts the constraint the old `has_one` enforced (`Unauthorized` on
+  close/cancel, `InvalidBubblegumProof` on mint/register). The stored `bump` byte is deliberately
+  *not* compared with the derived one: `seeds` + `bump` on the slot already prove the address, the
+  field is never used to sign or derive anything, and rejecting on it would only add a fresh way to
+  lock out the legacy accounts this conversion exists to keep readable — the same posture as the
+  market/staking paths above, which never consult it either.
+  Mutations go back through `write_compat`, since Anchor does not reserialize an `UncheckedAccount`.
+  The two `close = buyer` closures became an explicit `close_compat_claim(&claim, &buyer)` placed
+  last in the handler, so the rent is still released only to the bound, signing buyer — pinned by
+  test **E28b** in `tests/security/anchor-invariants.test.ts`. The only strict
+  `Account<CompressedMintClaim>` slots left anywhere are the two `init` slots
+  (`stage_compressed_chip`, `fuse_compressed_claims`), which allocate a current-layout account and
+  so can never meet a short one — pinned by test **SEC-3003** in the same file.
 - **SEC-B6 (2026-09-26): the API verifier checks rarities, not districts.** `POST /packs/verify`
   recomputes the rarity sequence from the emitted randomness and compares it with the mint, but it cannot
   recompute *which district* a chip landed in: the pool (`collections_created`, the featured district) is

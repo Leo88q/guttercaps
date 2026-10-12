@@ -114,7 +114,7 @@ describe('c-07 Economic Invariants & Property Tests', () => {
 
   describe('4. Arena Solvency & Double-Reward Prevention', () => {
     it('wager split preserves total pot and charges non-zero season rake', () => {
-      const wagers = [MIN_WAGER, 5_000_000n, 100_000_000n, MAX_WAGER];
+      const wagers = [MIN_WAGER, MIN_WAGER * 2n, 100_000_000n, MAX_WAGER];
       for (const wager of wagers) {
         expect(wager).toBeGreaterThanOrEqual(MIN_WAGER);
         expect(wager).toBeLessThanOrEqual(MAX_WAGER);

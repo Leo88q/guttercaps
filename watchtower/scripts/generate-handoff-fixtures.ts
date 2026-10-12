@@ -143,7 +143,7 @@ const CASES: FixtureCase[] = [
   },
   {
     program: 'arena', name: 'BattleCreated', watchtowerEventType: 'WagerCreated',
-    meaning: 'Challenger created a wagered battle; the wager (micro-CG, range 5–5000 CG) moved into the PDA-owned escrow. VRF randomness account attached.',
+    meaning: 'Challenger created a wagered battle; the wager (micro-CG, range 25–25000 CG) moved into the PDA-owned escrow. VRF randomness account attached.',
     data: { battle: BATTLE, challenger: PLAYER_A, wager: CG(25), powerA: 312, randomness: RANDOMNESS },
   },
   {
@@ -227,7 +227,7 @@ const META: Record<string, Meta> = {
   CompressedAssetListed: { wt: null, meaning: 'Registered Bubblegum leaf listed (asset + claim join keys).', playerField: 'seller' },
   CompressedAssetSold: { wt: null, meaning: 'Registered Bubblegum leaf sold: price + fee + royalty.', playerField: 'buyer', economy: 'trade,fee' },
   // ── arena
-  BattleCreated: { wt: 'WagerCreated', meaning: 'Wagered battle created: challenger escrowed `wager` micro-CG (range 5–5000 CG, enforced MIN_WAGER..MAX_WAGER) into the PDA-owned escrow; VRF randomness attached.', playerField: 'challenger', economy: 'deposit' },
+  BattleCreated: { wt: 'WagerCreated', meaning: 'Wagered battle created: challenger escrowed `wager` micro-CG (range 25–25000 CG, enforced MIN_WAGER..MAX_WAGER) into the PDA-owned escrow; VRF randomness attached.', playerField: 'challenger', economy: 'deposit' },
   BattleAccepted: { wt: null, meaning: 'Opponent accepted and escrowed the matching wager. Second half of the wager lifecycle; the hub may fold this into WagerCreated accounting if it wants per-side exposure.', playerField: 'opponent', economy: 'deposit' },
   BattleResolved: { wt: 'WagerSettled', meaning: 'Battle resolved by the battle oracle: winner paid pot−rake from the escrow; pot = 2×wager; rake 5% split 40% treasury / 20% season pool / 40% burned (RAKE_* constants, arena/lib.rs:39-41). Chips are never at risk.', playerField: 'winner', economy: 'withdrawal,fee,burn,reward' },
   BattleCancelled: { wt: null, meaning: 'Stale battle cancelled: both escrows refunded.', playerField: null, economy: 'withdrawal' },

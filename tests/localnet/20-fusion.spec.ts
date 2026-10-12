@@ -5,6 +5,7 @@ import { Keypair, PublicKey } from '@solana/web3.js';
 import { FUSION_RECIPES } from '@guttercaps/economy';
 import { findEvent } from '@/chain/anchor';
 import { decodeCompressedMintClaim, readClaimFusionCommitted } from '@/chain/accounts';
+import { CHIP_CORE_ID } from '@/chain/ids';
 import { closeExpiredClaimIx, fuseCompressedClaimsIx, stageCompressedChipIx } from '@/chain/ix/chipCore';
 import { compressedMintClaimPda } from '@/chain/pdas';
 import { Err, expectFail } from './helpers/expect';
@@ -19,6 +20,12 @@ const bins = binariesPresent();
 const suite = describe.skipIf(!bins.ok && !process.env.LOCALNET_RPC);
 const STALE = 10_800n; // STALE_PACK_SLOTS
 const DAY = 86_400n;
+
+/** economy v3 multiplied every recipe fee ~5x and turned the top tier into a god-tax
+ *  (recipe 4: 120 -> 5 000 $CG). Fixtures are funded from the recipe table instead of a
+ *  remembered literal, so the next bump moves the funding and the expectations together —
+ *  the v2 literals here were what turned the fee rise into `InsufficientFunds` (token 1). */
+const recipeFee = (i: number) => BigInt(FUSION_RECIPES[i].feeCgMicro);
 
 async function stageClaim(env: Env, owner: Keypair, nonce: bigint, rarity: number, collectionIdx: number): Promise<PublicKey> {
   const claim = compressedMintClaimPda(owner.publicKey, nonce)[0];
@@ -42,7 +49,7 @@ suite('T-L-F compressed fusion', () => {
   beforeAll(async () => { env = await getEnv(); });
 
   it('fuses three claim-bound Common chips into a new V2 claim and burns the fee', async () => {
-    const owner = await env.player({ cg: 100_000_000n });
+    const owner = await env.player({ cg: 4n * recipeFee(0) });
     const materials = await Promise.all([
       stageClaim(env, owner, 50_001n, 0, 0),
       stageClaim(env, owner, 50_002n, 0, 2),
@@ -72,8 +79,8 @@ suite('T-L-F compressed fusion', () => {
     expect(claim.indexReserved).toBe(false);
     expect(claim.minted).toBe(false);
     expect(claim.consumed).toBe(false);
-    expect(cgBefore - (await tokenBalance(env.chain, env.mints.cg, owner.publicKey))).toBe(5_000_000n);
-    expect((await env.ledger()).burnedTotal - burnedBefore).toBe(5_000_000n);
+    expect(cgBefore - (await tokenBalance(env.chain, env.mints.cg, owner.publicKey))).toBe(recipeFee(0));
+    expect((await env.ledger()).burnedTotal - burnedBefore).toBe(recipeFee(0));
     for (const material of materials) {
       expect(decodeCompressedMintClaim((await env.chain.getAccount(material))!.data).consumed).toBe(true);
     }
@@ -86,7 +93,7 @@ suite('T-L-F compressed fusion', () => {
   });
 
   it('enforces rarity and same-collection rules before charging compressed fusion', async () => {
-    const owner = await env.player({ cg: 100_000_000n });
+    const owner = await env.player({ cg: 4n * recipeFee(0) });
     const mixed = await Promise.all([
       stageClaim(env, owner, 51_001n, 0, 0),
       stageClaim(env, owner, 51_002n, 1, 0),
@@ -108,13 +115,13 @@ suite('T-L-F compressed fusion', () => {
   });
 
   it('H3 commit → reveal success (recipe 4): fee escrowed then burned once, settlement-free result with a 6 h lock, kind-3 rent reclaimed', async () => {
-    const owner = await env.player({ cg: 1_000_000_000n });
+    const owner = await env.player({ cg: 4n * recipeFee(4) });
     const mats = await Promise.all([
       stageClaim(env, owner, 52_001n, 4, 0),
       stageClaim(env, owner, 52_002n, 4, 2),
       stageClaim(env, owner, 52_003n, 4, 4),
     ]);
-    const fee = BigInt(FUSION_RECIPES[4].feeCgMicro);
+    const fee = recipeFee(4);
     const cgBefore = await tokenBalance(env.chain, env.mints.cg, owner.publicKey);
     const burnedBefore = (await env.ledger()).burnedTotal;
 
@@ -176,13 +183,13 @@ suite('T-L-F compressed fusion', () => {
   });
 
   it('H3 failure: default-pubkey result with no account, lowest-key survivor un-consumed and reusable, fee still burned', async () => {
-    const owner = await env.player({ cg: 2_000_000_000n });
+    const owner = await env.player({ cg: 4n * recipeFee(4) });
     const mats = await Promise.all([
       stageClaim(env, owner, 53_001n, 4, 1),
       stageClaim(env, owner, 53_002n, 4, 2),
       stageClaim(env, owner, 53_003n, 4, 3),
     ]);
-    const fee = BigInt(FUSION_RECIPES[4].feeCgMicro);
+    const fee = recipeFee(4);
     const burnedBefore = (await env.ledger()).burnedTotal;
     const c = await commitClaimFusion(env, owner, { materials: mats, resultCollectionIdx: 2 });
 
@@ -205,7 +212,7 @@ suite('T-L-F compressed fusion', () => {
   });
 
   it('H3 commit gates: atomic recipes, duplicates, consumed and settlement-bound materials refused before any charge', async () => {
-    const owner = await env.player({ usdc: 5_000_000_000n, cg: 1_000_000_000n });
+    const owner = await env.player({ usdc: 5_000_000_000n, cg: 4n * recipeFee(4) });
     const cgBefore = await tokenBalance(env.chain, env.mints.cg, owner.publicKey);
     // deterministic (100 %) recipes resolve atomically — the randomized path refuses them
     const commons = await Promise.all([
@@ -255,13 +262,13 @@ suite('T-L-F compressed fusion', () => {
       Err.chip('InvalidChipState'), 'settlement-bound pack claim',
     );
     // every refusal happened before the fee transfer
-    expect(cgBefore - (await tokenBalance(env.chain, env.mints.cg, owner.publicKey))).toBe(BigInt(FUSION_RECIPES[4].feeCgMicro));
+    expect(cgBefore - (await tokenBalance(env.chain, env.mints.cg, owner.publicKey))).toBe(recipeFee(4));
   });
 
   it('H3 stale: cancel before the window → NotStale; past it the fee refunds 100 % and materials un-consume; revealed randomness cannot cancel', async () => {
     if (!env.chain.canWarp) return;
-    const owner = await env.player({ cg: 1_000_000_000n });
-    const fee = BigInt(FUSION_RECIPES[4].feeCgMicro);
+    const owner = await env.player({ cg: 4n * recipeFee(4) });
+    const fee = recipeFee(4);
     const mats = await Promise.all([
       stageClaim(env, owner, 55_001n, 4, 0),
       stageClaim(env, owner, 55_002n, 4, 0),
@@ -295,7 +302,7 @@ suite('T-L-F compressed fusion', () => {
 
   it('H3 close_expired_claim: live and consumed shells refused; an expired settlement-free shell closes and pays rent to the buyer', async () => {
     if (!env.chain.canWarp) return;
-    const owner = await env.player({ cg: 1_000_000_000n });
+    const owner = await env.player({ cg: 4n * recipeFee(4) });
     const live = await stageClaim(env, owner, 56_001n, 4, 1);
     const liveNonce = 56_001n;
     const shellNonce = 56_004n;
@@ -318,5 +325,49 @@ suite('T-L-F compressed fusion', () => {
     expect(gain).toBeGreaterThan(0n);
     expect(gain).toBeGreaterThanOrEqual(rent - 50_000n); // rent minus the close tx fee
     expect(gain).toBeLessThanOrEqual(rent);
+  });
+
+  // -----------------------------------------------------------------------------------------------
+  // Anchor 3003 regression (2026-10-13). `CompressedMintClaim` gained `founder` AFTER live devnet
+  // claims had already been allocated, so those accounts sit exactly one byte short of the current
+  // layout and Anchor's strict `Account<CompressedMintClaim>` answers `AccountDidNotDeserialize`
+  // (3003) before any handler runs. Nothing in this suite ever produced a short claim — both
+  // `stage_compressed_chip` and `forgeLeaf` write the FULL layout — which is how the compat decode
+  // could land for market / staking / fusion while close, cancel, mint and register stayed strict
+  // and kept failing in the field. So this truncates a REAL staged claim: the actual on-chain bytes
+  // minus the trailing bool, no re-encoding, no hand-built fixture to drift out of sync.
+  // `mint_compressed_chip` / `register_compressed_chip` need a full Bubblegum leaf to reach, so
+  // they are gated statically instead — SEC-3003 in tests/security/anchor-invariants.test.ts fails
+  // the build if a strict `Account<CompressedMintClaim>` reappears in any non-`init` slot.
+  // -----------------------------------------------------------------------------------------------
+  it('H3b close_expired_claim on a pre-`founder` claim (1 byte short) — Anchor 3003 regression', async () => {
+    if (!env.chain.canWarp) return;
+    const owner = await env.player();
+    const nonce = 56_010n;
+    await stageClaim(env, owner, nonce, 0, 0);
+    const key = compressedMintClaimPda(owner.publicKey, nonce)[0];
+
+    // the premise: one byte short of the frozen layout, yet still readable by the forgiving decoder.
+    // That asymmetry is exactly why fixture round-trips kept passing while the chain kept failing.
+    const full = (await env.chain.getAccount(key))!;
+    await env.chain.setAccount(key, {
+      owner: CHIP_CORE_ID,
+      data: Uint8Array.from(full.data.subarray(0, full.data.length - 1)),
+      lamports: full.lamports,
+    });
+    const short = (await env.chain.getAccount(key))!;
+    expect(short.data.length).toBe(full.data.length - 1);
+    const decoded = decodeCompressedMintClaim(short.data);
+    expect(decoded.founder).toBe(false); // the byte that is missing, defaulted
+    expect(decoded.buyer.equals(owner.publicKey)).toBe(true);
+
+    await env.chain.warpSeconds(7n * DAY + 1n);
+    const before = await env.chain.balance(owner.publicKey);
+    await env.chain.send([closeExpiredClaimIx({ buyer: owner.publicKey, claimNonce: nonce })], { signers: [owner] });
+    // closed, not 3003: the PDA is gone and its rent went to the bound buyer
+    expect(await env.chain.getAccount(key)).toBeNull();
+    const gain = (await env.chain.balance(owner.publicKey)) - before;
+    expect(gain).toBeGreaterThanOrEqual(short.lamports - 50_000n); // rent minus the close tx fee
+    expect(gain).toBeLessThanOrEqual(short.lamports);
   });
 });

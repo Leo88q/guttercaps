@@ -37,6 +37,61 @@ use crate::{
     BUBBLEGUM_V2_ID,
 };
 
+/// Re-establish, on a claim Anchor cannot decode strictly, the guarantee the
+/// `has_one = buyer` constraint used to give.
+///
+/// `CompressedMintClaim` gained `founder` after live Devnet claims had already
+/// been allocated, so those accounts sit one byte short of `INIT_SPACE` and
+/// `Account<'info, CompressedMintClaim>` answers `AccountDidNotDeserialize`
+/// (3003) before any handler runs. The paths that read or update an existing
+/// claim therefore take an `UncheckedAccount` that keeps its `seeds` / `bump`
+/// constraints — Anchor still proves the PDA, and still answers
+/// `ConstraintSeeds` (2006), so the security suite's expectations do not move —
+/// and the one check that needs the decoded body happens here: `claim.buyer` is
+/// the expected holder, i.e. the `has_one = buyer` constraint, whose error every
+/// call site overrode, so the caller passes it in.
+///
+/// The stored `bump` byte is deliberately NOT compared with the one Anchor just
+/// derived. `seeds` + `bump` on the account struct already prove this address is
+/// the canonical PDA for (buyer, claim_nonce), the stored field is never used to
+/// sign or derive anything, and rejecting on it would add a brand-new way to lock
+/// out exactly the legacy accounts this helper exists to keep readable — the
+/// failure mode being fixed here, wearing a different error code. The compat
+/// paths already on `main` (market, staking) do not consult it either.
+///
+/// `owner = crate::ID` stays on the account struct: it is what keeps a foreign
+/// account out before the body is read. The discriminator is still checked, by
+/// `try_deserialize_compat` itself, so another chip_core type parked at this
+/// address keeps failing with `AccountDiscriminatorMismatch` (3002).
+fn claim_compat_checked(
+    claim: &UncheckedAccount<'_>,
+    buyer: &Pubkey,
+    has_one_error: ChipError,
+) -> Result<CompressedMintClaim> {
+    let body = CompressedMintClaim::try_deserialize_compat(&claim.try_borrow_data()?)?;
+    if body.buyer != *buyer {
+        return Err(error!(has_one_error));
+    }
+    Ok(body)
+}
+
+/// Close a compat claim exactly where Anchor's `close = buyer` used to run: the
+/// rent goes to `dest`, and the account is emptied and handed to the system
+/// program, so the PDA can never be read back as a live claim.
+///
+/// `AccountInfo` has no `close` method — only Anchor's `Account<T>` does, and an
+/// `UncheckedAccount` gets no `AccountsExit` pass to run it — so this delegates to
+/// the crate's canonical close, `fusion::close_state`, which already encodes the
+/// order the runtime requires: zero the lamports, `resize(0)` while the account is
+/// still ours, and only then `assign` it away. Both arguments share one `'info`
+/// because `close_state` relates them.
+fn close_compat_claim<'info>(
+    claim: &UncheckedAccount<'info>,
+    dest: &AccountInfo<'info>,
+) -> Result<()> {
+    super::fusion::close_state(&claim.to_account_info(), dest)
+}
+
 #[derive(Accounts)]
 #[instruction(buyer_key: Pubkey, collection_idx: u8, claim_nonce: u64)]
 pub struct StageCompressedChip<'info> {
@@ -1412,14 +1467,18 @@ pub fn cancel_stale_claim_fusion<'info>(
 pub struct CloseExpiredClaim<'info> {
     #[account(mut)]
     pub buyer: Signer<'info>,
+    /// CHECK: PDA `["compressed_claim", buyer, claim_nonce]` — the `seeds` / `bump`
+    /// constraints still prove it, and `owner` keeps a foreign account out. The body is
+    /// decoded in the handler with `try_deserialize_compat`: live pre-`founder` claims are
+    /// one byte short of the current layout, so Anchor's strict decode answered
+    /// `AccountDidNotDeserialize` (3003) and bricked every legacy claim on this path.
     #[account(
         mut,
-        close = buyer,
+        owner = crate::ID,
         seeds = [b"compressed_claim", buyer.key().as_ref(), &claim_nonce.to_le_bytes()],
-        bump = claim.bump,
-        has_one = buyer @ ChipError::Unauthorized,
+        bump,
     )]
-    pub claim: Box<Account<'info, CompressedMintClaim>>,
+    pub claim: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
 
@@ -1429,15 +1488,24 @@ pub struct CloseExpiredClaim<'info> {
 /// referenced by a live `PendingClaimFusion` — closing one would brick its
 /// reveal — so both stay out of reach here.
 pub fn close_expired_claim(ctx: Context<CloseExpiredClaim>, _claim_nonce: u64) -> Result<()> {
+    let claim = claim_compat_checked(
+        &ctx.accounts.claim,
+        &ctx.accounts.buyer.key(),
+        ChipError::Unauthorized,
+    )?;
     require!(
-        ctx.accounts.claim.settlement == Pubkey::default()
-            && !ctx.accounts.claim.minted
-            && !ctx.accounts.claim.consumed
-            && !ctx.accounts.claim.listed
-            && !ctx.accounts.claim.staked
-            && Clock::get()?.unix_timestamp > ctx.accounts.claim.expires_at,
+        claim.settlement == Pubkey::default()
+            && !claim.minted
+            && !claim.consumed
+            && !claim.listed
+            && !claim.staked
+            && Clock::get()?.unix_timestamp > claim.expires_at,
         ChipError::InvalidChipState
     );
+    // Anchor ran `close = buyer` after this handler returned; with the compat
+    // decode the refund and the zeroing move here — same point in the sequence,
+    // and still only once every gate above has passed.
+    close_compat_claim(&ctx.accounts.claim, &ctx.accounts.buyer.to_account_info())?;
     Ok(())
 }
 
@@ -1479,42 +1547,53 @@ pub struct CancelCompressedClaim<'info> {
     pub settlement: Box<Account<'info, CompressedPackSettlement>>,
     #[account(seeds = [b"pending", buyer.key().as_ref(), &nonce.to_le_bytes()], bump = pending.bump)]
     pub pending: Box<Account<'info, PendingPack>>,
+    /// CHECK: PDA `["compressed_claim", buyer, claim_nonce]` — the `seeds` / `bump`
+    /// constraints still prove it, and `owner` keeps a foreign account out. The body is
+    /// decoded in the handler with `try_deserialize_compat`, which is also where the
+    /// `has_one = buyer` gate and the `close = buyer` refund moved: live pre-`founder`
+    /// claims are one byte short of the current layout, so Anchor's strict decode
+    /// answered `AccountDidNotDeserialize` (3003) and a legacy pack claim could never be
+    /// cancelled — its share stayed locked in the settlement forever.
     #[account(
         mut,
-        close = buyer,
+        owner = crate::ID,
         seeds = [b"compressed_claim", buyer.key().as_ref(), &claim_nonce.to_le_bytes()],
-        bump = claim.bump,
-        has_one = buyer @ ChipError::Unauthorized,
+        bump,
     )]
-    pub claim: Box<Account<'info, CompressedMintClaim>>,
+    pub claim: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
 
 pub fn cancel_compressed_claim(
     ctx: Context<CancelCompressedClaim>,
-    _claim_nonce: u64,
+    claim_nonce: u64,
     nonce: u64,
 ) -> Result<()> {
+    let claim = claim_compat_checked(
+        &ctx.accounts.claim,
+        &ctx.accounts.buyer.key(),
+        ChipError::Unauthorized,
+    )?;
     require!(
-        ctx.accounts.claim.settlement == ctx.accounts.settlement.key()
+        claim.settlement == ctx.accounts.settlement.key()
             && ctx.accounts.settlement.buyer == ctx.accounts.buyer.key()
             && ctx.accounts.settlement.pending == ctx.accounts.pending.key()
             && ctx.accounts.settlement.nonce == nonce
             && ctx.accounts.pending.buyer == ctx.accounts.buyer.key()
             && ctx.accounts.pending.nonce == nonce
-            && !ctx.accounts.claim.minted
+            && !claim.minted
             // SEC-F03: closing the claim while it is staked (or listed) is forbidden — the claim
             // account is the authority the staking/market flags live on. Closing it would orphan
             // the CompressedChipStake weight forever (zombie weight diluting every other staker)
             // while the cancelled share refunds had already been counted into the settlement.
-            && !ctx.accounts.claim.staked
-            && !ctx.accounts.claim.listed
+            && !claim.staked
+            && !claim.listed
             // SEC-G03: a consumed material is not a refundable share. Unreachable while
             // `fuse_compressed_claims` only takes settlement-free claims; kept so a future
             // fusion path that consumes pack claims fails closed here instead of double-paying.
-            && !ctx.accounts.claim.consumed
+            && !claim.consumed
             && ctx.accounts.settlement.cancelled_claims < ctx.accounts.settlement.total_claims
-            && Clock::get()?.unix_timestamp > ctx.accounts.claim.expires_at,
+            && Clock::get()?.unix_timestamp > claim.expires_at,
         ChipError::InvalidChipState
     );
     ctx.accounts.settlement.cancelled_claims = ctx
@@ -1526,8 +1605,12 @@ pub fn cancel_compressed_claim(
     emit!(CompressedClaimCancelled {
         buyer: ctx.accounts.buyer.key(),
         nonce,
-        claim_nonce: _claim_nonce,
+        claim_nonce,
     });
+    // Anchor ran `close = buyer` in `exit()`, after this handler returned; the
+    // compat decode moves the refund and the zeroing here, at the same point in
+    // the sequence and only once every gate above has passed.
+    close_compat_claim(&ctx.accounts.claim, &ctx.accounts.buyer.to_account_info())?;
     Ok(())
 }
 
@@ -1824,13 +1907,19 @@ pub struct MintCompressedChip<'info> {
         constraint = tree_meta.tree_authority == collection.key() @ ChipError::InvalidBubblegumTree,
     )]
     pub tree_meta: Box<Account<'info, BubblegumTreeMeta>>,
+    /// CHECK: PDA `["compressed_claim", buyer_key, claim_nonce]` — the `seeds` / `bump`
+    /// constraints still prove it, and `owner` keeps a foreign account out. The body is
+    /// decoded in the handler with `try_deserialize_compat`, which is also where the
+    /// `has_one = buyer` gate moved: live pre-`founder` claims are one byte short of the
+    /// current layout, so Anchor's strict decode answered `AccountDidNotDeserialize` (3003)
+    /// and a legacy claim could never be minted into a cNFT.
     #[account(
         mut,
+        owner = crate::ID,
         seeds = [b"compressed_claim", buyer_key.as_ref(), &claim_nonce.to_le_bytes()],
-        bump = claim.bump,
-        has_one = buyer @ ChipError::InvalidBubblegumProof,
+        bump,
     )]
-    pub claim: Box<Account<'info, CompressedMintClaim>>,
+    pub claim: UncheckedAccount<'info>,
     /// CHECK: the leaf owner is the buyer bound into the claim.
     #[account(address = buyer_key)]
     pub buyer: UncheckedAccount<'info>,
@@ -1871,6 +1960,15 @@ pub fn mint_compressed_chip(
     collection_idx: u8,
     claim_nonce: u64,
 ) -> Result<()> {
+    // First, before any handler-side gate: Anchor used to run `seeds` / `bump` /
+    // `has_one` on `claim` ahead of this body, and `has_one = buyer` carried
+    // `ChipError::InvalidBubblegumProof`. Decoding here keeps that ordering, so
+    // a caller with the wrong holder still sees the same error it saw before.
+    let mut claim = claim_compat_checked(
+        &ctx.accounts.claim,
+        &buyer,
+        ChipError::InvalidBubblegumProof,
+    )?;
     require!(!ctx.accounts.config.paused, ChipError::Paused);
     require_bubblegum_program(&ctx.accounts.bubblegum_program.to_account_info())?;
     require!(
@@ -1898,18 +1996,15 @@ pub fn mint_compressed_chip(
         ChipError::InvalidCollection
     );
     require!(
-        !ctx.accounts.claim.minted
-            && !ctx.accounts.claim.consumed
-            && !ctx.accounts.claim.listed
-            && !ctx.accounts.claim.staked,
+        !claim.minted && !claim.consumed && !claim.listed && !claim.staked,
         ChipError::InvalidBubblegumProof
     );
     require!(
-        Clock::get()?.unix_timestamp <= ctx.accounts.claim.expires_at,
+        Clock::get()?.unix_timestamp <= claim.expires_at,
         ChipError::InvalidBubblegumProof
     );
     require!(
-        ctx.accounts.claim.collection_idx == collection_idx,
+        claim.collection_idx == collection_idx,
         ChipError::InvalidBubblegumProof
     );
     // The collection PDA is both the Bubblegum tree delegate and the MPL-Core
@@ -1969,11 +2064,8 @@ pub fn mint_compressed_chip(
         }
     };
 
-    let rarity = ctx.accounts.claim.rarity.index();
-    let name = format!(
-        "{} #{}",
-        ctx.accounts.collection.symbol, ctx.accounts.claim.game_index
-    );
+    let rarity = claim.rarity.index();
+    let name = format!("{} #{}", ctx.accounts.collection.symbol, claim.game_index);
     let uri = format!(
         "https://cdn.guttercaps.gg/m/{}/{}.json",
         collection_idx, rarity
@@ -2024,14 +2116,22 @@ pub fn mint_compressed_chip(
         .metadata(metadata)
         .invoke_signed(&[collection_seeds])?;
 
-    ctx.accounts.claim.minted = true;
+    claim.minted = true;
+    // Anchor re-serialized the `Account<CompressedMintClaim>` on exit; an
+    // `UncheckedAccount` is not re-serialized, so the flag is written here —
+    // through `write_compat`, which is what keeps a one-byte-short legacy claim
+    // from being overrun by the full current layout.
+    {
+        let mut data = ctx.accounts.claim.try_borrow_mut_data()?;
+        claim.write_compat(&mut data[8..])?;
+    }
     emit!(CompressedChipMinted {
         buyer,
         collection_idx,
         claim_nonce,
         rarity,
-        level: ctx.accounts.claim.level,
-        game_index: ctx.accounts.claim.game_index,
+        level: claim.level,
+        game_index: claim.game_index,
         claim: ctx.accounts.claim.key(),
     });
     Ok(())
@@ -2076,13 +2176,19 @@ pub struct RegisterCompressedChip<'info> {
         constraint = tree_meta.tree_authority == collection.key() @ ChipError::InvalidBubblegumTree,
     )]
     pub tree_meta: Box<Account<'info, BubblegumTreeMeta>>,
+    /// CHECK: PDA `["compressed_claim", buyer_key, claim_nonce]` — the `seeds` / `bump`
+    /// constraints still prove it, and `owner` keeps a foreign account out. The body is
+    /// decoded in the handler with `try_deserialize_compat`, which is also where the
+    /// `has_one = buyer` gate moved: live pre-`founder` claims are one byte short of the
+    /// current layout, so Anchor's strict decode answered `AccountDidNotDeserialize` (3003)
+    /// and a legacy claim could never be registered into a `CompressedChipState`.
     #[account(
         mut,
+        owner = crate::ID,
         seeds = [b"compressed_claim", buyer_key.as_ref(), &claim_nonce.to_le_bytes()],
-        bump = claim.bump,
-        has_one = buyer @ ChipError::InvalidBubblegumProof,
+        bump,
     )]
-    pub claim: Box<Account<'info, CompressedMintClaim>>,
+    pub claim: UncheckedAccount<'info>,
     // sentio-ignore-next-line SW002
     /// CHECK: compressed-pack settlement PDA, or the system program for the
     /// legacy/admin staging path where the claim has no settlement. The handler
@@ -2137,6 +2243,15 @@ pub fn register_compressed_chip<'info>(
     level: u8,
     game_index: u64,
 ) -> Result<()> {
+    // First, before any handler-side gate: Anchor used to run `seeds` / `bump` /
+    // `has_one` on `claim` ahead of this body, and `has_one = buyer` carried
+    // `ChipError::InvalidBubblegumProof`. Decoding here keeps that ordering, so
+    // a caller with the wrong holder still sees the same error it saw before.
+    let mut claim = claim_compat_checked(
+        &ctx.accounts.claim,
+        &buyer,
+        ChipError::InvalidBubblegumProof,
+    )?;
     require_bubblegum_program(&ctx.accounts.bubblegum_program.to_account_info())?;
     require!(
         ctx.accounts.bubblegum_program.to_account_info().executable,
@@ -2156,22 +2271,22 @@ pub fn register_compressed_chip<'info>(
     require_keys_eq!(delegate, owner, ChipError::InvalidBubblegumProof);
     let rarity = Rarity::from_index(rarity).ok_or(error!(ChipError::InvalidCollection))?;
     require!(
-        ctx.accounts.claim.minted
-            && !ctx.accounts.claim.registered
-            && !ctx.accounts.claim.consumed
-            && !ctx.accounts.claim.listed
-            && !ctx.accounts.claim.staked
-            && ctx.accounts.claim.buyer == buyer
-            && ctx.accounts.claim.collection_idx == collection_idx
-            && ctx.accounts.claim.rarity == rarity
-            && ctx.accounts.claim.level == level
-            && ctx.accounts.claim.game_index == game_index,
+        claim.minted
+            && !claim.registered
+            && !claim.consumed
+            && !claim.listed
+            && !claim.staked
+            && claim.buyer == buyer
+            && claim.collection_idx == collection_idx
+            && claim.rarity == rarity
+            && claim.level == level
+            && claim.game_index == game_index,
         ChipError::InvalidBubblegumProof
     );
     // A minted claim remains recoverable after the DAS/indexer SLA expires;
     // only an unminted claim can be cancelled and refunded.
     require!(
-        Clock::get()?.unix_timestamp <= ctx.accounts.claim.expires_at || ctx.accounts.claim.minted,
+        Clock::get()?.unix_timestamp <= claim.expires_at || claim.minted,
         ChipError::InvalidBubblegumProof
     );
     require_keys_eq!(
@@ -2217,10 +2332,10 @@ pub fn register_compressed_chip<'info>(
         ctx.remaining_accounts,
     )?;
 
-    if ctx.accounts.claim.settlement != Pubkey::default() {
+    if claim.settlement != Pubkey::default() {
         require_keys_eq!(
             ctx.accounts.settlement.key(),
-            ctx.accounts.claim.settlement,
+            claim.settlement,
             ChipError::InvalidChipState
         );
         let settlement_ai = ctx.accounts.settlement.to_account_info();
@@ -2246,7 +2361,7 @@ pub fn register_compressed_chip<'info>(
     }
 
     let rarity_index = rarity.index() as usize;
-    if !ctx.accounts.claim.index_reserved {
+    if !claim.index_reserved {
         ctx.accounts.collection.minted = ctx
             .accounts
             .collection
@@ -2260,7 +2375,7 @@ pub fn register_compressed_chip<'info>(
     }
 
     let now = Clock::get()?.unix_timestamp;
-    ctx.accounts.claim.registered = true;
+    claim.registered = true;
     let chip = &mut ctx.accounts.chip;
     chip.asset = asset_id;
     chip.claim = ctx.accounts.claim.key();
@@ -2278,20 +2393,29 @@ pub fn register_compressed_chip<'info>(
     chip.index = game_index;
     // The claim's soulbound window becomes the chip's: the V2 leaf flags bit is
     // kept as an additional signal, the claim lock is the authority.
-    let mut chip_flags = if proof.flags & 0b1000 != 0 || ctx.accounts.claim.lock_until > now {
+    let mut chip_flags = if proof.flags & 0b1000 != 0 || claim.lock_until > now {
         CompressedChipState::F_SOULBOUND
     } else {
         0
     };
     // Pre-sale origin (docs/preorder-beta.md): the founder frame is permanent and travels
     // with the chip — the claim is the authority, the leaf flag cannot add or remove it.
-    if ctx.accounts.claim.founder {
+    if claim.founder {
         chip_flags |= CompressedChipState::F_FOUNDER;
     }
     chip.flags = chip_flags;
-    chip.lock_until = ctx.accounts.claim.lock_until;
+    chip.lock_until = claim.lock_until;
     chip.minted_at = now;
     chip.bump = ctx.bumps.chip;
+
+    // Anchor re-serialized the `Account<CompressedMintClaim>` on exit; an
+    // `UncheckedAccount` is not re-serialized, so `registered` is written here —
+    // through `write_compat`, which is what keeps a one-byte-short legacy claim
+    // from being overrun by the full current layout.
+    {
+        let mut data = ctx.accounts.claim.try_borrow_mut_data()?;
+        claim.write_compat(&mut data[8..])?;
+    }
 
     emit!(CompressedChipRegistered {
         asset: asset_id,
