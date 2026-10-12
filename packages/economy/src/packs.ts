@@ -3,8 +3,9 @@
 // -----------------------------------------------------------------------------
 // Design goals (why these numbers):
 //  * A pack must feel exciting at least every ~4 opens (something ≥ Rare) and
-//    life-changing at least once in a player's first serious month (≥ Legend
-//    across ~60 packs with pity).
+//    hit a real peak (≥ Epic+) inside a player's first serious month — pity
+//    guarantees one by pack 60. Legend and above NEVER drop from packs: the
+//    top tiers are fusion-only (see fusion.ts) so rarity stays earned.
 //  * Free sources (quests/PvP) must never produce more than ~15% of the value
 //    that paid packs produce per active player per week — see faucets.ts.
 //  * Pricing anchor: the STANDARD pack defines the Common floor. We set
@@ -14,7 +15,9 @@
 //    so its EV/price sits in [55%, 75%]: the 25-45% gap is the standard
 //    gacha "entertainment + platform" margin; above ~80% pack-opening becomes
 //    a strictly dominant arbitrage vs. the marketplace and floors collapse,
-//    below ~50% players feel robbed and stop buying.
+//    below ~50% players feel robbed and stop buying. The Limited SKU is the
+//    documented exception (EV ≈ 32%): it sells featured access and soulbound
+//    purchase perks (PACK_PERKS), not chip EV.
 //  * Premium/Limited never offer better $/EV than Standard — they sell
 //    variance compression (fewer dead packs, higher Legend odds) and access
 //    (featured collection), not a discount. Otherwise whales would only
@@ -52,19 +55,25 @@ export interface PackDef {
 }
 
 /**
- * Baseline odds (per chip slot). Compare with the collection bible's
- * headline 45/25/15/8/4.5/1.8/0.5/0.18/0.02 — we keep Common..Epic+ almost
- * identical and cut the three top tiers slightly on the STANDARD pack
- * because pity adds back ~25% of Legend+ supply deterministically.
+ * TOP-TIER RULE (design decision 2026-10): Legend, Legend+ and Diamond drop
+ * from NO pack — the top three tiers exist only through fusion (see fusion.ts
+ * FUSION_GATE: max-level materials, 200 000 $CG god-tax, soulbound Diamond).
+ * A first-day wallet must not be able to buy a god; packs are a materials
+ * engine for the fusion ladder, and their EV is priced on Common..Epic+.
  */
-const STANDARD_ODDS = [4500, 2500, 1500, 800, 450, 180, 50, 18, 2] as const;
 
-// Premium shifts mass out of Common/Common+ into Rare/Rare+, raises
-// Legend/Legend+/Diamond odds ×1.4-2.5, floor Rare + 5 chips → no dead packs.
-// EV/price ≈ 63% (vs 65% Standard): you pay a small premium for consistency.
-// 2026-09-29: price $12.99 → $14.99 at 5 chips (6 is impossible: MAX_CHIPS_PER_PACK = 5 is baked into
-// the compressed-claim stride and PackOpened layout) → mass moved from Common into Rare+..Legend to keep EV ≥ 55 %.
-const PREMIUM_ODDS = [2320, 2600, 2250, 1600, 800, 310, 90, 25, 5] as const;
+/**
+ * Baseline odds (per chip slot) — 5 chips (was 4; the freed top-tier mass goes
+ * into Epic/Epic+ so the EV/price anchor holds without Legend drops).
+ * Pity guarantees an Epic+ by pack 60.
+ */
+const STANDARD_ODDS = [4200, 2400, 1600, 900, 600, 300, 0, 0, 0] as const;
+
+// Premium: 5 chips, floor Rare, heavier Rare+..Epic+ — variance compression,
+// not a discount. EV/price ≈ 61% (vs 65% Standard). 6 chips is impossible:
+// MAX_CHIPS_PER_PACK = 5 is baked into the compressed-claim stride and the
+// PackOpened event layout.
+const PREMIUM_ODDS = [1700, 2100, 2200, 1800, 1200, 1000, 0, 0, 0] as const;
 
 // Starter is deliberately +EV (floor Rare, 4 chips, $1.99) — it is a
 // customer-acquisition cost, not a product. One-per-wallet, and its chips
@@ -75,9 +84,12 @@ export const STARTER_SOULBOUND_DAYS = 7;
 const STARTER_ODDS = [2900, 3000, 2500, 1200, 350, 50, 0, 0, 0] as const;
 
 // Limited event pack: only the featured (seasonal) collection, floor Rare+,
-// top-end odds ×2.4-15 vs standard, hard daily cap of 5 per wallet so the
-// event doesn't get vacuumed by bots in the first minute.
-const LIMITED_ODDS = [2200, 2400, 2400, 1600, 850, 350, 120, 50, 30] as const;
+// heavy Epic/Epic+ mid-mass. With no top tiers its raw chip EV is ≈ 32% of
+// $29.99 — deliberately below the standard EV band: the SKU sells ACCESS
+// (featured collection, pity 25) plus soulbound purchase perks (PACK_PERKS
+// below: fusion booster + XP tickets), not chip EV. Daily cap of 5 per wallet
+// so the event doesn't get vacuumed by bots in the first minute.
+const LIMITED_ODDS = [1500, 1900, 2300, 2000, 1400, 900, 0, 0, 0] as const;
 
 export const PACKS: Record<PackId, PackDef> = {
   starter: {
@@ -86,27 +98,41 @@ export const PACKS: Record<PackId, PackDef> = {
     oddsBps: STARTER_ODDS, floor: 2, dailyCap: 1, pity: null, pool: 'all', purchasable: true,
   },
   standard: {
-    id: 'standard', name: 'Standard Pack', chips: 4,
+    id: 'standard', name: 'Standard Pack', chips: 5,
     priceUsdCents: 599, priceCgMicro: 2_700_000_000, // 2 700 $CG — 3× so $CG is a whale sink, not a SOL substitute
     oddsBps: STANDARD_ODDS, floor: 1, dailyCap: null,
-    pity: { tier: 6 /* Legend */, hardAt: 60, softStart: 30, softStepBps: 25 },
+    pity: { tier: 5 /* Epic+ */, hardAt: 60, softStart: 30, softStepBps: 25 },
     pool: 'all', purchasable: true,
   },
   premium: {
     id: 'premium', name: 'Premium Pack', chips: 5,
     priceUsdCents: 1499, priceCgMicro: 6_750_000_000, // 6 750 $CG — 3×, same ratio to Standard
     oddsBps: PREMIUM_ODDS, floor: 2, dailyCap: null,
-    pity: { tier: 6, hardAt: 40, softStart: 20, softStepBps: 40 },
+    pity: { tier: 5, hardAt: 40, softStart: 20, softStepBps: 40 },
     pool: 'all', purchasable: true,
   },
   limited: {
     id: 'limited', name: 'Limited Event Pack', chips: 5,
     priceUsdCents: 2999, priceCgMicro: null, // event packs are SOL/USDC only → real revenue for prize pools
     oddsBps: LIMITED_ODDS, floor: 3, dailyCap: 5,
-    pity: { tier: 6, hardAt: 25, softStart: 12, softStepBps: 60 },
+    pity: { tier: 5, hardAt: 25, softStart: 12, softStepBps: 60 },
     pool: 'featured', purchasable: true,
   },
 };
+
+/**
+ * Limited purchase perks (design decision 2026-10): soulbound, granted per
+ * purchase with daily caps, never tradable or sold. The booster rides the same
+ * item-root pipeline as quest boosters (quest_completions.reward_booster →
+ * publish_item_root); the XP ticket is redeemed on a chip of the buyer's
+ * choice above the daily cap (backend/src/pack-perks.ts).
+ */
+export const PACK_PERKS = {
+  packId: 'limited' as PackId,
+  boosterPerDay: 1, // first Limited purchase of the day
+  xpTicketXp: 100,
+  xpTicketPerDay: 2,
+} as const;
 
 /**
  * Commit-reveal refund window, in slots. Switchboard stops signing a reveal 1 h after the
@@ -140,8 +166,8 @@ export function bundlePriceCents(pack: PackDef, qty: number): number {
 //              from Common's share);
 //   hard pity: at `hardAt` the last chip in the pack is forced to ≥tier.
 // The counter resets on any natural or forced ≥tier drop.
-// Effective Legend+ rate for STANDARD with pity ≈ 0.70% + 0.55% (pity) ≈ 1.25%
-// per pack, i.e. ~1 Legend per 80 packs for an unlucky player, guaranteed by 60.
+// Effective Epic+ rate for STANDARD with pity ≈ 14% per pack natural, with the
+// soft ramp and a hard guarantee of one by pack 60 for a cold streak.
 
 export function effectiveOdds(pack: PackDef, pityCounter: number): number[] {
   // MUST stay byte-identical to `effective_odds` in programs/chip_core/src/economy.rs

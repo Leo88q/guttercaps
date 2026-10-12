@@ -319,6 +319,23 @@ impl CompressedMintClaim {
         let mut cursor: &[u8] = &padded;
         Self::try_deserialize(&mut cursor)
     }
+
+    /// Borsh-write `self` into an account body (`data[8..]`), tolerating the
+    /// pre-`founder` layout: an account exactly one byte short of `INIT_SPACE`
+    /// gets every byte but the trailing bool it never allocated. Writing the
+    /// full body into a short account would overrun the allocated region, and
+    /// a short body into a full account would leave the last byte stale.
+    pub fn write_compat(&self, body: &mut [u8]) -> Result<()> {
+        const SIZE: usize = CompressedMintClaim::INIT_SPACE;
+        require!(
+            body.len() == SIZE || body.len() == SIZE - 1,
+            ChipError::InvalidChipState
+        );
+        let mut full = [0u8; SIZE];
+        self.serialize(&mut full.as_mut_slice())?;
+        body.copy_from_slice(&full[..body.len()]);
+        Ok(())
+    }
 }
 
 /// Settlement state for a paid compressed pack. The pending purchase remains

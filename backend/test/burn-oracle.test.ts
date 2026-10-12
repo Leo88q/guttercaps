@@ -39,9 +39,10 @@ describe('burn oracle (SEC-M1)', () => {
   it('pendingBurn sums chip_core BurnReported + market listing fee + arena rake burn, never staking rows', () => {
     for (const t of world().txs) ingestTx(t, db);
     finalizeAll(db); // SEC-B29: the oracle only reports burns at or below the finalized horizon
-    // world(): fusion fee 2.5 $CG + service 199 $CG (chip_core), one listing (market 0.5 $CG), one battle (rake_burn 2 $CG)
+    // world(): fusion fee 25 $CG + service 199 $CG (chip_core), one listing (0.1 SOL ≈ 11¢ →
+    // economy v3 proportional fee floors at 2 $CG), one battle (rake_burn 2 $CG)
     const p = pendingBurn(db, 0);
-    expect(p.amount).toBe(2_500_000n + 199_000_000n + BigInt(FEES.listingFeeCgMicro) + 2_000_000n);
+    expect(p.amount).toBe(BigInt(FEES.listingFeeMinCgMicro) + 199_000_000n + 2_000_000n + 2_500_000n);
     expect(p.rows).toBe(4);
     // staking's own early-exit burn is already on-chain (record_internal_burn) → excluded
     ingestTx(tx([{ program: 'staking', name: 'Unstaked', data: { owner: kp(), kind: 0, key: kp(), amount: '1000000', penaltyBurned: '50000' } }]), db);

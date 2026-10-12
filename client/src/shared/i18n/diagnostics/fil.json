@@ -10,7 +10,7 @@
   "quantity": "Dapat may 1 hanggang {max} cap ang isang pack.",
   "rarityRange": "Dapat mula 0 hanggang {max} ang rarity index.",
   "commonFloor": "Dapat hindi bababa sa {min} basis point ang tsansa ng Karaniwan.",
-  "topOdds": "May kabuuang {sum} basis point ang dalawang pinakamataas na antas, lampas sa {max} para sa SKU {sku}.",
+  "topOdds": "Ang Legend pataas ay may kabuuang {sum} basis point, lampas sa {max} para sa SKU {sku}.",
   "usdRange": "Dapat mula {min} hanggang {max} USD ang presyo.",
   "pityGuard": "Kailangan: hardAt ≥ {minHard}, softStart ≤ hardAt, softStepBps ≤ {maxStep}.",
   "u64": "Dapat decimal string ang presyo sa saklaw ng unsigned 64-bit.",

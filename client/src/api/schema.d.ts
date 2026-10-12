@@ -785,6 +785,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/pack-perks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Today's Limited-pack purchase perks (economy v3) — booster/day + XP tickets left */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description perks */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PackPerks"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/pack-perks/xp-ticket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redeem one XP ticket on an owned chip (+100 XP above the daily cap; tickets expire at midnight UTC) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        asset: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description applied */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            asset?: string;
+                            xp?: number;
+                            fromLevel?: number;
+                            toLevel?: number;
+                        };
+                    };
+                };
+                /** @description chip_not_found */
+                404: components["responses"]["Error"];
+                /** @description no_ticket */
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/human": {
         parameters: {
             query?: never;
@@ -5188,6 +5275,13 @@ export interface components {
             /** Format: date-time */
             at?: string;
         };
+        PackPerks: {
+            day?: number;
+            boosters?: number;
+            tickets?: number;
+            ticketsLeft?: number;
+            ticketXp?: number;
+        };
         PassState: {
             seasonId?: number;
             /** @description cumulative season XP (ranked play only — matches won/lost) */
@@ -5631,8 +5725,8 @@ export interface components {
             maxChipsPerPack?: number;
             /** @description Common odds floor (500 = 5 %) */
             minCommonBps?: number;
-            /** @description Legend+ + Diamond cap per slot on sku 0/1; ×2 on sku 2/3 */
-            maxTop2BpsStandard?: number;
+            /** @description Legend-and-above (tiers 6–8) odds cap for every pack SKU — 0 in economy v3 */
+            maxTopTierBps?: number;
             priceCentsRange?: number[];
             pity?: {
                 minHardAt?: number;

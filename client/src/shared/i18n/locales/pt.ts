@@ -57,7 +57,7 @@ const pt: Messages = {
     priceAge: 'Idade do preço', priceAgeValue: '{s} s (válido ≤ 60 s on-chain)', priceFeedDown: 'O feed de preços está atualizando — tente de novo em alguns segundos.', quoteFailed: 'Não foi possível obter a cotação.',
     rentReserve: 'Reserva de rent (devolvida após abrir)', oracleFees: 'Taxas de rede (est.)', maxSlippage: 'Máximo (proteção de 1%)',
     oddsNow: 'Suas chances agora (pity {n})', oneSignature: ui.packSignatures,
-    perPack: '{n, plural, one{# cap} other{# caps}} por pacote', floor: 'piso {rarity}', starterOnce: 'uma vez por carteira', dailyCap: 'limite {n}/dia',
+    perPack: '{n, plural, one{# cap} other{# caps}} por pacote', floor: 'piso {rarity}', starterOnce: 'uma vez por carteira', limitedPerks: 'reforço + 2 bilhetes de XP por dia', dailyCap: 'limite {n}/dia',
     pityIn: '{rarity} garantido em {n}', packDisabled: 'desativado no momento', was: 'antes {price}',
     tabs: { packs: 'Pacotes', services: 'Extras' },
   },
@@ -218,7 +218,7 @@ const pt: Messages = {
     params: {
       unavailable: 'Estado da chain indisponível: {error}', version: 'versão dos parâmetros', slot: 'lido no slot', paused: 'pausado', liabilities: 'Passivos do cofre (Σ shards do ledger)', burnedTotal: 'queimado no total',
       shards: '{n} shards do ledger · {missing} sem inicializar', shardsMissing: 'rode `setup ledgers` antes do sweep_vault', globals: 'Taxas globais', marketFee: 'Taxa do mercado (bps)', skrDiscount: 'Desconto SKR em pacotes (bps)', featured: 'Distrito em destaque', keep: 'manter',
-      split: 'Divisão da emissão (bps)', splitRule: '±{delta} bps por mudança · próxima mudança permitida {next}', sliceBudget: 'hoje', packs: 'SKUs de pacotes', packsRule: 'As chances devem somar 10000 · Common ≥ {common}% · Legend+ + Diamond ≤ {top2}% em Starter/Standard (×2 em Premium/Limited) · preço $0,50–$500',
+      split: 'Divisão da emissão (bps)', splitRule: '±{delta} bps por mudança · próxima mudança permitida {next}', sliceBudget: 'hoje', packs: 'SKUs de pacotes', packsRule: 'As chances devem somar 10000 · Common ≥ {common}% · Legend e acima nunca caem — tiers 6–8 devem ser 0 · preço $0,50–$500',
       price: 'preço ¢', note: 'Nota (vai para o log de auditoria)', checking: 'Verificando…', propose: 'Verificar e codificar', clear: 'Limpar rascunho', nothingSent: 'Nada é enviado on-chain daqui.', history: 'set_params recentes', noHistory: 'Nenhuma mudança de parâmetros indexada ainda.',
     },
     kill: {

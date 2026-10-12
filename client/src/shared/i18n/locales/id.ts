@@ -57,7 +57,7 @@ const id: Messages = {
     priceAge: 'Usia harga', priceAgeValue: '{s} dtk (berlaku ≤ 60 dtk on-chain)', priceFeedDown: 'Feed harga sedang diperbarui — coba lagi beberapa detik lagi.', quoteFailed: 'Kuotasi tidak bisa diambil.',
     rentReserve: 'Cadangan rent (dikembalikan setelah dibuka)', oracleFees: 'Biaya jaringan (perkiraan)', maxSlippage: 'Maks (pelindung slippage 1%)',
     oddsNow: 'Peluang Anda sekarang (pity {n})', oneSignature: ui.packSignatures,
-    perPack: '{n, plural, other{# cap}} per pack', floor: 'floor {rarity}', starterOnce: 'sekali per dompet', dailyCap: 'batas {n}/hari',
+    perPack: '{n, plural, other{# cap}} per pack', floor: 'floor {rarity}', starterOnce: 'sekali per dompet', limitedPerks: 'booster + 2 tiket XP per hari', dailyCap: 'batas {n}/hari',
     pityIn: '{rarity} dijamin dalam {n}', packDisabled: 'sedang dinonaktifkan', was: 'sebelumnya {price}',
     tabs: { packs: 'Pack', services: 'Ekstra' },
   },
@@ -218,7 +218,7 @@ const id: Messages = {
     params: {
       unavailable: 'Status chain tidak tersedia: {error}', version: 'versi parameter', slot: 'dibaca di slot', paused: 'dijeda', liabilities: 'Kewajiban vault (Σ shard ledger)', burnedTotal: 'total dibakar',
       shards: '{n} shard ledger · {missing} belum diinisialisasi', shardsMissing: 'jalankan `setup ledgers` sebelum sweep_vault', globals: 'Biaya global', marketFee: 'Biaya pasar (bps)', skrDiscount: 'Diskon pack SKR (bps)', featured: 'Distrik unggulan', keep: 'pertahankan',
-      split: 'Pembagian emisi (bps)', splitRule: '±{delta} bps per perubahan · perubahan berikutnya boleh {next}', sliceBudget: 'hari ini', packs: 'SKU pack', packsRule: 'Peluang harus berjumlah 10000 · Common ≥ {common}% · Legend+ + Diamond ≤ {top2}% di Starter/Standard (×2 di Premium/Limited) · harga $0,50–$500',
+      split: 'Pembagian emisi (bps)', splitRule: '±{delta} bps per perubahan · perubahan berikutnya boleh {next}', sliceBudget: 'hari ini', packs: 'SKU pack', packsRule: 'Peluang harus berjumlah 10000 · Common ≥ {common}% · Legend ke atas tidak pernah jatuh — tier 6–8 harus 0 · harga $0,50–$500',
       price: 'harga ¢', note: 'Catatan (masuk log audit)', checking: 'Memeriksa…', propose: 'Periksa & enkode', clear: 'Hapus draf', nothingSent: 'Tidak ada yang dikirim on-chain dari sini.', history: 'set_params terbaru', noHistory: 'Belum ada perubahan parameter yang terindeks.',
     },
     kill: {

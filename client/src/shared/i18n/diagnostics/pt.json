@@ -10,7 +10,7 @@
   "quantity": "Um pacote deve conter de 1 a {max} caps.",
   "rarityRange": "O índice de raridade deve estar entre 0 e {max}.",
   "commonFloor": "A probabilidade Comum deve ser de pelo menos {min} pontos-base.",
-  "topOdds": "Os dois níveis superiores somam {sum} pontos-base, acima do limite de {max} para o SKU {sku}.",
+  "topOdds": "Legend e acima somam {sum} pontos-base, acima do limite de {max} para o SKU {sku}.",
   "usdRange": "O preço deve estar entre {min} e {max} USD.",
   "pityGuard": "Requisitos: hardAt ≥ {minHard}, softStart ≤ hardAt, softStepBps ≤ {maxStep}.",
   "u64": "O preço deve ser uma string decimal no intervalo de 64 bits sem sinal.",

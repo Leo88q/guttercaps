@@ -50,7 +50,7 @@ export const GUARD = {
   bpsDenom: 10_000,
   maxChipsPerPack: 5,
   minCommonBps: 500,                 // Common ≥ 5 % always
-  maxTop2BpsStandard: 200,           // Legend+ + Diamond ≤ 2 % per slot on Starter/Standard (sku 0/1), ×2 on Premium/Limited
+  maxTopTierBps: 0,                  // economy v3: Legend and above (tiers 6–8) never drop from packs — pity lands on Epic+ instead
   priceCentsRange: [50, 50_000] as const,
   pity: { minHardAt: 10, maxSoftStepBps: 200 },
   maxMarketFeeBps: 1_000,
@@ -134,9 +134,9 @@ export function checkPackGuardRails(sku: number, p: PackDef, out: Violation[], p
   if (p.floor >= RARITY_COUNT) out.push({ path: `${path}.floor`, rule: 'OddsGuardRail', message: 'floor must be a rarity index 0..8', i18n: { code: 'rarityRange', params: { max: RARITY_COUNT - 1 } } });
   if (p.pityTier >= RARITY_COUNT) out.push({ path: `${path}.pity.tier`, rule: 'OddsGuardRail', message: 'pity tier must be a rarity index 0..8', i18n: { code: 'rarityRange', params: { max: RARITY_COUNT - 1 } } });
   if (p.oddsBps[0] < GUARD.minCommonBps) out.push({ path: `${path}.oddsBps[0]`, rule: 'OddsGuardRail', message: 'Common must stay ≥ 5 % (500 bps)', i18n: { code: 'commonFloor', params: { min: GUARD.minCommonBps } } });
-  const top2 = p.oddsBps[7] + p.oddsBps[8];
-  const cap = sku <= 1 ? GUARD.maxTop2BpsStandard : 2 * GUARD.maxTop2BpsStandard;
-  if (top2 > cap) out.push({ path: `${path}.oddsBps`, rule: 'OddsGuardRail', message: `Legend+ + Diamond = ${top2} bps exceeds the ${cap} bps cap for sku ${sku}`, i18n: { code: 'topOdds', params: { sum: top2, max: cap, sku } } });
+  const top3 = p.oddsBps[6] + p.oddsBps[7] + p.oddsBps[8];
+  const cap = GUARD.maxTopTierBps;
+  if (top3 > cap) out.push({ path: `${path}.oddsBps`, rule: 'OddsGuardRail', message: `Legend and above = ${top3} bps exceeds the ${cap} bps cap for sku ${sku}`, i18n: { code: 'topOdds', params: { sum: top3, max: cap, sku } } });
   if (p.priceUsdCents < GUARD.priceCentsRange[0] || p.priceUsdCents > GUARD.priceCentsRange[1]) out.push({ path: `${path}.priceUsdCents`, rule: 'OddsGuardRail', message: 'price must be $0.50 … $500', i18n: { code: 'usdRange', params: { min: GUARD.priceCentsRange[0] / 100, max: GUARD.priceCentsRange[1] / 100 } } });
   if (p.pityTier > 0 && !(p.pityHardAt >= GUARD.pity.minHardAt && p.pitySoftStart <= p.pityHardAt && p.pitySoftStepBps <= GUARD.pity.maxSoftStepBps)) {
     out.push({ path: `${path}.pity`, rule: 'OddsGuardRail', message: 'hardAt ≥ 10, softStart ≤ hardAt, softStepBps ≤ 200', i18n: { code: 'pityGuard', params: { minHard: GUARD.pity.minHardAt, maxStep: GUARD.pity.maxSoftStepBps } } });

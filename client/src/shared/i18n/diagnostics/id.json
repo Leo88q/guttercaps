@@ -10,7 +10,7 @@
   "quantity": "Paket harus berisi 1 hingga {max} cap.",
   "rarityRange": "Indeks kelangkaan harus antara 0 dan {max}.",
   "commonFloor": "Peluang Umum minimal {min} basis poin.",
-  "topOdds": "Dua tingkat tertinggi berjumlah {sum} basis poin, melebihi batas {max} untuk SKU {sku}.",
+  "topOdds": "Legend ke atas berjumlah {sum} basis poin, melebihi batas {max} untuk SKU {sku}.",
   "usdRange": "Harga harus antara {min} dan {max} USD.",
   "pityGuard": "Syarat: hardAt ≥ {minHard}, softStart ≤ hardAt, softStepBps ≤ {maxStep}.",
   "u64": "Harga harus berupa string desimal dalam rentang 64-bit tanpa tanda.",

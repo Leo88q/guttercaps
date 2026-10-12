@@ -207,5 +207,8 @@
   "blockhashRejected": "Tinanggihan ng RPC ang transaksyon bago ito maisagawa: hindi nakita ang blockhash. Walang bayad na ginawa sa pagtatangkang ito. Subukan muli; kung mauulit, suriin ang RPC at network ng wallet.",
   "proofUnavailable": "Hindi makuha ang Merkle proof ng chip. Suriin ang DAS endpoint at pahintulot sa access. Nasa teknikal na detalye ang error ng DAS at ng pagbawi mula sa tree.",
   "switchboardUnavailable": "Hindi available pansamantala ang on-chain randomness. Huwag ulitin ang pagbili o pagtaya. Ipagpatuloy ang kasalukuyang operasyon kapag bumalik ang serbisyo; tingnan ang teknikal na detalye.",
-  "invalidBubblegumAsset": "Hindi tumutugma ang on-chain asset id ng chip sa Bubblegum leaf. Left: {left}. Right: {right}. Hindi binuksan ang wallet at walang taya na naipadala."
+  "invalidBubblegumAsset": "Hindi tumutugma ang on-chain asset id ng chip sa Bubblegum leaf. Left: {left}. Right: {right}. Hindi binuksan ang wallet at walang taya na naipadala.",
+  "noXpTicket": "Walang natitirang XP ticket ngayong araw — ang mga ticket ay may kasamang Limited pack at mag-e-expire sa hatinggabi UTC.",
+  "missingAsset": "Piliin kung aling cap ang tatanggap ng XP.",
+  "chipNotFound": "Wala sa wallet mo ang cap na ito (o hindi na aktibo)."
 }

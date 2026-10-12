@@ -44,7 +44,8 @@ export const LEGAL_VALUES = {
   premiumCaps: PACKS.premium.chips, limitedCaps: PACKS.limited.chips,
   marketFee: FEES.marketplaceFeeBps / 100, marketCap: 10,
   royalty: FEES.creatorRoyaltyBps / 100, buyback: Math.round(FEES.marketplaceFeeBuybackShareBps / 100),
-  listingBurn: FEES.listingFeeCgMicro / 1_000_000, arenaRake: FEES.pvpRakeBps / 100,
+  listingBurnMin: FEES.listingFeeMinCgMicro / 1_000_000, listingBurnMax: FEES.listingFeeMaxCgMicro / 1_000_000,
+  arenaRake: FEES.pvpRakeBps / 100,
   arenaTreasury: FEES.pvpRakeTreasuryShareBps / 100, arenaPool: FEES.pvpRakePoolShareBps / 100,
   arenaBurn: (10_000 - FEES.pvpRakeTreasuryShareBps - FEES.pvpRakePoolShareBps) / 100,
   cgBurn: FEES.cgPackBurnBps / 100, skrDiscount: FEES.skrPackDiscountBps / 100,
@@ -72,7 +73,7 @@ export const LEGAL_IDS: LegalDocId[] = ['terms', 'privacy'];
 /** Effective date of the text above — the page shows it, and the store listing quotes it. */
 export const LEGAL_EFFECTIVE = '2026-10-11';
 /** Separate revision: material corrections on the same day still re-ask for acknowledgement. */
-export const LEGAL_REVISION = '2026-10-11.1';
+export const LEGAL_REVISION = '2026-10-12.1';
 /** Internal readiness flag for `scripts/legal-readiness.mjs`. It is not rendered to players. */
 export const LEGAL_REVIEWED = false;
 

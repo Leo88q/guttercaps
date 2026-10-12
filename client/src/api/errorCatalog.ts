@@ -38,6 +38,7 @@ export const API_ERROR_KEYS = {
   unknown_archetype: 'failures.requestInvalid', bad_season: 'failures.requestInvalid', unknown_board: 'failures.requestInvalid',
   campaign_closed: 'failures.preorderCampaignClosed', sold_out: 'failures.preorderSoldOut',
   wallet_cap: 'failures.preorderWalletCap', not_yours: 'failures.preorderNotYours',
+  no_ticket: 'failures.noXpTicket', missing_asset: 'failures.missingAsset', chip_not_found: 'failures.chipNotFound',
   already_granted: 'failures.preorderAlreadyGranted', not_payable: 'failures.preorderNotPayable',
   tx_not_found: 'failures.preorderTxNotFound', already_confirmed: 'failures.preorderAlreadyConfirmed',
   payment_tx_failed: 'failures.preorderPaymentFailed', payment_no_transfer: 'failures.preorderNoTransfer',

@@ -199,11 +199,11 @@ export default function Staking() {
             {staked.map((c) => {
               const api = meApi.data?.chipStakes?.find((s) => s.chip?.asset === c.asset);
               return (
-                <div key={c.asset} className="stake-row">
+                <div key={c.asset} className="stake-row stake-chip-row">
                   <div className="stake-row-body">
                     <span className="stake-row-art"><ChipArt collection={c.collection!} rarity={c.rarity!} imageUrl={chipImageOf(c)} skin={(c as { skin?: string | null }).skin} founder={!!(c as { flags?: { founder?: boolean } }).flags?.founder} /></span>
                     <div className="stake-row-copy">
-                      <div className="small">{chipName(c.collection!, c.rarity!)} <span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span>{(c as { idle?: boolean }).idle ? <span className="tiny danger"> · <img src="/art/idle-stake.png" alt="" width={18} height={18} style={{ verticalAlign: 'middle' }} /> {t('ui.idleStake')}</span> : null}</div>
+                      <div className="small">{chipName(c.collection!, c.rarity!)} <span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span>{(c as { idle?: boolean }).idle ? <span className="tiny stake-idle"> · <img src="/art/idle-stake.png" alt="" width={18} height={18} style={{ verticalAlign: 'middle' }} /> {t('ui.idleStake')}</span> : null}</div>
                       <div className="tiny muted mono">{t('staking.weight')} {c.stakeWeight} · {t('ui.pending')} {api ? fmtCg(api.pending, 3) : '…'}</div>
                     </div>
                   </div>

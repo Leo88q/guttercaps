@@ -63,14 +63,14 @@ describe('fusion planner', () => {
   it('recipes mirror packages/economy (8 steps, strings for u64)', () => {
     const r = fusion.recipes();
     expect(r).toHaveLength(8);
-    expect(r[0]).toMatchObject({ from: 'Common', to: 'Common+', rule: 'any', successBps: 10_000, feeCgMicro: '5000000', boosterBonusBps: 1500, boosterCapBps: 9500 });
-    expect(r[7]).toMatchObject({ from: 'Legend+', to: 'Diamond', rule: 'same-collection', successBps: 5_000, refundOnFail: 1, feeCgMicro: '6000000000' });
+    expect(r[0]).toMatchObject({ from: 'Common', to: 'Common+', rule: 'any', successBps: 10_000, feeCgMicro: '25000000', boosterBonusBps: 1500, boosterCapBps: 9500 });
+    expect(r[7]).toMatchObject({ from: 'Legend+', to: 'Diamond', rule: 'same-collection', successBps: 4_000, refundOnFail: 1, feeCgMicro: '200000000000' });
   });
 
-  it('plan: 3 owned free commons → Common+ (atomic, no randomness, fee 5 $CG, PDAs derived)', () => {
+  it('plan: 3 owned free commons → Common+ (atomic, no randomness, fee 25 $CG, PDAs derived)', () => {
     const assets = mint(db, w.bob, [{ rarity: 0, collection: 1 }, { rarity: 0, collection: 4 }, { rarity: 0, collection: 1 }]);
     const p = fusion.plan(db, w.bob, fusion.validatePlanRequest({ materials: assets, resultCollection: 4 }));
-    expect(p).toMatchObject({ resultRarity: 'Common+', resultCollection: 4, successBps: 10_000, feeCgMicro: '5000000', needsRandomness: false, breaksSet: false });
+    expect(p).toMatchObject({ resultRarity: 'Common+', resultCollection: 4, successBps: 10_000, feeCgMicro: '25000000', needsRandomness: false, breaksSet: false });
     expect(p.materials.map((m) => m.asset)).toEqual(assets);
     expect(p.accounts.randomness).toBeUndefined();
     expect(Object.keys(p.accounts)).toEqual(expect.arrayContaining(['config', 'vault', 'items', 'pending', 'resultMeta', 'material0', 'chipState2', 'collectionMeta1', 'collectionMeta4']));
@@ -110,7 +110,7 @@ describe('fusion planner', () => {
     expect(p.warnings).toContain('result_locked_21600s');
     // 85 % + 15 pp = 100 % → capped at 95 %
     expect(fusion.successBps(FUSION_RECIPES[4], true)).toBe(9_500);
-    expect(fusion.successBps(FUSION_RECIPES[7], true)).toBe(6_500);
+    expect(fusion.successBps(FUSION_RECIPES[7], true)).toBe(5_500); // 40 % + 15 pp booster
     expect(fusion.successBps(FUSION_RECIPES[0], true)).toBe(10_000);
     // a complete district set: fusing 3 of its commons (only copies) breaks it
     const full = mint(db, w.bob, Array.from({ length: 9 }, (_, r) => ({ rarity: r, collection: 7 })));
@@ -146,15 +146,15 @@ describe('staking read-model', () => {
   let db: Db; let w: ReturnType<typeof world>;
   beforeEach(() => { db = new Db(':memory:'); w = world(); for (const t of w.txs) ingestTx(t, db); });
 
-  it('overview before the first tick_day: schedule floor (2 %), pool totals from Staked events, split 20/5/22/33/20', () => {
+  it('overview before the first tick_day: schedule floor (2 %), pool totals from Staked events, split 15/2/25/38/20', () => {
     const o = staking.overview(db);
     expect(o.emission.source).toBe('schedule');
     expect(BigInt(o.emission.scheduleCapMicro) - BigInt(o.emission.guardedMicro) * 50n).toBeLessThan(50n); // floor(cap × 0.02)
-    expect(o.emission.splitBps).toEqual([2000, 500, 2200, 3300, 2000]);
+    expect(o.emission.splitBps).toEqual([1500, 200, 2500, 3800, 2000]);
     expect(o.claimCaps).toEqual({ chipDailyCg: 30, tokenDailyCg: 15, aliveWindowDays: 7, idleWeight: 0.25 });
     expect(o.tokenPool).toMatchObject({ tvlMicro: '500000000', totalWeight: '750000000' });
     expect(o.chipPool).toMatchObject({ stakedChips: 1, totalWeight: '2000' });
-    expect(BigInt(o.tokenPool.budgetTodayMicro)).toBe((BigInt(o.emission.guardedMicro) * 5n) / 100n);
+    expect(BigInt(o.tokenPool.budgetTodayMicro)).toBe((BigInt(o.emission.guardedMicro) * 2n) / 100n);
     expect(o.tokenPool.apyByTier).toHaveLength(4);
     expect(o.tokenPool.apyByTier[3]).toBeGreaterThan(o.tokenPool.apyByTier[0]);
   });
@@ -163,7 +163,7 @@ describe('staking read-model', () => {
     ingestTx(tx([{ program: 'staking', name: 'DayClosed', data: { dayIndex: 12, year: 0, scheduleCap: '271232876712', guarded: '150000000000', burn7dAvg: '40000000000', sliceBudget: ['0', '0', '1', '2', '3'] } }]), db);
     const o = staking.overview(db);
     expect(o.emission).toMatchObject({ dayIndex: 12, guardedMicro: '150000000000', burn7dAvgMicro: '40000000000', source: 'chain' });
-    expect(o.chipPool.budgetTodayMicro).toBe('30000000000');
+    expect(o.chipPool.budgetTodayMicro).toBe('22500000000');
   });
 
   it('me: token stake tier from the PDA, penalty while locked, pending = share of the emitted budget since the stake opened (0 before any DayClosed)', () => {
@@ -174,10 +174,10 @@ describe('staking read-model', () => {
     let m = staking.me(db, owner.toBase58());
     expect(m.tokenStakes[0]).toMatchObject({ tier: 2, amount: '1000000000', weight: '2200000000', earlyExitPenalty: '100000000', pending: '0' });
     expect(m.pendingEstimated).toBe(true);
-    // a day closed 2 days ago with a 100 $CG guarded budget → token pool got 5 $CG over 24 h; this stake holds 2.2e9 of 2.95e9 weight
+    // a day closed 2 days ago with a 100 $CG guarded budget → token pool got 2 $CG over 24 h; this stake holds 2.2e9 of 2.95e9 weight
     ingestTx(tx([{ program: 'staking', name: 'DayClosed', data: { dayIndex: 1, year: 0, scheduleCap: '271232876712', guarded: '100000000', burn7dAvg: '0', sliceBudget: ['0', '0', '0', '0', '0'] } }], { blockTime: t - 2 * 86_400 }), db);
     m = staking.me(db, owner.toBase58());
-    const expected = (2_200_000_000n * 5_000_000n) / 2_950_000_000n;
+    const expected = (2_200_000_000n * 2_000_000n) / 2_950_000_000n;
     expect(BigInt(m.tokenStakes[0].pending)).toBe(expected);
     expect(m.totalPendingMicro).toBe(expected.toString());
     // set bonus: on-chain 0 sets vs computed 0 → no sync pending; after a full set arrives it flips
@@ -218,7 +218,7 @@ describe('staking read-model', () => {
     const small = staking.estimate(db, staking.validateEstimate({ amountCgMicro: '1000000000', tier: 3 }));
     const big = staking.estimate(db, staking.validateEstimate({ amountCgMicro: '100000000000000', tier: 3 }));
     expect(small.apyPct).toBeGreaterThan(big.apyPct);
-    expect(small).toMatchObject({ earlyExitPenaltyBps: 1500, boostBps: 30_000, indicativeApyRange: [14, 32] });
+    expect(small).toMatchObject({ earlyExitPenaltyBps: 1500, boostBps: 30_000, indicativeApyRange: [5.5, 17] });
     // Common lvl 1, 0 sets, played now → 1e6; idle (no play) → ×0.25. Rare lvl 5, 2 sets → 5e6 × 1.1 × 1.24
     const now = Math.floor(Date.now() / 1000);
     expect(staking.chipWeightRaw(0, 1, 0, now)).toBe(1_000_000n);
@@ -250,13 +250,13 @@ describe('arena — ranked commit/reveal', () => {
     expect(next.previous).toMatchObject({ id: s.id, serverSecretHash: s.serverSecretHash, serverSecret: row.server_secret });
   });
 
-  it('season pool = 20 % rake from resolved wager battles + 40 % of each day\'s pvpSeason slice (guarded × 33 %), never the cumulative slice_budget', () => {
+  it('season pool = 20 % rake from resolved wager battles + 40 % of each day\'s pvpSeason slice (guarded × 38 %), never the cumulative slice_budget', () => {
     const s = arena.currentSeason(db, T);
     ingestTx(tx([{ program: 'staking', name: 'DayClosed', data: { dayIndex: 1, year: 0, scheduleCap: '271232876712', guarded: '100000000000', burn7dAvg: '0', sliceBudget: ['0', '0', '0', '999999999999', '0'] } }], { blockTime: s.starts_at + 86_400 }), db);
     ingestTx(tx([{ program: 'staking', name: 'DayClosed', data: { dayIndex: 2, year: 0, scheduleCap: '271232876712', guarded: '100000000000', burn7dAvg: '0', sliceBudget: ['0', '0', '0', '999999999999', '0'] } }], { blockTime: s.starts_at + 2 * 86_400 }), db);
     ingestTx(tx([{ program: 'arena', name: 'BattleResolved', data: { battle: kp(), winner: alice, pot: '100000000', rakeBurn: '2000000', rakePool: '1000000', rakeTreasury: '2000000', resultHash: hex32(0x22), roll: hex32(0x33) } }], { blockTime: s.starts_at + 3 * 86_400 }), db);
-    // 2 days × 100 $CG × 33 % × 40 % = 26.4 $CG + 1 $CG rake pool
-    expect(arena.seasonApi(db, T).poolCgMicro).toBe(String(2 * 13_200_000_000 + 1_000_000));
+    // 2 days × 100 $CG × 38 % × 40 % = 30.4 $CG + 1 $CG rake pool
+    expect(arena.seasonApi(db, T).poolCgMicro).toBe(String(2 * 15_200_000_000 + 1_000_000));
   });
 
   it('SEC-L5: settlement freezes the rake share (finalized battles of the season only) next to the emission share; an unfinalized BattleResolved postpones it', () => {
@@ -273,16 +273,16 @@ describe('arena — ranked commit/reveal', () => {
     ingestTx(tx([{ program: 'arena', name: 'BattleResolved', data: { battle: kp(), winner: alice, pot: '100000000', rakeBurn: '2000000', rakePool: '1000000', rakeTreasury: '2000000', resultHash: hex32(0x22), roll: hex32(0x33) } }], { blockTime: s.starts_at + 2 * 86_400 }), db);
     ingestTx(tx([{ program: 'arena', name: 'BattleResolved', data: { battle: kp(), winner: alice, pot: '300000000', rakeBurn: '6000000', rakePool: '3000000', rakeTreasury: '6000000', resultHash: hex32(0x22), roll: hex32(0x33) } }], { blockTime: s.starts_at + 3 * 86_400 }), db);
     ingestTx(tx([{ program: 'arena', name: 'BattleResolved', data: { battle: kp(), winner: alice, pot: '100000000', rakeBurn: '2000000', rakePool: '1000000', rakeTreasury: '2000000', resultHash: hex32(0x22), roll: hex32(0x33) } }], { blockTime: s.ends_at + 10 }), db);
-    expect(arena.seasonPoolMicro(db, s)).toBe(13_200_000_000n + 4_000_000n); // live estimate: 100 × 33 % × 40 % + 4 $CG rake
+    expect(arena.seasonPoolMicro(db, s)).toBe(15_200_000_000n + 4_000_000n); // live estimate: 100 × 38 % × 40 % + 4 $CG rake
     const end = s.ends_at + 1;
     expect(arena.settleSeason(db, s.id, end)).toBeUndefined(); // BattleResolved not finalized → wait
     finalizeAll(db);
     const r = arena.settleSeason(db, s.id, end)!;
     expect(r.rakeMicro).toBe(4_000_000n);
     const row = db.get<{ pool_micro: string; rake_micro: string; rake_funded_at: number | null }>(`SELECT pool_micro, rake_micro, rake_funded_at FROM seasons WHERE id = ?`, s.id)!;
-    expect(row).toMatchObject({ pool_micro: String(13_200_000_000 + 4_000_000), rake_micro: '4000000', rake_funded_at: null });
+    expect(row).toMatchObject({ pool_micro: String(15_200_000_000 + 4_000_000), rake_micro: '4000000', rake_funded_at: null });
     // 1 of 1000 → 1/1000 of the whole pool (rake included) goes to rank 1
-    expect(r.paidMicro).toBe((13_200_000_000n + 4_000_000n) / 1000n);
+    expect(r.paidMicro).toBe((15_200_000_000n + 4_000_000n) / 1000n);
     expect(oracle.unfundedRake(db)).toMatchObject({ targetMicro: 4_000_000n, seasons: [s.id] });
     const api = arena.seasonApi(db, end + 5);
     expect(api.previous).toMatchObject({ id: s.id, settled: true, rakeMicro: '4000000', rakeFunded: false });
@@ -340,7 +340,7 @@ describe('arena — ranked commit/reveal', () => {
     expect(m.status).toBe('resolved');
     expect([alice, bob]).toContain(m.winner);
     expect(done.winner).toBe(m.winner);
-    expect(done.xp).toBe(m.winner === bob ? CHIP_XP.win * 3 : CHIP_XP.loss * 3);
+    expect(done.xp).toBe(m.winner === bob ? CHIP_XP.win * 3 : 0); // losses shave XP but award rows only track gains
     expect(done.leveled).toBe(m.winner === bob ? 3 : 0);
     expect(m.rounds.length).toBeGreaterThanOrEqual(2);
     // re-derive the seed and the fight from the public record + the season secret
@@ -359,18 +359,18 @@ describe('arena — ranked commit/reveal', () => {
     const winnerSquad = m.winner === alice ? sa : sb;
     const loserSquad = m.winner === alice ? sb : sa;
     expect(db.scalar(`SELECT lifetime FROM chip_xp WHERE asset = ?`, winnerSquad[0])).toBe(CHIP_XP.win);
-    expect(db.scalar(`SELECT lifetime FROM chip_xp WHERE asset = ?`, loserSquad[0])).toBe(CHIP_XP.loss);
-    expect(db.scalar(`SELECT COUNT(*) FROM chip_xp_awards WHERE match_id = ?`, id)).toBe(6);
+    expect(db.scalar(`SELECT lifetime FROM chip_xp WHERE asset = ?`, loserSquad[0])).toBe(0); // lifetime counts gains; the -6 loss was absorbed at the level-1 checkpoint
+    expect(db.scalar(`SELECT COUNT(*) FROM chip_xp_awards WHERE match_id = ?`, id)).toBe(3); // winners only — losses carry no award rows
     const winnerChip = m.winner === alice ? m.squadA[0] : m.squadB[0];
     const loserChip = m.winner === alice ? m.squadB[0] : m.squadA[0];
     expect(winnerChip).toMatchObject({ level: 1, xpGained: CHIP_XP.win, leveledTo: 2 });
-    expect(loserChip).toMatchObject({ level: 1, xpGained: CHIP_XP.loss, leveledTo: null });
+    expect(loserChip).toMatchObject({ level: 1, xpGained: 0, leveledTo: null }); // the −6 loss was absorbed at the level-1 checkpoint
     expect(winnerReward).toBe(String(MATCH_REWARDS.winCgMicro));
     expect(loserReward).toBe(String(MATCH_REWARDS.lossCgMicro));
     expect(arena.arenaMe(db, alice, T)).toMatchObject({ games: 1, rewardedMatchesLeft: 7, currentMatch: null });
     expect(arena.arenaMe(db, m.winner!, T).wins).toBe(1);
-    expect(arena.arenaMe(db, alice, T).recent[0]).toMatchObject({ id, xp: m.winner === alice ? CHIP_XP.win * 3 : CHIP_XP.loss * 3, leveled: m.winner === alice ? 3 : 0 });
-    expect(arena.arenaMe(db, bob, T).recent[0]).toMatchObject({ id, xp: m.winner === bob ? CHIP_XP.win * 3 : CHIP_XP.loss * 3, leveled: m.winner === bob ? 3 : 0 });
+    expect(arena.arenaMe(db, alice, T).recent[0]).toMatchObject({ id, xp: m.winner === alice ? CHIP_XP.win * 3 : 0, leveled: m.winner === alice ? 3 : 0 });
+    expect(arena.arenaMe(db, bob, T).recent[0]).toMatchObject({ id, xp: m.winner === bob ? CHIP_XP.win * 3 : 0, leveled: m.winner === bob ? 3 : 0 });
     // the public rating board is this ladder: winner first, league column, `me` ranks the loser second; the previous season is addressable
     const lb = q.leaderboard(db, 'rating', 10, undefined, m.winner === alice ? bob : alice, season.id);
     expect(lb.season).toBe(season.id);
@@ -533,12 +533,12 @@ describe('arena — ranked commit/reveal', () => {
     const r = arena.settleSeason(db, s.id, end)!;
     expect(r).toMatchObject({ season: s.id, participants: 1, rows: 1, rakeMicro: 0n });
     // 1 qualified of 1000 needed → pool × 1/1000 × 100 % (all bands roll up to rank 1)
-    expect(r.paidMicro).toBe((66_000_000_000n * 1n) / 1000n);
+    expect(r.paidMicro).toBe((76_000_000_000n * 1n) / 1000n);
     const row = db.get<{ wallet: string; rank: number; amount: string }>(`SELECT wallet, rank, amount FROM season_payouts WHERE season = ?`, s.id)!;
     expect(row).toMatchObject({ wallet: alice, rank: 1, amount: r.paidMicro.toString() });
     expect(arena.settleSeason(db, s.id, end + 5)!.rows).toBe(0); // idempotent
     expect(arena.unsettledSeasons(db, end)).toEqual([]);
-    expect(arena.seasonApi(db, end + arena.SEASON_SECONDS / 2).previous).toMatchObject({ id: s.id, settled: true, paidPoolMicro: '66000000000' });
+    expect(arena.seasonApi(db, end + arena.SEASON_SECONDS / 2).previous).toMatchObject({ id: s.id, settled: true, paidPoolMicro: '76000000000' });
     // the payout joins the next kind-3 batch together with match rewards
     const me = arena.arenaMe(db, alice, end);
     expect(BigInt(me.pendingRewardMicro)).toBe(r.paidMicro + BigInt(db.all<{ amount: string }>(`SELECT amount FROM pvp_rewards WHERE wallet = ?`, alice).reduce((a, x) => a + Number(x.amount), 0)));
@@ -670,14 +670,14 @@ describe('quests', () => {
     expect(early + n).toBeGreaterThanOrEqual(6);
     const rows = db.all<{ quest_id: string; amount: string }>(`SELECT quest_id, amount FROM quest_completions WHERE wallet = ?`, alice);
     const daily = rows.filter((r) => r.quest_id.startsWith('d_')).reduce((s, r) => s + BigInt(r.amount), 0n);
-    expect(daily).toBe(12_000_000n); // 2 + 4 + 3 + 3 — under the 15 $CG daily cap
-    expect(rows.find((r) => r.quest_id === 'w_trade')!.amount).toBe('3000000'); // capped: 15 − 12 already paid today
+    expect(daily).toBe(20_000_000n); // 3 + 6 + 6 + 5 — under the 25 $CG daily cap
+    expect(rows.find((r) => r.quest_id === 'w_trade')!.amount).toBe('5000000'); // capped: 25 − 20 already paid today
     expect(rows.find((r) => r.quest_id === 'p_first_fusion')!.amount).toBe('10000000'); // permanent milestones bypass the daily cap
     expect(quests.settleWallet(db, alice, T + 1400)).toBe(0); // idempotent
     // streak: all 4 $CG dailies done today → 1 day
     expect(quests.streak(db, alice, T + 1400)).toMatchObject({ days: 1, todayDone: true });
-    expect(quests.list(db, alice, T + 1400).find((q) => q.id === 'd_login')).toMatchObject({ claimable: false, rooted: false, creditedCgMicro: '2000000' });
-    expect(ANTI_FARM.dailyQuestRewardCapCgMicro).toBe(15_000_000);
+    expect(quests.list(db, alice, T + 1400).find((q) => q.id === 'd_login')).toMatchObject({ claimable: false, rooted: false, creditedCgMicro: '3000000' });
+    expect(ANTI_FARM.dailyQuestRewardCapCgMicro).toBe(25_000_000);
   });
 
   it('streak counts consecutive completed days ending today or yesterday; progress wraps every 7 days and the chip is credited once per 7-day run', () => {
@@ -709,8 +709,8 @@ describe('quests', () => {
     const rows = db.all<{ quest_id: string; period_key: string; amount: string; day: number }>(`SELECT quest_id, period_key, amount, day FROM quest_completions WHERE wallet = ? ORDER BY period_key`, alice);
     expect(n).toBe(2);
     expect(rows).toEqual([
-      { quest_id: 'd_login', period_key: `d${day - 1}`, amount: '2000000', day: day - 1 },
-      { quest_id: 'd_login', period_key: `d${day}`, amount: '2000000', day },
+      { quest_id: 'd_login', period_key: `d${day - 1}`, amount: '3000000', day: day - 1 },
+      { quest_id: 'd_login', period_key: `d${day}`, amount: '3000000', day },
     ]);
     // horizon: the slot below the oldest unfinalized event; FINALITY_ASSUME is off in tests
     const mats = mint(db, alice, [{ rarity: 0, collection: 0 }, { rarity: 0, collection: 0 }, { rarity: 0, collection: 0 }]);
@@ -720,7 +720,7 @@ describe('quests', () => {
     expect(quests.settleWallet(db, alice, T + 20)).toBe(0);
     finalizeAll(db);
     expect(quests.settleWallet(db, alice, T + 30)).toBe(2); // d_fuse1 + p_first_fusion
-    expect(db.get<{ amount: string; day: number }>(`SELECT amount, day FROM quest_completions WHERE wallet = ? AND quest_id = 'd_fuse1'`, alice)).toEqual({ amount: '3000000', day });
+    expect(db.get<{ amount: string; day: number }>(`SELECT amount, day FROM quest_completions WHERE wallet = ? AND quest_id = 'd_fuse1'`, alice)).toEqual({ amount: '5000000', day });
   });
 });
 

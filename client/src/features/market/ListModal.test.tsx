@@ -57,7 +57,8 @@ for (const locale of LOCALES) it(`${locale}: SOL listing labels, proceeds and re
   expect(mocks.resolve).toHaveBeenCalledOnce();
   expect(mocks.resolve.mock.calls[0][2].equals(asset)).toBe(true);
 
-  const body = () => `${fmtAmount(amount, 'SOL')} · ${t('market.feeBurned', { amount: fmtCg(500000n) })}`;
+  // the ask is 0.012345678 SOL ≈ $1.23 → 0.5 % of it is under the 2 $CG proportional-fee floor
+  const body = () => `${fmtAmount(amount, 'SOL')} · ${t('market.feeBurned', { amount: fmtCg(2_000_000n) })}`;
   expect(screen.getByText(body(), { normalizer: v => v })).toBeTruthy();
   await act(() => setLocale(locale === 'en' ? 'ru' : 'en'));
   expect(screen.getByText(body(), { normalizer: v => v })).toBeTruthy();

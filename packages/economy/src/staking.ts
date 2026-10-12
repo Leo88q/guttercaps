@@ -35,10 +35,12 @@ export interface LockTierDef {
 const DAY = 86_400;
 
 export const LOCK_TIERS: Record<LockTier, LockTierDef> = {
-  flex: { id: 'flex', lockSeconds: 0,         boost: 1.0, earlyExitPenaltyBps: 0,    targetApyRange: [4, 12] },
-  d30:  { id: 'd30',  lockSeconds: 30 * DAY,  boost: 1.5, earlyExitPenaltyBps: 500,  targetApyRange: [6, 18] },
-  d90:  { id: 'd90',  lockSeconds: 90 * DAY,  boost: 2.2, earlyExitPenaltyBps: 1000, targetApyRange: [10, 24] },
-  d180: { id: 'd180', lockSeconds: 180 * DAY, boost: 3.0, earlyExitPenaltyBps: 1500, targetApyRange: [14, 32] },
+  // v3 (2026-10): token-staking slice cut 5% → 2% of emission (passive income is
+  // a bonus, active play is the salary) — bands re-published at the modelled TVL.
+  flex: { id: 'flex', lockSeconds: 0,         boost: 1.0, earlyExitPenaltyBps: 0,    targetApyRange: [1.5, 6] },
+  d30:  { id: 'd30',  lockSeconds: 30 * DAY,  boost: 1.5, earlyExitPenaltyBps: 500,  targetApyRange: [2.5, 9] },
+  d90:  { id: 'd90',  lockSeconds: 90 * DAY,  boost: 2.2, earlyExitPenaltyBps: 1000, targetApyRange: [4, 13] },
+  d180: { id: 'd180', lockSeconds: 180 * DAY, boost: 3.0, earlyExitPenaltyBps: 1500, targetApyRange: [5.5, 17] },
 };
 
 /**

@@ -37,6 +37,7 @@ import * as staking from './staking.ts';
 import * as gutterPot from './gutterPot.ts';
 import * as arena from './arena.ts';
 import * as quests from './quests.ts';
+import { packPerksView, redeemXpTicket } from './pack-perks.ts';
 import { rewardOracleStatus } from './reward-oracle.ts';
 import { referralSummary } from './referrals.ts';
 import { antifraudStatus } from './antifraud.ts';
@@ -477,6 +478,12 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.post('/services/claim', requireAuth, rl(POLICIES.claim), rl(POLICIES.claimNet), (req, res) => {
     const b = req.body as { signature: string; kind: number; payload: Record<string, unknown> };
     res.json(claimService(db, req.session!.wallet, String(b.signature ?? ''), Number(b.kind), b.payload ?? {}));
+  });
+  // Limited-pack purchase perks (economy v3): booster/day + same-day XP tickets.
+  v1.get('/me/pack-perks', requireAuth, (req, res) => { res.json(packPerksView(db, req.session!.wallet)); });
+  v1.post('/me/pack-perks/xp-ticket', requireAuth, rl(POLICIES.claim), (req, res) => {
+    const b = req.body as { asset?: string };
+    res.json(redeemXpTicket(db, req.session!.wallet, String(b.asset ?? '')));
   });
   v1.get('/me/pass', requireAuth, (req, res) => { res.json(passState(db, req.session!.wallet)); });
   v1.post('/me/pass/claim', requireAuth, rl(POLICIES.claim), (req, res) => {

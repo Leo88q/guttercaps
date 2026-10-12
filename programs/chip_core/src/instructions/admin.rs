@@ -445,14 +445,15 @@ pub fn set_params(ctx: Context<AdminOnly>, patch: ParamsPatch) -> Result<()> {
             require!(p.floor < RARITY_COUNT as u8, ChipError::OddsGuardRail);
             require!(p.pity_tier < RARITY_COUNT as u8, ChipError::OddsGuardRail);
             require!(p.odds_bps[0] >= 500, ChipError::OddsGuardRail); // Common ≥ 5 % always
-            let top2 = p.odds_bps[7] as u32 + p.odds_bps[8] as u32;
-            // Starter/Standard may never exceed 2 % Legend+/Diamond per slot; Premium/Limited 4 %.
-            let cap = if i <= 1 {
-                MAX_TOP2_BPS_STANDARD as u32
-            } else {
-                2 * MAX_TOP2_BPS_STANDARD as u32
-            };
-            require!(top2 <= cap, ChipError::OddsGuardRail);
+            // TOP-TIER RULE (2026-10): Legend/Legend+/Diamond drop from NO pack — the top three
+            // tiers exist only through fusion (FUSION_GATE). Not admin-tunable: re-enabling a
+            // Legend faucet needs a program deploy (48 h timelock + public diff). Pity may never
+            // guarantee above Epic+ for the same reason.
+            require!(
+                p.odds_bps[6] == 0 && p.odds_bps[7] == 0 && p.odds_bps[8] == 0,
+                ChipError::OddsGuardRail
+            );
+            require!(p.pity_tier <= 5, ChipError::OddsGuardRail);
             // price sanity: never free, never > $500
             require!(
                 (50..=50_000).contains(&p.price_usd_cents),

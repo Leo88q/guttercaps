@@ -207,5 +207,8 @@
   "blockhashRejected": "RPC đã từ chối giao dịch trước khi thực thi: không tìm thấy blockhash. Lần thử này chưa thanh toán. Hãy thử lại; nếu lỗi vẫn còn, kiểm tra RPC và mạng của ví.",
   "proofUnavailable": "Không lấy được bằng chứng Merkle của chip. Hãy kiểm tra địa chỉ DAS và quyền truy cập. Chi tiết kỹ thuật chứa lỗi DAS và lỗi khôi phục từ cây.",
   "switchboardUnavailable": "Ngẫu nhiên on-chain tạm thời không khả dụng. Đừng mua hoặc cược lại. Tiếp tục thao tác hiện có sau khi dịch vụ phục hồi; xem chi tiết kỹ thuật.",
-  "invalidBubblegumAsset": "Asset id on-chain của chip không khớp với lá Bubblegum. Left: {left}. Right: {right}. Không mở ví và không gửi cược."
+  "invalidBubblegumAsset": "Asset id on-chain của chip không khớp với lá Bubblegum. Left: {left}. Right: {right}. Không mở ví và không gửi cược.",
+  "noXpTicket": "Hôm nay không còn vé XP chưa dùng — vé đi kèm gói Limited và hết hạn lúc nửa đêm UTC.",
+  "missingAsset": "Chọn nắp nào sẽ nhận XP.",
+  "chipNotFound": "Nắp này không nằm trong ví của bạn (hoặc không còn hoạt động)."
 }

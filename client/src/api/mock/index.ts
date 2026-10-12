@@ -583,7 +583,7 @@ on('get', '/leaderboard/{board}', (_o, p) => ({
 }));
 
 // ------------------------------------------------------------- ops panel (/admin — mirrors backend/src/admin.ts; the same guard-rails, nothing is signed)
-const GUARD = { bpsDenom: 10_000, maxChipsPerPack: 5, minCommonBps: 500, maxTop2BpsStandard: 200, priceCentsRange: [50, 50_000], pity: { minHardAt: 10, maxSoftStepBps: 200 }, maxMarketFeeBps: 1_000, maxSkrDiscountBps: 1_500, maxPackCgPriceMicro: 1_000_000_000_000, cgPriceMoveFactor: 2, split: { count: 5, maxDeltaBps: 1_000, minIntervalS: 7 * 86_400 }, evRatioRange: [0.55, 0.75] };
+const GUARD = { bpsDenom: 10_000, maxChipsPerPack: 5, minCommonBps: 500, maxTopTierBps: 0, priceCentsRange: [50, 50_000], pity: { minHardAt: 10, maxSoftStepBps: 200 }, maxMarketFeeBps: 1_000, maxSkrDiscountBps: 1_500, maxPackCgPriceMicro: 1_000_000_000_000, cgPriceMoveFactor: 2, split: { count: 5, maxDeltaBps: 1_000, minIntervalS: 7 * 86_400 }, evRatioRange: [0.55, 0.75] };
 const adminState = {
   marketFeeBps: FEES.marketplaceFeeBps, skrDiscountBps: FEES.skrPackDiscountBps, featuredCollection: 4, paramsVersion: 3,
   splitBps: [3000, 1500, 1700, 2300, 1500], splitChangedAt: Math.floor(Date.now() / 1000) - 12 * 86_400, paused: { chip_core: false, staking: false, arena: false },
@@ -638,8 +638,8 @@ on('post', '/admin/params', (o) => {
     const sum = next.oddsBps.reduce((a, x) => a + x, 0);
     if (sum !== GUARD.bpsDenom) violations.push({ path: `packs[${i}].oddsBps`, rule: 'OddsSumInvalid', message: `odds sum to ${sum}, must be 10000`, i18n: { code: 'oddsSum', params: { sum } } });
     if (next.oddsBps[0] < GUARD.minCommonBps) violations.push({ path: `packs[${i}].oddsBps[0]`, rule: 'OddsGuardRail', message: 'Common must stay ≥ 5 % (500 bps)', i18n: { code: 'commonFloor', params: { min: GUARD.minCommonBps } } });
-    const top2 = next.oddsBps[7] + next.oddsBps[8], cap = patch.sku <= 1 ? GUARD.maxTop2BpsStandard : 2 * GUARD.maxTop2BpsStandard;
-    if (top2 > cap) violations.push({ path: `packs[${i}].oddsBps`, rule: 'OddsGuardRail', message: `Legend+ + Diamond = ${top2} bps exceeds the ${cap} bps cap for sku ${patch.sku}`, i18n: { code: 'topOdds', params: { sum: top2, max: cap, sku: patch.sku } } });
+    const top2 = next.oddsBps[6] + next.oddsBps[7] + next.oddsBps[8], cap = GUARD.maxTopTierBps;
+    if (top2 > cap) violations.push({ path: `packs[${i}].oddsBps`, rule: 'OddsGuardRail', message: `Legend and above = ${top2} bps exceeds the ${cap} bps cap for sku ${patch.sku}`, i18n: { code: 'topOdds', params: { sum: top2, max: cap, sku: patch.sku } } });
     if (next.priceUsdCents < GUARD.priceCentsRange[0] || next.priceUsdCents > GUARD.priceCentsRange[1]) violations.push({ path: `packs[${i}].priceUsdCents`, rule: 'OddsGuardRail', message: 'price must be $0.50 … $500', i18n: { code: 'usdRange', params: { min: GUARD.priceCentsRange[0] / 100, max: GUARD.priceCentsRange[1] / 100 } } });
     if (patch.sku !== 0 && next.priceUsdCents !== cur.priceUsdCents) { const ratio = (cur.priceUsdCents / next.priceUsdCents) * 0.65; if (ratio < GUARD.evRatioRange[0] || ratio > GUARD.evRatioRange[1]) warn(`packs[${i}] (sku ${patch.sku}): EV/price ${(ratio * 100).toFixed(0)} % is outside the 55–75 % band the economy report enforces (Standard anchor = 65 %)`, 'evBand', { ratio: Number.isFinite(ratio) ? Math.round(ratio * 100) : '∞', min: 55, max: 75, anchor: 65 }, `packs[${i}] / SKU ${patch.sku}`); }
     diff[`packs[${patch.sku}]`] = { from: cur, to: next };

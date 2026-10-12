@@ -64,7 +64,8 @@ describe('the documents', () => {
     // human reading carefully once.
     const text = LEGAL_DOCS.terms.sections.flatMap((s) => s.p).join('\n');
     expect(text).toContain(`${FEES.marketplaceFeeBps / 100} %`);                       // 7.5 %
-    expect(text).toContain(`${FEES.listingFeeCgMicro / 1_000_000} $CG`);               // 0.5 $CG
+    expect(text).toContain(`${FEES.listingFeeMinCgMicro / 1_000_000}`);              // 2 $CG listing-fee floor
+    expect(text).toContain(`${FEES.listingFeeMaxCgMicro / 1_000_000} $CG`);             // 100 $CG cap
     expect(text).toContain(`${FEES.pvpRakeBps / 100} %`);                               // 5 %
     expect(text).toContain(`${FEES.cgPackBurnBps / 100} %`);                            // 75 %
     expect(text).toContain(`${FEES.skrPackDiscountBps / 100} %`);                        // 5 %

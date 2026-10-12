@@ -62,7 +62,7 @@ const en = {
     priceAge: 'Price age', priceAgeValue: '{s} s (valid ≤ 60 s on-chain)', priceFeedDown: 'Price feed is catching up — try again in a few seconds.', quoteFailed: 'Could not fetch a quote.',
     rentReserve: 'Rent reserve (returned after open)', oracleFees: 'Network fees (est.)', maxSlippage: 'Max you will pay',
     oddsNow: 'Your odds right now (pity {n})', oneSignature: ui.packSignatures,
-    perPack: '{n, plural, one{# cap} other{# caps}} per pack', floor: 'floor {rarity}', starterOnce: 'once per wallet', dailyCap: '{n}/day cap',
+    perPack: '{n, plural, one{# cap} other{# caps}} per pack', floor: 'floor {rarity}', starterOnce: 'once per wallet', limitedPerks: 'daily booster + 2 XP tickets', dailyCap: '{n}/day cap',
     pityIn: 'guaranteed {rarity} in {n}', packDisabled: 'currently disabled', was: 'was {price}',
     tabs: { packs: 'Packs', services: 'Extras' },
   },
@@ -229,7 +229,7 @@ const en = {
     params: {
       unavailable: 'Chain state unavailable: {error}', version: 'params version', slot: 'read at slot', paused: 'paused', liabilities: 'Vault liabilities (Σ ledger shards)', burnedTotal: 'burned lifetime',
       shards: '{n} ledger shards · {missing} missing', shardsMissing: 'run `setup ledgers` before sweep_vault', globals: 'Global fees', marketFee: 'Market fee bps', skrDiscount: 'SKR pack discount bps', featured: 'Featured district', keep: 'keep',
-      split: 'Emission split (bps)', splitRule: '±{delta} bps per change · next change allowed {next}', sliceBudget: 'today', packs: 'Pack SKUs', packsRule: 'Odds must sum to 10000 · Common ≥ {common}% · Legend+ + Diamond ≤ {top2}% on Starter/Standard (×2 on Premium/Limited) · price $0.50–$500',
+      split: 'Emission split (bps)', splitRule: '±{delta} bps per change · next change allowed {next}', sliceBudget: 'today', packs: 'Pack SKUs', packsRule: 'Odds must sum to 10000 · Common ≥ {common}% · Legend and above never drop — tiers 6–8 must be 0 · price $0.50–$500',
       price: 'price ¢', note: 'Note (goes to the audit log)', checking: 'Checking…', propose: 'Check & encode', clear: 'Clear draft', nothingSent: 'Nothing is sent on-chain from here.', history: 'Recent set_params', noHistory: 'No parameter changes indexed yet.',
     },
     kill: {

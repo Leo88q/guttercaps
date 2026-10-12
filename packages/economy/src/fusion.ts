@@ -50,15 +50,33 @@ export interface FusionRecipe {
 const HOUR = 3600;
 
 export const FUSION_RECIPES: readonly FusionRecipe[] = [
-  { from: 0, to: 1, materials: 3, rule: 'any',             successBps: 10_000, refundOnFail: 0, feeCgMicro:     5_000_000, resultLockSeconds: 0 },
-  { from: 1, to: 2, materials: 3, rule: 'same-collection', successBps: 10_000, refundOnFail: 0, feeCgMicro:    12_000_000, resultLockSeconds: 0 },
-  { from: 2, to: 3, materials: 3, rule: 'any',             successBps: 10_000, refundOnFail: 0, feeCgMicro:    30_000_000, resultLockSeconds: 0 },
-  { from: 3, to: 4, materials: 3, rule: 'same-collection', successBps: 10_000, refundOnFail: 0, feeCgMicro:    60_000_000, resultLockSeconds: HOUR },
-  { from: 4, to: 5, materials: 3, rule: 'any',             successBps:  8_500, refundOnFail: 1, feeCgMicro:   120_000_000, resultLockSeconds: 6 * HOUR },
-  { from: 5, to: 6, materials: 3, rule: 'same-collection', successBps:  7_500, refundOnFail: 1, feeCgMicro:   400_000_000, resultLockSeconds: 24 * HOUR },
-  { from: 6, to: 7, materials: 3, rule: 'any',             successBps:  7_000, refundOnFail: 1, feeCgMicro: 1_400_000_000, resultLockSeconds: 48 * HOUR },
-  { from: 7, to: 8, materials: 3, rule: 'same-collection', successBps:  5_000, refundOnFail: 1, feeCgMicro: 6_000_000_000, resultLockSeconds: 72 * HOUR },
+  { from: 0, to: 1, materials: 3, rule: 'any',             successBps: 10_000, refundOnFail: 0, feeCgMicro:    25_000_000, resultLockSeconds: 0 },
+  { from: 1, to: 2, materials: 3, rule: 'same-collection', successBps: 10_000, refundOnFail: 0, feeCgMicro:    60_000_000, resultLockSeconds: 0 },
+  { from: 2, to: 3, materials: 3, rule: 'any',             successBps: 10_000, refundOnFail: 0, feeCgMicro:   150_000_000, resultLockSeconds: 0 },
+  { from: 3, to: 4, materials: 3, rule: 'same-collection', successBps: 10_000, refundOnFail: 0, feeCgMicro:   400_000_000, resultLockSeconds: HOUR },
+  { from: 4, to: 5, materials: 3, rule: 'any',             successBps:  8_500, refundOnFail: 1, feeCgMicro: 5_000_000_000, resultLockSeconds: 6 * HOUR },
+  { from: 5, to: 6, materials: 3, rule: 'same-collection', successBps:  7_500, refundOnFail: 1, feeCgMicro: 15_000_000_000, resultLockSeconds: 24 * HOUR },
+  { from: 6, to: 7, materials: 3, rule: 'any',             successBps:  7_000, refundOnFail: 1, feeCgMicro: 30_000_000_000, resultLockSeconds: 48 * HOUR },
+  { from: 7, to: 8, materials: 3, rule: 'same-collection', successBps:  4_000, refundOnFail: 1, feeCgMicro: 200_000_000_000, resultLockSeconds: 72 * HOUR },
 ];
+
+/**
+ * The god-tier gate (design decision 2026-10): Legend and above are EARNED, never
+ * rolled. Enforced by the indexer/backend (chip levels are indexer-authoritative —
+ * on-chain `claim.level` is mint 1 until merkle level_up ships) and surfaced in the
+ * fusion UI before the tx is even built:
+ *  - recipes FROM tier ≥ `maxLevelRequiredFrom` (Legend → Legend+ and up) require
+ *    ALL THREE materials at their rarity's max level;
+ *  - the Diamond recipe additionally requires every Legend+ material to be at
+ *    least `legendPlusMaterialAgeDays` old (no fresh-mint express lanes), and its
+ *    result is PERMANENTLY soulbound (a god is not a commodity);
+ *  - the result carries the materials' lifetime XP (see `carryFusionXp`).
+ */
+export const FUSION_GATE = {
+  maxLevelRequiredFrom: 6 as RarityIndex, // Legend
+  legendPlusMaterialAgeDays: 14,
+  diamondSoulbound: true,
+} as const;
 
 export const BOOSTER = { bonusBps: 1500, capBps: 9500 } as const;
 

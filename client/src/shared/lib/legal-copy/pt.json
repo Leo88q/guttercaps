@@ -1,6 +1,6 @@
 {
-  "revision": "2026-10-11.1",
-  "sha256": "c5110f2de4c2eaf087afda365fceef15d499ca9a1625f9fbc69d41588a311490",
+  "revision": "2026-10-12.1",
+  "sha256": "390179837de3b07e2ea45fcfeaddd8374abc6cb2a397639772adbbfdf835fc19",
   "docs": {
     "terms": {
       "slug": "terms",
@@ -34,7 +34,7 @@
           "h": "4. Preços, taxas e o que é queimado",
           "p": [
             "Os pacotes são pagos em SOL, USDC, $CG ou SKR, e o preço que você assina é o preço que você paga. Preços, descontos e configuração dos pacotes são definidos dentro dos limites que os programas aplicam, e a cotação mostrada antes da assinatura é a que vale.",
-            "As vendas no mercado descontam uma taxa de protocolo — {marketFee} % por padrão, com teto rígido on-chain de {marketCap} % — mais um royalty separado de criador de {royalty} %, cobrado do vendedor. Cerca de {buyback} % da taxa de protocolo vai para recompra e queima; o restante e o royalty vão para o tesouro. Criar um anúncio também queima {listingBurn} $CG. Os valores atuais aparecem antes da assinatura, e as taxas descritas aqui são as que os programas cobram.",
+            "As vendas no mercado descontam uma taxa de protocolo — {marketFee} % por padrão, com teto rígido on-chain de {marketCap} % — mais um royalty separado de criador de {royalty} %, cobrado do vendedor. Cerca de {buyback} % da taxa de protocolo vai para recompra e queima; o restante e o royalty vão para o tesouro.Criar um anúncio também queima uma taxa anti-spam proporcional — 0,5 % do preço, entre {listingBurnMin} e {listingBurnMax} $CG, tudo queimado. Os valores atuais aparecem antes da assinatura, e as taxas descritas aqui são as que os programas cobram.",
             "Apostas na arena pagam um rake de {arenaRake} % do pote: {arenaTreasury} % do rake vão para o tesouro, {arenaPool} % formam o prêmio da temporada e os {arenaBurn} % restantes são queimados. O rake incide apenas sobre a aposta; as fichas que você leva para uma batalha não são afetadas.",
             "Pacotes pagos em $CG queimam {cgBurn} % do preço, e pacotes pagos em SKR têm {skrDiscount} % de desconto. A queima é uma mudança na oferta do token, não uma taxa que fica conosco, e acontece on-chain na mesma transação da compra.",
             "As taxas de rede da Solana e o aluguel que abre as contas de um pacote são pagos por você, não por nós. O aluguel reservado enquanto um pacote está em processamento volta para você quando as contas são fechadas. Taxas de rede nunca são reembolsadas — elas são pagas à rede, não a nós."

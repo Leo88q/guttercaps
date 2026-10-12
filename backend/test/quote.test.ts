@@ -203,7 +203,7 @@ describe('POST /packs/quote', () => {
     expect(r.status).toBe(200);
     expect(r.headers.get('cache-control')).toBe('no-store');
     const amount = String(solLamportsForUsdCents(599));
-    expect(r.json).toMatchObject({ sku: 1, qty: 1, currency: 'SOL', amount, maxLamports: amount, discountBps: 0, priceUsdCents: 599, rentReserveLamports: String(8_000_000 * 4), pityCounter: 0, hardPityIn: 60, pythUpdateData: [] });
+    expect(r.json).toMatchObject({ sku: 1, qty: 1, currency: 'SOL', amount, maxLamports: amount, discountBps: 0, priceUsdCents: 599, rentReserveLamports: String(8_000_000 * 5), pityCounter: 0, hardPityIn: 60, pythUpdateData: [] });
     expect(r.json.priceUpdateAccount).toBeUndefined();
     expect(r.json.solUsd).toBe(FX.solUsd); expect(r.json.skrUsd).toBe(FX.skrUsd);
     expect(r.json.effectiveOddsBps.reduce((a: number, b: number) => a + b, 0)).toBe(10_000);
@@ -251,7 +251,7 @@ describe('POST /packs/quote', () => {
     ingestTx(tx([{ program: 'chip_core', name: 'PackOpened', data: { buyer: w, sku: 1, nonce: '9', assets: [Keypair.generate().publicKey.toBase58(), Keypair.generate().publicKey.toBase58(), Keypair.generate().publicKey.toBase58(), PublicKey.default.toBase58(), PublicKey.default.toBase58()], rarities: [0, 0, 1, 0, 0], collections: [1, 2, 3, 0, 0], count: 3, roll: 'ab'.repeat(32), pityBefore: 40, pityAfter: 41 } }]), db);
     const r = await c.post('/v1/packs/quote', { sku: 1, qty: 1, currency: 'USDC' });
     expect(r.json.pityCounter).toBe(41); expect(r.json.hardPityIn).toBe(19);
-    expect(r.json.effectiveOddsBps[6] + r.json.effectiveOddsBps[7] + r.json.effectiveOddsBps[8]).toBeGreaterThan(70); // soft pity active (> base 70 bps)
+    expect(r.json.effectiveOddsBps[5]).toBeGreaterThan(300); // soft pity on the Epic+ tier (> base 300 bps)
   });
   it('/prices and /health expose the cache health', async () => {
     const c = new Client();

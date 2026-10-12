@@ -297,8 +297,11 @@ pub struct StakeCompressedChip<'info> {
     /// CHECK: ["stake_auth"] PDA signer for chip_core CPI
     #[account(seeds = [b"stake_auth"], bump)]
     pub stake_auth: UncheckedAccount<'info>,
-    #[account(mut)]
-    pub claim: Account<'info, CompressedMintClaim>,
+    /// CHECK: owner-checked by the constraint; the body is decoded in the
+    /// handler with `try_deserialize_compat` — live pre-`founder` claims are
+    /// one byte short of the current layout and fail Anchor's strict decode.
+    #[account(mut, owner = chip_core::ID)]
+    pub claim: UncheckedAccount<'info>,
     #[account(
         init_if_needed,
         payer = owner,
@@ -339,13 +342,11 @@ pub fn chip_weight(chip: &ChipState, sets: u8, last_played: i64, now: i64) -> u1
 }
 
 pub fn stake_compressed_chip(ctx: Context<StakeCompressedChip>) -> Result<()> {
-    require_keys_eq!(
-        ctx.accounts.claim.buyer,
-        ctx.accounts.owner.key(),
-        StakeError::NotOwner
-    );
+    let claim =
+        CompressedMintClaim::try_deserialize_compat(&ctx.accounts.claim.try_borrow_data()?)?;
+    require_keys_eq!(claim.buyer, ctx.accounts.owner.key(), StakeError::NotOwner);
     require!(
-        !ctx.accounts.claim.listed && !ctx.accounts.claim.consumed && !ctx.accounts.claim.staked,
+        !claim.listed && !claim.consumed && !claim.staked,
         StakeError::ChipNotFree
     );
     let now = Clock::get()?.unix_timestamp;
@@ -354,16 +355,13 @@ pub fn stake_compressed_chip(ctx: Context<StakeCompressedChip>) -> Result<()> {
     // authoritative window — market (`market::buy_compressed_asset`) and fusion
     // (`fuse_compressed_claims`) both refuse a locked claim, and staking is the one remaining
     // consumer that used to turn a locked chip into a reward stream without transferring it.
-    require!(
-        now >= ctx.accounts.claim.lock_until,
-        StakeError::ChipNotFree
-    );
+    require!(now >= claim.lock_until, StakeError::ChipNotFree);
     // SEC-F04: never stake a dead claim. An unminted claim past its 7-day deadline can never be
     // minted/registered — it is only cancellable — so its weight is a claim on the pool backed
     // by nothing. Minted claims stay stakeable after the deadline exactly like
     // register_compressed_chip (DAS retries keep them alive).
     require!(
-        now <= ctx.accounts.claim.expires_at || ctx.accounts.claim.minted,
+        now <= claim.expires_at || claim.minted,
         StakeError::ClaimExpired
     );
     let sb = &mut ctx.accounts.set_bonus;
@@ -392,7 +390,7 @@ pub fn stake_compressed_chip(ctx: Context<StakeCompressedChip>) -> Result<()> {
         ctx.accounts.play.bump = ctx.bumps.play;
     }
     let weight = compressed_chip_weight(
-        &ctx.accounts.claim,
+        &claim,
         sb.completed_sets,
         ctx.accounts.play.last_played,
         now,
@@ -443,8 +441,11 @@ pub struct StakeCompressedChipV2<'info> {
     /// CHECK: stake_auth is the fixed PDA used by chip_core for state changes.
     #[account(seeds = [b"stake_auth"], bump)]
     pub stake_auth: UncheckedAccount<'info>,
-    #[account(mut)]
-    pub claim: Account<'info, CompressedMintClaim>,
+    /// CHECK: owner-checked by the constraint; the body is decoded in the
+    /// handler with `try_deserialize_compat` — live pre-`founder` claims are
+    /// one byte short of the current layout and fail Anchor's strict decode.
+    #[account(mut, owner = chip_core::ID)]
+    pub claim: UncheckedAccount<'info>,
     #[account(
         constraint = chip.claim == claim.key() @ StakeError::InvalidBubblegumProof,
         constraint = chip.asset == leaf_asset_id(&chip.merkle_tree, chip.leaf_index) @ StakeError::InvalidBubblegumProof,
@@ -476,7 +477,9 @@ pub fn stake_compressed_chip_v2<'info>(
     delegate: Pubkey,
     proof: LeafProofArgs,
 ) -> Result<()> {
-    let claim = &ctx.accounts.claim;
+    let claim_data =
+        CompressedMintClaim::try_deserialize_compat(&ctx.accounts.claim.try_borrow_data()?)?;
+    let claim = &claim_data;
     let chip = &ctx.accounts.chip;
     require!(
         claim.minted && claim.registered && !claim.listed && !claim.consumed && !claim.staked,
@@ -543,7 +546,7 @@ pub fn stake_compressed_chip_v2<'info>(
         ctx.accounts.play.bump = ctx.bumps.play;
     }
     let weight = compressed_chip_weight(
-        &ctx.accounts.claim,
+        claim,
         sb.completed_sets,
         ctx.accounts.play.last_played,
         now,
@@ -584,8 +587,11 @@ pub struct UnstakeCompressedChip<'info> {
     /// CHECK: ["stake_auth"] PDA signer for chip_core CPI
     #[account(seeds = [b"stake_auth"], bump)]
     pub stake_auth: UncheckedAccount<'info>,
-    #[account(mut)]
-    pub claim: Account<'info, CompressedMintClaim>,
+    /// CHECK: owner-checked by the constraint; `has_one = claim` on the cstake
+    /// PDA binds the key. Body decoded with `try_deserialize_compat` where read
+    /// — live pre-`founder` claims are one byte short of the current layout.
+    #[account(mut, owner = chip_core::ID)]
+    pub claim: UncheckedAccount<'info>,
     #[account(mut, address = emission.cg_mint)]
     pub cg_mint: Account<'info, Mint>,
     #[account(mut, token::mint = emission.cg_mint, token::authority = owner)]
@@ -790,7 +796,11 @@ pub struct ClaimCompressedChip<'info> {
     pub cstake: Box<Account<'info, CompressedChipStake>>,
     #[account(seeds = [b"setbonus", owner.key().as_ref()], bump = set_bonus.bump)]
     pub set_bonus: Box<Account<'info, SetBonus>>,
-    pub claim: Account<'info, CompressedMintClaim>,
+    /// CHECK: owner-checked by the constraint; the body is decoded in the
+    /// handler with `try_deserialize_compat` — live pre-`founder` claims are
+    /// one byte short of the current layout and fail Anchor's strict decode.
+    #[account(owner = chip_core::ID)]
+    pub claim: UncheckedAccount<'info>,
     #[account(
         init_if_needed,
         payer = owner,
@@ -849,8 +859,10 @@ pub fn claim_compressed_chip(ctx: Context<ClaimCompressedChip>) -> Result<()> {
             now,
         )?;
     }
+    let claim =
+        CompressedMintClaim::try_deserialize_compat(&ctx.accounts.claim.try_borrow_data()?)?;
     let w = compressed_chip_weight(
-        &ctx.accounts.claim,
+        &claim,
         ctx.accounts.set_bonus.completed_sets,
         ctx.accounts.play.last_played,
         now,

@@ -57,7 +57,7 @@ const vi: Messages = {
     priceAge: 'Tuổi giá', priceAgeValue: '{s} giây (hợp lệ ≤ 60 giây on-chain)', priceFeedDown: 'Nguồn giá đang cập nhật — thử lại sau vài giây.', quoteFailed: 'Không lấy được báo giá.',
     rentReserve: 'Tiền cọc rent (hoàn lại sau khi mở)', oracleFees: 'Phí mạng (ước tính)', maxSlippage: 'Tối đa (bảo vệ trượt giá 1%)',
     oddsNow: 'Tỷ lệ của bạn lúc này (pity {n})', oneSignature: ui.packSignatures,
-    perPack: '{n, plural, other{# nắp}} mỗi gói', floor: 'sàn {rarity}', starterOnce: 'một lần mỗi ví', dailyCap: 'giới hạn {n}/ngày',
+    perPack: '{n, plural, other{# nắp}} mỗi gói', floor: 'sàn {rarity}', starterOnce: 'một lần mỗi ví', limitedPerks: 'booster + 2 vé XP mỗi ngày', dailyCap: 'giới hạn {n}/ngày',
     pityIn: 'đảm bảo {rarity} sau {n}', packDisabled: 'tạm tắt', was: 'trước {price}',
     tabs: { packs: 'Gói', services: 'Thêm' },
   },
@@ -218,7 +218,7 @@ const vi: Messages = {
     params: {
       unavailable: 'Không đọc được trạng thái chuỗi: {error}', version: 'phiên bản tham số', slot: 'đọc tại slot', paused: 'đang dừng', liabilities: 'Nợ của kho (Σ các shard sổ cái)', burnedTotal: 'đã đốt tổng cộng',
       shards: '{n} shard sổ cái · {missing} chưa khởi tạo', shardsMissing: 'chạy `setup ledgers` trước sweep_vault', globals: 'Phí toàn cục', marketFee: 'Phí chợ (bps)', skrDiscount: 'Giảm giá gói bằng SKR (bps)', featured: 'Khu nổi bật', keep: 'giữ nguyên',
-      split: 'Phân bổ phát hành (bps)', splitRule: '±{delta} bps mỗi lần · lần đổi tiếp theo được phép {next}', sliceBudget: 'hôm nay', packs: 'SKU gói', packsRule: 'Tỷ lệ phải cộng thành 10000 · Common ≥ {common}% · Legend+ + Diamond ≤ {top2}% với Starter/Standard (×2 với Premium/Limited) · giá $0,50–$500',
+      split: 'Phân bổ phát hành (bps)', splitRule: '±{delta} bps mỗi lần · lần đổi tiếp theo được phép {next}', sliceBudget: 'hôm nay', packs: 'SKU gói', packsRule: 'Tỷ lệ phải cộng thành 10000 · Common ≥ {common}% · Legend trở lên không bao giờ rơi — tier 6–8 phải bằng 0 · giá $0,50–$500',
       price: 'giá ¢', note: 'Ghi chú (vào nhật ký kiểm toán)', checking: 'Đang kiểm tra…', propose: 'Kiểm tra & mã hóa', clear: 'Xóa bản nháp', nothingSent: 'Không có gì được gửi lên chuỗi từ đây.', history: 'set_params gần đây', noHistory: 'Chưa có thay đổi tham số nào được lập chỉ mục.',
     },
     kill: {

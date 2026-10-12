@@ -1,6 +1,6 @@
 {
-  "revision": "2026-10-11.1",
-  "sha256": "c5110f2de4c2eaf087afda365fceef15d499ca9a1625f9fbc69d41588a311490",
+  "revision": "2026-10-12.1",
+  "sha256": "390179837de3b07e2ea45fcfeaddd8374abc6cb2a397639772adbbfdf835fc19",
   "docs": {
     "terms": {
       "slug": "terms",
@@ -34,7 +34,7 @@
           "h": "4. Harga, biaya, dan apa yang dibakar",
           "p": [
             "Paket dibayar dengan SOL, USDC, $CG, atau SKR, dan harga yang Anda tandatangani adalah harga yang Anda bayar. Harga, diskon, dan konfigurasi paket ditetapkan dalam batas yang ditegakkan program, dan penawaran yang ditampilkan sebelum Anda menandatangani adalah yang berlaku.",
-            "Penjualan di pasar memotong biaya protokol — {marketFee} % secara default, dengan batas keras on-chain {marketCap} % — ditambah royalti kreator terpisah {royalty} % dari penjual. Sekitar {buyback} % dari biaya protokol digunakan untuk buyback dan bakar; sisanya dan royalti masuk ke kas. Membuat listing juga membakar {listingBurn} $CG. Angka terkini ditampilkan sebelum Anda menandatangani, dan biaya yang dijelaskan di sini adalah biaya yang dipungut program.",
+            "Penjualan di pasar memotong biaya protokol — {marketFee} % secara default, dengan batas keras on-chain {marketCap} % — ditambah royalti kreator terpisah {royalty} % dari penjual. Sekitar {buyback} % dari biaya protokol digunakan untuk buyback dan bakar; sisanya dan royalti masuk ke kas.Membuat listing juga membakar biaya anti-spam proporsional — 0,5 % dari harga, antara {listingBurnMin} dan {listingBurnMax} $CG, semuanya dibakar. Angka terkini ditampilkan sebelum Anda menandatangani, dan biaya yang dijelaskan di sini adalah biaya yang dipungut program.",
             "Taruhan arena dikenai rake {arenaRake} % dari pot: {arenaTreasury} % dari rake ke kas, {arenaPool} % membentuk hadiah musim, dan {arenaBurn} % sisanya dibakar. Rake hanya berlaku pada taruhan; chip yang Anda bawa ke pertarungan tidak tersentuh.",
             "Paket yang dibayar dengan $CG membakar {cgBurn} % dari harga, dan paket yang dibayar dengan SKR mendapat diskon {skrDiscount} %. Pembakaran adalah perubahan pasokan token, bukan biaya yang kami simpan, dan terjadi on-chain dalam transaksi yang sama dengan pembelian.",
             "Biaya jaringan Solana dan sewa yang membuka akun paket menjadi tanggungan Anda, bukan kami. Sewa yang dicadangkan selama paket diproses dikembalikan kepada Anda saat akun ditutup. Biaya jaringan tidak pernah dikembalikan — biaya itu dibayarkan kepada jaringan, bukan kepada kami."

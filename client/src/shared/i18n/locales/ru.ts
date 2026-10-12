@@ -57,7 +57,7 @@ const ru: Messages = {
     priceAge: 'Возраст цены', priceAgeValue: '{s} с (ончейн-лимит 60 с)', priceFeedDown: 'Ценовой фид обновляется — повторите через несколько секунд.', quoteFailed: 'Не удалось получить котировку.',
     rentReserve: 'Резерв ренты (вернётся после открытия)', oracleFees: 'Сеть (оценка)', maxSlippage: 'Максимум к оплате',
     oddsNow: 'Ваши шансы сейчас (pity {n})', oneSignature: ui.packSignatures,
-    perPack: '{n, plural, one{# фишка} few{# фишки} many{# фишек} other{# фишки}} в паке', floor: 'флор {rarity}', starterOnce: 'раз на кошелёк', dailyCap: 'лимит {n}/день',
+    perPack: '{n, plural, one{# фишка} few{# фишки} many{# фишек} other{# фишки}} в паке', floor: 'флор {rarity}', starterOnce: 'раз на кошелёк', limitedPerks: 'бустер + 2 XP-билета каждый день', dailyCap: 'лимит {n}/день',
     pityIn: 'гарантия {rarity} через {n}', packDisabled: 'временно отключён', was: 'было {price}',
     tabs: { packs: 'Паки', services: 'Дополнительно' },
   },
@@ -218,7 +218,7 @@ const ru: Messages = {
     params: {
       unavailable: 'Состояние сети недоступно: {error}', version: 'версия параметров', slot: 'прочитано на слоте', paused: 'на паузе', liabilities: 'Обязательства хранилища (Σ шардов леджера)', burnedTotal: 'сожжено всего',
       shards: 'шардов леджера: {n} · не инициализировано: {missing}', shardsMissing: 'запустите `setup ledgers` перед sweep_vault', globals: 'Глобальные комиссии', marketFee: 'Комиссия маркета, bps', skrDiscount: 'Скидка SKR на паки, bps', featured: 'Район недели', keep: 'оставить',
-      split: 'Распределение эмиссии (bps)', splitRule: '±{delta} bps за изменение · следующее возможно {next}', sliceBudget: 'сегодня', packs: 'Паки (SKU)', packsRule: 'Сумма шансов = 10000 · Common ≥ {common}% · Legend+ + Diamond ≤ {top2}% для Starter/Standard (×2 для Premium/Limited) · цена $0,50–$500',
+      split: 'Распределение эмиссии (bps)', splitRule: '±{delta} bps за изменение · следующее возможно {next}', sliceBudget: 'сегодня', packs: 'Паки (SKU)', packsRule: 'Сумма шансов = 10000 · Common ≥ {common}% · Legend и выше не выпадают — шансы тиров 6–8 должны быть 0 · цена $0,50–$500',
       price: 'цена, ¢', note: 'Заметка (попадёт в журнал аудита)', checking: 'Проверяем…', propose: 'Проверить и закодировать', clear: 'Очистить черновик', nothingSent: 'Отсюда ничего не отправляется в сеть.', history: 'Недавние set_params', noHistory: 'Изменений параметров пока не проиндексировано.',
     },
     kill: {

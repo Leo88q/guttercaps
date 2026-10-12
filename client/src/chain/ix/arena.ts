@@ -7,8 +7,8 @@ import { RNG_KIND, arenaConfigPda, ata, battlePda, chipStatePda } from '../pdas'
 import { commitAccountMetas } from './rng';
 import type { CompressedLeafProof } from './chipCore';
 
-export const MIN_WAGER = 5_000_000n;
-export const MAX_WAGER = 5_000_000_000n;
+export const MIN_WAGER = 25_000_000n;      // 25 $CG (economy v3)
+export const MAX_WAGER = 25_000_000_000n;  // 25 000 $CG
 export const RAKE_BPS = 500;
 export const RAKE_TREASURY_BPS = 4_000;
 export const RAKE_POOL_BPS = 2_000;

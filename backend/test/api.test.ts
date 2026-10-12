@@ -156,7 +156,7 @@ describe('public API', () => {
     ingestTx(tx([{ program: 'chip_core', name: 'PackOpened', data: { buyer: me, sku: 1, nonce: '77', assets: [...assets, DEFAULT, DEFAULT], rarities: [2, 2, 2, 0, 0], collections: [1, 1, 1, 0, 0], count: 3, roll: hex32(0x9f), pityBefore: 0, pityAfter: 1 } }]), db);
     const plan = await c.post('/v1/fusion/plan', { materials: assets, resultCollection: 1 });
     expect(plan.status).toBe(200);
-    expect(plan.json).toMatchObject({ resultRarity: 'Rare+', resultCollection: 1, needsRandomness: false, feeCgMicro: '30000000' });
+    expect(plan.json).toMatchObject({ resultRarity: 'Rare+', resultCollection: 1, needsRandomness: false, feeCgMicro: '150000000' });
     // all three materials sit in one district, so the bench recommends exactly that triple
     expect((await c.get('/v1/fusion/suggest')).json).toHaveLength(1);
     // arena: bad commit → 422; good commit → ticket; leave → 204

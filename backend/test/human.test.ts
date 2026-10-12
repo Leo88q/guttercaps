@@ -134,7 +134,7 @@ describe('T-B-49 proof of human (unit)', () => {
     expect(quests.eligibility(db, w, T + 130)).toMatchObject({ eligible: true, reason: null });
     // the postponed login quest is now paid
     expect(quests.settleWallet(db, w, T + 140)).toBeGreaterThan(0);
-    expect(db.get<{ amount: string }>(`SELECT amount FROM quest_completions WHERE wallet = ? AND quest_id = 'd_login'`, w)!.amount).toBe('2000000');
+    expect(db.get<{ amount: string }>(`SELECT amount FROM quest_completions WHERE wallet = ? AND quest_id = 'd_login'`, w)!.amount).toBe('3000000');
     // the pass expires after the TTL
     expect(human.humanStatus(db, w, T + 120 + 7 * 86_400 + 1)).toMatchObject({ verified: false, expiresAt: null });
     expect(quests.eligibility(db, w, T + 120 + 7 * 86_400 + 1).reason).toBe('human_check_required');

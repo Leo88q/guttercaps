@@ -221,7 +221,7 @@ mod tests {
             schedule_minted: [0; 8],
             burn_ring: [0; 7],
             burn_today: 0,
-            split_bps: [2000, 500, 2200, 3300, 2000],
+            split_bps: [1500, 200, 2500, 3800, 2000],
             split_changed_at: 0,
             slice_budget: [0; 5],
             paused: false,

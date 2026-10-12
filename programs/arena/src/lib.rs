@@ -34,8 +34,8 @@ use chip_core::state::{ChipState, CompressedChipState, CompressedMintClaim};
 declare_id!("DUTokrhWBYL7nJ9VbMy7bFELQFf8TN1tmvVpKLsskqD6");
 
 pub const MICRO: u64 = 1_000_000;
-pub const MIN_WAGER: u64 = 5 * MICRO;
-pub const MAX_WAGER: u64 = 5_000 * MICRO;
+pub const MIN_WAGER: u64 = 25 * MICRO;
+pub const MAX_WAGER: u64 = 25_000 * MICRO;
 pub const RAKE_BPS: u64 = 500;
 pub const RAKE_TREASURY_BPS: u64 = 4_000; // share of the rake → treasury
 pub const RAKE_POOL_BPS: u64 = 2_000; // share of the rake → season pool; the rest is burned

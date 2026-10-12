@@ -217,13 +217,13 @@ pub const DEFAULT_PACKS: [PackDef; 4] = [
         enabled: true,
     },
     PackDef {
-        chips: 4,
+        chips: 5,
         price_usd_cents: 599,
         price_cg_micro: 2_700_000_000,
-        odds_bps: [4500, 2500, 1500, 800, 450, 180, 50, 18, 2],
+        odds_bps: [4200, 2400, 1600, 900, 600, 300, 0, 0, 0],
         floor: 1,
         daily_cap: 0,
-        pity_tier: 6,
+        pity_tier: 5,
         pity_hard_at: 60,
         pity_soft_start: 30,
         pity_soft_step_bps: 25,
@@ -234,10 +234,10 @@ pub const DEFAULT_PACKS: [PackDef; 4] = [
         chips: 5,
         price_usd_cents: 1499,
         price_cg_micro: 6_750_000_000,
-        odds_bps: [2320, 2600, 2250, 1600, 800, 310, 90, 25, 5],
+        odds_bps: [1700, 2100, 2200, 1800, 1200, 1000, 0, 0, 0],
         floor: 2,
         daily_cap: 0,
-        pity_tier: 6,
+        pity_tier: 5,
         pity_hard_at: 40,
         pity_soft_start: 20,
         pity_soft_step_bps: 40,
@@ -248,10 +248,10 @@ pub const DEFAULT_PACKS: [PackDef; 4] = [
         chips: 5,
         price_usd_cents: 2999,
         price_cg_micro: 0,
-        odds_bps: [2200, 2400, 2400, 1600, 850, 350, 120, 50, 30],
+        odds_bps: [1500, 1900, 2300, 2000, 1400, 900, 0, 0, 0],
         floor: 3,
         daily_cap: 5,
-        pity_tier: 6,
+        pity_tier: 5,
         pity_hard_at: 25,
         pity_soft_start: 12,
         pity_soft_step_bps: 60,
@@ -261,7 +261,7 @@ pub const DEFAULT_PACKS: [PackDef; 4] = [
 ];
 
 /// Guard-rails for admin edits: no SKU may be turned into a Legend+ faucet.
-pub const MAX_TOP2_BPS_STANDARD: u16 = 200; // Legend+ + Diamond ≤ 2 % per slot on Standard
+pub const MAX_TOP_TIER_BPS: u16 = 0; // economy v3: Legend and above (tiers 6–8) drop from no pack — enforced by set_params
 pub const BUNDLE_DISCOUNT_BPS: [(u8, u16); 4] = [(1, 0), (5, 700), (10, 1200), (25, 1800)];
 
 pub fn bundle_discount_bps(qty: u8) -> u16 {
@@ -421,7 +421,7 @@ pub const FUSION_RECIPES: [FusionRecipe; 8] = [
         same_collection: false,
         success_bps: 10_000,
         refund_on_fail: 0,
-        fee_cg_micro: 5_000_000,
+        fee_cg_micro: 25_000_000,
         result_lock_secs: 0,
     },
     FusionRecipe {
@@ -429,7 +429,7 @@ pub const FUSION_RECIPES: [FusionRecipe; 8] = [
         same_collection: true,
         success_bps: 10_000,
         refund_on_fail: 0,
-        fee_cg_micro: 12_000_000,
+        fee_cg_micro: 60_000_000,
         result_lock_secs: 0,
     },
     FusionRecipe {
@@ -437,7 +437,7 @@ pub const FUSION_RECIPES: [FusionRecipe; 8] = [
         same_collection: false,
         success_bps: 10_000,
         refund_on_fail: 0,
-        fee_cg_micro: 30_000_000,
+        fee_cg_micro: 150_000_000,
         result_lock_secs: 0,
     },
     FusionRecipe {
@@ -445,7 +445,7 @@ pub const FUSION_RECIPES: [FusionRecipe; 8] = [
         same_collection: true,
         success_bps: 10_000,
         refund_on_fail: 0,
-        fee_cg_micro: 60_000_000,
+        fee_cg_micro: 400_000_000,
         result_lock_secs: H,
     },
     FusionRecipe {
@@ -453,7 +453,7 @@ pub const FUSION_RECIPES: [FusionRecipe; 8] = [
         same_collection: false,
         success_bps: 8_500,
         refund_on_fail: 1,
-        fee_cg_micro: 120_000_000,
+        fee_cg_micro: 5_000_000_000,
         result_lock_secs: 6 * H,
     },
     FusionRecipe {
@@ -461,7 +461,7 @@ pub const FUSION_RECIPES: [FusionRecipe; 8] = [
         same_collection: true,
         success_bps: 7_500,
         refund_on_fail: 1,
-        fee_cg_micro: 400_000_000,
+        fee_cg_micro: 15_000_000_000,
         result_lock_secs: 24 * H,
     },
     FusionRecipe {
@@ -469,15 +469,15 @@ pub const FUSION_RECIPES: [FusionRecipe; 8] = [
         same_collection: false,
         success_bps: 7_000,
         refund_on_fail: 1,
-        fee_cg_micro: 1_400_000_000,
+        fee_cg_micro: 30_000_000_000,
         result_lock_secs: 48 * H,
     },
     FusionRecipe {
         from: Rarity::LegendPlus,
         same_collection: true,
-        success_bps: 5_000,
+        success_bps: 4_000,
         refund_on_fail: 1,
-        fee_cg_micro: 6_000_000_000,
+        fee_cg_micro: 200_000_000_000,
         result_lock_secs: 72 * H,
     },
 ];
@@ -584,7 +584,7 @@ impl ServiceKind {
     }
 }
 /// 1 USD cent ≙ 1 $CG at launch (parity anchor for services only; packs keep their own $CG prices).
-pub const CG_MICRO_PER_CENT: u64 = 1_000_000;
+pub const CG_MICRO_PER_CENT: u64 = 6_000_000; // 6 $CG per US cent — ~33% premium over pack parity (packages/economy services.ts)
 /// Refund window for commit-reveal flows (packs, risky fusions). Switchboard oracles stop
 /// signing a reveal 1 h after the commit; 10 800 slots ≈ 72 min at 400 ms, so a refund is
 /// only ever possible once nobody — including the buyer — can still learn the value

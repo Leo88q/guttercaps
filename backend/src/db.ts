@@ -740,6 +740,18 @@ CREATE INDEX IF NOT EXISTS idx_quest_completions_unrooted ON quest_completions(r
 CREATE INDEX IF NOT EXISTS idx_quest_completions_item_unrooted ON quest_completions(item_root_kind, wallet);
 CREATE INDEX IF NOT EXISTS idx_quest_completions_chip_unrooted ON quest_completions(chip_root_kind, wallet);
 CREATE INDEX IF NOT EXISTS idx_quest_completions_day ON quest_completions(wallet, day);
+-- Limited-pack purchase perks (economy v3, PACK_PERKS): 1 fusion booster/day (delivered through the
+-- quest_completions item-root pipeline as synthetic quest 'perk_limited_booster') + up to 2 XP
+-- tickets/day (+100 XP each, redeemed same UTC day on a chip of the wallet's choice, above the
+-- daily XP cap). Day-scoped by design: unspent tickets expire at midnight, no stockpiling.
+CREATE TABLE IF NOT EXISTS pack_perks (
+  wallet           TEXT    NOT NULL,
+  day              INTEGER NOT NULL,   -- unix day of the purchase
+  boosters_granted INTEGER NOT NULL DEFAULT 0,
+  tickets_granted  INTEGER NOT NULL DEFAULT 0,
+  tickets_used     INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (wallet, day)
+);
 -- Merkle batches this backend built (one root per kind/epoch) and their leaves with proofs.
 -- Admin audit log (backend/src/admin.ts): every /admin/* call, allowed or denied, with the body it carried.
 CREATE TABLE IF NOT EXISTS admin_audit (
