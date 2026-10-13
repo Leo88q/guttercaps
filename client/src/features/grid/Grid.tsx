@@ -1,0 +1,299 @@
+// Floodgrid («Решётка», docs/13): 75 sectors open for training, a strict per-chip charge
+// route, star XP, Flood charge droplets, diver gear and account gifts. The board engine is
+// the shared deterministic one (@guttercaps/economy); the server replays every submitted
+// move list, so what is played here is exactly what is verified there.
+import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { GRID, GRID_DEPTHS, componentCount, isSolved, kindOf, poweredCells, tileMask, type Level, type Tile } from '@guttercaps/economy';
+import { api, ApiError } from '@/api/client';
+import { useGridChip, useGridMe } from '@/api/hooks';
+import { qk } from '@/api/keys';
+import { useT } from '@/shared/i18n';
+import { useUiStore } from '@/app/store/ui';
+import { ChipArt } from '@/shared/ui/ChipArt';
+import { Empty, Pill, Progress, Skeleton, Stat } from '@/shared/ui/primitives';
+
+interface BoardTile { base: number; rot: number; fixed: boolean; role: string }
+interface AttemptStart {
+  attemptId: string; level: number; par: number; moveBudget: number;
+  route: { nextLevel: number; chargeDrops: number; chargeProgress: number };
+  board: { size: number; bus: number; receivers: number[]; tiles: BoardTile[] };
+}
+type CompleteResult =
+  | { ok: true; training: boolean; stars?: number; xpGranted?: number; xpPending?: number; dropletGained?: boolean; gifts?: { kind: string; amount: number }[] }
+  | { ok: false; xpLoss?: number; emergencyGranted?: boolean };
+
+interface PlayState {
+  attempt: AttemptStart; mode: 'charge' | 'training'; hintsUsed: number;
+  initial: number[]; rots: number[]; turns: [number, number][]; hintIndex: number | null; busy: boolean;
+}
+
+function TileSvg({ mask, powered, isBus, isReceiver, fixed, highlight }: { mask: number; powered: boolean; isBus: boolean; isReceiver: boolean; fixed: boolean; highlight: boolean }) {
+  const c = powered ? '#B6F09C' : '#7A8288';
+  const lines: [number, number][] = [];
+  if (mask & 1) lines.push([20, 0]);
+  if (mask & 2) lines.push([40, 20]);
+  if (mask & 4) lines.push([20, 40]);
+  if (mask & 8) lines.push([0, 20]);
+  return (
+    <svg viewBox="0 0 40 40" style={{ width: '100%', height: '100%', display: 'block' }} aria-hidden>
+      {highlight && <rect x="1" y="1" width="38" height="38" rx="7" fill="none" stroke="#FFD34D" strokeWidth="2.5" />}
+      {lines.map(([x, y], i) => <line key={i} x1="20" y1="20" x2={x} y2={y} stroke={c} strokeWidth={powered ? 5 : 4} strokeLinecap="round" />)}
+      <circle cx="20" cy="20" r={isBus ? 7 : 4.5} fill={isBus ? '#FF9F1C' : c} />
+      {isReceiver && <circle cx="20" cy="20" r="9" fill="none" stroke="#6EC1FF" strokeWidth="2" />}
+      {fixed && <circle cx="33" cy="7" r="2" fill="#555" />}
+    </svg>
+  );
+}
+
+export default function Grid() {
+  const t = useT();
+  const qc = useQueryClient();
+  const toast = useUiStore((s) => s.toast);
+  const me = useGridMe();
+  const [asset, setAsset] = useState<string | null>(null);
+  const [useHint, setUseHint] = useState(false);
+  const [useEmergency, setUseEmergency] = useState(false);
+  const [useValve, setUseValve] = useState(false);
+  const [play, setPlay] = useState<PlayState | null>(null);
+  const [result, setResult] = useState<CompleteResult | null>(null);
+  const [starting, setStarting] = useState(false);
+
+  const chips = me.data?.chips ?? [];
+  const selected = chips.find((c) => c.asset === asset) ?? chips[0] ?? null;
+  const chipState = useGridChip(selected?.asset ?? null);
+  const route = selected?.route;
+  const nextLevel = route?.nextLevel ?? 1;
+  const claims = useMemo(() => new Map((selected?.claims ?? []).map((c) => [c.level, c])), [selected]);
+  const emergencyLevels = chipState.data?.emergency ?? [];
+  const wallet = me.data?.wallet;
+
+  const localLevel = (p: PlayState): Level => ({
+    level: p.attempt.level, seed: 0, size: p.attempt.board.size, bus: p.attempt.board.bus,
+    receivers: p.attempt.board.receivers, solutionRot: p.rots.map(() => 0), parMoves: p.attempt.par,
+    tiles: p.attempt.board.tiles.map((tile, i): Tile => ({ kind: kindOf(tile.base), base: tile.base, rot: p.rots[i], fixed: tile.fixed, role: (tile.role as Tile['role']) ?? 'line' })),
+  });
+
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: qk.gridMe });
+    if (selected) void qc.invalidateQueries({ queryKey: qk.gridChip(selected.asset) });
+    void qc.invalidateQueries({ queryKey: ['me', 'chips'] });
+    void qc.invalidateQueries({ queryKey: qk.me });
+  };
+
+  const start = async (lv: number, daily = false) => {
+    if (!selected || starting) return;
+    setStarting(true); setResult(null);
+    try {
+      const mode = !daily && lv <= nextLevel ? 'charge' : 'training';
+      const a = await api.post('/grid/attempt', { asset: selected.asset, level: lv, mode, daily, hintsUsed: mode === 'charge' && useHint ? 1 : 0, ...(useEmergency && emergencyLevels.includes(lv) ? { useEmergency: true } : {}) } as never) as unknown as AttemptStart;
+      setPlay({ attempt: a, mode, hintsUsed: mode === 'charge' && useHint ? 1 : 0, initial: a.board.tiles.map((x) => x.rot), rots: a.board.tiles.map((x) => x.rot), turns: [], hintIndex: null, busy: false });
+    } catch (e) {
+      toast({ kind: 'error', title: e instanceof ApiError ? e.message : { key: 'grid.failed' } });
+    } finally { setStarting(false); }
+  };
+
+  const submit = async (p: PlayState, turns: [number, number][]) => {
+    setPlay({ ...p, busy: true });
+    try {
+      const r = await api.post('/grid/complete', { attemptId: p.attempt.attemptId, turns, useValve } as never) as unknown as CompleteResult;
+      setResult(r); setPlay(null); refresh();
+    } catch (e) {
+      toast({ kind: 'error', title: e instanceof ApiError ? e.message : { key: 'grid.failed' } });
+      setPlay((cur) => (cur ? { ...cur, busy: false } : cur));
+    }
+  };
+
+  const rotate = (idx: number, dir: 1 | -1) => {
+    if (!play || play.busy) return;
+    const tile = play.attempt.board.tiles[idx];
+    if (!tile || tile.fixed) return;
+    const rots = [...play.rots];
+    rots[idx] = (((rots[idx] + dir) % 4) + 4) % 4;
+    const turns: [number, number][] = [...play.turns, [idx, dir]];
+    const next = { ...play, rots, turns, hintIndex: null };
+    const lv = localLevel(next);
+    if (isSolved(lv)) { void submit(next, turns); return; }
+    setPlay(next);
+  };
+
+  const undo = () => {
+    if (!play || play.busy || play.turns.length === 0) return;
+    const turns = play.turns.slice(0, -1);
+    const rots = [...play.initial];
+    for (const [i, d] of turns) rots[i] = (((rots[i] + d) % 4) + 4) % 4;
+    setPlay({ ...play, turns, rots });
+  };
+
+  const giveUp = async () => {
+    if (!play || play.busy) return;
+    setPlay({ ...play, busy: true });
+    try {
+      const r = await api.post('/grid/fail', { attemptId: play.attempt.attemptId, useValve } as never) as unknown as CompleteResult;
+      setResult(r); setPlay(null); refresh();
+    } catch (e) { toast({ kind: 'error', title: e instanceof ApiError ? e.message : { key: 'grid.failed' } }); setPlay((cur) => (cur ? { ...cur, busy: false } : cur)); }
+  };
+
+  const showHint = () => {
+    if (!play) return;
+    const lv = localLevel(play);
+    let best: { idx: number; count: number } | null = null;
+    play.rots.forEach((rot, idx) => {
+      if (play.attempt.board.tiles[idx].fixed) return;
+      for (let r = 0; r < 4; r++) {
+        if (r === rot) continue;
+        const trial = localLevel({ ...play, rots: play.rots.map((x, i) => (i === idx ? r : x)) });
+        const count = componentCount(trial);
+        if (!best || count < best.count) best = { idx, count };
+      }
+    });
+    void lv;
+    setPlay({ ...play, hintIndex: best ? (best as { idx: number }).idx : null });
+  };
+
+  if (me.isLoading) return <div className="page stack"><Skeleton h={28} w={220} /><Skeleton h={140} /><Skeleton h={300} /></div>;
+
+  const playLevel = play ? localLevel(play) : null;
+  const powered = playLevel ? poweredCells(playLevel) : [];
+  const connectedPct = powered.length ? Math.round((powered.filter(Boolean).length / powered.length) * 100) : 0;
+  const overBudget = !!play && play.mode === 'charge' && play.turns.length > play.attempt.moveBudget;
+
+  return (
+    <div className="page stack">
+      <div>
+        <h1 className="page-title">{t('grid.title')}</h1>
+        <p className="page-sub">{t('grid.subtitle')}</p>
+      </div>
+
+      <div className="grid-2">
+        <div className="card stack-sm">
+          <div className="strong">{t('grid.backpack')}</div>
+          <div className="row" style={{ gap: 16, flexWrap: 'wrap' }}>
+            <Stat label={t('grid.hints')} value={`${wallet?.hints ?? 0}/${GRID.hintStockCap}`} />
+            <Stat label={t('grid.valves')} value={`${wallet?.valves ?? 0}/${GRID.valveStockCap}`} />
+            <Stat label="★" value={wallet?.total_best_stars ?? 0} />
+          </div>
+          {(me.data?.pendingGranted ?? 0) > 0 && <div className="tiny muted">{t('grid.xp', { n: me.data!.pendingGranted })}</div>}
+          {me.data?.floodReward && <div className="tiny muted">🌊 +{me.data.floodReward.hints} · {t('grid.hints')}{me.data.floodReward.valve > 0 ? ` · +1 ${t('grid.valves')}` : ''}</div>}
+          {(me.data?.masteredChips ?? 0) > 0 && <div className="tiny muted">💛 {t('grid.title')} 75/75 ×{me.data!.masteredChips}</div>}
+          {me.data?.daily && <div><Pill onClick={() => selected && void start(me.data!.daily!.level, true)} disabled={starting || !selected}>{t('grid.sector', { n: me.data.daily.level })} · daily</Pill></div>}
+        </div>
+        <div className="card stack-sm">
+          <div className="strong">{t('grid.flood')}</div>
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            {(me.data?.flood ?? []).length === 0 && <span className="tiny muted">—</span>}
+            {(me.data?.flood ?? []).map((f) => <Pill key={f.district}>#{f.district + 1}: {f.points}</Pill>)}
+          </div>
+          {(me.data?.gifts ?? []).length > 0 && <>
+            <div className="strong">{t('grid.gifts')}</div>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>{me.data!.gifts.map((g, i) => <Pill key={i}>{g.level}: {g.kind}</Pill>)}</div>
+          </>}
+        </div>
+      </div>
+
+      {chips.length === 0 ? <Empty>{t('grid.noChips')}</Empty> : (
+        <>
+          <div className="row" style={{ gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
+            {chips.map((c) => (
+              <button key={c.asset} type="button" onClick={() => { setAsset(c.asset); setPlay(null); setResult(null); }}
+                style={{ minWidth: 92, border: selected?.asset === c.asset ? '2px solid var(--acid, #B6F09C)' : '1px solid #333', borderRadius: 12, padding: 8, background: 'transparent', cursor: 'pointer', textAlign: 'center' }}>
+                <ChipArt collection={c.collection} rarity={c.rarity} level={c.chipLevel} size={54} />
+                <div className="tiny">Lv{c.chipLevel} · {t('grid.drops')} {c.route.chargeDrops}/3</div>
+                <div className="tiny muted">{t('grid.routeNext', { n: Math.min(75, c.route.nextLevel) })}</div>
+              </button>
+            ))}
+          </div>
+
+          {selected && !play && (
+            <div className="card stack-sm">
+              <div className="row between" style={{ flexWrap: 'wrap', gap: 8 }}>
+                <span className="strong">{t('grid.selectSector')}</span>
+                <span className="tiny muted">{t('grid.routeNext', { n: Math.min(75, nextLevel) })} · {t('grid.drops')} {route?.chargeDrops ?? 0}/3</span>
+              </div>
+              <label className="row tiny" style={{ gap: 6 }}>
+                <input type="checkbox" checked={useHint} onChange={(e) => setUseHint(e.target.checked)} disabled={(wallet?.hints ?? 0) <= 0} />
+                {t('grid.useHint')} ({wallet?.hints ?? 0})
+              </label>
+              {emergencyLevels.length > 0 && <label className="row tiny" style={{ gap: 6 }}>
+                <input type="checkbox" checked={useEmergency} onChange={(e) => setUseEmergency(e.target.checked)} />
+                {t('grid.emergency')} ({emergencyLevels.join(', ')})
+              </label>}
+              <label className="row tiny" style={{ gap: 6 }}>
+                <input type="checkbox" checked={useValve} onChange={(e) => setUseValve(e.target.checked)} disabled={(wallet?.valves ?? 0) <= 0} />
+                {t('grid.useValve')} ({wallet?.valves ?? 0})
+              </label>
+              {GRID_DEPTHS.map((d) => (
+                <div key={d.depth} className="stack-sm">
+                  <div className="tiny muted">{t('grid.depth', { n: d.depth })} · {d.name} · {d.grid}</div>
+                  <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                    {Array.from({ length: GRID.levelsPerDepth }, (_, i) => d.levels[0] + i).map((lv) => {
+                      const claim = claims.get(lv);
+                      const isNext = lv === nextLevel;
+                      const lockedLv = lv > nextLevel;
+                      return (
+                        <button key={lv} type="button" disabled={starting} onClick={() => void start(lv)}
+                          title={lockedLv ? t('grid.training') : isNext ? t('grid.charge') : t('grid.training')}
+                          style={{ width: 52, padding: '7px 2px', borderRadius: 9, cursor: 'pointer', border: isNext ? '2px solid #FF9F1C' : '1px solid #333', background: claim ? 'rgba(182,240,156,.12)' : 'transparent', opacity: lockedLv ? 0.75 : 1 }}>
+                          <div className="mono" style={{ fontSize: 13 }}>{lv}</div>
+                          <div style={{ fontSize: 10 }}>{claim ? '★'.repeat(claim.best_stars) : lockedLv ? t('grid.training') === 'Training' ? 'train' : 'трен.' : '⚡'}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {result && !play && (
+            <div className="card stack-sm" role="status">
+              {result.ok ? <>
+                <div className="strong">{result.training ? t('grid.resultTraining') : t('grid.solved')}</div>
+                {!result.training && <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
+                  <span>{t('grid.stars', { n: result.stars ?? 0 })}</span>
+                  {(result.xpGranted ?? 0) > 0 && <span>{t('grid.xp', { n: result.xpGranted })}</span>}
+                  {(result.xpPending ?? 0) > 0 && <span>{t('grid.pending', { n: result.xpPending })}</span>}
+                  {result.dropletGained && <span>{t('grid.droplet')}</span>}
+                  {(result.gifts ?? []).map((g, i) => <span key={i}>{t('grid.gift', { kind: g.kind, n: g.amount })}</span>)}
+                </div>}
+              </> : <>
+                <div className="strong">{t('grid.failed')}</div>
+                {result.emergencyGranted && <div className="tiny muted">{t('grid.emergency')}</div>}
+              </>}
+            </div>
+          )}
+
+          {play && playLevel && (
+            <div className="card stack-sm">
+              <div className="row between" style={{ flexWrap: 'wrap', gap: 8 }}>
+                <span className="strong">{t('grid.sector', { n: play.attempt.level })} · {play.mode === 'charge' ? t('grid.charge') : t('grid.training')}</span>
+                <span className="tiny muted">{t('grid.moves', { n: play.turns.length })} · {t('grid.par', { n: play.attempt.par })}{play.mode === 'charge' && <> · {t('grid.budget', { n: play.attempt.moveBudget })}</>} · {t('grid.connected', { n: connectedPct })}</span>
+              </div>
+              <Progress value={connectedPct} max={100} tone="acid" />
+              {overBudget && <div className="tiny" style={{ color: '#FF7A7A' }}>{t('grid.overBudget')}</div>}
+              {play.hintsUsed > 0 && <div className="tiny muted">{t('grid.hintReady')}</div>}
+              {emergencyLevels.includes(play.attempt.level) && <div className="tiny muted">{t('grid.emergency')}</div>}
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${play.attempt.board.size}, 1fr)`, gap: 4, maxWidth: 520, margin: '0 auto', width: '100%' }}>
+                {play.attempt.board.tiles.map((tile, i) => (
+                  <button key={i} type="button" disabled={play.busy || tile.fixed}
+                    onClick={() => rotate(i, 1)} onContextMenu={(e) => { e.preventDefault(); rotate(i, -1); }}
+                    style={{ aspectRatio: '1', borderRadius: 8, border: '1px solid #2c2f33', background: powered[i] ? 'rgba(182,240,156,.10)' : '#17191c', cursor: tile.fixed ? 'default' : 'pointer', padding: 2 }}
+                    aria-label={`tile ${i}`}>
+                    <TileSvg mask={tileMask(playLevel, i)} powered={!!powered[i]} isBus={i === play.attempt.board.bus} isReceiver={play.attempt.board.receivers.includes(i)} fixed={tile.fixed} highlight={play.hintIndex === i} />
+                  </button>
+                ))}
+              </div>
+              <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                <Pill onClick={undo} disabled={play.busy || play.turns.length === 0}>{t('grid.undo')}</Pill>
+                <Pill onClick={() => setPlay({ ...play, rots: [...play.initial], turns: [] })} disabled={play.busy}>{t('grid.restart')}</Pill>
+                {play.hintsUsed > 0 && <Pill onClick={showHint} disabled={play.busy}>{t('grid.showHint')}</Pill>}
+                {play.mode === 'charge' && <Pill tone="danger" onClick={() => void giveUp()} disabled={play.busy}>{t('grid.giveUp')}</Pill>}
+                {play.mode === 'training' && <Pill onClick={() => setPlay(null)} disabled={play.busy}>{t('common.close')}</Pill>}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

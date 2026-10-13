@@ -1970,6 +1970,12 @@ export interface paths {
                     rarity?: number;
                     rarityMin?: number;
                     levelMin?: number;
+                    /** @description Floodgrid: route passed this depth (docs/13) */
+                    gridDepthMin?: number;
+                    /** @description Floodgrid: at least this many charge droplets */
+                    gridChargeMin?: number;
+                    /** @description Floodgrid: only 75/75 «Сердце паводка» chips */
+                    gridHeart?: "1";
                     currency?: "SOL" | "USDC" | "SKR";
                     priceMaxUsd?: number;
                     /** @description auth required; only chips that complete one of my sets */
@@ -3040,6 +3046,225 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/grid/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Floodgrid state — backpack (hints/valves), wallet star bank, gifts, all chip routes (docs/13) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description state */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GridMe"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/grid/chip/{asset}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One chip's Floodgrid route (next sector, charge drops, per-level stars) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    asset: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description route */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GridChip"];
+                    };
+                };
+                /** @description Chip not found */
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/grid/attempt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start a Floodgrid attempt (training on the chip route or charge attempt on the next sector; seed committed server-side) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        asset: string;
+                        level: number;
+                        /** @enum {string} */
+                        mode?: "training" | "charge";
+                        hintsUsed?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description attempt */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GridAttempt"];
+                    };
+                };
+                /** @description bad args / second hint downgrades to training */
+                400: components["responses"]["Error"];
+                /** @description Route order — sectors cannot be skipped */
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/grid/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit the full move list (PlayProof); the server replays it with the same engine. Solved outside the move limit settles as a fail (−6 XP unless a valve was armed) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        attemptId: string;
+                        turns: number[][];
+                        useValve?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description outcome */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GridComplete"];
+                    };
+                };
+                /** @description Unknown attempt */
+                404: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/grid/fail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Give up a charge attempt (settles −6 XP unless a valve was armed) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        attemptId: string;
+                        useValve?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description outcome */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                /** @description Unknown attempt */
+                404: components["responses"]["Error"];
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -5472,6 +5697,18 @@ export interface components {
                 wonLast?: boolean;
                 pendingClaim?: boolean;
             } | null;
+        };
+        GridMe: {
+            [key: string]: unknown;
+        };
+        GridChip: {
+            [key: string]: unknown;
+        };
+        GridAttempt: {
+            [key: string]: unknown;
+        };
+        GridComplete: {
+            [key: string]: unknown;
         };
         Quest: {
             id?: string;

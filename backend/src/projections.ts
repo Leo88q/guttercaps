@@ -9,6 +9,7 @@
 import { PublicKey } from '@solana/web3.js';
 import { FX, QUEST_CHIP_TEMPLATES, listingFeeCgMicro } from '@guttercaps/economy';
 import { grantPackPerks } from './pack-perks.ts';
+import { mergeFusionRoutes } from './grid.ts';
 import type { Db } from './db.ts';
 import { rootCurrency, type EventData, type RawEvent } from './events.ts';
 import { insertIgnore, upsert } from './sql.ts';
@@ -520,6 +521,7 @@ const HANDLERS: Record<string, Handler> = {
         upsert('chips', COLS.chips, ['asset'], ['owner = excluded.owner', 'updated_slot = excluded.updated_slot']),
         result, owner, collection, rarity, 1, 0, 0, 'fusion', c.signature, c.blockTime, c.slot,
       );
+      mergeFusionRoutes(db, result, materials, c.blockTime ?? 0); // Floodgrid: route/charge inheritance (docs/13 §0.1)
     }
   },
   /**

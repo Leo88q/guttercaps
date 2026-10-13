@@ -15,6 +15,7 @@ import { type Db, now } from './db.ts';
 import { insertIgnore } from './sql.ts';
 import { ServiceError } from './services.ts';
 import { creditChipXp } from './chip-xp.ts';
+import { grantHintFromSource } from './grid.ts';
 
 export const PERK_BOOSTER_QUEST_ID = 'perk_limited_booster';
 const LIMITED_SKU = ['starter', 'standard', 'premium', 'limited'].indexOf(PACK_PERKS.packId);
@@ -22,6 +23,8 @@ const DAY = 86_400;
 
 /** Called from the PackBought projection. Idempotent per (wallet, day). */
 export function grantPackPerks(db: Db, buyer: string, sku: number, t = now()): void {
+  // Floodgrid hint perk (docs/13 §0.4): Premium (2) and Limited (3) carry one Метка Клеммы, cap 1/day.
+  if ((sku === 2 || sku === LIMITED_SKU) && buyer && !buyer.startsWith('bot:')) grantHintFromSource(db, buyer, 'pack', t, { daily: 1, weekly: 7 });
   if (sku !== LIMITED_SKU || !buyer || buyer.startsWith('bot:')) return;
   const day = Math.floor(t / DAY);
   const row = db.get<{ b: number; tk: number }>(`SELECT boosters_granted AS b, tickets_granted AS tk FROM pack_perks WHERE wallet = ? AND day = ?`, buyer, day);

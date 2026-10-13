@@ -670,8 +670,8 @@ describe('quests', () => {
     expect(early + n).toBeGreaterThanOrEqual(6);
     const rows = db.all<{ quest_id: string; amount: string }>(`SELECT quest_id, amount FROM quest_completions WHERE wallet = ?`, alice);
     const daily = rows.filter((r) => r.quest_id.startsWith('d_')).reduce((s, r) => s + BigInt(r.amount), 0n);
-    expect(daily).toBe(20_000_000n); // 3 + 6 + 6 + 5 — under the 25 $CG daily cap
-    expect(rows.find((r) => r.quest_id === 'w_trade')!.amount).toBe('5000000'); // capped: 25 − 20 already paid today
+    expect(daily).toBe(17_000_000n); // 3 + 5 + 5 + 4 — Floodgrid rebalance (docs/13 A): grid daily added inside the same 25 $CG cap
+    expect(rows.find((r) => r.quest_id === 'w_trade')!.amount).toBe('8000000'); // capped: 25 − 17 already paid today
     expect(rows.find((r) => r.quest_id === 'p_first_fusion')!.amount).toBe('10000000'); // permanent milestones bypass the daily cap
     expect(quests.settleWallet(db, alice, T + 1400)).toBe(0); // idempotent
     // streak: all 4 $CG dailies done today → 1 day
@@ -720,7 +720,7 @@ describe('quests', () => {
     expect(quests.settleWallet(db, alice, T + 20)).toBe(0);
     finalizeAll(db);
     expect(quests.settleWallet(db, alice, T + 30)).toBe(2); // d_fuse1 + p_first_fusion
-    expect(db.get<{ amount: string; day: number }>(`SELECT amount, day FROM quest_completions WHERE wallet = ? AND quest_id = 'd_fuse1'`, alice)).toEqual({ amount: '5000000', day });
+    expect(db.get<{ amount: string; day: number }>(`SELECT amount, day FROM quest_completions WHERE wallet = ? AND quest_id = 'd_fuse1'`, alice)).toEqual({ amount: '4000000', day });
   });
 });
 

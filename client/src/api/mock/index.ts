@@ -6,7 +6,7 @@ import {
   PACKS, FUSION_RECIPES, BOOSTER, RARITY_PROFILES, LOCK_TIERS, DAILY_QUESTS, WEEKLY_QUESTS, PERMANENT_QUESTS, MATCHMAKING, SEASON, FEES, SERVICES, REFERRAL,
   packExpectedValueMult, probabilityAtLeast, effectiveOdds, bundlePriceCents, impliedApy, FX, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, usdCentsFromSolLamports, type PackId,
   SKIN_BY_ID, PROFILE_THEME_BY_ID, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, PASS_TRACK, passTierForXp, xpToNext, CHIP_XP,
-  EMISSION_GUARD,
+  EMISSION_GUARD, GRID as GRID_RULES, generateLevel, levelSeed, applyRotate, isSolved, gridStarsForMoves, gridXpForStars, gridBaseXp,
 } from '@guttercaps/economy';
 import { PYTH_PRICE_ACCOUNTS } from '@/chain/ids';
 import { COLLECTIONS } from '@/shared/lib/lore';
@@ -161,6 +161,64 @@ on('get', '/me/referrals', () => ({
   welcome: { amountCgMicro: String(REFERRAL.refereeWelcomeCgMicro), inRoot: true },
   asOf: iso(),
 }));
+
+// ------------------------------------------------------------- Floodgrid (demo backend)
+// Same deterministic engine, verified locally — mirrors backend/src/grid.ts rules (docs/13).
+interface MockGridRoute { nextLevel: number; chargeDrops: number; chargeProgress: number; claims: Map<number, { best_stars: number; xp_accounted: number }> }
+const mockGridRoutes = new Map<string, MockGridRoute>();
+const mockGridAttempts = new Map<string, { asset: string; level: number; hintsUsed: number; mode: string }>();
+let mockGridHints: number = GRID_RULES.hintStartStock;
+let mockGridValves = 0;
+const mockRoute = (asset: string): MockGridRoute => {
+  let r = mockGridRoutes.get(asset);
+  if (!r) { r = { nextLevel: 1, chargeDrops: 0, chargeProgress: 0, claims: new Map() }; mockGridRoutes.set(asset, r); }
+  return r;
+};
+on('get', '/grid/me', () => ({
+  wallet: { hints: mockGridHints, valves: mockGridValves, total_best_stars: [...mockGridRoutes.values()].reduce((s, r) => s + [...r.claims.values()].reduce((a, c) => a + c.best_stars, 0), 0) },
+  pendingGranted: 0,
+  chips: chips.map((c) => { const r = mockRoute(c.asset); return { asset: c.asset, collection: c.collection, rarity: c.rarity, chipLevel: c.level, route: { nextLevel: r.nextLevel, chargeDrops: r.chargeDrops, chargeProgress: r.chargeProgress }, claims: [...r.claims.entries()].map(([level, v]) => ({ level, best_stars: v.best_stars, xp_accounted: v.xp_accounted, xp_pending: 0, max_xp: gridBaseXp(level) })) }; }),
+  gifts: [], floodWeek: 0, flood: [],
+}));
+on('get', '/grid/chip/{asset}', (o) => {
+  const asset = chips.find((c) => o.path?.asset === c.asset)?.asset ?? String(o.path?.asset ?? '');
+  const r = mockRoute(asset);
+  return { asset, route: { nextLevel: r.nextLevel, chargeDrops: r.chargeDrops, chargeProgress: r.chargeProgress }, claims: [...r.claims.entries()].map(([level, v]) => ({ level, best_stars: v.best_stars, xp_accounted: v.xp_accounted, xp_pending: 0, max_xp: gridBaseXp(level) })), fails: [], emergency: [] };
+});
+on('post', '/grid/attempt', (o) => {
+  const b = (o.body ?? {}) as { asset: string; level: number; hintsUsed?: number; mode?: string };
+  const r = mockRoute(b.asset);
+  if (b.mode !== 'training' && b.level > r.nextLevel) throw new ApiError(409, 'route_locked', 'Chip route is at a lower sector; sectors cannot be skipped (open it in training)');
+  const lv = generateLevel(b.level, levelSeed(b.level));
+  const id = `mock-grid-${Math.floor(rnd() * 1e9)}`;
+  mockGridAttempts.set(id, { asset: b.asset, level: b.level, hintsUsed: b.hintsUsed ?? 0, mode: b.mode ?? 'charge' });
+  return { attemptId: id, level: b.level, par: lv.parMoves, moveBudget: lv.parMoves * GRID_RULES.moveBudgetMult, route: { nextLevel: r.nextLevel, chargeDrops: r.chargeDrops, chargeProgress: r.chargeProgress }, board: { size: lv.size, bus: lv.bus, receivers: lv.receivers, tiles: lv.tiles.map((tile) => ({ base: tile.base, rot: tile.rot, fixed: tile.fixed, role: tile.role })) } };
+});
+on('post', '/grid/complete', (o) => {
+  const b = (o.body ?? {}) as { attemptId: string; turns: [number, number][]; useValve?: boolean };
+  const a = mockGridAttempts.get(b.attemptId);
+  if (!a) throw new ApiError(404, 'attempt_not_found', 'Unknown grid attempt');
+  mockGridAttempts.delete(b.attemptId);
+  const lv = generateLevel(a.level, levelSeed(a.level));
+  for (const [i, d] of b.turns) applyRotate(lv, i, d);
+  const r = mockRoute(a.asset);
+  if (a.mode === 'training') return { ok: isSolved(lv), training: true, stars: 0, xpGranted: 0, xpPending: 0 };
+  if (!isSolved(lv)) return { ok: false, xpLoss: b.useValve ? 0 : GRID_RULES.failXp, emergencyGranted: false };
+  let stars: number = gridStarsForMoves(b.turns.length, lv.parMoves);
+  if (a.hintsUsed > 0) { mockGridHints = Math.max(0, mockGridHints - a.hintsUsed); stars = Math.min(stars, 2); }
+  if (stars <= 0) return { ok: false, xpLoss: b.useValve ? 0 : GRID_RULES.failXp, emergencyGranted: false };
+  const prev = r.claims.get(a.level);
+  const due = Math.max(0, gridXpForStars(a.level, stars) - (prev?.xp_accounted ?? 0));
+  r.claims.set(a.level, { best_stars: Math.max(prev?.best_stars ?? 0, stars), xp_accounted: (prev?.xp_accounted ?? 0) + due });
+  if (!prev && a.level === r.nextLevel) r.nextLevel = Math.min(GRID_RULES.totalLevels + 1, r.nextLevel + 1);
+  return { ok: true, training: false, stars, xpGranted: due, xpPending: 0, dropletGained: false, gifts: [] };
+});
+on('post', '/grid/fail', (o) => {
+  const b = (o.body ?? {}) as { attemptId: string; useValve?: boolean };
+  if (!mockGridAttempts.delete(b.attemptId)) throw new ApiError(404, 'attempt_not_found', 'Unknown grid attempt');
+  return { ok: false, xpLoss: b.useValve ? 0 : GRID_RULES.failXp, emergencyGranted: false };
+});
+
 on('get', '/me/activity', () => ({
   items: [
     { kind: 'pack_opened', signature: fakeKey(), blockTime: iso(-3_600_000), payload: { sku: 1, best: 4 } },

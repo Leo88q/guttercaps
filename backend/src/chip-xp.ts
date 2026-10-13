@@ -1,7 +1,7 @@
 // Chip XP: play Cap Slam (ranked or wager) with a cap in the squad → XP → auto level-up.
 // Same trust model as ratings / pass XP (indexer-authoritative). On-chain
 // `claim.level` stays at mint 1 until a merkle level_up caller ships with chip_core.
-import { CHIP_XP, applyChipXp, applyChipXpDelta, profile, type RarityIndex } from '@guttercaps/economy';
+import { CHIP_XP, GRID, applyChipXp, applyChipXpDelta, profile, type RarityIndex } from '@guttercaps/economy';
 import { type Db } from './db.ts';
 import { insertIgnore, upsert } from './sql.ts';
 import { deviceLimited } from './human.ts';
@@ -17,6 +17,29 @@ const POOL_UPSERT = upsert(
 
 const AWARD_INSERT = insertIgnore('chip_xp_awards', ['match_id', 'asset', 'xp', 'from_level', 'to_level']);
 
+
+/** Floodgrid loss shield (docs/13 §0.3): a charge droplet on the chip pays an arena loss instead of −6 XP.
+ *  SQL is inline here because grid.ts already imports this module (no import cycle). */
+function consumeChargeDropInline(db: Db, asset: string): boolean {
+  const r = db.get<{ charge_drops: number }>(`SELECT charge_drops FROM grid_chip_routes WHERE asset = ?`, asset);
+  if (!r || r.charge_drops <= 0) return false;
+  db.run(`UPDATE grid_chip_routes SET charge_drops = charge_drops - 1 WHERE asset = ? AND charge_drops > 0`, asset);
+  return true;
+}
+/** First ranked win of the day grants a hint (Метка Клеммы), max 3/week (docs/13 §0.4). */
+function grantArenaWinHint(db: Db, wallet: string, t: number): void {
+  const day = Math.floor(t / 86_400);
+  const today = db.get<{ amount: number }>(`SELECT amount FROM grid_item_grants WHERE wallet = ? AND source = 'arena_win' AND day = ?`, wallet, day)?.amount ?? 0;
+  if (today >= 1) return;
+  const week = db.scalar(`SELECT COALESCE(SUM(amount), 0) FROM grid_item_grants WHERE wallet = ? AND source = 'arena_win' AND day > ?`, wallet, day - 7);
+  if (week >= 3) return;
+  db.run(`INSERT INTO grid_wallet_state (wallet, hints, valves, starter_granted, total_best_stars, updated_at) VALUES (?, ?, 0, 1, 0, ?) ON CONFLICT(wallet) DO NOTHING`, wallet, GRID.hintStartStock, t);
+  const hints = db.get<{ hints: number }>(`SELECT hints FROM grid_wallet_state WHERE wallet = ?`, wallet)?.hints ?? 0;
+  if (hints >= GRID.hintStockCap) return;
+  db.run(`UPDATE grid_wallet_state SET hints = hints + 1, updated_at = ? WHERE wallet = ?`, t, wallet);
+  db.run(`INSERT INTO grid_item_grants (wallet, source, day, amount) VALUES (?, 'arena_win', ?, 1) ON CONFLICT(wallet, source, day) DO UPDATE SET amount = amount + 1`, wallet, day);
+}
+
 export type ChipXpCredit = { granted: number; fromLevel: number; toLevel: number };
 
 export function grantSquadXp(db: Db, squadJson: string, won: boolean, t: number, wallet: string, matchId?: string): void {
@@ -27,11 +50,13 @@ export function grantSquadXp(db: Db, squadJson: string, won: boolean, t: number,
   try { squad = JSON.parse(squadJson); } catch { return; }
   if (!Array.isArray(squad)) return;
   const amount = won ? CHIP_XP.win : CHIP_XP.loss;
+  if (won) grantArenaWinHint(db, wallet, t);
   const day = Math.floor(t / 86_400);
   for (const c of squad) {
     const asset = (c as { asset?: unknown } | null)?.asset;
     if (typeof asset !== 'string' || !asset || asset.startsWith('bot:')) continue;
     if (matchId && db.get(`SELECT 1 FROM chip_xp_awards WHERE match_id = ? AND asset = ?`, matchId, asset)) continue;
+    if (!won && consumeChargeDropInline(db, asset)) continue; // droplet paid the loss: no XP cut, no award row
     const r = creditChipXp(db, asset, amount, day);
     db.run(`UPDATE chips SET last_played = ? WHERE asset = ? AND (last_played IS NULL OR last_played < ?)`, t, asset, t);
     if (matchId && r.granted > 0) {

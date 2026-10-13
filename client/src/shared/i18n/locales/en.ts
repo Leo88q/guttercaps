@@ -16,7 +16,21 @@ const en = {
   catalog,
   nav: {
     home: 'Home', caps: 'Caps', shop: 'Shop', market: 'Market', arena: 'Arena', stake: 'Stake',
-    fusion: 'Fusion', guide: 'Guide', quests: 'Quests', leaderboard: 'Ranks', profile: 'Profile', more: 'More',
+    fusion: 'Fusion', guide: 'Guide', quests: 'Quests', grid: 'Floodgrid', leaderboard: 'Ranks', profile: 'Profile', more: 'More',
+  },
+  grid: {
+    title: 'Floodgrid', subtitle: 'Route the flood through 75 sectors. Every chip walks its own route — XP, charge and gifts included.',
+    backpack: 'Diver gear', hints: 'Terminal marks', valves: 'Emergency valves', drops: 'Flood charge',
+    chip: 'Chip', routeNext: 'Next sector {n}', sector: 'Sector {n}', depth: 'Depth {n}',
+    training: 'Training', charge: 'Charge attempt', start: 'Start', giveUp: 'Give up', undo: 'Undo', restart: 'Restart',
+    moves: 'Moves {n}', par: 'par {n}', budget: 'limit {n}', connected: '{n}% connected',
+    useHint: 'Use a mark (max 2★)', showHint: 'Show move', solved: 'Sector sealed!', failed: 'The flood slipped away (−6 XP)',
+    xp: '+{n} XP', pending: '{n} XP parked until tomorrow', stars: '{n}★', play: 'Play', replay: 'Replay',
+    perfect: 'Perfect', locked: 'Route locked', gifts: 'Account gifts', flood: 'Flood week — district points',
+    emergency: 'Emergency mark ready', useValve: 'Valve saves the −6', noChips: 'You need a chip to dive. Open a pack first.',
+    selectSector: 'All 75 sectors are open for training; the charge route advances sector by sector.',
+    resultTraining: 'Training done — no rewards, as promised.', droplet: 'Flood charge +1 💧', gift: 'Gift: {kind} ×{n}',
+    overBudget: 'Over the move limit — finishing now settles as a fail.', hintReady: 'Mark armed: one move will be shown.',
   },
   common: {
     connectWallet: 'Connect wallet', connecting: 'Connecting…', signedIn: 'Signed in', signingIn: 'Signing in…', signOut: 'Sign out',

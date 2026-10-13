@@ -208,7 +208,7 @@ describe('the language picker is a header control, not a tab (placement regressi
   // overflowed the fixed 64px nav. Moving it next to the balance is only worth keeping if it stays
   // moved, so this pins both halves: gone from the bar, present in the header, and reachable while
   // disconnected (a Seeker can boot into a system locale the player does not read).
-  it('lives in the header, survives a disconnected wallet, and leaves the bar with 9 tabs', async () => {
+  it('lives in the header, survives a disconnected wallet, and leaves the bar with 10 tabs', async () => {
     // The authenticated suite above flips this shared flag; the interesting half of this test is
     // the disconnected state, so set it rather than inheriting whatever ran before.
     connected = false;
@@ -227,7 +227,7 @@ describe('the language picker is a header control, not a tab (placement regressi
     // The bar is a fixed-height single row: one grid column per tab, or the overflow spills off
     // screen. This has drifted before (7 columns against 10 tabs), so the coupling is pinned here.
     const tabs = bar.querySelectorAll('a').length;
-    expect(tabs).toBe(9);
+    expect(tabs).toBe(10); // 9 core tabs + Floodgrid (docs/13)
     const css = readFileSync(resolve(import.meta.dirname, '../shared/ui/layout.css'), 'utf8');
     const columns = Number(/--gc-nav-tabs:\s*(\d+)/.exec(css)?.[1]);
     expect(columns, 'layout.css must declare one grid column per tab').toBe(tabs);

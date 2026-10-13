@@ -80,6 +80,9 @@ export default function ChipPage() {
             <div className="stat"><b className="mono">{c.stakeWeight}</b><span>{t('ui.stakeWeight')}</span></div>
           </div>
           <ChipXpMeter rarity={c.rarity!} level={c.level} xp={c.xp} xpToNext={c.xpToNext} maxLevel={c.maxLevel ?? prof.maxLevel} xpToday={c.xpToday} xpDailyCap={c.xpDailyCap} />
+          {(() => { const gr = (c as { gridRoute?: { nextLevel: number; chargeDrops: number; starsTotal: number; levelsCleared: number } }).gridRoute; return gr ? (
+            <div className="tiny muted">🌊 {t('grid.title')}: {t('grid.routeNext', { n: Math.min(75, gr.nextLevel) })} · ★{gr.starsTotal} · {t('grid.drops')} {gr.chargeDrops}/3{mine ? <> · <Link to="/grid">{t('grid.play')}</Link></> : null}</div>
+          ) : null; })()}
           <div className="tiny muted">{t('ui.owner')} <a href={EXPLORER.account(c.owner!)} target="_blank" rel="noreferrer">{mine ? t('ui.you') : shortKey(c.owner)}</a> · {t('ui.asset')} <a href={EXPLORER.account(asset)} target="_blank" rel="noreferrer" className="row" style={{ gap: 3, display: 'inline-flex' }}>{shortKey(asset)} <ExternalIcon size={10} /></a>
             {c.flags?.staked && ` · ${t('collection.filters.staked')}`}{c.flags?.fusing && ` · ${t('ui.inFusion')}`}{c.lockUntil && new Date(c.lockUntil).getTime() > Date.now() && ` · ${t('ui.lockedUntil')} ${fmtLocale.date(c.lockUntil, getLocale())}`}</div>
         </div>

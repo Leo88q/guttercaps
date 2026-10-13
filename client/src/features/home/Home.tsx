@@ -100,6 +100,14 @@ export default function Home() {
       </Link>
 
       <div className="grid-2">
+        <Link to="/grid" className="card card-hover row" style={{ textDecoration: 'none' }}>
+          <span style={{ fontSize: 26 }}>🌊</span>
+          <div className="grow">
+            <div className="strong">{t('grid.title')}</div>
+            <div className="tiny muted">{t('grid.subtitle')}</div>
+          </div>
+          <ChevronRightIcon size={14} />
+        </Link>
         <Link to="/quests" className="card card-hover row" style={{ textDecoration: 'none' }}>
           <GenBadge name="mech-quests" size={28} />
           <div className="grow">

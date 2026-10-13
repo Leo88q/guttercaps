@@ -46,7 +46,7 @@ img { max-width: 100%; display: block; }
      into a second row that overflowed the 64px box and pushed half the bar off the screen. Bumping a
      tab means bumping this; `smoke.test.tsx` fails if they disagree. The language picker used to be
      the 10th entry and now lives in the header next to the balance. */
-  --gc-nav-tabs: 9;
+  --gc-nav-tabs: 10;
   order: 2; position: relative; left: auto; right: auto; bottom: auto; z-index: 30; display: grid;
   flex-shrink: 0; width: 100%;
   grid-template-columns: repeat(var(--gc-nav-tabs), minmax(0, 1fr));

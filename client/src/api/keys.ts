@@ -3,6 +3,8 @@ export const qk = {
   me: ['me'] as const,
   myChips: (f: Record<string, unknown> = {}) => ['me', 'chips', f] as const,
   grid: ['me', 'grid'] as const,
+  gridMe: ['grid', 'me'] as const,
+  gridChip: (asset: string) => ['grid', 'chip', asset] as const,
   activity: ['me', 'activity'] as const,
   pending: ['me', 'pending'] as const,
   packs: ['packs'] as const,

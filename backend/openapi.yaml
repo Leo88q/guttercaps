@@ -556,6 +556,9 @@ paths:
         - { in: query, name: rarity, schema: { type: integer } }
         - { in: query, name: rarityMin, schema: { type: integer } }
         - { in: query, name: levelMin, schema: { type: integer, minimum: 0 } }
+        - { in: query, name: gridDepthMin, schema: { type: integer, minimum: 0, maximum: 5 }, description: 'Floodgrid: route passed this depth (docs/13)' }
+        - { in: query, name: gridChargeMin, schema: { type: integer, minimum: 0, maximum: 3 }, description: 'Floodgrid: at least this many charge droplets' }
+        - { in: query, name: gridHeart, schema: { type: string, enum: ['1'] }, description: 'Floodgrid: only 75/75 «Сердце паводка» chips' }
         - { in: query, name: currency, schema: { type: string, enum: [SOL, USDC, SKR] } }
         - { in: query, name: priceMaxUsd, schema: { type: number, minimum: 0 } }
         - { in: query, name: missingForMySet, schema: { type: boolean }, description: 'auth required; only chips that complete one of my sets' }
@@ -755,6 +758,47 @@ paths:
       tags: [quests]
       summary: Daily streak state (consecutive days with all four $CG dailies done)
       responses: { '200': { description: streak, content: { application/json: { schema: { type: object, properties: { days: { type: integer, description: progress toward the next chip (wraps every 7 days) }, total: { type: integer, description: raw consecutive-day run }, nextChipAt: { type: integer }, resetsAt: { type: string, format: date-time }, todayDone: { type: boolean } } } } } } }
+
+
+  /grid/me:
+    get:
+      tags: [grid]
+      summary: Floodgrid state — backpack (hints/valves), wallet star bank, gifts, all chip routes (docs/13)
+      responses:
+        '200': { description: state, content: { application/json: { schema: { $ref: '#/components/schemas/GridMe' } } } }
+  /grid/chip/{asset}:
+    get:
+      tags: [grid]
+      summary: One chip's Floodgrid route (next sector, charge drops, per-level stars)
+      parameters: [{ in: path, name: asset, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: route, content: { application/json: { schema: { $ref: '#/components/schemas/GridChip' } } } }
+        '404': { $ref: '#/components/responses/Error', description: 'Chip not found' }
+  /grid/attempt:
+    post:
+      tags: [grid]
+      summary: Start a Floodgrid attempt (training on the chip route or charge attempt on the next sector; seed committed server-side)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [asset, level], properties: { asset: { type: string }, level: { type: integer, minimum: 1, maximum: 75 }, mode: { type: string, enum: [training, charge] }, hintsUsed: { type: integer, minimum: 0, maximum: 1 } } } } } }
+      responses:
+        '200': { description: attempt, content: { application/json: { schema: { $ref: '#/components/schemas/GridAttempt' } } } }
+        '400': { $ref: '#/components/responses/Error', description: 'bad args / second hint downgrades to training' }
+        '409': { $ref: '#/components/responses/Error', description: 'Route order — sectors cannot be skipped' }
+  /grid/complete:
+    post:
+      tags: [grid]
+      summary: 'Submit the full move list (PlayProof); the server replays it with the same engine. Solved outside the move limit settles as a fail (−6 XP unless a valve was armed)'
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [attemptId, turns], properties: { attemptId: { type: string }, turns: { type: array, items: { type: array, items: { type: integer } }, maxItems: 512 }, useValve: { type: boolean } } } } } }
+      responses:
+        '200': { description: outcome, content: { application/json: { schema: { $ref: '#/components/schemas/GridComplete' } } } }
+        '404': { $ref: '#/components/responses/Error', description: 'Unknown attempt' }
+  /grid/fail:
+    post:
+      tags: [grid]
+      summary: Give up a charge attempt (settles −6 XP unless a valve was armed)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [attemptId], properties: { attemptId: { type: string }, useValve: { type: boolean } } } } } }
+      responses:
+        '200': { description: outcome, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        '404': { $ref: '#/components/responses/Error', description: 'Unknown attempt' }
 
   # ------------------------------------------------------------------ leaderboard
   /leaderboard/{board}:
@@ -1610,6 +1654,19 @@ components:
             shareBps: { type: integer }
             wonLast: { type: boolean }
             pendingClaim: { type: boolean }
+
+    GridMe:
+      type: object
+      additionalProperties: true
+    GridChip:
+      type: object
+      additionalProperties: true
+    GridAttempt:
+      type: object
+      additionalProperties: true
+    GridComplete:
+      type: object
+      additionalProperties: true
     Quest:
       type: object
       properties: { id: { type: string }, cadence: { type: string }, title: { type: string }, description: { type: string }, metric: { type: string }, target: { type: integer }, value: { type: integer }, rewardCgMicro: { type: string }, rewardChip: { type: [object, 'null'], description: 'quest chip voucher template { template, odds[9] bps, soulboundDays } — rooted into a kind-9 chip root (one voucher per wallet per epoch) and delivered by claim_chip_root → chip_core open_voucher → open_pack (VRF-minted, soulbound for soulboundDays)' }, rewardBooster: { type: integer, description: 'fusion boosters granted on completion — rooted into a kind-8 item root and delivered by claim_item_root (chip_core PlayerItems)' }, completedAt: { type: [string, 'null'] }, claimable: { type: boolean, description: 'done and waiting for the next reward root' }, rooted: { type: boolean, description: 'the $CG leaf (kind 2) is in a root' }, boosterRooted: { type: boolean, description: 'the booster leaf (kind 8) is in a root' }, chipRooted: { type: boolean, description: 'the chip voucher leaf (kind 9) is in a root' }, creditedCgMicro: { type: [string, 'null'], description: 'micro-$CG actually credited after daily/weekly caps' }, ineligibleReason: { type: [string, 'null'], enum: [account_too_new, play_10_matches_or_buy_a_pack, rewards_paused, device_limit, human_check_required, null], description: 'why finished quests are not paid; human_check_required = pass the Turnstile challenge (POST /me/human) — settlement waits' }, resetsAt: { type: [string, 'null'], format: date-time } }
