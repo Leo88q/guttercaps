@@ -349,7 +349,13 @@ fn compressed_chip_weight(
 /// Weight of a Core chip. Survives the 2026-10-01 Core-market / Core-staking pruning because
 /// `claim_chip` still needs it: a `ChipStake` opened before the migration keeps its level-ups and
 /// set-bonus changes re-weighed on every claim, and this is that arithmetic.
-pub fn chip_weight(chip: &ChipState, sets: u8, last_played: i64, grid_mult_bps: u64, now: i64) -> u128 {
+pub fn chip_weight(
+    chip: &ChipState,
+    sets: u8,
+    last_played: i64,
+    grid_mult_bps: u64,
+    now: i64,
+) -> u128 {
     chip.rarity.stake_weight() as u128 * MICRO as u128 // base unit scaled 1e6 for precision
         * level_mult_bps(chip.level) as u128
         / 10_000
@@ -1020,9 +1026,16 @@ pub fn sync_grid_charge(
         gc.chip = ctx.accounts.chip_key.key();
         gc.bump = ctx.bumps.grid_charge;
     }
-    require_keys_eq!(gc.chip, ctx.accounts.chip_key.key(), StakeError::BadGridCharge);
+    require_keys_eq!(
+        gc.chip,
+        ctx.accounts.chip_key.key(),
+        StakeError::BadGridCharge
+    );
     gc.drop_expiries = drop_expiries;
-    emit!(GridChargeSynced { key: gc.chip, drop_expiries });
+    emit!(GridChargeSynced {
+        key: gc.chip,
+        drop_expiries
+    });
     Ok(())
 }
 
