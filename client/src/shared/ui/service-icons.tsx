@@ -143,6 +143,8 @@ export function ServiceGlyph({ id, size = 20, className }: Props) {
     case 'booster': return <BoosterIcon size={size} className={className} />;
     case 'packSkipAnim': return <SkipAnimGlyph id={id} size={size} className={className} />;
     case 'districtBanner': return <DistrictBannerGlyph id={id} size={size} className={className} />;
+    case 'gridFieldTheme': return <ProfileThemeGlyph id={id} size={size} className={className} />;
+    case 'gridDeepAttempt': return <BoosterIcon size={size} className={className} />;
     default: return <HandleGlyph id={'handle'} size={size} className={className} />;
   }
 }

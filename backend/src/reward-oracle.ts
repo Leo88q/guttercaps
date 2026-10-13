@@ -328,7 +328,10 @@ export function pendingByWallet(db: Db, kind: number): Map<string, { amount: big
   const rows = kind === KIND_QUESTS
     ? db.all<{ wallet: string; amount: string; ref: string }>(`SELECT wallet, amount, quest_id || '@' || period_key ref FROM quest_completions WHERE root_kind IS NULL AND CAST(amount AS INTEGER) > 0`)
     : kind === KIND_REFERRALS
-    ? db.all<{ wallet: string; amount: string; ref: string }>(`SELECT wallet, amount, 'ref:' || substr(referee, 1, 8) || '#' || nonce ref FROM referral_rewards WHERE root_kind IS NULL AND CAST(amount AS INTEGER) > 0`)
+    ? [
+      ...db.all<{ wallet: string; amount: string; ref: string }>(`SELECT wallet, amount, 'ref:' || substr(referee, 1, 8) || '#' || nonce ref FROM referral_rewards WHERE root_kind IS NULL AND CAST(amount AS INTEGER) > 0`),
+      ...db.all<{ wallet: string; amount: string; ref: string }>(`SELECT wallet, amount, 'gridladder:' || season || '#' || rank ref FROM grid_ladder_payouts WHERE root_kind IS NULL AND CAST(amount AS INTEGER) > 0`),
+    ]
     : [
       ...db.all<{ wallet: string; amount: string; ref: string }>(`SELECT wallet, amount, match_id ref FROM pvp_rewards WHERE root_kind IS NULL`),
       ...db.all<{ wallet: string; amount: string; ref: string }>(`SELECT wallet, amount, 'season:' || season || '#' || rank ref FROM season_payouts WHERE root_kind IS NULL`),
@@ -370,7 +373,7 @@ export function buildBatch(db: Db, kind: number, t = now(), min = REWARD_ORACLE_
       db.run(`INSERT INTO reward_leaves (kind, epoch, wallet, amount, proof, memo) VALUES (?, ?, ?, ?, ?, ?)`, kind, epoch, w, pending.get(w)!.amount.toString(), JSON.stringify(tree.proofs[i].map(toHex)), JSON.stringify(pending.get(w)!.memo));
     });
     if (kind === KIND_QUESTS) db.run(`UPDATE quest_completions SET root_kind = ?, root_epoch = ? WHERE root_kind IS NULL AND CAST(amount AS INTEGER) > 0`, kind, epoch);
-    else if (kind === KIND_REFERRALS) db.run(`UPDATE referral_rewards SET root_kind = ?, root_epoch = ? WHERE root_kind IS NULL AND CAST(amount AS INTEGER) > 0`, kind, epoch);
+    else if (kind === KIND_REFERRALS) { db.run(`UPDATE referral_rewards SET root_kind = ?, root_epoch = ? WHERE root_kind IS NULL AND CAST(amount AS INTEGER) > 0`, kind, epoch); db.run(`UPDATE grid_ladder_payouts SET root_kind = ?, root_epoch = ? WHERE root_kind IS NULL AND CAST(amount AS INTEGER) > 0`, kind, epoch); }
     else { db.run(`UPDATE pvp_rewards SET root_kind = ?, root_epoch = ? WHERE root_kind IS NULL`, kind, epoch); db.run(`UPDATE season_payouts SET root_kind = ?, root_epoch = ? WHERE root_kind IS NULL`, kind, epoch); }
   });
   return { kind, epoch, root, budget, leaves: wallets.length };

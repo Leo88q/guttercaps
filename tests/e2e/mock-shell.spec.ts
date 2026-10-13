@@ -11,7 +11,7 @@ import AxeBuilder from '@axe-core/playwright';
 /** Routes reachable without a wallet — the list `client/src/app/router.tsx` wraps in `S(…)`, not `W(…)`. */
 const PUBLIC = ['/', '/collection', '/shop', '/market', '/arena', '/leaderboard/rating', '/codex', '/verify', '/language'];
 /** Routes behind `RequireWallet`; they must redirect, not render an empty shell. */
-const GATED = ['/fusion', '/staking', '/quests', '/profile', '/shop/opening/1'];
+const GATED = ['/fusion', '/staking', '/quests', '/grid', '/profile', '/shop/opening/1'];
 
 /** Console/`pageerror` noise collector — an assertion helper, not a filter. */
 function watchErrors(page: Page) {
@@ -32,7 +32,7 @@ test.describe('the built app boots', () => {
 
     await page.goto('/');
     await expect(page.locator('nav[aria-label="Primary"]')).toBeVisible();
-    await expect(page.locator('.shell-nav a')).toHaveCount(9);
+    await expect(page.locator('.shell-nav a')).toHaveCount(10);
     await expect(page.getByRole('link', { name: 'GUTTERCAPS' })).toBeVisible();
     // A production build must not discover its own API: /v1 is proxied by the same origin (vite preview
     // in CI, nginx in prod). Any other host here means a VITE_API_BASE baked for another deployment.

@@ -165,6 +165,183 @@ CREATE TABLE IF NOT EXISTS chip_xp_awards (
   to_level   INTEGER NOT NULL,
   PRIMARY KEY (match_id, asset)
 );
+
+-- ------------------------------------------------------------ Floodgrid («Решётка», docs/13)
+-- Route/depth belongs to the ASSET (travels on sale, merges on fusion), items belong to the wallet.
+CREATE TABLE IF NOT EXISTS grid_chip_routes (
+  asset TEXT PRIMARY KEY,
+  next_level INTEGER NOT NULL DEFAULT 1,
+  charge_drops INTEGER NOT NULL DEFAULT 0,
+  charge_progress INTEGER NOT NULL DEFAULT 0,
+  charge_day INTEGER NOT NULL DEFAULT -1,
+  charge_refills INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS grid_level_claims (
+  asset TEXT NOT NULL,
+  level INTEGER NOT NULL,
+  best_stars INTEGER NOT NULL DEFAULT 0,
+  xp_accounted INTEGER NOT NULL DEFAULT 0,
+  xp_pending INTEGER NOT NULL DEFAULT 0,
+  max_xp INTEGER NOT NULL DEFAULT 0,
+  completed_at INTEGER,
+  updated_at INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (asset, level)
+);
+CREATE TABLE IF NOT EXISTS grid_wallet_state (
+  wallet TEXT PRIMARY KEY,
+  hints INTEGER NOT NULL DEFAULT 0,
+  valves INTEGER NOT NULL DEFAULT 0,
+  starter_granted INTEGER NOT NULL DEFAULT 0,
+  total_best_stars INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS grid_attempts (
+  id TEXT PRIMARY KEY,
+  wallet TEXT NOT NULL,
+  asset TEXT NOT NULL,
+  level INTEGER NOT NULL,
+  hints_used INTEGER NOT NULL DEFAULT 0,
+  emergency_used INTEGER NOT NULL DEFAULT 0,
+  mode TEXT NOT NULL DEFAULT 'charge',
+  seed INTEGER,
+  daily INTEGER NOT NULL DEFAULT 0,
+  settled INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  settled_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_grid_attempts_wallet ON grid_attempts(wallet, settled);
+CREATE TABLE IF NOT EXISTS grid_completions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  wallet TEXT NOT NULL,
+  asset TEXT NOT NULL,
+  level INTEGER NOT NULL,
+  stars INTEGER NOT NULL,
+  moves INTEGER NOT NULL,
+  day INTEGER NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'campaign',
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS grid_contract_done (
+  wallet TEXT NOT NULL,
+  day INTEGER NOT NULL,
+  slot INTEGER NOT NULL,
+  asset TEXT NOT NULL,
+  stars INTEGER NOT NULL,
+  moves INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (wallet, day, slot)
+);
+CREATE TABLE IF NOT EXISTS grid_deep_credits (
+  wallet TEXT NOT NULL,
+  week INTEGER NOT NULL,
+  signature TEXT NOT NULL,
+  granted_at INTEGER NOT NULL,
+  PRIMARY KEY (wallet, signature)
+);
+CREATE TABLE IF NOT EXISTS grid_deep_results (
+  wallet TEXT NOT NULL,
+  week INTEGER NOT NULL,
+  asset TEXT NOT NULL,
+  moves INTEGER NOT NULL,
+  stars INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (wallet, week)
+);
+CREATE TABLE IF NOT EXISTS grid_onboard_events (
+  wallet TEXT NOT NULL,
+  event TEXT NOT NULL,
+  day INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (wallet, event, day)
+);
+CREATE TABLE IF NOT EXISTS grid_prestige_routes (
+  asset TEXT PRIMARY KEY,
+  prestige_level INTEGER NOT NULL DEFAULT 0,
+  next_sector INTEGER NOT NULL DEFAULT 1,
+  updated_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS grid_ladder_payouts (
+  season INTEGER NOT NULL,
+  wallet TEXT NOT NULL,
+  rank INTEGER NOT NULL,
+  points INTEGER NOT NULL,
+  amount TEXT NOT NULL,
+  root_kind INTEGER,
+  root_epoch INTEGER,
+  PRIMARY KEY (season, wallet)
+);
+CREATE TABLE IF NOT EXISTS grid_district_goal_settlements (
+  wallet TEXT NOT NULL,
+  week INTEGER NOT NULL,
+  district INTEGER NOT NULL,
+  valve INTEGER NOT NULL DEFAULT 0,
+  settled_at INTEGER NOT NULL,
+  PRIMARY KEY (wallet, week)
+);
+CREATE TABLE IF NOT EXISTS grid_deep_settlements (
+  wallet TEXT NOT NULL,
+  week INTEGER NOT NULL,
+  hints INTEGER NOT NULL DEFAULT 0,
+  valve INTEGER NOT NULL DEFAULT 0,
+  settled_at INTEGER NOT NULL,
+  PRIMARY KEY (wallet, week)
+);
+CREATE INDEX IF NOT EXISTS idx_grid_completions_wallet_day ON grid_completions(wallet, day);
+CREATE TABLE IF NOT EXISTS grid_fails (
+  wallet TEXT NOT NULL,
+  asset TEXT NOT NULL,
+  level INTEGER NOT NULL,
+  fails INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (wallet, asset, level)
+);
+CREATE TABLE IF NOT EXISTS grid_emergency (
+  asset TEXT NOT NULL,
+  level INTEGER NOT NULL,
+  available INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (asset, level)
+);
+CREATE TABLE IF NOT EXISTS grid_gifts (
+  wallet TEXT NOT NULL,
+  level INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  gift_key TEXT NOT NULL DEFAULT '',
+  claimed_at INTEGER NOT NULL,
+  PRIMARY KEY (wallet, level, kind, gift_key)
+);
+
+
+CREATE TABLE IF NOT EXISTS grid_flood_settlements (
+  wallet TEXT NOT NULL,
+  week INTEGER NOT NULL,
+  hints INTEGER NOT NULL DEFAULT 0,
+  valve INTEGER NOT NULL DEFAULT 0,
+  settled_at INTEGER NOT NULL,
+  PRIMARY KEY (wallet, week)
+);
+
+CREATE TABLE IF NOT EXISTS grid_item_grants (
+  wallet TEXT NOT NULL,
+  source TEXT NOT NULL,
+  day INTEGER NOT NULL,
+  amount INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (wallet, source, day)
+);
+CREATE TABLE IF NOT EXISTS grid_flood (
+  district INTEGER NOT NULL,
+  week INTEGER NOT NULL,
+  points INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (district, week)
+);
+
+CREATE TABLE IF NOT EXISTS grid_charge_sync (
+  stake_key TEXT PRIMARY KEY,
+  asset TEXT NOT NULL,
+  staked_since INTEGER NOT NULL,
+  expiries TEXT NOT NULL DEFAULT '[]',
+  synced_at INTEGER,
+  updated_at INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS pass_claims (
   wallet     TEXT    NOT NULL,
   season     INTEGER NOT NULL,
@@ -955,6 +1132,8 @@ export class Db {
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_events_untimed ON events_raw(slot) WHERE block_time IS NULL`);
     const ch = new Set((this.raw.prepare(`PRAGMA table_info(chips)`).all() as { name: string }[]).map((c) => c.name));
     if (!ch.has('skin')) this.raw.exec(`ALTER TABLE chips ADD COLUMN skin TEXT`);
+    const gc = new Set((this.raw.prepare(`PRAGMA table_info(grid_completions)`).all() as { name: string }[]).map((c) => c.name));
+    if (gc.size > 0 && !gc.has('kind')) this.raw.exec(`ALTER TABLE grid_completions ADD COLUMN kind TEXT NOT NULL DEFAULT 'campaign'`);
     // SEC-B3/shape #27: `chips.game_index` — the per-collection mint number the market's "Low #" sort and
     // `indexMin`/`indexMax` filters need. The compressed path learns it from CompressedChipRegistered;
     // a core `open_pack` chip only has it inside its `ChipState` account, so those rows are left NULL and
@@ -1039,6 +1218,10 @@ export class Db {
     if (!po.has('currency')) this.raw.exec(`ALTER TABLE preorders ADD COLUMN currency TEXT NOT NULL DEFAULT 'SOL'`);
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_preorders_offer ON preorders(offer, status)`);
     const pk = new Set((this.raw.prepare('PRAGMA table_info(pack_opens)').all() as { name: string }[]).map((c) => c.name));
+    const ga = new Set((this.raw.prepare('PRAGMA table_info(grid_attempts)').all() as { name: string }[]).map((c) => c.name));
+    if (ga.size && !ga.has('mode')) this.raw.exec(`ALTER TABLE grid_attempts ADD COLUMN mode TEXT NOT NULL DEFAULT 'charge'`);
+    if (ga.size && !ga.has('seed')) this.raw.exec(`ALTER TABLE grid_attempts ADD COLUMN seed INTEGER`);
+    if (ga.size && !ga.has('daily')) this.raw.exec(`ALTER TABLE grid_attempts ADD COLUMN daily INTEGER NOT NULL DEFAULT 0`);
     if (!pk.has('pack_no')) this.raw.exec(`ALTER TABLE pack_opens ADD COLUMN pack_no INTEGER NOT NULL DEFAULT 0`);
     if (!pk.has('event_index')) this.raw.exec(`ALTER TABLE pack_opens ADD COLUMN event_index INTEGER NOT NULL DEFAULT 0`);
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_pack_opens_nonce ON pack_opens(buyer, nonce, pack_no)`);

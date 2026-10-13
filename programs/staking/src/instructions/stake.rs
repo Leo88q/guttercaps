@@ -310,14 +310,30 @@ pub struct StakeCompressedChip<'info> {
         bump
     )]
     pub play: Box<Account<'info, ChipPlay>>,
+    /// CHECK: optional Floodgrid charge account; empty means no droplets, otherwise the handler
+    /// requires this program's owner and a body bound to the claim key.
+    #[account(seeds = [b"gridcharge", claim.key().as_ref()], bump)]
+    pub grid_charge: UncheckedAccount<'info>,
     pub chip_core: Program<'info, ChipCore>,
     pub system_program: Program<'info, System>,
+}
+
+fn grid_charge_mult_bps(ai: &AccountInfo, chip_key: Pubkey, now: i64) -> Result<u64> {
+    if ai.data_is_empty() {
+        return Ok(10_000);
+    }
+    require_keys_eq!(*ai.owner, crate::ID, StakeError::BadGridCharge);
+    let data = ai.try_borrow_data()?;
+    let gc = ChipGridCharge::try_deserialize(&mut &data[..])?;
+    require_keys_eq!(gc.chip, chip_key, StakeError::BadGridCharge);
+    Ok(gc.mult_bps(now))
 }
 
 fn compressed_chip_weight(
     claim: &CompressedMintClaim,
     sets: u8,
     last_played: i64,
+    grid_mult_bps: u64,
     now: i64,
 ) -> u128 {
     claim.rarity.stake_weight() as u128 * MICRO as u128 * level_mult_bps(claim.level) as u128
@@ -326,18 +342,28 @@ fn compressed_chip_weight(
         / 10_000
         * alive_mult_bps(last_played, now) as u128
         / 10_000
+        * grid_mult_bps as u128
+        / 10_000
 }
 
 /// Weight of a Core chip. Survives the 2026-10-01 Core-market / Core-staking pruning because
 /// `claim_chip` still needs it: a `ChipStake` opened before the migration keeps its level-ups and
 /// set-bonus changes re-weighed on every claim, and this is that arithmetic.
-pub fn chip_weight(chip: &ChipState, sets: u8, last_played: i64, now: i64) -> u128 {
+pub fn chip_weight(
+    chip: &ChipState,
+    sets: u8,
+    last_played: i64,
+    grid_mult_bps: u64,
+    now: i64,
+) -> u128 {
     chip.rarity.stake_weight() as u128 * MICRO as u128 // base unit scaled 1e6 for precision
         * level_mult_bps(chip.level) as u128
         / 10_000
         * SetBonus::mult_bps(sets) as u128
         / 10_000
         * alive_mult_bps(last_played, now) as u128
+        / 10_000
+        * grid_mult_bps as u128
         / 10_000
 }
 
@@ -393,6 +419,11 @@ pub fn stake_compressed_chip(ctx: Context<StakeCompressedChip>) -> Result<()> {
         &claim,
         sb.completed_sets,
         ctx.accounts.play.last_played,
+        grid_charge_mult_bps(
+            &ctx.accounts.grid_charge.to_account_info(),
+            ctx.accounts.claim.key(),
+            now,
+        )?,
         now,
     );
     let c = &mut ctx.accounts.cstake;
@@ -466,6 +497,10 @@ pub struct StakeCompressedChipV2<'info> {
         bump
     )]
     pub play: Box<Account<'info, ChipPlay>>,
+    /// CHECK: optional Floodgrid charge account; empty means no droplets, otherwise the handler
+    /// requires this program's owner and a body bound to the claim key.
+    #[account(seeds = [b"gridcharge", claim.key().as_ref()], bump)]
+    pub grid_charge: UncheckedAccount<'info>,
     pub chip_core: Program<'info, ChipCore>,
     pub system_program: Program<'info, System>,
 }
@@ -549,6 +584,11 @@ pub fn stake_compressed_chip_v2<'info>(
         claim,
         sb.completed_sets,
         ctx.accounts.play.last_played,
+        grid_charge_mult_bps(
+            &ctx.accounts.grid_charge.to_account_info(),
+            ctx.accounts.claim.key(),
+            now,
+        )?,
         now,
     );
     let c = &mut ctx.accounts.cstake;
@@ -718,6 +758,10 @@ pub struct ClaimChip<'info> {
         bump
     )]
     pub play: Box<Account<'info, ChipPlay>>,
+    /// CHECK: optional Floodgrid charge account; empty means no droplets, otherwise the handler
+    /// requires this program's owner and a body bound to the staked asset key.
+    #[account(seeds = [b"gridcharge", cstake.asset.as_ref()], bump)]
+    pub grid_charge: UncheckedAccount<'info>,
 }
 
 /// Claim and re-weigh (level-ups / set bonus / alive-stake take effect here).
@@ -759,6 +803,7 @@ pub fn claim_chip(ctx: Context<ClaimChip>) -> Result<()> {
         &ctx.accounts.chip,
         ctx.accounts.set_bonus.completed_sets,
         ctx.accounts.play.last_played,
+        grid_charge_mult_bps(&ctx.accounts.grid_charge.to_account_info(), c.asset, now)?,
         now,
     );
     pool.total_weight = pool.total_weight - c.weight + w;
@@ -809,6 +854,10 @@ pub struct ClaimCompressedChip<'info> {
         bump
     )]
     pub play: Box<Account<'info, ChipPlay>>,
+    /// CHECK: optional Floodgrid charge account; empty means no droplets, otherwise the handler
+    /// requires this program's owner and a body bound to the claim key.
+    #[account(seeds = [b"gridcharge", claim.key().as_ref()], bump)]
+    pub grid_charge: UncheckedAccount<'info>,
     #[account(
         init_if_needed,
         payer = owner,
@@ -865,6 +914,7 @@ pub fn claim_compressed_chip(ctx: Context<ClaimCompressedChip>) -> Result<()> {
         &claim,
         ctx.accounts.set_bonus.completed_sets,
         ctx.accounts.play.last_played,
+        grid_charge_mult_bps(&ctx.accounts.grid_charge.to_account_info(), c.claim, now)?,
         now,
     );
     pool.total_weight = pool.total_weight - c.weight + w;
@@ -925,6 +975,66 @@ pub fn pulse_chip_play(ctx: Context<PulseChipPlay>, ts: i64) -> Result<()> {
     emit!(PlayPulsed {
         key: p.chip,
         last_played: p.last_played
+    });
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Floodgrid charge (oracle-attested; indexer proves the backend route's droplets and their
+// per-droplet stake expiries). Stake/claim read this account as one more weight multiplier;
+// expired slots count zero, so a droplet stops adding weight at its next stake/claim re-weigh.
+// ---------------------------------------------------------------------------
+
+#[derive(Accounts)]
+pub struct SyncGridCharge<'info> {
+    pub oracle: Signer<'info>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(
+        seeds = [b"emission"],
+        bump = emission.bump,
+        constraint = (emission.season_oracle == oracle.key()
+            || emission.set_oracle == oracle.key()) @ StakeError::BadOracle
+    )]
+    pub emission: Box<Account<'info, EmissionState>>,
+    /// CHECK: claim or Core asset pubkey the charge PDA is bound to.
+    pub chip_key: UncheckedAccount<'info>,
+    #[account(
+        init_if_needed,
+        payer = payer,
+        space = 8 + ChipGridCharge::INIT_SPACE,
+        seeds = [b"gridcharge", chip_key.key().as_ref()],
+        bump
+    )]
+    pub grid_charge: Box<Account<'info, ChipGridCharge>>,
+    pub system_program: Program<'info, System>,
+}
+
+pub fn sync_grid_charge(
+    ctx: Context<SyncGridCharge>,
+    drop_expiries: [i64; GRID_CHARGE_MAX_DROPS],
+) -> Result<()> {
+    let now = Clock::get()?.unix_timestamp;
+    for e in drop_expiries {
+        require!(
+            e == 0 || e <= now + GRID_CHARGE_WINDOW_SECS + 60,
+            StakeError::BadGridCharge
+        );
+    }
+    let gc = &mut ctx.accounts.grid_charge;
+    if gc.chip == Pubkey::default() {
+        gc.chip = ctx.accounts.chip_key.key();
+        gc.bump = ctx.bumps.grid_charge;
+    }
+    require_keys_eq!(
+        gc.chip,
+        ctx.accounts.chip_key.key(),
+        StakeError::BadGridCharge
+    );
+    gc.drop_expiries = drop_expiries;
+    emit!(GridChargeSynced {
+        key: gc.chip,
+        drop_expiries
     });
     Ok(())
 }

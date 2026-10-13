@@ -1970,6 +1970,12 @@ export interface paths {
                     rarity?: number;
                     rarityMin?: number;
                     levelMin?: number;
+                    /** @description Floodgrid: route passed this depth (docs/13) */
+                    gridDepthMin?: number;
+                    /** @description Floodgrid: at least this many charge droplets */
+                    gridChargeMin?: number;
+                    /** @description Floodgrid: only 75/75 «Сердце паводка» chips */
+                    gridHeart?: "1";
                     currency?: "SOL" | "USDC" | "SKR";
                     priceMaxUsd?: number;
                     /** @description auth required; only chips that complete one of my sets */
@@ -3046,6 +3052,411 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/grid/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Floodgrid state — backpack (hints/valves), wallet star bank, gifts, all chip routes (docs/13) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description state */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GridMe"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/grid/chip/{asset}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One chip's Floodgrid route (next sector, charge drops, per-level stars) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    asset: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description route */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GridChip"];
+                    };
+                };
+                /** @description Chip not found */
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/grid/attempt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start a Floodgrid attempt (training on the chip route or charge attempt on the next sector; seed committed server-side) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        asset: string;
+                        level?: number;
+                        /** @enum {string} */
+                        mode?: "training" | "charge";
+                        /**
+                         * @description Phase-3 special attempt (docs/12): district contract (slot), Deep Flood (weekly, no hints), Ghost of the day (no hints)
+                         * @enum {string}
+                         */
+                        kind?: "contract" | "deep" | "ghost";
+                        slot?: number;
+                        hintsUsed?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description attempt */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GridAttempt"];
+                    };
+                };
+                /** @description bad args / second hint downgrades to training */
+                400: components["responses"]["Error"];
+                /** @description Route order — sectors cannot be skipped */
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/grid/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit the full move list (PlayProof); the server replays it with the same engine. Solved outside the move limit settles as a fail (−6 XP unless a valve was armed) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        attemptId: string;
+                        turns: number[][];
+                        useValve?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description outcome */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GridComplete"];
+                    };
+                };
+                /** @description Unknown attempt */
+                404: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/grid/fail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Give up a charge attempt (settles −6 XP unless a valve was armed) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        attemptId: string;
+                        useValve?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description outcome */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                /** @description Unknown attempt */
+                404: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/players/{wallet}/grid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public Floodgrid diver showcase for a wallet (depth, stars, mastered chips, prestige, best ladder rank) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    wallet: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description showcase */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/grid/onboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record an onboarding funnel event for the Home first-sector card (shown/clicked/dismissed, one per wallet/day) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        event: "shown" | "clicked" | "dismissed";
+                    };
+                };
+            };
+            responses: {
+                /** @description recorded */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/grid/deep/buy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Buy one extra Deep Flood attempt for this week with a 30 $CG burn (pay_service kind 10, docs/12 phase 3) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        signature: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description credit */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                /** @description Payment missing, wrong rail or not exactly 30 $CG */
+                402: components["responses"]["Error"];
+                /** @description Weekly paid-attempt cap reached or payment already used */
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/grid/apply-skin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply an earn-only Floodgrid skin entitlement to one owned chip (one entitlement paints one cap) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        asset: string;
+                        skin: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description applied */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                /** @description No unused entitlement for that skin */
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/leaderboard/{board}": {
         parameters: {
             query?: never;
@@ -3068,7 +3479,7 @@ export interface paths {
                 };
                 header?: never;
                 path: {
-                    board: "rating" | "wins" | "collection" | "staking" | "fusion";
+                    board: "rating" | "wins" | "collection" | "staking" | "fusion" | "divers";
                 };
                 cookie?: never;
             };
@@ -5076,6 +5487,8 @@ export interface components {
             grantedAt?: string;
             /** Format: date-time */
             expiresAt?: string | null;
+            /** @description Floodgrid Terminal marks granted with this entitlement (every 5th Season Pass tier) */
+            hintsGranted?: number;
         };
         PendingPack: {
             nonce?: string;
@@ -5473,6 +5886,18 @@ export interface components {
                 pendingClaim?: boolean;
             } | null;
         };
+        GridMe: {
+            [key: string]: unknown;
+        };
+        GridChip: {
+            [key: string]: unknown;
+        };
+        GridAttempt: {
+            [key: string]: unknown;
+        };
+        GridComplete: {
+            [key: string]: unknown;
+        };
         Quest: {
             id?: string;
             cadence?: string;
@@ -5484,6 +5909,8 @@ export interface components {
             rewardCgMicro?: string;
             /** @description quest chip voucher template { template, odds[9] bps, soulboundDays } — rooted into a kind-9 chip root (one voucher per wallet per epoch) and delivered by claim_chip_root → chip_core open_voucher → open_pack (VRF-minted, soulbound for soulboundDays) */
             rewardChip?: Record<string, never> | null;
+            /** @description Floodgrid Terminal marks granted on completion (backend gear, no root) */
+            rewardHint?: number;
             /** @description fusion boosters granted on completion — rooted into a kind-8 item root and delivered by claim_item_root (chip_core PlayerItems) */
             rewardBooster?: number;
             completedAt?: string | null;
@@ -5882,6 +6309,18 @@ export interface components {
             };
             fraud?: Record<string, never>;
             finality?: Record<string, never>;
+            floodgrid?: {
+                onboardShown?: number;
+                onboardClicked?: number;
+                onboardCompleted?: number;
+                onboardConversion?: number | null;
+                ladderPlayers?: number;
+                ladderPaidMicro?: string;
+                districtsGoalReachedPrevWeek?: number;
+                prestigeChips?: number;
+                masteredChips?: number;
+                deepResultsThisWeek?: number;
+            };
         };
         ActivityPage: {
             items?: {

@@ -15,6 +15,7 @@ import { REWARD_ROOT_KINDS, SKR_ROOT_KIND_BASE, DEFAULT_MAX_SKR_ROOT_BUDGET_MICR
 import { QUEST_CHIP_TEMPLATES, DAILY_QUESTS, WEEKLY_QUESTS, PERMANENT_QUESTS, GUTTER_POT } from '../src/faucets.ts';
 import { PYTH_FEEDS, PYTH_MAX_AGE_SECS, PYTH_SLIPPAGE_BPS, PYTH_MAX_CONF_BPS, PYTH_PUSHER, PYTH_WORST_CASE_AGE_S, PYTH_PROGRAMS } from '../src/oracle.ts';
 import { FX } from '../src/fx.ts';
+import { GRID } from '../src/grid.ts';
 
 const root = resolve(import.meta.dirname, '../../..');
 /**
@@ -183,6 +184,9 @@ check('chip daily claim cap', int(line(stakingState, /CHIP_STAKE_DAILY_CAP_MICRO
 check('token daily claim cap', int(line(stakingState, /TOKEN_STAKE_DAILY_CAP_MICRO: u64 = ([\d_]+) \* MICRO/)), STAKE_CLAIM_CAPS.tokenDailyCg);
 check('alive window days', int(line(stakingState, /ALIVE_WINDOW_SECS: i64 = ([\d_]+) \* DAY/)), STAKE_CLAIM_CAPS.aliveWindowDays);
 check('idle weight bps', int(line(stakingState, /IDLE_WEIGHT_BPS: u64 = ([\d_]+)/)) / 1e4, STAKE_CLAIM_CAPS.idleWeight);
+check('grid charge bonus bps per drop', int(line(stakingState, /GRID_CHARGE_BONUS_BPS_PER_DROP: u64 = ([\d_]+)/)), GRID.chargeStakeBonusBpsPerDrop);
+check('grid charge evaporate days', int(line(stakingState, /GRID_CHARGE_WINDOW_SECS: i64 = ([\d_]+) \* DAY/)), GRID.chargeStakeEvaporateDays);
+check('grid charge max drops', Number(line(stakingState, /GRID_CHARGE_MAX_DROPS: usize = (\d+)/)), GRID.chargeMax);
 const splitTs = [EMISSION_SPLIT.chipStaking, EMISSION_SPLIT.tokenStaking, EMISSION_SPLIT.quests, EMISSION_SPLIT.pvpSeason, EMISSION_SPLIT.eventsReserve].map((p) => p * 100);
 const splitRs = nums(line(rs('programs/staking/src/lib.rs'), /split_bps: \[([^\]]+)\], split_changed_at/));
 check('emission split (test fixture)', splitRs, splitTs);

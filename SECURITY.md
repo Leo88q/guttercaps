@@ -115,6 +115,11 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   `Account<CompressedMintClaim>` slots left anywhere are the two `init` slots
   (`stage_compressed_chip`, `fuse_compressed_claims`), which allocate a current-layout account and
   so can never meet a short one — pinned by test **SEC-3003** in the same file.
+  **ChipGridCharge (2026-10-13, Floodgrid staking charge):** one new account
+  (`["gridcharge", chip_key]`; `chip` + `[i64; 3]` droplet expiries + `bump`) attested by the
+  season/set oracle for the staking weight bonus. No chain bytes exist at that address yet and
+  `ChipPlay` is deliberately unchanged, so no existing account is reinterpreted and no migration
+  instruction is needed. Stake/claim treat a missing account as zero droplets.
 - **SEC-B6 (2026-09-26): the API verifier checks rarities, not districts.** `POST /packs/verify`
   recomputes the rarity sequence from the emitted randomness and compares it with the mint, but it cannot
   recompute *which district* a chip landed in: the pool (`collections_created`, the featured district) is

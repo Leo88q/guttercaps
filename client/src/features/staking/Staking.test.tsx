@@ -149,6 +149,7 @@ vi.mock('@/api/hooks', () => ({
   useStakingMe: () => ({ data: { chipStakes: [], tokenStakes: [], setBonus: { onChainSets: 0 } } }),
   useMyChips: () => ({ data: { pages: [{ items: [CHIP.staked ? chip(true) : chip(false)], nextCursor: null }] } }),
   useGutterPot: () => ({ data: undefined, isLoading: false }),
+  useGridMe: () => ({ data: { chips: [{ asset: ASSET.toBase58(), route: { chargeDrops: 2 } }] }, isLoading: false }),
 }));
 
 beforeAll(() => {

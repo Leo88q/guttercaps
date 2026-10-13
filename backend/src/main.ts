@@ -17,6 +17,7 @@ import { crank } from './crank.ts';
 import { pythCache } from './pyth-cache.ts';
 import { burnOracle } from './burn-oracle.ts';
 import { playOracle } from './play-oracle.ts';
+import { gridChargeOracle } from './grid-charge-oracle.ts';
 import { rewardOracle } from './reward-oracle.ts';
 import { battleResolver } from './battle-resolver.ts';
 import { installShutdown } from './shutdown.ts';
@@ -34,6 +35,7 @@ export const WORKER_TASKS: Record<string, Task> = {
   reward: (l) => rewardOracle(l),
   battle: (l) => battleResolver(l),
   play: (l) => playOracle(l),
+  gridcharge: (l) => gridChargeOracle(l),
 };
 
 export interface MainHandle { serve: ServeHandle; stop: () => Promise<void> }

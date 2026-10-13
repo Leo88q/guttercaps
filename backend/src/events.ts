@@ -15,6 +15,7 @@ import { PROGRAMS, programNameOf, type ProgramName } from './config.ts';
 export const MAX_CHIPS_PER_PACK = 5;
 export const MATERIALS_PER_FUSION = 3;
 export const SPLIT_COUNT = 5;
+export const GRID_CHARGE_MAX_DROPS = 3;
 
 export type Scalar = 'u8' | 'u16' | 'u32' | 'u64' | 'u128' | 'i64' | 'bool' | 'pubkey' | 'bytes32';
 export type FieldType = Scalar | readonly [Scalar, number];
@@ -167,6 +168,7 @@ export const EVENT_SPECS: readonly EventSpec[] = [
   spec('staking', 'Claimed', [['owner', 'pubkey'], ['kind', 'u8'], ['amount', 'u64']]),
   spec('staking', 'ClaimCapped', [['owner', 'pubkey'], ['kind', 'u8'], ['pending', 'u64'], ['paid', 'u64']]),
   spec('staking', 'PlayPulsed', [['key', 'pubkey'], ['lastPlayed', 'i64']]),
+  spec('staking', 'GridChargeSynced', [['key', 'pubkey'], ['dropExpiries', ['i64', GRID_CHARGE_MAX_DROPS]]]),
   spec('staking', 'RootPublished', [['kind', 'u8'], ['epoch', 'u32'], ['root', 'bytes32'], ['budget', 'u64']]),
   spec('staking', 'RootRevoked', [['kind', 'u8'], ['epoch', 'u32']]),
   spec('staking', 'RootClaimed', [['kind', 'u8'], ['epoch', 'u32'], ['wallet', 'pubkey'], ['amount', 'u64']]),

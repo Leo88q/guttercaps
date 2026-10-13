@@ -445,7 +445,7 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
       }
       if (rnd() < 0.5 && mine.length > 0) {
         const [asset, chip] = pick(mine);
-        yield* emit([{ program: 'staking', name: 'Staked', data: { owner: actor, kind: 1, key: asset, amount: '1', weight: String(1000 + 500 * chip.rarity), unlockAt: '0' } }]);
+        yield* emit([{ program: 'staking', name: 'Staked', data: { owner: actor, kind: 1, key: asset, amount: '1', weight: String(1000 + 500 * chip.rarity), unlockAt: '0' } }, { program: 'staking', name: 'GridChargeSynced', data: { key: asset, dropExpiries: [String(blockTime() + 604_800), '0', '0'] } }]);
         chip.staked = true;
         stakedChips.set(asset, actor);
         continue;
@@ -588,7 +588,7 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
         // stake a compressed chip: `Staked{kind:1,key}` is the *claim*, not the leaf's asset
         yield* emit([
           { program: 'chip_core', name: 'CompressedClaimStakedSet', data: { claim, buyer: c.owner, staked: true } },
-          { program: 'staking', name: 'Staked', data: { owner: c.owner, kind: 1, key: claim, amount: '1', weight: String(1000 + 500 * (chips.get(c.asset ?? '')?.rarity ?? 1)), unlockAt: '0' } },
+          { program: 'staking', name: 'Staked', data: { owner: c.owner, kind: 1, key: claim, amount: '1', weight: String(1000 + 500 * (chips.get(c.asset ?? '')?.rarity ?? 1)), unlockAt: '0' } }, { program: 'staking', name: 'GridChargeSynced', data: { key: claim, dropExpiries: [String(blockTime() + 604_800), String(blockTime() + 604_800), '0'] } },
         ], { cpiFrom: 'staking' });
         c.staked = true;
         continue;

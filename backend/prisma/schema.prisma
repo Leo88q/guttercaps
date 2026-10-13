@@ -1179,6 +1179,259 @@ model PassXp {
 }
 
 /// Claimed pass tiers (one row per wallet/season/tier; the reward itself is an Entitlement).
+
+/// Floodgrid route of one chip asset (travels on sale; merges on fusion).
+model GridChipRoute {
+  asset          String @id
+  nextLevel      Int    @default(1) @map("next_level")
+  chargeDrops    Int    @default(0) @map("charge_drops")
+  chargeProgress Int    @default(0) @map("charge_progress")
+  chargeDay      Int    @default(-1) @map("charge_day")
+  chargeRefills  Int    @default(0) @map("charge_refills")
+  updatedAt      Int    @default(0) @map("updated_at")
+
+  @@map("grid_chip_routes")
+}
+
+/// One row per chip×level: best stars and the XP ceiling accounting (docs/13 §0.2).
+model GridLevelClaim {
+  asset       String
+  level       Int
+  bestStars   Int    @default(0) @map("best_stars")
+  xpAccounted Int    @default(0) @map("xp_accounted")
+  xpPending   Int    @default(0) @map("xp_pending")
+  maxXp       Int    @default(0) @map("max_xp")
+  completedAt Int?   @map("completed_at")
+  updatedAt   Int    @default(0) @map("updated_at")
+
+  @@id([asset, level])
+  @@map("grid_level_claims")
+}
+
+/// Floodgrid gear («Снаряжение ныряльщика») of a wallet: hints + emergency valves.
+model GridWalletState {
+  wallet         String @id
+  hints          Int    @default(0)
+  valves         Int    @default(0)
+  starterGranted Int    @default(0) @map("starter_granted")
+  totalBestStars Int    @default(0) @map("total_best_stars")
+  updatedAt      Int    @default(0) @map("updated_at")
+
+  @@map("grid_wallet_state")
+}
+
+/// A charge attempt (server-issued; settled by /grid/complete or /grid/fail).
+model GridAttempt {
+  id            String @id
+  wallet        String
+  asset         String
+  level         Int
+  hintsUsed     Int    @default(0) @map("hints_used")
+  emergencyUsed Int    @default(0) @map("emergency_used")
+  mode          String @default("charge")
+  seed          Int?
+  daily         Int     @default(0)
+  settled       Int    @default(0)
+  createdAt     Int    @map("created_at")
+  settledAt     Int?   @map("settled_at")
+
+  @@index([wallet, settled])
+  @@map("grid_attempts")
+}
+
+/// First completions (quest metrics grid_cleared / grid_route_max read this).
+model GridCompletion {
+  id        Int    @id @default(autoincrement())
+  wallet    String
+  asset     String
+  level     Int
+  stars     Int
+  moves     Int
+  day       Int
+  kind      String @default("campaign")
+  createdAt Int    @map("created_at")
+
+  @@index([wallet, day])
+  @@map("grid_completions")
+}
+
+/// Phase-3 district contracts completed per wallet/day/slot (docs/12).
+model GridContractDone {
+  wallet    String
+  day       Int
+  slot      Int
+  asset     String
+  stars     Int
+  moves     Int
+  createdAt Int    @map("created_at")
+
+  @@id([wallet, day, slot])
+  @@map("grid_contract_done")
+}
+
+/// Paid Deep Flood attempt credits (30 $CG burn, pay_service kind 10).
+model GridDeepCredit {
+  wallet    String
+  week      Int
+  signature String
+  grantedAt Int    @map("granted_at")
+
+  @@id([wallet, signature])
+  @@map("grid_deep_credits")
+}
+
+/// Best Deep Flood result per wallet/week (leaderboard).
+model GridDeepResult {
+  wallet    String
+  week      Int
+  asset     String
+  moves     Int
+  stars     Int
+  createdAt Int    @map("created_at")
+
+  @@id([wallet, week])
+  @@map("grid_deep_results")
+}
+
+/// Onboarding funnel events for the first-sector card (shown/clicked/dismissed per day).
+model GridOnboardEvent {
+  wallet    String
+  event     String
+  day       Int
+  createdAt Int    @map("created_at")
+
+  @@id([wallet, event, day])
+  @@map("grid_onboard_events")
+}
+
+/// Prestige descent progress per mastered chip (P1..P5 seals).
+model GridPrestigeRoute {
+  asset         String @id
+  prestigeLevel Int    @default(0) @map("prestige_level")
+  nextSector    Int    @default(1) @map("next_sector")
+  updatedAt     Int    @default(0) @map("updated_at")
+
+  @@map("grid_prestige_routes")
+}
+
+/// Seasonal Floodgrid PvE ladder payouts ($CG, rooted via kind-4 events roots).
+model GridLadderPayout {
+  season   Int
+  wallet   String
+  rank     Int
+  points   Int
+  amount   String
+  rootKind Int?   @map("root_kind")
+  rootEpoch Int?  @map("root_epoch")
+
+  @@id([season, wallet])
+  @@map("grid_ladder_payouts")
+}
+
+/// District co-op goal settlements (valve for participants).
+model GridDistrictGoalSettlement {
+  wallet    String
+  week      Int
+  district  Int
+  valve     Int    @default(0)
+  settledAt Int    @map("settled_at")
+
+  @@id([wallet, week])
+  @@map("grid_district_goal_settlements")
+}
+
+/// Lazily settled Deep Flood weekly gear rewards.
+model GridDeepSettlement {
+  wallet    String
+  week      Int
+  hints     Int    @default(0)
+  valve     Int    @default(0)
+  settledAt Int    @map("settled_at")
+
+  @@id([wallet, week])
+  @@map("grid_deep_settlements")
+}
+
+/// Failed charge attempts per wallet×chip×level (3 -> emergency hint).
+model GridFail {
+  wallet String
+  asset  String
+  level  Int
+  fails  Int    @default(0)
+
+  @@id([wallet, asset, level])
+  @@map("grid_fails")
+}
+
+/// Sector-bound emergency hint availability.
+model GridEmergency {
+  asset     String
+  level     Int
+  available Int    @default(0)
+
+  @@id([asset, level])
+  @@map("grid_emergency")
+}
+
+/// Account gifts from level 35 (docs/13 §0.5); booster/voucher rows also land in quest_completions.
+model GridGift {
+  wallet    String
+  level     Int
+  kind      String
+  giftKey   String @default("") @map("gift_key")
+  claimedAt Int    @map("claimed_at")
+
+  @@id([wallet, level, kind, giftKey])
+  @@map("grid_gifts")
+}
+
+/// Weekly district flood gauge («Ночь большого паводка»).
+
+/// Earn-only hint/valve source accounting (daily/weekly caps per source).
+
+/// Flood Night weekly settlement marker (items only, granted lazily on read — no cron).
+model GridFloodSettlement {
+  wallet    String
+  week      Int
+  hints     Int    @default(0)
+  valve     Int    @default(0)
+  settledAt Int    @map("settled_at")
+
+  @@id([wallet, week])
+  @@map("grid_flood_settlements")
+}
+
+model GridItemGrant {
+  wallet String
+  source String
+  day    Int
+  amount Int    @default(0)
+
+  @@id([wallet, source, day])
+  @@map("grid_item_grants")
+}
+
+model GridFlood {
+  district Int
+  week     Int
+  points   Int @default(0)
+
+  @@id([district, week])
+  @@map("grid_flood")
+}
+
+/// Oracle sync state for Floodgrid charge droplets in chip staking (per-droplet expiries).
+model GridChargeSync {
+  stakeKey    String @id @map("stake_key")
+  asset       String
+  stakedSince Int    @map("staked_since")
+  expiries    String @default("[]")
+  syncedAt    Int?   @map("synced_at")
+  updatedAt   Int    @default(0) @map("updated_at")
+
+  @@map("grid_charge_sync")
+}
+
 model PassClaim {
   wallet    String
   season    Int

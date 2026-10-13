@@ -88,6 +88,7 @@ export const assetPda = (pending: PublicKey, packNo: number, i: number) => find(
 export const battlePda = (challenger: PublicKey, nonce: bigint) => find([enc('battle'), challenger.toBytes(), u64le(nonce)], ARENA_ID);
 export const emissionPda = () => find([enc('emission')], PROGRAMS.staking);
 export const chipPlayPda = (chipKey: PublicKey) => find([enc('chipplay'), chipKey.toBytes()], PROGRAMS.staking);
+export const gridChargePda = (chipKey: PublicKey) => find([enc('gridcharge'), chipKey.toBytes()], PROGRAMS.staking);
 /** SEC-L5: staking's `["season_pool"]` PDA — authority of the arena's season pool ($CG ATA), spent only by `fund_slice`. */
 export const seasonPoolAuthPda = () => find([enc('season_pool')], PROGRAMS.staking);
 export const seasonPoolAta = (cgMint: PublicKey) => ata(cgMint, seasonPoolAuthPda()[0]);

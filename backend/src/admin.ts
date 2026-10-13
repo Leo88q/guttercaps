@@ -406,6 +406,7 @@ export function simulate(body: { assumptions?: Partial<FlowAssumptions>; year?: 
 
 // ------------------------------------------------------------------ KPI
 const DAY = 86_400;
+const GRID_GOAL = 150; // mirrors GRID.districtGoalPoints (economy)
 /** `GET /admin/kpi` — PRD KPIs from the projections (docs/00 §5): retention, conversion, ARPPU, sink ratio, floor index, arena + fraud health. */
 export function kpi(db: Db, t = now()) {
   const px = prices(db);
@@ -444,6 +445,27 @@ export function kpi(db: Db, t = now()) {
     economy: { burned7dMicro: burned7.toString(), emitted7dMicro: emitted7.toString(), sinkRatio7d: emitted7 > 0n ? +(Number(burned7) / Number(emitted7)).toFixed(3) : null, guardedDailyMicro: e.guardedMicro.toString(), guardSource: e.source, floorIndexUsdPerCommonEq: floorIndex, floorsByRarityUsd: floors.map((f) => ({ rarity: f.rarity, usd: f.usd })) },
     market: { listings: db.scalar(`SELECT COUNT(*) FROM listings`), volume7dUsd: +db.all<{ currency: number; price: string }>(`SELECT currency, price FROM sales WHERE COALESCE(block_time, 0) >= ?`, t - 7 * DAY).reduce((s, r) => s + toUsd(r.price, r.currency, px), 0).toFixed(2) },
     arena: { season: season.id, endsAt: season.ends_at, poolCgMicro: seasonPoolMicro(db, season).toString(), matches7d: db.scalar(`SELECT COUNT(*) FROM matches WHERE status = 'resolved' AND ended_at >= ?`, (t - 7 * DAY) * 1000), botShare7d: (() => { const all = db.scalar(`SELECT COUNT(*) FROM matches WHERE status = 'resolved' AND ended_at >= ?`, (t - 7 * DAY) * 1000); return all ? +(db.scalar(`SELECT COUNT(*) FROM matches WHERE status = 'resolved' AND ended_at >= ? AND b LIKE 'bot:%'`, (t - 7 * DAY) * 1000) / all).toFixed(3) : null; })(), wagerBattles7d: db.scalar(`SELECT COUNT(*) FROM battles WHERE status = 'resolved' AND COALESCE(resolved_at, created_at, 0) >= ?`, t - 7 * DAY) },
+    floodgrid: (() => {
+      const shown = db.scalar(`SELECT COUNT(DISTINCT wallet) FROM grid_onboard_events WHERE event = 'shown'`);
+      const clicked = db.scalar(`SELECT COUNT(DISTINCT wallet) FROM grid_onboard_events WHERE event = 'clicked'`);
+      const completed = db.scalar(`SELECT COUNT(DISTINCT e.wallet) FROM grid_onboard_events e WHERE e.event = 'shown' AND EXISTS (SELECT 1 FROM grid_completions c WHERE c.wallet = e.wallet)`);
+      const week = Math.floor((t - 4 * DAY) / (7 * DAY));
+      const seasonRow = db.get<{ starts_at: number; ends_at: number }>(`SELECT starts_at, ends_at FROM seasons WHERE starts_at <= ? ORDER BY starts_at DESC LIMIT 1`, t);
+      const ladderPlayers = seasonRow ? new Set([
+        ...db.all<{ wallet: string }>(`SELECT DISTINCT wallet FROM grid_deep_results WHERE week >= ? AND week <= ?`, Math.floor((seasonRow.starts_at - 4 * DAY) / (7 * DAY)), Math.floor((Math.min(seasonRow.ends_at, t) - 4 * DAY) / (7 * DAY))).map((r) => r.wallet),
+        ...db.all<{ wallet: string }>(`SELECT DISTINCT wallet FROM grid_item_grants WHERE source = 'pass_daily' AND day >= ? AND day < ?`, Math.floor(seasonRow.starts_at / DAY), Math.floor(Math.min(seasonRow.ends_at, t) / DAY)).map((r) => r.wallet),
+      ]).size : 0;
+      const ladderPaid = db.get<{ s: string | null }>(`SELECT SUM(CAST(amount AS INTEGER)) s FROM grid_ladder_payouts`);
+      return {
+        onboardShown: shown, onboardClicked: clicked, onboardCompleted: completed,
+        onboardConversion: shown ? +(completed / shown).toFixed(4) : null,
+        ladderPlayers, ladderPaidMicro: (ladderPaid?.s ?? '0').toString(),
+        districtsGoalReachedPrevWeek: db.scalar(`SELECT COUNT(*) FROM grid_flood WHERE week = ? AND points >= ${GRID_GOAL}`, week - 1),
+        prestigeChips: db.scalar(`SELECT COUNT(*) FROM grid_prestige_routes WHERE prestige_level > 0`),
+        masteredChips: db.scalar(`SELECT COUNT(*) FROM grid_chip_routes WHERE next_level > 75`),
+        deepResultsThisWeek: db.scalar(`SELECT COUNT(*) FROM grid_deep_results WHERE week = ?`, week),
+      };
+    })(),
     fraud: antifraudStatus(db),
     finality: finalityStatus(db),
   };

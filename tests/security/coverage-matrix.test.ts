@@ -151,6 +151,9 @@ const NO_LITESVM: Record<string, string> = {
   // The V2 staking variant: builder exists, no scenario. `stake_compressed_chip` (the V1 twin)
   // is covered — 70800 CU in the census.
   stake_compressed_chip_v2: 'V2 staking variant — builder exists, no scenario; the V1 twin is covered',
+  // Floodgrid charge attestation is a keeper-only oracle write (backend grid-charge-oracle + client
+  // builder exist); LiteSVM has no keeper scenario, and the weight curve is unit-tested in staking.
+  sync_grid_charge: 'Floodgrid charge oracle attestation — keeper-only write, no LiteSVM keeper scenario; curve unit-tested in the program',
   // --- arena -----------------------------------------------------------------------------------
   // The V2 battle pair, and the reason is worth stating precisely because the names invite the
   // opposite reading: these are the COMPRESSED handlers the UI drives (createCompressedBattleV2Ix /

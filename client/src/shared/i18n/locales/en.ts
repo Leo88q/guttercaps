@@ -16,7 +16,23 @@ const en = {
   catalog,
   nav: {
     home: 'Home', caps: 'Caps', shop: 'Shop', market: 'Market', arena: 'Arena', stake: 'Stake',
-    fusion: 'Fusion', guide: 'Guide', quests: 'Quests', leaderboard: 'Ranks', profile: 'Profile', more: 'More',
+    fusion: 'Fusion', guide: 'Guide', quests: 'Quests', grid: 'Floodgrid', leaderboard: 'Ranks', profile: 'Profile', more: 'More',
+  },
+  grid: {
+    title: 'Floodgrid', subtitle: 'Route the flood through 75 sectors. Every chip walks its own route — XP, charge and gifts included.',
+    applySkin: 'Apply skin to selected chip', passXp: '+{n} Pass XP', dailyDistrict: 'District of the day #{n}', epicDaily: 'Epic flood of the day', backpack: 'Diver gear', hints: 'Terminal marks', valves: 'Emergency valves', drops: 'Flood charge',
+    chip: 'Chip', routeNext: 'Next sector {n}', sector: 'Sector {n}', depth: 'Depth {n}',
+    training: 'Training', trainShort: 'train', tileAria: 'Tile {n}', rotateHint: 'Tap rotates · long-press rotates back · right-click too', dropsLive: 'Drops live 7 days: +5% staking weight each.', charge: 'Charge attempt', start: 'Start', giveUp: 'Give up', undo: 'Undo', restart: 'Restart',
+    moves: 'Moves {n}', par: 'par {n}', budget: 'limit {n}', connected: '{n}% connected',
+    useHint: 'Use a mark (max 2★)', showHint: 'Show move', solved: 'Sector sealed!', failed: 'The flood slipped away (−6 XP)',
+    xp: '+{n} XP', pending: '{n} XP parked until tomorrow', stars: '{n}★', play: 'Play', replay: 'Replay',
+    perfect: 'Perfect', locked: 'Route locked', gifts: 'Account gifts', flood: 'Flood week — district points',
+    emergency: 'Emergency mark ready', useValve: 'Valve saves the −6', noChips: 'You need a chip to dive. Open a pack first.',
+    selectSector: 'All 75 sectors are open for training; the charge route advances sector by sector.',
+    resultTraining: 'Training done — no rewards, as promised.', droplet: 'Flood charge +1 💧', gift: 'Gift: {kind} ×{n}',
+    overBudget: 'Over the move limit — finishing now settles as a fail.', hintReady: 'Mark armed: one move will be shown.',
+    prestige: 'Prestige descent', prestigeNext: 'Prestige {p} · sector {n}', ladder: 'Season ladder', ladderPoints: '{n} pts', coopGoal: 'District goal', startPrestige: 'Start prestige sector', showcase: 'Diver showcase', payoutPending: 'Ladder payout pending root',
+    contracts: 'District contracts', contractHint: 'Conductor: a 75/75 chip of this district. Pays weekly quest progress and droplet progress — no XP.', done: 'Done', playContract: 'Run contract', deep: 'Deep Flood', deepHint: 'Weekly 8×8 sector. No hints, tighter move limit. Best run of the week wins gear.', attemptsLeft: 'Attempts left: {n}', buyAttempt: 'Buy attempt · 30 $CG burn', leaderboard: 'Leaderboard', ghost: 'Ghost of the day', ghostHint: 'Solve in ≤ {n} moves without hints to earn a Terminal mark.', beaten: 'Ghost beaten', run: 'Run', fieldTheme: 'Field theme', rank: 'Rank {n}', districtN: 'District #{n}',
   },
   common: {
     connectWallet: 'Connect wallet', connecting: 'Connecting…', signedIn: 'Signed in', signingIn: 'Signing in…', signOut: 'Sign out',
@@ -44,7 +60,7 @@ const en = {
     title: 'Language', subtitle: 'Prices and balances always stay in your wallet units. Only the words change.',
     auto: 'Auto ({name})', current: 'Current: {name}', applied: 'Language set to {name}',
   },
-  home: {
+  home: { onboardTitle: 'Your first flood', onboardText: 'Your first cap is charged by the flood — run its first sector yourself (40 seconds) and feel what charge means before your first fight.', onboardCta: 'Run sector 1 with your first cap',
     greeting: 'Yo, {name}', collector: 'collector', inSeason: 'Gutter City is in season {id}', loadingCity: 'Gutter City is loading',
     heroTitle: 'GUTTERCAPS', heroSub: 'Eight districts. Seventy-two caps. Every drop provably random, every trade on-chain.',
     heroCta: 'Open your first pack', heroSecondary: 'Browse the market',
@@ -170,7 +186,7 @@ const en = {
   },
   leaderboard: {
     title: 'Leaderboard', subtitle: 'Season {id} · ends in {time} · pool {amount}',
-    boards: { rating: 'Rating', collection: 'Collection', staking: 'Staking', pvp: 'Wins' }, rank: 'Rank', player: 'Player', value: 'Value',
+    boards: { divers: 'Divers ★', rating: 'Rating', collection: 'Collection', staking: 'Staking', pvp: 'Wins' }, rank: 'Rank', player: 'Player', value: 'Value',
   },
   profile: {
     rpcCheck: "Check RPC (no payment)",
@@ -195,7 +211,7 @@ const en = {
     },
   },
   pass: {
-    title: 'Season pass', tier: 'Tier {n}', xp: '{n} XP', claim: 'Claim', claimed: 'Claimed',
+    title: 'Season pass', tier: 'Tier {n}', xp: '{n} XP', claim: 'Claim', claimed: 'Claimed', hintBonus: '+1 Terminal mark',
     noPass: 'Get the season pass in Extras to claim track rewards', pickCap: 'Choose a cap to paint',
   },
   services: {
@@ -207,7 +223,7 @@ const en = {
     noFreeCaps: 'No caps yet — open a pack first', noCompletedDistrict: 'Complete a district set (9/9) to unlock its banner',
     names: {
       handle: '@handle', handleChange: 'Handle change', capSkin: 'Cap skin', profileTheme: 'Profile theme', arenaEmotePack: 'Arena emote pack',
-      extraBenchSlots: '+2 bench presets', seasonPass: 'Season pass', booster: 'Fusion booster', packSkipAnim: 'Instant reveal', districtBanner: 'District banner',
+      extraBenchSlots: '+2 bench presets', seasonPass: 'Season pass', booster: 'Fusion booster', packSkipAnim: 'Instant reveal', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'District banner',
     },
     blurbs: {
       handle: 'Unique name on leaderboards, arena and your public profile URL.', handleChange: 'Rename once per 30 days. Old handle is released after 90 days.',
@@ -215,7 +231,7 @@ const en = {
       arenaEmotePack: '6 spray-tag emotes for Cap Slam replays.', extraBenchSlots: 'Save more fusion presets on the bench (convenience only).',
       seasonPass: 'Cosmetic track for the 6-week season: 20 tiers of skins, banners, emotes. No odds, no power, no $CG.',
       booster: '+15 pp success on one fusion (cap 95%). Max 3 per day.', packSkipAnim: 'Permanent toggle to skip the reveal animation. Pure convenience.',
-      districtBanner: 'Animated banner for a district you have completed.',
+      gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Animated banner for a district you have completed.',
     },
   },
   admin: {
@@ -241,6 +257,7 @@ const en = {
       metric: 'metric', baselineCol: 'baseline', scenario: 'scenario', guard: 'Emission guard: floor {floor}% of the schedule · ≤ {mult}× 7-day burn · {zero} $CG/day at zero burn',
     },
     kpi: {
+      floodgrid: 'Floodgrid', onboard: 'Onboarding shown → completed', ladderPlayers: 'ladder players', ladderPaid: 'ladder paid', deepWeek: 'deep runs this week', goalDistricts: 'districts at goal (prev week)', mastered: 'mastered chips', prestige: 'prestige chips',
       asOf: 'snapshot {time}', wallets: 'wallets', payers30: 'payers 30d', conversion: 'conversion to 1st pack', starterToPaid: 'starter → paid', revenue: 'Revenue', usd30: 'USD 30d', packs30: 'packs 30d', services30: 'services 30d', marketVol7: 'market volume 7d',
       economy: 'Economy', burned7: 'burned 7d', emitted7: 'emitted 7d', sinkRatio: 'sink ratio 7d', guarded: 'guarded emission', floorIndex: 'floor index (Common-eq)', arena: 'Arena', matches7: 'matches 7d', fraud: 'Anti-fraud', finality: 'Finality',
     },
@@ -294,7 +311,7 @@ const en = {
     placeholder: 'Transaction signature', check: 'Verify', match: 'Matches on-chain result', mismatch: 'Does not match — please report this',
     slotHashes: 'Seed = sha256(your commit ‖ SlotHashes[slot+delay]). The studio never picks a result.',
   },
-  codex: { title: 'The Eight Districts' },
+  codex: { registry: 'Underground Registry', registryIntro: 'The guild registry: 12 pages per depth. Close a depth with any chip to unseal its pages.', sealed: 'Sealed — close this depth with any chip to read.', title: 'The Eight Districts' },
   errors: {
     rejected: 'You rejected the signature', insufficient: 'Not enough balance', network: 'Network error — try again', stale: 'Quote expired — refresh', generic: 'Something went wrong',
   },

@@ -39,6 +39,7 @@ import { ServiceError } from './services.ts';
 import { finalizedHorizon } from './finality.ts';
 import { isBot } from './arena.ts';
 import { rewardGate } from './human.ts';
+import { grantGridHints } from './grid.ts';
 import { rootCurrency } from './events.ts';
 import { insertIgnore } from './sql.ts';
 
@@ -143,6 +144,12 @@ export function metricValue(db: Db, wallet: string, metric: string, from: number
       return myGrid(db, wallet, maxSlot).completedSets;
     case 'referrals_paid':
       return db.scalar(`SELECT COUNT(DISTINCT w.address) FROM wallets w JOIN pack_purchases p ON p.buyer = w.address AND p.sku > 0 AND p.slot <= ? WHERE w.referrer = ?`, maxSlot, wallet);
+    case 'grid_cleared':
+      return db.scalar(`SELECT COUNT(*) FROM grid_completions WHERE wallet = ? AND kind = 'campaign' AND created_at >= ? AND created_at < ?`, wallet, from, to);
+    case 'grid_cleared_all':
+      return db.scalar(`SELECT COUNT(*) FROM grid_completions WHERE wallet = ? AND created_at >= ? AND created_at < ?`, wallet, from, to);
+    case 'grid_route_max':
+      return db.scalar(`SELECT COALESCE(MAX(next_level - 1), 0) FROM grid_chip_routes WHERE asset IN (SELECT asset FROM chips WHERE owner = ? AND burned_at IS NULL)`, wallet);
     case 'streak_days': {
       // strict: the streak must END on the period's day (settlement credits day 7, 14, 21 … exactly once each)
       const day = Math.min(dayIndex(Math.max(from, to - 1)), dayIndex(t));
@@ -197,9 +204,11 @@ export function streak(db: Db, wallet: string, t = now()) {
  * Partner visit dailies are NOT part of the streak: the streak must be achievable from in-game
  * actions alone (a partner site being down should not reset it), which is also what the
  * `quest_days` schema comment and the "all four $CG dailies" UI copy promise.
+ * The Floodgrid daily is not part of the streak either (docs/13): the grid is an additional
+ * earning path inside the same cap, not a new daily gate for the streak chip.
  */
 export function refreshQuestDay(db: Db, wallet: string, t = now(), horizon = finalizedHorizon(db)) {
-  const dailies = DAILY_QUESTS.filter((q) => q.rewardCgMicro > 0 && !q.metric.startsWith('visit_'));
+  const dailies = DAILY_QUESTS.filter((q) => q.rewardCgMicro > 0 && !q.metric.startsWith('visit_') && q.metric !== 'grid_cleared');
   const from = dayIndex(t) * DAY;
   const done = dailies.every((q) => metricValue(db, wallet, q.metric, from, from + DAY, t, horizon) >= q.target);
   db.run(`INSERT INTO quest_days (wallet, day, dailies_done) VALUES (?, ?, ?) ON CONFLICT(wallet, day) DO UPDATE SET dailies_done = excluded.dailies_done`, wallet, dayIndex(t), done ? 1 : 0);
@@ -221,7 +230,7 @@ export function list(db: Db, wallet: string, t = now(), refresh = true) {
     const done = value >= q.target;
     return {
       id: q.id, cadence: q.period, title: q.title, description: '', metric: q.metric, target: q.target, value,
-      rewardCgMicro: String(q.rewardCgMicro), rewardChip: q.rewardChip ?? null, rewardBooster: q.rewardItem === 'booster' ? 1 : 0,
+      rewardCgMicro: String(q.rewardCgMicro), rewardChip: q.rewardChip ?? null, rewardBooster: q.rewardItem === 'booster' || q.rewardItems?.includes('booster') ? 1 : 0, rewardHint: q.rewardItem === 'hint' || q.rewardItems?.includes('hint') ? 1 : 0,
       completedAt: c ? new Date(c.completed_at * 1000).toISOString() : null,
       claimable: done && !c,                                   // done, waiting for the next reward root
       rooted: c ? c.root_kind !== null : false,
@@ -279,7 +288,8 @@ export function settleWallet(db: Db, wallet: string, t = now(), horizon = finali
       }
       // boosters and chip vouchers follow the same eligibility gate as $CG (an ineligible wallet's completion is recorded with none of them)
       db.run(`INSERT INTO quest_completions (wallet, quest_id, period_key, amount, reward_chip, reward_booster, completed_at, day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        wallet, q.id, key, amount.toString(), elig.eligible && q.rewardChip ? JSON.stringify(q.rewardChip) : null, elig.eligible && q.rewardItem === 'booster' ? 1 : 0, t, day);
+        wallet, q.id, key, amount.toString(), elig.eligible && q.rewardChip ? JSON.stringify(q.rewardChip) : null, elig.eligible && (q.rewardItem === 'booster' || q.rewardItems?.includes('booster')) ? 1 : 0, t, day);
+      if (elig.eligible) { const items = new Set([q.rewardItem, ...(q.rewardItems ?? [])]); if (items.has('hint')) grantGridHints(db, wallet, 1, t); } // Floodgrid gear (docs/13 §0.4): backend item, no root
       inserted++;
     }
   }

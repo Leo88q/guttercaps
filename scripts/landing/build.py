@@ -521,7 +521,7 @@ BODY = f'''
 {fee_row('eco.f2', '2.5 %')}
 {fee_row('eco.f3', '5 %')}
 {fee_row('eco.f4', '2–100 $CG · 0.5 %')}
-{fee_row('eco.f5', '$0.99 – $9.99')}
+{fee_row('eco.f5', '$0.05 – $9.99')}
 {fee_row('eco.f6', '−5 %')}
           </tbody>
         </table>
@@ -551,6 +551,7 @@ BODY = f'''
 {mech_card(6, '🎨')}
 {mech_card(7, '🕳️')}
 {mech_card(8, '🍲')}
+{mech_card(9, '🌊')}
     </div>
   </div>
 </section>

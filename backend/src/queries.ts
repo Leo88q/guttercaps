@@ -288,10 +288,14 @@ export function listings(db: Db, q: Record<string, string | undefined>) {
   if (q.indexMin) { where.push('CAST(c.game_index AS INTEGER) >= ?'); params.push(Number(q.indexMin)); }
   if (q.indexMax) { where.push('CAST(c.game_index AS INTEGER) <= ?'); params.push(Number(q.indexMax)); }
   if (q.currency) { const code = CURRENCY_SYMBOL.indexOf(q.currency as never); if (code >= 0) { where.push('l.currency = ?'); params.push(code); } }
-  const rows = db.all<ChipRow & { seller: string; price: string; currency: number; created_at: number | null }>(
-    `SELECT c.*, l.seller, l.price, l.currency, l.created_at FROM listings l JOIN chips c ON c.asset = l.asset WHERE ${where.join(' AND ')}`, ...params,
+  // Floodgrid filters (docs/13 D): route depth / charge travel with the asset.
+  if (q.gridDepthMin) { where.push('COALESCE(gr.next_level, 1) > ?'); params.push(Number(q.gridDepthMin) * 15); }
+  if (q.gridChargeMin) { where.push('COALESCE(gr.charge_drops, 0) >= ?'); params.push(Number(q.gridChargeMin)); }
+  if (q.gridHeart === '1') where.push('COALESCE(gr.next_level, 1) > 75');
+  const rows = db.all<ChipRow & { seller: string; price: string; currency: number; created_at: number | null; grid_next: number | null; grid_drops: number | null }>(
+    `SELECT c.*, l.seller, l.price, l.currency, l.created_at, gr.next_level AS grid_next, gr.charge_drops AS grid_drops FROM listings l JOIN chips c ON c.asset = l.asset LEFT JOIN grid_chip_routes gr ON gr.asset = c.asset WHERE ${where.join(' AND ')}`, ...params,
   );
-  let items = rows.map((r) => ({ asset: r.asset, seller: r.seller, price: r.price, currency: CURRENCY_SYMBOL[r.currency] ?? 'SOL', priceUsd: Number(toUsd(r.price, r.currency, px).toFixed(2)), createdAt: iso(r.created_at) ?? new Date().toISOString(), chip: chipToApi(r) }));
+  let items = rows.map((r) => ({ asset: r.asset, seller: r.seller, price: r.price, currency: CURRENCY_SYMBOL[r.currency] ?? 'SOL', priceUsd: Number(toUsd(r.price, r.currency, px).toFixed(2)), createdAt: iso(r.created_at) ?? new Date().toISOString(), gridRoute: { nextLevel: r.grid_next ?? 1, chargeDrops: r.grid_drops ?? 0 }, chip: chipToApi(r) }));
   if (q.priceMaxUsd) items = items.filter((i) => i.priceUsd <= Number(q.priceMaxUsd));
   const sort = q.sort ?? 'price_asc';
   // `index_asc` ("Low #"): unresolved chips sort last (they have no number) and ties fall back to price,
@@ -375,6 +379,13 @@ export function chipDetail(db: Db, asset: string) {
     provenance: { origin: r.origin, signature: r.origin_signature ?? '', rollHex: open?.roll_hex ?? '', recipe: fusion?.recipe ?? undefined },
     sales,
     archetype: chipArchetype(db, r.collection_idx, r.rarity, 4),
+    // Floodgrid route travels with the asset (docs/13 §0.1) — buyers see it before they pay.
+    gridRoute: (() => {
+      const route = db.get<{ next_level: number; charge_drops: number }>(`SELECT next_level, charge_drops FROM grid_chip_routes WHERE asset = ?`, asset);
+      const stars = db.scalar(`SELECT COALESCE(SUM(best_stars), 0) FROM grid_level_claims WHERE asset = ?`, asset);
+      const cleared = db.scalar(`SELECT COUNT(*) FROM grid_level_claims WHERE asset = ?`, asset);
+      return { nextLevel: route?.next_level ?? 1, chargeDrops: route?.charge_drops ?? 0, starsTotal: stars, levelsCleared: cleared };
+    })(),
   };
 }
 
@@ -418,6 +429,8 @@ export function leaderboard(db: Db, board: string, limit = 50, cursor?: string, 
       sql = `SELECT owner AS wallet, SUM(CAST(weight AS REAL)) AS value, 0 AS league FROM stakes WHERE active = 1 GROUP BY owner`; break;
     case 'fusion':
       sql = `SELECT owner AS wallet, COUNT(*) AS value, 0 AS league FROM fusions WHERE success = 1 GROUP BY owner`; break;
+    case 'divers':     // Floodgrid showcase: total best stars across the wallet's unburned chips
+      sql = `SELECT ch.owner AS wallet, COALESCE(SUM(c.best_stars), 0) AS value, 0 AS league FROM chips ch JOIN grid_level_claims c ON c.asset = ch.asset WHERE ch.burned_at IS NULL GROUP BY ch.owner`; break;
     default: throw new Error('unknown board');
   }
   const visible = `SELECT t.wallet, t.value, t.league, w.handle FROM (${sql}) t LEFT JOIN wallets w ON w.address = t.wallet WHERE ${jsonFlagEq('w.flags', 'shadowBanned', false)}`;

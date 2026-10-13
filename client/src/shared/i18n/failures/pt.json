@@ -92,6 +92,7 @@
   "staking_BadMint": "O mint $CG não deve ter autoridade de congelamento; a oferta deve caber na alocação fora do jogo",
   "staking_SkrWithdrawRate": "Saques de SKR são limitados a uma chamada por slot",
   "staking_FuturePlay": "O timestamp do pulso de jogo está no futuro",
+  "staking_BadGridCharge": "A conta de carga do Floodgrid está incorreta",
   "arena_WagerRange": "Aposta fora do intervalo de 25–25000 $CG",
   "arena_BadStatus": "A batalha não está no estado esperado",
   "arena_NotOwner": "O cap do esquadrão não pertence ao signatário",

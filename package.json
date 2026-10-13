@@ -18,6 +18,7 @@
     "backend:crank": "npm --prefix backend run crank",
     "backend:burn-oracle": "npm --prefix backend run burn-oracle",
     "backend:play-oracle": "npm --prefix backend run play-oracle",
+    "backend:grid-charge-oracle": "npm --prefix backend run grid-charge-oracle",
     "backend:reward-oracle": "npm --prefix backend run reward-oracle",
     "backend:battle-resolver": "npm --prefix backend run battle-resolver",
     "backend:antifraud": "npm --prefix backend run antifraud --",
@@ -92,7 +93,8 @@
     "ops:release": "docker compose -f ops/deploy/docker-compose.yaml pull && docker compose -f ops/deploy/docker-compose.yaml up -d",
     "privacy:retention": "node --no-warnings=ExperimentalWarning --import tsx backend/src/privacy-maintenance.ts retention",
     "privacy:reapply": "node --no-warnings=ExperimentalWarning --import tsx backend/src/privacy-maintenance.ts reapply-erasure",
-    "mac:devnet": "bash scripts/mac-devnet.sh"
+    "mac:devnet": "bash scripts/mac-devnet.sh",
+    "population:sim": "node --experimental-strip-types scripts/population-sim.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",

@@ -92,6 +92,7 @@
   "staking_BadMint": "Dapat walang freeze authority ang $CG mint at pasok ang supply sa alokasyong hindi mula sa laro",
   "staking_SkrWithdrawRate": "Ang pag-withdraw ng SKR ay limitado sa isang tawag bawat slot",
   "staking_FuturePlay": "Ang timestamp ng play pulse ay nasa hinaharap",
+  "staking_BadGridCharge": "Sira ang account ng charge ng Floodgrid",
   "arena_WagerRange": "Labas sa saklaw na 25–25000 $CG ang pusta",
   "arena_BadStatus": "Wala ang laban sa inaasahang kalagayan",
   "arena_NotOwner": "Hindi pag-aari ng pumirma ang cap sa squad",

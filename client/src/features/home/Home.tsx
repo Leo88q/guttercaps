@@ -1,7 +1,9 @@
 import { Link } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
-import { useMe, useGrid, useQuests, usePendingOps, useStreak, useSeason } from '@/api/hooks';
+import { useMe, useGrid, useGridMe, useQuests, usePendingOps, useStreak, useSeason } from '@/api/hooks';
+import { useEffect, useRef, useState } from 'react';
+import { api } from '@/api/client';
 import { PreorderBanner } from '@/features/preorder/PreorderBanner';
 import { usePity } from '@/chain/hooks';
 import { useActiveOps } from '@/app/store/txs';
@@ -10,6 +12,7 @@ import { fmtCg, countdown } from '@/shared/lib/format';
 import { useCollections } from '@/shared/lib/lore';
 import { collectionColor } from '@/shared/lib/rarity';
 import { Progress, Skeleton, Stat } from '@/shared/ui/primitives';
+import { FloodIcon } from '@/shared/ui/GridIcons';
 import { ChevronRightIcon } from '@/shared/ui/action-icons';
 import { SprayNozzleButton } from '@/shared/ui/buttons';
 import { ShowcaseStrip } from '@/shared/ui/Showcase';
@@ -31,6 +34,14 @@ export default function Home() {
   const pending = usePendingOps();
   const season = useSeason();
   const pity = usePity();
+  const gridMe = useGridMe();
+  const [onbDismissed, setOnbDismissed] = useState(() => localStorage.getItem('gridOnboardDismissed') === '1');
+  const showOnboard = !onbDismissed && (gridMe.data?.chips.length ?? 0) > 0 && (gridMe.data?.chips ?? []).every((c) => c.claims.length === 0 && c.route.nextLevel === 1);
+  const onboardShownRef = useRef(false);
+  useEffect(() => {
+    if (showOnboard && !onboardShownRef.current) { onboardShownRef.current = true; void api.post('/grid/onboard', { event: 'shown' } as never).catch(() => undefined); }
+  }, [showOnboard]);
+  const onboardEvent = (event: 'clicked' | 'dismissed') => { void api.post('/grid/onboard', { event } as never).catch(() => undefined); };
   const active = useActiveOps(publicKey?.toBase58());
   if (!connected) return <Landing onConnect={() => setVisible(true)} />;
 
@@ -56,6 +67,20 @@ export default function Home() {
         <div className="warn row between">
           <span>{t('ui.pendingOps', { n: Math.max(localPending, apiPending) })}</span>
           {active.packs[0] ? <Link className="btn btn-sm" to={`/shop/opening/${active.packs[0].nonce}`}>{t('ui.continue')}</Link> : compressedPending > 0 ? <span className="tiny">{t('ui.recovering')}</span> : <Link className="btn btn-sm" to="/fusion">{t('ui.openBench')}</Link>}
+        </div>
+      )}
+
+      {showOnboard && (
+        <div className="card stack-sm" data-testid="home-grid-onboard" style={{ border: '2px solid var(--acid, #B6FF3C)' }}>
+          <div className="row between" style={{ gap: 8 }}>
+            <span className="strong"><span style={{ color: '#16E5D9', display: 'inline-flex', verticalAlign: -2, marginRight: 6 }}><FloodIcon size={18} /></span>{t('home.onboardTitle')}</span>
+            <button type="button" className="tiny" onClick={() => { onboardEvent('dismissed'); localStorage.setItem('gridOnboardDismissed', '1'); setOnbDismissed(true); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'inherit' }}>✕</button>
+          </div>
+          <div className="row" style={{ gap: 12, alignItems: 'center' }}>
+            <img className="grid-thumb" src="/art/grid-hero.jpg" alt="" aria-hidden loading="lazy" />
+            <div className="tiny muted grow">{t('home.onboardText')}</div>
+          </div>
+          <Link className="btn" to="/grid" style={{ textAlign: 'center' }} onClick={() => onboardEvent('clicked')}>{t('home.onboardCta')}</Link>
         </div>
       )}
 
@@ -100,6 +125,14 @@ export default function Home() {
       </Link>
 
       <div className="grid-2">
+        <Link to="/grid" className="card card-hover row" style={{ textDecoration: 'none' }}>
+          <GenBadge name="mech-grid" size={28} />
+          <div className="grow">
+            <div className="strong">{t('grid.title')}</div>
+            <div className="tiny muted">{t('grid.subtitle')}</div>
+          </div>
+          <ChevronRightIcon size={14} />
+        </Link>
         <Link to="/quests" className="card card-hover row" style={{ textDecoration: 'none' }}>
           <GenBadge name="mech-quests" size={28} />
           <div className="grow">

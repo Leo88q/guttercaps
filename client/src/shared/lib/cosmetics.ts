@@ -3,7 +3,7 @@ import { t, type MessageKey } from '@/shared/i18n';
 // time (the payload hashed into ref_hash): what you own is read from
 // entitlement payloads, and the wallet only chooses which owned variant to
 // display (persisted per wallet in localStorage).
-import { PROFILE_THEMES as ECONOMY_THEMES } from '@guttercaps/economy';
+import { PROFILE_THEMES as ECONOMY_THEMES, GRID_FIELD_THEMES as ECONOMY_FIELD_THEMES } from '@guttercaps/economy';
 
 /** economy service kinds for the cosmetic/convenience entitlements. */
 export const KIND = { skin: 2, theme: 3, emotePack: 4, bench: 5, pass: 6, skip: 8, banner: 9 } as const;
@@ -19,7 +19,7 @@ export function ownedThemes(ents: EntitlementLike[] | undefined): string[] {
   const list = (ents ?? []).filter((e) => e.kind === KIND.theme);
   if (list.length === 0) return [];
   const ids = list.map((e) => (e.payload as { theme?: unknown } | null | undefined)?.theme).filter((x): x is string => typeof x === 'string');
-  if (ids.length < list.length) return ECONOMY_THEMES.map((t) => t.id);
+  if (ids.length < list.length) return ECONOMY_THEMES.filter((t) => !t.exclusive).map((t) => t.id); // legacy payload-less grants never unlock earn-only themes
   return [...new Set(ids)];
 }
 
@@ -27,9 +27,12 @@ export function ownedThemes(ents: EntitlementLike[] | undefined): string[] {
 export function ownedBanners(ents: EntitlementLike[] | undefined, completed: number[]): number[] {
   const list = (ents ?? []).filter((e) => e.kind === KIND.banner);
   if (list.length === 0) return [];
-  const ids = list.map((e) => (e.payload as { collection?: unknown } | null | undefined)?.collection).filter((x): x is number => typeof x === 'number');
+  const payloads = list.map((e) => e.payload as { collection?: unknown; source?: unknown } | null | undefined);
+  const ids = payloads.map((p) => p?.collection).filter((x): x is number => typeof x === 'number');
   if (ids.length < list.length) return completed;
-  return [...new Set(ids)].filter((c) => completed.includes(c));
+  // Floodgrid gift banners unlock their district showcase without requiring the full set.
+  const gifted = payloads.filter((p) => p?.source === 'grid_gift').map((p) => p?.collection).filter((x): x is number => typeof x === 'number');
+  return [...new Set([...ids.filter((c) => completed.includes(c)), ...gifted])];
 }
 
 /** Owned emote-pack ids (kind-4 payloads). Payload-less grants unlock nothing (packs are always named at claim). */
@@ -37,8 +40,10 @@ export function ownedPacks(ents: EntitlementLike[] | undefined): string[] {
   return [...new Set((ents ?? []).filter((e) => e.kind === KIND.emotePack).map((e) => (e.payload as { pack?: unknown } | null | undefined)?.pack).filter((x): x is string => typeof x === 'string'))];
 }
 
-export interface ProfileTheme { id: string; label: string; desc: string; hex: string }
-export const PROFILE_THEMES: ProfileTheme[] = ECONOMY_THEMES.map((t) => ({ id: t.id, get label() { return themeText(t.id); }, get desc() { return themeText(t.id, true); }, hex: t.hex }));
+export interface ProfileTheme { id: string; label: string; desc: string; hex: string; exclusive?: boolean }
+export const PROFILE_THEMES: ProfileTheme[] = ECONOMY_THEMES.map((t) => ({ id: t.id, get label() { return themeText(t.id); }, get desc() { return themeText(t.id, true); }, hex: t.hex, exclusive: t.exclusive }));
+/** Floodgrid field themes (pay_service kind 11) — board flow-line palettes. */
+export const GRID_FIELD_THEMES = ECONOMY_FIELD_THEMES.map((t) => ({ id: t.id, label: t.name, desc: t.blurb, hex: t.hex }));
 export function themeById(id: string | null | undefined): ProfileTheme {
   return PROFILE_THEMES.find((t) => t.id === id) ?? PROFILE_THEMES[0];
 }
@@ -80,9 +85,9 @@ export function benchSlots(ents: EntitlementLike[] | undefined): number {
 
 const SKIN_KEYS: Record<string, MessageKey> = {
   'gold-rim': 'ui.skinGold', 'spray-drip': 'ui.skinSpray', hologlow: 'ui.skinHolo',
-  'blood-drip': 'ui.skinBlood', 'frost-rim': 'ui.skinFrost', 'toxic-glow': 'ui.skinToxic',
+  'blood-drip': 'ui.skinBlood', 'frost-rim': 'ui.skinFrost', 'toxic-glow': 'ui.skinToxic', 'wet-rim': 'ui.skinWet', 'perfect-flood': 'ui.skinPerfect',
 };
-const THEME_KEYS: Record<string, MessageKey> = { magenta: 'ui.themeMagenta', cyan: 'ui.themeCyan', acid: 'ui.themeAcid' };
+const THEME_KEYS: Record<string, MessageKey> = { magenta: 'ui.themeMagenta', cyan: 'ui.themeCyan', acid: 'ui.themeAcid', 'collector-heart': 'ui.themeHeart' };
 const EMOTE_KEYS: Record<string, MessageKey> = {
   gg: 'ui.emoteGg', ez: 'ui.emoteEz', wow: 'ui.emoteWow', rip: 'ui.emoteRip', lit: 'ui.emoteLit', rekt: 'ui.emoteRekt',
   ghost: 'ui.emoteGhost', vandal: 'ui.emoteVandal', midnite: 'ui.emoteMidnite', howl: 'ui.emoteHowl', fog: 'ui.emoteFog', zero: 'ui.emoteZero',

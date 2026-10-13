@@ -13,6 +13,7 @@ const BOARDS = [
   { id: 'collection', label: 'ui.collectors', unit: '/72' },
   { id: 'staking', label: 'ui.stakers', unit: 'staking.weight' },
   { id: 'fusion', label: 'ui.fusers', unit: 'ui.fusions' },
+  { id: 'divers', label: 'leaderboard.boards.divers', unit: '★' },
 ] as const;
 type Board = (typeof BOARDS)[number]['id'];
 

@@ -113,6 +113,18 @@ export function FusionNavIcon({ size = 26, onActivate }: IconProps) {
   );
 }
 
+
+/** Floodgrid: a grate of pipes with a flood droplet — nav entry for «Решётка». */
+export function GridNavIcon({ size = 26, onActivate }: IconProps) {
+  const { active, trigger } = useActivation(450);
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" className={`wicon wicon-grid ${active ? 'wicon-active' : ''}`} onClick={() => { trigger(); onActivate?.(); }}>
+      <path d="M6 10 H26 M6 16 H26 M6 22 H26 M10 6 V26 M16 6 V26 M22 6 V26" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" fill="none" />
+      <path d="M16 12.5c1.8 2.2 2.7 3.7 2.7 5.1a2.7 2.7 0 1 1-5.4 0c0-1.4.9-2.9 2.7-5.1z" className="wicon-drop" />
+    </svg>
+  );
+}
+
 /** Guide: a paste-up poster on a wall with three lines of text — "how the city works". */
 export function GuideNavIcon({ size = 26, onActivate }: IconProps) {
   const { active, trigger } = useActivation(450);

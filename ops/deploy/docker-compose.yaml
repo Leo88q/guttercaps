@@ -96,6 +96,9 @@ services:
       <<: *app-env
       # The supervisor's worker set. `crank` is not optional in production: without it a bought pack is
       # never opened (docs/06 §3.3). Add burn/reward/battle when their keypairs are mounted.
+      # FLOODGRID LAUNCH: `reward` (kind-4 claims — referrals and the diver ladder) and `gridcharge`
+      # (droplet attestation into staking) must be in this set, or droplets stay UI-only and ladder
+      # prizes never settle. See runbook §1.4.1.
       WORKERS: ${WORKERS:-crank,pyth}
       API_INGEST: "1"
       # In-container path of the compose file-secret (`/run/secrets/<secret name>`).

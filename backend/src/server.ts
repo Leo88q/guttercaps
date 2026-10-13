@@ -37,6 +37,7 @@ import * as staking from './staking.ts';
 import * as gutterPot from './gutterPot.ts';
 import * as arena from './arena.ts';
 import * as quests from './quests.ts';
+import * as grid from './grid.ts';
 import { packPerksView, redeemXpTicket } from './pack-perks.ts';
 import { rewardOracleStatus } from './reward-oracle.ts';
 import { referralSummary } from './referrals.ts';
@@ -580,12 +581,13 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     const currency = str(req.query.currency);
     if (currency !== undefined && !q.CURRENCY_SYMBOL.includes(currency as never)) throw new ServiceError(400, 'bad_currency', `currency must be one of ${q.CURRENCY_SYMBOL.join(' | ')}`);
     const filters: Record<string, string | undefined> = { sort, currency };
-    for (const [k, max] of [['collection', MAX_COLLECTION_IDX], ['rarity', MAX_RARITY_IDX], ['rarityMin', MAX_RARITY_IDX], ['indexMin', MAX_GAME_INDEX], ['indexMax', MAX_GAME_INDEX]] as const) {
+    for (const [k, max] of [['collection', MAX_COLLECTION_IDX], ['rarity', MAX_RARITY_IDX], ['rarityMin', MAX_RARITY_IDX], ['indexMin', MAX_GAME_INDEX], ['indexMax', MAX_GAME_INDEX], ['gridDepthMin', 5], ['gridChargeMin', 3]] as const) {
       const v = intQuery(req.query[k], { name: k, min: 0, max });
       if (v !== undefined) filters[k] = String(v);
     }
     const priceMaxUsd = numberQuery(req.query.priceMaxUsd, { name: 'priceMaxUsd' });
     if (priceMaxUsd !== undefined) filters.priceMaxUsd = String(priceMaxUsd);
+    if (req.query.gridHeart === '1') filters.gridHeart = '1';
     filters.limit = String(limitQuery(req.query.limit, { max: 200, def: 60 }));
     filters.cursor = cursorQuery(req.query.cursor);
     res.json(q.listings(db, filters));
@@ -655,6 +657,16 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.get('/quests/streak', requireAuth, (req, res) => { if (compliance.accessState(db, req.session!.wallet, compliance.detectedCountry(req.headers), accessPolicy, accessEnabled).features.rewards.allowed) quests.refreshQuestDay(db, req.session!.wallet); res.json(quests.streak(db, req.session!.wallet)); });
   v1.post('/quests/login', requireAuth, accessGate('rewards'), (req, res) => { res.json(quests.recordLogin(db, req.session!.wallet)); });
   v1.post('/quests/visit', requireAuth, accessGate('rewards'), (req, res) => { res.json(quests.recordVisit(db, req.session!.wallet, String((req.body as { metric?: unknown } | undefined)?.metric ?? ''))); });
+  // ------------------------------------------------------------ Floodgrid («Решётка», docs/13)
+  v1.get('/grid/me', requireAuth, (req, res) => { res.json(grid.gridMe(db, req.session!.wallet)); });
+  v1.get('/grid/chip/:asset', requireAuth, (req, res) => { res.json(grid.gridChip(db, req.session!.wallet, req.params.asset)); });
+  v1.post('/grid/attempt', requireAuth, accessGate('rewards'), (req, res) => { res.json(grid.startGridAttempt(db, req.session!.wallet, req.body ?? {})); });
+  v1.post('/grid/complete', requireAuth, accessGate('rewards'), (req, res) => { res.json(grid.completeGridAttempt(db, req.session!.wallet, req.body ?? {})); });
+  v1.post('/grid/fail', requireAuth, accessGate('rewards'), (req, res) => { res.json(grid.failGridAttempt(db, req.session!.wallet, req.body ?? {})); });
+  v1.post('/grid/apply-skin', requireAuth, accessGate('rewards'), (req, res) => { res.json(grid.applyGridSkin(db, req.session!.wallet, req.body ?? {})); });
+  v1.post('/grid/deep/buy', requireAuth, accessGate('rewards'), (req, res) => { res.json(grid.buyGridDeepAttempt(db, req.session!.wallet, typeof req.body?.signature === 'string' ? req.body.signature : '')); });
+  v1.get('/players/:wallet/grid', (req, res) => { res.json(grid.publicDiver(db, req.params.wallet)); });
+  v1.post('/grid/onboard', requireAuth, (req, res) => { res.json(grid.recordGridOnboard(db, req.session!.wallet, typeof req.body?.event === 'string' ? req.body.event : '')); });
 
   // ------------------------------------------------------------ admin (docs/03 §3.5, T-B-46): SIWS session ∈ ADMIN_WALLETS, every call audited,
   // on-chain changes are only *encoded* for the Squads multisig — this process holds no admin key.

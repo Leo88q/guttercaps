@@ -46,7 +46,7 @@ img { max-width: 100%; display: block; }
      into a second row that overflowed the 64px box and pushed half the bar off the screen. Bumping a
      tab means bumping this; `smoke.test.tsx` fails if they disagree. The language picker used to be
      the 10th entry and now lives in the header next to the balance. */
-  --gc-nav-tabs: 9;
+  --gc-nav-tabs: 10;
   order: 2; position: relative; left: auto; right: auto; bottom: auto; z-index: 30; display: grid;
   flex-shrink: 0; width: 100%;
   grid-template-columns: repeat(var(--gc-nav-tabs), minmax(0, 1fr));
@@ -856,3 +856,16 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 .modal-body input,
 .modal-body textarea,
 .modal-body select { text-align: center; }
+
+/* Floodgrid art (generated, single painterly family with the district banners) */
+.grid-hero { position: relative; border-radius: 16px; overflow: hidden; border: 1px solid var(--gc-line-strong); }
+.grid-hero img { width: 100%; height: 190px; object-fit: cover; display: block; }
+@media (max-width: 640px) { .grid-hero img { height: 130px; } }
+.grid-hero .grid-hero-shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10,10,14,0) 30%, rgba(10,10,14,.88) 100%); }
+.grid-hero .grid-hero-text { position: absolute; left: 16px; right: 16px; bottom: 12px; }
+.grid-card-art { width: 100%; height: 84px; object-fit: cover; border-radius: 10px; border: 1px solid var(--gc-line-strong); display: block; }
+.grid-thumb { width: 64px; height: 64px; object-fit: cover; border-radius: 12px; border: 1px solid var(--gc-line-strong); flex: none; }
+.grid-tile { border: 1px solid var(--gc-line); transition: border-color .12s ease; }
+.grid-tile:hover:not(:disabled) { border-color: var(--cg-neon-cyan); }
+.grid-tile:focus-visible { outline: 2px solid var(--cg-acid-green); outline-offset: 1px; }
+.depth-strip { border-left: 4px solid #333; padding-left: 8px; }

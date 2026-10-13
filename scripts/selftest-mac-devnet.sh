@@ -545,7 +545,7 @@ expect_not pyth-nokey "docker run" "$tmp/calls.log"
 pyth "--from pyth" FAKE_X=1
 check pyth-nokey "the default flow goes on (exit 0)…" test "$rc" -eq 0
 expect pyth-nokey "SOL- и SKR-оплата не заработает" "$log"          # …but says it out loud
-expect pyth-nokey "оплата SOL и SKR (цены Pyth): выключено" "$log"    # …and again in the summary
+expect pyth-nokey "оплата SOL и SKR: фиксированный курс" "$log"    # …and again in the summary (fixed-rate wording)
 
 pyth "--only pyth" PYTH_API_KEY=$GOOD_KEY
 check pyth-ok "exit 0" test "$rc" -eq 0

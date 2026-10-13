@@ -5,9 +5,9 @@ import golden from '../../../packages/economy/golden/pack_expand.json';
 import { BorshReader, BorshWriter, u64le } from './borsh';
 import { accountDiscriminator, ixDiscriminator, eventsFromLogs, findEvent, optional, parseCustomError, concat, eventDiscriminator } from './anchor';
 import {
-  decodeChipState, decodeGameConfig, decodePendingPack, decodePendingClaimFusion, decodePlayerPity, decodeListing, decodeTokenStake, decodeVaultLedger, decodeCompressedAssetListing, decodeCompressedPackSettlement, decodeCompressedMintClaim, sumLedgers, readPackOpened, readCompressedClaimsCreated, readCompressedPackOpened, readCompressedPackSettled, readClaimFusionRevealed, chipIsFree, claimIsListable, claimFusionBlock, CHIP_FLAG,
+  decodeChipState, decodeChipGridCharge, gridChargeMultBps, decodeGameConfig, decodePendingPack, decodePendingClaimFusion, decodePlayerPity, decodeListing, decodeTokenStake, decodeVaultLedger, decodeCompressedAssetListing, decodeCompressedPackSettlement, decodeCompressedMintClaim, sumLedgers, readPackOpened, readCompressedClaimsCreated, readCompressedPackOpened, readCompressedPackSettled, readClaimFusionRevealed, chipIsFree, claimIsListable, claimFusionBlock, CHIP_FLAG,
 } from './accounts';
-import { vaultPda, assetPda, chipStatePda, collectionMetaPda, configPda, pendingPackPda, claimFusionPda, compressedMintClaimPda, compressedSettlementPda, bubblegumTreeConfigPda, compressedChipStatePda, bubblegumTreeMetaPda, pityPda, pendingFusionPda, battlePda, ata, freshNonce, rewardRootPda, rewarderPda, playerItemsPda, skrPoolPda, emissionPda, seasonPoolAuthPda, RNG_KIND, rngAuthPda, rngPda, sbLutPda, sbLutSignerPda, sbStatePda, sbOracleStatsPda, sbRewardEscrow, LEDGER_SHARDS, allLedgerPdas, ledgerPda, ledgerPdaOf, ledgerShardOf } from './pdas';
+import { vaultPda, assetPda, chipStatePda, collectionMetaPda, configPda, pendingPackPda, claimFusionPda, compressedMintClaimPda, compressedSettlementPda, bubblegumTreeConfigPda, compressedChipStatePda, bubblegumTreeMetaPda, pityPda, pendingFusionPda, battlePda, ata, freshNonce, rewardRootPda, rewarderPda, gridChargePda, playerItemsPda, skrPoolPda, emissionPda, seasonPoolAuthPda, RNG_KIND, rngAuthPda, rngPda, sbLutPda, sbLutSignerPda, sbStatePda, sbOracleStatsPda, sbRewardEscrow, LEDGER_SHARDS, allLedgerPdas, ledgerPda, ledgerPdaOf, ledgerShardOf } from './pdas';
 import { fitsInTx } from './tx';
 import { buyPackIx, openPackIx, payServiceIx, Currency, fuseIx, mintCompressedChipIx, createBubblegumTreeIx, openCompressedPackIx, registerCompressedChipIx, cancelCompressedClaimIx, finalizeCompressedPackIx, fuseClaimsCommitIx, fuseClaimsRevealIx, cancelStaleClaimFusionIx, closeExpiredClaimIx } from './ix/chipCore';
 import { v2LeafHash, foldCompressionProof, discoverLeafNonce, verifyBubblegumProofLocal, deriveBubblegumLeafAssetId } from './bubblegum';
@@ -17,7 +17,7 @@ import { createBattleIx, acceptBattleIx, createCompressedBattleV2Ix, acceptCompr
 import { buyCompressedAssetIx, cancelCompressedAssetIx, listCompressedAssetIx, listCompressedIx, marketCurrencyOfApi, MarketCurrency, saleSplit } from './ix/market';
 import type { BubblegumProof } from './bubblegum';
 import { wagerSplit, leagueOf } from './ix/arena';
-import { unstakePenalty, claimRootIx, claimSkrRootIx, claimItemRootIx, claimChipRootIx, claimAnyRootIx, fundSliceIx, SLICE_PVP_SEASON } from './ix/staking';
+import { unstakePenalty, stakeCompressedChipIx, syncGridChargeIx, claimRootIx, claimSkrRootIx, claimItemRootIx, claimChipRootIx, claimAnyRootIx, fundSliceIx, SLICE_PVP_SEASON } from './ix/staking';
 import { usdCentsToUnits, usdCentsToLamports, usdCentsToMicroSkr, priceUsd, assertFeed, pushOracleAccount, isFresh, priceAgeS, isConfident, PYTH_MAX_AGE_S, PYTH_MAX_CONF_BPS, PythConfidenceError } from './pyth';
 import { ADDRESS_LOOKUP_TABLE_PROGRAM_ID, PYTH_SOL_USD_FEED_ID_HEX, PYTH_SKR_USD_FEED_ID_HEX, PYTH_SHARD_ID, PYTH_PRICE_ACCOUNTS, PYTH_SPONSORED_SOL_USD, SWITCHBOARD_PROGRAM_ID, SWITCHBOARD_ON_DEMAND_ID, ARENA_ID, TOKEN_PROGRAM_ID, SYSVAR_SLOT_HASHES_ID, WSOL_MINT, MPL_BUBBLEGUM_V2_ID, MPL_NOOP_ID, MPL_ACCOUNT_COMPRESSION_ID, MPL_CORE_ID, SYSTEM_PROGRAM_ID } from './ids';
 import { packSeed } from './flows/packFlow';
@@ -166,6 +166,16 @@ describe('account layouts (sizes = 8 + INIT_SPACE)', () => {
     const t = decodeTokenStake(new BorshWriter().bytes(accountDiscriminator('TokenStake')).pubkey(pk()).u8(1).u64(500_000_000n).u128(750_000_000n).u128(0n).i64(99n).u8(1).toBytes());
     expect(t.weight).toBe(750_000_000n); expect(t.tier).toBe(1);
   });
+  it('ChipGridCharge = 8 + 32+24+1 = 65; expiry drives the +5 %/droplet staking multiplier', () => {
+    const chip = pk();
+    const w = new BorshWriter().bytes(accountDiscriminator('ChipGridCharge')).pubkey(chip).i64(2_000n).i64(3_000n).i64(0n).u8(254);
+    const buf = w.toBytes(); expect(buf.length).toBe(65);
+    const gc = decodeChipGridCharge(buf); expect(gc.chip.equals(chip)).toBe(true); expect(gc.dropExpiries).toEqual([2_000n, 3_000n, 0n]);
+    expect(gridChargeMultBps(gc, 1_500n)).toBe(11_000);
+    expect(gridChargeMultBps(gc, 2_500n)).toBe(10_500);
+    expect(gridChargeMultBps(gc, 3_500n)).toBe(10_000);
+    expect(gridChargeMultBps(null, 1_500n)).toBe(10_000);
+  });
   it('rejects wrong discriminator', () => {
     expect(() => decodeChipState(new Uint8Array(69))).toThrow(/discriminator/);
   });
@@ -298,6 +308,16 @@ describe('instruction builders', () => {
     expect(ix2.keys[12].pubkey.equals(CHIP_CORE_ID)).toBe(true); // frozen FX: price_update None on SKR too
     expect(ix2.keys[13].pubkey.equals(CHIP_CORE_ID)).toBe(false);
     expect(new Uint8Array(ix2.data)[10]).toBe(3);
+  });
+  it('Floodgrid charge: stake carries the grid-charge PDA and the oracle sync encodes three expiries', () => {
+    const claim = Keypair.generate().publicKey;
+    const stake = stakeCompressedChipIx({ owner: buyer, claim });
+    expect(stake.keys).toHaveLength(11);
+    expect(stake.keys[8].pubkey.equals(gridChargePda(claim)[0]) && !stake.keys[8].isWritable).toBe(true);
+    const sync = syncGridChargeIx({ oracle, payer: buyer, chipKey: claim, dropExpiries: [11n, 22n, 0n] });
+    expect(sync.keys[4].pubkey.equals(gridChargePda(claim)[0]) && sync.keys[4].isWritable).toBe(true);
+    expect(hex(new Uint8Array(sync.data).slice(0, 8))).toBe(hex(ixDiscriminator('sync_grid_charge')));
+    const r = new BorshReader(new Uint8Array(sync.data), 8); expect([r.i64(), r.i64(), r.i64()]).toEqual([11n, 22n, 0n]);
   });
   it('pay_service: 12 accounts (#12 adds the burn shard after the service ledger); $CG path burns (cg_mint present, treasury ATA absent)', () => {
     const ref = new Uint8Array(32).fill(7);

@@ -6,7 +6,7 @@ import {
   PACKS, FUSION_RECIPES, BOOSTER, RARITY_PROFILES, LOCK_TIERS, DAILY_QUESTS, WEEKLY_QUESTS, PERMANENT_QUESTS, MATCHMAKING, SEASON, FEES, SERVICES, REFERRAL,
   packExpectedValueMult, probabilityAtLeast, effectiveOdds, bundlePriceCents, impliedApy, FX, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, usdCentsFromSolLamports, type PackId,
   SKIN_BY_ID, PROFILE_THEME_BY_ID, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, PASS_TRACK, passTierForXp, xpToNext, CHIP_XP,
-  EMISSION_GUARD,
+  EMISSION_GUARD, GRID as GRID_RULES, generateLevel, levelSeed, applyRotate, isSolved, gridStarsForMoves, gridXpForStars, gridBaseXp,
 } from '@guttercaps/economy';
 import { PYTH_PRICE_ACCOUNTS } from '@/chain/ids';
 import { COLLECTIONS } from '@/shared/lib/lore';
@@ -161,6 +161,81 @@ on('get', '/me/referrals', () => ({
   welcome: { amountCgMicro: String(REFERRAL.refereeWelcomeCgMicro), inRoot: true },
   asOf: iso(),
 }));
+
+// ------------------------------------------------------------- Floodgrid (demo backend)
+// Same deterministic engine, verified locally — mirrors backend/src/grid.ts rules (docs/13).
+interface MockGridRoute { nextLevel: number; chargeDrops: number; chargeProgress: number; claims: Map<number, { best_stars: number; xp_accounted: number }> }
+const mockGridRoutes = new Map<string, MockGridRoute>();
+const mockGridAttempts = new Map<string, { asset: string; level: number; seed: number; hintsUsed: number; mode: string }>();
+let mockGhostBeatenDay = -1;
+let mockDeepUsed = 0;
+let mockDeepCredits = 0;
+let mockGridHints: number = GRID_RULES.hintStartStock;
+let mockGridValves = 0;
+const mockRoute = (asset: string): MockGridRoute => {
+  let r = mockGridRoutes.get(asset);
+  if (!r) { r = { nextLevel: 1, chargeDrops: 0, chargeProgress: 0, claims: new Map() }; mockGridRoutes.set(asset, r); }
+  return r;
+};
+on('get', '/grid/me', () => ({
+  wallet: { hints: mockGridHints, valves: mockGridValves, total_best_stars: [...mockGridRoutes.values()].reduce((s, r) => s + [...r.claims.values()].reduce((a, c) => a + c.best_stars, 0), 0) },
+  pendingGranted: 0,
+  chips: chips.map((c) => { const r = mockRoute(c.asset); return { asset: c.asset, collection: c.collection, rarity: c.rarity, chipLevel: c.level, route: { nextLevel: r.nextLevel, chargeDrops: r.chargeDrops, chargeProgress: r.chargeProgress }, claims: [...r.claims.entries()].map(([level, v]) => ({ level, best_stars: v.best_stars, xp_accounted: v.xp_accounted, xp_pending: 0, max_xp: gridBaseXp(level) })) }; }),
+  gifts: [], floodWeek: 0, flood: [],
+  contracts: [0, 1, 2].map((slot) => { const day = Math.floor(Date.now() / 86_400_000); const depth = 1 + ((day + slot) % 5); const configLevel = depth * 15; return { slot, district: (day * 3 + slot) % 8, depth, configLevel, size: generateLevel(configLevel, 1).size, done: null }; }),
+  deep: { week: Math.floor((Date.now() / 1000 - 4 * 86_400) / (7 * 86_400)), level: 75, attemptsUsed: mockDeepUsed, paidCredits: mockDeepCredits, attemptsLeft: Math.max(0, 1 + mockDeepCredits - mockDeepUsed), paidAttemptsLeft: Math.max(0, 3 - mockDeepCredits), attemptPriceCgMicro: 30_000_000, myBest: null, leaderboard: [] },
+  ghost: { day: Math.floor(Date.now() / 86_400_000), level: 33, targetMoves: generateLevel(33, 7).parMoves, beaten: mockGhostBeatenDay === Math.floor(Date.now() / 86_400_000) },
+  lore: { unlockedDepths: [1], pages: 12 },
+  fieldThemes: entitlements.filter((e) => e.kind === 11).map((e) => String((e.payload as { theme?: string }).theme ?? '')).filter(Boolean),
+}));
+on('get', '/grid/chip/{asset}', (o) => {
+  const asset = chips.find((c) => o.path?.asset === c.asset)?.asset ?? String(o.path?.asset ?? '');
+  const r = mockRoute(asset);
+  return { asset, route: { nextLevel: r.nextLevel, chargeDrops: r.chargeDrops, chargeProgress: r.chargeProgress }, claims: [...r.claims.entries()].map(([level, v]) => ({ level, best_stars: v.best_stars, xp_accounted: v.xp_accounted, xp_pending: 0, max_xp: gridBaseXp(level) })), fails: [], emergency: [] };
+});
+on('post', '/grid/attempt', (o) => {
+  const b = (o.body ?? {}) as { asset: string; level: number; hintsUsed?: number; mode?: string; kind?: string; slot?: number };
+  const r = mockRoute(b.asset);
+  const day = Math.floor(Date.now() / 86_400_000);
+  let level = b.level; let seed = levelSeed(b.level); let mode = b.mode ?? 'charge'; let budgetMult: number = GRID_RULES.moveBudgetMult;
+  if (b.kind === 'ghost') { level = 33; seed = 7; mode = 'ghost'; }
+  else if (b.kind === 'deep') { if (mockDeepUsed >= 1 + mockDeepCredits) throw new ApiError(409, 'deep_attempts_exhausted', 'No Deep Flood attempts left this week'); mockDeepUsed += 1; level = 75; seed = 11; mode = 'deep'; budgetMult = 1.5; }
+  else if (b.kind === 'contract') { if (r.nextLevel <= 75) throw new ApiError(409, 'contract_locked', 'Contracts open after the Descent'); level = (1 + ((day + (b.slot ?? 0)) % 5)) * 15; seed = 13 + (b.slot ?? 0); mode = 'contract'; }
+  else if (b.mode !== 'training' && b.level > r.nextLevel) throw new ApiError(409, 'route_locked', 'Chip route is at a lower sector; sectors cannot be skipped (open it in training)');
+  const lv = generateLevel(level, seed);
+  const id = `mock-grid-${Math.floor(rnd() * 1e9)}`;
+  mockGridAttempts.set(id, { asset: b.asset, level, seed, hintsUsed: b.hintsUsed ?? 0, mode });
+  return { attemptId: id, level, par: lv.parMoves, moveBudget: Math.ceil(lv.parMoves * budgetMult), route: { nextLevel: r.nextLevel, chargeDrops: r.chargeDrops, chargeProgress: r.chargeProgress }, board: { size: lv.size, bus: lv.bus, receivers: lv.receivers, tiles: lv.tiles.map((tile) => ({ base: tile.base, rot: tile.rot, fixed: tile.fixed, role: tile.role })) } };
+});
+on('post', '/grid/deep/buy', () => { mockDeepCredits = Math.min(3, mockDeepCredits + 1); return { week: 0, credits: mockDeepCredits }; });
+on('post', '/grid/onboard', () => ({ ok: true }));
+on('post', '/grid/complete', (o) => {
+  const b = (o.body ?? {}) as { attemptId: string; turns: [number, number][]; useValve?: boolean };
+  const a = mockGridAttempts.get(b.attemptId);
+  if (!a) throw new ApiError(404, 'attempt_not_found', 'Unknown grid attempt');
+  mockGridAttempts.delete(b.attemptId);
+  const lv = generateLevel(a.level, a.seed);
+  for (const [i, d] of b.turns) applyRotate(lv, i, d);
+  const r = mockRoute(a.asset);
+  if (a.mode === 'ghost') { const beaten = isSolved(lv) && b.turns.length <= lv.parMoves; let hintGranted = 0; const day = Math.floor(Date.now() / 86_400_000); if (beaten && mockGhostBeatenDay !== day) { mockGhostBeatenDay = day; hintGranted = mockGridHints < 10 ? 1 : 0; mockGridHints += hintGranted; } return { ok: isSolved(lv), training: false, kind: 'ghost', beaten, stars: 0, xpGranted: 0, xpPending: 0, hintGranted }; }
+  if (a.mode === 'contract' || a.mode === 'deep') { const solved = isSolved(lv); const stars: number = solved ? gridStarsForMoves(b.turns.length, lv.parMoves) : 0; if (a.mode === 'contract' && solved && stars >= 2) { r.chargeProgress += 1; while (r.chargeProgress >= 5 && r.chargeDrops < 3) { r.chargeDrops += 1; r.chargeProgress -= 5; } } return { ok: solved && stars > 0, training: false, kind: a.mode, stars, xpGranted: 0, xpPending: 0, dropletGained: false, gifts: [] }; }
+  if (a.mode === 'training') return { ok: isSolved(lv), training: true, stars: 0, xpGranted: 0, xpPending: 0 };
+  if (!isSolved(lv)) return { ok: false, xpLoss: b.useValve ? 0 : GRID_RULES.failXp, emergencyGranted: false };
+  let stars: number = gridStarsForMoves(b.turns.length, lv.parMoves);
+  if (a.hintsUsed > 0) { mockGridHints = Math.max(0, mockGridHints - a.hintsUsed); stars = Math.min(stars, 2); }
+  if (stars <= 0) return { ok: false, xpLoss: b.useValve ? 0 : GRID_RULES.failXp, emergencyGranted: false };
+  const prev = r.claims.get(a.level);
+  const due = Math.max(0, gridXpForStars(a.level, stars) - (prev?.xp_accounted ?? 0));
+  r.claims.set(a.level, { best_stars: Math.max(prev?.best_stars ?? 0, stars), xp_accounted: (prev?.xp_accounted ?? 0) + due });
+  if (!prev && a.level === r.nextLevel) r.nextLevel = Math.min(GRID_RULES.totalLevels + 1, r.nextLevel + 1);
+  return { ok: true, training: false, stars, xpGranted: due, xpPending: 0, dropletGained: false, gifts: [] };
+});
+on('post', '/grid/fail', (o) => {
+  const b = (o.body ?? {}) as { attemptId: string; useValve?: boolean };
+  if (!mockGridAttempts.delete(b.attemptId)) throw new ApiError(404, 'attempt_not_found', 'Unknown grid attempt');
+  return { ok: false, xpLoss: b.useValve ? 0 : GRID_RULES.failXp, emergencyGranted: false };
+});
+
 on('get', '/me/activity', () => ({
   items: [
     { kind: 'pack_opened', signature: fakeKey(), blockTime: iso(-3_600_000), payload: { sku: 1, best: 4 } },
@@ -247,9 +322,11 @@ on('post', '/me/pass/claim', (o) => {
     kind = 9; payload = { collection: r.collection };
   }
   mockPassClaimed.push(b.tier);
+  const hintsGranted = b.tier % GRID_RULES.passHintEveryTiers === 0 && mockGridHints < GRID_RULES.hintStockCap ? 1 : 0;
+  if (hintsGranted) mockGridHints += hintsGranted;
   const e = { id: `e${entitlements.length + 1}`, kind, payload, signature: `pass:3:${b.tier}`, currency: 'CG', amount: '0', grantedAt: iso(), expiresAt: null };
   entitlements.push(e);
-  return e;
+  return hintsGranted ? { ...e, hintsGranted } : e;
 });
 
 on('get', '/packs', () => ({
@@ -481,7 +558,7 @@ on('get', '/quests', () => {
     const done = st.value >= q.target;
     return {
       id: q.id, cadence: q.period, title: q.title, description: '', metric: q.metric, target: q.target, value: st.value, rewardCgMicro: String(q.rewardCgMicro),
-      rewardChip: q.rewardChip ?? null, rewardBooster: q.rewardItem === 'booster' ? 1 : 0, completedAt: done ? iso(-3_600_000) : null, claimable: done && !st.claimed,
+      rewardChip: q.rewardChip ?? null, rewardBooster: q.rewardItem === 'booster' || q.rewardItems?.includes('booster') ? 1 : 0, rewardHint: q.rewardItem === 'hint' || q.rewardItems?.includes('hint') ? 1 : 0, completedAt: done ? iso(-3_600_000) : null, claimable: done && !st.claimed,
       ineligibleReason: null, resetsAt: iso(q.period === 'daily' ? 6 * 3_600_000 : q.period === 'weekly' ? 3 * 86_400_000 : 365 * 86_400_000),
     };
   });

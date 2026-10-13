@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useMe, useActivity, useMyServices, useReferrals, useGrid, usePass, useClaimPassTier, useMyChips } from '@/api/hooks';
 import { ChipArt } from '@/shared/ui/ChipArt';
+import { GenBadge } from '@/shared/ui/GenBadge';
 import { chipArtUrl, rarityColor } from '@/shared/lib/rarity';
 import { ANTI_FARM, SERVICE_BY_KIND } from '@guttercaps/economy';
 import { HandleModal } from './HandleModal';
@@ -16,7 +17,7 @@ import { CleanZone, KV, Modal, Stat, Skeleton, Empty, Pill, Progress } from '@/s
 import { localizedCollection, useCollections } from '@/shared/lib/lore';
 import { collectionColor } from '@/shared/lib/rarity';
 import { KIND, PROFILE_THEMES, loadBanner, loadTheme, ownedBanners, ownedThemes, owns, saveBanner, saveTheme, themeById } from '@/shared/lib/cosmetics';
-import { PASS_TRACK, type PassReward } from '@guttercaps/economy';
+import { GRID, PASS_TRACK, type PassReward } from '@guttercaps/economy';
 import { CapPicker } from '@/shared/ui/CapPicker';
 import { SprayCapToggle } from '@/shared/ui/buttons';
 import { HumanCheck } from '@/shared/ui/HumanCheck';
@@ -79,6 +80,7 @@ export default function Profile() {
           <div>
             <h1 className="page-title">{me.data?.handle ? `@${me.data.handle}` : shortKey(addr, 6)}</h1>
             <p className="page-sub">{wallet?.adapter?.name} · <a href={EXPLORER.account(addr)} target="_blank" rel="noreferrer" className="row" style={{ gap: 3, display: 'inline-flex' }}>{shortKey(addr, 8)} <ExternalIcon size={11} /></a> · {t('profile.playingSince', { date: me.data?.firstSeen ? fmtLocale.date(me.data.firstSeen, locale) : '—' })}</p>
+            {(ent ?? []).filter((e) => e.kind === 10).map((e) => <span key={e.id} className="pill" style={{ marginLeft: 6 }}>{String((e.payload as { giftKind?: unknown })?.giftKind ?? '') === 'seal' ? <GenBadge name="item-heart" size={15} /> : <GenBadge name="item-flood" size={15} />} {String((e.payload as { cosmetic?: unknown })?.cosmetic ?? '')}</span>)}
           </div>
         </div>
         <div className="row-wrap" style={{ gap: 8 }}>
@@ -87,7 +89,7 @@ export default function Profile() {
         </div>
       </div>
       {handleOpen && <HandleModal onClose={() => setHandleOpen(false)} />}
-      {hasBanner && banner !== null && completed.includes(banner) && COLLECTIONS[banner] && (
+      {hasBanner && banner !== null && COLLECTIONS[banner] && (
         <div className="banner-anim" aria-hidden>
           <img className="district-banner" style={{ marginBottom: 0 }} src={`/districts/${COLLECTIONS[banner].num}.jpg`} alt="" loading="lazy" decoding="async" />
         </div>
@@ -122,7 +124,7 @@ export default function Profile() {
           const def = e.kind !== undefined ? SERVICE_BY_KIND[e.kind] : undefined;
           return (
             <div key={e.id} className="row between small">
-              <span>{def ? t(`services.names.${def.id}`) : `#${e.kind}`}</span>
+              <span>{e.kind === 10 ? <><GenBadge name="item-flood" size={15} /> {String((e.payload as { cosmetic?: unknown })?.cosmetic ?? 'Floodgrid')}</> : def ? t(`services.names.${def.id}`) : `#${e.kind}`}</span>
               <span className="muted">{e.expiresAt ? t('services.expires', { date: fmtLocale.date(e.expiresAt, locale) }) : t('services.owned')}</span>
             </div>
           );
@@ -250,7 +252,7 @@ function PassCard() {
   if (!d) return null;
   const next = PASS_TRACK.find((x) => x.xp > (d.xp ?? 0));
   const doClaim = (tier: number, asset?: string) => claim.mutate({ tier, asset }, {
-    onSuccess: () => { setSkinTier(null); toast({ kind: 'success', title: { key: 'pass.claimed' }, body: { key: 'pass.tier', params: { n: tier } } }); },
+    onSuccess: (data) => { setSkinTier(null); toast({ kind: 'success', title: { key: 'pass.claimed' }, body: data?.hintsGranted ? { key: 'pass.hintBonus' } : { key: 'pass.tier', params: { n: tier } } }); },
     onError: (e) => toast({ kind: 'error', title: { key: 'pass.claim' }, error: e }),
   });
   return (
@@ -268,7 +270,7 @@ function PassCard() {
           const can = !!d.hasPass && unlocked && !claimed;
           return (
             <div key={tr.tier} className="row between small" style={{ border: '1px solid var(--gc-line)', borderRadius: 8, padding: '4px 8px', opacity: unlocked ? 1 : 0.55 }}>
-              <span className="row" style={{ gap: 6 }}><span style={{ display: 'inline-flex', color: 'var(--gc-muted)' }} aria-hidden>{rewardGlyph(tr.reward)}</span><span className="mono muted">{tr.tier}</span> {rewardLabel(t, tr.reward)} <span className="tiny muted mono">{t('pass.xp', { n: tr.xp })}</span></span>
+              <span className="row" style={{ gap: 6 }}><span style={{ display: 'inline-flex', color: 'var(--gc-muted)' }} aria-hidden>{rewardGlyph(tr.reward)}</span><span className="mono muted">{tr.tier}</span> {rewardLabel(t, tr.reward)} <span className="tiny muted mono">{t('pass.xp', { n: tr.xp })}</span>{tr.tier % GRID.passHintEveryTiers === 0 && <span className="tiny" title={t('pass.hintBonus')}><GenBadge name="item-mark" size={14} /> +1</span>}</span>
               {claimed ? <span className="tiny muted">{t('pass.claimed')}</span>
                 : can ? <button className="btn btn-sm" disabled={claim.isPending} onClick={() => (tr.reward.kind === 'skin' ? setSkinTier(tr.tier) : doClaim(tr.tier))}>{t('pass.claim')}</button>
                 : null}

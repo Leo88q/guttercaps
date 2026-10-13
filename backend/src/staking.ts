@@ -119,7 +119,7 @@ export function me(db: Db, wallet: string) {
     return { tier, amount: r.amount, weight: r.weight, pending: pending.toString(), unlockAt: iso(r.unlock_at) ?? new Date(0).toISOString(), earlyExitPenalty: penalty.toString() };
   });
 
-  const chipStakes = db.all<ChipRow & { s_weight: string; since: number | null }>(`SELECT c.*, s.weight s_weight, s.since FROM stakes s JOIN chips c ON c.asset = s.key WHERE s.owner = ? AND s.kind = 1 AND s.active = 1 ORDER BY c.rarity DESC, c.level DESC`, wallet).map((r) => {
+  const chipStakes = db.all<ChipRow & { s_weight: string; since: number | null }>(`SELECT c.*, s.weight s_weight, s.since FROM stakes s LEFT JOIN compressed_claims cc ON cc.claim = s.key AND cc.status = 'registered' AND cc.asset IS NOT NULL JOIN chips c ON c.asset = COALESCE(cc.asset, s.key) WHERE s.owner = ? AND s.kind = 1 AND s.active = 1 ORDER BY c.rarity DESC, c.level DESC`, wallet).map((r) => {
     const pending = share(BigInt(r.s_weight), p.chipWeight, poolEmitted(db, EMISSION_SPLIT.chipStaking, accrualFrom(db, wallet, 1, r.since, t), t));
     total += pending;
     return { chip: chipToApi(r), weight: r.s_weight, pending: pending.toString(), since: iso(r.since) ?? new Date(0).toISOString() };

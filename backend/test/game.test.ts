@@ -159,6 +159,17 @@ describe('staking read-model', () => {
     expect(o.tokenPool.apyByTier[3]).toBeGreaterThan(o.tokenPool.apyByTier[0]);
   });
 
+  it('me: a compressed chip stake (key = claim PDA) resolves to its chip through compressed_claims', () => {
+    const owner = Keypair.generate().publicKey;
+    const [asset] = mint(db, owner.toBase58(), [{ rarity: 2, collection: 1 }]);
+    const claim = kp();
+    db.run(`INSERT INTO compressed_settlements (buyer, nonce, last_signature, last_slot) VALUES (?, '7', 'sig', 1)`, owner.toBase58());
+    db.run(`INSERT INTO compressed_claims (buyer, nonce, claim_nonce, pack_no, status, asset, claim, slot) VALUES (?, '7', '7', 0, 'registered', ?, ?, 1)`, owner.toBase58(), asset, claim);
+    db.run(`INSERT INTO stakes (key, owner, kind, amount, weight, unlock_at, active, since, slot) VALUES (?, ?, 1, '0', '5000000', 0, 1, ?, 1)`, claim, owner.toBase58(), Math.floor(Date.now() / 1000));
+    const m = staking.me(db, owner.toBase58());
+    expect(m.chipStakes.map((x) => x.chip.asset)).toContain(asset);
+  });
+
   it('overview after DayClosed uses the chain numbers', () => {
     ingestTx(tx([{ program: 'staking', name: 'DayClosed', data: { dayIndex: 12, year: 0, scheduleCap: '271232876712', guarded: '150000000000', burn7dAvg: '40000000000', sliceBudget: ['0', '0', '1', '2', '3'] } }]), db);
     const o = staking.overview(db);
@@ -670,8 +681,8 @@ describe('quests', () => {
     expect(early + n).toBeGreaterThanOrEqual(6);
     const rows = db.all<{ quest_id: string; amount: string }>(`SELECT quest_id, amount FROM quest_completions WHERE wallet = ?`, alice);
     const daily = rows.filter((r) => r.quest_id.startsWith('d_')).reduce((s, r) => s + BigInt(r.amount), 0n);
-    expect(daily).toBe(20_000_000n); // 3 + 6 + 6 + 5 — under the 25 $CG daily cap
-    expect(rows.find((r) => r.quest_id === 'w_trade')!.amount).toBe('5000000'); // capped: 25 − 20 already paid today
+    expect(daily).toBe(17_000_000n); // 3 + 5 + 5 + 4 — Floodgrid rebalance (docs/13 A): grid daily added inside the same 25 $CG cap
+    expect(rows.find((r) => r.quest_id === 'w_trade')!.amount).toBe('8000000'); // capped: 25 − 17 already paid today
     expect(rows.find((r) => r.quest_id === 'p_first_fusion')!.amount).toBe('10000000'); // permanent milestones bypass the daily cap
     expect(quests.settleWallet(db, alice, T + 1400)).toBe(0); // idempotent
     // streak: all 4 $CG dailies done today → 1 day
@@ -720,7 +731,7 @@ describe('quests', () => {
     expect(quests.settleWallet(db, alice, T + 20)).toBe(0);
     finalizeAll(db);
     expect(quests.settleWallet(db, alice, T + 30)).toBe(2); // d_fuse1 + p_first_fusion
-    expect(db.get<{ amount: string; day: number }>(`SELECT amount, day FROM quest_completions WHERE wallet = ? AND quest_id = 'd_fuse1'`, alice)).toEqual({ amount: '5000000', day });
+    expect(db.get<{ amount: string; day: number }>(`SELECT amount, day FROM quest_completions WHERE wallet = ? AND quest_id = 'd_fuse1'`, alice)).toEqual({ amount: '4000000', day });
   });
 });
 

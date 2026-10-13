@@ -5,6 +5,7 @@ import { useCollections } from '@/shared/lib/lore';
 import { RARITIES, chipName, collectionColor, rarityColor, rarityName, chipImageOf } from '@/shared/lib/rarity';
 import { chipIndexText, fmtAmount, fmtUsd, timeAgo } from '@/shared/lib/format';
 import { ChipArt } from '@/shared/ui/ChipArt';
+import { GenBadge } from '@/shared/ui/GenBadge';
 import { Empty, Pill, Skeleton } from '@/shared/ui/primitives';
 import { MARKET_FEE_BPS, ROYALTY_BPS } from '@/chain/ix/market';
 import { useGameConfig } from '@/chain/hooks';
@@ -46,6 +47,9 @@ export default function Market() {
       indexMin: intParam(params, 'minidx', 0xffff_ffff),
       indexMax: intParam(params, 'maxidx', 0xffff_ffff),
       sort: SORTS.some((s) => s.id === sort) ? (sort as ListingFilter['sort']) : 'price_asc',
+      gridDepthMin: intParam(params, 'gdepth', 5),
+      gridChargeMin: intParam(params, 'gcharge', 3),
+      gridHeart: params.get('gheart') === '1' ? '1' : undefined,
     };
   }, [params]);
   const listings = useListings(filter);
@@ -86,6 +90,9 @@ export default function Market() {
                 listings. */}
             <Pill active={filter.currency === 'SOL'} onClick={() => set('currency', filter.currency === 'SOL' ? undefined : 'SOL')}>SOL</Pill>
             <Pill active={!!filter.missingForMySet} onClick={() => set('missing', filter.missingForMySet ? undefined : '1')} tone="ok">{t('ui.completesSet')}</Pill>
+            <Pill active={filter.gridHeart === '1'} onClick={() => set('gheart', filter.gridHeart === '1' ? undefined : '1')} tone="ok"><GenBadge name="item-heart" size={16} /> 75/75</Pill>
+            {[1, 2, 3].map((n) => <Pill key={n} active={filter.gridChargeMin === n} onClick={() => set('gcharge', filter.gridChargeMin === n ? undefined : String(n))}><GenBadge name="item-drop" size={16} />{n}+</Pill>)}
+            {[3, 5].map((n) => <Pill key={n} active={filter.gridDepthMin === n} onClick={() => set('gdepth', filter.gridDepthMin === n ? undefined : String(n))}>{t('grid.depth', { n })}+</Pill>)}
           </div>
         </div>
       </div>
@@ -102,7 +109,7 @@ export default function Market() {
               <Link key={l.asset} to={`/market/${l.asset}`} className="chip-card card card-hover" style={{ textDecoration: 'none' }}>
                 <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c, 512)} skin={c.skin} crimp={rarityColor(c.rarity!)} founder={!!c.flags?.founder} />
                 <div className="chip-name">{chipName(c.collection!, c.rarity!)}</div>
-                <div className="chip-meta"><span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span>{chipIndexText(c.index) && <> · {chipIndexText(c.index)}</>} · {t('screens.levelBadge', { n: c.level ?? 0 })}</div>
+                <div className="chip-meta"><span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span>{chipIndexText(c.index) && <> · {chipIndexText(c.index)}</>} · {t('screens.levelBadge', { n: c.level ?? 0 })}{(l as { gridRoute?: { nextLevel: number; chargeDrops: number } }).gridRoute && (l as { gridRoute: { nextLevel: number; chargeDrops: number } }).gridRoute.nextLevel > 1 && <> · <GenBadge name="item-flood" size={14} /> {(l as { gridRoute: { nextLevel: number; chargeDrops: number } }).gridRoute.nextLevel > 75 ? ' 75/75' : ` ${Math.min(75, (l as { gridRoute: { nextLevel: number; chargeDrops: number } }).gridRoute.nextLevel)}`} <GenBadge name="item-drop" size={14} />{(l as { gridRoute: { nextLevel: number; chargeDrops: number } }).gridRoute.chargeDrops}</>}</div>
                 <div className="cg-clean-zone" style={{ padding: '6px 8px' }}>
                   <div className="row between small"><b className="cg-accent">{fmtAmount(l.price!, l.currency!)}</b><span className="muted">{fmtUsd(l.priceUsd)}</span></div>
                   {vsFloor !== null && <div className="tiny" style={{ color: vsFloor <= 0 ? 'var(--cg-acid-green)' : 'var(--gc-muted)' }}>{t('screens.vsFloor', { pct: `${vsFloor > 0 ? '+' : ''}${vsFloor}` })}</div>}

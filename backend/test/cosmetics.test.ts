@@ -172,6 +172,17 @@ describe('season pass', () => {
     addPassXp(db, 1, alice, 10_000);
     expect(() => claimPassTier(db, alice, 3, {})).toThrowError(/district set first/);
   });
+  it('every fifth claimed pass tier grants one capped Floodgrid Terminal mark', () => {
+    entitle(alice, 6, {});
+    addPassXp(db, 1, alice, 10_000);
+    const first = claimPassTier(db, alice, 10, {});
+    expect(first.hintsGranted).toBe(1);
+    expect(db.get<{ hints: number }>(`SELECT hints FROM grid_wallet_state WHERE wallet = ?`, alice)?.hints).toBe(6); // 5 starter + 1
+    db.run(`UPDATE grid_wallet_state SET hints = 10 WHERE wallet = ?`, alice);
+    const capped = claimPassTier(db, alice, 20, { asset: (() => { const a = kp(); chip(a, alice, 0, 0); return a; })() });
+    expect(capped.hintsGranted).toBeUndefined();
+    expect(db.get<{ hints: number }>(`SELECT hints FROM grid_wallet_state WHERE wallet = ?`, alice)?.hints).toBe(10);
+  });
   it('passState reports xp, tier and claimed tiers', () => {
     entitle(alice, 6, {});
     addPassXp(db, 1, alice, 100);

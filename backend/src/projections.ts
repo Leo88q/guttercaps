@@ -9,6 +9,7 @@
 import { PublicKey } from '@solana/web3.js';
 import { FX, QUEST_CHIP_TEMPLATES, listingFeeCgMicro } from '@guttercaps/economy';
 import { grantPackPerks } from './pack-perks.ts';
+import { mergeFusionRoutes } from './grid.ts';
 import type { Db } from './db.ts';
 import { rootCurrency, type EventData, type RawEvent } from './events.ts';
 import { insertIgnore, upsert } from './sql.ts';
@@ -430,6 +431,14 @@ const HANDLERS: Record<string, Handler> = {
     );
     // The mint number (`{symbol} #{game_index}`, market "Low #" / `indexMin`/`indexMax`). A compressed chip's
     // registration event carries it, so this row never enters the crank's back-fill queue.
+    // Floodgrid (docs/13): a claim-fusion result inherits the union of its materials' routes at registration.
+    if (changed > 0 && !wasRegistered && key) {
+      const fusion = db.get<{ materials: string }>(`SELECT materials FROM fusions WHERE result = ?`, key);
+      if (fusion) {
+        const materialAssets = (JSON.parse(fusion.materials) as string[]).map((claim) => db.get<{ asset: string | null }>(`SELECT asset FROM compressed_claims WHERE claim = ?`, claim)?.asset).filter((a): a is string => !!a);
+        if (materialAssets.length > 0) mergeFusionRoutes(db, str(d.asset), materialAssets, c.blockTime ?? 0);
+      }
+    }
     const gameIndex = numStr(d.gameIndex);
     if (gameIndex !== null) db.run(`UPDATE chips SET game_index = ? WHERE asset = ?`, gameIndex, str(d.asset));
   },
@@ -520,6 +529,7 @@ const HANDLERS: Record<string, Handler> = {
         upsert('chips', COLS.chips, ['asset'], ['owner = excluded.owner', 'updated_slot = excluded.updated_slot']),
         result, owner, collection, rarity, 1, 0, 0, 'fusion', c.signature, c.blockTime, c.slot,
       );
+      mergeFusionRoutes(db, result, materials, c.blockTime ?? 0); // Floodgrid: route/charge inheritance (docs/13 §0.1)
     }
   },
   /**
@@ -810,6 +820,11 @@ const HANDLERS: Record<string, Handler> = {
     const ts = Number(d.lastPlayed);
     if (!Number.isFinite(ts) || ts <= 0) return;
     db.run(`UPDATE chips SET last_played = CASE WHEN last_played IS NULL OR last_played < ? THEN ? ELSE last_played END, play_pulsed_at = ? WHERE asset = ?`, ts, ts, ts, str(d.key));
+  },
+  GridChargeSynced(db, e, c) {
+    const d = e.data;
+    const expiries = Array.isArray(d.dropExpiries) ? d.dropExpiries.map(Number).filter(Number.isFinite) : [];
+    db.run(`UPDATE grid_charge_sync SET expiries = ?, synced_at = COALESCE(?, synced_at) WHERE stake_key = ?`, JSON.stringify(expiries), c.blockTime, str(d.key));
   },
   RootPublished(db, e, c) {
     const d = e.data;

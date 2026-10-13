@@ -407,6 +407,10 @@
     {
       "name": "FuturePlay",
       "key": "staking_FuturePlay"
+    },
+    {
+      "name": "BadGridCharge",
+      "key": "staking_BadGridCharge"
     }
   ],
   "arena": [

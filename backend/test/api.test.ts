@@ -79,7 +79,7 @@ describe('public API', () => {
   it('services catalogue quotes every currency', async () => {
     const c = new Client(base);
     const { json } = await c.get('/v1/services');
-    expect(json.services).toHaveLength(10);
+    expect(json.services).toHaveLength(12);
     const handle = json.services.find((s: { kind: number }) => s.kind === 0);
     expect(handle.quotes.CG).toBe('199000000');
     expect(handle.quotes.USDC).toBe('1990000');
