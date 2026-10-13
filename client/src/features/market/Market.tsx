@@ -5,7 +5,7 @@ import { useCollections } from '@/shared/lib/lore';
 import { RARITIES, chipName, collectionColor, rarityColor, rarityName, chipImageOf } from '@/shared/lib/rarity';
 import { chipIndexText, fmtAmount, fmtUsd, timeAgo } from '@/shared/lib/format';
 import { ChipArt } from '@/shared/ui/ChipArt';
-import { DropIcon, FloodIcon, PrestigeIcon } from '@/shared/ui/GridIcons';
+import { GenBadge } from '@/shared/ui/GenBadge';
 import { Empty, Pill, Skeleton } from '@/shared/ui/primitives';
 import { MARKET_FEE_BPS, ROYALTY_BPS } from '@/chain/ix/market';
 import { useGameConfig } from '@/chain/hooks';
@@ -90,8 +90,8 @@ export default function Market() {
                 listings. */}
             <Pill active={filter.currency === 'SOL'} onClick={() => set('currency', filter.currency === 'SOL' ? undefined : 'SOL')}>SOL</Pill>
             <Pill active={!!filter.missingForMySet} onClick={() => set('missing', filter.missingForMySet ? undefined : '1')} tone="ok">{t('ui.completesSet')}</Pill>
-            <Pill active={filter.gridHeart === '1'} onClick={() => set('gheart', filter.gridHeart === '1' ? undefined : '1')} tone="ok"><span style={{ color: '#FFD34D', display: 'inline-flex', verticalAlign: -2, marginRight: 4 }}><PrestigeIcon size={14} /></span>75/75</Pill>
-            {[1, 2, 3].map((n) => <Pill key={n} active={filter.gridChargeMin === n} onClick={() => set('gcharge', filter.gridChargeMin === n ? undefined : String(n))}><span style={{ color: '#16E5D9', display: 'inline-flex', verticalAlign: -2 }}><DropIcon size={13} /></span>{n}+"</Pill>)}
+            <Pill active={filter.gridHeart === '1'} onClick={() => set('gheart', filter.gridHeart === '1' ? undefined : '1')} tone="ok"><GenBadge name="item-heart" size={16} /> 75/75</Pill>
+            {[1, 2, 3].map((n) => <Pill key={n} active={filter.gridChargeMin === n} onClick={() => set('gcharge', filter.gridChargeMin === n ? undefined : String(n))}><GenBadge name="item-drop" size={16} />{n}+</Pill>)}
             {[3, 5].map((n) => <Pill key={n} active={filter.gridDepthMin === n} onClick={() => set('gdepth', filter.gridDepthMin === n ? undefined : String(n))}>{t('grid.depth', { n })}+</Pill>)}
           </div>
         </div>
@@ -109,7 +109,7 @@ export default function Market() {
               <Link key={l.asset} to={`/market/${l.asset}`} className="chip-card card card-hover" style={{ textDecoration: 'none' }}>
                 <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c, 512)} skin={c.skin} crimp={rarityColor(c.rarity!)} founder={!!c.flags?.founder} />
                 <div className="chip-name">{chipName(c.collection!, c.rarity!)}</div>
-                <div className="chip-meta"><span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span>{chipIndexText(c.index) && <> · {chipIndexText(c.index)}</>} · {t('screens.levelBadge', { n: c.level ?? 0 })}{(l as { gridRoute?: { nextLevel: number; chargeDrops: number } }).gridRoute && (l as { gridRoute: { nextLevel: number; chargeDrops: number } }).gridRoute.nextLevel > 1 && <> · <span style={{ color: '#16E5D9', display: 'inline-flex', verticalAlign: -2 }}><FloodIcon size={12} /></span> {(l as { gridRoute: { nextLevel: number; chargeDrops: number } }).gridRoute.nextLevel > 75 ? ' 75/75' : ` ${Math.min(75, (l as { gridRoute: { nextLevel: number; chargeDrops: number } }).gridRoute.nextLevel)}`} <span style={{ color: '#16E5D9', display: 'inline-flex', verticalAlign: -2 }}><DropIcon size={12} /></span>{(l as { gridRoute: { nextLevel: number; chargeDrops: number } }).gridRoute.chargeDrops}</>}</div>
+                <div className="chip-meta"><span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span>{chipIndexText(c.index) && <> · {chipIndexText(c.index)}</>} · {t('screens.levelBadge', { n: c.level ?? 0 })}{(l as { gridRoute?: { nextLevel: number; chargeDrops: number } }).gridRoute && (l as { gridRoute: { nextLevel: number; chargeDrops: number } }).gridRoute.nextLevel > 1 && <> · <GenBadge name="item-flood" size={14} /> {(l as { gridRoute: { nextLevel: number; chargeDrops: number } }).gridRoute.nextLevel > 75 ? ' 75/75' : ` ${Math.min(75, (l as { gridRoute: { nextLevel: number; chargeDrops: number } }).gridRoute.nextLevel)}`} <GenBadge name="item-drop" size={14} />{(l as { gridRoute: { nextLevel: number; chargeDrops: number } }).gridRoute.chargeDrops}</>}</div>
                 <div className="cg-clean-zone" style={{ padding: '6px 8px' }}>
                   <div className="row between small"><b className="cg-accent">{fmtAmount(l.price!, l.currency!)}</b><span className="muted">{fmtUsd(l.priceUsd)}</span></div>
                   {vsFloor !== null && <div className="tiny" style={{ color: vsFloor <= 0 ? 'var(--cg-acid-green)' : 'var(--gc-muted)' }}>{t('screens.vsFloor', { pct: `${vsFloor > 0 ? '+' : ''}${vsFloor}` })}</div>}

@@ -16,7 +16,7 @@ import { stakeCgIxs, unstakeCgIx, stakeCompressedChipV2Ix, unstakeCompressedChip
 import { dasClient } from '@/features/market/payment';
 import { createAtaIdempotentIx } from '@/chain/ix/spl';
 import { CleanZone, KV, Modal, Pill, Stat, Skeleton, Empty } from '@/shared/ui/primitives';
-import { DropIcon } from '@/shared/ui/GridIcons';
+import { GenBadge } from '@/shared/ui/GenBadge';
 import { CleanConfirmButton } from '@/shared/ui/buttons';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { fmtCg, fmtUnits, fmtDecimal, fmtPct, fmtProb, inputUnits, parseUnits, countdown, secondsToHuman } from '@/shared/lib/format';
@@ -207,7 +207,7 @@ export default function Staking() {
                     <span className="stake-row-art"><ChipArt collection={c.collection!} rarity={c.rarity!} imageUrl={chipImageOf(c)} skin={(c as { skin?: string | null }).skin} founder={!!(c as { flags?: { founder?: boolean } }).flags?.founder} /></span>
                     <div className="stake-row-copy">
                       <div className="small">{chipName(c.collection!, c.rarity!)} <span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span>{(c as { idle?: boolean }).idle ? <span className="tiny stake-idle"> · <img src="/art/idle-stake.png" alt="" width={18} height={18} style={{ verticalAlign: 'middle' }} /> {t('ui.idleStake')}</span> : null}</div>
-                      <div className="tiny muted mono">{t('staking.weight')} {c.stakeWeight} · {t('ui.pending')} {api ? fmtCg(api.pending, 3) : '…'}{(gridRoutes.get(c.asset ?? '')?.chargeDrops ?? 0) > 0 && <> · <span style={{ color: '#16E5D9', display: 'inline-flex', verticalAlign: -2 }}><DropIcon size={12} /></span> {gridRoutes.get(c.asset ?? '')!.chargeDrops} (+{(gridRoutes.get(c.asset ?? '')!.chargeDrops * GRID.chargeStakeBonusBpsPerDrop) / 100}%)</>}</div>
+                      <div className="tiny muted mono">{t('staking.weight')} {c.stakeWeight} · {t('ui.pending')} {api ? fmtCg(api.pending, 3) : '…'}{(gridRoutes.get(c.asset ?? '')?.chargeDrops ?? 0) > 0 && <> · <GenBadge name="item-drop" size={14} /> {gridRoutes.get(c.asset ?? '')!.chargeDrops} (+{(gridRoutes.get(c.asset ?? '')!.chargeDrops * GRID.chargeStakeBonusBpsPerDrop) / 100}%)</>}</div>
                     </div>
                   </div>
                   <div className="stake-row-actions">
@@ -246,7 +246,7 @@ export default function Staking() {
           {stakeable.map((c: Chip) => (
             <div key={c.asset} className="chip-card" onClick={async () => { setPickChip(false); await run('staking.stake', () => stakeChip(c)); }}>
               <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c)} skin={(c as { skin?: string | null }).skin} founder={!!c.flags?.founder} />
-              <div className="chip-meta"><span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span> · {t('staking.weight')} {c.stakeWeight}{(gridRoutes.get(c.asset ?? '')?.chargeDrops ?? 0) > 0 && <> · <span style={{ color: '#16E5D9', display: 'inline-flex', verticalAlign: -2 }}><DropIcon size={12} /></span> {gridRoutes.get(c.asset ?? '')!.chargeDrops}</>}</div>
+              <div className="chip-meta"><span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span> · {t('staking.weight')} {c.stakeWeight}{(gridRoutes.get(c.asset ?? '')?.chargeDrops ?? 0) > 0 && <> · <GenBadge name="item-drop" size={14} /> {gridRoutes.get(c.asset ?? '')!.chargeDrops}</>}</div>
             </div>
           ))}
         </div>

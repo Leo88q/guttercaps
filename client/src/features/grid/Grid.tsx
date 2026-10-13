@@ -18,7 +18,8 @@ import { useT } from '@/shared/i18n';
 import { useUiStore } from '@/app/store/ui';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { fmtCg } from '@/shared/lib/format';
-import { BoltIcon, ContractIcon, DeepIcon, DropIcon, FloodIcon, GhostIcon, GoalIcon, LadderIcon, MarkIcon, PrestigeIcon, ValveIcon } from '@/shared/ui/GridIcons';
+import { BoltIcon, ContractIcon, DeepIcon, FloodIcon, GhostIcon, GoalIcon, LadderIcon, PrestigeIcon } from '@/shared/ui/GridIcons';
+import { GenBadge } from '@/shared/ui/GenBadge';
 import { Empty, Pill, Progress, Skeleton, Stat } from '@/shared/ui/primitives';
 
 const MATERIAL_HEX: Record<string, string> = { zinc: '#9aa7ad', chrome: '#d7e3ea', rust: '#c96f2e', cast: '#7a7e85', glass: '#7fe7dc' };
@@ -231,14 +232,14 @@ export default function Grid() {
         <div className="card stack-sm">
           <div className="strong">{t('grid.backpack')}</div>
           <div className="row" style={{ gap: 16, flexWrap: 'wrap' }}>
-            <span className="row" style={{ gap: 5, alignItems: 'center', color: '#FFD34D' }}><MarkIcon size={17} /><Stat label={t('grid.hints')} value={`${wallet?.hints ?? 0}/${GRID.hintStockCap}`} /></span>
-            <span className="row" style={{ gap: 5, alignItems: 'center', color: '#16E5D9' }}><ValveIcon size={17} /><Stat label={t('grid.valves')} value={`${wallet?.valves ?? 0}/${GRID.valveStockCap}`} /></span>
-            <span className="row" style={{ gap: 5, alignItems: 'center', color: '#16E5D9' }}><DropIcon size={17} /><Stat label={t('grid.drops')} value={`${selected?.route?.chargeDrops ?? 0}/3`} /></span>
+            <span className="row" style={{ gap: 5, alignItems: 'center', color: '#FFD34D' }}><GenBadge name="item-mark" size={19} /><Stat label={t('grid.hints')} value={`${wallet?.hints ?? 0}/${GRID.hintStockCap}`} /></span>
+            <span className="row" style={{ gap: 5, alignItems: 'center', color: '#16E5D9' }}><GenBadge name="item-valve" size={19} /><Stat label={t('grid.valves')} value={`${wallet?.valves ?? 0}/${GRID.valveStockCap}`} /></span>
+            <span className="row" style={{ gap: 5, alignItems: 'center', color: '#16E5D9' }}><GenBadge name="item-drop" size={19} /><Stat label={t('grid.drops')} value={`${selected?.route?.chargeDrops ?? 0}/3`} /></span>
             <Stat label="★" value={wallet?.total_best_stars ?? 0} />
           </div>
           {(me.data?.pendingGranted ?? 0) > 0 && <div className="tiny muted">{t('grid.xp', { n: me.data!.pendingGranted })}</div>}
-          {me.data?.floodReward && <div className="tiny muted"><span style={{ color: '#FFD34D', display: 'inline-flex', verticalAlign: -3, marginRight: 4 }}><MarkIcon size={14} /></span>+{me.data.floodReward.hints} · {t('grid.hints')}{me.data.floodReward.valve > 0 ? ` · +1 ${t('grid.valves')}` : ''}</div>}
-          {(me.data?.masteredChips ?? 0) > 0 && <div className="tiny muted"><span style={{ color: '#FFD34D', display: 'inline-flex', verticalAlign: -3, marginRight: 4 }}><PrestigeIcon size={14} /></span>{t('grid.title')} 75/75 ×{me.data!.masteredChips}</div>}
+          {me.data?.floodReward && <div className="tiny muted"><span style={{ color: '#FFD34D', display: 'inline-flex', verticalAlign: -3, marginRight: 4 }}><GenBadge name="item-mark" size={16} /></span>+{me.data.floodReward.hints} · {t('grid.hints')}{me.data.floodReward.valve > 0 ? ` · +1 ${t('grid.valves')}` : ''}</div>}
+          {(me.data?.masteredChips ?? 0) > 0 && <div className="tiny muted"><span style={{ color: '#FFD34D', display: 'inline-flex', verticalAlign: -3, marginRight: 4 }}><GenBadge name="item-heart" size={16} /></span>{t('grid.title')} 75/75 ×{me.data!.masteredChips}</div>}
           {me.data?.daily && <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><Pill onClick={() => selected && void start(me.data!.daily!.level, true)} disabled={starting || !selected}>{t('grid.sector', { n: me.data.daily.level })} · {me.data.daily.epic ? t('grid.epicDaily') : 'daily'}</Pill><span className="tiny muted">{t('grid.dailyDistrict', { n: me.data.daily.district + 1 })}</span></div>}
           {selected && (me.data?.cosmetics ?? []).filter((c) => c.kind === 2 && typeof c.payload.skin === 'string' && !c.payload.asset).map((c) => (
             <div key={c.id}><Pill onClick={() => void applySkin(String(c.payload.skin))}>{t('grid.applySkin')}: {String(c.payload.skin)}</Pill></div>
@@ -323,7 +324,7 @@ export default function Grid() {
               <button key={c.asset} type="button" onClick={() => { setAsset(c.asset); setPlay(null); setResult(null); }}
                 style={{ minWidth: 92, border: selected?.asset === c.asset ? '2px solid var(--acid, #B6FF3C)' : '1px solid #333', borderRadius: 12, padding: 8, background: 'transparent', cursor: 'pointer', textAlign: 'center' }}>
                 <ChipArt collection={c.collection} rarity={c.rarity} level={c.chipLevel} size={54} skin={c.skin} />
-                <div className="tiny">Lv{c.chipLevel} · {t('grid.drops')} {c.route.chargeDrops}/3</div>
+                <div className="tiny">Lv{c.chipLevel} · {t('grid.drops')} <GenBadge name="item-drop" size={13} /> {c.route.chargeDrops}/3</div>
                 <div className="tiny muted">{t('grid.routeNext', { n: Math.min(75, c.route.nextLevel) })}</div>
               </button>
             ))}
@@ -333,11 +334,11 @@ export default function Grid() {
             <div className="card stack-sm">
               <div className="row between" style={{ flexWrap: 'wrap', gap: 8 }}>
                 <span className="strong">{t('grid.selectSector')}</span>
-                <span className="tiny muted">{t('grid.routeNext', { n: Math.min(75, nextLevel) })} · {t('grid.drops')} {route?.chargeDrops ?? 0}/3</span>
+                <span className="tiny muted">{t('grid.routeNext', { n: Math.min(75, nextLevel) })} · {t('grid.drops')} <GenBadge name="item-drop" size={13} /> {route?.chargeDrops ?? 0}/3</span>
               </div>
               <label className="row tiny" style={{ gap: 6 }}>
                 <input type="checkbox" checked={useHint} onChange={(e) => setUseHint(e.target.checked)} disabled={(wallet?.hints ?? 0) <= 0} />
-                {t('grid.useHint')} ({wallet?.hints ?? 0})
+                <GenBadge name="item-mark" size={15} /> {t('grid.useHint')} ({wallet?.hints ?? 0})
               </label>
               {emergencyLevels.length > 0 && <label className="row tiny" style={{ gap: 6 }}>
                 <input type="checkbox" checked={useEmergency} onChange={(e) => setUseEmergency(e.target.checked)} />
@@ -345,7 +346,7 @@ export default function Grid() {
               </label>}
               <label className="row tiny" style={{ gap: 6 }}>
                 <input type="checkbox" checked={useValve} onChange={(e) => setUseValve(e.target.checked)} disabled={(wallet?.valves ?? 0) <= 0} />
-                {t('grid.useValve')} ({wallet?.valves ?? 0})
+                <GenBadge name="item-valve" size={15} /> {t('grid.useValve')} ({wallet?.valves ?? 0})
               </label>
               {GRID_DEPTHS.map((d) => (
                 <div key={d.depth} className="stack-sm depth-strip" style={{ borderLeftColor: MATERIAL_HEX[d.material] ?? '#333' }}>

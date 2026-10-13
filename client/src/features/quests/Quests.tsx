@@ -18,7 +18,7 @@ import { prepareRandomness } from '@/chain/switchboard';
 import { fromHex } from '@/chain/merkle';
 import { usePackFlow } from '@/features/shop/usePackFlow';
 import { CleanZone, KV, Pill, Progress, Skeleton, Empty } from '@/shared/ui/primitives';
-import { MarkIcon } from '@/shared/ui/GridIcons';
+import { GenBadge } from '@/shared/ui/GenBadge';
 import { CleanConfirmButton } from '@/shared/ui/buttons';
 import { HumanCheck } from '@/shared/ui/HumanCheck';
 import { fmtCg, fmtSkr, countdown } from '@/shared/lib/format';
@@ -259,7 +259,7 @@ export default function Quests() {
                     {q.rewardCgMicro && q.rewardCgMicro !== '0' && <span className="quest-reward"><CgCoinIcon size={14} /> +{fmtCg(q.rewardCgMicro, 0)}</span>}
                     {q.rewardChip && <span className="quest-reward"><VoucherIcon size={14} /> + {t('quests.capRoll')} ({oddsText((q.rewardChip as { odds?: number[] }).odds ?? [])})</span>}
                     {!!q.rewardBooster && <span className="quest-reward"><BoosterIcon size={14} /> + {t('quests.booster', { n: q.rewardBooster })}</span>}
-                    {!!q.rewardHint && <span className="quest-reward"><span style={{ color: '#FFD34D', display: 'inline-flex', verticalAlign: -2, marginRight: 4 }}><MarkIcon size={13} /></span>+1 {t('grid.hints')}</span>}
+                    {!!q.rewardHint && <span className="quest-reward"><GenBadge name="item-mark" size={15} /> +1 {t('grid.hints')}</span>}
                     {q.resetsAt && tab !== 'permanent' && <span>· {t('quests.resetsIn', { time: countdown(q.resetsAt) })}</span>}
                     {q.ineligibleReason && <span style={{ color: 'var(--cg-orange-soft)' }}> · {reasonText(q.ineligibleReason)}</span>}
                   </div>
