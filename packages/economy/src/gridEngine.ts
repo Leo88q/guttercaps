@@ -1,8 +1,7 @@
 // =============================================================================
 // GUTTERCAPS — Floodgrid («Решётка») deterministic board engine.
-// Ported from the owner's Ampergrad canon (packages/engine of Leo88q/1,
-// branch arena/77b06826-1) — same generator, same seeds, same par/hint rules,
-// re-skinned into Gutter City vocabulary (sector / sluice / charge socket).
+// Canonical Floodgrid engine — same generator, seeds, par/hint rules,
+// in Gutter City vocabulary (sector / sluice / charge socket).
 // Pure and deterministic: client, backend PlayProof replay and tests all run
 // this exact code, so a solution verified anywhere verifies everywhere.
 // =============================================================================
@@ -235,12 +234,12 @@ export function lerpLevel(from: number, to: number, t: number): number {
 
 /** Seed уровня: одинаков на клиенте и на сервере. */
 export function levelSeed(level: number): number {
-  return hashString(`ampergrad:level:${level}`);
+  return hashString(`floodgrid:level:${level}`);
 }
 
 /** Seed ежедневного челленджа: одинаков для всех игроков в этот день. */
 export function dailySeed(unixDay: number): number {
-  return hashString(`ampergrad:daily:${unixDay}`);
+  return hashString(`floodgrid:daily:${unixDay}`);
 }
 
 /** Генерация квартала. seed задаётся явно для воспроизводимости и тестов. */
