@@ -1,13 +1,13 @@
 // "How the city works" — in-game guide. Copy lives in ./copy.ts (7 languages);
 // every number is filled from @guttercaps/economy so it tracks the on-chain params.
 import { Link } from 'react-router-dom';
-import { PACKS, FUSION_RECIPES, BOOSTER, FEES, LOCK_TIERS, COLLECTIONS, CHIP_XP, RARITY_PROFILES, levelMult, GUTTER_POT } from '@guttercaps/economy';
+import { PACKS, FUSION_RECIPES, BOOSTER, FEES, LOCK_TIERS, COLLECTIONS, CHIP_XP, RARITY_PROFILES, levelMult, GUTTER_POT, GRID } from '@guttercaps/economy';
 import { useLocale } from '@/shared/i18n';
 import { fmtCents, fmtCg, fmtPct } from '@/shared/lib/format';
 import { GUIDE_COPY } from './copy';
 
 const ACCENTS = ['var(--cg-acid-green)', 'var(--cg-hot-magenta, #FF2E8A)', 'var(--cg-electric-orange)', 'var(--cg-cyan, #16E5D9)'];
-const LINKS: Record<string, string> = { collect: '/codex', packs: '/shop', drain: '/drain', founders: '/preorder', fusion: '/fusion', slam: '/arena', trade: '/market', stake: '/staking', pot: '/pot', coin: '/quests', free: '/quests' };
+const LINKS: Record<string, string> = { collect: '/codex', packs: '/shop', drain: '/drain', founders: '/preorder', fusion: '/fusion', slam: '/arena', grid: '/grid', trade: '/market', stake: '/staking', pot: '/pot', coin: '/quests', free: '/quests' };
 
 function fill(s: string, v: Record<string, string>) { return s.replace(/\{(\w+)\}/g, (m, k) => v[k] ?? m); }
 
@@ -31,6 +31,9 @@ export default function Guide() {
     levelPct: String((levelMult(2) - 1) * 100),
     potWinners: String(GUTTER_POT.winnersPerWeek),
     potSb: String(GUTTER_POT.soulboundDays),
+    gridSectors: String(GRID.totalLevels), gridDepths: String(GRID.depths),
+    failXp: String(-GRID.failXp), dropMax: String(GRID.chargeMax), dropPct: String(GRID.chargeStakeBonusBpsPerDrop / 100), dropDays: String(GRID.chargeStakeEvaporateDays),
+    prestigeMax: String(GRID.prestigeMax), deepBurn: fmtCg(GRID.deepAttemptCgMicro, 0),
     potRare: String(GUTTER_POT.odds[2] / 100),
     potRarePlus: String(GUTTER_POT.odds[3] / 100),
     potEpic: String(GUTTER_POT.odds[4] / 100),

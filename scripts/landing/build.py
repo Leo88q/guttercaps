@@ -551,6 +551,7 @@ BODY = f'''
 {mech_card(6, '🎨')}
 {mech_card(7, '🕳️')}
 {mech_card(8, '🍲')}
+{mech_card(9, '🌊')}
     </div>
   </div>
 </section>
