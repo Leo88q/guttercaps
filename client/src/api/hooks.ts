@@ -55,14 +55,15 @@ export function useGrid() {
 
 
 export interface GridClaim { level: number; best_stars: number; xp_accounted: number; xp_pending: number; max_xp: number }
-export interface GridRouteChip { asset: string; collection: number; rarity: number; chipLevel: number; route: { nextLevel: number; chargeDrops: number; chargeProgress: number }; claims: GridClaim[] }
+export interface GridRouteChip { asset: string; collection: number; rarity: number; chipLevel: number; skin?: string | null; route: { nextLevel: number; chargeDrops: number; chargeProgress: number }; claims: GridClaim[] }
 export interface GridMe {
   wallet: { hints: number; valves: number; total_best_stars: number };
   pendingGranted: number; chips: GridRouteChip[];
   gifts: { level: number; kind: string; gift_key: string }[];
   floodWeek: number; flood: { district: number; points: number }[];
   floodReward?: { week: number; hints: number; valve: number } | null; masteredChips?: number;
-  districtMastery?: { district: number; stars: number; cleared: number }[]; daily?: { day: number; level: number };
+  districtMastery?: { district: number; stars: number; cleared: number }[]; daily?: { day: number; level: number; district: number; sunday: boolean; epic: boolean };
+  cosmetics?: { id: number; kind: number; payload: Record<string, unknown>; signature: string }[];
 }
 export interface GridChipState { asset: string; route: { nextLevel: number; chargeDrops: number; chargeProgress: number }; claims: GridClaim[]; fails: { level: number; fails: number }[]; emergency: number[] }
 export function useGridMe() {

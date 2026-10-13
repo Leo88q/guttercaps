@@ -92,7 +92,8 @@
     "ops:release": "docker compose -f ops/deploy/docker-compose.yaml pull && docker compose -f ops/deploy/docker-compose.yaml up -d",
     "privacy:retention": "node --no-warnings=ExperimentalWarning --import tsx backend/src/privacy-maintenance.ts retention",
     "privacy:reapply": "node --no-warnings=ExperimentalWarning --import tsx backend/src/privacy-maintenance.ts reapply-erasure",
-    "mac:devnet": "bash scripts/mac-devnet.sh"
+    "mac:devnet": "bash scripts/mac-devnet.sh",
+    "population:sim": "node --experimental-strip-types scripts/population-sim.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",

@@ -135,7 +135,7 @@ function RowFrag({ ci, have, cells, active, activeR, onCell }: { ci: number; hav
   return (
     <div className={`cgrid-district${active ? ' is-active' : ''}`} style={{ '--district': color } as CSSProperties}>
       <div className="rowhead">
-        <b style={{ color }}>{c.name}</b>
+        <b style={{ color }}>{c.name}</b> <Link to={`/grid?district=${ci}`} title={t('grid.title')} style={{ textDecoration: 'none' }}>🌊</Link>
         <span className="tiny muted"><ElementGlyph element={ELEMENT_OF_COLLECTION[ci]} /> {have}/9</span>
         <Progress value={have} max={9} tone={have === 9 ? 'acid' : undefined} />
       </div>

@@ -539,7 +539,7 @@ on('get', '/quests', () => {
     const done = st.value >= q.target;
     return {
       id: q.id, cadence: q.period, title: q.title, description: '', metric: q.metric, target: q.target, value: st.value, rewardCgMicro: String(q.rewardCgMicro),
-      rewardChip: q.rewardChip ?? null, rewardBooster: q.rewardItem === 'booster' ? 1 : 0, completedAt: done ? iso(-3_600_000) : null, claimable: done && !st.claimed,
+      rewardChip: q.rewardChip ?? null, rewardBooster: q.rewardItem === 'booster' || q.rewardItems?.includes('booster') ? 1 : 0, rewardHint: q.rewardItem === 'hint' || q.rewardItems?.includes('hint') ? 1 : 0, completedAt: done ? iso(-3_600_000) : null, claimable: done && !st.claimed,
       ineligibleReason: null, resetsAt: iso(q.period === 'daily' ? 6 * 3_600_000 : q.period === 'weekly' ? 3 * 86_400_000 : 365 * 86_400_000),
     };
   });

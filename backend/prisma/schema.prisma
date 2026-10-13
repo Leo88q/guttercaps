@@ -1230,6 +1230,7 @@ model GridAttempt {
   emergencyUsed Int    @default(0) @map("emergency_used")
   mode          String @default("charge")
   seed          Int?
+  daily         Int     @default(0)
   settled       Int    @default(0)
   createdAt     Int    @map("created_at")
   settledAt     Int?   @map("settled_at")

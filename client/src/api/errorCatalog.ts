@@ -40,7 +40,7 @@ export const API_ERROR_KEYS = {
   wallet_cap: 'failures.preorderWalletCap', not_yours: 'failures.preorderNotYours',
   no_ticket: 'failures.noXpTicket', missing_asset: 'failures.missingAsset', chip_not_found: 'failures.chipNotFound',
   route_locked: 'failures.requestInvalid', no_emergency_hint: 'failures.requestInvalid', no_hints: 'failures.requestInvalid',
-  attempt_not_found: 'failures.notFound', attempt_settled: 'failures.requestInvalid', bad_proof: 'failures.requestInvalid',
+  attempt_not_found: 'failures.notFound', attempt_settled: 'failures.requestInvalid', bad_proof: 'failures.requestInvalid', no_skin_entitlement: 'failures.requestInvalid',
   already_granted: 'failures.preorderAlreadyGranted', not_payable: 'failures.preorderNotPayable',
   tx_not_found: 'failures.preorderTxNotFound', already_confirmed: 'failures.preorderAlreadyConfirmed',
   payment_tx_failed: 'failures.preorderPaymentFailed', payment_no_transfer: 'failures.preorderNoTransfer',

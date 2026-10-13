@@ -27,12 +27,15 @@ export const GRID = {
   hintMaxPerChargeAttempt: 1,
   emergencyHintAfterFails: 3,
   /** star milestones (account, best stars across campaign) */
+  /** Flood Night: on Sunday the Drain district of the day pays double droplet progress/refills */
+  floodSundayDropletMult: 2,
+  floodDistricts: 8,
   starMilestones: [
     { stars: 75, hints: 2, valves: 0 },
     { stars: 125, hints: 0, valves: 1 },
     { stars: 175, hints: 3, valves: 0 },
-    { stars: 225, hints: 0, valves: 0 }, // + cosmetic «Идеальный паводок» (entitlement key floodgrid.skin.perfect)
-  ] as readonly { stars: number; hints: number; valves: number }[],
+    { stars: 225, hints: 0, valves: 0, skin: 'perfect-flood' }, // + cosmetic «Идеальный паводок»
+  ] as readonly { stars: number; hints: number; valves: number; skin?: string }[],
 } as const;
 
 export const GRID_DEPTHS = [

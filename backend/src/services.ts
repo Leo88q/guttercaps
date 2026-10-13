@@ -190,8 +190,8 @@ export function districtCompleted(db: Db, wallet: string, collection: number): b
 }
 
 const PAYLOAD_RULES: Record<string, (p: Record<string, unknown>) => string | undefined> = {
-  capSkin: (p) => (typeof p.asset === 'string' && typeof p.skin === 'string' && SKIN_BY_ID[p.skin] ? undefined : 'payload needs {asset, skin} with a known skin id'),
-  profileTheme: (p) => (typeof p.theme === 'string' && PROFILE_THEME_BY_ID[p.theme] ? undefined : 'payload needs {theme} with a known theme id'),
+  capSkin: (p) => (typeof p.asset === 'string' && typeof p.skin === 'string' && SKIN_BY_ID[p.skin] && !SKIN_BY_ID[p.skin].exclusive ? undefined : 'payload needs {asset, skin} with a purchasable skin id'),
+  profileTheme: (p) => (typeof p.theme === 'string' && PROFILE_THEME_BY_ID[p.theme] && !PROFILE_THEME_BY_ID[p.theme].exclusive ? undefined : 'payload needs {theme} with a purchasable theme id'),
   arenaEmotePack: (p) => (typeof p.pack === 'string' && EMOTE_PACK_BY_ID[p.pack] ? undefined : 'payload needs {pack} with a known pack id'),
   districtBanner: (p) => (typeof p.collection === 'number' && Number.isInteger(p.collection) && p.collection >= 0 && p.collection < COLLECTIONS.length ? undefined : 'payload needs {collection} with a live district index'),
 };

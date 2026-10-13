@@ -3,6 +3,7 @@
 // the shared deterministic one (@guttercaps/economy); the server replays every submitted
 // move list, so what is played here is exactly what is verified there.
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { GRID, GRID_DEPTHS, componentCount, isSolved, kindOf, poweredCells, tileMask, type Level, type Tile } from '@guttercaps/economy';
 import { api, ApiError } from '@/api/client';
@@ -20,7 +21,7 @@ interface AttemptStart {
   board: { size: number; bus: number; receivers: number[]; tiles: BoardTile[] };
 }
 type CompleteResult =
-  | { ok: true; training: boolean; stars?: number; xpGranted?: number; xpPending?: number; dropletGained?: boolean; gifts?: { kind: string; amount: number }[] }
+  | { ok: true; training: boolean; stars?: number; xpGranted?: number; xpPending?: number; passXp?: number; dropletGained?: boolean; gifts?: { kind: string; amount: number }[] }
   | { ok: false; xpLoss?: number; emergencyGranted?: boolean };
 
 interface PlayState {
@@ -51,6 +52,7 @@ export default function Grid() {
   const qc = useQueryClient();
   const toast = useUiStore((s) => s.toast);
   const me = useGridMe();
+  const [params] = useSearchParams();
   const [asset, setAsset] = useState<string | null>(null);
   const [useHint, setUseHint] = useState(false);
   const [useEmergency, setUseEmergency] = useState(false);
@@ -60,7 +62,8 @@ export default function Grid() {
   const [starting, setStarting] = useState(false);
 
   const chips = me.data?.chips ?? [];
-  const selected = chips.find((c) => c.asset === asset) ?? chips[0] ?? null;
+  const districtParam = Number(params.get('district'));
+  const selected = chips.find((c) => c.asset === asset) ?? (Number.isInteger(districtParam) ? chips.find((c) => c.collection === districtParam) : undefined) ?? chips[0] ?? null;
   const chipState = useGridChip(selected?.asset ?? null);
   const route = selected?.route;
   const nextLevel = route?.nextLevel ?? 1;
@@ -73,6 +76,16 @@ export default function Grid() {
     receivers: p.attempt.board.receivers, solutionRot: p.rots.map(() => 0), parMoves: p.attempt.par,
     tiles: p.attempt.board.tiles.map((tile, i): Tile => ({ kind: kindOf(tile.base), base: tile.base, rot: p.rots[i], fixed: tile.fixed, role: (tile.role as Tile['role']) ?? 'line' })),
   });
+
+  const applySkin = async (skin: string) => {
+    if (!selected) return;
+    try {
+      await api.post('/grid/apply-skin', { asset: selected.asset, skin } as never);
+      refresh();
+    } catch (e) {
+      toast({ kind: 'error', title: e instanceof ApiError ? e.message : { key: 'grid.failed' } });
+    }
+  };
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: qk.gridMe });
@@ -176,7 +189,10 @@ export default function Grid() {
           {(me.data?.pendingGranted ?? 0) > 0 && <div className="tiny muted">{t('grid.xp', { n: me.data!.pendingGranted })}</div>}
           {me.data?.floodReward && <div className="tiny muted">🌊 +{me.data.floodReward.hints} · {t('grid.hints')}{me.data.floodReward.valve > 0 ? ` · +1 ${t('grid.valves')}` : ''}</div>}
           {(me.data?.masteredChips ?? 0) > 0 && <div className="tiny muted">💛 {t('grid.title')} 75/75 ×{me.data!.masteredChips}</div>}
-          {me.data?.daily && <div><Pill onClick={() => selected && void start(me.data!.daily!.level, true)} disabled={starting || !selected}>{t('grid.sector', { n: me.data.daily.level })} · daily</Pill></div>}
+          {me.data?.daily && <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><Pill onClick={() => selected && void start(me.data!.daily!.level, true)} disabled={starting || !selected}>{t('grid.sector', { n: me.data.daily.level })} · {me.data.daily.epic ? t('grid.epicDaily') : 'daily'}</Pill><span className="tiny muted">{t('grid.dailyDistrict', { n: me.data.daily.district + 1 })}</span></div>}
+          {selected && (me.data?.cosmetics ?? []).filter((c) => c.kind === 2 && typeof c.payload.skin === 'string' && !c.payload.asset).map((c) => (
+            <div key={c.id}><Pill onClick={() => void applySkin(String(c.payload.skin))}>{t('grid.applySkin')}: {String(c.payload.skin)}</Pill></div>
+          ))}
         </div>
         <div className="card stack-sm">
           <div className="strong">{t('grid.flood')}</div>
@@ -197,7 +213,7 @@ export default function Grid() {
             {chips.map((c) => (
               <button key={c.asset} type="button" onClick={() => { setAsset(c.asset); setPlay(null); setResult(null); }}
                 style={{ minWidth: 92, border: selected?.asset === c.asset ? '2px solid var(--acid, #B6F09C)' : '1px solid #333', borderRadius: 12, padding: 8, background: 'transparent', cursor: 'pointer', textAlign: 'center' }}>
-                <ChipArt collection={c.collection} rarity={c.rarity} level={c.chipLevel} size={54} />
+                <ChipArt collection={c.collection} rarity={c.rarity} level={c.chipLevel} size={54} skin={c.skin} />
                 <div className="tiny">Lv{c.chipLevel} · {t('grid.drops')} {c.route.chargeDrops}/3</div>
                 <div className="tiny muted">{t('grid.routeNext', { n: Math.min(75, c.route.nextLevel) })}</div>
               </button>
@@ -253,6 +269,7 @@ export default function Grid() {
                   <span>{t('grid.stars', { n: result.stars ?? 0 })}</span>
                   {(result.xpGranted ?? 0) > 0 && <span>{t('grid.xp', { n: result.xpGranted })}</span>}
                   {(result.xpPending ?? 0) > 0 && <span>{t('grid.pending', { n: result.xpPending })}</span>}
+                  {(result.passXp ?? 0) > 0 && <span>{t('grid.passXp', { n: result.passXp })}</span>}
                   {result.dropletGained && <span>{t('grid.droplet')}</span>}
                   {(result.gifts ?? []).map((g, i) => <span key={i}>{t('grid.gift', { kind: g.kind, n: g.amount })}</span>)}
                 </div>}

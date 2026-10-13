@@ -136,3 +136,60 @@ describe('floodgrid training, fusion and flood night', () => {
     expect(me2.floodReward).toBeNull();
   });
 });
+
+describe('floodgrid daily pass, sunday flood and cosmetic gifts', () => {
+  it('daily flood solve grants Pass XP once per day', async () => {
+    const { startGridAttempt, completeGridAttempt, gridDay, gridDailyLevel } = await import('../src/grid.ts');
+    const { dailySeed } = await import('@guttercaps/economy');
+    const db = new Db(':memory:');
+    const owner = kp(); const asset = mint(db, owner);
+    db.run(`INSERT INTO seasons (id, starts_at, ends_at, server_secret, server_secret_hash) VALUES (1, ?, ?, 'aa', 'bb')`, T - 100, T + 100_000);
+    const lv = gridDailyLevel(T);
+    const turns = (() => {
+      const level = generateLevel(lv, dailySeed(gridDay(T)));
+      const out: [number, number][] = [];
+      level.tiles.forEach((tile, i) => {
+        if (tile.fixed) return;
+        const period = orbitSize(tile.base);
+        const fwd = ((level.solutionRot[i] - tile.rot) % period + period) % period;
+        const back = period - fwd;
+        if (fwd === 0) return;
+        if (fwd <= back) for (let k = 0; k < fwd; k++) out.push([i, 1]); else for (let k = 0; k < back; k++) out.push([i, -1]);
+      });
+      return out;
+    })();
+    const a = startGridAttempt(db, owner, { asset, level: lv, mode: 'training', daily: true }, T);
+    const r = completeGridAttempt(db, owner, { attemptId: a.attemptId, turns }, T);
+    expect(r.ok).toBe(true);
+    if (r.training) expect(r.passXp).toBe(30);
+    expect(db.scalar(`SELECT xp FROM pass_xp WHERE wallet = ?`, owner)).toBe(30);
+  });
+
+  it('sunday district chips gain double droplet progress', async () => {
+    const { startGridAttempt, completeGridAttempt, gridRoute } = await import('../src/grid.ts');
+    const db = new Db(':memory:');
+    const owner = kp(); const asset = mint(db, owner);
+    const sunday = 24 * 86_400 + 3600; // day 24: Sunday, Drain district 0
+    db.run(`INSERT INTO grid_chip_routes (asset, next_level, charge_drops, charge_progress, updated_at) VALUES (?, 1, 0, 4, ?)`, asset, sunday);
+    const a = startGridAttempt(db, owner, { asset, level: 1 }, sunday);
+    const r = completeGridAttempt(db, owner, { attemptId: a.attemptId, turns: solutionTurns(1) }, sunday);
+    expect(r.ok).toBe(true);
+    expect(gridRoute(db, asset).chargeDrops).toBe(1); // 4 + x2 progress crosses the 5-sector streak
+  });
+
+  it('depth-50 skin gift becomes an entitlement and paints the diving chip', async () => {
+    const { startGridAttempt, completeGridAttempt, applyGridSkin } = await import('../src/grid.ts');
+    const db = new Db(':memory:');
+    const owner = kp(); const asset = mint(db, owner);
+    for (let l = 1; l < 50; l++) db.run(`INSERT INTO grid_level_claims (asset, level, best_stars, xp_accounted, xp_pending, max_xp, completed_at, updated_at) VALUES (?, ?, 3, 10, 0, 10, ?, ?)`, asset, l, T, T);
+    db.run(`INSERT INTO grid_chip_routes (asset, next_level, charge_drops, charge_progress, updated_at) VALUES (?, 50, 0, 0, ?)`, asset, T);
+    const a = startGridAttempt(db, owner, { asset, level: 50 }, T);
+    const r = completeGridAttempt(db, owner, { attemptId: a.attemptId, turns: solutionTurns(50) }, T);
+    expect(r.ok).toBe(true);
+    const ent = db.get<{ kind: number; payload: string }>(`SELECT kind, payload FROM entitlements WHERE wallet = ? AND signature = 'grid:gift:50:skin:wet-rim'`, owner);
+    expect(ent?.kind).toBe(2);
+    expect(JSON.parse(ent!.payload).skin).toBe('wet-rim');
+    applyGridSkin(db, owner, { asset, skin: 'wet-rim' }, T);
+    expect(db.get<{ skin: string }>(`SELECT skin FROM chips WHERE asset = ?`, asset)?.skin).toBe('wet-rim');
+  });
+});

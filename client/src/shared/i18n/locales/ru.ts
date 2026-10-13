@@ -17,7 +17,7 @@ const ru: Messages = {
   nav: { home: 'Главная', caps: 'Фишки', shop: 'Паки', market: 'Маркет', arena: 'Арена', stake: 'Стейк', fusion: 'Слияние', guide: 'Гайд', quests: 'Квесты', grid: 'Floodgrid', leaderboard: 'Топ', profile: 'Профиль', more: 'Ещё' },
   grid: {
     title: 'Решётка', subtitle: 'Проведи паводок через 75 секторов. У каждой фишки — свой маршрут, XP, заряд и подарки.',
-    backpack: 'Снаряжение ныряльщика', hints: 'Метки Клеммы', valves: 'Аварийные клапаны', drops: 'Заряд паводка',
+    applySkin: 'Нанести скин на выбранную фишку', passXp: '+{n} XP пропуска', dailyDistrict: 'Район дня №{n}', epicDaily: 'Эпический паводок дня', backpack: 'Снаряжение ныряльщика', hints: 'Метки Клеммы', valves: 'Аварийные клапаны', drops: 'Заряд паводка',
     chip: 'Фишка', routeNext: 'Следующий сектор {n}', sector: 'Сектор {n}', depth: 'Глубина {n}',
     training: 'Тренировка', charge: 'Зарядная попытка', start: 'Вперёд', giveUp: 'Сдаться', undo: 'Отменить', restart: 'Заново',
     moves: 'Ходов {n}', par: 'par {n}', budget: 'лимит {n}', connected: 'Подключено {n}%',

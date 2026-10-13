@@ -205,6 +205,7 @@ CREATE TABLE IF NOT EXISTS grid_attempts (
   emergency_used INTEGER NOT NULL DEFAULT 0,
   mode TEXT NOT NULL DEFAULT 'charge',
   seed INTEGER,
+  daily INTEGER NOT NULL DEFAULT 0,
   settled INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   settled_at INTEGER
@@ -1144,6 +1145,7 @@ export class Db {
     const ga = new Set((this.raw.prepare('PRAGMA table_info(grid_attempts)').all() as { name: string }[]).map((c) => c.name));
     if (ga.size && !ga.has('mode')) this.raw.exec(`ALTER TABLE grid_attempts ADD COLUMN mode TEXT NOT NULL DEFAULT 'charge'`);
     if (ga.size && !ga.has('seed')) this.raw.exec(`ALTER TABLE grid_attempts ADD COLUMN seed INTEGER`);
+    if (ga.size && !ga.has('daily')) this.raw.exec(`ALTER TABLE grid_attempts ADD COLUMN daily INTEGER NOT NULL DEFAULT 0`);
     if (!pk.has('pack_no')) this.raw.exec(`ALTER TABLE pack_opens ADD COLUMN pack_no INTEGER NOT NULL DEFAULT 0`);
     if (!pk.has('event_index')) this.raw.exec(`ALTER TABLE pack_opens ADD COLUMN event_index INTEGER NOT NULL DEFAULT 0`);
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_pack_opens_nonce ON pack_opens(buyer, nonce, pack_no)`);

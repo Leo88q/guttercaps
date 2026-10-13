@@ -431,6 +431,14 @@ const HANDLERS: Record<string, Handler> = {
     );
     // The mint number (`{symbol} #{game_index}`, market "Low #" / `indexMin`/`indexMax`). A compressed chip's
     // registration event carries it, so this row never enters the crank's back-fill queue.
+    // Floodgrid (docs/13): a claim-fusion result inherits the union of its materials' routes at registration.
+    if (changed > 0 && !wasRegistered && key) {
+      const fusion = db.get<{ materials: string }>(`SELECT materials FROM fusions WHERE result = ?`, key);
+      if (fusion) {
+        const materialAssets = (JSON.parse(fusion.materials) as string[]).map((claim) => db.get<{ asset: string | null }>(`SELECT asset FROM compressed_claims WHERE claim = ?`, claim)?.asset).filter((a): a is string => !!a);
+        if (materialAssets.length > 0) mergeFusionRoutes(db, str(d.asset), materialAssets, c.blockTime ?? 0);
+      }
+    }
     const gameIndex = numStr(d.gameIndex);
     if (gameIndex !== null) db.run(`UPDATE chips SET game_index = ? WHERE asset = ?`, gameIndex, str(d.asset));
   },

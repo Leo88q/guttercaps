@@ -41,6 +41,8 @@ export interface QuestDef {
   /** chip reward: one of `QUEST_CHIP_TEMPLATES` (rooted as a kind-9 voucher leaf carrying `template`) */
   rewardChip?: ChipVoucherTemplate | null;
   rewardItem?: 'booster' | 'ticket' | 'hint' | null;
+  /** Additional item rewards delivered with the main one (e.g. w_stake: booster + a Floodgrid hint). */
+  rewardItems?: readonly ('booster' | 'ticket' | 'hint')[];
 }
 
 // Daily: 24 $CG total (cap 25) — v3 rebalance: fusion fees grew ~5×, so free
@@ -75,7 +77,7 @@ export const WEEKLY_QUESTS: QuestDef[] = [
   { id: 'w_pvp20',   period: 'weekly', title: 'Play 20 matches',                metric: 'pvp_played',   target: 20, rewardCgMicro: 25_000_000 },
   { id: 'w_win8',    period: 'weekly', title: 'Win 8 matches',                  metric: 'pvp_won',      target: 8,  rewardCgMicro: 30_000_000 },
   { id: 'w_trade',   period: 'weekly', title: 'Complete a marketplace trade',   metric: 'trades',       target: 1,  rewardCgMicro: 15_000_000, rewardItem: 'hint' },
-  { id: 'w_stake',   period: 'weekly', title: 'Keep ≥ 3 chips staked 5 days',   metric: 'stake_days',   target: 5,  rewardCgMicro: 20_000_000, rewardItem: 'booster' },
+  { id: 'w_stake',   period: 'weekly', title: 'Keep ≥ 3 chips staked 5 days',   metric: 'stake_days',   target: 5,  rewardCgMicro: 20_000_000, rewardItem: 'booster', rewardItems: ['hint'] },
   { id: 'w_all',     period: 'weekly', title: 'All weeklies done',              metric: 'weeklies_done',target: 6,  rewardCgMicro: 0,
     rewardChip: voucher(1) },
   { id: 'w_visit_neuroforge', period: 'weekly', title: 'Visit NeuroForge on 3 days', metric: 'visit_neuroforge', target: 3, rewardCgMicro: 15_000_000 },

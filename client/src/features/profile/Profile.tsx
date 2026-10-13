@@ -79,6 +79,7 @@ export default function Profile() {
           <div>
             <h1 className="page-title">{me.data?.handle ? `@${me.data.handle}` : shortKey(addr, 6)}</h1>
             <p className="page-sub">{wallet?.adapter?.name} · <a href={EXPLORER.account(addr)} target="_blank" rel="noreferrer" className="row" style={{ gap: 3, display: 'inline-flex' }}>{shortKey(addr, 8)} <ExternalIcon size={11} /></a> · {t('profile.playingSince', { date: me.data?.firstSeen ? fmtLocale.date(me.data.firstSeen, locale) : '—' })}</p>
+            {(ent ?? []).filter((e) => e.kind === 10).map((e) => <span key={e.id} className="pill" style={{ marginLeft: 6 }}>{String((e.payload as { giftKind?: unknown })?.giftKind ?? '') === 'seal' ? '💛' : '🌊'} {String((e.payload as { cosmetic?: unknown })?.cosmetic ?? '')}</span>)}
           </div>
         </div>
         <div className="row-wrap" style={{ gap: 8 }}>
@@ -87,7 +88,7 @@ export default function Profile() {
         </div>
       </div>
       {handleOpen && <HandleModal onClose={() => setHandleOpen(false)} />}
-      {hasBanner && banner !== null && completed.includes(banner) && COLLECTIONS[banner] && (
+      {hasBanner && banner !== null && COLLECTIONS[banner] && (
         <div className="banner-anim" aria-hidden>
           <img className="district-banner" style={{ marginBottom: 0 }} src={`/districts/${COLLECTIONS[banner].num}.jpg`} alt="" loading="lazy" decoding="async" />
         </div>
@@ -122,7 +123,7 @@ export default function Profile() {
           const def = e.kind !== undefined ? SERVICE_BY_KIND[e.kind] : undefined;
           return (
             <div key={e.id} className="row between small">
-              <span>{def ? t(`services.names.${def.id}`) : `#${e.kind}`}</span>
+              <span>{e.kind === 10 ? `🌊 ${String((e.payload as { cosmetic?: unknown })?.cosmetic ?? 'Floodgrid')}` : def ? t(`services.names.${def.id}`) : `#${e.kind}`}</span>
               <span className="muted">{e.expiresAt ? t('services.expires', { date: fmtLocale.date(e.expiresAt, locale) }) : t('services.owned')}</span>
             </div>
           );

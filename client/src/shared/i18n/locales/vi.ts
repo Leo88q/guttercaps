@@ -17,7 +17,7 @@ const vi: Messages = {
   nav: { home: 'Trang chủ', caps: 'Nắp', shop: 'Cửa hàng', market: 'Chợ', arena: 'Đấu trường', stake: 'Stake', fusion: 'Hợp nhất', guide: 'Hướng dẫn', quests: 'Nhiệm vụ', grid: 'Floodgrid', leaderboard: 'Xếp hạng', profile: 'Hồ sơ', more: 'Thêm' },
   grid: {
     title: 'Floodgrid', subtitle: 'Route the flood through 75 sectors. Every chip walks its own route — XP, charge and gifts included.',
-    backpack: 'Diver gear', hints: 'Terminal marks', valves: 'Emergency valves', drops: 'Flood charge',
+    applySkin: 'Apply skin to selected chip', passXp: '+{n} Pass XP', dailyDistrict: 'District of the day #{n}', epicDaily: 'Epic flood of the day', backpack: 'Diver gear', hints: 'Terminal marks', valves: 'Emergency valves', drops: 'Flood charge',
     chip: 'Chip', routeNext: 'Next sector {n}', sector: 'Sector {n}', depth: 'Depth {n}',
     training: 'Training', charge: 'Charge attempt', start: 'Start', giveUp: 'Give up', undo: 'Undo', restart: 'Restart',
     moves: 'Moves {n}', par: 'par {n}', budget: 'limit {n}', connected: '{n}% connected',

@@ -228,7 +228,7 @@ export function list(db: Db, wallet: string, t = now(), refresh = true) {
     const done = value >= q.target;
     return {
       id: q.id, cadence: q.period, title: q.title, description: '', metric: q.metric, target: q.target, value,
-      rewardCgMicro: String(q.rewardCgMicro), rewardChip: q.rewardChip ?? null, rewardBooster: q.rewardItem === 'booster' ? 1 : 0,
+      rewardCgMicro: String(q.rewardCgMicro), rewardChip: q.rewardChip ?? null, rewardBooster: q.rewardItem === 'booster' || q.rewardItems?.includes('booster') ? 1 : 0, rewardHint: q.rewardItem === 'hint' || q.rewardItems?.includes('hint') ? 1 : 0,
       completedAt: c ? new Date(c.completed_at * 1000).toISOString() : null,
       claimable: done && !c,                                   // done, waiting for the next reward root
       rooted: c ? c.root_kind !== null : false,
@@ -286,8 +286,8 @@ export function settleWallet(db: Db, wallet: string, t = now(), horizon = finali
       }
       // boosters and chip vouchers follow the same eligibility gate as $CG (an ineligible wallet's completion is recorded with none of them)
       db.run(`INSERT INTO quest_completions (wallet, quest_id, period_key, amount, reward_chip, reward_booster, completed_at, day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        wallet, q.id, key, amount.toString(), elig.eligible && q.rewardChip ? JSON.stringify(q.rewardChip) : null, elig.eligible && q.rewardItem === 'booster' ? 1 : 0, t, day);
-      if (elig.eligible && q.rewardItem === 'hint') grantGridHints(db, wallet, 1, t); // Floodgrid gear (docs/13 §0.4): backend item, no root
+        wallet, q.id, key, amount.toString(), elig.eligible && q.rewardChip ? JSON.stringify(q.rewardChip) : null, elig.eligible && (q.rewardItem === 'booster' || q.rewardItems?.includes('booster')) ? 1 : 0, t, day);
+      if (elig.eligible) { const items = new Set([q.rewardItem, ...(q.rewardItems ?? [])]); if (items.has('hint')) grantGridHints(db, wallet, 1, t); } // Floodgrid gear (docs/13 §0.4): backend item, no root
       inserted++;
     }
   }

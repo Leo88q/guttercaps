@@ -663,6 +663,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.post('/grid/attempt', requireAuth, accessGate('rewards'), (req, res) => { res.json(grid.startGridAttempt(db, req.session!.wallet, req.body ?? {})); });
   v1.post('/grid/complete', requireAuth, accessGate('rewards'), (req, res) => { res.json(grid.completeGridAttempt(db, req.session!.wallet, req.body ?? {})); });
   v1.post('/grid/fail', requireAuth, accessGate('rewards'), (req, res) => { res.json(grid.failGridAttempt(db, req.session!.wallet, req.body ?? {})); });
+  v1.post('/grid/apply-skin', requireAuth, accessGate('rewards'), (req, res) => { res.json(grid.applyGridSkin(db, req.session!.wallet, req.body ?? {})); });
 
   // ------------------------------------------------------------ admin (docs/03 §3.5, T-B-46): SIWS session ∈ ADMIN_WALLETS, every call audited,
   // on-chain changes are only *encoded* for the Squads multisig — this process holds no admin key.

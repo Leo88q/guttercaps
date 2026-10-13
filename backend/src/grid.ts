@@ -6,16 +6,55 @@
 // checkpoints on losses); uncredited remainder is kept as xp_pending, never burned.
 import { randomUUID } from 'node:crypto';
 import {
-  GRID, GRID_GIFTS, DAILY_CONFIG_LEVEL, dailySeed, depthOfLevel, generateLevel, levelSeed, applyRotate, isSolved,
+  GRID, GRID_GIFTS, DAILY_CONFIG_LEVEL, PASS_XP, dailySeed, depthOfLevel, generateLevel, levelSeed, applyRotate, isSolved,
   gridBaseXp, gridStarsForMoves, gridXpForStars, QUEST_CHIP_TEMPLATES,
 } from '@guttercaps/economy';
 import { type Db, now } from './db.ts';
 import { creditChipXp } from './chip-xp.ts';
 import { ServiceError } from './services.ts';
+import { addPassXp, passSeasonId } from './pass.ts';
 
 const DAY = 86_400;
 export const gridDay = (t: number) => Math.floor(t / DAY);
 export const gridWeek = (t: number) => Math.floor((t - 4 * DAY) / (7 * DAY));
+
+
+export const gridIsSunday = (t: number) => new Date(t * 1000).getUTCDay() === 0;
+/** District highlighted by the Drain today (same rotation as client drainDay.featuredDistrict). */
+export const gridFeaturedDistrict = (t: number) => ((gridDay(t) % GRID.floodDistricts) + GRID.floodDistricts) % GRID.floodDistricts;
+/** Flood of the day: the shared 6x6 sector, or the epic 8x8 heart sector on Sundays. */
+export const gridDailyLevel = (t: number) => (gridIsSunday(t) ? GRID.totalLevels : DAILY_CONFIG_LEVEL);
+
+const GRID_COSMETIC_KIND = 10;
+function grantGridCosmetic(db: Db, wallet: string, giftKind: string, key: string, signature: string, t: number, collection?: number): void {
+  if (db.get(`SELECT 1 FROM entitlements WHERE wallet = ? AND signature = ?`, wallet, signature)) return;
+  const kind = giftKind === 'skin' ? 2 : giftKind === 'theme' ? 3 : giftKind === 'banner' ? 9 : GRID_COSMETIC_KIND;
+  const payload = giftKind === 'skin' ? { skin: key, source: 'grid_gift' } : giftKind === 'theme' ? { theme: key, source: 'grid_gift' } : giftKind === 'banner' ? { collection: collection ?? 0, source: 'grid_gift', cosmetic: key } : { cosmetic: key, giftKind, source: 'grid_gift' };
+  db.run(`INSERT INTO entitlements (wallet, kind, payload, signature, currency, amount, granted_at, expires_at) VALUES (?, ?, ?, ?, 2, '0', ?, NULL)`, wallet, kind, JSON.stringify(payload), signature, t);
+}
+
+/** Apply an earn-only Floodgrid skin entitlement to one owned chip (one entitlement paints one cap). */
+export function applyGridSkin(db: Db, wallet: string, body: { asset?: unknown; skin?: unknown }, t = now()) {
+  const asset = typeof body.asset === 'string' ? body.asset : '';
+  const skin = typeof body.skin === 'string' ? body.skin : '';
+  if (!asset || !skin) throw new ServiceError(422, 'bad_request', 'asset and skin are required');
+  chipOf(db, wallet, asset);
+  const rows = db.all<{ id: number; payload: string }>(`SELECT id, payload FROM entitlements WHERE wallet = ? AND kind = 2 AND signature LIKE 'grid:%' ORDER BY id`, wallet);
+  const ent = rows.map((r) => ({ ...r, parsed: JSON.parse(r.payload) as { skin?: string; asset?: string } })).find((r) => r.parsed.skin === skin && !r.parsed.asset);
+  if (!ent) throw new ServiceError(409, 'no_skin_entitlement', 'No unused Floodgrid skin entitlement for that skin');
+  db.run(`UPDATE entitlements SET payload = ? WHERE id = ?`, JSON.stringify({ ...ent.parsed, asset, appliedAt: t }), ent.id);
+  db.run(`UPDATE chips SET skin = ? WHERE asset = ?`, skin, asset);
+  return { asset, skin };
+}
+
+function awardDailyPassXp(db: Db, wallet: string, t: number): number {
+  const day = gridDay(t);
+  if (db.get(`SELECT 1 FROM grid_item_grants WHERE wallet = ? AND source = 'pass_daily' AND day = ?`, wallet, day)) return 0;
+  if (!db.get(`SELECT 1 FROM seasons LIMIT 1`)) return 0; // no pass season yet: nothing to credit, do not burn the day marker
+  db.run(`INSERT INTO grid_item_grants (wallet, source, day, amount) VALUES (?, 'pass_daily', ?, ?)`, wallet, day, PASS_XP.floodDaily);
+  addPassXp(db, passSeasonId(db, t), wallet, PASS_XP.floodDaily);
+  return PASS_XP.floodDaily;
+}
 
 interface ChipRow { asset: string; owner: string; collection_idx: number; rarity: number; level: number; flags: number; burned_at: number | null }
 
@@ -127,7 +166,8 @@ export function startGridAttempt(db: Db, wallet: string, body: GridAttemptInput,
   ensureGridWallet(db, wallet, t);
   settleGridPending(db, wallet, t);
   const route = gridRoute(db, asset);
-  const training = body.mode === 'training';
+  const training = body.mode === 'training' || body.daily === true;
+  if (body.daily === true && level !== gridDailyLevel(t)) throw new ServiceError(422, 'bad_request', `Daily flood is sector ${gridDailyLevel(t)} today`);
   if (!training && level > route.nextLevel) throw new ServiceError(409, 'route_locked', `Chip route is at sector ${route.nextLevel}; sectors cannot be skipped (open it in training)`);
   // Replays of cleared sectors are always allowed (training / star top-up / droplet refill);
   // XP stays capped by the per-(chip, level) ceiling in completeGridAttempt, so nothing re-farms.
@@ -144,7 +184,7 @@ export function startGridAttempt(db: Db, wallet: string, body: GridAttemptInput,
   }
   const id = randomUUID();
   const seed = body.daily === true ? dailySeed(gridDay(t)) : levelSeed(level);
-  db.run(`INSERT INTO grid_attempts (id, wallet, asset, level, hints_used, emergency_used, mode, seed, settled, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`, id, wallet, asset, level, training ? 0 : hintsUsed, emergencyUsed, training ? 'training' : 'charge', seed, t);
+  db.run(`INSERT INTO grid_attempts (id, wallet, asset, level, hints_used, emergency_used, mode, seed, daily, settled, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`, id, wallet, asset, level, training ? 0 : hintsUsed, emergencyUsed, training ? 'training' : 'charge', seed, body.daily === true ? 1 : 0, t);
   const lv = generateLevel(level, seed);
   return {
     attemptId: id, level, par: lv.parMoves, moveBudget: lv.parMoves * GRID.moveBudgetMult, route,
@@ -171,6 +211,8 @@ function processGifts(db: Db, wallet: string, asset: string, level: number, t: n
     else if (g.kind === 'booster') {
       db.run(`INSERT INTO quest_completions (wallet, quest_id, period_key, amount, reward_chip, reward_booster, completed_at, day) VALUES (?, ?, 'all', '0', NULL, ?, ?, ?)`,
         wallet, `grid_gift_${level}`, g.amount, t, gridDay(t));
+    } else if (g.kind === 'skin' || g.kind === 'theme' || g.kind === 'banner' || g.kind === 'title' || g.kind === 'seal') {
+      grantGridCosmetic(db, wallet, g.kind, key, `grid:gift:${level}:${g.kind}:${key}`, t, db.get<{ collection_idx: number }>(`SELECT collection_idx FROM chips WHERE asset = ?`, asset)?.collection_idx);
     } else if (g.kind === 'chip_voucher' && g.template !== undefined) {
       const tpl = QUEST_CHIP_TEMPLATES[g.template];
       if (tpl) db.run(`INSERT INTO quest_completions (wallet, quest_id, period_key, amount, reward_chip, reward_booster, completed_at, day) VALUES (?, ?, 'all', '0', ?, 0, ?, ?)`,
@@ -223,8 +265,10 @@ export function completeGridAttempt(db: Db, wallet: string, body: GridCompleteIn
   }
   const moves = turns.length;
   if (attempt.mode === 'training') {
+    const solved = isSolved(lv);
     db.run(`UPDATE grid_attempts SET settled = 1, settled_at = ? WHERE id = ?`, t, attempt.id);
-    return { ok: isSolved(lv), training: true as const, stars: 0, xpGranted: 0, xpPending: 0, moves, par: lv.parMoves };
+    const passXp = solved && (attempt as { daily?: number }).daily ? awardDailyPassXp(db, wallet, t) : 0;
+    return { ok: solved, training: true as const, stars: 0, xpGranted: 0, xpPending: 0, passXp, moves, par: lv.parMoves };
   }
   if (!isSolved(lv)) {
     return { ...settleFail(db, wallet, attempt as never, t, body.useValve === true), solved: false };
@@ -258,14 +302,17 @@ export function completeGridAttempt(db: Db, wallet: string, body: GridCompleteIn
   let dropletGained = false;
   if (firstCompletion && attempt.level === nextLevel) nextLevel = Math.min(GRID.totalLevels + 1, nextLevel + 1);
   const crossedToCharged = stars >= 2 && (existing?.best_stars ?? 0) < 2;
+  // Flood Night Sunday: chips of the Drain district of the day earn droplet progress/refills x2.
+  const dropletMult = gridIsSunday(t) && chip.collection_idx === gridFeaturedDistrict(t) ? GRID.floodSundayDropletMult : 1;
   if (crossedToCharged || (firstCompletion && stars >= 2)) {
-    chargeProgress += 1;
-    if (chargeProgress >= GRID.chargePerSectorStreak && chargeDrops < GRID.chargeMax) { chargeDrops += 1; chargeProgress -= GRID.chargePerSectorStreak; dropletGained = true; }
+    chargeProgress += dropletMult;
+    while (chargeProgress >= GRID.chargePerSectorStreak && chargeDrops < GRID.chargeMax) { chargeDrops += 1; chargeProgress -= GRID.chargePerSectorStreak; dropletGained = true; }
   } else if (!firstCompletion) {
     const today = gridDay(t);
     const r = db.get<{ charge_day: number; charge_refills: number }>(`SELECT charge_day, charge_refills FROM grid_chip_routes WHERE asset = ?`, attempt.asset);
     if (moves <= Math.ceil(lv.parMoves * 1.5) && (r?.charge_day !== today || (r?.charge_refills ?? 0) < GRID.chargeRefillPerDay) && chargeDrops < GRID.chargeMax) {
-      chargeDrops += 1; dropletGained = true;
+      const gain = Math.min(dropletMult, GRID.chargeMax - chargeDrops);
+      chargeDrops += gain; dropletGained = gain > 0;
       db.run(`INSERT INTO grid_chip_routes (asset, charge_day, charge_refills, updated_at) VALUES (?, ?, 1, ?) ON CONFLICT(asset) DO UPDATE SET charge_day = excluded.charge_day, charge_refills = 1, updated_at = excluded.updated_at`, attempt.asset, today, t);
     }
   }
@@ -289,7 +336,7 @@ export function completeGridAttempt(db: Db, wallet: string, body: GridCompleteIn
   const prev = db.get<{ total_best_stars: number }>(`SELECT total_best_stars FROM grid_wallet_state WHERE wallet = ?`, wallet)?.total_best_stars ?? 0;
   if (totalStars > prev) {
     db.run(`UPDATE grid_wallet_state SET total_best_stars = ?, updated_at = ? WHERE wallet = ?`, totalStars, t, wallet);
-    for (const m of GRID.starMilestones) if (prev < m.stars && totalStars >= m.stars) { grantGridHints(db, wallet, m.hints, t); if (m.valves) grantGridValve(db, wallet, t); }
+    for (const m of GRID.starMilestones) if (prev < m.stars && totalStars >= m.stars) { grantGridHints(db, wallet, m.hints, t); if (m.valves) grantGridValve(db, wallet, t); if (m.skin) grantGridCosmetic(db, wallet, 'skin', m.skin, `grid:stars:${m.stars}:skin:${m.skin}`, t); }
   }
   db.run(`UPDATE grid_attempts SET settled = 1, settled_at = ? WHERE id = ?`, t, attempt.id);
   return {
@@ -342,18 +389,20 @@ export function gridMe(db: Db, wallet: string, t = now()) {
   const masteredChips = db.scalar(`SELECT COUNT(*) FROM grid_chip_routes r JOIN chips ch ON ch.asset = r.asset WHERE ch.owner = ? AND ch.burned_at IS NULL AND r.next_level > ?`, wallet, GRID.totalLevels);
   const districtMastery = db.all<{ district: number; stars: number; cleared: number }>(
     `SELECT ch.collection_idx AS district, COALESCE(SUM(c.best_stars), 0) AS stars, COUNT(c.level) AS cleared FROM grid_level_claims c JOIN chips ch ON ch.asset = c.asset WHERE ch.owner = ? AND ch.burned_at IS NULL GROUP BY ch.collection_idx ORDER BY ch.collection_idx`, wallet);
-  const chips = db.all<{ asset: string; collection_idx: number; rarity: number; level: number }>(
-    `SELECT asset, collection_idx, rarity, level FROM chips WHERE owner = ? AND burned_at IS NULL ORDER BY collection_idx, rarity, asset`, wallet)
+  const chips = db.all<{ asset: string; collection_idx: number; rarity: number; level: number; skin: string | null }>(
+    `SELECT asset, collection_idx, rarity, level, skin FROM chips WHERE owner = ? AND burned_at IS NULL ORDER BY collection_idx, rarity, asset`, wallet)
     .map((c) => {
       const r = gridRoute(db, c.asset);
       const claims = db.all<{ level: number; best_stars: number; xp_accounted: number; xp_pending: number; max_xp: number }>(
         `SELECT level, best_stars, xp_accounted, xp_pending, max_xp FROM grid_level_claims WHERE asset = ? ORDER BY level`, c.asset);
-      return { asset: c.asset, collection: c.collection_idx, rarity: c.rarity, chipLevel: c.level, route: r, claims };
+      return { asset: c.asset, collection: c.collection_idx, rarity: c.rarity, chipLevel: c.level, skin: c.skin, route: r, claims };
     });
   const gifts = db.all<{ level: number; kind: string; gift_key: string }>(`SELECT level, kind, gift_key FROM grid_gifts WHERE wallet = ? ORDER BY level`, wallet);
   const week = gridWeek(t);
   const flood = db.all<{ district: number; points: number }>(`SELECT district, points FROM grid_flood WHERE week = ? ORDER BY district`, week);
-  return { wallet: ensureGridWallet(db, wallet, t), pendingGranted, floodReward, masteredChips, districtMastery, daily: { day: gridDay(t), level: DAILY_CONFIG_LEVEL }, chips, gifts, floodWeek: week, flood };
+  const cosmetics = db.all<{ id: number; kind: number; payload: string; signature: string }>(`SELECT id, kind, payload, signature FROM entitlements WHERE wallet = ? AND signature LIKE 'grid:%' ORDER BY id`, wallet)
+    .map((r) => ({ id: r.id, kind: r.kind, payload: JSON.parse(r.payload) as Record<string, unknown>, signature: r.signature }));
+  return { wallet: ensureGridWallet(db, wallet, t), pendingGranted, floodReward, masteredChips, districtMastery, cosmetics, daily: { day: gridDay(t), level: gridDailyLevel(t), district: gridFeaturedDistrict(t), sunday: gridIsSunday(t), epic: gridIsSunday(t) }, chips, gifts, floodWeek: week, flood };
 }
 
 export function gridChip(db: Db, wallet: string, asset: string, t = now()) {

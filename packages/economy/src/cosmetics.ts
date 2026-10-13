@@ -2,7 +2,7 @@
 // track. Single source of truth shared by the API (claim validation, pass
 // rewards) and the client (purchase pickers, rendering). Cosmetics never touch
 // odds, power or payouts: skins / themes / tags are presentation only.
-export interface SkinDef { id: string; name: string; blurb: string }
+export interface SkinDef { id: string; name: string; blurb: string; /** earn-only (Floodgrid gifts): never sold through Services */ exclusive?: boolean }
 
 /** Cap skins — each purchase binds ONE skin to ONE cap (payload {asset, skin}); the skin travels with the cap when sold. */
 export const SKINS: SkinDef[] = [
@@ -12,16 +12,19 @@ export const SKINS: SkinDef[] = [
   { id: 'blood-drip', name: 'Blood Drip', blurb: 'Dark crimson drips. Menacing.' },
   { id: 'frost-rim', name: 'Frost Rim', blurb: 'Ice-blue frozen edge.' },
   { id: 'toxic-glow', name: 'Toxic Glow', blurb: 'Radioactive acid aura.' },
+  { id: 'wet-rim', name: 'Wet Rim', blurb: 'Floodwater still dripping off the rim. Floodgrid depth gift.', exclusive: true },
+  { id: 'perfect-flood', name: 'Perfect Flood', blurb: 'Every branch lit, not a drop wasted. 225-star Floodgrid gift.', exclusive: true },
 ];
 export const SKIN_BY_ID: Record<string, SkinDef> = Object.fromEntries(SKINS.map((s) => [s.id, s]));
 
-export interface ThemeDef { id: string; name: string; blurb: string; hex: string }
+export interface ThemeDef { id: string; name: string; blurb: string; hex: string; /** earn-only (Floodgrid gifts): never sold through Services */ exclusive?: boolean }
 
 /** Profile lamp themes — recolor the profile showcase and the arena intro banner. */
 export const PROFILE_THEMES: ThemeDef[] = [
   { id: 'magenta', name: 'Neon Magenta', blurb: 'Hot-pink glow on your profile and arena intro.', hex: '#ff2d78' },
   { id: 'cyan', name: 'Cyan Circuit', blurb: 'Electric-blue glow on your profile and arena intro.', hex: '#22d3ee' },
   { id: 'acid', name: 'Acid Lime', blurb: 'Toxic-green glow on your profile and arena intro.', hex: '#a3e635' },
+  { id: 'collector-heart', name: 'Collector Heart', blurb: 'Deep-water teal from the heart of the flood. Floodgrid depth gift.', hex: '#2dd4bf', exclusive: true },
 ];
 export const PROFILE_THEME_BY_ID: Record<string, ThemeDef> = Object.fromEntries(PROFILE_THEMES.map((t) => [t.id, t]));
 
@@ -60,7 +63,7 @@ export const EMOTE_PACK_OF: Record<string, string> = Object.fromEntries(
 );
 
 /** Season-pass XP awards. Ranked play moves the track; nothing is bought. */
-export const PASS_XP = { matchWin: 100, matchLoss: 40, packOpen: 20 } as const;
+export const PASS_XP = { matchWin: 100, matchLoss: 40, packOpen: 20, floodDaily: 30 } as const;
 
 export type PassReward =
   | { kind: 'skin'; skin: string }

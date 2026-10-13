@@ -3271,6 +3271,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/grid/apply-skin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply an earn-only Floodgrid skin entitlement to one owned chip (one entitlement paints one cap) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        asset: string;
+                        skin: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description applied */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                /** @description No unused entitlement for that skin */
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/leaderboard/{board}": {
         parameters: {
             query?: never;
@@ -5721,6 +5768,8 @@ export interface components {
             rewardCgMicro?: string;
             /** @description quest chip voucher template { template, odds[9] bps, soulboundDays } — rooted into a kind-9 chip root (one voucher per wallet per epoch) and delivered by claim_chip_root → chip_core open_voucher → open_pack (VRF-minted, soulbound for soulboundDays) */
             rewardChip?: Record<string, never> | null;
+            /** @description Floodgrid Terminal marks granted on completion (backend gear, no root) */
+            rewardHint?: number;
             /** @description fusion boosters granted on completion — rooted into a kind-8 item root and delivered by claim_item_root (chip_core PlayerItems) */
             rewardBooster?: number;
             completedAt?: string | null;

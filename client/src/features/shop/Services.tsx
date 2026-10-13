@@ -97,7 +97,7 @@ function ServiceModal({ service, onClose }: { service: ServiceDef; onClose: () =
   const [busy, setBusy] = useState(false);
   // purchase-time variants: the payload is hashed into ref_hash, so the variant is chosen BEFORE paying
   const [asset, setAsset] = useState<string | null>(null);
-  const [skin, setSkin] = useState<string>(SKINS[0].id);
+  const [skin, setSkin] = useState<string>(SKINS.find((s) => !s.exclusive)?.id ?? SKINS[0].id);
   const [theme, setTheme] = useState<string>(PROFILE_THEMES[0].id);
   const [pack, setPack] = useState<string>(EMOTE_PACKS[0].id);
   const [collection, setCollection] = useState<number | null>(null);
@@ -168,7 +168,7 @@ function ServiceModal({ service, onClose }: { service: ServiceDef; onClose: () =
           <>
             <div className="stack-sm">
               <span className="label">{t('services.pickSkin')}</span>
-              <div className="tag-list">{SKINS.map((s) => <Pill key={s.id} active={skin === s.id} onClick={() => setSkin(s.id)}>{skinText(s.id)}</Pill>)}</div>
+              <div className="tag-list">{SKINS.filter((s) => !s.exclusive).map((s) => <Pill key={s.id} active={skin === s.id} onClick={() => setSkin(s.id)}>{skinText(s.id)}</Pill>)}</div>
               <div className="tiny muted">{skinText(skin, true)}</div>
             </div>
             <div className="stack-sm">
@@ -181,7 +181,7 @@ function ServiceModal({ service, onClose }: { service: ServiceDef; onClose: () =
           <div className="stack-sm">
             <span className="label">{t('services.pickTheme')}</span>
             <div className="tag-list">
-              {PROFILE_THEMES.map((th) => <Pill key={th.id} active={theme === th.id} onClick={() => setTheme(th.id)}><span style={{ width: 8, height: 8, borderRadius: 4, background: th.hex }} />{th.label}</Pill>)}
+              {PROFILE_THEMES.filter((th) => !th.exclusive).map((th) => <Pill key={th.id} active={theme === th.id} onClick={() => setTheme(th.id)}><span style={{ width: 8, height: 8, borderRadius: 4, background: th.hex }} />{th.label}</Pill>)}
             </div>
             <div className="tiny muted">{PROFILE_THEMES.find((x) => x.id === theme)?.desc}</div>
           </div>
