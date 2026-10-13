@@ -28,6 +28,7 @@ const id: Messages = {
     selectSector: 'All 75 sectors are open for training; the charge route advances sector by sector.',
     resultTraining: 'Training done — no rewards, as promised.', droplet: 'Flood charge +1 💧', gift: 'Gift: {kind} ×{n}',
     overBudget: 'Over the move limit — finishing now settles as a fail.', hintReady: 'Mark armed: one move will be shown.',
+    contracts: 'District contracts', contractHint: 'Conductor: a 75/75 chip of this district. Pays weekly quest progress and droplet progress — no XP.', done: 'Done', playContract: 'Run contract', deep: 'Deep Flood', deepHint: 'Weekly 8×8 sector. No hints, tighter move limit. Best run of the week wins gear.', attemptsLeft: 'Attempts left: {n}', buyAttempt: 'Buy attempt · 30 $CG burn', leaderboard: 'Leaderboard', ghost: 'Ghost of the day', ghostHint: 'Solve in ≤ {n} moves without hints to earn a Terminal mark.', beaten: 'Ghost beaten', run: 'Run', fieldTheme: 'Field theme', rank: 'Rank {n}', districtN: 'District #{n}',
   },
   common: {
     connectWallet: 'Hubungkan dompet', connecting: 'Menghubungkan…', signedIn: 'Sudah masuk', signingIn: 'Sedang masuk…', signOut: 'Keluar',
@@ -211,14 +212,14 @@ const id: Messages = {
     expires: 'berakhir {date}', noPower: 'Tanpa pay-to-win: terverifikasi on-chain', boosterCap: 'Booster: maks 3 per hari', bought: 'Dibeli', buyFailed: 'Pembelian gagal',
     pickCap: 'Pilih tutup botol untuk dicat', pickSkin: 'Pilih skin', pickTheme: 'Pilih tema', pickPack: 'Pilih pak', pickDistrict: 'Pilih distrik',
     noFreeCaps: 'Belum punya tutup botol — buka pak dulu', noCompletedDistrict: 'Lengkapi satu distrik (9/9) untuk membuka bannernya',
-    names: { handle: '@handle', handleChange: 'Ganti handle', capSkin: 'Skin cap', profileTheme: 'Tema profil', arenaEmotePack: 'Paket emote arena', extraBenchSlots: '+2 preset meja', seasonPass: 'Season pass', booster: 'Booster fusi', packSkipAnim: 'Reveal instan', districtBanner: 'Banner distrik' },
+    names: { handle: '@handle', handleChange: 'Ganti handle', capSkin: 'Skin cap', profileTheme: 'Tema profil', arenaEmotePack: 'Paket emote arena', extraBenchSlots: '+2 preset meja', seasonPass: 'Season pass', booster: 'Booster fusi', packSkipAnim: 'Reveal instan', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'Banner distrik' },
     blurbs: {
       handle: 'Nama unik di peringkat, arena, dan URL profil Anda.', handleChange: 'Ganti nama sekali per 30 hari. Handle lama dilepas setelah 90 hari.',
       capSkin: 'Efek bingkai / semprotan kosmetik pada satu cap. Ikut cap saat dijual.', profileTheme: 'Tekstur dinding + warna lampu untuk profil dan intro arena Anda.',
       arenaEmotePack: '6 emote semprot untuk ulangan Cap Slam.', extraBenchSlots: 'Simpan lebih banyak preset fusi di meja (hanya kenyamanan).',
       seasonPass: 'Jalur kosmetik musim 6 minggu: 20 tingkat skin, banner, emote. Tanpa peluang, tanpa kekuatan, tanpa $CG.',
       booster: '+15 pp keberhasilan pada satu fusi (maks 95%). Maks 3 per hari.', packSkipAnim: 'Opsi permanen melewati animasi reveal. Murni kenyamanan.',
-      districtBanner: 'Banner animasi untuk distrik yang sudah Anda lengkapi.',
+      gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Banner animasi untuk distrik yang sudah Anda lengkapi.',
     },
   },
   admin: {

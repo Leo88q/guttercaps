@@ -20,7 +20,7 @@ import { EXPLORER } from '@/app/config';
 import { fmtAmount, fmtCents, fmtUsd, CURRENCY_SYMBOLS } from '@/shared/lib/format';
 import { CleanZone, KV, Modal, Pill } from '@/shared/ui/primitives';
 import { CapPicker } from '@/shared/ui/CapPicker';
-import { PROFILE_THEMES } from '@/shared/lib/cosmetics';
+import { GRID_FIELD_THEMES, PROFILE_THEMES } from '@/shared/lib/cosmetics';
 import { useCollections } from '@/shared/lib/lore';
 import { CleanConfirmButton, SprayNozzleButton } from '@/shared/ui/buttons';
 import { useT, useLocale, fmtLocale } from '@/shared/i18n';
@@ -49,8 +49,8 @@ export function Services() {
       </div>
 
       <div className="grid-3">
-        {SERVICES.filter((s) => s.id !== 'handleChange' && s.dailyCap > 0).map((s) => {
-          const isOwned = owned.has(s.kind) && !s.recurring && s.fulfilment === 'entitlement' && s.id !== 'capSkin';
+        {SERVICES.filter((s) => s.id !== 'handleChange' && s.id !== 'gridDeepAttempt' && s.dailyCap > 0).map((s) => {
+          const isOwned = owned.has(s.kind) && !s.recurring && s.fulfilment === 'entitlement' && s.id !== 'capSkin' && s.id !== 'gridFieldTheme';
           const left = dailyLeft[String(s.kind)];
           const passActive = s.id === 'seasonPass' && (mine.data?.entitlements ?? []).some((e) => e.kind === 6 && e.expiresAt && new Date(e.expiresAt).getTime() > Date.now());
           return (
@@ -99,6 +99,7 @@ function ServiceModal({ service, onClose }: { service: ServiceDef; onClose: () =
   const [asset, setAsset] = useState<string | null>(null);
   const [skin, setSkin] = useState<string>(SKINS.find((s) => !s.exclusive)?.id ?? SKINS[0].id);
   const [theme, setTheme] = useState<string>(PROFILE_THEMES[0].id);
+  const [fieldTheme, setFieldTheme] = useState<string>(GRID_FIELD_THEMES[0].id);
   const [pack, setPack] = useState<string>(EMOTE_PACKS[0].id);
   const [collection, setCollection] = useState<number | null>(null);
   const chips = useMyChips({});
@@ -111,9 +112,10 @@ function ServiceModal({ service, onClose }: { service: ServiceDef; onClose: () =
       case 'profileTheme': return { theme };
       case 'arenaEmotePack': return { pack };
       case 'districtBanner': return collection !== null ? { collection } : null;
+      case 'gridFieldTheme': return { theme: fieldTheme };
       default: return { id: service.id, v: 1 };
     }
-  }, [service.id, asset, skin, theme, pack, collection]);
+  }, [service.id, asset, skin, theme, fieldTheme, pack, collection]);
 
   // Same gate as the pack shop — one implementation, so the two catalogues cannot disagree about
   // which rails exist. Cosmetics are the case this bit hardest: the rail vanished and a player with
@@ -191,6 +193,15 @@ function ServiceModal({ service, onClose }: { service: ServiceDef; onClose: () =
             <span className="label">{t('services.pickPack')}</span>
             <div className="tag-list">{EMOTE_PACKS.map((x) => <Pill key={x.id} active={pack === x.id} onClick={() => setPack(x.id)}>{emotePackName(x.id)}</Pill>)}</div>
             <div className="tag-list">{EMOTE_PACKS.find((x) => x.id === pack)?.emotes.map((e) => <span key={e.id} className="spray-tag" style={{ color: e.color }}>{e.tag}</span>)}</div>
+          </div>
+        )}
+        {service.id === 'gridFieldTheme' && (
+          <div className="stack-sm">
+            <span className="label">{t('services.pickTheme')}</span>
+            <div className="tag-list">
+              {GRID_FIELD_THEMES.map((th) => <Pill key={th.id} active={fieldTheme === th.id} onClick={() => setFieldTheme(th.id)}><span style={{ width: 8, height: 8, borderRadius: 4, background: th.hex }} />{th.label}</Pill>)}
+            </div>
+            <div className="tiny muted">{GRID_FIELD_THEMES.find((x) => x.id === fieldTheme)?.desc}</div>
           </div>
         )}
         {service.id === 'districtBanner' && (

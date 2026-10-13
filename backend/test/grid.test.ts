@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateLevel, levelSeed, orbitSize } from '@guttercaps/economy';
 import { Db } from '../src/db.ts';
-import { startGridAttempt, completeGridAttempt, failGridAttempt, gridMe } from '../src/grid.ts';
+import { startGridAttempt, completeGridAttempt, failGridAttempt, gridMe, gridGhostSeed, gridDay } from '../src/grid.ts';
 import { creditChipXp } from '../src/chip-xp.ts';
 
 const kp = () => {
@@ -191,5 +191,75 @@ describe('floodgrid daily pass, sunday flood and cosmetic gifts', () => {
     expect(JSON.parse(ent!.payload).skin).toBe('wet-rim');
     applyGridSkin(db, owner, { asset, skin: 'wet-rim' }, T);
     expect(db.get<{ skin: string }>(`SELECT skin FROM chips WHERE asset = ?`, asset)?.skin).toBe('wet-rim');
+  });
+});
+
+describe('floodgrid phase 3 (contracts, deep flood, ghost)', () => {
+  const solFor = (level: number, seed: number): [number, number][] => {
+    const lv = generateLevel(level, seed);
+    const turns: [number, number][] = [];
+    lv.tiles.forEach((tile, i) => {
+      if (tile.fixed) return;
+      const period = orbitSize(tile.base);
+      const fwd = (((lv.solutionRot[i] - tile.rot) % period) + period) % period;
+      const back = period - fwd;
+      if (fwd === 0) return;
+      if (fwd <= back) for (let k = 0; k < fwd; k++) turns.push([i, 1]);
+      else for (let k = 0; k < back; k++) turns.push([i, -1]);
+    });
+    return turns;
+  };
+
+  it('district contract requires a mastered conductor of the district and pays quest progress + droplet progress, no XP', async () => {
+    const { gridContractAt } = await import('../src/grid.ts');
+    const db = new Db(':memory:');
+    const owner = kp(); const asset = mint(db, owner); // district 0
+    // not mastered yet -> locked
+    expect(() => startGridAttempt(db, owner, { asset, kind: 'contract', slot: 0 }, T)).toThrow(/contracts open after/);
+    db.run(`INSERT INTO grid_chip_routes (asset, next_level, charge_drops, charge_progress, updated_at) VALUES (?, 76, 0, 4, ?)`, asset, T);
+    const c = gridContractAt(T, 0);
+    const a = startGridAttempt(db, owner, { asset, kind: 'contract', slot: 0 }, T) as unknown as { attemptId: string; level: number };
+    const r = completeGridAttempt(db, owner, { attemptId: a.attemptId, turns: solFor(c.configLevel, c.seed) }, T);
+    expect(r.ok).toBe(true);
+    if (r.ok) { expect(r.xpGranted).toBe(0); expect(r.dropletGained).toBe(true); }
+    expect(db.scalar(`SELECT COUNT(*) FROM grid_completions WHERE wallet = ? AND kind = 'contract'`, owner)).toBe(1);
+    expect(db.scalar(`SELECT charge_drops FROM grid_chip_routes WHERE asset = ?`, asset)).toBe(1);
+    const me = gridMe(db, owner, T) as unknown as { contracts: { done: unknown }[] };
+    expect(me.contracts[0].done).not.toBeNull();
+  });
+
+  it('ghost of the day: beating par clean pays one hint once a day', () => {
+    const db = new Db(':memory:');
+    const owner = kp(); const asset = mint(db, owner);
+    const a = startGridAttempt(db, owner, { asset, kind: 'ghost' }, T) as unknown as { attemptId: string; level: number };
+    const r = completeGridAttempt(db, owner, { attemptId: a.attemptId, turns: solFor(33, gridGhostSeed(gridDay(T))) }, T);
+    expect(r.ok).toBe(true);
+    if (r.ok && 'beaten' in r) { expect(r.beaten).toBe(true); expect(r.hintGranted).toBe(1); }
+    const a2 = startGridAttempt(db, owner, { asset, kind: 'ghost' }, T) as unknown as { attemptId: string };
+    const r2 = completeGridAttempt(db, owner, { attemptId: a2.attemptId, turns: solFor(33, gridGhostSeed(gridDay(T))) }, T);
+    if (r2.ok && 'hintGranted' in r2) expect(r2.hintGranted).toBe(0);
+  });
+
+  it('deep flood: one free weekly attempt, extra attempt is a 30 CG burn credit, best run ranks and settles gear next week', async () => {
+    const grid = await import('../src/grid.ts');
+    const { serviceRefHash, toHex } = await import('../src/services.ts');
+    const db = new Db(':memory:');
+    const owner = 'So11111111111111111111111111111111111111112'; const asset = mint(db, owner);
+    const week = grid.gridWeek(T);
+    const a = startGridAttempt(db, owner, { asset, kind: 'deep' }, T) as unknown as { attemptId: string };
+    const r = completeGridAttempt(db, owner, { attemptId: a.attemptId, turns: solFor(75, grid.gridDeepSeed(week)) }, T);
+    expect(r.ok).toBe(true);
+    if (r.ok && 'rank' in r) expect(r.rank).toBe(1);
+    expect(() => startGridAttempt(db, owner, { asset, kind: 'deep' }, T)).toThrow(/attempts left/);
+    const sig = 'deepsig'.padEnd(80, 'x');
+    const ref = toHex(serviceRefHash(10, owner, { id: 'gridDeepAttempt', week }));
+    db.run(`INSERT INTO service_payments (signature, event_index, buyer, kind, currency, amount, burned, ref_hash, block_time, slot, consumed_by) VALUES (?, 0, ?, 10, 2, '30000000', '30000000', ?, ?, 1, NULL)`, sig, owner, ref, T);
+    db.run(`INSERT INTO events_raw (signature, ix_index, event_index, program, name, data, slot, finalized_at) VALUES (?, 0, 0, 'services', 'ServicePaid', '{}', 1, ?)`, sig, T);
+    expect(grid.buyGridDeepAttempt(db, owner, sig, T).credits).toBe(1);
+    const a2 = startGridAttempt(db, owner, { asset, kind: 'deep' }, T) as unknown as { attemptId: string };
+    expect(a2.attemptId).toBeTruthy();
+    const me = gridMe(db, owner, T + 7 * 86_400) as unknown as { deepReward: { rank: number; hints: number } | null };
+    expect(me.deepReward?.rank).toBe(1);
+    expect(me.deepReward?.hints).toBeGreaterThanOrEqual(1);
   });
 });

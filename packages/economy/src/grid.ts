@@ -31,6 +31,13 @@ export const GRID = {
   /** Flood Night: on Sunday the Drain district of the day pays double droplet progress/refills */
   floodSundayDropletMult: 2,
   floodDistricts: 8,
+  /** Phase 3 endgame (docs/12, owner-approved 2026-10-13): district contracts, Deep Flood, Ghost of the day. */
+  contractsPerDay: 3, // deterministic district offers; conductor must be a 75/75 chip of that district
+  deepFreeAttemptsPerWeek: 1,
+  deepPaidAttemptsPerWeek: 3, // extra weekly attempts: 30 $CG each, 100% burn via pay_service kind 10
+  deepAttemptCgMicro: 30_000_000,
+  deepMoveBudgetMult: 1.5, // Deep Flood modifier: no hints, tighter move budget
+  ghostHintsPerDay: 1, // beat the ghost (<= par, no hints) -> +1 Terminal mark, once a day
   starMilestones: [
     { stars: 75, hints: 2, valves: 0 },
     { stars: 125, hints: 0, valves: 1 },

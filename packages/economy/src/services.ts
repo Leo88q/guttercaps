@@ -25,7 +25,8 @@
 
 export type ServiceId =
   | 'handle' | 'handleChange' | 'capSkin' | 'profileTheme' | 'arenaEmotePack'
-  | 'extraBenchSlots' | 'seasonPass' | 'booster' | 'packSkipAnim' | 'districtBanner';
+  | 'extraBenchSlots' | 'seasonPass' | 'booster' | 'packSkipAnim' | 'districtBanner'
+  | 'gridDeepAttempt' | 'gridFieldTheme';
 
 export interface ServiceDef {
   id: ServiceId;
@@ -61,6 +62,10 @@ export const SERVICES: readonly ServiceDef[] = [
   { id: 'booster',         kind: 7, rustName: 'Booster',         priceUsdCents: 79,  dailyCap: 0,  fulfilment: 'chain',       recurring: false, name: 'Fusion booster',     blurb: '+15 pp success on one fusion (cap 95 %). Earned from quests and PvP only — not sold.' },
   { id: 'packSkipAnim',    kind: 8, rustName: 'PackSkipAnim',    priceUsdCents: 99,  dailyCap: 10, fulfilment: 'entitlement', recurring: false, name: 'Instant reveal',     blurb: 'Permanent toggle to skip the reveal animation. Pure convenience.' },
   { id: 'districtBanner',  kind: 9, rustName: 'DistrictBanner',  priceUsdCents: 199, dailyCap: 10, fulfilment: 'entitlement', recurring: false, name: 'District banner',    blurb: 'Animated banner for a district you have completed.' },
+  // Phase-3 Floodgrid sinks (docs/12): kind 10 is priced 5 cents so the $CG rail is exactly 30 $CG
+  // (100% burn); the backend grants attempt credits only for $CG payments of exactly that amount.
+  { id: 'gridDeepAttempt', kind: 10, rustName: 'GridDeepAttempt', priceUsdCents: 5, dailyCap: 10, fulfilment: 'entitlement', recurring: true, name: 'Deep Flood attempt', blurb: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.' },
+  { id: 'gridFieldTheme',  kind: 11, rustName: 'GridFieldTheme',  priceUsdCents: 249, dailyCap: 10, fulfilment: 'entitlement', recurring: false, name: 'Floodgrid field theme', blurb: 'Recolors the Floodgrid board flow lines. Cosmetic only.' },
 ] as const;
 
 export const SERVICE_BY_ID = Object.fromEntries(SERVICES.map((s) => [s.id, s])) as Record<ServiceId, ServiceDef>;

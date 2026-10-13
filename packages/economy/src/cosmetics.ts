@@ -28,6 +28,15 @@ export const PROFILE_THEMES: ThemeDef[] = [
 ];
 export const PROFILE_THEME_BY_ID: Record<string, ThemeDef> = Object.fromEntries(PROFILE_THEMES.map((t) => [t.id, t]));
 
+/** Floodgrid field themes — recolor the sector board only (pay_service kind 11, docs/12 phase 3). Presentation only. */
+export const GRID_FIELD_THEMES: ThemeDef[] = [
+  { id: 'field-magma', name: 'Magma Field', blurb: 'Molten orange flow lines on the Floodgrid board.', hex: '#fb923c' },
+  { id: 'field-frost', name: 'Frost Field', blurb: 'Ice-blue flow lines on the Floodgrid board.', hex: '#38bdf8' },
+  { id: 'field-toxic', name: 'Toxic Field', blurb: 'Acid-green flow lines on the Floodgrid board.', hex: '#a3e635' },
+  { id: 'field-royal', name: 'Royal Field', blurb: 'Violet flow lines on the Floodgrid board.', hex: '#c4b5fd' },
+];
+export const GRID_FIELD_THEME_BY_ID: Record<string, ThemeDef> = Object.fromEntries(GRID_FIELD_THEMES.map((t) => [t.id, t]));
+
 export interface EmoteDef { id: string; tag: string; color: string }
 export interface EmotePackDef { id: string; name: string; blurb: string; emotes: EmoteDef[] }
 

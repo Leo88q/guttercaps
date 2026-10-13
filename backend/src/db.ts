@@ -219,7 +219,42 @@ CREATE TABLE IF NOT EXISTS grid_completions (
   stars INTEGER NOT NULL,
   moves INTEGER NOT NULL,
   day INTEGER NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'campaign',
   created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS grid_contract_done (
+  wallet TEXT NOT NULL,
+  day INTEGER NOT NULL,
+  slot INTEGER NOT NULL,
+  asset TEXT NOT NULL,
+  stars INTEGER NOT NULL,
+  moves INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (wallet, day, slot)
+);
+CREATE TABLE IF NOT EXISTS grid_deep_credits (
+  wallet TEXT NOT NULL,
+  week INTEGER NOT NULL,
+  signature TEXT NOT NULL,
+  granted_at INTEGER NOT NULL,
+  PRIMARY KEY (wallet, signature)
+);
+CREATE TABLE IF NOT EXISTS grid_deep_results (
+  wallet TEXT NOT NULL,
+  week INTEGER NOT NULL,
+  asset TEXT NOT NULL,
+  moves INTEGER NOT NULL,
+  stars INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (wallet, week)
+);
+CREATE TABLE IF NOT EXISTS grid_deep_settlements (
+  wallet TEXT NOT NULL,
+  week INTEGER NOT NULL,
+  hints INTEGER NOT NULL DEFAULT 0,
+  valve INTEGER NOT NULL DEFAULT 0,
+  settled_at INTEGER NOT NULL,
+  PRIMARY KEY (wallet, week)
 );
 CREATE INDEX IF NOT EXISTS idx_grid_completions_wallet_day ON grid_completions(wallet, day);
 CREATE TABLE IF NOT EXISTS grid_fails (
@@ -1066,6 +1101,8 @@ export class Db {
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_events_untimed ON events_raw(slot) WHERE block_time IS NULL`);
     const ch = new Set((this.raw.prepare(`PRAGMA table_info(chips)`).all() as { name: string }[]).map((c) => c.name));
     if (!ch.has('skin')) this.raw.exec(`ALTER TABLE chips ADD COLUMN skin TEXT`);
+    const gc = new Set((this.raw.prepare(`PRAGMA table_info(grid_completions)`).all() as { name: string }[]).map((c) => c.name));
+    if (gc.size > 0 && !gc.has('kind')) this.raw.exec(`ALTER TABLE grid_completions ADD COLUMN kind TEXT NOT NULL DEFAULT 'campaign'`);
     // SEC-B3/shape #27: `chips.game_index` — the per-collection mint number the market's "Low #" sort and
     // `indexMin`/`indexMax` filters need. The compressed path learns it from CompressedChipRegistered;
     // a core `open_pack` chip only has it inside its `ChipState` account, so those rows are left NULL and

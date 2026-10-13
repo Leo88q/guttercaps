@@ -778,7 +778,7 @@ paths:
     post:
       tags: [grid]
       summary: Start a Floodgrid attempt (training on the chip route or charge attempt on the next sector; seed committed server-side)
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [asset, level], properties: { asset: { type: string }, level: { type: integer, minimum: 1, maximum: 75 }, mode: { type: string, enum: [training, charge] }, hintsUsed: { type: integer, minimum: 0, maximum: 1 } } } } } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [asset], properties: { asset: { type: string }, level: { type: integer, minimum: 1, maximum: 75 }, mode: { type: string, enum: [training, charge] }, kind: { type: string, enum: [contract, deep, ghost], description: 'Phase-3 special attempt (docs/12): district contract (slot), Deep Flood (weekly, no hints), Ghost of the day (no hints)' }, slot: { type: integer, minimum: 0, maximum: 2 }, hintsUsed: { type: integer, minimum: 0, maximum: 1 } } } } } }
       responses:
         '200': { description: attempt, content: { application/json: { schema: { $ref: '#/components/schemas/GridAttempt' } } } }
         '400': { $ref: '#/components/responses/Error', description: 'bad args / second hint downgrades to training' }
@@ -801,6 +801,15 @@ paths:
         '404': { $ref: '#/components/responses/Error', description: 'Unknown attempt' }
 
   # ------------------------------------------------------------------ leaderboard
+  /grid/deep/buy:
+    post:
+      tags: [grid]
+      summary: Buy one extra Deep Flood attempt for this week with a 30 $CG burn (pay_service kind 10, docs/12 phase 3)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [signature], properties: { signature: { type: string } } } } } }
+      responses:
+        '200': { description: credit, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        '402': { $ref: '#/components/responses/Error', description: 'Payment missing, wrong rail or not exactly 30 $CG' }
+        '409': { $ref: '#/components/responses/Error', description: 'Weekly paid-attempt cap reached or payment already used' }
   /grid/apply-skin:
     post:
       tags: [grid]

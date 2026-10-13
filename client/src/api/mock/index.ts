@@ -166,7 +166,10 @@ on('get', '/me/referrals', () => ({
 // Same deterministic engine, verified locally — mirrors backend/src/grid.ts rules (docs/13).
 interface MockGridRoute { nextLevel: number; chargeDrops: number; chargeProgress: number; claims: Map<number, { best_stars: number; xp_accounted: number }> }
 const mockGridRoutes = new Map<string, MockGridRoute>();
-const mockGridAttempts = new Map<string, { asset: string; level: number; hintsUsed: number; mode: string }>();
+const mockGridAttempts = new Map<string, { asset: string; level: number; seed: number; hintsUsed: number; mode: string }>();
+let mockGhostBeatenDay = -1;
+let mockDeepUsed = 0;
+let mockDeepCredits = 0;
 let mockGridHints: number = GRID_RULES.hintStartStock;
 let mockGridValves = 0;
 const mockRoute = (asset: string): MockGridRoute => {
@@ -179,6 +182,10 @@ on('get', '/grid/me', () => ({
   pendingGranted: 0,
   chips: chips.map((c) => { const r = mockRoute(c.asset); return { asset: c.asset, collection: c.collection, rarity: c.rarity, chipLevel: c.level, route: { nextLevel: r.nextLevel, chargeDrops: r.chargeDrops, chargeProgress: r.chargeProgress }, claims: [...r.claims.entries()].map(([level, v]) => ({ level, best_stars: v.best_stars, xp_accounted: v.xp_accounted, xp_pending: 0, max_xp: gridBaseXp(level) })) }; }),
   gifts: [], floodWeek: 0, flood: [],
+  contracts: [0, 1, 2].map((slot) => { const day = Math.floor(Date.now() / 86_400_000); const depth = 1 + ((day + slot) % 5); const configLevel = depth * 15; return { slot, district: (day * 3 + slot) % 8, depth, configLevel, size: generateLevel(configLevel, 1).size, done: null }; }),
+  deep: { week: Math.floor((Date.now() / 1000 - 4 * 86_400) / (7 * 86_400)), level: 75, attemptsUsed: mockDeepUsed, paidCredits: mockDeepCredits, attemptsLeft: Math.max(0, 1 + mockDeepCredits - mockDeepUsed), paidAttemptsLeft: Math.max(0, 3 - mockDeepCredits), attemptPriceCgMicro: 30_000_000, myBest: null, leaderboard: [] },
+  ghost: { day: Math.floor(Date.now() / 86_400_000), level: 33, targetMoves: generateLevel(33, 7).parMoves, beaten: mockGhostBeatenDay === Math.floor(Date.now() / 86_400_000) },
+  fieldThemes: entitlements.filter((e) => e.kind === 11).map((e) => String((e.payload as { theme?: string }).theme ?? '')).filter(Boolean),
 }));
 on('get', '/grid/chip/{asset}', (o) => {
   const asset = chips.find((c) => o.path?.asset === c.asset)?.asset ?? String(o.path?.asset ?? '');
@@ -186,22 +193,30 @@ on('get', '/grid/chip/{asset}', (o) => {
   return { asset, route: { nextLevel: r.nextLevel, chargeDrops: r.chargeDrops, chargeProgress: r.chargeProgress }, claims: [...r.claims.entries()].map(([level, v]) => ({ level, best_stars: v.best_stars, xp_accounted: v.xp_accounted, xp_pending: 0, max_xp: gridBaseXp(level) })), fails: [], emergency: [] };
 });
 on('post', '/grid/attempt', (o) => {
-  const b = (o.body ?? {}) as { asset: string; level: number; hintsUsed?: number; mode?: string };
+  const b = (o.body ?? {}) as { asset: string; level: number; hintsUsed?: number; mode?: string; kind?: string; slot?: number };
   const r = mockRoute(b.asset);
-  if (b.mode !== 'training' && b.level > r.nextLevel) throw new ApiError(409, 'route_locked', 'Chip route is at a lower sector; sectors cannot be skipped (open it in training)');
-  const lv = generateLevel(b.level, levelSeed(b.level));
+  const day = Math.floor(Date.now() / 86_400_000);
+  let level = b.level; let seed = levelSeed(b.level); let mode = b.mode ?? 'charge'; let budgetMult: number = GRID_RULES.moveBudgetMult;
+  if (b.kind === 'ghost') { level = 33; seed = 7; mode = 'ghost'; }
+  else if (b.kind === 'deep') { if (mockDeepUsed >= 1 + mockDeepCredits) throw new ApiError(409, 'deep_attempts_exhausted', 'No Deep Flood attempts left this week'); mockDeepUsed += 1; level = 75; seed = 11; mode = 'deep'; budgetMult = 1.5; }
+  else if (b.kind === 'contract') { if (r.nextLevel <= 75) throw new ApiError(409, 'contract_locked', 'Contracts open after the Descent'); level = (1 + ((day + (b.slot ?? 0)) % 5)) * 15; seed = 13 + (b.slot ?? 0); mode = 'contract'; }
+  else if (b.mode !== 'training' && b.level > r.nextLevel) throw new ApiError(409, 'route_locked', 'Chip route is at a lower sector; sectors cannot be skipped (open it in training)');
+  const lv = generateLevel(level, seed);
   const id = `mock-grid-${Math.floor(rnd() * 1e9)}`;
-  mockGridAttempts.set(id, { asset: b.asset, level: b.level, hintsUsed: b.hintsUsed ?? 0, mode: b.mode ?? 'charge' });
-  return { attemptId: id, level: b.level, par: lv.parMoves, moveBudget: lv.parMoves * GRID_RULES.moveBudgetMult, route: { nextLevel: r.nextLevel, chargeDrops: r.chargeDrops, chargeProgress: r.chargeProgress }, board: { size: lv.size, bus: lv.bus, receivers: lv.receivers, tiles: lv.tiles.map((tile) => ({ base: tile.base, rot: tile.rot, fixed: tile.fixed, role: tile.role })) } };
+  mockGridAttempts.set(id, { asset: b.asset, level, seed, hintsUsed: b.hintsUsed ?? 0, mode });
+  return { attemptId: id, level, par: lv.parMoves, moveBudget: Math.ceil(lv.parMoves * budgetMult), route: { nextLevel: r.nextLevel, chargeDrops: r.chargeDrops, chargeProgress: r.chargeProgress }, board: { size: lv.size, bus: lv.bus, receivers: lv.receivers, tiles: lv.tiles.map((tile) => ({ base: tile.base, rot: tile.rot, fixed: tile.fixed, role: tile.role })) } };
 });
+on('post', '/grid/deep/buy', () => { mockDeepCredits = Math.min(3, mockDeepCredits + 1); return { week: 0, credits: mockDeepCredits }; });
 on('post', '/grid/complete', (o) => {
   const b = (o.body ?? {}) as { attemptId: string; turns: [number, number][]; useValve?: boolean };
   const a = mockGridAttempts.get(b.attemptId);
   if (!a) throw new ApiError(404, 'attempt_not_found', 'Unknown grid attempt');
   mockGridAttempts.delete(b.attemptId);
-  const lv = generateLevel(a.level, levelSeed(a.level));
+  const lv = generateLevel(a.level, a.seed);
   for (const [i, d] of b.turns) applyRotate(lv, i, d);
   const r = mockRoute(a.asset);
+  if (a.mode === 'ghost') { const beaten = isSolved(lv) && b.turns.length <= lv.parMoves; let hintGranted = 0; const day = Math.floor(Date.now() / 86_400_000); if (beaten && mockGhostBeatenDay !== day) { mockGhostBeatenDay = day; hintGranted = mockGridHints < 10 ? 1 : 0; mockGridHints += hintGranted; } return { ok: isSolved(lv), training: false, kind: 'ghost', beaten, stars: 0, xpGranted: 0, xpPending: 0, hintGranted }; }
+  if (a.mode === 'contract' || a.mode === 'deep') { const solved = isSolved(lv); const stars: number = solved ? gridStarsForMoves(b.turns.length, lv.parMoves) : 0; if (a.mode === 'contract' && solved && stars >= 2) { r.chargeProgress += 1; while (r.chargeProgress >= 5 && r.chargeDrops < 3) { r.chargeDrops += 1; r.chargeProgress -= 5; } } return { ok: solved && stars > 0, training: false, kind: a.mode, stars, xpGranted: 0, xpPending: 0, dropletGained: false, gifts: [] }; }
   if (a.mode === 'training') return { ok: isSolved(lv), training: true, stars: 0, xpGranted: 0, xpPending: 0 };
   if (!isSolved(lv)) return { ok: false, xpLoss: b.useValve ? 0 : GRID_RULES.failXp, emergencyGranted: false };
   let stars: number = gridStarsForMoves(b.turns.length, lv.parMoves);

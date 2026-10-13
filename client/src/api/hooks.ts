@@ -64,6 +64,11 @@ export interface GridMe {
   floodReward?: { week: number; hints: number; valve: number } | null; masteredChips?: number;
   districtMastery?: { district: number; stars: number; cleared: number }[]; daily?: { day: number; level: number; district: number; sunday: boolean; epic: boolean };
   cosmetics?: { id: number; kind: number; payload: Record<string, unknown>; signature: string }[];
+  contracts?: { slot: number; district: number; depth: number; configLevel: number; size: number; done: { asset: string; stars: number; moves: number } | null }[];
+  deep?: { week: number; level: number; attemptsUsed: number; paidCredits: number; attemptsLeft: number; paidAttemptsLeft: number; attemptPriceCgMicro: number; myBest: { moves: number; stars: number } | null; leaderboard: { rank: number; wallet: string; moves: number; stars: number; me: boolean }[] };
+  ghost?: { day: number; level: number; targetMoves: number; beaten: boolean };
+  fieldThemes?: string[];
+  deepReward?: { week: number; hints: number; valve: number; rank: number } | null;
 }
 export interface GridChipState { asset: string; route: { nextLevel: number; chargeDrops: number; chargeProgress: number }; claims: GridClaim[]; fails: { level: number; fails: number }[]; emergency: number[] }
 export function useGridMe() {

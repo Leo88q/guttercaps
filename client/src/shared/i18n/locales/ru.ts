@@ -28,6 +28,7 @@ const ru: Messages = {
     selectSector: 'Все 75 секторов открыты для тренировки; зарядный маршрут идёт сектор за сектором.',
     resultTraining: 'Тренировка завершена — без наград, как обещано.', droplet: 'Заряд паводка +1 💧', gift: 'Подарок: {kind} ×{n}',
     overBudget: 'Лимит ходов превышен — завершение засчитается как провал.', hintReady: 'Метка активирована: покажем один ход.',
+    contracts: 'Контракты районов', contractHint: 'Проводник — фишка 75/75 этого района. Даёт прогресс недельных квестов и заряд — без XP.', done: 'Готово', playContract: 'Выполнить контракт', deep: 'Глубокий паводок', deepHint: 'Недельный сектор 8×8. Без подсказок, жёсткий лимит ходов. Лучший проход недели получает снаряжение.', attemptsLeft: 'Попыток осталось: {n}', buyAttempt: 'Купить попытку · 30 $CG burn', leaderboard: 'Лидерборд', ghost: 'Призрак дня', ghostHint: 'Реши за ≤ {n} ходов без подсказок и получи Метку Клеммы.', beaten: 'Призрак обойдён', run: 'Запуск', fieldTheme: 'Тема поля', rank: 'Место {n}', districtN: 'Район #{n}',
   },
   common: {
     connectWallet: 'Подключить кошелёк', connecting: 'Подключение…', signedIn: 'Вы вошли', signingIn: 'Вход…', signOut: 'Выйти',
@@ -211,14 +212,14 @@ const ru: Messages = {
     expires: 'до {date}', noPower: 'Без pay-to-win: проверяемо ончейн', boosterCap: 'Бустеры: не более 3 в день', bought: 'Куплено', buyFailed: 'Покупка не удалась',
     pickCap: 'Выберите фишку для покраски', pickSkin: 'Выберите скин', pickTheme: 'Выберите тему', pickPack: 'Выберите пак', pickDistrict: 'Выберите район',
     noFreeCaps: 'Пока нет фишек — открой пак', noCompletedDistrict: 'Собери район целиком (9/9), чтобы открыть его баннер',
-    names: { handle: '@хендл', handleChange: 'Смена хендла', capSkin: 'Скин фишки', profileTheme: 'Тема профиля', arenaEmotePack: 'Эмоции для арены', extraBenchSlots: '+2 пресета верстака', seasonPass: 'Сезонный пропуск', booster: 'Бустер слияния', packSkipAnim: 'Мгновенное раскрытие', districtBanner: 'Баннер района' },
+    names: { handle: '@хендл', handleChange: 'Смена хендла', capSkin: 'Скин фишки', profileTheme: 'Тема профиля', arenaEmotePack: 'Эмоции для арены', extraBenchSlots: '+2 пресета верстака', seasonPass: 'Сезонный пропуск', booster: 'Бустер слияния', packSkipAnim: 'Мгновенное раскрытие', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'Баннер района' },
     blurbs: {
       handle: 'Уникальное имя в топах, на арене и в ссылке на профиль.', handleChange: 'Переименование раз в 30 дней. Старый хендл освобождается через 90 дней.',
       capSkin: 'Косметический обод / эффект краски на одной фишке. Переходит вместе с фишкой при продаже.', profileTheme: 'Текстура стены и цвет фонаря для профиля и интро арены.',
       arenaEmotePack: '6 спрей-эмоций для повторов Cap Slam.', extraBenchSlots: 'Больше сохранённых пресетов на верстаке (только удобство).',
       seasonPass: 'Косметическая линейка на 6-недельный сезон: 20 уровней скинов, баннеров, эмоций. Без шансов, силы и $CG.',
       booster: '+15 п.п. к успеху одного слияния (макс. 95%). Не более 3 в день.', packSkipAnim: 'Постоянный пропуск анимации раскрытия. Чистое удобство.',
-      districtBanner: 'Анимированный баннер собранного района.',
+      gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Анимированный баннер собранного района.',
     },
   },
   admin: {

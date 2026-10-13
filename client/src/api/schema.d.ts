@@ -3149,9 +3149,15 @@ export interface paths {
                 content: {
                     "application/json": {
                         asset: string;
-                        level: number;
+                        level?: number;
                         /** @enum {string} */
                         mode?: "training" | "charge";
+                        /**
+                         * @description Phase-3 special attempt (docs/12): district contract (slot), Deep Flood (weekly, no hints), Ghost of the day (no hints)
+                         * @enum {string}
+                         */
+                        kind?: "contract" | "deep" | "ghost";
+                        slot?: number;
                         hintsUsed?: number;
                     };
                 };
@@ -3263,6 +3269,54 @@ export interface paths {
                 };
                 /** @description Unknown attempt */
                 404: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/grid/deep/buy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Buy one extra Deep Flood attempt for this week with a 30 $CG burn (pay_service kind 10, docs/12 phase 3) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        signature: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description credit */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                /** @description Payment missing, wrong rail or not exactly 30 $CG */
+                402: components["responses"]["Error"];
+                /** @description Weekly paid-attempt cap reached or payment already used */
+                409: components["responses"]["Error"];
             };
         };
         delete?: never;

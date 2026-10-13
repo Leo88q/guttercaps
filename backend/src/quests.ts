@@ -145,6 +145,8 @@ export function metricValue(db: Db, wallet: string, metric: string, from: number
     case 'referrals_paid':
       return db.scalar(`SELECT COUNT(DISTINCT w.address) FROM wallets w JOIN pack_purchases p ON p.buyer = w.address AND p.sku > 0 AND p.slot <= ? WHERE w.referrer = ?`, maxSlot, wallet);
     case 'grid_cleared':
+      return db.scalar(`SELECT COUNT(*) FROM grid_completions WHERE wallet = ? AND kind = 'campaign' AND created_at >= ? AND created_at < ?`, wallet, from, to);
+    case 'grid_cleared_all':
       return db.scalar(`SELECT COUNT(*) FROM grid_completions WHERE wallet = ? AND created_at >= ? AND created_at < ?`, wallet, from, to);
     case 'grid_route_max':
       return db.scalar(`SELECT COALESCE(MAX(next_level - 1), 0) FROM grid_chip_routes WHERE asset IN (SELECT asset FROM chips WHERE owner = ? AND burned_at IS NULL)`, wallet);

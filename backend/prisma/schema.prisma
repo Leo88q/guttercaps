@@ -1248,10 +1248,61 @@ model GridCompletion {
   stars     Int
   moves     Int
   day       Int
+  kind      String @default("campaign")
   createdAt Int    @map("created_at")
 
   @@index([wallet, day])
   @@map("grid_completions")
+}
+
+/// Phase-3 district contracts completed per wallet/day/slot (docs/12).
+model GridContractDone {
+  wallet    String
+  day       Int
+  slot      Int
+  asset     String
+  stars     Int
+  moves     Int
+  createdAt Int    @map("created_at")
+
+  @@id([wallet, day, slot])
+  @@map("grid_contract_done")
+}
+
+/// Paid Deep Flood attempt credits (30 $CG burn, pay_service kind 10).
+model GridDeepCredit {
+  wallet    String
+  week      Int
+  signature String
+  grantedAt Int    @map("granted_at")
+
+  @@id([wallet, signature])
+  @@map("grid_deep_credits")
+}
+
+/// Best Deep Flood result per wallet/week (leaderboard).
+model GridDeepResult {
+  wallet    String
+  week      Int
+  asset     String
+  moves     Int
+  stars     Int
+  createdAt Int    @map("created_at")
+
+  @@id([wallet, week])
+  @@map("grid_deep_results")
+}
+
+/// Lazily settled Deep Flood weekly gear rewards.
+model GridDeepSettlement {
+  wallet    String
+  week      Int
+  hints     Int    @default(0)
+  valve     Int    @default(0)
+  settledAt Int    @map("settled_at")
+
+  @@id([wallet, week])
+  @@map("grid_deep_settlements")
 }
 
 /// Failed charge attempts per wallet×chip×level (3 -> emergency hint).

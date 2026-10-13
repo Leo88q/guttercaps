@@ -28,6 +28,7 @@ const es: Messages = {
     selectSector: 'All 75 sectors are open for training; the charge route advances sector by sector.',
     resultTraining: 'Training done — no rewards, as promised.', droplet: 'Flood charge +1 💧', gift: 'Gift: {kind} ×{n}',
     overBudget: 'Over the move limit — finishing now settles as a fail.', hintReady: 'Mark armed: one move will be shown.',
+    contracts: 'District contracts', contractHint: 'Conductor: a 75/75 chip of this district. Pays weekly quest progress and droplet progress — no XP.', done: 'Done', playContract: 'Run contract', deep: 'Deep Flood', deepHint: 'Weekly 8×8 sector. No hints, tighter move limit. Best run of the week wins gear.', attemptsLeft: 'Attempts left: {n}', buyAttempt: 'Buy attempt · 30 $CG burn', leaderboard: 'Leaderboard', ghost: 'Ghost of the day', ghostHint: 'Solve in ≤ {n} moves without hints to earn a Terminal mark.', beaten: 'Ghost beaten', run: 'Run', fieldTheme: 'Field theme', rank: 'Rank {n}', districtN: 'District #{n}',
   },
   common: {
     connectWallet: 'Conectar billetera', connecting: 'Conectando…', signedIn: 'Sesión iniciada', signingIn: 'Iniciando…', signOut: 'Salir',
@@ -211,14 +212,14 @@ const es: Messages = {
     expires: 'vence {date}', noPower: 'Sin pay-to-win: verificable on-chain', boosterCap: 'Boosters: máx. 3 por día', bought: 'Comprado', buyFailed: 'La compra falló',
     pickCap: 'Elige una chapa para pintar', pickSkin: 'Elige un aspecto', pickTheme: 'Elige un tema', pickPack: 'Elige un paquete', pickDistrict: 'Elige un distrito',
     noFreeCaps: 'Aún no tienes chapas: abre un sobre primero', noCompletedDistrict: 'Completa un distrito (9/9) para desbloquear su estandarte',
-    names: { handle: '@handle', handleChange: 'Cambio de handle', capSkin: 'Skin de cap', profileTheme: 'Tema de perfil', arenaEmotePack: 'Pack de emotes', extraBenchSlots: '+2 presets de banco', seasonPass: 'Pase de temporada', booster: 'Booster de fusión', packSkipAnim: 'Revelado instantáneo', districtBanner: 'Banner de distrito' },
+    names: { handle: '@handle', handleChange: 'Cambio de handle', capSkin: 'Skin de cap', profileTheme: 'Tema de perfil', arenaEmotePack: 'Pack de emotes', extraBenchSlots: '+2 presets de banco', seasonPass: 'Pase de temporada', booster: 'Booster de fusión', packSkipAnim: 'Revelado instantáneo', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'Banner de distrito' },
     blurbs: {
       handle: 'Nombre único en el ranking, la arena y la URL de tu perfil.', handleChange: 'Renómbrate una vez cada 30 días. El handle anterior se libera a los 90 días.',
       capSkin: 'Borde / efecto de spray cosmético grabado en un cap. Viaja con el cap al venderlo.', profileTheme: 'Textura de pared + color de lámpara para tu perfil y la intro de la arena.',
       arenaEmotePack: '6 emotes de spray para las repeticiones de Cap Slam.', extraBenchSlots: 'Guarda más presets de fusión en el banco (solo comodidad).',
       seasonPass: 'Pista cosmética de la temporada de 6 semanas: 20 niveles de skins, banners y emotes. Sin probabilidades, sin poder, sin $CG.',
       booster: '+15 pp de éxito en una fusión (máx. 95%). Máx. 3 por día.', packSkipAnim: 'Opción permanente para saltar la animación de revelado. Pura comodidad.',
-      districtBanner: 'Banner animado de un distrito que completaste.',
+      gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Banner animado de un distrito que completaste.',
     },
   },
   admin: {

@@ -6,7 +6,12 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { GRID, GRID_DEPTHS, componentCount, isSolved, kindOf, poweredCells, tileMask, type Level, type Tile } from '@guttercaps/economy';
-import { api, ApiError } from '@/api/client';
+import { api, ApiError, claimWithRetry, isMock } from '@/api/client';
+import { useConnection } from '@solana/wallet-adapter-react';
+import { useGameConfig, useWalletLike } from '@/chain/hooks';
+import { payForService, quoteService, serviceRefHash } from '@/chain/flows/serviceFlow';
+import { Currency } from '@/chain/ix/chipCore';
+import { GRID_FIELD_THEMES } from '@/shared/lib/cosmetics';
 import { useGridChip, useGridMe } from '@/api/hooks';
 import { qk } from '@/api/keys';
 import { useT } from '@/shared/i18n';
@@ -21,16 +26,16 @@ interface AttemptStart {
   board: { size: number; bus: number; receivers: number[]; tiles: BoardTile[] };
 }
 type CompleteResult =
-  | { ok: true; training: boolean; stars?: number; xpGranted?: number; xpPending?: number; passXp?: number; dropletGained?: boolean; gifts?: { kind: string; amount: number }[] }
+  | { ok: true; training: boolean; kind?: string; beaten?: boolean; rank?: number; stars?: number; xpGranted?: number; xpPending?: number; passXp?: number; dropletGained?: boolean; gifts?: { kind: string; amount: number }[] }
   | { ok: false; xpLoss?: number; emergencyGranted?: boolean };
 
 interface PlayState {
-  attempt: AttemptStart; mode: 'charge' | 'training'; hintsUsed: number;
+  attempt: AttemptStart; mode: 'charge' | 'training' | 'contract' | 'deep' | 'ghost'; hintsUsed: number;
   initial: number[]; rots: number[]; turns: [number, number][]; hintIndex: number | null; busy: boolean;
 }
 
-function TileSvg({ mask, powered, isBus, isReceiver, fixed, highlight }: { mask: number; powered: boolean; isBus: boolean; isReceiver: boolean; fixed: boolean; highlight: boolean }) {
-  const c = powered ? '#B6F09C' : '#7A8288';
+function TileSvg({ mask, powered, isBus, isReceiver, fixed, highlight, accent = '#B6F09C' }: { mask: number; powered: boolean; isBus: boolean; isReceiver: boolean; fixed: boolean; highlight: boolean; accent?: string }) {
+  const c = powered ? accent : '#7A8288';
   const lines: [number, number][] = [];
   if (mask & 1) lines.push([20, 0]);
   if (mask & 2) lines.push([40, 20]);
@@ -60,6 +65,11 @@ export default function Grid() {
   const [play, setPlay] = useState<PlayState | null>(null);
   const [result, setResult] = useState<CompleteResult | null>(null);
   const [starting, setStarting] = useState(false);
+  const [buyingDeep, setBuyingDeep] = useState(false);
+  const [fieldTheme, setFieldTheme] = useState<string>(() => localStorage.getItem('gridFieldTheme') ?? '');
+  const { connection } = useConnection();
+  const walletLike = useWalletLike();
+  const gameCfg = useGameConfig();
 
   const chips = me.data?.chips ?? [];
   const districtParam = Number(params.get('district'));
@@ -104,6 +114,37 @@ export default function Grid() {
     } catch (e) {
       toast({ kind: 'error', title: e instanceof ApiError ? e.message : { key: 'grid.failed' } });
     } finally { setStarting(false); }
+  };
+
+  const startSpecial = async (kind: 'contract' | 'deep' | 'ghost', slot?: number) => {
+    if (!selected || starting) return;
+    setStarting(true); setResult(null);
+    try {
+      const a = await api.post('/grid/attempt', { asset: selected.asset, kind, ...(slot !== undefined ? { slot } : {}), hintsUsed: 0 } as never) as unknown as AttemptStart;
+      setPlay({ attempt: a, mode: kind, hintsUsed: 0, initial: a.board.tiles.map((x) => x.rot), rots: a.board.tiles.map((x) => x.rot), turns: [], hintIndex: null, busy: false });
+    } catch (e) {
+      toast({ kind: 'error', title: e instanceof ApiError ? e.message : { key: 'grid.failed' } });
+    } finally { setStarting(false); }
+  };
+
+  const buyDeep = async () => {
+    const week = me.data?.deep?.week;
+    if (week === undefined || buyingDeep) return;
+    setBuyingDeep(true);
+    try {
+      if (isMock()) {
+        await api.post('/grid/deep/buy', { signature: `mock-${Date.now()}` } as never);
+      } else {
+        if (!walletLike || !gameCfg.data) throw new Error('wallet');
+        const payload = { id: 'gridDeepAttempt', week };
+        const refHash = serviceRefHash(10, walletLike.publicKey, payload);
+        const { signature } = await payForService({ connection, wallet: walletLike, id: 'gridDeepAttempt', currency: Currency.CG, refHash, quote: quoteService('gridDeepAttempt', Currency.CG), cfg: gameCfg.data });
+        await claimWithRetry(() => api.post('/grid/deep/buy', { signature } as never));
+      }
+      refresh();
+    } catch (e) {
+      toast({ kind: 'error', title: e instanceof ApiError ? e.message : { key: 'grid.failed' } });
+    } finally { setBuyingDeep(false); }
   };
 
   const submit = async (p: PlayState, turns: [number, number][]) => {
@@ -169,7 +210,7 @@ export default function Grid() {
   const playLevel = play ? localLevel(play) : null;
   const powered = playLevel ? poweredCells(playLevel) : [];
   const connectedPct = powered.length ? Math.round((powered.filter(Boolean).length / powered.length) * 100) : 0;
-  const overBudget = !!play && play.mode === 'charge' && play.turns.length > play.attempt.moveBudget;
+  const overBudget = !!play && (play.mode === 'charge' || play.mode === 'deep') && play.turns.length > play.attempt.moveBudget;
 
   return (
     <div className="page stack">
@@ -193,6 +234,11 @@ export default function Grid() {
           {selected && (me.data?.cosmetics ?? []).filter((c) => c.kind === 2 && typeof c.payload.skin === 'string' && !c.payload.asset).map((c) => (
             <div key={c.id}><Pill onClick={() => void applySkin(String(c.payload.skin))}>{t('grid.applySkin')}: {String(c.payload.skin)}</Pill></div>
           ))}
+          {(me.data?.fieldThemes ?? []).length > 0 && <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+            <span className="tiny muted">{t('grid.fieldTheme')}:</span>
+            <Pill active={!fieldTheme} onClick={() => { setFieldTheme(''); localStorage.removeItem('gridFieldTheme'); }}>default</Pill>
+            {(me.data?.fieldThemes ?? []).map((id) => <Pill key={id} active={fieldTheme === id} onClick={() => { setFieldTheme(id); localStorage.setItem('gridFieldTheme', id); }}>{GRID_FIELD_THEMES.find((th) => th.id === id)?.label ?? id}</Pill>)}
+          </div>}
         </div>
         <div className="card stack-sm">
           <div className="strong">{t('grid.flood')}</div>
@@ -206,6 +252,40 @@ export default function Grid() {
           </>}
         </div>
       </div>
+
+      {selected && !play && (
+        <div className="grid-3">
+          <div className="card stack-sm">
+            <div className="strong">📜 {t('grid.contracts')}</div>
+            <div className="tiny muted">{t('grid.contractHint')}</div>
+            {(me.data?.contracts ?? []).map((c) => (
+              <div key={c.slot} className="row between" style={{ gap: 8 }}>
+                <span className="tiny">{t('grid.districtN', { n: c.district + 1 })} · {t('grid.depth', { n: c.depth })} · {c.size}×{c.size}</span>
+                {c.done ? <Pill active>{t('grid.done')} {'★'.repeat(c.done.stars)}</Pill> : <Pill onClick={() => void startSpecial('contract', c.slot)} disabled={starting}>{t('grid.playContract')}</Pill>}
+              </div>
+            ))}
+          </div>
+          <div className="card stack-sm">
+            <div className="strong">🌊 {t('grid.deep')}</div>
+            <div className="tiny muted">{t('grid.deepHint')}</div>
+            <div className="tiny">{t('grid.attemptsLeft', { n: me.data?.deep?.attemptsLeft ?? 0 })}{me.data?.deep?.myBest ? ` · ★${me.data.deep.myBest.stars} · ${me.data.deep.myBest.moves}` : ''}</div>
+            <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+              <Pill onClick={() => void startSpecial('deep')} disabled={starting || (me.data?.deep?.attemptsLeft ?? 0) <= 0}>{t('grid.run')}</Pill>
+              <Pill onClick={() => void buyDeep()} disabled={buyingDeep || (me.data?.deep?.paidAttemptsLeft ?? 0) <= 0}>{t('grid.buyAttempt')}</Pill>
+            </div>
+            {(me.data?.deep?.leaderboard ?? []).length > 0 && <div className="stack-sm">
+              <div className="tiny muted">{t('grid.leaderboard')}</div>
+              {(me.data?.deep?.leaderboard ?? []).map((r) => <div key={r.rank} className="tiny mono">#{r.rank} {r.me ? 'you' : `${r.wallet.slice(0, 6)}…`} · {r.moves} · ★{r.stars}</div>)}
+            </div>}
+            {me.data?.deepReward && <div className="tiny muted">🌊 #{me.data.deepReward.rank} · +{me.data.deepReward.hints} {t('grid.hints')}</div>}
+          </div>
+          <div className="card stack-sm">
+            <div className="strong">👻 {t('grid.ghost')}</div>
+            <div className="tiny muted">{t('grid.ghostHint', { n: me.data?.ghost?.targetMoves ?? 0 })}</div>
+            {me.data?.ghost?.beaten ? <Pill active>{t('grid.beaten')}</Pill> : <Pill onClick={() => void startSpecial('ghost')} disabled={starting}>{t('grid.run')}</Pill>}
+          </div>
+        </div>
+      )}
 
       {chips.length === 0 ? <Empty>{t('grid.noChips')}</Empty> : (
         <>
@@ -264,7 +344,7 @@ export default function Grid() {
           {result && !play && (
             <div className="card stack-sm" role="status">
               {result.ok ? <>
-                <div className="strong">{result.training ? t('grid.resultTraining') : t('grid.solved')}</div>
+                <div className="strong">{result.training ? t('grid.resultTraining') : result.kind === 'ghost' ? (result.beaten ? t('grid.beaten') : t('grid.solved')) : result.kind === 'deep' && result.rank ? `${t('grid.deep')} · ${t('grid.rank', { n: result.rank })}` : t('grid.solved')}</div>
                 {!result.training && <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
                   <span>{t('grid.stars', { n: result.stars ?? 0 })}</span>
                   {(result.xpGranted ?? 0) > 0 && <span>{t('grid.xp', { n: result.xpGranted })}</span>}
@@ -283,7 +363,7 @@ export default function Grid() {
           {play && playLevel && (
             <div className="card stack-sm">
               <div className="row between" style={{ flexWrap: 'wrap', gap: 8 }}>
-                <span className="strong">{t('grid.sector', { n: play.attempt.level })} · {play.mode === 'charge' ? t('grid.charge') : t('grid.training')}</span>
+                <span className="strong">{t('grid.sector', { n: play.attempt.level })} · {play.mode === 'charge' ? t('grid.charge') : play.mode === 'contract' ? t('grid.contracts') : play.mode === 'deep' ? t('grid.deep') : play.mode === 'ghost' ? t('grid.ghost') : t('grid.training')}</span>
                 <span className="tiny muted">{t('grid.moves', { n: play.turns.length })} · {t('grid.par', { n: play.attempt.par })}{play.mode === 'charge' && <> · {t('grid.budget', { n: play.attempt.moveBudget })}</>} · {t('grid.connected', { n: connectedPct })}</span>
               </div>
               <Progress value={connectedPct} max={100} tone="acid" />
@@ -296,7 +376,7 @@ export default function Grid() {
                     onClick={() => rotate(i, 1)} onContextMenu={(e) => { e.preventDefault(); rotate(i, -1); }}
                     style={{ aspectRatio: '1', borderRadius: 8, border: '1px solid #2c2f33', background: powered[i] ? 'rgba(182,240,156,.10)' : '#17191c', cursor: tile.fixed ? 'default' : 'pointer', padding: 2 }}
                     aria-label={`tile ${i}`}>
-                    <TileSvg mask={tileMask(playLevel, i)} powered={!!powered[i]} isBus={i === play.attempt.board.bus} isReceiver={play.attempt.board.receivers.includes(i)} fixed={tile.fixed} highlight={play.hintIndex === i} />
+                    <TileSvg mask={tileMask(playLevel, i)} powered={!!powered[i]} isBus={i === play.attempt.board.bus} isReceiver={play.attempt.board.receivers.includes(i)} fixed={tile.fixed} highlight={play.hintIndex === i} accent={GRID_FIELD_THEMES.find((th) => th.id === fieldTheme)?.hex ?? '#B6F09C'} />
                   </button>
                 ))}
               </div>
@@ -306,6 +386,7 @@ export default function Grid() {
                 {play.hintsUsed > 0 && <Pill onClick={showHint} disabled={play.busy}>{t('grid.showHint')}</Pill>}
                 {play.mode === 'charge' && <Pill tone="danger" onClick={() => void giveUp()} disabled={play.busy}>{t('grid.giveUp')}</Pill>}
                 {play.mode === 'training' && <Pill onClick={() => setPlay(null)} disabled={play.busy}>{t('common.close')}</Pill>}
+                {(play.mode === 'contract' || play.mode === 'deep' || play.mode === 'ghost') && <Pill tone="danger" onClick={() => void giveUp()} disabled={play.busy}>{t('grid.giveUp')}</Pill>}
               </div>
             </div>
           )}

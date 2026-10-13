@@ -31,6 +31,7 @@ const en = {
     selectSector: 'All 75 sectors are open for training; the charge route advances sector by sector.',
     resultTraining: 'Training done — no rewards, as promised.', droplet: 'Flood charge +1 💧', gift: 'Gift: {kind} ×{n}',
     overBudget: 'Over the move limit — finishing now settles as a fail.', hintReady: 'Mark armed: one move will be shown.',
+    contracts: 'District contracts', contractHint: 'Conductor: a 75/75 chip of this district. Pays weekly quest progress and droplet progress — no XP.', done: 'Done', playContract: 'Run contract', deep: 'Deep Flood', deepHint: 'Weekly 8×8 sector. No hints, tighter move limit. Best run of the week wins gear.', attemptsLeft: 'Attempts left: {n}', buyAttempt: 'Buy attempt · 30 $CG burn', leaderboard: 'Leaderboard', ghost: 'Ghost of the day', ghostHint: 'Solve in ≤ {n} moves without hints to earn a Terminal mark.', beaten: 'Ghost beaten', run: 'Run', fieldTheme: 'Field theme', rank: 'Rank {n}', districtN: 'District #{n}',
   },
   common: {
     connectWallet: 'Connect wallet', connecting: 'Connecting…', signedIn: 'Signed in', signingIn: 'Signing in…', signOut: 'Sign out',
@@ -221,7 +222,7 @@ const en = {
     noFreeCaps: 'No caps yet — open a pack first', noCompletedDistrict: 'Complete a district set (9/9) to unlock its banner',
     names: {
       handle: '@handle', handleChange: 'Handle change', capSkin: 'Cap skin', profileTheme: 'Profile theme', arenaEmotePack: 'Arena emote pack',
-      extraBenchSlots: '+2 bench presets', seasonPass: 'Season pass', booster: 'Fusion booster', packSkipAnim: 'Instant reveal', districtBanner: 'District banner',
+      extraBenchSlots: '+2 bench presets', seasonPass: 'Season pass', booster: 'Fusion booster', packSkipAnim: 'Instant reveal', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'District banner',
     },
     blurbs: {
       handle: 'Unique name on leaderboards, arena and your public profile URL.', handleChange: 'Rename once per 30 days. Old handle is released after 90 days.',
@@ -229,7 +230,7 @@ const en = {
       arenaEmotePack: '6 spray-tag emotes for Cap Slam replays.', extraBenchSlots: 'Save more fusion presets on the bench (convenience only).',
       seasonPass: 'Cosmetic track for the 6-week season: 20 tiers of skins, banners, emotes. No odds, no power, no $CG.',
       booster: '+15 pp success on one fusion (cap 95%). Max 3 per day.', packSkipAnim: 'Permanent toggle to skip the reveal animation. Pure convenience.',
-      districtBanner: 'Animated banner for a district you have completed.',
+      gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Animated banner for a district you have completed.',
     },
   },
   admin: {

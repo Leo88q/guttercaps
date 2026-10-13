@@ -28,6 +28,7 @@ const vi: Messages = {
     selectSector: 'All 75 sectors are open for training; the charge route advances sector by sector.',
     resultTraining: 'Training done — no rewards, as promised.', droplet: 'Flood charge +1 💧', gift: 'Gift: {kind} ×{n}',
     overBudget: 'Over the move limit — finishing now settles as a fail.', hintReady: 'Mark armed: one move will be shown.',
+    contracts: 'District contracts', contractHint: 'Conductor: a 75/75 chip of this district. Pays weekly quest progress and droplet progress — no XP.', done: 'Done', playContract: 'Run contract', deep: 'Deep Flood', deepHint: 'Weekly 8×8 sector. No hints, tighter move limit. Best run of the week wins gear.', attemptsLeft: 'Attempts left: {n}', buyAttempt: 'Buy attempt · 30 $CG burn', leaderboard: 'Leaderboard', ghost: 'Ghost of the day', ghostHint: 'Solve in ≤ {n} moves without hints to earn a Terminal mark.', beaten: 'Ghost beaten', run: 'Run', fieldTheme: 'Field theme', rank: 'Rank {n}', districtN: 'District #{n}',
   },
   common: {
     connectWallet: 'Kết nối ví', connecting: 'Đang kết nối…', signedIn: 'Đã đăng nhập', signingIn: 'Đang đăng nhập…', signOut: 'Đăng xuất',
@@ -211,14 +212,14 @@ const vi: Messages = {
     expires: 'hết hạn {date}', noPower: 'Không pay-to-win: kiểm chứng on-chain', boosterCap: 'Booster: tối đa 3 mỗi ngày', bought: 'Đã mua', buyFailed: 'Mua thất bại',
     pickCap: 'Chọn một nắp chai để sơn', pickSkin: 'Chọn một skin', pickTheme: 'Chọn một chủ đề', pickPack: 'Chọn một gói', pickDistrict: 'Chọn một quận',
     noFreeCaps: 'Chưa có nắp chai — hãy mở gói trước', noCompletedDistrict: 'Hoàn thành một quận (9/9) để mở biểu ngữ',
-    names: { handle: '@handle', handleChange: 'Đổi handle', capSkin: 'Skin nắp', profileTheme: 'Giao diện hồ sơ', arenaEmotePack: 'Gói emote đấu trường', extraBenchSlots: '+2 ô lưu bàn hợp nhất', seasonPass: 'Vé mùa', booster: 'Booster hợp nhất', packSkipAnim: 'Lật ngay', districtBanner: 'Banner quận' },
+    names: { handle: '@handle', handleChange: 'Đổi handle', capSkin: 'Skin nắp', profileTheme: 'Giao diện hồ sơ', arenaEmotePack: 'Gói emote đấu trường', extraBenchSlots: '+2 ô lưu bàn hợp nhất', seasonPass: 'Vé mùa', booster: 'Booster hợp nhất', packSkipAnim: 'Lật ngay', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'Banner quận' },
     blurbs: {
       handle: 'Tên duy nhất trên bảng xếp hạng, đấu trường và URL hồ sơ.', handleChange: 'Đổi tên một lần mỗi 30 ngày. Handle cũ được giải phóng sau 90 ngày.',
       capSkin: 'Viền / hiệu ứng sơn trang trí ghi trên một nắp. Đi cùng nắp khi bán.', profileTheme: 'Họa tiết tường + màu đèn cho hồ sơ và màn mở đầu đấu trường.',
       arenaEmotePack: '6 emote phun sơn cho các bản xem lại Cap Slam.', extraBenchSlots: 'Lưu thêm thiết lập hợp nhất trên bàn (chỉ tiện ích).',
       seasonPass: 'Lộ trình trang trí cho mùa 6 tuần: 20 bậc skin, banner, emote. Không tỷ lệ, không sức mạnh, không $CG.',
       booster: '+15 điểm thành công cho một lần hợp nhất (tối đa 95%). Tối đa 3 mỗi ngày.', packSkipAnim: 'Bật vĩnh viễn bỏ qua hoạt ảnh lật. Thuần tiện ích.',
-      districtBanner: 'Banner động cho quận bạn đã hoàn thành.',
+      gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Banner động cho quận bạn đã hoàn thành.',
     },
   },
   admin: {

@@ -8,7 +8,7 @@
 //   other payloads  = canonical JSON (sorted keys, no whitespace)
 import { keccak_256 } from '@noble/hashes/sha3';
 import { PublicKey } from '@solana/web3.js';
-import { SERVICES, SERVICE_BY_KIND, SKIN_BY_ID, PROFILE_THEME_BY_ID, EMOTE_PACK_BY_ID, COLLECTIONS, FX, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, type ServiceDef } from '@guttercaps/economy';
+import { SERVICES, SERVICE_BY_ID, SERVICE_BY_KIND, SKIN_BY_ID, PROFILE_THEME_BY_ID, GRID_FIELD_THEME_BY_ID, EMOTE_PACK_BY_ID, COLLECTIONS, FX, GRID, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, type ServiceDef } from '@guttercaps/economy';
 import { HANDLE_BLOCKLIST, HANDLE_CHANGE_COOLDOWN_S, HANDLE_MAX_RESERVATIONS, HANDLE_QUARANTINE_S, HANDLE_RE, HANDLE_RESERVE_MS } from './config.ts';
 import { type Db, now } from './db.ts';
 import { FinalityError, requireFinalized } from './finality.ts';
@@ -194,6 +194,7 @@ const PAYLOAD_RULES: Record<string, (p: Record<string, unknown>) => string | und
   profileTheme: (p) => (typeof p.theme === 'string' && PROFILE_THEME_BY_ID[p.theme] && !PROFILE_THEME_BY_ID[p.theme].exclusive ? undefined : 'payload needs {theme} with a purchasable theme id'),
   arenaEmotePack: (p) => (typeof p.pack === 'string' && EMOTE_PACK_BY_ID[p.pack] ? undefined : 'payload needs {pack} with a known pack id'),
   districtBanner: (p) => (typeof p.collection === 'number' && Number.isInteger(p.collection) && p.collection >= 0 && p.collection < COLLECTIONS.length ? undefined : 'payload needs {collection} with a live district index'),
+  gridFieldTheme: (p) => (typeof p.theme === 'string' && GRID_FIELD_THEME_BY_ID[p.theme] ? undefined : 'payload needs {theme} with a Floodgrid field theme id'),
 };
 
 /** POST /services/claim */
@@ -202,6 +203,7 @@ export function claimService(db: Db, wallet: string, signature: string, kind: nu
   if (!s) throw new ServiceError(400, 'unknown_kind', `Unknown service kind ${kind}`);
   if (kind === 0 || kind === 1) throw new ServiceError(400, 'use_handle_endpoint', 'Handles are claimed via PUT /me/handle');
   if (s.fulfilment === 'chain') throw new ServiceError(400, 'chain_fulfilled', `${s.name} is fulfilled on-chain; nothing to claim`);
+  if (s.id === 'gridDeepAttempt') throw new ServiceError(400, 'use_grid_endpoint', 'Deep Flood attempts are claimed via POST /grid/deep/buy');
   const problem = PAYLOAD_RULES[s.id]?.(payload);
   if (problem) throw new ServiceError(400, 'bad_payload', problem);
   return db.tx(() => {
@@ -224,6 +226,24 @@ export function claimService(db: Db, wallet: string, signature: string, kind: nu
     if (s.id === 'capSkin') db.run(`UPDATE chips SET skin = ? WHERE asset = ?`, String(payload.skin), String(payload.asset));
     consume(db, p, `entitlement:${id}`);
     return rowToEntitlement({ id, kind, payload: canonicalJson(payload), signature, currency: p.currency, amount: p.amount, granted_at: granted, expires_at: expiryFor(s, granted) });
+  });
+}
+
+/** Phase-3 Deep Flood: grant one paid attempt credit for a 30 $CG burn (pay_service kind 10).
+ *  Only $CG payments of exactly GRID.deepAttemptCgMicro count — other rails buy nothing here. */
+export function claimGridDeepAttempt(db: Db, wallet: string, signature: string, week: number): { week: number; credits: number } {
+  const kind = SERVICE_BY_ID.gridDeepAttempt.kind;
+  const payload = { id: 'gridDeepAttempt', week };
+  const expected = toHex(serviceRefHash(kind, wallet, payload));
+  return db.tx(() => {
+    const p = findPayment(db, signature, wallet, [kind], expected);
+    if (p.ref_hash !== expected) throw new ServiceError(402, 'ref_hash_mismatch', 'Payment was committed for a different Deep Flood week');
+    if (p.currency !== 2 || BigInt(p.amount) !== BigInt(GRID.deepAttemptCgMicro)) throw new ServiceError(402, 'cg_burn_required', 'Deep Flood attempts are bought with exactly 30 $CG (burned)');
+    const credits = db.scalar(`SELECT COUNT(*) FROM grid_deep_credits WHERE wallet = ? AND week = ?`, wallet, week);
+    if (credits >= GRID.deepPaidAttemptsPerWeek) throw new ServiceError(409, 'deep_credit_cap', 'Paid Deep Flood attempts are capped per week');
+    db.run(`INSERT INTO grid_deep_credits (wallet, week, signature, granted_at) VALUES (?, ?, ?, ?)`, wallet, week, signature, now());
+    consume(db, p, `grid-deep:${week}`);
+    return { week, credits: credits + 1 };
   });
 }
 

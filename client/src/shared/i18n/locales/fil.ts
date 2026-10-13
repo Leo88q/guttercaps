@@ -28,6 +28,7 @@ const fil: Messages = {
     selectSector: 'All 75 sectors are open for training; the charge route advances sector by sector.',
     resultTraining: 'Training done — no rewards, as promised.', droplet: 'Flood charge +1 💧', gift: 'Gift: {kind} ×{n}',
     overBudget: 'Over the move limit — finishing now settles as a fail.', hintReady: 'Mark armed: one move will be shown.',
+    contracts: 'District contracts', contractHint: 'Conductor: a 75/75 chip of this district. Pays weekly quest progress and droplet progress — no XP.', done: 'Done', playContract: 'Run contract', deep: 'Deep Flood', deepHint: 'Weekly 8×8 sector. No hints, tighter move limit. Best run of the week wins gear.', attemptsLeft: 'Attempts left: {n}', buyAttempt: 'Buy attempt · 30 $CG burn', leaderboard: 'Leaderboard', ghost: 'Ghost of the day', ghostHint: 'Solve in ≤ {n} moves without hints to earn a Terminal mark.', beaten: 'Ghost beaten', run: 'Run', fieldTheme: 'Field theme', rank: 'Rank {n}', districtN: 'District #{n}',
   },
   common: {
     connectWallet: 'Ikonekta ang wallet', connecting: 'Kumokonekta…', signedIn: 'Naka-sign in', signingIn: 'Nagsa-sign in…', signOut: 'Mag-sign out',
@@ -211,14 +212,14 @@ const fil: Messages = {
     expires: 'mag-e-expire {date}', noPower: 'Walang pay-to-win: na-verify on-chain', boosterCap: 'Boosters: max 3 bawat araw', bought: 'Nabili', buyFailed: 'Nabigo ang pagbili',
     pickCap: 'Pumili ng cap na pipintahan', pickSkin: 'Pumili ng skin', pickTheme: 'Pumili ng tema', pickPack: 'Pumili ng pack', pickDistrict: 'Pumili ng distrito',
     noFreeCaps: 'Wala pang cap — magbukas muna ng pack', noCompletedDistrict: 'Kumpletuhin ang isang distrito (9/9) para ma-unlock ang banner',
-    names: { handle: '@handle', handleChange: 'Palit ng handle', capSkin: 'Cap skin', profileTheme: 'Profile theme', arenaEmotePack: 'Arena emote pack', extraBenchSlots: '+2 bench preset', seasonPass: 'Season pass', booster: 'Fusion booster', packSkipAnim: 'Instant reveal', districtBanner: 'District banner' },
+    names: { handle: '@handle', handleChange: 'Palit ng handle', capSkin: 'Cap skin', profileTheme: 'Profile theme', arenaEmotePack: 'Arena emote pack', extraBenchSlots: '+2 bench preset', seasonPass: 'Season pass', booster: 'Fusion booster', packSkipAnim: 'Instant reveal', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'District banner' },
     blurbs: {
       handle: 'Natatanging pangalan sa leaderboard, arena, at URL ng profile mo.', handleChange: 'Magpalit ng pangalan isang beses bawat 30 araw. Malalaya ang lumang handle pagkalipas ng 90 araw.',
       capSkin: 'Cosmetic na rim / spray effect na nakasulat sa isang cap. Kasama ng cap kapag naibenta.', profileTheme: 'Wall texture + kulay ng ilaw para sa profile at arena intro mo.',
       arenaEmotePack: '6 spray-tag emote para sa Cap Slam replays.', extraBenchSlots: 'Mag-save ng mas maraming fusion preset sa bench (convenience lang).',
       seasonPass: 'Cosmetic track para sa 6-linggong season: 20 tier ng skins, banners, emotes. Walang tsansa, walang power, walang $CG.',
       booster: '+15 pp na tagumpay sa isang fusion (max 95%). Max 3 bawat araw.', packSkipAnim: 'Permanenteng toggle para laktawan ang reveal animation. Purong convenience.',
-      districtBanner: 'Animated na banner para sa distritong nakumpleto mo.',
+      gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Animated na banner para sa distritong nakumpleto mo.',
     },
   },
   admin: {

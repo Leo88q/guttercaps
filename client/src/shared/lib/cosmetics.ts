@@ -3,7 +3,7 @@ import { t, type MessageKey } from '@/shared/i18n';
 // time (the payload hashed into ref_hash): what you own is read from
 // entitlement payloads, and the wallet only chooses which owned variant to
 // display (persisted per wallet in localStorage).
-import { PROFILE_THEMES as ECONOMY_THEMES } from '@guttercaps/economy';
+import { PROFILE_THEMES as ECONOMY_THEMES, GRID_FIELD_THEMES as ECONOMY_FIELD_THEMES } from '@guttercaps/economy';
 
 /** economy service kinds for the cosmetic/convenience entitlements. */
 export const KIND = { skin: 2, theme: 3, emotePack: 4, bench: 5, pass: 6, skip: 8, banner: 9 } as const;
@@ -42,6 +42,8 @@ export function ownedPacks(ents: EntitlementLike[] | undefined): string[] {
 
 export interface ProfileTheme { id: string; label: string; desc: string; hex: string; exclusive?: boolean }
 export const PROFILE_THEMES: ProfileTheme[] = ECONOMY_THEMES.map((t) => ({ id: t.id, get label() { return themeText(t.id); }, get desc() { return themeText(t.id, true); }, hex: t.hex, exclusive: t.exclusive }));
+/** Floodgrid field themes (pay_service kind 11) — board flow-line palettes. */
+export const GRID_FIELD_THEMES = ECONOMY_FIELD_THEMES.map((t) => ({ id: t.id, label: t.name, desc: t.blurb, hex: t.hex }));
 export function themeById(id: string | null | undefined): ProfileTheme {
   return PROFILE_THEMES.find((t) => t.id === id) ?? PROFILE_THEMES[0];
 }

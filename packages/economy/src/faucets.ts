@@ -82,7 +82,7 @@ export const WEEKLY_QUESTS: QuestDef[] = [
     rewardChip: voucher(1) },
   { id: 'w_visit_neuroforge', period: 'weekly', title: 'Visit NeuroForge on 3 days', metric: 'visit_neuroforge', target: 3, rewardCgMicro: 15_000_000 },
   { id: 'w_visit_ares1',      period: 'weekly', title: 'Visit ARES-1 on 3 days',     metric: 'visit_ares1',      target: 3, rewardCgMicro: 15_000_000 },
-  { id: 'w_grid10',  period: 'weekly', title: 'Десять веток (10 Floodgrid sectors)', metric: 'grid_cleared', target: 10, rewardCgMicro: 15_000_000 },
+  { id: 'w_grid10',  period: 'weekly', title: 'Десять веток (10 Floodgrid sectors)', metric: 'grid_cleared_all', target: 10, rewardCgMicro: 15_000_000 },
 ];
 
 // Permanent (one-time milestones): the only free route to Epic — soulbound 30 days.
