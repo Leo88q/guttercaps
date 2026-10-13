@@ -16,6 +16,7 @@ import { resolveCompressedChip } from '@/chain/flows/compressedChip';
 import { cancelCompressedAssetIx } from '@/chain/ix/market';
 import { listingBuyIxs, dasClient } from './payment';
 import { ChipArt } from '@/shared/ui/ChipArt';
+import { DropIcon, FloodIcon } from '@/shared/ui/GridIcons';
 import { ChipXpMeter } from '@/shared/ui/ChipXp';
 import { ExternalIcon } from '@/shared/ui/action-icons';
 import { CleanZone, Empty, KV, Skeleton } from '@/shared/ui/primitives';
@@ -81,7 +82,7 @@ export default function ChipPage() {
           </div>
           <ChipXpMeter rarity={c.rarity!} level={c.level} xp={c.xp} xpToNext={c.xpToNext} maxLevel={c.maxLevel ?? prof.maxLevel} xpToday={c.xpToday} xpDailyCap={c.xpDailyCap} />
           {(() => { const gr = (c as { gridRoute?: { nextLevel: number; chargeDrops: number; starsTotal: number; levelsCleared: number } }).gridRoute; return gr ? (
-            <div className="tiny muted">🌊 {t('grid.title')}: {t('grid.routeNext', { n: Math.min(75, gr.nextLevel) })} · ★{gr.starsTotal} · {t('grid.drops')} {gr.chargeDrops}/3{mine ? <> · <Link to="/grid">{t('grid.play')}</Link></> : null}</div>
+            <div className="tiny muted"><span style={{ color: '#16E5D9', display: 'inline-flex', verticalAlign: -2, marginRight: 4 }}><FloodIcon size={13} /></span>{t('grid.title')}: {t('grid.routeNext', { n: Math.min(75, gr.nextLevel) })} · ★{gr.starsTotal} · <span style={{ color: '#16E5D9', display: 'inline-flex', verticalAlign: -2 }}><DropIcon size={12} /></span> {t('grid.drops')} {gr.chargeDrops}/3{mine ? <> · <Link to="/grid">{t('grid.play')}</Link></> : null}</div>
           ) : null; })()}
           <div className="tiny muted">{t('ui.owner')} <a href={EXPLORER.account(c.owner!)} target="_blank" rel="noreferrer">{mine ? t('ui.you') : shortKey(c.owner)}</a> · {t('ui.asset')} <a href={EXPLORER.account(asset)} target="_blank" rel="noreferrer" className="row" style={{ gap: 3, display: 'inline-flex' }}>{shortKey(asset)} <ExternalIcon size={10} /></a>
             {c.flags?.staked && ` · ${t('collection.filters.staked')}`}{c.flags?.fusing && ` · ${t('ui.inFusion')}`}{c.lockUntil && new Date(c.lockUntil).getTime() > Date.now() && ` · ${t('ui.lockedUntil')} ${fmtLocale.date(c.lockUntil, getLocale())}`}</div>

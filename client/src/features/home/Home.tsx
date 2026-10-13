@@ -12,6 +12,7 @@ import { fmtCg, countdown } from '@/shared/lib/format';
 import { useCollections } from '@/shared/lib/lore';
 import { collectionColor } from '@/shared/lib/rarity';
 import { Progress, Skeleton, Stat } from '@/shared/ui/primitives';
+import { FloodIcon } from '@/shared/ui/GridIcons';
 import { ChevronRightIcon } from '@/shared/ui/action-icons';
 import { SprayNozzleButton } from '@/shared/ui/buttons';
 import { ShowcaseStrip } from '@/shared/ui/Showcase';
@@ -72,7 +73,7 @@ export default function Home() {
       {showOnboard && (
         <div className="card stack-sm" data-testid="home-grid-onboard" style={{ border: '2px solid var(--acid, #B6FF3C)' }}>
           <div className="row between" style={{ gap: 8 }}>
-            <span className="strong">🌊 {t('home.onboardTitle')}</span>
+            <span className="strong"><span style={{ color: '#16E5D9', display: 'inline-flex', verticalAlign: -2, marginRight: 6 }}><FloodIcon size={18} /></span>{t('home.onboardTitle')}</span>
             <button type="button" className="tiny" onClick={() => { onboardEvent('dismissed'); localStorage.setItem('gridOnboardDismissed', '1'); setOnbDismissed(true); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'inherit' }}>✕</button>
           </div>
           <div className="row" style={{ gap: 12, alignItems: 'center' }}>
@@ -125,7 +126,7 @@ export default function Home() {
 
       <div className="grid-2">
         <Link to="/grid" className="card card-hover row" style={{ textDecoration: 'none' }}>
-          <span style={{ fontSize: 26 }}>🌊</span>
+          <GenBadge name="mech-grid" size={28} />
           <div className="grow">
             <div className="strong">{t('grid.title')}</div>
             <div className="tiny muted">{t('grid.subtitle')}</div>

@@ -18,8 +18,10 @@ import { useT } from '@/shared/i18n';
 import { useUiStore } from '@/app/store/ui';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { fmtCg } from '@/shared/lib/format';
-import { ContractIcon, DeepIcon, DropIcon, FloodIcon, GhostIcon, GoalIcon, LadderIcon, MarkIcon, PrestigeIcon, ValveIcon } from './GridIcons';
+import { BoltIcon, ContractIcon, DeepIcon, DropIcon, FloodIcon, GhostIcon, GoalIcon, LadderIcon, MarkIcon, PrestigeIcon, ValveIcon } from '@/shared/ui/GridIcons';
 import { Empty, Pill, Progress, Skeleton, Stat } from '@/shared/ui/primitives';
+
+const MATERIAL_HEX: Record<string, string> = { zinc: '#9aa7ad', chrome: '#d7e3ea', rust: '#c96f2e', cast: '#7a7e85', glass: '#7fe7dc' };
 
 interface BoardTile { base: number; rot: number; fixed: boolean; role: string }
 interface AttemptStart {
@@ -36,7 +38,7 @@ interface PlayState {
   initial: number[]; rots: number[]; turns: [number, number][]; hintIndex: number | null; busy: boolean;
 }
 
-function TileSvg({ mask, powered, isBus, isReceiver, fixed, highlight, accent = '#B6F09C' }: { mask: number; powered: boolean; isBus: boolean; isReceiver: boolean; fixed: boolean; highlight: boolean; accent?: string }) {
+function TileSvg({ mask, powered, isBus, isReceiver, fixed, highlight, accent = '#B6FF3C' }: { mask: number; powered: boolean; isBus: boolean; isReceiver: boolean; fixed: boolean; highlight: boolean; accent?: string }) {
   const c = powered ? accent : '#7A8288';
   const lines: [number, number][] = [];
   if (mask & 1) lines.push([20, 0]);
@@ -47,8 +49,8 @@ function TileSvg({ mask, powered, isBus, isReceiver, fixed, highlight, accent = 
     <svg viewBox="0 0 40 40" style={{ width: '100%', height: '100%', display: 'block' }} aria-hidden>
       {highlight && <rect x="1" y="1" width="38" height="38" rx="7" fill="none" stroke="#FFD34D" strokeWidth="2.5" />}
       {lines.map(([x, y], i) => <line key={i} x1="20" y1="20" x2={x} y2={y} stroke={c} strokeWidth={powered ? 5 : 4} strokeLinecap="round" />)}
-      <circle cx="20" cy="20" r={isBus ? 7 : 4.5} fill={isBus ? '#FF9F1C' : c} />
-      {isReceiver && <circle cx="20" cy="20" r="9" fill="none" stroke="#6EC1FF" strokeWidth="2" />}
+      <circle cx="20" cy="20" r={isBus ? 7 : 4.5} fill={isBus ? '#FF7A1A' : c} />
+      {isReceiver && <circle cx="20" cy="20" r="9" fill="none" stroke="#16E5D9" strokeWidth="2" />}
       {fixed && <circle cx="33" cy="7" r="2" fill="#555" />}
     </svg>
   );
@@ -231,12 +233,12 @@ export default function Grid() {
           <div className="row" style={{ gap: 16, flexWrap: 'wrap' }}>
             <span className="row" style={{ gap: 5, alignItems: 'center', color: '#FFD34D' }}><MarkIcon size={17} /><Stat label={t('grid.hints')} value={`${wallet?.hints ?? 0}/${GRID.hintStockCap}`} /></span>
             <span className="row" style={{ gap: 5, alignItems: 'center', color: '#16E5D9' }}><ValveIcon size={17} /><Stat label={t('grid.valves')} value={`${wallet?.valves ?? 0}/${GRID.valveStockCap}`} /></span>
-            <span className="row" style={{ gap: 5, alignItems: 'center', color: '#7fe7dc' }}><DropIcon size={17} /><Stat label={t('grid.drops')} value={`${selected?.route?.chargeDrops ?? 0}/3`} /></span>
+            <span className="row" style={{ gap: 5, alignItems: 'center', color: '#16E5D9' }}><DropIcon size={17} /><Stat label={t('grid.drops')} value={`${selected?.route?.chargeDrops ?? 0}/3`} /></span>
             <Stat label="★" value={wallet?.total_best_stars ?? 0} />
           </div>
           {(me.data?.pendingGranted ?? 0) > 0 && <div className="tiny muted">{t('grid.xp', { n: me.data!.pendingGranted })}</div>}
-          {me.data?.floodReward && <div className="tiny muted">🌊 +{me.data.floodReward.hints} · {t('grid.hints')}{me.data.floodReward.valve > 0 ? ` · +1 ${t('grid.valves')}` : ''}</div>}
-          {(me.data?.masteredChips ?? 0) > 0 && <div className="tiny muted">💛 {t('grid.title')} 75/75 ×{me.data!.masteredChips}</div>}
+          {me.data?.floodReward && <div className="tiny muted"><span style={{ color: '#FFD34D', display: 'inline-flex', verticalAlign: -3, marginRight: 4 }}><MarkIcon size={14} /></span>+{me.data.floodReward.hints} · {t('grid.hints')}{me.data.floodReward.valve > 0 ? ` · +1 ${t('grid.valves')}` : ''}</div>}
+          {(me.data?.masteredChips ?? 0) > 0 && <div className="tiny muted"><span style={{ color: '#FFD34D', display: 'inline-flex', verticalAlign: -3, marginRight: 4 }}><PrestigeIcon size={14} /></span>{t('grid.title')} 75/75 ×{me.data!.masteredChips}</div>}
           {me.data?.daily && <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><Pill onClick={() => selected && void start(me.data!.daily!.level, true)} disabled={starting || !selected}>{t('grid.sector', { n: me.data.daily.level })} · {me.data.daily.epic ? t('grid.epicDaily') : 'daily'}</Pill><span className="tiny muted">{t('grid.dailyDistrict', { n: me.data.daily.district + 1 })}</span></div>}
           {selected && (me.data?.cosmetics ?? []).filter((c) => c.kind === 2 && typeof c.payload.skin === 'string' && !c.payload.asset).map((c) => (
             <div key={c.id}><Pill onClick={() => void applySkin(String(c.payload.skin))}>{t('grid.applySkin')}: {String(c.payload.skin)}</Pill></div>
@@ -263,7 +265,7 @@ export default function Grid() {
       {selected && !play && (
         <div className="grid-3">
           <div className="card stack-sm">
-            <div className="strong"><span style={{ color: '#FF9F1C', display: 'inline-flex', verticalAlign: -4, marginRight: 6 }}><ContractIcon /></span>{t('grid.contracts')}</div>
+            <div className="strong"><span style={{ color: '#FF7A1A', display: 'inline-flex', verticalAlign: -4, marginRight: 6 }}><ContractIcon /></span>{t('grid.contracts')}</div>
             <div className="tiny muted">{t('grid.contractHint')}</div>
             {(me.data?.contracts ?? []).map((c) => (
               <div key={c.slot} className="row between" style={{ gap: 8 }}>
@@ -285,10 +287,10 @@ export default function Grid() {
               <div className="tiny muted">{t('grid.leaderboard')}</div>
               {(me.data?.deep?.leaderboard ?? []).map((r) => <div key={r.rank} className="tiny mono">#{r.rank} {r.me ? 'you' : `${r.wallet.slice(0, 6)}…`} · {r.moves} · ★{r.stars}</div>)}
             </div>}
-            {me.data?.deepReward && <div className="tiny muted">🌊 #{me.data.deepReward.rank} · +{me.data.deepReward.hints} {t('grid.hints')}</div>}
+            {me.data?.deepReward && <div className="tiny muted"><span style={{ color: '#16E5D9', display: 'inline-flex', verticalAlign: -3, marginRight: 4 }}><DeepIcon size={14} /></span>#{me.data.deepReward.rank} · +{me.data.deepReward.hints} {t('grid.hints')}</div>}
           </div>
           <div className="card stack-sm">
-            <div className="strong"><span style={{ color: '#c4b5fd', display: 'inline-flex', verticalAlign: -4, marginRight: 6 }}><GhostIcon /></span>{t('grid.ghost')}</div>
+            <div className="strong"><span style={{ color: '#5AD0C4', display: 'inline-flex', verticalAlign: -4, marginRight: 6 }}><GhostIcon /></span>{t('grid.ghost')}</div>
             <img className="grid-card-art" src="/art/grid-ghost.jpg" alt="" aria-hidden loading="lazy" />
             <div className="tiny muted">{t('grid.ghostHint', { n: me.data?.ghost?.targetMoves ?? 0 })}</div>
             {me.data?.ghost?.beaten ? <Pill active>{t('grid.beaten')}</Pill> : <Pill onClick={() => void startSpecial('ghost')} disabled={starting}>{t('grid.run')}</Pill>}
@@ -319,7 +321,7 @@ export default function Grid() {
           <div className="row" style={{ gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
             {chips.map((c) => (
               <button key={c.asset} type="button" onClick={() => { setAsset(c.asset); setPlay(null); setResult(null); }}
-                style={{ minWidth: 92, border: selected?.asset === c.asset ? '2px solid var(--acid, #B6F09C)' : '1px solid #333', borderRadius: 12, padding: 8, background: 'transparent', cursor: 'pointer', textAlign: 'center' }}>
+                style={{ minWidth: 92, border: selected?.asset === c.asset ? '2px solid var(--acid, #B6FF3C)' : '1px solid #333', borderRadius: 12, padding: 8, background: 'transparent', cursor: 'pointer', textAlign: 'center' }}>
                 <ChipArt collection={c.collection} rarity={c.rarity} level={c.chipLevel} size={54} skin={c.skin} />
                 <div className="tiny">Lv{c.chipLevel} · {t('grid.drops')} {c.route.chargeDrops}/3</div>
                 <div className="tiny muted">{t('grid.routeNext', { n: Math.min(75, c.route.nextLevel) })}</div>
@@ -346,7 +348,7 @@ export default function Grid() {
                 {t('grid.useValve')} ({wallet?.valves ?? 0})
               </label>
               {GRID_DEPTHS.map((d) => (
-                <div key={d.depth} className="stack-sm depth-strip" style={{ borderLeftColor: ({ zinc: '#9aa7ad', chrome: '#d7e3ea', rust: '#c96f2e', cast: '#7a7e85', glass: '#7fe7dc' } as Record<string, string>)[d.material] ?? '#333' }}>
+                <div key={d.depth} className="stack-sm depth-strip" style={{ borderLeftColor: MATERIAL_HEX[d.material] ?? '#333' }}>
                   <div className="tiny muted">{t('grid.depth', { n: d.depth })} · {d.name} · {d.grid}</div>
                   <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
                     {Array.from({ length: GRID.levelsPerDepth }, (_, i) => d.levels[0] + i).map((lv) => {
@@ -356,9 +358,9 @@ export default function Grid() {
                       return (
                         <button key={lv} type="button" disabled={starting} onClick={() => void start(lv)}
                           title={lockedLv ? t('grid.training') : isNext ? t('grid.charge') : t('grid.training')}
-                          style={{ width: 52, padding: '7px 2px', borderRadius: 9, cursor: 'pointer', border: isNext ? '2px solid #FF9F1C' : '1px solid #333', background: claim ? 'rgba(182,240,156,.12)' : 'transparent', opacity: lockedLv ? 0.75 : 1 }}>
+                          style={{ width: 52, padding: '7px 2px', borderRadius: 9, cursor: 'pointer', border: isNext ? '2px solid #FF7A1A' : '1px solid #333', background: claim ? 'rgba(182,255,60,.12)' : 'transparent', opacity: lockedLv ? 0.75 : 1 }}>
                           <div className="mono" style={{ fontSize: 13 }}>{lv}</div>
-                          <div style={{ fontSize: 10 }}>{claim ? '★'.repeat(claim.best_stars) : lockedLv ? t('grid.training') === 'Training' ? 'train' : 'трен.' : '⚡'}</div>
+                          <div style={{ fontSize: 10 }}>{claim ? '★'.repeat(claim.best_stars) : lockedLv ? t('grid.trainShort') : <span style={{ color: '#FF7A1A', display: 'inline-flex' }}><BoltIcon size={11} /></span>}</div>
                         </button>
                       );
                     })}
@@ -391,18 +393,18 @@ export default function Grid() {
             <div className="card stack-sm">
               <div className="row between" style={{ flexWrap: 'wrap', gap: 8 }}>
                 <span className="strong">{t('grid.sector', { n: play.attempt.level })} · {play.mode === 'charge' ? t('grid.charge') : play.mode === 'contract' ? t('grid.contracts') : play.mode === 'deep' ? t('grid.deep') : play.mode === 'ghost' ? t('grid.ghost') : play.mode === 'prestige' ? t('grid.prestige') : t('grid.training')}</span>
-                <span className="tiny muted">{t('grid.moves', { n: play.turns.length })} · {t('grid.par', { n: play.attempt.par })}{play.mode === 'charge' && <> · {t('grid.budget', { n: play.attempt.moveBudget })}</>} · {t('grid.connected', { n: connectedPct })}</span>
+                <span className="tiny muted">{t('grid.moves', { n: play.turns.length })} · {t('grid.par', { n: play.attempt.par })}{play.mode === 'charge' && <> · {t('grid.budget', { n: play.attempt.moveBudget })}</>} · {t('grid.connected', { n: connectedPct })}{(() => { const d = GRID_DEPTHS.find((x) => play.attempt.level >= x.levels[0] && play.attempt.level < x.levels[0] + GRID.levelsPerDepth); return d ? <> · <span style={{ color: MATERIAL_HEX[d.material] ?? '#9aa7ad' }}>●</span> {d.name}</> : null; })()}</span>
               </div>
               <Progress value={connectedPct} max={100} tone="acid" />
-              {overBudget && <div className="tiny" style={{ color: '#FF7A7A' }}>{t('grid.overBudget')}</div>}
+              {overBudget && <div className="tiny" style={{ color: '#FF7A1A' }}>{t('grid.overBudget')}</div>}
               {play.hintsUsed > 0 && <div className="tiny muted">{t('grid.hintReady')}</div>}
               {emergencyLevels.includes(play.attempt.level) && <div className="tiny muted">{t('grid.emergency')}</div>}
               <div style={{ display: 'grid', gridTemplateColumns: `repeat(${play.attempt.board.size}, 1fr)`, gap: 4, maxWidth: 520, margin: '0 auto', width: '100%' }}>
                 {play.attempt.board.tiles.map((tile, i) => (
-                  <button key={i} type="button" disabled={play.busy || tile.fixed}
+                  <button key={i} type="button" className="grid-tile" disabled={play.busy || tile.fixed}
                     onClick={() => rotate(i, 1)} onContextMenu={(e) => { e.preventDefault(); rotate(i, -1); }}
-                    style={{ aspectRatio: '1', borderRadius: 8, border: '1px solid #2c2f33', background: powered[i] ? 'rgba(182,240,156,.10)' : '#17191c', cursor: tile.fixed ? 'default' : 'pointer', padding: 2 }}
-                    aria-label={`tile ${i}`}>
+                    style={{ aspectRatio: '1', borderRadius: 8, background: powered[i] ? 'rgba(182,255,60,.10)' : '#16151A', cursor: tile.fixed ? 'default' : 'pointer', padding: 2 }}
+                    aria-label={t('grid.tileAria', { n: i + 1 })}>
                     <TileSvg mask={tileMask(playLevel, i)} powered={!!powered[i]} isBus={i === play.attempt.board.bus} isReceiver={play.attempt.board.receivers.includes(i)} fixed={tile.fixed} highlight={play.hintIndex === i} accent={GRID_FIELD_THEMES.find((th) => th.id === fieldTheme)?.hex ?? '#B6F09C'} />
                   </button>
                 ))}

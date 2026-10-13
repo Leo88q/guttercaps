@@ -19,7 +19,7 @@ const id: Messages = {
     title: 'Floodgrid', subtitle: 'Route the flood through 75 sectors. Every chip walks its own route — XP, charge and gifts included.',
     applySkin: 'Apply skin to selected chip', passXp: '+{n} Pass XP', dailyDistrict: 'District of the day #{n}', epicDaily: 'Epic flood of the day', backpack: 'Diver gear', hints: 'Terminal marks', valves: 'Emergency valves', drops: 'Flood charge',
     chip: 'Chip', routeNext: 'Next sector {n}', sector: 'Sector {n}', depth: 'Depth {n}',
-    training: 'Training', charge: 'Charge attempt', start: 'Start', giveUp: 'Give up', undo: 'Undo', restart: 'Restart',
+    training: 'Training', trainShort: 'train', tileAria: 'Ubin {n}', charge: 'Charge attempt', start: 'Start', giveUp: 'Give up', undo: 'Undo', restart: 'Restart',
     moves: 'Moves {n}', par: 'par {n}', budget: 'limit {n}', connected: '{n}% connected',
     useHint: 'Use a mark (max 2★)', showHint: 'Show move', solved: 'Sector sealed!', failed: 'The flood slipped away (−6 XP)',
     xp: '+{n} XP', pending: '{n} XP parked until tomorrow', stars: '{n}★', play: 'Play', replay: 'Replay',

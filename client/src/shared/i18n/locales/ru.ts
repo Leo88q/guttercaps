@@ -19,7 +19,7 @@ const ru: Messages = {
     title: 'Решётка', subtitle: 'Проведи паводок через 75 секторов. У каждой фишки — свой маршрут, XP, заряд и подарки.',
     applySkin: 'Нанести скин на выбранную фишку', passXp: '+{n} XP пропуска', dailyDistrict: 'Район дня №{n}', epicDaily: 'Эпический паводок дня', backpack: 'Снаряжение ныряльщика', hints: 'Метки Клеммы', valves: 'Аварийные клапаны', drops: 'Заряд паводка',
     chip: 'Фишка', routeNext: 'Следующий сектор {n}', sector: 'Сектор {n}', depth: 'Глубина {n}',
-    training: 'Тренировка', charge: 'Зарядная попытка', start: 'Вперёд', giveUp: 'Сдаться', undo: 'Отменить', restart: 'Заново',
+    training: 'Тренировка', trainShort: 'трен.', tileAria: 'Плитка {n}', charge: 'Зарядная попытка', start: 'Вперёд', giveUp: 'Сдаться', undo: 'Отменить', restart: 'Заново',
     moves: 'Ходов {n}', par: 'par {n}', budget: 'лимит {n}', connected: 'Подключено {n}%',
     useHint: 'Использовать метку (макс. 2★)', showHint: 'Показать ход', solved: 'Сектор запечатан!', failed: 'Паводок ушёл (−6 XP)',
     xp: '+{n} XP', pending: '{n} XP отложено до завтра', stars: '{n}★', play: 'Играть', replay: 'Ещё раз',

@@ -8,6 +8,7 @@ import { useGrid, useMyChips, type Chip } from '@/api/hooks';
 import { useCollections } from '@/shared/lib/lore';
 import { RARITIES, collectionColor, rarityColor, chipName, rarityName, ELEMENT_OF_COLLECTION, chipArtUrl } from '@/shared/lib/rarity';
 import { ElementGlyph } from '@/shared/ui/element-icons';
+import { FloodIcon } from '@/shared/ui/GridIcons';
 import { chipIndexText } from '@/shared/lib/format';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { Empty, Modal, Pill, Progress, Skeleton } from '@/shared/ui/primitives';
@@ -135,7 +136,7 @@ function RowFrag({ ci, have, cells, active, activeR, onCell }: { ci: number; hav
   return (
     <div className={`cgrid-district${active ? ' is-active' : ''}`} style={{ '--district': color } as CSSProperties}>
       <div className="rowhead">
-        <b style={{ color }}>{c.name}</b> <Link to={`/grid?district=${ci}`} title={t('grid.title')} style={{ textDecoration: 'none' }}>🌊</Link>
+        <b style={{ color }}>{c.name}</b> <Link to={`/grid?district=${ci}`} title={t('grid.title')} style={{ textDecoration: 'none' }}><span style={{ color: '#16E5D9', display: 'inline-flex', verticalAlign: -2 }}><FloodIcon size={15} /></span></Link>
         <span className="tiny muted"><ElementGlyph element={ELEMENT_OF_COLLECTION[ci]} /> {have}/9</span>
         <Progress value={have} max={9} tone={have === 9 ? 'acid' : undefined} />
       </div>

@@ -2,6 +2,7 @@ import { useCollections } from '@/shared/lib/lore';
 import { GRID_DEPTHS, GRID_LORE } from '@guttercaps/economy';
 import { useGridMe } from '@/api/hooks';
 import { ChipArt } from '@/shared/ui/ChipArt';
+import { FloodIcon } from '@/shared/ui/GridIcons';
 import { collectionColor, rarityName } from '@/shared/lib/rarity';
 import { useT } from '@/shared/i18n';
 import { Link } from 'react-router-dom';
@@ -60,7 +61,7 @@ export default function Codex() {
             <span style={{ fontFamily: 'var(--cg-font-mono)', fontSize: 12, color: '#666' }}>{col.num}</span>
             <strong style={{ fontSize: 16, color: collectionColor(ci) }}>{col.name}</strong>
           </div>
-          <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>{col.district} · {col.theme} · <Link to={`/grid?district=${ci}`}>🌊 {t('grid.title')}</Link></p>
+          <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>{col.district} · {col.theme} · <Link to={`/grid?district=${ci}`}><span style={{ color: '#16E5D9', display: 'inline-flex', verticalAlign: -2, marginRight: 4 }}><FloodIcon size={13} /></span>{t('grid.title')}</Link></p>
           <img className="district-banner" src={`/districts/${col.num}.jpg`} alt="" aria-hidden loading="lazy" decoding="async" />
           <p style={{ fontSize: 13, color: '#aaa', lineHeight: 1.5, margin: '0 0 12px' }}>{col.history}</p>
 

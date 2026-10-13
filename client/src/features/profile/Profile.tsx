@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useMe, useActivity, useMyServices, useReferrals, useGrid, usePass, useClaimPassTier, useMyChips } from '@/api/hooks';
 import { ChipArt } from '@/shared/ui/ChipArt';
+import { FloodIcon, MarkIcon, PrestigeIcon } from '@/shared/ui/GridIcons';
 import { chipArtUrl, rarityColor } from '@/shared/lib/rarity';
 import { ANTI_FARM, SERVICE_BY_KIND } from '@guttercaps/economy';
 import { HandleModal } from './HandleModal';
@@ -79,7 +80,7 @@ export default function Profile() {
           <div>
             <h1 className="page-title">{me.data?.handle ? `@${me.data.handle}` : shortKey(addr, 6)}</h1>
             <p className="page-sub">{wallet?.adapter?.name} · <a href={EXPLORER.account(addr)} target="_blank" rel="noreferrer" className="row" style={{ gap: 3, display: 'inline-flex' }}>{shortKey(addr, 8)} <ExternalIcon size={11} /></a> · {t('profile.playingSince', { date: me.data?.firstSeen ? fmtLocale.date(me.data.firstSeen, locale) : '—' })}</p>
-            {(ent ?? []).filter((e) => e.kind === 10).map((e) => <span key={e.id} className="pill" style={{ marginLeft: 6 }}>{String((e.payload as { giftKind?: unknown })?.giftKind ?? '') === 'seal' ? '💛' : '🌊'} {String((e.payload as { cosmetic?: unknown })?.cosmetic ?? '')}</span>)}
+            {(ent ?? []).filter((e) => e.kind === 10).map((e) => <span key={e.id} className="pill" style={{ marginLeft: 6 }}>{String((e.payload as { giftKind?: unknown })?.giftKind ?? '') === 'seal' ? <span style={{ color: '#FFD34D', display: 'inline-flex', verticalAlign: -2 }}><PrestigeIcon size={13} /></span> : <span style={{ color: '#16E5D9', display: 'inline-flex', verticalAlign: -2 }}><FloodIcon size={13} /></span>} {String((e.payload as { cosmetic?: unknown })?.cosmetic ?? '')}</span>)}
           </div>
         </div>
         <div className="row-wrap" style={{ gap: 8 }}>
@@ -123,7 +124,7 @@ export default function Profile() {
           const def = e.kind !== undefined ? SERVICE_BY_KIND[e.kind] : undefined;
           return (
             <div key={e.id} className="row between small">
-              <span>{e.kind === 10 ? `🌊 ${String((e.payload as { cosmetic?: unknown })?.cosmetic ?? 'Floodgrid')}` : def ? t(`services.names.${def.id}`) : `#${e.kind}`}</span>
+              <span>{e.kind === 10 ? <><span style={{ color: '#16E5D9', display: 'inline-flex', verticalAlign: -2, marginRight: 4 }}><FloodIcon size={13} /></span>{String((e.payload as { cosmetic?: unknown })?.cosmetic ?? 'Floodgrid')}</> : def ? t(`services.names.${def.id}`) : `#${e.kind}`}</span>
               <span className="muted">{e.expiresAt ? t('services.expires', { date: fmtLocale.date(e.expiresAt, locale) }) : t('services.owned')}</span>
             </div>
           );
@@ -269,7 +270,7 @@ function PassCard() {
           const can = !!d.hasPass && unlocked && !claimed;
           return (
             <div key={tr.tier} className="row between small" style={{ border: '1px solid var(--gc-line)', borderRadius: 8, padding: '4px 8px', opacity: unlocked ? 1 : 0.55 }}>
-              <span className="row" style={{ gap: 6 }}><span style={{ display: 'inline-flex', color: 'var(--gc-muted)' }} aria-hidden>{rewardGlyph(tr.reward)}</span><span className="mono muted">{tr.tier}</span> {rewardLabel(t, tr.reward)} <span className="tiny muted mono">{t('pass.xp', { n: tr.xp })}</span>{tr.tier % GRID.passHintEveryTiers === 0 && <span className="tiny" title={t('pass.hintBonus')}>💡 +1</span>}</span>
+              <span className="row" style={{ gap: 6 }}><span style={{ display: 'inline-flex', color: 'var(--gc-muted)' }} aria-hidden>{rewardGlyph(tr.reward)}</span><span className="mono muted">{tr.tier}</span> {rewardLabel(t, tr.reward)} <span className="tiny muted mono">{t('pass.xp', { n: tr.xp })}</span>{tr.tier % GRID.passHintEveryTiers === 0 && <span className="tiny" title={t('pass.hintBonus')}><span style={{ color: '#FFD34D', display: 'inline-flex', verticalAlign: -2 }}><MarkIcon size={12} /></span> +1</span>}</span>
               {claimed ? <span className="tiny muted">{t('pass.claimed')}</span>
                 : can ? <button className="btn btn-sm" disabled={claim.isPending} onClick={() => (tr.reward.kind === 'skin' ? setSkinTier(tr.tier) : doClaim(tr.tier))}>{t('pass.claim')}</button>
                 : null}
