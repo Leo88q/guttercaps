@@ -75,7 +75,10 @@ export default function Home() {
             <span className="strong">🌊 {t('home.onboardTitle')}</span>
             <button type="button" className="tiny" onClick={() => { onboardEvent('dismissed'); localStorage.setItem('gridOnboardDismissed', '1'); setOnbDismissed(true); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'inherit' }}>✕</button>
           </div>
-          <div className="tiny muted">{t('home.onboardText')}</div>
+          <div className="row" style={{ gap: 12, alignItems: 'center' }}>
+            <img className="grid-thumb" src="/art/grid-hero.jpg" alt="" aria-hidden loading="lazy" />
+            <div className="tiny muted grow">{t('home.onboardText')}</div>
+          </div>
           <Link className="btn" to="/grid" style={{ textAlign: 'center' }} onClick={() => onboardEvent('clicked')}>{t('home.onboardCta')}</Link>
         </div>
       )}

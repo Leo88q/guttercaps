@@ -18,6 +18,7 @@ import { useT } from '@/shared/i18n';
 import { useUiStore } from '@/app/store/ui';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { fmtCg } from '@/shared/lib/format';
+import { ContractIcon, DeepIcon, DropIcon, FloodIcon, GhostIcon, GoalIcon, LadderIcon, MarkIcon, PrestigeIcon, ValveIcon } from './GridIcons';
 import { Empty, Pill, Progress, Skeleton, Stat } from '@/shared/ui/primitives';
 
 interface BoardTile { base: number; rot: number; fixed: boolean; role: string }
@@ -215,17 +216,22 @@ export default function Grid() {
 
   return (
     <div className="page stack">
-      <div>
-        <h1 className="page-title">{t('grid.title')}</h1>
-        <p className="page-sub">{t('grid.subtitle')}</p>
+      <div className="grid-hero">
+        <img src="/art/grid-hero.jpg" alt="" aria-hidden />
+        <div className="grid-hero-shade" />
+        <div className="grid-hero-text">
+          <h1 className="page-title" style={{ margin: 0 }}>{t('grid.title')}</h1>
+          <p className="page-sub" style={{ margin: 0 }}>{t('grid.subtitle')}</p>
+        </div>
       </div>
 
       <div className="grid-2">
         <div className="card stack-sm">
           <div className="strong">{t('grid.backpack')}</div>
           <div className="row" style={{ gap: 16, flexWrap: 'wrap' }}>
-            <Stat label={t('grid.hints')} value={`${wallet?.hints ?? 0}/${GRID.hintStockCap}`} />
-            <Stat label={t('grid.valves')} value={`${wallet?.valves ?? 0}/${GRID.valveStockCap}`} />
+            <span className="row" style={{ gap: 5, alignItems: 'center', color: '#FFD34D' }}><MarkIcon size={17} /><Stat label={t('grid.hints')} value={`${wallet?.hints ?? 0}/${GRID.hintStockCap}`} /></span>
+            <span className="row" style={{ gap: 5, alignItems: 'center', color: '#16E5D9' }}><ValveIcon size={17} /><Stat label={t('grid.valves')} value={`${wallet?.valves ?? 0}/${GRID.valveStockCap}`} /></span>
+            <span className="row" style={{ gap: 5, alignItems: 'center', color: '#7fe7dc' }}><DropIcon size={17} /><Stat label={t('grid.drops')} value={`${selected?.route?.chargeDrops ?? 0}/3`} /></span>
             <Stat label="★" value={wallet?.total_best_stars ?? 0} />
           </div>
           {(me.data?.pendingGranted ?? 0) > 0 && <div className="tiny muted">{t('grid.xp', { n: me.data!.pendingGranted })}</div>}
@@ -242,7 +248,7 @@ export default function Grid() {
           </div>}
         </div>
         <div className="card stack-sm">
-          <div className="strong">{t('grid.flood')}</div>
+          <div className="strong"><span style={{ color: '#16E5D9', display: 'inline-flex', verticalAlign: -4, marginRight: 6 }}><FloodIcon /></span>{t('grid.flood')}</div>
           <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
             {(me.data?.flood ?? []).length === 0 && <span className="tiny muted">—</span>}
             {(me.data?.flood ?? []).map((f) => <Pill key={f.district}>#{f.district + 1}: {f.points}</Pill>)}
@@ -257,7 +263,7 @@ export default function Grid() {
       {selected && !play && (
         <div className="grid-3">
           <div className="card stack-sm">
-            <div className="strong">📜 {t('grid.contracts')}</div>
+            <div className="strong"><span style={{ color: '#FF9F1C', display: 'inline-flex', verticalAlign: -4, marginRight: 6 }}><ContractIcon /></span>{t('grid.contracts')}</div>
             <div className="tiny muted">{t('grid.contractHint')}</div>
             {(me.data?.contracts ?? []).map((c) => (
               <div key={c.slot} className="row between" style={{ gap: 8 }}>
@@ -267,7 +273,8 @@ export default function Grid() {
             ))}
           </div>
           <div className="card stack-sm">
-            <div className="strong">🌊 {t('grid.deep')}</div>
+            <div className="strong"><span style={{ color: '#16E5D9', display: 'inline-flex', verticalAlign: -4, marginRight: 6 }}><DeepIcon /></span>{t('grid.deep')}</div>
+            <img className="grid-card-art" src="/art/grid-deep.jpg" alt="" aria-hidden loading="lazy" />
             <div className="tiny muted">{t('grid.deepHint')}</div>
             <div className="tiny">{t('grid.attemptsLeft', { n: me.data?.deep?.attemptsLeft ?? 0 })}{me.data?.deep?.myBest ? ` · ★${me.data.deep.myBest.stars} · ${me.data.deep.myBest.moves}` : ''}</div>
             <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
@@ -281,25 +288,26 @@ export default function Grid() {
             {me.data?.deepReward && <div className="tiny muted">🌊 #{me.data.deepReward.rank} · +{me.data.deepReward.hints} {t('grid.hints')}</div>}
           </div>
           <div className="card stack-sm">
-            <div className="strong">👻 {t('grid.ghost')}</div>
+            <div className="strong"><span style={{ color: '#c4b5fd', display: 'inline-flex', verticalAlign: -4, marginRight: 6 }}><GhostIcon /></span>{t('grid.ghost')}</div>
+            <img className="grid-card-art" src="/art/grid-ghost.jpg" alt="" aria-hidden loading="lazy" />
             <div className="tiny muted">{t('grid.ghostHint', { n: me.data?.ghost?.targetMoves ?? 0 })}</div>
             {me.data?.ghost?.beaten ? <Pill active>{t('grid.beaten')}</Pill> : <Pill onClick={() => void startSpecial('ghost')} disabled={starting}>{t('grid.run')}</Pill>}
           </div>
           <div className="card stack-sm">
-            <div className="strong">🏅 {t('grid.prestige')}</div>
+            <div className="strong"><span style={{ color: '#FFD34D', display: 'inline-flex', verticalAlign: -4, marginRight: 6 }}><PrestigeIcon /></span>{t('grid.prestige')}</div>
             {selected && (selected.route?.nextLevel ?? 1) > 75 ? <>
               <div className="tiny muted">{t('grid.prestigeNext', { p: (selected.prestige?.level ?? 0) + 1, n: selected.prestige?.next ?? 1 })} · P{selected.prestige?.level ?? 0}/5</div>
               <Pill onClick={() => void startSpecial('prestige')} disabled={starting || (selected.prestige?.level ?? 0) >= 5}>{t('grid.startPrestige')}</Pill>
             </> : <div className="tiny muted">75/75</div>}
           </div>
           <div className="card stack-sm">
-            <div className="strong">🏆 {t('grid.ladder')}</div>
+            <div className="strong"><span style={{ color: '#FF2E8A', display: 'inline-flex', verticalAlign: -4, marginRight: 6 }}><LadderIcon /></span>{t('grid.ladder')}</div>
             <div className="tiny">{t('grid.ladderPoints', { n: me.data?.ladder?.myPoints ?? 0 })}{me.data?.ladder?.myRank ? ` · #${me.data.ladder.myRank}` : ''}</div>
             {(me.data?.ladder?.top ?? []).map((r) => <div key={r.rank} className="tiny mono">#{r.rank} {r.me ? 'you' : `${r.wallet.slice(0, 6)}…`} · {r.points}</div>)}
             {me.data?.ladder?.myPayout && <div className="tiny muted">{fmtCg(me.data.ladder.myPayout.amount, 0)} · #{me.data.ladder.myPayout.rank}{me.data.ladder.myPayout.root_kind == null ? ` · ${t('grid.payoutPending')}` : ''}</div>}
           </div>
           <div className="card stack-sm">
-            <div className="strong">🎯 {t('grid.coopGoal')}</div>
+            <div className="strong"><span style={{ color: '#B6FF3C', display: 'inline-flex', verticalAlign: -4, marginRight: 6 }}><GoalIcon /></span>{t('grid.coopGoal')}</div>
             {(me.data?.districtGoal ?? []).map((g) => <div key={g.district} className="tiny">#{g.district + 1}: {g.points}/{g.goal} {g.reached ? '✔' : ''}</div>)}
             {me.data?.coopReward && <div className="tiny muted">✔ +1 {t('grid.valves')}</div>}
           </div>
@@ -338,7 +346,7 @@ export default function Grid() {
                 {t('grid.useValve')} ({wallet?.valves ?? 0})
               </label>
               {GRID_DEPTHS.map((d) => (
-                <div key={d.depth} className="stack-sm">
+                <div key={d.depth} className="stack-sm depth-strip" style={{ borderLeftColor: ({ zinc: '#9aa7ad', chrome: '#d7e3ea', rust: '#c96f2e', cast: '#7a7e85', glass: '#7fe7dc' } as Record<string, string>)[d.material] ?? '#333' }}>
                   <div className="tiny muted">{t('grid.depth', { n: d.depth })} · {d.name} · {d.grid}</div>
                   <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
                     {Array.from({ length: GRID.levelsPerDepth }, (_, i) => d.levels[0] + i).map((lv) => {

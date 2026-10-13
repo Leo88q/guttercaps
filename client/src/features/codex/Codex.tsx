@@ -29,7 +29,8 @@ export default function Codex() {
       </div>
 
       <div style={{ margin: '28px 0', borderTop: '1px solid #2a2a2a', paddingTop: 16 }}>
-        <strong style={{ fontSize: 16 }}>📖 {t('codex.registry')}</strong>
+        <img className="district-banner" src="/art/grid-registry.jpg" alt="" aria-hidden loading="lazy" />
+        <strong style={{ fontSize: 16 }}>{t('codex.registry')}</strong>
         <p style={{ fontSize: 12, color: '#888', margin: '4px 0 12px' }}>{t('codex.registryIntro')} · {gridMe.data?.lore?.pages ?? 0}/60</p>
         {GRID_DEPTHS.map((d) => {
           const unlocked = unlockedDepths.has(d.depth);
