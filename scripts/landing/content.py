@@ -298,8 +298,8 @@ for _i, (_q, _a, _qr, _ar) in enumerate(FAQ):
 SITE = 'https://guttercaps.gg'
 TITLE = ('GUTTERCAPS — provably-fair street-art caps on Solana · fuse, slam, stake',
          'GUTTERCAPS — доказуемо честные стрит-арт фишки на Solana · фьюжн, арена, стейкинг')
-DESC = ('GUTTERCAPS: 72 street-art bottle caps on Solana. Provably-fair packs (on-chain SlotHashes, on-chain pity), 3→1 fusion, Cap Slam 3-v-3 wagers, escrow market, $CG staking. Pay in SOL, USDC or SKR. Built for Seeker, in 7 languages.',
-        'GUTTERCAPS: 72 стрит-арт крышек на Solana. Доказуемо честные паки (ончейн-SlotHashes, on-chain pity), фьюжн 3→1, ставки Cap Slam 3 на 3, эскроу-маркет, стейкинг $CG. Оплата в SOL, USDC или SKR. Для Seeker, на 7 языках.')
+DESC = ('GUTTERCAPS: 72 street-art bottle caps on Solana. Provably-fair packs (on-chain SlotHashes, on-chain pity), 3→1 fusion, Cap Slam 3-v-3 wagers, escrow market, $CG staking — and the Floodgrid: 75 pipe sectors, star XP and staking droplets under the city. Pay in SOL, USDC or SKR. Built for Seeker, in 7 languages.',
+        'GUTTERCAPS: 72 стрит-арт крышек на Solana. Доказуемо честные паки (ончейн-SlotHashes, on-chain pity), фьюжн 3→1, ставки Cap Slam 3 на 3, эскроу-маркет, стейкинг $CG — и «Подземная решётка»: 75 секторов труб, звёздный XP и капли стейкинга под городом. Оплата в SOL, USDC или SKR. Для Seeker, на 7 языках.')
 T['meta.title'] = TITLE
 T['meta.desc'] = DESC
 

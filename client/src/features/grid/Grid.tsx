@@ -2,8 +2,8 @@
 // route, star XP, Flood charge droplets, diver gear and account gifts. The board engine is
 // the shared deterministic one (@guttercaps/economy); the server replays every submitted
 // move list, so what is played here is exactly what is verified there.
-import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { GRID, GRID_DEPTHS, componentCount, isSolved, kindOf, poweredCells, tileMask, type Level, type Tile } from '@guttercaps/economy';
 import { api, ApiError, claimWithRetry, isMock } from '@/api/client';
@@ -14,7 +14,7 @@ import { Currency } from '@/chain/ix/chipCore';
 import { GRID_FIELD_THEMES } from '@/shared/lib/cosmetics';
 import { useGridChip, useGridMe } from '@/api/hooks';
 import { qk } from '@/api/keys';
-import { useT } from '@/shared/i18n';
+import { fmtLocale, getLocale, useT } from '@/shared/i18n';
 import { useUiStore } from '@/app/store/ui';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { fmtCg } from '@/shared/lib/format';
@@ -72,6 +72,8 @@ export default function Grid() {
   const [starting, setStarting] = useState(false);
   const [buyingDeep, setBuyingDeep] = useState(false);
   const [fieldTheme, setFieldTheme] = useState<string>(() => localStorage.getItem('gridFieldTheme') ?? '');
+  const lpTimer = useRef<number | null>(null);
+  const lpFired = useRef(false);
   const { connection } = useConnection();
   const walletLike = useWalletLike();
   const gameCfg = useGameConfig();
@@ -237,6 +239,8 @@ export default function Grid() {
             <span className="row" style={{ gap: 5, alignItems: 'center', color: '#16E5D9' }}><GenBadge name="item-drop" size={19} /><Stat label={t('grid.drops')} value={`${selected?.route?.chargeDrops ?? 0}/3`} /></span>
             <Stat label="★" value={wallet?.total_best_stars ?? 0} />
           </div>
+          {(selected?.route?.chargeDrops ?? 0) > 0 && <div className="tiny muted">{t('grid.dropsLive')}{selected?.route?.dropsExpiresAt ? ` · ${fmtLocale.date(selected.route.dropsExpiresAt, getLocale())}` : ''}</div>}
+          <div><Link className="tiny" to="/codex" style={{ color: '#16E5D9' }}>{t('codex.registry')} →</Link></div>
           {(me.data?.pendingGranted ?? 0) > 0 && <div className="tiny muted">{t('grid.xp', { n: me.data!.pendingGranted })}</div>}
           {me.data?.floodReward && <div className="tiny muted"><span style={{ color: '#FFD34D', display: 'inline-flex', verticalAlign: -3, marginRight: 4 }}><GenBadge name="item-mark" size={16} /></span>+{me.data.floodReward.hints} · {t('grid.hints')}{me.data.floodReward.valve > 0 ? ` · +1 ${t('grid.valves')}` : ''}</div>}
           {(me.data?.masteredChips ?? 0) > 0 && <div className="tiny muted"><span style={{ color: '#FFD34D', display: 'inline-flex', verticalAlign: -3, marginRight: 4 }}><GenBadge name="item-heart" size={16} /></span>{t('grid.title')} 75/75 ×{me.data!.masteredChips}</div>}
@@ -403,13 +407,19 @@ export default function Grid() {
               <div style={{ display: 'grid', gridTemplateColumns: `repeat(${play.attempt.board.size}, 1fr)`, gap: 4, maxWidth: 520, margin: '0 auto', width: '100%' }}>
                 {play.attempt.board.tiles.map((tile, i) => (
                   <button key={i} type="button" className="grid-tile" disabled={play.busy || tile.fixed}
-                    onClick={() => rotate(i, 1)} onContextMenu={(e) => { e.preventDefault(); rotate(i, -1); }}
+                    onPointerDown={() => { lpFired.current = false; if (lpTimer.current) window.clearTimeout(lpTimer.current); lpTimer.current = window.setTimeout(() => { lpFired.current = true; rotate(i, -1); }, 450); }}
+                    onPointerUp={() => { if (lpTimer.current) window.clearTimeout(lpTimer.current); }}
+                    onPointerLeave={() => { if (lpTimer.current) window.clearTimeout(lpTimer.current); }}
+                    onPointerCancel={() => { if (lpTimer.current) window.clearTimeout(lpTimer.current); }}
+                    onClick={() => { if (lpFired.current) { lpFired.current = false; return; } rotate(i, 1); }}
+                    onContextMenu={(e) => { e.preventDefault(); rotate(i, -1); }}
                     style={{ aspectRatio: '1', borderRadius: 8, background: powered[i] ? 'rgba(182,255,60,.10)' : '#16151A', cursor: tile.fixed ? 'default' : 'pointer', padding: 2 }}
                     aria-label={t('grid.tileAria', { n: i + 1 })}>
                     <TileSvg mask={tileMask(playLevel, i)} powered={!!powered[i]} isBus={i === play.attempt.board.bus} isReceiver={play.attempt.board.receivers.includes(i)} fixed={tile.fixed} highlight={play.hintIndex === i} accent={GRID_FIELD_THEMES.find((th) => th.id === fieldTheme)?.hex ?? '#B6F09C'} />
                   </button>
                 ))}
               </div>
+              <div className="tiny muted">{t('grid.rotateHint')}</div>
               <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
                 <Pill onClick={undo} disabled={play.busy || play.turns.length === 0}>{t('grid.undo')}</Pill>
                 <Pill onClick={() => setPlay({ ...play, rots: [...play.initial], turns: [] })} disabled={play.busy}>{t('grid.restart')}</Pill>

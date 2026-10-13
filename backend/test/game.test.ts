@@ -159,6 +159,17 @@ describe('staking read-model', () => {
     expect(o.tokenPool.apyByTier[3]).toBeGreaterThan(o.tokenPool.apyByTier[0]);
   });
 
+  it('me: a compressed chip stake (key = claim PDA) resolves to its chip through compressed_claims', () => {
+    const owner = Keypair.generate().publicKey;
+    const [asset] = mint(db, owner.toBase58(), [{ rarity: 2, collection: 1 }]);
+    const claim = kp();
+    db.run(`INSERT INTO compressed_settlements (buyer, nonce, last_signature, last_slot) VALUES (?, '7', 'sig', 1)`, owner.toBase58());
+    db.run(`INSERT INTO compressed_claims (buyer, nonce, claim_nonce, pack_no, status, asset, claim, slot) VALUES (?, '7', '7', 0, 'registered', ?, ?, 1)`, owner.toBase58(), asset, claim);
+    db.run(`INSERT INTO stakes (key, owner, kind, amount, weight, unlock_at, active, since, slot) VALUES (?, ?, 1, '0', '5000000', 0, 1, ?, 1)`, claim, owner.toBase58(), Math.floor(Date.now() / 1000));
+    const m = staking.me(db, owner.toBase58());
+    expect(m.chipStakes.map((x) => x.chip.asset)).toContain(asset);
+  });
+
   it('overview after DayClosed uses the chain numbers', () => {
     ingestTx(tx([{ program: 'staking', name: 'DayClosed', data: { dayIndex: 12, year: 0, scheduleCap: '271232876712', guarded: '150000000000', burn7dAvg: '40000000000', sliceBudget: ['0', '0', '1', '2', '3'] } }]), db);
     const o = staking.overview(db);

@@ -202,6 +202,14 @@ function ServiceModal({ service, onClose }: { service: ServiceDef; onClose: () =
               {GRID_FIELD_THEMES.map((th) => <Pill key={th.id} active={fieldTheme === th.id} onClick={() => setFieldTheme(th.id)}><span style={{ width: 8, height: 8, borderRadius: 4, background: th.hex }} />{th.label}</Pill>)}
             </div>
             <div className="tiny muted">{GRID_FIELD_THEMES.find((x) => x.id === fieldTheme)?.desc}</div>
+            <svg viewBox="0 0 100 100" style={{ width: 110, height: 110, borderRadius: 10, border: '1px solid var(--gc-line)', background: '#16151A' }} aria-hidden>
+              {Array.from({ length: 25 }, (_, i) => {
+                const cx = (i % 5) * 20 + 10, cy = Math.floor(i / 5) * 20 + 10;
+                const rot = ((i * 7 + 3) % 4) * 90;
+                const col = i % 3 === 0 ? '#7A8288' : (GRID_FIELD_THEMES.find((x) => x.id === fieldTheme)?.hex ?? '#B6FF3C');
+                return <g key={i} transform={`rotate(${rot} ${cx} ${cy})`} stroke={col} strokeWidth={3.4} strokeLinecap="round"><line x1={cx} y1={cy} x2={cx} y2={cy - 9} /><line x1={cx} y1={cy} x2={cx + 9} y2={cy} /><circle cx={cx} cy={cy} r={2.2} fill={col} stroke="none" /></g>;
+              })}
+            </svg>
           </div>
         )}
         {service.id === 'districtBanner' && (

@@ -11,7 +11,7 @@ import AxeBuilder from '@axe-core/playwright';
 /** Routes reachable without a wallet — the list `client/src/app/router.tsx` wraps in `S(…)`, not `W(…)`. */
 const PUBLIC = ['/', '/collection', '/shop', '/market', '/arena', '/leaderboard/rating', '/codex', '/verify', '/language'];
 /** Routes behind `RequireWallet`; they must redirect, not render an empty shell. */
-const GATED = ['/fusion', '/staking', '/quests', '/profile', '/shop/opening/1'];
+const GATED = ['/fusion', '/staking', '/quests', '/grid', '/profile', '/shop/opening/1'];
 
 /** Console/`pageerror` noise collector — an assertion helper, not a filter. */
 function watchErrors(page: Page) {

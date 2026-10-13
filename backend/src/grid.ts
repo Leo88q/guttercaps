@@ -97,7 +97,14 @@ export function ensureGridWallet(db: Db, wallet: string, t = now()): { hints: nu
 
 export function gridRoute(db: Db, asset: string) {
   const r = db.get<{ next_level: number; charge_drops: number; charge_progress: number }>(`SELECT next_level, charge_drops, charge_progress FROM grid_chip_routes WHERE asset = ?`, asset);
-  return { nextLevel: r?.next_level ?? 1, chargeDrops: r?.charge_drops ?? 0, chargeProgress: r?.charge_progress ?? 0 };
+  const drops = r?.charge_drops ?? 0;
+  let dropsExpiresAt: string | null = null;
+  if (drops > 0) {
+    const sync = db.get<{ expiries: string }>(`SELECT expiries FROM grid_charge_sync WHERE asset = ?`, asset);
+    const future = (sync ? (JSON.parse(sync.expiries) as number[]) : []).filter((e) => e > Math.floor(Date.now() / 1000));
+    if (future.length) dropsExpiresAt = new Date(Math.min(...future) * 1000).toISOString();
+  }
+  return { nextLevel: r?.next_level ?? 1, chargeDrops: drops, chargeProgress: r?.charge_progress ?? 0, dropsExpiresAt };
 }
 
 function saveRoute(db: Db, asset: string, nextLevel: number, drops: number, progress: number, t: number): void {

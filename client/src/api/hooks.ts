@@ -55,7 +55,7 @@ export function useGrid() {
 
 
 export interface GridClaim { level: number; best_stars: number; xp_accounted: number; xp_pending: number; max_xp: number }
-export interface GridRouteChip { asset: string; collection: number; rarity: number; chipLevel: number; skin?: string | null; route: { nextLevel: number; chargeDrops: number; chargeProgress: number }; claims: GridClaim[] }
+export interface GridRouteChip { asset: string; collection: number; rarity: number; chipLevel: number; skin?: string | null; route: { nextLevel: number; chargeDrops: number; chargeProgress: number; dropsExpiresAt?: string | null }; claims: GridClaim[] }
 export interface GridMe {
   wallet: { hints: number; valves: number; total_best_stars: number };
   pendingGranted: number; chips: (GridRouteChip & { prestige?: { level: number; next: number } })[];
@@ -74,7 +74,7 @@ export interface GridMe {
   deepReward?: { week: number; hints: number; valve: number; rank: number } | null;
   lore?: { unlockedDepths: number[]; pages: number };
 }
-export interface GridChipState { asset: string; route: { nextLevel: number; chargeDrops: number; chargeProgress: number }; claims: GridClaim[]; fails: { level: number; fails: number }[]; emergency: number[] }
+export interface GridChipState { asset: string; route: { nextLevel: number; chargeDrops: number; chargeProgress: number; dropsExpiresAt?: string | null }; claims: GridClaim[]; fails: { level: number; fails: number }[]; emergency: number[] }
 export function useGridMe() {
   const status = useSessionStore((s) => s.status);
   return useQuery({ queryKey: qk.gridMe, queryFn: async () => (await api.get('/grid/me')) as unknown as GridMe, enabled: status === 'authenticated', staleTime: 10_000 });
