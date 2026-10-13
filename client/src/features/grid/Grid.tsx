@@ -17,6 +17,7 @@ import { qk } from '@/api/keys';
 import { useT } from '@/shared/i18n';
 import { useUiStore } from '@/app/store/ui';
 import { ChipArt } from '@/shared/ui/ChipArt';
+import { fmtCg } from '@/shared/lib/format';
 import { Empty, Pill, Progress, Skeleton, Stat } from '@/shared/ui/primitives';
 
 interface BoardTile { base: number; rot: number; fixed: boolean; role: string }
@@ -30,7 +31,7 @@ type CompleteResult =
   | { ok: false; xpLoss?: number; emergencyGranted?: boolean };
 
 interface PlayState {
-  attempt: AttemptStart; mode: 'charge' | 'training' | 'contract' | 'deep' | 'ghost'; hintsUsed: number;
+  attempt: AttemptStart; mode: 'charge' | 'training' | 'contract' | 'deep' | 'ghost' | 'prestige'; hintsUsed: number;
   initial: number[]; rots: number[]; turns: [number, number][]; hintIndex: number | null; busy: boolean;
 }
 
@@ -116,7 +117,7 @@ export default function Grid() {
     } finally { setStarting(false); }
   };
 
-  const startSpecial = async (kind: 'contract' | 'deep' | 'ghost', slot?: number) => {
+  const startSpecial = async (kind: 'contract' | 'deep' | 'ghost' | 'prestige', slot?: number) => {
     if (!selected || starting) return;
     setStarting(true); setResult(null);
     try {
@@ -284,6 +285,24 @@ export default function Grid() {
             <div className="tiny muted">{t('grid.ghostHint', { n: me.data?.ghost?.targetMoves ?? 0 })}</div>
             {me.data?.ghost?.beaten ? <Pill active>{t('grid.beaten')}</Pill> : <Pill onClick={() => void startSpecial('ghost')} disabled={starting}>{t('grid.run')}</Pill>}
           </div>
+          <div className="card stack-sm">
+            <div className="strong">🏅 {t('grid.prestige')}</div>
+            {selected && (selected.route?.nextLevel ?? 1) > 75 ? <>
+              <div className="tiny muted">{t('grid.prestigeNext', { p: (selected.prestige?.level ?? 0) + 1, n: selected.prestige?.next ?? 1 })} · P{selected.prestige?.level ?? 0}/5</div>
+              <Pill onClick={() => void startSpecial('prestige')} disabled={starting || (selected.prestige?.level ?? 0) >= 5}>{t('grid.startPrestige')}</Pill>
+            </> : <div className="tiny muted">75/75</div>}
+          </div>
+          <div className="card stack-sm">
+            <div className="strong">🏆 {t('grid.ladder')}</div>
+            <div className="tiny">{t('grid.ladderPoints', { n: me.data?.ladder?.myPoints ?? 0 })}{me.data?.ladder?.myRank ? ` · #${me.data.ladder.myRank}` : ''}</div>
+            {(me.data?.ladder?.top ?? []).map((r) => <div key={r.rank} className="tiny mono">#{r.rank} {r.me ? 'you' : `${r.wallet.slice(0, 6)}…`} · {r.points}</div>)}
+            {me.data?.ladder?.myPayout && <div className="tiny muted">{fmtCg(me.data.ladder.myPayout.amount, 0)} · #{me.data.ladder.myPayout.rank}{me.data.ladder.myPayout.root_kind == null ? ` · ${t('grid.payoutPending')}` : ''}</div>}
+          </div>
+          <div className="card stack-sm">
+            <div className="strong">🎯 {t('grid.coopGoal')}</div>
+            {(me.data?.districtGoal ?? []).map((g) => <div key={g.district} className="tiny">#{g.district + 1}: {g.points}/{g.goal} {g.reached ? '✔' : ''}</div>)}
+            {me.data?.coopReward && <div className="tiny muted">✔ +1 {t('grid.valves')}</div>}
+          </div>
         </div>
       )}
 
@@ -363,7 +382,7 @@ export default function Grid() {
           {play && playLevel && (
             <div className="card stack-sm">
               <div className="row between" style={{ flexWrap: 'wrap', gap: 8 }}>
-                <span className="strong">{t('grid.sector', { n: play.attempt.level })} · {play.mode === 'charge' ? t('grid.charge') : play.mode === 'contract' ? t('grid.contracts') : play.mode === 'deep' ? t('grid.deep') : play.mode === 'ghost' ? t('grid.ghost') : t('grid.training')}</span>
+                <span className="strong">{t('grid.sector', { n: play.attempt.level })} · {play.mode === 'charge' ? t('grid.charge') : play.mode === 'contract' ? t('grid.contracts') : play.mode === 'deep' ? t('grid.deep') : play.mode === 'ghost' ? t('grid.ghost') : play.mode === 'prestige' ? t('grid.prestige') : t('grid.training')}</span>
                 <span className="tiny muted">{t('grid.moves', { n: play.turns.length })} · {t('grid.par', { n: play.attempt.par })}{play.mode === 'charge' && <> · {t('grid.budget', { n: play.attempt.moveBudget })}</>} · {t('grid.connected', { n: connectedPct })}</span>
               </div>
               <Progress value={connectedPct} max={100} tone="acid" />
@@ -386,7 +405,7 @@ export default function Grid() {
                 {play.hintsUsed > 0 && <Pill onClick={showHint} disabled={play.busy}>{t('grid.showHint')}</Pill>}
                 {play.mode === 'charge' && <Pill tone="danger" onClick={() => void giveUp()} disabled={play.busy}>{t('grid.giveUp')}</Pill>}
                 {play.mode === 'training' && <Pill onClick={() => setPlay(null)} disabled={play.busy}>{t('common.close')}</Pill>}
-                {(play.mode === 'contract' || play.mode === 'deep' || play.mode === 'ghost') && <Pill tone="danger" onClick={() => void giveUp()} disabled={play.busy}>{t('grid.giveUp')}</Pill>}
+                {(play.mode === 'contract' || play.mode === 'deep' || play.mode === 'ghost' || play.mode === 'prestige') && <Pill tone="danger" onClick={() => void giveUp()} disabled={play.busy}>{t('grid.giveUp')}</Pill>}
               </div>
             </div>
           )}

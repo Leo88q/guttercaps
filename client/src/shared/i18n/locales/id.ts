@@ -28,6 +28,7 @@ const id: Messages = {
     selectSector: 'All 75 sectors are open for training; the charge route advances sector by sector.',
     resultTraining: 'Training done — no rewards, as promised.', droplet: 'Flood charge +1 💧', gift: 'Gift: {kind} ×{n}',
     overBudget: 'Over the move limit — finishing now settles as a fail.', hintReady: 'Mark armed: one move will be shown.',
+    prestige: 'Prestige descent', prestigeNext: 'Prestige {p} · sector {n}', ladder: 'Season ladder', ladderPoints: '{n} pts', coopGoal: 'District goal', startPrestige: 'Start prestige sector', showcase: 'Diver showcase', payoutPending: 'Ladder payout pending root',
     contracts: 'District contracts', contractHint: 'Conductor: a 75/75 chip of this district. Pays weekly quest progress and droplet progress — no XP.', done: 'Done', playContract: 'Run contract', deep: 'Deep Flood', deepHint: 'Weekly 8×8 sector. No hints, tighter move limit. Best run of the week wins gear.', attemptsLeft: 'Attempts left: {n}', buyAttempt: 'Buy attempt · 30 $CG burn', leaderboard: 'Leaderboard', ghost: 'Ghost of the day', ghostHint: 'Solve in ≤ {n} moves without hints to earn a Terminal mark.', beaten: 'Ghost beaten', run: 'Run', fieldTheme: 'Field theme', rank: 'Rank {n}', districtN: 'District #{n}',
   },
   common: {
@@ -54,7 +55,7 @@ const id: Messages = {
     seconds: '{n} d',
   },
   lang: { title: 'Bahasa', subtitle: 'Harga dan saldo selalu dalam satuan dompet Anda. Hanya kata-katanya yang berubah.', auto: 'Otomatis ({name})', current: 'Saat ini: {name}', applied: 'Bahasa diatur ke {name}' },
-  home: {
+  home: { onboardTitle: 'Your first flood', onboardText: 'Your first cap is charged by the flood — run its first sector yourself (40 seconds) and feel what charge means before your first fight.', onboardCta: 'Run sector 1 with your first cap',
     greeting: 'Yo, {name}', collector: 'kolektor', inSeason: 'Gutter City sedang di musim {id}', loadingCity: 'Gutter City sedang dimuat',
     heroTitle: 'GUTTERCAPS', heroSub: 'Delapan distrik. Tujuh puluh dua caps. Setiap drop terbukti acak, setiap transaksi on-chain.',
     heroCta: 'Buka pack pertamamu', heroSecondary: 'Jelajahi pasar',
@@ -178,7 +179,7 @@ const id: Messages = {
     blocked: 'Tantangan tidak bisa dimuat (jaringan atau ekstensi memblokir). Hadiah tetap ditahan sampai lolos.',
     deviceLimited: 'Perangkat ini sudah menerima hadiah di {n} dompet — dompet ini bisa bermain normal tetapi tidak dibayar hadiah quest, PvP, atau musim. Perangkat rumah bersama? Hubungi dukungan.',
   },
-  leaderboard: { title: 'Papan peringkat', subtitle: 'Musim {id} · berakhir dalam {time} · pool {amount}', boards: { rating: 'Rating', collection: 'Koleksi', staking: 'Staking', pvp: 'Menang' }, rank: 'Peringkat', player: 'Pemain', value: 'Nilai' },
+  leaderboard: { title: 'Papan peringkat', subtitle: 'Musim {id} · berakhir dalam {time} · pool {amount}', boards: { divers: 'Divers ★', rating: 'Rating', collection: 'Koleksi', staking: 'Staking', pvp: 'Menang' }, rank: 'Peringkat', player: 'Pemain', value: 'Nilai' },
   profile: {
     rpcCheck: "Periksa RPC (tanpa pembayaran)",
     rpcCheckHint: "Membaca RPC aktif browser sekarang dan setelah 45 detik. Tanpa tanda tangan atau transaksi. Laporan tidak memuat URL RPC atau kunci API.",

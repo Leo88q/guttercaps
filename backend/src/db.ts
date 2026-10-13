@@ -248,6 +248,30 @@ CREATE TABLE IF NOT EXISTS grid_deep_results (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (wallet, week)
 );
+CREATE TABLE IF NOT EXISTS grid_prestige_routes (
+  asset TEXT PRIMARY KEY,
+  prestige_level INTEGER NOT NULL DEFAULT 0,
+  next_sector INTEGER NOT NULL DEFAULT 1,
+  updated_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS grid_ladder_payouts (
+  season INTEGER NOT NULL,
+  wallet TEXT NOT NULL,
+  rank INTEGER NOT NULL,
+  points INTEGER NOT NULL,
+  amount TEXT NOT NULL,
+  root_kind INTEGER,
+  root_epoch INTEGER,
+  PRIMARY KEY (season, wallet)
+);
+CREATE TABLE IF NOT EXISTS grid_district_goal_settlements (
+  wallet TEXT NOT NULL,
+  week INTEGER NOT NULL,
+  district INTEGER NOT NULL,
+  valve INTEGER NOT NULL DEFAULT 0,
+  settled_at INTEGER NOT NULL,
+  PRIMARY KEY (wallet, week)
+);
 CREATE TABLE IF NOT EXISTS grid_deep_settlements (
   wallet TEXT NOT NULL,
   week INTEGER NOT NULL,

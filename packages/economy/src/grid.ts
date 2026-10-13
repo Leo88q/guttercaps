@@ -38,6 +38,12 @@ export const GRID = {
   deepAttemptCgMicro: 30_000_000,
   deepMoveBudgetMult: 1.5, // Deep Flood modifier: no hints, tighter move budget
   ghostHintsPerDay: 1, // beat the ghost (<= par, no hints) -> +1 Terminal mark, once a day
+  /** Five-mechanic expansion (owner-approved): seasonal PvE ladder, district co-op goal, prestige. */
+  ladderRankPoints: [10, 7, 5, 3, 1] as readonly number[], // per weekly Deep Flood rank 1/2/3/4-5/6-10 (+1 per solved daily)
+  ladderPayoutCgMicro: { first: 500_000_000, secondThird: 250_000_000, top10: 100_000_000, topDecile: 25_000_000 } as const,
+  ladderPoolCapMicro: 5_000_000_000, // hard season cap (micro-$CG) inside the events slice; brackets scale down pro-rata
+  districtGoalPoints: 150, // weekly district flood points for the co-op goal (participants: +1 valve, Sunday epic x2)
+  prestigeMax: 5, // prestige descents per chip (seals P1..P5)
   starMilestones: [
     { stars: 75, hints: 2, valves: 0 },
     { stars: 125, hints: 0, valves: 1 },

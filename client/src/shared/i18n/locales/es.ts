@@ -28,6 +28,7 @@ const es: Messages = {
     selectSector: 'All 75 sectors are open for training; the charge route advances sector by sector.',
     resultTraining: 'Training done — no rewards, as promised.', droplet: 'Flood charge +1 💧', gift: 'Gift: {kind} ×{n}',
     overBudget: 'Over the move limit — finishing now settles as a fail.', hintReady: 'Mark armed: one move will be shown.',
+    prestige: 'Prestige descent', prestigeNext: 'Prestige {p} · sector {n}', ladder: 'Season ladder', ladderPoints: '{n} pts', coopGoal: 'District goal', startPrestige: 'Start prestige sector', showcase: 'Diver showcase', payoutPending: 'Ladder payout pending root',
     contracts: 'District contracts', contractHint: 'Conductor: a 75/75 chip of this district. Pays weekly quest progress and droplet progress — no XP.', done: 'Done', playContract: 'Run contract', deep: 'Deep Flood', deepHint: 'Weekly 8×8 sector. No hints, tighter move limit. Best run of the week wins gear.', attemptsLeft: 'Attempts left: {n}', buyAttempt: 'Buy attempt · 30 $CG burn', leaderboard: 'Leaderboard', ghost: 'Ghost of the day', ghostHint: 'Solve in ≤ {n} moves without hints to earn a Terminal mark.', beaten: 'Ghost beaten', run: 'Run', fieldTheme: 'Field theme', rank: 'Rank {n}', districtN: 'District #{n}',
   },
   common: {
@@ -54,7 +55,7 @@ const es: Messages = {
     seconds: '{n} s',
   },
   lang: { title: 'Idioma', subtitle: 'Los precios y saldos siempre quedan en las unidades de tu billetera. Solo cambian las palabras.', auto: 'Automático ({name})', current: 'Actual: {name}', applied: 'Idioma: {name}' },
-  home: {
+  home: { onboardTitle: 'Your first flood', onboardText: 'Your first cap is charged by the flood — run its first sector yourself (40 seconds) and feel what charge means before your first fight.', onboardCta: 'Run sector 1 with your first cap',
     greeting: 'Ey, {name}', collector: 'coleccionista', inSeason: 'Gutter City está en la temporada {id}', loadingCity: 'Gutter City está cargando',
     heroTitle: 'GUTTERCAPS', heroSub: 'Ocho distritos. Setenta y dos caps. Cada drop es demostrablemente aleatorio y cada intercambio está on-chain.',
     heroCta: 'Abre tu primer sobre', heroSecondary: 'Explorar el mercado',
@@ -178,7 +179,7 @@ const es: Messages = {
     blocked: 'El desafío no pudo cargarse (red o extensión bloqueándolo). Las recompensas siguen retenidas hasta que pase.',
     deviceLimited: 'Este dispositivo ya cobra recompensas en {n} billeteras — esta billetera juega con normalidad pero no recibe recompensas de misiones, PvP ni temporada. ¿Dispositivo compartido en casa? Contacta con soporte.',
   },
-  leaderboard: { title: 'Ranking', subtitle: 'Temporada {id} · termina en {time} · bote {amount}', boards: { rating: 'Rating', collection: 'Colección', staking: 'Staking', pvp: 'Victorias' }, rank: 'Puesto', player: 'Jugador', value: 'Valor' },
+  leaderboard: { title: 'Ranking', subtitle: 'Temporada {id} · termina en {time} · bote {amount}', boards: { divers: 'Divers ★', rating: 'Rating', collection: 'Colección', staking: 'Staking', pvp: 'Victorias' }, rank: 'Puesto', player: 'Jugador', value: 'Valor' },
   profile: {
     rpcCheck: "Comprobar RPC (sin pago)",
     rpcCheckHint: "Lee el RPC activo del navegador ahora y tras 45 segundos. Sin firmas ni transacciones. El informe no incluye la URL RPC ni la clave API.",

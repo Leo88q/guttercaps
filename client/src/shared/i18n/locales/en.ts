@@ -31,6 +31,7 @@ const en = {
     selectSector: 'All 75 sectors are open for training; the charge route advances sector by sector.',
     resultTraining: 'Training done — no rewards, as promised.', droplet: 'Flood charge +1 💧', gift: 'Gift: {kind} ×{n}',
     overBudget: 'Over the move limit — finishing now settles as a fail.', hintReady: 'Mark armed: one move will be shown.',
+    prestige: 'Prestige descent', prestigeNext: 'Prestige {p} · sector {n}', ladder: 'Season ladder', ladderPoints: '{n} pts', coopGoal: 'District goal', startPrestige: 'Start prestige sector', showcase: 'Diver showcase', payoutPending: 'Ladder payout pending root',
     contracts: 'District contracts', contractHint: 'Conductor: a 75/75 chip of this district. Pays weekly quest progress and droplet progress — no XP.', done: 'Done', playContract: 'Run contract', deep: 'Deep Flood', deepHint: 'Weekly 8×8 sector. No hints, tighter move limit. Best run of the week wins gear.', attemptsLeft: 'Attempts left: {n}', buyAttempt: 'Buy attempt · 30 $CG burn', leaderboard: 'Leaderboard', ghost: 'Ghost of the day', ghostHint: 'Solve in ≤ {n} moves without hints to earn a Terminal mark.', beaten: 'Ghost beaten', run: 'Run', fieldTheme: 'Field theme', rank: 'Rank {n}', districtN: 'District #{n}',
   },
   common: {
@@ -59,7 +60,7 @@ const en = {
     title: 'Language', subtitle: 'Prices and balances always stay in your wallet units. Only the words change.',
     auto: 'Auto ({name})', current: 'Current: {name}', applied: 'Language set to {name}',
   },
-  home: {
+  home: { onboardTitle: 'Your first flood', onboardText: 'Your first cap is charged by the flood — run its first sector yourself (40 seconds) and feel what charge means before your first fight.', onboardCta: 'Run sector 1 with your first cap',
     greeting: 'Yo, {name}', collector: 'collector', inSeason: 'Gutter City is in season {id}', loadingCity: 'Gutter City is loading',
     heroTitle: 'GUTTERCAPS', heroSub: 'Eight districts. Seventy-two caps. Every drop provably random, every trade on-chain.',
     heroCta: 'Open your first pack', heroSecondary: 'Browse the market',
@@ -185,7 +186,7 @@ const en = {
   },
   leaderboard: {
     title: 'Leaderboard', subtitle: 'Season {id} · ends in {time} · pool {amount}',
-    boards: { rating: 'Rating', collection: 'Collection', staking: 'Staking', pvp: 'Wins' }, rank: 'Rank', player: 'Player', value: 'Value',
+    boards: { divers: 'Divers ★', rating: 'Rating', collection: 'Collection', staking: 'Staking', pvp: 'Wins' }, rank: 'Rank', player: 'Player', value: 'Value',
   },
   profile: {
     rpcCheck: "Check RPC (no payment)",

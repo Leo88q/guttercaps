@@ -28,6 +28,7 @@ const vi: Messages = {
     selectSector: 'All 75 sectors are open for training; the charge route advances sector by sector.',
     resultTraining: 'Training done — no rewards, as promised.', droplet: 'Flood charge +1 💧', gift: 'Gift: {kind} ×{n}',
     overBudget: 'Over the move limit — finishing now settles as a fail.', hintReady: 'Mark armed: one move will be shown.',
+    prestige: 'Prestige descent', prestigeNext: 'Prestige {p} · sector {n}', ladder: 'Season ladder', ladderPoints: '{n} pts', coopGoal: 'District goal', startPrestige: 'Start prestige sector', showcase: 'Diver showcase', payoutPending: 'Ladder payout pending root',
     contracts: 'District contracts', contractHint: 'Conductor: a 75/75 chip of this district. Pays weekly quest progress and droplet progress — no XP.', done: 'Done', playContract: 'Run contract', deep: 'Deep Flood', deepHint: 'Weekly 8×8 sector. No hints, tighter move limit. Best run of the week wins gear.', attemptsLeft: 'Attempts left: {n}', buyAttempt: 'Buy attempt · 30 $CG burn', leaderboard: 'Leaderboard', ghost: 'Ghost of the day', ghostHint: 'Solve in ≤ {n} moves without hints to earn a Terminal mark.', beaten: 'Ghost beaten', run: 'Run', fieldTheme: 'Field theme', rank: 'Rank {n}', districtN: 'District #{n}',
   },
   common: {
@@ -54,7 +55,7 @@ const vi: Messages = {
     seconds: '{n} s',
   },
   lang: { title: 'Ngôn ngữ', subtitle: 'Giá và số dư luôn giữ nguyên đơn vị trong ví của bạn. Chỉ có chữ thay đổi.', auto: 'Tự động ({name})', current: 'Hiện tại: {name}', applied: 'Đã đặt ngôn ngữ: {name}' },
-  home: {
+  home: { onboardTitle: 'Your first flood', onboardText: 'Your first cap is charged by the flood — run its first sector yourself (40 seconds) and feel what charge means before your first fight.', onboardCta: 'Run sector 1 with your first cap',
     greeting: 'Yo, {name}', collector: 'nhà sưu tầm', inSeason: 'Gutter City đang ở mùa {id}', loadingCity: 'Gutter City đang tải',
     heroTitle: 'GUTTERCAPS', heroSub: 'Tám quận. Bảy mươi hai nắp. Mỗi lượt rơi đều ngẫu nhiên có thể kiểm chứng, mọi giao dịch đều on-chain.',
     heroCta: 'Mở gói đầu tiên', heroSecondary: 'Xem chợ',
@@ -178,7 +179,7 @@ const vi: Messages = {
     blocked: 'Không tải được thử thách (mạng hoặc tiện ích chặn). Phần thưởng vẫn bị giữ cho đến khi vượt qua.',
     deviceLimited: 'Thiết bị này đã nhận thưởng trên {n} ví — ví này chơi bình thường nhưng không được trả thưởng nhiệm vụ, PvP hay mùa giải. Thiết bị dùng chung trong gia đình? Liên hệ hỗ trợ.',
   },
-  leaderboard: { title: 'Bảng xếp hạng', subtitle: 'Mùa {id} · kết thúc sau {time} · quỹ {amount}', boards: { rating: 'Điểm', collection: 'Bộ sưu tập', staking: 'Staking', pvp: 'Thắng' }, rank: 'Hạng', player: 'Người chơi', value: 'Giá trị' },
+  leaderboard: { title: 'Bảng xếp hạng', subtitle: 'Mùa {id} · kết thúc sau {time} · quỹ {amount}', boards: { divers: 'Divers ★', rating: 'Điểm', collection: 'Bộ sưu tập', staking: 'Staking', pvp: 'Thắng' }, rank: 'Hạng', player: 'Người chơi', value: 'Giá trị' },
   profile: {
     rpcCheck: "Kiểm tra RPC (không thanh toán)",
     rpcCheckHint: "Đọc RPC đang dùng trong trình duyệt ngay và sau 45 giây. Không ký hay gửi giao dịch. Báo cáo không chứa URL RPC hoặc khóa API.",

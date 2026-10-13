@@ -16,6 +16,7 @@ export const API_ERROR_KEYS = {
   wrong_district: 'failures.requestInvalid', contract_locked: 'failures.requestInvalid', contract_done: 'failures.requestInvalid',
   deep_no_hints: 'failures.requestInvalid', deep_attempts_exhausted: 'failures.requestInvalid', ghost_no_hints: 'failures.requestInvalid',
   use_grid_endpoint: 'failures.requestInvalid', cg_burn_required: 'failures.paymentPayload', deep_credit_cap: 'failures.requestInvalid',
+  prestige_no_hints: 'failures.requestInvalid', prestige_locked: 'failures.requestInvalid', prestige_maxed: 'failures.requestInvalid',
   bad_squad: 'failures.threeSquad', bad_tier: 'failures.staking_InvalidTier', chain_fulfilled: 'failures.chainFulfilled',
   chip_busy: 'failures.arena_ChipBusy', collection_mismatch: 'failures.collectionMismatch', commit_mismatch: 'failures.commitMismatch',
   config_missing: 'screens.errGameConfig', currency_not_accepted: 'failures.chip_core_CurrencyNotAccepted',

@@ -28,6 +28,7 @@ const fil: Messages = {
     selectSector: 'All 75 sectors are open for training; the charge route advances sector by sector.',
     resultTraining: 'Training done — no rewards, as promised.', droplet: 'Flood charge +1 💧', gift: 'Gift: {kind} ×{n}',
     overBudget: 'Over the move limit — finishing now settles as a fail.', hintReady: 'Mark armed: one move will be shown.',
+    prestige: 'Prestige descent', prestigeNext: 'Prestige {p} · sector {n}', ladder: 'Season ladder', ladderPoints: '{n} pts', coopGoal: 'District goal', startPrestige: 'Start prestige sector', showcase: 'Diver showcase', payoutPending: 'Ladder payout pending root',
     contracts: 'District contracts', contractHint: 'Conductor: a 75/75 chip of this district. Pays weekly quest progress and droplet progress — no XP.', done: 'Done', playContract: 'Run contract', deep: 'Deep Flood', deepHint: 'Weekly 8×8 sector. No hints, tighter move limit. Best run of the week wins gear.', attemptsLeft: 'Attempts left: {n}', buyAttempt: 'Buy attempt · 30 $CG burn', leaderboard: 'Leaderboard', ghost: 'Ghost of the day', ghostHint: 'Solve in ≤ {n} moves without hints to earn a Terminal mark.', beaten: 'Ghost beaten', run: 'Run', fieldTheme: 'Field theme', rank: 'Rank {n}', districtN: 'District #{n}',
   },
   common: {
@@ -54,7 +55,7 @@ const fil: Messages = {
     seconds: '{n} s',
   },
   lang: { title: 'Wika', subtitle: 'Ang presyo at balanse ay laging nasa units ng wallet mo. Mga salita lang ang nagbabago.', auto: 'Awtomatiko ({name})', current: 'Kasalukuyan: {name}', applied: 'Wika: {name}' },
-  home: {
+  home: { onboardTitle: 'Your first flood', onboardText: 'Your first cap is charged by the flood — run its first sector yourself (40 seconds) and feel what charge means before your first fight.', onboardCta: 'Run sector 1 with your first cap',
     greeting: 'Yo, {name}', collector: 'kolektor', inSeason: 'Nasa season {id} ang Gutter City', loadingCity: 'Naglo-load ang Gutter City',
     heroTitle: 'GUTTERCAPS', heroSub: 'Walong distrito. Pitumpu\'t dalawang caps. Bawat drop ay mapapatunayang random, bawat trade ay on-chain.',
     heroCta: 'Buksan ang unang pack mo', heroSecondary: 'Tingnan ang palengke',
@@ -178,7 +179,7 @@ const fil: Messages = {
     blocked: 'Hindi ma-load ang challenge (naka-block na network o extension). Nakahawak ang rewards hanggang pumasa ito.',
     deviceLimited: 'Kumikita na ang device na ito sa {n} wallet — normal na nakakalaro ang wallet na ito pero hindi binabayaran ng quest, PvP, o season rewards. Shared device sa bahay? Makipag-ugnayan sa support.',
   },
-  leaderboard: { title: 'Leaderboard', subtitle: 'Season {id} · matatapos sa {time} · pool {amount}', boards: { rating: 'Rating', collection: 'Koleksyon', staking: 'Staking', pvp: 'Panalo' }, rank: 'Ranggo', player: 'Player', value: 'Halaga' },
+  leaderboard: { title: 'Leaderboard', subtitle: 'Season {id} · matatapos sa {time} · pool {amount}', boards: { divers: 'Divers ★', rating: 'Rating', collection: 'Koleksyon', staking: 'Staking', pvp: 'Panalo' }, rank: 'Ranggo', player: 'Player', value: 'Halaga' },
   profile: {
     rpcCheck: "Suriin ang RPC (walang bayad)",
     rpcCheckHint: "Binabasa ang aktibong RPC ng browser ngayon at makalipas ang 45 segundo. Walang pirma o transaksyon. Hindi kasama sa ulat ang RPC URL o API key.",

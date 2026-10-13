@@ -801,6 +801,13 @@ paths:
         '404': { $ref: '#/components/responses/Error', description: 'Unknown attempt' }
 
   # ------------------------------------------------------------------ leaderboard
+  /players/{wallet}/grid:
+    get:
+      tags: [grid]
+      summary: Public Floodgrid diver showcase for a wallet (depth, stars, mastered chips, prestige, best ladder rank)
+      parameters: [{ in: path, name: wallet, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: showcase, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
   /grid/deep/buy:
     post:
       tags: [grid]
@@ -826,7 +833,7 @@ paths:
       summary: Season rating (arena Glicko-lite ladder) / chain-verified wager wins / collection score / staking weight / fusion count boards
       description: "`rating` is the server arena's ladder for one season (`season` defaults to the one open now; `league` is filled); `wins` counts resolved wager battles from the arena program. Shadow-banned wallets (ops flag) are hidden from every board but still get a `me` row."
       parameters:
-        - { in: path, name: board, required: true, schema: { type: string, enum: [rating, wins, collection, staking, fusion] } }
+        - { in: path, name: board, required: true, schema: { type: string, enum: [rating, wins, collection, staking, fusion, divers] } }
         - { in: query, name: season, schema: { type: integer, minimum: 0 }, description: rating board only; other boards ignore it }
         - { $ref: '#/components/parameters/cursor' }
         - { in: query, name: limit, schema: { type: integer, minimum: 0, maximum: 200, default: 50 } }

@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
-import { useMe, useGrid, useQuests, usePendingOps, useStreak, useSeason } from '@/api/hooks';
+import { useMe, useGrid, useGridMe, useQuests, usePendingOps, useStreak, useSeason } from '@/api/hooks';
+import { useState } from 'react';
 import { PreorderBanner } from '@/features/preorder/PreorderBanner';
 import { usePity } from '@/chain/hooks';
 import { useActiveOps } from '@/app/store/txs';
@@ -31,6 +32,9 @@ export default function Home() {
   const pending = usePendingOps();
   const season = useSeason();
   const pity = usePity();
+  const gridMe = useGridMe();
+  const [onbDismissed, setOnbDismissed] = useState(() => localStorage.getItem('gridOnboardDismissed') === '1');
+  const showOnboard = !onbDismissed && (gridMe.data?.chips.length ?? 0) > 0 && (gridMe.data?.chips ?? []).every((c) => c.claims.length === 0 && c.route.nextLevel === 1);
   const active = useActiveOps(publicKey?.toBase58());
   if (!connected) return <Landing onConnect={() => setVisible(true)} />;
 
@@ -56,6 +60,17 @@ export default function Home() {
         <div className="warn row between">
           <span>{t('ui.pendingOps', { n: Math.max(localPending, apiPending) })}</span>
           {active.packs[0] ? <Link className="btn btn-sm" to={`/shop/opening/${active.packs[0].nonce}`}>{t('ui.continue')}</Link> : compressedPending > 0 ? <span className="tiny">{t('ui.recovering')}</span> : <Link className="btn btn-sm" to="/fusion">{t('ui.openBench')}</Link>}
+        </div>
+      )}
+
+      {showOnboard && (
+        <div className="card stack-sm" data-testid="home-grid-onboard" style={{ border: '2px solid var(--acid, #B6FF3C)' }}>
+          <div className="row between" style={{ gap: 8 }}>
+            <span className="strong">🌊 {t('home.onboardTitle')}</span>
+            <button type="button" className="tiny" onClick={() => { localStorage.setItem('gridOnboardDismissed', '1'); setOnbDismissed(true); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'inherit' }}>✕</button>
+          </div>
+          <div className="tiny muted">{t('home.onboardText')}</div>
+          <Link className="btn" to="/grid" style={{ textAlign: 'center' }}>{t('home.onboardCta')}</Link>
         </div>
       )}
 

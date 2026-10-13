@@ -263,3 +263,63 @@ describe('floodgrid phase 3 (contracts, deep flood, ghost)', () => {
     expect(me.deepReward?.hints).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe('floodgrid ladder, co-op goal and prestige', () => {
+  const solFor = (level: number, seed: number): [number, number][] => {
+    const lv = generateLevel(level, seed);
+    const turns: [number, number][] = [];
+    lv.tiles.forEach((tile, i) => {
+      if (tile.fixed) return;
+      const period = orbitSize(tile.base);
+      const fwd = (((lv.solutionRot[i] - tile.rot) % period) + period) % period;
+      const back = period - fwd;
+      if (fwd === 0) return;
+      if (fwd <= back) for (let k = 0; k < fwd; k++) turns.push([i, 1]);
+      else for (let k = 0; k < back; k++) turns.push([i, -1]);
+    });
+    return turns;
+  };
+
+  it('prestige descent: no hints, tighter stars, full route grants a seal and keeps droplet progress', async () => {
+    const { hashString } = await import('@guttercaps/economy');
+    const db = new Db(':memory:');
+    const owner = kp(); const asset = mint(db, owner);
+    db.run(`INSERT INTO grid_chip_routes (asset, next_level, charge_drops, charge_progress, updated_at) VALUES (?, 76, 0, 4, ?)`, asset, T);
+    expect(() => startGridAttempt(db, owner, { asset, kind: 'prestige', hintsUsed: 1 }, T)).toThrow(/without hints/);
+    // walk all 75 prestige sectors at par (3 stars each)
+    for (let lv = 1; lv <= 75; lv++) {
+      const a = startGridAttempt(db, owner, { asset, kind: 'prestige' }, T) as unknown as { attemptId: string; level: number };
+      expect(a.level).toBe(lv);
+      const r = completeGridAttempt(db, owner, { attemptId: a.attemptId, turns: solFor(lv, hashString(`grid:prestige:${asset}:0:${lv}`)) }, T);
+      expect(r.ok).toBe(true);
+    }
+    const row = db.get<{ prestige_level: number; next_sector: number }>(`SELECT prestige_level, next_sector FROM grid_prestige_routes WHERE asset = ?`, asset);
+    expect(row?.prestige_level).toBe(1);
+    expect(row?.next_sector).toBe(1);
+    expect(db.scalar(`SELECT COUNT(*) FROM entitlements WHERE wallet = ? AND signature LIKE 'grid:prestige:%'`, owner)).toBe(2); // seal + title
+    expect(db.scalar(`SELECT charge_drops FROM grid_chip_routes WHERE asset = ?`, asset)).toBe(3); // droplet progress capped
+  });
+
+  it('district co-op goal pays a valve to participants and the ladder settles $CG rows for eligible wallets', async () => {
+    const grid = await import('../src/grid.ts');
+    const db = new Db(':memory:');
+    const owner = 'So11111111111111111111111111111111111111112';
+    const asset = mint(db, owner);
+    const week = grid.gridWeek(T);
+    db.run(`INSERT INTO grid_flood (district, week, points) VALUES (0, ?, 200)`, week);
+    const a = startGridAttempt(db, owner, { asset, level: 1 }, T);
+    completeGridAttempt(db, owner, { attemptId: a.attemptId, turns: solutionTurns(1) }, T);
+    const me = gridMe(db, owner, T + 7 * 86_400) as unknown as { coopReward: { valve: number } | null };
+    expect(me.coopReward).not.toBeNull();
+    // ladder: season covering T, wallet is old + paid
+    db.run(`INSERT INTO seasons (id, starts_at, ends_at, server_secret, server_secret_hash) VALUES (1, ?, ?, 'aa', 'bb')`, T - 6 * 7 * 86_400, T + 7 * 86_400);
+    db.run(`INSERT INTO wallets (address, first_seen) VALUES (?, ?)`, owner, T - 30 * 86_400);
+    db.run(`INSERT INTO pack_purchases (buyer, nonce, sku, qty, currency, amount, randomness, signature, slot) VALUES (?, 'n1', 1, 1, 0, '100', '00', 'sig', 1)`, owner);
+    db.run(`INSERT INTO grid_deep_results (wallet, week, asset, moves, stars, created_at) VALUES (?, ?, ?, 10, 3, ?)`, owner, week, asset, T);
+    const settled = grid.settleGridLadder(db, 1, T + 8 * 86_400);
+    expect(settled?.rows).toBe(1);
+    const payout = db.get<{ amount: string; rank: number }>(`SELECT amount, rank FROM grid_ladder_payouts WHERE wallet = ?`, owner);
+    expect(payout?.rank).toBe(1);
+    expect(payout?.amount).toBe('500000000');
+  });
+});

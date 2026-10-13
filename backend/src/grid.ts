@@ -179,7 +179,7 @@ export function mergeFusionRoutes(db: Db, resultAsset: string, materials: readon
 export interface GridAttemptInput { asset?: unknown; level?: unknown; hintsUsed?: unknown; useEmergency?: unknown; mode?: unknown; daily?: unknown; kind?: unknown; slot?: unknown }
 
 export function startGridAttempt(db: Db, wallet: string, body: GridAttemptInput, t = now()) {
-  if (body.kind === 'contract' || body.kind === 'deep' || body.kind === 'ghost') return startSpecialAttempt(db, wallet, body, t);
+  if (body.kind === 'contract' || body.kind === 'deep' || body.kind === 'ghost' || body.kind === 'prestige') return startSpecialAttempt(db, wallet, body, t);
   const asset = typeof body.asset === 'string' ? body.asset : '';
   const level = typeof body.level === 'number' ? Math.floor(body.level) : NaN;
   const hintsUsed = body.hintsUsed === undefined ? 0 : Math.floor(Number(body.hintsUsed));
@@ -216,7 +216,7 @@ export function startGridAttempt(db: Db, wallet: string, body: GridAttemptInput,
   };
 }
 
-type SpecialKind = 'contract' | 'deep' | 'ghost';
+type SpecialKind = 'contract' | 'deep' | 'ghost' | 'prestige';
 function startSpecialAttempt(db: Db, wallet: string, body: GridAttemptInput, t: number) {
   const kind = body.kind as SpecialKind;
   const asset = typeof body.asset === 'string' ? body.asset : '';
@@ -243,6 +243,12 @@ function startSpecialAttempt(db: Db, wallet: string, body: GridAttemptInput, t: 
     const credits = db.scalar(`SELECT COUNT(*) FROM grid_deep_credits WHERE wallet = ? AND week = ?`, wallet, week);
     if (used >= GRID.deepFreeAttemptsPerWeek + credits) throw new ServiceError(409, 'deep_attempts_exhausted', 'No Deep Flood attempts left this week — buy one for 30 $CG (burned)');
     level = GRID.totalLevels; seed = gridDeepSeed(week); budgetMult = GRID.deepMoveBudgetMult;
+  } else if (kind === 'prestige') {
+    if (hintsUsed > 0) throw new ServiceError(422, 'prestige_no_hints', 'Prestige descent is played without hints');
+    if (gridRoute(db, asset).nextLevel <= GRID.totalLevels) throw new ServiceError(409, 'prestige_locked', 'Prestige opens after the conductor finishes the 75-sector Descent');
+    const pr = db.get<{ prestige_level: number; next_sector: number }>(`SELECT prestige_level, next_sector FROM grid_prestige_routes WHERE asset = ?`, asset) ?? { prestige_level: 0, next_sector: 1 };
+    if (pr.prestige_level >= GRID.prestigeMax) throw new ServiceError(409, 'prestige_maxed', 'This chip already carries all prestige seals');
+    level = pr.next_sector; seed = hashString(`grid:prestige:${asset}:${pr.prestige_level}:${level}`); budgetMult = GRID.deepMoveBudgetMult;
   } else {
     if (hintsUsed > 0) throw new ServiceError(422, 'ghost_no_hints', 'The Ghost runs clean — no hints');
     level = DAILY_CONFIG_LEVEL; seed = gridGhostSeed(gridDay(t));
@@ -328,7 +334,7 @@ export function completeGridAttempt(db: Db, wallet: string, body: GridCompleteIn
     if (!applyRotate(lv, index, dir)) throw new ServiceError(422, 'bad_proof', 'fixed tile cannot rotate');
   }
   const moves = turns.length;
-  if (attempt.mode === 'contract' || attempt.mode === 'deep' || attempt.mode === 'ghost') {
+  if (attempt.mode === 'contract' || attempt.mode === 'deep' || attempt.mode === 'ghost' || attempt.mode === 'prestige') {
     return settleSpecialAttempt(db, wallet, attempt, chip.collection_idx, moves, isSolved(lv), lv.parMoves, t);
   }
   if (attempt.mode === 'training') {
@@ -370,7 +376,7 @@ export function completeGridAttempt(db: Db, wallet: string, body: GridCompleteIn
   if (firstCompletion && attempt.level === nextLevel) nextLevel = Math.min(GRID.totalLevels + 1, nextLevel + 1);
   const crossedToCharged = stars >= 2 && (existing?.best_stars ?? 0) < 2;
   // Flood Night Sunday: chips of the Drain district of the day earn droplet progress/refills x2.
-  const dropletMult = gridIsSunday(t) && chip.collection_idx === gridFeaturedDistrict(t) ? GRID.floodSundayDropletMult : 1;
+  const dropletMult = gridIsSunday(t) && (chip.collection_idx === gridFeaturedDistrict(t) || districtGoalReached(db, chip.collection_idx, gridWeek(t) - 1)) ? GRID.floodSundayDropletMult : 1;
   if (crossedToCharged || (firstCompletion && stars >= 2)) {
     chargeProgress += dropletMult;
     while (chargeProgress >= GRID.chargePerSectorStreak && chargeDrops < GRID.chargeMax) { chargeDrops += 1; chargeProgress -= GRID.chargePerSectorStreak; dropletGained = true; }
@@ -448,6 +454,31 @@ function settleSpecialAttempt(db: Db, wallet: string, attempt: { id: string; ass
     settle();
     return { ok: true as const, training: false as const, kind, beaten, moves, par, xpGranted: 0, xpPending: 0, hintGranted, wallet: ensureGridWallet(db, wallet, t) };
   }
+  if (kind === 'prestige') {
+    const starsPrestige = moves <= par ? 3 : moves <= Math.ceil(par * 1.25) ? 2 : moves <= Math.ceil(par * GRID.deepMoveBudgetMult) ? 1 : 0;
+    if (starsPrestige <= 0) { settle(); return { ok: false as const, kind, reason: 'over_budget', moves, par }; }
+    const routeBefore = gridRoute(db, attempt.asset);
+    let { nextLevel, chargeDrops, chargeProgress } = routeBefore;
+    let dropletGained = false;
+    if (starsPrestige >= 2) {
+      chargeProgress += 1;
+      while (chargeProgress >= GRID.chargePerSectorStreak && chargeDrops < GRID.chargeMax) { chargeDrops += 1; chargeProgress -= GRID.chargePerSectorStreak; dropletGained = true; }
+    }
+    saveRoute(db, attempt.asset, nextLevel, chargeDrops, chargeProgress, t);
+    const pr = db.get<{ prestige_level: number; next_sector: number }>(`SELECT prestige_level, next_sector FROM grid_prestige_routes WHERE asset = ?`, attempt.asset) ?? { prestige_level: 0, next_sector: 1 };
+    let sealGranted: string | null = null;
+    if (attempt.level >= GRID.totalLevels) {
+      const lvl = Math.min(GRID.prestigeMax, pr.prestige_level + 1);
+      db.run(`INSERT INTO grid_prestige_routes (asset, prestige_level, next_sector, updated_at) VALUES (?, ?, 1, ?) ON CONFLICT(asset) DO UPDATE SET prestige_level = excluded.prestige_level, next_sector = 1, updated_at = excluded.updated_at`, attempt.asset, lvl, t);
+      grantGridCosmetic(db, wallet, 'seal', 'prestige-seal', `grid:prestige:${attempt.asset}:p${lvl}`, t);
+      if (lvl === 1) grantGridCosmetic(db, wallet, 'title', 'prestige-diver', `grid:prestige:title:${wallet}`, t);
+      sealGranted = `P${lvl}`;
+    } else {
+      db.run(`INSERT INTO grid_prestige_routes (asset, prestige_level, next_sector, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(asset) DO UPDATE SET next_sector = excluded.next_sector, updated_at = excluded.updated_at`, attempt.asset, pr.prestige_level, attempt.level + 1, t);
+    }
+    settle();
+    return { ok: true as const, training: false as const, kind, stars: starsPrestige, moves, par, xpGranted: 0, xpPending: 0, dropletGained, sealGranted, route: gridRoute(db, attempt.asset), wallet: ensureGridWallet(db, wallet, t) };
+  }
   // Deep Flood
   const budget = Math.ceil(par * GRID.deepMoveBudgetMult);
   if (moves > budget) { settle(); return { ok: false as const, kind, reason: 'over_budget', moves, par, budget }; }
@@ -466,7 +497,7 @@ export function failGridAttempt(db: Db, wallet: string, body: GridCompleteInput,
   if (!attempt || attempt.wallet !== wallet) throw new ServiceError(404, 'attempt_not_found', 'Unknown grid attempt');
   if (attempt.settled) throw new ServiceError(409, 'attempt_settled', 'Attempt already settled');
   chipOf(db, wallet, attempt.asset);
-  if (attempt.mode === 'contract' || attempt.mode === 'deep' || attempt.mode === 'ghost') {
+  if (attempt.mode === 'contract' || attempt.mode === 'deep' || attempt.mode === 'ghost' || attempt.mode === 'prestige') {
     if (attempt.mode === 'contract') spendHints(db, wallet, attempt.hints_used, t);
     db.run(`UPDATE grid_attempts SET settled = 1, settled_at = ? WHERE id = ?`, t, attempt.id);
     return { ok: false as const, kind: attempt.mode, reason: 'gave_up' };
@@ -479,6 +510,68 @@ export function failGridAttempt(db: Db, wallet: string, body: GridCompleteInput,
 }
 
 
+/** District co-op goal (owner-approved): a district whose weekly flood points reach the goal pays
+ *  every participant a valve; on Sunday its chips also earn double droplet progress. */
+export const districtGoalReached = (db: Db, district: number, week: number): boolean =>
+  (db.get<{ points: number }>(`SELECT points FROM grid_flood WHERE district = ? AND week = ?`, district, week)?.points ?? 0) >= GRID.districtGoalPoints;
+
+export function settleDistrictGoalForWallet(db: Db, wallet: string, t = now()): { week: number; district: number; valve: number } | null {
+  const week = gridWeek(t) - 1;
+  if (week < 0) return null;
+  if (db.get(`SELECT 1 FROM grid_district_goal_settlements WHERE wallet = ? AND week = ?`, wallet, week)) return null;
+  const from = gridWeekStart(week);
+  const rows = db.all<{ district: number }>(
+    `SELECT DISTINCT ch.collection_idx AS district FROM grid_completions c JOIN chips ch ON ch.asset = c.asset
+      WHERE c.wallet = ? AND c.created_at >= ? AND c.created_at < ?`, wallet, from, from + 7 * DAY);
+  const hit = rows.find((r) => districtGoalReached(db, r.district, week));
+  if (!hit) return null;
+  const valve = grantGridValve(db, wallet, t);
+  db.run(`INSERT INTO grid_district_goal_settlements (wallet, week, district, valve, settled_at) VALUES (?, ?, ?, ?, ?)`, wallet, week, hit.district, valve, t);
+  return { week, district: hit.district, valve };
+}
+
+// ---------------------------------------------------------------------------
+// Seasonal PvE ladder (owner-approved brackets): points from weekly Deep Flood ranks + solved
+// dailies; payouts are $CG rows rooted by the reward oracle through kind-4 (events) roots.
+// ---------------------------------------------------------------------------
+export function gridLadderPoints(db: Db, startsAt: number, endsAt: number): Map<string, number> {
+  const points = new Map<string, number>();
+  const add = (w: string, n: number) => points.set(w, (points.get(w) ?? 0) + n);
+  for (let week = gridWeek(startsAt); week <= gridWeek(Math.max(startsAt, endsAt - 1)); week++) {
+    const rows = db.all<{ wallet: string; moves: number }>(`SELECT wallet, moves FROM grid_deep_results WHERE week = ? ORDER BY moves ASC, wallet`, week);
+    rows.forEach((r, i) => add(r.wallet, i === 0 ? GRID.ladderRankPoints[0] : i === 1 ? GRID.ladderRankPoints[1] : i === 2 ? GRID.ladderRankPoints[2] : i < 5 ? GRID.ladderRankPoints[3] : i < 10 ? GRID.ladderRankPoints[4] : 0));
+  }
+  for (const r of db.all<{ wallet: string; amount: number }>(`SELECT wallet, amount FROM grid_item_grants WHERE source = 'pass_daily' AND day >= ? AND day < ?`, gridDay(startsAt), gridDay(endsAt))) add(r.wallet, r.amount);
+  return points;
+}
+
+export function settleGridLadder(db: Db, seasonId: number, t = now()): { season: number; rows: number } | null {
+  const s = db.get<{ id: number; starts_at: number; ends_at: number }>(`SELECT id, starts_at, ends_at FROM seasons WHERE id = ?`, seasonId);
+  if (!s || s.ends_at > t) return null;
+  if (db.get(`SELECT 1 FROM grid_ladder_payouts WHERE season = ?`, seasonId)) return null;
+  const ranked = [...gridLadderPoints(db, s.starts_at, s.ends_at).entries()].filter(([, pts]) => pts >= 3).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+  if (ranked.length === 0) return null;
+  const bracket = (rank: number): bigint => {
+    if (rank === 1) return BigInt(GRID.ladderPayoutCgMicro.first);
+    if (rank <= 3) return BigInt(GRID.ladderPayoutCgMicro.secondThird);
+    if (rank <= 10) return BigInt(GRID.ladderPayoutCgMicro.top10);
+    if (rank <= Math.ceil(ranked.length * 0.1)) return BigInt(GRID.ladderPayoutCgMicro.topDecile);
+    return 0n;
+  };
+  const eligible = ranked.filter(([w]) => {
+    const firstSeen = db.get<{ first_seen: number }>(`SELECT first_seen FROM wallets WHERE address = ?`, w)?.first_seen;
+    if (!firstSeen || firstSeen > t - 7 * DAY) return false; // anti-farm: account >= 7 days
+    return !!db.get(`SELECT 1 FROM pack_purchases WHERE buyer = ? AND sku > 0 LIMIT 1`, w); // and >= 1 paid pack
+  });
+  let amounts = eligible.map(([w, pts]) => { const rank = ranked.findIndex(([x]) => x === w) + 1; return { wallet: w, points: pts, rank, amount: bracket(rank) }; }).filter((r) => r.amount > 0n);
+  const total = amounts.reduce((sum, r) => sum + r.amount, 0n);
+  const cap = BigInt(GRID.ladderPoolCapMicro);
+  if (total > cap) amounts = amounts.map((r) => ({ ...r, amount: (r.amount * cap) / total })).filter((r) => r.amount > 0n);
+  db.tx(() => {
+    for (const r of amounts) db.run(`INSERT INTO grid_ladder_payouts (season, wallet, rank, points, amount) VALUES (?, ?, ?, ?, ?)`, seasonId, r.wallet, r.rank, r.points, r.amount.toString());
+  });
+  return { season: seasonId, rows: amounts.length };
+}
 /** Flood Night settlement, lazily on read (docs/13 §0.6: no cron). Previous week's winning
  *  district pays its divers in gear only: participants +1 hint, top-3 +1 more, #1 also a valve. */
 export function settleFloodForWallet(db: Db, wallet: string, t = now()): { week: number; hints: number; valve: number } | null {
@@ -524,6 +617,10 @@ export function gridMe(db: Db, wallet: string, t = now()) {
   const pendingGranted = settleGridPending(db, wallet, t);
   const floodReward = settleFloodForWallet(db, wallet, t);
   const deepReward = settleDeepForWallet(db, wallet, t);
+  const coopReward = settleDistrictGoalForWallet(db, wallet, t);
+  let ladderSettled: { season: number; rows: number } | null = null;
+  const endedSeason = db.get<{ id: number }>(`SELECT id FROM seasons WHERE ends_at <= ? ORDER BY id DESC LIMIT 1`, t);
+  if (endedSeason) ladderSettled = settleGridLadder(db, endedSeason.id, t);
   const masteredChips = db.scalar(`SELECT COUNT(*) FROM grid_chip_routes r JOIN chips ch ON ch.asset = r.asset WHERE ch.owner = ? AND ch.burned_at IS NULL AND r.next_level > ?`, wallet, GRID.totalLevels);
   const districtMastery = db.all<{ district: number; stars: number; cleared: number }>(
     `SELECT ch.collection_idx AS district, COALESCE(SUM(c.best_stars), 0) AS stars, COUNT(c.level) AS cleared FROM grid_level_claims c JOIN chips ch ON ch.asset = c.asset WHERE ch.owner = ? AND ch.burned_at IS NULL GROUP BY ch.collection_idx ORDER BY ch.collection_idx`, wallet);
@@ -533,7 +630,8 @@ export function gridMe(db: Db, wallet: string, t = now()) {
       const r = gridRoute(db, c.asset);
       const claims = db.all<{ level: number; best_stars: number; xp_accounted: number; xp_pending: number; max_xp: number }>(
         `SELECT level, best_stars, xp_accounted, xp_pending, max_xp FROM grid_level_claims WHERE asset = ? ORDER BY level`, c.asset);
-      return { asset: c.asset, collection: c.collection_idx, rarity: c.rarity, chipLevel: c.level, skin: c.skin, route: r, claims };
+      const prestige = db.get<{ prestige_level: number; next_sector: number }>(`SELECT prestige_level, next_sector FROM grid_prestige_routes WHERE asset = ?`, c.asset) ?? { prestige_level: 0, next_sector: 1 };
+      return { asset: c.asset, collection: c.collection_idx, rarity: c.rarity, chipLevel: c.level, skin: c.skin, route: r, prestige: { level: prestige.prestige_level, next: prestige.next_sector }, claims };
     });
   const gifts = db.all<{ level: number; kind: string; gift_key: string }>(`SELECT level, kind, gift_key FROM grid_gifts WHERE wallet = ? ORDER BY level`, wallet);
   const week = gridWeek(t);
@@ -553,8 +651,26 @@ export function gridMe(db: Db, wallet: string, t = now()) {
   const ghostLv = generateLevel(DAILY_CONFIG_LEVEL, gridGhostSeed(gridDay(t)));
   const ghost = { day: gridDay(t), level: DAILY_CONFIG_LEVEL, targetMoves: ghostLv.parMoves, beaten: !!db.get(`SELECT 1 FROM grid_item_grants WHERE wallet = ? AND source = 'ghost_day' AND day = ?`, wallet, gridDay(t)) };
   const fieldThemes = db.all<{ payload: string }>(`SELECT payload FROM entitlements WHERE wallet = ? AND kind = 11 ORDER BY id`, wallet).map((r) => String((JSON.parse(r.payload) as { theme?: string }).theme ?? '')).filter(Boolean);
+  const districtGoal = (db.all<{ district: number; points: number }>(`SELECT district, points FROM grid_flood WHERE week = ? ORDER BY district`, week)).map((f) => ({ district: f.district, points: f.points, goal: GRID.districtGoalPoints, reached: f.points >= GRID.districtGoalPoints }));
+  const ladderSeason = db.get<{ id: number; starts_at: number; ends_at: number }>(`SELECT id, starts_at, ends_at FROM seasons WHERE starts_at <= ? ORDER BY starts_at DESC LIMIT 1`, t);
+  let ladder: unknown = null;
+  if (ladderSeason) {
+    const pts = gridLadderPoints(db, ladderSeason.starts_at, Math.min(ladderSeason.ends_at, t));
+    const sorted = [...pts.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+    ladder = { season: ladderSeason.id, myPoints: pts.get(wallet) ?? 0, myRank: sorted.findIndex(([w]) => w === wallet) + 1 || null, top: sorted.slice(0, 10).map(([w, n], i) => ({ rank: i + 1, wallet: w, points: n, me: w === wallet })), settled: ladderSettled, myPayout: db.get<{ season: number; rank: number; amount: string; root_kind: number | null }>(`SELECT season, rank, amount, root_kind FROM grid_ladder_payouts WHERE wallet = ? ORDER BY season DESC LIMIT 1`, wallet) ?? null };
+  }
   const deep = { week: deepWeek, level: GRID.totalLevels, attemptsUsed: deepUsed, paidCredits: deepCredits, attemptsLeft: Math.max(0, GRID.deepFreeAttemptsPerWeek + deepCredits - deepUsed), paidAttemptsLeft: Math.max(0, GRID.deepPaidAttemptsPerWeek - deepCredits), attemptPriceCgMicro: GRID.deepAttemptCgMicro, myBest: deepMine ?? null, leaderboard: deepBoard.map((r, i) => ({ rank: i + 1, wallet: r.wallet, moves: r.moves, stars: r.stars, me: r.wallet === wallet })) };
-  return { wallet: ensureGridWallet(db, wallet, t), pendingGranted, floodReward, deepReward, masteredChips, districtMastery, cosmetics, contracts, deep, ghost, fieldThemes, daily: { day: gridDay(t), level: gridDailyLevel(t), district: gridFeaturedDistrict(t), sunday: gridIsSunday(t), epic: gridIsSunday(t) }, chips, gifts, floodWeek: week, flood };
+  return { wallet: ensureGridWallet(db, wallet, t), pendingGranted, floodReward, deepReward, coopReward, districtGoal, ladder, masteredChips, districtMastery, cosmetics, contracts, deep, ghost, fieldThemes, daily: { day: gridDay(t), level: gridDailyLevel(t), district: gridFeaturedDistrict(t), sunday: gridIsSunday(t), epic: gridIsSunday(t) }, chips, gifts, floodWeek: week, flood };
+}
+
+/** Public diver showcase (no auth): depth, stars, mastery and prestige of a wallet's chips. */
+export function publicDiver(db: Db, wallet: string) {
+  const stars = db.scalar(`SELECT COALESCE(SUM(c.best_stars), 0) FROM grid_level_claims c JOIN chips ch ON ch.asset = c.asset WHERE ch.owner = ? AND ch.burned_at IS NULL`, wallet);
+  const deepest = db.scalar(`SELECT COALESCE(MAX(next_level - 1), 0) FROM grid_chip_routes WHERE asset IN (SELECT asset FROM chips WHERE owner = ? AND burned_at IS NULL)`, wallet);
+  const mastered = db.scalar(`SELECT COUNT(*) FROM grid_chip_routes r JOIN chips ch ON ch.asset = r.asset WHERE ch.owner = ? AND ch.burned_at IS NULL AND r.next_level > ?`, wallet, GRID.totalLevels);
+  const prestigeMax = db.scalar(`SELECT COALESCE(MAX(pr.prestige_level), 0) FROM grid_prestige_routes pr JOIN chips ch ON ch.asset = pr.asset WHERE ch.owner = ? AND ch.burned_at IS NULL`, wallet);
+  const ladderBest = db.get<{ season: number; rank: number; amount: string }>(`SELECT season, rank, amount FROM grid_ladder_payouts WHERE wallet = ? ORDER BY rank ASC, season DESC LIMIT 1`, wallet);
+  return { wallet, stars, deepest, mastered, prestigeMax, heartOfFlood: mastered > 0, ladderBest: ladderBest ?? null };
 }
 
 export function gridChip(db: Db, wallet: string, asset: string, t = now()) {

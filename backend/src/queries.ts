@@ -429,6 +429,8 @@ export function leaderboard(db: Db, board: string, limit = 50, cursor?: string, 
       sql = `SELECT owner AS wallet, SUM(CAST(weight AS REAL)) AS value, 0 AS league FROM stakes WHERE active = 1 GROUP BY owner`; break;
     case 'fusion':
       sql = `SELECT owner AS wallet, COUNT(*) AS value, 0 AS league FROM fusions WHERE success = 1 GROUP BY owner`; break;
+    case 'divers':     // Floodgrid showcase: total best stars across the wallet's unburned chips
+      sql = `SELECT ch.owner AS wallet, COALESCE(SUM(c.best_stars), 0) AS value, 0 AS league FROM chips ch JOIN grid_level_claims c ON c.asset = ch.asset WHERE ch.burned_at IS NULL GROUP BY ch.owner`; break;
     default: throw new Error('unknown board');
   }
   const visible = `SELECT t.wallet, t.value, t.league, w.handle FROM (${sql}) t LEFT JOIN wallets w ON w.address = t.wallet WHERE ${jsonFlagEq('w.flags', 'shadowBanned', false)}`;

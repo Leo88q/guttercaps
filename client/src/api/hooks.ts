@@ -58,7 +58,7 @@ export interface GridClaim { level: number; best_stars: number; xp_accounted: nu
 export interface GridRouteChip { asset: string; collection: number; rarity: number; chipLevel: number; skin?: string | null; route: { nextLevel: number; chargeDrops: number; chargeProgress: number }; claims: GridClaim[] }
 export interface GridMe {
   wallet: { hints: number; valves: number; total_best_stars: number };
-  pendingGranted: number; chips: GridRouteChip[];
+  pendingGranted: number; chips: (GridRouteChip & { prestige?: { level: number; next: number } })[];
   gifts: { level: number; kind: string; gift_key: string }[];
   floodWeek: number; flood: { district: number; points: number }[];
   floodReward?: { week: number; hints: number; valve: number } | null; masteredChips?: number;
@@ -68,6 +68,9 @@ export interface GridMe {
   deep?: { week: number; level: number; attemptsUsed: number; paidCredits: number; attemptsLeft: number; paidAttemptsLeft: number; attemptPriceCgMicro: number; myBest: { moves: number; stars: number } | null; leaderboard: { rank: number; wallet: string; moves: number; stars: number; me: boolean }[] };
   ghost?: { day: number; level: number; targetMoves: number; beaten: boolean };
   fieldThemes?: string[];
+  coopReward?: { week: number; district: number; valve: number } | null;
+  districtGoal?: { district: number; points: number; goal: number; reached: boolean }[];
+  ladder?: { season: number; myPoints: number; myRank: number | null; top: { rank: number; wallet: string; points: number; me: boolean }[]; myPayout: { season: number; rank: number; amount: string; root_kind: number | null } | null } | null;
   deepReward?: { week: number; hints: number; valve: number; rank: number } | null;
 }
 export interface GridChipState { asset: string; route: { nextLevel: number; chargeDrops: number; chargeProgress: number }; claims: GridClaim[]; fails: { level: number; fails: number }[]; emergency: number[] }
@@ -221,7 +224,7 @@ export function useVerifyHuman() {
 export const useClaims = () => useQuery({ queryKey: qk.claims, queryFn: () => api.get('/quests/claims'), enabled: useAuthenticated(), staleTime: 30_000 });
 export const useStreak = () => useQuery({ queryKey: qk.streak, queryFn: () => api.get('/quests/streak'), enabled: useAuthenticated(), staleTime: 60_000 });
 
-export const useLeaderboard = (board: 'rating' | 'wins' | 'collection' | 'staking' | 'fusion', season?: number) =>
+export const useLeaderboard = (board: 'rating' | 'wins' | 'collection' | 'staking' | 'fusion' | 'divers', season?: number) =>
   useQuery({ queryKey: qk.leaderboard(board, season), queryFn: () => api.get('/leaderboard/{board}', { path: { board }, query: { season } }), staleTime: 60_000 });
 
 export const useReferrals = () => useQuery({ queryKey: qk.referrals, queryFn: () => api.get('/me/referrals'), enabled: useAuthenticated(), staleTime: 60_000 });

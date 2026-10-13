@@ -1293,6 +1293,42 @@ model GridDeepResult {
   @@map("grid_deep_results")
 }
 
+/// Prestige descent progress per mastered chip (P1..P5 seals).
+model GridPrestigeRoute {
+  asset         String @id
+  prestigeLevel Int    @default(0) @map("prestige_level")
+  nextSector    Int    @default(1) @map("next_sector")
+  updatedAt     Int    @default(0) @map("updated_at")
+
+  @@map("grid_prestige_routes")
+}
+
+/// Seasonal Floodgrid PvE ladder payouts ($CG, rooted via kind-4 events roots).
+model GridLadderPayout {
+  season   Int
+  wallet   String
+  rank     Int
+  points   Int
+  amount   String
+  rootKind Int?   @map("root_kind")
+  rootEpoch Int?  @map("root_epoch")
+
+  @@id([season, wallet])
+  @@map("grid_ladder_payouts")
+}
+
+/// District co-op goal settlements (valve for participants).
+model GridDistrictGoalSettlement {
+  wallet    String
+  week      Int
+  district  Int
+  valve     Int    @default(0)
+  settledAt Int    @map("settled_at")
+
+  @@id([wallet, week])
+  @@map("grid_district_goal_settlements")
+}
+
 /// Lazily settled Deep Flood weekly gear rewards.
 model GridDeepSettlement {
   wallet    String
