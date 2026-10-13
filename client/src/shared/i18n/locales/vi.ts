@@ -201,7 +201,7 @@ const vi: Messages = {
     },
   },
   pass: {
-    title: 'Thẻ mùa giải', tier: 'Cấp {n}', xp: '{n} XP', claim: 'Nhận', claimed: 'Đã nhận',
+    title: 'Thẻ mùa giải', tier: 'Cấp {n}', xp: '{n} XP', claim: 'Nhận', claimed: 'Đã nhận', hintBonus: '+1 Dấu Terminal',
     noPass: 'Mua thẻ mùa giải để nhận thưởng', pickCap: 'Chọn một nắp chai để sơn',
   },
   services: {

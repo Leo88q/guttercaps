@@ -18,6 +18,7 @@
     "backend:crank": "npm --prefix backend run crank",
     "backend:burn-oracle": "npm --prefix backend run burn-oracle",
     "backend:play-oracle": "npm --prefix backend run play-oracle",
+    "backend:grid-charge-oracle": "npm --prefix backend run grid-charge-oracle",
     "backend:reward-oracle": "npm --prefix backend run reward-oracle",
     "backend:battle-resolver": "npm --prefix backend run battle-resolver",
     "backend:antifraud": "npm --prefix backend run antifraud --",

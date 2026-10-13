@@ -821,6 +821,11 @@ const HANDLERS: Record<string, Handler> = {
     if (!Number.isFinite(ts) || ts <= 0) return;
     db.run(`UPDATE chips SET last_played = CASE WHEN last_played IS NULL OR last_played < ? THEN ? ELSE last_played END, play_pulsed_at = ? WHERE asset = ?`, ts, ts, ts, str(d.key));
   },
+  GridChargeSynced(db, e, c) {
+    const d = e.data;
+    const expiries = Array.isArray(d.dropExpiries) ? d.dropExpiries.map(Number).filter(Number.isFinite) : [];
+    db.run(`UPDATE grid_charge_sync SET expiries = ?, synced_at = COALESCE(?, synced_at) WHERE stake_key = ?`, JSON.stringify(expiries), c.blockTime, str(d.key));
+  },
   RootPublished(db, e, c) {
     const d = e.data;
     db.run(

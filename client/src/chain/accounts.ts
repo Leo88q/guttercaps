@@ -512,6 +512,17 @@ export function decodeChipPlay(data: Uint8Array): ChipPlay {
   return { chip: r.pubkey(), lastPlayed: r.i64(), bump: r.u8() };
 }
 
+export interface ChipGridCharge { chip: PublicKey; dropExpiries: bigint[]; bump: number }
+export function decodeChipGridCharge(data: Uint8Array): ChipGridCharge {
+  const r = expectDiscriminator(data, 'ChipGridCharge');
+  return { chip: r.pubkey(), dropExpiries: r.array(3, () => r.i64()), bump: r.u8() };
+}
+/** Active Floodgrid droplets and their staking multiplier (+5 % each, max +15 %). */
+export function gridChargeMultBps(gc: ChipGridCharge | null | undefined, nowSec: bigint): number {
+  if (!gc) return 10_000;
+  return 10_000 + 500 * gc.dropExpiries.filter((e) => e > nowSec).length;
+}
+
 export interface RewardRoot { kind: number; epoch: number; root: Uint8Array; budget: bigint; claimed: bigint; publishedAt: bigint; publisher: PublicKey; revoked: boolean; bump: number }
 export function decodeRewardRoot(data: Uint8Array): RewardRoot {
   const r = expectDiscriminator(data, 'RewardRoot');

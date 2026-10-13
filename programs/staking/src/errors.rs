@@ -72,4 +72,6 @@ pub enum StakeError {
     SkrWithdrawRate,
     #[msg("Play pulse timestamp is in the future")]
     FuturePlay,
+    #[msg("Floodgrid charge account is malformed")]
+    BadGridCharge,
 }

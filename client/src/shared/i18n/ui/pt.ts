@@ -157,7 +157,7 @@ const ui = {
   "stakeCaps": "Staking de tampinhas",
   "stakeCap": "Fazer staking de tampinha",
   "topUpLock": "Reforçar uma posição bloqueada reinicia o prazo integral de toda a posição.",
-  "weightRule": "peso = peso da raridade × nível × bônus de conjunto · tampinhas em staking podem lutar na arena · 7 dias sem Cap Slam e o peso cai para 25%",
+  "weightRule": "peso = peso da raridade × nível × bônus de conjunto · tampinhas em staking podem lutar na arena · 7 dias sem Cap Slam e o peso cai para 25% · Carga Floodgrid 💧 +5% por gota (máx. +15%, evapora após 7 dias em stake)",
   "stakeDailyCap": "Teto diário de claim",
   "stakeCapHint": "Tampinhas mintam até 30 $CG/dia, lock de $CG até 15 $CG/dia. O excedente fica no pool. 7 dias sem Cap Slam e o peso da tampinha cai para ×0.25 até jogar.",
   "idleStake": "parada ×0.25 — joga Cap Slam",

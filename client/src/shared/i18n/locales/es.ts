@@ -201,7 +201,7 @@ const es: Messages = {
     },
   },
   pass: {
-    title: 'Pase de temporada', tier: 'Nivel {n}', xp: '{n} XP', claim: 'Reclamar', claimed: 'Reclamado',
+    title: 'Pase de temporada', tier: 'Nivel {n}', xp: '{n} XP', claim: 'Reclamar', claimed: 'Reclamado', hintBonus: '+1 marca de terminal',
     noPass: 'Consigue el pase de temporada para reclamar las recompensas', pickCap: 'Elige una chapa para pintar',
   },
   services: {

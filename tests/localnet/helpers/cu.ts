@@ -52,7 +52,7 @@ export const CU_IX_NAMES = [
   'revoke_item_root', 'revoke_root', 'revoke_skr_root', 'set_arena', 'set_compressed_claim_listed',
   'set_compressed_claim_staked', 'set_oracles', 'set_params', 'set_paused', 'set_pauser', 'set_raw',
   'set_split', 'set_skr_pool', 'stage_compressed_chip', 'stake_cg', 'stake_chip', 'stake_compressed_chip',
-  'stake_compressed_chip_v2', 'sweep_vault', 'sync_set_bonus', 'sync_skr_pool', 'thaw_chip', 'tick_day',
+  'stake_compressed_chip_v2', 'sweep_vault', 'sync_grid_charge', 'sync_set_bonus', 'sync_skr_pool', 'thaw_chip', 'tick_day',
   'transfer_compressed_claim', 'unstake_cg', 'unstake_chip', 'unstake_compressed_chip', 'update_price',
   'withdraw_skr',
 ];

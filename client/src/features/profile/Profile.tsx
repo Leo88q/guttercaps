@@ -16,7 +16,7 @@ import { CleanZone, KV, Modal, Stat, Skeleton, Empty, Pill, Progress } from '@/s
 import { localizedCollection, useCollections } from '@/shared/lib/lore';
 import { collectionColor } from '@/shared/lib/rarity';
 import { KIND, PROFILE_THEMES, loadBanner, loadTheme, ownedBanners, ownedThemes, owns, saveBanner, saveTheme, themeById } from '@/shared/lib/cosmetics';
-import { PASS_TRACK, type PassReward } from '@guttercaps/economy';
+import { GRID, PASS_TRACK, type PassReward } from '@guttercaps/economy';
 import { CapPicker } from '@/shared/ui/CapPicker';
 import { SprayCapToggle } from '@/shared/ui/buttons';
 import { HumanCheck } from '@/shared/ui/HumanCheck';
@@ -251,7 +251,7 @@ function PassCard() {
   if (!d) return null;
   const next = PASS_TRACK.find((x) => x.xp > (d.xp ?? 0));
   const doClaim = (tier: number, asset?: string) => claim.mutate({ tier, asset }, {
-    onSuccess: () => { setSkinTier(null); toast({ kind: 'success', title: { key: 'pass.claimed' }, body: { key: 'pass.tier', params: { n: tier } } }); },
+    onSuccess: (data) => { setSkinTier(null); toast({ kind: 'success', title: { key: 'pass.claimed' }, body: data?.hintsGranted ? { key: 'pass.hintBonus' } : { key: 'pass.tier', params: { n: tier } } }); },
     onError: (e) => toast({ kind: 'error', title: { key: 'pass.claim' }, error: e }),
   });
   return (
@@ -269,7 +269,7 @@ function PassCard() {
           const can = !!d.hasPass && unlocked && !claimed;
           return (
             <div key={tr.tier} className="row between small" style={{ border: '1px solid var(--gc-line)', borderRadius: 8, padding: '4px 8px', opacity: unlocked ? 1 : 0.55 }}>
-              <span className="row" style={{ gap: 6 }}><span style={{ display: 'inline-flex', color: 'var(--gc-muted)' }} aria-hidden>{rewardGlyph(tr.reward)}</span><span className="mono muted">{tr.tier}</span> {rewardLabel(t, tr.reward)} <span className="tiny muted mono">{t('pass.xp', { n: tr.xp })}</span></span>
+              <span className="row" style={{ gap: 6 }}><span style={{ display: 'inline-flex', color: 'var(--gc-muted)' }} aria-hidden>{rewardGlyph(tr.reward)}</span><span className="mono muted">{tr.tier}</span> {rewardLabel(t, tr.reward)} <span className="tiny muted mono">{t('pass.xp', { n: tr.xp })}</span>{tr.tier % GRID.passHintEveryTiers === 0 && <span className="tiny" title={t('pass.hintBonus')}>💡 +1</span>}</span>
               {claimed ? <span className="tiny muted">{t('pass.claimed')}</span>
                 : can ? <button className="btn btn-sm" disabled={claim.isPending} onClick={() => (tr.reward.kind === 'skin' ? setSkinTier(tr.tier) : doClaim(tr.tier))}>{t('pass.claim')}</button>
                 : null}

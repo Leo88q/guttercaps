@@ -268,6 +268,14 @@ CREATE TABLE IF NOT EXISTS grid_flood (
   PRIMARY KEY (district, week)
 );
 
+CREATE TABLE IF NOT EXISTS grid_charge_sync (
+  stake_key TEXT PRIMARY KEY,
+  asset TEXT NOT NULL,
+  staked_since INTEGER NOT NULL,
+  expiries TEXT NOT NULL DEFAULT '[]',
+  synced_at INTEGER,
+  updated_at INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS pass_claims (
   wallet     TEXT    NOT NULL,
   season     INTEGER NOT NULL,

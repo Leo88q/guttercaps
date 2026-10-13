@@ -201,7 +201,7 @@ const fil: Messages = {
     },
   },
   pass: {
-    title: 'Season pass', tier: 'Tier {n}', xp: '{n} XP', claim: 'I-claim', claimed: 'Na-claim',
+    title: 'Season pass', tier: 'Tier {n}', xp: '{n} XP', claim: 'I-claim', claimed: 'Na-claim', hintBonus: '+1 Terminal mark',
     noPass: 'Kumuha ng season pass para ma-claim ang rewards', pickCap: 'Pumili ng cap na pipintahan',
   },
   services: {

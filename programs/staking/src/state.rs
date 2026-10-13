@@ -40,6 +40,11 @@ pub const TOKEN_STAKE_DAILY_CAP_MICRO: u64 = 15 * MICRO;
 pub const ALIVE_WINDOW_SECS: i64 = 7 * DAY;
 pub const IDLE_WEIGHT_BPS: u64 = 2_500;
 pub const SET_BONUS_CAP_BPS: u64 = 17_000;
+/// Floodgrid charge droplets in chip staking: +5 % weight per active droplet (max 3), each droplet
+/// evaporates after 7 days in stake. Mirrors packages/economy GRID.chargeStake* (sync-check pins both).
+pub const GRID_CHARGE_BONUS_BPS_PER_DROP: u64 = 500;
+pub const GRID_CHARGE_WINDOW_SECS: i64 = 7 * DAY;
+pub const GRID_CHARGE_MAX_DROPS: usize = 3;
 /// Reward-root kinds: 0..4 are $CG emission slices (`Slice`), 5..7 are SKR prize-pool roots
 /// (quests / season / events) paid from `SkrPool` — never minted. Mirrored in
 /// packages/economy/src/skrRewards.ts (`REWARD_ROOT_KINDS`) and checked by sync-check.
@@ -250,6 +255,28 @@ pub struct ChipPlay {
     pub chip: Pubkey,
     pub last_played: i64,
     pub bump: u8,
+}
+
+/// `["gridcharge", claim_or_asset]` — Floodgrid («Решётка») charge droplets attested by the
+/// season/set oracle. Kept separate from `ChipPlay` so live play accounts never need a layout
+/// migration. Each slot is one droplet's expiry; 0 or a past timestamp means no active droplet.
+#[account]
+#[derive(InitSpace)]
+pub struct ChipGridCharge {
+    pub chip: Pubkey,
+    pub drop_expiries: [i64; GRID_CHARGE_MAX_DROPS],
+    pub bump: u8,
+}
+
+impl ChipGridCharge {
+    pub fn active_drops(&self, now: i64) -> u8 {
+        self.drop_expiries.iter().filter(|&&e| e > now).count() as u8
+    }
+    pub fn mult_bps(&self, now: i64) -> u64 {
+        10_000
+            + GRID_CHARGE_BONUS_BPS_PER_DROP
+                * self.active_drops(now).min(GRID_CHARGE_MAX_DROPS as u8) as u64
+    }
 }
 
 pub fn alive_mult_bps(last_played: i64, now: i64) -> u64 {
@@ -478,6 +505,11 @@ pub struct ClaimCapped {
 pub struct PlayPulsed {
     pub key: Pubkey,
     pub last_played: i64,
+}
+#[event]
+pub struct GridChargeSynced {
+    pub key: Pubkey,
+    pub drop_expiries: [i64; GRID_CHARGE_MAX_DROPS],
 }
 /// `set_oracles`: the resulting oracle set. These keys publish reward roots and burn reports, so a
 /// rotation is money-relevant and must be visible off-chain the moment it lands.

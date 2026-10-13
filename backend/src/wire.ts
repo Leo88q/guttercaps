@@ -42,6 +42,7 @@ export const WIRE_TYPE: Record<string, string> = {
   Staked: 'stake_changed',
   Unstaked: 'stake_changed',
   Claimed: 'reward_claimed',
+  GridChargeSynced: 'stake_changed',
   // companion to Claimed: the cap cut the pending amount, so the client re-reads its reward state (the same route)
   ClaimCapped: 'reward_claimed',
   RootClaimed: 'reward_claimed',
@@ -148,6 +149,7 @@ export function wireEvent(db: Db, e: RawEvent, ctx: { slot?: number } = {}): Bus
     case 'Claimed': payload = { owner: s_('owner'), kind: n_('kind'), amount: s_('amount') }; break;
     case 'ClaimCapped': payload = { owner: s_('owner'), kind: n_('kind'), pending: s_('pending'), paid: s_('paid') }; break;
     case 'PlayPulsed': payload = { key: s_('key'), lastPlayed: s_('lastPlayed') }; break;
+    case 'GridChargeSynced': payload = { key: s_('key'), dropExpiries: Array.isArray(d.dropExpiries) ? d.dropExpiries.map(String) : [] }; break;
     case 'RootClaimed': payload = { wallet: s_('wallet'), kind: n_('kind'), epoch: n_('epoch'), amount: s_('amount') }; break;
     case 'RootPublished': payload = { kind: n_('kind'), epoch: n_('epoch'), budget: s_('budget') }; break;
     case 'ParamsChanged': payload = { admin: s_('admin'), version: n_('version') }; break;

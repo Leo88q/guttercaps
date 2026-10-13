@@ -5348,6 +5348,8 @@ export interface components {
             grantedAt?: string;
             /** Format: date-time */
             expiresAt?: string | null;
+            /** @description Floodgrid Terminal marks granted with this entitlement (every 5th Season Pass tier) */
+            hintsGranted?: number;
         };
         PendingPack: {
             nonce?: string;

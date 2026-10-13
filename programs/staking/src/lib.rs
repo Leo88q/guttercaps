@@ -18,7 +18,7 @@ pub mod instructions;
 pub mod state;
 
 use instructions::*;
-use state::SPLIT_COUNT;
+use state::{GRID_CHARGE_MAX_DROPS, SPLIT_COUNT};
 
 declare_id!("Ewkbp7WpqbiJAu3ofEcTPinqnr5oH3e94YJDZFg1eSJn");
 
@@ -183,6 +183,12 @@ pub mod staking {
     pub fn pulse_chip_play(ctx: Context<PulseChipPlay>, ts: i64) -> Result<()> {
         instructions::pulse_chip_play(ctx, ts)
     }
+    pub fn sync_grid_charge(
+        ctx: Context<SyncGridCharge>,
+        drop_expiries: [i64; GRID_CHARGE_MAX_DROPS],
+    ) -> Result<()> {
+        instructions::sync_grid_charge(ctx, drop_expiries)
+    }
     pub fn sync_set_bonus(ctx: Context<SyncSetBonus>, sets: u8) -> Result<()> {
         instructions::sync_set_bonus(ctx, sets)
     }
@@ -237,6 +243,21 @@ mod tests {
         assert_eq!(e.guarded_daily(0), cap);
         e.burn_ring = [117_433 * MICRO; 7]; // baseline burn from the TS report
         assert_eq!(e.guarded_daily(0) / MICRO, 152_215); // 2 % floor + 1.25 × burn
+    }
+
+    #[test]
+    fn grid_charge_curve_and_expiry() {
+        let mut gc = ChipGridCharge {
+            chip: Default::default(),
+            drop_expiries: [0; GRID_CHARGE_MAX_DROPS],
+            bump: 0,
+        };
+        assert_eq!(gc.mult_bps(1_000), 10_000);
+        gc.drop_expiries = [2_000, 3_000, 4_000];
+        assert_eq!(gc.active_drops(1_500), 3);
+        assert_eq!(gc.mult_bps(1_500), 11_500); // +5 % per droplet, max +15 %
+        assert_eq!(gc.mult_bps(2_500), 11_000); // first droplet evaporated
+        assert_eq!(gc.mult_bps(4_500), 10_000); // all evaporated
     }
 
     #[test]

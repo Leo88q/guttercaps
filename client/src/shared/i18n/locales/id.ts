@@ -201,7 +201,7 @@ const id: Messages = {
     },
   },
   pass: {
-    title: 'Pass musim', tier: 'Tingkat {n}', xp: '{n} XP', claim: 'Klaim', claimed: 'Diklaim',
+    title: 'Pass musim', tier: 'Tingkat {n}', xp: '{n} XP', claim: 'Klaim', claimed: 'Diklaim', hintBonus: '+1 Tanda Terminal',
     noPass: 'Dapatkan pass musim untuk mengklaim hadiah', pickCap: 'Pilih tutup botol untuk dicat',
   },
   services: {

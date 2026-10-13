@@ -209,7 +209,7 @@ const en = {
     },
   },
   pass: {
-    title: 'Season pass', tier: 'Tier {n}', xp: '{n} XP', claim: 'Claim', claimed: 'Claimed',
+    title: 'Season pass', tier: 'Tier {n}', xp: '{n} XP', claim: 'Claim', claimed: 'Claimed', hintBonus: '+1 Terminal mark',
     noPass: 'Get the season pass in Extras to claim track rewards', pickCap: 'Choose a cap to paint',
   },
   services: {

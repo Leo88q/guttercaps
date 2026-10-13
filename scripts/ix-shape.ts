@@ -82,6 +82,7 @@ export const COMPLEX_INSTRUCTIONS = [
   'set_split', // [u16; SPLIT_COUNT]
   'create_battle_v2', // [LeafProofArgs; SQUAD] / [Pubkey; SQUAD]
   'accept_battle_v2', // [LeafProofArgs; SQUAD] / [u8; SQUAD]
+  'sync_grid_charge', // [i64; GRID_CHARGE_MAX_DROPS]
 ] as const;
 
 /**

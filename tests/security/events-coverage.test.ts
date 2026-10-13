@@ -287,6 +287,7 @@ const Constants: Record<string, number> = {
   MAX_CHIPS_PER_PACK: rustConst('MAX_CHIPS_PER_PACK'),
   MATERIALS_PER_FUSION: rustConst('MATERIALS_PER_FUSION'),
   SPLIT_COUNT: rustConst('SPLIT_COUNT'),
+  GRID_CHARGE_MAX_DROPS: rustConst('GRID_CHARGE_MAX_DROPS'),
 };
 
 test('every event a program declares is decoded, in the crate that declares it', () => {
@@ -295,8 +296,8 @@ test('every event a program declares is decoded, in the crate that declares it',
 
 test('every spec mirrors its struct field for field, in order, with the programs\' own shape constants', () => {
   // the spec's array lengths are written against the codec's own constants — the gate reads both sides
-  const specConsts = [...EVENTS.matchAll(/export const (MAX_CHIPS_PER_PACK|MATERIALS_PER_FUSION|SPLIT_COUNT) = (\d+);/g)];
-  assert.equal(specConsts.length, 3, 'the codec shape constants moved — this gate needs updating');
+  const specConsts = [...EVENTS.matchAll(/export const (MAX_CHIPS_PER_PACK|MATERIALS_PER_FUSION|SPLIT_COUNT|GRID_CHARGE_MAX_DROPS) = (\d+);/g)];
+  assert.equal(specConsts.length, 4, 'the codec shape constants moved — this gate needs updating');
   for (const [, name, value] of specConsts) assert.equal(Number(value), Constants[name!], `${name}: codec ${value} vs programs ${Constants[name!]}`);
   ruleFields(EVENTS, SOURCES, Constants);
 });

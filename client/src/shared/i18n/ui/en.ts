@@ -156,7 +156,7 @@ const ui = {
   "stakeCaps": "Stake caps",
   "stakeCap": "Stake a cap",
   "topUpLock": "Topping up a locked tier re-locks the whole position for the full period.",
-  "weightRule": "weight = rarity weight × level × set bonus · staked caps can still fight in the Arena · skip Cap Slam 7 days and the weight drops to 25%",
+  "weightRule": "weight = rarity weight × level × set bonus · staked caps can still fight in the Arena · skip Cap Slam 7 days and the weight drops to 25% · Floodgrid charge 💧 +5% per droplet (max +15%, evaporates after 7 days staked)",
   "stakeDailyCap": "Daily claim cap",
   "stakeCapHint": "Chips mint up to 30 $CG/day, $CG lock up to 15 $CG/day. Surplus stays in the pool. Miss Cap Slam for 7 days and chip weight drops to ×0.25 until you play.",
   "idleStake": "idle ×0.25 — play Cap Slam",

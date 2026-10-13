@@ -201,7 +201,7 @@ const pt: Messages = {
     },
   },
   pass: {
-    title: 'Passe de temporada', tier: 'Nível {n}', xp: '{n} XP', claim: 'Resgatar', claimed: 'Resgatado',
+    title: 'Passe de temporada', tier: 'Nível {n}', xp: '{n} XP', claim: 'Resgatar', claimed: 'Resgatado', hintBonus: '+1 Marca de Terminal',
     noPass: 'Obtenha o passe de temporada para resgatar as recompensas', pickCap: 'Escolha uma tampinha para pintar',
   },
   services: {

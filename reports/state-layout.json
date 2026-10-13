@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "fingerprint": "833ac7b43646e2b008b3c7cb0ef61aa60a5df4cd74c36ccdf63f7631f5971252",
+  "fingerprint": "035586b086f0c2229067f651c3a39ca3f1ec75ef5a061efbaaab27965894a4b0",
   "accounts": [
     {
       "program": "arena",
@@ -444,6 +444,15 @@
       "fields": [
         "chip: Pubkey",
         "last_played: i64",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "staking",
+      "name": "ChipGridCharge",
+      "fields": [
+        "chip: Pubkey",
+        "drop_expiries: [i64; GRID_CHARGE_MAX_DROPS]",
         "bump: u8"
       ]
     },

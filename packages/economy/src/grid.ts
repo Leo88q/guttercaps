@@ -11,6 +11,7 @@ export const GRID = {
   /** baseXP(L) = xpBase + xpPerLevel·L */
   xpBase: 4,
   xpPerLevel: 2,
+  passHintEveryTiers: 5, // every 5th claimed Season Pass tier also grants one Terminal mark
   starMultBps: [0, 4000, 7000, 10000] as readonly number[], // by stars 0..3 (0 = fail handled separately)
   failXp: -6,
   moveBudgetMult: 2, // charge attempt fails above 2×par

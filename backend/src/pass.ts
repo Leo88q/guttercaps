@@ -2,8 +2,9 @@
 // (economy PASS_TRACK). XP is earned by ranked play — match resolution calls
 // addPassXp; nothing on the track can be bought. Tier rewards are granted as
 // regular entitlements (skin/theme/emote/banner/skip) with a `pass:` signature,
-// so ownership checks elsewhere keep working unchanged.
-import { PASS_TRACK, passTierForXp } from '@guttercaps/economy';
+// so ownership checks elsewhere keep working unchanged. Every fifth claimed tier also grants one
+// Floodgrid Terminal mark (owner-approved pass-track hint source), capped by the normal hint stock.
+import { GRID, PASS_TRACK, passTierForXp } from '@guttercaps/economy';
 import { type Db, now } from './db.ts';
 import { upsert } from './sql.ts';
 import { ServiceError, districtCompleted, rowToEntitlement, type Entitlement } from './services.ts';
@@ -39,7 +40,7 @@ export function passState(db: Db, wallet: string, t = now()): PassState {
 }
 
 /** POST /me/pass/claim — grant one unlocked tier as an entitlement. Skin tiers take {asset} (an owned cap); everything else needs no params. */
-export function claimPassTier(db: Db, wallet: string, tier: number, body: Record<string, unknown> | undefined, t = now()): Entitlement {
+export function claimPassTier(db: Db, wallet: string, tier: number, body: Record<string, unknown> | undefined, t = now()): Entitlement & { hintsGranted?: number } {
   const def = PASS_TRACK.find((x) => x.tier === tier);
   if (!def) throw new ServiceError(400, 'bad_tier', `Unknown pass tier ${tier}`);
   const seasonId = passSeasonId(db, t);
@@ -70,6 +71,14 @@ export function claimPassTier(db: Db, wallet: string, tier: number, body: Record
     );
     if (kind === 2) db.run(`UPDATE chips SET skin = ? WHERE asset = ?`, String((payload as { skin: string }).skin), String((payload as { asset: string }).asset));
     db.run(`INSERT INTO pass_claims (wallet, season, tier, claimed_at) VALUES (?, ?, ?, ?)`, wallet, seasonId, tier, t);
-    return rowToEntitlement({ id: Number(res.lastInsertRowid), kind, payload: JSON.stringify(payload), signature, currency: 2, amount: '0', granted_at: t, expires_at: null });
+    let hintsGranted = 0;
+    if (tier % GRID.passHintEveryTiers === 0) {
+      db.run(`INSERT INTO grid_wallet_state (wallet, hints, valves, starter_granted, total_best_stars, updated_at) VALUES (?, ?, 0, 1, 0, ?) ON CONFLICT(wallet) DO NOTHING`, wallet, GRID.hintStartStock, t);
+      const before = db.get<{ hints: number }>(`SELECT hints FROM grid_wallet_state WHERE wallet = ?`, wallet)?.hints ?? GRID.hintStartStock;
+      hintsGranted = Math.max(0, Math.min(1, GRID.hintStockCap - before));
+      if (hintsGranted) db.run(`UPDATE grid_wallet_state SET hints = hints + ?, updated_at = ? WHERE wallet = ?`, hintsGranted, t, wallet);
+    }
+    const entitlement = rowToEntitlement({ id: Number(res.lastInsertRowid), kind, payload: JSON.stringify(payload), signature, currency: 2, amount: '0', granted_at: t, expires_at: null });
+    return hintsGranted ? { ...entitlement, hintsGranted } : entitlement;
   });
 }

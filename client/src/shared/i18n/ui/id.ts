@@ -157,7 +157,7 @@ const ui = {
   "stakeCaps": "Staking tutup",
   "stakeCap": "Staking satu tutup",
   "topUpLock": "Menambah posisi terkunci mengunci ulang seluruh posisi untuk periode penuh.",
-  "weightRule": "bobot = bobot kelangkaan × level × bonus set · tutup yang di-stake tetap bisa bertarung · 7 hari tanpa Cap Slam, bobot turun ke 25%",
+  "weightRule": "bobot = bobot kelangkaan × level × bonus set · tutup yang di-stake tetap bisa bertarung · 7 hari tanpa Cap Slam, bobot turun ke 25% · Muatan Floodgrid 💧 +5% per tetes (maks +15%, menguap setelah 7 hari di-stake)",
   "stakeDailyCap": "Batas klaim harian",
   "stakeCapHint": "Tutup mint hingga 30 $CG/hari, lock $CG hingga 15 $CG/hari. Kelebihan tetap di pool. 7 hari tanpa Cap Slam, bobot tutup ×0.25 sampai kamu main.",
   "idleStake": "idle ×0.25 — main Cap Slam",

@@ -157,7 +157,7 @@ const ui = {
   "stakeCaps": "Staking de chapas",
   "stakeCap": "Hacer staking de chapa",
   "topUpLock": "Añadir a una posición bloqueada reinicia el plazo completo de toda la posición.",
-  "weightRule": "peso = peso de rareza × nivel × bono de conjunto · las chapas en staking pueden luchar en la arena · 7 días sin Cap Slam y el peso cae al 25%",
+  "weightRule": "peso = peso de rareza × nivel × bono de conjunto · las chapas en staking pueden luchar en la arena · 7 días sin Cap Slam y el peso cae al 25% · Carga Floodgrid 💧 +5% por gota (máx. +15%, se evapora tras 7 días en stake)",
   "stakeDailyCap": "Tope diario de claim",
   "stakeCapHint": "Las chapas mintean hasta 30 $CG/día, el lock de $CG hasta 15 $CG/día. El excedente se queda en el pool. 7 días sin Cap Slam y el peso de la chapa cae a ×0.25 hasta que juegues.",
   "idleStake": "inactiva ×0.25 — juega Cap Slam",

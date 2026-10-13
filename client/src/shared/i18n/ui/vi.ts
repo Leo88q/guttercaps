@@ -157,7 +157,7 @@ const ui = {
   "stakeCaps": "Staking nắp",
   "stakeCap": "Staking một nắp",
   "topUpLock": "Nạp thêm vào vị thế khóa sẽ đặt lại toàn bộ thời hạn khóa cho cả vị thế.",
-  "weightRule": "trọng số = trọng số độ hiếm × cấp × thưởng bộ · nắp staking vẫn đấu được · 7 ngày không Cap Slam thì trọng số còn 25%",
+  "weightRule": "trọng số = trọng số độ hiếm × cấp × thưởng bộ · nắp staking vẫn đấu được · 7 ngày không Cap Slam thì trọng số còn 25% · Nạp Floodgrid 💧 +5% mỗi giọt (tối đa +15%, bốc hơi sau 7 ngày stake)",
   "stakeDailyCap": "Trần claim mỗi ngày",
   "stakeCapHint": "Nắp mint tối đa 30 $CG/ngày, khóa $CG tối đa 15 $CG/ngày. Phần dư ở lại pool. 7 ngày không Cap Slam thì trọng số nắp ×0.25 đến khi chơi.",
   "idleStake": "idle ×0.25 — chơi Cap Slam",

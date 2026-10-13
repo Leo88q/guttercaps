@@ -1322,6 +1322,18 @@ model GridFlood {
   @@map("grid_flood")
 }
 
+/// Oracle sync state for Floodgrid charge droplets in chip staking (per-droplet expiries).
+model GridChargeSync {
+  stakeKey    String @id @map("stake_key")
+  asset       String
+  stakedSince Int    @map("staked_since")
+  expiries    String @default("[]")
+  syncedAt    Int?   @map("synced_at")
+  updatedAt   Int    @default(0) @map("updated_at")
+
+  @@map("grid_charge_sync")
+}
+
 model PassClaim {
   wallet    String
   season    Int

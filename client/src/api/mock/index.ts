@@ -305,9 +305,11 @@ on('post', '/me/pass/claim', (o) => {
     kind = 9; payload = { collection: r.collection };
   }
   mockPassClaimed.push(b.tier);
+  const hintsGranted = b.tier % GRID_RULES.passHintEveryTiers === 0 && mockGridHints < GRID_RULES.hintStockCap ? 1 : 0;
+  if (hintsGranted) mockGridHints += hintsGranted;
   const e = { id: `e${entitlements.length + 1}`, kind, payload, signature: `pass:3:${b.tier}`, currency: 'CG', amount: '0', grantedAt: iso(), expiresAt: null };
   entitlements.push(e);
-  return e;
+  return hintsGranted ? { ...e, hintsGranted } : e;
 });
 
 on('get', '/packs', () => ({

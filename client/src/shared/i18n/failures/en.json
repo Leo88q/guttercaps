@@ -92,6 +92,7 @@
   "staking_BadMint": "$CG mint must have no freeze authority and a supply within the non-play allocation",
   "staking_SkrWithdrawRate": "SKR withdrawals are limited to one call per slot",
   "staking_FuturePlay": "Play pulse timestamp is in the future",
+  "staking_BadGridCharge": "Floodgrid charge account is malformed",
   "arena_WagerRange": "Wager out of range (25–25000 $CG)",
   "arena_BadStatus": "Battle is not in the expected status",
   "arena_NotOwner": "Squad chip not owned by signer",

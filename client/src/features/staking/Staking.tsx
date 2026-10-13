@@ -6,8 +6,8 @@ import { Link } from 'react-router-dom';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { PublicKey } from '@solana/web3.js';
-import { LOCK_TIERS, STAKE_CLAIM_CAPS, fullSetBonusMult, impliedApy } from '@guttercaps/economy';
-import { useStakingOverview, useStakingMe, useMyChips, useGutterPot, type Chip } from '@/api/hooks';
+import { GRID, LOCK_TIERS, STAKE_CLAIM_CAPS, fullSetBonusMult, impliedApy } from '@guttercaps/economy';
+import { useStakingOverview, useStakingMe, useMyChips, useGutterPot, useGridMe, type Chip } from '@/api/hooks';
 import { useGameConfig, useStakingChain, useWalletLike, useBalances } from '@/chain/hooks';
 import { pendingReward } from '@/chain/accounts';
 import { sendTx, TxError } from '@/chain/tx';
@@ -33,6 +33,8 @@ export default function Staking() {
   const meApi = useStakingMe();
   const pot = useGutterPot();
   const chips = useMyChips({});
+  const grid = useGridMe();
+  const gridRoutes = useMemo(() => new Map((grid.data?.chips ?? []).map((c) => [c.asset, c.route])), [grid.data]);
   const cfg = useGameConfig();
   const [emission, pools, tstakes, setBonus, walletDay] = useStakingChain();
   const wallet = useWalletLike();
@@ -204,7 +206,7 @@ export default function Staking() {
                     <span className="stake-row-art"><ChipArt collection={c.collection!} rarity={c.rarity!} imageUrl={chipImageOf(c)} skin={(c as { skin?: string | null }).skin} founder={!!(c as { flags?: { founder?: boolean } }).flags?.founder} /></span>
                     <div className="stake-row-copy">
                       <div className="small">{chipName(c.collection!, c.rarity!)} <span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span>{(c as { idle?: boolean }).idle ? <span className="tiny stake-idle"> · <img src="/art/idle-stake.png" alt="" width={18} height={18} style={{ verticalAlign: 'middle' }} /> {t('ui.idleStake')}</span> : null}</div>
-                      <div className="tiny muted mono">{t('staking.weight')} {c.stakeWeight} · {t('ui.pending')} {api ? fmtCg(api.pending, 3) : '…'}</div>
+                      <div className="tiny muted mono">{t('staking.weight')} {c.stakeWeight} · {t('ui.pending')} {api ? fmtCg(api.pending, 3) : '…'}{(gridRoutes.get(c.asset ?? '')?.chargeDrops ?? 0) > 0 && <> · 💧 {gridRoutes.get(c.asset ?? '')!.chargeDrops} (+{(gridRoutes.get(c.asset ?? '')!.chargeDrops * GRID.chargeStakeBonusBpsPerDrop) / 100}%)</>}</div>
                     </div>
                   </div>
                   <div className="stake-row-actions">
@@ -243,7 +245,7 @@ export default function Staking() {
           {stakeable.map((c: Chip) => (
             <div key={c.asset} className="chip-card" onClick={async () => { setPickChip(false); await run('staking.stake', () => stakeChip(c)); }}>
               <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c)} skin={(c as { skin?: string | null }).skin} founder={!!c.flags?.founder} />
-              <div className="chip-meta"><span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span> · {t('staking.weight')} {c.stakeWeight}</div>
+              <div className="chip-meta"><span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span> · {t('staking.weight')} {c.stakeWeight}{(gridRoutes.get(c.asset ?? '')?.chargeDrops ?? 0) > 0 && <> · 💧 {gridRoutes.get(c.asset ?? '')!.chargeDrops}</>}</div>
             </div>
           ))}
         </div>
