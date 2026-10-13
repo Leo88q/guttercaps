@@ -246,6 +246,7 @@ const pt: Messages = {
       metric: 'métrica', baselineCol: 'base', scenario: 'cenário', guard: 'Trava de emissão: piso {floor}% do cronograma · ≤ {mult}× queima de 7 dias · {zero} $CG/dia com queima zero',
     },
     kpi: {
+      floodgrid: 'Floodgrid', onboard: 'Onboarding shown → completed', ladderPlayers: 'ladder players', ladderPaid: 'ladder paid', deepWeek: 'deep runs this week', goalDistricts: 'districts at goal (prev week)', mastered: 'mastered chips', prestige: 'prestige chips',
       asOf: 'snapshot {time}', wallets: 'carteiras', payers30: 'pagantes 30d', conversion: 'conversão ao 1º pacote', starterToPaid: 'starter → pago', revenue: 'Receita', usd30: 'USD 30d', packs30: 'pacotes 30d', services30: 'serviços 30d', marketVol7: 'volume do mercado 7d',
       economy: 'Economia', burned7: 'queimado 7d', emitted7: 'emitido 7d', sinkRatio: 'sink ratio 7d', guarded: 'emissão protegida', floorIndex: 'índice de piso (equiv. Common)', arena: 'Arena', matches7: 'partidas 7d', fraud: 'Antifraude', finality: 'Finalidade',
     },
@@ -295,7 +296,7 @@ const pt: Messages = {
     unstaked: 'Tire o stake antes do sorteio e você fica de fora.',
   },
   verify: { title: 'Comprovadamente justo', subtitle: 'Cole uma transação de abertura de pacote. Lemos o roll on-chain de SlotHashes do evento e refazemos exatamente a expansão que o programa usou.', placeholder: 'Assinatura da transação', check: 'Verificar', match: 'Confere com o resultado on-chain', mismatch: 'Não confere — por favor reporte', slotHashes: 'Seed = sha256(seu commit ‖ SlotHashes[slot+atraso]). O estúdio nunca escolhe o resultado.' },
-  codex: { title: 'Os Oito Distritos' },
+  codex: { registry: 'Underground Registry', registryIntro: 'The guild registry: 12 pages per depth. Close a depth with any chip to unseal its pages.', sealed: 'Sealed — close this depth with any chip to read.', title: 'Os Oito Distritos' },
   errors: { rejected: 'Você recusou a assinatura', insufficient: 'Saldo insuficiente', network: 'Erro de rede — tente de novo', stale: 'Cotação expirou — atualize', generic: 'Algo deu errado' },
   legal: { title: 'Jurídico', terms: 'Termos de uso', privacy: 'Privacidade', updated: 'Vigente desde {date}', canonical: 'O texto em inglês é a versão oficial; as traduções são uma cortesia.', ages: 'Somente 18+', noSaleIn: 'sem venda de pacotes em', verify: 'Conferir um sorteio', notFound: 'Documento inexistente. Os dois que existem:' },
   age: { title: 'Você tem 18 anos ou mais?', body: 'O GUTTERCAPS vende pacotes com conteúdo aleatório. Você precisa ter pelo menos {age} e idade para contratar onde mora.', termsLink: 'Leia os termos antes', confirm: 'Tenho {age}+', deny: 'Não tenho', declined: 'As compras ficam desligadas para você: o jogo exige {age}+. O que já é seu continua funcionando — coleção, mercado, staking e arena.', reopen: 'Responder de novo' },

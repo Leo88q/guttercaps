@@ -53,3 +53,15 @@ describe('floodgrid engine (all 75 levels)', () => {
     assert.equal(isSolved(lv), true);
   });
 });
+
+describe('underground registry', () => {
+  it('60 pages, 12 per depth, unlocks by closed depths', async () => {
+  const { GRID_LORE, gridLoreUnlocked } = await import('../src/gridLore.ts');
+  assert.equal(GRID_LORE.length, 60);
+  for (let d = 1; d <= 5; d++) assert.equal(GRID_LORE.filter((p) => p.depth === d).length, 12);
+  assert.equal(new Set(GRID_LORE.map((p) => p.page)).size, 60);
+  assert.deepEqual(gridLoreUnlocked(14), { depths: [], pages: 0 });
+  assert.deepEqual(gridLoreUnlocked(15), { depths: [1], pages: 12 });
+  assert.deepEqual(gridLoreUnlocked(75), { depths: [1, 2, 3, 4, 5], pages: 60 });
+  });
+});

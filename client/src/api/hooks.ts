@@ -72,6 +72,7 @@ export interface GridMe {
   districtGoal?: { district: number; points: number; goal: number; reached: boolean }[];
   ladder?: { season: number; myPoints: number; myRank: number | null; top: { rank: number; wallet: string; points: number; me: boolean }[]; myPayout: { season: number; rank: number; amount: string; root_kind: number | null } | null } | null;
   deepReward?: { week: number; hints: number; valve: number; rank: number } | null;
+  lore?: { unlockedDepths: number[]; pages: number };
 }
 export interface GridChipState { asset: string; route: { nextLevel: number; chargeDrops: number; chargeProgress: number }; claims: GridClaim[]; fails: { level: number; fails: number }[]; emergency: number[] }
 export function useGridMe() {

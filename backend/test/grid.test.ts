@@ -323,3 +323,17 @@ describe('floodgrid ladder, co-op goal and prestige', () => {
     expect(payout?.amount).toBe('500000000');
   });
 });
+
+describe('floodgrid onboarding metrics and lore unlock', () => {
+  it('records onboard events once per day and unlocks registry pages by closed depth', async () => {
+    const { recordGridOnboard } = await import('../src/grid.ts');
+    const db = new Db(':memory:');
+    const owner = kp(); const asset = mint(db, owner);
+    recordGridOnboard(db, owner, 'shown', T); recordGridOnboard(db, owner, 'shown', T);
+    expect(db.scalar(`SELECT COUNT(*) FROM grid_onboard_events WHERE wallet = ?`, owner)).toBe(1);
+    expect(() => recordGridOnboard(db, owner, 'bogus', T)).toThrow(/shown\|clicked\|dismissed/);
+    expect(gridMe(db, owner, T).lore).toEqual({ unlockedDepths: [], pages: 0 });
+    db.run(`INSERT INTO grid_chip_routes (asset, next_level, charge_drops, charge_progress, updated_at) VALUES (?, 16, 0, 0, ?)`, asset, T);
+    expect(gridMe(db, owner, T).lore).toEqual({ unlockedDepths: [1], pages: 12 });
+  });
+});

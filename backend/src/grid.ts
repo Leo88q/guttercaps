@@ -7,7 +7,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   GRID, GRID_GIFTS, DAILY_CONFIG_LEVEL, PASS_XP, dailySeed, depthOfLevel, generateLevel, levelSeed, applyRotate, isSolved, hashString,
-  gridBaseXp, gridStarsForMoves, gridXpForStars, QUEST_CHIP_TEMPLATES,
+  gridBaseXp, gridStarsForMoves, gridXpForStars, gridLoreUnlocked, QUEST_CHIP_TEMPLATES,
 } from '@guttercaps/economy';
 import { type Db, now } from './db.ts';
 import { creditChipXp } from './chip-xp.ts';
@@ -622,6 +622,8 @@ export function gridMe(db: Db, wallet: string, t = now()) {
   const endedSeason = db.get<{ id: number }>(`SELECT id FROM seasons WHERE ends_at <= ? ORDER BY id DESC LIMIT 1`, t);
   if (endedSeason) ladderSettled = settleGridLadder(db, endedSeason.id, t);
   const masteredChips = db.scalar(`SELECT COUNT(*) FROM grid_chip_routes r JOIN chips ch ON ch.asset = r.asset WHERE ch.owner = ? AND ch.burned_at IS NULL AND r.next_level > ?`, wallet, GRID.totalLevels);
+  const loreMaxCleared = db.scalar(`SELECT COALESCE(MAX(next_level - 1), 0) FROM grid_chip_routes WHERE asset IN (SELECT asset FROM chips WHERE owner = ? AND burned_at IS NULL)`, wallet);
+  const lore = gridLoreUnlocked(loreMaxCleared);
   const districtMastery = db.all<{ district: number; stars: number; cleared: number }>(
     `SELECT ch.collection_idx AS district, COALESCE(SUM(c.best_stars), 0) AS stars, COUNT(c.level) AS cleared FROM grid_level_claims c JOIN chips ch ON ch.asset = c.asset WHERE ch.owner = ? AND ch.burned_at IS NULL GROUP BY ch.collection_idx ORDER BY ch.collection_idx`, wallet);
   const chips = db.all<{ asset: string; collection_idx: number; rarity: number; level: number; skin: string | null }>(
@@ -660,7 +662,15 @@ export function gridMe(db: Db, wallet: string, t = now()) {
     ladder = { season: ladderSeason.id, myPoints: pts.get(wallet) ?? 0, myRank: sorted.findIndex(([w]) => w === wallet) + 1 || null, top: sorted.slice(0, 10).map(([w, n], i) => ({ rank: i + 1, wallet: w, points: n, me: w === wallet })), settled: ladderSettled, myPayout: db.get<{ season: number; rank: number; amount: string; root_kind: number | null }>(`SELECT season, rank, amount, root_kind FROM grid_ladder_payouts WHERE wallet = ? ORDER BY season DESC LIMIT 1`, wallet) ?? null };
   }
   const deep = { week: deepWeek, level: GRID.totalLevels, attemptsUsed: deepUsed, paidCredits: deepCredits, attemptsLeft: Math.max(0, GRID.deepFreeAttemptsPerWeek + deepCredits - deepUsed), paidAttemptsLeft: Math.max(0, GRID.deepPaidAttemptsPerWeek - deepCredits), attemptPriceCgMicro: GRID.deepAttemptCgMicro, myBest: deepMine ?? null, leaderboard: deepBoard.map((r, i) => ({ rank: i + 1, wallet: r.wallet, moves: r.moves, stars: r.stars, me: r.wallet === wallet })) };
-  return { wallet: ensureGridWallet(db, wallet, t), pendingGranted, floodReward, deepReward, coopReward, districtGoal, ladder, masteredChips, districtMastery, cosmetics, contracts, deep, ghost, fieldThemes, daily: { day: gridDay(t), level: gridDailyLevel(t), district: gridFeaturedDistrict(t), sunday: gridIsSunday(t), epic: gridIsSunday(t) }, chips, gifts, floodWeek: week, flood };
+  return { wallet: ensureGridWallet(db, wallet, t), pendingGranted, floodReward, deepReward, coopReward, districtGoal, ladder, lore: { unlockedDepths: lore.depths, pages: lore.pages }, masteredChips, districtMastery, cosmetics, contracts, deep, ghost, fieldThemes, daily: { day: gridDay(t), level: gridDailyLevel(t), district: gridFeaturedDistrict(t), sunday: gridIsSunday(t), epic: gridIsSunday(t) }, chips, gifts, floodWeek: week, flood };
+}
+
+const ONBOARD_EVENTS = new Set(['shown', 'clicked', 'dismissed']);
+/** Onboarding funnel (Home first-sector card): one row per wallet/event/day. */
+export function recordGridOnboard(db: Db, wallet: string, event: string, t = now()): { ok: true } {
+  if (!ONBOARD_EVENTS.has(event)) throw new ServiceError(422, 'bad_request', 'event must be shown|clicked|dismissed');
+  db.run(`INSERT INTO grid_onboard_events (wallet, event, day, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(wallet, event, day) DO NOTHING`, wallet, event, gridDay(t), t);
+  return { ok: true };
 }
 
 /** Public diver showcase (no auth): depth, stars, mastery and prestige of a wallet's chips. */

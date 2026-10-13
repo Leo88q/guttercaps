@@ -2,7 +2,8 @@ import { Link } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { useMe, useGrid, useGridMe, useQuests, usePendingOps, useStreak, useSeason } from '@/api/hooks';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { api } from '@/api/client';
 import { PreorderBanner } from '@/features/preorder/PreorderBanner';
 import { usePity } from '@/chain/hooks';
 import { useActiveOps } from '@/app/store/txs';
@@ -35,6 +36,11 @@ export default function Home() {
   const gridMe = useGridMe();
   const [onbDismissed, setOnbDismissed] = useState(() => localStorage.getItem('gridOnboardDismissed') === '1');
   const showOnboard = !onbDismissed && (gridMe.data?.chips.length ?? 0) > 0 && (gridMe.data?.chips ?? []).every((c) => c.claims.length === 0 && c.route.nextLevel === 1);
+  const onboardShownRef = useRef(false);
+  useEffect(() => {
+    if (showOnboard && !onboardShownRef.current) { onboardShownRef.current = true; void api.post('/grid/onboard', { event: 'shown' } as never).catch(() => undefined); }
+  }, [showOnboard]);
+  const onboardEvent = (event: 'clicked' | 'dismissed') => { void api.post('/grid/onboard', { event } as never).catch(() => undefined); };
   const active = useActiveOps(publicKey?.toBase58());
   if (!connected) return <Landing onConnect={() => setVisible(true)} />;
 
@@ -67,10 +73,10 @@ export default function Home() {
         <div className="card stack-sm" data-testid="home-grid-onboard" style={{ border: '2px solid var(--acid, #B6FF3C)' }}>
           <div className="row between" style={{ gap: 8 }}>
             <span className="strong">🌊 {t('home.onboardTitle')}</span>
-            <button type="button" className="tiny" onClick={() => { localStorage.setItem('gridOnboardDismissed', '1'); setOnbDismissed(true); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'inherit' }}>✕</button>
+            <button type="button" className="tiny" onClick={() => { onboardEvent('dismissed'); localStorage.setItem('gridOnboardDismissed', '1'); setOnbDismissed(true); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'inherit' }}>✕</button>
           </div>
           <div className="tiny muted">{t('home.onboardText')}</div>
-          <Link className="btn" to="/grid" style={{ textAlign: 'center' }}>{t('home.onboardCta')}</Link>
+          <Link className="btn" to="/grid" style={{ textAlign: 'center' }} onClick={() => onboardEvent('clicked')}>{t('home.onboardCta')}</Link>
         </div>
       )}
 

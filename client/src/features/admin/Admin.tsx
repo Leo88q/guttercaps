@@ -391,6 +391,12 @@ function KpiTab() {
           <div className="small muted">{t('ui.pool')} {fmtUnits(k.arena?.poolCgMicro, 6, 0)} $CG · {t('screens.wagers')} {k.arena?.wagerBattles7d}</div>
         </div>
         <div className="card stack-sm">
+          <div className="strong">🌊 {t('admin.kpi.floodgrid')}</div>
+          <div className="small">{t('admin.kpi.onboard')}: {k.floodgrid?.onboardShown ?? 0} → {k.floodgrid?.onboardCompleted ?? 0} ({pct(k.floodgrid?.onboardConversion)})</div>
+          <div className="small muted">{t('admin.kpi.ladderPlayers')} {k.floodgrid?.ladderPlayers ?? 0} · {t('admin.kpi.ladderPaid')} {fmtUnits(k.floodgrid?.ladderPaidMicro, 6, 0)} $CG · {t('admin.kpi.deepWeek')} {k.floodgrid?.deepResultsThisWeek ?? 0}</div>
+          <div className="small muted">{t('admin.kpi.goalDistricts')} {k.floodgrid?.districtsGoalReachedPrevWeek ?? 0}/8 · {t('admin.kpi.mastered')} {k.floodgrid?.masteredChips ?? 0} · {t('admin.kpi.prestige')} {k.floodgrid?.prestigeChips ?? 0}</div>
+        </div>
+        <div className="card stack-sm">
           <div className="strong">{t('admin.kpi.fraud')}</div>
           <div className="small">{Object.entries(fraud.openSignals ?? {}).map(([kind, n]) => `${fraudSignalLabel(kind)} ${fmtNum(n)}`).join(' · ') || t('admin.fraud.empty')}</div>
           <div className="small muted">{t('admin.params.paused')} {fraud.paused ?? 0} · {t('ui.shadow')} {fraud.shadowBanned ?? 0} · {t('screens.trusted')} {fraud.trusted ?? 0}</div>

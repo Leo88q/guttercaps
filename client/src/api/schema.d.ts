@@ -3277,6 +3277,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/players/{wallet}/grid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public Floodgrid diver showcase for a wallet (depth, stars, mastered chips, prestige, best ladder rank) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    wallet: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description showcase */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/grid/onboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record an onboarding funnel event for the Home first-sector card (shown/clicked/dismissed, one per wallet/day) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        event: "shown" | "clicked" | "dismissed";
+                    };
+                };
+            };
+            responses: {
+                /** @description recorded */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/grid/deep/buy": {
         parameters: {
             query?: never;
@@ -3394,7 +3479,7 @@ export interface paths {
                 };
                 header?: never;
                 path: {
-                    board: "rating" | "wins" | "collection" | "staking" | "fusion";
+                    board: "rating" | "wins" | "collection" | "staking" | "fusion" | "divers";
                 };
                 cookie?: never;
             };
@@ -6224,6 +6309,18 @@ export interface components {
             };
             fraud?: Record<string, never>;
             finality?: Record<string, never>;
+            floodgrid?: {
+                onboardShown?: number;
+                onboardClicked?: number;
+                onboardCompleted?: number;
+                onboardConversion?: number | null;
+                ladderPlayers?: number;
+                ladderPaidMicro?: string;
+                districtsGoalReachedPrevWeek?: number;
+                prestigeChips?: number;
+                masteredChips?: number;
+                deepResultsThisWeek?: number;
+            };
         };
         ActivityPage: {
             items?: {

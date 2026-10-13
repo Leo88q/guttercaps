@@ -1293,6 +1293,17 @@ model GridDeepResult {
   @@map("grid_deep_results")
 }
 
+/// Onboarding funnel events for the first-sector card (shown/clicked/dismissed per day).
+model GridOnboardEvent {
+  wallet    String
+  event     String
+  day       Int
+  createdAt Int    @map("created_at")
+
+  @@id([wallet, event, day])
+  @@map("grid_onboard_events")
+}
+
 /// Prestige descent progress per mastered chip (P1..P5 seals).
 model GridPrestigeRoute {
   asset         String @id

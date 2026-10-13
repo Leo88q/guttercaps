@@ -1,4 +1,6 @@
 import { useCollections } from '@/shared/lib/lore';
+import { GRID_DEPTHS, GRID_LORE } from '@guttercaps/economy';
+import { useGridMe } from '@/api/hooks';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { collectionColor, rarityName } from '@/shared/lib/rarity';
 import { useT } from '@/shared/i18n';
@@ -15,6 +17,8 @@ import { Link } from 'react-router-dom';
 export default function Codex() {
   const COLLECTIONS = useCollections();
   const t = useT();
+  const gridMe = useGridMe();
+  const unlockedDepths = new Set(gridMe.data?.lore?.unlockedDepths ?? []);
   return (
     <div className="page page-bg page-bg-codex">
       <div style={{ marginBottom: 16 }}>
@@ -22,6 +26,31 @@ export default function Codex() {
         <p style={{ fontSize: 12, color: '#888', margin: '4px 0 0' }}>
           {t('ui.codexIntro')}
         </p>
+      </div>
+
+      <div style={{ margin: '28px 0', borderTop: '1px solid #2a2a2a', paddingTop: 16 }}>
+        <strong style={{ fontSize: 16 }}>📖 {t('codex.registry')}</strong>
+        <p style={{ fontSize: 12, color: '#888', margin: '4px 0 12px' }}>{t('codex.registryIntro')} · {gridMe.data?.lore?.pages ?? 0}/60</p>
+        {GRID_DEPTHS.map((d) => {
+          const unlocked = unlockedDepths.has(d.depth);
+          const pages = GRID_LORE.filter((pg) => pg.depth === d.depth);
+          return (
+            <div key={d.depth} style={{ marginBottom: 18 }}>
+              <div style={{ fontFamily: 'var(--cg-font-mono)', fontSize: 12, color: unlocked ? '#B6FF3C' : '#666', marginBottom: 6 }}>{t('grid.depth', { n: d.depth })} · {d.name} {unlocked ? '✔' : '🔒'}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
+                {pages.map((pg) => (
+                  <div key={pg.page} style={{ border: '1px solid #2a2a2a', borderRadius: 10, padding: 10, opacity: unlocked ? 1 : 0.55 }}>
+                    <div style={{ fontFamily: 'var(--cg-font-mono)', fontSize: 10, color: '#666' }}>#{pg.page}</div>
+                    {unlocked ? <>
+                      <div style={{ fontSize: 13, fontWeight: 600, margin: '2px 0' }}>{pg.title}</div>
+                      <div style={{ fontSize: 12, color: '#aaa', lineHeight: 1.5 }}>{pg.body}</div>
+                    </> : <div style={{ fontSize: 12, color: '#777' }}>{t('codex.sealed')}</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {COLLECTIONS.map((col, ci) => (

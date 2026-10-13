@@ -246,6 +246,7 @@ const ru: Messages = {
       metric: 'метрика', baselineCol: 'база', scenario: 'сценарий', guard: 'Ограничитель эмиссии: пол {floor}% графика · ≤ {mult}× сжигания за 7 дней · {zero} $CG/день при нулевом сжигании',
     },
     kpi: {
+      floodgrid: 'Floodgrid', onboard: 'Onboarding shown → completed', ladderPlayers: 'ladder players', ladderPaid: 'ladder paid', deepWeek: 'deep runs this week', goalDistricts: 'districts at goal (prev week)', mastered: 'mastered chips', prestige: 'prestige chips',
       asOf: 'снимок {time}', wallets: 'кошельков', payers30: 'платящих за 30 д', conversion: 'конверсия в 1-й пак', starterToPaid: 'starter → платный', revenue: 'Выручка', usd30: 'USD за 30 д', packs30: 'паков за 30 д', services30: 'услуг за 30 д', marketVol7: 'объём маркета за 7 д',
       economy: 'Экономика', burned7: 'сожжено за 7 д', emitted7: 'эмитировано за 7 д', sinkRatio: 'sink ratio 7 д', guarded: 'защищённая эмиссия', floorIndex: 'индекс флора (Common-экв.)', arena: 'Арена', matches7: 'боёв за 7 д', fraud: 'Антифрод', finality: 'Финальность',
     },
@@ -295,7 +296,7 @@ const ru: Messages = {
     unstaked: 'Сняли до розыгрыша — вас нет в этом круге.',
   },
   verify: { title: 'Доказуемая честность', subtitle: 'Вставьте транзакцию открытия пака. Мы прочитаем ончейн-ролл SlotHashes из события и повторим ровно тот расчёт, что выполнила программа.', placeholder: 'Подпись транзакции', check: 'Проверить', match: 'Совпадает с ончейн-результатом', mismatch: 'Не совпадает — сообщите нам', slotHashes: 'Сид = sha256(ваш commit ‖ SlotHashes[слот+задержка]). Студия никогда не выбирает результат.' },
-  codex: { title: 'Восемь районов' },
+  codex: { registry: 'Подземный реестр', registryIntro: 'Реестр гильдии: 12 страниц на глубину. Закрой глубину любой фишкой, чтобы открыть её страницы.', sealed: 'Запечатано — закрой эту глубину любой фишкой, чтобы читать.', title: 'Восемь районов' },
   errors: { rejected: 'Вы отклонили подпись', insufficient: 'Недостаточно средств', network: 'Ошибка сети — попробуйте снова', stale: 'Котировка устарела — обновите', generic: 'Что-то пошло не так' },
   legal: { title: 'Правовое', terms: 'Условия использования', privacy: 'Конфиденциальность', updated: 'Редакция от {date}', canonical: 'Каноническая версия — на английском; переводы приведены для удобства.', ages: 'Только 18+', noSaleIn: 'паки не продаются в', verify: 'Проверить розыгрыш', notFound: 'Такого документа нет. Есть два:' },
   age: { title: 'Вам есть 18 лет?', body: 'GUTTERCAPS продаёт паки со случайным содержимым. Вам должно быть не меньше {age} и достаточно возраста, чтобы заключать договоры в вашей стране.', termsLink: 'Сначала прочитайте условия', confirm: 'Да, мне {age}+', deny: 'Нет', declined: 'Покупки для вас выключены: игра требует {age}+. Всё, что уже ваше, продолжает работать — коллекция, маркет, стейкинг и арена.', reopen: 'Ответить заново' },

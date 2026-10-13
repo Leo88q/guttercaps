@@ -248,6 +248,13 @@ CREATE TABLE IF NOT EXISTS grid_deep_results (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (wallet, week)
 );
+CREATE TABLE IF NOT EXISTS grid_onboard_events (
+  wallet TEXT NOT NULL,
+  event TEXT NOT NULL,
+  day INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (wallet, event, day)
+);
 CREATE TABLE IF NOT EXISTS grid_prestige_routes (
   asset TEXT PRIMARY KEY,
   prestige_level INTEGER NOT NULL DEFAULT 0,

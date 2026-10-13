@@ -246,6 +246,7 @@ const id: Messages = {
       metric: 'metrik', baselineCol: 'dasar', scenario: 'skenario', guard: 'Pagar emisi: lantai {floor}% dari jadwal · ≤ {mult}× pembakaran 7 hari · {zero} $CG/hari saat pembakaran nol',
     },
     kpi: {
+      floodgrid: 'Floodgrid', onboard: 'Onboarding shown → completed', ladderPlayers: 'ladder players', ladderPaid: 'ladder paid', deepWeek: 'deep runs this week', goalDistricts: 'districts at goal (prev week)', mastered: 'mastered chips', prestige: 'prestige chips',
       asOf: 'snapshot {time}', wallets: 'dompet', payers30: 'pembayar 30h', conversion: 'konversi ke pack pertama', starterToPaid: 'starter → berbayar', revenue: 'Pendapatan', usd30: 'USD 30h', packs30: 'pack 30h', services30: 'layanan 30h', marketVol7: 'volume pasar 7h',
       economy: 'Ekonomi', burned7: 'dibakar 7h', emitted7: 'diemisikan 7h', sinkRatio: 'rasio sink 7h', guarded: 'emisi terjaga', floorIndex: 'indeks lantai (setara Common)', arena: 'Arena', matches7: 'pertandingan 7h', fraud: 'Anti-fraud', finality: 'Finalitas',
     },
@@ -295,7 +296,7 @@ const id: Messages = {
     unstaked: 'Unstake sebelum undian dan kamu keluar.',
   },
   verify: { title: 'Terbukti adil', subtitle: 'Tempel transaksi pembukaan pack. Kami membaca roll on-chain SlotHashes dari event dan menjalankan ulang ekspansi persis seperti yang dipakai program.', placeholder: 'Tanda tangan transaksi', check: 'Verifikasi', match: 'Cocok dengan hasil on-chain', mismatch: 'Tidak cocok — mohon laporkan', slotHashes: 'Seed = sha256(commit kamu ‖ SlotHashes[slot+tunda]). Studio tidak pernah memilih hasil.' },
-  codex: { title: 'Delapan Distrik' },
+  codex: { registry: 'Underground Registry', registryIntro: 'The guild registry: 12 pages per depth. Close a depth with any chip to unseal its pages.', sealed: 'Sealed — close this depth with any chip to read.', title: 'Delapan Distrik' },
   errors: { rejected: 'Anda menolak tanda tangan', insufficient: 'Saldo tidak cukup', network: 'Kesalahan jaringan — coba lagi', stale: 'Kuotasi kedaluwarsa — segarkan', generic: 'Terjadi kesalahan' },
   legal: { title: 'Legal', terms: 'Ketentuan Layanan', privacy: 'Privasi', updated: 'Berlaku sejak {date}', canonical: 'Teks bahasa Inggris adalah versi resmi; terjemahan hanya untuk kemudahan.', ages: 'Hanya 18+', noSaleIn: 'tidak ada penjualan pack di', verify: 'Verifikasi undian', notFound: 'Dokumen itu tidak ada. Yang tersedia:' },
   age: { title: 'Usia Anda 18 atau lebih?', body: 'GUTTERCAPS menjual pack dengan isi acak. Anda harus berusia minimal {age} dan cukup dewasa untuk membuat kontrak di tempat Anda tinggal.', termsLink: 'Baca ketentuan dulu', confirm: 'Saya {age}+', deny: 'Belum', declined: 'Pembelian tetap nonaktif untuk Anda: game ini memerlukan {age}+. Semua yang sudah menjadi milik Anda tetap berjalan — koleksi, pasar, staking, dan arena.', reopen: 'Jawab ulang' },

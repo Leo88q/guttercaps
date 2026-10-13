@@ -90,7 +90,11 @@
 - [x] Витрина ныряльщика: публичный `GET /players/:wallet/grid` (глубина/звёзды/мастера/престиж/лучший ранг ладдера), доска `divers` в лидербордах (сумма лучших звёзд), сердечный бейдж из мастерства.
 - [x] Онбординг: мягкая карточка на Home после первой фишки ведёт в сектор 1 (закрывается крестиком, attach виден по отсутствию клеймов).
 
+### Этап H. Метрики и лор
+- [x] Метрики в админке (`/admin/kpi` → блок Floodgrid): воронка онбординга (shown → completed, события `POST /grid/onboard` shown/clicked/dismissed), участники ладдера текущего сезона, выплаченный ладдер, районы у цели за прошлую неделю, мастера и престиж-фишки.
+- [x] «Подземный реестр»: 60 страниц лора (12 на глубину, `packages/economy/src/gridLore.ts`), открытие по закрытым глубинам любой фишкой, раздел в Кодексе с запечатанными страницами.
+
 ### Этап F. Приёмка
-- [x] `npm run verify`-эквивалент по затронутым пакетам: economy tests+check, backend tests+typecheck, client tests+typecheck+build. (economy 27/27; backend 708/708; client 581/581 + typecheck + прод-сборка; security:static зелёный; api:check 95/95; schema 88 таблиц; Rust unit-тест кривой капель добавлен, cargo-гейт — за CI)
+- [x] `npm run verify`-эквивалент по затронутым пакетам: economy tests+check, backend tests+typecheck, client tests+typecheck+build. (economy 27/27; backend 709/709; client 581/581 + typecheck + прод-сборка; security:static зелёный; api:check 96/96; schema 89 таблиц; Rust unit-тест кривой капель добавлен, cargo-гейт — за CI)
 - [x] Симуляция `population-sim`: когорта «только Решётка» — free share ≤ 20%. ✔ `npm run population:sim`: когорта «только Решётка» = 0.80% free share, верхний предел по всем квестам = 5.74% (лимит 20%).
 

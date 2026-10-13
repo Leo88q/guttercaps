@@ -257,6 +257,7 @@ const en = {
       metric: 'metric', baselineCol: 'baseline', scenario: 'scenario', guard: 'Emission guard: floor {floor}% of the schedule · ≤ {mult}× 7-day burn · {zero} $CG/day at zero burn',
     },
     kpi: {
+      floodgrid: 'Floodgrid', onboard: 'Onboarding shown → completed', ladderPlayers: 'ladder players', ladderPaid: 'ladder paid', deepWeek: 'deep runs this week', goalDistricts: 'districts at goal (prev week)', mastered: 'mastered chips', prestige: 'prestige chips',
       asOf: 'snapshot {time}', wallets: 'wallets', payers30: 'payers 30d', conversion: 'conversion to 1st pack', starterToPaid: 'starter → paid', revenue: 'Revenue', usd30: 'USD 30d', packs30: 'packs 30d', services30: 'services 30d', marketVol7: 'market volume 7d',
       economy: 'Economy', burned7: 'burned 7d', emitted7: 'emitted 7d', sinkRatio: 'sink ratio 7d', guarded: 'guarded emission', floorIndex: 'floor index (Common-eq)', arena: 'Arena', matches7: 'matches 7d', fraud: 'Anti-fraud', finality: 'Finality',
     },
@@ -310,7 +311,7 @@ const en = {
     placeholder: 'Transaction signature', check: 'Verify', match: 'Matches on-chain result', mismatch: 'Does not match — please report this',
     slotHashes: 'Seed = sha256(your commit ‖ SlotHashes[slot+delay]). The studio never picks a result.',
   },
-  codex: { title: 'The Eight Districts' },
+  codex: { registry: 'Underground Registry', registryIntro: 'The guild registry: 12 pages per depth. Close a depth with any chip to unseal its pages.', sealed: 'Sealed — close this depth with any chip to read.', title: 'The Eight Districts' },
   errors: {
     rejected: 'You rejected the signature', insufficient: 'Not enough balance', network: 'Network error — try again', stale: 'Quote expired — refresh', generic: 'Something went wrong',
   },

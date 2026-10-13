@@ -246,6 +246,7 @@ const vi: Messages = {
       metric: 'chỉ số', baselineCol: 'cơ sở', scenario: 'kịch bản', guard: 'Rào chắn phát hành: sàn {floor}% lịch trình · ≤ {mult}× lượng đốt 7 ngày · {zero} $CG/ngày khi đốt bằng 0',
     },
     kpi: {
+      floodgrid: 'Floodgrid', onboard: 'Onboarding shown → completed', ladderPlayers: 'ladder players', ladderPaid: 'ladder paid', deepWeek: 'deep runs this week', goalDistricts: 'districts at goal (prev week)', mastered: 'mastered chips', prestige: 'prestige chips',
       asOf: 'ảnh chụp {time}', wallets: 'ví', payers30: 'người trả 30 ngày', conversion: 'chuyển đổi sang gói đầu', starterToPaid: 'starter → trả phí', revenue: 'Doanh thu', usd30: 'USD 30 ngày', packs30: 'gói 30 ngày', services30: 'dịch vụ 30 ngày', marketVol7: 'khối lượng chợ 7 ngày',
       economy: 'Kinh tế', burned7: 'đã đốt 7 ngày', emitted7: 'đã phát hành 7 ngày', sinkRatio: 'tỷ lệ sink 7 ngày', guarded: 'phát hành có rào chắn', floorIndex: 'chỉ số sàn (quy đổi Common)', arena: 'Đấu trường', matches7: 'trận 7 ngày', fraud: 'Chống gian lận', finality: 'Tính chung thẩm',
     },
@@ -295,7 +296,7 @@ const vi: Messages = {
     unstaked: 'Gỡ stake trước giờ mở là bạn ra khỏi vòng này.',
   },
   verify: { title: 'Công bằng có thể kiểm chứng', subtitle: 'Dán giao dịch mở gói. Chúng tôi đọc roll on-chain SlotHashes từ sự kiện và chạy lại đúng phép mở rộng mà chương trình đã dùng.', placeholder: 'Chữ ký giao dịch', check: 'Kiểm tra', match: 'Khớp với kết quả on-chain', mismatch: 'Không khớp — vui lòng báo cáo', slotHashes: 'Seed = sha256(commit của bạn ‖ SlotHashes[slot+độ trễ]). Studio không bao giờ chọn kết quả.' },
-  codex: { title: 'Tám Quận' },
+  codex: { registry: 'Underground Registry', registryIntro: 'The guild registry: 12 pages per depth. Close a depth with any chip to unseal its pages.', sealed: 'Sealed — close this depth with any chip to read.', title: 'Tám Quận' },
   errors: { rejected: 'Bạn đã từ chối ký', insufficient: 'Không đủ số dư', network: 'Lỗi mạng — thử lại', stale: 'Báo giá hết hạn — làm mới', generic: 'Đã xảy ra lỗi' },
   legal: { title: 'Pháp lý', terms: 'Điều khoản sử dụng', privacy: 'Quyền riêng tư', updated: 'Hiệu lực từ {date}', canonical: 'Bản tiếng Anh là bản chính thức; các bản dịch chỉ để tham khảo.', ages: 'Chỉ 18+', noSaleIn: 'không bán gói tại', verify: 'Kiểm tra một lượt mở', notFound: 'Không có tài liệu này. Hai tài liệu có sẵn:' },
   age: { title: 'Bạn đã đủ 18 tuổi?', body: 'GUTTERCAPS bán các gói có nội dung ngẫu nhiên. Bạn phải từ {age} tuổi trở lên và đủ tuổi giao kết hợp đồng nơi bạn cư trú.', termsLink: 'Đọc điều khoản trước', confirm: 'Tôi đủ {age}+', deny: 'Tôi chưa đủ', declined: 'Chức năng mua vẫn tắt với bạn: trò chơi yêu cầu {age}+. Những gì đã là của bạn vẫn hoạt động — bộ sưu tập, chợ, staking và arena.', reopen: 'Trả lời lại' },

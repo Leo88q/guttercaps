@@ -246,6 +246,7 @@ const fil: Messages = {
       metric: 'metric', baselineCol: 'baseline', scenario: 'scenario', guard: 'Emission guard: floor {floor}% ng iskedyul · ≤ {mult}× 7-araw na burn · {zero} $CG/araw sa zero burn',
     },
     kpi: {
+      floodgrid: 'Floodgrid', onboard: 'Onboarding shown → completed', ladderPlayers: 'ladder players', ladderPaid: 'ladder paid', deepWeek: 'deep runs this week', goalDistricts: 'districts at goal (prev week)', mastered: 'mastered chips', prestige: 'prestige chips',
       asOf: 'snapshot {time}', wallets: 'mga wallet', payers30: 'nagbayad 30a', conversion: 'conversion sa unang pack', starterToPaid: 'starter → bayad', revenue: 'Kita', usd30: 'USD 30a', packs30: 'pack 30a', services30: 'serbisyo 30a', marketVol7: 'market volume 7a',
       economy: 'Ekonomiya', burned7: 'na-burn 7a', emitted7: 'na-emit 7a', sinkRatio: 'sink ratio 7a', guarded: 'guarded emission', floorIndex: 'floor index (Common-eq)', arena: 'Arena', matches7: 'laban 7a', fraud: 'Anti-fraud', finality: 'Finality',
     },
@@ -295,7 +296,7 @@ const fil: Messages = {
     unstaked: 'Mag-unstake bago ang draw at wala ka sa round na ito.',
   },
   verify: { title: 'Mapapatunayang patas', subtitle: 'I-paste ang pack-open na transaksyon. Babasahin namin ang on-chain SlotHashes roll mula sa event at uulitin ang eksaktong expansion na ginamit ng program.', placeholder: 'Transaction signature', check: 'I-verify', match: 'Tugma sa on-chain na resulta', mismatch: 'Hindi tugma — paki-report', slotHashes: 'Seed = sha256(iyong commit ‖ SlotHashes[slot+delay]). Hindi kailanman pumipili ng resulta ang studio.' },
-  codex: { title: 'Ang Walong Distrito' },
+  codex: { registry: 'Underground Registry', registryIntro: 'The guild registry: 12 pages per depth. Close a depth with any chip to unseal its pages.', sealed: 'Sealed — close this depth with any chip to read.', title: 'Ang Walong Distrito' },
   errors: { rejected: 'Tinanggihan mo ang pirma', insufficient: 'Kulang ang balanse', network: 'Network error — subukan ulit', stale: 'Nag-expire ang quote — i-refresh', generic: 'May nagkamali' },
   legal: { title: 'Legal', terms: 'Mga Tuntunin ng Serbisyo', privacy: 'Privacy', updated: 'Epektibo noong {date}', canonical: 'Ang bersyon sa Ingles ang opisyal; ang mga pagsasalin ay para sa kaginhawaan lamang.', ages: '18+ lamang', noSaleIn: 'walang benta ng pack sa', verify: 'Beripikahin ang draw', notFound: 'Wala ang dokumentong iyan. Ang dalawang meron:' },
   age: { title: '18 ka o higit pa?', body: 'Nagbibida ang GUTTERCAPS ng mga pack na random ang laman. Kailangan mong hindi bababa sa {age} at sapat na gulang para makipag-contract kung saan ka nakatira.', termsLink: 'Basahin muna ang tuntunin', confirm: 'Ako ay {age}+', deny: 'Hindi pa', declined: 'Nakadagan para sa iyo ang pagbili: nangangailangan ang laro ng {age}+. Patuloy na gumagana ang lahat ng sa iyo na — koleksyon, merkado, staking at arena.', reopen: 'Sagutin muli' },

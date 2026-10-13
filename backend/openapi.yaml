@@ -808,6 +808,13 @@ paths:
       parameters: [{ in: path, name: wallet, required: true, schema: { type: string } }]
       responses:
         '200': { description: showcase, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+  /grid/onboard:
+    post:
+      tags: [grid]
+      summary: Record an onboarding funnel event for the Home first-sector card (shown/clicked/dismissed, one per wallet/day)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [event], properties: { event: { type: string, enum: [shown, clicked, dismissed] } } } } } }
+      responses:
+        '200': { description: recorded, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
   /grid/deep/buy:
     post:
       tags: [grid]
@@ -1819,6 +1826,7 @@ components:
         arena: { type: object, properties: { season: { type: integer }, endsAt: { type: integer }, poolCgMicro: { type: string }, matches7d: { type: integer }, botShare7d: { type: [number, 'null'] }, wagerBattles7d: { type: integer } } }
         fraud: { type: object }
         finality: { type: object }
+        floodgrid: { type: object, properties: { onboardShown: { type: integer }, onboardClicked: { type: integer }, onboardCompleted: { type: integer }, onboardConversion: { type: [number, 'null'] }, ladderPlayers: { type: integer }, ladderPaidMicro: { type: string }, districtsGoalReachedPrevWeek: { type: integer }, prestigeChips: { type: integer }, masteredChips: { type: integer }, deepResultsThisWeek: { type: integer } } }
     ActivityPage:
       type: object
       properties: { items: { type: array, items: { type: object, properties: { kind: { type: string }, signature: { type: string }, blockTime: { type: string, format: date-time }, payload: {} } } }, nextCursor: { type: [string, 'null'] } }

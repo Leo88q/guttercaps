@@ -185,6 +185,7 @@ on('get', '/grid/me', () => ({
   contracts: [0, 1, 2].map((slot) => { const day = Math.floor(Date.now() / 86_400_000); const depth = 1 + ((day + slot) % 5); const configLevel = depth * 15; return { slot, district: (day * 3 + slot) % 8, depth, configLevel, size: generateLevel(configLevel, 1).size, done: null }; }),
   deep: { week: Math.floor((Date.now() / 1000 - 4 * 86_400) / (7 * 86_400)), level: 75, attemptsUsed: mockDeepUsed, paidCredits: mockDeepCredits, attemptsLeft: Math.max(0, 1 + mockDeepCredits - mockDeepUsed), paidAttemptsLeft: Math.max(0, 3 - mockDeepCredits), attemptPriceCgMicro: 30_000_000, myBest: null, leaderboard: [] },
   ghost: { day: Math.floor(Date.now() / 86_400_000), level: 33, targetMoves: generateLevel(33, 7).parMoves, beaten: mockGhostBeatenDay === Math.floor(Date.now() / 86_400_000) },
+  lore: { unlockedDepths: [1], pages: 12 },
   fieldThemes: entitlements.filter((e) => e.kind === 11).map((e) => String((e.payload as { theme?: string }).theme ?? '')).filter(Boolean),
 }));
 on('get', '/grid/chip/{asset}', (o) => {
@@ -207,6 +208,7 @@ on('post', '/grid/attempt', (o) => {
   return { attemptId: id, level, par: lv.parMoves, moveBudget: Math.ceil(lv.parMoves * budgetMult), route: { nextLevel: r.nextLevel, chargeDrops: r.chargeDrops, chargeProgress: r.chargeProgress }, board: { size: lv.size, bus: lv.bus, receivers: lv.receivers, tiles: lv.tiles.map((tile) => ({ base: tile.base, rot: tile.rot, fixed: tile.fixed, role: tile.role })) } };
 });
 on('post', '/grid/deep/buy', () => { mockDeepCredits = Math.min(3, mockDeepCredits + 1); return { week: 0, credits: mockDeepCredits }; });
+on('post', '/grid/onboard', () => ({ ok: true }));
 on('post', '/grid/complete', (o) => {
   const b = (o.body ?? {}) as { attemptId: string; turns: [number, number][]; useValve?: boolean };
   const a = mockGridAttempts.get(b.attemptId);
