@@ -31,7 +31,7 @@
     "backend:rebuild": "npm --prefix backend run rebuild",
     "backend:test": "npm --prefix backend test",
     "landing:build": "python3 scripts/landing/build.py",
-    "landing:check": "python3 -m unittest discover -s scripts/landing -p '*_test.py' && node --experimental-strip-types scripts/landing/check.ts && node scripts/landing/smoke.mjs",
+    "landing:check": "python3 scripts/landing/build.py && { git rev-parse --is-inside-work-tree >/dev/null 2>&1 && { git diff --quiet -- guttercaps-landing.html || { echo 'guttercaps-landing.html устарел относительно копии: пересоберите (npm run landing:build) и закоммитьте артефакт — CI-джоба landing диффит его так же'; exit 1; }; }; } && python3 -m unittest discover -s scripts/landing -p '*_test.py' && node --experimental-strip-types scripts/landing/check.ts && node scripts/landing/smoke.mjs",
     "assets:inventory": "python3 scripts/asset-inventory.py",
     "assets:qa": "python3 scripts/asset-visual-qa.py",
     "assets:pipeline": "node --experimental-strip-types scripts/art-pipeline.ts",
