@@ -2,10 +2,10 @@
 // route, star XP, Flood charge droplets, diver gear and account gifts. The board engine is
 // the shared deterministic one (@guttercaps/economy); the server replays every submitted
 // move list, so what is played here is exactly what is verified there.
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { GRID, GRID_DEPTHS, componentCount, isSolved, kindOf, poweredCells, tileMask, type Level, type Tile } from '@guttercaps/economy';
+import { GRID, GRID_DEPTHS, componentCount, isSolved, kindOf, poweredCells, rotateMask, type Level, type Tile } from '@guttercaps/economy';
 import { api, ApiError, claimWithRetry, isMock } from '@/api/client';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
@@ -21,6 +21,8 @@ import { fmtCg } from '@/shared/lib/format';
 import { BoltIcon, ContractIcon, DeepIcon, FloodIcon, GhostIcon, GoalIcon, LadderIcon, PrestigeIcon } from '@/shared/ui/GridIcons';
 import { GenBadge } from '@/shared/ui/GenBadge';
 import { Empty, Pill, Progress, Skeleton, Stat } from '@/shared/ui/primitives';
+import { GridBoard } from './GridBoard';
+import { canonicalRotOf, gridStripBgUrl, prefetchDepthForLevel } from './gridArt';
 
 const MATERIAL_HEX: Record<string, string> = { zinc: '#9aa7ad', chrome: '#d7e3ea', rust: '#c96f2e', cast: '#7a7e85', glass: '#7fe7dc' };
 
@@ -37,24 +39,13 @@ type CompleteResult =
 interface PlayState {
   attempt: AttemptStart; mode: 'charge' | 'training' | 'contract' | 'deep' | 'ghost' | 'prestige'; hintsUsed: number;
   initial: number[]; rots: number[]; turns: [number, number][]; hintIndex: number | null; busy: boolean;
+  /** Визуальные четверти поворота по клеткам (накопители для спрайтов, docs/14a). */
+  vis: number[];
 }
 
-function TileSvg({ mask, powered, isBus, isReceiver, fixed, highlight, accent = '#B6FF3C' }: { mask: number; powered: boolean; isBus: boolean; isReceiver: boolean; fixed: boolean; highlight: boolean; accent?: string }) {
-  const c = powered ? accent : '#7A8288';
-  const lines: [number, number][] = [];
-  if (mask & 1) lines.push([20, 0]);
-  if (mask & 2) lines.push([40, 20]);
-  if (mask & 4) lines.push([20, 40]);
-  if (mask & 8) lines.push([0, 20]);
-  return (
-    <svg viewBox="0 0 40 40" style={{ width: '100%', height: '100%', display: 'block' }} aria-hidden>
-      {highlight && <rect x="1" y="1" width="38" height="38" rx="7" fill="none" stroke="#FFD34D" strokeWidth="2.5" />}
-      {lines.map(([x, y], i) => <line key={i} x1="20" y1="20" x2={x} y2={y} stroke={c} strokeWidth={powered ? 5 : 4} strokeLinecap="round" />)}
-      <circle cx="20" cy="20" r={isBus ? 7 : 4.5} fill={isBus ? '#FF7A1A' : c} />
-      {isReceiver && <circle cx="20" cy="20" r="9" fill="none" stroke="#16E5D9" strokeWidth="2" />}
-      {fixed && <circle cx="33" cy="7" r="2" fill="#555" />}
-    </svg>
-  );
+/** Стартовые визуальные углы спрайтов: канонический поворот текущей маски (крест — без поворота). */
+function initialVisOf(tiles: BoardTile[]): number[] {
+  return tiles.map((tile) => (tile.base === 15 ? 0 : canonicalRotOf(rotateMask(tile.base, tile.rot))));
 }
 
 export default function Grid() {
@@ -72,8 +63,6 @@ export default function Grid() {
   const [starting, setStarting] = useState(false);
   const [buyingDeep, setBuyingDeep] = useState(false);
   const [fieldTheme, setFieldTheme] = useState<string>(() => localStorage.getItem('gridFieldTheme') ?? '');
-  const lpTimer = useRef<number | null>(null);
-  const lpFired = useRef(false);
   const { connection } = useConnection();
   const walletLike = useWalletLike();
   const gameCfg = useGameConfig();
@@ -87,6 +76,11 @@ export default function Grid() {
   const claims = useMemo(() => new Map((selected?.claims ?? []).map((c) => [c.level, c])), [selected]);
   const emergencyLevels = chipState.data?.emergency ?? [];
   const wallet = me.data?.wallet;
+
+  // Прогрев арт-набора глубины следующего сектора маршрута — в idle, не на старте доски (docs/14a §6).
+  useEffect(() => {
+    if (selected && !play) prefetchDepthForLevel(Math.min(75, nextLevel));
+  }, [selected, nextLevel, play]);
 
   const localLevel = (p: PlayState): Level => ({
     level: p.attempt.level, seed: 0, size: p.attempt.board.size, bus: p.attempt.board.bus,
@@ -117,7 +111,7 @@ export default function Grid() {
     try {
       const mode = !daily && lv <= nextLevel ? 'charge' : 'training';
       const a = await api.post('/grid/attempt', { asset: selected.asset, level: lv, mode, daily, hintsUsed: mode === 'charge' && useHint ? 1 : 0, ...(useEmergency && emergencyLevels.includes(lv) ? { useEmergency: true } : {}) } as never) as unknown as AttemptStart;
-      setPlay({ attempt: a, mode, hintsUsed: mode === 'charge' && useHint ? 1 : 0, initial: a.board.tiles.map((x) => x.rot), rots: a.board.tiles.map((x) => x.rot), turns: [], hintIndex: null, busy: false });
+      setPlay({ attempt: a, mode, hintsUsed: mode === 'charge' && useHint ? 1 : 0, initial: a.board.tiles.map((x) => x.rot), rots: a.board.tiles.map((x) => x.rot), turns: [], hintIndex: null, busy: false, vis: initialVisOf(a.board.tiles) });
     } catch (e) {
       toast({ kind: 'error', title: e instanceof ApiError ? e.message : { key: 'grid.failed' } });
     } finally { setStarting(false); }
@@ -128,7 +122,7 @@ export default function Grid() {
     setStarting(true); setResult(null);
     try {
       const a = await api.post('/grid/attempt', { asset: selected.asset, kind, ...(slot !== undefined ? { slot } : {}), hintsUsed: 0 } as never) as unknown as AttemptStart;
-      setPlay({ attempt: a, mode: kind, hintsUsed: 0, initial: a.board.tiles.map((x) => x.rot), rots: a.board.tiles.map((x) => x.rot), turns: [], hintIndex: null, busy: false });
+      setPlay({ attempt: a, mode: kind, hintsUsed: 0, initial: a.board.tiles.map((x) => x.rot), rots: a.board.tiles.map((x) => x.rot), turns: [], hintIndex: null, busy: false, vis: initialVisOf(a.board.tiles) });
     } catch (e) {
       toast({ kind: 'error', title: e instanceof ApiError ? e.message : { key: 'grid.failed' } });
     } finally { setStarting(false); }
@@ -171,8 +165,10 @@ export default function Grid() {
     if (!tile || tile.fixed) return;
     const rots = [...play.rots];
     rots[idx] = (((rots[idx] + dir) % 4) + 4) % 4;
+    const vis = [...play.vis];
+    vis[idx] += dir; // накопитель: спрайт крутится непрерывно, без «отмота» через 270°
     const turns: [number, number][] = [...play.turns, [idx, dir]];
-    const next = { ...play, rots, turns, hintIndex: null };
+    const next = { ...play, rots, vis, turns, hintIndex: null };
     const lv = localLevel(next);
     if (isSolved(lv)) { void submit(next, turns); return; }
     setPlay(next);
@@ -182,8 +178,12 @@ export default function Grid() {
     if (!play || play.busy || play.turns.length === 0) return;
     const turns = play.turns.slice(0, -1);
     const rots = [...play.initial];
-    for (const [i, d] of turns) rots[i] = (((rots[i] + d) % 4) + 4) % 4;
-    setPlay({ ...play, turns, rots });
+    const vis = initialVisOf(play.attempt.board.tiles);
+    for (const [i, d] of turns) {
+      rots[i] = (((rots[i] + d) % 4) + 4) % 4;
+      vis[i] += d;
+    }
+    setPlay({ ...play, turns, rots, vis });
   };
 
   const giveUp = async () => {
@@ -353,7 +353,7 @@ export default function Grid() {
                 <GenBadge name="item-valve" size={15} /> {t('grid.useValve')} ({wallet?.valves ?? 0})
               </label>
               {GRID_DEPTHS.map((d) => (
-                <div key={d.depth} className="stack-sm depth-strip" style={{ borderLeftColor: MATERIAL_HEX[d.material] ?? '#333' }}>
+                <div key={d.depth} className="stack-sm depth-strip" style={{ borderLeftColor: MATERIAL_HEX[d.material] ?? '#333', backgroundImage: `linear-gradient(rgba(22, 21, 26, 0.62), rgba(22, 21, 26, 0.8)), url("${gridStripBgUrl(d.depth)}")` }}>
                   <div className="tiny muted">{t('grid.depth', { n: d.depth })} · {d.name} · {d.grid}</div>
                   <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
                     {Array.from({ length: GRID.levelsPerDepth }, (_, i) => d.levels[0] + i).map((lv) => {
@@ -404,25 +404,19 @@ export default function Grid() {
               {overBudget && <div className="tiny" style={{ color: '#FF7A1A' }}>{t('grid.overBudget')}</div>}
               {play.hintsUsed > 0 && <div className="tiny muted">{t('grid.hintReady')}</div>}
               {emergencyLevels.includes(play.attempt.level) && <div className="tiny muted">{t('grid.emergency')}</div>}
-              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${play.attempt.board.size}, 1fr)`, gap: 4, maxWidth: 520, margin: '0 auto', width: '100%' }}>
-                {play.attempt.board.tiles.map((tile, i) => (
-                  <button key={i} type="button" className="grid-tile" disabled={play.busy || tile.fixed}
-                    onPointerDown={() => { lpFired.current = false; if (lpTimer.current) window.clearTimeout(lpTimer.current); lpTimer.current = window.setTimeout(() => { lpFired.current = true; rotate(i, -1); }, 450); }}
-                    onPointerUp={() => { if (lpTimer.current) window.clearTimeout(lpTimer.current); }}
-                    onPointerLeave={() => { if (lpTimer.current) window.clearTimeout(lpTimer.current); }}
-                    onPointerCancel={() => { if (lpTimer.current) window.clearTimeout(lpTimer.current); }}
-                    onClick={() => { if (lpFired.current) { lpFired.current = false; return; } rotate(i, 1); }}
-                    onContextMenu={(e) => { e.preventDefault(); rotate(i, -1); }}
-                    style={{ aspectRatio: '1', borderRadius: 8, background: powered[i] ? 'rgba(182,255,60,.10)' : '#16151A', cursor: tile.fixed ? 'default' : 'pointer', padding: 2 }}
-                    aria-label={t('grid.tileAria', { n: i + 1 })}>
-                    <TileSvg mask={tileMask(playLevel, i)} powered={!!powered[i]} isBus={i === play.attempt.board.bus} isReceiver={play.attempt.board.receivers.includes(i)} fixed={tile.fixed} highlight={play.hintIndex === i} accent={GRID_FIELD_THEMES.find((th) => th.id === fieldTheme)?.hex ?? '#B6F09C'} />
-                  </button>
-                ))}
-              </div>
+              <GridBoard
+                level={playLevel}
+                vis={play.vis}
+                busy={play.busy}
+                hintIndex={play.hintIndex}
+                accent={GRID_FIELD_THEMES.find((th) => th.id === fieldTheme)?.hex ?? '#B6F09C'}
+                onRotate={rotate}
+                tileAria={(n) => t('grid.tileAria', { n })}
+              />
               <div className="tiny muted">{t('grid.rotateHint')}</div>
               <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
                 <Pill onClick={undo} disabled={play.busy || play.turns.length === 0}>{t('grid.undo')}</Pill>
-                <Pill onClick={() => setPlay({ ...play, rots: [...play.initial], turns: [] })} disabled={play.busy}>{t('grid.restart')}</Pill>
+                <Pill onClick={() => setPlay({ ...play, rots: [...play.initial], turns: [], vis: initialVisOf(play.attempt.board.tiles) })} disabled={play.busy}>{t('grid.restart')}</Pill>
                 {play.hintsUsed > 0 && <Pill onClick={showHint} disabled={play.busy}>{t('grid.showHint')}</Pill>}
                 {play.mode === 'charge' && <Pill tone="danger" onClick={() => void giveUp()} disabled={play.busy}>{t('grid.giveUp')}</Pill>}
                 {play.mode === 'training' && <Pill onClick={() => setPlay(null)} disabled={play.busy}>{t('common.close')}</Pill>}
