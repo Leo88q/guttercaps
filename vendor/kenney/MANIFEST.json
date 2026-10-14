@@ -1,0 +1,74 @@
+[
+  {
+    "archive": "kenney_interface-sounds.zip",
+    "pack": "interface-sounds",
+    "sourceUrl": "https://kenney.nl/media/pages/assets/interface-sounds/fa43c1dd4d-1677589452/kenney_interface-sounds.zip",
+    "sourcePage": "https://kenney.nl/assets/interface-sounds",
+    "license": "CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)",
+    "bytes": 834536,
+    "sha256": "f2193d072726d6758a5f7871b2dcc54dcce0d5c35c6f0a62f92549b327c81232"
+  },
+  {
+    "archive": "kenney_ui-audio.zip",
+    "pack": "ui-audio",
+    "sourceUrl": "https://kenney.nl/media/pages/assets/ui-audio/490d233f68-1677590494/kenney_ui-audio.zip",
+    "sourcePage": "https://kenney.nl/assets/ui-audio",
+    "license": "CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)",
+    "bytes": 411949,
+    "sha256": "946fc23a63d535d693eb31b2eabb80c8c28d6351e2186b344ceb71b2cb1d5eb6"
+  },
+  {
+    "archive": "kenney_casino-audio.zip",
+    "pack": "casino-audio",
+    "sourceUrl": "https://kenney.nl/media/pages/assets/casino-audio/2472606a04-1721639069/kenney_casino-audio.zip",
+    "sourcePage": "https://kenney.nl/assets/casino-audio",
+    "license": "CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)",
+    "bytes": 876839,
+    "sha256": "f36250766ac5bc378c13708ddf12a23a8e54a3251f8d482c7536e51b5dbafa18"
+  },
+  {
+    "archive": "kenney_digital-audio.zip",
+    "pack": "digital-audio",
+    "sourceUrl": "https://kenney.nl/media/pages/assets/digital-audio/216eac4753-1677590265/kenney_digital-audio.zip",
+    "sourcePage": "https://kenney.nl/assets/digital-audio",
+    "license": "CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)",
+    "bytes": 990367,
+    "sha256": "24e6ce28b76a6d8c89cff4d331e0965ff5c3de8a73c612028e9d363cc64e4f06"
+  },
+  {
+    "archive": "kenney_splat-pack.zip",
+    "pack": "splat-pack",
+    "sourceUrl": "https://kenney.nl/media/pages/assets/splat-pack/1070534984-1677495350/kenney_splat-pack.zip",
+    "sourcePage": "https://kenney.nl/assets/splat-pack",
+    "license": "CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)",
+    "bytes": 351719,
+    "sha256": "cf50b2671c48fd5b957e249447c9b0dff63c878a538c8e38af282b51f1571925"
+  },
+  {
+    "archive": "kenney_smoke-particles.zip",
+    "pack": "smoke-particles",
+    "sourceUrl": "https://kenney.nl/media/pages/assets/smoke-particles/23249a0d35-1677695171/kenney_smoke-particles.zip",
+    "sourcePage": "https://kenney.nl/assets/smoke-particles",
+    "license": "CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)",
+    "bytes": 6019666,
+    "sha256": "97a1d09c66e4fd6c247c8ea87f84c0cc59caaeceae19414c995afb1616a1e1c9"
+  },
+  {
+    "archive": "kenney_particle-pack.zip",
+    "pack": "particle-pack",
+    "sourceUrl": "https://kenney.nl/media/pages/assets/particle-pack/f8fe0f8cb8-1677578741/kenney_particle-pack.zip",
+    "sourcePage": "https://kenney.nl/assets/particle-pack",
+    "license": "CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)",
+    "bytes": 15001764,
+    "sha256": "b631d4b07f7002549fdcf155f01141ad482f79f3440e4e301eed49ce5f1d8958"
+  },
+  {
+    "archive": "kenney_light-masks-1.0.zip",
+    "pack": "light-masks",
+    "sourceUrl": "https://kenney.nl/media/pages/assets/light-masks/6530e254f9-1775631687/kenney_light-masks-1.0.zip",
+    "sourcePage": "https://kenney.nl/assets/light-masks",
+    "license": "CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)",
+    "bytes": 15017378,
+    "sha256": "e1238694d7e49046e42d67f2975be0217861c7cc9bc358383a8e5e583645004f"
+  }
+]
