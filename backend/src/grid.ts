@@ -6,7 +6,7 @@
 // checkpoints on losses); uncredited remainder is kept as xp_pending, never burned.
 import { randomUUID } from 'node:crypto';
 import {
-  GRID, GRID_GIFTS, DAILY_CONFIG_LEVEL, PASS_XP, dailySeed, depthOfLevel, generateLevel, levelSeed, applyRotate, isSolved, hashString,
+  GRID, GRID_GIFTS, DAILY_CONFIG_LEVEL, PASS_XP, COLLECTIONS, dailySeed, depthOfLevel, generateLevel, levelSeed, applyRotate, isSolved, hashString,
   gridBaseXp, gridStarsForMoves, gridXpForStars, gridLoreUnlocked, QUEST_CHIP_TEMPLATES,
 } from '@guttercaps/economy';
 import { type Db, now } from './db.ts';
@@ -660,7 +660,13 @@ export function gridMe(db: Db, wallet: string, t = now()) {
   const ghostLv = generateLevel(DAILY_CONFIG_LEVEL, gridGhostSeed(gridDay(t)));
   const ghost = { day: gridDay(t), level: DAILY_CONFIG_LEVEL, targetMoves: ghostLv.parMoves, beaten: !!db.get(`SELECT 1 FROM grid_item_grants WHERE wallet = ? AND source = 'ghost_day' AND day = ?`, wallet, gridDay(t)) };
   const fieldThemes = db.all<{ payload: string }>(`SELECT payload FROM entitlements WHERE wallet = ? AND kind = 11 ORDER BY id`, wallet).map((r) => String((JSON.parse(r.payload) as { theme?: string }).theme ?? '')).filter(Boolean);
-  const districtGoal = (db.all<{ district: number; points: number }>(`SELECT district, points FROM grid_flood WHERE week = ? ORDER BY district`, week)).map((f) => ({ district: f.district, points: f.points, goal: GRID.districtGoalPoints, reached: f.points >= GRID.districtGoalPoints }));
+  // Все районы, а не только набравшие очки: пустая карточка «цели района» читается как сломанная,
+  // а не как «на этой неделе район ещё ничего не запечатал».
+  const floodPoints = new Map(db.all<{ district: number; points: number }>(`SELECT district, points FROM grid_flood WHERE week = ? ORDER BY district`, week).map((f) => [f.district, f.points]));
+  const districtGoal = COLLECTIONS.map((_, district) => {
+    const points = floodPoints.get(district) ?? 0;
+    return { district, points, goal: GRID.districtGoalPoints, reached: points >= GRID.districtGoalPoints };
+  });
   const ladderSeason = db.get<{ id: number; starts_at: number; ends_at: number }>(`SELECT id, starts_at, ends_at FROM seasons WHERE starts_at <= ? ORDER BY starts_at DESC LIMIT 1`, t);
   let ladder: unknown = null;
   if (ladderSeason) {

@@ -86,6 +86,11 @@ export default function Grid() {
   /** Шторка выбора сектора: раскрыта/свёрнута и выбранная в ней глубина (свёрнутая сама за собой следит). */
   const [pickOpen, setPickOpen] = useState(false);
   const [pickDepth, setPickDepth] = useState(1);
+  /** Листание глубин в шторке: шаг сразу раскрывает список секторов новой глубины. */
+  const stepDepth = (d: 1 | -1) => {
+    setPickDepth((cur) => Math.min(GRID_DEPTHS.length, Math.max(1, cur + d)));
+    setPickOpen(true);
+  };
   /** Свёрнут ли мобильный полноэкранный оверлей (игроку нужен выход «на страницу»). */
   const [fsCollapsed, setFsCollapsed] = useState(false);
   const coarse = useCoarseViewport();
@@ -264,6 +269,15 @@ export default function Grid() {
   const fullscreen = coarse && !!play && !fsCollapsed;
   const powered = playLevel ? poweredCells(playLevel) : [];
   const connectedPct = powered.length ? Math.round((powered.filter(Boolean).length / powered.length) * 100) : 0;
+  /**
+   * Цель сектора — одна сеть, а не только приёмники: движок считает сектор решённым, когда
+   * ВСЕ трубы соединены с шиной (isSolved), поэтому «все кольца горят» ещё не победа (проверено
+   * на всех 75: авторское решение замыкает 100 % клеток). Показываем остаток — иначе состояние
+   * читается как сломанный уровень.
+   */
+  const receiversLit = !!playLevel && playLevel.receivers.length > 0 && playLevel.receivers.every((i) => powered[i]);
+  const dryHint = !!play && receiversLit && connectedPct < 100;
+  const dryCount = powered.filter((v) => !v).length;
   const overBudget = !!play && (play.mode === 'charge' || play.mode === 'deep') && play.turns.length > play.attempt.moveBudget;
 
   // ── Звук доски (docs/14b §6) ────────────────────────────────────────────────────────
@@ -349,6 +363,8 @@ export default function Grid() {
         <span className="tiny muted">{t('grid.moves', { n: play.turns.length })} · {t('grid.par', { n: play.attempt.par })}{play.mode === 'charge' && <> · {t('grid.budget', { n: play.attempt.moveBudget })}</>} · {t('grid.connected', { n: connectedPct })}{(() => { const d = GRID_DEPTHS.find((x) => play.attempt.level >= x.levels[0] && play.attempt.level < x.levels[0] + GRID.levelsPerDepth); return d ? <> · <span style={{ color: MATERIAL_HEX[d.material] ?? '#9aa7ad' }}>●</span> {d.name}</> : null; })()}</span>
       </div>
       <Progress value={connectedPct} max={100} tone="acid" />
+      {!dryHint && connectedPct < 100 && <div className="tiny muted">{t('grid.goalAll', { n: connectedPct })}</div>}
+      {dryHint && <div className="tiny" style={{ color: '#FF7A1A' }}>{t('grid.dryHint', { n: dryCount })}</div>}
       {overBudget && <div className="tiny" style={{ color: '#FF7A1A' }}>{t('grid.overBudget')}</div>}
       {play.hintsUsed > 0 && <div className="tiny muted">{t('grid.hintReady')}</div>}
       {emergencyLevels.includes(play.attempt.level) && <div className="tiny muted">{t('grid.emergency')}</div>}
@@ -358,6 +374,7 @@ export default function Grid() {
           vis={play.vis}
           busy={play.busy}
           hintIndex={play.hintIndex}
+          dryHint={dryHint}
           accent={GRID_FIELD_THEMES.find((th) => th.id === fieldTheme)?.hex ?? GRID_WATER_HEX}
           onRotate={rotate}
           tileAria={(n) => t('grid.tileAria', { n })}
@@ -468,17 +485,22 @@ export default function Grid() {
             {selected && (selected.route?.nextLevel ?? 1) > 75 ? <>
               <div className="tiny muted">{t('grid.prestigeNext', { p: (selected.prestige?.level ?? 0) + 1, n: selected.prestige?.next ?? 1 })} · P{selected.prestige?.level ?? 0}/5</div>
               <Pill onClick={() => void startSpecial('prestige')} disabled={starting || (selected.prestige?.level ?? 0) >= 5}>{t('grid.startPrestige')}</Pill>
-            </> : <div className="tiny muted">75/75</div>}
+            </> : <div className="tiny muted">{t('grid.prestigeLocked', { n: Math.min(75, selected.route?.nextLevel ?? 1) })}</div>}
           </div>
           <div className="card stack-sm">
             <div className="strong"><span style={{ color: '#FF2E8A', display: 'inline-flex', verticalAlign: -4, marginRight: 6 }}><LadderIcon /></span>{t('grid.ladder')}</div>
-            <div className="tiny">{t('grid.ladderPoints', { n: me.data?.ladder?.myPoints ?? 0 })}{me.data?.ladder?.myRank ? ` · #${me.data.ladder.myRank}` : ''}</div>
+            {!me.data?.ladder ? <div className="tiny muted">{t('grid.ladderEmpty')}</div> : <>
+              <div className="tiny">{t('grid.ladderPoints', { n: me.data.ladder.myPoints })}{me.data.ladder.myRank ? ` · #${me.data.ladder.myRank}` : ''}</div>
+              {me.data.ladder.myPayout && <div className="tiny muted">{fmtCg(me.data.ladder.myPayout.amount, 0)} · #{me.data.ladder.myPayout.rank}{me.data.ladder.myPayout.root_kind == null ? ` · ${t('grid.payoutPending')}` : ''}</div>}
+            </>}
+            {(me.data?.ladder?.top ?? []).length === 0 && <div className="tiny muted">{t('grid.ladderNoRanks')}</div>}
             {(me.data?.ladder?.top ?? []).map((r) => <div key={r.rank} className="tiny mono">#{r.rank} {r.me ? 'you' : `${r.wallet.slice(0, 6)}…`} · {r.points}</div>)}
-            {me.data?.ladder?.myPayout && <div className="tiny muted">{fmtCg(me.data.ladder.myPayout.amount, 0)} · #{me.data.ladder.myPayout.rank}{me.data.ladder.myPayout.root_kind == null ? ` · ${t('grid.payoutPending')}` : ''}</div>}
           </div>
           <div className="card stack-sm">
             <div className="strong"><span style={{ color: '#B6FF3C', display: 'inline-flex', verticalAlign: -4, marginRight: 6 }}><GoalIcon /></span>{t('grid.coopGoal')}</div>
-            {(me.data?.districtGoal ?? []).map((g) => <div key={g.district} className="tiny">#{g.district + 1}: {g.points}/{g.goal} {g.reached ? '✔' : ''}</div>)}
+            {(me.data?.districtGoal ?? []).length === 0
+              ? <div className="tiny muted">{t('grid.coopEmpty')}</div>
+              : (me.data?.districtGoal ?? []).map((g) => <div key={g.district} className="tiny">#{g.district + 1}: {g.points}/{g.goal} {g.reached ? '✔' : ''}</div>)}
             {me.data?.coopReward && <div className="tiny muted">✔ +1 {t('grid.valves')}</div>}
           </div>
         </div>
@@ -499,16 +521,26 @@ export default function Grid() {
 
           {selected && !play && (
             <div className="gt-shutter" data-open={pickOpen ? 'true' : 'false'}>
-              <button type="button" className="gt-shutter-head" aria-expanded={pickOpen} onClick={() => setPickOpen((v) => !v)}>
-                <span className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <span style={{ color: MATERIAL_HEX[GRID_DEPTHS[pickDepth - 1].material] ?? '#9aa7ad', display: 'inline-flex' }}><FloodIcon size={15} /></span>
-                  <span className="strong">{t('grid.depth', { n: pickDepth })} · {GRID_DEPTHS[pickDepth - 1].name} · {t('grid.sector', { n: Math.min(75, nextLevel) })}</span>
-                  <span className="tiny muted">{t('grid.drops')} <GenBadge name="item-drop" size={13} /> {route?.chargeDrops ?? 0}/3</span>
+              <div className="gt-shutter-head">
+                {/* ‹ › листают глубины (75 = 5 × 15): шаг сразу раскрывает шторку, чтобы игрок видел смену секторов. */}
+                <span className="gt-depth-stepper">
+                  <button type="button" onClick={() => stepDepth(-1)} disabled={pickDepth <= 1} aria-label={t('grid.depth', { n: Math.max(1, pickDepth - 1) })}>‹</button>
+                  <button type="button" onClick={() => stepDepth(1)} disabled={pickDepth >= GRID_DEPTHS.length} aria-label={t('grid.depth', { n: Math.min(GRID_DEPTHS.length, pickDepth + 1) })}>›</button>
                 </span>
-                <span className="gt-shutter-chev" aria-hidden><ChevronIcon size={18} /></span>
-              </button>
+                <button type="button" className="gt-shutter-toggle" aria-expanded={pickOpen} onClick={() => setPickOpen((v) => !v)}>
+                  <span className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ color: MATERIAL_HEX[GRID_DEPTHS[pickDepth - 1].material] ?? '#9aa7ad', display: 'inline-flex' }}><FloodIcon size={15} /></span>
+                    <span className="strong">{t('grid.depth', { n: pickDepth })} · {GRID_DEPTHS[pickDepth - 1].name}</span>
+                    <span className="tiny muted">{t('grid.sector', { n: `${GRID_DEPTHS[pickDepth - 1].levels[0]}–${GRID_DEPTHS[pickDepth - 1].levels[0] + GRID.levelsPerDepth - 1}` })}</span>
+                  </span>
+                  <span className="row" style={{ gap: 8, alignItems: 'center' }}>
+                    <span className="tiny muted">{t('grid.routeNext', { n: Math.min(75, nextLevel) })}</span>
+                    <span className="gt-shutter-chev" aria-hidden><ChevronIcon size={18} /></span>
+                  </span>
+                </button>
+              </div>
               <div className="gt-shutter-body">
-                <div className="tiny muted" style={{ padding: '0 12px 8px' }}>{t('grid.selectSector')}</div>
+                <div className="tiny muted" style={{ padding: '0 12px 8px' }}>{t('grid.selectSector')} {t('grid.sectorTotal', { n: GRID.totalLevels })}</div>
                 <div className="depth-strip" style={{ margin: '0 12px 8px', padding: '7px 10px', borderLeftColor: MATERIAL_HEX[GRID_DEPTHS[pickDepth - 1].material] ?? '#333', backgroundImage: `linear-gradient(rgba(22, 21, 26, 0.62), rgba(22, 21, 26, 0.8)), url("${gridStripBgUrl(pickDepth)}")` }}>
                   <div className="tiny muted">{GRID_DEPTHS[pickDepth - 1].grid} · {t('grid.sector', { n: GRID_DEPTHS[pickDepth - 1].levels[0] })}–{GRID_DEPTHS[pickDepth - 1].levels[0] + GRID.levelsPerDepth - 1}</div>
                 </div>

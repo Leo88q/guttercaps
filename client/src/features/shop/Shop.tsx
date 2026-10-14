@@ -33,6 +33,14 @@ import { RESTRICTED_REGIONS } from '@/shared/lib/legal';
 const SKU_IDS: PackId[] = ['starter', 'standard', 'premium', 'limited'];
 const CUR_LABEL = ['SOL', 'USDC', 'CG', 'SKR'] as const;
 
+/** Тиры витрины пака: пол, середина и верх реально выпадающего диапазона (odds > 0). */
+function packFan(odds: number[], floor: number): number[] {
+  const droppable = odds.map((bps, r) => (bps > 0 ? r : -1)).filter((r) => r >= 0 && r >= floor);
+  if (droppable.length === 0) return [floor];
+  const mid = droppable[Math.floor((droppable.length - 1) / 2)];
+  return [droppable[0], mid, droppable[droppable.length - 1]].filter((v, i, a) => a.indexOf(v) === i);
+}
+
 export default function Shop() {
   const catalog = usePackCatalog();
   const cfg = useGameConfig();
@@ -166,8 +174,11 @@ export default function Shop() {
                 {id === 'limited' && <Pill tone="ok">{t('shop.limitedPerks')}</Pill>}
               </div>
 
+              {/* Витрина пака = только те тиры, которые реально выпадают. Раньше третьим всегда
+                  стоял Diamond, хотя Legend/Legend+/Diamond из паков не выпадают вообще
+                  (docs/02 §2.2; on-chain MAX_TOP_TIER_BPS = 0) — витрина обещала лишнее. */}
               <div className="pack-fan" aria-hidden>
-                {[econ.floor, Math.min(8, econ.floor + 3), 8].filter((v, i, a) => a.indexOf(v) === i).map((r) => (
+                {packFan(odds, econ.floor).map((r) => (
                   <span key={r}><ChipArt collection={(sku * 2) % 8} rarity={r} imageUrl={chipArtUrl((sku * 2) % 8, r)} /></span>
                 ))}
               </div>
