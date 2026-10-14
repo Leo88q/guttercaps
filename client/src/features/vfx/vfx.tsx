@@ -48,14 +48,14 @@ export function SteamVeil({ className = '' }: { className?: string }) {
   );
 }
 
-/** Столб света: победа и новая глубина. Дышит в коридоре .14–.30. */
-export function BeamPillar({ color, right = false, breathe = true, style }: {
-  color: BeamColor; right?: boolean; breathe?: boolean; style?: CSSProperties;
+/** Столб света: победа (дышит) и старт deep-нырка (одноразовый свип). Коридор opacity ≤ .30. */
+export function BeamPillar({ color, right = false, breathe = true, sweep = false, style }: {
+  color: BeamColor; right?: boolean; breathe?: boolean; sweep?: boolean; style?: CSSProperties;
 }) {
   return (
     <img
       alt="" aria-hidden loading="lazy" decoding="async"
-      className={`vfx-beam ${breathe ? 'vfx-beam--breathe' : ''}`}
+      className={`vfx-beam ${sweep ? 'vfx-beam--sweep' : breathe ? 'vfx-beam--breathe' : ''}`}
       style={{ [right ? 'right' : 'left']: '4%', ...style }}
       src={`/art/vfx/beams/${color === 'gold' ? 'broad' : 'narrow'}.webp`}
     />
@@ -100,7 +100,38 @@ export function ConfettiFall({ pieces = 16, seed = 7 }: { pieces?: number; seed?
   );
 }
 
-/** Победа в Решётке: конфетти, два луча и две искры — одним слоем. */
+/** Кастомное празднование — залп брызг: палитровые формы splat-pack разлетаются
+ *  из центра одним прохождением (transform/opacity). Заменяет «стоковые» конфетти
+ *  там, где момент точечный: редкий дроп, подпись победы (решение владельца 2026-10-14). */
+export function SplatBurst({ pieces = 6, seed = 3, size = 64 }: { pieces?: number; seed?: number; size?: number }) {
+  const reduced = useUiStore((s) => s.reducedMotion);
+  if (reduced) return null;
+  const rnd = lcg(seed);
+  const variants: SplatVariant[] = ['a', 'b', 'c'];
+  return (
+    <div className="vfx-burst-layer" aria-hidden>
+      {Array.from({ length: pieces }, (_, i) => {
+        const angle = (i / pieces) * Math.PI * 2 + rnd() * 0.6;
+        const dist = 60 + Math.round(rnd() * 70);
+        return (
+          <img
+            key={i} alt="" loading="lazy" decoding="async"
+            className="vfx-burst vfx-burst--pop"
+            style={{
+              ['--bx' as string]: `${Math.round(Math.cos(angle) * dist)}px`,
+              ['--by' as string]: `${Math.round(Math.sin(angle) * dist)}px`,
+              ['--vfx-delay' as string]: `${Math.round(rnd() * 180)}ms`,
+              ['--vfx-size' as string]: `${size - (i % 3) * 10}px`,
+            } as CSSProperties}
+            src={`/art/vfx/splats/${SPLAT_COLORS[i % SPLAT_COLORS.length]}-${variants[i % 3]}.webp`}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+/** Победа в Решётке: конфетти, два луча, две искры и залп брызг — одним слоем. */
 export function WinFx() {
   return (
     <div className="vfx-layer" aria-hidden>
@@ -108,18 +139,21 @@ export function WinFx() {
       <BeamPillar color="cyan" right breathe />
       <SparkPop kind="spark-a" size={64} delayMs={120} style={{ left: '12%', top: '18%' }} />
       <SparkPop kind="glint" size={54} delayMs={320} style={{ right: '14%', top: '30%' }} />
+      <SplatBurst pieces={6} seed={11} size={58} />
       <ConfettiFall pieces={18} seed={11} />
     </div>
   );
 }
 
-/** Редкий дроп (Epic+): кольцо и две вспышки вокруг карточки. */
+/** Редкий дроп (Epic+): кольцо, две вспышки и залп брызг — кастомное празднование
+ *  без прямоугольных конфетти: дроп точечный, конфетти оставлены победе. */
 export function RareDropFx() {
   return (
     <div className="vfx-layer" aria-hidden>
       <SparkPop kind="halo" size={150} style={{ left: '50%', top: '42%', translate: '-50% -50%' }} />
       <SparkPop kind="spark-b" size={70} delayMs={260} style={{ left: '16%', top: '22%' }} />
       <SparkPop kind="glint" size={48} delayMs={420} style={{ right: '18%', top: '58%' }} />
+      <SplatBurst pieces={7} seed={5} size={62} />
     </div>
   );
 }

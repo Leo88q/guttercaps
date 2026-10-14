@@ -22,7 +22,7 @@ import { fmtCg } from '@/shared/lib/format';
 import { BoltIcon, ContractIcon, DeepIcon, FloodIcon, GhostIcon, GoalIcon, LadderIcon, PrestigeIcon } from '@/shared/ui/GridIcons';
 import { GenBadge } from '@/shared/ui/GenBadge';
 import { Empty, Pill, Progress, Skeleton, Stat } from '@/shared/ui/primitives';
-import { SplatBackdrop, SteamVeil, WinFx } from '@/features/vfx/vfx';
+import { BeamPillar, SplatBackdrop, SteamVeil, WinFx } from '@/features/vfx/vfx';
 import { GridBoard } from './GridBoard';
 import { canonicalRotOf, gridMaterialForLevel, gridStripBgUrl, prefetchDepthForLevel } from './gridArt';
 
@@ -488,6 +488,7 @@ export default function Grid() {
                   tileAria={(n) => t('grid.tileAria', { n })}
                 />
                 <SteamVeil />
+                {play.mode === 'deep' && <BeamPillar color="cyan" sweep />}
               </div>
               <div className="tiny muted">{t('grid.rotateHint')}</div>
               <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>

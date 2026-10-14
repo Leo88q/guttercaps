@@ -28,7 +28,7 @@ export function Modal({ open, onClose, title, children, wide, footer }: { open: 
     const onKey = (event: KeyboardEvent) => {
       const dialogs = document.querySelectorAll('[role="dialog"]');
       if (dialogs[dialogs.length - 1] !== dialog.current) return;
-      if (event.key === 'Escape') { event.preventDefault(); close.current(); }
+      if (event.key === 'Escape') { event.preventDefault(); playSound('ui.back'); close.current(); }
       if (event.key !== 'Tab') return;
       const elements = focusable();
       const first = elements[0], last = elements[elements.length - 1];
@@ -52,7 +52,10 @@ export function Modal({ open, onClose, title, children, wide, footer }: { open: 
   }, [open]);
   if (!open) return null;
   return createPortal(
-    <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    // Канонический путь «назад» для звука (docs/14b §8): Escape и клик по подложке — те два
+    // пути, где закрытие однозначно пользовательское; программный onClose (после действия,
+    // при закрытии вложенного диалога) молчит, крестик тоста не трогаем сознательно.
+    <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) { playSound('ui.back'); onClose(); } }}>
       <div ref={dialog} tabIndex={-1} className="modal" role="dialog" aria-modal="true" aria-labelledby={title ? titleId : undefined} style={wide ? { maxWidth: 760 } : undefined}>
         {title && <h3 id={titleId} className="modal-title">{title}</h3>}
         <div className="modal-body">{children}</div>
