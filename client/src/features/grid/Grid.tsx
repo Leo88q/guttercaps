@@ -25,6 +25,7 @@ import { GenBadge } from '@/shared/ui/GenBadge';
 import { Empty, Pill, Progress, Skeleton, Stat } from '@/shared/ui/primitives';
 import { BeamPillar, SplatBackdrop, SteamVeil, WinFx } from '@/features/vfx/vfx';
 import { GridBoard } from './GridBoard';
+import { DropletMeter } from './DropletMeter';
 import { GRID_WATER_HEX, canonicalRotOf, gridBoardBgUrl, gridMaterialForLevel, gridStripBgUrl, prefetchDepthForLevel } from './gridArt';
 
 const MATERIAL_HEX: Record<string, string> = { chrome: '#d7e3ea', rust: '#c96f2e', cast: '#7a7e85', glass: '#7fe7dc' };
@@ -415,7 +416,7 @@ export default function Grid() {
           <div className="row" style={{ gap: 16, flexWrap: 'wrap' }}>
             <span className="row" style={{ gap: 5, alignItems: 'center', color: '#FFD34D' }}><GenBadge name="item-mark" size={19} /><Stat label={t('grid.hints')} value={`${wallet?.hints ?? 0}/${GRID.hintStockCap}`} /></span>
             <span className="row" style={{ gap: 5, alignItems: 'center', color: '#16E5D9' }}><GenBadge name="item-valve" size={19} /><Stat label={t('grid.valves')} value={`${wallet?.valves ?? 0}/${GRID.valveStockCap}`} /></span>
-            <span className="row" style={{ gap: 5, alignItems: 'center', color: '#16E5D9' }}><GenBadge name="item-drop" size={19} /><Stat label={t('grid.drops')} value={`${selected?.route?.chargeDrops ?? 0}/3`} /></span>
+            <span className="row" style={{ gap: 5, alignItems: 'center', color: '#16E5D9' }}><GenBadge name="item-drop" size={19} /><Stat label={t('grid.drops')} icon={<GenBadge name="item-drop" size={19} />} value={<DropletMeter drops={selected?.route?.chargeDrops ?? 0} progress={selected?.route?.chargeProgress ?? 0} size={17} />} /></span>
             <Stat label="★" value={wallet?.total_best_stars ?? 0} />
           </div>
           {(selected?.route?.chargeDrops ?? 0) > 0 && <div className="tiny muted">{t('grid.dropsLive')}{selected?.route?.dropsExpiresAt ? ` · ${fmtLocale.date(selected.route.dropsExpiresAt, getLocale())}` : ''}</div>}
@@ -513,7 +514,7 @@ export default function Grid() {
               <button key={c.asset} type="button" onClick={() => { setAsset(c.asset); setPlay(null); setResult(null); }}
                 style={{ minWidth: 92, border: selected?.asset === c.asset ? '2px solid var(--acid, #B6FF3C)' : '1px solid #333', borderRadius: 12, padding: 8, background: 'transparent', cursor: 'pointer', textAlign: 'center' }}>
                 <ChipArt collection={c.collection} rarity={c.rarity} level={c.chipLevel} size={54} skin={c.skin} />
-                <div className="tiny">Lv{c.chipLevel} · {t('grid.drops')} <GenBadge name="item-drop" size={13} /> {c.route.chargeDrops}/3</div>
+                <div className="tiny row" style={{ gap: 4, justifyContent: 'center' }}>Lv{c.chipLevel} · <DropletMeter drops={c.route.chargeDrops} size={13} showProgress={false} /></div>
                 <div className="tiny muted">{t('grid.routeNext', { n: Math.min(75, c.route.nextLevel) })}</div>
               </button>
             ))}

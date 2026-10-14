@@ -154,6 +154,7 @@ export default function Shop() {
         {packs.map(({ sku, id, econ, api, enabled }) => {
           const counter = counters[sku] ?? 0;
           const odds = effectiveOdds(econ, counter);
+          const fan = packFan(odds, econ.floor);
           const pLegend = probabilityAtLeast(econ, 6);
           const capLeft = econ.dailyCap === null ? null : Math.max(0, econ.dailyCap - (boughtToday[sku] ?? 0));
           const starterGone = id === 'starter' && starterClaimed;
@@ -165,7 +166,7 @@ export default function Shop() {
               <div className="row between">
                 <div className="pack-head">
                   <div className="cg-heading" style={{ fontSize: 22 }}>{packName(sku)}</div>
-                  <div className="muted small pack-sub">{t('shop.perPack', { n: econ.chips })} · {t('shop.floor', { rarity: rarityName(econ.floor) })} · {t(econ.pool === 'featured' ? 'ui.featuredOnly' : 'ui.allEight')}</div>
+                  <div className="muted small pack-sub">{t('shop.perPack', { n: econ.chips })} · {t('shop.floor', { rarity: rarityName(econ.floor) })} · {t('shop.topDrop', { rarity: rarityName(fan[fan.length - 1]) })} · {t(econ.pool === 'featured' ? 'ui.featuredOnly' : 'ui.allEight')}</div>
                 </div>
               </div>
               <div className="pack-badges">
@@ -178,7 +179,7 @@ export default function Shop() {
                   стоял Diamond, хотя Legend/Legend+/Diamond из паков не выпадают вообще
                   (docs/02 §2.2; on-chain MAX_TOP_TIER_BPS = 0) — витрина обещала лишнее. */}
               <div className="pack-fan" aria-hidden>
-                {packFan(odds, econ.floor).map((r) => (
+                {fan.map((r) => (
                   <span key={r}><ChipArt collection={(sku * 2) % 8} rarity={r} imageUrl={chipArtUrl((sku * 2) % 8, r)} /></span>
                 ))}
               </div>
