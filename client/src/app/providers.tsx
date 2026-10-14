@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletDialogProvider } from '@/shared/ui/WalletDialogProvider';
+import { AudioGate } from '@/shared/audio';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { rpcEndpoints } from './rpcEndpoints';
 import { useUiStore } from './store/ui';
@@ -33,6 +34,9 @@ export function Providers({ children }: { children: ReactNode }) {
     <ConnectionProvider endpoint={endpoint} config={config}>
       <WalletProvider wallets={wallets} autoConnect>
         <WaitBridge />
+        {/* Звук: одноразовый гейт жеста + синхронизация с настройкой «Звук и вибрация».
+            Ничего не рисует и до первого pointerdown не создаёт AudioContext (docs/14b §6). */}
+        <AudioGate />
         <WalletDialogProvider>
           <QueryClientProvider client={queryClient}>
             <SessionGate>{children}</SessionGate>

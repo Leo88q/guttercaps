@@ -3,6 +3,7 @@ import { RARITIES, rarityName } from '@/shared/lib/rarity';
 import { packArtUrl } from '@/shared/lib/packArt';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useUiStore } from '@/app/store/ui';
+import { playSound } from '@/shared/audio';
 import './reveal.css';
 
 // Each tier gets its own effect vocabulary, not just a bigger version of
@@ -54,8 +55,12 @@ export function PackRevealAnimation({ rarity, chipName, chipImageUrl, chipArt, i
   }, [config.holdMs]);
 
   // haptics on burst (Android / Seeker via navigator.vibrate) — silent no-op elsewhere
+  // Звук раскрытия живёт в том же эффекте и под тем же условием, что вибрация: фаза burst,
+  // настройка «Звук и вибрация» включена. 940 мс шелеста упаковки (docs/14b §5) покрывают
+  // burst+reveal и заканчиваются к появлению карты.
   useEffect(() => {
     if (phase !== 'burst' || !sound) return;
+    playSound('pack.open');
     try { navigator.vibrate?.(config.shake ? [30, 40, 60] : 20); } catch { /* ignore */ }
   }, [phase, sound, config.shake]);
 
