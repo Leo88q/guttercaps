@@ -3,6 +3,7 @@
 // the shared deterministic one (@guttercaps/economy); the server replays every submitted
 // move list, so what is played here is exactly what is verified there.
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { GRID, GRID_DEPTHS, componentCount, depthOfLevel, isSolved, kindOf, poweredCells, rotateMask, type Level, type Tile } from '@guttercaps/economy';
@@ -319,7 +320,60 @@ export default function Grid() {
     }
   }, [result]);
 
+  // Полноэкранный уровень на мобильном: страница под оверлеем не прокручивается (как в модалке),
+  // сам оверлей скроллится внутри — иначе жест «потянуть» двигал бы фон за доской.
+  useEffect(() => {
+    if (!fullscreen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [fullscreen]);
+
   if (me.isLoading) return <div className="page stack"><Skeleton h={28} w={220} /><Skeleton h={140} /><Skeleton h={300} /></div>;
+
+  const playCard = play && playLevel ? (
+    <div
+      className={fullscreen ? 'gt-fs' : 'card stack-sm'}
+      style={fullscreen ? { ['--grid-page-bg' as string]: `url("${gridBoardBgUrl(pageDepth)}")` } : undefined}
+      role={fullscreen ? 'dialog' : undefined}
+      aria-modal={fullscreen || undefined}
+      aria-label={fullscreen ? t('grid.sector', { n: play.attempt.level }) : undefined}
+    >
+      {fullscreen && <div className="gt-ambient" aria-hidden><SteamVeil /><BeamPillar color="cyan" /></div>}
+      {fullscreen && <div className="gt-fs-bar">
+        <span className="tiny muted">{t('grid.connected', { n: connectedPct })} · {t('grid.moves', { n: play.turns.length })}</span>
+        <Pill onClick={() => setFsCollapsed(true)}>{t('grid.collapse')}</Pill>
+      </div>}
+      <div className="row between" style={{ flexWrap: 'wrap', gap: 8 }}>
+        <span className="strong">{t('grid.sector', { n: play.attempt.level })} · {play.mode === 'charge' ? t('grid.charge') : play.mode === 'contract' ? t('grid.contracts') : play.mode === 'deep' ? t('grid.deep') : play.mode === 'ghost' ? t('grid.ghost') : play.mode === 'prestige' ? t('grid.prestige') : t('grid.training')}</span>
+        <span className="tiny muted">{t('grid.moves', { n: play.turns.length })} · {t('grid.par', { n: play.attempt.par })}{play.mode === 'charge' && <> · {t('grid.budget', { n: play.attempt.moveBudget })}</>} · {t('grid.connected', { n: connectedPct })}{(() => { const d = GRID_DEPTHS.find((x) => play.attempt.level >= x.levels[0] && play.attempt.level < x.levels[0] + GRID.levelsPerDepth); return d ? <> · <span style={{ color: MATERIAL_HEX[d.material] ?? '#9aa7ad' }}>●</span> {d.name}</> : null; })()}</span>
+      </div>
+      <Progress value={connectedPct} max={100} tone="acid" />
+      {overBudget && <div className="tiny" style={{ color: '#FF7A1A' }}>{t('grid.overBudget')}</div>}
+      {play.hintsUsed > 0 && <div className="tiny muted">{t('grid.hintReady')}</div>}
+      {emergencyLevels.includes(play.attempt.level) && <div className="tiny muted">{t('grid.emergency')}</div>}
+      <div className="vfx-host">
+        <GridBoard
+          level={playLevel}
+          vis={play.vis}
+          busy={play.busy}
+          hintIndex={play.hintIndex}
+          accent={GRID_FIELD_THEMES.find((th) => th.id === fieldTheme)?.hex ?? GRID_WATER_HEX}
+          onRotate={rotate}
+          tileAria={(n) => t('grid.tileAria', { n })}
+        />
+      </div>
+      <div className="tiny muted">{t('grid.rotateHint')}</div>
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <Pill onClick={undo} disabled={play.busy || play.turns.length === 0}>{t('grid.undo')}</Pill>
+        <Pill onClick={() => setPlay({ ...play, rots: [...play.initial], turns: [], vis: initialVisOf(play.attempt.board.tiles) })} disabled={play.busy}>{t('grid.restart')}</Pill>
+        {play.hintsUsed > 0 && <Pill onClick={showHint} disabled={play.busy}>{t('grid.showHint')}</Pill>}
+        {play.mode === 'charge' && <Pill tone="danger" onClick={() => void giveUp()} disabled={play.busy}>{t('grid.giveUp')}</Pill>}
+        {play.mode === 'training' && <Pill onClick={() => setPlay(null)} disabled={play.busy}>{t('common.close')}</Pill>}
+        {(play.mode === 'contract' || play.mode === 'deep' || play.mode === 'ghost' || play.mode === 'prestige') && <Pill tone="danger" onClick={() => void giveUp()} disabled={play.busy}>{t('grid.giveUp')}</Pill>}
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div className="page stack grid-screen" style={{ ['--grid-page-bg' as string]: `url("${gridBoardBgUrl(pageDepth)}")` }}>
@@ -519,50 +573,7 @@ export default function Grid() {
             </div>
           )}
 
-          {play && playLevel && (
-            <div
-              className={fullscreen ? 'gt-fs' : 'card stack-sm'}
-              style={fullscreen ? { ['--grid-page-bg' as string]: `url("${gridBoardBgUrl(pageDepth)}")` } : undefined}
-              role={fullscreen ? 'dialog' : undefined}
-              aria-modal={fullscreen || undefined}
-              aria-label={fullscreen ? t('grid.sector', { n: play.attempt.level }) : undefined}
-            >
-              {fullscreen && <div className="gt-ambient" aria-hidden><SteamVeil /><BeamPillar color="cyan" /></div>}
-              {fullscreen && <div className="gt-fs-bar">
-                <span className="tiny muted">{t('grid.connected', { n: connectedPct })} · {t('grid.moves', { n: play.turns.length })}</span>
-                <Pill onClick={() => setFsCollapsed(true)}>{t('grid.collapse')}</Pill>
-              </div>}
-              <div className="row between" style={{ flexWrap: 'wrap', gap: 8 }}>
-                <span className="strong">{t('grid.sector', { n: play.attempt.level })} · {play.mode === 'charge' ? t('grid.charge') : play.mode === 'contract' ? t('grid.contracts') : play.mode === 'deep' ? t('grid.deep') : play.mode === 'ghost' ? t('grid.ghost') : play.mode === 'prestige' ? t('grid.prestige') : t('grid.training')}</span>
-                <span className="tiny muted">{t('grid.moves', { n: play.turns.length })} · {t('grid.par', { n: play.attempt.par })}{play.mode === 'charge' && <> · {t('grid.budget', { n: play.attempt.moveBudget })}</>} · {t('grid.connected', { n: connectedPct })}{(() => { const d = GRID_DEPTHS.find((x) => play.attempt.level >= x.levels[0] && play.attempt.level < x.levels[0] + GRID.levelsPerDepth); return d ? <> · <span style={{ color: MATERIAL_HEX[d.material] ?? '#9aa7ad' }}>●</span> {d.name}</> : null; })()}</span>
-              </div>
-              <Progress value={connectedPct} max={100} tone="acid" />
-              {overBudget && <div className="tiny" style={{ color: '#FF7A1A' }}>{t('grid.overBudget')}</div>}
-              {play.hintsUsed > 0 && <div className="tiny muted">{t('grid.hintReady')}</div>}
-              {emergencyLevels.includes(play.attempt.level) && <div className="tiny muted">{t('grid.emergency')}</div>}
-              <div className="vfx-host">
-                <GridBoard
-                  level={playLevel}
-                  vis={play.vis}
-                  busy={play.busy}
-                  hintIndex={play.hintIndex}
-                  accent={GRID_FIELD_THEMES.find((th) => th.id === fieldTheme)?.hex ?? GRID_WATER_HEX}
-                  onRotate={rotate}
-                  tileAria={(n) => t('grid.tileAria', { n })}
-                />
-              </div>
-              <div className="tiny muted">{t('grid.rotateHint')}</div>
-              <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-                <Pill onClick={undo} disabled={play.busy || play.turns.length === 0}>{t('grid.undo')}</Pill>
-                <Pill onClick={() => setPlay({ ...play, rots: [...play.initial], turns: [], vis: initialVisOf(play.attempt.board.tiles) })} disabled={play.busy}>{t('grid.restart')}</Pill>
-                {play.hintsUsed > 0 && <Pill onClick={showHint} disabled={play.busy}>{t('grid.showHint')}</Pill>}
-                {play.mode === 'charge' && <Pill tone="danger" onClick={() => void giveUp()} disabled={play.busy}>{t('grid.giveUp')}</Pill>}
-                {play.mode === 'training' && <Pill onClick={() => setPlay(null)} disabled={play.busy}>{t('common.close')}</Pill>}
-                {(play.mode === 'contract' || play.mode === 'deep' || play.mode === 'ghost' || play.mode === 'prestige') && <Pill tone="danger" onClick={() => void giveUp()} disabled={play.busy}>{t('grid.giveUp')}</Pill>}
-              </div>
-            </div>
-          )}
-        </>
+          {playCard && (fullscreen ? createPortal(playCard, document.body) : playCard)}        </>
       )}
     </div>
   );

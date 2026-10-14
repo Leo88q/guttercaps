@@ -1091,8 +1091,10 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 .gt-levels button:disabled { cursor: default; }
 .gt-shutter-tools { display: flex; gap: 14px; flex-wrap: wrap; padding: 0 12px 12px; }
 
-/* --- Мобильный полный экран: уровень стартует во весь вьюпорт (без Fullscreen API) --------- */
-.gt-fs { position: fixed; inset: 0; z-index: 80; overflow-y: auto; padding: calc(10px + env(safe-area-inset-top)) 10px calc(16px + env(safe-area-inset-bottom)); background-color: #0b0a0e; background-image: var(--grid-page-bg, none); background-size: cover; background-position: center; }
+/* --- Мобильный полный экран: уровень стартует во весь вьюпорт (без Fullscreen API) ---------
+   Оверлей уходит порталом в body (иначе .shell-main z-index 0 не даёт перекрыть шапку и нижнюю
+   навигацию) и слоем 50: выше контента, ниже модалок 60, «пилюли ожидания» 70 и тостов 80. */
+.gt-fs { position: fixed; inset: 0; z-index: 50; overflow-y: auto; padding: calc(10px + env(safe-area-inset-top)) 10px calc(16px + env(safe-area-inset-bottom)); background-color: #0b0a0e; background-image: var(--grid-page-bg, none); background-size: cover; background-position: center; }
 .gt-fs::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(11, 10, 14, .74), rgba(11, 10, 14, .95) 60%); }
 .gt-fs > * { position: relative; z-index: 1; }
 .gt-fs .gt-board { max-width: 100%; }
