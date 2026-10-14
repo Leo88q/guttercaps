@@ -22,7 +22,7 @@ import { fmtCg } from '@/shared/lib/format';
 import { BoltIcon, ContractIcon, DeepIcon, FloodIcon, GhostIcon, GoalIcon, LadderIcon, PrestigeIcon } from '@/shared/ui/GridIcons';
 import { GenBadge } from '@/shared/ui/GenBadge';
 import { Empty, Pill, Progress, Skeleton, Stat } from '@/shared/ui/primitives';
-import { SteamVeil, WinFx } from '@/features/vfx/vfx';
+import { SplatBackdrop, SteamVeil, WinFx } from '@/features/vfx/vfx';
 import { GridBoard } from './GridBoard';
 import { canonicalRotOf, gridMaterialForLevel, gridStripBgUrl, prefetchDepthForLevel } from './gridArt';
 
@@ -457,7 +457,7 @@ export default function Grid() {
                   {(result.xpGranted ?? 0) > 0 && <span>{t('grid.xp', { n: result.xpGranted })}</span>}
                   {(result.xpPending ?? 0) > 0 && <span>{t('grid.pending', { n: result.xpPending })}</span>}
                   {(result.passXp ?? 0) > 0 && <span>{t('grid.passXp', { n: result.passXp })}</span>}
-                  {result.dropletGained && <span>{t('grid.droplet')}</span>}
+                  {result.dropletGained && <span className="vfx-host" style={{ display: 'inline-block', padding: '2px 10px' }}><SplatBackdrop color="acid" variant="a" size={56} style={{ right: -12, top: -18 }} />{t('grid.droplet')}</span>}
                   {(result.gifts ?? []).map((g, i) => <span key={i}>{t('grid.gift', { kind: g.kind, n: g.amount })}</span>)}
                 </div>}
               </> : <>
