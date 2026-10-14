@@ -2,7 +2,7 @@
 // route, star XP, Flood charge droplets, diver gear and account gifts. The board engine is
 // the shared deterministic one (@guttercaps/economy); the server replays every submitted
 // move list, so what is played here is exactly what is verified there.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { GRID, GRID_DEPTHS, componentCount, isSolved, kindOf, poweredCells, rotateMask, type Level, type Tile } from '@guttercaps/economy';
@@ -16,13 +16,15 @@ import { useGridChip, useGridMe } from '@/api/hooks';
 import { qk } from '@/api/keys';
 import { fmtLocale, getLocale, useT } from '@/shared/i18n';
 import { useUiStore } from '@/app/store/ui';
+import { playSound, prefetchSound } from '@/shared/audio';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { fmtCg } from '@/shared/lib/format';
 import { BoltIcon, ContractIcon, DeepIcon, FloodIcon, GhostIcon, GoalIcon, LadderIcon, PrestigeIcon } from '@/shared/ui/GridIcons';
 import { GenBadge } from '@/shared/ui/GenBadge';
 import { Empty, Pill, Progress, Skeleton, Stat } from '@/shared/ui/primitives';
+import { BeamPillar, SplatBackdrop, SteamVeil, WinFx } from '@/features/vfx/vfx';
 import { GridBoard } from './GridBoard';
-import { canonicalRotOf, gridStripBgUrl, prefetchDepthForLevel } from './gridArt';
+import { canonicalRotOf, gridMaterialForLevel, gridStripBgUrl, prefetchDepthForLevel } from './gridArt';
 
 const MATERIAL_HEX: Record<string, string> = { zinc: '#9aa7ad', chrome: '#d7e3ea', rust: '#c96f2e', cast: '#7a7e85', glass: '#7fe7dc' };
 
@@ -78,8 +80,13 @@ export default function Grid() {
   const wallet = me.data?.wallet;
 
   // Прогрев арт-набора глубины следующего сектора маршрута — в idle, не на старте доски (docs/14a §6).
+  // Рядом греется звук поворота нужного материала: до жеста это no-op, после — минус одна
+  // задержка на первом ходе (docs/14b §6).
   useEffect(() => {
-    if (selected && !play) prefetchDepthForLevel(Math.min(75, nextLevel));
+    if (!selected || play) return;
+    const next = Math.min(75, nextLevel);
+    prefetchDepthForLevel(next);
+    prefetchSound('grid.rotate', { material: gridMaterialForLevel(next) });
   }, [selected, nextLevel, play]);
 
   const localLevel = (p: PlayState): Level => ({
@@ -162,7 +169,12 @@ export default function Grid() {
   const rotate = (idx: number, dir: 1 | -1) => {
     if (!play || play.busy) return;
     const tile = play.attempt.board.tiles[idx];
-    if (!tile || tile.fixed) return;
+    if (!tile) return;
+    const material = gridMaterialForLevel(play.attempt.level);
+    // Закреплённая клетка отвечает мягким «заперто»: игрок тычет в неё намеренно, молчание
+    // читается как баг, а громкий error — как наказание. Один слот на все материалы (docs/14b §2).
+    if (tile.fixed) { playSound('grid.locked'); return; }
+    playSound('grid.rotate', { material });
     const rots = [...play.rots];
     rots[idx] = (((rots[idx] + dir) % 4) + 4) % 4;
     const vis = [...play.vis];
@@ -183,6 +195,9 @@ export default function Grid() {
       rots[i] = (((rots[i] + d) % 4) + 4) % 4;
       vis[i] += d;
     }
+    // Тот же слот поворота, но на 6 % ниже по playbackRate: откат слышится как обратное
+    // движение той же трубы, отдельный файл под undo не заводили (docs/14b §2).
+    playSound('grid.rotate', { material: gridMaterialForLevel(play.attempt.level), rate: 0.94 });
     setPlay({ ...play, turns, rots, vis });
   };
 
@@ -212,12 +227,68 @@ export default function Grid() {
     setPlay({ ...play, hintIndex: best ? (best as { idx: number }).idx : null });
   };
 
-  if (me.isLoading) return <div className="page stack"><Skeleton h={28} w={220} /><Skeleton h={140} /><Skeleton h={300} /></div>;
-
+  // Состояние доски считается до раннего return на загрузке: ниже от него зависят хуки звука,
+  // а порядок хуков между рендерами менять нельзя.
   const playLevel = play ? localLevel(play) : null;
   const powered = playLevel ? poweredCells(playLevel) : [];
   const connectedPct = powered.length ? Math.round((powered.filter(Boolean).length / powered.length) * 100) : 0;
   const overBudget = !!play && (play.mode === 'charge' || play.mode === 'deep') && play.turns.length > play.attempt.moveBudget;
+
+  // ── Звук доски (docs/14b §6) ────────────────────────────────────────────────────────
+  // Шина зажигается на старте сектора, поток — когда powered-клеток стало больше (debounce
+  // 300 мс: серия быстрых поворотов даёт один звук, а не строчит), приёмник — когда поток
+  // дошёл до cyan-кольца. Всё через один менеджер слотов, без if-цепочек по экранам.
+  const audioPowered = powered.filter(Boolean).length;
+  const audioReceivers = playLevel ? playLevel.receivers.filter((i) => powered[i]).length : 0;
+  const boardAudio = useRef({ started: false, powered: 0, receivers: 0, timer: 0 });
+
+  useEffect(() => {
+    const st = boardAudio.current;
+    const cleanup = () => { if (st.timer) { window.clearTimeout(st.timer); st.timer = 0; } };
+    if (!play) {
+      st.started = false; st.powered = 0; st.receivers = 0;
+      return cleanup;
+    }
+    if (!st.started) {
+      st.started = true; st.powered = audioPowered; st.receivers = audioReceivers;
+      playSound('grid.bus');                                   // orange-ядро под током
+      prefetchSound('grid.rotate', { material: gridMaterialForLevel(play.attempt.level) });
+      return cleanup;
+    }
+    if (play.turns.length === 0) {
+      // Рестарт сектора или полный откат: доска вернулась к исходной, отметки потока
+      // обнуляются молча — иначе повторный ход до той же клетки уже не звучал бы.
+      st.powered = audioPowered; st.receivers = audioReceivers;
+      return cleanup;
+    }
+    if (audioReceivers > st.receivers) {
+      playSound('grid.receiver');
+    } else if (audioPowered > st.powered) {
+      cleanup();
+      st.timer = window.setTimeout(() => { st.timer = 0; playSound('grid.flow'); }, 300);
+    }
+    st.powered = Math.max(st.powered, audioPowered);
+    st.receivers = Math.max(st.receivers, audioReceivers);
+    return cleanup;
+  }, [play, audioPowered, audioReceivers]);
+
+  // Итог сектора. Голоса награды разведены по 220/380/520 мс, чтобы не сложиться в один пик:
+  // общая громкость движка 0.9 — запас ровно под это (docs/14b §5).
+  useEffect(() => {
+    if (!result) return;
+    if (!result.ok) { playSound('grid.fail'); return; }
+    playSound('grid.win');
+    if (result.dropletGained) playSound('econ.droplet', { delayMs: 220 });
+    const xp = (result.xpGranted ?? 0) > 0;
+    if (xp) playSound('econ.coin', { delayMs: 380 });
+    // «Забрал» — отложенный до завтра XP и подарки аккаунта. Ставится после XP, если тот уже
+    // занял 380 мс: два голоса одного слота подряд всё равно срезал бы cooldown.
+    if ((result.xpPending ?? 0) > 0 || (result.gifts ?? []).length > 0) {
+      playSound('econ.claim', { delayMs: xp ? 520 : 380 });
+    }
+  }, [result]);
+
+  if (me.isLoading) return <div className="page stack"><Skeleton h={28} w={220} /><Skeleton h={140} /><Skeleton h={300} /></div>;
 
   return (
     <div className="page stack">
@@ -279,9 +350,10 @@ export default function Grid() {
               </div>
             ))}
           </div>
-          <div className="card stack-sm">
+          <div className="card stack-sm vfx-host">
             <div className="strong"><span style={{ color: '#16E5D9', display: 'inline-flex', verticalAlign: -4, marginRight: 6 }}><DeepIcon /></span>{t('grid.deep')}</div>
             <img className="grid-card-art" src="/art/grid-deep.jpg" alt="" aria-hidden loading="lazy" />
+            <SteamVeil />
             <div className="tiny muted">{t('grid.deepHint')}</div>
             <div className="tiny">{t('grid.attemptsLeft', { n: me.data?.deep?.attemptsLeft ?? 0 })}{me.data?.deep?.myBest ? ` · ★${me.data.deep.myBest.stars} · ${me.data.deep.myBest.moves}` : ''}</div>
             <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
@@ -376,7 +448,8 @@ export default function Grid() {
           )}
 
           {result && !play && (
-            <div className="card stack-sm" role="status">
+            <div className="card stack-sm vfx-host" role="status">
+              {result.ok && <WinFx />}
               {result.ok ? <>
                 <div className="strong">{result.training ? t('grid.resultTraining') : result.kind === 'ghost' ? (result.beaten ? t('grid.beaten') : t('grid.solved')) : result.kind === 'deep' && result.rank ? `${t('grid.deep')} · ${t('grid.rank', { n: result.rank })}` : t('grid.solved')}</div>
                 {!result.training && <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
@@ -384,7 +457,7 @@ export default function Grid() {
                   {(result.xpGranted ?? 0) > 0 && <span>{t('grid.xp', { n: result.xpGranted })}</span>}
                   {(result.xpPending ?? 0) > 0 && <span>{t('grid.pending', { n: result.xpPending })}</span>}
                   {(result.passXp ?? 0) > 0 && <span>{t('grid.passXp', { n: result.passXp })}</span>}
-                  {result.dropletGained && <span>{t('grid.droplet')}</span>}
+                  {result.dropletGained && <span className="vfx-host" style={{ display: 'inline-block', padding: '2px 10px' }}><SplatBackdrop color="acid" variant="a" size={56} style={{ right: -12, top: -18 }} />{t('grid.droplet')}</span>}
                   {(result.gifts ?? []).map((g, i) => <span key={i}>{t('grid.gift', { kind: g.kind, n: g.amount })}</span>)}
                 </div>}
               </> : <>
@@ -404,15 +477,19 @@ export default function Grid() {
               {overBudget && <div className="tiny" style={{ color: '#FF7A1A' }}>{t('grid.overBudget')}</div>}
               {play.hintsUsed > 0 && <div className="tiny muted">{t('grid.hintReady')}</div>}
               {emergencyLevels.includes(play.attempt.level) && <div className="tiny muted">{t('grid.emergency')}</div>}
-              <GridBoard
-                level={playLevel}
-                vis={play.vis}
-                busy={play.busy}
-                hintIndex={play.hintIndex}
-                accent={GRID_FIELD_THEMES.find((th) => th.id === fieldTheme)?.hex ?? '#B6F09C'}
-                onRotate={rotate}
-                tileAria={(n) => t('grid.tileAria', { n })}
-              />
+              <div className="vfx-host">
+                <GridBoard
+                  level={playLevel}
+                  vis={play.vis}
+                  busy={play.busy}
+                  hintIndex={play.hintIndex}
+                  accent={GRID_FIELD_THEMES.find((th) => th.id === fieldTheme)?.hex ?? '#B6F09C'}
+                  onRotate={rotate}
+                  tileAria={(n) => t('grid.tileAria', { n })}
+                />
+                <SteamVeil />
+                {play.mode === 'deep' && <BeamPillar color="cyan" sweep />}
+              </div>
               <div className="tiny muted">{t('grid.rotateHint')}</div>
               <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
                 <Pill onClick={undo} disabled={play.busy || play.turns.length === 0}>{t('grid.undo')}</Pill>

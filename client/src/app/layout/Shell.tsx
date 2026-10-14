@@ -6,6 +6,7 @@ import { LanguageIcon, SettingsIcon, QuestsIcon, FusionNavIcon, GuideNavIcon, Gr
 import { useT, useLocale, LOCALE_META, type MessageKey } from '@/shared/i18n';
 import { PaintTrail } from '@/shared/ui/PaintTrail';
 import { Toasts } from '@/shared/ui/primitives';
+import { playSound } from '@/shared/audio';
 import { WaitStatusPill } from './WaitStatusPill';
 import { RevealQueue } from '@/features/reveal/RevealQueue';
 import { BalanceChip } from './BalanceChip';
@@ -83,7 +84,17 @@ export function Shell({ children }: { children: ReactNode }) {
     <div className="shell" ref={shellRef}>
       <nav className="shell-nav" aria-label={t('ui.primaryNav')}>
         {NAV.map(({ to, key, Icon, gen, end }) => (
-          <NavLink key={to} to={to} end={end} className={({ isActive }) => (isActive ? 'active' : '')}>
+          // Вкладка звучит как ui.tab (не ui.click): переход по карте игры — другой жест, чем
+          // нажатие кнопки. Hover — только здесь и только на десктопе, с cooldown 90 мс в
+          // движке, поэтому «веер» звуков при ведении мыши невозможен (docs/14b §2, §6).
+          <NavLink
+            key={to}
+            to={to}
+            end={end}
+            className={({ isActive }) => (isActive ? 'active' : '')}
+            onClick={() => playSound('ui.tab')}
+            onMouseEnter={() => playSound('ui.hover')}
+          >
             {gen
               ? <img src={gen} width={24} height={24} alt="" aria-hidden loading="eager" decoding="async" className="nav-img" />
               : Icon ? <Icon size={24} /> : null}

@@ -3,6 +3,8 @@ import { RARITIES, rarityName } from '@/shared/lib/rarity';
 import { packArtUrl } from '@/shared/lib/packArt';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useUiStore } from '@/app/store/ui';
+import { RareDropFx, SplatBackdrop, raritySplat } from '@/features/vfx/vfx';
+import { playSound } from '@/shared/audio';
 import './reveal.css';
 
 // Each tier gets its own effect vocabulary, not just a bigger version of
@@ -15,7 +17,11 @@ const TIER_CONFIG: Record<string, { holdMs: number; glow: string; particles: num
   Common: { holdMs: 400, glow: '#8a8a8a', particles: 6, shake: false, fx: 'splash' },
   'Common+': { holdMs: 500, glow: '#16E5D9', particles: 8, shake: false, fx: 'splash' },
   Rare: { holdMs: 700, glow: '#16E5D9', particles: 14, shake: false, fx: 'mural' },
-  'Rare+': { holdMs: 900, glow: '#2E8BFF', particles: 18, shake: false, fx: 'mural' },
+  // Rare+ — тот же стальной тон, что и в канонической карте редкостей (RARITY_COLOR[3],
+  // shared/lib/rarity.ts): trust-blue #2E8BFF запрещён вне денежного UI (docs/07 §2.2),
+  // а этим цветом здесь покрашено ещё и название редкости — оно обязано совпадать с
+  // Collection/Arena/Fusion, где тир давно выводится через rarityColor().
+  'Rare+': { holdMs: 900, glow: '#9AD9FF', particles: 18, shake: false, fx: 'mural' },
   Epic: { holdMs: 1200, glow: '#FF2E8A', particles: 26, shake: false, fx: 'grind' },
   'Epic+': { holdMs: 1500, glow: '#FF7A1A', particles: 34, shake: true, fx: 'grind' },
   Legend: { holdMs: 1900, glow: '#FF7A1A', particles: 46, shake: true, fx: 'explosion' },
@@ -54,8 +60,12 @@ export function PackRevealAnimation({ rarity, chipName, chipImageUrl, chipArt, i
   }, [config.holdMs]);
 
   // haptics on burst (Android / Seeker via navigator.vibrate) — silent no-op elsewhere
+  // Звук раскрытия живёт в том же эффекте и под тем же условием, что вибрация: фаза burst,
+  // настройка «Звук и вибрация» включена. 940 мс шелеста упаковки (docs/14b §5) покрывают
+  // burst+reveal и заканчиваются к появлению карты.
   useEffect(() => {
     if (phase !== 'burst' || !sound) return;
+    playSound('pack.open');
     try { navigator.vibrate?.(config.shake ? [30, 40, 60] : 20); } catch { /* ignore */ }
   }, [phase, sound, config.shake]);
 
@@ -104,7 +114,9 @@ export function PackRevealAnimation({ rarity, chipName, chipImageUrl, chipArt, i
         )}
 
         {phase === 'reveal' && (
-          <div className="reveal-chip-card" style={glowStyle}>
+          <div className="reveal-chip-card vfx-host" style={glowStyle}>
+            <SplatBackdrop color={raritySplat(rarity).color} variant={raritySplat(rarity).variant} size={150} style={{ right: -28, top: -32 }} />
+            {rarity >= 4 && <RareDropFx />}
             {isOnChain && <div className="reveal-onchain-badge">NFT</div>}
             <div className="reveal-chip-glow" />
             {chipArt ? <div className="reveal-chip-image">{chipArt}</div> : <img src={chipImageUrl} alt={chipName} className="reveal-chip-image" />}

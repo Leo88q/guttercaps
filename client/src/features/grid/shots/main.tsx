@@ -9,6 +9,7 @@ import '@/shared/ui/layout.css';
 import { GRID_DEPTHS, GRID_FIELD_THEMES, depthOfLevel, generateLevel, hashString, levelSeed, rotateMask, type Level } from '@guttercaps/economy';
 import { GridBoard } from '../GridBoard';
 import { canonicalRotOf, gridStripBgUrl } from '../gridArt';
+import { SteamVeil, WinFx } from '@/features/vfx/vfx';
 
 /** Детерминированно «доигранный» уровень: доля клеток установлена в решение. */
 function partialLevel(level: number, solvedShare: number): Level {
@@ -69,6 +70,35 @@ function StripsShot() {
   );
 }
 
+/** Кадр VFX-слоя (docs/14b §3): пар по кромке доски — та же верстка, что в Grid. */
+function VfxSteamShot() {
+  const lv = partialLevel(33, 0.5);
+  return (
+    <section data-shot="vfx-steam" className="shot-card card stack-sm">
+      <div className="shot-title">vfx: пар по кромке доски · сектор 33 · ржавчина · opacity ≤ .3</div>
+      <div className="vfx-host">
+        <GridBoard level={lv} vis={visOf(lv)} busy={false} hintIndex={null} accent="#B6F09C" onRotate={noop} tileAria={aria} />
+        <SteamVeil />
+      </div>
+    </section>
+  );
+}
+
+/** Кадр VFX-слоя: победный залп — конфетти, два луча, две искры поверх карточки итога. */
+function VfxWinShot() {
+  return (
+    <section data-shot="vfx-win" className="shot-card card stack-sm vfx-host">
+      <WinFx />
+      <div className="strong">Сектор решён · ★3</div>
+      <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
+        <span>+120 XP</span>
+        <span>капля паводка</span>
+      </div>
+      <div className="tiny muted">победный залп: конфетти (чистый CSS), лучи .14–.30, искры одним прохождением; reduced-motion гасит всё</div>
+    </section>
+  );
+}
+
 const SHOT_CSS = `
   body { background: #16151A; color: #d8d6de; overflow: auto !important; }
   html, body, #root { height: auto !important; overflow: auto !important; }
@@ -92,6 +122,8 @@ function App() {
       <BoardShot id="d5" level={75} title="default" />
       <BoardShot id="d5-frost" level={75} title={`тема field-frost ${frost}`} accent={frost} />
       <StripsShot />
+      <VfxSteamShot />
+      <VfxWinShot />
     </div>
   );
 }

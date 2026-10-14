@@ -6,6 +6,7 @@ import { useEffect, useId, useRef, type ButtonHTMLAttributes, type ReactNode } f
 import { ExternalIcon } from '@/shared/ui/action-icons';
 import { createPortal } from 'react-dom';
 import { useUiStore } from '@/app/store/ui';
+import { playSound } from '@/shared/audio';
 
 // A nested dialog may close in the same commit as its parent. Restore scrolling
 // only after the last lock is released, regardless of cleanup order.
@@ -27,7 +28,7 @@ export function Modal({ open, onClose, title, children, wide, footer }: { open: 
     const onKey = (event: KeyboardEvent) => {
       const dialogs = document.querySelectorAll('[role="dialog"]');
       if (dialogs[dialogs.length - 1] !== dialog.current) return;
-      if (event.key === 'Escape') { event.preventDefault(); close.current(); }
+      if (event.key === 'Escape') { event.preventDefault(); playSound('ui.back'); close.current(); }
       if (event.key !== 'Tab') return;
       const elements = focusable();
       const first = elements[0], last = elements[elements.length - 1];
@@ -51,7 +52,10 @@ export function Modal({ open, onClose, title, children, wide, footer }: { open: 
   }, [open]);
   if (!open) return null;
   return createPortal(
-    <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    // Канонический путь «назад» для звука (docs/14b §8): Escape и клик по подложке — те два
+    // пути, где закрытие однозначно пользовательское; программный onClose (после действия,
+    // при закрытии вложенного диалога) молчит, крестик тоста не трогаем сознательно.
+    <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) { playSound('ui.back'); onClose(); } }}>
       <div ref={dialog} tabIndex={-1} className="modal" role="dialog" aria-modal="true" aria-labelledby={title ? titleId : undefined} style={wide ? { maxWidth: 760 } : undefined}>
         {title && <h3 id={titleId} className="modal-title">{title}</h3>}
         <div className="modal-body">{children}</div>
@@ -66,6 +70,17 @@ export function Toasts() {
   const translate = useT();
   const toasts = useUiStore((s) => s.toasts);
   const dismiss = useUiStore((s) => s.dismiss);
+  // Звук тоста — здесь, а не в `useUiStore.toast()`: стор остаётся чистым состоянием, а звучит
+  // только то, что пользователь реально увидел. `seen` хранит лишь живые id, поэтому очередь
+  // тостов не течёт и повторный рендер того же тоста не играет второй раз (docs/14b §6).
+  const seen = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    let fresh = false;
+    for (const item of toasts) if (!seen.current.has(item.id)) { seen.current.add(item.id); fresh = true; }
+    const alive = new Set(toasts.map((item) => item.id));
+    for (const id of [...seen.current]) if (!alive.has(id)) seen.current.delete(id);
+    if (fresh) playSound('ui.toast');
+  }, [toasts]);
   if (!toasts.length) return null;
   return (
     <div className="toasts">
@@ -122,8 +137,13 @@ export function Pill({ children, active, onClick, tone, ...aria }: PillProps) {
   // "button[tabindex]" as an unallowed child of a tablist. Interactive pills stay buttons; the CSS does
   // not care which tag it is.
   if (!onClick && !aria.role) return <span className={cls}>{children}</span>;
+  // Звук — opt-in через общий компонент, а не глобальным listener'ом на клики (docs/14b §6):
+  // кликабельная пилюля звучит, пилюля-подпись нет, disabled не fires вовсе.
+  const handle = onClick
+    ? () => { playSound('ui.click'); onClick(); }
+    : undefined;
   return (
-    <button type="button" className={cls} onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default' }} {...aria}>
+    <button type="button" className={cls} onClick={handle} style={{ cursor: onClick ? 'pointer' : 'default' }} {...aria}>
       {children}
     </button>
   );
