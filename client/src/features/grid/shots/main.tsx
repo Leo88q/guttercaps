@@ -52,7 +52,7 @@ function StripsShot() {
           key={d.depth}
           className="stack-sm depth-strip"
           style={{
-            borderLeftColor: { zinc: '#9aa7ad', chrome: '#d7e3ea', rust: '#c96f2e', cast: '#7a7e85', glass: '#7fe7dc' }[d.material] ?? '#333',
+            borderLeftColor: { chrome: '#d7e3ea', rust: '#c96f2e', cast: '#7a7e85', glass: '#7fe7dc' }[d.material] ?? '#333',
             backgroundImage: `linear-gradient(rgba(22, 21, 26, 0.62), rgba(22, 21, 26, 0.8)), url("${gridStripBgUrl(d.depth)}")`,
           }}
         >

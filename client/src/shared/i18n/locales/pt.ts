@@ -25,6 +25,7 @@ const pt: Messages = {
     xp: '+{n} XP', pending: '{n} XP parked until tomorrow', stars: '{n}★', play: 'Play', replay: 'Replay',
     perfect: 'Perfect', locked: 'Route locked', gifts: 'Account gifts', flood: 'Flood week — district points',
     emergency: 'Emergency mark ready', useValve: 'Valve saves the −6', noChips: 'You need a chip to dive. Open a pack first.',
+    collapse: 'Recolher',
     selectSector: 'All 75 sectors are open for training; the charge route advances sector by sector.',
     resultTraining: 'Training done — no rewards, as promised.', droplet: 'Flood charge +1 💧', gift: 'Gift: {kind} ×{n}',
     overBudget: 'Over the move limit — finishing now settles as a fail.', hintReady: 'Mark armed: one move will be shown.',

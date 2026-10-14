@@ -22,3 +22,4 @@ export const LadderIcon = (p: { size?: number; style?: CSSProperties }) => <G {.
 export const GoalIcon = (p: { size?: number; style?: CSSProperties }) => <G {...p} d={['M12 12m-8.5 0a8.5 8.5 0 1 0 17 0a8.5 8.5 0 1 0-17 0', 'M12 12m-4.5 0a4.5 4.5 0 1 0 9 0a4.5 4.5 0 1 0-9 0', 'M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0-2 0']} />;
 export const FloodIcon = (p: { size?: number; style?: CSSProperties }) => <G {...p} d={['M3 10c2-2.5 4-2.5 6 0s4 2.5 6 0 4-2.5 6 0', 'M3 15c2-2.5 4-2.5 6 0s4 2.5 6 0 4-2.5 6 0', 'M7 4v3', 'M12 3v4', 'M17 4v3']} />;
 export const BoltIcon = (p: { size?: number; style?: CSSProperties }) => <G {...p} d={['M13 2L4.8 13.2h6L9.9 22l8.3-11.2h-6z']} />;
+export const ChevronIcon = (p: { size?: number; style?: CSSProperties }) => <G {...p} d={['M6 9.5l6 6 6-6']} />;

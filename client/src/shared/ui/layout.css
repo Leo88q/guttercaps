@@ -871,10 +871,23 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 .depth-strip { border-left: 4px solid #333; padding-left: 8px; }
 
 /* --- Floodgrid: спрайтовый арт труб по материалам глубин (docs/14a) -----------------------
-   Фон доски — bg-depth-N.webp из Leo88q/1 (через --gt-bg), спрайты — полоса атласа tiles-<material>.webp
-   (500% ширины, кадр по форме порта). Поток — одна переменная --flow-accent (платные темы поля
-   меняют только её). Вся геометрия/логика остаётся у движка; это чисто слой отрисовки. */
-.gt-board { position: relative; overflow: hidden; border-radius: 12px; padding: 9px; background-color: #0e0d11; width: 100%; max-width: 560px; margin: 0 auto; }
+   Спрайты — полоса атласа tiles-<material>.webp (500% ширины, кадр по форме порта). Фото глубины
+   живёт на странице мини-игры (.grid-screen), ячейки однотонные, с фланцем стыка под трубой.
+   Стык труб — три переменные: --gt-gap (зазор сетки), --gt-pad (внутренний отступ ячейки),
+   --gt-zoom (масштаб спрайта — 1.04: труба в кадре идёт до самой кромки, пустого поля по оси 0 px,
+   толщина 70/256; лишние 4 % гасят муар антиалиасинга на стыке соседей, а не щель между ними).
+   Цвет воды — --flow-accent (голубой по умолчанию; платные темы поля меняют только его).
+   Вся геометрия и логика уровней остаются у движка; это только слой отрисовки. */
+
+/* Страница мини-игры: фото глубины как атмосферный фон, поверх него — пар и столб света. */
+.grid-screen { position: relative; isolation: isolate; }
+.grid-screen::before { content: ''; position: absolute; inset: 0; z-index: -3; pointer-events: none; background-image: var(--grid-page-bg, none); background-size: cover; background-position: center; opacity: .34; filter: saturate(.8) contrast(1.06); }
+.grid-screen::after { content: ''; position: absolute; inset: 0; z-index: -2; pointer-events: none; background: linear-gradient(180deg, rgba(11, 10, 14, .5), rgba(11, 10, 14, .88) 62%); }
+.gt-ambient { position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; contain: paint; }
+.gt-ambient .vfx-steam { inset: auto 0 0 0; height: 54%; opacity: .34; }
+.gt-ambient .vfx-beam { opacity: .18; }
+
+.gt-board { --gt-gap: 0px; --gt-pad: 0px; --gt-zoom: 1.04; --gt-cell: #17161c; position: relative; overflow: hidden; border-radius: 12px; padding: 9px; background-color: #0e0d11; width: 100%; max-width: 560px; margin: 0 auto; }
 
 .gt-board::after {
   content: '';
@@ -887,42 +900,45 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
   box-shadow: inset 0 0 26px rgba(5, 4, 7, 0.55);
 }
 
-.gt-grid { position: relative; z-index: 2; display: grid; gap: 4px; }
+.gt-grid { position: relative; z-index: 2; display: grid; gap: var(--gt-gap, 0px); }
 
-/* Ячейка: сквозь frame-паддинг просвечивает фон глубины, поверх — спрайт трубы. */
+/* Ячейка: однотонный стилизованный фон (фото глубины уехало на страницу) + фланец стыка. */
 .grid-tile {
   position: relative;
   aspect-ratio: 1;
-  padding: 5px;
-  border-radius: 10px;
+  padding: var(--gt-pad, 0px);
+  border-radius: 6px;
   overflow: hidden;
-  background: #16151a;
-  transition: background-color .2s ease, box-shadow .2s ease, border-color .12s ease;
+  background: var(--gt-cell, #17161c);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .045);
+  transition: background-color .2s ease, box-shadow .2s ease;
 }
 
-.grid-tile::before {
+/* Фланец соединения: пластина в центре ячейки, под спрайтом трубы. */
+.grid-tile::after {
   content: '';
   position: absolute;
-  inset: 0;
+  inset: 28%;
   z-index: 0;
   pointer-events: none;
-  background-image: var(--gt-bg);
-  background-size: cover;
-  background-position: center;
-  opacity: .5;
+  border-radius: 50%;
+  background: radial-gradient(circle at 42% 36%, rgba(255, 255, 255, .08), rgba(255, 255, 255, .02) 62%, transparent 72%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .05);
 }
 
 .grid-tile-on {
-  background-color: color-mix(in srgb, var(--flow-accent, #B6FF3C) 10%, #16151a);
-  box-shadow: inset 0 0 10px color-mix(in srgb, var(--flow-accent, #B6FF3C) 24%, transparent);
+  background-color: color-mix(in srgb, var(--flow-accent, #49C8F5) 12%, var(--gt-cell, #17161c));
+  box-shadow: inset 0 0 12px color-mix(in srgb, var(--flow-accent, #49C8F5) 26%, transparent);
 }
 
-/* Внутренний слой тайла (TileArt). .gt-s — спрайт-кадр, повёрнут целиком (визуальный угол);
-   .gt-f — тот же кадр маской, залитый акцентом потока: размытый «свет воды» внутри трубы. */
-.gt { position: relative; display: block; width: 100%; height: 100%; z-index: 1; }
+/* Внутренний слой тайла (TileArt). .gt-s — спрайт-кадр, повёрнут целиком (визуальный угол) и
+   масштабирован на стык; .gt-f — «свет воды» (маска того же кадра, акцент потока);
+   .gt-w — текущая вода: полосы по маске трубы, движение background-position. */
+.gt { position: relative; display: block; width: 100%; height: 100%; z-index: 1; isolation: isolate; }
 
 .gt-s,
-.gt-f {
+.gt-f,
+.gt-w {
   position: absolute;
   inset: 0;
   background-size: 500% 100%;
@@ -934,7 +950,7 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 
 .gt-f {
   z-index: 2;
-  background-color: var(--flow-accent, #B6FF3C);
+  background-color: var(--flow-accent, #49C8F5);
   opacity: .42;
   filter: blur(1.2px) saturate(1.25);
   mask-size: 500% 100%;
@@ -945,12 +961,39 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
   animation: gt-flow 2.4s linear infinite;
 }
 
+.gt-w {
+  z-index: 3;
+  pointer-events: none;
+  mask-size: 500% 100%;
+  -webkit-mask-size: 500% 100%;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  background-image:
+    repeating-linear-gradient(112deg, rgba(255, 255, 255, 0) 0 6px, rgba(226, 248, 255, .34) 6px 10px, rgba(255, 255, 255, 0) 10px 17px),
+    linear-gradient(180deg, rgba(126, 226, 255, .3), rgba(24, 148, 224, .52));
+  background-size: 100% 100%, 100% 100%;
+  opacity: .5;
+  mix-blend-mode: screen;
+  animation: gt-water 1.5s linear infinite;
+}
+
+/* Брызги в момент стыковки: один проход поверх спрайта. */
+.gt-splash {
+  position: absolute;
+  inset: -8%;
+  z-index: 6;
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, .9), color-mix(in srgb, var(--flow-accent, #49C8F5) 62%, transparent) 42%, transparent 70%);
+  animation: gt-splash .52s ease-out forwards;
+}
+
 /* Маркеры ролей: приёмник — циановое кольцо (под током ярче), шина — оранжевое ядро с пульсом,
    фиксированная труба — тёмная точка в углу, подсказка — золотая рамка (docs/14a §3). */
 .gt-ring {
   position: absolute;
   inset: 27%;
-  z-index: 3;
+  z-index: 4;
   border: 2px solid #16E5D9;
   border-radius: 50%;
   background: rgba(21, 19, 26, 0.45);
@@ -966,7 +1009,7 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 .gt-bus {
   position: absolute;
   inset: 34%;
-  z-index: 3;
+  z-index: 4;
   border-radius: 50%;
   background: radial-gradient(circle at 42% 36%, #ffa353, #FF7A1A 58%, #8f4006);
   box-shadow: 0 0 8px rgba(255, 122, 26, 0.7);
@@ -986,7 +1029,7 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
   position: absolute;
   top: 10%;
   right: 10%;
-  z-index: 3;
+  z-index: 4;
   width: 10%;
   height: 10%;
   border-radius: 50%;
@@ -999,7 +1042,7 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 .gt-hint {
   position: absolute;
   inset: 1px;
-  z-index: 4;
+  z-index: 5;
   border: 2.5px solid #FFD34D;
   border-radius: 9px;
   box-shadow: 0 0 10px rgba(255, 211, 77, 0.45), inset 0 0 8px rgba(255, 211, 77, 0.22);
@@ -1017,17 +1060,59 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
   100% { transform: scale(1.45); opacity: 0; }
 }
 
+/* Вода течёт: полосы ползут вдоль трубы (обе полосы — один проход 17px, стык не виден). */
+@keyframes gt-water {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 28px -19px, 0 0; }
+}
+
+@keyframes gt-splash {
+  from { transform: scale(.35); opacity: .9; }
+  to { transform: scale(1.45); opacity: 0; }
+}
+
 /* Фото-полосы глубин в списке секторов — кадры расстановки труб (docs/14a §4). */
 .depth-strip { background-size: cover; background-position: center; background-repeat: no-repeat; padding: 9px 11px; border-radius: 10px; }
 
-/* Поток/пульс — только при разрешённой анимации: в reduce всё статично, без моргания. */
+/* --- Выбор сектора: разворачивающаяся шторка вместо пяти полос по 15 кнопок ---------------- */
+.gt-shutter { border: 1px solid #2a2731; border-radius: 12px; background: rgba(23, 22, 28, .72); overflow: hidden; }
+.gt-shutter-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 10px 12px; background: transparent; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.gt-shutter-head:hover { background: rgba(255, 255, 255, .03); }
+.gt-shutter-head:focus-visible { outline: 2px solid var(--cg-acid-green, #B6FF3C); outline-offset: -2px; }
+.gt-shutter-body { max-height: 0; opacity: 0; transition: max-height .3s ease, opacity .22s ease; }
+.gt-shutter[data-open='true'] .gt-shutter-body { max-height: 64vh; opacity: 1; overflow-y: auto; }
+.gt-shutter-chev { display: inline-flex; transition: transform .28s ease; }
+.gt-shutter[data-open='true'] .gt-shutter-chev { transform: rotate(180deg); }
+.gt-depth-pick { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 12px 10px; }
+.gt-depth-pick button { padding: 5px 9px; border-radius: 8px; border: 1px solid #33313a; background: rgba(0, 0, 0, .25); color: inherit; font: inherit; font-size: 12px; cursor: pointer; border-bottom: 3px solid currentColor; }
+.gt-depth-pick button[aria-pressed='true'] { background: rgba(255, 255, 255, .08); border-color: #55525f; }
+.gt-levels { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 0 12px 12px; }
+.gt-levels button { padding: 7px 2px; border-radius: 9px; border: 1px solid #33313a; background: rgba(0, 0, 0, .25); color: inherit; font: inherit; cursor: pointer; text-align: center; }
+.gt-levels button:disabled { cursor: default; }
+.gt-shutter-tools { display: flex; gap: 14px; flex-wrap: wrap; padding: 0 12px 12px; }
+
+/* --- Мобильный полный экран: уровень стартует во весь вьюпорт (без Fullscreen API) --------- */
+.gt-fs { position: fixed; inset: 0; z-index: 80; overflow-y: auto; padding: calc(10px + env(safe-area-inset-top)) 10px calc(16px + env(safe-area-inset-bottom)); background-color: #0b0a0e; background-image: var(--grid-page-bg, none); background-size: cover; background-position: center; }
+.gt-fs::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(11, 10, 14, .74), rgba(11, 10, 14, .95) 60%); }
+.gt-fs > * { position: relative; z-index: 1; }
+.gt-fs .gt-board { max-width: 100%; }
+.gt-fs-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+
+/* Поток/пульс/брызги — только при разрешённой анимации: в reduce всё статично, без моргания. */
 @media (prefers-reduced-motion: reduce) {
   .gt-f { animation: none; opacity: .42; }
+  .gt-w { animation: none; }
+  .gt-splash { animation: none; opacity: .4; }
   .gt-bus::after { animation: none; opacity: .55; }
-  .gt-s, .gt-f { transition: none; }
+  .gt-s, .gt-f, .gt-w { transition: none; }
+  .gt-shutter-body { transition: none; }
 }
 
 html.reduced-motion .gt-f { animation: none; opacity: .42; }
+html.reduced-motion .gt-w { animation: none; }
+html.reduced-motion .gt-splash { animation: none; opacity: .4; }
 html.reduced-motion .gt-bus::after { animation: none; opacity: .55; }
 html.reduced-motion .gt-s,
-html.reduced-motion .gt-f { transition: none; }
+html.reduced-motion .gt-f,
+html.reduced-motion .gt-w { transition: none; }
+html.reduced-motion .gt-shutter-body { transition: none; }

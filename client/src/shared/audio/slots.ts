@@ -11,9 +11,9 @@
 // Kenney измерена и объяснена в docs/14b §5 — там же таблица, по которой эти числа правятся.
 
 /** Материалы глубин Решётки (packages/economy GRID_DEPTHS → client/src/features/grid/gridArt.ts). */
-export type GridMaterial = 'zinc' | 'chrome' | 'rust' | 'cast' | 'glass';
+export type GridMaterial = 'chrome' | 'rust' | 'cast' | 'glass';
 
-export const GRID_MATERIALS: readonly GridMaterial[] = ['zinc', 'chrome', 'rust', 'cast', 'glass'];
+export const GRID_MATERIALS: readonly GridMaterial[] = ['chrome', 'rust', 'cast', 'glass'];
 
 export type SoundSlot =
   | 'ui.click' | 'ui.hover' | 'ui.back' | 'ui.tab' | 'ui.toast'
@@ -57,7 +57,7 @@ export const SOUND_SLOTS: Readonly<Record<SoundSlot, SlotDef>> = {
 
   // ── Решётка: поворот одним слотом, файл выбирает материал глубины ───────────────
   'grid.rotate': {
-    src: (o) => `grid/rotate-${o.material ?? 'zinc'}`,
+    src: (o) => `grid/rotate-${o.material ?? 'glass'}`,
     gain: 0.95,
     cooldownMs: 45,
     warm: true,

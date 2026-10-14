@@ -5,7 +5,7 @@
 import { useRef } from 'react';
 import { depthOfLevel, poweredCells, tileMask, type Level } from '@guttercaps/economy';
 import { TileArt } from './TileArt';
-import { flowDistance, gridBoardBgUrl, gridMaterialForLevel } from './gridArt';
+import { flowDistance, gridMaterialForLevel } from './gridArt';
 
 export interface GridBoardProps {
   /** Текущий уровень с ходами игрока (маски — источник картинки и «под током»). */
@@ -33,7 +33,7 @@ export function GridBoard({ level, vis, busy, hintIndex, accent, onRotate, tileA
     <div
       className="gt-board"
       data-depth={depth}
-      style={{ ['--gt-bg' as string]: `url("${gridBoardBgUrl(depth)}")`, ['--flow-accent' as string]: accent }}
+      style={{ ['--flow-accent' as string]: accent }}
     >
       <div className="gt-grid" style={{ gridTemplateColumns: `repeat(${size}, 1fr)` }}>
         {level.tiles.map((tile, i) => (

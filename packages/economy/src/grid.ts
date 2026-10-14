@@ -53,7 +53,7 @@ export const GRID = {
 } as const;
 
 export const GRID_DEPTHS = [
-  { depth: 1, name: 'Верхние решётки', levels: [1, 15], material: 'zinc', grid: '4×4 → 5×5' },
+  { depth: 1, name: 'Верхние решётки', levels: [1, 15], material: 'glass', grid: '4×4 → 5×5' },
   { depth: 2, name: 'Ртутный коллектор', levels: [16, 30], material: 'chrome', grid: '5×5 → 6×6' },
   { depth: 3, name: 'Терминальный коллектор', levels: [31, 45], material: 'rust', grid: '6×6 → 7×7' },
   { depth: 4, name: 'Глухие камеры', levels: [46, 60], material: 'cast', grid: '7×7' },

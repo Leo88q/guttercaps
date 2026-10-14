@@ -43,7 +43,7 @@ describe('audio assets', () => {
     expect(GRID_MATERIALS.map((m) => slotSource('grid.rotate', { material: m })))
       .toEqual(GRID_MATERIALS.map((m) => `grid/rotate-${m}`));
     // без материала — детерминированный дефолт, а не undefined в URL
-    expect(slotSource('grid.rotate')).toBe('grid/rotate-zinc');
+    expect(slotSource('grid.rotate')).toBe('grid/rotate-glass');
   });
 
   it('на каждый слот лежат оба формата, непустые и с правильными магическими байтами', () => {
