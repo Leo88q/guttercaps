@@ -5,6 +5,7 @@ import { useMe, useGrid, useGridMe, useQuests, usePendingOps, useStreak, useSeas
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/api/client';
 import { PreorderBanner } from '@/features/preorder/PreorderBanner';
+import { SplatBackdrop } from '@/features/vfx/vfx';
 import { usePity } from '@/chain/hooks';
 import { useActiveOps } from '@/app/store/txs';
 import { PACKS, CHIP_XP } from '@guttercaps/economy';
@@ -141,7 +142,8 @@ export default function Home() {
           </div>
           {claimable > 0 && <span className="pill pill-ok">{claimable}</span>}
         </Link>
-        <Link to="/leaderboard" className="card card-hover row" style={{ textDecoration: 'none' }}>
+        <Link to="/leaderboard" className="card card-hover row vfx-host" style={{ textDecoration: 'none' }}>
+          <SplatBackdrop color="cyan" variant="b" size={84} style={{ right: 6, top: -16 }} />
           <GenBadge name="nav-board" size={28} />
           <div className="grow">
             <div className="strong">{t('ui.season')} {season.data?.id ?? '—'}</div>

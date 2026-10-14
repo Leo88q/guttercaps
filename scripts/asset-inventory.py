@@ -195,6 +195,66 @@ def main() -> int:
         "files": art,
     }
 
+    # ── VFX layer (docs/14b §3) ────────────────────────────────────────────
+    # Подкаталог client/public/art/vfx/ сканируется отдельно от фишек: имена здесь
+    # не «<district>-<rarity>-<size>.webp», а «<группа>/<имя>.webp», и бюджеты свои —
+    # слой суммарно ≤ 1 МБ (решение владельца 2026-10-14: научить инвентаризацию,
+    # а не исключать vfx/ из сканирования, иначе вес слоя не проверяет никто).
+    # Предикат trust-blue — тот же, что в scripts/floodgrid-art-build.py::blue_lint.
+    vdir = os.path.join(adir, "vfx")
+    VFX_GROUPS = ("splats", "steam", "sparks", "beams")
+    VFX_FILE_RE = re.compile(r"^(splats|steam|sparks|beams)/[a-z0-9]+(?:-[a-z0-9]+)*\.webp$")
+    VFX_TOTAL_KB, VFX_FILE_KB, VFX_BLUE_MAX = 1000, 40, 0.002
+    vfx, vfx_total = {}, 0
+    if os.path.isdir(vdir):
+        for root, _dirs, names in os.walk(vdir):
+            for f in sorted(names):
+                p = os.path.join(root, f)
+                rp = os.path.relpath(p, vdir).replace(os.sep, "/")
+                if not f.lower().endswith(".webp"):
+                    vfx[rp] = {"file": rel(p), "issues": ["не webp"], "ok": False}
+                    continue
+                rec = scan_generic(p)
+                issues = []
+                if not VFX_FILE_RE.match(rp):
+                    issues.append("имя вне правил <группа>/<имя>.webp (группы: " + ", ".join(VFX_GROUPS) + ")")
+                else:
+                    rec["group"] = rp.split("/")[0]
+                if rec.get("alpha") in (None, "opaque"):
+                    issues.append("нет альфы: VFX живёт поверх арта, а не вместо него")
+                if rec["kb"] > VFX_FILE_KB:
+                    issues.append("тяжелее %d КБ на файл" % VFX_FILE_KB)
+                with Image.open(p) as im:
+                    rgb = im.convert("RGB")
+                    px = rgb.load()
+                    w, h = rgb.size
+                    hits = 0
+                    for y in range(0, h, 4):
+                        for x in range(0, w, 4):
+                            r, g, b = px[x, y]
+                            if b > 120 and b - r > 70 and b - g > 70:
+                                hits += 1
+                ratio = hits / max(1, (w // 4) * (h // 4))
+                rec["blue_pct"] = round(100 * ratio, 4)
+                if ratio > VFX_BLUE_MAX:
+                    issues.append("trust-blue %.2f%% пикселей (docs/07 §2.2)" % (100 * ratio))
+                vfx_total += rec["bytes"]
+                rec["issues"] = issues
+                rec["ok"] = not issues
+                vfx[rp] = rec
+    vfx_kb = kb(vfx_total)
+    report["vfx"] = {
+        "dir": rel(vdir),
+        "count": len(vfx),
+        "groups": sorted({v.get("group", "?") for v in vfx.values()}),
+        "total_kb": vfx_kb,
+        "total_budget_kb": VFX_TOTAL_KB,
+        "over_total_budget": vfx_kb > VFX_TOTAL_KB,
+        "over_file_budget": sorted(k for k, v in vfx.items() if v.get("kb", 0) > VFX_FILE_KB),
+        "failing": sorted(k for k, v in vfx.items() if not v.get("ok")),
+        "files": vfx,
+    }
+
     # ── site art ───────────────────────────────────────────────────────────
     sdir = os.path.join(ROOT, "art_drafts", "site")
     site = {}

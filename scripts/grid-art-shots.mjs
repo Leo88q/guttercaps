@@ -75,6 +75,9 @@ const SHOTS = [
   { id: 'd5', width: 1280, file: 'board-d5-l75-glass.png' },
   { id: 'd5-frost', width: 1280, file: 'board-d5-l75-thema-frost.png' },
   { id: 'strips', width: 1280, file: 'strips.png' },
+  // VFX-слой (docs/14b §3): пар по кромке доски и победный залп
+  { id: 'vfx-steam', width: 1280, file: 'vfx-steam-board.png' },
+  { id: 'vfx-win', width: 1280, file: 'vfx-win-burst.png' },
   // mobile 360×800 dpr 3
   { id: 'd5', width: 360, mobile: true, file: 'mobile-360-d5-l75.png' },
   { id: 'd1', width: 360, mobile: true, file: 'mobile-360-d1-l1.png' },

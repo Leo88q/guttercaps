@@ -3,6 +3,7 @@ import { RARITIES, rarityName } from '@/shared/lib/rarity';
 import { packArtUrl } from '@/shared/lib/packArt';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useUiStore } from '@/app/store/ui';
+import { RareDropFx, SplatBackdrop, raritySplat } from '@/features/vfx/vfx';
 import { playSound } from '@/shared/audio';
 import './reveal.css';
 
@@ -113,7 +114,9 @@ export function PackRevealAnimation({ rarity, chipName, chipImageUrl, chipArt, i
         )}
 
         {phase === 'reveal' && (
-          <div className="reveal-chip-card" style={glowStyle}>
+          <div className="reveal-chip-card vfx-host" style={glowStyle}>
+            <SplatBackdrop color={raritySplat(rarity).color} variant={raritySplat(rarity).variant} size={150} style={{ right: -28, top: -32 }} />
+            {rarity >= 4 && <RareDropFx />}
             {isOnChain && <div className="reveal-onchain-badge">NFT</div>}
             <div className="reveal-chip-glow" />
             {chipArt ? <div className="reveal-chip-image">{chipArt}</div> : <img src={chipImageUrl} alt={chipName} className="reveal-chip-image" />}

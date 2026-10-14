@@ -1,0 +1,124 @@
+/* VFX-слой из CC0-пакетов Kenney (docs/14b §3): брызги, пар, искры, лучи.
+   Всё движение — только transform/opacity, покадровой работы в JS нет.
+   Слой гаснет дважды: media-запросом prefers-reduced-motion и классом
+   html.reduced-motion (паттерн client/src/shared/ui/layout.css).
+   Пар держится ниже opacity .3; свечения — не выше .3 в пике. */
+
+.vfx-host { position: relative; isolation: isolate; }
+
+.vfx-layer, .vfx-steam, .vfx-confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; contain: paint; }
+
+/* ── брызги: граффити-форма под карточкой, одноразовый вход ─────────────── */
+.vfx-splat {
+  position: absolute;
+  z-index: -1; /* под контентом карточки, но выше её фона: хост держит isolation */
+  width: var(--vfx-size, 120px);
+  height: auto;
+  opacity: .42;
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .vfx-splat--in { animation: vfx-splat-in .55s cubic-bezier(.2, 1.25, .4, 1) both; }
+}
+.reduced-motion .vfx-splat--in { animation: none; }
+
+@keyframes vfx-splat-in {
+  from { transform: scale(.86) rotate(-5deg); opacity: 0; }
+  to   { transform: none; opacity: .42; }
+}
+
+/* ── пар: тихий дрейф по кромке, суммарно ≤ .3 ──────────────────────────── */
+.vfx-steam { inset: auto 0 0 0; height: 44%; opacity: .3; }
+.vfx-steam img {
+  position: absolute;
+  bottom: -12%;
+  width: 46%;
+  height: auto;
+  opacity: .8;
+  filter: blur(1px);
+}
+.vfx-steam img:nth-child(1) { left: -6%; }
+.vfx-steam img:nth-child(2) { right: -8%; transform: scaleX(-1); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .vfx-steam img:nth-child(1) { animation: vfx-drift-a 16s ease-in-out infinite; }
+  .vfx-steam img:nth-child(2) { animation: vfx-drift-b 21s ease-in-out infinite; }
+}
+.reduced-motion .vfx-steam img { animation: none; }
+
+@keyframes vfx-drift-a {
+  0%, 100% { transform: translate3d(-3%, 0, 0); }
+  50%      { transform: translate3d(7%, -4%, 0); }
+}
+@keyframes vfx-drift-b {
+  0%, 100% { transform: scaleX(-1) translate3d(-5%, -1%, 0); }
+  50%      { transform: scaleX(-1) translate3d(5%, -5%, 0); }
+}
+
+/* ── лучи: столб света, дышит в коридоре .14–.30 ────────────────────────── */
+.vfx-beam {
+  position: absolute;
+  bottom: -4%;
+  width: 34%;
+  height: 116%;
+  opacity: .2;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .vfx-beam--breathe { animation: vfx-breathe 6s ease-in-out infinite; }
+}
+.reduced-motion .vfx-beam--breathe { animation: none; }
+
+@keyframes vfx-breathe {
+  0%, 100% { opacity: .14; }
+  50%      { opacity: .3; }
+}
+
+/* ── искры и кольцо: одноразовая вспышка ────────────────────────────────── */
+.vfx-spark { position: absolute; width: var(--vfx-size, 72px); height: auto; opacity: 0; pointer-events: none; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .vfx-spark--pop { animation: vfx-pop .8s ease-out both; animation-delay: var(--vfx-delay, 0s); }
+  .vfx-halo--pop  { animation: vfx-halo 1.3s cubic-bezier(.2, .9, .3, 1) both; }
+}
+.reduced-motion .vfx-spark--pop, .reduced-motion .vfx-halo--pop { animation: none; opacity: .5; }
+
+@keyframes vfx-pop {
+  0%   { transform: scale(.4); opacity: 0; }
+  22%  { opacity: .9; }
+  100% { transform: scale(1.2); opacity: 0; }
+}
+@keyframes vfx-halo {
+  0%   { transform: scale(.62) rotate(-18deg); opacity: 0; }
+  55%  { opacity: .75; }
+  100% { transform: none; opacity: .5; }
+}
+
+/* ── конфетти: чистый CSS, палитровные прямоугольники, один проход ──────── */
+.vfx-confetti i {
+  position: absolute;
+  top: -6%;
+  left: var(--x);
+  width: 6px;
+  height: 10px;
+  border-radius: 1px;
+  background: var(--c);
+  opacity: 0;
+  transform: rotate(var(--r));
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .vfx-confetti i {
+    animation: vfx-fall 1.7s cubic-bezier(.35, .1, .65, 1) forwards;
+    animation-delay: var(--d);
+  }
+}
+
+@keyframes vfx-fall {
+  0%   { transform: translate3d(0, 0, 0) rotate(var(--r)); opacity: 0; }
+  10%  { opacity: .95; }
+  100% { transform: translate3d(var(--dx), 300px, 0) rotate(var(--r2)); opacity: 0; }
+}

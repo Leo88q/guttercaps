@@ -22,6 +22,7 @@ import { fmtCg } from '@/shared/lib/format';
 import { BoltIcon, ContractIcon, DeepIcon, FloodIcon, GhostIcon, GoalIcon, LadderIcon, PrestigeIcon } from '@/shared/ui/GridIcons';
 import { GenBadge } from '@/shared/ui/GenBadge';
 import { Empty, Pill, Progress, Skeleton, Stat } from '@/shared/ui/primitives';
+import { SteamVeil, WinFx } from '@/features/vfx/vfx';
 import { GridBoard } from './GridBoard';
 import { canonicalRotOf, gridMaterialForLevel, gridStripBgUrl, prefetchDepthForLevel } from './gridArt';
 
@@ -349,9 +350,10 @@ export default function Grid() {
               </div>
             ))}
           </div>
-          <div className="card stack-sm">
+          <div className="card stack-sm vfx-host">
             <div className="strong"><span style={{ color: '#16E5D9', display: 'inline-flex', verticalAlign: -4, marginRight: 6 }}><DeepIcon /></span>{t('grid.deep')}</div>
             <img className="grid-card-art" src="/art/grid-deep.jpg" alt="" aria-hidden loading="lazy" />
+            <SteamVeil />
             <div className="tiny muted">{t('grid.deepHint')}</div>
             <div className="tiny">{t('grid.attemptsLeft', { n: me.data?.deep?.attemptsLeft ?? 0 })}{me.data?.deep?.myBest ? ` · ★${me.data.deep.myBest.stars} · ${me.data.deep.myBest.moves}` : ''}</div>
             <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
@@ -446,7 +448,8 @@ export default function Grid() {
           )}
 
           {result && !play && (
-            <div className="card stack-sm" role="status">
+            <div className="card stack-sm vfx-host" role="status">
+              {result.ok && <WinFx />}
               {result.ok ? <>
                 <div className="strong">{result.training ? t('grid.resultTraining') : result.kind === 'ghost' ? (result.beaten ? t('grid.beaten') : t('grid.solved')) : result.kind === 'deep' && result.rank ? `${t('grid.deep')} · ${t('grid.rank', { n: result.rank })}` : t('grid.solved')}</div>
                 {!result.training && <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
@@ -474,15 +477,18 @@ export default function Grid() {
               {overBudget && <div className="tiny" style={{ color: '#FF7A1A' }}>{t('grid.overBudget')}</div>}
               {play.hintsUsed > 0 && <div className="tiny muted">{t('grid.hintReady')}</div>}
               {emergencyLevels.includes(play.attempt.level) && <div className="tiny muted">{t('grid.emergency')}</div>}
-              <GridBoard
-                level={playLevel}
-                vis={play.vis}
-                busy={play.busy}
-                hintIndex={play.hintIndex}
-                accent={GRID_FIELD_THEMES.find((th) => th.id === fieldTheme)?.hex ?? '#B6F09C'}
-                onRotate={rotate}
-                tileAria={(n) => t('grid.tileAria', { n })}
-              />
+              <div className="vfx-host">
+                <GridBoard
+                  level={playLevel}
+                  vis={play.vis}
+                  busy={play.busy}
+                  hintIndex={play.hintIndex}
+                  accent={GRID_FIELD_THEMES.find((th) => th.id === fieldTheme)?.hex ?? '#B6F09C'}
+                  onRotate={rotate}
+                  tileAria={(n) => t('grid.tileAria', { n })}
+                />
+                <SteamVeil />
+              </div>
               <div className="tiny muted">{t('grid.rotateHint')}</div>
               <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
                 <Pill onClick={undo} disabled={play.busy || play.turns.length === 0}>{t('grid.undo')}</Pill>
