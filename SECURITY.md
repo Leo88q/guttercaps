@@ -115,6 +115,13 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   `Account<CompressedMintClaim>` slots left anywhere are the two `init` slots
   (`stage_compressed_chip`, `fuse_compressed_claims`), which allocate a current-layout account and
   so can never meet a short one — pinned by test **SEC-3003** in the same file.
+  **Deployment trap (2026-10-14):** the compat read only helps once the build carrying it is on the
+  cluster. A devnet `fuse_compressed_claims` that answers 3003 (`0xbbb`) on a material claim is a
+  chip_core older than this fix, not a broken account — the strict decode is the only reader that
+  fails on a one-byte-short claim, and the `init` CPI in the log proves every named account already
+  decoded. Diagnose with `npm run claims:doctor -- --sig <signature>` (per-claim size + what each
+  build does) and `npm run verify-deploy -- onchain --cluster devnet --rpc <URL>`; fix by redeploying.
+  Full write-up: `reports/FUSION-3003-2026-10-14.md`.
   **ChipGridCharge (2026-10-13, Floodgrid staking charge):** one new account
   (`["gridcharge", chip_key]`; `chip` + `[i64; 3]` droplet expiries + `bump`) attested by the
   season/set oracle for the staking weight bonus. No chain bytes exist at that address yet and
