@@ -869,3 +869,165 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 .grid-tile:hover:not(:disabled) { border-color: var(--cg-neon-cyan); }
 .grid-tile:focus-visible { outline: 2px solid var(--cg-acid-green); outline-offset: 1px; }
 .depth-strip { border-left: 4px solid #333; padding-left: 8px; }
+
+/* --- Floodgrid: спрайтовый арт труб по материалам глубин (docs/14a) -----------------------
+   Фон доски — bg-depth-N.webp из Leo88q/1 (через --gt-bg), спрайты — полоса атласа tiles-<material>.webp
+   (500% ширины, кадр по форме порта). Поток — одна переменная --flow-accent (платные темы поля
+   меняют только её). Вся геометрия/логика остаётся у движка; это чисто слой отрисовки. */
+.gt-board { position: relative; overflow: hidden; border-radius: 12px; padding: 9px; background-color: #0e0d11; width: 100%; max-width: 560px; margin: 0 auto; }
+
+.gt-board::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(120% 100% at 50% 45%, transparent 54%, rgba(20, 19, 24, 0.38));
+  box-shadow: inset 0 0 26px rgba(5, 4, 7, 0.55);
+}
+
+.gt-grid { position: relative; z-index: 2; display: grid; gap: 4px; }
+
+/* Ячейка: сквозь frame-паддинг просвечивает фон глубины, поверх — спрайт трубы. */
+.grid-tile {
+  position: relative;
+  aspect-ratio: 1;
+  padding: 5px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #16151a;
+  transition: background-color .2s ease, box-shadow .2s ease, border-color .12s ease;
+}
+
+.grid-tile::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--gt-bg);
+  background-size: cover;
+  background-position: center;
+  opacity: .5;
+}
+
+.grid-tile-on {
+  background-color: color-mix(in srgb, var(--flow-accent, #B6FF3C) 10%, #16151a);
+  box-shadow: inset 0 0 10px color-mix(in srgb, var(--flow-accent, #B6FF3C) 24%, transparent);
+}
+
+/* Внутренний слой тайла (TileArt). .gt-s — спрайт-кадр, повёрнут целиком (визуальный угол);
+   .gt-f — тот же кадр маской, залитый акцентом потока: размытый «свет воды» внутри трубы. */
+.gt { position: relative; display: block; width: 100%; height: 100%; z-index: 1; }
+
+.gt-s,
+.gt-f {
+  position: absolute;
+  inset: 0;
+  background-size: 500% 100%;
+  background-repeat: no-repeat;
+  transition: transform .18s ease-out;
+}
+
+.gt-s { z-index: 1; }
+
+.gt-f {
+  z-index: 2;
+  background-color: var(--flow-accent, #B6FF3C);
+  opacity: .42;
+  filter: blur(1.2px) saturate(1.25);
+  mask-size: 500% 100%;
+  -webkit-mask-size: 500% 100%;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  pointer-events: none;
+  animation: gt-flow 2.4s linear infinite;
+}
+
+/* Маркеры ролей: приёмник — циановое кольцо (под током ярче), шина — оранжевое ядро с пульсом,
+   фиксированная труба — тёмная точка в углу, подсказка — золотая рамка (docs/14a §3). */
+.gt-ring {
+  position: absolute;
+  inset: 27%;
+  z-index: 3;
+  border: 2px solid #16E5D9;
+  border-radius: 50%;
+  background: rgba(21, 19, 26, 0.45);
+  box-shadow: 0 0 4px rgba(22, 229, 217, 0.5), inset 0 0 4px rgba(22, 229, 217, 0.3);
+  pointer-events: none;
+}
+
+.gt-ring.gt-lit {
+  border-color: #7df2ea;
+  box-shadow: 0 0 9px rgba(22, 229, 217, 0.85), inset 0 0 6px rgba(22, 229, 217, 0.55);
+}
+
+.gt-bus {
+  position: absolute;
+  inset: 34%;
+  z-index: 3;
+  border-radius: 50%;
+  background: radial-gradient(circle at 42% 36%, #ffa353, #FF7A1A 58%, #8f4006);
+  box-shadow: 0 0 8px rgba(255, 122, 26, 0.7);
+  pointer-events: none;
+}
+
+.gt-bus::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 122, 26, 0.8);
+  animation: gt-bus 2s ease-out infinite;
+}
+
+.gt-fixed {
+  position: absolute;
+  top: 10%;
+  right: 10%;
+  z-index: 3;
+  width: 10%;
+  height: 10%;
+  border-radius: 50%;
+  background: #23202a;
+  border: 1.5px solid #7a737e;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+}
+
+.gt-hint {
+  position: absolute;
+  inset: 1px;
+  z-index: 4;
+  border: 2.5px solid #FFD34D;
+  border-radius: 9px;
+  box-shadow: 0 0 10px rgba(255, 211, 77, 0.45), inset 0 0 8px rgba(255, 211, 77, 0.22);
+  pointer-events: none;
+}
+
+@keyframes gt-flow {
+  0%, 100% { opacity: .3; }
+  50% { opacity: .62; }
+}
+
+@keyframes gt-bus {
+  0% { transform: scale(.55); opacity: .9; }
+  70% { opacity: .18; }
+  100% { transform: scale(1.45); opacity: 0; }
+}
+
+/* Фото-полосы глубин в списке секторов — кадры расстановки труб (docs/14a §4). */
+.depth-strip { background-size: cover; background-position: center; background-repeat: no-repeat; padding: 9px 11px; border-radius: 10px; }
+
+/* Поток/пульс — только при разрешённой анимации: в reduce всё статично, без моргания. */
+@media (prefers-reduced-motion: reduce) {
+  .gt-f { animation: none; opacity: .42; }
+  .gt-bus::after { animation: none; opacity: .55; }
+  .gt-s, .gt-f { transition: none; }
+}
+
+html.reduced-motion .gt-f { animation: none; opacity: .42; }
+html.reduced-motion .gt-bus::after { animation: none; opacity: .55; }
+html.reduced-motion .gt-s,
+html.reduced-motion .gt-f { transition: none; }
