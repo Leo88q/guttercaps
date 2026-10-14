@@ -16,7 +16,11 @@ const TIER_CONFIG: Record<string, { holdMs: number; glow: string; particles: num
   Common: { holdMs: 400, glow: '#8a8a8a', particles: 6, shake: false, fx: 'splash' },
   'Common+': { holdMs: 500, glow: '#16E5D9', particles: 8, shake: false, fx: 'splash' },
   Rare: { holdMs: 700, glow: '#16E5D9', particles: 14, shake: false, fx: 'mural' },
-  'Rare+': { holdMs: 900, glow: '#2E8BFF', particles: 18, shake: false, fx: 'mural' },
+  // Rare+ — тот же стальной тон, что и в канонической карте редкостей (RARITY_COLOR[3],
+  // shared/lib/rarity.ts): trust-blue #2E8BFF запрещён вне денежного UI (docs/07 §2.2),
+  // а этим цветом здесь покрашено ещё и название редкости — оно обязано совпадать с
+  // Collection/Arena/Fusion, где тир давно выводится через rarityColor().
+  'Rare+': { holdMs: 900, glow: '#9AD9FF', particles: 18, shake: false, fx: 'mural' },
   Epic: { holdMs: 1200, glow: '#FF2E8A', particles: 26, shake: false, fx: 'grind' },
   'Epic+': { holdMs: 1500, glow: '#FF7A1A', particles: 34, shake: true, fx: 'grind' },
   Legend: { holdMs: 1900, glow: '#FF7A1A', particles: 46, shake: true, fx: 'explosion' },
