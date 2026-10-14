@@ -67,7 +67,7 @@
     "ops:logs": "docker compose -f ops/deploy/docker-compose.yaml logs -f --tail=200",
     "program-ids": "node --experimental-strip-types scripts/program-ids.ts",
     "verify-deploy": "node --experimental-strip-types scripts/verify-deploy.ts",
-    "claims:doctor": "node --experimental-strip-types scripts/claim-doctor.ts",
+    "claims:doctor": "node --experimental-strip-types --no-warnings scripts/claim-doctor.ts",
     "audit:gate": "node --experimental-strip-types scripts/audit-gate.ts",
     "keypairs:scan": "node --experimental-strip-types scripts/committed-keypairs.ts",
     "secret:scan": "node --experimental-strip-types scripts/secret-scan.ts",

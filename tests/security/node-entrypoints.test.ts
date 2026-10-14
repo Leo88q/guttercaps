@@ -249,6 +249,14 @@ const parse = (file: string, src: string) => ts.createSourceFile(file, src, ts.S
 
 /** Breadth-first over the static import graph, one `node` resolution batch per level. */
 export function walkGraph(root: string, entrypoints: Map<string, string>, skipped: string[] = []): Walk {
+  // Every path this walk compares is a realpath (`realpathSync` below, and Node resolves through
+  // symlinks), so the root has to be one too — otherwise every `startsWith(root)` in the loop is
+  // silently false, the walk stops at the entrypoints and each rule about an *imported* file goes
+  // quiet. The way that bites: macOS hands out a symlinked TMPDIR (`/var/folders/…` →
+  // `/private/var/folders/…`), so the fixture tree of the third test lived under a root that none of
+  // its own files appeared to be inside — and the gate answered "nothing to report" while holding
+  // five real problems. Cheap on any tree, and a no-op where the root is already canonical.
+  const home = realpathSync(root);
   const via = new Map<string, { from: string; spec: string }>();
   const files: string[] = [];
   const problems: Problem[] = [];
@@ -282,11 +290,11 @@ export function walkGraph(root: string, entrypoints: Map<string, string>, skippe
       const abs = realpathSync(path);
       const ext = /\.([a-z]+)$/i.exec(path)?.[0] ?? '';
       if (!LOADABLE.has(ext)) { problems.push({ file, spec, why: `Node does not load ${ext} — a bundler-only import` }); return; }
-      if (abs.startsWith(join(root, 'client', 'src') + sep)) {
+      if (abs.startsWith(join(home, 'client', 'src') + sep)) {
         problems.push({ file, spec, why: 'the client tree is Vite\'s (aliases, CSS, JSX) — move what is shared into packages/ so Node can load it' });
         return;
       }
-      if (abs.startsWith(root + sep) && !seen.has(abs)) { via.set(abs, { from: file, spec }); seen.add(abs); next.push(abs); }
+      if (abs.startsWith(home + sep) && !seen.has(abs)) { via.set(abs, { from: file, spec }); seen.add(abs); next.push(abs); }
     });
     level = next;
   }
@@ -390,9 +398,12 @@ test('each rule fires on a fixture — the gate is not decoration', () => {
       ['enum-root.ts', 'fixture#enum'], ['param-root.ts', 'fixture#param'], ['missing-root.ts', 'fixture#missing'],
       ['client-root.ts', 'fixture#client'], ['quiet.ts', 'fixture#quiet'], ['erased.ts', 'fixture#erased'],
     ];
-    const walk = walkGraph(tmp, new Map(labels.map(([f, l]) => [realpathSync(join(tmp, f)), l])));
-    const why = (f: string) => walk.problems.filter((p) => rel(tmp, p.file) === f).map((p) => p.why).join(' | ');
-    const context = (): string => report(tmp, walk);
+    // the fixture root is realpathed for the same reason `walkGraph` realpaths the repo root: the
+    // reported paths are real ones, and on a symlinked TMPDIR `rel(tmp, …)` would not be `alias.ts`
+    const root = realpathSync(tmp);
+    const walk = walkGraph(root, new Map(labels.map(([f, l]) => [realpathSync(join(root, f)), l])));
+    const why = (f: string) => walk.problems.filter((p) => rel(root, p.file) === f).map((p) => p.why).join(' | ');
+    const context = (): string => report(root, walk);
 
     assert.match(why('alias.ts'), /ERR_MODULE_NOT_FOUND/, `the alias rule did not fire:\n${context()}`);
     assert.equal(why('pkg-root.ts'), '', `a node_modules package the importer can reach must resolve:\n${context()}`);
