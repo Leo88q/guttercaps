@@ -56,8 +56,11 @@ img { max-width: 100%; display: block; }
 .shell-nav a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-decoration: none; color: var(--gc-muted); font-size: 10.5px; min-height: 44px; }
 .shell-nav a span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
 /* 9 tabs at 360px is 40px each: long labels and long locales both need the tighter face, and the
-   word-break rules further down turn "Collection" into two lines rather than a clipped one. */
+   word-break rules further down turn "Collection" into two lines rather than a clipped one.
+   A phone the size of a Seeker (412 CSS px) has ~41 px per tab — enough for the normal 10.5 px
+   face, so only the narrowest screens pay the legibility tax. */
 .shell-nav a { font-size: 9.5px; letter-spacing: -0.01em; }
+@media (min-width: 400px) { .shell-nav a { font-size: 10.5px; letter-spacing: 0; } }
 .shell-nav a.active { color: var(--cg-chrome); }
 .shell-nav a.active svg { filter: drop-shadow(0 0 6px var(--cg-neon-magenta)); }
 /* generated spray badges: dim until the tab is yours */
@@ -74,8 +77,10 @@ img { max-width: 100%; display: block; }
 }
 /* legal + age footer — the one place a player (and a store reviewer) can find the documents, so it
    lives in the shell, not only in a settings screen. */
-.shell-legal { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: center; padding: 16px 16px 4px; font-size: 11.5px; color: var(--gc-muted); border-top: 1px solid var(--gc-line); margin-top: 28px; }
-.shell-legal a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.shell-legal { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; justify-content: center; padding: 16px 16px 4px; font-size: 11.5px; color: var(--gc-muted); border-top: 1px solid var(--gc-line); margin-top: 28px; }
+/* Legal links are real navigation on a phone: 11.5 px type is a 14 px hit box, so the padding
+   buys them a 24 px target (WCAG 2.5.8) without moving the row the footer sits in. */
+.shell-legal a { color: inherit; text-decoration: underline; text-underline-offset: 2px; padding: 5px 0; }
 /* 18+ mark: loud by default (age-gate dialog); the footer shrinks it via the more specific rule below */
 .gc-age { display: inline-block; border: 2px solid var(--cg-neon-magenta); color: var(--cg-neon-magenta); border-radius: 10px; padding: 6px 12px; font-family: var(--cg-font-display); font-size: 22px; letter-spacing: .04em; flex: 0 0 auto; }
 .shell-legal .gc-age { border: 1px solid var(--gc-line); color: inherit; border-radius: 4px; padding: 1px 5px; font-size: 10.5px; letter-spacing: .04em; font-family: inherit; }
@@ -724,20 +729,26 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 }
 
 /* ---------- Pack shop: equal-height cards + gamified odds shelf ---------- */
-/* Each card spans the same 11 shared rows: art, heading, badges, fan, odds bar,
-   odds grid, legendary chance, pity, cap, price and CTA. Subgrid aligns actual content
-   heights instead of clipping translations or guessing spacers for one locale. */
+/* Each card spans the same 10 shared rows: art, heading, badges, fan, odds bar,
+   odds grid, pity, cap, price and CTA. Subgrid aligns actual content heights
+   instead of clipping translations or guessing spacers for one locale. The row
+   that used to sit between the grid and the pity — «Legend or better per pack» —
+   is gone: packs never drop Legend and above (docs/02 §2.2). */
 .pack-grid { align-items: stretch; }
 .pack-grid > .pack-card {
-  display: grid; grid-template-columns: minmax(0, 1fr); grid-row: span 11; grid-template-rows: subgrid;
-  gap: 12px; min-width: 0; overflow: visible;
+  display: grid; grid-template-columns: minmax(0, 1fr); grid-row: span 10; grid-template-rows: subgrid;
+  gap: 10px; min-width: 0; overflow: visible;
 }
 .pack-grid > .card.pack-card::after { left: 0; right: 0; }
 .pack-head { min-width: 0; }
 .pack-card .cg-heading { hyphens: auto; overflow-wrap: break-word; }
 .pack-grid .pack-sub { line-height: 1.35; }
-.pack-badges { min-height: 32px; display: flex; align-items: start; flex-wrap: wrap; gap: 6px; }
-.pack-grid .odds-gems { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(5, minmax(54px, 1fr)); }
+.pack-badges { min-height: 0; display: flex; align-items: start; flex-wrap: wrap; gap: 6px; }
+/* Rows are earned, not reserved: every SKU drops six tiers, so three rows of two is the
+   whole grid — pinning five rows handed each card ~120 px of dead space. */
+.pack-grid .odds-gems { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: minmax(54px, auto); }
+.pack-grid .pack-price { padding: 8px 12px; }
+.pack-grid .pack-price .kv { padding: 3px 0; }
 .pack-grid .pack-price { align-self: stretch; }
 .pack-buy { display: flex; }
 .pack-buy > button { width: 100%; height: 100%; min-height: 56px; padding-inline: 12px; overflow-wrap: normal; font-size: 15px; }

@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { ExternalIcon } from '@/shared/ui/action-icons';
-import { PACKS, BUNDLES, FX, bundlePriceCents, effectiveOdds, probabilityAtLeast, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, type PackId } from '@guttercaps/economy';
+import { PACKS, BUNDLES, FX, bundlePriceCents, effectiveOdds, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, type PackId } from '@guttercaps/economy';
 import { useMe, usePackCatalog, useQuote, type PackSku } from '@/api/hooks';
 import { PreorderBanner } from '@/features/preorder/PreorderBanner';
 import type { components } from '@/api/schema';
@@ -13,7 +13,7 @@ import { usePaymentRails } from '@/chain/rails';
 import { toEconPack, rentReserve } from '@/chain/flows/packFlow';
 import { Currency, type CurrencyCode } from '@/chain/ix/chipCore';
 import { FLAGS, ONRAMP_URL } from '@/app/config';
-import { fmtAmount, fmtCents, fmtPct, fmtProb, fmtSol, fmtUsd } from '@/shared/lib/format';
+import { fmtAmount, fmtCents, fmtPct, fmtSol, fmtUsd } from '@/shared/lib/format';
 import { packName, rarityName, rarityColor } from '@/shared/lib/rarity';
 import { packArtUrl } from '@/shared/lib/packArt';
 import { CleanZone, KV, Modal, Pill, Progress } from '@/shared/ui/primitives';
@@ -155,7 +155,6 @@ export default function Shop() {
           const counter = counters[sku] ?? 0;
           const odds = effectiveOdds(econ, counter);
           const fan = packFan(odds, econ.floor);
-          const pLegend = probabilityAtLeast(econ, 6);
           const capLeft = econ.dailyCap === null ? null : Math.max(0, econ.dailyCap - (boughtToday[sku] ?? 0));
           const starterGone = id === 'starter' && starterClaimed;
           const disabled = !enabled || shopBlocked || !!cfg.data?.paused || starterGone || capLeft === 0;
@@ -198,19 +197,16 @@ export default function Shop() {
                   </span>
                 ))}
               </div>
-              <div className="row between small">
-                <span className="muted">{t('ui.legendPack')}</span><b className="mono">{fmtProb(pLegend, 2)}</b>
-              </div>
               {/* The pity zone keeps the same height on every card (Starter rolls without pity): the
                   rows below — cap line, price, button — then land on the same baseline across the row. */}
               {econ.pity ? (
                 <div className="stack-sm">
-                  <div className="row between small"><span className="muted">{t('ui.pityAt', { n: econ.pity.hardAt })}</span><b className="mono">{counter}/{econ.pity.hardAt}</b></div>
+                  <div className="row between small"><span className="muted">{t('ui.pityAt', { rarity: rarityName(econ.pity.tier), n: econ.pity.hardAt })}</span><b className="mono">{counter}/{econ.pity.hardAt}</b></div>
                   <Progress value={counter} max={econ.pity.hardAt} tone={counter >= econ.pity.softStart ? 'orange' : undefined} />
                   {counter >= econ.pity.softStart && <div className="tiny" style={{ color: 'var(--cg-orange-soft)' }}>{t('ui.softPity', { pct: fmtPct(econ.pity.softStepBps * (counter - econ.pity.softStart + 1), 2) })}</div>}
                 </div>
               ) : <div className="pack-pity-spacer" aria-hidden />}
-              <div className="tiny muted pack-cap">{capLeft !== null ? t('services.dailyLeft', { n: capLeft }) : '\u00a0'}</div>
+              <div className="tiny muted pack-cap">{capLeft !== null ? t('services.dailyLeft', { n: capLeft }) : ''}</div>
 
               <CleanZone className="pack-price">
                 <KV k={t('ui.price')} v={`${fmtCents(econ.priceUsdCents)} · ${fmtSol(solLamportsForUsdCents(econ.priceUsdCents))}`} />
@@ -243,7 +239,7 @@ export default function Shop() {
         </div>
       </div>
 
-      <p className="tiny muted" style={{ marginTop: 12 }}> {t('ui.cryptoOnly')} <a className="row" style={{ gap: 4, color: 'var(--cg-cyan-soft)', display: 'inline-flex' }} href={ONRAMP_URL} target="_blank" rel="noreferrer">{t('ui.buyCard')} <ExternalIcon size={11} /></a> · {t('screens.collectibleRisk')}
+      <p className="tiny muted" style={{ marginTop: 12 }}> {t('ui.cryptoOnly')} <a className="row" style={{ gap: 4, color: 'var(--cg-cyan-soft)', display: 'inline-flex', paddingBlock: 5 }} href={ONRAMP_URL} target="_blank" rel="noreferrer">{t('ui.buyCard')} <ExternalIcon size={11} /></a> · {t('screens.collectibleRisk')}
       </p>
 
       {sel && (

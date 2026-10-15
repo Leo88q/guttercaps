@@ -297,12 +297,14 @@ describe('payment rails: SKR is offered, and a rail that is off says why', () =>
       expect(card.textContent).not.toMatch(/coming soon/i);
     }
     // the row also keeps its aligned rhythm: a pity zone on every card (Starter reserves an
-    // empty one) and the 3-row gems grid the layout pins in CSS
+    // empty one) and a gems grid that earns its rows instead of reserving five
     expect(container.querySelector('.pack-pity-spacer')).toBeTruthy();
     const css = readFileSync(resolve(import.meta.dirname, '../shared/ui/layout.css'), 'utf8');
-    expect(css).toContain('grid-template-rows: repeat(5, minmax(54px, 1fr))');
+    expect(css).toContain('grid-auto-rows: minmax(54px, auto)');
     // Shared intrinsic rows replace locale-specific spacer heights; Playwright checks geometry.
-    expect(css).toMatch(/grid-row: span 11; grid-template-rows: subgrid/);
+    expect(css).toMatch(/grid-row: span 10; grid-template-rows: subgrid/);
+    // No «Legend or better» promise left on a pack: Legend and above never drop from packs.
+    for (const card of cards) expect(card.textContent).not.toMatch(/legend/i);
     expect(container.querySelectorAll('.pack-price')).toHaveLength(4);
     expect(container.querySelectorAll('.pack-buy button')).toHaveLength(4);
     cleanup();
