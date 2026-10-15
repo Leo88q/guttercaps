@@ -120,10 +120,15 @@ export default function Bowl() {
         <div className="strong">{t('bowl.wallTitle')}</div>
         <img className="bowl-wide" src={`${ART}/wall-district.webp`} alt="" />
         <div className="small muted">{t('bowl.wallSoon')}</div>
-        <div>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
           <button type="button" className="btn btn-sm" disabled>
             {t('bowl.soon')}
           </button>
+          {/* Редактор уже работает: рисовать тег можно раньше, чем стена
+              откроется для размещения (docs/16 §11, фаза 2). */}
+          <Link to="/bowl/tag" className="btn btn-sm btn-ghost">
+            {t('bowl.openEditor')}
+          </Link>
         </div>
       </section>
 
