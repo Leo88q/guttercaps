@@ -44,8 +44,11 @@
      Limited an empty line under the price. Cards stretch to the tallest sibling anyway,
      so the bullet list is bottom-anchored instead — every list then starts level. */
   .pack-price small { display: block; font-size: 12px; color: rgba(216,216,220,0.55); font-weight: 400; margin-top: 2px; }
-  .pack ul { margin-top: auto; }
-  .pack ul { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 5px; font-size: 13px; color: rgba(216,216,220,0.75); }
+
+  /* `margin: auto 0 0` (not margin-top on a later line — the shorthand below used to win) pins the
+     bullet list to the bottom of the stretched card, so all four lists end on one line; the 10 px
+     lives in padding so it survives when there is no free space at all. */
+  .pack ul { list-style: none; padding: 10px 0 0; margin: auto 0 0; display: grid; gap: 5px; font-size: 13px; color: rgba(216,216,220,0.75); }
   .pack ul li::before { content: '▸ '; color: var(--pack-color); }
   @media (max-width: 900px) { .pack-grid { grid-template-columns: 1fr 1fr; } }
   @media (max-width: 600px) { .pack-grid { grid-template-columns: 1fr; } }
