@@ -78,12 +78,15 @@ function stream(seed: string): () => number {
 /**
  * Линия трюков для одной стороны боя.
  *
- * @param rounds  раунды боя (2–3, best of 3)
- * @param seed    сид матча (`matches.seed`) — то же значение, из которого считан бой
- * @param side    за кого играем: 'A' или 'B'
- * @param won     победила ли эта сторона бой (результат приходит из матча, не из рила)
+ * @param rounds      раунды боя (2–3, best of 3)
+ * @param seed        сид матча (`matches.seed`) — то же значение, из которого считан бой
+ * @param side        за кого играем: 'A' или 'B'
+ * @param won         победила ли эта сторона бой (результат приходит из матча, не из рила)
+ * @param selfWallet  кошелёк этой стороны. `/v1/arena/matches/{id}` отдаёт победителя
+ *                    раунда кошельком (arena.ts:502), а сам движок боя — как 'A'/'B';
+ *                    понимаем обе формы, иначе мануал-связка не сцепляется ни там, ни там.
  */
-export function trickLine(rounds: readonly ReelRound[], seed: string, side: 'A' | 'B', won: boolean): TrickLine {
+export function trickLine(rounds: readonly ReelRound[], seed: string, side: 'A' | 'B', won: boolean, selfWallet?: string): TrickLine {
   const next = stream(`${seed}|${side}|reel`);
   const beats: TrickBeat[] = [];
   let balance = 0;
@@ -96,6 +99,7 @@ export function trickLine(rounds: readonly ReelRound[], seed: string, side: 'A' 
   // Поля раунда приходят из проекции индексатора и формально необязательны:
   // отсутствующая удача трактуется как ровная (1.0), отсутствующий край — как его отсутствие.
   const luckOf = (r: ReelRound) => Math.min(1, Math.max(0, ((side === 'A' ? r.luckA : r.luckB) ?? 1) - 0.5));
+  const roundWon = (r: ReelRound) => r.winner === side || (selfWallet != null && r.winner === selfWallet);
 
   const push = (kind: TrickKind, lane: number, swing: number, points: number): boolean => {
     balance += swing;
@@ -131,7 +135,7 @@ export function trickLine(rounds: readonly ReelRound[], seed: string, side: 'A' 
     }
 
     // Выигранный раунд связывается мануалом: звено цепляется к звену, множитель растёт.
-    if (r.winner === side && !push('manual', lane, (1 - luck) * 0.25 * (next() < 0.5 ? -1 : 1), 60)) break;
+    if (roundWon(r) && !push('manual', lane, (1 - luck) * 0.25 * (next() < 0.5 ? -1 : 1), 60)) break;
   }
 
   // Финал: приземление, если баланс удержан и бой выигран. Проигрыш — всегда bail,

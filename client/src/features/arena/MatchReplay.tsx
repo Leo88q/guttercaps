@@ -57,7 +57,7 @@ export default function MatchReplay() {
   // Считается без useMemo намеренно: функция чистая и дешёвая (связка из десятка
   // трюков), а хуки выше уже отработали — вешать мемо после ранних return нельзя.
   const side: 'A' | 'B' = me === d.b ? 'B' : me === d.a ? 'A' : d.winner === d.b ? 'B' : 'A';
-  const line = trickLine(rounds, d.seed ?? d.id ?? '', side, d.winner === (side === 'A' ? d.a : d.b));
+  const line = trickLine(rounds, d.seed ?? d.id ?? '', side, d.winner === (side === 'A' ? d.a : d.b), side === 'A' ? d.a : d.b);
 
   return (
     <div className="page page-bg page-bg-arena stack">

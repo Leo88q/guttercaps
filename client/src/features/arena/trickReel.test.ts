@@ -64,6 +64,16 @@ describe('trickLine', () => {
     for (const b of line.beats) expect(Number.isFinite(b.balance)).toBe(true);
   });
 
+  it('победитель раунда понимается и кошельком, и стороной A/B', () => {
+    // /v1/arena/matches/{id} отдаёт победителя раунда кошельком, движок боя — 'A'/'B'.
+    const wallet = '7xKQpumpkinF4keY4VhKk9P8nQzLm3uWc2RtGvHsJdEbN';
+    const byWallet = [0, 1, 2].map((lane) => ({ lane, luckA: 1.2, luckB: 0.8, elementEdge: 0.15, winner: wallet }));
+    const bySide = [0, 1, 2].map((lane) => ({ lane, luckA: 1.2, luckB: 0.8, elementEdge: 0.15, winner: 'A' as const }));
+    expect(trickLine(byWallet, 'seed', 'A', true, wallet)).toEqual(trickLine(bySide, 'seed', 'A', true, wallet));
+    // И в той, и в другой форме выигранный раунд сцепляется мануалом.
+    expect(trickLine(byWallet, 'seed', 'A', true, wallet).beats.filter((b) => b.kind === 'manual').length).toBe(3);
+  });
+
   it('баланс ходит в обе стороны: на плохой удаче линия ломается чаще', () => {
     const bad = [0, 1, 2].map((lane) => ({ lane, luckA: 0.5, luckB: 1.5, elementEdge: 0.15, winner: 'B' as const }));
     const good = [0, 1, 2].map((lane) => ({ lane, luckA: 1.5, luckB: 0.5, elementEdge: 0.15, winner: 'A' as const }));
