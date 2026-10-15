@@ -5916,6 +5916,8 @@ export interface components {
             rewardChip?: Record<string, never> | null;
             /** @description Floodgrid Terminal marks granted on completion (backend gear, no root) */
             rewardHint?: number;
+            /** @description Floodgrid emergency valves granted on completion (backend gear, no root, stock cap 2) */
+            rewardValve?: number;
             /** @description fusion boosters granted on completion — rooted into a kind-8 item root and delivered by claim_item_root (chip_core PlayerItems) */
             rewardBooster?: number;
             completedAt?: string | null;

@@ -40,9 +40,9 @@ export interface QuestDef {
   rewardCgMicro: number;
   /** chip reward: one of `QUEST_CHIP_TEMPLATES` (rooted as a kind-9 voucher leaf carrying `template`) */
   rewardChip?: ChipVoucherTemplate | null;
-  rewardItem?: 'booster' | 'ticket' | 'hint' | null;
+  rewardItem?: 'booster' | 'ticket' | 'hint' | 'valve' | null;
   /** Additional item rewards delivered with the main one (e.g. w_stake: booster + a Floodgrid hint). */
-  rewardItems?: readonly ('booster' | 'ticket' | 'hint')[];
+  rewardItems?: readonly ('booster' | 'ticket' | 'hint' | 'valve')[];
 }
 
 // Daily: 24 $CG total (cap 25) — v3 rebalance: fusion fees grew ~5×, so free
@@ -69,6 +69,11 @@ export const DAILY_QUESTS: QuestDef[] = [
   { id: 'd_visit_neuroforge', period: 'daily', title: 'Visit NeuroForge (our 2nd game)', metric: 'visit_neuroforge', target: 1, rewardCgMicro: 2_000_000 },
   { id: 'd_visit_ares1',      period: 'daily', title: 'Visit ARES-1 (our 3rd game)',     metric: 'visit_ares1',      target: 1, rewardCgMicro: 2_000_000 },
   { id: 'd_grid1',   period: 'daily', title: 'Проведи паводок (Floodgrid sector)', metric: 'grid_cleared', target: 1, rewardCgMicro: 4_000_000 },
+  // Новые дейлики платим снаряжением, а не $CG: эмиссия $CG из квестов остаётся 24/сутки (кап 25).
+  // Источники меток/клапанов/бустеров перечислены в docs/13 §0.4 и docs/02 §9.
+  { id: 'd_grid3',   period: 'daily', title: 'Route three Floodgrid sectors',    metric: 'grid_cleared',   target: 3,  rewardCgMicro: 0, rewardItem: 'hint' },
+  { id: 'd_deep1',   period: 'daily', title: 'Dive the Deep Flood once',         metric: 'grid_deep',      target: 1,  rewardCgMicro: 0, rewardItem: 'hint' },
+  { id: 'd_ghost1',  period: 'daily', title: 'Beat the daily ghost',             metric: 'grid_ghost',     target: 1,  rewardCgMicro: 0, rewardItem: 'hint' },
 ];
 
 // Weekly: 120 $CG + one Common+/Rare roll + 1 booster (cap 140 $CG/week) — v3 rebalance.
@@ -78,11 +83,17 @@ export const WEEKLY_QUESTS: QuestDef[] = [
   { id: 'w_win8',    period: 'weekly', title: 'Win 8 matches',                  metric: 'pvp_won',      target: 8,  rewardCgMicro: 30_000_000 },
   { id: 'w_trade',   period: 'weekly', title: 'Complete a marketplace trade',   metric: 'trades',       target: 1,  rewardCgMicro: 15_000_000, rewardItem: 'hint' },
   { id: 'w_stake',   period: 'weekly', title: 'Keep ≥ 3 chips staked 5 days',   metric: 'stake_days',   target: 5,  rewardCgMicro: 20_000_000, rewardItem: 'booster', rewardItems: ['hint'] },
-  { id: 'w_all',     period: 'weekly', title: 'All weeklies done',              metric: 'weeklies_done',target: 6,  rewardCgMicro: 0,
+  { id: 'w_all',     period: 'weekly', title: 'All weeklies done',              metric: 'weeklies_done',target: 12, rewardCgMicro: 0,
     rewardChip: voucher(1) },
   { id: 'w_visit_neuroforge', period: 'weekly', title: 'Visit NeuroForge on 3 days', metric: 'visit_neuroforge', target: 3, rewardCgMicro: 15_000_000 },
   { id: 'w_visit_ares1',      period: 'weekly', title: 'Visit ARES-1 on 3 days',     metric: 'visit_ares1',      target: 3, rewardCgMicro: 15_000_000 },
   { id: 'w_grid10',  period: 'weekly', title: 'Десять веток (10 Floodgrid sectors)', metric: 'grid_cleared_all', target: 10, rewardCgMicro: 15_000_000 },
+  // Новые weekly — тоже снаряжением: бустер, метка, клапан. $CG-эмиссия недели остаётся 120 (кап 140).
+  { id: 'w_grid25',  period: 'weekly', title: 'Route 25 Floodgrid sectors',      metric: 'grid_cleared_all', target: 25, rewardCgMicro: 0, rewardItem: 'booster' },
+  { id: 'w_droplet', period: 'weekly', title: 'Charge 2 flood droplets on one chip', metric: 'grid_droplets', target: 2, rewardCgMicro: 0, rewardItem: 'hint' },
+  { id: 'w_contract3', period: 'weekly', title: 'Run 3 district contracts',      metric: 'grid_contracts', target: 3,  rewardCgMicro: 0, rewardItem: 'hint' },
+  { id: 'w_train10', period: 'weekly', title: 'Ten training dives',              metric: 'grid_training',  target: 10, rewardCgMicro: 0, rewardItem: 'valve' },
+  { id: 'w_wager5',  period: 'weekly', title: 'Play 5 wager battles',            metric: 'wagers',         target: 5,  rewardCgMicro: 0, rewardItem: 'booster' },
 ];
 
 // Permanent (one-time milestones): the only free route to Epic — soulbound 30 days.
@@ -100,6 +111,14 @@ export const PERMANENT_QUESTS: QuestDef[] = [
   { id: 'p_stake30',          period: 'permanent', title: 'Keep a chip staked for 30 days', metric: 'max_stake_days', target: 30, rewardCgMicro: 30_000_000 },
   { id: 'p_trades5',          period: 'permanent', title: 'Complete 5 marketplace trades',  metric: 'trades',       target: 5,  rewardCgMicro: 25_000_000 },
   { id: 'p_grid_depth1',      period: 'permanent', title: 'Закрой глубину I Решётки (15 секторов одной фишкой)', metric: 'grid_route_max', target: 15, rewardCgMicro: 10_000_000 },
+  // Permanent-вехи по новым системам: Решётка до конца, капли, престиж, ставки, маркет.
+  { id: 'p_grid_depth3',      period: 'permanent', title: 'Push one chip to sector 45', metric: 'grid_route_max', target: 45, rewardCgMicro: 0, rewardItem: 'valve' },
+  { id: 'p_grid75',           period: 'permanent', title: 'Finish the Descent (75/75)', metric: 'grid_route_max', target: 75, rewardCgMicro: 0, rewardItem: 'booster', rewardItems: ['hint', 'valve'] },
+  { id: 'p_droplets3',        period: 'permanent', title: 'Hold 3 charge droplets on one chip', metric: 'grid_droplets', target: 3, rewardCgMicro: 0, rewardItem: 'booster' },
+  { id: 'p_prestige1',        period: 'permanent', title: 'First prestige descent', metric: 'grid_prestige', target: 1, rewardCgMicro: 0, rewardItem: 'valve' },
+  { id: 'p_stars100',         period: 'permanent', title: 'Earn 100 Floodgrid stars', metric: 'grid_stars', target: 100, rewardCgMicro: 0, rewardItem: 'hint' },
+  { id: 'p_market25',         period: 'permanent', title: 'Complete 25 marketplace trades', metric: 'trades', target: 25, rewardCgMicro: 0, rewardItem: 'booster' },
+  { id: 'p_wager25',          period: 'permanent', title: 'Play 25 wager battles', metric: 'wagers', target: 25, rewardCgMicro: 0, rewardItem: 'valve' },
 ];
 
 /**

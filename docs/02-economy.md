@@ -407,24 +407,54 @@ mint_today ≤ min( cap, 0.02 × cap + 1.25 × avg_burn_7d )
 
 ## 9. Квесты
 
-| Период | Квест | Цель | Награда |
+Новые квесты (2026-10, «появились новые функции») платят **снаряжением, а не $CG**: метки Клеммы,
+аварийные клапаны и бустеры фьюжна. Эмиссия $CG из квестов при этом не меняется — 25 $CG/сутки
+(кап 25) и 135 $CG/неделю (кап 140). Снаряжение упирается в запасы (метки ≤ 10, клапаны ≤ 2,
+бустеры ≤ 10 в `PlayerItems`), так что «накликать» его нельзя.
+
+| Период | Квест | Метрика · цель | Награда |
 |---|---|---|---|
-| Daily | Проверить решётки (логин) | 1 | 2 $CG |
-| Daily | Сыграть 3 матча | 3 | 4 $CG |
-| Daily | Выиграть матч | 1 | 3 $CG |
-| Daily | Сделать fusion | 1 | 3 $CG |
-| Daily | Стрик 7 дней (все дейлики) | 7 | фишка 80/18/2 (SB 3 д) |
-| Weekly | 20 матчей | 20 | 15 $CG |
-| Weekly | 8 побед | 8 | 15 $CG |
-| Weekly | Сделка на маркете | 1 | 10 $CG |
-| Weekly | ≥ 3 фишки в стейке 5 дней | 5 | 10 $CG + бустер |
-| Weekly | Все weekly | 4 | фишка 30/50/18/2 (SB 7 д) |
-| Permanent | Первый fusion | 1 | 10 $CG |
-| Permanent | 50 побед | 50 | 50 $CG |
-| Permanent | 500 побед | 500 | 200 $CG + Epic (SB 30 д) |
-| Permanent | Первый полный сет | 1 | 100 $CG + бустер |
-| Permanent | Фишка в стейке 90 дней | 90 | 60 $CG |
-| Permanent | 5 платящих рефералов | 5 | 100 $CG + Rare/Rare+/Epic 50/40/10 (SB 14 д) |
+| Daily | Проверить решётки (логин) | login · 1 | 3 $CG |
+| Daily | Сыграть 3 матча | pvp_played · 3 | 5 $CG |
+| Daily | Выиграть матч | pvp_won · 1 | 5 $CG |
+| Daily | Сделать fusion | fusions · 1 | 4 $CG + метка |
+| Daily | Стрик 7 дней (все дейлики) | streak_days · 7 | фишка 80/18/2 (SB 3 д) |
+| Daily | Зайти в NeuroForge | visit_neuroforge · 1 | 2 $CG |
+| Daily | Зайти в ARES-1 | visit_ares1 · 1 | 2 $CG |
+| Daily | Провести паводок (сектор Решётки) | grid_cleared · 1 | 4 $CG |
+| Daily | Три сектора Решётки | grid_cleared · 3 | метка |
+| Daily | Один забег Глубокого павода | grid_deep · 1 | метка |
+| Daily | Побить призрака дня | grid_ghost · 1 | метка |
+| Weekly | 20 матчей | pvp_played · 20 | 25 $CG |
+| Weekly | 8 побед | pvp_won · 8 | 30 $CG |
+| Weekly | Сделка на маркете | trades · 1 | 15 $CG + метка |
+| Weekly | ≥ 3 фишки в стейке 5 дней | stake_days · 5 | 20 $CG + бустер + метка |
+| Weekly | Все weekly (кроме мета-квеста) | weeklies_done · 12 | фишка 30/50/18/2 (SB 7 д) |
+| Weekly | NeuroForge в 3 днях | visit_neuroforge · 3 | 15 $CG |
+| Weekly | ARES-1 в 3 днях | visit_ares1 · 3 | 15 $CG |
+| Weekly | Десять секторов Решётки | grid_cleared_all · 10 | 15 $CG |
+| Weekly | 25 секторов Решётки | grid_cleared_all · 25 | бустер |
+| Weekly | Набрать 2 капли заряда | grid_droplets · 2 | метка |
+| Weekly | 3 контракта района | grid_contracts · 3 | метка |
+| Weekly | 10 тренировочных спусков | grid_training · 10 | клапан |
+| Weekly | 5 матчей на ставках | wagers · 5 | бустер |
+| Permanent | Первый fusion | fusions · 1 | 10 $CG |
+| Permanent | 50 побед | pvp_won · 50 | 50 $CG |
+| Permanent | 500 побед | pvp_won · 500 | 200 $CG + Epic (SB 30 д) |
+| Permanent | Первый полный сет | sets_done · 1 | 100 $CG + бустер |
+| Permanent | Фишка в стейке 90 дней | max_stake_days · 90 | 60 $CG |
+| Permanent | 5 платящих рефералов | referrals_paid · 5 | 100 $CG + Rare/Rare+/Epic 50/40/10 (SB 14 д) |
+| Permanent | Первый визит в NeuroForge / ARES-1 | visit_* · 1 | 10 $CG |
+| Permanent | Фишка в стейке 30 дней | max_stake_days · 30 | 30 $CG |
+| Permanent | 5 сделок на маркете | trades · 5 | 25 $CG |
+| Permanent | Глубина I Решётки | grid_route_max · 15 | 10 $CG |
+| Permanent | Дойти до сектора 45 | grid_route_max · 45 | клапан |
+| Permanent | Пройти Спуск (75/75) | grid_route_max · 75 | бустер + метка + клапан |
+| Permanent | Удержать 3 капли на одной фишке | grid_droplets · 3 | бустер |
+| Permanent | Первый престиж-спуск | grid_prestige · 1 | клапан |
+| Permanent | 100 звёзд Решётки | grid_stars · 100 | метка |
+| Permanent | 25 сделок на маркете | trades · 25 | бустер |
+| Permanent | 25 матчей на ставках | wagers · 25 | клапан |
 
 Прогресс считает индексатор по on-chain событиям (нельзя «накликать» без транзакций); клейм — on-chain Merkle: `claim_root` (kind 2, mint $CG из quests-слайса, лимитирован бюджетом дня), `claim_skr_root` (kind 5, SKR-пул), `claim_item_root` (kind 8, бустеры → `PlayerItems` через CPI) и `claim_chip_root` (kind 9, #28: ваучер на фишку → CPI `open_voucher` → бесплатный 1-chip `PendingPack` через Switchboard и обычный `open_pack`; редкость роллится on-chain по odds шаблона — стрик 80/18/2, weekly 30/50/18/2, 500 побед = Epic, 5 рефералов 50/40/10 — без floor/pity, soulbound 3/7/30/14 д). Кап «2 бесплатные фишки/нед» применяет оракул при сборке корня (остаток переносится), 1 ваучер на кошелёк за эпоху. Анти-фарм — раздел 3.
 
