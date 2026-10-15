@@ -1,5 +1,5 @@
 {
-  "generated": "2026-10-15T04:32:10Z",
+  "generated": "2026-10-15T04:42:38Z",
   "tool": "scripts/skate-art-build.py",
   "note": "Арт скейт-мира: сгенерированные изображения, а не рисунок кодом. Поле prompt — происхождение кадра; мастер в git не идёт (тяжёлый). Палитра docs/07 §2.2, бюджеты docs/16 §8.",
   "assets": [
@@ -302,6 +302,96 @@
       "master": "art_drafts/skate/stencil-drip.png",
       "master_sha256": "250c2db54e8c72d4210827b365b15bb39974b9ad501b7c2d302d64c02c6ca46f",
       "prompt": "A single bold graphic stencil shape of a thick paint blob with three long drips running down from the bottom edge, solid bone white, hard clean cut edges exactly like a spray-paint stencil cut from card with small connector tabs, flat vector look, alone in the centre of the frame on a flat pure green #00FF00 background. No background elements. Crisp high contrast edges, sharp focus, no shadow. gritty urban street-art game illustration, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
+    },
+    {
+      "name": "ui-slot",
+      "kind": "sprite",
+      "file": "client/public/art/skate/ui-slot.webp",
+      "width": 508,
+      "height": 512,
+      "bytes": 19226,
+      "kb": 18.8,
+      "budget_kb": 20,
+      "quality": 84,
+      "sha256": "3f7beb10dd0f00a4db54dee1688396129414fa60d20753e7409beeb6e7f9deae",
+      "master": "art_drafts/skate/ui-slot.png",
+      "master_sha256": "2677a634924971fff61a824ed0f7596726e6c1c297bc3c60a35a111cbd4ce6ce",
+      "prompt": "Mobile game interface art: a single an empty inventory slot frame, rounded square outline of worn brushed metal with a faint dashed inner border, four small bolt heads in the corners, dark smoked glass filling, thin magenta glow along the inner edge, completely empty interior, alone in the centre of the frame on a flat pure green #00FF00 background. No icons, no content, no symbols. Clean UI render, crisp edges, sharp focus, no shadow. gritty urban street-art game illustration, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
+    },
+    {
+      "name": "ui-card",
+      "kind": "sprite",
+      "file": "client/public/art/skate/ui-card.webp",
+      "width": 288,
+      "height": 512,
+      "bytes": 12648,
+      "kb": 12.4,
+      "budget_kb": 20,
+      "quality": 84,
+      "sha256": "74eff6ccd8409eb5c0b8143d5596afe5d651acced4759d79a32ba85919cafd52",
+      "master": "art_drafts/skate/ui-card.png",
+      "master_sha256": "7e834fd34d16fd5445de489241a0561dafc2c307f7c52e7c844718b3c9da9cd0",
+      "prompt": "Mobile game interface art: a single a vertical item card of dark smoked glass and worn brushed metal, thin glowing magenta edge along the top, small corner rivets, faint circular recess at the top where an icon would sit, completely empty interior, alone in the centre of the frame on a flat pure green #00FF00 background. No icons, no content, no symbols. Clean UI render, crisp edges, sharp focus, no shadow. gritty urban street-art game illustration, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
+    },
+    {
+      "name": "ui-badge",
+      "kind": "sprite",
+      "file": "client/public/art/skate/ui-badge.webp",
+      "width": 353,
+      "height": 369,
+      "bytes": 19862,
+      "kb": 19.4,
+      "budget_kb": 20,
+      "quality": 84,
+      "sha256": "0d8a6371d3520014cf891c5c390df62b5158a137ea318112fa474cb7e9f64870",
+      "master": "art_drafts/skate/ui-badge.png",
+      "master_sha256": "6976d9a1bd4c954cedfd2c3396be9c856d52187798640d83a2cb9d3968112ecb",
+      "prompt": "Mobile game interface art: a single an achievement badge crest of worn brushed metal shaped like a shield with a notched upper edge, dark enamel centre, thin cyan outline, small rivet studs, no emblem inside, completely empty interior, alone in the centre of the frame on a flat pure green #00FF00 background. No icons, no content, no symbols. Clean UI render, crisp edges, sharp focus, no shadow. gritty urban street-art game illustration, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
+    },
+    {
+      "name": "ui-plate",
+      "kind": "sprite",
+      "file": "client/public/art/skate/ui-plate.webp",
+      "width": 512,
+      "height": 118,
+      "bytes": 8828,
+      "kb": 8.6,
+      "budget_kb": 20,
+      "quality": 84,
+      "sha256": "0ebf340e61283548038bda7142600c2e00a296acd7ce71d30f91529c682954d4",
+      "master": "art_drafts/skate/ui-plate.png",
+      "master_sha256": "95ed10ddf210085353e59eaa0387992e20c3becfa56c6868fecd2b0812496794",
+      "prompt": "Mobile game interface art: a single a wide horizontal button plate of dark brushed metal with worn scratched edges and a thin cyan inner line following the contour, subtle bevel, completely empty interior, alone in the centre of the frame on a flat pure green #00FF00 background. No icons, no content, no symbols. Clean UI render, crisp edges, sharp focus, no shadow. gritty urban street-art game illustration, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
+    },
+    {
+      "name": "empty-garage",
+      "kind": "background",
+      "file": "client/public/art/skate/empty-garage.webp",
+      "width": 1600,
+      "height": 900,
+      "bytes": 125968,
+      "kb": 123.0,
+      "budget_kb": 350,
+      "quality": 80,
+      "sha256": "19e5830b028e3e92d8c3570e944db58043e8333c395eb98e3b161d9c275c5ad6",
+      "master": "art_drafts/skate/empty-garage.png",
+      "master_sha256": "70a2208f906837466c8a05be96d96da51941acff5542d172648f9b5bb206e417",
+      "prompt": "Game background art of an empty skate workshop garage interior: a pegboard wall with empty hooks and no tools, a bare wooden workbench, a single hanging work lamp casting a hot magenta pool of light, dust motes, oil stains on the concrete floor, peeling paint, a dark doorway at the back. Melancholy quiet mood, nothing on the wall and nothing on the bench. No people, no characters, no boards, no tags, no murals. Painterly matte painting, even soft lighting, soft depth haze. gritty urban street-art game illustration, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
+    },
+    {
+      "name": "empty-wall",
+      "kind": "background",
+      "file": "client/public/art/skate/empty-wall.webp",
+      "width": 1600,
+      "height": 900,
+      "bytes": 90446,
+      "kb": 88.3,
+      "budget_kb": 350,
+      "quality": 80,
+      "sha256": "0ce9116c7004d93e13da208dc4dc3265f39fd72db2f5bc7c4e1fc53856dd59b8",
+      "master": "art_drafts/skate/empty-wall.png",
+      "master_sha256": "64ae1f1c80f229dacc284cfce1b361f554da5d6902fb92c85a27717381086f55",
+      "prompt": "Game background art of a completely clean untouched concrete wall segment shot strictly flat from the front at dawn, no graffiti and no paint at all, smooth pale grey panels with faint form-work seams and weathering, soft overcast light with a faint hot magenta glow bleeding in from the left edge, wet pavement at the base, quiet and expectant mood. No people, no characters, no boards, no tags, no murals. Painterly matte painting, even soft lighting, soft depth haze. gritty urban street-art game illustration, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
     }
   ]
 }

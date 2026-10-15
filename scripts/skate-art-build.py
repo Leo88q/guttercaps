@@ -258,6 +258,66 @@ for _name, _shape in STENCILS:
     })
 
 
+# ── Интерфейсные элементы и пустые состояния ─────────────────────────────────
+# Рамки, карточки, бейджи: без них экран выглядит недособранным. Внутри всегда
+# пусто — содержимое рисует код, а не картинка.
+UI_PARTS = [
+    ("ui-slot", "an empty inventory slot frame, rounded square outline of worn brushed metal with a "
+                "faint dashed inner border, four small bolt heads in the corners, dark smoked glass "
+                "filling, thin magenta glow along the inner edge"),
+    ("ui-card", "a vertical item card of dark smoked glass and worn brushed metal, thin glowing "
+                "magenta edge along the top, small corner rivets, faint circular recess at the top "
+                "where an icon would sit"),
+    ("ui-badge", "an achievement badge crest of worn brushed metal shaped like a shield with a notched "
+                 "upper edge, dark enamel centre, thin cyan outline, small rivet studs, no emblem "
+                 "inside"),
+    ("ui-plate", "a wide horizontal button plate of dark brushed metal with worn scratched edges and "
+                 "a thin cyan inner line following the contour, subtle bevel"),
+]
+
+for _name, _shape in UI_PARTS:
+    ASSETS.append({
+        "name": _name,
+        "kind": SPRITE,
+        "master": f"{_name}.png",
+        "geometry": (512, 512),
+        "quality": 84,
+        "budget_kb": 20,
+        "prompt": (
+            f"Mobile game interface art: a single {_shape}, completely empty interior, alone in the "
+            f"centre of the frame on a flat pure green #00FF00 background. No icons, no content, no "
+            f"symbols. Clean UI render, crisp edges, sharp focus, no shadow. " + PROMPT_PREFIX
+        ),
+    })
+
+# Пустые состояния: то, что игрок видит до первого предмета (docs/16 §4.4, §3.4).
+EMPTY_STATES = [
+    ("empty-garage", "an empty skate workshop garage interior: a pegboard wall with empty hooks and no "
+                     "tools, a bare wooden workbench, a single hanging work lamp casting a hot magenta "
+                     "pool of light, dust motes, oil stains on the concrete floor, peeling paint, a "
+                     "dark doorway at the back. Melancholy quiet mood, nothing on the wall and nothing "
+                     "on the bench"),
+    ("empty-wall", "a completely clean untouched concrete wall segment shot strictly flat from the "
+                   "front at dawn, no graffiti and no paint at all, smooth pale grey panels with faint "
+                   "form-work seams and weathering, soft overcast light with a faint hot magenta glow "
+                   "bleeding in from the left edge, wet pavement at the base, quiet and expectant mood"),
+]
+
+for _name, _scene in EMPTY_STATES:
+    ASSETS.append({
+        "name": _name,
+        "kind": BACKGROUND,
+        "master": f"{_name}.png",
+        "geometry": BG_GEOMETRY,
+        "quality": 80,
+        "budget_kb": 350,
+        "prompt": (
+            f"Game background art of {_scene}. No people, no characters, no boards, no tags, no murals. "
+            f"Painterly matte painting, even soft lighting, soft depth haze. " + PROMPT_PREFIX
+        ),
+    })
+
+
 def chroma_key(img, tol=CHROMA_TOL):
     """Прозрачность вместо ровного зелёного фона (per-pixel; быстрее numpy не нужно)."""
     img = img.convert("RGBA")
