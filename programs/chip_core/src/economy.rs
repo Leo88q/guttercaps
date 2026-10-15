@@ -532,8 +532,8 @@ pub enum ServiceKind {
     CapSkin = 2,      // cosmetic frame / spray for one chip (attribute on the Core asset)
     ProfileTheme = 3, // profile wallpaper / color set
     ArenaEmotePack = 4,
-    ExtraBenchSlots = 5,  // +2 fusion bench presets
-    SeasonPass = 6,       // cosmetic-only season track (no odds, no power)
+    ExtraBenchSlots = 5,      // +2 fusion bench presets
+    SeasonPass = 6,           // cosmetic-only season track (no odds, no power)
     Booster = 7, // fusion booster: +15 pp success (cap 95 %). NOT free-form: max 3 per wallet per day
     PackSkipAnim = 8, // permanent "skip reveal" toggle — pure convenience
     DistrictBanner = 9, // profile banner of a completed district
