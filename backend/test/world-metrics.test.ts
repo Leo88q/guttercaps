@@ -10,7 +10,7 @@ import { dayIndex } from '../src/quests.ts';
 import { sanitizeTagSvg, saveTag } from '../src/tags.ts';
 import { claimSlot } from '../src/wall.ts';
 import { setRig } from '../src/rig.ts';
-import { WORLD_FEATURES, cohortReport, recordEvent, worldReport } from '../src/worldMetrics.ts';
+import { EPIC_PLUS, WORLD_FEATURES, cohortReport, epicPlusRepeat, recordEvent, worldReport } from '../src/worldMetrics.ts';
 
 const kp = () => Keypair.generate().publicKey.toBase58();
 const DAY = 86_400;
@@ -115,5 +115,48 @@ describe('worldMetrics — когорта против базовой линии
     const db = new Db(':memory:');
     const r = worldReport(db, 7);
     expect(r.features.map((f) => f.feature)).toEqual([...WORLD_FEATURES]);
+  });
+});
+
+describe('worldMetrics — флип и повтор пака (§12 строка 1)', () => {
+  /** Вскрытие пака: редкости лежат в pack_opens тем же JSON, что пишет индексатор. */
+  function seedOpen(db: Db, buyer: string, rarities: number[], t: number) {
+    db.run(`INSERT INTO pack_opens (signature, event_index, buyer, sku, nonce, count, assets, rarities, collections, roll_hex, pity_before, pity_after, slot, block_time, pack_no)
+            VALUES (?, 0, ?, 1, ?, ?, '[]', ?, '[]', '00', 0, 0, 1, ?, 1)`,
+      kp().slice(0, 32), buyer, kp().slice(0, 12), rarities.length, JSON.stringify(rarities), t);
+  }
+
+  it('когорта Epic+ против базы без Epic+: покупку ловим и в своей, и в чужой группе', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const withEpic = kp();
+    const noEpic = kp();
+    seedOpen(db, withEpic, [2, EPIC_PLUS], t - 10 * DAY);
+    seedOpen(db, noEpic, [2, 3], t - 10 * DAY);
+    // Только держатель Epic+ покупает ещё один пак — и ровно через сутки без минуты.
+    seedPack(db, withEpic, t - 10 * DAY + DAY - 60);
+    seedPack(db, noEpic, t - 10 * DAY + 2 * DAY);
+
+    const r = epicPlusRepeat(db, 30, t);
+    expect(r.cohort).toEqual({ opens: 1, repeatRate: 1 });
+    expect(r.baseline).toEqual({ opens: 1, repeatRate: 0 });
+    // База нулевая → дельта не «бесконечность», а null: делить не на что.
+    expect(r.delta).toBeNull();
+  });
+
+  it('порог редкости тот же, что крутит флип: Epic (4) в базу, Epic+ (5) в когорту', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    seedOpen(db, kp(), [EPIC_PLUS - 1], t - DAY);
+    seedOpen(db, kp(), [EPIC_PLUS], t - DAY);
+    const r = epicPlusRepeat(db, 30, t);
+    expect(r.cohort.opens).toBe(1);
+    expect(r.baseline.opens).toBe(1);
+  });
+
+  it('пустое окно молчит, а не выдаёт нулевую долю', () => {
+    const db = new Db(':memory:');
+    const r = epicPlusRepeat(db, 30);
+    expect(r).toEqual({ cohort: { opens: 0, repeatRate: null }, baseline: { opens: 0, repeatRate: null }, delta: null });
   });
 });

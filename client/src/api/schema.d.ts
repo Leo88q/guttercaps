@@ -7159,6 +7159,21 @@ export interface components {
                     wallets?: number;
                 }[];
             }[];
+            /** @description docs/16 §12 row 1 — share of pack opens followed by another pack purchase within 24 h */
+            epicPlus?: {
+                /** @description opens that contained at least one Epic+ cap */
+                cohort?: {
+                    opens?: number;
+                    repeatRate?: number | null;
+                };
+                /** @description opens in the same window without an Epic+ cap */
+                baseline?: {
+                    opens?: number;
+                    repeatRate?: number | null;
+                };
+                /** @description cohort / baseline − 1; null when there is nothing to divide by */
+                delta?: number | null;
+            };
         };
         WorldCohortStats: {
             wallets?: number;

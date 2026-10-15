@@ -26,6 +26,9 @@ const iso = (s: number) => new Date(s * 1000).toISOString();
 
 /** Признаки, о которых мы умеем считать когорты (ровно то, что перечислено в §12). */
 export const WORLD_FEATURES = ['wall', 'exhibit', 'tag'] as const;
+
+/** Порог флипа (docs/16 §2.1) — редкость, начиная с которой дроп считается «редким». */
+export const EPIC_PLUS = 5;
 export type WorldFeature = (typeof WORLD_FEATURES)[number];
 
 /**
@@ -36,6 +39,12 @@ export type WorldFeature = (typeof WORLD_FEATURES)[number];
  */
 export function recordEvent(db: Db, wallet: string, feature: WorldFeature, kind: string, meta?: Record<string, unknown>, at = now()): void {
   db.run(`INSERT INTO feature_events (wallet, feature, kind, at, meta) VALUES (?, ?, ?, ?, ?)`, wallet, feature, kind, at, meta ? JSON.stringify(meta) : null);
+}
+
+export interface Repeat24h {
+  cohort: { opens: number; repeatRate: number | null };
+  baseline: { opens: number; repeatRate: number | null };
+  delta: number | null;
 }
 
 interface GroupRow { n: number; packs: number; trades: number; fusions: number; logins: number; stakes: number }
@@ -153,7 +162,46 @@ export function cohortReport(db: Db, feature: WorldFeature, windowDays = 30, t =
   };
 }
 
-/** Все три фичи сразу — ровно то, что смотрит админский экран. */
+/**
+ * §12 строка 1: доля вскрытий, за которыми в течение 24 ч купили ещё один пак.
+ *
+ * Когорта — вскрытия с хотя бы одной крышкой Epic+ (редкость ≥ 5, тот же порог,
+ * при котором карточку крутит флип), база — вскрытия, где такого дропа не было.
+ * События под это не пишем: `pack_opens` и так хранит блок и редкости, а индексатор
+ * переигрывается — лишняя строка в `feature_events` при пересборке превратилась бы
+ * в дубль. Дубликатов здесь не бывает по построению.
+ */
+export function epicPlusRepeat(db: Db, windowDays = 30, t = now()): Repeat24h {
+  const to = t;
+  const from = t - windowDays * DAY;
+  const share = (minRarity: number, below: boolean) => {
+    const row = db.get<{ n: number; hits: number }>(`
+      SELECT COUNT(*) n, COALESCE(SUM(repeat), 0) hits
+        FROM (
+          SELECT o.buyer, o.block_time,
+                 CASE WHEN EXISTS (
+                   SELECT 1 FROM pack_purchases p
+                    WHERE p.buyer = o.buyer
+                      AND COALESCE(p.block_time, 0) > o.block_time
+                      AND COALESCE(p.block_time, 0) < o.block_time + ?
+                 ) THEN 1 ELSE 0 END repeat
+            FROM pack_opens o
+           WHERE o.block_time >= ? AND o.block_time < ?
+             AND (SELECT MAX(je.value) FROM json_each(o.rarities) je) ${below ? '<' : '>='} ?
+        )`, DAY, from, to, minRarity);
+    const n = row?.n ?? 0;
+    return { opens: n, repeatRate: n > 0 ? round((row?.hits ?? 0) / n) : null };
+  };
+  const cohort = share(EPIC_PLUS, false);
+  const baseline = share(EPIC_PLUS, true);
+  return { cohort, baseline, delta: ratio(cohort.repeatRate ?? 0, baseline.repeatRate ?? 0) };
+}
+
+/** Все фичи сразу — ровно то, что смотрит админский экран. */
 export function worldReport(db: Db, windowDays = 30, t = now()) {
-  return { windowDays, asOf: iso(t), features: WORLD_FEATURES.map((f) => cohortReport(db, f, windowDays, t)) };
+  return {
+    windowDays, asOf: iso(t),
+    features: WORLD_FEATURES.map((f) => cohortReport(db, f, windowDays, t)),
+    epicPlus: epicPlusRepeat(db, windowDays, t),
+  };
 }

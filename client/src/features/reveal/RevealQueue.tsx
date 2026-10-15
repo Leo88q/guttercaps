@@ -41,6 +41,7 @@ export function RevealQueue() {
       isOnChain
       remaining={queue.length - 1}
       sku={head.sku}
+      fused={head.fused}
       founder={head.founder}
       onDone={done}
     />

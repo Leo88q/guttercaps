@@ -2148,6 +2148,19 @@ components:
                 type: array
                 description: adoption curve — events and distinct wallets per day
                 items: { type: object, properties: { day: { type: integer }, events: { type: integer }, wallets: { type: integer } } }
+        epicPlus:
+          type: object
+          description: 'docs/16 §12 row 1 — share of pack opens followed by another pack purchase within 24 h'
+          properties:
+            cohort:
+              type: object
+              description: opens that contained at least one Epic+ cap
+              properties: { opens: { type: integer }, repeatRate: { type: [number, 'null'] } }
+            baseline:
+              type: object
+              description: opens in the same window without an Epic+ cap
+              properties: { opens: { type: integer }, repeatRate: { type: [number, 'null'] } }
+            delta: { type: [number, 'null'], description: 'cohort / baseline − 1; null when there is nothing to divide by' }
     WorldCohortStats:
       type: object
       properties:

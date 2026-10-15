@@ -378,7 +378,35 @@ function WorldTab() {
       {q.isLoading && <Skeleton h={300} />}
       {!!q.error && <div className="warn">{t('admin.params.unavailable', { error: '' })}<ErrorNotice error={q.error} /></div>}
       {(q.data?.features ?? []).map((f) => <WorldFeature key={f.feature} f={f as FeatureReport} num={num} signed={signed} />)}
+      {!!q.data?.epicPlus && <EpicPlusCard e={q.data.epicPlus} signed={signed} />}
     </div>
+  );
+}
+
+type EpicPlusReport = { cohort?: { opens?: number; repeatRate?: number | null }; baseline?: { opens?: number; repeatRate?: number | null }; delta?: number | null };
+
+function EpicPlusCard({ e, signed }: { e: EpicPlusReport; signed: (v: number | null) => string }) {
+  const t = useT();
+  const rate = (r: number | null | undefined) => (r === null || r === undefined ? '—' : new Intl.NumberFormat(LOCALE_META[getLocale()].tag, { style: 'percent', maximumFractionDigits: 0 }).format(r));
+  const opens = (n: number | undefined) => t('admin.world.opens', { n: n ?? 0 });
+  return (
+    <CleanZone className="stack-sm">
+      <div className="label">{t('admin.world.epicPlus')}</div>
+      <div className="world-cohorts">
+        <div className="world-cohorts-head">
+          <span className="muted">{t('admin.world.metric')}</span>
+          <span>{t('admin.world.withEpic')}</span>
+          <span>{t('admin.world.withoutEpic')}</span>
+          <span>{t('admin.world.delta')}</span>
+        </div>
+        <div className="world-cohorts-row">
+          <span className="muted">{t('admin.world.repeat24')}</span>
+          <span className="mono">{rate(e.cohort?.repeatRate)} <span className="muted tiny">· {opens(e.cohort?.opens)}</span></span>
+          <span className="mono">{rate(e.baseline?.repeatRate)} <span className="muted tiny">· {opens(e.baseline?.opens)}</span></span>
+          <span className="mono cg-accent">{signed(e.delta ?? null)}</span>
+        </div>
+      </div>
+    </CleanZone>
   );
 }
 
