@@ -114,19 +114,19 @@ export default function Bowl() {
           </div>
         </div>
         <div className="small muted">{t('bowl.exhibitEmpty')}</div>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <Link to="/bowl/rig" className="btn btn-sm">
+            {t('bowl.openRig')}
+          </Link>
+        </div>
       </section>
 
       <section className="card stack-sm">
         <div className="strong">{t('bowl.wallTitle')}</div>
         <img className="bowl-wide" src={`${ART}/wall-district.webp`} alt="" />
-        <div className="small muted">{t('bowl.wallSoon')}</div>
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-          <button type="button" className="btn btn-sm" disabled>
-            {t('bowl.soon')}
-          </button>
-          {/* Редактор уже работает: рисовать тег можно раньше, чем стена
-              откроется для размещения (docs/16 §11, фаза 2). */}
-          <Link to="/bowl/tag" className="btn btn-sm btn-ghost">
+          {/* Редактор и стена уже работают: рисуй тег и занимай слот (docs/16 §3.2–3.4). */}
+          <Link to="/bowl/tag" className="btn btn-sm">
             {t('bowl.openEditor')}
           </Link>
           {/* Стена уже принимает теги: смотри docs/16 §3.4. */}

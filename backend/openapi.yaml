@@ -428,6 +428,56 @@ paths:
       summary: My slots and whether I currently qualify for one (the wall screen answers the button before it is pressed)
       responses:
         '200': { description: my wall, content: { application/json: { schema: { $ref: '#/components/schemas/MyWall' } } } }
+  /rig:
+    get:
+      tags: [rig]
+      summary: My board — three exhibit slots and how many caps away the next one opens (docs/16 §4.3)
+      description: |
+        A slot holds a *reference* to a cap: nothing is burned, transferred or locked. Ownership is
+        re-checked on every read, so a cap sold or consumed by a fusion simply leaves the slot empty —
+        there is no cleanup step and no sale handler to forget. Rarity is visual only (decisions 1 and 3):
+        the payload carries no weight, no chance, no yield.
+      responses:
+        '200': { description: my board, content: { application/json: { schema: { $ref: '#/components/schemas/RigView' } } } }
+    put:
+      tags: [rig]
+      summary: Set or clear exhibit slots (and the public board switch) — idempotent
+      description: |
+        `slots` is the desired state of the listed slots; anything not listed stays as it is. `asset: null`
+        empties the slot. The same cap cannot fill two slots — moving it clears the previous one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                slots:
+                  type: array
+                  items:
+                    type: object
+                    required: [slot]
+                    properties:
+                      slot: { type: integer, minimum: 0, maximum: 2, description: '0 deck, 1 and 2 grip' }
+                      asset: { type: [string, 'null'], pattern: '^[1-9A-HJ-NP-Za-km-z]{32,44}$', description: 'null clears the slot' }
+                public: { type: boolean, description: 'show this board on /rig/{wallet} (docs/16 §4.5)' }
+      responses:
+        '200': { description: the board after the change, content: { application/json: { schema: { $ref: '#/components/schemas/RigView' } } } }
+        '403': { $ref: '#/components/responses/Error', description: not_your_chip }
+        '409': { $ref: '#/components/responses/Error', description: 'slot_locked (collect 12 / 36 caps) | chip_in_use' }
+  /rig/{wallet}:
+    get:
+      tags: [rig]
+      security: []
+      summary: Someone's public board (docs/16 §4.5) — 404 while the owner has not switched it on
+      parameters:
+        - name: wallet
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Pubkey' }
+      responses:
+        '200': { description: the board, content: { application/json: { schema: { $ref: '#/components/schemas/RigView' } } } }
+        '404': { $ref: '#/components/responses/Error', description: rig_private }
   /tags/{id}/svg:
     get:
       tags: [tags]
@@ -1838,6 +1888,49 @@ components:
         items: { type: array, items: { $ref: '#/components/schemas/WallSlot' } }
         layers: { type: array, description: previous tags of a slot, shown as faded paint underneath, items: { type: object, properties: { slot: { type: integer }, wallet: { type: string }, tagId: { type: string }, appliedAt: { type: string, format: date-time }, releasedAt: { type: string, format: date-time } } } }
         me: { type: object, nullable: true, properties: { activeDays: { type: integer }, activeDaysNeeded: { type: integer }, stakedCaps: { type: integer }, stakedCapsNeeded: { type: integer }, eligible: { type: boolean }, reason: { type: [string, 'null'], enum: [need_active_days, need_staked_cap] }, mySlot: { type: [integer, 'null'] } } }
+    RigView:
+      type: object
+      description: |
+        Three exhibit slots. `caps` is the number of *distinct* caps collected (8 districts × 9 rarities) —
+        the same number that opens slots 2 and 3 at 12 and 36.
+      properties:
+        wallet: { type: string }
+        public: { type: boolean, description: 'owner has switched the public board on (§4.5)' }
+        caps:
+          type: array
+          description: |
+            Distinct caps collected — those are the ones you can exhibit, and their count is what opens
+            slots. Empty on the public board: someone else's board shows three caps, not their collection.
+          items:
+            type: object
+            properties:
+              asset: { $ref: '#/components/schemas/Pubkey' }
+              collection: { type: integer }
+              rarity: { $ref: '#/components/schemas/Rarity' }
+              level: { type: integer }
+              copies: { type: integer }
+
+        slots: { type: array, items: { $ref: '#/components/schemas/RigSlot' } }
+        next: { type: object, nullable: true, description: 'the next locked slot and how many caps are missing — the UI says «collect N more», not «soon»', properties: { slot: { type: integer }, need: { type: integer } } }
+    RigSlot:
+      type: object
+      properties:
+        slot: { type: integer }
+        place: { type: string, enum: [deck, grip] }
+        unlocked: { type: boolean }
+        unlockAt: { type: integer, description: 'caps needed to open this slot (0 = open from the start)' }
+        updatedAt: { type: [string, 'null'], format: date-time }
+        chip:
+          type: object
+          nullable: true
+          description: the exhibited cap — visual only, no weight / chance / yield (decisions 1 and 3)
+          properties:
+            asset: { $ref: '#/components/schemas/Pubkey' }
+            collection: { type: integer }
+            rarity: { $ref: '#/components/schemas/Rarity' }
+            level: { type: integer }
+            skin: { type: [string, 'null'] }
+            founder: { type: boolean }
     MyWall:
       type: object
       properties:

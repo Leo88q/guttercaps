@@ -1033,6 +1033,19 @@ CREATE TABLE IF NOT EXISTS wall_slot_history (
 );
 CREATE INDEX IF NOT EXISTS idx_wall_slot_history_slot ON wall_slot_history(district, slot, released_at DESC);
 
+-- Экспозиция крышек (docs/16 §4.3): три слота на доске — один на деку, два на грип.
+-- Слот хранит только ссылку на крышку: она не сжигается, не передаётся и не
+-- блокируется (решение 1 из §0.3), владение проверяется джойном при рендере,
+-- поэтому проданная крышка просто оставляет слот пустым.
+CREATE TABLE IF NOT EXISTS rig_exhibit (
+  wallet      TEXT    NOT NULL,
+  slot        INTEGER NOT NULL,
+  asset       TEXT    NOT NULL,
+  updated_at  INTEGER NOT NULL,
+  PRIMARY KEY (wallet, slot)
+);
+CREATE INDEX IF NOT EXISTS idx_rig_exhibit_asset ON rig_exhibit(asset);
+
 CREATE TABLE IF NOT EXISTS reward_batches (
   kind         INTEGER NOT NULL,
   epoch        INTEGER NOT NULL,

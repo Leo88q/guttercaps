@@ -1490,6 +1490,129 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rig": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My board — three exhibit slots and how many caps away the next one opens (docs/16 §4.3)
+         * @description A slot holds a *reference* to a cap: nothing is burned, transferred or locked. Ownership is
+         *     re-checked on every read, so a cap sold or consumed by a fusion simply leaves the slot empty —
+         *     there is no cleanup step and no sale handler to forget. Rarity is visual only (decisions 1 and 3):
+         *     the payload carries no weight, no chance, no yield.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description my board */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RigView"];
+                    };
+                };
+            };
+        };
+        /**
+         * Set or clear exhibit slots (and the public board switch) — idempotent
+         * @description `slots` is the desired state of the listed slots; anything not listed stays as it is. `asset: null`
+         *     empties the slot. The same cap cannot fill two slots — moving it clears the previous one.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        slots?: {
+                            /** @description 0 deck, 1 and 2 grip */
+                            slot: number;
+                            /** @description null clears the slot */
+                            asset?: string | null;
+                        }[];
+                        /** @description show this board on /rig/{wallet} (docs/16 §4.5) */
+                        public?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description the board after the change */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RigView"];
+                    };
+                };
+                /** @description not_your_chip */
+                403: components["responses"]["Error"];
+                /** @description slot_locked (collect 12 / 36 caps) | chip_in_use */
+                409: components["responses"]["Error"];
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rig/{wallet}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Someone's public board (docs/16 §4.5) — 404 while the owner has not switched it on */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    wallet: components["schemas"]["Pubkey"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description the board */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RigView"];
+                    };
+                };
+                /** @description rig_private */
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tags/{id}/svg": {
         parameters: {
             query?: never;
@@ -6429,6 +6552,51 @@ export interface components {
                 /** @enum {string|null} */
                 reason?: "need_active_days" | "need_staked_cap" | null;
                 mySlot?: number | null;
+            } | null;
+        };
+        /**
+         * @description Three exhibit slots. `caps` is the number of *distinct* caps collected (8 districts × 9 rarities) —
+         *     the same number that opens slots 2 and 3 at 12 and 36.
+         */
+        RigView: {
+            wallet?: string;
+            /** @description owner has switched the public board on (§4.5) */
+            public?: boolean;
+            /**
+             * @description Distinct caps collected — those are the ones you can exhibit, and their count is what opens
+             *     slots. Empty on the public board: someone else's board shows three caps, not their collection.
+             */
+            caps?: {
+                asset?: components["schemas"]["Pubkey"];
+                collection?: number;
+                rarity?: components["schemas"]["Rarity"];
+                level?: number;
+                copies?: number;
+            }[];
+            slots?: components["schemas"]["RigSlot"][];
+            /** @description the next locked slot and how many caps are missing — the UI says «collect N more», not «soon» */
+            next?: {
+                slot?: number;
+                need?: number;
+            } | null;
+        };
+        RigSlot: {
+            slot?: number;
+            /** @enum {string} */
+            place?: "deck" | "grip";
+            unlocked?: boolean;
+            /** @description caps needed to open this slot (0 = open from the start) */
+            unlockAt?: number;
+            /** Format: date-time */
+            updatedAt?: string | null;
+            /** @description the exhibited cap — visual only, no weight / chance / yield (decisions 1 and 3) */
+            chip?: {
+                asset?: components["schemas"]["Pubkey"];
+                collection?: number;
+                rarity?: components["schemas"]["Rarity"];
+                level?: number;
+                skin?: string | null;
+                founder?: boolean;
             } | null;
         };
         MyWall: {

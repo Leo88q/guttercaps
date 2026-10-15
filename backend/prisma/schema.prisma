@@ -1038,6 +1038,17 @@ model WallSlotHistory {
   @@map("wall_slot_history")
 }
 
+model RigExhibit {
+  wallet    String
+  slot      Int
+  asset     String
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  @@id([wallet, slot])
+  @@index([asset])
+  @@map("rig_exhibit")
+}
+
 model WallReport {
   id         Int       @id @default(autoincrement())
   tagId      String    @map("tag_id")

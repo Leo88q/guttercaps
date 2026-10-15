@@ -17,7 +17,7 @@ import { useT } from '@/shared/i18n';
 import { useCollections } from '@/shared/lib/lore';
 import { useUiStore } from '@/app/store/ui';
 import { API_BASE } from '@/app/config';
-import { useClaimSlot, useMyTags, useMyWall, useReleaseSlot, useRenewSlot, useReportTag, useWall, type TagReportReason } from '@/api/hooks';
+import { useClaimSlot, useMyTags, useMyWall, useReleaseSlot, useRenewSlot, useReportTag, useWall, type TagReportReason } from '@/api/hooksLazy';
 import { fmtLocale, useLocale } from '@/shared/i18n';
 import { Pill, Modal } from '@/shared/ui/primitives';
 import { shortKey } from '@/shared/lib/format';

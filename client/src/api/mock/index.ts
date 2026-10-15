@@ -378,6 +378,67 @@ on('get', '/me/wall', () => ({
   items: mockWall.filter((s) => s.wallet === ME).map((s) => ({ district: s.district, slot: s.slot, tagId: s.tagId, appliedAt: s.appliedAt, expiresAt: s.expiresAt, daysLeft: 30 })),
 }));
 
+// ------------------------------------------------- экспозиция крышек (docs/16 §4.3) и витрина (§4.5)
+// Мок повторяет правило бэкенда: слот открыт при 0 / 12 / 36 разных крышках, а
+// владение проверяется при каждом чтении (проданная крышка оставляет слот пустым).
+const RIG_UNLOCK_AT = [0, 12, 36];
+const mockRig = new Map<number, string>();          // slot → asset (только свои)
+let mockRigPublic = false;
+const rigCaps = (wallet = ME) => {
+  const byKey = new Map<string, { asset: string; collection: number; rarity: number; level: number; copies: number }>();
+  for (const c of chips) {
+    if (c.owner !== wallet) continue;
+    const key = `${c.collection}:${c.rarity}`;
+    const prev = byKey.get(key);
+    if (!prev) { byKey.set(key, { asset: c.asset, collection: c.collection, rarity: c.rarity, level: c.level, copies: 1 }); continue; }
+    prev.copies++;
+    if (c.level > prev.level || (c.level === prev.level && c.asset < prev.asset)) { prev.asset = c.asset; prev.level = c.level; }
+  }
+  return [...byKey.values()];
+};
+const rigView = (wallet = ME) => {
+  const caps = rigCaps(wallet);
+  const owned = new Map(caps.map((c) => [c.asset, c]));
+  const slots = [0, 1, 2].map((slot) => {
+    const unlockAt = RIG_UNLOCK_AT[slot];
+    const chip = wallet === ME ? owned.get(mockRig.get(slot) ?? '') : undefined;
+    return {
+      slot, place: slot === 0 ? 'deck' : 'grip', unlocked: caps.length >= unlockAt, unlockAt,
+      chip: chip ? { asset: chip.asset, collection: chip.collection, rarity: chip.rarity, level: chip.level, skin: null, founder: false } : null,
+      updatedAt: chip ? iso(0) : null,
+    };
+  });
+  const locked = slots.find((s) => !s.unlocked);
+  return {
+    wallet, public: wallet === ME ? mockRigPublic : true,
+    // Чужая витрина показывает три крышки на доске, а не всю коллекцию.
+    caps: wallet === ME ? caps : [],
+    slots, next: locked ? { slot: locked.slot, need: locked.unlockAt - caps.length } : null,
+  };
+};
+on('get', '/rig', () => rigView(ME));
+on('put', '/rig', (o) => {
+  const b = (o.body ?? {}) as { slots?: Array<{ slot?: number; asset?: string | null }>; public?: boolean };
+  const owned = new Set(rigCaps(ME).map((c) => c.asset));
+  for (const u of b.slots ?? []) {
+    const slot = Number(u?.slot);
+    if (!Number.isInteger(slot) || slot < 0 || slot > 2) throw new ApiError(400, 'bad_slot', 'slot must be 0..2');
+    if (!u?.asset) { mockRig.delete(slot); continue; }
+    if (rigCaps(ME).length < RIG_UNLOCK_AT[slot]) throw new ApiError(409, 'slot_locked', `Slot ${slot + 1} opens at ${RIG_UNLOCK_AT[slot]} caps`);
+    if (!owned.has(u.asset)) throw new ApiError(403, 'not_your_chip', 'You can only exhibit a cap you own');
+    for (const [other, asset] of [...mockRig]) if (asset === u.asset && other !== slot) mockRig.delete(other);
+    mockRig.set(slot, u.asset);
+  }
+  if (typeof b.public === 'boolean') mockRigPublic = b.public;
+  return rigView(ME);
+});
+on('get', '/rig/{wallet}', (_o, params) => {
+  const wallet = String(params.wallet);
+  // Мок показывает витрину любого кошелька: реальная проверка флага живёт в бэкенде.
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(wallet)) throw new ApiError(400, 'bad_request', 'wallet must be an address');
+  return rigView(wallet);
+});
+
 // season pass state (tier ~11 with unclaimed tiers + a skinned showcase cap)
 let mockPassXp = 2360;
 const mockPassClaimed: number[] = [1, 2];

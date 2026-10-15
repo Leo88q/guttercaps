@@ -1,0 +1,149 @@
+/* Экспозиция крышек (docs/16 §4.3) и витрина (§4.5).
+   Графика — файлы из /art/skate; здесь только раскладка и состояние. */
+
+.rig-board {
+  display: grid;
+  gap: 14px;
+}
+
+/* Дека: сгенерированный рендер доски, слот лежит в её центре. */
+.rig-deck {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #0d0c11;
+}
+.rig-deck-art {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.rig-deck-slot {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  transform: translate(-50%, -50%);
+  width: 26%;
+}
+
+/* Грип: тёмный лист с двумя слотами — «два на грип» по §4.3. */
+.rig-grip {
+  position: relative;
+  border-radius: 14px;
+  padding: 14px;
+  background: #14131a url('/art/skate/grip.webp') center / cover no-repeat;
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+}
+.rig-grip-slots {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  width: 100%;
+  max-width: 320px;
+}
+.rig-grip-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted, #8b8797);
+}
+
+/* Слот: одна ячейка — один тап. Размер не меньше пальца (44 px). */
+.rig-slot {
+  position: relative;
+  width: 100%;
+  min-width: 44px;
+  aspect-ratio: 1;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(10, 9, 13, 0.55);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  overflow: hidden;
+}
+.rig-slot.is-deck {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.rig-slot.is-locked {
+  opacity: 0.55;
+  border-style: dashed;
+}
+.rig-slot:disabled {
+  opacity: 0.5;
+}
+.rig-slot-frame {
+  width: 78%;
+  height: 78%;
+  object-fit: contain;
+  opacity: 0.9;
+}
+.rig-slot-empty {
+  position: absolute;
+  bottom: 4px;
+  left: 0;
+  right: 0;
+  font-size: 10px;
+  line-height: 1.1;
+  text-align: center;
+  color: var(--muted, #8b8797);
+  padding: 0 2px;
+}
+
+/* Крышка в слоте: арт рисует ChipArt, подпись — редкость и уровень. */
+.rig-chip {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  gap: 0;
+}
+.rig-chip .chip-tile {
+  width: 100% !important;
+  height: 100% !important;
+}
+.rig-chip-name,
+.rig-chip-sub {
+  position: absolute;
+  left: 0;
+  right: 0;
+  font-size: 10px;
+  line-height: 1.1;
+  text-align: center;
+  text-shadow: 0 1px 2px #000;
+}
+.rig-chip-name { bottom: 12px; }
+.rig-chip-sub { bottom: 2px; color: var(--muted, #8b8797); }
+
+/* Подсказка закрытого слота: «мир кормит основную петлю» — каждая дырка
+   указывает в существующий контур (паки, маркет, фьюжн). */
+.rig-hint {
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+/* Выбор крышки: сетка 4 колонки на 412 px — ячейка ~86 px, это палец. */
+.rig-picker {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  max-height: 56vh;
+  overflow-y: auto;
+}
+.rig-pick {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(10, 9, 13, 0.6);
+  padding: 6px 4px;
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+}
+.rig-pick:disabled { opacity: 0.5; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rig-slot { transition: none; }
+}

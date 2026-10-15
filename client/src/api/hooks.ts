@@ -258,30 +258,3 @@ export type WallView = ResponseOf<'/wall/{district}', 'get'>;
 export type MyWall = ResponseOf<'/me/wall', 'get'>;
 export type MyTags = ResponseOf<'/me/tags', 'get'>;
 export type Tag = NonNullable<MyTags['items']>[number];
-
-export const useWall = (district: number) =>
-  useQuery({ queryKey: ['wall', district], queryFn: () => api.get('/wall/{district}', { path: { district } }), staleTime: 30_000 });
-export const useMyWall = () =>
-  useQuery({ queryKey: ['me', 'wall'], queryFn: () => api.get('/me/wall'), enabled: useAuthenticated(), staleTime: 60_000 });
-export const useMyTags = () =>
-  useQuery({ queryKey: ['me', 'tags'], queryFn: () => api.get('/me/tags'), enabled: useAuthenticated(), staleTime: 60_000 });
-
-/** Занять / обновить / снять слот. Стену и свои слоты перечитываем сразу. */
-function useWallAction<T extends { district: number }>(fn: (b: T) => Promise<unknown>) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: fn,
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['wall'] });
-      void qc.invalidateQueries({ queryKey: ['me', 'wall'] });
-    },
-  });
-}
-export const useClaimSlot = () =>
-  useWallAction((b: { district: number; tagId: string; slot?: number }) => api.post('/wall/{district}/claim', { tagId: b.tagId, slot: b.slot }, { path: { district: b.district } }));
-export const useRenewSlot = () => useWallAction((b: { district: number }) => api.post('/wall/{district}/renew', undefined, { path: { district: b.district } }));
-export const useReleaseSlot = () => useWallAction((b: { district: number }) => api.post('/wall/{district}/release', undefined, { path: { district: b.district } }));
-/** Жалоба на тег: причина строго из списка, который понимает бэкенд. */
-export type TagReportReason = 'hate' | 'violence' | 'sexual' | 'ads' | 'personal_data' | 'other';
-export const useReportTag = () =>
-  useMutation({ mutationFn: (b: { id: string; reason: TagReportReason }) => api.post('/tags/{id}/report', { reason: b.reason }, { path: { id: b.id } }) });

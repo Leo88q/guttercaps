@@ -25,6 +25,7 @@ import { POLICIES, createLimiter, type Limiter } from './ratelimit.ts';
 import { catalogue, checkHandle, claimHandle, claimService, myServices, ServiceError } from './services.ts';
 import * as tags from './tags.ts';
 import * as wall from './wall.ts';
+import * as rig from './rig.ts';
 import { publish } from './bus.ts';
 import { claimPassTier, passState } from './pass.ts';
 import { packQuote, validateRequest } from './quote.ts';
@@ -728,6 +729,22 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     res.json(wall.releaseSlot(db, req.session!.wallet, districtParam(req.params.district)));
   });
   v1.get('/me/wall', requireAuth, (req, res) => { res.json(wall.myWall(db, req.session!.wallet)); });
+
+  // ------------------------------------------------- экспозиция крышек (docs/16 §4.3) и витрина (§4.5)
+  // Экспозиция — чистый визуал: редкая крышка на доске не даёт ни веса, ни шанса,
+  // ни дохода (решения 1 и 3 из §0.3). Крышка не сжигается и не блокируется: слот
+  // хранит ссылку, владение проверяется при чтении.
+  v1.get('/rig', requireAuth, (req, res) => { res.json(rig.rigView(db, req.session!.wallet)); });
+  v1.put('/rig', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    const b = req.body as { slots?: Array<{ slot?: number; asset?: string | null }>; public?: boolean };
+    res.json(rig.setRig(db, req.session!.wallet,
+      (Array.isArray(b.slots) ? b.slots : []).map((s) => ({ slot: Number(s?.slot), asset: s?.asset ?? null })),
+      typeof b.public === 'boolean' ? b.public : undefined));
+  });
+  v1.get('/rig/:wallet', (req, res) => {
+    if (!isSolanaAddress(req.params.wallet)) throw new ServiceError(400, 'bad_request', 'wallet must be an address');
+    res.json(rig.publicRig(db, req.params.wallet));
+  });
 
   // ------------------------------------------------------------ admin (docs/03 §3.5, T-B-46): SIWS session ∈ ADMIN_WALLETS, every call audited,
   // on-chain changes are only *encoded* for the Squads multisig — this process holds no admin key.
