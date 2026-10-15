@@ -129,6 +129,10 @@ export default function Bowl() {
           <Link to="/bowl/tag" className="btn btn-sm btn-ghost">
             {t('bowl.openEditor')}
           </Link>
+          {/* Стена уже принимает теги: смотри docs/16 §3.4. */}
+          <Link to="/bowl/wall/0" className="btn btn-sm btn-ghost">
+            {t('bowl.openWall')}
+          </Link>
         </div>
       </section>
 

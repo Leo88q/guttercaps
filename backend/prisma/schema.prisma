@@ -1010,6 +1010,34 @@ model TagRegistry {
   @@map("tag_registry")
 }
 
+model WallSlot {
+  district  Int
+  slot      Int
+  wallet    String
+  tagId     String  @map("tag_id")
+  appliedAt DateTime @default(now()) @map("applied_at")
+  expiresAt DateTime @map("expires_at")
+  renewedAt DateTime? @map("renewed_at")
+
+  @@id([district, slot])
+  @@index([wallet, district])
+  @@index([expiresAt])
+  @@map("wall_slots")
+}
+
+model WallSlotHistory {
+  id         Int      @id @default(autoincrement())
+  district   Int
+  slot       Int
+  wallet     String
+  tagId      String   @map("tag_id")
+  appliedAt  DateTime @map("applied_at")
+  releasedAt DateTime @map("released_at")
+
+  @@index([district, slot, releasedAt])
+  @@map("wall_slot_history")
+}
+
 model WallReport {
   id         Int       @id @default(autoincrement())
   tagId      String    @map("tag_id")

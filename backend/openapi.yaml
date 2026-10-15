@@ -366,6 +366,85 @@ paths:
       responses:
         '200': { description: appeal recorded, content: { application/json: { schema: { $ref: '#/components/schemas/Tag' } } } }
         '409': { $ref: '#/components/responses/Error', description: 'not_hidden — only a hidden tag can be appealed' }
+  /wall/{district}:
+    get:
+      tags: [wall]
+      security: []
+      summary: The district wall — 200 slots, who holds them, and the paint layers under the fresh tags
+      description: |
+        Expired slots are swept on read (30-day fade, docs/16 §3.4), so a wall never shows a dead slot.
+        Tags are not inlined: the client renders `/v1/tags/{id}/svg` in an `<img>`, which browsers cache
+        and which has no script context. `layers` are the previous tags of a slot — the history the doc
+        asks to show as layers of paint under the current one.
+      parameters:
+        - name: district
+          in: path
+          required: true
+          schema: { type: integer, minimum: 0, maximum: 7 }
+      responses:
+        '200': { description: the wall, content: { application/json: { schema: { $ref: '#/components/schemas/WallView' } } } }
+  /wall/{district}/claim:
+    post:
+      tags: [wall]
+      summary: Claim a slot — requires 7 active days in a row and at least one staked cap (never money)
+      description: |
+        One slot per wallet per district. Claiming again with a different tag replaces the tag on your
+        slot and restarts the 30-day fade (renewing a tag is free — docs/16 §3.4). A slot is picked
+        automatically unless `slot` is free and requested.
+      parameters:
+        - name: district
+          in: path
+          required: true
+          schema: { type: integer, minimum: 0, maximum: 7 }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [tagId], properties: { tagId: { type: string, pattern: '^[0-9a-f]{32}$' }, slot: { type: integer, minimum: 0, maximum: 199 } } } } } }
+      responses:
+        '200': { description: your slot, content: { application/json: { schema: { $ref: '#/components/schemas/WallSlot' } } } }
+        '409': { $ref: '#/components/responses/Error', description: 'not_eligible (play 7 days / stake a cap) | wall_full' }
+  /wall/{district}/renew:
+    post:
+      tags: [wall]
+      summary: Extend your slot another 30 days — same activity requirement as claiming
+      parameters:
+        - name: district
+          in: path
+          required: true
+          schema: { type: integer, minimum: 0, maximum: 7 }
+      responses:
+        '200': { description: your slot, content: { application/json: { schema: { $ref: '#/components/schemas/WallSlot' } } } }
+        '409': { $ref: '#/components/responses/Error', description: 'not_eligible' }
+  /wall/{district}/release:
+    post:
+      tags: [wall]
+      summary: Take your tag down yourself — the slot joins the wall's paint history
+      parameters:
+        - name: district
+          in: path
+          required: true
+          schema: { type: integer, minimum: 0, maximum: 7 }
+      responses: { '200': { description: released, content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } } }
+  /me/wall:
+    get:
+      tags: [wall]
+      summary: My slots and whether I currently qualify for one (the wall screen answers the button before it is pressed)
+      responses:
+        '200': { description: my wall, content: { application/json: { schema: { $ref: '#/components/schemas/MyWall' } } } }
+  /tags/{id}/svg:
+    get:
+      tags: [tags]
+      security: []
+      summary: The tag itself as an image — for <img>, not for innerHTML (no script context, cacheable)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[0-9a-f]{32}$' }
+      responses:
+        '200':
+          description: the rebuilt SVG
+          headers:
+            Content-Security-Policy: { schema: { type: string }, description: "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:" }
+          content: { image/svg+xml: { schema: { type: string } } }
+        '404': { $ref: '#/components/responses/Error' }
   /mod/tags/queue:
     get:
       tags: [tags]
@@ -1741,6 +1820,31 @@ components:
         reports: { type: integer }
         svg: { type: string, description: 'present only when the tag is public or the viewer is the author' }
         mine: { type: boolean }
+    WallSlot:
+      type: object
+      properties:
+        slot: { type: integer, description: 0..199 }
+        wallet: { type: string }
+        tagId: { type: string }
+        appliedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time, description: '30 days from applied/renewed — then the slot fades' }
+        renewedAt: { type: [string, 'null'], format: date-time }
+    WallView:
+      type: object
+      properties:
+        district: { type: integer }
+        slots: { type: integer, description: 200 per district }
+        taken: { type: integer }
+        items: { type: array, items: { $ref: '#/components/schemas/WallSlot' } }
+        layers: { type: array, description: previous tags of a slot, shown as faded paint underneath, items: { type: object, properties: { slot: { type: integer }, wallet: { type: string }, tagId: { type: string }, appliedAt: { type: string, format: date-time }, releasedAt: { type: string, format: date-time } } } }
+        me: { type: object, nullable: true, properties: { activeDays: { type: integer }, activeDaysNeeded: { type: integer }, stakedCaps: { type: integer }, stakedCapsNeeded: { type: integer }, eligible: { type: boolean }, reason: { type: [string, 'null'], enum: [need_active_days, need_staked_cap] }, mySlot: { type: [integer, 'null'] } } }
+    MyWall:
+      type: object
+      properties:
+        eligibility: { type: object, properties: { activeDays: { type: integer }, activeDaysNeeded: { type: integer }, stakedCaps: { type: integer }, stakedCapsNeeded: { type: integer }, eligible: { type: boolean }, reason: { type: [string, 'null'] } } }
+        items:
+          type: array
+          items: { type: object, properties: { district: { type: integer }, slot: { type: integer }, tagId: { type: string }, appliedAt: { type: string, format: date-time }, expiresAt: { type: string, format: date-time }, daysLeft: { type: integer } } }
     StakingOverview:
       type: object
       properties:

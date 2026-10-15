@@ -52,6 +52,9 @@ export const API_ERROR_KEYS = {
   tag_too_large: 'failures.payloadLarge', tag_rate: 'failures.rateLimited',
   bad_reason: 'failures.requestInvalid', bad_status: 'failures.requestInvalid',
   own_tag: 'failures.requestInvalid', already_reported: 'failures.requestInvalid', not_hidden: 'failures.requestInvalid',
+  // Стена района (docs/16 §3.4): слот не продаётся, поэтому отказы всегда про условие, а не про деньги.
+  bad_district: 'failures.requestInvalid', tag_not_live: 'failures.requestInvalid', not_your_tag: 'failures.requestInvalid',
+  not_eligible: 'failures.requestInvalid', wall_full: 'failures.requestInvalid', no_slot: 'failures.notFound',
   route_locked: 'failures.requestInvalid', no_emergency_hint: 'failures.requestInvalid', no_hints: 'failures.requestInvalid',
   attempt_not_found: 'failures.notFound', attempt_settled: 'failures.requestInvalid', bad_proof: 'failures.requestInvalid', no_skin_entitlement: 'failures.requestInvalid',
   already_granted: 'failures.preorderAlreadyGranted', not_payable: 'failures.preorderNotPayable',

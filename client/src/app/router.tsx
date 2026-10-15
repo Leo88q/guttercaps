@@ -15,6 +15,9 @@ const Bowl = lazy(() => import('@/features/bowl/Bowl'));
 // импорт @/api/hooks и @/shared/lib/cosmetics сюда, в router, утянул бы их в
 // entry-граф (+1.8 КБ gz — критический путь вылез бы за 350 КБ, было замерено).
 const TagEditorRoute = lazy(() => import('@/features/bowl/TagEditor').then((m) => ({ default: m.TagEditorRoute })));
+// Стена района (docs/16 §3.4) — тот же ленивый принцип: 200 слотов тянутся
+// только когда игрок пришёл на конкретную стену.
+const Wall = lazy(() => import('@/features/bowl/Wall'));
 const Shop = lazy(() => import('@/features/shop/Shop'));
 const Opening = lazy(() => import('@/features/shop/Opening'));
 const Fusion = lazy(() => import('@/features/fusion/Fusion'));
@@ -69,6 +72,7 @@ export const routes: RouteObject[] = [
       { path: 'collection', element: S(<Collection />) },
       { path: 'bowl', element: S(<Bowl />) },
       { path: 'bowl/tag', element: S(<TagEditorRoute />) },
+      { path: 'bowl/wall/:district', element: S(<Wall />) },
       { path: 'shop', element: S(<Shop />) },
       { path: 'shop/opening/:nonce', element: W(<Opening />) },
       { path: 'fusion', element: W(<Fusion />) },

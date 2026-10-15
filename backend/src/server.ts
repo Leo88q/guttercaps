@@ -24,6 +24,8 @@ import { attachSession, requireAuth, issueNonce, verifySiws, createSession, setS
 import { POLICIES, createLimiter, type Limiter } from './ratelimit.ts';
 import { catalogue, checkHandle, claimHandle, claimService, myServices, ServiceError } from './services.ts';
 import * as tags from './tags.ts';
+import * as wall from './wall.ts';
+import { publish } from './bus.ts';
 import { claimPassTier, passState } from './pass.ts';
 import { packQuote, validateRequest } from './quote.ts';
 import { gapStatus, getConnection, untimedStatus } from './ingest.ts';
@@ -110,6 +112,13 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   const sweepMs = deps.arenaSweepMs ?? Number(process.env.ARENA_SWEEP_MS ?? 3_000);
   if (sweepMs > 0) {
     const timer = setInterval(() => { try { arena.sweep(db); } catch (e) { console.error('[arena] sweep failed:', (e as Error).message); } }, sweepMs);
+    timer.unref();
+  }
+  // Выцветание стены (docs/16 §3.4): слот живёт 30 дней. Раз в час достаточно —
+  // на чтении просроченные слоты всё равно отсекаются лениво (wall.expireSlots).
+  const wallSweepMs = Number(process.env.WALL_SWEEP_MS ?? 3_600_000);
+  if (wallSweepMs > 0) {
+    const timer = setInterval(() => { try { wall.expireSlots(db); } catch (e) { console.error('[wall] sweep failed:', (e as Error).message); } }, wallSweepMs);
     timer.unref();
   }
   // Behind a CDN/LB `trust proxy` is what makes `req.ip` the client, not the edge. `true` trusts every
@@ -684,6 +693,41 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.post('/tags/:id/appeal', requireAuth, rl(POLICIES.mutate), (req, res) => {
     res.json(tags.appealTag(db, req.session!.wallet, req.params.id, String(req.body?.note ?? '')));
   });
+  // Сам тег картинкой: клиент вставляет его в <img>, а не в innerHTML. В <img>
+  // SVG не имеет исполняемого контекста — сценарий не запустится, даже если мы
+  // когда-нибудь пропустим что-то в санитайзере. Плюс браузер это кеширует.
+  v1.get('/tags/:id/svg', (req, res) => {
+    const tag = tags.getTag(db, req.params.id, req.session?.wallet);
+    if (!tag.svg) { res.status(404).json({ code: 'not_found', message: 'No tag with that id' }); return; }
+    res.set('Content-Type', 'image/svg+xml; charset=utf-8');
+    // Тег — картинка, а не документ: никаких скриптов, стилей и внешних запросов.
+    res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:");
+    res.set('Cache-Control', 'public, max-age=300');
+    res.send(tag.svg);
+  });
+
+  // ------------------------------------------------------------ стена района (docs/16 §3.4)
+  // Слот занимается активностью (7 дней подряд + крышка в стейкинге), а не
+  // деньгами: это решение 6 из §0.3, и его нельзя обойти никаким платёжным путём.
+  // Номер района берётся из URL: как любой числовой параметр, он обязан пройти params.ts
+  // (SEC-B2) — иначе `Number('0.5')` или `Number('-1')` уходят прямиком в SQL.
+  const districtParam = (raw: unknown): number => intQuery(raw, { name: 'district', min: 0, max: MAX_COLLECTION_IDX, def: 0 }) ?? 0;
+
+  v1.get('/wall/:district', (req, res) => {
+    wall.expireSlots(db); // ленивое выцветание: стена не показывает мёртвые слоты
+    res.json(wall.wallView(db, districtParam(req.params.district), req.session?.wallet));
+  });
+  v1.post('/wall/:district/claim', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    const b = req.body as { tagId?: string; slot?: number };
+    res.json(wall.claimSlot(db, req.session!.wallet, districtParam(req.params.district), String(b.tagId ?? ''), b.slot));
+  });
+  v1.post('/wall/:district/renew', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    res.json(wall.renewSlot(db, req.session!.wallet, districtParam(req.params.district)));
+  });
+  v1.post('/wall/:district/release', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    res.json(wall.releaseSlot(db, req.session!.wallet, districtParam(req.params.district)));
+  });
+  v1.get('/me/wall', requireAuth, (req, res) => { res.json(wall.myWall(db, req.session!.wallet)); });
 
   // ------------------------------------------------------------ admin (docs/03 §3.5, T-B-46): SIWS session ∈ ADMIN_WALLETS, every call audited,
   // on-chain changes are only *encoded* for the Squads multisig — this process holds no admin key.
@@ -716,7 +760,14 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.get('/mod/tags/queue', adminGate, audited('mod.tags.queue', () => tags.modQueue(db, 50)));
   v1.put('/mod/tags/:id', adminGate, audited(
     'mod.tags.status',
-    (req) => tags.setTagStatus(db, req.params.id, String(req.body?.status ?? ''), req.body?.note === undefined ? undefined : String(req.body.note)),
+    (req) => {
+      const out = tags.setTagStatus(db, req.params.id, String(req.body?.status ?? ''), req.body?.note === undefined ? undefined : String(req.body.note));
+      // Скрытый тег не должен занимать стену: снимаем его со всех слотов и
+      // говорим автору, чтобы карточка обновилась без перезагрузки.
+      if (out.status !== 'live') wall.releaseTag(db, out.id);
+      publish({ wallets: [out.wallet], type: 'tag.hidden', payload: { id: out.id, status: out.status } });
+      return out;
+    },
     (req) => req.params.id,
   ));
   const rightsAudited = (action: string, fn: (req: Request) => unknown) => wrap((req, _res) => {

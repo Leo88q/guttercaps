@@ -1008,6 +1008,30 @@ CREATE TABLE IF NOT EXISTS wall_reports (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_wall_reports_once ON wall_reports(tag_id, reporter);
 CREATE INDEX IF NOT EXISTS idx_wall_reports_open ON wall_reports(resolved_at) WHERE resolution IS NULL;
+-- Стена района (docs/16 §3.4): слот занимается активностью, а не деньгами, и выцветает за 30 дней.
+-- История живёт отдельно: прошлое стены видно как слои краски под свежим тегом.
+CREATE TABLE IF NOT EXISTS wall_slots (
+  district   INTEGER NOT NULL,
+  slot       INTEGER NOT NULL,
+  wallet     TEXT    NOT NULL,
+  tag_id     TEXT    NOT NULL,
+  applied_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  renewed_at INTEGER,
+  PRIMARY KEY (district, slot)
+);
+CREATE INDEX IF NOT EXISTS idx_wall_slots_wallet ON wall_slots(wallet, district);
+CREATE INDEX IF NOT EXISTS idx_wall_slots_due ON wall_slots(expires_at);
+CREATE TABLE IF NOT EXISTS wall_slot_history (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  district    INTEGER NOT NULL,
+  slot        INTEGER NOT NULL,
+  wallet      TEXT    NOT NULL,
+  tag_id      TEXT    NOT NULL,
+  applied_at  INTEGER NOT NULL,
+  released_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_wall_slot_history_slot ON wall_slot_history(district, slot, released_at DESC);
 
 CREATE TABLE IF NOT EXISTS reward_batches (
   kind         INTEGER NOT NULL,

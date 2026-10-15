@@ -327,6 +327,57 @@ on('post', '/tags/{id}/report', (_o, params) => {
 });
 on('get', '/mod/tags/queue', () => ({ items: mockTags.filter((t) => t.status === 'live' && t.reports > 0).map((t) => ({ ...mockTagView(t), openReports: t.reports })) }));
 
+// ── Стена района (docs/16 §3.4): слоты занимаются активностью, но мок не
+// моделирует ни логины, ни стейкинг — он один и тот же «операторский» кошелёк,
+// у которого всё есть. Проверки живут в бэкенде (backend/src/wall.ts).
+const mockWall: Array<{ district: number; slot: number; wallet: string; tagId: string; appliedAt: string; expiresAt: string }> = [];
+const mockWallView = (district: number) => {
+  const items = mockWall.filter((s) => s.district === district);
+  return {
+    district, slots: 200, taken: items.length,
+    items: items.map((s) => ({ slot: s.slot, wallet: s.wallet, tagId: s.tagId, appliedAt: s.appliedAt, expiresAt: s.expiresAt, renewedAt: null })),
+    layers: [],
+    me: { activeDays: 7, activeDaysNeeded: 7, stakedCaps: 1, stakedCapsNeeded: 1, eligible: true, reason: null, mySlot: items.find((s) => s.wallet === ME)?.slot ?? null },
+  };
+};
+on('get', '/wall/{district}', (_o, params) => mockWallView(Number(params.district)));
+on('post', '/wall/{district}/claim', (o, params) => {
+  const district = Number(params.district);
+  const b = o.body as { tagId?: string; slot?: number };
+  const tag = mockTags.find((x) => x.id === b.tagId);
+  if (!tag) throw new ApiError(400, 'tag_not_live', 'The tag must be yours and live');
+  const taken = new Set(mockWall.filter((s) => s.district === district).map((s) => s.slot));
+  const mine = mockWall.find((s) => s.district === district && s.wallet === ME);
+  if (mine) {
+    mine.tagId = tag.id;
+    mine.appliedAt = iso();
+    mine.expiresAt = iso(30 * 86_400_000);
+    return mine;
+  }
+  let slot = typeof b.slot === 'number' && !taken.has(b.slot) ? b.slot : -1;
+  if (slot < 0) for (let i = 0; i < 200; i++) if (!taken.has(i)) { slot = i; break; }
+  if (slot < 0) throw new ApiError(409, 'wall_full', 'Every slot on this wall is taken');
+  const row = { district, slot, wallet: ME as string, tagId: tag.id, appliedAt: iso(), expiresAt: iso(30 * 86_400_000) };
+  mockWall.push(row);
+  return row;
+});
+on('post', '/wall/{district}/renew', (_o, params) => {
+  const row = mockWall.find((s) => s.district === Number(params.district) && s.wallet === ME);
+  if (!row) throw new ApiError(404, 'no_slot', 'You hold no slot on this wall');
+  row.expiresAt = iso(30 * 86_400_000);
+  return row;
+});
+on('post', '/wall/{district}/release', (_o, params) => {
+  const i = mockWall.findIndex((s) => s.district === Number(params.district) && s.wallet === ME);
+  if (i < 0) throw new ApiError(404, 'no_slot', 'You hold no slot on this wall');
+  mockWall.splice(i, 1);
+  return { ok: true };
+});
+on('get', '/me/wall', () => ({
+  eligibility: { activeDays: 7, activeDaysNeeded: 7, stakedCaps: 1, stakedCapsNeeded: 1, eligible: true, reason: null },
+  items: mockWall.filter((s) => s.wallet === ME).map((s) => ({ district: s.district, slot: s.slot, tagId: s.tagId, appliedAt: s.appliedAt, expiresAt: s.expiresAt, daysLeft: 30 })),
+}));
+
 // season pass state (tier ~11 with unclaimed tiers + a skinned showcase cap)
 let mockPassXp = 2360;
 const mockPassClaimed: number[] = [1, 2];

@@ -1278,6 +1278,259 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/wall/{district}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The district wall — 200 slots, who holds them, and the paint layers under the fresh tags
+         * @description Expired slots are swept on read (30-day fade, docs/16 §3.4), so a wall never shows a dead slot.
+         *     Tags are not inlined: the client renders `/v1/tags/{id}/svg` in an `<img>`, which browsers cache
+         *     and which has no script context. `layers` are the previous tags of a slot — the history the doc
+         *     asks to show as layers of paint under the current one.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    district: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description the wall */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WallView"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wall/{district}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claim a slot — requires 7 active days in a row and at least one staked cap (never money)
+         * @description One slot per wallet per district. Claiming again with a different tag replaces the tag on your
+         *     slot and restarts the 30-day fade (renewing a tag is free — docs/16 §3.4). A slot is picked
+         *     automatically unless `slot` is free and requested.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    district: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        tagId: string;
+                        slot?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description your slot */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WallSlot"];
+                    };
+                };
+                /** @description not_eligible (play 7 days / stake a cap) | wall_full */
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wall/{district}/renew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Extend your slot another 30 days — same activity requirement as claiming */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    district: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description your slot */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WallSlot"];
+                    };
+                };
+                /** @description not_eligible */
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wall/{district}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Take your tag down yourself — the slot joins the wall's paint history */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    district: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description released */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok?: boolean;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/wall": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My slots and whether I currently qualify for one (the wall screen answers the button before it is pressed) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description my wall */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MyWall"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tags/{id}/svg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tag itself as an image — for <img>, not for innerHTML (no script context, cacheable) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description the rebuilt SVG */
+                200: {
+                    headers: {
+                        /** @description default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data: */
+                        "Content-Security-Policy"?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "image/svg+xml": string;
+                    };
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mod/tags/queue": {
         parameters: {
             query?: never;
@@ -6135,6 +6388,68 @@ export interface components {
             /** @description present only when the tag is public or the viewer is the author */
             svg?: string;
             mine?: boolean;
+        };
+        WallSlot: {
+            /** @description 0..199 */
+            slot?: number;
+            wallet?: string;
+            tagId?: string;
+            /** Format: date-time */
+            appliedAt?: string;
+            /**
+             * Format: date-time
+             * @description 30 days from applied/renewed — then the slot fades
+             */
+            expiresAt?: string;
+            /** Format: date-time */
+            renewedAt?: string | null;
+        };
+        WallView: {
+            district?: number;
+            /** @description 200 per district */
+            slots?: number;
+            taken?: number;
+            items?: components["schemas"]["WallSlot"][];
+            /** @description previous tags of a slot */
+            layers?: {
+                slot?: number;
+                wallet?: string;
+                tagId?: string;
+                /** Format: date-time */
+                appliedAt?: string;
+                /** Format: date-time */
+                releasedAt?: string;
+            }[];
+            me?: {
+                activeDays?: number;
+                activeDaysNeeded?: number;
+                stakedCaps?: number;
+                stakedCapsNeeded?: number;
+                eligible?: boolean;
+                /** @enum {string|null} */
+                reason?: "need_active_days" | "need_staked_cap" | null;
+                mySlot?: number | null;
+            } | null;
+        };
+        MyWall: {
+            eligibility?: {
+                activeDays?: number;
+                activeDaysNeeded?: number;
+                stakedCaps?: number;
+                stakedCapsNeeded?: number;
+                eligible?: boolean;
+                reason?: string | null;
+            };
+            items?: {
+                district?: number;
+                slot?: number;
+                tagId?: string;
+                /** Format: date-time */
+                appliedAt?: string;
+                /** Format: date-time */
+                expiresAt?: string;
+                daysLeft?: number;
+            }[];
         };
         StakingOverview: {
             emission?: {
