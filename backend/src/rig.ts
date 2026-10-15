@@ -19,6 +19,7 @@
 import type { Db } from './db.ts';
 import { now } from './db.ts';
 import { ServiceError } from './services.ts';
+import { recordEvent } from './worldMetrics.ts';
 
 export const RIG_SLOTS = 3;
 /** Сколько собранных крышек открывает слот: первый сразу, второй с 12, третий с 36 (половина коллекции). */
@@ -189,6 +190,7 @@ export function setRig(db: Db, wallet: string, updates: RigUpdate[], publicOn?: 
       if (!Number.isInteger(slot) || slot < 0 || slot >= RIG_SLOTS) throw new ServiceError(400, 'bad_slot', `slot must be 0..${RIG_SLOTS - 1}`);
       if (u.asset === null || u.asset === undefined || u.asset === '') {
         db.run(`DELETE FROM rig_exhibit WHERE wallet = ? AND slot = ?`, wallet, slot);
+        recordEvent(db, wallet, 'exhibit', 'unset', { slot });
         continue;
       }
       const unlockAt = RIG_UNLOCK[slot] ?? 0;
@@ -201,6 +203,9 @@ export function setRig(db: Db, wallet: string, updates: RigUpdate[], publicOn?: 
          ON CONFLICT(wallet, slot) DO UPDATE SET asset = excluded.asset, updated_at = excluded.updated_at`,
         wallet, slot, u.asset, now(),
       );
+      // Событие пишется в той же транзакции, что и слот: метрика §12 не должна
+      // расходиться с состоянием доски.
+      recordEvent(db, wallet, 'exhibit', 'set', { slot });
     }
     // Крышка не может занимать два слота — снимаем её со всех остальных.
     for (const asset of claimed) {
@@ -208,7 +213,10 @@ export function setRig(db: Db, wallet: string, updates: RigUpdate[], publicOn?: 
       const keep = updates.find((u) => u.asset === asset)?.slot;
       for (const r of rows) if (r.slot !== keep) db.run(`DELETE FROM rig_exhibit WHERE wallet = ? AND slot = ?`, wallet, r.slot);
     }
-    if (publicOn !== undefined) setRigPublic(db, wallet, publicOn);
+    if (publicOn !== undefined) {
+      setRigPublic(db, wallet, publicOn);
+      recordEvent(db, wallet, 'exhibit', publicOn ? 'public_on' : 'public_off');
+    }
     return rigView(db, wallet);
   });
 }

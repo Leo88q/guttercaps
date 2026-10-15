@@ -240,7 +240,20 @@ const es: Messages = {
   },
   admin: {
     title: 'Panel de operaciones', subtitle: 'Ajuste de la economía en vivo. Aquí nada se firma: cada cambio vuelve como bytes de instrucción para la multifirma y cada llamada queda en el registro de auditoría.',
-    tabs: { params: 'Parámetros', kill: 'Interruptor', simulate: 'Simular', kpi: 'KPI', fraud: 'Cola de fraude', audit: 'Auditoría' },
+    tabs: { params: 'Parámetros', kill: 'Interruptor', simulate: 'Simular', kpi: 'KPI', world: 'Mundo', fraud: 'Cola de fraude', audit: 'Auditoría' },
+    world: {
+      intro: 'Cohortes del mundo skate (docs/16 §12). Cada número es una media por billetera: los dos grupos tienen distinto tamaño, así que las sumas harían buena cualquier función popular. Δ = cohorte ÷ base − 1.',
+      window: '{n} días',
+      cohort: 'La usaron',
+      baseline: 'Jugaron, no la usaron',
+      wallets: '{n, plural, one{# billetera} other{# billeteras}}',
+      metric: 'por billetera',
+      delta: 'Δ vs base',
+      packs: 'Sobres', trades: 'Operaciones', fusions: 'Fusiones', loginDays: 'Días con entrada', stakedCaps: 'Caps en stake',
+      feat: { wall: 'Muro del distrito', exhibit: 'Exposición de caps', tag: 'Tag' },
+      empty: 'Sin eventos en la ventana — todavía no hay nada que comparar.',
+      series: 'Eventos por día',
+    },
     proposal: {
       ok: 'Pasa las barreras — entrega estas instrucciones a la multifirma', rejected: 'Rechazado por las barreras', reset: 'Cerrar', diff: 'Diferencias (actual → propuesto)',
       instructions: '{n, plural, one{# instrucción} other{# instrucciones}}', signer: 'firmante', copy: 'Copiar JSON de instrucciones', download: 'Descargar .json',

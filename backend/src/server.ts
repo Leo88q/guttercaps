@@ -26,6 +26,7 @@ import { catalogue, checkHandle, claimHandle, claimService, myServices, ServiceE
 import * as tags from './tags.ts';
 import * as wall from './wall.ts';
 import * as rig from './rig.ts';
+import * as worldMetrics from './worldMetrics.ts';
 import { publish } from './bus.ts';
 import { claimPassTier, passState } from './pass.ts';
 import { packQuote, validateRequest } from './quote.ts';
@@ -838,6 +839,10 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   }, (req) => req.params.wallet));
   v1.get('/admin/kpi', audited('kpi', () => admin.kpi(db)));
   v1.get('/admin/audit', audited('audit.read', (req) => admin.auditLog(db, limitQuery(req.query.limit, { max: 1000, def: 100 }))));
+  // Телеметрия скейт-мира (docs/16 §12): правило-гейт §0.2 требует метрику на
+  // каждую фичу — без этого отчёта стена и экспозиция приняты «на веру».
+  v1.get('/admin/world-metrics', audited('world.metrics', (req) =>
+    worldMetrics.worldReport(db, intQuery(req.query.days, { name: 'days', min: 1, max: 90, def: 30 }) ?? 30)));
 
   app.use('/v1', v1);
   app.use('/', v1); // legacy paths (/leaderboard, /stats, /wallet/:address/events) keep working for the landing page

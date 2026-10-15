@@ -15,7 +15,8 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { useCollections } from '@/shared/lib/lore';
 import {
-  useAdminAudit, useAdminFraud, useAdminKpi, useAdminParams, useAdminSimulate, useKillSwitch, useMe, useProposeParams, useResolveFraud,
+  useAdminAudit, useAdminFraud, useAdminKpi, useAdminParams, useAdminSimulate, useAdminWorldMetrics,
+  useKillSwitch, useMe, useProposeParams, useResolveFraud,
   type AdminParams, type ParamsProposal, type Proposal, type SimulateReport,
 } from '@/api/hooks';
 import { ApiError } from '@/api/client';
@@ -28,8 +29,8 @@ import { useUiStore } from '@/app/store/ui';
 import { EXPLORER } from '@/app/config';
 import { t, useT, fmtLocale, getLocale, LOCALE_META, type MessageKey } from '@/shared/i18n';
 
-type Tab = 'params' | 'kill' | 'simulate' | 'kpi' | 'fraud' | 'audit';
-const TABS: Tab[] = ['params', 'kill', 'simulate', 'kpi', 'fraud', 'audit'];
+type Tab = 'params' | 'kill' | 'simulate' | 'kpi' | 'world' | 'fraud' | 'audit';
+const TABS: Tab[] = ['params', 'kill', 'simulate', 'kpi', 'world', 'fraud', 'audit'];
 const SLICES = ['chipStaking', 'tokenStaking', 'quests', 'pvpSeason', 'eventsReserve'] as const;
 const sliceLabel = (name: string) => name === 'quests' ? t('quests.title') : SLICES.includes(name as typeof SLICES[number]) ? t(`screens.${name}` as MessageKey) : name;
 type Pack = NonNullable<NonNullable<AdminParams['gameConfig']>['packs']>[number];
@@ -59,7 +60,7 @@ export default function Admin() {
       </div>
       {me.isLoading && <Skeleton h={200} />}
       {me.data?.isAdmin && (
-        tab === 'params' ? <ParamsTab /> : tab === 'kill' ? <KillSwitchTab /> : tab === 'simulate' ? <SimulateTab /> : tab === 'kpi' ? <KpiTab /> : tab === 'fraud' ? <FraudTab /> : <AuditTab />
+        tab === 'params' ? <ParamsTab /> : tab === 'kill' ? <KillSwitchTab /> : tab === 'simulate' ? <SimulateTab /> : tab === 'kpi' ? <KpiTab /> : tab === 'world' ? <WorldTab /> : tab === 'fraud' ? <FraudTab /> : <AuditTab />
       )}
     </div>
   );
@@ -344,6 +345,84 @@ function SimulateTab() {
   );
 }
 const fmtNum = (v: number | undefined | null) => (v === undefined || v === null ? '—' : new Intl.NumberFormat(LOCALE_META[getLocale()].tag, { maximumFractionDigits: Math.abs(v) >= 1000 ? 0 : 3 }).format(v));
+
+// ------------------------------------------------------------------ World (docs/16 §12)
+//
+// The rule-gate (§0.2) says a world feature is only accepted with a cohort metric behind it.
+// This screen is that metric: does touching the wall / the exhibit / the tag change how a wallet
+// plays the main loop? Groups differ in size, so every number is an average per wallet and the
+// answer is a ratio, never a sum. Empty cohort ⇒ the feature has no evidence yet, not "it works".
+type CohortStats = { wallets: number; packsPerWallet: number; tradesPerWallet: number; fusionsPerWallet: number; loginDaysPerWallet: number; stakedCapsPerWallet: number };
+type Delta = { packs: number | null; trades: number | null; fusions: number | null; loginDays: number | null; stakedCaps: number | null };
+type FeatureReport = { feature: string; windowDays: number; cohort: CohortStats; baseline: CohortStats; delta: Delta; series: { day: number; events: number; wallets: number }[] };
+const COHORT_ROWS: { key: keyof Delta; value: (c: CohortStats) => number }[] = [
+  { key: 'packs', value: (c) => c.packsPerWallet },
+  { key: 'trades', value: (c) => c.tradesPerWallet },
+  { key: 'fusions', value: (c) => c.fusionsPerWallet },
+  { key: 'loginDays', value: (c) => c.loginDaysPerWallet },
+  { key: 'stakedCaps', value: (c) => c.stakedCapsPerWallet },
+];
+
+function WorldTab() {
+  const t = useT();
+  const [days, setDays] = useState(30);
+  const q = useAdminWorldMetrics(days);
+  const num = (v: number) => new Intl.NumberFormat(LOCALE_META[getLocale()].tag, { maximumFractionDigits: 2 }).format(v);
+  const signed = (v: number | null) => (v === null ? '—' : new Intl.NumberFormat(LOCALE_META[getLocale()].tag, { style: 'percent', signDisplay: 'exceptZero', maximumFractionDigits: 0 }).format(v));
+  return (
+    <div className="stack">
+      <div className="tiny muted">{t('admin.world.intro')}</div>
+      <div className="row-wrap">
+        {[7, 30, 90].map((d) => <Pill key={d} active={d === days} onClick={() => setDays(d)}>{t('admin.world.window', { n: d })}</Pill>)}
+      </div>
+      {q.isLoading && <Skeleton h={300} />}
+      {!!q.error && <div className="warn">{t('admin.params.unavailable', { error: '' })}<ErrorNotice error={q.error} /></div>}
+      {(q.data?.features ?? []).map((f) => <WorldFeature key={f.feature} f={f as FeatureReport} num={num} signed={signed} />)}
+    </div>
+  );
+}
+
+function WorldFeature({ f, num, signed }: { f: FeatureReport; num: (v: number) => string; signed: (v: number | null) => string }) {
+  const t = useT();
+  const peak = Math.max(1, ...f.series.map((s) => s.events));
+  return (
+    <CleanZone className="stack-sm">
+      <div className="label">{t(`admin.world.feat.${f.feature}` as MessageKey)}</div>
+      <div className="tiny muted">
+        {t('admin.world.wallets', { n: f.cohort.wallets })} · {t('admin.world.baseline')}: {t('admin.world.wallets', { n: f.baseline.wallets })}
+      </div>
+      <div className="world-cohorts">
+        <div className="world-cohorts-head">
+          <span className="muted">{t('admin.world.metric')}</span>
+          <span>{t('admin.world.cohort')}</span>
+          <span>{t('admin.world.baseline')}</span>
+          <span>{t('admin.world.delta')}</span>
+        </div>
+        {COHORT_ROWS.map((r) => (
+          <div className="world-cohorts-row" key={r.key}>
+            <span className="muted">{t(`admin.world.${r.key}` as MessageKey)}</span>
+            <span className="mono">{num(r.value(f.cohort))}</span>
+            <span className="mono">{num(r.value(f.baseline))}</span>
+            <span className="mono cg-accent">{signed(f.delta[r.key])}</span>
+          </div>
+        ))}
+      </div>
+      {f.series.length === 0
+        ? <div className="tiny muted">{t('admin.world.empty')}</div>
+        : (
+          <div className="stack-sm">
+            <div className="tiny muted">{t('admin.world.series')}</div>
+            <div className="world-series" role="img" aria-label={t('admin.world.series')}>
+              {f.series.map((s) => (
+                <span key={s.day} className="world-series-bar" style={{ height: `${Math.max(2, Math.round((s.events / peak) * 40))}px` }} title={`${s.events} · ${s.wallets}`} />
+              ))}
+            </div>
+          </div>
+        )}
+    </CleanZone>
+  );
+}
+
 
 // ------------------------------------------------------------------ KPI
 function KpiTab() {

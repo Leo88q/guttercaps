@@ -240,7 +240,20 @@ const pt: Messages = {
   },
   admin: {
     title: 'Painel de operações', subtitle: 'Ajuste da economia ao vivo. Nada aqui assina: cada mudança volta como bytes de instrução para a multisig e cada chamada vai para o log de auditoria.',
-    tabs: { params: 'Parâmetros', kill: 'Botão de pausa', simulate: 'Simular', kpi: 'KPI', fraud: 'Fila de fraude', audit: 'Auditoria' },
+    tabs: { params: 'Parâmetros', kill: 'Botão de pausa', simulate: 'Simular', kpi: 'KPI', world: 'Mundo', fraud: 'Fila de fraude', audit: 'Auditoria' },
+    world: {
+      intro: 'Coortes do mundo skate (docs/16 §12). Cada número é uma média por carteira: os grupos têm tamanhos diferentes, então somas fariam qualquer função popular parecer boa. Δ = coorte ÷ base − 1.',
+      window: '{n} dias',
+      cohort: 'Usaram',
+      baseline: 'Jogaram, não usaram',
+      wallets: '{n, plural, one{# carteira} other{# carteiras}}',
+      metric: 'por carteira',
+      delta: 'Δ vs base',
+      packs: 'Pacotes', trades: 'Negócios', fusions: 'Fusões', loginDays: 'Dias com login', stakedCaps: 'Caps em stake',
+      feat: { wall: 'Muro do distrito', exhibit: 'Exposição de caps', tag: 'Tag' },
+      empty: 'Sem eventos na janela — ainda não há nada para comparar.',
+      series: 'Eventos por dia',
+    },
     proposal: {
       ok: 'Passa nas travas — entregue estas instruções à multisig', rejected: 'Rejeitado pelas travas', reset: 'Fechar', diff: 'Diferenças (atual → proposto)',
       instructions: '{n, plural, one{# instrução} other{# instruções}}', signer: 'signatário', copy: 'Copiar JSON das instruções', download: 'Baixar .json',

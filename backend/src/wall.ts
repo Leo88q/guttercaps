@@ -16,6 +16,7 @@ import { now } from './db.ts';
 import { ServiceError } from './services.ts';
 import { dayIndex } from './quests.ts';
 import { publish } from './bus.ts';
+import { recordEvent } from './worldMetrics.ts';
 
 export const WALL_SLOTS = 200;              // на район: 1600 живых тегов на город
 export const WALL_ACTIVE_DAYS = 7;          // подряд, а не суммарно
@@ -126,6 +127,7 @@ export function releaseTag(db: Db, tagId: string): number {
     toHistory(db, r);
     db.run(`DELETE FROM wall_slots WHERE district = ? AND slot = ?`, r.district, r.slot);
     publish({ wallets: [r.wallet], type: 'wall.slot_released', payload: { district: r.district, slot: r.slot, reason: 'tag_hidden' } });
+    recordEvent(db, r.wallet, 'wall', 'release', { district: r.district, slot: r.slot, reason: 'tag_hidden' });
   }
   return rows.length;
 }
@@ -162,6 +164,8 @@ export function claimSlot(db: Db, wallet: string, district: number, tagId: strin
       `INSERT INTO wall_slots (district, slot, wallet, tag_id, applied_at, expires_at, renewed_at) VALUES (?, ?, ?, ?, ?, ?, NULL)`,
       district, slot, wallet, tagId, now(), now() + WALL_FADE_DAYS * DAY,
     );
+    // Событие — в той же транзакции: иначе отчёт §12 разойдётся с самой стеной.
+    recordEvent(db, wallet, 'wall', 'claim', { district, slot });
     return slotView(db, district, slot)!;
   });
 }
@@ -184,6 +188,7 @@ export function renewSlot(db: Db, wallet: string, district: number): WallSlotVie
     ? 'Stake at least one cap to renew' : `Play ${WALL_ACTIVE_DAYS} days in a row to renew`);
   db.run(`UPDATE wall_slots SET expires_at = ?, renewed_at = ? WHERE district = ? AND slot = ?`,
     now() + WALL_FADE_DAYS * DAY, now(), district, row.slot);
+  recordEvent(db, wallet, 'wall', 'renew', { district, slot: row.slot });
   return slotView(db, district, row.slot)!;
 }
 
@@ -207,6 +212,7 @@ export function expireSlots(db: Db, at = now()): number {
     toHistory(db, r);
     db.run(`DELETE FROM wall_slots WHERE district = ? AND slot = ?`, r.district, r.slot);
     publish({ wallets: [r.wallet], type: 'wall.slot_expired', payload: { district: r.district, slot: r.slot } });
+    recordEvent(db, r.wallet, 'wall', 'expire', { district: r.district, slot: r.slot });
   }
   return rows.length;
 }

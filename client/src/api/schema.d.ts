@@ -4723,6 +4723,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/world-metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Skate-world cohorts (docs/16 §12) — does the world actually feed the main loop?
+         * @description For each world feature (wall, exhibit, tag) the wallet cohort is compared against a baseline of
+         *     wallets that played in the same window but never touched the feature. Every number is a
+         *     **per-wallet average**, because the two groups differ in size — a raw sum would say "the cohort
+         *     trades more" merely because the cohort is bigger. `delta` is `cohort / baseline - 1`.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    days?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description cohorts per feature */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorldMetrics"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/audit": {
         parameters: {
             query?: never;
@@ -7084,6 +7128,45 @@ export interface components {
             netInflationCg?: number;
             sinkRatio?: number;
             perDauEmission?: number;
+        };
+        /** @description Cohorts behind the rule-gate (docs/16 §0.2, §12) — per-wallet averages, not sums. */
+        WorldMetrics: {
+            windowDays?: number;
+            /** Format: date-time */
+            asOf?: string;
+            features?: {
+                /** @enum {string} */
+                feature?: "wall" | "exhibit" | "tag";
+                windowDays?: number;
+                /** Format: date-time */
+                from?: string;
+                /** Format: date-time */
+                to?: string;
+                cohort?: components["schemas"]["WorldCohortStats"];
+                baseline?: components["schemas"]["WorldCohortStats"];
+                /** @description cohort / baseline − 1 per metric; null when there is nothing to divide by */
+                delta?: {
+                    packs?: number | null;
+                    trades?: number | null;
+                    fusions?: number | null;
+                    loginDays?: number | null;
+                    stakedCaps?: number | null;
+                };
+                /** @description adoption curve — events and distinct wallets per day */
+                series?: {
+                    day?: number;
+                    events?: number;
+                    wallets?: number;
+                }[];
+            }[];
+        };
+        WorldCohortStats: {
+            wallets?: number;
+            packsPerWallet?: number;
+            tradesPerWallet?: number;
+            fusionsPerWallet?: number;
+            loginDaysPerWallet?: number;
+            stakedCapsPerWallet?: number;
         };
         AdminKpi: {
             /** Format: date-time */

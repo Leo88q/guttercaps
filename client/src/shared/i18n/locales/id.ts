@@ -240,7 +240,20 @@ const id: Messages = {
   },
   admin: {
     title: 'Panel operasi', subtitle: 'Penyetelan ekonomi langsung. Tidak ada yang ditandatangani di sini: setiap perubahan kembali sebagai byte instruksi untuk multisig, dan setiap panggilan dicatat ke log audit.',
-    tabs: { params: 'Parameter', kill: 'Tombol darurat', simulate: 'Simulasi', kpi: 'KPI', fraud: 'Antrean fraud', audit: 'Log audit' },
+    tabs: { params: 'Parameter', kill: 'Tombol darurat', simulate: 'Simulasi', kpi: 'KPI', world: 'Dunia', fraud: 'Antrean fraud', audit: 'Log audit' },
+    world: {
+      intro: 'Kohort dunia skate (docs/16 §12). Setiap angka adalah rata-rata per dompet: ukuran kedua grup berbeda, jadi jumlah total bisa membuat fitur populer apa pun terlihat bagus. Δ = kohort ÷ baseline − 1.',
+      window: '{n} hari',
+      cohort: 'Memakainya',
+      baseline: 'Main, tidak memakainya',
+      wallets: '{n, plural, other{# dompet}}',
+      metric: 'per dompet',
+      delta: 'Δ vs baseline',
+      packs: 'Pack', trades: 'Transaksi', fusions: 'Fusi', loginDays: 'Hari login', stakedCaps: 'Cap di-stake',
+      feat: { wall: 'Dinding distrik', exhibit: 'Pameran cap', tag: 'Tag' },
+      empty: 'Belum ada event di periode ini — belum ada yang bisa dibandingkan.',
+      series: 'Event per hari',
+    },
     proposal: {
       ok: 'Lolos pagar pengaman — serahkan instruksi ini ke multisig', rejected: 'Ditolak pagar pengaman', reset: 'Tutup', diff: 'Perbedaan (saat ini → usulan)',
       instructions: '{n, plural, other{# instruksi}}', signer: 'penanda tangan', copy: 'Salin JSON instruksi', download: 'Unduh .json',

@@ -1038,6 +1038,19 @@ model WallSlotHistory {
   @@map("wall_slot_history")
 }
 
+model FeatureEvent {
+  id      Int      @id @default(autoincrement())
+  wallet  String
+  feature String
+  kind    String
+  at      DateTime
+  meta    String?
+
+  @@index([feature, kind, at])
+  @@index([wallet, at])
+  @@map("feature_events")
+}
+
 model RigExhibit {
   wallet    String
   slot      Int

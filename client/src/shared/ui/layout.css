@@ -722,6 +722,16 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 
 /* Operator metrics and translated action groups must not compress into clipped columns. */
 .admin-tabs { flex-wrap: wrap; overflow: visible; }
+
+/* World cohorts (docs/16 §12): four columns — metric, cohort, baseline, Δ — that must
+   survive the longest translation, so the first column takes the slack. */
+.world-cohorts { display: grid; gap: 4px; }
+.world-cohorts-head, .world-cohorts-row { display: grid; grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr)); gap: 8px; align-items: baseline; font-size: 13px; }
+.world-cohorts-head { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+.world-cohorts-row > span:not(:first-child) { text-align: right; }
+.world-series { display: flex; align-items: flex-end; gap: 2px; height: 40px; overflow: hidden; }
+.world-series-bar { flex: 1 1 0; min-width: 2px; background: var(--cg-trust-blue, #2E8BFF); border-radius: 1px; opacity: 0.75; }
+.world-series-bar:hover { opacity: 1; }
 .grid-3 > * { min-width: 0; }
 .stat, .label { overflow-wrap: anywhere; }
 @media (max-width: 480px) {

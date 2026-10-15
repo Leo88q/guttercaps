@@ -18,6 +18,7 @@ import { createHash } from 'node:crypto';
 import type { Db } from './db.ts';
 import { now } from './db.ts';
 import { ServiceError } from './services.ts';
+import { recordEvent } from './worldMetrics.ts';
 // Диалектные конструкции живут только в sql.ts (backend/test/sql.test.ts следит за швом).
 import { insertIgnore } from './sql.ts';
 
@@ -149,6 +150,7 @@ export function saveTag(db: Db, wallet: string, input: unknown): TagView {
     id, wallet, hash, svg, bytes, commands, 'live', now(), 0,
   );
   const row = db.get<TagRow>(`SELECT * FROM tag_registry WHERE id = ?`, id)!;
+  recordEvent(db, wallet, 'tag', 'save', { bytes, commands });
   return view(row, wallet);
 }
 
@@ -176,6 +178,7 @@ export function reportTag(db: Db, reporter: string, id: string, reason: string):
     const res = db.run(insertIgnore('wall_reports', ['tag_id', 'reporter', 'reason', 'created_at']), id, reporter, reason, now());
     if (Number(res.changes) === 0) throw new ServiceError(409, 'already_reported', 'You have already reported this tag');
     db.run(`UPDATE tag_registry SET reports = reports + 1 WHERE id = ?`, id);
+    recordEvent(db, reporter, 'tag', 'report', { tag: id, reason });
     return { ok: true as const, reports: tag.reports + 1 };
   });
 }
@@ -197,6 +200,7 @@ export function setTagStatus(db: Db, id: string, status: string, note?: string):
   if (!row) throw new ServiceError(404, 'not_found', 'No tag with that id');
   if (row.status === status) return view(row);
   db.run(`UPDATE tag_registry SET status = ?, moderated_at = COALESCE(moderated_at, ?), appeal_note = COALESCE(?, appeal_note) WHERE id = ?`, status, now(), note ?? null, id);
+  if (status === 'hidden') recordEvent(db, row.wallet, 'tag', 'hide', { reports: row.reports });
   if (status !== 'live') db.run(`UPDATE wall_reports SET resolved_at = ?, resolution = ? WHERE tag_id = ? AND resolution IS NULL`, now(), `tag_${status}`, id);
   return view(db.get<TagRow>(`SELECT * FROM tag_registry WHERE id = ?`, id)!);
 }

@@ -35,6 +35,7 @@ export const qk = {
   pass: ['me', 'pass'] as const,
   adminParams: ['admin', 'params'] as const,
   adminKpi: ['admin', 'kpi'] as const,
+  adminWorld: ['admin', 'world-metrics'] as const,
   adminFraud: ['admin', 'fraud'] as const,
   adminAudit: ['admin', 'audit'] as const,
 };

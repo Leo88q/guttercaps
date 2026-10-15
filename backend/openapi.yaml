@@ -1126,6 +1126,18 @@ paths:
       tags: [admin]
       summary: PRD KPI dashboard (D1/D7/D30 retention cohorts, conversion, ARPPU, sink ratio, floor index, arena + fraud + finality health)
       responses: { '200': { description: kpi, content: { application/json: { schema: { $ref: '#/components/schemas/AdminKpi' } } } } }
+  /admin/world-metrics:
+    get:
+      tags: [admin]
+      summary: Skate-world cohorts (docs/16 §12) — does the world actually feed the main loop?
+      description: |
+        For each world feature (wall, exhibit, tag) the wallet cohort is compared against a baseline of
+        wallets that played in the same window but never touched the feature. Every number is a
+        **per-wallet average**, because the two groups differ in size — a raw sum would say "the cohort
+        trades more" merely because the cohort is bigger. `delta` is `cohort / baseline - 1`.
+      parameters: [{ in: query, name: days, schema: { type: integer, minimum: 1, maximum: 90, default: 30 } }]
+      responses:
+        '200': { description: cohorts per feature, content: { application/json: { schema: { $ref: '#/components/schemas/WorldMetrics' } } } }
   /admin/audit:
     get:
       tags: [admin]
@@ -2111,6 +2123,40 @@ components:
     DailyFlows:
       type: object
       properties: { scheduleCapCg: { type: integer }, emissionCg: { type: integer }, burnedCg: { type: integer }, treasuryCg: { type: integer }, netInflationCg: { type: integer }, sinkRatio: { type: number }, perDauEmission: { type: number } }
+    WorldMetrics:
+      type: object
+      description: Cohorts behind the rule-gate (docs/16 §0.2, §12) — per-wallet averages, not sums.
+      properties:
+        windowDays: { type: integer }
+        asOf: { type: string, format: date-time }
+        features:
+          type: array
+          items:
+            type: object
+            properties:
+              feature: { type: string, enum: [wall, exhibit, tag] }
+              windowDays: { type: integer }
+              from: { type: string, format: date-time }
+              to: { type: string, format: date-time }
+              cohort: { $ref: '#/components/schemas/WorldCohortStats' }
+              baseline: { $ref: '#/components/schemas/WorldCohortStats' }
+              delta:
+                type: object
+                description: 'cohort / baseline − 1 per metric; null when there is nothing to divide by'
+                properties: { packs: { type: [number, 'null'] }, trades: { type: [number, 'null'] }, fusions: { type: [number, 'null'] }, loginDays: { type: [number, 'null'] }, stakedCaps: { type: [number, 'null'] } }
+              series:
+                type: array
+                description: adoption curve — events and distinct wallets per day
+                items: { type: object, properties: { day: { type: integer }, events: { type: integer }, wallets: { type: integer } } }
+    WorldCohortStats:
+      type: object
+      properties:
+        wallets: { type: integer }
+        packsPerWallet: { type: number }
+        tradesPerWallet: { type: number }
+        fusionsPerWallet: { type: number }
+        loginDaysPerWallet: { type: number }
+        stakedCapsPerWallet: { type: number }
     AdminKpi:
       type: object
       properties:

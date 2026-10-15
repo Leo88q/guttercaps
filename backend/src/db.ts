@@ -1046,6 +1046,21 @@ CREATE TABLE IF NOT EXISTS rig_exhibit (
 );
 CREATE INDEX IF NOT EXISTS idx_rig_exhibit_asset ON rig_exhibit(asset);
 
+-- Телеметрия скейт-мира (docs/16 §12): без неё правило-гейт из §0.2 нечем
+-- проверять — фича без когортной метрики не принята, а не «принята на веру».
+-- Событие — одна строка на действие игрока; когорты считаются из неё запросом,
+-- а не отдельными таблицами под каждую метрику.
+CREATE TABLE IF NOT EXISTS feature_events (
+  id       INTEGER PRIMARY KEY AUTOINCREMENT,
+  wallet   TEXT    NOT NULL,
+  feature  TEXT    NOT NULL,             -- wall | exhibit | tag | run (§5)
+  kind     TEXT    NOT NULL,             -- claim | renew | release | expire | set | unset | public_on | public_off | save | report | hide
+  at       INTEGER NOT NULL,
+  meta     TEXT                          -- JSON: район, слот, редкость — что угодно, в отчёт не идёт
+);
+CREATE INDEX IF NOT EXISTS idx_feature_events_feature ON feature_events(feature, kind, at);
+CREATE INDEX IF NOT EXISTS idx_feature_events_wallet ON feature_events(wallet, at);
+
 CREATE TABLE IF NOT EXISTS reward_batches (
   kind         INTEGER NOT NULL,
   epoch        INTEGER NOT NULL,

@@ -240,7 +240,20 @@ const fil: Messages = {
   },
   admin: {
     title: 'Ops panel', subtitle: 'Live na pag-tune ng ekonomiya. Walang pumipirma dito: bawat pagbabago ay bumabalik bilang instruction bytes para sa multisig, at bawat tawag ay naitatala sa audit log.',
-    tabs: { params: 'Mga parameter', kill: 'Kill switch', simulate: 'Simulate', kpi: 'KPI', fraud: 'Fraud queue', audit: 'Audit log' },
+    tabs: { params: 'Mga parameter', kill: 'Kill switch', simulate: 'Simulate', kpi: 'KPI', world: 'Mundo', fraud: 'Fraud queue', audit: 'Audit log' },
+    world: {
+      intro: 'Mga cohort ng skate world (docs/16 §12). Bawat numero ay average bawat wallet: magkaiba ang laki ng dalawang grupo, kaya ang kabuuan ay gagawing maganda ang kahit anong sikat na feature. Δ = cohort ÷ baseline − 1.',
+      window: '{n} araw',
+      cohort: 'Ginamit',
+      baseline: 'Naglaro, hindi ginamit',
+      wallets: '{n, plural, other{# wallet}}',
+      metric: 'bawat wallet',
+      delta: 'Δ vs baseline',
+      packs: 'Mga pack', trades: 'Mga trade', fusions: 'Mga fusion', loginDays: 'Mga araw na nag-login', stakedCaps: 'Naka-stake na caps',
+      feat: { wall: 'Dingding ng distrito', exhibit: 'Exhibit ng caps', tag: 'Tag' },
+      empty: 'Walang event sa window — wala pang puwedeng paghambingin.',
+      series: 'Mga event bawat araw',
+    },
     proposal: {
       ok: 'Pasado sa guard-rails — iabot ang mga instruction na ito sa multisig', rejected: 'Tinanggihan ng guard-rails', reset: 'Isara', diff: 'Pagkakaiba (kasalukuyan → panukala)',
       instructions: '{n, plural, one{# instruction} other{# instruction}}', signer: 'pumirma', copy: 'Kopyahin ang JSON ng mga instruction', download: 'I-download ang .json',

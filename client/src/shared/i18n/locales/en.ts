@@ -251,7 +251,20 @@ const en = {
   },
   admin: {
     title: 'Ops panel', subtitle: 'Live economy tuning. Nothing here signs: every change comes back as instruction bytes for the multisig, and every call is written to the audit log.',
-    tabs: { params: 'Parameters', kill: 'Kill switch', simulate: 'Simulate', kpi: 'KPI', fraud: 'Fraud queue', audit: 'Audit log' },
+    tabs: { params: 'Parameters', kill: 'Kill switch', simulate: 'Simulate', kpi: 'KPI', world: 'World', fraud: 'Fraud queue', audit: 'Audit log' },
+    world: {
+      intro: 'Skate-world cohorts (docs/16 §12). Every number is an average per wallet — the two groups differ in size, so raw sums would make any popular feature look good. Δ = cohort ÷ baseline − 1.',
+      window: '{n} days',
+      cohort: 'Touched it',
+      baseline: 'Played, never touched it',
+      wallets: '{n, plural, one{# wallet} other{# wallets}}',
+      metric: 'per wallet',
+      delta: 'Δ vs baseline',
+      packs: 'Packs', trades: 'Trades', fusions: 'Fusions', loginDays: 'Login days', stakedCaps: 'Staked caps',
+      feat: { wall: 'District wall', exhibit: 'Cap exhibit', tag: 'Tag' },
+      empty: 'No events in the window — there is nothing to compare yet.',
+      series: 'Events per day',
+    },
     proposal: {
       ok: 'Passes the guard-rails — hand these instructions to the multisig', rejected: 'Rejected by the guard-rails', reset: 'Dismiss', diff: 'Diff (live → proposed)',
       instructions: '{n, plural, one{# instruction} other{# instructions}}', signer: 'signer', copy: 'Copy instructions JSON', download: 'Download .json',

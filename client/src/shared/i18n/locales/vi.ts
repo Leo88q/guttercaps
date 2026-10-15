@@ -240,7 +240,20 @@ const vi: Messages = {
   },
   admin: {
     title: 'Bảng vận hành', subtitle: 'Tinh chỉnh kinh tế trực tiếp. Không có gì ở đây được ký: mọi thay đổi trả về dưới dạng byte lệnh cho multisig, và mọi lệnh gọi đều được ghi vào nhật ký kiểm toán.',
-    tabs: { params: 'Tham số', kill: 'Nút dừng', simulate: 'Mô phỏng', kpi: 'KPI', fraud: 'Hàng đợi gian lận', audit: 'Nhật ký' },
+    tabs: { params: 'Tham số', kill: 'Nút dừng', simulate: 'Mô phỏng', kpi: 'KPI', world: 'Thế giới', fraud: 'Hàng đợi gian lận', audit: 'Nhật ký' },
+    world: {
+      intro: 'Cohort thế giới skate (docs/16 §12). Mọi con số là trung bình mỗi ví: hai nhóm có quy mô khác nhau, nên tổng số sẽ làm tính năng nào phổ biến cũng trông có vẻ tốt. Δ = cohort ÷ baseline − 1.',
+      window: '{n} ngày',
+      cohort: 'Đã dùng',
+      baseline: 'Có chơi, không dùng',
+      wallets: '{n, plural, other{# ví}}',
+      metric: 'mỗi ví',
+      delta: 'Δ so với baseline',
+      packs: 'Pack', trades: 'Giao dịch', fusions: 'Fusion', loginDays: 'Ngày đăng nhập', stakedCaps: 'Cap đang stake',
+      feat: { wall: 'Tường khu', exhibit: 'Trưng bày cap', tag: 'Tag' },
+      empty: 'Chưa có sự kiện nào trong khoảng này — chưa có gì để so sánh.',
+      series: 'Sự kiện mỗi ngày',
+    },
     proposal: {
       ok: 'Vượt qua rào chắn — chuyển các lệnh này cho multisig', rejected: 'Bị rào chắn từ chối', reset: 'Đóng', diff: 'Khác biệt (hiện tại → đề xuất)',
       instructions: '{n, plural, other{# lệnh}}', signer: 'người ký', copy: 'Sao chép JSON lệnh', download: 'Tải .json',
