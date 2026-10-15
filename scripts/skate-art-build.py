@@ -1,0 +1,444 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Сборка арта скейт-мира «Бассейн» из сгенерированных мастеров (docs/16 §8).
+
+Визуал скейт-слоя не рисуется кодом: картинки генерируются, а код отвечает за
+раскладку, движение и данные. Этот скрипт — граница между ними: он принимает
+тяжёлые PNG-мастера из art_drafts/skate/ и выпускает то, что реально уезжает
+в продакшен.
+
+Что делает:
+  * фон (background): обрезка под 1600x900 (cover, центр), WebP q80, бюджет 350 КБ;
+  * спрайт (sprite): хромакей #00FF00, эрозия альфы на 1 px (снимает зелёную кайму),
+    trim по альфе, вписывание в бокс, WebP q82 с альфой, бюджет 40 КБ (райдер — 60 КБ);
+  * проверка хромакея: если угол мастера не зелёный, сборка падает — вырезать нечего;
+  * палитровый линт: считает trust-blue #2E8BFF (в игровом арте запрещён, docs/07 §2.2)
+    и валит сборку, если его доля заметная;
+  * пишет client/public/art/skate/MANIFEST.json — имя, тип, размеры, вес, sha256
+    и промпт генерации. Промпт в манифесте — это происхождение файла: мастер в git
+    не идёт (весит мегабайты), но по промпту кадр воспроизводится один в один;
+  * валит сборку при превышении бюджета, отсутствии мастера или нечитаемом фоне.
+
+Мастера: art_drafts/skate/*.png (тяжёлые, в git не идут — см. .gitignore).
+Результат коммитится в client/public/art/skate/ — dev/deploy идут без Python.
+
+Запуск:
+  python3 scripts/skate-art-build.py                 сборка всех ассетов
+  python3 scripts/skate-art-build.py --only deck     один ассет (или --only deck,rider-01)
+  python3 scripts/skate-art-build.py --check         только проверить выпущенное по манифесту
+
+Зависимость: pillow (как у scripts/floodgrid-art-build.py).
+"""
+import argparse
+import datetime
+import hashlib
+import json
+import os
+import sys
+
+from PIL import Image, ImageFilter, ImageOps
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(HERE)
+MASTERS = os.path.join(REPO, "art_drafts", "skate")
+OUT = os.path.join(REPO, "client", "public", "art", "skate")
+
+# Фон, на котором генерируются объекты: ровный #00FF00, его и вырезаем.
+CHROMA = (0, 255, 0)
+CHROMA_TOL = 48  # допуск «зелёного» (fuzz 12% в ImageMagick ≈ 48/255)
+
+# docs/07 §2.2: trust-blue в игровом арте запрещён.
+TRUST_BLUE = (46, 139, 255)
+BLUE_TOL = 40
+BLUE_MAX_SHARE = 0.005  # выше этой доли пикселей сборка падает
+
+BG_GEOMETRY = (1600, 900)
+
+# ── Реестр ассетов ───────────────────────────────────────────────────────────
+# имя, тип, мастер, бокс/геометрия, качество, бюджет КБ, промпт генерации.
+# Промпт хранится целиком: это и есть происхождение файла (см. док-строку).
+PROMPT_PREFIX = (
+    "gritty urban street-art game illustration, overcast diffused daylight with a hot magenta "
+    "rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime "
+    "#B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
+)
+
+BACKGROUND = "background"
+SPRITE = "sprite"
+
+ASSETS = [
+    {
+        "name": "bowl-hero",
+        "kind": BACKGROUND,
+        "master": "bowl-hero.png",
+        "geometry": BG_GEOMETRY,
+        "quality": 80,
+        "budget_kb": 350,
+        "prompt": (
+            "Empty concrete skate bowl plaza in an abandoned industrial district at dusk, low wide "
+            "three-quarter view, distant city silhouette, wet asphalt, cracked concrete coping, rusted "
+            "steel rails, faded spray-paint murals on the far wall, puddles reflecting light. No people. "
+            "Painterly matte painting, soft depth haze. " + PROMPT_PREFIX
+        ),
+    },
+    {
+        "name": "wall-district",
+        "kind": BACKGROUND,
+        "master": "wall-tile.png",
+        "geometry": BG_GEOMETRY,
+        "quality": 80,
+        "budget_kb": 350,
+        "prompt": (
+            "Strictly flat frontal view with no perspective of a long empty concrete graffiti wall, "
+            "shot straight on like a canvas. Weathered grey concrete panels, subtle cracks, water stains, "
+            "rust drips, faint worn paint ghosts as abstract shapes, large clean bare areas ready for new "
+            "artwork, wet asphalt at the base, dark alley depth at the edges. No people. Painterly matte "
+            "painting, even lighting. " + PROMPT_PREFIX
+        ),
+    },
+    {
+        "name": "deck",
+        "kind": SPRITE,
+        "master": "deck-hero.png",
+        "geometry": (1024, 1024),
+        "quality": 78,
+        "budget_kb": 40,
+        "prompt": (
+            "Product render of a single blank skateboard deck, three-quarter top angle, alone in the centre "
+            "of the frame on a flat pure green #00FF00 background. Seven-ply maple edge, blank natural wood "
+            "top face with no graphics, black griptape underside, slight concave, mild nose and tail kick. "
+            "Studio product photography, subtle oil and grime on the wood, crisp edges. " + PROMPT_PREFIX
+        ),
+    },
+    {
+        "name": "rider-01",
+        "kind": SPRITE,
+        "master": "rider.png",
+        "geometry": (900, 900),
+        "quality": 78,
+        "budget_kb": 60,
+        "prompt": (
+            "Full body three-quarter side view of a skateboarder caught mid-air in an ollie above a "
+            "skateboard, alone in the centre of the frame on a flat pure green #00FF00 background. Baggy "
+            "streetwear silhouette, hoodie, loose cargo pants, chunky sneakers, backwards cap, face turned "
+            "away and obscured. Clean dark graphic silhouette with soft rim light. Stylised vector-like "
+            "game character illustration. " + PROMPT_PREFIX
+        ),
+    },
+    {
+        "name": "wheels",
+        "kind": SPRITE,
+        "master": "wheels.png",
+        "geometry": (900, 900),
+        "quality": 78,
+        "budget_kb": 40,
+        "prompt": (
+            "Product render of four identical skateboard polyurethane wheels in a neat horizontal row, "
+            "three-quarter studio view, alone on a flat pure green #00FF00 background. White wheels with "
+            "abstract side prints in magenta and cyan, slight wear, soft rubber sheen. Clean product "
+            "photography, crisp edges. " + PROMPT_PREFIX
+        ),
+    },
+    {
+        "name": "trucks",
+        "kind": SPRITE,
+        "master": "trucks.png",
+        "geometry": (900, 900),
+        "quality": 78,
+        "budget_kb": 40,
+        "prompt": (
+            "Product render of two skateboard trucks side by side, three-quarter studio view, polished "
+            "aluminium hanger and baseplate, black bushings, steel kingpin, grease and scratches, alone on "
+            "a flat pure green #00FF00 background. Clean product photography, crisp edges. " + PROMPT_PREFIX
+        ),
+    },
+    {
+        "name": "grip",
+        "kind": SPRITE,
+        "master": "grip.png",
+        "geometry": (900, 900),
+        "quality": 78,
+        "budget_kb": 40,
+        "prompt": (
+            "Product render of a square sheet of coarse black griptape with torn edges plus a row of eight "
+            "small steel mounting bolts, three-quarter studio view, alone on a flat pure green #00FF00 "
+            "background. Mild dust, grease and wear. Clean product photography, crisp edges. "
+            + PROMPT_PREFIX
+        ),
+    },
+    {
+        "name": "rider-02",
+        "kind": SPRITE,
+        "master": "rider-02.png",
+        "geometry": (900, 900),
+        "quality": 78,
+        "budget_kb": 60,
+        "prompt": (
+            "Full body three-quarter side view of a skateboarder crouched low grinding a ledge, arms out "
+            "for balance, alone on a flat pure green #00FF00 background. Baggy streetwear silhouette, "
+            "puffer jacket, baggy jeans, beanie, face turned away and obscured. Clean dark graphic "
+            "silhouette with cyan edge light and magenta rim light. Stylised vector-like game character "
+            "illustration. " + PROMPT_PREFIX
+        ),
+    },
+    {
+        "name": "ui-panel",
+        "kind": SPRITE,
+        "master": "ui-panel.png",
+        "geometry": (1024, 1024),
+        "quality": 80,
+        "budget_kb": 40,
+        "prompt": (
+            "Mobile game interface art: a single large rounded rectangle panel frame of dark smoked glass "
+            "and worn brushed metal, thin glowing magenta inner border, cyan corner accents, scratches and "
+            "grime, empty clean dark interior, alone on a flat pure green #00FF00 background. No icons, no "
+            "content inside the panel. Clean UI render, crisp edges. " + PROMPT_PREFIX
+        ),
+    },
+    {
+        "name": "empty-niche",
+        "kind": BACKGROUND,
+        "master": "empty-niche.png",
+        "geometry": BG_GEOMETRY,
+        "quality": 80,
+        "budget_kb": 350,
+        "prompt": (
+            "Empty display alcove set into a dark concrete wall of an abandoned industrial room: three "
+            "empty steel bracket mounts, dust motes, cobwebs, peeling paint, a single hot magenta work "
+            "light raking from the left, wet concrete floor reflecting the glow. Melancholy quiet mood. No "
+            "people, no objects on the mounts. Painterly matte painting, soft depth haze. " + PROMPT_PREFIX
+        ),
+    },
+]
+
+
+# ── Обработка ────────────────────────────────────────────────────────────────
+def chroma_key(img, tol=CHROMA_TOL):
+    """Прозрачность вместо ровного зелёного фона (per-pixel; быстрее numpy не нужно)."""
+    img = img.convert("RGBA")
+    px = img.load()
+    w, h = img.size
+    cr, cg, cb = CHROMA
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            # «зелёный» — это когда зелёный канал заметно выше красного и синего
+            if g > 120 and (g - r) > tol and (g - b) > tol:
+                # RGB обнуляем, а не оставляем зелёный: прозрачные пиксели с цветным
+                # мусором почти не жмутся (на мастере hardware это +120 % к весу).
+                px[x, y] = (0, 0, 0, 0)
+    return img
+
+
+def erode_alpha(img, radius=1):
+    """Снимает зелёную кайму: альфа сжимается на 1 px, полупрозрачный мусор уходит."""
+    alpha = img.getchannel("A")
+    for _ in range(radius):
+        alpha = alpha.filter(ImageFilter.MinFilter(3))
+    out = img.copy()
+    out.putalpha(alpha)
+    return out
+
+
+def trim_alpha(img):
+    bbox = img.getchannel("A").getbbox()
+    return img.crop(bbox) if bbox else img
+
+
+def fit_box(img, box):
+    out = img.copy()
+    out.thumbnail(box, Image.LANCZOS)
+    return out
+
+
+def save_sprite_fit(img, path, asset, min_quality=60, min_scale=0.6):
+    """Кладёт спрайт в бюджет: сначала жмёт качество, потом — размер.
+
+    Генерируемые мастера сильно разные по детализации, поэтому подбирать качество
+    руками под каждый кадр — значит чинить сборку при каждой перегенерации.
+    """
+    box, budget = asset["geometry"], asset["budget_kb"]
+    scale = 1.0
+    while True:
+        frame = fit_box(img, (max(1, int(box[0] * scale)), max(1, int(box[1] * scale))))
+        quality = asset["quality"]
+        while True:
+            frame.save(path, "WEBP", quality=quality,
+                       alpha_quality=asset.get("alpha_quality", 80), method=6, exact=False)
+            kb = os.path.getsize(path) / 1024
+            if kb <= budget or quality <= min_quality:
+                break
+            quality -= 4
+        if kb <= budget or scale <= min_scale:
+            return frame, quality, kb, scale
+        scale *= 0.85
+
+def blue_share(img):
+    """Доля trust-blue (#2E8BFF). docs/07 §2.2: в игровом арте его быть не должно."""
+    probe = img.convert("RGB")
+    probe.thumbnail((160, 160), Image.LANCZOS)
+    px = probe.load()
+    w, h = probe.size
+    tr, tg, tb = TRUST_BLUE
+    hits = total = 0
+    for y in range(h):
+        for x in range(w):
+            r, g, b = px[x, y]
+            total += 1
+            if abs(r - tr) <= BLUE_TOL and abs(g - tg) <= BLUE_TOL and abs(b - tb) <= BLUE_TOL:
+                hits += 1
+    return (hits / total) if total else 0.0
+
+
+def sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def corner_is_green(img):
+    px = img.convert("RGB").load()
+    w, h = img.size
+    for (x, y) in ((2, 2), (w - 3, 2), (2, h - 3), (w - 3, h - 3)):
+        r, g, b = px[x, y]
+        if g > 120 and (g - r) > CHROMA_TOL and (g - b) > CHROMA_TOL:
+            return True
+    return False
+
+
+def build(asset, entries, failures):
+    name, kind = asset["name"], asset["kind"]
+    master = os.path.join(MASTERS, asset["master"])
+    if not os.path.exists(master):
+        print(f"  {name:14} НЕТ МАСТЕРА {asset['master']}")
+        failures.append(name)
+        return
+
+    img = Image.open(master)
+    if kind == SPRITE and not corner_is_green(img):
+        print(f"  {name:14} фон мастера не #00FF00 — вырезать нечего")
+        failures.append(name)
+        return
+
+    if kind == SPRITE:
+        img = chroma_key(img)
+        img = erode_alpha(img)
+        img = trim_alpha(img)
+        img = fit_box(img, asset["geometry"])
+        target = os.path.join(OUT, f"{name}.webp")
+        img, used_q, _kb, scale = save_sprite_fit(img, target, asset)
+    else:
+        img = ImageOps.fit(img.convert("RGB"), asset["geometry"], Image.LANCZOS, centering=(0.5, 0.5))
+        target = os.path.join(OUT, f"{name}.webp")
+        img.save(target, "WEBP", quality=asset["quality"], method=6, exact=False)
+
+    kb = os.path.getsize(target) / 1024
+    blue = blue_share(Image.open(target))
+    ok = kb <= asset["budget_kb"] and blue <= BLUE_MAX_SHARE
+    if "used_q" not in dir():
+        used_q, scale = asset["quality"], 1.0
+    flag = "ok " if ok else "ПЛОХО"
+    print(
+        f"  {name:14} {kind:10} {img.size[0]}x{img.size[1]:<5} {kb:6.0f} КБ "
+        f"/ {asset['budget_kb']} КБ  blue {blue*100:.2f}%  {flag}"
+    )
+    if not ok:
+        failures.append(name)
+
+    entries.append(
+        {
+            "name": name,
+            "kind": kind,
+            "file": f"client/public/art/skate/{name}.webp",
+            "width": img.size[0],
+            "height": img.size[1],
+            "bytes": os.path.getsize(target),
+            "kb": round(kb, 1),
+            "budget_kb": asset["budget_kb"],
+            "quality": asset["quality"],
+            "sha256": sha256(target),
+            "master": f"art_drafts/skate/{asset['master']}",
+            "master_sha256": sha256(master),
+            "prompt": asset["prompt"],
+        }
+    )
+
+
+def check(assets):
+    """Проверка выпущенного по манифесту: файл на месте, вес в бюджете, хеш совпал."""
+    path = os.path.join(OUT, "MANIFEST.json")
+    if not os.path.exists(path):
+        print("MANIFEST.json отсутствует — сначала соберите арт")
+        return 1
+    data = json.load(open(path, encoding="utf-8"))
+    bad = 0
+    for e in data["assets"]:
+        f = os.path.join(REPO, e["file"])
+        if not os.path.exists(f):
+            print(f"  {e['name']:14} файл отсутствует")
+            bad += 1
+            continue
+        kb = os.path.getsize(f) / 1024
+        same = sha256(f) == e["sha256"]
+        fit = kb <= e["budget_kb"]
+        print(f"  {e['name']:14} {kb:6.0f} КБ / {e['budget_kb']} КБ  sha256 {'совпал' if same else 'РАСХОЖДЕНИЕ'}  {'ok' if (same and fit) else 'ПЛОХО'}")
+        if not (same and fit):
+            bad += 1
+    print(f"проверено {len(data['assets'])} ассетов, проблемных {bad}")
+    return 1 if bad else 0
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Сборка арта скейт-мира (docs/16 §8)")
+    ap.add_argument("--only", help="собрать только эти ассеты (через запятую)")
+    ap.add_argument("--check", action="store_true", help="проверить выпущенное по манифесту")
+    args = ap.parse_args()
+
+    if args.check:
+        return check(ASSETS)
+
+    wanted = None
+    if args.only:
+        wanted = {s.strip() for s in args.only.split(",") if s.strip()}
+        unknown = wanted - {a["name"] for a in ASSETS}
+        if unknown:
+            print("неизвестные ассеты:", ", ".join(sorted(unknown)))
+            return 1
+
+    os.makedirs(OUT, exist_ok=True)
+    print(f"мастера: {MASTERS}")
+    print(f"выпуск:  {OUT}\n")
+
+    entries, failures = [], []
+    for asset in ASSETS:
+        if wanted and asset["name"] not in wanted:
+            continue
+        build(asset, entries, failures)
+
+    if entries:
+        manifest = {
+            "generated": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "tool": "scripts/skate-art-build.py",
+            "note": (
+                "Арт скейт-мира: сгенерированные изображения, а не рисунок кодом. "
+                "Поле prompt — происхождение кадра; мастер в git не идёт (тяжёлый). "
+                "Палитра docs/07 §2.2, бюджеты docs/16 §8."
+            ),
+            "assets": entries,
+        }
+        path = os.path.join(OUT, "MANIFEST.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(manifest, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
+        print(f"\nманифест: {path} ({len(entries)} ассетов)")
+
+    if failures:
+        print(f"\nсборка провалена: {', '.join(sorted(set(failures)))}")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
