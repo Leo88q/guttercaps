@@ -331,6 +331,36 @@ for _name, _scene in EMPTY_STATES:
     })
 
 
+# ── Платный пак «Трафареты районов» (docs/16 §3.5) ──────────────────────────
+# Пять форм по районам города: мотылёк Night Moth, товарняк Rail Kings,
+# бумбокс Boombox Block, крыса Gutter Beasts, джойстик Pixel Basement. Это
+# косметическая extra (покупка через существующую витрину сервисов), поэтому
+# они НЕ входят в бесплатную подборку выше: в редакторе показываются закрытыми.
+PACK_DISTRICT = [
+    ("stencil-d0-moth", "d0", "a stylised moth with broad spread wings and feathered antennae, perfectly symmetric, thick wing veins as solid shapes"),
+    ("stencil-d2-freight", "d2", "a railway freight wagon in flat side view with sliding door lines, two large wheels and a small ladder at one end"),
+    ("stencil-d4-boombox", "d4", "a classic rectangular boombox in front view with two large circular speakers, a cassette door, a row of square buttons and a carry handle"),
+    ("stencil-d5-rat", "d5", "a stylised city rat in profile with a pointed snout, big round ear and a long tail curling upward in an S curve"),
+    ("stencil-d6-joystick", "d6", "an arcade joystick: a round ball on a short shaft rising from a square base plate with two round buttons beside it"),
+]
+
+for _name, _district, _shape in PACK_DISTRICT:
+    ASSETS.append({
+        "name": _name,
+        "kind": SPRITE,
+        "master": f"{_name}.png",
+        "geometry": (512, 512),
+        "quality": 84,
+        "budget_kb": 20,
+        "prompt": (
+            f"A single bold graphic stencil shape of {_shape}, solid bone white, hard clean cut edges "
+            f"exactly like a spray-paint stencil cut from card with small connector tabs, flat vector "
+            f"look, alone in the centre of the frame on a flat pure green #00FF00 background. No "
+            f"background elements. Crisp high contrast edges, sharp focus, no shadow. " + PROMPT_PREFIX
+        ),
+    })
+
+
 def chroma_key(img, tol=CHROMA_TOL):
     """Прозрачность вместо ровного зелёного фона (per-pixel; быстрее numpy не нужно)."""
     img = img.convert("RGBA")

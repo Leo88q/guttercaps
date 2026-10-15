@@ -1,5 +1,5 @@
 {
-  "generated": "2026-10-15T05:16:56Z",
+  "generated": "2026-10-15T05:27:20Z",
   "tool": "scripts/skate-art-build.py",
   "note": "Арт скейт-мира: сгенерированные изображения, а не рисунок кодом. Поле prompt — происхождение кадра; мастер в git не идёт (тяжёлый). Палитра docs/07 §2.2, бюджеты docs/16 §8.",
   "assets": [
@@ -542,6 +542,81 @@
       "master": "art_drafts/skate/empty-wall.png",
       "master_sha256": "64ae1f1c80f229dacc284cfce1b361f554da5d6902fb92c85a27717381086f55",
       "prompt": "Game background art of a completely clean untouched concrete wall segment shot strictly flat from the front at dawn, no graffiti and no paint at all, smooth pale grey panels with faint form-work seams and weathering, soft overcast light with a faint hot magenta glow bleeding in from the left edge, wet pavement at the base, quiet and expectant mood. No people, no characters, no boards, no tags, no murals. Painterly matte painting, even soft lighting, soft depth haze. gritty urban street-art game illustration, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
+    },
+    {
+      "name": "stencil-d0-moth",
+      "kind": "sprite",
+      "file": "client/public/art/skate/stencil-d0-moth.webp",
+      "width": 307,
+      "height": 157,
+      "bytes": 19234,
+      "kb": 18.8,
+      "budget_kb": 20,
+      "quality": 84,
+      "sha256": "9152f4b785220d7e1a2808ff43bf70b554eaf9d2a1bf6b183031a61629ea8aef",
+      "master": "art_drafts/skate/stencil-d0-moth.png",
+      "master_sha256": "2e84f55f887781bbb7a69fa051a9fb3143a08a8171064eea2eda433a84acb6bb",
+      "prompt": "A single bold graphic stencil shape of a stylised moth with broad spread wings and feathered antennae, perfectly symmetric, thick wing veins as solid shapes, solid bone white, hard clean cut edges exactly like a spray-paint stencil cut from card with small connector tabs, flat vector look, alone in the centre of the frame on a flat pure green #00FF00 background. No background elements. Crisp high contrast edges, sharp focus, no shadow. gritty urban street-art game illustration, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
+    },
+    {
+      "name": "stencil-d2-freight",
+      "kind": "sprite",
+      "file": "client/public/art/skate/stencil-d2-freight.webp",
+      "width": 512,
+      "height": 192,
+      "bytes": 9154,
+      "kb": 8.9,
+      "budget_kb": 20,
+      "quality": 84,
+      "sha256": "c9475fa2fa82c4fb273169980e70f5c69265dac09679cafa55ffb54525f22a4f",
+      "master": "art_drafts/skate/stencil-d2-freight.png",
+      "master_sha256": "231c4e24ae3076628fc27eacff02faccbe0a099936e162a408053535a1da2b6d",
+      "prompt": "A single bold graphic stencil shape of a railway freight wagon in flat side view with sliding door lines, two large wheels and a small ladder at one end, solid bone white, hard clean cut edges exactly like a spray-paint stencil cut from card with small connector tabs, flat vector look, alone in the centre of the frame on a flat pure green #00FF00 background. No background elements. Crisp high contrast edges, sharp focus, no shadow. gritty urban street-art game illustration, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
+    },
+    {
+      "name": "stencil-d4-boombox",
+      "kind": "sprite",
+      "file": "client/public/art/skate/stencil-d4-boombox.webp",
+      "width": 512,
+      "height": 322,
+      "bytes": 19450,
+      "kb": 19.0,
+      "budget_kb": 20,
+      "quality": 84,
+      "sha256": "26cfce44987beeca8922fa8a493370bc1602b44f808e23a1a054b6328ecafc2d",
+      "master": "art_drafts/skate/stencil-d4-boombox.png",
+      "master_sha256": "9667a6290ee970ae92b36d389c8bcec50bd94947170bd7c54c51ddba7ffcd702",
+      "prompt": "A single bold graphic stencil shape of a classic rectangular boombox in front view with two large circular speakers, a cassette door, a row of square buttons and a carry handle, solid bone white, hard clean cut edges exactly like a spray-paint stencil cut from card with small connector tabs, flat vector look, alone in the centre of the frame on a flat pure green #00FF00 background. No background elements. Crisp high contrast edges, sharp focus, no shadow. gritty urban street-art game illustration, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
+    },
+    {
+      "name": "stencil-d5-rat",
+      "kind": "sprite",
+      "file": "client/public/art/skate/stencil-d5-rat.webp",
+      "width": 512,
+      "height": 429,
+      "bytes": 20472,
+      "kb": 20.0,
+      "budget_kb": 20,
+      "quality": 84,
+      "sha256": "66fd044326e524d767c24170c72fc47d3938314fa397fa163b23f777f1f219ae",
+      "master": "art_drafts/skate/stencil-d5-rat.png",
+      "master_sha256": "dc005479417959c3e906558262fecff777d91fcedc23762b067c7b97934c1559",
+      "prompt": "A single bold graphic stencil shape of a stylised city rat in profile with a pointed snout, big round ear and a long tail curling upward in an S curve, solid bone white, hard clean cut edges exactly like a spray-paint stencil cut from card with small connector tabs, flat vector look, alone in the centre of the frame on a flat pure green #00FF00 background. No background elements. Crisp high contrast edges, sharp focus, no shadow. gritty urban street-art game illustration, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
+    },
+    {
+      "name": "stencil-d6-joystick",
+      "kind": "sprite",
+      "file": "client/public/art/skate/stencil-d6-joystick.webp",
+      "width": 490,
+      "height": 512,
+      "bytes": 19400,
+      "kb": 18.9,
+      "budget_kb": 20,
+      "quality": 84,
+      "sha256": "510824388baa9204dba35ebaf04bbdc2e736a9282214604b27c6787d618740a0",
+      "master": "art_drafts/skate/stencil-d6-joystick.png",
+      "master_sha256": "3e78e0613e4afc07e40dc5263fadc72f98fe3c2ebf985e3b632e1ee4384c7e24",
+      "prompt": "A single bold graphic stencil shape of an arcade joystick: a round ball on a short shaft rising from a square base plate with two round buttons beside it, solid bone white, hard clean cut edges exactly like a spray-paint stencil cut from card with small connector tabs, flat vector look, alone in the centre of the frame on a flat pure green #00FF00 background. No background elements. Crisp high contrast edges, sharp focus, no shadow. gritty urban street-art game illustration, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
     }
   ]
 }
