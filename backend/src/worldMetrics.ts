@@ -197,11 +197,56 @@ export function epicPlusRepeat(db: Db, windowDays = 30, t = now()): Repeat24h {
   return { cohort, baseline, delta: ratio(cohort.repeatRate ?? 0, baseline.repeatRate ?? 0) };
 }
 
+/**
+ * §12 строка 4: доля реванша после проигрыша.
+ *
+ * Считаем по боям, а не по кошелькам: за окно игрок может проиграть несколько
+ * раз, и «вернулся ли он» — вопрос к каждому поражению. Когорта — поражения,
+ * база — победы: если после поражения в бой возвращаются не реже, чем после
+ * победы, трик-рил (§2.4) делает своё дело или, как минимум, не добивает.
+ * Время в `matches` — миллисекунды (старт/финиш боя), в отличие от остальных
+ * таблиц, где секунды.
+ */
+export const REMATCH_WINDOW_MS = 30 * 60 * 1000;
+
+export function arenaRematch(db: Db, windowDays = 30, t = now()): Repeat24h {
+  const to = t * 1000;
+  const from = (t - windowDays * DAY) * 1000;
+  const share = (won: 0 | 1) => {
+    const row = db.get<{ n: number; hits: number }>(`
+      WITH sides AS (
+        SELECT id, a AS wallet, ended_at, CASE WHEN winner = a THEN 1 ELSE 0 END won FROM matches
+         WHERE status = 'resolved' AND winner IS NOT NULL AND ended_at IS NOT NULL
+        UNION ALL
+        SELECT id, b AS wallet, ended_at, CASE WHEN winner = b THEN 1 ELSE 0 END won FROM matches
+         WHERE status = 'resolved' AND winner IS NOT NULL AND ended_at IS NOT NULL
+      )
+      SELECT COUNT(*) n, COALESCE(SUM(followed), 0) hits
+        FROM (
+          SELECT s.id, s.wallet, s.ended_at,
+                 CASE WHEN EXISTS (
+                   SELECT 1 FROM matches n
+                    WHERE (n.a = s.wallet OR n.b = s.wallet)
+                      AND n.started_at > s.ended_at
+                      AND n.started_at < s.ended_at + ?
+                 ) THEN 1 ELSE 0 END followed
+            FROM sides s
+           WHERE s.won = ? AND s.ended_at >= ? AND s.ended_at < ?
+        )`, REMATCH_WINDOW_MS, won, from, to);
+    const n = row?.n ?? 0;
+    return { opens: n, repeatRate: n > 0 ? round((row?.hits ?? 0) / n) : null };
+  };
+  const cohort = share(0);
+  const baseline = share(1);
+  return { cohort, baseline, delta: ratio(cohort.repeatRate ?? 0, baseline.repeatRate ?? 0) };
+}
+
 /** Все фичи сразу — ровно то, что смотрит админский экран. */
 export function worldReport(db: Db, windowDays = 30, t = now()) {
   return {
     windowDays, asOf: iso(t),
     features: WORLD_FEATURES.map((f) => cohortReport(db, f, windowDays, t)),
     epicPlus: epicPlusRepeat(db, windowDays, t),
+    arenaRematch: arenaRematch(db, windowDays, t),
   };
 }

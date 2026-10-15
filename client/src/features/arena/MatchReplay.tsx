@@ -15,6 +15,8 @@ import { EMOTE_PACK_BY_ID, EMOTE_PACK_OF } from '@guttercaps/economy';
 import { ownedPacks, emoteLabel } from '@/shared/lib/cosmetics';
 import { useUiStore } from '@/app/store/ui';
 import { FightStage } from './FightStage';
+import { TrickReel } from './TrickReel';
+import { trickLine } from './trickReel';
 
 function reduceMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
@@ -51,6 +53,11 @@ export default function MatchReplay() {
   const iAmA = me === d.a;
   const won = d.winner === me;
   const liveIdx = awaiting ? undefined : visible > 0 ? visible - 1 : 0;
+  // Чья линия: участник видит свою, зритель — линию победителя (она приземляется).
+  // Считается без useMemo намеренно: функция чистая и дешёвая (связка из десятка
+  // трюков), а хуки выше уже отработали — вешать мемо после ранних return нельзя.
+  const side: 'A' | 'B' = me === d.b ? 'B' : me === d.a ? 'A' : d.winner === d.b ? 'B' : 'A';
+  const line = trickLine(rounds, d.seed ?? d.id ?? '', side, d.winner === (side === 'A' ? d.a : d.b));
 
   return (
     <div className="page page-bg page-bg-arena stack">
@@ -72,6 +79,12 @@ export default function MatchReplay() {
       </div>
 
       <FightStage left={d.squadA} right={d.squadB} liveIndex={liveIdx} looping={awaiting || (animate && visible < rounds.length)} />
+
+      {/* Трик-рил (docs/16 §2.4): показываем, когда бой уже посчитан — линия
+          разыгрывает итог, а не решает его. Зритель видит линию победителя. */}
+      {!!d.winner && rounds.length > 0 && visible >= rounds.length && (
+        <TrickReel line={line} squad={side === 'A' ? d.squadA : d.squadB} />
+      )}
 
       <div className="round" style={{ alignItems: 'start' }}>
         <div className="stack-sm">

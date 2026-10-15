@@ -10,7 +10,7 @@ import { dayIndex } from '../src/quests.ts';
 import { sanitizeTagSvg, saveTag } from '../src/tags.ts';
 import { claimSlot } from '../src/wall.ts';
 import { setRig } from '../src/rig.ts';
-import { EPIC_PLUS, WORLD_FEATURES, cohortReport, epicPlusRepeat, recordEvent, worldReport } from '../src/worldMetrics.ts';
+import { EPIC_PLUS, REMATCH_WINDOW_MS, WORLD_FEATURES, arenaRematch, cohortReport, epicPlusRepeat, recordEvent, worldReport } from '../src/worldMetrics.ts';
 
 const kp = () => Keypair.generate().publicKey.toBase58();
 const DAY = 86_400;
@@ -158,5 +158,55 @@ describe('worldMetrics — флип и повтор пака (§12 строка 
     const db = new Db(':memory:');
     const r = epicPlusRepeat(db, 30);
     expect(r).toEqual({ cohort: { opens: 0, repeatRate: null }, baseline: { opens: 0, repeatRate: null }, delta: null });
+  });
+});
+
+describe('worldMetrics — реванш после проигрыша (§12 строка 4)', () => {
+  /** Бой: `matches` хранит время в миллисекундах, в отличие от остальных таблиц. */
+  function seedMatch(db: Db, a: string, b: string, winner: string, startedMs: number) {
+    db.run(`INSERT INTO matches (id, season, a, b, squad_a, squad_b, power_a, power_b, league, commit_a, commit_b, winner, status, started_at, ended_at)
+            VALUES (?, 1, ?, ?, '[]', '[]', 1, 1, 0, 'x', 'y', ?, 'resolved', ?, ?)`,
+      kp().slice(0, 16), a, b, winner, startedMs, startedMs + 60_000);
+  }
+
+  it('вернулся после поражения — когорта выше базы', () => {
+    const db = new Db(':memory:');
+    const t = now() * 1000;
+    const me = kp();
+    const rival = kp();
+    const third = kp();
+    // Бой 1: я проиграл и через 15 минут пошёл в следующий.
+    seedMatch(db, me, rival, rival, t - 5 * DAY * 1000);
+    // Бой 2: я выиграл, и это мой последний бой в окне.
+    seedMatch(db, me, third, me, t - 5 * DAY * 1000 + 60_000 + REMATCH_WINDOW_MS / 2);
+
+    const r = arenaRematch(db, 30);
+    // Поражений два: моё в первом бою (за ним бой есть) и третьего игрока во втором (за ним нет).
+    expect(r.cohort).toEqual({ opens: 2, repeatRate: 0.5 });
+    // Побед тоже две, и ни одна не продолжилась боем в течение 30 минут.
+    expect(r.baseline).toEqual({ opens: 2, repeatRate: 0 });
+    expect(r.delta).toBeNull(); // база нулевая → делить не на что
+  });
+
+  it('бой позже 30 минут реваншем не считается', () => {
+    const db = new Db(':memory:');
+    const t = now() * 1000;
+    const loser = kp();
+    const winner = kp();
+    seedMatch(db, loser, winner, winner, t - 5 * DAY * 1000);
+    seedMatch(db, loser, winner, winner, t - 5 * DAY * 1000 + 60_000 + REMATCH_WINDOW_MS + 60_000);
+    const r = arenaRematch(db, 30);
+    expect(r.cohort.opens).toBe(2);
+    expect(r.cohort.repeatRate).toBe(0);
+  });
+
+  it('бой вне окна отчёта не попадает ни в когорту, ни в базу', () => {
+    const db = new Db(':memory:');
+    const t = now() * 1000;
+    seedMatch(db, kp(), kp(), kp(), t - 90 * DAY * 1000);
+    const r = arenaRematch(db, 30);
+    expect(r.cohort.opens).toBe(0);
+    expect(r.baseline.opens).toBe(0);
+    expect(r.delta).toBeNull();
   });
 });

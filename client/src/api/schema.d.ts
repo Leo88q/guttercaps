@@ -7174,6 +7174,21 @@ export interface components {
                 /** @description cohort / baseline − 1; null when there is nothing to divide by */
                 delta?: number | null;
             };
+            /** @description docs/16 §12 row 4 — share of battles followed by another battle within 30 minutes */
+            arenaRematch?: {
+                /** @description battles the wallet lost */
+                cohort?: {
+                    opens?: number;
+                    repeatRate?: number | null;
+                };
+                /** @description battles the same wallets won in the same window */
+                baseline?: {
+                    opens?: number;
+                    repeatRate?: number | null;
+                };
+                /** @description loss-rematch rate / win-rematch rate − 1 */
+                delta?: number | null;
+            };
         };
         WorldCohortStats: {
             wallets?: number;

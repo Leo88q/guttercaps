@@ -466,6 +466,60 @@ html.reduced-motion .step-spin { animation: none; opacity: .7; }
 .fight-cap .chip-lvl small, .round .chip-lvl small { font-size: 6px; }
 .round > .row > span { overflow: visible; }
 .fight-vs { font-family: var(--cg-font-display); font-size: 22px; color: var(--cg-neon-magenta); text-align: center; }
+/* ---------- Трик-рил арены (docs/16 §2.4) ---------- */
+/* Линия трюков: рельс, по которому едут готовые крышки из отряда. Движение —
+   только transform/opacity, nothing new is drawn: арт остаётся артом, код
+   отвечает за слой и тайминг. reduced-motion оставляет статичный итог. */
+.trick-reel { overflow: visible; }
+.trick-track {
+  position: relative;
+  display: flex; align-items: flex-end; gap: 6px;
+  overflow-x: auto; overflow-y: hidden;
+  padding: 8px 2px 12px;
+  scrollbar-width: thin;
+}
+/* сам рельс — одна линия под крышками: грайнд читается как движение вдоль неё */
+.trick-rail {
+  position: absolute; left: 0; right: 0; bottom: 26px; height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(216, 216, 220, 0.35), transparent);
+}
+.trick-beat { flex: 0 0 auto; width: 62px; text-align: center; opacity: 0.25; transition: opacity 160ms linear; }
+.trick-beat.is-played { opacity: 1; }
+.trick-cap { width: 54px; aspect-ratio: 1; margin: 0 auto 4px; will-change: transform; }
+.trick-cap-empty { width: 100%; height: 100%; border-radius: 50%; background: rgba(216, 216, 220, 0.08); }
+.trick-beat.is-played .trick-cap { animation-duration: 380ms; animation-timing-function: cubic-bezier(0.2, 0.9, 0.3, 1.2); animation-fill-mode: both; }
+.trick-push { animation-name: trick-push; }
+.trick-ollie { animation-name: trick-ollie; }
+.trick-kickflip { animation-name: trick-kickflip; }
+.trick-grind { animation-name: trick-grind; }
+.trick-manual { animation-name: trick-manual; }
+.trick-wallplant { animation-name: trick-wallplant; }
+.trick-vert { animation-name: trick-vert; }
+.trick-land { animation-name: trick-land; }
+.trick-bail { animation-name: trick-bail; }
+
+@keyframes trick-push { from { transform: translateX(-10px) scale(0.96); } to { transform: none; } }
+@keyframes trick-ollie { 0% { transform: translateY(0); } 45% { transform: translateY(-18px) rotate(-6deg); } 100% { transform: none; } }
+@keyframes trick-kickflip { 0% { transform: perspective(600px) rotateX(0deg) translateY(-10px); } 100% { transform: perspective(600px) rotateX(360deg) translateY(0); } }
+@keyframes trick-grind { 0% { transform: translateX(-16px) rotate(-8deg); } 100% { transform: translateX(10px) rotate(4deg); } }
+@keyframes trick-manual { 0% { transform: rotate(-10deg); } 50% { transform: rotate(10deg); } 100% { transform: none; } }
+@keyframes trick-wallplant { 0% { transform: translateY(0) rotate(0deg); } 45% { transform: translateY(-14px) rotate(70deg); } 100% { transform: none; } }
+@keyframes trick-vert { 0% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-26px) rotate(-180deg); } 100% { transform: none; } }
+@keyframes trick-land { 0% { transform: scale(1.08, 0.92); } 100% { transform: none; } }
+@keyframes trick-bail { 0% { transform: none; opacity: 1; } 60% { transform: translateY(6px) rotate(120deg); opacity: 0.8; } 100% { transform: translateY(12px) rotate(220deg); opacity: 0.45; } }
+
+/* Баланс: метка ходит влево-вправо, за красной зоной линия ломается. */
+.trick-balance { position: relative; height: 8px; border-radius: 4px; background: rgba(216, 216, 220, 0.12); overflow: hidden; }
+.trick-balance-mid { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(216, 216, 220, 0.3); }
+.trick-balance-mark { position: absolute; top: -2px; width: 6px; height: 12px; border-radius: 3px; background: var(--cg-acid-green, #B6FF3C); transform: translateX(-50%); transition: left 220ms ease-out; }
+.trick-balance-mark.is-edge { background: var(--cg-neon-magenta, #FF2E8A); }
+
+@media (prefers-reduced-motion: reduce) {
+  .trick-beat { opacity: 1; }
+  .trick-beat.is-played .trick-cap { animation: none; }
+  .trick-balance-mark { transition: none; }
+}
+
 .hunt-card {
   display: grid;
   grid-template-columns: auto 1fr auto;

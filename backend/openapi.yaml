@@ -2161,6 +2161,19 @@ components:
               description: opens in the same window without an Epic+ cap
               properties: { opens: { type: integer }, repeatRate: { type: [number, 'null'] } }
             delta: { type: [number, 'null'], description: 'cohort / baseline − 1; null when there is nothing to divide by' }
+        arenaRematch:
+          type: object
+          description: 'docs/16 §12 row 4 — share of battles followed by another battle within 30 minutes'
+          properties:
+            cohort:
+              type: object
+              description: battles the wallet lost
+              properties: { opens: { type: integer }, repeatRate: { type: [number, 'null'] } }
+            baseline:
+              type: object
+              description: battles the same wallets won in the same window
+              properties: { opens: { type: integer }, repeatRate: { type: [number, 'null'] } }
+            delta: { type: [number, 'null'], description: 'loss-rematch rate / win-rematch rate − 1' }
     WorldCohortStats:
       type: object
       properties:

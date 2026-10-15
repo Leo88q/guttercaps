@@ -379,6 +379,7 @@ function WorldTab() {
       {!!q.error && <div className="warn">{t('admin.params.unavailable', { error: '' })}<ErrorNotice error={q.error} /></div>}
       {(q.data?.features ?? []).map((f) => <WorldFeature key={f.feature} f={f as FeatureReport} num={num} signed={signed} />)}
       {!!q.data?.epicPlus && <EpicPlusCard e={q.data.epicPlus} signed={signed} />}
+      {!!q.data?.arenaRematch && <RematchCard e={q.data.arenaRematch} signed={signed} />}
     </div>
   );
 }
@@ -403,6 +404,31 @@ function EpicPlusCard({ e, signed }: { e: EpicPlusReport; signed: (v: number | n
           <span className="muted">{t('admin.world.repeat24')}</span>
           <span className="mono">{rate(e.cohort?.repeatRate)} <span className="muted tiny">· {opens(e.cohort?.opens)}</span></span>
           <span className="mono">{rate(e.baseline?.repeatRate)} <span className="muted tiny">· {opens(e.baseline?.opens)}</span></span>
+          <span className="mono cg-accent">{signed(e.delta ?? null)}</span>
+        </div>
+      </div>
+    </CleanZone>
+  );
+}
+
+function RematchCard({ e, signed }: { e: EpicPlusReport; signed: (v: number | null) => string }) {
+  const t = useT();
+  const rate = (r: number | null | undefined) => (r === null || r === undefined ? '—' : new Intl.NumberFormat(LOCALE_META[getLocale()].tag, { style: 'percent', maximumFractionDigits: 0 }).format(r));
+  const battles = (n: number | undefined) => t('admin.world.battles', { n: n ?? 0 });
+  return (
+    <CleanZone className="stack-sm">
+      <div className="label">{t('admin.world.rematch')}</div>
+      <div className="world-cohorts">
+        <div className="world-cohorts-head">
+          <span className="muted">{t('admin.world.metric')}</span>
+          <span>{t('admin.world.afterLoss')}</span>
+          <span>{t('admin.world.afterWin')}</span>
+          <span>{t('admin.world.delta')}</span>
+        </div>
+        <div className="world-cohorts-row">
+          <span className="muted">{t('admin.world.again30')}</span>
+          <span className="mono">{rate(e.cohort?.repeatRate)} <span className="muted tiny">· {battles(e.cohort?.opens)}</span></span>
+          <span className="mono">{rate(e.baseline?.repeatRate)} <span className="muted tiny">· {battles(e.baseline?.opens)}</span></span>
           <span className="mono cg-accent">{signed(e.delta ?? null)}</span>
         </div>
       </div>
