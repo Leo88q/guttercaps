@@ -1282,6 +1282,7 @@ components:
         skin: { type: [string, 'null'], description: 'cosmetic skin id (economy SKINS); null = none. Written at claim, travels with the cap when sold' }
         art: { type: object, properties: { image: { type: string, format: uri }, video: { type: string, format: uri }, vfxTier: { type: integer } } }
         listing: { $ref: '#/components/schemas/Listing' }
+        gridRoute: { type: [object, 'null'], properties: { nextLevel: { type: integer }, chargeDrops: { type: integer } }, description: 'Floodgrid route this cap walks (docs/13 §0.1 — the route travels with the cap on sale); null when the chip has no route row yet' }
     ChipPage: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/Chip' } }, nextCursor: { type: [string, 'null'] }, total: { type: integer } } }
     ChipDetail:
       allOf:

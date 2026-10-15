@@ -5221,6 +5221,11 @@ export interface components {
                 vfxTier?: number;
             };
             listing?: components["schemas"]["Listing"];
+            /** @description Floodgrid route this cap walks (docs/13 §0.1 — the route travels with the cap on sale); null when the chip has no route row yet */
+            gridRoute?: {
+                nextLevel?: number;
+                chargeDrops?: number;
+            } | null;
         };
         ChipPage: {
             items?: components["schemas"]["Chip"][];

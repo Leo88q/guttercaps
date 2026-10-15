@@ -16,6 +16,8 @@ import { stakeCompressedChipV2Ix, unstakeCompressedChipIx } from '@/chain/ix/sta
 import { dasClient } from '@/features/market/payment';
 import { createAtaIdempotentIx } from '@/chain/ix/spl';
 import { ChipArt } from '@/shared/ui/ChipArt';
+import { DropletMeter } from '@/features/grid/DropletMeter';
+import { GenBadge } from '@/shared/ui/GenBadge';
 import { ExternalIcon } from '@/shared/ui/action-icons';
 import { CleanZone, KV } from '@/shared/ui/primitives';
 import { ChipXpMeter } from '@/shared/ui/ChipXp';
@@ -117,7 +119,15 @@ export function ChipDrawer({ chip, onClose }: { chip: Chip; onClose: () => void 
         {lockExpired && <button className="btn" disabled={busy !== null} onClick={() => run('ui.thaw', async () => { const r = await resolveCompressedChipIdentity(connection, new PublicKey(chip.asset!)); return [thawChipIx({ owner: wallet!.publicKey, asset: r.asset, collectionIdx: r.collectionIdx, coreCollection: r.coreCollection })]; })}>{t('ui.thaw')}</button>}
         <Link className="btn btn-ghost" to={`/market/${chip.asset}`} onClick={onClose}>{t('ui.provenanceLink')}</Link>
       </div>
-      <div className="tiny muted">{chipName(chip.collection!, chip.rarity!)} · <a href={EXPLORER.account(chip.asset!)} target="_blank" rel="noreferrer" className="row" style={{ gap: 3, display: 'inline-flex' }}>{t('ui.asset')} {chip.asset!.slice(0, 6)}… <ExternalIcon size={10} /></a></div>
+      <div className="tiny muted row" style={{ gap: 8, flexWrap: 'wrap' }}>{chipName(chip.collection!, chip.rarity!)} · <a href={EXPLORER.account(chip.asset!)} target="_blank" rel="noreferrer" className="row" style={{ gap: 3, display: 'inline-flex' }}>{t('ui.asset')} {chip.asset!.slice(0, 6)}… <ExternalIcon size={10} /></a>
+        {/* Маршрут и капли фишки: они путешествуют с фишкой при продаже (docs/13 §0.1). */}
+        {(() => { const gr = (chip as { gridRoute?: { nextLevel: number; chargeDrops: number } | null }).gridRoute; return gr ? (
+          <span className="row" style={{ gap: 6, display: 'inline-flex' }}>
+            <span className="row" style={{ gap: 4, display: 'inline-flex' }}><GenBadge name="item-flood" size={14} />{t('grid.routeNext', { n: Math.min(75, gr.nextLevel) })}</span>
+            <DropletMeter drops={gr.chargeDrops} size={14} showProgress={false} />
+          </span>
+        ) : null; })()}
+      </div>
 
       {listing && <ListModal chip={chip} onClose={() => { setListing(false); onClose(); }} />}
     </div>

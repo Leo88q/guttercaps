@@ -67,7 +67,12 @@ export function chipIndexOf(v: string | null | undefined): number | null {
   return Number.isSafeInteger(n) && n >= 0 ? n : null;
 }
 
-export function chipToApi(r: ChipRow) {
+/**
+ * `grid` — маршрут Решётки этой фишки (docs/13 §0.1: маршрут путешествует с фишкой).
+ * Передаётся снаружи, а не запрашивается здесь: chipToApi вызывается на списках до 200 фишек,
+ * и запрос на каждую фишку превратил бы выдачу коллекции в 200 запросов. Кто не передал — получит null.
+ */
+export function chipToApi(r: ChipRow, grid?: { nextLevel: number; chargeDrops: number } | null) {
   const p = RARITY_PROFILES[r.rarity];
   const lm = levelMult(r.level);
   return {
@@ -89,6 +94,7 @@ export function chipToApi(r: ChipRow) {
     xpDailyCap: CHIP_XP.dailyCap,
     lastPlayed: r.last_played && r.last_played > 0 ? iso(r.last_played) : null,
     idle: aliveStakeMult(r.last_played ?? 0) < 1,
+    gridRoute: grid ?? null,
   };
 }
 
@@ -109,10 +115,12 @@ export function myChips(db: Db, wallet: string, q: { collection?: number; rarity
   const offset = offsetOf(q.cursor);
   const total = db.scalar(`SELECT COUNT(*) FROM chips WHERE ${where.join(' AND ')}`, ...params);
   const day = Math.floor(t / 86_400);
-  const rows = db.all<ChipRow>(`SELECT chips.*, COALESCE(x.xp, 0) AS xp, COALESCE(d.xp, 0) AS xp_today FROM chips LEFT JOIN chip_xp x ON x.asset = chips.asset LEFT JOIN chip_xp_ledger d ON d.asset = chips.asset AND d.day = ? WHERE ${where.join(' AND ')} ORDER BY rarity DESC, level DESC, minted_at DESC LIMIT ? OFFSET ?`, day, ...params, limit, offset);
+  // Маршрут Решётки здесь же: карточка фишки показывает капли, а отдельный запрос на фишку
+  // умножил бы выдачу на 200 (страница коллекции).
+  const rows = db.all<ChipRow & { grid_next: number | null; grid_drops: number | null }>(`SELECT chips.*, COALESCE(x.xp, 0) AS xp, COALESCE(d.xp, 0) AS xp_today, gr.next_level AS grid_next, gr.charge_drops AS grid_drops FROM chips LEFT JOIN chip_xp x ON x.asset = chips.asset LEFT JOIN chip_xp_ledger d ON d.asset = chips.asset AND d.day = ? LEFT JOIN grid_chip_routes gr ON gr.asset = chips.asset WHERE ${where.join(' AND ')} ORDER BY rarity DESC, level DESC, minted_at DESC LIMIT ? OFFSET ?`, day, ...params, limit, offset);
   // `limit > 0`: with `?limit=0` a non-null cursor would point at the same offset forever (a client
   // following `nextCursor` would loop). No rows ⇒ no next page.
-  return { items: rows.map(chipToApi), nextCursor: limit > 0 && offset + rows.length < total ? String(offset + rows.length) : null, total };
+  return { items: rows.map((r) => chipToApi(r, { nextLevel: r.grid_next ?? 1, chargeDrops: r.grid_drops ?? 0 })), nextCursor: limit > 0 && offset + rows.length < total ? String(offset + rows.length) : null, total };
 }
 
 /**
@@ -207,7 +215,7 @@ export function packOpen(db: Db, signature: string) {
   const r = db.get<{ signature: string; buyer: string; sku: number; nonce: string; count: number; assets: string; rarities: string; collections: string; roll_hex: string; pity_before: number; pity_after: number }>(`SELECT * FROM pack_opens WHERE signature = ?`, signature);
   if (!r) return undefined;
   const assets = JSON.parse(r.assets) as string[];
-  const chips = assets.map((a) => db.get<ChipRow>(`SELECT * FROM chips WHERE asset = ?`, a)).filter((c): c is ChipRow => !!c).map(chipToApi);
+  const chips = assets.map((a) => db.get<ChipRow>(`SELECT * FROM chips WHERE asset = ?`, a)).filter((c): c is ChipRow => !!c).map((r) => chipToApi(r));
   const rarities = JSON.parse(r.rarities) as number[];
   const collections = JSON.parse(r.collections) as number[];
   const owned = db.all<{ collection_idx: number; rarity: number; n: number }>(`SELECT collection_idx, rarity, COUNT(*) n FROM chips WHERE owner = ? AND burned_at IS NULL GROUP BY collection_idx, rarity`, r.buyer);

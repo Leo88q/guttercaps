@@ -126,7 +126,7 @@ export function plan(db: Db, owner: string, req: PlanRequest) {
   collections.forEach((c) => { accounts[`collectionMeta${c}`] = collectionMetaPda(c)[0].toBase58(); });
 
   return {
-    materials: mats.map(chipToApi),
+    materials: mats.map((r) => chipToApi(r)),
     recipe: recipeToApi(recipe),
     resultCollection,
     resultRarity: RARITIES[recipe.to],
@@ -204,7 +204,7 @@ function archetypeSpare(cells: number[][], c: ChipRow, alreadyTaken: number): bo
 
 function planFromRows(mats: ChipRow[], recipe: FusionRecipe) {
   return {
-    materials: mats.map(chipToApi),
+    materials: mats.map((r) => chipToApi(r)),
     recipe: recipeToApi(recipe),
     resultCollection: mats[0].collection_idx,
     resultRarity: RARITIES[recipe.to],

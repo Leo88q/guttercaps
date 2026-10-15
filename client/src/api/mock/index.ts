@@ -135,7 +135,8 @@ on('get', '/me/chips', (o) => {
   if (q.status === 'staked') items = items.filter((c) => c.flags.staked);
   if (q.status === 'listed') items = items.filter((c) => c.flags.listed);
   items = [...items].sort((a, b) => b.rarity - a.rarity || b.level - a.level);
-  return { items, nextCursor: null, total: items.length };
+  // Маршрут Решётки едет с фишкой и в моке: иначе капли на карточках не видны в демо-режиме.
+  return { items: items.map((c) => { const r = mockRoute(c.asset); return { ...c, gridRoute: { nextLevel: r.nextLevel, chargeDrops: r.chargeDrops } }; }), nextCursor: null, total: items.length };
 });
 on('get', '/me/grid', () => {
   const cells = Array.from({ length: COLLECTIONS.length }, () => Array<number>(9).fill(0));

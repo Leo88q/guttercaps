@@ -223,6 +223,14 @@ img { max-width: 100%; display: block; }
 .toasts { position: fixed; top: calc(var(--gc-header-h, 56px) + 8px); right: 12px; left: 12px; z-index: 80; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
 @media (min-width: 700px) { .toasts { left: auto; width: 360px; } }
 .toast { pointer-events: auto; background: var(--gc-bg-2); border: 1px solid var(--gc-line-strong); border-left-width: 4px; border-radius: 10px; padding: 10px 12px; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+/* Короткое уведомление читается как плашка: текст центрирован по обеим осям, а крестик
+   уходит в угол — иначе он расталкивает заголовок влево. */
+.toast { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-align: center; }
+.toast > .row.between { position: relative; width: 100%; justify-content: center; align-items: center; gap: 8px; }
+.toast > .row.between > .strong { flex: 1 1 auto; text-align: center; }
+.toast > .row.between > .btn { position: absolute; top: -4px; right: -4px; }
+.toast .muted, .toast .small, .toast a.small, .toast .danger { text-align: center; }
+.toast .danger { display: flex; flex-direction: column; align-items: center; }
 .toast-info { border-left-color: var(--cg-neon-cyan); }
 .toast-success { border-left-color: var(--cg-acid-green); }
 .toast-error { border-left-color: var(--cg-neon-magenta); }
@@ -1106,6 +1114,14 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 .gt-depth-pick { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 12px 10px; }
 .gt-depth-pick button { padding: 5px 9px; border-radius: 8px; border: 1px solid #33313a; background: rgba(0, 0, 0, .25); color: inherit; font: inherit; font-size: 12px; cursor: pointer; border-bottom: 3px solid currentColor; }
 .gt-depth-pick button[aria-pressed='true'] { background: rgba(255, 255, 255, .08); border-color: #55525f; }
+.gt-sector-map { display: grid; gap: 8px; padding: 0 12px; }
+.gt-depth-group { border-radius: 10px; padding: 6px 6px 8px; border: 1px solid transparent; }
+.gt-depth-group[data-active='true'] { border-color: var(--gc-line-strong); background: rgba(255, 255, 255, .02); }
+.gt-cell { display: grid; gap: 1px; place-items: center; padding: 7px 2px; border-radius: 9px; border: 1px solid var(--gc-line); background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.gt-cell[data-state='cleared'] { background: rgba(182, 255, 60, .12); border-color: rgba(182, 255, 60, .4); }
+.gt-cell[data-state='next'] { border: 2px solid #FF7A1A; }
+.gt-cell[data-state='training'] { opacity: .75; }
+.gt-cell:focus-visible { outline: 2px solid var(--cg-acid-green, #B6FF3C); outline-offset: 1px; }
 .gt-levels { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 0 12px 12px; }
 .gt-levels button { padding: 7px 2px; border-radius: 9px; border: 1px solid #33313a; background: rgba(0, 0, 0, .25); color: inherit; font: inherit; cursor: pointer; text-align: center; }
 .gt-levels button:disabled { cursor: default; }

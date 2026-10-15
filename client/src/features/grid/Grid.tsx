@@ -553,21 +553,40 @@ export default function Grid() {
                     </button>
                   ))}
                 </div>
-                <div className="gt-levels">
-                  {Array.from({ length: GRID.levelsPerDepth }, (_, i) => GRID_DEPTHS[pickDepth - 1].levels[0] + i).map((lv) => {
-                    const claim = claims.get(lv);
-                    const isNext = lv === nextLevel;
-                    const lockedLv = lv > nextLevel;
+                {/* Все 75 секторов сразу, сгруппированные по глубинам: маршрут фишки виден
+                    целиком, а не одна текущая пятёрка. Состояние клетки = пройден / заряд
+                    маршрута / тренировка — раньше вторые и третьи выглядели одинаково. */}
+                <div className="gt-sector-map">
+                  {GRID_DEPTHS.map((d) => {
+                    const from = d.levels[0];
                     return (
-                      <button key={lv} type="button" disabled={starting} onClick={() => void start(lv)}
-                        title={lockedLv ? t('grid.training') : isNext ? t('grid.charge') : t('grid.training')}
-                        style={{ padding: '7px 2px', borderRadius: 9, cursor: 'pointer', border: isNext ? '2px solid #FF7A1A' : '1px solid #333', background: claim ? 'rgba(182,255,60,.12)' : 'transparent', opacity: lockedLv ? 0.75 : 1 }}>
-                        <div className="mono" style={{ fontSize: 13 }}>{lv}</div>
-                        <div style={{ fontSize: 10 }}>{claim ? '★'.repeat(claim.best_stars) : lockedLv ? t('grid.trainShort') : <span style={{ color: '#FF7A1A', display: 'inline-flex' }}><BoltIcon size={11} /></span>}</div>
-                      </button>
+                      <div key={d.depth} className="gt-depth-group" data-active={d.depth === pickDepth ? 'true' : 'false'}>
+                        <div className="tiny muted row" style={{ gap: 6 }}>
+                          <span style={{ color: MATERIAL_HEX[d.material] ?? '#9aa7ad' }} aria-hidden>●</span>
+                          {t('grid.depth', { n: d.depth })} · {d.name} · {t('grid.sector', { n: `${from}–${from + GRID.levelsPerDepth - 1}` })}
+                        </div>
+                        <div className="gt-levels">
+                          {Array.from({ length: GRID.levelsPerDepth }, (_, i) => from + i).map((lv) => {
+                            const claim = claims.get(lv);
+                            const isNext = lv === nextLevel;
+                            const lockedLv = lv > nextLevel;
+                            const state = claim ? 'cleared' : isNext ? 'next' : lockedLv ? 'training' : 'open';
+                            return (
+                              <button key={lv} type="button" className="gt-cell" data-state={state} disabled={starting} onClick={() => void start(lv)}
+                                title={`${t('grid.sector', { n: lv })} · ${state === 'training' ? t('grid.training') : state === 'next' ? t('grid.charge') : t('grid.replay')}`}>
+                                <span className="mono" style={{ fontSize: 13, lineHeight: 1.1 }}>{lv}</span>
+                                <span style={{ fontSize: 10, lineHeight: 1.1 }}>
+                                  {claim ? '★'.repeat(claim.best_stars) : lockedLv ? t('grid.trainShort') : <span style={{ color: '#FF7A1A', display: 'inline-flex' }}><BoltIcon size={11} /></span>}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
+                <div className="tiny muted" style={{ padding: '0 12px 8px' }}>{t('grid.mapLegend')}</div>
                 <div className="gt-shutter-tools">
                   <label className="row tiny" style={{ gap: 6 }}>
                     <input type="checkbox" checked={useHint} onChange={(e) => setUseHint(e.target.checked)} disabled={(wallet?.hints ?? 0) <= 0} />
