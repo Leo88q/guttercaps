@@ -111,21 +111,6 @@ ASSETS = [
         ),
     },
     {
-        "name": "rider-01",
-        "kind": SPRITE,
-        "master": "rider.png",
-        "geometry": (900, 900),
-        "quality": 78,
-        "budget_kb": 60,
-        "prompt": (
-            "Full body three-quarter side view of a skateboarder caught mid-air in an ollie above a "
-            "skateboard, alone in the centre of the frame on a flat pure green #00FF00 background. Baggy "
-            "streetwear silhouette, hoodie, loose cargo pants, chunky sneakers, backwards cap, face turned "
-            "away and obscured. Clean dark graphic silhouette with soft rim light. Stylised vector-like "
-            "game character illustration. " + PROMPT_PREFIX
-        ),
-    },
-    {
         "name": "wheels",
         "kind": SPRITE,
         "master": "wheels.png",
@@ -167,21 +152,6 @@ ASSETS = [
         ),
     },
     {
-        "name": "rider-02",
-        "kind": SPRITE,
-        "master": "rider-02.png",
-        "geometry": (900, 900),
-        "quality": 78,
-        "budget_kb": 60,
-        "prompt": (
-            "Full body three-quarter side view of a skateboarder crouched low grinding a ledge, arms out "
-            "for balance, alone on a flat pure green #00FF00 background. Baggy streetwear silhouette, "
-            "puffer jacket, baggy jeans, beanie, face turned away and obscured. Clean dark graphic "
-            "silhouette with cyan edge light and magenta rim light. Stylised vector-like game character "
-            "illustration. " + PROMPT_PREFIX
-        ),
-    },
-    {
         "name": "ui-panel",
         "kind": SPRITE,
         "master": "ui-panel.png",
@@ -213,6 +183,81 @@ ASSETS = [
 
 
 # ── Обработка ────────────────────────────────────────────────────────────────
+# ── Восемь силуэтов райдера по районам ───────────────────────────────────────
+# Одна подача (свет, ракурс, отсутствие лица), разная стойка, комплект и акцент.
+# Держать восемь записей копипастой в реестре нельзя — поэтому таблица и цикл.
+RIDERS = [
+    ("rider-01", "mid-air in an ollie above a skateboard",
+     "hoodie, loose cargo pants, chunky sneakers, backwards cap",
+     "hot magenta rim light"),
+    ("rider-02", "crouched low grinding a concrete ledge, arms out for balance",
+     "puffer jacket, baggy jeans, beanie",
+     "cyan edge light and a hot magenta rim light"),
+    ("rider-03", "mid kickflip with the board flipping under the feet",
+     "oversized hoodie with the hood up, baggy shorts, high socks, chunky sneakers",
+     "acid lime edge light and a hot magenta rim light"),
+    ("rider-04", "crouched low over the board, one hand reaching down to the deck",
+     "utility vest over a long sleeve shirt, loose cargo pants, work boots",
+     "burnt orange edge light and a hot magenta rim light"),
+    ("rider-05", "airborne in a tail grab, knees tucked",
+     "bomber jacket, tapered track pants, low sneakers",
+     "gold edge light and a hot magenta rim light"),
+    ("rider-06", "pushing stance, one foot on the board and one leg extended behind",
+     "short denim jacket, wide leg trousers, canvas sneakers",
+     "cyan edge light and a hot magenta rim light"),
+    ("rider-07", "launching into an ollie with the board tucked up under the body",
+     "long weathered coat flaring behind, baggy jeans, heavy boots, bandana over the lower face",
+     "hot magenta edge light and a cyan rim light"),
+    ("rider-08", "standing still holding the board vertically at their side, relaxed pose",
+     "fisherman beanie, zip hoodie, loose sweatpants, skate sneakers, backpack over one shoulder",
+     "pale bone white edge light and a hot magenta rim light"),
+]
+
+for _name, _pose, _kit, _light in RIDERS:
+    ASSETS.append({
+        "name": _name,
+        "kind": SPRITE,
+        "master": f"{_name}.png",
+        "geometry": (900, 900),
+        "quality": 78,
+        "budget_kb": 60,
+        "prompt": (
+            f"Full body three-quarter view of a skateboarder {_pose}, alone in the centre of the frame "
+            f"on a flat pure green #00FF00 background. Baggy streetwear silhouette: {_kit}. Face turned "
+            f"away and obscured so no facial features are readable. Clean dark graphic silhouette with a "
+            f"{_light}. Stylised vector-like game character illustration with clean edges, sharp focus, "
+            f"no cast shadow on the background. " + PROMPT_PREFIX
+        ),
+    })
+
+
+# ── Трафареты редактора тегов ────────────────────────────────────────────────
+# Игрок штампует форму и закрашивает её баллоном (docs/16 §3.5). Формы — плоские,
+# однотонные, чтобы клиент мог красить их любым цветом палитры: поэтому белые.
+STENCILS = [
+    ("stencil-crown", "a five point street crown"),
+    ("stencil-can", "an aerosol spray can tilted at an angle with a spray cloud from the nozzle"),
+    ("stencil-bolt", "a sharp jagged lightning bolt"),
+    ("stencil-drip", "a thick paint blob with three long drips running down from the bottom edge"),
+]
+
+for _name, _shape in STENCILS:
+    ASSETS.append({
+        "name": _name,
+        "kind": SPRITE,
+        "master": f"{_name}.png",
+        "geometry": (512, 512),
+        "quality": 84,
+        "budget_kb": 20,
+        "prompt": (
+            f"A single bold graphic stencil shape of {_shape}, solid bone white, hard clean cut edges "
+            f"exactly like a spray-paint stencil cut from card with small connector tabs, flat vector "
+            f"look, alone in the centre of the frame on a flat pure green #00FF00 background. No "
+            f"background elements. Crisp high contrast edges, sharp focus, no shadow. " + PROMPT_PREFIX
+        ),
+    })
+
+
 def chroma_key(img, tol=CHROMA_TOL):
     """Прозрачность вместо ровного зелёного фона (per-pixel; быстрее numpy не нужно)."""
     img = img.convert("RGBA")
