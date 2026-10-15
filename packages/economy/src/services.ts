@@ -26,7 +26,7 @@
 export type ServiceId =
   | 'handle' | 'handleChange' | 'capSkin' | 'profileTheme' | 'arenaEmotePack'
   | 'extraBenchSlots' | 'seasonPass' | 'booster' | 'packSkipAnim' | 'districtBanner'
-  | 'gridDeepAttempt' | 'gridFieldTheme';
+  | 'gridDeepAttempt' | 'gridFieldTheme' | 'districtStencilPack';
 
 export interface ServiceDef {
   id: ServiceId;
@@ -66,6 +66,9 @@ export const SERVICES: readonly ServiceDef[] = [
   // (100% burn); the backend grants attempt credits only for $CG payments of exactly that amount.
   { id: 'gridDeepAttempt', kind: 10, rustName: 'GridDeepAttempt', priceUsdCents: 5, dailyCap: 10, fulfilment: 'entitlement', recurring: true, name: 'Deep Flood attempt', blurb: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.' },
   { id: 'gridFieldTheme',  kind: 11, rustName: 'GridFieldTheme',  priceUsdCents: 249, dailyCap: 10, fulfilment: 'entitlement', recurring: false, name: 'Floodgrid field theme', blurb: 'Recolors the Floodgrid board flow lines. Cosmetic only.' },
+  // Skate-city UGC (docs/16 §3.5): five district stencils for the tag editor. Cosmetic
+  // through and through — it buys shapes, never reach. The 14 free shapes stay free.
+  { id: 'districtStencilPack', kind: 12, rustName: 'DistrictStencilPack', priceUsdCents: 199, dailyCap: 10, fulfilment: 'entitlement', recurring: false, name: 'District stencil pack', blurb: 'Five district stencils for the tag editor. Shapes only — the lines and colours stay yours.' },
 ] as const;
 
 export const SERVICE_BY_ID = Object.fromEntries(SERVICES.map((s) => [s.id, s])) as Record<ServiceId, ServiceDef>;

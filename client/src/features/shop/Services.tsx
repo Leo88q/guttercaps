@@ -25,6 +25,7 @@ import { useCollections } from '@/shared/lib/lore';
 import { CleanConfirmButton, SprayNozzleButton } from '@/shared/ui/buttons';
 import { useT, useLocale, fmtLocale } from '@/shared/i18n';
 import { ServiceGlyph } from '@/shared/ui/service-icons';
+import { PACK_STENCILS, stencilSrc } from '@/shared/lib/stencils';
 
 export function Services() {
   const t = useT();
@@ -61,6 +62,7 @@ export function Services() {
               </div>
               <div className="strong">{t(`services.names.${s.id}`)}</div>
               <div className="tiny muted" style={{ minHeight: 44 }}>{t(`services.blurbs.${s.id}`)}</div>
+              {s.id === 'districtStencilPack' && <StencilPackRow />}
               <div className="tag-list">
                 {s.id === 'booster' && <Pill>{t('services.boosterCap')}</Pill>}
                 {left !== undefined && <Pill>{t('services.dailyLeft', { n: left })}</Pill>}
@@ -81,6 +83,23 @@ export function Services() {
       <div className="tiny muted">{t('services.howItWorks')}</div>
       {catalogue.data?.skrUsd !== undefined && <div className="tiny muted mono">1 SKR ≈ {fmtUsd(catalogue.data.skrUsd, 4)} · 1 SOL ≈ {fmtUsd(catalogue.data.solUsd)} · {fmtLocale.dateTime(Date.now(), locale)}</div>}
       {sel && <ServiceModal service={sel} onClose={() => setSel(null)} />}
+    </div>
+  );
+}
+
+// Косметику продаёт картинка: на карточке — сами трафареты, без подписей,
+// в модалке — те же формы с названиями районов. Файлы те же, что штампует
+// редактор (client/src/shared/lib/stencils.ts), так что «купил — увидел» совпадает.
+function StencilPackRow({ names = false }: { names?: boolean }) {
+  const collections = useCollections();
+  return (
+    <div className="row" style={{ gap: 8, flexWrap: 'wrap' }} aria-hidden={!names}>
+      {PACK_STENCILS.map((s) => (
+        <span key={s.file} className="row" style={{ gap: 4, alignItems: 'center' }}>
+          <img src={stencilSrc(s.file)} alt="" width={28} height={28} loading="lazy" decoding="async" style={{ opacity: 0.92 }} />
+          {names && <span className="tiny muted">{s.district !== null ? collections[s.district]?.name : s.name}</span>}
+        </span>
+      ))}
     </div>
   );
 }
@@ -220,6 +239,13 @@ function ServiceModal({ service, onClose }: { service: ServiceDef; onClose: () =
                 {completed.map((ci) => <Pill key={ci} active={collection === ci} onClick={() => setCollection(ci)}>{COLLECTIONS[ci].name}</Pill>)}
               </div>
             )}
+          </div>
+        )}
+        {service.id === 'districtStencilPack' && (
+          <div className="stack-sm">
+            <span className="label">{t('services.stencilPackIncludes')}</span>
+            <StencilPackRow names />
+            <div className="tiny muted">{t('services.blurbs.districtStencilPack')}</div>
           </div>
         )}
         <CleanZone>

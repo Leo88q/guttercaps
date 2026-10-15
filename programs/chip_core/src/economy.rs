@@ -539,6 +539,7 @@ pub enum ServiceKind {
     DistrictBanner = 9, // profile banner of a completed district
     GridDeepAttempt = 10, // extra Deep Flood attempt (backend grants credits for $CG burns only)
     GridFieldTheme = 11, // Floodgrid board field theme (cosmetic)
+    DistrictStencilPack = 12, // five district stencils for the tag editor (docs/16 §3.5)
 }
 
 impl ServiceKind {
@@ -556,6 +557,7 @@ impl ServiceKind {
             9 => Self::DistrictBanner,
             10 => Self::GridDeepAttempt,
             11 => Self::GridFieldTheme,
+            12 => Self::DistrictStencilPack,
             _ => return None,
         })
     }
@@ -574,6 +576,7 @@ impl ServiceKind {
             Self::DistrictBanner => 199,
             Self::GridDeepAttempt => 5, // 5 cents x 6 $CG/cent = exactly 30 $CG on the burn rail
             Self::GridFieldTheme => 249,
+            Self::DistrictStencilPack => 199,
         }
     }
     /// Price in micro-$CG when paid with $CG (burned).

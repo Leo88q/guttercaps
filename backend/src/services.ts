@@ -195,6 +195,7 @@ const PAYLOAD_RULES: Record<string, (p: Record<string, unknown>) => string | und
   arenaEmotePack: (p) => (typeof p.pack === 'string' && EMOTE_PACK_BY_ID[p.pack] ? undefined : 'payload needs {pack} with a known pack id'),
   districtBanner: (p) => (typeof p.collection === 'number' && Number.isInteger(p.collection) && p.collection >= 0 && p.collection < COLLECTIONS.length ? undefined : 'payload needs {collection} with a live district index'),
   gridFieldTheme: (p) => (typeof p.theme === 'string' && GRID_FIELD_THEME_BY_ID[p.theme] ? undefined : 'payload needs {theme} with a Floodgrid field theme id'),
+  districtStencilPack: (p) => (p.id === 'districtStencilPack' ? undefined : 'payload needs {id: "districtStencilPack"}'),
 };
 
 /** POST /services/claim */

@@ -10,9 +10,11 @@ const Collection = lazy(() => import('@/features/collection/Collection'));
 // Бассейн (docs/16 §4.1) — скейт-мир. Ленивый, в entry-граф не попадает; арт лежит
 // в public/art/skate и вообще не считается в бандл (scripts/skate-art-build.py).
 const Bowl = lazy(() => import('@/features/bowl/Bowl'));
-// Редактор тегов (docs/16 §3.1) — отдельный ленивый роут: канвас и палитра
-// нужны только тем, кто рисует, и в entry-граф не попадают.
-const TagEditor = lazy(() => import('@/features/bowl/TagEditor'));
+// Редактор тегов (docs/16 §3.1) — отдельный ленивый роут: канвас и палитра нужны
+// только тем, кто рисует. Владение паком читает обёртка внутри ленивого модуля:
+// импорт @/api/hooks и @/shared/lib/cosmetics сюда, в router, утянул бы их в
+// entry-граф (+1.8 КБ gz — критический путь вылез бы за 350 КБ, было замерено).
+const TagEditorRoute = lazy(() => import('@/features/bowl/TagEditor').then((m) => ({ default: m.TagEditorRoute })));
 const Shop = lazy(() => import('@/features/shop/Shop'));
 const Opening = lazy(() => import('@/features/shop/Opening'));
 const Fusion = lazy(() => import('@/features/fusion/Fusion'));
@@ -66,7 +68,7 @@ export const routes: RouteObject[] = [
       { index: true, element: S(<Home />) },
       { path: 'collection', element: S(<Collection />) },
       { path: 'bowl', element: S(<Bowl />) },
-      { path: 'bowl/tag', element: S(<TagEditor />) },
+      { path: 'bowl/tag', element: S(<TagEditorRoute />) },
       { path: 'shop', element: S(<Shop />) },
       { path: 'shop/opening/:nonce', element: W(<Opening />) },
       { path: 'fusion', element: W(<Fusion />) },

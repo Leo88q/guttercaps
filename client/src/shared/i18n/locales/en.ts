@@ -234,11 +234,11 @@ const en = {
     burned: 'burned', toTreasury: 'to treasury', noQuote: 'No price for this currency yet — pick another.', buy: 'Buy', owned: 'Owned', active: 'Active',
     dailyLeft: '{n} left today', howItWorks: 'One signature pays on-chain; $CG is burned, SOL/USDC/SKR go to the public treasury. Your purchase is bound to this wallet by a hash in the transaction — no one can redirect it.',
     expires: 'expires {date}', noPower: 'No pay-to-win: verified on-chain', boosterCap: 'Boosters: max 3 per day', bought: 'Purchased', buyFailed: 'Purchase failed',
-    pickCap: 'Choose a cap to paint', pickSkin: 'Choose a skin', pickTheme: 'Choose a theme', pickPack: 'Choose a pack', pickDistrict: 'Choose a district',
+    pickCap: 'Choose a cap to paint', pickSkin: 'Choose a skin', pickTheme: 'Choose a theme', pickPack: 'Choose a pack', pickDistrict: 'Choose a district', stencilPackIncludes: 'What you get',
     noFreeCaps: 'No caps yet — open a pack first', noCompletedDistrict: 'Complete a district set (9/9) to unlock its banner',
     names: {
       handle: '@handle', handleChange: 'Handle change', capSkin: 'Cap skin', profileTheme: 'Profile theme', arenaEmotePack: 'Arena emote pack',
-      extraBenchSlots: '+2 bench presets', seasonPass: 'Season pass', booster: 'Fusion booster', packSkipAnim: 'Instant reveal', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'District banner',
+      extraBenchSlots: '+2 bench presets', seasonPass: 'Season pass', booster: 'Fusion booster', packSkipAnim: 'Instant reveal', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'District banner', districtStencilPack: 'District stencil pack',
     },
     blurbs: {
       handle: 'Unique name on leaderboards, arena and your public profile URL.', handleChange: 'Rename once per 30 days. Old handle is released after 90 days.',
@@ -246,7 +246,7 @@ const en = {
       arenaEmotePack: '6 spray-tag emotes for Cap Slam replays.', extraBenchSlots: 'Save more fusion presets on the bench (convenience only).',
       seasonPass: 'Cosmetic track for the 6-week season: 20 tiers of skins, banners, emotes. No odds, no power, no $CG.',
       booster: '+15 pp success on one fusion (cap 95%). Max 3 per day.', packSkipAnim: 'Permanent toggle to skip the reveal animation. Pure convenience.',
-      gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Animated banner for a district you have completed.',
+      gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Animated banner for a district you have completed.', districtStencilPack: 'Five district stencils for the tag editor. Shapes only — the lines and colours stay yours.',
     },
   },
   admin: {

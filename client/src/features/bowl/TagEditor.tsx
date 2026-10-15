@@ -16,30 +16,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useT } from '@/shared/i18n';
+import { useMyServices } from '@/api/hooks';
+import { ownsStencilPack } from '@/shared/lib/cosmetics';
+import { useCollections } from '@/shared/lib/lore';
+import { fmtDecimal } from '@/shared/lib/format';
+import { FREE_STENCILS, PACK_STENCILS, stencilSrc } from '@/shared/lib/stencils';
 import './tag-editor.css';
 
-const ART = '/art/skate';
 const W = 1024;
 const H = 512;
 
 /** Палитра docs/07 §2.2 — trust-blue сюда не попадает: это граффити-зона. */
 const PALETTE = ['#FF2E8A', '#16E5D9', '#B6FF3C', '#FF7A1A', '#FFD34D', '#E8E6ED'];
 const SIZES = [6, 14, 28];
-
-const FREE_STENCILS = [
-  'stencil-crown', 'stencil-can', 'stencil-bolt', 'stencil-drip', 'stencil-arrow',
-  'stencil-star', 'stencil-skull', 'stencil-flame', 'stencil-ribbon', 'stencil-bubble',
-  'stencil-cross', 'stencil-dice', 'stencil-frame', 'stencil-burst',
-];
-
-/** Платный пак «Трафареты районов» (docs/16 §3.5): форма района как подпись. */
-const PACK_STENCILS = [
-  { id: 'stencil-d0-moth', label: 'Night Moth' },
-  { id: 'stencil-d2-freight', label: 'Rail Kings' },
-  { id: 'stencil-d4-boombox', label: 'Boombox Block' },
-  { id: 'stencil-d5-rat', label: 'Gutter Beasts' },
-  { id: 'stencil-d6-joystick', label: 'Pixel Basement' },
-];
 
 const PATH_LIMIT = 400;
 const BYTE_LIMIT = 24 * 1024;
@@ -83,6 +72,27 @@ function loadImage(src: string): HTMLImageElement | null {
   return null;
 }
 
+// Трафареты едут белой формой на прозрачном фоне — красит их сам игрок. Красим
+// через source-in на offscreen-канвасе и кэшируем пару (файл, цвет): повторный
+// штамп того же цвета перерисовывается бесплатно, палитра не тянет сеть.
+const tintCache = new Map<string, HTMLCanvasElement>();
+function tinted(img: HTMLImageElement, color: string): HTMLCanvasElement | null {
+  const key = `${img.src}|${color}`;
+  const hit = tintCache.get(key);
+  if (hit) return hit;
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth;
+  c.height = img.naturalHeight;
+  const cx = c.width && c.height ? c.getContext('2d') : null;
+  if (!cx) return null;
+  cx.drawImage(img, 0, 0);
+  cx.globalCompositeOperation = 'source-in';
+  cx.fillStyle = color;
+  cx.fillRect(0, 0, c.width, c.height);
+  tintCache.set(key, c);
+  return c;
+}
+
 export interface TagEditorProps {
   /** Владение платным паком трафаретов (приходит с бэкенда; пока пропом). */
   packOwned?: boolean;
@@ -92,12 +102,13 @@ export interface TagEditorProps {
 
 export default function TagEditor({ packOwned = false, onDone }: TagEditorProps) {
   const t = useT();
+  const collections = useCollections();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawing = useRef(false);
   const [tool, setTool] = useState<Tool>('brush');
   const [color, setColor] = useState(PALETTE[0]);
   const [size, setSize] = useState(SIZES[1]);
-  const [stencil, setStencil] = useState(FREE_STENCILS[0]);
+  const [stencil, setStencil] = useState(FREE_STENCILS[0].file);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [stamps, setStamps] = useState<Stamp[]>([]);
   const [tick, setTick] = useState(0); // картинки грузятся асинхронно — перерисовываем по готовности
@@ -140,12 +151,11 @@ export default function TagEditor({ packOwned = false, onDone }: TagEditorProps)
     }
     ctx.globalCompositeOperation = 'source-over';
     for (const st of stamps) {
-      const img = loadImage(`${ART}/${st.id}.webp`);
+      const img = loadImage(stencilSrc(st.id));
       if (!img) { pending = true; continue; }
       ctx.save();
       ctx.globalAlpha = 0.95;
-      ctx.drawImage(img, st.x, st.y, st.w, st.h);
-      // Тонировка: белая форма красится в цвет через source-in на offscreen.
+      ctx.drawImage(tinted(img, st.color) ?? img, st.x, st.y, st.w, st.h);
       ctx.restore();
     }
     if (pending) {
@@ -170,7 +180,8 @@ export default function TagEditor({ packOwned = false, onDone }: TagEditorProps)
         paths.push(`<path d="${d}" stroke="${s.color}" stroke-width="${s.size}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`);
       }
       const images = stamps
-        .map((s) => `<image href="${ART}/${s.id}.webp" x="${Math.round(s.x)}" y="${Math.round(s.y)}" width="${Math.round(s.w)}" height="${Math.round(s.h)}" preserveAspectRatio="none"/>`)
+        // Экспорт ссылается на картину, а не встраивает растр: тег весит сотни байт.
+        .map((s) => `<image href="/art/skate/${s.id}.webp" x="${Math.round(s.x)}" y="${Math.round(s.y)}" width="${Math.round(s.w)}" height="${Math.round(s.h)}" preserveAspectRatio="none"/>`)
         .join('');
       built = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${images}${paths.join('')}</svg>`;
       if (commands <= PATH_LIMIT || eps >= 24) break;
@@ -302,16 +313,16 @@ export default function TagEditor({ packOwned = false, onDone }: TagEditorProps)
         <>
           <div className="strong">{t('tag.free')}</div>
           <div className="tag-stencils">
-            {FREE_STENCILS.map((id) => (
+            {FREE_STENCILS.map((s) => (
               <button
-                key={id}
+                key={s.file}
                 type="button"
-                className={`tag-stencil${stencil === id ? ' is-on' : ''}`}
-                aria-pressed={stencil === id}
-                aria-label={id.replace('stencil-', '')}
-                onClick={() => setStencil(id)}
+                className={`tag-stencil${stencil === s.file ? ' is-on' : ''}`}
+                aria-pressed={stencil === s.file}
+                aria-label={s.name}
+                onClick={() => setStencil(s.file)}
               >
-                <img src={`${ART}/${id}.webp`} alt="" />
+                <img src={stencilSrc(s.file)} alt="" />
               </button>
             ))}
           </div>
@@ -321,31 +332,34 @@ export default function TagEditor({ packOwned = false, onDone }: TagEditorProps)
             {packOwned ? <span className="tag-owned">{t('tag.owned')}</span> : null}
           </div>
           <div className="tag-stencils">
-            {PACK_STENCILS.map((s) =>
-              packOwned ? (
+            {PACK_STENCILS.map((s) => {
+              // Подпись берём из lore района: в паке лежат формы районов, а не
+              // абстрактные «shape 1…5» (docs/16 §3.5).
+              const label = (s.district !== null ? collections[s.district]?.name : undefined) ?? s.name;
+              return packOwned ? (
                 <button
-                  key={s.id}
+                  key={s.file}
                   type="button"
-                  className={`tag-stencil${stencil === s.id ? ' is-on' : ''}`}
-                  aria-pressed={stencil === s.id}
-                  aria-label={s.label}
-                  onClick={() => setStencil(s.id)}
+                  className={`tag-stencil${stencil === s.file ? ' is-on' : ''}`}
+                  aria-pressed={stencil === s.file}
+                  aria-label={label}
+                  onClick={() => setStencil(s.file)}
                 >
-                  <img src={`${ART}/${s.id}.webp`} alt="" />
+                  <img src={stencilSrc(s.file)} alt="" />
                 </button>
               ) : (
-                <Link key={s.id} to="/shop?tab=services" className="tag-stencil is-locked" aria-label={t('tag.locked', { name: s.label })}>
-                  <img src={`${ART}/${s.id}.webp`} alt="" />
+                <Link key={s.file} to="/shop?tab=services" className="tag-stencil is-locked" aria-label={t('tag.locked', { name: label })}>
+                  <img src={stencilSrc(s.file)} alt="" />
                   <span className="tag-lock" aria-hidden="true">🔒</span>
                 </Link>
-              ),
-            )}
+              );
+            })}
           </div>
         </>
       )}
 
       <div className={overLimit ? 'tag-limit is-over' : 'tag-limit'} role="status">
-        {t('tag.limitPaths', { n: svg.commands, max: PATH_LIMIT })} · {t('tag.limitSize', { kb: (svg.bytes / 1024).toFixed(1), max: 24 })}
+        {t('tag.limitPaths', { n: svg.commands, max: PATH_LIMIT })} · {t('tag.limitSize', { kb: fmtDecimal(svg.bytes / 1024, 1), max: 24 })}
         {overLimit ? ` — ${t('tag.over')}` : ''}
       </div>
 
@@ -356,4 +370,15 @@ export default function TagEditor({ packOwned = false, onDone }: TagEditorProps)
       ) : null}
     </div>
   );
+}
+
+/**
+ * Роутовое применение: владение платным паком читаем из entitlements (kind 12),
+ * чтобы купленная форма открылась без перезагрузки профиля. Обёртка живёт здесь,
+ * внутри ленивого модуля, а не в router.tsx: её импорты (@/api/hooks, косметики)
+ * иначе уезжают в entry-граф и съедают бюджет критического пути.
+ */
+export function TagEditorRoute() {
+  const mine = useMyServices();
+  return <TagEditor packOwned={ownsStencilPack(mine.data?.entitlements)} />;
 }

@@ -79,11 +79,17 @@ describe('public API', () => {
   it('services catalogue quotes every currency', async () => {
     const c = new Client(base);
     const { json } = await c.get('/v1/services');
-    expect(json.services).toHaveLength(12);
+    expect(json.services).toHaveLength(13); // 12 + districtStencilPack (kind 12, docs/16 §3.5)
     const handle = json.services.find((s: { kind: number }) => s.kind === 0);
     expect(handle.quotes.CG).toBe('199000000');
     expect(handle.quotes.USDC).toBe('1990000');
     expect(Number(handle.quotes.SKR)).toBeGreaterThan(100_000_000); // ≈ $1.99 / $0.0174 ≈ 114 SKR
+    // district stencil pack: cosmetic at the same $1.99 tier as @handle. The catalogue
+    // quotes at 1 ¢ ≙ 1 $CG (backend/src/services.ts); the on-chain charge is 6 $CG/¢
+    // (CG_MICRO_PER_CENT, packages/economy) — the display rail is the cheaper one.
+    const stencils = json.services.find((s: { kind: number }) => s.kind === 12);
+    expect(stencils.priceUsdCents).toBe(199);
+    expect(stencils.quotes.CG).toBe(handle.quotes.CG);
   });
   it('market + collections + chip detail', async () => {
     const c = new Client(base);
