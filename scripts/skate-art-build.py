@@ -239,6 +239,19 @@ STENCILS = [
     ("stencil-can", "an aerosol spray can tilted at an angle with a spray cloud from the nozzle"),
     ("stencil-bolt", "a sharp jagged lightning bolt"),
     ("stencil-drip", "a thick paint blob with three long drips running down from the bottom edge"),
+    ("stencil-arrow", "a thick chevron arrow pointing to the right"),
+    ("stencil-star", "an eight point burst star with alternating long and short points"),
+    ("stencil-skull", "a stylised street skull: rounded cranium, two large eye sockets, notched jaw, no teeth detail"),
+    ("stencil-flame", "a stylised flame with three curling tongues rising from a wide base"),
+    # Мастер шумный: модель залила кадр мягким оверспреем (1223×1215 текстуры),
+    # поэтому влезает только в 256 px (19 КБ против 26 КБ в 307 px). Перегенерация
+    # с жёсткими краями вернула бы честные 512 px — пометка для следующей партии.
+    ("stencil-burst", "a radial spray burst: a ring of long tapered spikes radiating from a small solid centre dot"),
+    ("stencil-ribbon", "a horizontal banner ribbon with notched fork ends on both sides, empty inside"),
+    ("stencil-bubble", "a graffiti cloud bubble drawn as a thick outline only, empty inside, two small tails pointing down"),
+    ("stencil-cross", "a fat plus sign cross drawn with spray-can strokes and soft overspray at the ends"),
+    ("stencil-dice", "a square die showing five round pips in the classic arrangement, plain dots and no numerals"),
+    ("stencil-frame", "an empty rectangular picture frame as a thick border with drips hanging from the bottom edge"),
 ]
 
 for _name, _shape in STENCILS:
@@ -356,27 +369,40 @@ def fit_box(img, box):
     return out
 
 
-def save_sprite_fit(img, path, asset, min_quality=60, min_scale=0.6):
-    """Кладёт спрайт в бюджет: сначала жмёт качество, потом — размер.
+def save_sprite_fit(img, path, asset, min_quality=56, min_scale=0.5, alpha_quality=80):
+    """Кладёт спрайт в бюджет: перебирает качество и размер, берёт наименьший файл.
 
-    Генерируемые мастера сильно разные по детализации, поэтому подбирать качество
-    руками под каждый кадр — значит чинить сборку при каждой перегенерации.
+    Перебор, а не спуск по лестнице, потому что «уменьшить» не обязательно значит
+    «сжать»: на мягких альфа-краях (оверспрей у баллона) LANCZOS звенит, уникальных
+    цветов становится больше, и файл растёт. Поэтому: считаем все разумные
+    варианты, берём минимум, выходим сразу, как попали в бюджет.
+    Замерено на шумовых текстурах (грип, оверспрей): BILINEAR даёт файл заметно
+    меньше LANCZOS — 27 КБ против 35 КБ на грипе в 450 px, потому что не
+    разводит звон на полупрозрачных краях.
     """
     box, budget = asset["geometry"], asset["budget_kb"]
-    scale = 1.0
-    while True:
-        frame = fit_box(img, (max(1, int(box[0] * scale)), max(1, int(box[1] * scale))))
-        quality = asset["quality"]
-        while True:
-            frame.save(path, "WEBP", quality=quality,
-                       alpha_quality=asset.get("alpha_quality", 80), method=6, exact=False)
+    base = fit_box(img, box)
+    best = None  # (kb, quality, scale, frame)
+    for scale in (1.0, 0.85, 0.72, 0.6, 0.5):
+        if scale < min_scale:
+            break
+        frame = base if scale >= 1.0 else base.resize(
+            (max(1, int(base.size[0] * scale)), max(1, int(base.size[1] * scale))), Image.BILINEAR)
+        for quality in range(asset["quality"], min_quality - 1, -4):
+            frame.save(path, "WEBP", quality=quality, alpha_quality=alpha_quality,
+                       method=6, exact=False)
             kb = os.path.getsize(path) / 1024
-            if kb <= budget or quality <= min_quality:
-                break
-            quality -= 4
-        if kb <= budget or scale <= min_scale:
-            return frame, quality, kb, scale
-        scale *= 0.85
+            if best is None or kb < best[0]:
+                best = (kb, quality, scale, frame)
+            if kb <= budget:
+                return frame, quality, kb, scale
+        if best[0] <= budget:
+            break
+    # Ни один вариант не влез — оставляем на диске самый лёгкий: он всё равно
+    # попадёт в MANIFEST со своим весом, и сборка честно упадёт по бюджету.
+    best[3].save(path, "WEBP", quality=best[1], alpha_quality=alpha_quality, method=6, exact=False)
+    return best[3], best[1], best[0], best[2]
+
 
 def blue_share(img):
     """Доля trust-blue (#2E8BFF). docs/07 §2.2: в игровом арте его быть не должно."""
