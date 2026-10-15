@@ -7,6 +7,9 @@ import { RouteError } from './RouteError';
 
 const Home = lazy(() => import('@/features/home/Home'));
 const Collection = lazy(() => import('@/features/collection/Collection'));
+// Бассейн (docs/16 §4.1) — скейт-мир. Ленивый, в entry-граф не попадает; арт лежит
+// в public/art/skate и вообще не считается в бандл (scripts/skate-art-build.py).
+const Bowl = lazy(() => import('@/features/bowl/Bowl'));
 const Shop = lazy(() => import('@/features/shop/Shop'));
 const Opening = lazy(() => import('@/features/shop/Opening'));
 const Fusion = lazy(() => import('@/features/fusion/Fusion'));
@@ -59,6 +62,7 @@ export const routes: RouteObject[] = [
     children: [
       { index: true, element: S(<Home />) },
       { path: 'collection', element: S(<Collection />) },
+      { path: 'bowl', element: S(<Bowl />) },
       { path: 'shop', element: S(<Shop />) },
       { path: 'shop/opening/:nonce', element: W(<Opening />) },
       { path: 'fusion', element: W(<Fusion />) },
