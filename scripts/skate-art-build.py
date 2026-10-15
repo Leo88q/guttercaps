@@ -102,7 +102,7 @@ ASSETS = [
         "master": "deck-hero.png",
         "geometry": (1024, 1024),
         "quality": 78,
-        "budget_kb": 40,
+        "budget_kb": 250,
         "prompt": (
             "Product render of a single blank skateboard deck, three-quarter top angle, alone in the centre "
             "of the frame on a flat pure green #00FF00 background. Seven-ply maple edge, blank natural wood "
@@ -116,7 +116,7 @@ ASSETS = [
         "master": "wheels.png",
         "geometry": (900, 900),
         "quality": 78,
-        "budget_kb": 40,
+        "budget_kb": 250,
         "prompt": (
             "Product render of four identical skateboard polyurethane wheels in a neat horizontal row, "
             "three-quarter studio view, alone on a flat pure green #00FF00 background. White wheels with "
@@ -130,7 +130,7 @@ ASSETS = [
         "master": "trucks.png",
         "geometry": (900, 900),
         "quality": 78,
-        "budget_kb": 40,
+        "budget_kb": 250,
         "prompt": (
             "Product render of two skateboard trucks side by side, three-quarter studio view, polished "
             "aluminium hanger and baseplate, black bushings, steel kingpin, grease and scratches, alone on "
@@ -143,7 +143,7 @@ ASSETS = [
         "master": "grip.png",
         "geometry": (900, 900),
         "quality": 78,
-        "budget_kb": 40,
+        "budget_kb": 250,
         "prompt": (
             "Product render of a square sheet of coarse black griptape with torn edges plus a row of eight "
             "small steel mounting bolts, three-quarter studio view, alone on a flat pure green #00FF00 "
@@ -157,7 +157,7 @@ ASSETS = [
         "master": "ui-panel.png",
         "geometry": (1024, 1024),
         "quality": 80,
-        "budget_kb": 40,
+        "budget_kb": 250,
         "prompt": (
             "Mobile game interface art: a single large rounded rectangle panel frame of dark smoked glass "
             "and worn brushed metal, thin glowing magenta inner border, cyan corner accents, scratches and "
@@ -220,7 +220,7 @@ for _name, _pose, _kit, _light in RIDERS:
         "master": f"{_name}.png",
         "geometry": (900, 900),
         "quality": 78,
-        "budget_kb": 60,
+        "budget_kb": 250,
         "prompt": (
             f"Full body three-quarter view of a skateboarder {_pose}, alone in the centre of the frame "
             f"on a flat pure green #00FF00 background. Baggy streetwear silhouette: {_kit}. Face turned "
@@ -243,9 +243,6 @@ STENCILS = [
     ("stencil-star", "an eight point burst star with alternating long and short points"),
     ("stencil-skull", "a stylised street skull: rounded cranium, two large eye sockets, notched jaw, no teeth detail"),
     ("stencil-flame", "a stylised flame with three curling tongues rising from a wide base"),
-    # Мастер шумный: модель залила кадр мягким оверспреем (1223×1215 текстуры),
-    # поэтому влезает только в 256 px (19 КБ против 26 КБ в 307 px). Перегенерация
-    # с жёсткими краями вернула бы честные 512 px — пометка для следующей партии.
     ("stencil-burst", "a radial spray burst: a ring of long tapered spikes radiating from a small solid centre dot"),
     ("stencil-ribbon", "a horizontal banner ribbon with notched fork ends on both sides, empty inside"),
     ("stencil-bubble", "a graffiti cloud bubble drawn as a thick outline only, empty inside, two small tails pointing down"),
@@ -260,8 +257,8 @@ for _name, _shape in STENCILS:
         "kind": SPRITE,
         "master": f"{_name}.png",
         "geometry": (512, 512),
-        "quality": 84,
-        "budget_kb": 20,
+        "quality": 88,
+        "budget_kb": 80,
         "prompt": (
             f"A single bold graphic stencil shape of {_shape}, solid bone white, hard clean cut edges "
             f"exactly like a spray-paint stencil cut from card with small connector tabs, flat vector "
@@ -294,8 +291,8 @@ for _name, _shape in UI_PARTS:
         "kind": SPRITE,
         "master": f"{_name}.png",
         "geometry": (512, 512),
-        "quality": 84,
-        "budget_kb": 20,
+        "quality": 88,
+        "budget_kb": 80,
         "prompt": (
             f"Mobile game interface art: a single {_shape}, completely empty interior, alone in the "
             f"centre of the frame on a flat pure green #00FF00 background. No icons, no content, no "
@@ -350,8 +347,8 @@ for _name, _district, _shape in PACK_DISTRICT:
         "kind": SPRITE,
         "master": f"{_name}.png",
         "geometry": (512, 512),
-        "quality": 84,
-        "budget_kb": 20,
+        "quality": 88,
+        "budget_kb": 80,
         "prompt": (
             f"A single bold graphic stencil shape of {_shape}, solid bone white, hard clean cut edges "
             f"exactly like a spray-paint stencil cut from card with small connector tabs, flat vector "
@@ -399,16 +396,21 @@ def fit_box(img, box):
     return out
 
 
-def save_sprite_fit(img, path, asset, min_quality=56, min_scale=0.5, alpha_quality=80):
-    """Кладёт спрайт в бюджет: перебирает качество и размер, берёт наименьший файл.
+def save_sprite_fit(img, path, asset, min_quality=80, min_scale=1.0, alpha_quality=92):
+    """Кладёт спрайт в бюджет качеством, а не уменьшением.
 
-    Перебор, а не спуск по лестнице, потому что «уменьшить» не обязательно значит
-    «сжать»: на мягких альфа-краях (оверспрей у баллона) LANCZOS звенит, уникальных
-    цветов становится больше, и файл растёт. Поэтому: считаем все разумные
-    варианты, берём минимум, выходим сразу, как попали в бюджет.
-    Замерено на шумовых текстурах (грип, оверспрей): BILINEAR даёт файл заметно
-    меньше LANCZOS — 27 КБ против 35 КБ на грипе в 450 px, потому что не
-    разводит звон на полупрозрачных краях.
+    История вопроса, чтобы не повторять ошибку: раньше здесь висел per-file
+    бюджет 20 КБ и лестница «сначала качество, потом размер» с шагом до 0.5.
+    Ассеты из client/public/art НЕ входят ни в entry-граф, ни в bundle:check —
+    это ленивые картинки, которые грузятся после того, как приложение уже
+    отрисовалось. Экономия там покупала не TTI, а испорченные мастерá: трафарет
+    «всплеск» уезжал в 256 px вместо 512, грип — в 450 px, качество падало до 56.
+    Настоящий NFR (TTI <= 3.5 с p75 на Seeker-классе 4G) эти файлы не защищали.
+
+    Правило теперь: кадр держим в полном разрешении (min_scale=1.0), жмём только
+    качеством, но не ниже 80, и альфу не экономим (92 — у трафаретов резкий край,
+    на нём артефакты виднее всего). Что действительно считаем — сумму по сетке
+    трафаретов: её телефон и чувствует, когда открывается панель штампов.
     """
     box, budget = asset["geometry"], asset["budget_kb"]
     base = fit_box(img, box)
@@ -418,7 +420,9 @@ def save_sprite_fit(img, path, asset, min_quality=56, min_scale=0.5, alpha_quali
             break
         frame = base if scale >= 1.0 else base.resize(
             (max(1, int(base.size[0] * scale)), max(1, int(base.size[1] * scale))), Image.BILINEAR)
-        for quality in range(asset["quality"], min_quality - 1, -4):
+        # Лестница качества идёт сверху вниз, но никогда ниже пола: у ассетов с
+        # quality 78 (запчасти доски) range() получился бы пустым.
+        for quality in range(max(asset["quality"], min_quality), min_quality - 1, -4):
             frame.save(path, "WEBP", quality=quality, alpha_quality=alpha_quality,
                        method=6, exact=False)
             kb = os.path.getsize(path) / 1024
@@ -428,6 +432,9 @@ def save_sprite_fit(img, path, asset, min_quality=56, min_scale=0.5, alpha_quali
                 return frame, quality, kb, scale
         if best[0] <= budget:
             break
+    if best is None:  # теоретически недостижимо, но пусть падает понятно
+        base.save(path, "WEBP", quality=asset["quality"], alpha_quality=alpha_quality, method=6, exact=False)
+        return base, asset["quality"], os.path.getsize(path) / 1024, 1.0
     # Ни один вариант не влез — оставляем на диске самый лёгкий: он всё равно
     # попадёт в MANIFEST со своим весом, и сборка честно упадёт по бюджету.
     best[3].save(path, "WEBP", quality=best[1], alpha_quality=alpha_quality, method=6, exact=False)
@@ -527,6 +534,34 @@ def build(asset, entries, failures):
     )
 
 
+# ── Бюджет по экранам ────────────────────────────────────────────────────────
+# Ассеты из client/public/art не входят ни в entry-граф, ни в bundle:check, и
+# считать их поштучно бессмысленно: per-file лимит заставлял ухудшать качество
+# (трафарет «всплеск» уезжал в 256 px, качество падало до 56), не покупая ничего
+# по настоящему NFR — TTI <= 3.5 с p75 на Seeker-классе 4G, который про entry.
+# Считаем то, что телефон тянет за один экран: сумму файлов роута.
+def route_budgets():
+    stencils = [n for n, _ in STENCILS] + [n for n, _, _ in PACK_DISTRICT]
+    return [
+        ("/bowl — хаб", ["bowl-hero", "ui-panel", "deck", "wheels", "trucks", "grip"]
+         + [f"rider-0{i}" for i in range(1, 9)], 1200),
+        ("/bowl/tag — сетка трафаретов", stencils, 600),
+    ]
+
+
+def report_routes(data):
+    by_name = {e["name"]: e for e in data["assets"]}
+    bad = 0
+    for label, names, limit in route_budgets():
+        have = [by_name[n] for n in names if n in by_name]
+        total = sum(e["kb"] for e in have)
+        ok = total <= limit
+        if not ok:
+            bad += 1
+        print(f"  {label:30} {len(have):2} файл(ов), {total:6.0f} КБ / {limit} КБ  {'ok' if ok else 'ПЛОХО'}")
+    return bad
+
+
 def check(assets):
     """Проверка выпущенного по манифесту: файл на месте, вес в бюджете, хеш совпал."""
     path = os.path.join(OUT, "MANIFEST.json")
@@ -547,6 +582,7 @@ def check(assets):
         print(f"  {e['name']:14} {kb:6.0f} КБ / {e['budget_kb']} КБ  sha256 {'совпал' if same else 'РАСХОЖДЕНИЕ'}  {'ok' if (same and fit) else 'ПЛОХО'}")
         if not (same and fit):
             bad += 1
+    bad += report_routes(data)
     print(f"проверено {len(data['assets'])} ассетов, проблемных {bad}")
     return 1 if bad else 0
 
@@ -594,6 +630,9 @@ def main():
             json.dump(manifest, fh, ensure_ascii=False, indent=2)
             fh.write("\n")
         print(f"\nманифест: {path} ({len(entries)} ассетов)")
+        print("\n  бюджет по экранам:")
+        if report_routes({"assets": entries}):
+            failures.append("бюджет экрана превышен")
 
     if failures:
         print(f"\nсборка провалена: {', '.join(sorted(set(failures)))}")
