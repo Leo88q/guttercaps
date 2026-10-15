@@ -400,7 +400,7 @@ const en = {
     limitPaths: '{n} of {max} path commands',
     limitSize: '{kb} of {max} KB',
     over: 'over the limit — simplify the tag',
-    done: 'Done',
+    done: 'Done', saving: 'Saving…', saved: 'Tag saved', savedHint: 'it is live for everyone now — a moderator only looks at it if someone reports it', saveFailed: 'Could not save — try again',
   },
   footer: { legal: 'Legal', ages: '18+' },
 

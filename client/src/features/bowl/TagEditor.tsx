@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useT } from '@/shared/i18n';
+import { api } from '@/api/client';
 import { useMyServices } from '@/api/hooks';
 import { ownsStencilPack } from '@/shared/lib/cosmetics';
 import { useCollections } from '@/shared/lib/lore';
@@ -112,6 +113,7 @@ export default function TagEditor({ packOwned = false, onDone }: TagEditorProps)
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [stamps, setStamps] = useState<Stamp[]>([]);
   const [tick, setTick] = useState(0); // картинки грузятся асинхронно — перерисовываем по готовности
+  const [save, setSave] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const shapes = useMemo(
     () => [...strokes, ...stamps] as unknown[],
@@ -239,6 +241,18 @@ export default function TagEditor({ packOwned = false, onDone }: TagEditorProps)
     setStrokes((prev) => prev.slice(0, -1));
   }
 
+  // Сохранение: тег уезжает на сервер как есть, но сервер всё равно пересобирает
+  // SVG заново (backend/src/tags.ts) — клиентский лимит удобство, не защита.
+  async function saveTag() {
+    setSave('saving');
+    try {
+      await api.post('/tags', { svg: svg.text });
+      setSave('saved');
+    } catch {
+      setSave('error');
+    }
+  }
+
   const tools: { id: Tool; label: string }[] = [
     { id: 'brush', label: t('tag.toolBrush') },
     { id: 'spray', label: t('tag.toolSpray') },
@@ -363,11 +377,22 @@ export default function TagEditor({ packOwned = false, onDone }: TagEditorProps)
         {overLimit ? ` — ${t('tag.over')}` : ''}
       </div>
 
-      {onDone ? (
-        <button type="button" className="tag-btn is-primary" disabled={overLimit} onClick={() => onDone(svg.text, { bytes: svg.bytes, commands: svg.commands })}>
-          {t('tag.done')}
-        </button>
-      ) : null}
+      <button
+        type="button"
+        className="tag-btn is-primary"
+        disabled={overLimit || save === 'saving'}
+        onClick={() => (onDone ? onDone(svg.text, { bytes: svg.bytes, commands: svg.commands }) : void saveTag())}
+      >
+        {t('tag.done')}
+      </button>
+
+      {save === 'saving' && <div className="tiny muted" role="status">{t('tag.saving')}</div>}
+      {save === 'saved' && (
+        <div className="tiny" role="status">
+          <span className="strong">{t('tag.saved')}</span> — {t('tag.savedHint')}
+        </div>
+      )}
+      {save === 'error' && <div className="tiny" role="alert">{t('tag.saveFailed')}</div>}
     </div>
   );
 }

@@ -988,6 +988,42 @@ model FraudSignal {
   @@map("fraud_signals")
 }
 
+// ── skate city: «Свой тег» (docs/16 §3.2–3.3, backend/src/tags.ts) ──────────
+model TagRegistry {
+  id          String   @id
+  wallet      String
+  sha256      String   // содержимое: дедуп + доказуемое авторство
+  svg         String   // санитайзер пересобрал: только <path> и <image href="/art/skate/…">
+  bytes       Int
+  commands    Int      // число команд пути (M/L), лимит 400
+  status      String   @default("pending") // pending | live | hidden | removed
+  createdAt   DateTime @default(now()) @map("created_at")
+  moderatedAt DateTime? @map("moderated_at")
+  reports     Int      @default(0)
+  appealNote  String?  @map("appeal_note")
+  appealAt    DateTime? @map("appeal_at")
+
+  @@index([wallet, createdAt])
+  @@index([status, createdAt])
+  @@index([sha256])
+  @@index([reports, createdAt])
+  @@map("tag_registry")
+}
+
+model WallReport {
+  id         Int       @id @default(autoincrement())
+  tagId      String    @map("tag_id")
+  reporter   String
+  reason     String
+  createdAt  DateTime  @default(now()) @map("created_at")
+  resolvedAt DateTime? @map("resolved_at")
+  resolution String?
+
+  @@unique([tagId, reporter])
+  @@index([tagId])
+  @@map("wall_reports")
+}
+
 model AdminUser {
   id     String @id @default(cuid())
   email  String @unique

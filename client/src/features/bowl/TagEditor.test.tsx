@@ -3,7 +3,8 @@
 // Проверяем именно то, что обещано: переключение инструментов, рисование
 // указателем (палец/стилус), откат, лимиты экспорта и закрытый платный пак.
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { setMockMode } from '@/api/client';
 import { MemoryRouter } from 'react-router-dom';
 import TagEditor from './TagEditor';
 
@@ -64,6 +65,14 @@ describe('TagEditor — редактор тегов', () => {
     expect(document.querySelectorAll('.tag-stencil.is-locked').length).toBe(0);
     // 14 бесплатных + 5 купленных — все кнопки, доступные тапом
     expect(document.querySelectorAll('.tag-stencil').length).toBe(19);
+  });
+
+  it('сохраняет тег на сервер, когда редактор открыт как страница', async () => {
+    setMockMode(true); // офлайн-мок повторяет серверную пересборку
+    mount(); // без onDone: кнопка «Готово» сохраняет сама
+    draw([10, 10], [60, 40], [120, 70]);
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await waitFor(() => expect(screen.getByText(/Tag saved/)).toBeTruthy());
   });
 
   it('не отдаёт SVG за лимитом и отдаёт в пределах лимита', () => {

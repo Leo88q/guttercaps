@@ -290,6 +290,43 @@ on('post', '/services/claim', (o) => {
   entitlements.push(e);
   return e;
 });
+// ── «Свой тег» (docs/16 §3.2–3.3): мок повторяет серверную пересборку, чтобы
+// редактор офлайн видел те же отказы, что и боевой бэкенд.
+const mockTags: Array<{ id: string; wallet: string; sha256: string; svg: string; bytes: number; commands: number; status: string; createdAt: string; reports: number }> = [];
+const tagId = (wallet: string, hash: string) => `${hash.slice(0, 24)}${wallet.slice(0, 8)}`;
+const mockTagView = (t: (typeof mockTags)[number]) => ({ ...t, mine: t.wallet === ME });
+on('post', '/tags', (o) => {
+  const svg = String((o.body as { svg?: unknown } | undefined)?.svg ?? '');
+  if (!svg.trim()) throw new ApiError(400, 'tag_empty', 'The tag is empty');
+  if (/<script|javascript:|\son[a-z]+\s*=/i.test(svg)) throw new ApiError(400, 'tag_forbidden', 'A tag may only contain paths and our own stencil images');
+  const commands = (svg.match(/[ML]/g) ?? []).length;
+  if (commands > 400) throw new ApiError(400, 'tag_too_many_commands', 'A tag is at most 400 path commands');
+  const bytes = new TextEncoder().encode(svg).length;
+  if (bytes > 24 * 1024) throw new ApiError(413, 'tag_too_large', 'A tag is at most 24 KB');
+  // Стойкий, но дешёвый отпечаток содержимого: в моке он заменяет sha256 —
+  // совпадение означает «тот же тег», а криптография здесь никому не нужна.
+  let hash = '';
+  for (let i = 0; i < svg.length; i++) hash = ((hash.charCodeAt(0) || 7) * 31 + svg.charCodeAt(i)).toString(16).slice(-6).padStart(6, '0');
+  const dupe = mockTags.find((t) => t.wallet === ME && t.sha256 === hash && t.status !== 'removed');
+  if (dupe) return mockTagView(dupe);
+  const t = { id: tagId(ME, hash), wallet: ME, sha256: hash, svg, bytes, commands, status: 'live', createdAt: iso(), reports: 0 };
+  mockTags.push(t);
+  return mockTagView(t);
+});
+on('get', '/me/tags', () => ({ items: mockTags.filter((t) => t.wallet === ME).map(mockTagView).reverse() }));
+on('get', '/tags/{id}', (_o, params) => {
+  const t = mockTags.find((x) => x.id === params.id);
+  if (!t || (t.status !== 'live' && t.wallet !== ME)) throw new ApiError(404, 'not_found', 'No tag with that id');
+  return mockTagView(t);
+});
+on('post', '/tags/{id}/report', (_o, params) => {
+  const t = mockTags.find((x) => x.id === params.id);
+  if (!t || t.status !== 'live') throw new ApiError(404, 'not_found', 'No live tag with that id');
+  t.reports += 1;
+  return { ok: true, reports: t.reports };
+});
+on('get', '/mod/tags/queue', () => ({ items: mockTags.filter((t) => t.status === 'live' && t.reports > 0).map((t) => ({ ...mockTagView(t), openReports: t.reports })) }));
+
 // season pass state (tier ~11 with unclaimed tiers + a skinned showcase cap)
 let mockPassXp = 2360;
 const mockPassClaimed: number[] = [1, 2];

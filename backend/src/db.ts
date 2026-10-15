@@ -974,6 +974,41 @@ CREATE TABLE IF NOT EXISTS referral_rewards (
 );
 CREATE INDEX IF NOT EXISTS idx_referral_rewards_wallet ON referral_rewards(wallet, root_kind);
 
+-- ------------------------------------------------------------ skate city: «Свой тег» (docs/16 §3.2–3.3, backend/src/tags.ts)
+-- Пользовательский контент. Хранится сам SVG (до S3 — в базе, файл ≤ 24 КБ), потому что
+-- тегов на старте тысячи, а не миллионы, и внешнее хранилище добавляет отказоустойчивости
+-- меньше, чем отнимает. sha256 — содержимое: одинаковый тег дважды не храним и не платим
+-- за его модерацию дважды.
+CREATE TABLE IF NOT EXISTS tag_registry (
+  id           TEXT    PRIMARY KEY,      -- hex sha256(svg)||created_at: стабильный и не угадывается
+  wallet       TEXT    NOT NULL,
+  sha256       TEXT    NOT NULL,         -- содержимое: дедуп и доказуемое авторство (docs/16 §3.6)
+  svg          TEXT    NOT NULL,         -- санитайзер уже пересобрал: только <path> и <image href="/art/skate/…">
+  bytes        INTEGER NOT NULL,
+  commands     INTEGER NOT NULL,         -- число команд пути (M/L) — лимит 400
+  status       TEXT    NOT NULL DEFAULT 'pending', -- pending | live | hidden | removed
+  created_at   INTEGER NOT NULL,
+  moderated_at INTEGER,                  -- когда человек впервые посмотрел (NULL = ещё не смотрел)
+  reports      INTEGER NOT NULL DEFAULT 0,
+  appeal_note  TEXT,
+  appeal_at    INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_tag_registry_wallet ON tag_registry(wallet, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tag_registry_status ON tag_registry(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_tag_registry_sha ON tag_registry(sha256);
+CREATE INDEX IF NOT EXISTS idx_tag_registry_queue ON tag_registry(reports DESC, created_at) WHERE status = 'live';
+CREATE TABLE IF NOT EXISTS wall_reports (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  tag_id      TEXT    NOT NULL,
+  reporter    TEXT    NOT NULL,
+  reason      TEXT    NOT NULL,
+  created_at  INTEGER NOT NULL,
+  resolved_at INTEGER,
+  resolution  TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_wall_reports_once ON wall_reports(tag_id, reporter);
+CREATE INDEX IF NOT EXISTS idx_wall_reports_open ON wall_reports(resolved_at) WHERE resolution IS NULL;
+
 CREATE TABLE IF NOT EXISTS reward_batches (
   kind         INTEGER NOT NULL,
   epoch        INTEGER NOT NULL,

@@ -383,7 +383,7 @@ const pt: Messages = {
     limitPaths: '{n} de {max} comandos de traço',
     limitSize: '{kb} de {max} KB',
     over: 'passou do limite — simplifique a tag',
-    done: 'Pronto',
+    done: 'Pronto', saving: 'Guardando…', saved: 'Tag guardada', savedHint: 'já está visível para todos; um moderador só olha se alguém denunciar', saveFailed: 'Não foi possível guardar — tenta outra vez',
   },
   footer: { legal: 'Jurídico', ages: '18+' },
 

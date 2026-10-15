@@ -301,6 +301,91 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [signature, kind, payload], properties: { signature: { type: string }, kind: { type: integer }, payload: { type: object, additionalProperties: true, description: 'canonical JSON; keccak(kind ‖ wallet ‖ canonical(payload)) must equal ref_hash' } } } } } }
       responses: { '200': { description: entitlement, content: { application/json: { schema: { $ref: '#/components/schemas/Entitlement' } } } }, '402': { description: payment not found / mismatch }, '409': { $ref: '#/components/responses/Error', description: 'not_owner — or payment_pending: the payment is confirmed but not yet finalized (SEC-M5); retry in ~30 s' } }
 
+  # ------------------------------------------------------------------ skate city: tags (docs/16 §3.2–3.3)
+  /tags:
+    post:
+      tags: [tags]
+      summary: Save a tag (user-generated SVG) — rebuilt server-side, never trusted as received
+      description: |
+        The body is one `svg` string. The server parses it and rebuilds a new document from `<path>`
+        and `<image href="/art/skate/stencil-*.webp">` elements only: no scripts, no event handlers,
+        no external URLs, fills removed, colours restricted to `#rrggbb`. Limits are the ones the
+        editor already shows (docs/16 §3.2): 400 path commands, 24 KB after rebuild.
+        Post-moderation (§3.3) — the tag is `live` at once and a person reviews it only if reported.
+        Saving the same SVG twice from one wallet returns the existing row instead of a new one.
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [svg], properties: { svg: { type: string, maxLength: 196608 } } } } } }
+      responses:
+        '200': { description: saved (or the identical tag you already had), content: { application/json: { schema: { $ref: '#/components/schemas/Tag' } } } }
+        '400': { $ref: '#/components/responses/Error', description: 'tag_empty | tag_forbidden | tag_bad_path | tag_bad_color | tag_too_many_commands | tag_bad_image — the auto-filter refused the payload' }
+        '413': { $ref: '#/components/responses/Error', description: 'tag_too_large — more than 24 KB once rebuilt' }
+        '429': { $ref: '#/components/responses/Error', description: 'tag_rate — at most 5 tags per hour per wallet' }
+  /me/tags:
+    get:
+      tags: [tags]
+      summary: My tags, newest first — every status, including hidden ones (§3.3 the author always sees their own)
+      responses:
+        '200': { description: my tags, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/Tag' } } } } } } }
+  /tags/{id}:
+    get:
+      tags: [tags]
+      security: []
+      summary: One tag by id — hidden and removed tags answer 404 to everyone but the author
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[0-9a-f]{32}$' }
+          description: tag id (sha256 of wallet and content hash, first 32 hex chars)
+      responses:
+        '200': { description: the tag, content: { application/json: { schema: { $ref: '#/components/schemas/Tag' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+  /tags/{id}/report:
+    post:
+      tags: [tags]
+      summary: Report a tag — one report per wallet per tag, then a person decides within 24 h
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[0-9a-f]{32}$' }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [reason], properties: { reason: { type: string, enum: [hate, violence, sexual, ads, personal_data, other] } } } } } }
+      responses:
+        '200': { description: counted, content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, reports: { type: integer } } } } } }
+        '404': { $ref: '#/components/responses/Error', description: 'not_found — no live tag with that id' }
+        '409': { $ref: '#/components/responses/Error', description: 'own_tag | already_reported' }
+  /tags/{id}/appeal:
+    post:
+      tags: [tags]
+      summary: Appeal a hidden tag — the note goes to the moderator, the decision stays with a person
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[0-9a-f]{32}$' }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [note], properties: { note: { type: string, maxLength: 500 } } } } } }
+      responses:
+        '200': { description: appeal recorded, content: { application/json: { schema: { $ref: '#/components/schemas/Tag' } } } }
+        '409': { $ref: '#/components/responses/Error', description: 'not_hidden — only a hidden tag can be appealed' }
+  /mod/tags/queue:
+    get:
+      tags: [tags]
+      summary: Moderation queue — live tags with reports, most reported first (admin allowlist; a moderator role is a later step)
+      responses:
+        '200': { description: queue, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { allOf: [{ $ref: '#/components/schemas/Tag' }, { type: object, properties: { openReports: { type: integer } } }] } } } } } } }
+  /mod/tags/{id}:
+    put:
+      tags: [tags]
+      summary: Hide, restore or remove a tag — the only moderation action that exists
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[0-9a-f]{32}$' }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [status], properties: { status: { type: string, enum: [live, hidden, removed] }, note: { type: string, maxLength: 500 } } } } } }
+      responses:
+        '200': { description: new state, content: { application/json: { schema: { $ref: '#/components/schemas/Tag' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+
   # ------------------------------------------------------------------ packs
   /packs:
     get:
@@ -1642,6 +1727,20 @@ components:
         chipRewardByLeague: { type: array, items: { type: string } }
         soulboundDays: { type: integer }
         minGamesForPayout: { type: integer, description: 'non-forfeit games needed to qualify for the ladder payout' }
+    Tag:
+      type: object
+      description: A player's tag — the first user-generated content in the game (docs/16 §3.2)
+      properties:
+        id: { type: string }
+        wallet: { type: string }
+        sha256: { type: string, description: 'content hash — dedupe and provable authorship (§3.6)' }
+        status: { type: string, enum: [pending, live, hidden, removed] }
+        createdAt: { type: string, format: date-time }
+        bytes: { type: integer, description: 'size after the server rebuilt the SVG' }
+        commands: { type: integer, description: 'path commands (M/L), limit 400' }
+        reports: { type: integer }
+        svg: { type: string, description: 'present only when the tag is public or the viewer is the author' }
+        mine: { type: boolean }
     StakingOverview:
       type: object
       properties:

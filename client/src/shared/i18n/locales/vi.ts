@@ -383,7 +383,7 @@ const vi: Messages = {
     limitPaths: '{n} trên {max} lệnh đường vẽ',
     limitSize: '{kb} trên {max} KB',
     over: 'vượt giới hạn — hãy đơn giản hoá tag',
-    done: 'Xong',
+    done: 'Xong', saving: 'Đang lưu…', saved: 'Đã lưu tag', savedHint: 'mọi người đã thấy nó; người kiểm duyệt chỉ xem nếu có người báo cáo', saveFailed: 'Không lưu được — thử lại',
   },
   footer: { legal: 'Pháp lý', ages: '18+' },
 

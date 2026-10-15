@@ -23,6 +23,7 @@ import { type Db } from './db.ts';
 import { attachSession, requireAuth, issueNonce, verifySiws, createSession, setSessionCookie, destroySession, AuthError } from './auth.ts';
 import { POLICIES, createLimiter, type Limiter } from './ratelimit.ts';
 import { catalogue, checkHandle, claimHandle, claimService, myServices, ServiceError } from './services.ts';
+import * as tags from './tags.ts';
 import { claimPassTier, passState } from './pass.ts';
 import { packQuote, validateRequest } from './quote.ts';
 import { gapStatus, getConnection, untimedStatus } from './ingest.ts';
@@ -668,6 +669,22 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.get('/players/:wallet/grid', (req, res) => { res.json(grid.publicDiver(db, req.params.wallet)); });
   v1.post('/grid/onboard', requireAuth, (req, res) => { res.json(grid.recordGridOnboard(db, req.session!.wallet, typeof req.body?.event === 'string' ? req.body.event : '')); });
 
+  // ------------------------------------------------------------ skate city: теги (docs/16 §3.2–3.3)
+  // Тег — пользовательский контент, поэтому сохранение не доверяет клиенту:
+  // сервер пересобирает SVG заново (backend/src/tags.ts), а лимит жалоб —
+  // единственное, что стоит между модератором и намеренным мусором.
+  v1.post('/tags', requireAuth, rl(POLICIES.mutate), (req, res) => { res.json(tags.saveTag(db, req.session!.wallet, req.body?.svg)); });
+  v1.get('/me/tags', requireAuth, (req, res) => { res.json(tags.myTags(db, req.session!.wallet)); });
+  // Публичный просмотр: скрытый тег отдаётся только автору (404 для остальных —
+  // сам факт существования скрытого тега наружу не уходит).
+  v1.get('/tags/:id', (req, res) => { res.json(tags.getTag(db, req.params.id, req.session?.wallet)); });
+  v1.post('/tags/:id/report', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    res.json(tags.reportTag(db, req.session!.wallet, req.params.id, String(req.body?.reason ?? '')));
+  });
+  v1.post('/tags/:id/appeal', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    res.json(tags.appealTag(db, req.session!.wallet, req.params.id, String(req.body?.note ?? '')));
+  });
+
   // ------------------------------------------------------------ admin (docs/03 §3.5, T-B-46): SIWS session ∈ ADMIN_WALLETS, every call audited,
   // on-chain changes are only *encoded* for the Squads multisig — this process holds no admin key.
   const adminGate = (req: Request, res: Response, next: NextFunction) => {
@@ -694,6 +711,14 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   });
   const summarize = (out: unknown) => { const o = out as { ok?: boolean; violations?: unknown[]; flags?: unknown; closed?: number } | null; return o && typeof o === 'object' ? { ok: o.ok, violations: o.violations?.length, flags: o.flags, closed: o.closed } : undefined; };
   v1.use('/admin', adminGate);
+  // Модерация тегов (docs/16 §3.3): отдельной роли модератора пока нет, пускаем
+  // по админскому списку и аудируем каждый вызов. SLA на реакцию — 24 часа.
+  v1.get('/mod/tags/queue', adminGate, audited('mod.tags.queue', () => tags.modQueue(db, 50)));
+  v1.put('/mod/tags/:id', adminGate, audited(
+    'mod.tags.status',
+    (req) => tags.setTagStatus(db, req.params.id, String(req.body?.status ?? ''), req.body?.note === undefined ? undefined : String(req.body.note)),
+    (req) => req.params.id,
+  ));
   const rightsAudited = (action: string, fn: (req: Request) => unknown) => wrap((req, _res) => {
     try {
       const out = fn(req);

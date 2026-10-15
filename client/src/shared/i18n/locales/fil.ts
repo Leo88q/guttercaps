@@ -383,7 +383,7 @@ const fil: Messages = {
     limitPaths: '{n} sa {max} na path command',
     limitSize: '{kb} sa {max} KB',
     over: 'lagpas sa limit — pasimplehin ang tag',
-    done: 'Tapos',
+    done: 'Tapos', saving: 'Sine-save…', saved: 'Na-save ang tag', savedHint: 'makikita na ito ng lahat; titingnan lang ng moderator kung may magre-report', saveFailed: 'Hindi na-save — subukan muli',
   },
   footer: { legal: 'Legal', ages: '18+' },
 

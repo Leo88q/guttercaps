@@ -383,7 +383,7 @@ const id: Messages = {
     limitPaths: '{n} dari {max} perintah path',
     limitSize: '{kb} dari {max} KB',
     over: 'melewati batas — sederhanakan tag',
-    done: 'Selesai',
+    done: 'Selesai', saving: 'Menyimpan…', saved: 'Tag tersimpan', savedHint: 'sudah terlihat semua orang; moderator hanya melihatnya kalau ada laporan', saveFailed: 'Gagal menyimpan — coba lagi',
   },
   footer: { legal: 'Legal', ages: '18+' },
 

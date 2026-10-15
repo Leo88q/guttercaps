@@ -1046,6 +1046,325 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save a tag (user-generated SVG) — rebuilt server-side, never trusted as received
+         * @description The body is one `svg` string. The server parses it and rebuilds a new document from `<path>`
+         *     and `<image href="/art/skate/stencil-*.webp">` elements only: no scripts, no event handlers,
+         *     no external URLs, fills removed, colours restricted to `#rrggbb`. Limits are the ones the
+         *     editor already shows (docs/16 §3.2): 400 path commands, 24 KB after rebuild.
+         *     Post-moderation (§3.3) — the tag is `live` at once and a person reviews it only if reported.
+         *     Saving the same SVG twice from one wallet returns the existing row instead of a new one.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        svg: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description saved (or the identical tag you already had) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Tag"];
+                    };
+                };
+                /** @description tag_empty | tag_forbidden | tag_bad_path | tag_bad_color | tag_too_many_commands | tag_bad_image — the auto-filter refused the payload */
+                400: components["responses"]["Error"];
+                /** @description tag_too_large — more than 24 KB once rebuilt */
+                413: components["responses"]["Error"];
+                /** @description tag_rate — at most 5 tags per hour per wallet */
+                429: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My tags, newest first — every status, including hidden ones (§3.3 the author always sees their own) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description my tags */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items?: components["schemas"]["Tag"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tags/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One tag by id — hidden and removed tags answer 404 to everyone but the author */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description tag id (sha256 of wallet and content hash, first 32 hex chars) */
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description the tag */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Tag"];
+                    };
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tags/{id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report a tag — one report per wallet per tag, then a person decides within 24 h */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        reason: "hate" | "violence" | "sexual" | "ads" | "personal_data" | "other";
+                    };
+                };
+            };
+            responses: {
+                /** @description counted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok?: boolean;
+                            reports?: number;
+                        };
+                    };
+                };
+                /** @description not_found — no live tag with that id */
+                404: components["responses"]["Error"];
+                /** @description own_tag | already_reported */
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tags/{id}/appeal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Appeal a hidden tag — the note goes to the moderator, the decision stays with a person */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        note: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description appeal recorded */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Tag"];
+                    };
+                };
+                /** @description not_hidden — only a hidden tag can be appealed */
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mod/tags/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Moderation queue — live tags with reports, most reported first (admin allowlist; a moderator role is a later step) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description queue */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items?: (components["schemas"]["Tag"] & {
+                                openReports?: number;
+                            })[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mod/tags/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Hide, restore or remove a tag — the only moderation action that exists */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status: "live" | "hidden" | "removed";
+                        note?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description new state */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Tag"];
+                    };
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/packs": {
         parameters: {
             query?: never;
@@ -5797,6 +6116,25 @@ export interface components {
             soulboundDays?: number;
             /** @description non-forfeit games needed to qualify for the ladder payout */
             minGamesForPayout?: number;
+        };
+        /** @description A player's tag — the first user-generated content in the game (docs/16 §3.2) */
+        Tag: {
+            id?: string;
+            wallet?: string;
+            /** @description content hash — dedupe and provable authorship (§3.6) */
+            sha256?: string;
+            /** @enum {string} */
+            status?: "pending" | "live" | "hidden" | "removed";
+            /** Format: date-time */
+            createdAt?: string;
+            /** @description size after the server rebuilt the SVG */
+            bytes?: number;
+            /** @description path commands (M/L), limit 400 */
+            commands?: number;
+            reports?: number;
+            /** @description present only when the tag is public or the viewer is the author */
+            svg?: string;
+            mine?: boolean;
         };
         StakingOverview: {
             emission?: {

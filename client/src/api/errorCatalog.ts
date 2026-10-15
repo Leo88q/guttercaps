@@ -43,6 +43,15 @@ export const API_ERROR_KEYS = {
   campaign_closed: 'failures.preorderCampaignClosed', sold_out: 'failures.preorderSoldOut',
   wallet_cap: 'failures.preorderWalletCap', not_yours: 'failures.preorderNotYours',
   no_ticket: 'failures.noXpTicket', missing_asset: 'failures.missingAsset', chip_not_found: 'failures.chipNotFound',
+  // «Свой тег» (docs/16 §3.2–3.3): отказы автофильтра и модерации. Код узкий, а формулировка
+  // широкая — текст сервера игрок всё равно видит в ErrorNotice рядом с этой строкой.
+  tag_empty: 'failures.requestInvalid', tag_forbidden: 'failures.requestInvalid', tag_bad_path: 'failures.requestInvalid',
+  tag_bad_color: 'failures.requestInvalid', tag_bad_width: 'failures.requestInvalid', tag_bad_fill: 'failures.requestInvalid',
+  tag_bad_stroke: 'failures.requestInvalid', tag_bad_image: 'failures.requestInvalid', tag_bad_geometry: 'failures.requestInvalid',
+  tag_bad_align: 'failures.requestInvalid', tag_too_many_parts: 'failures.requestInvalid', tag_too_many_commands: 'failures.requestInvalid',
+  tag_too_large: 'failures.payloadLarge', tag_rate: 'failures.rateLimited',
+  bad_reason: 'failures.requestInvalid', bad_status: 'failures.requestInvalid',
+  own_tag: 'failures.requestInvalid', already_reported: 'failures.requestInvalid', not_hidden: 'failures.requestInvalid',
   route_locked: 'failures.requestInvalid', no_emergency_hint: 'failures.requestInvalid', no_hints: 'failures.requestInvalid',
   attempt_not_found: 'failures.notFound', attempt_settled: 'failures.requestInvalid', bad_proof: 'failures.requestInvalid', no_skin_entitlement: 'failures.requestInvalid',
   already_granted: 'failures.preorderAlreadyGranted', not_payable: 'failures.preorderNotPayable',
