@@ -791,6 +791,58 @@ paths:
       responses:
         '200': { description: the board, content: { application/json: { schema: { $ref: '#/components/schemas/RigView' } } } }
         '404': { $ref: '#/components/responses/Error', description: rig_private }
+  /me/board:
+    get:
+      tags: [me]
+      summary: My board builder (docs/16 §4.2) — what is worn, what is earned, what the week pays
+      description: |
+        Parts are cosmetic and are *earned*, not bought: runs (§5.1), achievements (§4.7), crew contests
+        (§5.6), quests and the season track. The shop sells bolt-on cosmetics only — a district set is
+        closed by playing, otherwise «build your board» would mean «buy your board».
+      responses:
+        '200': { description: my board, content: { application/json: { schema: { $ref: '#/components/schemas/BoardView' } } } }
+    put:
+      tags: [me]
+      summary: Bolt a part on or take it off — idempotent
+      description: |
+        `slots` is the desired state of the listed slots; anything not listed stays as it is. `part: null`
+        returns the slot to the stock part — taking a part off never leaves a hole, the stock one is always
+        there. Wearing a part you have not earned is a 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                slots:
+                  type: array
+                  items:
+                    type: object
+                    required: [slot]
+                    properties:
+                      slot: { $ref: '#/components/schemas/BoardSlotName' }
+                      part: { type: [string, 'null'], description: 'null returns the slot to the stock part' }
+      responses:
+        '200': { description: the board after the change, content: { application/json: { schema: { $ref: '#/components/schemas/BoardView' } } } }
+        '400': { $ref: '#/components/responses/Error', description: 'bad_slot | bad_part' }
+        '403': { $ref: '#/components/responses/Error', description: part_not_owned }
+  /board/{wallet}:
+    get:
+      tags: [board]
+      security: []
+      summary: Someone's built board (docs/16 §4.2) — 404 while the owner has not switched the showcase on
+      description: |
+        Only what is worn: the inventory stays private. The switch is the same one as the cap showcase
+        (§4.5) — one «show my board» toggle for both screens.
+      parameters:
+        - name: wallet
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Pubkey' }
+      responses:
+        '200': { description: the built board, content: { application/json: { schema: { $ref: '#/components/schemas/BoardLoadout' } } } }
+        '404': { $ref: '#/components/responses/Error', description: rig_private }
   /tags/{id}/svg:
     get:
       tags: [tags]
@@ -2519,6 +2571,8 @@ components:
         the same number that opens slots 2 and 3 at 12 and 36.
       properties:
         wallet: { type: string }
+        board:
+          $ref: '#/components/schemas/BoardLoadout'
         rider:
           $ref: '#/components/schemas/Rider'
         public: { type: boolean, description: 'owner has switched the public board on (§4.5)' }
@@ -2557,6 +2611,56 @@ components:
             level: { type: integer }
             skin: { type: [string, 'null'] }
             founder: { type: boolean }
+    BoardSlotName:
+      type: string
+      enum: [deck, trucks, wheels, grip, bolts, sticker]
+      description: 'the six slots of the board (docs/16 §4.2): the first four make a district set'
+    BoardLoadout:
+      type: object
+      description: |
+        What is bolted on the board. Public: the showcase (§4.5) shows the built deck, not the inventory.
+        A part is cosmetic — no weight, no chance, no yield (decision 1 in §0.3); a complete district set
+        only lights the board in that district's colour.
+      properties:
+        deck: { type: string, description: 'part id, e.g. deck_d3 or deck_stock' }
+        trucks: { type: string }
+        wheels: { type: string }
+        grip: { type: string }
+        bolts: { type: string }
+        sticker: { type: string }
+        set: { type: integer, nullable: true, description: 'district index when all four main parts come from one district, else null' }
+    BoardPartRow:
+      type: object
+      description: one earned part in the owner's inventory (private — never shown on a public board)
+      properties:
+        part: { type: string }
+        qty: { type: integer, description: 'copies held, capped at 9' }
+        source: { type: string, enum: [stock, run, achievement, crew, quest, track, shop], description: 'where it came from — the first source is kept, later duplicates do not rewrite it' }
+        createdAt: { type: string, format: date-time }
+    BoardView:
+      type: object
+      description: |
+        My board (docs/16 §4.2): what is worn, what is earned, and what the week is offering.
+        `week` is the district of the week — one for the whole city, so a player can see what a
+        silver run pays this week and decide whether to ride for it.
+      properties:
+        wallet: { type: string }
+        deck: { type: string }
+        trucks: { type: string }
+        wheels: { type: string }
+        grip: { type: string }
+        bolts: { type: string }
+        sticker: { type: string }
+        set: { type: integer, nullable: true }
+        owned: { type: array, items: { $ref: '#/components/schemas/BoardPartRow' } }
+        week:
+          type: object
+          properties:
+            district: { type: integer }
+            part: { type: string, description: 'the part a silver run pays this week — the first slot still missing from that district' }
+            claimed: { type: boolean, description: 'the part for this week is already earned — one per week' }
+            missing: { type: array, items: { $ref: '#/components/schemas/BoardSlotName' }, description: 'which slots of the week district are still empty' }
+        weekProgress: { type: object, properties: { have: { type: integer }, total: { type: integer } } }
     MyWall:
       type: object
       properties:

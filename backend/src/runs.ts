@@ -29,6 +29,7 @@ import { grantGridHints, grantGridValve } from './grid.ts';
 import { addPassXp, passSeasonId } from './pass.ts';
 import { dayIndex, weekIndex } from './quests.ts';
 import { recordEvent } from './worldMetrics.ts';
+import { grantWeeklyRunPart } from './board.ts';
 
 const DAY = 86_400;
 /** Сколько живёт реплей (docs/16 §5.2): 14 дней, потом только очки и хеш. */
@@ -129,7 +130,9 @@ export interface RunRow {
 export interface SubmitResult {
   run: RunRow;
   /** Что дал именно этот заезд, а не «что у игрока есть». */
-  granted: { passXp: number; hints: number; valve: number; tier: LineTier };
+  /** Что дал именно этот заезд, а не «что у игрока есть». `part` — районная
+   *  часть доски (§4.2), null когда неделя уже закрыта или порог не взят. */
+  granted: { passXp: number; hints: number; valve: number; tier: LineTier; part: string | null };
   state: LineState;
 }
 
@@ -205,6 +208,12 @@ export function submitRun(db: Db, wallet: string, body: Record<string, unknown> 
       }
     }
 
+    // Награда 3: часть доски (§4.2). Один раз в неделю и только за «проехал
+    // линию» — ниже silver доска не собирается: «выехал и упал» не то же, что
+    // «проехал». Выдаётся недостающий слот района недели, а не всегда дека,
+    // поэтому повтор недели не складывает в инвентарь четыре деки подряд.
+    const part = tier === 'none' ? null : grantWeeklyRunPart(db, wallet, tier, t);
+
     recordEvent(db, wallet, 'line', 'run', { score: res.score, paid, tier, bails: res.bails }, t);
 
     return {
@@ -212,7 +221,7 @@ export function submitRun(db: Db, wallet: string, body: Record<string, unknown> 
         id, day, week: weekIndex(t), score: res.score, tricks: res.tricks, bestCombo: res.bestCombo,
         bails: res.bails, paid, tier, submittedAt: iso(t),
       },
-      granted: { passXp: xp, hints, valve, tier },
+      granted: { passXp: xp, hints, valve, tier, part: part?.part ?? null },
       state: lineState(db, wallet, t),
     };
   });

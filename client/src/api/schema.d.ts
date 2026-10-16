@@ -2613,6 +2613,130 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My board builder (docs/16 §4.2) — what is worn, what is earned, what the week pays
+         * @description Parts are cosmetic and are *earned*, not bought: runs (§5.1), achievements (§4.7), crew contests
+         *     (§5.6), quests and the season track. The shop sells bolt-on cosmetics only — a district set is
+         *     closed by playing, otherwise «build your board» would mean «buy your board».
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description my board */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BoardView"];
+                    };
+                };
+            };
+        };
+        /**
+         * Bolt a part on or take it off — idempotent
+         * @description `slots` is the desired state of the listed slots; anything not listed stays as it is. `part: null`
+         *     returns the slot to the stock part — taking a part off never leaves a hole, the stock one is always
+         *     there. Wearing a part you have not earned is a 403.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        slots?: {
+                            slot: components["schemas"]["BoardSlotName"];
+                            /** @description null returns the slot to the stock part */
+                            part?: string | null;
+                        }[];
+                    };
+                };
+            };
+            responses: {
+                /** @description the board after the change */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BoardView"];
+                    };
+                };
+                /** @description bad_slot | bad_part */
+                400: components["responses"]["Error"];
+                /** @description part_not_owned */
+                403: components["responses"]["Error"];
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/board/{wallet}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Someone's built board (docs/16 §4.2) — 404 while the owner has not switched the showcase on
+         * @description Only what is worn: the inventory stays private. The switch is the same one as the cap showcase
+         *     (§4.5) — one «show my board» toggle for both screens.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    wallet: components["schemas"]["Pubkey"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description the built board */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BoardLoadout"];
+                    };
+                };
+                /** @description rig_private */
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tags/{id}/svg": {
         parameters: {
             query?: never;
@@ -7962,6 +8086,7 @@ export interface components {
          */
         RigView: {
             wallet?: string;
+            board?: components["schemas"]["BoardLoadout"];
             rider?: components["schemas"]["Rider"];
             /** @description owner has switched the public board on (§4.5) */
             public?: boolean;
@@ -8001,6 +8126,69 @@ export interface components {
                 skin?: string | null;
                 founder?: boolean;
             } | null;
+        };
+        /**
+         * @description the six slots of the board (docs/16 §4.2): the first four make a district set
+         * @enum {string}
+         */
+        BoardSlotName: "deck" | "trucks" | "wheels" | "grip" | "bolts" | "sticker";
+        /**
+         * @description What is bolted on the board. Public: the showcase (§4.5) shows the built deck, not the inventory.
+         *     A part is cosmetic — no weight, no chance, no yield (decision 1 in §0.3); a complete district set
+         *     only lights the board in that district's colour.
+         */
+        BoardLoadout: {
+            /** @description part id, e.g. deck_d3 or deck_stock */
+            deck?: string;
+            trucks?: string;
+            wheels?: string;
+            grip?: string;
+            bolts?: string;
+            sticker?: string;
+            /** @description district index when all four main parts come from one district, else null */
+            set?: number | null;
+        };
+        /** @description one earned part in the owner's inventory (private — never shown on a public board) */
+        BoardPartRow: {
+            part?: string;
+            /** @description copies held, capped at 9 */
+            qty?: number;
+            /**
+             * @description where it came from — the first source is kept, later duplicates do not rewrite it
+             * @enum {string}
+             */
+            source?: "stock" | "run" | "achievement" | "crew" | "quest" | "track" | "shop";
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        /**
+         * @description My board (docs/16 §4.2): what is worn, what is earned, and what the week is offering.
+         *     `week` is the district of the week — one for the whole city, so a player can see what a
+         *     silver run pays this week and decide whether to ride for it.
+         */
+        BoardView: {
+            wallet?: string;
+            deck?: string;
+            trucks?: string;
+            wheels?: string;
+            grip?: string;
+            bolts?: string;
+            sticker?: string;
+            set?: number | null;
+            owned?: components["schemas"]["BoardPartRow"][];
+            week?: {
+                district?: number;
+                /** @description the part a silver run pays this week — the first slot still missing from that district */
+                part?: string;
+                /** @description the part for this week is already earned — one per week */
+                claimed?: boolean;
+                /** @description which slots of the week district are still empty */
+                missing?: components["schemas"]["BoardSlotName"][];
+            };
+            weekProgress?: {
+                have?: number;
+                total?: number;
+            };
         };
         MyWall: {
             eligibility?: {

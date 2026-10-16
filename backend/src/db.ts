@@ -1052,6 +1052,44 @@ CREATE TABLE IF NOT EXISTS rig_exhibit (
 );
 CREATE INDEX IF NOT EXISTS idx_rig_exhibit_asset ON rig_exhibit(asset);
 
+-- Конструктор доски (docs/16 §4.2): части добываются игрой и надеваются на доску.
+-- Владение и «что надето» — разные таблицы по той же причине, по которой
+-- экспозиция крышек отделена от самих крышек: доску пересобирают часто, а
+-- список добытого растёт редко и должен считаться запросом (метрика §12).
+-- Часть не сжигается и не передаётся — это косметика, а не предмет (решение 1).
+CREATE TABLE IF NOT EXISTS board_parts (
+  wallet     TEXT    NOT NULL,
+  part       TEXT    NOT NULL,
+  qty        INTEGER NOT NULL DEFAULT 1,
+  source     TEXT    NOT NULL,             -- stock | run | achievement | crew | quest | track | shop
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (wallet, part)
+);
+CREATE INDEX IF NOT EXISTS idx_board_parts_source ON board_parts(source);
+
+-- Что надето. Хранятся только слоты, которые игрок менял: пропущенный слот
+-- читается как стоковый, поэтому доска всегда собрана и никогда не показывает
+-- дыру вместо деки.
+CREATE TABLE IF NOT EXISTS board_loadout (
+  wallet     TEXT    NOT NULL,
+  slot       TEXT    NOT NULL,             -- deck | trucks | wheels | grip | bolts | sticker
+  part       TEXT    NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (wallet, slot)
+);
+
+-- Одна районная часть за заезд в неделю. PK (wallet, week) и есть проверка
+-- «уже выдавали»: повторный заезд той же недели не проходит вставку.
+CREATE TABLE IF NOT EXISTS board_run_grants (
+  wallet     TEXT    NOT NULL,
+  week       INTEGER NOT NULL,
+  part       TEXT    NOT NULL,
+  granted_at INTEGER NOT NULL,
+  PRIMARY KEY (wallet, week)
+);
+CREATE INDEX IF NOT EXISTS idx_board_run_grants_week ON board_run_grants(week);
+
 -- Телеметрия скейт-мира (docs/16 §12): без неё правило-гейт из §0.2 нечем
 -- проверять — фича без когортной метрики не принята, а не «принята на веру».
 -- Событие — одна строка на действие игрока; когорты считаются из неё запросом,
@@ -1059,7 +1097,7 @@ CREATE INDEX IF NOT EXISTS idx_rig_exhibit_asset ON rig_exhibit(asset);
 CREATE TABLE IF NOT EXISTS feature_events (
   id       INTEGER PRIMARY KEY AUTOINCREMENT,
   wallet   TEXT    NOT NULL,
-  feature  TEXT    NOT NULL,             -- wall | exhibit | tag | run (§5)
+  feature  TEXT    NOT NULL,             -- wall | exhibit | tag | run | builder | rider | line (§4-5)
   kind     TEXT    NOT NULL,             -- claim | renew | release | expire | set | unset | public_on | public_off | save | report | hide
   at       INTEGER NOT NULL,
   meta     TEXT                          -- JSON: район, слот, редкость — что угодно, в отчёт не идёт

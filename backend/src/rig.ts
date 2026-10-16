@@ -22,6 +22,7 @@ import { ServiceError } from './services.ts';
 import { recordEvent } from './worldMetrics.ts';
 import { jsonAt } from './sql.ts';
 import { PROFILE_THEMES } from '@guttercaps/economy';
+import { boardLoadout, type BoardLoadout } from './board.ts';
 
 export const RIG_SLOTS = 3;
 /** Сколько собранных крышек открывает слот: первый сразу, второй с 12, третий с 36 (половина коллекции). */
@@ -56,6 +57,13 @@ export interface RigSlotView {
 }
 export interface RigView {
   wallet: string;
+  /**
+   * Доска, собранная в конструкторе (§4.2): часть деки, траков, колёс и грипа —
+   * добытая косметика. Здесь она нужна потому, что крышки экспозиции лежат
+   * именно на этой деке: чужая витрина показывает собранную доску целиком, а
+   * инвентарь частей (`/me/board`) остаётся приватным.
+   */
+  board: BoardLoadout;
   /** Райдер (§4.6): силуэт района + цвет подсветки из купленной косметики. */
   rider: Rider;
   /** Витрина включена владельцем (§4.5): публичная страница /rig/:wallet живёт только с этим флагом. */
@@ -139,7 +147,7 @@ export function rigView(db: Db, wallet: string, withCaps = true): RigView {
     });
     if (!unlocked && next === null) next = { slot: i, need: unlockAt - count };
   }
-  return { wallet, rider: riderOf(db, wallet), public: rigPublic(db, wallet), caps: withCaps ? caps : [], slots, next };
+  return { wallet, board: boardLoadout(db, wallet), rider: riderOf(db, wallet), public: rigPublic(db, wallet), caps: withCaps ? caps : [], slots, next };
 }
 
 // ------------------------------------------------------------------ витрина

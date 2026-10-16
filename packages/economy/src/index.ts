@@ -18,3 +18,4 @@ export * from './gridEngine.ts';
 export * from './achievements.ts';
 export * from './runs.ts';
 export * from './crew.ts';
+export * from './board.ts';

@@ -1726,3 +1726,42 @@ model GutterPotDraw {
   @@index([drawnAt])
   @@map("gutter_pot_draws")
 }
+
+/// Конструктор доски (docs/16 §4.2): добытые части. Часть — косметика, она не
+/// сжигается и не передаётся; `source` — первый источник, за который её дали.
+model BoardPart {
+  wallet    String
+  part      String
+  qty       Int    @default(1)
+  source    String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  @@id([wallet, part])
+  @@index([source])
+  @@map("board_parts")
+}
+
+/// Что надето на доску. Хранятся только слоты, которые игрок менял: пропущенный
+/// слот читается как стоковый, поэтому доска никогда не показывает дыру.
+model BoardLoadout {
+  wallet    String
+  slot      String
+  part      String
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  @@id([wallet, slot])
+  @@map("board_loadout")
+}
+
+/// Одна районная часть за заезд в неделю: PK и есть проверка «уже выдавали».
+model BoardRunGrant {
+  wallet    String
+  week      Int
+  part      String
+  grantedAt Int    @map("granted_at")
+
+  @@id([wallet, week])
+  @@index([week])
+  @@map("board_run_grants")
+}

@@ -27,6 +27,7 @@ import * as tags from './tags.ts';
 import * as wall from './wall.ts';
 import * as wallBoard from './wallBoard.ts';
 import * as rig from './rig.ts';
+import * as board from './board.ts';
 import * as worldMetrics from './worldMetrics.ts';
 import * as achievements from './achievements.ts';
 import * as runs from './runs.ts';
@@ -853,6 +854,24 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.get('/rig/:wallet', (req, res) => {
     if (!isSolanaAddress(req.params.wallet)) throw new ServiceError(400, 'bad_request', 'wallet must be an address');
     res.json(rig.publicRig(db, req.params.wallet));
+  });
+
+  // --------------------------------------------------- конструктор доски (docs/16 §4.2)
+  // Части доски — косметика, которую добывают игрой: заездом (§5.1), достижением
+  // (§4.7), командным конкурсом (§5.6). Купить можно только навесное; сет района
+  // собирается игрой, иначе «собери доску» означало бы «купи доску».
+  v1.get('/me/board', requireAuth, (req, res) => { res.json(board.boardView(db, req.session!.wallet)); });
+  v1.put('/me/board', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    const b = req.body as { slots?: Array<{ slot?: string; part?: string | null }> };
+    res.json(board.setBoard(db, req.session!.wallet,
+      (Array.isArray(b.slots) ? b.slots : []).map((s) => ({ slot: String(s?.slot ?? ''), part: s?.part ?? null }))));
+  });
+  v1.get('/board/:wallet', (req, res) => {
+    if (!isSolanaAddress(req.params.wallet)) throw new ServiceError(400, 'bad_request', 'wallet must be an address');
+    // Чужая доска видна на тех же условиях, что и витрина крышек (§4.5): один
+    // переключатель «показывать мою доску» на оба экрана.
+    if (!rig.rigPublic(db, req.params.wallet)) throw new ServiceError(404, 'rig_private', 'This board is not public');
+    res.json({ wallet: req.params.wallet, ...board.boardLoadout(db, req.params.wallet) });
   });
 
   // ------------------------------------------------------------ admin (docs/03 §3.5, T-B-46): SIWS session ∈ ADMIN_WALLETS, every call audited,
