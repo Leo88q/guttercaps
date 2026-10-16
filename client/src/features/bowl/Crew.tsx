@@ -78,9 +78,7 @@ function CrewCard({ crew, onRename, onLeave, onReport, reporting }: {
         </div>
       </div>
       <div className="tiny muted">{t('crew.weekNote')}</div>
-      {!crew.counts && crew.memberCount !== undefined && (
-        <div className="tiny muted">{t(crew.memberCount >= (crew.minMembers ?? CREW.minMembers) ? 'crew.notRanked' : 'crew.notRanked')}</div>
-      )}
+      {!crew.counts && <div className="tiny muted">{t('crew.notRanked')}</div>}
 
       <div className="crew-roster">
         {filled.map((m) => (
@@ -256,8 +254,10 @@ export default function Crew() {
   };
   const submitLeave = async () => {
     try {
-      await leave.mutateAsync();
-      toast({ kind: 'info', title: { key: 'crew.left' } });
+      // Капитан, уходящий из живой команды, передаёт роль: игрок должен знать,
+      // что команда осталась с капитаном, а не обезглавленной.
+      const out = await leave.mutateAsync();
+      toast({ kind: 'info', title: { key: out?.captain ? 'crew.handover' : 'crew.left' } });
     } catch {
       toast({ kind: 'error', title: { key: 'crew.failed' } });
     }

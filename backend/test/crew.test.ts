@@ -268,6 +268,6 @@ describe('команда: модерация имени — одна очере�
     expect(row!.reporter).toBe(viewer);
     fails(() => crew.reportCrew(db, viewer, 'Reported', 'again'), 'already_reported');
     fails(() => crew.reportCrew(db, viewer, 'Reported', ''), 'bad_reason');
-    fails(() => crew.reportCrew(db, kp(), 'no-such-crew'), 'no_crew');
+    fails(() => crew.reportCrew(db, kp(), 'no-such-crew', 'impersonating a district crew'), 'no_crew');
   });
 });

@@ -53,13 +53,25 @@ export const crewNameKey = (name: string): string => name.trim().toLowerCase();
  * придуманы рядом с числами заезда, а произведены от них, поэтому при правке
  * LINE_TIERS командные пороги поедут вместе с ними.
  */
-export const CREW_TIERS: ReadonlyArray<{ tier: LineTier; score: number }> = LINE_TIERS.map((t) => ({
-  tier: t.tier,
-  score: t.score * CREW.boardCountingMembers,
-}));
+/**
+ * Пороги командного результата — функция, а не константа уровня модуля.
+ *
+ * Почему так: `packages/economy` импортируется клиентом через общий баррель
+ * `index.ts`. Константа, посчитанная при загрузке модуля (`LINE_TIERS.map(...)`),
+ * — это побочный эффект уровня модуля, и Rollup из-за него не может выбросить
+ * файл из entry-графа: вместе с командой в критический путь первого экрана
+ * уезжал симулятор линии целиком (+3,5 КБ gz, замер `npm run bundle:check`).
+ * Ленивая функция того же стоит: считается один раз, при первом вызове.
+ */
+let cachedTiers: ReadonlyArray<{ tier: LineTier; score: number }> | null = null;
+export function crewTiers(): ReadonlyArray<{ tier: LineTier; score: number }> {
+  if (cachedTiers) return cachedTiers;
+  cachedTiers = LINE_TIERS.map((t) => ({ tier: t.tier, score: t.score * CREW.boardCountingMembers }));
+  return cachedTiers;
+}
 
 export function crewTier(score: number): LineTier {
-  for (const t of CREW_TIERS) if (score >= t.score) return t.tier;
+  for (const t of crewTiers()) if (score >= t.score) return t.tier;
   return 'none';
 }
 

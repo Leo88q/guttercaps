@@ -126,7 +126,7 @@ export const useCrewCheck = (name: string) =>
   });
 
 /** Любое изменение команды перечитывает состав, мою карточку и доску. */
-function useCrewAction<T>(fn: (b: T) => Promise<unknown>) {
+function useCrewAction<T, R>(fn: (b: T) => Promise<R>) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: fn,
