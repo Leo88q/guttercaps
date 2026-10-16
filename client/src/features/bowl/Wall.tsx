@@ -21,6 +21,7 @@ import { useClaimSlot, useMyTags, useMyWall, useReleaseSlot, useRenewSlot, useRe
 import { fmtLocale, useLocale } from '@/shared/i18n';
 import { Pill, Modal } from '@/shared/ui/primitives';
 import { shortKey } from '@/shared/lib/format';
+import { sanitizeInlineSvg, TagTimeLapse, useTagSvg } from './TagTimeLapse';
 import './wall.css';
 
 const REASONS: TagReportReason[] = ['hate', 'violence', 'sexual', 'ads', 'personal_data', 'other'];
@@ -95,6 +96,11 @@ export default function Wall() {
   }, [view.data, mine.data, idx]);
   const mySlot = me?.mySlot ?? null;
   const opened = open === null ? null : bySlot.get(open) ?? null;
+  /** Перезапуск таймлапса: по кнопке «ещё раз» тег рисуется заново. */
+  const [replay, setReplay] = useState(0);
+  const { svg: tagSvg } = useTagSvg(opened?.tagId ? tagImageUrl(opened.tagId) : undefined);
+  // Инлайним только то, что прошло санитайзер; иначе тег остаётся картинкой.
+  const timelapse = useMemo(() => (tagSvg ? sanitizeInlineSvg(tagSvg) : ''), [tagSvg]);
   const mineOpened = opened !== null && mySlot === open;
   const busy = claim.isPending || renew.isPending || release.isPending || report.isPending;
 
@@ -185,7 +191,12 @@ export default function Wall() {
             <div className="strong">{opened ? t('wall.slotTitle', { n: open }) : t('wall.slotEmptyTitle', { n: open })}</div>
             {opened ? (
               <>
-                <img className="wall-preview" src={tagImageUrl(opened.tagId ?? '')} alt={t('wall.tagAlt', { who: shortKey(opened.wallet ?? '') })} />
+                {/* Таймлапс: тег рисует себя сам, в порядке мазков. Если текст
+                    тега не достался — остаётся старая картинка. */}
+                {timelapse
+                  ? <TagTimeLapse svg={timelapse} className="wall-preview" runId={replay} />
+                  : <img className="wall-preview" src={tagImageUrl(opened.tagId ?? '')} alt={t('wall.tagAlt', { who: shortKey(opened.wallet ?? '') })} />}
+                <button type="button" className="btn btn-sm btn-ghost" onClick={() => setReplay((n) => n + 1)}>{t('wall.replay')}</button>
                 <div className="tiny muted">
                   {shortKey(opened.wallet ?? '')} · {fmtLocale.dateTime(Date.parse(opened.appliedAt ?? ''), locale)}
                   {' · '}{t('wall.daysLeft', { n: Math.max(0, Math.ceil((Date.parse(opened.expiresAt ?? '') - Date.now()) / 86_400_000)) })}

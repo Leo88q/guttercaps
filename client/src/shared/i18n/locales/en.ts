@@ -451,6 +451,7 @@ const en = {
     failed: 'Could not claim the slot — try again',
     pickTag: 'Choose your tag',
     goEditor: 'Draw a tag',
+    replay: 'Draw it again',
     renew: 'Renew',
     release: 'Take down',
     report: 'Report',

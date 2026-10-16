@@ -434,6 +434,7 @@ const vi: Messages = {
     failed: 'Không chiếm được ô — thử lại',
     pickTag: 'Chọn tag của bạn',
     goEditor: 'Vẽ tag',
+    replay: 'Vẽ lại',
     renew: 'Gia hạn',
     release: 'Gỡ xuống',
     report: 'Báo cáo',

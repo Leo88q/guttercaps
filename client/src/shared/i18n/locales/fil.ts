@@ -434,6 +434,7 @@ const fil: Messages = {
     failed: 'Hindi nakuha ang slot — subukan muli',
     pickTag: 'Piliin ang tag mo',
     goEditor: 'Gumuhit ng tag',
+    replay: 'Iguhit muli',
     renew: 'I-renew',
     release: 'Alisin',
     report: 'I-report',

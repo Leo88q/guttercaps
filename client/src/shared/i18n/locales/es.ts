@@ -434,6 +434,7 @@ const es: Messages = {
     failed: 'No se pudo ocupar el hueco — inténtalo otra vez',
     pickTag: 'Elige tu tag',
     goEditor: 'Dibujar un tag',
+    replay: 'Dibujar de nuevo',
     renew: 'Renovar',
     release: 'Quitar',
     report: 'Reportar',

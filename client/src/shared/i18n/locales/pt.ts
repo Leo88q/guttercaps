@@ -434,6 +434,7 @@ const pt: Messages = {
     failed: 'Não foi possível ocupar o espaço — tenta outra vez',
     pickTag: 'Escolhe a tua tag',
     goEditor: 'Desenhar uma tag',
+    replay: 'Desenhar de novo',
     renew: 'Renovar',
     release: 'Tirar',
     report: 'Denunciar',

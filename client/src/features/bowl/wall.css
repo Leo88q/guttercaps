@@ -59,6 +59,12 @@
   border: 1px solid var(--gc-line);
   border-radius: 8px;
 }
+/* Таймлапс — инлайновый SVG в том же месте, где была картинка: тот же размер,
+   та же рамка. Движение делает WAAPI по stroke-dashoffset, CSS здесь только
+   про то, чтобы span вёл себя как блок и не раздвигал вёрстку. */
+.tag-timelapse { display: block; }
+.tag-timelapse.wall-preview { aspect-ratio: 2 / 1; }
+.tag-timelapse > svg { display: block; width: 100%; height: 100%; }
 
 @media (prefers-reduced-motion: reduce) {
   .wall-slot { transition: none; }

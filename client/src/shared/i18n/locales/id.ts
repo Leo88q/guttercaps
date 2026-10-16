@@ -434,6 +434,7 @@ const id: Messages = {
     failed: 'Tidak bisa mengambil slot — coba lagi',
     pickTag: 'Pilih tagmu',
     goEditor: 'Gambar tag',
+    replay: 'Gambar ulang',
     renew: 'Perpanjang',
     release: 'Turunkan',
     report: 'Laporkan',
