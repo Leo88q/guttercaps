@@ -215,5 +215,14 @@
   "themeNotOwned": "Este tema ainda não é seu: compre na loja e depois use.",
   "achievementNotEarned": "Ainda não conquistado: o contador não chegou ao alvo.",
   "lineRunsExhausted": "As corridas grátis de hoje acabaram: uma extra custa 30 $CG (queimados).",
-  "lineCreditCap": "Esse é o limite diário de corridas pagas."
+  "lineCreditCap": "Esse é o limite diário de corridas pagas.",
+  "crewNoCrew": "Não existe nenhuma turma com esse nome.",
+  "crewInvalidName": "O nome da turma tem 3–16 caracteres: letras, números e sublinhado.",
+  "crewAlreadyIn": "Você já está numa turma — saia dela primeiro.",
+  "crewNotCaptain": "Só o capitão pode fazer isso.",
+  "crewBadCode": "Nenhuma turma atende por esse código de convite.",
+  "crewFull": "Esta turma já tem dez riders.",
+  "crewDistrictFull": "Todos os segmentos de turma deste distrito estão ocupados.",
+  "crewCodeFailed": "Não foi possível gerar o código de convite — tente de novo.",
+  "crewEndpoint": "Os nomes de turma são tratados na tela da turma."
 }

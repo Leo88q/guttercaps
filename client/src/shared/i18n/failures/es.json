@@ -215,5 +215,14 @@
   "themeNotOwned": "Este tema aún no es tuyo: cómpralo en la tienda y luego úsalo.",
   "achievementNotEarned": "Aún no se ha ganado: el contador del logro no llegó al objetivo.",
   "lineRunsExhausted": "Los intentos gratis de hoy se acabaron: uno extra cuesta 30 $CG (quemados).",
-  "lineCreditCap": "Ese es el límite diario de carreras de pago."
+  "lineCreditCap": "Ese es el límite diario de carreras de pago.",
+  "crewNoCrew": "No existe ninguna crew con ese nombre.",
+  "crewInvalidName": "El nombre de la crew tiene 3–16 caracteres: letras, números y guion bajo.",
+  "crewAlreadyIn": "Ya estás en una crew: sal primero de ella.",
+  "crewNotCaptain": "Solo el capitán puede hacerlo.",
+  "crewBadCode": "Ninguna crew responde a ese código de invitación.",
+  "crewFull": "Esta crew ya tiene diez riders.",
+  "crewDistrictFull": "Todos los segmentos de crew de este distrito están ocupados.",
+  "crewCodeFailed": "No se pudo generar el código de invitación: inténtalo de nuevo.",
+  "crewEndpoint": "Los nombres de crew se gestionan en la pantalla de la crew."
 }

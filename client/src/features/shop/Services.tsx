@@ -70,6 +70,10 @@ export function Services() {
               </div>
               {s.id === 'handle' ? (
                 <Link to="/profile" className="btn" style={{ textAlign: 'center' }}>{t('profile.handle.get')}</Link>
+              ) : s.id === 'crewCharter' || s.id === 'crewRename' ? (
+                // docs/16 §5.6: имя команды выдаётся через /v1/crew, а не общим
+                // клэймом, — у хартии есть побочный эффект (строка в crews).
+                <Link to="/bowl/crew" className="btn" style={{ textAlign: 'center' }}>{t('crew.open')}</Link>
               ) : (
                 <SprayNozzleButton disabled={isOwned || passActive || left === 0} onClick={() => (connected ? setSel(s) : setVisible(true))}>
                   {isOwned ? t('services.owned') : passActive ? t('services.active') : t('services.buy')}

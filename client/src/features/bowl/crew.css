@@ -1,0 +1,98 @@
+/* Команды (docs/16 §5.6): карточка, состав, доска. */
+
+.crew-scores {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--gc-line);
+  border-bottom: 1px solid var(--gc-line);
+}
+
+.crew-scores > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Состав: три колонки — кто, сколько принёс, попал ли в пятёрку. Ростер —
+   десять строк максимум, поэтому таблица, а не скролл. */
+.crew-roster {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.crew-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 13px;
+}
+
+.crew-row.counting {
+  background: rgba(0, 255, 178, 0.07);
+  box-shadow: inset 2px 0 0 var(--cg-acid-green);
+}
+
+.crew-wallet {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crew-code {
+  padding: 2px 6px;
+  border: 1px solid var(--gc-line);
+  border-radius: 4px;
+  letter-spacing: 0.08em;
+}
+
+.crew-join {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.crew-join .input {
+  max-width: 160px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* Доска: та же сетка, что у командной карточки, но строки — ссылки. */
+.crew-board {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.crew-board-head,
+.crew-board-row {
+  display: grid;
+  grid-template-columns: 32px 1fr 56px 72px;
+  gap: 8px;
+  align-items: baseline;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.crew-board-row {
+  background: rgba(255, 255, 255, 0.02);
+  text-decoration: none;
+  color: inherit;
+}
+
+.crew-board-row:hover,
+.crew-board-row:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.crew-board-row span:last-child {
+  text-align: right;
+}

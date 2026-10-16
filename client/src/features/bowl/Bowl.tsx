@@ -121,6 +121,18 @@ export default function Bowl() {
         </div>
       </section>
 
+      {/* Команда (docs/16 §5.6): имя, состав и сегмент стены. Хартия покупает
+          имя и доску — стену всё так же зарабатывают ездой (§3.4). */}
+      <section className="card stack-sm">
+        <div className="strong">{t('crew.title')}</div>
+        <div className="small muted">{t('crew.intro')}</div>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <Link to="/bowl/crew" className="btn btn-sm">
+            {t('crew.open')}
+          </Link>
+        </div>
+      </section>
+
       {/* Линия (docs/16 §5.1): чаша дня одна на всех, три бесплатных заезда. */}
       <section className="card stack-sm">
         <div className="strong">{t('bowl.lineTitle')}</div>

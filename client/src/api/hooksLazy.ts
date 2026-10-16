@@ -91,3 +91,54 @@ export const useSetRider = () => {
 export type TagReportReason = 'hate' | 'violence' | 'sexual' | 'ads' | 'personal_data' | 'other';
 export const useReportTag = () =>
   useMutation({ mutationFn: (b: { id: string; reason: TagReportReason }) => api.post('/tags/{id}/report', { reason: b.reason }, { path: { id: b.id } }) });
+
+// ---------------------------------------------------------------- команды (docs/16 §5.6)
+export type CrewView = ResponseOf<'/crew/{name}', 'get'>;
+export type CrewMember = NonNullable<CrewView['members']>[number];
+export type CrewBoard = ResponseOf<'/crew/board', 'get'>;
+export type CrewCheck = ResponseOf<'/crew/check', 'get'>;
+
+/** Моя команда (или null: состав — не обязанность). */
+export const useMyCrew = () =>
+  useQuery({ queryKey: ['crew', 'me'], queryFn: () => api.get('/me/crew'), enabled: useAuthenticated(), staleTime: 30_000 });
+
+/** Чужая карточка команды: имя и состав — не секрет, код приглашения — да. */
+export const useCrew = (name: string | undefined) =>
+  useQuery({
+    queryKey: ['crew', name],
+    queryFn: () => api.get('/crew/{name}', { path: { name: name! } }),
+    enabled: !!name, retry: false, staleTime: 60_000,
+  });
+
+export const useCrewBoard = () =>
+  useQuery({ queryKey: ['crew', 'board'], queryFn: () => api.get('/crew/board'), staleTime: 5 * 60_000 });
+
+/**
+ * Проверка имени с бронью на время оплаты. Запрос уходит только с трёх символов:
+ * на каждый удар по клавиатуре слать его незачем, а ответ «занято» на 'Gu'
+ * игроку всё равно ни о чём не говорит.
+ */
+export const useCrewCheck = (name: string) =>
+  useQuery({
+    queryKey: ['crew', 'check', name],
+    queryFn: () => api.get('/crew/check', { query: { name } }),
+    enabled: name.length >= 3, retry: false, staleTime: 10_000,
+  });
+
+/** Любое изменение команды перечитывает состав, мою карточку и доску. */
+function useCrewAction<T>(fn: (b: T) => Promise<unknown>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['crew'] });
+    },
+  });
+}
+export const useCharterCrew = () => useCrewAction((b: { name: string; district: number; signature: string }) => api.post('/crew/charter', b));
+export const useRenameCrew = () => useCrewAction((b: { name: string; signature: string }) => api.post('/crew/rename', b));
+export const useJoinCrew = () => useCrewAction((b: { code: string }) => api.post('/crew/join', b));
+export const useLeaveCrew = () => useCrewAction(() => api.post('/crew/leave', undefined));
+/** Жалоба на имя команды — та же очередь, что у тегов (SLA 24 ч). */
+export const useReportCrew = () =>
+  useMutation({ mutationFn: (b: { name: string; reason: string }) => api.post('/crew/{name}/report', { reason: b.reason }, { path: { name: b.name } }) });

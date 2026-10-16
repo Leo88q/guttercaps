@@ -2,7 +2,7 @@ import { isRightsPath, mockRights } from './rights';
 // Deterministic in-browser backend used when VITE_API_MOCK=true or when the
 // real API is unreachable in dev. Data is derived from @guttercaps/economy
 // and shared/lib/lore so what you see matches the modelled numbers.
-import { ACHIEVEMENTS, BOOSTER, CHIP_XP, DAILY_QUESTS, LINE, EMISSION_GUARD, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, FEES, FUSION_RECIPES, FX, GRID, GRID as GRID_RULES, LOCK_TIERS, MATCHMAKING, PACKS, PASS_TRACK, PERMANENT_QUESTS, PROFILE_THEME_BY_ID, RARITY_PROFILES, REFERRAL, SEASON, SERVICES, SKIN_BY_ID, WEEKLY_QUESTS, applyRotate, bundlePriceCents, botReplay, lineLayout, lineSeed, lineTier, runPassXp, simulateRun, effectiveOdds, generateLevel, gridBaseXp, gridStarsForMoves, gridXpForStars, impliedApy, isSolved, levelSeed, packExpectedValueMult, passTierForXp, probabilityAtLeast, skrMicroForUsdCents, solLamportsForUsdCents, type PackId, usdCentsFromSolLamports, usdcMicroForUsdCents, xpToNext } from '@guttercaps/economy';
+import { ACHIEVEMENTS, BOOSTER, CHIP_XP, DAILY_QUESTS, LINE, EMISSION_GUARD, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, FEES, FUSION_RECIPES, FX, GRID, GRID as GRID_RULES, LOCK_TIERS, MATCHMAKING, PACKS, PASS_TRACK, PERMANENT_QUESTS, PROFILE_THEME_BY_ID, RARITY_PROFILES, REFERRAL, SEASON, SERVICES, SKIN_BY_ID, WEEKLY_QUESTS, applyRotate, bundlePriceCents, botReplay, lineLayout, lineSeed, lineTier, runPassXp, simulateRun, CREW, CREW_NAME_RE, SERVICE_BY_ID, crewTier, crewWeekScore, effectiveOdds, generateLevel, gridBaseXp, gridStarsForMoves, gridXpForStars, impliedApy, isSolved, levelSeed, packExpectedValueMult, passTierForXp, probabilityAtLeast, skrMicroForUsdCents, solLamportsForUsdCents, type PackId, usdCentsFromSolLamports, usdcMicroForUsdCents, xpToNext } from '@guttercaps/economy';
 import { PYTH_PRICE_ACCOUNTS } from '@/chain/ids';
 import { COLLECTIONS } from '@/shared/lib/lore';
 import { ApiError, type RequestOpts } from '../client';
@@ -725,6 +725,158 @@ on('get', '/line/leaderboard', (o) => {
     .slice(0, 50)
     .map((r, i) => ({ ...r, rank: i + 1, runId: r.id, at: iso(r.at * 1000), hasReplay: r.inputs.length > 0 }));
   return { week: w, rows };
+});
+
+// ------------------------------------------------- команды (docs/16 §5.6)
+// Команда в моке — настоящая модель, а не картинка: имя проверяется тем же
+// алфавитом, состав считается по тем же правилам «пять лучших», а очки
+// участников берутся из заездов линии. Иначе демо показывало бы одну правду на
+// экране и другую в коде.
+interface MockCrewMember { wallet: string; handle: string | null; joinedAt: number; leftAt: number | null; best: number }
+interface MockCrew { id: number; name: string; captain: string; district: number; segment: number; code: string; createdAt: number; renamedAt: number | null; members: MockCrewMember[] }
+let mockCrewSeq = 100;
+/** Очки участника — его лучший заезд недели: доска линии и командная доска считают одно и то же. */
+const crewMemberScores = (n: number, top: number, spread: number) =>
+  Array.from({ length: n }, (_, i) => Math.max(120, Math.round(top - i * spread - (i % 3) * 40)));
+function makeCrew(name: string, captainHandle: string, district: number, segment: number, size: number, top: number): MockCrew {
+  const id = ++mockCrewSeq;
+  const handles = [captainHandle, 'railqueen', 'drain0', 'sk8_or_die', 'noise_boy', 'inkslinger', 'brakeless99', 'pixelbsmt', 'gutterbeast', 'coping_cat'];
+  const best = crewMemberScores(size, top, Math.round(top / 12));
+  const t = Math.floor(Date.now() / 1000);
+  return {
+    id, name, captain: fakeKey(), district, segment, code: `${name.slice(0, 4).toUpperCase()}${1000 + id}`,
+    createdAt: t - 40 * 86_400, renamedAt: null,
+    members: Array.from({ length: size }, (_, i) => ({
+      wallet: fakeKey(), handle: handles[i] ?? `rider_${i}`, joinedAt: t - (size - i) * 86_400, leftAt: null, best: best[i],
+    })),
+  };
+}
+const mockCrews: MockCrew[] = [
+  makeCrew('SlabSisters', 'moth_king', 0, 0, 7, 3120),
+  makeCrew('NightCrew', 'inkslinger', 2, 3, 5, 2860),
+  makeCrew('CopingBlock', 'brakeless99', 4, 1, 6, 1900),
+];
+const crewLive = (c: MockCrew) => c.members.filter((m) => m.leftAt === null);
+/** Пять лучших — не весь состав: формула одна с бэкендом и ончейн-программой. */
+const crewScoreOf = (c: MockCrew) => crewWeekScore(crewLive(c).map((m) => m.best));
+const crewViewOf = (c: MockCrew, viewer?: string) => {
+  const live = crewLive(c);
+  const bests = live.map((m) => m.best).sort((a, b) => b - a);
+  const cut = bests[Math.min(bests.length, CREW.boardCountingMembers) - 1] ?? 0;
+  const mine = viewer !== undefined && live.some((m) => m.wallet === viewer);
+  const from = c.segment * CREW.wallSegmentSlots;
+  return {
+    id: c.id, name: c.name, captain: c.captain, captainHandle: live.find((m) => m.wallet === c.captain)?.handle ?? null,
+    district: c.district, segment: c.segment,
+    slots: { from, to: from + CREW.wallSegmentSlots, size: CREW.wallSegmentSlots },
+    createdAt: iso(c.createdAt * 1000 - Date.now()),
+    members: live.map((m) => ({ wallet: m.wallet, handle: m.handle, joinedAt: iso(m.joinedAt * 1000 - Date.now()), bestWeek: m.best, counting: m.best > 0 && m.best >= cut })),
+    memberCount: live.length, minMembers: CREW.minMembers, maxMembers: CREW.maxMembers,
+    counts: live.length >= CREW.minMembers && live.filter((m) => m.best > 0).length >= CREW.minMembers,
+    week: Math.floor(lineDay() / 7), score: crewScoreOf(c), tier: crewTier(crewScoreOf(c)),
+    inviteCode: mine ? c.code : undefined, mine, iAmCaptain: viewer !== undefined && viewer === c.captain, reports: 0,
+  };
+};
+const crewByKey = (raw: string) => {
+  const key = String(raw ?? '').trim().toLowerCase();
+  return mockCrews.find((c) => c.name.toLowerCase() === key || String(c.id) === key);
+};
+const myMockCrew = () => mockCrews.find((c) => crewLive(c).some((m) => m.wallet === ME)) ?? null;
+const CREW_BLOCKLIST = new Set(['admin', 'guttercaps', 'support', 'moderator', 'treasury', 'solana', 'official', 'team', 'root', 'system']);
+
+on('get', '/me/crew', () => { const c = myMockCrew(); return c ? crewViewOf(c, ME) : null; });
+// Порядок важен: доска и проверка имени стоят РАНЬШЕ '/crew/{name}' — мок матчит
+// маршруты в порядке регистрации, поэтому иначе слово 'board' уехало бы в имя
+// команды и вернуло 404 (в проде порядок тот же — см. backend/src/server.ts).
+on('get', '/crew/board', () => {
+  const week = Math.floor(lineDay() / 7);
+  const rows = mockCrews
+    .filter((c) => crewLive(c).length >= CREW.minMembers && crewLive(c).filter((m) => m.best > 0).length >= CREW.minMembers)
+    .map((c) => ({ rank: 0, id: c.id, name: c.name, district: c.district, segment: c.segment, members: crewLive(c).length, score: crewScoreOf(c), tier: crewTier(crewScoreOf(c)) }))
+    .sort((a, b) => b.score - a.score || a.id - b.id)
+    .map((r, i) => ({ ...r, rank: i + 1 }));
+  return { week, rows };
+});
+on('get', '/crew/check', (o) => {
+  const name = String((o.query as { name?: unknown } | undefined)?.name ?? '').trim();
+  const mine = myMockCrew();
+  const kind = mine ? SERVICE_BY_ID.crewRename.kind : SERVICE_BY_ID.crewCharter.kind;
+  const price = (mine ? SERVICE_BY_ID.crewRename : SERVICE_BY_ID.crewCharter).priceUsdCents;
+  const base = { kind, refHash: 'mock', priceUsdCents: price };
+  if (!name) return { available: false, reason: 'format', ...base };
+  if (!CREW_NAME_RE.test(name)) return { available: false, reason: 'invalid', ...base };
+  const key = name.toLowerCase();
+  if (CREW_BLOCKLIST.has(key)) return { available: false, reason: 'blocked', ...base };
+  if (mine && Math.floor(Date.now() / 1000) - (mine.renamedAt ?? mine.createdAt) < CREW.renameCooldownDays * 86_400) return { available: false, reason: 'cooldown', ...base };
+  const taken = crewByKey(name);
+  if (taken && taken.id !== mine?.id) return { available: false, reason: 'taken', ...base };
+  return { available: true, ...base, reservedUntil: iso(120_000) };
+});
+on('get', '/crew/{name}', (_o, params) => {
+  const c = crewByKey(String(params.name));
+  if (!c) throw new ApiError(404, 'no_crew', 'No crew with that name');
+  return crewViewOf(c, ME);
+});
+on('post', '/crew/charter', (o) => {
+  const b = (o.body ?? {}) as { name?: string; district?: number; signature?: string };
+  const name = String(b.name ?? '').trim();
+  if (!CREW_NAME_RE.test(name)) throw new ApiError(400, 'invalid_name', 'Crew name must be 3–16 chars [a-zA-Z0-9_]');
+  if (myMockCrew()) throw new ApiError(409, 'already_in_crew', 'Leave your crew before chartering a new one');
+  if (crewByKey(name)) throw new ApiError(409, 'crew_taken', 'That name is taken');
+  const district = Number(b.district ?? 0);
+  const takenSegments = new Set(mockCrews.filter((c) => c.district === district).map((c) => c.segment));
+  let segment = 0;
+  while (takenSegments.has(segment)) segment += 1;
+  if (segment >= Math.floor(200 / CREW.wallSegmentSlots)) throw new ApiError(409, 'district_full', 'No free segment in this district');
+  const c = makeCrew(name, mockHandle, district, segment, 1, 0);
+  c.captain = ME;
+  c.members[0] = { wallet: ME, handle: mockHandle, joinedAt: Math.floor(Date.now() / 1000), leftAt: null, best: 0 };
+  c.createdAt = Math.floor(Date.now() / 1000);
+  mockCrews.push(c);
+  return crewViewOf(c, ME);
+});
+on('post', '/crew/rename', (o) => {
+  const b = (o.body ?? {}) as { name?: string; signature?: string };
+  const name = String(b.name ?? '').trim();
+  if (!CREW_NAME_RE.test(name)) throw new ApiError(400, 'invalid_name', 'Crew name must be 3–16 chars [a-zA-Z0-9_]');
+  const mine = myMockCrew();
+  if (!mine) throw new ApiError(409, 'no_crew', 'You are not in a crew');
+  if (mine.captain !== ME) throw new ApiError(403, 'not_captain', 'Only the captain can rename the crew');
+  if (crewByKey(name)) throw new ApiError(409, 'crew_taken', 'That name is taken');
+  mine.name = name;
+  mine.renamedAt = Math.floor(Date.now() / 1000);
+  return crewViewOf(mine, ME);
+});
+on('post', '/crew/join', (o) => {
+  const b = (o.body ?? {}) as { code?: string };
+  const code = String(b.code ?? '').trim().toUpperCase();
+  const c = mockCrews.find((x) => x.code === code);
+  if (!c) throw new ApiError(404, 'bad_code', 'No crew with that invite code');
+  if (myMockCrew()) throw new ApiError(409, 'already_in_crew', 'Leave your crew first');
+  if (crewLive(c).length >= CREW.maxMembers) throw new ApiError(409, 'crew_full', `A crew holds at most ${CREW.maxMembers} riders`);
+  const prior = c.members.find((m) => m.wallet === ME);
+  if (prior) prior.leftAt = null;
+  else c.members.push({ wallet: ME, handle: mockHandle, joinedAt: Math.floor(Date.now() / 1000), leftAt: null, best: 0 });
+  return crewViewOf(c, ME);
+});
+on('post', '/crew/leave', () => {
+  const c = myMockCrew();
+  if (!c) throw new ApiError(409, 'no_crew', 'You are not in a crew');
+  const me = crewLive(c).find((m) => m.wallet === ME)!;
+  me.leftAt = Math.floor(Date.now() / 1000);
+  let captain: string | undefined;
+  if (c.captain === ME) {
+    const heir = crewLive(c).sort((a, b) => a.joinedAt - b.joinedAt)[0];
+    if (heir) { c.captain = heir.wallet; captain = heir.wallet; }
+  }
+  return { ok: true, crew: null, captain };
+});
+on('post', '/crew/{name}/report', (o, params) => {
+  const c = crewByKey(String(params.name));
+  if (!c) throw new ApiError(404, 'no_crew', 'No crew with that name');
+  const reason = String((o.body ?? {}) as { reason?: string } ?? '').trim();
+  if (!reason) throw new ApiError(400, 'bad_reason', 'Say what is wrong with the name');
+  return { ok: true, crew: c.id, reports: 1 };
 });
 
 on('get', '/rig/{wallet}', (_o, params) => {

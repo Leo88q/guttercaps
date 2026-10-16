@@ -19,6 +19,10 @@ export const API_ERROR_KEYS = {
   // §5.1 линия: реплей, день и попытки.
   bad_replay: 'failures.requestInvalid', bad_day: 'failures.requestInvalid',
   use_line_endpoint: 'failures.requestInvalid', runs_exhausted: 'failures.lineRunsExhausted', run_credit_cap: 'failures.lineCreditCap',
+  // §5.6 команды: имя, состав, сегмент стены и модерация имени.
+  no_crew: 'failures.crewNoCrew', invalid_name: 'failures.crewInvalidName', already_in_crew: 'failures.crewAlreadyIn',
+  not_captain: 'failures.crewNotCaptain', bad_code: 'failures.crewBadCode', crew_full: 'failures.crewFull',
+  district_full: 'failures.crewDistrictFull', invite_code_failed: 'failures.crewCodeFailed', use_crew_endpoint: 'failures.crewEndpoint',
   prestige_no_hints: 'failures.requestInvalid', prestige_locked: 'failures.requestInvalid', prestige_maxed: 'failures.requestInvalid',
   bad_squad: 'failures.threeSquad', bad_tier: 'failures.staking_InvalidTier', chain_fulfilled: 'failures.chainFulfilled',
   chip_busy: 'failures.arena_ChipBusy', collection_mismatch: 'failures.collectionMismatch', commit_mismatch: 'failures.commitMismatch',

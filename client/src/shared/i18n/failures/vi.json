@@ -215,5 +215,14 @@
   "themeNotOwned": "Chủ đề này bạn chưa có: hãy mua trong shop rồi mới dùng.",
   "achievementNotEarned": "Chưa đạt: bộ đếm thành tựu chưa tới mục tiêu.",
   "lineRunsExhausted": "Lượt chạy miễn phí hôm nay đã hết — lượt thêm giá 30 $CG (đốt).",
-  "lineCreditCap": "Đó là giới hạn lượt chạy trả phí trong ngày."
+  "lineCreditCap": "Đó là giới hạn lượt chạy trả phí trong ngày.",
+  "crewNoCrew": "Không có đội nào mang tên đó.",
+  "crewInvalidName": "Tên đội dài 3–16 ký tự: chữ, số và gạch dưới.",
+  "crewAlreadyIn": "Bạn đã ở trong một đội — hãy rời đội trước.",
+  "crewNotCaptain": "Chỉ đội trưởng mới làm được điều đó.",
+  "crewBadCode": "Không có đội nào dùng mã mời này.",
+  "crewFull": "Đội này đã có mười rider.",
+  "crewDistrictFull": "Mọi đoạn tường của đội trong quận này đều đã có chủ.",
+  "crewCodeFailed": "Không tạo được mã mời — hãy thử lại.",
+  "crewEndpoint": "Tên đội được xử lý ở màn hình đội."
 }

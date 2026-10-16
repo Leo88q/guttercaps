@@ -215,5 +215,14 @@
   "themeNotOwned": "Hindi mo pa itong tema: bilhin muna sa shop, saka isuot.",
   "achievementNotEarned": "Hindi pa nakamit: hindi pa umabot ang counter sa target.",
   "lineRunsExhausted": "Ubos na ang libreng takbo ngayon — ang dagdag ay 30 $CG (sinunog).",
-  "lineCreditCap": "Iyan ang pang-araw-araw na limit ng bayad na takbo."
+  "lineCreditCap": "Iyan ang pang-araw-araw na limit ng bayad na takbo.",
+  "crewNoCrew": "Walang crew na may ganyang pangalan.",
+  "crewInvalidName": "Ang pangalan ng crew ay 3–16 na karakter: mga letra, numero at underscore.",
+  "crewAlreadyIn": "Nasa isang crew ka na — umalis muna roon.",
+  "crewNotCaptain": "Kapitan lang ang pwedeng gumawa nito.",
+  "crewBadCode": "Walang crew na sumasagot sa invite code na iyan.",
+  "crewFull": "Puno na ang crew na ito: sampung rider.",
+  "crewDistrictFull": "Lahat ng segment ng crew sa distritong ito ay okupado na.",
+  "crewCodeFailed": "Hindi nakabuo ng invite code — subukan muli.",
+  "crewEndpoint": "Ang pangalan ng crew ay inaayos sa screen ng crew."
 }
