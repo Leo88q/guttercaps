@@ -16,7 +16,7 @@ import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { useCollections } from '@/shared/lib/lore';
 import {
   useAdminAudit, useAdminFraud, useAdminKpi, useAdminParams, useAdminSimulate, useAdminWorldMetrics,
-  useKillSwitch, useMe, useProposeParams, useResolveFraud,
+  useKillSwitch, useMe, useModQueue, useModStats, useProposeParams, useResolveFraud, useSetTagStatus,
   type AdminParams, type ParamsProposal, type Proposal, type SimulateReport,
 } from '@/api/hooks';
 import { ApiError } from '@/api/client';
@@ -26,11 +26,11 @@ import { CleanConfirmButton } from '@/shared/ui/buttons';
 import { fmtCents, fmtPct, fmtUnits, fmtUsd, shortKey, timeAgo } from '@/shared/lib/format';
 import { RARITIES, rarityName, packName } from '@/shared/lib/rarity';
 import { useUiStore } from '@/app/store/ui';
-import { EXPLORER } from '@/app/config';
+import { API_BASE, EXPLORER } from '@/app/config';
 import { t, useT, fmtLocale, getLocale, LOCALE_META, type MessageKey } from '@/shared/i18n';
 
-type Tab = 'params' | 'kill' | 'simulate' | 'kpi' | 'world' | 'fraud' | 'audit';
-const TABS: Tab[] = ['params', 'kill', 'simulate', 'kpi', 'world', 'fraud', 'audit'];
+type Tab = 'params' | 'kill' | 'simulate' | 'kpi' | 'world' | 'mod' | 'fraud' | 'audit';
+const TABS: Tab[] = ['params', 'kill', 'simulate', 'kpi', 'world', 'mod', 'fraud', 'audit'];
 const SLICES = ['chipStaking', 'tokenStaking', 'quests', 'pvpSeason', 'eventsReserve'] as const;
 const sliceLabel = (name: string) => name === 'quests' ? t('quests.title') : SLICES.includes(name as typeof SLICES[number]) ? t(`screens.${name}` as MessageKey) : name;
 type Pack = NonNullable<NonNullable<AdminParams['gameConfig']>['packs']>[number];
@@ -60,7 +60,7 @@ export default function Admin() {
       </div>
       {me.isLoading && <Skeleton h={200} />}
       {me.data?.isAdmin && (
-        tab === 'params' ? <ParamsTab /> : tab === 'kill' ? <KillSwitchTab /> : tab === 'simulate' ? <SimulateTab /> : tab === 'kpi' ? <KpiTab /> : tab === 'world' ? <WorldTab /> : tab === 'fraud' ? <FraudTab /> : <AuditTab />
+        tab === 'params' ? <ParamsTab /> : tab === 'kill' ? <KillSwitchTab /> : tab === 'simulate' ? <SimulateTab /> : tab === 'kpi' ? <KpiTab /> : tab === 'world' ? <WorldTab /> : tab === 'mod' ? <ModTab /> : tab === 'fraud' ? <FraudTab /> : <AuditTab />
       )}
     </div>
   );
@@ -563,6 +563,89 @@ function KpiTab() {
 
 // ------------------------------------------------------------------ fraud queue
 const RESOLUTIONS = ['ignore', 'rewards_pause', 'shadow_ban', 'ban', 'trust', 'unflag'] as const;
+// ------------------------------------------------- модерация тегов (docs/16 §3.3)
+// Жалобу подаёт улица, решает человек. Интерфейс собран вокруг SLA: сверху —
+// сколько жалоб ждут и сколько уже просрочены, в очереди первыми идут
+// просроченные, а не самые жалобные (иначе тег с пятью свежими жалобами
+// уезжал бы выше одного, который ждёт третьи сутки).
+const MOD_ACTIONS = ['hidden', 'live', 'removed'] as const;
+// Ключи жалоб уже существуют для экрана стены — модератор видит те же слова,
+// что и игрок, который жаловался.
+const reasonKey = (reason: string): MessageKey => `wall.reason_${reason}` as MessageKey;
+
+function ModTab() {
+  const t = useT();
+  const q = useModQueue();
+  const stats = useModStats();
+  const act = useSetTagStatus();
+  const toast = useUiStore((sto) => sto.toast);
+  const [note, setNote] = useState<Record<string, string>>({});
+
+  const decide = async (id: string, status: (typeof MOD_ACTIONS)[number]) => {
+    try {
+      await act.mutateAsync({ id, status, ...(note[id] ? { note: note[id]! } : {}) });
+      toast({ kind: 'success', title: { key: `admin.mod.done.${status}` as MessageKey } });
+    } catch (e) { toast({ kind: 'error', title: { key: 'admin.mod.failed' }, error: e }); }
+  };
+
+  if (q.isLoading) return <Skeleton h={300} />;
+  const rows = q.data?.items ?? [];
+  const s = stats.data;
+  return (
+    <div className="stack">
+      <div className="small muted">{t('admin.mod.explainer', { n: Number(s?.slaHours ?? 24) })}</div>
+      {s ? (
+        <div className="row-wrap">
+          <Pill tone={Number(s.overdueReports ?? 0) > 0 ? 'danger' : undefined}>{t('admin.mod.open', { n: s.openReports })}</Pill>
+          <Pill tone={Number(s.overdueReports ?? 0) > 0 ? 'danger' : undefined}>{t('admin.mod.overdue', { n: s.overdueReports })}</Pill>
+          <Pill>{t('admin.mod.median', { n: s.medianReactionHours === null ? '—' : s.medianReactionHours })}</Pill>
+          <Pill>{t('admin.mod.actioned', { n: s.actionedShare === null ? '—' : Math.round(Number(s.actionedShare) * 100) })}</Pill>
+        </div>
+      ) : null}
+      {rows.length === 0 && <Empty>{t('admin.mod.empty')}</Empty>}
+      {rows.map((tag) => (
+        <div key={tag.id} className="card stack-sm" data-testid="mod-row">
+          <div className="row between" style={{ flexWrap: 'wrap', gap: 8 }}>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+              <span className="mono">{shortKey(tag.wallet ?? '', 6)}</span>
+              {/* Просрочка — главный признак: её видно раньше, чем число жалоб. */}
+              {tag.overdue
+                ? <Pill tone="danger">{t('admin.mod.overdueTag', { n: Math.abs(Math.round(Number(tag.hoursLeft ?? 0))) })}</Pill>
+                : <Pill>{t('admin.mod.hoursLeft', { n: Math.max(0, Math.round(Number(tag.hoursLeft ?? 0))) })}</Pill>}
+              <Pill>{t('admin.mod.reports', { n: tag.openReports })}</Pill>
+            </div>
+            <span className="tiny muted">{tag.createdAt ? timeAgo(Date.parse(tag.createdAt)) : ''}</span>
+          </div>
+          <div className="row-wrap">
+            {(tag.reasons ?? []).map((r) => (
+              <Pill key={r.reason}>{t(reasonKey(String(r.reason ?? 'other')))} · {r.n}</Pill>
+            ))}
+          </div>
+          {/* Тег показываем картинкой, как и везде: инлайнить чужой SVG в админке
+              незачем, а в <img> у него нет исполняемого контекста. */}
+          <img className="mod-tag" src={`${API_BASE}/tags/${tag.id}/svg`} alt={t('wall.tagAlt', { who: shortKey(tag.wallet ?? '') })} />
+          {tag.appealNote ? (
+            <div className="tiny muted">{t('admin.mod.appeal')}: «{tag.appealNote}»</div>
+          ) : null}
+          <div className="row-wrap">
+            <input
+              className="input" style={{ minHeight: 34, maxWidth: 320 }}
+              placeholder={t('admin.mod.note')}
+              value={note[tag.id ?? ''] ?? ''}
+              onChange={(e) => setNote({ ...note, [tag.id ?? '']: e.target.value })}
+            />
+            {MOD_ACTIONS.map((status) => (
+              <Pill key={status} tone={status === 'removed' ? 'danger' : status === 'hidden' ? undefined : 'ok'} onClick={() => void decide(String(tag.id ?? ''), status)}>
+                {t(`admin.mod.${status}` as MessageKey)}
+              </Pill>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function FraudTab() {
   const t = useT();
   const q = useAdminFraud();

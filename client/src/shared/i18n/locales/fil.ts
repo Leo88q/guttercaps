@@ -251,8 +251,17 @@ const fil: Messages = {
     spec: 'Spec', toMarket: 'Pahina sa market', deepLinkNote: 'Deep link ang pahinang ito: bubukas ito kahit walang wallet at walang session.',
   },
   admin: {
+    mod: {
+      explainer: 'Ang mga ulat ay galing sa kalye, tao ang nagpapasya. SLA ay {n} oras mula sa pinakamatandang ulat na hindi pa naaaksyunan: nauuna ang mga overdue, hindi ang pinakamaraming ulat.',
+      open: 'Naghihintay: {n}', overdue: 'Overdue: {n}', median: 'Median na reaksyon: {n} oras', actioned: 'Nagtatapos sa pagtanggal: {n}%',
+      empty: 'Walang imo-moderate — walang bukas na ulat.',
+      hoursLeft: 'natitira {n} oras', overdueTag: 'overdue nang {n} oras', reports: '{n} ulat',
+      appeal: 'Apela ng may-akda', note: 'Tala para sa log (opsyonal)',
+      hidden: 'Itago', live: 'Ibalik', removed: 'Alisin',
+      done_hidden: 'Naitago ang tag at inalis sa pader', done_live: 'Naibalik ang tag', done_removed: 'Inalis ang tag', failed: 'Hindi naipasa ang desisyon',
+    },
     title: 'Ops panel', subtitle: 'Live na pag-tune ng ekonomiya. Walang pumipirma dito: bawat pagbabago ay bumabalik bilang instruction bytes para sa multisig, at bawat tawag ay naitatala sa audit log.',
-    tabs: { params: 'Mga parameter', kill: 'Kill switch', simulate: 'Simulate', kpi: 'KPI', world: 'Mundo', fraud: 'Fraud queue', audit: 'Audit log' },
+    tabs: { params: 'Mga parameter', kill: 'Kill switch', simulate: 'Simulate', kpi: 'KPI', world: 'Mundo', fraud: 'Fraud queue', audit: 'Audit log', mod: 'Moderasyon' },
     world: {
       intro: 'Mga cohort ng skate world (docs/16 §12). Bawat numero ay average bawat wallet: magkaiba ang laki ng dalawang grupo, kaya ang kabuuan ay gagawing maganda ang kahit anong sikat na feature. Δ = cohort ÷ baseline − 1.',
       window: '{n} araw',

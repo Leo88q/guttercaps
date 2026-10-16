@@ -251,8 +251,17 @@ const es: Messages = {
     spec: 'Ficha', toMarket: 'Página en el mercado', deepLinkNote: 'Esta página es un enlace profundo: se abre sin billetera y sin sesión.',
   },
   admin: {
+    mod: {
+      explainer: 'Los reportes llegan de la calle, decide una persona. El SLA es de {n} h desde el reporte sin resolver más antiguo: primero van los vencidos, no los más reportados.',
+      open: 'En espera: {n}', overdue: 'Vencidos: {n}', median: 'Reacción mediana: {n} h', actioned: 'Acaba en bajada: {n}%',
+      empty: 'Nada que moderar — no hay reportes abiertos.',
+      hoursLeft: 'quedan {n} h', overdueTag: 'vencido por {n} h', reports: '{n, plural, one{# reporte} other{# reportes}}',
+      appeal: 'Apelación del autor', note: 'Nota para el registro (opcional)',
+      hidden: 'Ocultar', live: 'Restaurar', removed: 'Eliminar',
+      done_hidden: 'Tag ocultado y retirado del muro', done_live: 'Tag restaurado', done_removed: 'Tag eliminado', failed: 'La decisión no se aplicó',
+    },
     title: 'Panel de operaciones', subtitle: 'Ajuste de la economía en vivo. Aquí nada se firma: cada cambio vuelve como bytes de instrucción para la multifirma y cada llamada queda en el registro de auditoría.',
-    tabs: { params: 'Parámetros', kill: 'Interruptor', simulate: 'Simular', kpi: 'KPI', world: 'Mundo', fraud: 'Cola de fraude', audit: 'Auditoría' },
+    tabs: { params: 'Parámetros', kill: 'Interruptor', simulate: 'Simular', kpi: 'KPI', world: 'Mundo', fraud: 'Cola de fraude', audit: 'Auditoría', mod: 'Moderación' },
     world: {
       intro: 'Cohortes del mundo skate (docs/16 §12). Cada número es una media por billetera: los dos grupos tienen distinto tamaño, así que las sumas harían buena cualquier función popular. Δ = cohorte ÷ base − 1.',
       window: '{n} días',

@@ -262,8 +262,17 @@ const en = {
     spec: 'Spec', toMarket: 'Market page', deepLinkNote: 'This page is a deep link: it opens without a wallet and without a session.',
   },
   admin: {
+    mod: {
+      explainer: 'Reports come from the street, a person decides. SLA is {n} h from the oldest unresolved report — overdue complaints come first, not the loudest ones.',
+      open: 'Waiting: {n}', overdue: 'Overdue: {n}', median: 'Median reaction: {n} h', actioned: 'Ends in a takedown: {n}%',
+      empty: 'Nothing to moderate — no open reports.',
+      hoursLeft: '{n} h left', overdueTag: 'overdue by {n} h', reports: '{n, plural, one{# report} other{# reports}}',
+      appeal: 'Author’s appeal', note: 'Note for the log (optional)',
+      hidden: 'Hide', live: 'Restore', removed: 'Remove',
+      done_hidden: 'Tag hidden and taken off the wall', done_live: 'Tag restored', done_removed: 'Tag removed', failed: 'The decision did not go through',
+    },
     title: 'Ops panel', subtitle: 'Live economy tuning. Nothing here signs: every change comes back as instruction bytes for the multisig, and every call is written to the audit log.',
-    tabs: { params: 'Parameters', kill: 'Kill switch', simulate: 'Simulate', kpi: 'KPI', world: 'World', fraud: 'Fraud queue', audit: 'Audit log' },
+    tabs: { params: 'Parameters', kill: 'Kill switch', simulate: 'Simulate', kpi: 'KPI', world: 'World', fraud: 'Fraud queue', audit: 'Audit log', mod: 'Moderation' },
     world: {
       intro: 'Skate-world cohorts (docs/16 §12). Every number is an average per wallet — the two groups differ in size, so raw sums would make any popular feature look good. Δ = cohort ÷ baseline − 1.',
       window: '{n} days',

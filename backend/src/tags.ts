@@ -119,6 +119,7 @@ export interface TagView {
 interface TagRow {
   id: string; wallet: string; sha256: string; svg: string; bytes: number; commands: number;
   status: string; created_at: number; reports: number;
+  appeal_note?: string | null; appeal_at?: number | null;
 }
 
 const iso = (s: number) => new Date(s * 1000).toISOString();
@@ -183,25 +184,138 @@ export function reportTag(db: Db, reporter: string, id: string, reason: string):
   });
 }
 
-/** GET /v1/mod/tags/queue — что человек должен посмотреть первым. */
-export function modQueue(db: Db, limit = 50): { items: Array<TagView & { openReports: number }> } {
-  const rows = db.all<TagRow & { open_reports: number }>(
-    `SELECT t.*, (SELECT COUNT(*) FROM wall_reports r WHERE r.tag_id = t.id AND r.resolution IS NULL) AS open_reports` +
-      ` FROM tag_registry t WHERE t.status = 'live' AND t.reports > 0 ORDER BY open_reports DESC, t.created_at ASC LIMIT ?`,
-    limit,
+/**
+ * SLA на реакцию модератора (docs/16 §3.3 п.2): 24 часа с момента **первой
+ * неразобранной** жалобы. Считаем от самой старой открытой, а не от последней:
+ * иначе поток жалоб на один тег каждый раз обнулял бы срок.
+ */
+export const MOD_SLA_HOURS = 24;
+const HOUR = 3600;
+
+export interface ModQueueItem extends TagView {
+  openReports: number;
+  /** Когда пришла самая старая неразобранная жалоба. */
+  oldestOpenAt: string | null;
+  /** Сколько часов осталось до истечения SLA (null — открытых жалоб нет). */
+  hoursLeft: number | null;
+  /** Срок уже истёк: реакция просрочена. */
+  overdue: boolean;
+  /** Жалобы по причинам — модератору важно, на что смотреть, а не только сколько. */
+  reasons: { reason: string; n: number }[];
+  /** Жалоба автора на скрытие (апелляция ждёт ответа). */
+  appealNote: string | null;
+  appealAt: string | null;
+}
+
+/**
+ * GET /v1/mod/tags/queue — что человек должен посмотреть первым.
+ *
+ * Порядок: сначала просроченные (среди них — кто ждёт дольше), потом по числу
+ * открытых жалоб. Раньше сортировка была только по числу: тег с пятью жалобами
+ * за час уезжал выше тега с одной, который ждёт третьи сутки, — то есть SLA
+ * существовал в документе, но не в очереди.
+ */
+export function modQueue(db: Db, limit = 50, t = now()): { slaHours: number; items: ModQueueItem[] } {
+  const deadline = t - MOD_SLA_HOURS * HOUR;
+  const rows = db.all<TagRow & { open_reports: number; oldest_open: number | null }>(
+    `SELECT t.*,
+            (SELECT COUNT(*) FROM wall_reports r WHERE r.tag_id = t.id AND r.resolution IS NULL) AS open_reports,
+            (SELECT MIN(r.created_at) FROM wall_reports r WHERE r.tag_id = t.id AND r.resolution IS NULL) AS oldest_open
+       FROM tag_registry t
+      WHERE t.status = 'live' AND t.reports > 0
+      ORDER BY (oldest_open IS NOT NULL AND oldest_open <= ?) DESC, open_reports DESC, oldest_open ASC
+      LIMIT ?`,
+    deadline, limit,
   );
-  return { items: rows.map((r) => ({ ...view(r), openReports: r.open_reports })) };
+  const ids = rows.map((r) => r.id);
+  const reasonRows = ids.length
+    ? db.all<{ tag_id: string; reason: string; n: number }>(
+        `SELECT tag_id, reason, COUNT(*) n FROM wall_reports WHERE tag_id IN (${ids.map(() => '?').join(',')}) GROUP BY 1, 2 ORDER BY 1, 3 DESC, 2`,
+        ...ids,
+      )
+    : [];
+  const byTag = new Map<string, { reason: string; n: number }[]>();
+  for (const r of reasonRows) {
+    const list = byTag.get(r.tag_id) ?? [];
+    list.push({ reason: r.reason, n: Number(r.n) });
+    byTag.set(r.tag_id, list);
+  }
+  return {
+    slaHours: MOD_SLA_HOURS,
+    items: rows.map((r) => {
+      const left = r.oldest_open === null ? null : (r.oldest_open + MOD_SLA_HOURS * HOUR - t) / HOUR;
+      return {
+        ...view(r),
+        openReports: r.open_reports,
+        oldestOpenAt: r.oldest_open === null ? null : iso(r.oldest_open),
+        hoursLeft: left === null ? null : Math.round(left * 10) / 10,
+        overdue: left !== null && left <= 0,
+        reasons: byTag.get(r.id) ?? [],
+        appealNote: r.appeal_note ?? null,
+        appealAt: r.appeal_at === null || r.appeal_at === undefined ? null : iso(r.appeal_at),
+      };
+    }),
+  };
+}
+
+export interface ModStats {
+  slaHours: number;
+  /** Сколько жалоб ждут решения прямо сейчас. */
+  openReports: number;
+  /** Сколько из них уже просрочены. */
+  overdueReports: number;
+  /** Медиана времени реакции по разобранным жалобам, в часах. null — разбирать было нечего. */
+  medianReactionHours: number | null;
+  /** Доля разобранных жалоб, по которым тег скрыли или удалили (§3.3 «доля скрытых тегов»). */
+  actionedShare: number | null;
+  tags: { live: number; hidden: number; removed: number };
+}
+
+/** Медиана: среднее съедает один зависший тикет, а медиана показывает обычный срок. */
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const value = sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * GET /v1/mod/tags/stats — метрика из §3.3: время реакции и доля скрытых тегов.
+ * Без этих двух чисел «безопасная среда = удержание» остаётся верой, а не измерением.
+ */
+export function modStats(db: Db, t = now()): ModStats {
+  const deadline = t - MOD_SLA_HOURS * HOUR;
+  const open = db.get<{ n: number; overdue: number }>(
+    `SELECT COUNT(*) n, COALESCE(SUM(CASE WHEN created_at <= ? THEN 1 ELSE 0 END), 0) overdue FROM wall_reports WHERE resolution IS NULL`,
+    deadline,
+  );
+  const resolved = db.all<{ hours: number; actioned: number }>(
+    `SELECT (resolved_at - created_at) / 3600.0 hours,
+            CASE WHEN resolution IN ('tag_hidden', 'tag_removed') THEN 1 ELSE 0 END actioned
+       FROM wall_reports WHERE resolution IS NOT NULL AND resolved_at IS NOT NULL`,
+  );
+  const tags = db.all<{ status: string; n: number }>(`SELECT status, COUNT(*) n FROM tag_registry GROUP BY 1`);
+  const count = (status: string) => Number(tags.find((x) => x.status === status)?.n ?? 0);
+  return {
+    slaHours: MOD_SLA_HOURS,
+    openReports: Number(open?.n ?? 0),
+    overdueReports: Number(open?.overdue ?? 0),
+    medianReactionHours: median(resolved.map((r) => Number(r.hours))),
+    actionedShare: resolved.length > 0 ? Math.round((resolved.filter((r) => r.actioned === 1).length / resolved.length) * 100) / 100 : null,
+    tags: { live: count('live'), hidden: count('hidden'), removed: count('removed') },
+  };
 }
 
 /** PUT /v1/mod/tags/:id — скрыть / вернуть / удалить. Ничего, кроме статуса, не трогает. */
-export function setTagStatus(db: Db, id: string, status: string, note?: string): TagView {
+export function setTagStatus(db: Db, id: string, status: string, note?: string, t = now()): TagView {
   if (!['live', 'hidden', 'removed'].includes(status)) throw new ServiceError(400, 'bad_status', 'status must be live | hidden | removed');
   const row = db.get<TagRow>(`SELECT * FROM tag_registry WHERE id = ?`, id);
   if (!row) throw new ServiceError(404, 'not_found', 'No tag with that id');
   if (row.status === status) return view(row);
-  db.run(`UPDATE tag_registry SET status = ?, moderated_at = COALESCE(moderated_at, ?), appeal_note = COALESCE(?, appeal_note) WHERE id = ?`, status, now(), note ?? null, id);
-  if (status === 'hidden') recordEvent(db, row.wallet, 'tag', 'hide', { reports: row.reports });
-  if (status !== 'live') db.run(`UPDATE wall_reports SET resolved_at = ?, resolution = ? WHERE tag_id = ? AND resolution IS NULL`, now(), `tag_${status}`, id);
+  db.run(`UPDATE tag_registry SET status = ?, moderated_at = COALESCE(moderated_at, ?), appeal_note = COALESCE(?, appeal_note) WHERE id = ?`, status, t, note ?? null, id);
+  if (status === 'hidden') recordEvent(db, row.wallet, 'tag', 'hide', { reports: row.reports }, t);
+  if (status !== 'live') db.run(`UPDATE wall_reports SET resolved_at = ?, resolution = ? WHERE tag_id = ? AND resolution IS NULL`, t, `tag_${status}`, id);
   return view(db.get<TagRow>(`SELECT * FROM tag_registry WHERE id = ?`, id)!);
 }
 

@@ -530,9 +530,59 @@ paths:
   /mod/tags/queue:
     get:
       tags: [tags]
-      summary: Moderation queue — live tags with reports, most reported first (admin allowlist; a moderator role is a later step)
+      summary: Moderation queue — live tags with reports, overdue first (admin allowlist; a moderator role is a later step)
+      description: |
+        Order: overdue first (oldest wait first), then by open report count. Sorting by count alone let a
+        tag with five reports filed an hour ago outrank one report waiting three days — the 24 h SLA (§3.3)
+        existed in the document but not in the queue. `hoursLeft` counts from the **oldest unresolved**
+        report, so piling new reports on a tag cannot reset the clock.
       responses:
-        '200': { description: queue, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { allOf: [{ $ref: '#/components/schemas/Tag' }, { type: object, properties: { openReports: { type: integer } } }] } } } } } } }
+        '200':
+          description: queue
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  slaHours: { type: integer, description: reaction deadline in hours (docs/16 §3.3) }
+                  items:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/Tag'
+                        - type: object
+                          properties:
+                            openReports: { type: integer }
+                            oldestOpenAt: { type: [string, 'null'], format: date-time }
+                            hoursLeft: { type: [number, 'null'], description: hours until the SLA expires; negative once overdue }
+                            overdue: { type: boolean }
+                            reasons: { type: array, items: { type: object, properties: { reason: { type: string }, n: { type: integer } } } }
+                            appealNote: { type: [string, 'null'] }
+                            appealAt: { type: [string, 'null'], format: date-time }
+  /mod/tags/stats:
+    get:
+      tags: [tags]
+      summary: Moderation SLA — reaction time and how many reports end in a tag being taken down
+      description: |
+        The §3.3 metric: "safe environment = retention" is unmeasurable without these two numbers.
+        Median reaction time (not mean — one stuck ticket would drag it) and the share of resolved
+        reports that ended with the tag hidden or removed.
+      responses:
+        '200':
+          description: stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  slaHours: { type: integer }
+                  openReports: { type: integer }
+                  overdueReports: { type: integer }
+                  medianReactionHours: { type: [number, 'null'] }
+                  actionedShare: { type: [number, 'null'], description: share of resolved reports that hid or removed the tag, 0..1 }
+                  tags:
+                    type: object
+                    properties: { live: { type: integer }, hidden: { type: integer }, removed: { type: integer } }
   /mod/tags/{id}:
     put:
       tags: [tags]

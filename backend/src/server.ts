@@ -799,6 +799,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   // Модерация тегов (docs/16 §3.3): отдельной роли модератора пока нет, пускаем
   // по админскому списку и аудируем каждый вызов. SLA на реакцию — 24 часа.
   v1.get('/mod/tags/queue', adminGate, audited('mod.tags.queue', () => tags.modQueue(db, 50)));
+  v1.get('/mod/tags/stats', adminGate, audited('mod.tags.stats', () => tags.modStats(db)));
   v1.put('/mod/tags/:id', adminGate, audited(
     'mod.tags.status',
     (req) => {

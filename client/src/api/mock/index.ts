@@ -305,8 +305,12 @@ on('post', '/tags', (o) => {
   if (bytes > 24 * 1024) throw new ApiError(413, 'tag_too_large', 'A tag is at most 24 KB');
   // Стойкий, но дешёвый отпечаток содержимого: в моке он заменяет sha256 —
   // совпадение означает «тот же тег», а криптография здесь никому не нужна.
-  let hash = '';
-  for (let i = 0; i < svg.length; i++) hash = ((hash.charCodeAt(0) || 7) * 31 + svg.charCodeAt(i)).toString(16).slice(-6).padStart(6, '0');
+  // Раньше здесь был свёрточный хеш, который брал `charCodeAt(0)` от строки:
+  // он почти не зависел от начала строки, и два разных тега с одинаковым
+  // хвостом считались одним и тем же. FNV-1a — такой же дешёвый, но честный.
+  let h = 0x811c9dc5;
+  for (let i = 0; i < svg.length; i++) h = Math.imul(h ^ svg.charCodeAt(i), 0x01000193) >>> 0;
+  const hash = h.toString(16).padStart(8, '0');
   const dupe = mockTags.find((t) => t.wallet === ME && t.sha256 === hash && t.status !== 'removed');
   if (dupe) return mockTagView(dupe);
   const t = { id: tagId(ME, hash), wallet: ME, sha256: hash, svg, bytes, commands, status: 'live', createdAt: iso(), reports: 0 };
@@ -319,13 +323,68 @@ on('get', '/tags/{id}', (_o, params) => {
   if (!t || (t.status !== 'live' && t.wallet !== ME)) throw new ApiError(404, 'not_found', 'No tag with that id');
   return mockTagView(t);
 });
-on('post', '/tags/{id}/report', (_o, params) => {
+// ── Модерация (docs/16 §3.3). Мок ведёт жалобы по одной на пару «тег — кошелёк»
+// и умеет считать SLA, потому что экран модератора без сроков — это просто
+// список картинок: в демо-режиме очередь должна выглядеть так же, как в бою.
+const MOD_SLA_HOURS = 24;
+const mockReports: Array<{ tagId: string; reporter: string; reason: string; createdAt: number; resolvedAt: number | null; resolution: string | null }> = [];
+const openReportsOf = (tagId: string) => mockReports.filter((r) => r.tagId === tagId && r.resolution === null);
+
+on('post', '/tags/{id}/report', (o, params) => {
   const t = mockTags.find((x) => x.id === params.id);
   if (!t || t.status !== 'live') throw new ApiError(404, 'not_found', 'No live tag with that id');
+  const reporter = ME;
+  if (mockReports.some((r) => r.tagId === t.id && r.reporter === reporter)) throw new ApiError(409, 'already_reported', 'You have already reported this tag');
+  mockReports.push({ tagId: t.id, reporter, reason: String((o.body as { reason?: unknown })?.reason ?? 'other'), createdAt: Date.now(), resolvedAt: null, resolution: null });
   t.reports += 1;
   return { ok: true, reports: t.reports };
 });
-on('get', '/mod/tags/queue', () => ({ items: mockTags.filter((t) => t.status === 'live' && t.reports > 0).map((t) => ({ ...mockTagView(t), openReports: t.reports })) }));
+
+on('get', '/mod/tags/queue', () => {
+  const t0 = Date.now();
+  const items = mockTags
+    .filter((t) => t.status === 'live' && openReportsOf(t.id).length > 0)
+    .map((t) => {
+      const open = openReportsOf(t.id);
+      const oldest = Math.min(...open.map((r) => r.createdAt));
+      const hoursLeft = Math.round(((oldest + MOD_SLA_HOURS * 3600_000 - t0) / 3600_000) * 10) / 10;
+      const reasons = [...new Set(open.map((r) => r.reason))].map((reason) => ({ reason, n: open.filter((r) => r.reason === reason).length }));
+      return { ...mockTagView(t), openReports: open.length, oldestOpenAt: new Date(oldest).toISOString(), hoursLeft, overdue: hoursLeft <= 0, reasons, appealNote: null, appealAt: null };
+    })
+    // просроченные первыми, дальше по числу открытых жалоб — как на бэкенде
+    .sort((a, b) => Number(b.overdue) - Number(a.overdue) || b.openReports - a.openReports || Date.parse(a.oldestOpenAt) - Date.parse(b.oldestOpenAt));
+  return { slaHours: MOD_SLA_HOURS, items };
+});
+
+on('get', '/mod/tags/stats', () => {
+  const t0 = Date.now();
+  const open = mockReports.filter((r) => r.resolution === null);
+  const overdue = open.filter((r) => r.createdAt <= t0 - MOD_SLA_HOURS * 3600_000);
+  const resolved = mockReports.filter((r) => r.resolution !== null && r.resolvedAt !== null);
+  const hours = resolved.map((r) => (r.resolvedAt! - r.createdAt) / 3600_000).sort((a, b) => a - b);
+  const mid = hours.length === 0 ? null : hours.length % 2 === 1 ? hours[(hours.length - 1) / 2]! : (hours[hours.length / 2 - 1]! + hours[hours.length / 2]!) / 2;
+  const count = (status: string) => mockTags.filter((t) => t.status === status).length;
+  return {
+    slaHours: MOD_SLA_HOURS,
+    openReports: open.length,
+    overdueReports: overdue.length,
+    medianReactionHours: mid === null ? null : Math.round(mid * 100) / 100,
+    actionedShare: resolved.length === 0 ? null : resolved.filter((r) => r.resolution !== 'tag_live').length / resolved.length,
+    tags: { live: count('live'), hidden: count('hidden'), removed: count('removed') },
+  };
+});
+
+on('put', '/mod/tags/{id}', (o, params) => {
+  const t = mockTags.find((x) => x.id === params.id);
+  if (!t) throw new ApiError(404, 'not_found', 'No tag with that id');
+  const status = String((o.body as { status?: unknown })?.status ?? '');
+  if (!['live', 'hidden', 'removed'].includes(status)) throw new ApiError(400, 'bad_status', 'status must be live | hidden | removed');
+  t.status = status;
+  // решение закрывает все открытые жалобы по тегу — так же, как на бэкенде
+  if (status !== 'live') for (const r of openReportsOf(t.id)) { r.resolvedAt = Date.now(); r.resolution = `tag_${status}`; }
+  else for (const r of openReportsOf(t.id)) { r.resolvedAt = Date.now(); r.resolution = 'tag_restored'; }
+  return mockTagView(t);
+});
 
 // ── Стена района (docs/16 §3.4): слоты занимаются активностью, но мок не
 // моделирует ни логины, ни стейкинг — он один и тот же «операторский» кошелёк,
@@ -359,6 +418,7 @@ on('get', '/wall/board', (o) => {
 export function resetMockWorld() {
   mockWall.length = 0;
   mockTags.length = 0;
+  mockReports.length = 0;
 }
 
 on('get', '/wall/{district}', (_o, params) => mockWallView(Number(params.district)));

@@ -251,8 +251,17 @@ const id: Messages = {
     spec: 'Spesifikasi', toMarket: 'Halaman market', deepLinkNote: 'Halaman ini adalah deep link: terbuka tanpa wallet dan tanpa sesi.',
   },
   admin: {
+    mod: {
+      explainer: 'Laporan datang dari jalanan, manusia yang memutuskan. SLA {n} jam dari laporan terbuka yang paling lama: yang kedaluwarsa di atas, bukan yang terbanyak.',
+      open: 'Menunggu: {n}', overdue: 'Kedaluwarsa: {n}', median: 'Median reaksi: {n} jam', actioned: 'Berakhir penurunan: {n}%',
+      empty: 'Tidak ada yang dimoderasi — tidak ada laporan terbuka.',
+      hoursLeft: 'sisa {n} jam', overdueTag: 'kedaluwarsa {n} jam', reports: '{n} laporan',
+      appeal: 'Banding penulis', note: 'Catatan untuk log (opsional)',
+      hidden: 'Sembunyikan', live: 'Pulihkan', removed: 'Hapus',
+      done_hidden: 'Tag disembunyikan dan diturunkan dari dinding', done_live: 'Tag dipulihkan', done_removed: 'Tag dihapus', failed: 'Keputusan tidak diterapkan',
+    },
     title: 'Panel operasi', subtitle: 'Penyetelan ekonomi langsung. Tidak ada yang ditandatangani di sini: setiap perubahan kembali sebagai byte instruksi untuk multisig, dan setiap panggilan dicatat ke log audit.',
-    tabs: { params: 'Parameter', kill: 'Tombol darurat', simulate: 'Simulasi', kpi: 'KPI', world: 'Dunia', fraud: 'Antrean fraud', audit: 'Log audit' },
+    tabs: { params: 'Parameter', kill: 'Tombol darurat', simulate: 'Simulasi', kpi: 'KPI', world: 'Dunia', fraud: 'Antrean fraud', audit: 'Log audit', mod: 'Moderasi' },
     world: {
       intro: 'Kohort dunia skate (docs/16 §12). Setiap angka adalah rata-rata per dompet: ukuran kedua grup berbeda, jadi jumlah total bisa membuat fitur populer apa pun terlihat bagus. Δ = kohort ÷ baseline − 1.',
       window: '{n} hari',

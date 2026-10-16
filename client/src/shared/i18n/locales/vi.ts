@@ -251,8 +251,17 @@ const vi: Messages = {
     spec: 'Thông số', toMarket: 'Trang market', deepLinkNote: 'Đây là deep link: mở được không cần ví và không cần đăng nhập.',
   },
   admin: {
+    mod: {
+      explainer: 'Báo cáo đến từ cộng đồng, người quyết định. SLA là {n} giờ từ báo cáo chưa xử lý lâu nhất: quá hạn lên trước, không phải nhiều báo cáo nhất.',
+      open: 'Đang chờ: {n}', overdue: 'Quá hạn: {n}', median: 'Thời gian phản hồi trung vị: {n} giờ', actioned: 'Kết thúc bằng gỡ: {n}%',
+      empty: 'Không có gì để kiểm duyệt — không có báo cáo nào đang mở.',
+      hoursLeft: 'còn {n} giờ', overdueTag: 'quá hạn {n} giờ', reports: '{n} báo cáo',
+      appeal: 'Khiếu nại của tác giả', note: 'Ghi chú cho nhật ký (tuỳ chọn)',
+      hidden: 'Ẩn', live: 'Khôi phục', removed: 'Xoá',
+      done_hidden: 'Đã ẩn tag và gỡ khỏi tường', done_live: 'Đã khôi phục tag', done_removed: 'Đã xoá tag', failed: 'Quyết định không được áp dụng',
+    },
     title: 'Bảng vận hành', subtitle: 'Tinh chỉnh kinh tế trực tiếp. Không có gì ở đây được ký: mọi thay đổi trả về dưới dạng byte lệnh cho multisig, và mọi lệnh gọi đều được ghi vào nhật ký kiểm toán.',
-    tabs: { params: 'Tham số', kill: 'Nút dừng', simulate: 'Mô phỏng', kpi: 'KPI', world: 'Thế giới', fraud: 'Hàng đợi gian lận', audit: 'Nhật ký' },
+    tabs: { params: 'Tham số', kill: 'Nút dừng', simulate: 'Mô phỏng', kpi: 'KPI', world: 'Thế giới', fraud: 'Hàng đợi gian lận', audit: 'Nhật ký', mod: 'Kiểm duyệt' },
     world: {
       intro: 'Cohort thế giới skate (docs/16 §12). Mọi con số là trung bình mỗi ví: hai nhóm có quy mô khác nhau, nên tổng số sẽ làm tính năng nào phổ biến cũng trông có vẻ tốt. Δ = cohort ÷ baseline − 1.',
       window: '{n} ngày',

@@ -788,6 +788,10 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 .world-series-bar:hover { opacity: 1; }
 .grid-3 > * { min-width: 0; }
 .stat, .label { overflow-wrap: anywhere; }
+
+/* Модерация тегов (docs/16 §3.3): тег смотрят перед тем, как решать, поэтому
+   превью тянется на всю ширину карточки и держит пропорции 2:1, как на стене. */
+.mod-tag { width: 100%; max-width: 420px; aspect-ratio: 2 / 1; background: #16151a; border: 1px solid var(--gc-line, #2a2933); border-radius: 8px; }
 @media (max-width: 480px) {
   .grid-3.admin-summary { grid-template-columns: minmax(0, 1fr); }
 }

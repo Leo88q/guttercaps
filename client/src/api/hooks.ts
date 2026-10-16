@@ -241,6 +241,21 @@ export const useAdminParams = (enabled = true) => useQuery({ queryKey: qk.adminP
 export const useAdminKpi = (enabled = true) => useQuery({ queryKey: qk.adminKpi, queryFn: () => api.get('/admin/kpi'), enabled: useAuthenticated() && enabled, staleTime: 60_000, retry: false });
 export const useAdminWorldMetrics = (days = 30, enabled = true) => useQuery({ queryKey: [...qk.adminWorld, days], queryFn: () => api.get('/admin/world-metrics', { query: { days } }), enabled: useAuthenticated() && enabled, staleTime: 60_000, retry: false });
 export const useAdminFraud = (enabled = true) => useQuery({ queryKey: qk.adminFraud, queryFn: () => api.get('/admin/fraud', { query: { limit: 100 } }), enabled: useAuthenticated() && enabled, staleTime: 15_000, retry: false });
+export const useModQueue = (enabled = true) => useQuery({ queryKey: qk.modQueue, queryFn: () => api.get('/mod/tags/queue'), enabled: useAuthenticated() && enabled, staleTime: 15_000, retry: false });
+export const useModStats = (enabled = true) => useQuery({ queryKey: qk.modStats, queryFn: () => api.get('/mod/tags/stats'), enabled: useAuthenticated() && enabled, staleTime: 30_000, retry: false });
+/**
+ * Решение модератора: скрыть, вернуть или удалить тег (docs/16 §3.3).
+ * Перечитываем очередь и статистику сразу: скрытый тег снимается со стены, и
+ * очередь обязана это показать без перезагрузки страницы.
+ */
+export const useSetTagStatus = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (b: { id: string; status: 'live' | 'hidden' | 'removed'; note?: string }) =>
+      api.put('/mod/tags/{id}', { status: b.status, ...(b.note === undefined ? {} : { note: b.note }) }, { path: { id: b.id } }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: qk.modQueue }); void qc.invalidateQueries({ queryKey: qk.modStats }); },
+  });
+};
 export const useAdminAudit = (enabled = true) => useQuery({ queryKey: qk.adminAudit, queryFn: () => api.get('/admin/audit', { query: { limit: 100 } }), enabled: useAuthenticated() && enabled, staleTime: 15_000, retry: false });
 /** Validate + encode `set_params` / `set_split` for the multisig — nothing is sent by the API. A 422 carries the full Proposal in `details`. */
 export const useProposeParams = () => useMutation({ mutationFn: (b: ParamsProposal) => api.post('/admin/params', b) });

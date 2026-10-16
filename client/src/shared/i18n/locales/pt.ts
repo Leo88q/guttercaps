@@ -251,8 +251,17 @@ const pt: Messages = {
     spec: 'Ficha', toMarket: 'Página no mercado', deepLinkNote: 'Esta página é um link direto: abre sem carteira e sem sessão.',
   },
   admin: {
+    mod: {
+      explainer: 'Os reportes vêm da rua, quem decide é uma pessoa. O SLA é de {n} h desde o reporte mais antigo sem resolver: primeiro os vencidos, não os mais reportados.',
+      open: 'Aguardando: {n}', overdue: 'Vencidos: {n}', median: 'Reação mediana: {n} h', actioned: 'Termina em remoção: {n}%',
+      empty: 'Nada para moderar — não há reportes abertos.',
+      hoursLeft: 'faltam {n} h', overdueTag: 'vencido há {n} h', reports: '{n, plural, one{# reporte} other{# reportes}}',
+      appeal: 'Recurso do autor', note: 'Nota para o registro (opcional)',
+      hidden: 'Ocultar', live: 'Restaurar', removed: 'Remover',
+      done_hidden: 'Tag ocultada e retirada do muro', done_live: 'Tag restaurada', done_removed: 'Tag removida', failed: 'A decisão não foi aplicada',
+    },
     title: 'Painel de operações', subtitle: 'Ajuste da economia ao vivo. Nada aqui assina: cada mudança volta como bytes de instrução para a multisig e cada chamada vai para o log de auditoria.',
-    tabs: { params: 'Parâmetros', kill: 'Botão de pausa', simulate: 'Simular', kpi: 'KPI', world: 'Mundo', fraud: 'Fila de fraude', audit: 'Auditoria' },
+    tabs: { params: 'Parâmetros', kill: 'Botão de pausa', simulate: 'Simular', kpi: 'KPI', world: 'Mundo', fraud: 'Fila de fraude', audit: 'Auditoria', mod: 'Moderação' },
     world: {
       intro: 'Coortes do mundo skate (docs/16 §12). Cada número é uma média por carteira: os grupos têm tamanhos diferentes, então somas fariam qualquer função popular parecer boa. Δ = coorte ÷ base − 1.',
       window: '{n} dias',

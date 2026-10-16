@@ -38,4 +38,6 @@ export const qk = {
   adminWorld: ['admin', 'world-metrics'] as const,
   adminFraud: ['admin', 'fraud'] as const,
   adminAudit: ['admin', 'audit'] as const,
+  modQueue: ['mod', 'tags', 'queue'] as const,
+  modStats: ['mod', 'tags', 'stats'] as const,
 };
