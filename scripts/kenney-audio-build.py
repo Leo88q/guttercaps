@@ -82,9 +82,7 @@ SELECTION = (
      "70 мс, 5.5 кГц — ярче клика, поэтому переключение вкладки отличимо от нажатия"),
     ("ui/toast", "kenney_interface-sounds.zip", "Audio/pluck_002.ogg",
      "160 мс, мягкий щипок: тост не должен перекрикивать игру"),
-    # ── Решётка: поворот по материалам глубины (docs/13, 5 материалов) ─────────────
-    ("grid/rotate-zinc", "kenney_interface-sounds.zip", "Audio/tick_004.ogg",
-     "50 мс, 2.9 кГц — сухой лёгкий металлический тик (цинк)"),
+    # ── Решётка: поворот по материалам глубины (docs/13, 4 материала: цинк снят) ───
     ("grid/rotate-chrome", "kenney_interface-sounds.zip", "Audio/toggle_003.ogg",
      "140 мс, 7.3 кГц — самый яркий из механических: полированный хром звенит"),
     ("grid/rotate-rust", "kenney_interface-sounds.zip", "Audio/scratch_001.ogg",

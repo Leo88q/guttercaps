@@ -11,7 +11,7 @@ import { useActiveOps } from '@/app/store/txs';
 import { PACKS, CHIP_XP } from '@guttercaps/economy';
 import { fmtCg, countdown } from '@/shared/lib/format';
 import { useCollections } from '@/shared/lib/lore';
-import { collectionColor } from '@/shared/lib/rarity';
+import { collectionColor, rarityName } from '@/shared/lib/rarity';
 import { Progress, Skeleton, Stat } from '@/shared/ui/primitives';
 import { FloodIcon } from '@/shared/ui/GridIcons';
 import { ChevronRightIcon } from '@/shared/ui/action-icons';
@@ -100,7 +100,7 @@ export default function Home() {
           <span className="mono small">{stdCounter}/{stdPity.hardAt}</span>
         </div>
         <Progress value={stdCounter} max={stdPity.hardAt} tone={stdCounter >= stdPity.softStart ? 'orange' : undefined} />
-        <div className="tiny muted">{t('ui.pityHint', { n: Math.max(0, stdPity.hardAt - stdCounter), start: stdPity.softStart })}</div>
+        <div className="tiny muted">{t('ui.pityHint', { rarity: rarityName(stdPity.tier), n: Math.max(0, stdPity.hardAt - stdCounter), start: stdPity.softStart })}</div>
       </div>
 
       <Link to="/shop" style={{ textDecoration: 'none' }}>

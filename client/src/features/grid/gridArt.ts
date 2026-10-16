@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react';
 import { GRID_DEPTHS, deltaForBit, depthOfLevel, kindOf, rotationToReach, tileMask, type Level, type TileKind } from '@guttercaps/economy';
 
 /** Tile-material of each depth, mirroring GRID_DEPTHS.material (file names in client/public/art/grid/). */
-export type GridTileSet = 'zinc' | 'chrome' | 'rust' | 'cast' | 'glass';
+export type GridTileSet = 'chrome' | 'rust' | 'cast' | 'glass';
 
 /** Каноническая маска, в которой нарисован спрайт формы (контракт исходника, docs/14a §1). */
 const CANON_MASK: Record<TileKind, number> = { cap: 1, straight: 5, elbow: 3, tee: 7, cross: 15 };
@@ -23,6 +23,9 @@ export function gridMaterialForLevel(level: number): GridTileSet {
   const depth = GRID_DEPTHS[depthOfLevel(level) - 1];
   return depth.material as GridTileSet;
 }
+
+/** Базовый цвет воды в трубах (голубой, как у паводка): платное поле перекрашивает --flow-accent. */
+export const GRID_WATER_HEX = '#49C8F5';
 
 export const gridAtlasUrl = (set: GridTileSet): string => `/art/grid/tiles-${set}.webp`;
 export const gridBoardBgUrl = (depth: number): string => `/art/grid/bg-depth-${depth}.webp`;

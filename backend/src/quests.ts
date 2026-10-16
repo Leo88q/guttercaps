@@ -39,7 +39,7 @@ import { ServiceError } from './services.ts';
 import { finalizedHorizon } from './finality.ts';
 import { isBot } from './arena.ts';
 import { rewardGate } from './human.ts';
-import { grantGridHints } from './grid.ts';
+import { grantGridHints, grantGridValve } from './grid.ts';
 import { rootCurrency } from './events.ts';
 import { insertIgnore } from './sql.ts';
 
@@ -155,6 +155,39 @@ export function metricValue(db: Db, wallet: string, metric: string, from: number
       const day = Math.min(dayIndex(Math.max(from, to - 1)), dayIndex(t));
       return wrap7(streakEndingOn(db, wallet, day));
     }
+    // --- Решётка (docs/13): обучение, глубокий паводок, контракты, призрак, капли, престиж, звёзды.
+    // `created_at` у этих таблиц — unix seconds, как у остальных off-chain проекций.
+    case 'grid_training':
+      return db.scalar(`SELECT COUNT(*) FROM grid_attempts WHERE wallet = ? AND mode = 'training' AND created_at >= ? AND created_at < ?`, wallet, from, to);
+    case 'grid_deep':
+      return db.scalar(`SELECT COUNT(*) FROM grid_deep_results WHERE wallet = ? AND created_at >= ? AND created_at < ?`, wallet, from, to);
+    case 'grid_contracts':
+      return db.scalar(`SELECT COUNT(*) FROM grid_contract_done WHERE wallet = ? AND created_at >= ? AND created_at < ?`, wallet, from, to);
+    case 'grid_ghost':
+      // `grid_item_grants` хранит один ряд на (wallet, source, day) — призрак дня выдает метку раз в сутки.
+      return db.scalar(`SELECT COALESCE(SUM(amount), 0) FROM grid_item_grants WHERE wallet = ? AND source = 'ghost_day' AND day >= ? AND day <= ?`, wallet, dayIndex(from), dayIndex(Math.max(from, to - 1)));
+    // Снимки (без окна): капли, престиж и звёзды живут на маршруте фишки и не имеют времени.
+    case 'grid_droplets':
+      return db.scalar(`SELECT COALESCE(MAX(charge_drops), 0) FROM grid_chip_routes WHERE asset IN (SELECT asset FROM chips WHERE owner = ? AND burned_at IS NULL)`, wallet);
+    case 'grid_prestige':
+      return db.scalar(`SELECT COALESCE(MAX(prestige_level), 0) FROM grid_prestige_routes WHERE asset IN (SELECT asset FROM chips WHERE owner = ? AND burned_at IS NULL)`, wallet);
+    case 'grid_stars':
+      return db.scalar(`SELECT COALESCE(SUM(best_stars), 0) FROM grid_level_claims WHERE asset IN (SELECT asset FROM chips WHERE owner = ? AND burned_at IS NULL)`, wallet);
+    // --- Маркет и стейкинг
+    case 'listings_made':
+      return db.scalar(`SELECT COUNT(*) FROM listings WHERE seller = ? AND COALESCE(created_at, 0) >= ? AND COALESCE(created_at, 0) < ?`, wallet, from, to);
+    case 'market_buys':
+      return db.scalar(`SELECT COUNT(*) FROM sales WHERE buyer = ? AND slot <= ? AND COALESCE(block_time, 0) >= ? AND COALESCE(block_time, 0) < ?`, wallet, maxSlot, from, to);
+    case 'staked_chips':
+      return db.scalar(`SELECT COUNT(*) FROM stakes WHERE owner = ? AND kind = 1 AND active = 1 AND slot <= ?`, wallet, maxSlot);
+    // --- Арена, фьюжн, паки
+    case 'wagers':
+      // ставка ненулевая: `wager` — TEXT (lamports как строка), сравниваем как строку.
+      return db.scalar(`SELECT COUNT(*) FROM battles WHERE (challenger = ? OR opponent = ?) AND wager <> '0' AND status = 'resolved' AND slot <= ? AND COALESCE(resolved_at, created_at, 0) >= ? AND COALESCE(resolved_at, created_at, 0) < ?`, wallet, wallet, maxSlot, from, to);
+    case 'fusions_won':
+      return db.scalar(`SELECT COUNT(*) FROM fusions WHERE owner = ? AND success = 1 AND slot <= ? AND COALESCE(block_time, 0) >= ? AND COALESCE(block_time, 0) < ?`, wallet, maxSlot, from, to);
+    case 'packs_opened':
+      return db.scalar(`SELECT COUNT(*) FROM pack_purchases WHERE buyer = ? AND slot <= ? AND COALESCE(block_time, 0) >= ? AND COALESCE(block_time, 0) < ?`, wallet, maxSlot, from, to);
     case 'weeklies_done':
       return WEEKLY_QUESTS.filter((q) => q.metric !== 'weeklies_done').filter((q) => metricValue(db, wallet, q.metric, from, to, t, maxSlot) >= q.target).length;
     default:
@@ -230,7 +263,7 @@ export function list(db: Db, wallet: string, t = now(), refresh = true) {
     const done = value >= q.target;
     return {
       id: q.id, cadence: q.period, title: q.title, description: '', metric: q.metric, target: q.target, value,
-      rewardCgMicro: String(q.rewardCgMicro), rewardChip: q.rewardChip ?? null, rewardBooster: q.rewardItem === 'booster' || q.rewardItems?.includes('booster') ? 1 : 0, rewardHint: q.rewardItem === 'hint' || q.rewardItems?.includes('hint') ? 1 : 0,
+      rewardCgMicro: String(q.rewardCgMicro), rewardChip: q.rewardChip ?? null, rewardBooster: q.rewardItem === 'booster' || q.rewardItems?.includes('booster') ? 1 : 0, rewardHint: q.rewardItem === 'hint' || q.rewardItems?.includes('hint') ? 1 : 0, rewardValve: q.rewardItem === 'valve' || q.rewardItems?.includes('valve') ? 1 : 0,
       completedAt: c ? new Date(c.completed_at * 1000).toISOString() : null,
       claimable: done && !c,                                   // done, waiting for the next reward root
       rooted: c ? c.root_kind !== null : false,
@@ -289,7 +322,12 @@ export function settleWallet(db: Db, wallet: string, t = now(), horizon = finali
       // boosters and chip vouchers follow the same eligibility gate as $CG (an ineligible wallet's completion is recorded with none of them)
       db.run(`INSERT INTO quest_completions (wallet, quest_id, period_key, amount, reward_chip, reward_booster, completed_at, day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         wallet, q.id, key, amount.toString(), elig.eligible && q.rewardChip ? JSON.stringify(q.rewardChip) : null, elig.eligible && (q.rewardItem === 'booster' || q.rewardItems?.includes('booster')) ? 1 : 0, t, day);
-      if (elig.eligible) { const items = new Set([q.rewardItem, ...(q.rewardItems ?? [])]); if (items.has('hint')) grantGridHints(db, wallet, 1, t); } // Floodgrid gear (docs/13 §0.4): backend item, no root
+      if (elig.eligible) {
+        const items = new Set([q.rewardItem, ...(q.rewardItems ?? [])]);
+        // Floodgrid gear (docs/13 §0.4) and fusion boosters are backend/on-chain items, not $CG roots.
+        if (items.has('hint')) grantGridHints(db, wallet, 1, t);
+        if (items.has('valve')) grantGridValve(db, wallet, t);
+      }
       inserted++;
     }
   }

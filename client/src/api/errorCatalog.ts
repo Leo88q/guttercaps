@@ -16,6 +16,15 @@ export const API_ERROR_KEYS = {
   wrong_district: 'failures.requestInvalid', contract_locked: 'failures.requestInvalid', contract_done: 'failures.requestInvalid',
   deep_no_hints: 'failures.requestInvalid', deep_attempts_exhausted: 'failures.requestInvalid', ghost_no_hints: 'failures.requestInvalid',
   use_grid_endpoint: 'failures.requestInvalid', cg_burn_required: 'failures.paymentPayload', deep_credit_cap: 'failures.requestInvalid',
+  // §5.1 линия: реплей, день и попытки.
+  bad_replay: 'failures.requestInvalid', bad_day: 'failures.requestInvalid',
+  use_line_endpoint: 'failures.requestInvalid', runs_exhausted: 'failures.lineRunsExhausted', run_credit_cap: 'failures.lineCreditCap',
+  // §5.6 команды: имя, состав, сегмент стены и модерация имени.
+  no_crew: 'failures.crewNoCrew', invalid_name: 'failures.crewInvalidName', already_in_crew: 'failures.crewAlreadyIn',
+  not_captain: 'failures.crewNotCaptain', bad_code: 'failures.crewBadCode', crew_full: 'failures.crewFull',
+  district_full: 'failures.crewDistrictFull', invite_code_failed: 'failures.crewCodeFailed', use_crew_endpoint: 'failures.crewEndpoint',
+  // §4.2 конструктор доски: часть либо не подходит к слоту, либо ещё не добыта.
+  bad_part: 'failures.badPart', part_not_owned: 'failures.partNotOwned',
   prestige_no_hints: 'failures.requestInvalid', prestige_locked: 'failures.requestInvalid', prestige_maxed: 'failures.requestInvalid',
   bad_squad: 'failures.threeSquad', bad_tier: 'failures.staking_InvalidTier', chain_fulfilled: 'failures.chainFulfilled',
   chip_busy: 'failures.arena_ChipBusy', collection_mismatch: 'failures.collectionMismatch', commit_mismatch: 'failures.commitMismatch',
@@ -43,6 +52,28 @@ export const API_ERROR_KEYS = {
   campaign_closed: 'failures.preorderCampaignClosed', sold_out: 'failures.preorderSoldOut',
   wallet_cap: 'failures.preorderWalletCap', not_yours: 'failures.preorderNotYours',
   no_ticket: 'failures.noXpTicket', missing_asset: 'failures.missingAsset', chip_not_found: 'failures.chipNotFound',
+  // «Свой тег» (docs/16 §3.2–3.3): отказы автофильтра и модерации. Код узкий, а формулировка
+  // широкая — текст сервера игрок всё равно видит в ErrorNotice рядом с этой строкой.
+  tag_empty: 'failures.requestInvalid', tag_forbidden: 'failures.requestInvalid', tag_bad_path: 'failures.requestInvalid',
+  tag_bad_color: 'failures.requestInvalid', tag_bad_width: 'failures.requestInvalid', tag_bad_fill: 'failures.requestInvalid',
+  tag_bad_stroke: 'failures.requestInvalid', tag_bad_image: 'failures.requestInvalid', tag_bad_geometry: 'failures.requestInvalid',
+  tag_bad_align: 'failures.requestInvalid', tag_too_many_parts: 'failures.requestInvalid', tag_too_many_commands: 'failures.requestInvalid',
+  tag_too_large: 'failures.payloadLarge', tag_rate: 'failures.rateLimited',
+  bad_reason: 'failures.requestInvalid', bad_status: 'failures.requestInvalid',
+  own_tag: 'failures.requestInvalid', already_reported: 'failures.requestInvalid', not_hidden: 'failures.requestInvalid',
+  // Стена района (docs/16 §3.4): слот не продаётся, поэтому отказы всегда про условие, а не про деньги.
+  bad_district: 'failures.requestInvalid', tag_not_live: 'failures.requestInvalid', not_your_tag: 'failures.requestInvalid',
+  not_eligible: 'failures.requestInvalid', wall_full: 'failures.requestInvalid', no_slot: 'failures.notFound',
+  // Доска недели (docs/16 §3.7): неразыгранная неделя — это 404, а не «вот тебе пустая доска».
+  no_board: 'failures.notFound',
+  // Экспозиция крышек (docs/16 §4.3): отказы всегда про условие, а не про деньги.
+  bad_slot: 'failures.requestInvalid', slot_locked: 'failures.requestInvalid',
+  not_your_chip: 'failures.requestInvalid', chip_in_use: 'failures.requestInvalid',
+  // §4.6 райдер: фигура должна существовать, а тема — быть оплаченной.
+  bad_silhouette: 'failures.requestInvalid', theme_not_owned: 'failures.themeNotOwned',
+  // §4.7 достижения: такого достижения нет, либо оно ещё не заслужено.
+  unknown_achievement: 'failures.requestInvalid', not_earned: 'failures.achievementNotEarned',
+  rig_private: 'failures.notFound',
   route_locked: 'failures.requestInvalid', no_emergency_hint: 'failures.requestInvalid', no_hints: 'failures.requestInvalid',
   attempt_not_found: 'failures.notFound', attempt_settled: 'failures.requestInvalid', bad_proof: 'failures.requestInvalid', no_skin_entitlement: 'failures.requestInvalid',
   already_granted: 'failures.preorderAlreadyGranted', not_payable: 'failures.preorderNotPayable',

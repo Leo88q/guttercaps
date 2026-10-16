@@ -974,6 +974,137 @@ CREATE TABLE IF NOT EXISTS referral_rewards (
 );
 CREATE INDEX IF NOT EXISTS idx_referral_rewards_wallet ON referral_rewards(wallet, root_kind);
 
+-- ------------------------------------------------------------ skate city: «Свой тег» (docs/16 §3.2–3.3, backend/src/tags.ts)
+-- Пользовательский контент. Хранится сам SVG (до S3 — в базе, файл ≤ 24 КБ), потому что
+-- тегов на старте тысячи, а не миллионы, и внешнее хранилище добавляет отказоустойчивости
+-- меньше, чем отнимает. sha256 — содержимое: одинаковый тег дважды не храним и не платим
+-- за его модерацию дважды.
+CREATE TABLE IF NOT EXISTS tag_registry (
+  id           TEXT    PRIMARY KEY,      -- hex sha256(svg)||created_at: стабильный и не угадывается
+  wallet       TEXT    NOT NULL,
+  sha256       TEXT    NOT NULL,         -- содержимое: дедуп и доказуемое авторство (docs/16 §3.6)
+  svg          TEXT    NOT NULL,         -- санитайзер уже пересобрал: только <path> и <image href="/art/skate/…">
+  bytes        INTEGER NOT NULL,
+  commands     INTEGER NOT NULL,         -- число команд пути (M/L) — лимит 400
+  status       TEXT    NOT NULL DEFAULT 'pending', -- pending | live | hidden | removed
+  created_at   INTEGER NOT NULL,
+  moderated_at INTEGER,                  -- когда человек впервые посмотрел (NULL = ещё не смотрел)
+  reports      INTEGER NOT NULL DEFAULT 0,
+  appeal_note  TEXT,
+  appeal_at    INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_tag_registry_wallet ON tag_registry(wallet, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tag_registry_status ON tag_registry(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_tag_registry_sha ON tag_registry(sha256);
+CREATE INDEX IF NOT EXISTS idx_tag_registry_queue ON tag_registry(reports DESC, created_at) WHERE status = 'live';
+CREATE TABLE IF NOT EXISTS wall_reports (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  tag_id      TEXT    NOT NULL,
+  crew_id     INTEGER,                      -- docs/16 §5.6: жалоба на имя команды (одна очередь на весь UGC)
+  reporter    TEXT    NOT NULL,
+  reason      TEXT    NOT NULL,
+  created_at  INTEGER NOT NULL,
+  resolved_at INTEGER,
+  resolution  TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_wall_reports_once ON wall_reports(tag_id, reporter);
+CREATE INDEX IF NOT EXISTS idx_wall_reports_open ON wall_reports(resolved_at) WHERE resolution IS NULL;
+-- Стена района (docs/16 §3.4): слот занимается активностью, а не деньгами, и выцветает за 30 дней.
+-- История живёт отдельно: прошлое стены видно как слои краски под свежим тегом.
+CREATE TABLE IF NOT EXISTS wall_slots (
+  district   INTEGER NOT NULL,
+  slot       INTEGER NOT NULL,
+  wallet     TEXT    NOT NULL,
+  tag_id     TEXT    NOT NULL,
+  applied_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  renewed_at INTEGER,
+  crew_id    INTEGER,                       -- docs/16 §5.6: слот внутри сегмента команды
+  PRIMARY KEY (district, slot)
+);
+CREATE INDEX IF NOT EXISTS idx_wall_slots_wallet ON wall_slots(wallet, district);
+CREATE INDEX IF NOT EXISTS idx_wall_slots_due ON wall_slots(expires_at);
+-- Слот может принадлежать сегменту команды (docs/16 §5.6): стена одна, но у
+-- команды свой диапазон, и занять его может только участник.
+-- NOTE: колонка crew_id добавляется migrate(), а не здесь: старая база должна
+-- открыться без ошибки «no such column».
+CREATE TABLE IF NOT EXISTS wall_slot_history (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  district    INTEGER NOT NULL,
+  slot        INTEGER NOT NULL,
+  wallet      TEXT    NOT NULL,
+  tag_id      TEXT    NOT NULL,
+  applied_at  INTEGER NOT NULL,
+  released_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_wall_slot_history_slot ON wall_slot_history(district, slot, released_at DESC);
+
+-- Экспозиция крышек (docs/16 §4.3): три слота на доске — один на деку, два на грип.
+-- Слот хранит только ссылку на крышку: она не сжигается, не передаётся и не
+-- блокируется (решение 1 из §0.3), владение проверяется джойном при рендере,
+-- поэтому проданная крышка просто оставляет слот пустым.
+CREATE TABLE IF NOT EXISTS rig_exhibit (
+  wallet      TEXT    NOT NULL,
+  slot        INTEGER NOT NULL,
+  asset       TEXT    NOT NULL,
+  updated_at  INTEGER NOT NULL,
+  PRIMARY KEY (wallet, slot)
+);
+CREATE INDEX IF NOT EXISTS idx_rig_exhibit_asset ON rig_exhibit(asset);
+
+-- Конструктор доски (docs/16 §4.2): части добываются игрой и надеваются на доску.
+-- Владение и «что надето» — разные таблицы по той же причине, по которой
+-- экспозиция крышек отделена от самих крышек: доску пересобирают часто, а
+-- список добытого растёт редко и должен считаться запросом (метрика §12).
+-- Часть не сжигается и не передаётся — это косметика, а не предмет (решение 1).
+CREATE TABLE IF NOT EXISTS board_parts (
+  wallet     TEXT    NOT NULL,
+  part       TEXT    NOT NULL,
+  qty        INTEGER NOT NULL DEFAULT 1,
+  source     TEXT    NOT NULL,             -- stock | run | achievement | crew | quest | track | shop
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (wallet, part)
+);
+CREATE INDEX IF NOT EXISTS idx_board_parts_source ON board_parts(source);
+
+-- Что надето. Хранятся только слоты, которые игрок менял: пропущенный слот
+-- читается как стоковый, поэтому доска всегда собрана и никогда не показывает
+-- дыру вместо деки.
+CREATE TABLE IF NOT EXISTS board_loadout (
+  wallet     TEXT    NOT NULL,
+  slot       TEXT    NOT NULL,             -- deck | trucks | wheels | grip | bolts | sticker
+  part       TEXT    NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (wallet, slot)
+);
+
+-- Одна районная часть за заезд в неделю. PK (wallet, week) и есть проверка
+-- «уже выдавали»: повторный заезд той же недели не проходит вставку.
+CREATE TABLE IF NOT EXISTS board_run_grants (
+  wallet     TEXT    NOT NULL,
+  week       INTEGER NOT NULL,
+  part       TEXT    NOT NULL,
+  granted_at INTEGER NOT NULL,
+  PRIMARY KEY (wallet, week)
+);
+CREATE INDEX IF NOT EXISTS idx_board_run_grants_week ON board_run_grants(week);
+
+-- Телеметрия скейт-мира (docs/16 §12): без неё правило-гейт из §0.2 нечем
+-- проверять — фича без когортной метрики не принята, а не «принята на веру».
+-- Событие — одна строка на действие игрока; когорты считаются из неё запросом,
+-- а не отдельными таблицами под каждую метрику.
+CREATE TABLE IF NOT EXISTS feature_events (
+  id       INTEGER PRIMARY KEY AUTOINCREMENT,
+  wallet   TEXT    NOT NULL,
+  feature  TEXT    NOT NULL,             -- wall | exhibit | tag | run | builder | rider | line (§4-5)
+  kind     TEXT    NOT NULL,             -- claim | renew | release | expire | set | unset | public_on | public_off | save | report | hide
+  at       INTEGER NOT NULL,
+  meta     TEXT                          -- JSON: район, слот, редкость — что угодно, в отчёт не идёт
+);
+CREATE INDEX IF NOT EXISTS idx_feature_events_feature ON feature_events(feature, kind, at);
+CREATE INDEX IF NOT EXISTS idx_feature_events_wallet ON feature_events(wallet, at);
+
 CREATE TABLE IF NOT EXISTS reward_batches (
   kind         INTEGER NOT NULL,
   epoch        INTEGER NOT NULL,
@@ -1084,6 +1215,22 @@ CREATE TABLE IF NOT EXISTS gutter_pot_draws (
 );
 CREATE INDEX IF NOT EXISTS idx_gutter_pot_drawn ON gutter_pot_draws(drawn_at);
 
+-- Доска недели (docs/16 §3.7): пять тегов города, выбранных жеребьёвкой, а не рейтингом.
+-- Розыгрыш замораживается на неделю: доска прошлой недели не переписывается от того,
+-- что автор потом снял тег или его скрыла модерация. Снимок кандидатов лежит рядом с
+-- сидом — доску можно пересчитать и сверить, как Gutter Pot.
+CREATE TABLE IF NOT EXISTS wall_board_draws (
+  week         INTEGER PRIMARY KEY,   -- weekIndex (Monday 00:00 UTC)
+  drawn_at     INTEGER NOT NULL,      -- unix s: когда доску впервые спросили на этой неделе
+  slot         INTEGER NOT NULL,      -- finalizedHorizon в момент розыгрыша, входит в сид
+  seed_hex     TEXT    NOT NULL,      -- sha256(wall-board:v1:week:slot:tagsHash:candidates)
+  tags_hash    TEXT    NOT NULL,      -- sha256 строк district:slot:tagId, отсортированных
+  candidates   INTEGER NOT NULL,      -- сколько тегов участвовало (может быть меньше пяти)
+  winners      TEXT    NOT NULL,      -- JSON [{tagId, wallet, district, slot}]
+  tickets      TEXT    NOT NULL       -- JSON всех кандидатов — снимок для пересчёта
+);
+CREATE INDEX IF NOT EXISTS idx_wall_board_drawn ON wall_board_draws(drawn_at);
+
 CREATE TABLE IF NOT EXISTS oracle_prices (
   symbol       TEXT PRIMARY KEY,           -- SOL | SKR
   usd          REAL    NOT NULL,
@@ -1091,6 +1238,115 @@ CREATE TABLE IF NOT EXISTS oracle_prices (
   publish_time INTEGER,                    -- Pyth publish_time of the on-chain update
   account      TEXT,                       -- PriceUpdateV2 account it was read from (our shard)
   conf_bps     INTEGER                     -- conf / price in bps at that time
+);
+
+-- Достижения (docs/16 §4.7): кто и когда забрал награду. Сам прогресс здесь не
+-- лежит — он считается из существующих таблиц (коллекция, стена, теги, бои,
+-- фьюжн, Флудгрид, рефералы), а таблица хранит ровно факт выдачи, чтобы
+-- повторный тап не выдал награду дважды.
+CREATE TABLE IF NOT EXISTS achievement_claims (
+  wallet     TEXT    NOT NULL,
+  id         TEXT    NOT NULL,             -- achievement id (economy ACHIEVEMENTS)
+  claimed_at INTEGER NOT NULL,             -- unix s
+  PRIMARY KEY (wallet, id)
+);
+-- Линия: заезды (docs/16 §5.1). Реплей — это весь ввод; очки считает сервер
+-- переигрыванием, поэтому в строке лежат и ввод, и посчитанный результат.
+-- Команды (docs/16 §5.6). Имя — модель хендла (тот алфавит, та же уникальность
+-- без регистра, те же паузы), состав — список живых участников, сегмент стены —
+-- диапазон слотов, который занимается той же активностью, что обычный слот.
+CREATE TABLE IF NOT EXISTS crews (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  name          TEXT    NOT NULL,             -- как показываем
+  name_key      TEXT    NOT NULL UNIQUE,      -- как сравниваем: «Gutter» и «gutter» — одно имя
+  captain       TEXT    NOT NULL,             -- координатор: кик и переименование за ним
+  charter_sig   TEXT    NOT NULL UNIQUE,      -- подпись платежа kind 14: одна хартия — одна команда
+  wall_district INTEGER NOT NULL,             -- район сегмента
+  wall_segment  INTEGER NOT NULL,             -- номер сегмента: слоты [n*20, n*20+20)
+  created_at    INTEGER NOT NULL,             -- unix s
+  renamed_at    INTEGER,                      -- последняя смена имени (пауза 30 дней)
+  status        TEXT    NOT NULL DEFAULT 'live', -- live | banned (скрыто модерацией)
+  invite_code   TEXT    NOT NULL UNIQUE       -- вступление по коду: без ончейн-шагов
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_crews_segment ON crews(wall_district, wall_segment) WHERE status = 'live';
+CREATE INDEX IF NOT EXISTS idx_crews_captain ON crews(captain);
+-- Состав: left_at IS NULL — в команде сейчас. Выход не стирает строку: вернувшийся
+-- участник не считается новым, а история взносов в командную доску остаётся правдой.
+CREATE TABLE IF NOT EXISTS crew_members (
+  crew_id   INTEGER NOT NULL,
+  wallet    TEXT    NOT NULL,
+  joined_at INTEGER NOT NULL,                 -- unix s
+  left_at   INTEGER,                          -- NULL = в составе
+  PRIMARY KEY (crew_id, wallet)
+);
+CREATE INDEX IF NOT EXISTS idx_crew_members_live ON crew_members(crew_id) WHERE left_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_crew_members_one ON crew_members(wallet) WHERE left_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_crew_members_wallet ON crew_members(wallet);
+--- Освобождённые имена: 90 дней карантина, чтобы «Gutter» нельзя было подобрать
+--- на следующий день после распада команды и представиться её историей.
+CREATE TABLE IF NOT EXISTS crew_name_history (
+  name        TEXT    NOT NULL,
+  name_key    TEXT    NOT NULL,
+  crew_id     INTEGER NOT NULL,
+  released_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_crew_name_history ON crew_name_history(name_key, released_at);
+--- Предварительная бронь имени на время оплаты: ровно та же модель, что у хендлов,
+--- чтобы «проверить → заплатить → забрать» не превращалось в гонку двух кошельков.
+CREATE TABLE IF NOT EXISTS crew_reservations (
+  name_key   TEXT    PRIMARY KEY,
+  wallet     TEXT    NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS line_runs (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  wallet      TEXT    NOT NULL,
+  day         INTEGER NOT NULL,             -- unix day (dayIndex), раскладка дня одна на всех
+  week        INTEGER NOT NULL,             -- weekIndex, для доски недели (§5.5)
+  seed        INTEGER NOT NULL,             -- сид раскладки: реплей без него не переиграть
+  inputs      TEXT    NOT NULL,             -- JSON [[tick, action], ...] — реплей, живёт 14 дней (§5.2)
+  score       INTEGER NOT NULL,
+  tricks      INTEGER NOT NULL,
+  best_combo  INTEGER NOT NULL,
+  bails       INTEGER NOT NULL,
+  paid        INTEGER NOT NULL DEFAULT 0,   -- 1 = заезд за 30 $CG (сожжены)
+  submitted_at INTEGER NOT NULL,            -- unix s
+  replay_ttl  INTEGER NOT NULL              -- unix s, после которого реплей стирается (§5.2: 14 дней)
+);
+CREATE INDEX IF NOT EXISTS idx_line_runs_wallet_day ON line_runs(wallet, day);
+CREATE INDEX IF NOT EXISTS idx_line_runs_week ON line_runs(week, score DESC);
+CREATE INDEX IF NOT EXISTS idx_line_runs_ttl ON line_runs(replay_ttl);
+-- Оплаченные дополнительные заезды: ровно тот же разбор, что у Глубокого паводка
+-- (ищем платёж по подписи, требуем $CG ровно 30, тратим кредит один раз).
+CREATE TABLE IF NOT EXISTS line_credits (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  wallet      TEXT    NOT NULL,
+  day         INTEGER NOT NULL,
+  signature   TEXT    NOT NULL UNIQUE,      -- подпись on-chain платежа: дважды один платёж не тратится
+  granted_at  INTEGER NOT NULL,
+  used_by     INTEGER                       -- line_runs.id, который crédit потратил
+);
+CREATE INDEX IF NOT EXISTS idx_line_credits_wallet_day ON line_credits(wallet, day);
+-- Сколько XP косметического трека дала линия за день. Счёт трека живёт в pass.ts,
+-- здесь только «что дала линия», чтобы экран мог показать это без пересчёта.
+CREATE TABLE IF NOT EXISTS line_pass_xp (
+  wallet   TEXT    NOT NULL,
+  day      INTEGER NOT NULL,
+  xp       INTEGER NOT NULL,
+  run_id   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_line_pass_xp ON line_pass_xp(wallet, day);
+-- Предметы за лучший заезд дня выдаются один раз в день (§5.3): платные заезды
+-- покупают попытку и очки на доске, а не ещё одну горсть предметов.
+CREATE TABLE IF NOT EXISTS line_rewards (
+  wallet      TEXT    NOT NULL,
+  day         INTEGER NOT NULL,
+  tier        TEXT    NOT NULL,             -- bronze | silver | gold
+  score       INTEGER NOT NULL,             -- за какой результат выдано
+  hints       INTEGER NOT NULL DEFAULT 0,
+  valve       INTEGER NOT NULL DEFAULT 0,
+  granted_at  INTEGER NOT NULL,
+  PRIMARY KEY (wallet, day)
 );
 `;
 
@@ -1128,6 +1384,12 @@ export class Db {
     // its attempts and stops at the cap — otherwise a handful of permanent NULLs would occupy every batch
     // for ever and starve the rows that *are* healable. `stuck` rows are surfaced in /health.
     if (!ev.has('time_heal_attempts')) this.raw.exec(`ALTER TABLE events_raw ADD COLUMN time_heal_attempts INTEGER NOT NULL DEFAULT 0`);
+    // docs/16 §5.6: слот стены может принадлежать сегменту команды; жалоба — имени команды.
+    const wallCols = new Set(this.raw.prepare(`PRAGMA table_info(wall_slots)`).all().map((c) => String((c as { name: unknown }).name)));
+    if (!wallCols.has('crew_id')) this.raw.exec(`ALTER TABLE wall_slots ADD COLUMN crew_id INTEGER`);
+    const repCols = new Set(this.raw.prepare(`PRAGMA table_info(wall_reports)`).all().map((c) => String((c as { name: unknown }).name)));
+    if (!repCols.has('crew_id')) this.raw.exec(`ALTER TABLE wall_reports ADD COLUMN crew_id INTEGER`);
+    if (!repCols.has('crew_id')) this.raw.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_crew_reports_once ON wall_reports(crew_id, reporter) WHERE crew_id IS NOT NULL`);
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_events_unfinalized ON events_raw(finalized_at, slot)`);
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_events_untimed ON events_raw(slot) WHERE block_time IS NULL`);
     const ch = new Set((this.raw.prepare(`PRAGMA table_info(chips)`).all() as { name: string }[]).map((c) => c.name));

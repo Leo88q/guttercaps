@@ -647,6 +647,42 @@ describe('quests', () => {
     expect(l2.find((q) => q.id === 'p_set1')!.value).toBe(0);
   });
 
+  it('new quest metrics count what the new quests promise (Floodgrid, market, wagers)', () => {
+    const from = T - 86_400;
+    const to = T + 86_400;
+    const [asset] = mint(db, alice, [{ rarity: 0, collection: 0 }]);
+    // обучение: в метрику идёт только training, попытка заряда не засчитывается
+    db.run(`INSERT INTO grid_attempts (id, wallet, asset, level, mode, created_at) VALUES ('a1', ?, ?, 1, 'training', ?)`, alice, asset, T);
+    db.run(`INSERT INTO grid_attempts (id, wallet, asset, level, mode, created_at) VALUES ('a2', ?, ?, 1, 'charge', ?)`, alice, asset, T);
+    expect(quests.metricValue(db, alice, 'grid_training', from, to, T)).toBe(1);
+    // глубокий паводок и контракт района
+    db.run(`INSERT INTO grid_deep_results (wallet, week, asset, moves, stars, created_at) VALUES (?, 1, ?, 40, 2, ?)`, alice, asset, T);
+    db.run(`INSERT INTO grid_contract_done (wallet, day, slot, asset, stars, moves, created_at) VALUES (?, ?, 0, ?, 2, 30, ?)`, alice, Math.floor(T / 86_400), asset, T);
+    expect(quests.metricValue(db, alice, 'grid_deep', from, to, T)).toBe(1);
+    expect(quests.metricValue(db, alice, 'grid_contracts', from, to, T)).toBe(1);
+    // призрак дня: метка один раз в сутки, сумма по дням окна
+    db.run(`INSERT INTO grid_item_grants (wallet, source, day, amount) VALUES (?, 'ghost_day', ?, 1)`, alice, Math.floor(T / 86_400));
+    expect(quests.metricValue(db, alice, 'grid_ghost', from, to, T)).toBe(1);
+    // капли, престиж и звёзды — снимок состояния маршрута фишки (без окна)
+    db.run(`INSERT INTO grid_chip_routes (asset, next_level, charge_drops, charge_progress, updated_at) VALUES (?, 20, 2, 3, ?)`, asset, T);
+    db.run(`INSERT INTO grid_prestige_routes (asset, prestige_level, next_sector, updated_at) VALUES (?, 1, 2, ?)`, asset, T);
+    db.run(`INSERT INTO grid_level_claims (asset, level, best_stars, xp_accounted, xp_pending, max_xp, updated_at) VALUES (?, 1, 3, 12, 0, 12, ?)`, asset, T);
+    expect(quests.metricValue(db, alice, 'grid_droplets', from, to, T)).toBe(2);
+    expect(quests.metricValue(db, alice, 'grid_prestige', from, to, T)).toBe(1);
+    expect(quests.metricValue(db, alice, 'grid_stars', from, to, T)).toBe(3);
+    expect(quests.metricValue(db, alice, 'grid_route_max', from, to, T)).toBe(19);
+    // листинг: считается выставление, а не продажа
+    db.run(`INSERT INTO listings (asset, seller, price, currency, created_at, slot, signature) VALUES (?, ?, '1000', 0, ?, 1, 'sig-list')`, asset, alice, T);
+    expect(quests.metricValue(db, alice, 'listings_made', from, to, T)).toBe(1);
+    expect(quests.metricValue(db, alice, 'listings_made', T + 1, to, T)).toBe(0); // вне окна — ноль
+    // ставки: только resolved и только с ненулевым взносом
+    db.run(`INSERT INTO battles (battle, challenger, opponent, wager, power_a, randomness, status, created_sig, created_at, resolved_at, slot) VALUES ('b1', ?, ?, '500', 100, ?, 'resolved', 'sig-b1', ?, ?, 1)`, alice, bob, 'rnd', T, T);
+    db.run(`INSERT INTO battles (battle, challenger, opponent, wager, power_a, randomness, status, created_sig, created_at, resolved_at, slot) VALUES ('b2', ?, ?, '0', 100, ?, 'resolved', 'sig-b2', ?, ?, 1)`, alice, bob, 'rnd', T, T);
+    expect(quests.metricValue(db, alice, 'wagers', from, to, T)).toBe(1);
+    // капли и престиж не «накапливаются» по чужим фишкам: смотрим только свои
+    expect(quests.metricValue(db, bob, 'grid_droplets', from, to, T)).toBe(0);
+  });
+
   it('eligibility: new wallet without a paid pack is ineligible until 24 h + 10 matches; rewards_paused flag blocks; caps apply on settlement', () => {
     const newbie = kp();
     db.run(`INSERT INTO wallets (address, first_seen) VALUES (?, ?)`, newbie, T - 3600);

@@ -23,6 +23,16 @@ import { type Db } from './db.ts';
 import { attachSession, requireAuth, issueNonce, verifySiws, createSession, setSessionCookie, destroySession, AuthError } from './auth.ts';
 import { POLICIES, createLimiter, type Limiter } from './ratelimit.ts';
 import { catalogue, checkHandle, claimHandle, claimService, myServices, ServiceError } from './services.ts';
+import * as tags from './tags.ts';
+import * as wall from './wall.ts';
+import * as wallBoard from './wallBoard.ts';
+import * as rig from './rig.ts';
+import * as board from './board.ts';
+import * as worldMetrics from './worldMetrics.ts';
+import * as achievements from './achievements.ts';
+import * as runs from './runs.ts';
+import * as crew from './crew.ts';
+import { publish } from './bus.ts';
 import { claimPassTier, passState } from './pass.ts';
 import { packQuote, validateRequest } from './quote.ts';
 import { gapStatus, getConnection, untimedStatus } from './ingest.ts';
@@ -109,6 +119,19 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   const sweepMs = deps.arenaSweepMs ?? Number(process.env.ARENA_SWEEP_MS ?? 3_000);
   if (sweepMs > 0) {
     const timer = setInterval(() => { try { arena.sweep(db); } catch (e) { console.error('[arena] sweep failed:', (e as Error).message); } }, sweepMs);
+    timer.unref();
+  }
+  // Реплей линии живёт 14 дней (docs/16 §5.2): стираем ввод, очки остаются.
+  const lineSweepMs = Number(process.env.LINE_SWEEP_MS ?? 3_600_000);
+  if (lineSweepMs > 0) {
+    const timer = setInterval(() => { try { runs.pruneLineReplays(db); } catch (e) { console.error('[line] sweep failed:', (e as Error).message); } }, lineSweepMs);
+    timer.unref();
+  }
+  // Выцветание стены (docs/16 §3.4): слот живёт 30 дней. Раз в час достаточно —
+  // на чтении просроченные слоты всё равно отсекаются лениво (wall.expireSlots).
+  const wallSweepMs = Number(process.env.WALL_SWEEP_MS ?? 3_600_000);
+  if (wallSweepMs > 0) {
+    const timer = setInterval(() => { try { wall.expireSlots(db); } catch (e) { console.error('[wall] sweep failed:', (e as Error).message); } }, wallSweepMs);
     timer.unref();
   }
   // Behind a CDN/LB `trust proxy` is what makes `req.ip` the client, not the edge. `true` trusts every
@@ -467,7 +490,40 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     const b = req.body as { handle: string; signature: string };
     res.json(claimHandle(db, req.session!.wallet, String(b.handle ?? ''), String(b.signature ?? '')));
   });
+  // §4.6 Райдер: силуэт района + цвет подсветки из оплаченной косметики. Никаких
+  // характеристик — это образ, который видят другие на витрине.
+  v1.put('/me/rider', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    const b = req.body as { silhouette?: unknown; theme?: unknown };
+    res.json(rig.setRider(db, req.session!.wallet, { silhouette: b.silhouette, theme: b.theme }));
+  });
   v1.get('/me/services', requireAuth, (req, res) => { res.json(myServices(db, req.session!.wallet)); });
+  // Достижения (docs/16 §4.7): прогресс считается из существующих данных, а
+  // выдача — косметикой или предметом, никогда не $CG.
+  v1.get('/me/achievements', requireAuth, (req, res) => { res.json(achievements.achievementsOf(db, req.session!.wallet)); });
+  v1.post('/me/achievements/:id/claim', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    res.json(achievements.claimAchievement(db, req.session!.wallet, String(req.params.id ?? '')));
+  });
+  // Линия (docs/16 §5.1): раскладка дня одна на всех, очки считает сервер
+  // переигрыванием реплея, награды — косметика и существующие предметы.
+  v1.get('/me/line', requireAuth, (req, res) => { res.json(runs.lineState(db, req.session!.wallet)); });
+  v1.post('/me/line/runs', requireAuth, accessGate('rewards'), rl(POLICIES.mutate), (req, res) => {
+    res.json(runs.submitRun(db, req.session!.wallet, req.body));
+  });
+  v1.post('/me/line/runs/buy', requireAuth, accessGate('rewards'), rl(POLICIES.claim), rl(POLICIES.claimNet), (req, res) => {
+    res.json(runs.buyExtraRun(db, req.session!.wallet, req.body));
+  });
+  // Реплей смотрят, а не скачивают (docs/16 §5.5): доска недели публична, и
+  // нажатия в заезде — не секрет. Просмотр не требует кошелька.
+  v1.get('/line/runs/:id/replay', rl(POLICIES.read), (req, res) => {
+    const id = intQuery(req.params.id, { name: 'id', min: 1 });
+    const r = id === undefined ? null : runs.runReplay(db, id);
+    if (!r) { res.status(404).json({ error: 'not_found', message: 'No such run' }); return; }
+    res.json(r);
+  });
+  v1.get('/line/leaderboard', (req, res) => {
+    const week = intQuery(req.query.week, { name: 'week', min: 0 });
+    res.json(runs.lineLeaderboard(db, week ?? runs.currentWeek(), 50));
+  });
   // T-B-49 proof of human: Turnstile token → 7-day pass that unlocks quest / SKR settlement (human.ts).
   v1.get('/me/human', requireAuth, (req, res) => { res.json(humanStatus(db, req.session!.wallet)); });
   v1.post('/me/human', requireAuth, rl(POLICIES.human), rl(POLICIES.humanNet), wrap(async (req, res) => {
@@ -549,6 +605,19 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     const r = q.chipDetail(db, req.params.asset);
     if (!r) res.status(404).json({ code: 'not_found', message: 'Unknown chip' });
     else res.json(r);
+  });
+
+  // Шер инспектора (docs/16 §2.2): единственная причина существования этого
+  // вызова — метрика «доля шеринга и регистрации из переходов». Саму ссылку
+  // клиент собирает и без нас; здесь мы (1) записываем событие и (2) отдаём
+  // путь с реф-параметром, тем же, что использует реферальная программа.
+  v1.post('/chips/:asset/share', requireAuth, rl(POLICIES.arena), (req, res) => {
+    const asset = String(req.params.asset ?? '');
+    const wallet = req.session!.wallet;
+    const chip = q.chipDetail(db, asset);
+    if (!chip) { res.status(404).json({ code: 'not_found', message: 'Unknown chip' }); return; }
+    worldMetrics.recordEvent(db, wallet, 'inspect', 'share', { asset });
+    res.json({ path: `/chip/${asset}?ref=${wallet}` });
   });
 
   // ------------------------------------------------------------ packs: quote (frozen FX — SOL $110 / SKR $0.016)
@@ -668,6 +737,143 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.get('/players/:wallet/grid', (req, res) => { res.json(grid.publicDiver(db, req.params.wallet)); });
   v1.post('/grid/onboard', requireAuth, (req, res) => { res.json(grid.recordGridOnboard(db, req.session!.wallet, typeof req.body?.event === 'string' ? req.body.event : '')); });
 
+  // ------------------------------------------------------------ skate city: теги (docs/16 §3.2–3.3)
+  // Тег — пользовательский контент, поэтому сохранение не доверяет клиенту:
+  // сервер пересобирает SVG заново (backend/src/tags.ts), а лимит жалоб —
+  // единственное, что стоит между модератором и намеренным мусором.
+  v1.post('/tags', requireAuth, rl(POLICIES.mutate), (req, res) => { res.json(tags.saveTag(db, req.session!.wallet, req.body?.svg)); });
+  v1.get('/me/tags', requireAuth, (req, res) => { res.json(tags.myTags(db, req.session!.wallet)); });
+  // Публичный просмотр: скрытый тег отдаётся только автору (404 для остальных —
+  // сам факт существования скрытого тега наружу не уходит).
+  v1.get('/tags/:id', (req, res) => { res.json(tags.getTag(db, req.params.id, req.session?.wallet)); });
+  v1.post('/tags/:id/report', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    res.json(tags.reportTag(db, req.session!.wallet, req.params.id, String(req.body?.reason ?? '')));
+  });
+  v1.post('/tags/:id/appeal', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    res.json(tags.appealTag(db, req.session!.wallet, req.params.id, String(req.body?.note ?? '')));
+  });
+  // Сам тег картинкой: клиент вставляет его в <img>, а не в innerHTML. В <img>
+  // SVG не имеет исполняемого контекста — сценарий не запустится, даже если мы
+  // когда-нибудь пропустим что-то в санитайзере. Плюс браузер это кеширует.
+  v1.get('/tags/:id/svg', (req, res) => {
+    const tag = tags.getTag(db, req.params.id, req.session?.wallet);
+    if (!tag.svg) { res.status(404).json({ code: 'not_found', message: 'No tag with that id' }); return; }
+    res.set('Content-Type', 'image/svg+xml; charset=utf-8');
+    // Тег — картинка, а не документ: никаких скриптов, стилей и внешних запросов.
+    res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:");
+    res.set('Cache-Control', 'public, max-age=300');
+    res.send(tag.svg);
+  });
+
+  // ------------------------------------------------------------ стена района (docs/16 §3.4)
+  // Слот занимается активностью (7 дней подряд + крышка в стейкинге), а не
+  // деньгами: это решение 6 из §0.3, и его нельзя обойти никаким платёжным путём.
+  // Номер района берётся из URL: как любой числовой параметр, он обязан пройти params.ts
+  // (SEC-B2) — иначе `Number('0.5')` или `Number('-1')` уходят прямиком в SQL.
+  const districtParam = (raw: unknown): number => intQuery(raw, { name: 'district', min: 0, max: MAX_COLLECTION_IDX, def: 0 }) ?? 0;
+
+  // Доска недели (docs/16 §3.5): пять тегов города, выбранных жеребьёвкой.
+  // Маршрут стоит РАНЬШЕ /wall/:district — иначе 'board' уехал бы в номер района
+  // и вернул нулевую стену вместо витрины.
+  v1.get('/wall/board', (req, res) => {
+    const week = intQuery(req.query.week, { name: 'week', min: 0 });
+    const board = wallBoard.wallBoardView(db, week);
+    if (!board) throw new ServiceError(404, 'no_board', 'This week has no board yet');
+    res.json(board);
+  });
+  v1.get('/wall/:district', (req, res) => {
+    wall.expireSlots(db); // ленивое выцветание: стена не показывает мёртвые слоты
+    res.json(wall.wallView(db, districtParam(req.params.district), req.session?.wallet));
+  });
+  v1.post('/wall/:district/claim', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    const b = req.body as { tagId?: string; slot?: number };
+    res.json(wall.claimSlot(db, req.session!.wallet, districtParam(req.params.district), String(b.tagId ?? ''), b.slot));
+  });
+  v1.post('/wall/:district/renew', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    res.json(wall.renewSlot(db, req.session!.wallet, districtParam(req.params.district)));
+  });
+  v1.post('/wall/:district/release', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    res.json(wall.releaseSlot(db, req.session!.wallet, districtParam(req.params.district)));
+  });
+  v1.get('/me/wall', requireAuth, (req, res) => { res.json(wall.myWall(db, req.session!.wallet)); });
+
+  // ------------------------------------------------------------ команды (docs/16 §5.6)
+  // Команда — имя, состав и сегмент стены. Хартия покупает имя и командную доску,
+  // но не стену: сегмент занимается по тем же правилам активности, что слот (§3.4).
+  // Имя команды модерируется той же очередью, что тег: жалоба уходит в wall_reports.
+  //
+  // Порядок маршрутов важен: /crew/board и /crew/check стоят РАНЬШЕ /crew/:name —
+  // иначе слово 'board' уехало бы в имя команды и вернуло 404 «нет такой команды».
+  v1.get('/crew/board', (req, res) => {
+    const week = intQuery(req.query.week, { name: 'week', min: 0 });
+    const limit = intQuery(req.query.limit, { name: 'limit', min: 1, max: 100 });
+    res.json(crew.crewBoard(db, week ?? runs.currentWeek(), limit ?? 50));
+  });
+  v1.get('/crew/check', requireAuth, (req, res) => {
+    const name = String(req.query.name ?? '');
+    res.json(crew.crewCheck(db, req.session!.wallet, name));
+  });
+  // Вступление и выход меняют состав, но не деньги: лимит как у любой мутации.
+  v1.post('/crew/join', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    const b = req.body as { code?: string };
+    res.json(crew.joinCrew(db, req.session!.wallet, String(b.code ?? '')));
+  });
+  v1.post('/crew/leave', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    res.json(crew.leaveCrew(db, req.session!.wallet));
+  });
+  // Хартия и переименование — платные (kind 14 / 15), поэтому двойной лимит:
+  // на попытку и на сеть, как у остальных покупок сервисов.
+  v1.post('/crew/charter', requireAuth, rl(POLICIES.claim), rl(POLICIES.claimNet), (req, res) => {
+    const b = req.body as { name?: string; district?: number; signature?: string };
+    res.json(crew.charterCrew(db, req.session!.wallet, String(b.name ?? ''), Number(b.district), String(b.signature ?? '')));
+  });
+  v1.post('/crew/rename', requireAuth, rl(POLICIES.claim), rl(POLICIES.claimNet), (req, res) => {
+    const b = req.body as { name?: string; signature?: string };
+    res.json(crew.renameCrew(db, req.session!.wallet, String(b.name ?? ''), String(b.signature ?? '')));
+  });
+  v1.get('/me/crew', requireAuth, (req, res) => { res.json(crew.myCrew(db, req.session!.wallet)); });
+  // Карточка команды публична (имя и состав — не секрет); жалоба — как на тег:
+  // один репортёр — одна жалоба на команду.
+  v1.get('/crew/:name', (req, res) => { res.json(crew.crewView(db, req.params.name, req.session?.wallet)); });
+  v1.post('/crew/:name/report', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    const b = req.body as { reason?: string };
+    res.json(crew.reportCrew(db, req.session!.wallet, req.params.name, String(b.reason ?? '')));
+  });
+
+  // ------------------------------------------------- экспозиция крышек (docs/16 §4.3) и витрина (§4.5)
+  // Экспозиция — чистый визуал: редкая крышка на доске не даёт ни веса, ни шанса,
+  // ни дохода (решения 1 и 3 из §0.3). Крышка не сжигается и не блокируется: слот
+  // хранит ссылку, владение проверяется при чтении.
+  v1.get('/rig', requireAuth, (req, res) => { res.json(rig.rigView(db, req.session!.wallet)); });
+  v1.put('/rig', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    const b = req.body as { slots?: Array<{ slot?: number; asset?: string | null }>; public?: boolean };
+    res.json(rig.setRig(db, req.session!.wallet,
+      (Array.isArray(b.slots) ? b.slots : []).map((s) => ({ slot: Number(s?.slot), asset: s?.asset ?? null })),
+      typeof b.public === 'boolean' ? b.public : undefined));
+  });
+  v1.get('/rig/:wallet', (req, res) => {
+    if (!isSolanaAddress(req.params.wallet)) throw new ServiceError(400, 'bad_request', 'wallet must be an address');
+    res.json(rig.publicRig(db, req.params.wallet));
+  });
+
+  // --------------------------------------------------- конструктор доски (docs/16 §4.2)
+  // Части доски — косметика, которую добывают игрой: заездом (§5.1), достижением
+  // (§4.7), командным конкурсом (§5.6). Купить можно только навесное; сет района
+  // собирается игрой, иначе «собери доску» означало бы «купи доску».
+  v1.get('/me/board', requireAuth, (req, res) => { res.json(board.boardView(db, req.session!.wallet)); });
+  v1.put('/me/board', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    const b = req.body as { slots?: Array<{ slot?: string; part?: string | null }> };
+    res.json(board.setBoard(db, req.session!.wallet,
+      (Array.isArray(b.slots) ? b.slots : []).map((s) => ({ slot: String(s?.slot ?? ''), part: s?.part ?? null }))));
+  });
+  v1.get('/board/:wallet', (req, res) => {
+    if (!isSolanaAddress(req.params.wallet)) throw new ServiceError(400, 'bad_request', 'wallet must be an address');
+    // Чужая доска видна на тех же условиях, что и витрина крышек (§4.5): один
+    // переключатель «показывать мою доску» на оба экрана.
+    if (!rig.rigPublic(db, req.params.wallet)) throw new ServiceError(404, 'rig_private', 'This board is not public');
+    res.json({ wallet: req.params.wallet, ...board.boardLoadout(db, req.params.wallet) });
+  });
+
   // ------------------------------------------------------------ admin (docs/03 §3.5, T-B-46): SIWS session ∈ ADMIN_WALLETS, every call audited,
   // on-chain changes are only *encoded* for the Squads multisig — this process holds no admin key.
   const adminGate = (req: Request, res: Response, next: NextFunction) => {
@@ -694,6 +900,22 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   });
   const summarize = (out: unknown) => { const o = out as { ok?: boolean; violations?: unknown[]; flags?: unknown; closed?: number } | null; return o && typeof o === 'object' ? { ok: o.ok, violations: o.violations?.length, flags: o.flags, closed: o.closed } : undefined; };
   v1.use('/admin', adminGate);
+  // Модерация тегов (docs/16 §3.3): отдельной роли модератора пока нет, пускаем
+  // по админскому списку и аудируем каждый вызов. SLA на реакцию — 24 часа.
+  v1.get('/mod/tags/queue', adminGate, audited('mod.tags.queue', () => tags.modQueue(db, 50)));
+  v1.get('/mod/tags/stats', adminGate, audited('mod.tags.stats', () => tags.modStats(db)));
+  v1.put('/mod/tags/:id', adminGate, audited(
+    'mod.tags.status',
+    (req) => {
+      const out = tags.setTagStatus(db, req.params.id, String(req.body?.status ?? ''), req.body?.note === undefined ? undefined : String(req.body.note));
+      // Скрытый тег не должен занимать стену: снимаем его со всех слотов и
+      // говорим автору, чтобы карточка обновилась без перезагрузки.
+      if (out.status !== 'live') wall.releaseTag(db, out.id);
+      publish({ wallets: [out.wallet], type: 'tag.hidden', payload: { id: out.id, status: out.status } });
+      return out;
+    },
+    (req) => req.params.id,
+  ));
   const rightsAudited = (action: string, fn: (req: Request) => unknown) => wrap((req, _res) => {
     try {
       const out = fn(req);
@@ -745,6 +967,10 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   }, (req) => req.params.wallet));
   v1.get('/admin/kpi', audited('kpi', () => admin.kpi(db)));
   v1.get('/admin/audit', audited('audit.read', (req) => admin.auditLog(db, limitQuery(req.query.limit, { max: 1000, def: 100 }))));
+  // Телеметрия скейт-мира (docs/16 §12): правило-гейт §0.2 требует метрику на
+  // каждую фичу — без этого отчёта стена и экспозиция приняты «на веру».
+  v1.get('/admin/world-metrics', audited('world.metrics', (req) =>
+    worldMetrics.worldReport(db, intQuery(req.query.days, { name: 'days', min: 1, max: 90, def: 30 }) ?? 30)));
 
   app.use('/v1', v1);
   app.use('/', v1); // legacy paths (/leaderboard, /stats, /wallet/:address/events) keep working for the landing page

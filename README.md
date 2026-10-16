@@ -6,7 +6,7 @@
 > (`chip_core`, `market`, `staking`, `arena`; см. `programs/README.md`), экономическая
 > модель-источник истины — `packages/economy`, бэкенд — `backend/` (README внутри),
 > клиент — `client/`, ops — `ops/pyth-pusher/` и `scripts/`. `npm run verify` прогоняет
-> все проверки локально — это 31 шаг, а не «тесты» (см. `package.json` → `verify`): целостность lock-файла с двух
+> все проверки локально — это 32 шага, а не «тесты» (см. `package.json` → `verify`): целостность lock-файла с двух
 > сторон (install на любой ОС/`lock:matrix` и пины байтов — sha512 + официальный registry, `lock:integrity`, SEC-B12);
 > инварианты экономики и golden-файлы, клиентские
 > 158 тестов + typecheck + сборка, бюджет критического пути и «ничего не ходит за шрифтами вовне»

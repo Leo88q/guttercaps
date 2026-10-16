@@ -56,8 +56,11 @@ img { max-width: 100%; display: block; }
 .shell-nav a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-decoration: none; color: var(--gc-muted); font-size: 10.5px; min-height: 44px; }
 .shell-nav a span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
 /* 9 tabs at 360px is 40px each: long labels and long locales both need the tighter face, and the
-   word-break rules further down turn "Collection" into two lines rather than a clipped one. */
+   word-break rules further down turn "Collection" into two lines rather than a clipped one.
+   A phone the size of a Seeker (412 CSS px) has ~41 px per tab — enough for the normal 10.5 px
+   face, so only the narrowest screens pay the legibility tax. */
 .shell-nav a { font-size: 9.5px; letter-spacing: -0.01em; }
+@media (min-width: 400px) { .shell-nav a { font-size: 10.5px; letter-spacing: 0; } }
 .shell-nav a.active { color: var(--cg-chrome); }
 .shell-nav a.active svg { filter: drop-shadow(0 0 6px var(--cg-neon-magenta)); }
 /* generated spray badges: dim until the tab is yours */
@@ -74,8 +77,10 @@ img { max-width: 100%; display: block; }
 }
 /* legal + age footer — the one place a player (and a store reviewer) can find the documents, so it
    lives in the shell, not only in a settings screen. */
-.shell-legal { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: center; padding: 16px 16px 4px; font-size: 11.5px; color: var(--gc-muted); border-top: 1px solid var(--gc-line); margin-top: 28px; }
-.shell-legal a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.shell-legal { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; justify-content: center; padding: 16px 16px 4px; font-size: 11.5px; color: var(--gc-muted); border-top: 1px solid var(--gc-line); margin-top: 28px; }
+/* Legal links are real navigation on a phone: 11.5 px type is a 14 px hit box, so the padding
+   buys them a 24 px target (WCAG 2.5.8) without moving the row the footer sits in. */
+.shell-legal a { color: inherit; text-decoration: underline; text-underline-offset: 2px; padding: 5px 0; }
 /* 18+ mark: loud by default (age-gate dialog); the footer shrinks it via the more specific rule below */
 .gc-age { display: inline-block; border: 2px solid var(--cg-neon-magenta); color: var(--cg-neon-magenta); border-radius: 10px; padding: 6px 12px; font-family: var(--cg-font-display); font-size: 22px; letter-spacing: .04em; flex: 0 0 auto; }
 .shell-legal .gc-age { border: 1px solid var(--gc-line); color: inherit; border-radius: 4px; padding: 1px 5px; font-size: 10.5px; letter-spacing: .04em; font-family: inherit; }
@@ -223,6 +228,14 @@ img { max-width: 100%; display: block; }
 .toasts { position: fixed; top: calc(var(--gc-header-h, 56px) + 8px); right: 12px; left: 12px; z-index: 80; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
 @media (min-width: 700px) { .toasts { left: auto; width: 360px; } }
 .toast { pointer-events: auto; background: var(--gc-bg-2); border: 1px solid var(--gc-line-strong); border-left-width: 4px; border-radius: 10px; padding: 10px 12px; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+/* Короткое уведомление читается как плашка: текст центрирован по обеим осям, а крестик
+   уходит в угол — иначе он расталкивает заголовок влево. */
+.toast { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-align: center; }
+.toast > .row.between { position: relative; width: 100%; justify-content: center; align-items: center; gap: 8px; }
+.toast > .row.between > .strong { flex: 1 1 auto; text-align: center; }
+.toast > .row.between > .btn { position: absolute; top: -4px; right: -4px; }
+.toast .muted, .toast .small, .toast a.small, .toast .danger { text-align: center; }
+.toast .danger { display: flex; flex-direction: column; align-items: center; }
 .toast-info { border-left-color: var(--cg-neon-cyan); }
 .toast-success { border-left-color: var(--cg-acid-green); }
 .toast-error { border-left-color: var(--cg-neon-magenta); }
@@ -353,6 +366,12 @@ img { max-width: 100%; display: block; }
 .stepper .step.active { border-color: var(--cg-neon-cyan); color: var(--cg-chrome); }
 .stepper .step.done { border-color: var(--cg-acid-green); color: var(--cg-acid-green); }
 .stepper .step.error { border-color: var(--cg-neon-magenta); color: var(--cg-neon-magenta); }
+/* Вертушка активного шага: на мобильном кошелёк закрывает экран целиком, и статичный номер шага
+   читается как «ничего не происходит» (docs/14b §8 — те же паузы, что объясняет WaitStatusPill). */
+.step-spin { display: inline-block; width: 10px; height: 10px; margin-left: 6px; vertical-align: -1px; border-radius: 50%; border: 2px solid currentColor; border-top-color: transparent; animation: step-spin .8s linear infinite; }
+@keyframes step-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .step-spin { animation: none; opacity: .7; } }
+html.reduced-motion .step-spin { animation: none; opacity: .7; }
 
 /* ---------- fusion bench ---------- */
 .bench { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; align-items: center; }
@@ -447,6 +466,60 @@ img { max-width: 100%; display: block; }
 .fight-cap .chip-lvl small, .round .chip-lvl small { font-size: 6px; }
 .round > .row > span { overflow: visible; }
 .fight-vs { font-family: var(--cg-font-display); font-size: 22px; color: var(--cg-neon-magenta); text-align: center; }
+/* ---------- Трик-рил арены (docs/16 §2.4) ---------- */
+/* Линия трюков: рельс, по которому едут готовые крышки из отряда. Движение —
+   только transform/opacity, nothing new is drawn: арт остаётся артом, код
+   отвечает за слой и тайминг. reduced-motion оставляет статичный итог. */
+.trick-reel { overflow: visible; }
+.trick-track {
+  position: relative;
+  display: flex; align-items: flex-end; gap: 6px;
+  overflow-x: auto; overflow-y: hidden;
+  padding: 8px 2px 12px;
+  scrollbar-width: thin;
+}
+/* сам рельс — одна линия под крышками: грайнд читается как движение вдоль неё */
+.trick-rail {
+  position: absolute; left: 0; right: 0; bottom: 26px; height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(216, 216, 220, 0.35), transparent);
+}
+.trick-beat { flex: 0 0 auto; width: 62px; text-align: center; opacity: 0.25; transition: opacity 160ms linear; }
+.trick-beat.is-played { opacity: 1; }
+.trick-cap { width: 54px; aspect-ratio: 1; margin: 0 auto 4px; will-change: transform; }
+.trick-cap-empty { width: 100%; height: 100%; border-radius: 50%; background: rgba(216, 216, 220, 0.08); }
+.trick-beat.is-played .trick-cap { animation-duration: 380ms; animation-timing-function: cubic-bezier(0.2, 0.9, 0.3, 1.2); animation-fill-mode: both; }
+.trick-push { animation-name: trick-push; }
+.trick-ollie { animation-name: trick-ollie; }
+.trick-kickflip { animation-name: trick-kickflip; }
+.trick-grind { animation-name: trick-grind; }
+.trick-manual { animation-name: trick-manual; }
+.trick-wallplant { animation-name: trick-wallplant; }
+.trick-vert { animation-name: trick-vert; }
+.trick-land { animation-name: trick-land; }
+.trick-bail { animation-name: trick-bail; }
+
+@keyframes trick-push { from { transform: translateX(-10px) scale(0.96); } to { transform: none; } }
+@keyframes trick-ollie { 0% { transform: translateY(0); } 45% { transform: translateY(-18px) rotate(-6deg); } 100% { transform: none; } }
+@keyframes trick-kickflip { 0% { transform: perspective(600px) rotateX(0deg) translateY(-10px); } 100% { transform: perspective(600px) rotateX(360deg) translateY(0); } }
+@keyframes trick-grind { 0% { transform: translateX(-16px) rotate(-8deg); } 100% { transform: translateX(10px) rotate(4deg); } }
+@keyframes trick-manual { 0% { transform: rotate(-10deg); } 50% { transform: rotate(10deg); } 100% { transform: none; } }
+@keyframes trick-wallplant { 0% { transform: translateY(0) rotate(0deg); } 45% { transform: translateY(-14px) rotate(70deg); } 100% { transform: none; } }
+@keyframes trick-vert { 0% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-26px) rotate(-180deg); } 100% { transform: none; } }
+@keyframes trick-land { 0% { transform: scale(1.08, 0.92); } 100% { transform: none; } }
+@keyframes trick-bail { 0% { transform: none; opacity: 1; } 60% { transform: translateY(6px) rotate(120deg); opacity: 0.8; } 100% { transform: translateY(12px) rotate(220deg); opacity: 0.45; } }
+
+/* Баланс: метка ходит влево-вправо, за красной зоной линия ломается. */
+.trick-balance { position: relative; height: 8px; border-radius: 4px; background: rgba(216, 216, 220, 0.12); overflow: hidden; }
+.trick-balance-mid { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(216, 216, 220, 0.3); }
+.trick-balance-mark { position: absolute; top: -2px; width: 6px; height: 12px; border-radius: 3px; background: var(--cg-acid-green, #B6FF3C); transform: translateX(-50%); transition: left 220ms ease-out; }
+.trick-balance-mark.is-edge { background: var(--cg-neon-magenta, #FF2E8A); }
+
+@media (prefers-reduced-motion: reduce) {
+  .trick-beat { opacity: 1; }
+  .trick-beat.is-played .trick-cap { animation: none; }
+  .trick-balance-mark { transition: none; }
+}
+
 .hunt-card {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -628,6 +701,42 @@ img { max-width: 100%; display: block; }
 .reduced-motion .banner-anim > img { animation: none; }
 /* owned profile theme: the lamp colour tints the handle + the banner frame */
 .profile-themed .page-title { color: var(--profile-lamp, #FF2E8A); }
+/* docs/16 §2.3 — the district wall as a mural: 9 hand-placed tags over the real
+   wall plate, owned = painted, missing = a grey spot, all nine = one picture. */
+.mural-stack .label { color: var(--district, var(--gc-accent, #16E5D9)); }
+.mural {
+  position: relative; width: 100%; aspect-ratio: 16 / 10; border-radius: 12px;
+  overflow: hidden; border: 1px solid var(--gc-line, #2a2933); background: #0c0b10;
+}
+.mural-wall {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  filter: brightness(0.48) saturate(0.75);
+}
+/* Flat district tint over the plate: no color-mix, works on any engine we ship to. */
+.mural::after {
+  content: ''; position: absolute; inset: 0; background: var(--district, #16E5D9);
+  opacity: 0.1; pointer-events: none;
+}
+.mural-tag {
+  position: absolute; width: 25%; aspect-ratio: 1 / 1; padding: 0; overflow: visible;
+  border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 8px; background: rgba(9, 8, 12, 0.5);
+  box-shadow: 0 8px 20px -12px #000; cursor: pointer;
+  transform: rotate(var(--rot, 0deg)); transition: transform 0.18s ease, filter 0.18s ease, opacity 0.18s ease;
+}
+.mural-tag:hover, .mural-tag:focus-visible { transform: rotate(var(--rot, 0deg)) scale(1.07); z-index: 3; }
+.mural-tag.is-missing { filter: grayscale(1) brightness(0.6); opacity: 0.5; border-style: dashed; }
+.mural-dust {
+  position: absolute; left: 0; right: 0; bottom: -1px; font-size: 9px; line-height: 14px;
+  color: #d8d7de; background: rgba(0, 0, 0, 0.55); border-radius: 0 0 7px 7px;
+}
+.mural-done {
+  position: absolute; right: 8px; bottom: 8px; z-index: 4; padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--district, #16E5D9); color: var(--district, #16E5D9);
+  background: rgba(6, 6, 9, 0.75); font-size: 10px;
+}
+.mural.is-complete { border-color: var(--district, #16E5D9); box-shadow: 0 0 28px -12px var(--district, #16E5D9); }
+@media (max-width: 640px) { .mural { aspect-ratio: 4 / 3; } .mural-tag { width: 27%; } }
+@media (prefers-reduced-motion: reduce) { .mural-tag { transition: none; } }
 .profile-themed .district-banner { border-color: var(--profile-lamp, #FF2E8A); box-shadow: 0 0 26px -10px var(--profile-lamp, #FF2E8A); }
 
 /* ---------- tables ---------- */
@@ -703,27 +812,47 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 
 /* Operator metrics and translated action groups must not compress into clipped columns. */
 .admin-tabs { flex-wrap: wrap; overflow: visible; }
+
+/* World cohorts (docs/16 §12): four columns — metric, cohort, baseline, Δ — that must
+   survive the longest translation, so the first column takes the slack. */
+.world-cohorts { display: grid; gap: 4px; }
+.world-cohorts-head, .world-cohorts-row { display: grid; grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr)); gap: 8px; align-items: baseline; font-size: 13px; }
+.world-cohorts-head { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+.world-cohorts-row > span:not(:first-child) { text-align: right; }
+.world-series { display: flex; align-items: flex-end; gap: 2px; height: 40px; overflow: hidden; }
+.world-series-bar { flex: 1 1 0; min-width: 2px; background: var(--cg-trust-blue, #2E8BFF); border-radius: 1px; opacity: 0.75; }
+.world-series-bar:hover { opacity: 1; }
 .grid-3 > * { min-width: 0; }
 .stat, .label { overflow-wrap: anywhere; }
+
+/* Модерация тегов (docs/16 §3.3): тег смотрят перед тем, как решать, поэтому
+   превью тянется на всю ширину карточки и держит пропорции 2:1, как на стене. */
+.mod-tag { width: 100%; max-width: 420px; aspect-ratio: 2 / 1; background: #16151a; border: 1px solid var(--gc-line, #2a2933); border-radius: 8px; }
 @media (max-width: 480px) {
   .grid-3.admin-summary { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ---------- Pack shop: equal-height cards + gamified odds shelf ---------- */
-/* Each card spans the same 11 shared rows: art, heading, badges, fan, odds bar,
-   odds grid, legendary chance, pity, cap, price and CTA. Subgrid aligns actual content
-   heights instead of clipping translations or guessing spacers for one locale. */
+/* Each card spans the same 10 shared rows: art, heading, badges, fan, odds bar,
+   odds grid, pity, cap, price and CTA. Subgrid aligns actual content heights
+   instead of clipping translations or guessing spacers for one locale. The row
+   that used to sit between the grid and the pity — «Legend or better per pack» —
+   is gone: packs never drop Legend and above (docs/02 §2.2). */
 .pack-grid { align-items: stretch; }
 .pack-grid > .pack-card {
-  display: grid; grid-template-columns: minmax(0, 1fr); grid-row: span 11; grid-template-rows: subgrid;
-  gap: 12px; min-width: 0; overflow: visible;
+  display: grid; grid-template-columns: minmax(0, 1fr); grid-row: span 10; grid-template-rows: subgrid;
+  gap: 10px; min-width: 0; overflow: visible;
 }
 .pack-grid > .card.pack-card::after { left: 0; right: 0; }
 .pack-head { min-width: 0; }
 .pack-card .cg-heading { hyphens: auto; overflow-wrap: break-word; }
 .pack-grid .pack-sub { line-height: 1.35; }
-.pack-badges { min-height: 32px; display: flex; align-items: start; flex-wrap: wrap; gap: 6px; }
-.pack-grid .odds-gems { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(5, minmax(54px, 1fr)); }
+.pack-badges { min-height: 0; display: flex; align-items: start; flex-wrap: wrap; gap: 6px; }
+/* Rows are earned, not reserved: every SKU drops six tiers, so three rows of two is the
+   whole grid — pinning five rows handed each card ~120 px of dead space. */
+.pack-grid .odds-gems { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: minmax(54px, auto); }
+.pack-grid .pack-price { padding: 8px 12px; }
+.pack-grid .pack-price .kv { padding: 3px 0; }
 .pack-grid .pack-price { align-self: stretch; }
 .pack-buy { display: flex; }
 .pack-buy > button { width: 100%; height: 100%; min-height: 56px; padding-inline: 12px; overflow-wrap: normal; font-size: 15px; }
@@ -871,10 +1000,23 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 .depth-strip { border-left: 4px solid #333; padding-left: 8px; }
 
 /* --- Floodgrid: спрайтовый арт труб по материалам глубин (docs/14a) -----------------------
-   Фон доски — bg-depth-N.webp из Leo88q/1 (через --gt-bg), спрайты — полоса атласа tiles-<material>.webp
-   (500% ширины, кадр по форме порта). Поток — одна переменная --flow-accent (платные темы поля
-   меняют только её). Вся геометрия/логика остаётся у движка; это чисто слой отрисовки. */
-.gt-board { position: relative; overflow: hidden; border-radius: 12px; padding: 9px; background-color: #0e0d11; width: 100%; max-width: 560px; margin: 0 auto; }
+   Спрайты — полоса атласа tiles-<material>.webp (500% ширины, кадр по форме порта). Фото глубины
+   живёт на странице мини-игры (.grid-screen), ячейки однотонные, с фланцем стыка под трубой.
+   Стык труб — три переменные: --gt-gap (зазор сетки), --gt-pad (внутренний отступ ячейки),
+   --gt-zoom (масштаб спрайта — 1.04: труба в кадре идёт до самой кромки, пустого поля по оси 0 px,
+   толщина 70/256; лишние 4 % гасят муар антиалиасинга на стыке соседей, а не щель между ними).
+   Цвет воды — --flow-accent (голубой по умолчанию; платные темы поля меняют только его).
+   Вся геометрия и логика уровней остаются у движка; это только слой отрисовки. */
+
+/* Страница мини-игры: фото глубины как атмосферный фон, поверх него — пар и столб света. */
+.grid-screen { position: relative; isolation: isolate; }
+.grid-screen::before { content: ''; position: absolute; inset: 0; z-index: -3; pointer-events: none; background-image: var(--grid-page-bg, none); background-size: cover; background-position: center; opacity: .34; filter: saturate(.8) contrast(1.06); }
+.grid-screen::after { content: ''; position: absolute; inset: 0; z-index: -2; pointer-events: none; background: linear-gradient(180deg, rgba(11, 10, 14, .5), rgba(11, 10, 14, .88) 62%); }
+.gt-ambient { position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; contain: paint; }
+.gt-ambient .vfx-steam { inset: auto 0 0 0; height: 54%; opacity: .34; }
+.gt-ambient .vfx-beam { opacity: .18; }
+
+.gt-board { --gt-gap: 0px; --gt-pad: 0px; --gt-zoom: 1.04; --gt-cell: #17161c; position: relative; overflow: hidden; border-radius: 12px; padding: 9px; background-color: #0e0d11; width: 100%; max-width: 560px; margin: 0 auto; }
 
 .gt-board::after {
   content: '';
@@ -887,42 +1029,51 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
   box-shadow: inset 0 0 26px rgba(5, 4, 7, 0.55);
 }
 
-.gt-grid { position: relative; z-index: 2; display: grid; gap: 4px; }
+.gt-grid { position: relative; z-index: 2; display: grid; gap: var(--gt-gap, 0px); }
 
-/* Ячейка: сквозь frame-паддинг просвечивает фон глубины, поверх — спрайт трубы. */
+/* Ячейка: однотонный стилизованный фон (фото глубины уехало на страницу) + фланец стыка. */
 .grid-tile {
   position: relative;
   aspect-ratio: 1;
-  padding: 5px;
-  border-radius: 10px;
+  padding: var(--gt-pad, 0px);
+  border-radius: 6px;
   overflow: hidden;
-  background: #16151a;
-  transition: background-color .2s ease, box-shadow .2s ease, border-color .12s ease;
+  background: var(--gt-cell, #17161c);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .045);
+  transition: background-color .2s ease, box-shadow .2s ease;
 }
 
-.grid-tile::before {
+/* Фланец соединения: пластина в центре ячейки, под спрайтом трубы. */
+.grid-tile::after {
   content: '';
   position: absolute;
-  inset: 0;
+  inset: 28%;
   z-index: 0;
   pointer-events: none;
-  background-image: var(--gt-bg);
-  background-size: cover;
-  background-position: center;
-  opacity: .5;
+  border-radius: 50%;
+  background: radial-gradient(circle at 42% 36%, rgba(255, 255, 255, .08), rgba(255, 255, 255, .02) 62%, transparent 72%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .05);
+}
+
+/* «Сухая» труба: приёмники уже под током, а эта клетка ещё вне сети — показываем, что осталось. */
+.grid-tile-dry {
+  background-color: color-mix(in srgb, #FF7A1A 10%, var(--gt-cell, #17161c));
+  box-shadow: inset 0 0 0 1px rgba(255, 122, 26, .5), inset 0 0 10px rgba(255, 122, 26, .2);
 }
 
 .grid-tile-on {
-  background-color: color-mix(in srgb, var(--flow-accent, #B6FF3C) 10%, #16151a);
-  box-shadow: inset 0 0 10px color-mix(in srgb, var(--flow-accent, #B6FF3C) 24%, transparent);
+  background-color: color-mix(in srgb, var(--flow-accent, #49C8F5) 12%, var(--gt-cell, #17161c));
+  box-shadow: inset 0 0 12px color-mix(in srgb, var(--flow-accent, #49C8F5) 26%, transparent);
 }
 
-/* Внутренний слой тайла (TileArt). .gt-s — спрайт-кадр, повёрнут целиком (визуальный угол);
-   .gt-f — тот же кадр маской, залитый акцентом потока: размытый «свет воды» внутри трубы. */
-.gt { position: relative; display: block; width: 100%; height: 100%; z-index: 1; }
+/* Внутренний слой тайла (TileArt). .gt-s — спрайт-кадр, повёрнут целиком (визуальный угол) и
+   масштабирован на стык; .gt-f — «свет воды» (маска того же кадра, акцент потока);
+   .gt-w — текущая вода: полосы по маске трубы, движение background-position. */
+.gt { position: relative; display: block; width: 100%; height: 100%; z-index: 1; isolation: isolate; }
 
 .gt-s,
-.gt-f {
+.gt-f,
+.gt-w {
   position: absolute;
   inset: 0;
   background-size: 500% 100%;
@@ -934,9 +1085,9 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 
 .gt-f {
   z-index: 2;
-  background-color: var(--flow-accent, #B6FF3C);
-  opacity: .42;
-  filter: blur(1.2px) saturate(1.25);
+  background-color: var(--flow-accent, #49C8F5);
+  opacity: .5;
+  filter: blur(1.7px) saturate(1.1);
   mask-size: 500% 100%;
   -webkit-mask-size: 500% 100%;
   mask-repeat: no-repeat;
@@ -945,12 +1096,40 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
   animation: gt-flow 2.4s linear infinite;
 }
 
+.gt-w {
+  z-index: 3;
+  pointer-events: none;
+  mask-size: 500% 100%;
+  -webkit-mask-size: 500% 100%;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  background-image:
+    radial-gradient(circle at 50% 40%, rgba(255, 255, 255, .92), rgba(255, 255, 255, .32) 38%, rgba(255, 255, 255, 0) 62%),
+    radial-gradient(circle at 34% 66%, rgba(255, 255, 255, .58), rgba(255, 255, 255, 0) 58%),
+    linear-gradient(90deg, rgba(6, 84, 128, .74), color-mix(in srgb, var(--flow-accent, #49C8F5) 68%, #7fe0ff) 46%, rgba(214, 246, 255, .95) 52%, color-mix(in srgb, var(--flow-accent, #49C8F5) 60%, #5ec8f0) 60%, rgba(6, 84, 128, .74));
+  background-size: 15px 15px, 9px 9px, 100% 100%;
+  background-repeat: repeat, repeat, no-repeat;
+  opacity: .58;
+  animation: gt-water 1.15s linear infinite;
+}
+
+/* Брызги в момент стыковки: один проход поверх спрайта. */
+.gt-splash {
+  position: absolute;
+  inset: -8%;
+  z-index: 6;
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, .9), color-mix(in srgb, var(--flow-accent, #49C8F5) 62%, transparent) 42%, transparent 70%);
+  animation: gt-splash .52s ease-out forwards;
+}
+
 /* Маркеры ролей: приёмник — циановое кольцо (под током ярче), шина — оранжевое ядро с пульсом,
    фиксированная труба — тёмная точка в углу, подсказка — золотая рамка (docs/14a §3). */
 .gt-ring {
   position: absolute;
   inset: 27%;
-  z-index: 3;
+  z-index: 4;
   border: 2px solid #16E5D9;
   border-radius: 50%;
   background: rgba(21, 19, 26, 0.45);
@@ -966,7 +1145,7 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 .gt-bus {
   position: absolute;
   inset: 34%;
-  z-index: 3;
+  z-index: 4;
   border-radius: 50%;
   background: radial-gradient(circle at 42% 36%, #ffa353, #FF7A1A 58%, #8f4006);
   box-shadow: 0 0 8px rgba(255, 122, 26, 0.7);
@@ -986,7 +1165,7 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
   position: absolute;
   top: 10%;
   right: 10%;
-  z-index: 3;
+  z-index: 4;
   width: 10%;
   height: 10%;
   border-radius: 50%;
@@ -999,7 +1178,7 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 .gt-hint {
   position: absolute;
   inset: 1px;
-  z-index: 4;
+  z-index: 5;
   border: 2.5px solid #FFD34D;
   border-radius: 9px;
   box-shadow: 0 0 10px rgba(255, 211, 77, 0.45), inset 0 0 8px rgba(255, 211, 77, 0.22);
@@ -1017,17 +1196,128 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
   100% { transform: scale(1.45); opacity: 0; }
 }
 
+/* Вода течёт: пузыри ползут вдоль трубы ровно на один шаг своего узора (15 и 9 px) —
+   петля бесшовная. Полоски сознательно убраны: на границе соседних клеток узор ломался и
+   щель читалась сильнее, чем сама труба; редкие пузыри шва не дают. */
+@keyframes gt-water {
+  from { background-position: 0 0, 0 0, 0 0; }
+  to { background-position: 0 -15px, 0 -9px, 0 0; }
+}
+
+@keyframes gt-splash {
+  from { transform: scale(.35); opacity: .9; }
+  to { transform: scale(1.45); opacity: 0; }
+}
+
 /* Фото-полосы глубин в списке секторов — кадры расстановки труб (docs/14a §4). */
 .depth-strip { background-size: cover; background-position: center; background-repeat: no-repeat; padding: 9px 11px; border-radius: 10px; }
 
-/* Поток/пульс — только при разрешённой анимации: в reduce всё статично, без моргания. */
+/* --- Выбор сектора: разворачивающаяся шторка вместо пяти полос по 15 кнопок ---------------- */
+.gt-shutter { border: 1px solid #2a2731; border-radius: 12px; background: rgba(23, 22, 28, .72); overflow: hidden; }
+.gt-shutter-head { display: flex; align-items: center; gap: 8px; padding: 6px 8px; }
+.gt-shutter-toggle { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 6px; background: transparent; border: 0; border-radius: 8px; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.gt-shutter-toggle:hover { background: rgba(255, 255, 255, .03); }
+.gt-shutter-toggle:focus-visible { outline: 2px solid var(--cg-acid-green, #B6FF3C); outline-offset: -2px; }
+/* ‹ › — листание глубин: 75 секторов = 5 глубин × 15, переключатель всегда на виду. */
+.gt-depth-stepper { display: flex; flex-direction: column; gap: 3px; }
+.gt-depth-stepper button { width: 28px; height: 17px; display: grid; place-items: center; padding: 0; border-radius: 6px; border: 1px solid var(--gc-line); background: rgba(255, 255, 255, .04); color: inherit; font: inherit; font-size: 12px; line-height: 1; cursor: pointer; }
+.gt-depth-stepper button:disabled { opacity: .35; cursor: default; }
+.gt-shutter-body { max-height: 0; opacity: 0; transition: max-height .3s ease, opacity .22s ease; }
+.gt-shutter[data-open='true'] .gt-shutter-body { max-height: 64vh; opacity: 1; overflow-y: auto; }
+.gt-shutter-chev { display: inline-flex; transition: transform .28s ease; }
+.gt-shutter[data-open='true'] .gt-shutter-chev { transform: rotate(180deg); }
+.gt-depth-pick { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 12px 10px; }
+.gt-depth-pick button { padding: 5px 9px; border-radius: 8px; border: 1px solid #33313a; background: rgba(0, 0, 0, .25); color: inherit; font: inherit; font-size: 12px; cursor: pointer; border-bottom: 3px solid currentColor; }
+.gt-depth-pick button[aria-pressed='true'] { background: rgba(255, 255, 255, .08); border-color: #55525f; }
+.gt-sector-map { display: grid; gap: 8px; padding: 0 12px; }
+.gt-depth-group { border-radius: 10px; padding: 6px 6px 8px; border: 1px solid transparent; }
+.gt-depth-group[data-active='true'] { border-color: var(--gc-line-strong); background: rgba(255, 255, 255, .02); }
+.gt-cell { display: grid; gap: 1px; place-items: center; padding: 7px 2px; border-radius: 9px; border: 1px solid var(--gc-line); background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.gt-cell[data-state='cleared'] { background: rgba(182, 255, 60, .12); border-color: rgba(182, 255, 60, .4); }
+.gt-cell[data-state='next'] { border: 2px solid #FF7A1A; }
+.gt-cell[data-state='training'] { opacity: .75; }
+.gt-cell:focus-visible { outline: 2px solid var(--cg-acid-green, #B6FF3C); outline-offset: 1px; }
+.gt-levels { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 0 12px 12px; }
+.gt-levels button { padding: 7px 2px; border-radius: 9px; border: 1px solid #33313a; background: rgba(0, 0, 0, .25); color: inherit; font: inherit; cursor: pointer; text-align: center; }
+.gt-levels button:disabled { cursor: default; }
+.gt-shutter-tools { display: flex; gap: 14px; flex-wrap: wrap; padding: 0 12px 12px; }
+
+/* --- Мобильный полный экран: уровень стартует во весь вьюпорт (без Fullscreen API) ---------
+   Оверлей уходит порталом в body (иначе .shell-main z-index 0 не даёт перекрыть шапку и нижнюю
+   навигацию) и слоем 50: выше контента, ниже модалок 60, «пилюли ожидания» 70 и тостов 80. */
+.gt-fs { position: fixed; inset: 0; z-index: 50; overflow-y: auto; padding: calc(10px + env(safe-area-inset-top)) 10px calc(16px + env(safe-area-inset-bottom)); background-color: #0b0a0e; background-image: var(--grid-page-bg, none); background-size: cover; background-position: center; }
+.gt-fs::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(11, 10, 14, .74), rgba(11, 10, 14, .95) 60%); }
+.gt-fs > * { position: relative; z-index: 1; }
+.gt-fs .gt-board { max-width: 100%; }
+.gt-fs-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+
+/* Поток/пульс/брызги — только при разрешённой анимации: в reduce всё статично, без моргания. */
 @media (prefers-reduced-motion: reduce) {
-  .gt-f { animation: none; opacity: .42; }
+  .gt-f { animation: none; opacity: .5; }
+  .gt-w { animation: none; }
+  .gt-splash { animation: none; opacity: .4; }
   .gt-bus::after { animation: none; opacity: .55; }
-  .gt-s, .gt-f { transition: none; }
+  .gt-s, .gt-f, .gt-w { transition: none; }
+  .gt-shutter-body { transition: none; }
 }
 
-html.reduced-motion .gt-f { animation: none; opacity: .42; }
+html.reduced-motion .gt-f { animation: none; opacity: .5; }
+html.reduced-motion .gt-w { animation: none; }
+html.reduced-motion .gt-splash { animation: none; opacity: .4; }
 html.reduced-motion .gt-bus::after { animation: none; opacity: .55; }
 html.reduced-motion .gt-s,
-html.reduced-motion .gt-f { transition: none; }
+html.reduced-motion .gt-f,
+html.reduced-motion .gt-w { transition: none; }
+html.reduced-motion .gt-shutter-body { transition: none; }
+
+/* docs/16 §4.6 — the rider: a district silhouette lit by a paid theme. Looks
+   only, so the whole block is presentation: no numbers anywhere near it.
+   No color-mix here either (same reason as the mural): the glow is a layer
+   with its own opacity, which every engine we ship to understands. */
+.rider {
+  position: relative; display: flex; align-items: flex-end; gap: 12px; padding: 10px 12px;
+  border-radius: 12px; border: 1px solid var(--gc-line, #2a2933); background: #0c0b10; overflow: hidden;
+}
+.rider::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0.16;
+  background: radial-gradient(120% 130% at 28% 12%, var(--lamp, #16E5D9), transparent 68%);
+}
+.rider.is-themed { border-color: var(--lamp, #16E5D9); }
+.rider-figure { position: relative; flex: 0 0 auto; width: 96px; height: 132px; display: block; }
+.rider-figure img {
+  width: 100%; height: 100%; object-fit: contain; object-position: bottom center; display: block;
+  /* Свет темы ложится вокруг кадра, а не перекрашивает его: искусство остаётся
+     своим, меняется только подсветка. */
+  filter: drop-shadow(0 0 10px var(--lamp, #16E5D9))
+          drop-shadow(0 0 26px color-mix(in srgb, var(--lamp, #16E5D9) 45%, transparent));
+}
+.rider-meta { position: relative; display: flex; flex-direction: column; gap: 2px; padding-bottom: 6px; }
+.rider-picks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.rider-pick {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px;
+  border: 1px solid var(--gc-line, #2a2933); border-radius: 10px; background: rgba(255, 255, 255, 0.02);
+  color: inherit; cursor: pointer; transition: border-color 0.15s ease, background 0.15s ease;
+}
+.rider-pick img { width: 100%; height: 64px; object-fit: contain; object-position: bottom center; display: block; }
+.rider-pick.is-active { border-color: var(--gc-accent, #16E5D9); background: rgba(22, 229, 217, 0.08); }
+.rider-pick:hover { border-color: var(--gc-accent, #16E5D9); }
+@media (max-width: 420px) { .rider-picks { grid-template-columns: repeat(3, 1fr); } }
+@media (prefers-reduced-motion: reduce) { .rider-pick { transition: none; } }
+
+/* docs/16 §4.7 — achievements: a real badge file, the progress, and a reward
+   that is never money. */
+.ach-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.ach-card {
+  display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: start;
+  padding: 10px 12px; border-radius: 12px; border: 1px solid var(--gc-line, #2a2933);
+  background: rgba(255, 255, 255, 0.02);
+}
+.ach-card.is-done { border-color: var(--gc-accent, #16E5D9); }
+.ach-card.is-claimed { opacity: 0.75; }
+.ach-badge {
+  display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%;
+  border: 1px solid var(--gc-line, #2a2933); background: #0c0b10;
+}
+.ach-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ach-act { display: flex; align-items: center; min-height: 28px; }
+@media (max-width: 420px) { .ach-card { grid-template-columns: 36px 1fr; } .ach-act { grid-column: 2; } }

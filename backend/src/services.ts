@@ -101,7 +101,8 @@ export function findPayment(db: Db, signature: string, buyer: string, kinds: num
  * both grant an entitlement for one payment — the second UPDATE now changes no row and the claim fails
  * with `payment_consumed`. One statement decides, and it decides in SQLite.
  */
-function consume(db: Db, p: PaymentRow, by: string) {
+/** Потратить платёж ровно один раз. Экспортировано для тех же разборов вне services (линия — docs/16 §5.1). */
+export function consume(db: Db, p: PaymentRow, by: string) {
   const r = db.run(`UPDATE service_payments SET consumed_by = ?, consumed_at = ? WHERE signature = ? AND event_index = ? AND consumed_by IS NULL`, by, now(), p.signature, p.event_index);
   if (Number(r.changes) !== 1) throw new ServiceError(409, 'payment_consumed', 'This payment was already used');
 }
@@ -195,6 +196,7 @@ const PAYLOAD_RULES: Record<string, (p: Record<string, unknown>) => string | und
   arenaEmotePack: (p) => (typeof p.pack === 'string' && EMOTE_PACK_BY_ID[p.pack] ? undefined : 'payload needs {pack} with a known pack id'),
   districtBanner: (p) => (typeof p.collection === 'number' && Number.isInteger(p.collection) && p.collection >= 0 && p.collection < COLLECTIONS.length ? undefined : 'payload needs {collection} with a live district index'),
   gridFieldTheme: (p) => (typeof p.theme === 'string' && GRID_FIELD_THEME_BY_ID[p.theme] ? undefined : 'payload needs {theme} with a Floodgrid field theme id'),
+  districtStencilPack: (p) => (p.id === 'districtStencilPack' ? undefined : 'payload needs {id: "districtStencilPack"}'),
 };
 
 /** POST /services/claim */
@@ -204,6 +206,10 @@ export function claimService(db: Db, wallet: string, signature: string, kind: nu
   if (kind === 0 || kind === 1) throw new ServiceError(400, 'use_handle_endpoint', 'Handles are claimed via PUT /me/handle');
   if (s.fulfilment === 'chain') throw new ServiceError(400, 'chain_fulfilled', `${s.name} is fulfilled on-chain; nothing to claim`);
   if (s.id === 'gridDeepAttempt') throw new ServiceError(400, 'use_grid_endpoint', 'Deep Flood attempts are claimed via POST /grid/deep/buy');
+  if (s.id === 'lineExtraRun') throw new ServiceError(400, 'use_line_endpoint', 'Extra runs are claimed via POST /me/line/runs/buy');
+  // docs/16 §5.6: у хартии и переименования команды есть побочный эффект (строка
+  // в `crews` и состав), поэтому они идут через /v1/crew, а не через общий клэйм.
+  if (s.id === 'crewCharter' || s.id === 'crewRename') throw new ServiceError(400, 'use_crew_endpoint', 'Crew names are claimed via POST /v1/crew/charter and /v1/crew/rename');
   const problem = PAYLOAD_RULES[s.id]?.(payload);
   if (problem) throw new ServiceError(400, 'bad_payload', problem);
   return db.tx(() => {

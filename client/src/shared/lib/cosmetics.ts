@@ -6,7 +6,7 @@ import { t, type MessageKey } from '@/shared/i18n';
 import { PROFILE_THEMES as ECONOMY_THEMES, GRID_FIELD_THEMES as ECONOMY_FIELD_THEMES } from '@guttercaps/economy';
 
 /** economy service kinds for the cosmetic/convenience entitlements. */
-export const KIND = { skin: 2, theme: 3, emotePack: 4, bench: 5, pass: 6, skip: 8, banner: 9 } as const;
+export const KIND = { skin: 2, theme: 3, emotePack: 4, bench: 5, pass: 6, skip: 8, banner: 9, stencilPack: 12 } as const;
 
 interface EntitlementLike { kind?: number; payload?: Record<string, unknown> | null; expiresAt?: string | null }
 
@@ -34,6 +34,9 @@ export function ownedBanners(ents: EntitlementLike[] | undefined, completed: num
   const gifted = payloads.filter((p) => p?.source === 'grid_gift').map((p) => p?.collection).filter((x): x is number => typeof x === 'number');
   return [...new Set([...ids.filter((c) => completed.includes(c)), ...gifted])];
 }
+
+/** District stencil pack (kind 12): unlocks the five paid shapes in the tag editor. */
+export const ownsStencilPack = (ents: EntitlementLike[] | undefined) => owns(ents, KIND.stencilPack);
 
 /** Owned emote-pack ids (kind-4 payloads). Payload-less grants unlock nothing (packs are always named at claim). */
 export function ownedPacks(ents: EntitlementLike[] | undefined): string[] {

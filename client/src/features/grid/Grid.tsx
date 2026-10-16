@@ -3,9 +3,10 @@
 // the shared deterministic one (@guttercaps/economy); the server replays every submitted
 // move list, so what is played here is exactly what is verified there.
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { GRID, GRID_DEPTHS, componentCount, isSolved, kindOf, poweredCells, rotateMask, type Level, type Tile } from '@guttercaps/economy';
+import { GRID, GRID_DEPTHS, componentCount, depthOfLevel, isSolved, kindOf, poweredCells, rotateMask, type Level, type Tile } from '@guttercaps/economy';
 import { api, ApiError, claimWithRetry, isMock } from '@/api/client';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
@@ -19,14 +20,15 @@ import { useUiStore } from '@/app/store/ui';
 import { playSound, prefetchSound } from '@/shared/audio';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { fmtCg } from '@/shared/lib/format';
-import { BoltIcon, ContractIcon, DeepIcon, FloodIcon, GhostIcon, GoalIcon, LadderIcon, PrestigeIcon } from '@/shared/ui/GridIcons';
+import { BoltIcon, ChevronIcon, ContractIcon, DeepIcon, FloodIcon, GhostIcon, GoalIcon, LadderIcon, PrestigeIcon } from '@/shared/ui/GridIcons';
 import { GenBadge } from '@/shared/ui/GenBadge';
 import { Empty, Pill, Progress, Skeleton, Stat } from '@/shared/ui/primitives';
 import { BeamPillar, SplatBackdrop, SteamVeil, WinFx } from '@/features/vfx/vfx';
 import { GridBoard } from './GridBoard';
-import { canonicalRotOf, gridMaterialForLevel, gridStripBgUrl, prefetchDepthForLevel } from './gridArt';
+import { DropletMeter } from './DropletMeter';
+import { GRID_WATER_HEX, canonicalRotOf, gridBoardBgUrl, gridMaterialForLevel, gridStripBgUrl, prefetchDepthForLevel } from './gridArt';
 
-const MATERIAL_HEX: Record<string, string> = { zinc: '#9aa7ad', chrome: '#d7e3ea', rust: '#c96f2e', cast: '#7a7e85', glass: '#7fe7dc' };
+const MATERIAL_HEX: Record<string, string> = { chrome: '#d7e3ea', rust: '#c96f2e', cast: '#7a7e85', glass: '#7fe7dc' };
 
 interface BoardTile { base: number; rot: number; fixed: boolean; role: string }
 interface AttemptStart {
@@ -50,6 +52,23 @@ function initialVisOf(tiles: BoardTile[]): number[] {
   return tiles.map((tile) => (tile.base === 15 ? 0 : canonicalRotOf(rotateMask(tile.base, tile.rot))));
 }
 
+/**
+ * Узкий экран: на мобильном уровень стартует сразу во весь вьюпорт (оверлей position:fixed,
+ * а не Fullscreen API — его Safari на iPhone не даёт). jsdom не знает matchMedia — проверяем.
+ */
+function useCoarseViewport(): boolean {
+  const [coarse, setCoarse] = useState(false);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia('(max-width: 820px)');
+    const sync = () => setCoarse(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+  return coarse;
+}
+
 export default function Grid() {
   const t = useT();
   const qc = useQueryClient();
@@ -65,6 +84,17 @@ export default function Grid() {
   const [starting, setStarting] = useState(false);
   const [buyingDeep, setBuyingDeep] = useState(false);
   const [fieldTheme, setFieldTheme] = useState<string>(() => localStorage.getItem('gridFieldTheme') ?? '');
+  /** Шторка выбора сектора: раскрыта/свёрнута и выбранная в ней глубина (свёрнутая сама за собой следит). */
+  const [pickOpen, setPickOpen] = useState(false);
+  const [pickDepth, setPickDepth] = useState(1);
+  /** Листание глубин в шторке: шаг сразу раскрывает список секторов новой глубины. */
+  const stepDepth = (d: 1 | -1) => {
+    setPickDepth((cur) => Math.min(GRID_DEPTHS.length, Math.max(1, cur + d)));
+    setPickOpen(true);
+  };
+  /** Свёрнут ли мобильный полноэкранный оверлей (игроку нужен выход «на страницу»). */
+  const [fsCollapsed, setFsCollapsed] = useState(false);
+  const coarse = useCoarseViewport();
   const { connection } = useConnection();
   const walletLike = useWalletLike();
   const gameCfg = useGameConfig();
@@ -78,6 +108,10 @@ export default function Grid() {
   const claims = useMemo(() => new Map((selected?.claims ?? []).map((c) => [c.level, c])), [selected]);
   const emergencyLevels = chipState.data?.emergency ?? [];
   const wallet = me.data?.wallet;
+  /** Глубина для фона страницы: идёт за уровнем в игре, иначе — за следующим сектором маршрута. */
+  const pageDepth = depthOfLevel(Math.min(75, play?.attempt.level ?? nextLevel));
+  /** Шторка выбора: пока закрыта, показывает глубину сектора маршрута (открытая — что выбрал игрок). */
+  useEffect(() => { if (!pickOpen) setPickDepth(depthOfLevel(Math.min(75, nextLevel))); }, [nextLevel, pickOpen]);
 
   // Прогрев арт-набора глубины следующего сектора маршрута — в idle, не на старте доски (docs/14a §6).
   // Рядом греется звук поворота нужного материала: до жеста это no-op, после — минус одна
@@ -118,6 +152,7 @@ export default function Grid() {
     try {
       const mode = !daily && lv <= nextLevel ? 'charge' : 'training';
       const a = await api.post('/grid/attempt', { asset: selected.asset, level: lv, mode, daily, hintsUsed: mode === 'charge' && useHint ? 1 : 0, ...(useEmergency && emergencyLevels.includes(lv) ? { useEmergency: true } : {}) } as never) as unknown as AttemptStart;
+      setFsCollapsed(false);
       setPlay({ attempt: a, mode, hintsUsed: mode === 'charge' && useHint ? 1 : 0, initial: a.board.tiles.map((x) => x.rot), rots: a.board.tiles.map((x) => x.rot), turns: [], hintIndex: null, busy: false, vis: initialVisOf(a.board.tiles) });
     } catch (e) {
       toast({ kind: 'error', title: e instanceof ApiError ? e.message : { key: 'grid.failed' } });
@@ -129,6 +164,7 @@ export default function Grid() {
     setStarting(true); setResult(null);
     try {
       const a = await api.post('/grid/attempt', { asset: selected.asset, kind, ...(slot !== undefined ? { slot } : {}), hintsUsed: 0 } as never) as unknown as AttemptStart;
+      setFsCollapsed(false);
       setPlay({ attempt: a, mode: kind, hintsUsed: 0, initial: a.board.tiles.map((x) => x.rot), rots: a.board.tiles.map((x) => x.rot), turns: [], hintIndex: null, busy: false, vis: initialVisOf(a.board.tiles) });
     } catch (e) {
       toast({ kind: 'error', title: e instanceof ApiError ? e.message : { key: 'grid.failed' } });
@@ -230,8 +266,19 @@ export default function Grid() {
   // Состояние доски считается до раннего return на загрузке: ниже от него зависят хуки звука,
   // а порядок хуков между рендерами менять нельзя.
   const playLevel = play ? localLevel(play) : null;
+  /** Мобильный полный экран: уровень стартует во весь вьюпорт; «свернуть» возвращает на страницу. */
+  const fullscreen = coarse && !!play && !fsCollapsed;
   const powered = playLevel ? poweredCells(playLevel) : [];
   const connectedPct = powered.length ? Math.round((powered.filter(Boolean).length / powered.length) * 100) : 0;
+  /**
+   * Цель сектора — одна сеть, а не только приёмники: движок считает сектор решённым, когда
+   * ВСЕ трубы соединены с шиной (isSolved), поэтому «все кольца горят» ещё не победа (проверено
+   * на всех 75: авторское решение замыкает 100 % клеток). Показываем остаток — иначе состояние
+   * читается как сломанный уровень.
+   */
+  const receiversLit = !!playLevel && playLevel.receivers.length > 0 && playLevel.receivers.every((i) => powered[i]);
+  const dryHint = !!play && receiversLit && connectedPct < 100;
+  const dryCount = powered.filter((v) => !v).length;
   const overBudget = !!play && (play.mode === 'charge' || play.mode === 'deep') && play.turns.length > play.attempt.moveBudget;
 
   // ── Звук доски (docs/14b §6) ────────────────────────────────────────────────────────
@@ -288,10 +335,72 @@ export default function Grid() {
     }
   }, [result]);
 
+  // Полноэкранный уровень на мобильном: страница под оверлеем не прокручивается (как в модалке),
+  // сам оверлей скроллится внутри — иначе жест «потянуть» двигал бы фон за доской.
+  useEffect(() => {
+    if (!fullscreen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [fullscreen]);
+
   if (me.isLoading) return <div className="page stack"><Skeleton h={28} w={220} /><Skeleton h={140} /><Skeleton h={300} /></div>;
 
+  const playCard = play && playLevel ? (
+    <div
+      className={fullscreen ? 'gt-fs' : 'card stack-sm'}
+      style={fullscreen ? { ['--grid-page-bg' as string]: `url("${gridBoardBgUrl(pageDepth)}")` } : undefined}
+      role={fullscreen ? 'dialog' : undefined}
+      aria-modal={fullscreen || undefined}
+      aria-label={fullscreen ? t('grid.sector', { n: play.attempt.level }) : undefined}
+    >
+      {fullscreen && <div className="gt-ambient" aria-hidden><SteamVeil /><BeamPillar color="cyan" /></div>}
+      {fullscreen && <div className="gt-fs-bar">
+        <span className="tiny muted">{t('grid.connected', { n: connectedPct })} · {t('grid.moves', { n: play.turns.length })}</span>
+        <Pill onClick={() => setFsCollapsed(true)}>{t('grid.collapse')}</Pill>
+      </div>}
+      <div className="row between" style={{ flexWrap: 'wrap', gap: 8 }}>
+        <span className="strong">{t('grid.sector', { n: play.attempt.level })} · {play.mode === 'charge' ? t('grid.charge') : play.mode === 'contract' ? t('grid.contracts') : play.mode === 'deep' ? t('grid.deep') : play.mode === 'ghost' ? t('grid.ghost') : play.mode === 'prestige' ? t('grid.prestige') : t('grid.training')}</span>
+        <span className="tiny muted">{t('grid.moves', { n: play.turns.length })} · {t('grid.par', { n: play.attempt.par })}{play.mode === 'charge' && <> · {t('grid.budget', { n: play.attempt.moveBudget })}</>} · {t('grid.connected', { n: connectedPct })}{(() => { const d = GRID_DEPTHS.find((x) => play.attempt.level >= x.levels[0] && play.attempt.level < x.levels[0] + GRID.levelsPerDepth); return d ? <> · <span style={{ color: MATERIAL_HEX[d.material] ?? '#9aa7ad' }}>●</span> {d.name}</> : null; })()}</span>
+      </div>
+      <Progress value={connectedPct} max={100} tone="acid" />
+      {!dryHint && connectedPct < 100 && <div className="tiny muted">{t('grid.goalAll', { n: connectedPct })}</div>}
+      {dryHint && <div className="tiny" style={{ color: '#FF7A1A' }}>{t('grid.dryHint', { n: dryCount })}</div>}
+      {overBudget && <div className="tiny" style={{ color: '#FF7A1A' }}>{t('grid.overBudget')}</div>}
+      {play.hintsUsed > 0 && <div className="tiny muted">{t('grid.hintReady')}</div>}
+      {emergencyLevels.includes(play.attempt.level) && <div className="tiny muted">{t('grid.emergency')}</div>}
+      <div className="vfx-host">
+        <GridBoard
+          level={playLevel}
+          vis={play.vis}
+          busy={play.busy}
+          hintIndex={play.hintIndex}
+          dryHint={dryHint}
+          accent={GRID_FIELD_THEMES.find((th) => th.id === fieldTheme)?.hex ?? GRID_WATER_HEX}
+          onRotate={rotate}
+          tileAria={(n) => t('grid.tileAria', { n })}
+        />
+      </div>
+      <div className="tiny muted">{t('grid.rotateHint')}</div>
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <Pill onClick={undo} disabled={play.busy || play.turns.length === 0}>{t('grid.undo')}</Pill>
+        <Pill onClick={() => setPlay({ ...play, rots: [...play.initial], turns: [], vis: initialVisOf(play.attempt.board.tiles) })} disabled={play.busy}>{t('grid.restart')}</Pill>
+        {play.hintsUsed > 0 && <Pill onClick={showHint} disabled={play.busy}>{t('grid.showHint')}</Pill>}
+        {play.mode === 'charge' && <Pill tone="danger" onClick={() => void giveUp()} disabled={play.busy}>{t('grid.giveUp')}</Pill>}
+        {play.mode === 'training' && <Pill onClick={() => setPlay(null)} disabled={play.busy}>{t('common.close')}</Pill>}
+        {(play.mode === 'contract' || play.mode === 'deep' || play.mode === 'ghost' || play.mode === 'prestige') && <Pill tone="danger" onClick={() => void giveUp()} disabled={play.busy}>{t('grid.giveUp')}</Pill>}
+      </div>
+    </div>
+  ) : null;
+
   return (
-    <div className="page stack">
+    <div className="page stack grid-screen" style={{ ['--grid-page-bg' as string]: `url("${gridBoardBgUrl(pageDepth)}")` }}>
+      {/* Атмосфера страницы: пар по низу и два столба света — всегда, а не только на победу. */}
+      <div className="gt-ambient" aria-hidden>
+        <SteamVeil />
+        <BeamPillar color="cyan" />
+        <BeamPillar color="cyan" right />
+      </div>
       <div className="grid-hero">
         <img src="/art/grid-hero.jpg" alt="" aria-hidden />
         <div className="grid-hero-shade" />
@@ -307,7 +416,7 @@ export default function Grid() {
           <div className="row" style={{ gap: 16, flexWrap: 'wrap' }}>
             <span className="row" style={{ gap: 5, alignItems: 'center', color: '#FFD34D' }}><GenBadge name="item-mark" size={19} /><Stat label={t('grid.hints')} value={`${wallet?.hints ?? 0}/${GRID.hintStockCap}`} /></span>
             <span className="row" style={{ gap: 5, alignItems: 'center', color: '#16E5D9' }}><GenBadge name="item-valve" size={19} /><Stat label={t('grid.valves')} value={`${wallet?.valves ?? 0}/${GRID.valveStockCap}`} /></span>
-            <span className="row" style={{ gap: 5, alignItems: 'center', color: '#16E5D9' }}><GenBadge name="item-drop" size={19} /><Stat label={t('grid.drops')} value={`${selected?.route?.chargeDrops ?? 0}/3`} /></span>
+            <span className="row" style={{ gap: 5, alignItems: 'center', color: '#16E5D9' }}><GenBadge name="item-drop" size={19} /><Stat label={t('grid.drops')} icon={<GenBadge name="item-drop" size={19} />} value={<DropletMeter drops={selected?.route?.chargeDrops ?? 0} progress={selected?.route?.chargeProgress ?? 0} size={17} />} /></span>
             <Stat label="★" value={wallet?.total_best_stars ?? 0} />
           </div>
           {(selected?.route?.chargeDrops ?? 0) > 0 && <div className="tiny muted">{t('grid.dropsLive')}{selected?.route?.dropsExpiresAt ? ` · ${fmtLocale.date(selected.route.dropsExpiresAt, getLocale())}` : ''}</div>}
@@ -377,17 +486,22 @@ export default function Grid() {
             {selected && (selected.route?.nextLevel ?? 1) > 75 ? <>
               <div className="tiny muted">{t('grid.prestigeNext', { p: (selected.prestige?.level ?? 0) + 1, n: selected.prestige?.next ?? 1 })} · P{selected.prestige?.level ?? 0}/5</div>
               <Pill onClick={() => void startSpecial('prestige')} disabled={starting || (selected.prestige?.level ?? 0) >= 5}>{t('grid.startPrestige')}</Pill>
-            </> : <div className="tiny muted">75/75</div>}
+            </> : <div className="tiny muted">{t('grid.prestigeLocked', { n: Math.min(75, selected.route?.nextLevel ?? 1) })}</div>}
           </div>
           <div className="card stack-sm">
             <div className="strong"><span style={{ color: '#FF2E8A', display: 'inline-flex', verticalAlign: -4, marginRight: 6 }}><LadderIcon /></span>{t('grid.ladder')}</div>
-            <div className="tiny">{t('grid.ladderPoints', { n: me.data?.ladder?.myPoints ?? 0 })}{me.data?.ladder?.myRank ? ` · #${me.data.ladder.myRank}` : ''}</div>
+            {!me.data?.ladder ? <div className="tiny muted">{t('grid.ladderEmpty')}</div> : <>
+              <div className="tiny">{t('grid.ladderPoints', { n: me.data.ladder.myPoints })}{me.data.ladder.myRank ? ` · #${me.data.ladder.myRank}` : ''}</div>
+              {me.data.ladder.myPayout && <div className="tiny muted">{fmtCg(me.data.ladder.myPayout.amount, 0)} · #{me.data.ladder.myPayout.rank}{me.data.ladder.myPayout.root_kind == null ? ` · ${t('grid.payoutPending')}` : ''}</div>}
+            </>}
+            {(me.data?.ladder?.top ?? []).length === 0 && <div className="tiny muted">{t('grid.ladderNoRanks')}</div>}
             {(me.data?.ladder?.top ?? []).map((r) => <div key={r.rank} className="tiny mono">#{r.rank} {r.me ? 'you' : `${r.wallet.slice(0, 6)}…`} · {r.points}</div>)}
-            {me.data?.ladder?.myPayout && <div className="tiny muted">{fmtCg(me.data.ladder.myPayout.amount, 0)} · #{me.data.ladder.myPayout.rank}{me.data.ladder.myPayout.root_kind == null ? ` · ${t('grid.payoutPending')}` : ''}</div>}
           </div>
           <div className="card stack-sm">
             <div className="strong"><span style={{ color: '#B6FF3C', display: 'inline-flex', verticalAlign: -4, marginRight: 6 }}><GoalIcon /></span>{t('grid.coopGoal')}</div>
-            {(me.data?.districtGoal ?? []).map((g) => <div key={g.district} className="tiny">#{g.district + 1}: {g.points}/{g.goal} {g.reached ? '✔' : ''}</div>)}
+            {(me.data?.districtGoal ?? []).length === 0
+              ? <div className="tiny muted">{t('grid.coopEmpty')}</div>
+              : (me.data?.districtGoal ?? []).map((g) => <div key={g.district} className="tiny">#{g.district + 1}: {g.points}/{g.goal} {g.reached ? '✔' : ''}</div>)}
             {me.data?.coopReward && <div className="tiny muted">✔ +1 {t('grid.valves')}</div>}
           </div>
         </div>
@@ -400,50 +514,94 @@ export default function Grid() {
               <button key={c.asset} type="button" onClick={() => { setAsset(c.asset); setPlay(null); setResult(null); }}
                 style={{ minWidth: 92, border: selected?.asset === c.asset ? '2px solid var(--acid, #B6FF3C)' : '1px solid #333', borderRadius: 12, padding: 8, background: 'transparent', cursor: 'pointer', textAlign: 'center' }}>
                 <ChipArt collection={c.collection} rarity={c.rarity} level={c.chipLevel} size={54} skin={c.skin} />
-                <div className="tiny">Lv{c.chipLevel} · {t('grid.drops')} <GenBadge name="item-drop" size={13} /> {c.route.chargeDrops}/3</div>
+                <div className="tiny row" style={{ gap: 4, justifyContent: 'center' }}>Lv{c.chipLevel} · <DropletMeter drops={c.route.chargeDrops} size={13} showProgress={false} /></div>
                 <div className="tiny muted">{t('grid.routeNext', { n: Math.min(75, c.route.nextLevel) })}</div>
               </button>
             ))}
           </div>
 
           {selected && !play && (
-            <div className="card stack-sm">
-              <div className="row between" style={{ flexWrap: 'wrap', gap: 8 }}>
-                <span className="strong">{t('grid.selectSector')}</span>
-                <span className="tiny muted">{t('grid.routeNext', { n: Math.min(75, nextLevel) })} · {t('grid.drops')} <GenBadge name="item-drop" size={13} /> {route?.chargeDrops ?? 0}/3</span>
+            <div className="gt-shutter" data-open={pickOpen ? 'true' : 'false'}>
+              <div className="gt-shutter-head">
+                {/* ‹ › листают глубины (75 = 5 × 15): шаг сразу раскрывает шторку, чтобы игрок видел смену секторов. */}
+                <span className="gt-depth-stepper">
+                  <button type="button" onClick={() => stepDepth(-1)} disabled={pickDepth <= 1} aria-label={t('grid.depth', { n: Math.max(1, pickDepth - 1) })}>‹</button>
+                  <button type="button" onClick={() => stepDepth(1)} disabled={pickDepth >= GRID_DEPTHS.length} aria-label={t('grid.depth', { n: Math.min(GRID_DEPTHS.length, pickDepth + 1) })}>›</button>
+                </span>
+                <button type="button" className="gt-shutter-toggle" aria-expanded={pickOpen} onClick={() => setPickOpen((v) => !v)}>
+                  <span className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ color: MATERIAL_HEX[GRID_DEPTHS[pickDepth - 1].material] ?? '#9aa7ad', display: 'inline-flex' }}><FloodIcon size={15} /></span>
+                    <span className="strong">{t('grid.depth', { n: pickDepth })} · {GRID_DEPTHS[pickDepth - 1].name}</span>
+                    <span className="tiny muted">{t('grid.sector', { n: `${GRID_DEPTHS[pickDepth - 1].levels[0]}–${GRID_DEPTHS[pickDepth - 1].levels[0] + GRID.levelsPerDepth - 1}` })}</span>
+                  </span>
+                  <span className="row" style={{ gap: 8, alignItems: 'center' }}>
+                    <span className="tiny muted">{t('grid.routeNext', { n: Math.min(75, nextLevel) })}</span>
+                    <span className="gt-shutter-chev" aria-hidden><ChevronIcon size={18} /></span>
+                  </span>
+                </button>
               </div>
-              <label className="row tiny" style={{ gap: 6 }}>
-                <input type="checkbox" checked={useHint} onChange={(e) => setUseHint(e.target.checked)} disabled={(wallet?.hints ?? 0) <= 0} />
-                <GenBadge name="item-mark" size={15} /> {t('grid.useHint')} ({wallet?.hints ?? 0})
-              </label>
-              {emergencyLevels.length > 0 && <label className="row tiny" style={{ gap: 6 }}>
-                <input type="checkbox" checked={useEmergency} onChange={(e) => setUseEmergency(e.target.checked)} />
-                {t('grid.emergency')} ({emergencyLevels.join(', ')})
-              </label>}
-              <label className="row tiny" style={{ gap: 6 }}>
-                <input type="checkbox" checked={useValve} onChange={(e) => setUseValve(e.target.checked)} disabled={(wallet?.valves ?? 0) <= 0} />
-                <GenBadge name="item-valve" size={15} /> {t('grid.useValve')} ({wallet?.valves ?? 0})
-              </label>
-              {GRID_DEPTHS.map((d) => (
-                <div key={d.depth} className="stack-sm depth-strip" style={{ borderLeftColor: MATERIAL_HEX[d.material] ?? '#333', backgroundImage: `linear-gradient(rgba(22, 21, 26, 0.62), rgba(22, 21, 26, 0.8)), url("${gridStripBgUrl(d.depth)}")` }}>
-                  <div className="tiny muted">{t('grid.depth', { n: d.depth })} · {d.name} · {d.grid}</div>
-                  <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-                    {Array.from({ length: GRID.levelsPerDepth }, (_, i) => d.levels[0] + i).map((lv) => {
-                      const claim = claims.get(lv);
-                      const isNext = lv === nextLevel;
-                      const lockedLv = lv > nextLevel;
-                      return (
-                        <button key={lv} type="button" disabled={starting} onClick={() => void start(lv)}
-                          title={lockedLv ? t('grid.training') : isNext ? t('grid.charge') : t('grid.training')}
-                          style={{ width: 52, padding: '7px 2px', borderRadius: 9, cursor: 'pointer', border: isNext ? '2px solid #FF7A1A' : '1px solid #333', background: claim ? 'rgba(182,255,60,.12)' : 'transparent', opacity: lockedLv ? 0.75 : 1 }}>
-                          <div className="mono" style={{ fontSize: 13 }}>{lv}</div>
-                          <div style={{ fontSize: 10 }}>{claim ? '★'.repeat(claim.best_stars) : lockedLv ? t('grid.trainShort') : <span style={{ color: '#FF7A1A', display: 'inline-flex' }}><BoltIcon size={11} /></span>}</div>
-                        </button>
-                      );
-                    })}
-                  </div>
+              <div className="gt-shutter-body">
+                <div className="tiny muted" style={{ padding: '0 12px 8px' }}>{t('grid.selectSector')} {t('grid.sectorTotal', { n: GRID.totalLevels })}</div>
+                <div className="depth-strip" style={{ margin: '0 12px 8px', padding: '7px 10px', borderLeftColor: MATERIAL_HEX[GRID_DEPTHS[pickDepth - 1].material] ?? '#333', backgroundImage: `linear-gradient(rgba(22, 21, 26, 0.62), rgba(22, 21, 26, 0.8)), url("${gridStripBgUrl(pickDepth)}")` }}>
+                  <div className="tiny muted">{GRID_DEPTHS[pickDepth - 1].grid} · {t('grid.sector', { n: GRID_DEPTHS[pickDepth - 1].levels[0] })}–{GRID_DEPTHS[pickDepth - 1].levels[0] + GRID.levelsPerDepth - 1}</div>
                 </div>
-              ))}
+                <div className="gt-depth-pick">
+                  {GRID_DEPTHS.map((d) => (
+                    <button key={d.depth} type="button" aria-pressed={d.depth === pickDepth} onClick={() => setPickDepth(d.depth)}
+                      style={{ color: d.depth === pickDepth ? '#F2F4F5' : '#9aa7ad', borderBottomColor: MATERIAL_HEX[d.material] ?? '#333' }}>
+                      {d.depth} · {d.name}
+                    </button>
+                  ))}
+                </div>
+                {/* Все 75 секторов сразу, сгруппированные по глубинам: маршрут фишки виден
+                    целиком, а не одна текущая пятёрка. Состояние клетки = пройден / заряд
+                    маршрута / тренировка — раньше вторые и третьи выглядели одинаково. */}
+                <div className="gt-sector-map">
+                  {GRID_DEPTHS.map((d) => {
+                    const from = d.levels[0];
+                    return (
+                      <div key={d.depth} className="gt-depth-group" data-active={d.depth === pickDepth ? 'true' : 'false'}>
+                        <div className="tiny muted row" style={{ gap: 6 }}>
+                          <span style={{ color: MATERIAL_HEX[d.material] ?? '#9aa7ad' }} aria-hidden>●</span>
+                          {t('grid.depth', { n: d.depth })} · {d.name} · {t('grid.sector', { n: `${from}–${from + GRID.levelsPerDepth - 1}` })}
+                        </div>
+                        <div className="gt-levels">
+                          {Array.from({ length: GRID.levelsPerDepth }, (_, i) => from + i).map((lv) => {
+                            const claim = claims.get(lv);
+                            const isNext = lv === nextLevel;
+                            const lockedLv = lv > nextLevel;
+                            const state = claim ? 'cleared' : isNext ? 'next' : lockedLv ? 'training' : 'open';
+                            return (
+                              <button key={lv} type="button" className="gt-cell" data-state={state} disabled={starting} onClick={() => void start(lv)}
+                                title={`${t('grid.sector', { n: lv })} · ${state === 'training' ? t('grid.training') : state === 'next' ? t('grid.charge') : t('grid.replay')}`}>
+                                <span className="mono" style={{ fontSize: 13, lineHeight: 1.1 }}>{lv}</span>
+                                <span style={{ fontSize: 10, lineHeight: 1.1 }}>
+                                  {claim ? '★'.repeat(claim.best_stars) : lockedLv ? t('grid.trainShort') : <span style={{ color: '#FF7A1A', display: 'inline-flex' }}><BoltIcon size={11} /></span>}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="tiny muted" style={{ padding: '0 12px 8px' }}>{t('grid.mapLegend')}</div>
+                <div className="gt-shutter-tools">
+                  <label className="row tiny" style={{ gap: 6 }}>
+                    <input type="checkbox" checked={useHint} onChange={(e) => setUseHint(e.target.checked)} disabled={(wallet?.hints ?? 0) <= 0} />
+                    <GenBadge name="item-mark" size={15} /> {t('grid.useHint')} ({wallet?.hints ?? 0})
+                  </label>
+                  {emergencyLevels.length > 0 && <label className="row tiny" style={{ gap: 6 }}>
+                    <input type="checkbox" checked={useEmergency} onChange={(e) => setUseEmergency(e.target.checked)} />
+                    {t('grid.emergency')} ({emergencyLevels.join(', ')})
+                  </label>}
+                  <label className="row tiny" style={{ gap: 6 }}>
+                    <input type="checkbox" checked={useValve} onChange={(e) => setUseValve(e.target.checked)} disabled={(wallet?.valves ?? 0) <= 0} />
+                    <GenBadge name="item-valve" size={15} /> {t('grid.useValve')} ({wallet?.valves ?? 0})
+                  </label>
+                </div>
+              </div>
             </div>
           )}
 
@@ -467,41 +625,7 @@ export default function Grid() {
             </div>
           )}
 
-          {play && playLevel && (
-            <div className="card stack-sm">
-              <div className="row between" style={{ flexWrap: 'wrap', gap: 8 }}>
-                <span className="strong">{t('grid.sector', { n: play.attempt.level })} · {play.mode === 'charge' ? t('grid.charge') : play.mode === 'contract' ? t('grid.contracts') : play.mode === 'deep' ? t('grid.deep') : play.mode === 'ghost' ? t('grid.ghost') : play.mode === 'prestige' ? t('grid.prestige') : t('grid.training')}</span>
-                <span className="tiny muted">{t('grid.moves', { n: play.turns.length })} · {t('grid.par', { n: play.attempt.par })}{play.mode === 'charge' && <> · {t('grid.budget', { n: play.attempt.moveBudget })}</>} · {t('grid.connected', { n: connectedPct })}{(() => { const d = GRID_DEPTHS.find((x) => play.attempt.level >= x.levels[0] && play.attempt.level < x.levels[0] + GRID.levelsPerDepth); return d ? <> · <span style={{ color: MATERIAL_HEX[d.material] ?? '#9aa7ad' }}>●</span> {d.name}</> : null; })()}</span>
-              </div>
-              <Progress value={connectedPct} max={100} tone="acid" />
-              {overBudget && <div className="tiny" style={{ color: '#FF7A1A' }}>{t('grid.overBudget')}</div>}
-              {play.hintsUsed > 0 && <div className="tiny muted">{t('grid.hintReady')}</div>}
-              {emergencyLevels.includes(play.attempt.level) && <div className="tiny muted">{t('grid.emergency')}</div>}
-              <div className="vfx-host">
-                <GridBoard
-                  level={playLevel}
-                  vis={play.vis}
-                  busy={play.busy}
-                  hintIndex={play.hintIndex}
-                  accent={GRID_FIELD_THEMES.find((th) => th.id === fieldTheme)?.hex ?? '#B6F09C'}
-                  onRotate={rotate}
-                  tileAria={(n) => t('grid.tileAria', { n })}
-                />
-                <SteamVeil />
-                {play.mode === 'deep' && <BeamPillar color="cyan" sweep />}
-              </div>
-              <div className="tiny muted">{t('grid.rotateHint')}</div>
-              <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-                <Pill onClick={undo} disabled={play.busy || play.turns.length === 0}>{t('grid.undo')}</Pill>
-                <Pill onClick={() => setPlay({ ...play, rots: [...play.initial], turns: [], vis: initialVisOf(play.attempt.board.tiles) })} disabled={play.busy}>{t('grid.restart')}</Pill>
-                {play.hintsUsed > 0 && <Pill onClick={showHint} disabled={play.busy}>{t('grid.showHint')}</Pill>}
-                {play.mode === 'charge' && <Pill tone="danger" onClick={() => void giveUp()} disabled={play.busy}>{t('grid.giveUp')}</Pill>}
-                {play.mode === 'training' && <Pill onClick={() => setPlay(null)} disabled={play.busy}>{t('common.close')}</Pill>}
-                {(play.mode === 'contract' || play.mode === 'deep' || play.mode === 'ghost' || play.mode === 'prestige') && <Pill tone="danger" onClick={() => void giveUp()} disabled={play.busy}>{t('grid.giveUp')}</Pill>}
-              </div>
-            </div>
-          )}
-        </>
+          {playCard && (fullscreen ? createPortal(playCard, document.body) : playCard)}        </>
       )}
     </div>
   );

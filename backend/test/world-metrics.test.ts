@@ -1,0 +1,449 @@
+// Телеметрия скейт-мира (docs/16 §12).
+//
+// Правило-гейт §0.2 требует метрику на каждую фичу. Этот тест держит две вещи:
+// события пишутся самой фичей (а не «когда-нибудь потом»), и когорта считается
+// **на кошелёк** — иначе отчёт будет хвалить фичу за то, что когорта больше.
+import { describe, expect, it } from 'vitest';
+import { Keypair } from '@solana/web3.js';
+import { Db, now } from '../src/db.ts';
+import { dayIndex } from '../src/quests.ts';
+import { sanitizeTagSvg, saveTag } from '../src/tags.ts';
+import { claimSlot } from '../src/wall.ts';
+import { setRig } from '../src/rig.ts';
+import { EPIC_PLUS, MURAL_COMPLETE_AT, MURAL_RARITIES, REMATCH_WINDOW_MS, WORLD_FEATURES, arenaRematch, boardCohort, cohortReport, epicPlusRepeat, muralCohort, recordEvent, worldReport } from '../src/worldMetrics.ts';
+
+const kp = () => Keypair.generate().publicKey.toBase58();
+const DAY = 86_400;
+const today = () => dayIndex(now());
+const TAG = (n = 1) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 512"><path d="M${n} ${n}L${n + 20} ${n + 30}" stroke="#FF2E8A" stroke-width="8" fill="none"/></svg>`;
+
+function seedCap(db: Db, wallet: string, collection: number, rarity: number, level = 1) {
+  const asset = kp();
+  db.run(`INSERT INTO chips (asset, owner, collection_idx, rarity, level, flags, lock_until, origin, updated_slot) VALUES (?, ?, ?, ?, ?, 0, 0, 'pack', 1)`,
+    asset, wallet, collection, rarity, level);
+  return asset;
+}
+/** Сделка в окне отчёта: §2.3 мерит именно сделки и фьюжны по району. */
+function seedTrade(db: Db, wallet: string, t: number) {
+  db.run(`INSERT INTO sales (signature, event_index, asset, seller, buyer, price, currency, fee, royalty, via_offer, slot, block_time)
+          VALUES (?, 0, ?, ?, ?, '1000', 0, '0', '0', 0, 1, ?)`, kp().slice(0, 32), kp(), wallet, kp(), t);
+}
+/** Оплаченный сервис (косметика, хендл, скин) — контур предметов, а не паки. */
+function seedService(db: Db, wallet: string, t: number) {
+  db.run(`INSERT INTO service_payments (signature, event_index, buyer, kind, currency, amount, burned, ref_hash, slot, block_time)
+          VALUES (?, 0, ?, 3, 0, '1000', '0', ?, 1, ?)`, kp().slice(0, 32), wallet, kp().slice(0, 32), t);
+}
+function seedFusion(db: Db, wallet: string, t: number) {
+  db.run(`INSERT INTO fusions (signature, event_index, owner, recipe, materials, success, roll_bps, threshold_bps, fee_burned, slot, block_time)
+          VALUES (?, 0, ?, 0, '[]', 1, 0, 0, '0', 1, ?)`, kp().slice(0, 32), wallet, t);
+}
+function seedEligible(db: Db, wallet: string) {
+  for (let i = 0; i < 7; i++) db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, wallet, today() - i);
+  db.run(`INSERT INTO stakes (key, owner, kind, amount, weight, unlock_at, since, slot, active) VALUES (?, ?, 1, '1', '1000', 0, ?, 1, 1)`, kp(), wallet, now());
+}
+/** Покупка пака в окне отчёта — ровно то, что метрика «Δ покупок паков» считает. */
+function seedPack(db: Db, wallet: string, t: number) {
+  db.run(`INSERT INTO pack_purchases (buyer, nonce, sku, qty, currency, amount, randomness, signature, slot, block_time, opened, status)
+          VALUES (?, ?, 1, 1, 0, '1000', ?, ?, 1, ?, 1, 'opened')`,
+    wallet, kp().slice(0, 12), kp().slice(0, 32), kp().slice(0, 32), t);
+}
+
+describe('worldMetrics — события пишет сама фича', () => {
+  it('стена, экспозиция и теги оставляют след', () => {
+    const db = new Db(':memory:');
+    const w = kp();
+    seedEligible(db, w);
+
+    saveTag(db, w, TAG(1));
+    const id = saveTag(db, w, TAG(2)).id;
+    claimSlot(db, w, 0, id);
+    const asset = seedCap(db, w, 0, 5);
+    setRig(db, w, [{ slot: 0, asset }]);
+
+    const kinds = db.all<{ feature: string; kind: string }>(`SELECT feature, kind FROM feature_events WHERE wallet = ? ORDER BY id`, w);
+    expect(kinds.map((k) => `${k.feature}.${k.kind}`)).toEqual(['tag.save', 'tag.save', 'wall.claim', 'exhibit.set']);
+  });
+
+  it('событие пишется в той же транзакции, что и слот: откат не оставляет следа', () => {
+    const db = new Db(':memory:');
+    const w = kp();
+    seedCap(db, w, 0, 5);
+    // Крышка чужого кошелька → вся запись откатывается вместе с событием.
+    expect(() => setRig(db, w, [{ slot: 0, asset: seedCap(db, kp(), 1, 5) }])).toThrow();
+    expect(db.scalar(`SELECT COUNT(*) FROM feature_events WHERE wallet = ?`, w)).toBe(0);
+  });
+});
+
+describe('worldMetrics — когорта против базовой линии', () => {
+  it('считает средние на кошелёк и дельту к базе', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    // Когорта: два кошелька выставили крышку и купили по два пака.
+    const cohort = [kp(), kp()];
+    for (const w of cohort) {
+      for (let i = 0; i < 20; i++) db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, w, Math.floor(t / DAY) - i);
+      recordEvent(db, w, 'exhibit', 'set', { slot: 0 }, t - DAY);
+      seedPack(db, w, t - DAY);
+      seedPack(db, w, t - 2 * DAY);
+    }
+    // База: два кошелька играли в то же окно, но фичу не трогали, по одному паку.
+    const base = [kp(), kp()];
+    for (const w of base) {
+      for (let i = 0; i < 20; i++) db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, w, Math.floor(t / DAY) - i);
+      seedPack(db, w, t - DAY);
+    }
+
+    const r = cohortReport(db, 'exhibit', { windowDays: 30 }, t);
+    expect(r.cohort.wallets).toBe(2);
+    expect(r.baseline.wallets).toBe(2);
+    expect(r.cohort.packsPerWallet).toBe(2);
+    expect(r.baseline.packsPerWallet).toBe(1);
+    // +100 % паков на кошелёк — именно та дельта, которую просит §12.
+    expect(r.delta.packs).toBe(1);
+    // Когорта и база не пересекаются: выставившие крышку в базу не попали.
+    expect(r.baseline.loginDaysPerWallet).toBe(20);
+  });
+
+  it('молчит там, где считать нечего: пустая когорта даёт null, а не ноль', () => {
+    const db = new Db(':memory:');
+    const r = cohortReport(db, 'wall', { windowDays: 30 });
+    expect(r.cohort.wallets).toBe(0);
+    expect(r.delta.packs).toBeNull();
+    expect(r.series).toEqual([]);
+  });
+
+  it('кривая принятия: события и кошельки по дням', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const w = kp();
+    recordEvent(db, w, 'tag', 'save', undefined, t - DAY);
+    recordEvent(db, w, 'tag', 'save', undefined, t - DAY);
+    recordEvent(db, kp(), 'tag', 'save', undefined, t - 3 * DAY);
+    const r = cohortReport(db, 'tag', { windowDays: 30 }, t);
+    expect(r.series).toHaveLength(2);
+    expect(r.series.find((s) => s.day === Math.floor((t - DAY) / DAY))).toMatchObject({ events: 2, wallets: 1 });
+  });
+
+  it('шер инспектора виден в отчёте: приведённые кошельки считаются на одного', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const sharer = kp();
+    const quiet = kp();
+    for (const w of [sharer, quiet]) for (let i = 0; i < 3; i++) db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, w, Math.floor(t / DAY) - i);
+    recordEvent(db, sharer, 'inspect', 'share', { asset: kp() }, t - DAY);
+    // Двое пришли по ссылке делившегося — и это ровно та метрика §12 строка 2.
+    for (let i = 0; i < 2; i++) db.run(`INSERT INTO wallets (address, referrer, first_seen, risk_score, flags) VALUES (?, ?, ?, 0, '{}')`, kp(), sharer, t - DAY);
+
+    const r = cohortReport(db, 'inspect', { windowDays: 30 }, t);
+    expect(r.cohort.wallets).toBe(1);
+    expect(r.cohort.referralsPerWallet).toBe(2);
+    expect(r.baseline).toMatchObject({ wallets: 1, referralsPerWallet: 0 });
+    expect(r.delta.referrals).toBeNull(); // база нулевая → делить не на что
+  });
+
+  it('срез внутри фичи: авторы доски сравниваются с держателями слотов, а не со всеми', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const author = kp();      // попал на доску
+    const holder = kp();      // держит слот, но на доску не попал
+    const passer = kp();      // просто играет
+    for (const w of [author, holder, passer]) for (let i = 0; i < 10; i++) db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, w, Math.floor(t / DAY) - i);
+    // все трое играют, но слот и доску делят двое
+    recordEvent(db, holder, 'wall', 'claim', { district: 0, slot: 1 }, t - 2 * DAY);
+    recordEvent(db, author, 'wall', 'claim', { district: 0, slot: 0 }, t - 2 * DAY);
+    recordEvent(db, author, 'wall', 'board', { week: 1, tagId: 'x' }, t - DAY);
+
+    const r = boardCohort(db, 30, t);
+    expect(r.feature).toBe('wall.board');
+    expect(r.cohort.wallets).toBe(1);
+    // база — держатель слота без доски, а не «все, кто играл»
+    expect(r.baseline.wallets).toBe(1);
+    expect(r.cohort.loginDaysPerWallet).toBe(10);
+    expect(r.baseline.loginDaysPerWallet).toBe(10);
+    // и сравнение всей фичи со всеми игравшими даёт другую картину — это проверка,
+    // что срез правда сужается, а не считает то же самое
+    const whole = cohortReport(db, 'wall', { windowDays: 30 }, t);
+    expect(whole.cohort.wallets).toBe(2);
+    expect(whole.baseline.wallets).toBe(1); // passer-by
+    // кривая принятия — по событиям доски, а не по всей стене
+    expect(r.series).toEqual([{ day: Math.floor((t - DAY) / DAY), events: 1, wallets: 1 }]);
+  });
+
+  it('доска без авторов не притворяется нулевой дельтой', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const holder = kp();
+    for (let i = 0; i < 5; i++) db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, holder, Math.floor(t / DAY) - i);
+    recordEvent(db, holder, 'wall', 'claim', { district: 0, slot: 2 }, t - DAY);
+    const r = boardCohort(db, 30, t);
+    expect(r.cohort.wallets).toBe(0);
+    expect(r.baseline.wallets).toBe(1);
+    expect(r.delta.loginDays).toBeNull(); // делить не на что — и это не ноль
+  });
+
+  it('отчёт несёт и фичи, и срезы', () => {
+    const db = new Db(':memory:');
+    const r = worldReport(db, 7);
+    expect(r.features.map((f) => f.feature)).toEqual([...WORLD_FEATURES]);
+    expect(r.slices.map((f) => f.feature)).toEqual(['wall.board', 'collection.mural']);
+  });
+
+  it('отчёт покрывает все фичи из §12', () => {
+    const db = new Db(':memory:');
+    const r = worldReport(db, 7);
+    expect(r.features.map((f) => f.feature)).toEqual([...WORLD_FEATURES]);
+  });
+});
+
+describe('worldMetrics — райдер (§4.6)', () => {
+  it('когорта райдера против игравших без него: косметика — это контур предметов', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const dressed = kp();
+    const plain = kp();
+    for (const w of [dressed, plain]) for (let i = 0; i < 5; i++) db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, w, Math.floor(t / DAY) - i);
+    seedService(db, dressed, t - DAY); seedService(db, dressed, t - 2 * DAY);
+    seedService(db, plain, t - DAY);
+    // Райдер надет — событие пишет сама запись (проверено в rig.test.ts), здесь
+    // важен отчёт: до события когорты нет ни у кого.
+    expect(cohortReport(db, 'rider', { windowDays: 30 }, t).cohort.wallets).toBe(0);
+    recordEvent(db, dressed, 'rider', 'set', { silhouette: 2 }, t - DAY);
+
+    const r = cohortReport(db, 'rider', { windowDays: 30 }, t);
+    expect(r.cohort.wallets).toBe(1);
+    expect(r.baseline.wallets).toBe(1);
+    expect(r.cohort.servicesPerWallet).toBe(2);
+    expect(r.baseline.servicesPerWallet).toBe(1);
+    expect(r.delta.services).toBe(1); // +100 % сервисов на кошелёк
+  });
+
+  it('райдер без косметики всё равно когорта: метрика про контур, а не про покупку', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const w = kp();
+    for (let i = 0; i < 3; i++) db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, w, Math.floor(t / DAY) - i);
+    recordEvent(db, w, 'rider', 'set', { silhouette: 0 }, t - DAY);
+    const r = cohortReport(db, 'rider', { windowDays: 30 }, t);
+    expect(r.cohort.wallets).toBe(1);
+    expect(r.cohort.servicesPerWallet).toBe(0);
+    expect(r.delta.services).toBeNull(); // база ноль → отношения нет
+  });
+
+  it('райдер есть в сводном отчёте наравне с остальными фичами', () => {
+    const db = new Db(':memory:');
+    const r = worldReport(db, 7);
+    expect(r.features.map((f) => f.feature)).toEqual([...WORLD_FEATURES]);
+    expect(r.features.map((f) => f.feature)).toContain('rider');
+  });
+});
+
+describe('worldMetrics — мурал района (§2.3)', () => {
+  /** Закрыть `n` крышек района: мурал собран на 8 из 9 (≥80 %). */
+  function seedDistrict(db: Db, wallet: string, district: number, n: number, t: number) {
+    for (let r = 0; r < n; r++) {
+      const asset = seedCap(db, wallet, district, r);
+      if (r === 0 && n === MURAL_RARITIES - 1) db.run(`UPDATE chips SET burned_at = ? WHERE asset = ?`, t, asset); // порог не взят: крышка сожжена
+    }
+  }
+
+  it('когорта — те, у кого мурал района собран на 8 из 9, а не на 7', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const close = kp();   // 8 из 9 — мурал почти собран
+    const almost = kp();  // 7 из 9 — 78 %, порог не взят
+    for (let r = 0; r < MURAL_COMPLETE_AT; r++) seedCap(db, close, 0, r);
+    for (let r = 0; r < MURAL_COMPLETE_AT - 1; r++) seedCap(db, almost, 0, r);
+    for (const w of [close, almost]) for (let i = 0; i < 5; i++) db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, w, Math.floor(t / DAY) - i);
+
+    const r = muralCohort(db, 30, t);
+    expect(r.feature).toBe('collection.mural');
+    expect(r.cohort.wallets).toBe(1);
+    // база — игравшие в том же окне, но до мурала не дошедшие
+    expect(r.baseline.wallets).toBe(1);
+  });
+
+  it('считает сделки и фьюжны: мурал должен кормить петлю, а не просто радовать глаз', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const close = kp();
+    const passer = kp();
+    for (let r = 0; r < MURAL_COMPLETE_AT; r++) seedCap(db, close, 3, r); // любой район, не только первый
+    for (const w of [close, passer]) for (let i = 0; i < 5; i++) db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, w, Math.floor(t / DAY) - i);
+    seedTrade(db, close, t - DAY); seedTrade(db, close, t - 2 * DAY);
+    seedFusion(db, close, t - DAY);
+    seedTrade(db, passer, t - DAY);
+
+    const r = muralCohort(db, 30, t);
+    expect(r.cohort.wallets).toBe(1);
+    expect(r.cohort.tradesPerWallet).toBe(2);
+    expect(r.baseline.tradesPerWallet).toBe(1);
+    expect(r.delta.trades).toBe(1);       // +100 % сделок на кошелёк
+    expect(r.cohort.fusionsPerWallet).toBe(1);
+    expect(r.baseline.fusionsPerWallet).toBe(0);
+    expect(r.delta.fusions).toBeNull();   // база ноль → отношения нет, а не «бесконечность»
+  });
+
+  it('сожжённая фьюжном крышка мурал не держит: 9 минус 1 = порог не взят', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const w = kp();
+    seedDistrict(db, w, 0, MURAL_RARITIES - 1, t);
+    expect(db.scalar(`SELECT COUNT(*) FROM chips WHERE owner = ?`, w)).toBe(MURAL_RARITIES - 1);
+    const r = muralCohort(db, 30, t);
+    expect(r.cohort.wallets).toBe(0);
+    expect(r.delta.trades).toBeNull(); // пустая когорта — не «−100 %»
+  });
+
+  it('когорта из данных не притворяется фичей: кривой принятия у неё нет', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const w = kp();
+    for (let r = 0; r < MURAL_RARITIES; r++) seedCap(db, w, 5, r); // весь район — мурал целый
+    db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, w, Math.floor(t / DAY));
+    const r = muralCohort(db, 30, t);
+    expect(r.cohort.wallets).toBe(1);
+    expect(r.series).toEqual([]);
+  });
+});
+
+describe('worldMetrics — флип и повтор пака (§12 строка 1)', () => {
+  /** Вскрытие пака: редкости лежат в pack_opens тем же JSON, что пишет индексатор. */
+  function seedOpen(db: Db, buyer: string, rarities: number[], t: number) {
+    db.run(`INSERT INTO pack_opens (signature, event_index, buyer, sku, nonce, count, assets, rarities, collections, roll_hex, pity_before, pity_after, slot, block_time, pack_no)
+            VALUES (?, 0, ?, 1, ?, ?, '[]', ?, '[]', '00', 0, 0, 1, ?, 1)`,
+      kp().slice(0, 32), buyer, kp().slice(0, 12), rarities.length, JSON.stringify(rarities), t);
+  }
+
+  it('когорта Epic+ против базы без Epic+: покупку ловим и в своей, и в чужой группе', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const withEpic = kp();
+    const noEpic = kp();
+    seedOpen(db, withEpic, [2, EPIC_PLUS], t - 10 * DAY);
+    seedOpen(db, noEpic, [2, 3], t - 10 * DAY);
+    // Только держатель Epic+ покупает ещё один пак — и ровно через сутки без минуты.
+    seedPack(db, withEpic, t - 10 * DAY + DAY - 60);
+    seedPack(db, noEpic, t - 10 * DAY + 2 * DAY);
+
+    const r = epicPlusRepeat(db, 30, t);
+    expect(r.cohort).toEqual({ opens: 1, repeatRate: 1 });
+    expect(r.baseline).toEqual({ opens: 1, repeatRate: 0 });
+    // База нулевая → дельта не «бесконечность», а null: делить не на что.
+    expect(r.delta).toBeNull();
+  });
+
+  it('порог редкости тот же, что крутит флип: Epic (4) в базу, Epic+ (5) в когорту', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    seedOpen(db, kp(), [EPIC_PLUS - 1], t - DAY);
+    seedOpen(db, kp(), [EPIC_PLUS], t - DAY);
+    const r = epicPlusRepeat(db, 30, t);
+    expect(r.cohort.opens).toBe(1);
+    expect(r.baseline.opens).toBe(1);
+  });
+
+  it('пустое окно молчит, а не выдаёт нулевую долю', () => {
+    const db = new Db(':memory:');
+    const r = epicPlusRepeat(db, 30);
+    expect(r).toEqual({ cohort: { opens: 0, repeatRate: null }, baseline: { opens: 0, repeatRate: null }, delta: null });
+  });
+});
+
+describe('worldMetrics — реванш после проигрыша (§12 строка 4)', () => {
+  /** Бой: `matches` хранит время в миллисекундах, в отличие от остальных таблиц. */
+  function seedMatch(db: Db, a: string, b: string, winner: string, startedMs: number) {
+    db.run(`INSERT INTO matches (id, season, a, b, squad_a, squad_b, power_a, power_b, league, commit_a, commit_b, winner, status, started_at, ended_at)
+            VALUES (?, 1, ?, ?, '[]', '[]', 1, 1, 0, 'x', 'y', ?, 'resolved', ?, ?)`,
+      kp().slice(0, 16), a, b, winner, startedMs, startedMs + 60_000);
+  }
+
+  it('вернулся после поражения — когорта выше базы', () => {
+    const db = new Db(':memory:');
+    const t = now() * 1000;
+    const me = kp();
+    const rival = kp();
+    const third = kp();
+    // Бой 1: я проиграл и через 15 минут пошёл в следующий.
+    seedMatch(db, me, rival, rival, t - 5 * DAY * 1000);
+    // Бой 2: я выиграл, и это мой последний бой в окне.
+    seedMatch(db, me, third, me, t - 5 * DAY * 1000 + 60_000 + REMATCH_WINDOW_MS / 2);
+
+    const r = arenaRematch(db, 30);
+    // Поражений два: моё в первом бою (за ним бой есть) и третьего игрока во втором (за ним нет).
+    expect(r.cohort).toEqual({ opens: 2, repeatRate: 0.5 });
+    // Побед тоже две, и ни одна не продолжилась боем в течение 30 минут.
+    expect(r.baseline).toEqual({ opens: 2, repeatRate: 0 });
+    expect(r.delta).toBeNull(); // база нулевая → делить не на что
+  });
+
+  it('бой позже 30 минут реваншем не считается', () => {
+    const db = new Db(':memory:');
+    const t = now() * 1000;
+    const loser = kp();
+    const winner = kp();
+    seedMatch(db, loser, winner, winner, t - 5 * DAY * 1000);
+    seedMatch(db, loser, winner, winner, t - 5 * DAY * 1000 + 60_000 + REMATCH_WINDOW_MS + 60_000);
+    const r = arenaRematch(db, 30);
+    expect(r.cohort.opens).toBe(2);
+    expect(r.cohort.repeatRate).toBe(0);
+  });
+
+  it('бой вне окна отчёта не попадает ни в когорту, ни в базу', () => {
+    const db = new Db(':memory:');
+    const t = now() * 1000;
+    seedMatch(db, kp(), kp(), kp(), t - 90 * DAY * 1000);
+    const r = arenaRematch(db, 30);
+    expect(r.cohort.opens).toBe(0);
+    expect(r.baseline.opens).toBe(0);
+    expect(r.delta).toBeNull();
+  });
+});
+
+describe('worldMetrics — заезды (§5.1)', () => {
+  /** Заезд в окне отчёта: `t` и `submitted_at` — unix-секунды, как везде в бэке. */
+  function seedRun(db: Db, wallet: string, t: number, day: number) {
+    db.run(`INSERT INTO line_runs (wallet, day, week, seed, inputs, score, tricks, best_combo, bails, paid, submitted_at, replay_ttl)
+            VALUES (?, ?, ?, ?, '[]', 1200, 4, 3, 0, 0, ?, 0)`, wallet, day, Math.floor(day / 7), 1, t);
+  }
+
+  it('заезды считаются на кошелёк: сколько ездил и сколько дней доезжал до трёх', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const rider = kp();
+    const plain = kp();
+    for (const w of [rider, plain]) for (let i = 0; i < 5; i++) db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, w, Math.floor(t / DAY) - i);
+    const day = Math.floor(t / DAY);
+    // Два полных дня по три заезда и один неполный: строка §12 мерит «≥3 заезда в день».
+    for (let i = 0; i < 3; i++) seedRun(db, rider, t - DAY, day - 1);
+    for (let i = 0; i < 3; i++) seedRun(db, rider, t - 2 * DAY, day - 2);
+    for (let i = 0; i < 2; i++) seedRun(db, rider, t - 3 * DAY, day - 3);
+
+    expect(cohortReport(db, 'line', { windowDays: 30 }, t).cohort.wallets).toBe(0); // события нет — когорты нет
+    recordEvent(db, rider, 'line', 'run', { score: 1200, tier: 'bronze' }, t - DAY);
+
+    const r = cohortReport(db, 'line', { windowDays: 30 }, t);
+    expect(r.cohort.wallets).toBe(1);
+    expect(r.cohort.runsPerWallet).toBe(8);   // 3 + 3 + 2
+    expect(r.cohort.runDaysPerWallet).toBe(2); // только полные дни
+    expect(r.baseline.runsPerWallet).toBe(0);
+  });
+
+  it('заезд за окном отчёта не считается', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const w = kp();
+    recordEvent(db, w, 'line', 'run', { score: 900 }, t - DAY); // событие внутри окна: `to` не входит
+    seedRun(db, w, t - 40 * DAY, Math.floor(t / DAY) - 40);
+    seedRun(db, w, t - 1, Math.floor(t / DAY)); // строго внутри окна: `to` не входит
+    const r = cohortReport(db, 'line', { windowDays: 30 }, t);
+    expect(r.cohort.runsPerWallet).toBe(1); // только сегодняшний
+  });
+
+  it('линия есть в сводном отчёте наравне с остальными фичами', () => {
+    const db = new Db(':memory:');
+    const r = worldReport(db, 7);
+    expect(r.features.map((f) => f.feature)).toEqual([...WORLD_FEATURES]);
+    expect(r.features.map((f) => f.feature)).toContain('line');
+  });
+});

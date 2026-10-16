@@ -659,6 +659,441 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/rider": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Wear a rider silhouette (docs/16 §4.6) — one of eight district figures plus a rim-light theme
+         * @description The rider is presentation only: no stats, no odds, no income. Two checks, both about the public
+         *     board telling the truth — the silhouette must be one of the eight that exist, and the theme must be
+         *     one the caller has actually paid for (entitlement kind 3). Wearing an unpaid theme is refused
+         *     because the board would then advertise a purchase that never happened.
+         *     Idempotent: repeating the same choice changes nothing.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description district index — which of the eight figures to wear */
+                        silhouette?: number;
+                        /** @description profile theme id (economy PROFILE_THEMES); null = light the figure in its district colour */
+                        theme?: string | null;
+                    };
+                };
+            };
+            responses: {
+                /** @description the rider as stored */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Rider"];
+                    };
+                };
+                /** @description bad_silhouette — no such figure */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description theme_not_owned — buy the theme in the shop first */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/achievements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Achievements (docs/16 §4.7): progress toward each, and what has been claimed
+         * @description Progress is not stored — it is recomputed from tables the game already keeps (collection, wall
+         *     slots and their history, tags, resolved matches, fusions, Floodgrid attempts, paid referrals), so
+         *     an achievement can never drift from the state that earned it. Only the *claim* is stored.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description achievements */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AchievementList"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/achievements/{id}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claim an earned achievement (docs/16 §4.7) — cosmetics and items only, never $CG
+         * @description Idempotent by refusal: a second claim answers 409 `already_claimed` rather than granting the
+         *     reward twice, because a cosmetic handed out twice is not a cosmetic any more. The reward is
+         *     granted as a regular entitlement (or as Floodgrid hints for the item reward), so every existing
+         *     ownership check keeps working unchanged.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description achievement id, e.g. `set.first` */
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description the achievement as stored */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AchievementClaim"];
+                    };
+                };
+                /** @description unknown_achievement — no such id */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not_earned (target not reached) · already_claimed · set_not_completed (a banner needs a finished district) */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/line": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The Line (docs/16 §5.1): today’s bowl, runs left, today’s best and what it paid
+         * @description The layout is not sent: it is a pure function of `day` (same seed for everyone, computed by the
+         *     shared `lineLayout` in packages/economy). The client builds it locally and compares `seed` — if it
+         *     differs, the client is playing a different bowl than the server will verify against.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description state */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LineState"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/line/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit a replay (docs/16 §5.1–5.2) — the server replays it and keeps only its own score
+         * @description The body carries the replay (a list of `[tick, action]` inputs) and nothing else that matters:
+         *     any score the client sends is ignored. The server rebuilds the day's layout from the day index and
+         *     re-runs the same simulation the client played, so a client that lies about its timing simply
+         *     scores what its inputs are worth. Three runs a day are free; later ones need a credit bought for
+         *     30 $CG (burned, `POST /me/line/runs/buy`).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description unix day index (today, or yesterday for a run started before midnight) */
+                        day: number;
+                        inputs: components["schemas"]["LineReplay"];
+                    };
+                };
+            };
+            responses: {
+                /** @description the run as stored */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RunSubmit"];
+                    };
+                };
+                /** @description bad_day (not today) · bad_replay (malformed, too long, tick out of range, unknown action) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description runs_exhausted — no free runs left and no credit */
+                402: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description run_credit_cap — the daily paid-run cap is reached */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/line/runs/buy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Buy one extra run for 30 $CG (docs/16 §5.1) — $CG only, every coin is burned
+         * @description Same settlement as a Deep Flood attempt: the on-chain `pay_service` of kind `lineExtraRun` is
+         *     found by signature, must be $CG and exactly 30 $CG, and is consumed exactly once. Other rails buy
+         *     nothing here — the point of the price is the burn, not the revenue.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        day: number;
+                        /** @description transaction signature of the on-chain pay_service */
+                        signature: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description credits */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            day?: number;
+                            credits?: number;
+                        };
+                    };
+                };
+                /** @description payment_not_found · cg_burn_required (not $CG, or not exactly 30 $CG) · ref_hash_mismatch · payment_consumed */
+                402: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description run_credit_cap — the daily paid-run cap is reached */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/line/runs/{id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Re-watch a run (docs/16 §5.5) — public, watch-only; inputs are wiped after 14 days, score stays
+         * @description The weekly board is public and a replay carries nothing but keystrokes, so watching
+         *     one needs no wallet. `inputs` is empty once the 14-day sweeper has wiped it: the row
+         *     keeps its score, and the board flags it with `hasReplay: false` so the UI offers no
+         *     dead link.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description replay */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RunReplay"];
+                    };
+                };
+                /** @description no such run */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/line/leaderboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Week’s board (docs/16 §5.5): best run per wallet this week */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description week index; defaults to the current one */
+                    week?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description board */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LineBoard"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/services": {
         parameters: {
             query?: never;
@@ -1040,6 +1475,1463 @@ export interface paths {
                 409: components["responses"]["Error"];
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save a tag (user-generated SVG) — rebuilt server-side, never trusted as received
+         * @description The body is one `svg` string. The server parses it and rebuilds a new document from `<path>`
+         *     and `<image href="/art/skate/stencil-*.webp">` elements only: no scripts, no event handlers,
+         *     no external URLs, fills removed, colours restricted to `#rrggbb`. Limits are the ones the
+         *     editor already shows (docs/16 §3.2): 400 path commands, 24 KB after rebuild.
+         *     Post-moderation (§3.3) — the tag is `live` at once and a person reviews it only if reported.
+         *     Saving the same SVG twice from one wallet returns the existing row instead of a new one.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        svg: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description saved (or the identical tag you already had) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Tag"];
+                    };
+                };
+                /** @description tag_empty | tag_forbidden | tag_bad_path | tag_bad_color | tag_too_many_commands | tag_bad_image — the auto-filter refused the payload */
+                400: components["responses"]["Error"];
+                /** @description tag_too_large — more than 24 KB once rebuilt */
+                413: components["responses"]["Error"];
+                /** @description tag_rate — at most 5 tags per hour per wallet */
+                429: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My tags, newest first — every status, including hidden ones (§3.3 the author always sees their own) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description my tags */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items?: components["schemas"]["Tag"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tags/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One tag by id — hidden and removed tags answer 404 to everyone but the author */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description tag id (sha256 of wallet and content hash, first 32 hex chars) */
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description the tag */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Tag"];
+                    };
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tags/{id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report a tag — one report per wallet per tag, then a person decides within 24 h */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        reason: "hate" | "violence" | "sexual" | "ads" | "personal_data" | "other";
+                    };
+                };
+            };
+            responses: {
+                /** @description counted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok?: boolean;
+                            reports?: number;
+                        };
+                    };
+                };
+                /** @description not_found — no live tag with that id */
+                404: components["responses"]["Error"];
+                /** @description own_tag | already_reported */
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tags/{id}/appeal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Appeal a hidden tag — the note goes to the moderator, the decision stays with a person */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        note: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description appeal recorded */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Tag"];
+                    };
+                };
+                /** @description not_hidden — only a hidden tag can be appealed */
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wall/board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The board of the week — five tags from across the city, drawn, not ranked
+         * @description Five tags picked by a draw, not by a rating. A rating on user content is a contest for a
+         *     score, and here the score would be set by the report button — so reports are a *filter*, not
+         *     a minus: a report the moderator confirmed (`hidden` / `removed`) keeps the tag off the board
+         *     this week, an unresolved report changes nothing at all. An accusation is not a verdict, and
+         *     that is precisely why pressing "report" cannot move anyone's place.
+         *
+         *     Candidates are the tags hanging on a wall live at draw time, minus any tag that was already
+         *     on the board in the last four weeks (a soft rule: if the city is too small to fill the board
+         *     without repeats, repeats are allowed — an empty showcase is worse). The draw itself is
+         *     unweighted and without replacement; a tag has no weight, only a stake does, and stakes are
+         *     not involved.
+         *
+         *     Seed: `sha256(wall-board:v1:week:slot:tagsHash:candidates)`, where `slot` is the finalized
+         *     horizon at draw time and `tagsHash` is the sha256 of the sorted `district:slot:tagId` lines.
+         *     The board is frozen for the week — a tag taken down later does not rewrite Monday's board —
+         *     and both the seed and the full candidate snapshot are returned, so anyone can recompute the
+         *     five. Without `week` this is the current week, drawn lazily on first read.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description week index (Monday 00:00 UTC); omit for the current week */
+                    week?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description the board */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WallBoard"];
+                    };
+                };
+                /** @description no_board — that week was never drawn */
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wall/{district}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The district wall — 200 slots, who holds them, and the paint layers under the fresh tags
+         * @description Expired slots are swept on read (30-day fade, docs/16 §3.4), so a wall never shows a dead slot.
+         *     Tags are not inlined: the client renders `/v1/tags/{id}/svg` in an `<img>`, which browsers cache
+         *     and which has no script context. `layers` are the previous tags of a slot — the history the doc
+         *     asks to show as layers of paint under the current one.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    district: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description the wall */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WallView"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wall/{district}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claim a slot — requires 7 active days in a row and at least one staked cap (never money)
+         * @description One slot per wallet per district. Claiming again with a different tag replaces the tag on your
+         *     slot and restarts the 30-day fade (renewing a tag is free — docs/16 §3.4). A slot is picked
+         *     automatically unless `slot` is free and requested.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    district: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        tagId: string;
+                        slot?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description your slot */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WallSlot"];
+                    };
+                };
+                /** @description not_eligible (play 7 days / stake a cap) | wall_full */
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wall/{district}/renew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Extend your slot another 30 days — same activity requirement as claiming */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    district: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description your slot */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WallSlot"];
+                    };
+                };
+                /** @description not_eligible */
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wall/{district}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Take your tag down yourself — the slot joins the wall's paint history */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    district: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description released */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok?: boolean;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/wall": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My slots and whether I currently qualify for one (the wall screen answers the button before it is pressed) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description my wall */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MyWall"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/crew/board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Crew board of the week (docs/16 §5.6): the five best members’ best runs, summed
+         * @description Only full crews are ranked: at least five members, at least five of them with a run this week.
+         *     The score is a sum of five best runs, never of all ten — a bigger roster does not beat a better
+         *     one by headcount alone (the rule lives in `crewWeekScore`, shared with the client and the program).
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description week index; defaults to the current one */
+                    week?: number;
+                    /** @description rows to return (default 50) */
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description board */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CrewBoard"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/crew/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check a crew name (docs/16 §5.6) and hold it for two minutes while the payment settles
+         * @description The same name model as handles: 3–16 chars `[a-zA-Z0-9_]`, case-insensitive uniqueness, the city
+         *     blocklist, 30 days between renames and a 90-day quarantine for a released name. `kind` tells the
+         *     client which `pay_service` to sign (14 charter, 15 rename) and `refHash` is what the payment must
+         *     commit to — a payment for another name is rejected, not reinterpreted.
+         */
+        get: {
+            parameters: {
+                query: {
+                    name: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description availability */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CrewCheck"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/crew/charter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Charter a crew (docs/16 §5.6): $1.99 buys the name, the roster and the board — never the wall
+         * @description The payment (kind 14) is consumed exactly once and only for this name: `refHash` binds signature,
+         *     wallet and payload. The wall segment that comes with the crew is allocated from the district's free
+         *     segments, but holding it still takes the same activity as any slot (§3.4, decision 6) — there is no
+         *     paid route to the wall. The captain is the chartering wallet; the roster starts at one.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        /** @description district whose wall segment the crew paints */
+                        district: number;
+                        /** @description transaction signature of the on-chain pay_service (kind 14) */
+                        signature: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description the crew */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CrewView"];
+                    };
+                };
+                /** @description invalid_name · bad_district */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description payment_not_found · ref_hash_mismatch · payment_consumed */
+                402: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description already_in_crew · crew_taken · crew_reserved · crew_blocked · crew_cooldown · district_full */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/crew/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rename a crew (docs/16 §5.6): captain only, $0.99, once per 30 days
+         * @description The old name goes into a 90-day quarantine, so a crew cannot drop a name and have a friend pick it
+         *     up the next day. Only the captain pays and only the captain decides.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        /** @description transaction signature of the on-chain pay_service (kind 15) */
+                        signature: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description the crew */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CrewView"];
+                    };
+                };
+                /** @description invalid_name */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description payment_not_found · ref_hash_mismatch · payment_consumed */
+                402: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not_captain */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description no_crew · crew_taken · crew_reserved · crew_blocked · crew_cooldown */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/crew/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Join a crew by invite code (docs/16 §5.6) — five to ten riders, one crew per wallet */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description eight-character invite code, case-insensitive */
+                        code: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description the crew */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CrewView"];
+                    };
+                };
+                /** @description bad_code */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description bad_code — no live crew with that invite code */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description already_in_crew · crew_full */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/crew/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Leave a crew (docs/16 §5.6) — a departing captain hands the role to the longest-serving member */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description ok */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok?: boolean;
+                            crew?: components["schemas"]["CrewView"];
+                            /** @description new captain, when the departing wallet was one */
+                            captain?: string | null;
+                        };
+                    };
+                };
+                /** @description no_crew */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/crew/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A crew’s public card (docs/16 §5.6): roster, week score, wall segment
+         * @description The invite code is returned only to members. `counts` says whether the crew is ranked this week
+         *     (five members with a run); `counting` on a member says whether their run made the top five.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description crew name (case-insensitive) or numeric crew id */
+                    name: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description the crew */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CrewView"];
+                    };
+                };
+                /** @description no_crew */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/crew/{name}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report a crew name (docs/16 §5.6) — the same moderation queue as tags, one report per reporter */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        reason: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description reported */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok?: boolean;
+                            crew?: number;
+                            /** @description open reports against this crew */
+                            reports?: number;
+                        };
+                    };
+                };
+                /** @description bad_reason */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description no_crew */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description already_reported */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/crew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The crew I ride with (docs/16 §5.6), or null */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description the crew or null */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CrewView"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rig": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My board — three exhibit slots and how many caps away the next one opens (docs/16 §4.3)
+         * @description A slot holds a *reference* to a cap: nothing is burned, transferred or locked. Ownership is
+         *     re-checked on every read, so a cap sold or consumed by a fusion simply leaves the slot empty —
+         *     there is no cleanup step and no sale handler to forget. Rarity is visual only (decisions 1 and 3):
+         *     the payload carries no weight, no chance, no yield.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description my board */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RigView"];
+                    };
+                };
+            };
+        };
+        /**
+         * Set or clear exhibit slots (and the public board switch) — idempotent
+         * @description `slots` is the desired state of the listed slots; anything not listed stays as it is. `asset: null`
+         *     empties the slot. The same cap cannot fill two slots — moving it clears the previous one.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        slots?: {
+                            /** @description 0 deck, 1 and 2 grip */
+                            slot: number;
+                            /** @description null clears the slot */
+                            asset?: string | null;
+                        }[];
+                        /** @description show this board on /rig/{wallet} (docs/16 §4.5) */
+                        public?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description the board after the change */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RigView"];
+                    };
+                };
+                /** @description not_your_chip */
+                403: components["responses"]["Error"];
+                /** @description slot_locked (collect 12 / 36 caps) | chip_in_use */
+                409: components["responses"]["Error"];
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rig/{wallet}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Someone's public board (docs/16 §4.5) — 404 while the owner has not switched it on */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    wallet: components["schemas"]["Pubkey"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description the board */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RigView"];
+                    };
+                };
+                /** @description rig_private */
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My board builder (docs/16 §4.2) — what is worn, what is earned, what the week pays
+         * @description Parts are cosmetic and are *earned*, not bought: runs (§5.1), achievements (§4.7), crew contests
+         *     (§5.6), quests and the season track. The shop sells bolt-on cosmetics only — a district set is
+         *     closed by playing, otherwise «build your board» would mean «buy your board».
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description my board */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BoardView"];
+                    };
+                };
+            };
+        };
+        /**
+         * Bolt a part on or take it off — idempotent
+         * @description `slots` is the desired state of the listed slots; anything not listed stays as it is. `part: null`
+         *     returns the slot to the stock part — taking a part off never leaves a hole, the stock one is always
+         *     there. Wearing a part you have not earned is a 403.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        slots?: {
+                            slot: components["schemas"]["BoardSlotName"];
+                            /** @description null returns the slot to the stock part */
+                            part?: string | null;
+                        }[];
+                    };
+                };
+            };
+            responses: {
+                /** @description the board after the change */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BoardView"];
+                    };
+                };
+                /** @description bad_slot | bad_part */
+                400: components["responses"]["Error"];
+                /** @description part_not_owned */
+                403: components["responses"]["Error"];
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/board/{wallet}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Someone's built board (docs/16 §4.2) — 404 while the owner has not switched the showcase on
+         * @description Only what is worn: the inventory stays private. The switch is the same one as the cap showcase
+         *     (§4.5) — one «show my board» toggle for both screens.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    wallet: components["schemas"]["Pubkey"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description the built board */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BoardLoadout"];
+                    };
+                };
+                /** @description rig_private */
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tags/{id}/svg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tag itself as an image — for <img>, not for innerHTML (no script context, cacheable) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description the rebuilt SVG */
+                200: {
+                    headers: {
+                        /** @description default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data: */
+                        "Content-Security-Policy"?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "image/svg+xml": string;
+                    };
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mod/tags/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Moderation queue — live tags with reports, overdue first (admin allowlist; a moderator role is a later step)
+         * @description Order: overdue first (oldest wait first), then by open report count. Sorting by count alone let a
+         *     tag with five reports filed an hour ago outrank one report waiting three days — the 24 h SLA (§3.3)
+         *     existed in the document but not in the queue. `hoursLeft` counts from the **oldest unresolved**
+         *     report, so piling new reports on a tag cannot reset the clock.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description queue */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @description reaction deadline in hours (docs/16 §3.3) */
+                            slaHours?: number;
+                            items?: (components["schemas"]["Tag"] & {
+                                openReports?: number;
+                                /** Format: date-time */
+                                oldestOpenAt?: string | null;
+                                /** @description hours until the SLA expires; negative once overdue */
+                                hoursLeft?: number | null;
+                                overdue?: boolean;
+                                reasons?: {
+                                    reason?: string;
+                                    n?: number;
+                                }[];
+                                appealNote?: string | null;
+                                /** Format: date-time */
+                                appealAt?: string | null;
+                            })[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mod/tags/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Moderation SLA — reaction time and how many reports end in a tag being taken down
+         * @description The §3.3 metric: "safe environment = retention" is unmeasurable without these two numbers.
+         *     Median reaction time (not mean — one stuck ticket would drag it) and the share of resolved
+         *     reports that ended with the tag hidden or removed.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description stats */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            slaHours?: number;
+                            openReports?: number;
+                            overdueReports?: number;
+                            medianReactionHours?: number | null;
+                            /** @description share of resolved reports that hid or removed the tag */
+                            actionedShare?: number | null;
+                            tags?: {
+                                live?: number;
+                                hidden?: number;
+                                removed?: number;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mod/tags/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Hide, restore or remove a tag — the only moderation action that exists */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status: "live" | "hidden" | "removed";
+                        note?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description new state */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Tag"];
+                    };
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1910,6 +3802,53 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chips/{asset}/share": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark a chip as shared from the inspector and return the deep link (docs/16 §2.2)
+         * @description Records `inspect.share` so the rule-gate metric («share rate and sign-ups from shared links»)
+         *     can be measured, and returns the relative deep link carrying the same `ref` parameter the
+         *     referral program already uses — so a sign-up that arrives through a shared cap is attributed
+         *     by the existing funnel, not by new plumbing.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    asset: components["schemas"]["Pubkey"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description relative deep link */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example /chip/7xKQ…?ref=7xKQ… */
+                            path?: string;
+                        };
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -4028,6 +5967,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/world-metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Skate-world cohorts (docs/16 §12) — does the world actually feed the main loop?
+         * @description For each world feature (wall, exhibit, tag) the wallet cohort is compared against a baseline of
+         *     wallets that played in the same window but never touched the feature. Every number is a
+         *     **per-wallet average**, because the two groups differ in size — a raw sum would say "the cohort
+         *     trades more" merely because the cohort is bigger. `delta` is `cohort / baseline - 1`.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    days?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description cohorts per feature */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorldMetrics"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/audit": {
         parameters: {
             query?: never;
@@ -5221,6 +7204,11 @@ export interface components {
                 vfxTier?: number;
             };
             listing?: components["schemas"]["Listing"];
+            /** @description Floodgrid route this cap walks (docs/13 §0.1 — the route travels with the cap on sale); null when the chip has no route row yet */
+            gridRoute?: {
+                nextLevel?: number;
+                chargeDrops?: number;
+            } | null;
         };
         ChipPage: {
             items?: components["schemas"]["Chip"][];
@@ -5793,6 +7781,435 @@ export interface components {
             /** @description non-forfeit games needed to qualify for the ladder payout */
             minGamesForPayout?: number;
         };
+        /** @description A player's tag — the first user-generated content in the game (docs/16 §3.2) */
+        Tag: {
+            id?: string;
+            wallet?: string;
+            /** @description content hash — dedupe and provable authorship (§3.6) */
+            sha256?: string;
+            /** @enum {string} */
+            status?: "pending" | "live" | "hidden" | "removed";
+            /** Format: date-time */
+            createdAt?: string;
+            /** @description size after the server rebuilt the SVG */
+            bytes?: number;
+            /** @description path commands (M/L), limit 400 */
+            commands?: number;
+            reports?: number;
+            /** @description present only when the tag is public or the viewer is the author */
+            svg?: string;
+            mine?: boolean;
+        };
+        WallSlot: {
+            /** @description 0..199 */
+            slot?: number;
+            wallet?: string;
+            tagId?: string;
+            /** Format: date-time */
+            appliedAt?: string;
+            /**
+             * Format: date-time
+             * @description 30 days from applied/renewed — then the slot fades
+             */
+            expiresAt?: string;
+            /** Format: date-time */
+            renewedAt?: string | null;
+        };
+        WallBoard: {
+            /** @description weekIndex (Monday 00:00 UTC) */
+            week: number;
+            /** Format: date-time */
+            weekStart: string;
+            /** Format: date-time */
+            weekEnd: string;
+            /** Format: date-time */
+            drawnAt: string;
+            /** @description finalized horizon baked into the seed */
+            slot: number;
+            /** @description sha256(wall-board:v1:week:slot:tagsHash:candidates) */
+            seedHex: string;
+            /** @description sha256 of the sorted candidate snapshot */
+            tagsHash: string;
+            /** @description how many tags took part */
+            candidates: number;
+            items: {
+                tagId: string;
+                wallet: components["schemas"]["Pubkey"];
+                district: number;
+                slot: number;
+            }[];
+        };
+        WallView: {
+            district?: number;
+            /** @description 200 per district */
+            slots?: number;
+            taken?: number;
+            items?: components["schemas"]["WallSlot"][];
+            /** @description previous tags of a slot */
+            layers?: {
+                slot?: number;
+                wallet?: string;
+                tagId?: string;
+                /** Format: date-time */
+                appliedAt?: string;
+                /** Format: date-time */
+                releasedAt?: string;
+            }[];
+            me?: {
+                activeDays?: number;
+                activeDaysNeeded?: number;
+                stakedCaps?: number;
+                stakedCapsNeeded?: number;
+                eligible?: boolean;
+                /** @enum {string|null} */
+                reason?: "need_active_days" | "need_staked_cap" | null;
+                mySlot?: number | null;
+            } | null;
+        };
+        /**
+         * @description docs/16 §4.6 — the rider: one of eight district silhouettes, lit in the colour of a profile theme
+         *     the owner actually paid for. Presentation only, no stats. Shown on the public board (§4.5), which
+         *     is the point: cosmetics are bought to be seen.
+         *     `theme` comes back null when the cosmetic is not (or no longer) paid for — the board then lights the
+         *     figure in its district colour instead of advertising a purchase that lapsed.
+         */
+        Rider: {
+            silhouette?: number;
+            theme?: string | null;
+        };
+        AchievementList: {
+            items?: components["schemas"]["Achievement"][];
+        };
+        /**
+         * @description docs/16 §4.7. `have` never exceeds `target` — a counter reading «127 of 36» looks broken, and the
+         *     reward depends on `done`, not on the number.
+         */
+        Achievement: {
+            /** @example set.first */
+            id?: string;
+            /** @enum {string} */
+            metric?: "sets" | "caps" | "wallDays" | "tags" | "arenaWins" | "gridDepth" | "fusions" | "referrals";
+            target?: number;
+            /** @description progress, capped at target */
+            have?: number;
+            done?: boolean;
+            claimed?: boolean;
+            /** Format: date-time */
+            claimedAt?: string | null;
+            /** @description file name in client/public/icons/gen — a real asset, not a drawn glyph */
+            icon?: string;
+            reward?: components["schemas"]["AchievementReward"];
+            /** @description for a banner reward: the finished district it will show (null until one is finished) */
+            bannerCollection?: number | null;
+        };
+        /**
+         * @description Cosmetics and existing items only — never $CG, and never above the quota (docs/02). Each kind is
+         *     an entitlement the rest of the app already understands; `hints` is a Floodgrid item and lands in
+         *     the same stock quests and the season pass use.
+         */
+        AchievementReward: {
+            /** @enum {string} */
+            kind?: "banner" | "emotes" | "stencils" | "fieldTheme" | "bench" | "skip" | "hints";
+            pack?: string | null;
+            theme?: string | null;
+            /** @description 'firstCompleted' — the district is taken from progress, not from config */
+            collection?: string | null;
+            /** @description for `hints`: how many (capped by the normal hint stock) */
+            n?: number | null;
+        };
+        LineState: {
+            /** @description unix day index — the layout is a pure function of it */
+            day: number;
+            week: number;
+            /** @description layout seed; the client must build the same bowl */
+            seed: number;
+            ticks: number;
+            length: number;
+            freeRunsPerDay: number;
+            freeLeft: number;
+            paidLeft: number;
+            runsToday: number;
+            bestToday: number;
+            /** @enum {string} */
+            tierToday: "none" | "bronze" | "silver" | "gold";
+            rewardsToday: {
+                passXp: number;
+                hints: number;
+                valve: number;
+            };
+            bestWeek: number;
+            /** @description price of one extra run in micro-$CG (burned) */
+            extraRunCgMicro: number;
+        };
+        /** @description The whole input: [tick, action] pairs, action 0 = hop, 1 = grab */
+        LineReplay: number[][];
+        RunSubmit: {
+            run: components["schemas"]["RunRow"];
+            granted: {
+                passXp: number;
+                hints: number;
+                valve: number;
+                /** @enum {string} */
+                tier: "none" | "bronze" | "silver" | "gold";
+            };
+            state: components["schemas"]["LineState"];
+        };
+        RunRow: {
+            id: number;
+            day: number;
+            week: number;
+            score: number;
+            tricks: number;
+            bestCombo: number;
+            bails: number;
+            paid: boolean;
+            /** @enum {string} */
+            tier: "none" | "bronze" | "silver" | "gold";
+            /** Format: date-time */
+            submittedAt: string;
+        };
+        RunReplay: {
+            runId: number;
+            day: number;
+            seed: number;
+            score: number;
+            tricks: number;
+            bails: number;
+            wallet: string;
+            handle?: string | null;
+            /** Format: date-time */
+            at: string;
+            inputs: components["schemas"]["LineReplay"];
+        };
+        LineBoard: {
+            week: number;
+            rows: {
+                rank: number;
+                wallet: string;
+                handle?: string | null;
+                score: number;
+                tricks: number;
+                bails: number;
+                runId: number;
+                /** Format: date-time */
+                at: string;
+                /** @description false once the 14-day sweeper wiped the inputs */
+                hasReplay: boolean;
+            }[];
+        };
+        CrewCheck: {
+            available: boolean;
+            /** @enum {string|null} */
+            reason?: "taken" | "reserved" | "blocked" | "cooldown" | "invalid" | "format" | null;
+            /** @description 14 = charter a new crew ($1.99), 15 = rename ($0.99) */
+            kind: number;
+            /** @description what the on-chain pay_service must commit to */
+            refHash: string;
+            priceUsdCents: number;
+            /** Format: date-time */
+            reservedUntil?: string | null;
+        };
+        CrewMember: {
+            wallet: string;
+            handle?: string | null;
+            /** Format: date-time */
+            joinedAt: string;
+            /** @description best Line score of this member for the week (0 = no run) */
+            bestWeek: number;
+            /** @description their run is inside the crew’s five best */
+            counting: boolean;
+        };
+        /**
+         * @description A crew: name, roster, wall segment and the week's score. `score` is the sum of the five best
+         *     members' best runs — never the sum of the whole roster (docs/16 §5.6).
+         */
+        CrewView: {
+            id: number;
+            name: string;
+            captain: string;
+            captainHandle?: string | null;
+            district: number;
+            /** @description segment index inside the district wall */
+            segment: number;
+            slots: {
+                /** @description first slot of the segment (inclusive) */
+                from: number;
+                /** @description last slot of the segment (exclusive) */
+                to: number;
+                /** @description slots per crew segment (20) */
+                size: number;
+            };
+            /** Format: date-time */
+            createdAt: string;
+            members: components["schemas"]["CrewMember"][];
+            memberCount: number;
+            /** @description below this the crew is not ranked (5) */
+            minMembers: number;
+            /** @description roster cap (10) */
+            maxMembers: number;
+            /** @description five members with a run this week — the crew is on the board */
+            counts: boolean;
+            week: number;
+            score: number;
+            /** @enum {string} */
+            tier: "none" | "bronze" | "silver" | "gold";
+            /** @description members only */
+            inviteCode?: string | null;
+            mine: boolean;
+            iAmCaptain: boolean;
+            /** @description open moderation reports against the name */
+            reports: number;
+        };
+        CrewBoard: {
+            week: number;
+            rows: {
+                rank: number;
+                id: number;
+                name: string;
+                district: number;
+                segment: number;
+                members: number;
+                score: number;
+                /** @enum {string} */
+                tier: "none" | "bronze" | "silver" | "gold";
+            }[];
+        };
+        AchievementClaim: components["schemas"]["Achievement"] & {
+            granted?: {
+                entitlement?: components["schemas"]["Entitlement"];
+                hints?: number | null;
+            };
+        };
+        /**
+         * @description Three exhibit slots. `caps` is the number of *distinct* caps collected (8 districts × 9 rarities) —
+         *     the same number that opens slots 2 and 3 at 12 and 36.
+         */
+        RigView: {
+            wallet?: string;
+            board?: components["schemas"]["BoardLoadout"];
+            rider?: components["schemas"]["Rider"];
+            /** @description owner has switched the public board on (§4.5) */
+            public?: boolean;
+            /**
+             * @description Distinct caps collected — those are the ones you can exhibit, and their count is what opens
+             *     slots. Empty on the public board: someone else's board shows three caps, not their collection.
+             */
+            caps?: {
+                asset?: components["schemas"]["Pubkey"];
+                collection?: number;
+                rarity?: components["schemas"]["Rarity"];
+                level?: number;
+                copies?: number;
+            }[];
+            slots?: components["schemas"]["RigSlot"][];
+            /** @description the next locked slot and how many caps are missing — the UI says «collect N more», not «soon» */
+            next?: {
+                slot?: number;
+                need?: number;
+            } | null;
+        };
+        RigSlot: {
+            slot?: number;
+            /** @enum {string} */
+            place?: "deck" | "grip";
+            unlocked?: boolean;
+            /** @description caps needed to open this slot (0 = open from the start) */
+            unlockAt?: number;
+            /** Format: date-time */
+            updatedAt?: string | null;
+            /** @description the exhibited cap — visual only, no weight / chance / yield (decisions 1 and 3) */
+            chip?: {
+                asset?: components["schemas"]["Pubkey"];
+                collection?: number;
+                rarity?: components["schemas"]["Rarity"];
+                level?: number;
+                skin?: string | null;
+                founder?: boolean;
+            } | null;
+        };
+        /**
+         * @description the six slots of the board (docs/16 §4.2): the first four make a district set
+         * @enum {string}
+         */
+        BoardSlotName: "deck" | "trucks" | "wheels" | "grip" | "bolts" | "sticker";
+        /**
+         * @description What is bolted on the board. Public: the showcase (§4.5) shows the built deck, not the inventory.
+         *     A part is cosmetic — no weight, no chance, no yield (decision 1 in §0.3); a complete district set
+         *     only lights the board in that district's colour.
+         */
+        BoardLoadout: {
+            /** @description part id, e.g. deck_d3 or deck_stock */
+            deck?: string;
+            trucks?: string;
+            wheels?: string;
+            grip?: string;
+            bolts?: string;
+            sticker?: string;
+            /** @description district index when all four main parts come from one district, else null */
+            set?: number | null;
+        };
+        /** @description one earned part in the owner's inventory (private — never shown on a public board) */
+        BoardPartRow: {
+            part?: string;
+            /** @description copies held, capped at 9 */
+            qty?: number;
+            /**
+             * @description where it came from — the first source is kept, later duplicates do not rewrite it
+             * @enum {string}
+             */
+            source?: "stock" | "run" | "achievement" | "crew" | "quest" | "track" | "shop";
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        /**
+         * @description My board (docs/16 §4.2): what is worn, what is earned, and what the week is offering.
+         *     `week` is the district of the week — one for the whole city, so a player can see what a
+         *     silver run pays this week and decide whether to ride for it.
+         */
+        BoardView: {
+            wallet?: string;
+            deck?: string;
+            trucks?: string;
+            wheels?: string;
+            grip?: string;
+            bolts?: string;
+            sticker?: string;
+            set?: number | null;
+            owned?: components["schemas"]["BoardPartRow"][];
+            week?: {
+                district?: number;
+                /** @description the part a silver run pays this week — the first slot still missing from that district */
+                part?: string;
+                /** @description the part for this week is already earned — one per week */
+                claimed?: boolean;
+                /** @description which slots of the week district are still empty */
+                missing?: components["schemas"]["BoardSlotName"][];
+            };
+            weekProgress?: {
+                have?: number;
+                total?: number;
+            };
+        };
+        MyWall: {
+            eligibility?: {
+                activeDays?: number;
+                activeDaysNeeded?: number;
+                stakedCaps?: number;
+                stakedCapsNeeded?: number;
+                eligible?: boolean;
+                reason?: string | null;
+            };
+            items?: {
+                district?: number;
+                slot?: number;
+                tagId?: string;
+                /** Format: date-time */
+                appliedAt?: string;
+                /** Format: date-time */
+                expiresAt?: string;
+                daysLeft?: number;
+            }[];
+        };
         StakingOverview: {
             emission?: {
                 dayIndex?: number;
@@ -5911,6 +8328,8 @@ export interface components {
             rewardChip?: Record<string, never> | null;
             /** @description Floodgrid Terminal marks granted on completion (backend gear, no root) */
             rewardHint?: number;
+            /** @description Floodgrid emergency valves granted on completion (backend gear, no root, stock cap 2) */
+            rewardValve?: number;
             /** @description fusion boosters granted on completion — rooted into a kind-8 item root and delivered by claim_item_root (chip_core PlayerItems) */
             rewardBooster?: number;
             completedAt?: string | null;
@@ -6256,6 +8675,100 @@ export interface components {
             netInflationCg?: number;
             sinkRatio?: number;
             perDauEmission?: number;
+        };
+        /** @description Cohorts behind the rule-gate (docs/16 §0.2, §12) — per-wallet averages, not sums. */
+        WorldMetrics: {
+            windowDays?: number;
+            /** Format: date-time */
+            asOf?: string;
+            /** @description one card per world feature — everyone who touched it vs everyone who played but did not */
+            features?: components["schemas"]["WorldFeatureCohort"][];
+            /**
+             * @description Narrower cuts, compared against a baseline that is not "everyone who played".
+             *
+             *     `wall.board` (docs/16 §3.7) cuts *inside* a feature: every board author already holds a slot
+             *     (§3.4), so measuring them against all players measures the slot, not the board — the
+             *     baseline is slot holders who never made the board.
+             *
+             *     `collection.mural` (docs/16 §2.3) is cut from game state, not from events: the cohort is
+             *     wallets holding at least 8 of some district's 9 caps (a mural painted 80 % or more), and the
+             *     baseline is players of the same window who never got that far. It carries no `series`: owning
+             *     caps is not an event, and "how many murals were finished per day" is a different question.
+             */
+            slices?: components["schemas"]["WorldFeatureCohort"][];
+            /** @description docs/16 §12 row 1 — share of pack opens followed by another pack purchase within 24 h */
+            epicPlus?: {
+                /** @description opens that contained at least one Epic+ cap */
+                cohort?: {
+                    opens?: number;
+                    repeatRate?: number | null;
+                };
+                /** @description opens in the same window without an Epic+ cap */
+                baseline?: {
+                    opens?: number;
+                    repeatRate?: number | null;
+                };
+                /** @description cohort / baseline − 1; null when there is nothing to divide by */
+                delta?: number | null;
+            };
+            /** @description docs/16 §12 row 4 — share of battles followed by another battle within 30 minutes */
+            arenaRematch?: {
+                /** @description battles the wallet lost */
+                cohort?: {
+                    opens?: number;
+                    repeatRate?: number | null;
+                };
+                /** @description battles the same wallets won in the same window */
+                baseline?: {
+                    opens?: number;
+                    repeatRate?: number | null;
+                };
+                /** @description loss-rematch rate / win-rematch rate − 1 */
+                delta?: number | null;
+            };
+        };
+        /** @description one cohort card — per-wallet averages for the group, the baseline and the ratio between them */
+        WorldFeatureCohort: {
+            /**
+             * @description feature name, or `feature.kind` for a slice (e.g. `wall.board`, `collection.mural`)
+             * @enum {string}
+             */
+            feature?: "wall" | "exhibit" | "tag" | "inspect" | "rider" | "achievement" | "wall.board" | "collection.mural";
+            windowDays?: number;
+            /** Format: date-time */
+            from?: string;
+            /** Format: date-time */
+            to?: string;
+            cohort?: components["schemas"]["WorldCohortStats"];
+            baseline?: components["schemas"]["WorldCohortStats"];
+            /** @description cohort / baseline − 1 per metric; null when there is nothing to divide by — an empty cohort is null too, never −100 % */
+            delta?: {
+                packs?: number | null;
+                trades?: number | null;
+                fusions?: number | null;
+                loginDays?: number | null;
+                stakedCaps?: number | null;
+                referrals?: number | null;
+                services?: number | null;
+            };
+            /** @description adoption curve — events and distinct wallets per day */
+            series?: {
+                day?: number;
+                events?: number;
+                wallets?: number;
+            }[];
+        };
+        WorldCohortStats: {
+            wallets?: number;
+            packsPerWallet?: number;
+            tradesPerWallet?: number;
+            fusionsPerWallet?: number;
+            loginDaysPerWallet?: number;
+            stakedCapsPerWallet?: number;
+            /** @description wallets that arrived through this wallet’s link, per wallet */
+            referralsPerWallet?: number;
+            /** @description paid services (cosmetics, handles, skins) per wallet — the item track the rider is supposed to feed (§4.6) */
+            servicesPerWallet?: number;
         };
         AdminKpi: {
             /** Format: date-time */

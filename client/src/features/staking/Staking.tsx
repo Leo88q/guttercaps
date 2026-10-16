@@ -19,6 +19,7 @@ import { CleanZone, KV, Modal, Pill, Stat, Skeleton, Empty } from '@/shared/ui/p
 import { GenBadge } from '@/shared/ui/GenBadge';
 import { CleanConfirmButton } from '@/shared/ui/buttons';
 import { ChipArt } from '@/shared/ui/ChipArt';
+import { DropletMeter } from '@/features/grid/DropletMeter';
 import { fmtCg, fmtUnits, fmtDecimal, fmtPct, fmtProb, inputUnits, parseUnits, countdown, secondsToHuman } from '@/shared/lib/format';
 import { chipName, rarityColor, rarityName, chipImageOf } from '@/shared/lib/rarity';
 import { useUiStore } from '@/app/store/ui';
@@ -207,7 +208,12 @@ export default function Staking() {
                     <span className="stake-row-art"><ChipArt collection={c.collection!} rarity={c.rarity!} imageUrl={chipImageOf(c)} skin={(c as { skin?: string | null }).skin} founder={!!(c as { flags?: { founder?: boolean } }).flags?.founder} /></span>
                     <div className="stake-row-copy">
                       <div className="small">{chipName(c.collection!, c.rarity!)} <span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span>{(c as { idle?: boolean }).idle ? <span className="tiny stake-idle"> · <img src="/art/idle-stake.png" alt="" width={18} height={18} style={{ verticalAlign: 'middle' }} /> {t('ui.idleStake')}</span> : null}</div>
-                      <div className="tiny muted mono">{t('staking.weight')} {c.stakeWeight} · {t('ui.pending')} {api ? fmtCg(api.pending, 3) : '…'}{(gridRoutes.get(c.asset ?? '')?.chargeDrops ?? 0) > 0 && <> · <GenBadge name="item-drop" size={14} /> {gridRoutes.get(c.asset ?? '')!.chargeDrops} (+{(gridRoutes.get(c.asset ?? '')!.chargeDrops * GRID.chargeStakeBonusBpsPerDrop) / 100}%)</>}</div>
+                      <div className="tiny muted mono row" style={{ gap: 6, flexWrap: 'wrap' }}>{t('staking.weight')} {c.stakeWeight} · {t('ui.pending')} {api ? fmtCg(api.pending, 3) : '…'}
+                        {/* Капли видны и на нуле: пустые пипки объясняют, что заряд можно набрать. */}
+                        <DropletMeter drops={gridRoutes.get(c.asset ?? '')?.chargeDrops ?? 0} size={14} showProgress={false}
+                          title={`${t('grid.drops')} · ${t('grid.dropsLive')}`} />
+                        {(gridRoutes.get(c.asset ?? '')?.chargeDrops ?? 0) > 0 && <span>+{((gridRoutes.get(c.asset ?? '')!.chargeDrops * GRID.chargeStakeBonusBpsPerDrop) / 100)}%</span>}
+                      </div>
                     </div>
                   </div>
                   <div className="stake-row-actions">
@@ -246,6 +252,7 @@ export default function Staking() {
           {stakeable.map((c: Chip) => (
             <div key={c.asset} className="chip-card" onClick={async () => { setPickChip(false); await run('staking.stake', () => stakeChip(c)); }}>
               <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c)} skin={(c as { skin?: string | null }).skin} founder={!!c.flags?.founder} />
+              <div className="tiny muted row" style={{ gap: 4, justifyContent: 'center' }}><DropletMeter drops={(c as { gridRoute?: { chargeDrops: number } | null }).gridRoute?.chargeDrops ?? 0} size={13} showProgress={false} /></div>
               <div className="chip-meta"><span style={{ color: rarityColor(c.rarity!) }}>{rarityName(c.rarity!)}</span> · {t('staking.weight')} {c.stakeWeight}{(gridRoutes.get(c.asset ?? '')?.chargeDrops ?? 0) > 0 && <> · <GenBadge name="item-drop" size={14} /> {gridRoutes.get(c.asset ?? '')!.chargeDrops}</>}</div>
             </div>
           ))}

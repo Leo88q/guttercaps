@@ -1,6 +1,4 @@
 import { percentText } from '@/shared/i18n/message';
-import { ErrorNotice } from '@/shared/ui/ErrorNotice';
-import { phaseLabel } from '@/shared/lib/presentation';
 // Fusion bench: 3 slots → 1 result. Rule (any / same-collection) per recipe,
 // success chance, booster toggle, fee (burned), result lock, set-break warning.
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -18,6 +16,7 @@ import { compressedChipStatePda } from '@/chain/pdas';
 import { qk } from '@/api/keys';
 import { ClaimFusionFlow } from '@/chain/flows/claimFusionFlow';
 import { FusionFlow, successBps, type FusionFlowState } from '@/chain/flows/fusionFlow';
+import { FusionStages } from './FusionStages';
 import { useTxStore, fusionId } from '@/app/store/txs';
 import { useUiStore } from '@/app/store/ui';
 import { ChipArt } from '@/shared/ui/ChipArt';
@@ -284,7 +283,7 @@ export default function Fusion() {
           </CleanZone>
         )}
         <CleanConfirmButton disabled={!ready || busy} onClick={fuse}>{busy ? t('common.working') : recipe && recipe.successBps < 10_000 ? `${t('fusion.fuse')} (${fmtPct(chance, 0)})` : t('fusion.fuse')}</CleanConfirmButton>
-        {flow && flow.phase !== 'done' && flow.phase !== 'idle' && <div className="small muted">{t('ui.phase')}: {flow.phase === 'settling' ? t('screens.fusionBgWait') : phaseLabel(flow.phase)}{flow.error && <ErrorNotice error={flow.errorDiagnostic ?? flow.error} />}</div>}
+        {flow && flow.phase !== 'done' && flow.phase !== 'idle' && <FusionStages phase={flow.phase} error={flow.error} />}
       </div>
 
       <div className="card stack-sm" data-testid="fusion-suggestions">

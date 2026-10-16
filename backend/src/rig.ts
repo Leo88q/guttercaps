@@ -1,0 +1,325 @@
+// =============================================================================
+// GUTTERCAPS — экспозиция крышек (docs/16 §4.3) и витрина (§4.5)
+// -----------------------------------------------------------------------------
+// Экспозиция — то место, где коллекция наконец становится статусом, который
+// видят другие. Три слота на доске: один на деку, два на грип. Эффект ровно
+// один — визуальный (решение 3 из §0.3): редкая крышка на доске не даёт ни
+// веса, ни шанса, ни дохода.
+//
+// Главное, что здесь НЕ написано: крышка не сжигается, не передаётся и не
+// блокируется. Слот хранит ссылку на неё, а владение проверяется джойном при
+// каждом чтении — поэтому проданная или сожжённая фьюжном крышка просто
+// оставляет слот пустым, без чистки и без обработчика события продажи.
+//
+// Слоты открываются коллекцией (12 и 36 крышек из 72). Это и есть «мир кормит
+// основную петлю» в интерфейсе: закрытый слот не продаётся, он говорит, сколько
+// собрать, и ведёт в паки, фьюжн и маркет — существующие контуры.
+// =============================================================================
+
+import type { Db } from './db.ts';
+import { now } from './db.ts';
+import { ServiceError } from './services.ts';
+import { recordEvent } from './worldMetrics.ts';
+import { jsonAt } from './sql.ts';
+import { PROFILE_THEMES } from '@guttercaps/economy';
+import { boardLoadout, type BoardLoadout } from './board.ts';
+
+export const RIG_SLOTS = 3;
+/** Сколько собранных крышек открывает слот: первый сразу, второй с 12, третий с 36 (половина коллекции). */
+export const RIG_UNLOCK = [0, 12, 36] as const;
+/** Куда физически крепится крышка: слот 0 — дека, 1 и 2 — грип. */
+export const RIG_PLACE = ['deck', 'grip', 'grip'] as const;
+/** Размер коллекции (8 районов × 9 редкостей) — только для честного текста «собери N из 72». */
+export const CAPS_IN_COLLECTION = 72;
+
+const iso = (s: number) => new Date(s * 1000).toISOString();
+
+interface ExhibitRow { slot: number; asset: string; updated_at: number }
+interface ChipRow { asset: string; collection_idx: number; rarity: number; level: number; skin: string | null; flags: number }
+
+export interface RigCap {
+  asset: string; collection: number; rarity: number; level: number;
+  /** Сколько таких крышек у кошелька: выставляется одна, остальные лежат в коллекции. */
+  copies: number;
+}
+export interface RigChip {
+  asset: string; collection: number; rarity: number; level: number;
+  skin: string | null; founder: boolean;
+}
+export interface RigSlotView {
+  slot: number;
+  place: 'deck' | 'grip';
+  unlocked: boolean;
+  /** Сколько крышек нужно собрать, чтобы слот открылся (0 — открыт сразу). */
+  unlockAt: number;
+  chip: RigChip | null;
+  updatedAt: string | null;
+}
+export interface RigView {
+  wallet: string;
+  /**
+   * Доска, собранная в конструкторе (§4.2): часть деки, траков, колёс и грипа —
+   * добытая косметика. Здесь она нужна потому, что крышки экспозиции лежат
+   * именно на этой деке: чужая витрина показывает собранную доску целиком, а
+   * инвентарь частей (`/me/board`) остаётся приватным.
+   */
+  board: BoardLoadout;
+  /** Райдер (§4.6): силуэт района + цвет подсветки из купленной косметики. */
+  rider: Rider;
+  /** Витрина включена владельцем (§4.5): публичная страница /rig/:wallet живёт только с этим флагом. */
+  public: boolean;
+  /**
+   * Собранные крышки — ровно те, которые можно выставить, и ровно та величина,
+   * которая открывает слоты. Список выдаётся только владельцу: чужая витрина
+   * показывает три крышки на доске, а не всю коллекцию.
+   */
+  caps: RigCap[];
+  slots: RigSlotView[];
+  /** Следующий закрытый слот: чтобы интерфейс говорил «собери ещё N», а не «скоро». */
+  next: { slot: number; need: number } | null;
+}
+
+/**
+ * Собранные крышки: по одной строке на (район, редкость) — коллекция считает
+ * разные крышки, а не число фишек. Выбирается лучший экземпляр (максимальный
+ * уровень); `MIN(asset)` среди равных делает выбор детерминированным, а не
+ * «какой первый попался» — арт у крышки один на весь (район, редкость), но
+ * нестабильный asset означал бы вечно меняющийся ответ.
+ */
+export function ownedCaps(db: Db, wallet: string): RigCap[] {
+  return db.all<RigCap>(
+    `SELECT MIN(c.asset) AS asset, c.collection_idx AS collection, c.rarity AS rarity,
+            MAX(c.level) AS level,
+            (SELECT COUNT(*) FROM chips d
+              WHERE d.owner = c.owner AND d.collection_idx = c.collection_idx
+                AND d.rarity = c.rarity AND d.burned_at IS NULL) AS copies
+       FROM chips c
+       JOIN (SELECT collection_idx, rarity, MAX(level) AS best
+               FROM chips WHERE owner = ? AND burned_at IS NULL
+              GROUP BY collection_idx, rarity) b
+         ON b.collection_idx = c.collection_idx AND b.rarity = c.rarity AND b.best = c.level
+      WHERE c.owner = ? AND c.burned_at IS NULL
+      GROUP BY c.collection_idx, c.rarity
+      ORDER BY c.rarity DESC, c.collection_idx`,
+    wallet, wallet,
+  );
+}
+
+/** Крышка, выставленная в слоте, — только если она всё ещё у владельца. */
+function exhibited(db: Db, wallet: string): Map<number, { row: ExhibitRow; chip: ChipRow }> {
+  const rows = db.all<ExhibitRow & ChipRow>(
+    `SELECT r.slot, r.asset, r.updated_at, c.collection_idx, c.rarity, c.level, c.skin, c.flags
+       FROM rig_exhibit r
+       JOIN chips c ON c.asset = r.asset AND c.owner = r.wallet AND c.burned_at IS NULL
+      WHERE r.wallet = ?
+      ORDER BY r.slot`, wallet,
+  );
+  const map = new Map<number, { row: ExhibitRow; chip: ChipRow }>();
+  for (const r of rows) map.set(r.slot, { row: { slot: r.slot, asset: r.asset, updated_at: r.updated_at }, chip: r });
+  return map;
+}
+
+/** `withCaps` — false для чужой витрины: коллекция целиком остаётся приватной. */
+export function rigView(db: Db, wallet: string, withCaps = true): RigView {
+  const caps = ownedCaps(db, wallet);
+  const count = caps.length;
+  const held = exhibited(db, wallet);
+  const slots: RigSlotView[] = [];
+  let next: { slot: number; need: number } | null = null;
+  for (let i = 0; i < RIG_SLOTS; i++) {
+    const unlockAt = RIG_UNLOCK[i] ?? 0;
+    const unlocked = count >= unlockAt;
+    const held_ = held.get(i);
+    slots.push({
+      slot: i,
+      place: RIG_PLACE[i] ?? 'grip',
+      unlocked,
+      unlockAt,
+      chip: held_ ? {
+        asset: held_.chip.asset,
+        collection: held_.chip.collection_idx,
+        rarity: held_.chip.rarity,
+        level: held_.chip.level,
+        skin: held_.chip.skin ?? null,
+        founder: (held_.chip.flags & 16) !== 0,
+      } : null,
+      updatedAt: held_ ? iso(held_.row.updated_at) : null,
+    });
+    if (!unlocked && next === null) next = { slot: i, need: unlockAt - count };
+  }
+  return { wallet, board: boardLoadout(db, wallet), rider: riderOf(db, wallet), public: rigPublic(db, wallet), caps: withCaps ? caps : [], slots, next };
+}
+
+// ------------------------------------------------------------------ витрина
+// Публичность лежит в wallets.flags: один булев переключатель не стоит новой
+// таблицы, а читается он через sql.ts (jsonFlagEq), чтобы SQLite и Postgres
+// отвечали одинаково — ровно то, о чём предупреждает комментарий к jsonFlagEq.
+interface WalletFlags {
+  rigPublic?: boolean;
+  /** Райдер хранится тем же флагом: один объект в wallets.flags вместо новой таблицы. */
+  rider?: { silhouette?: unknown; theme?: unknown } | null;
+}
+
+function readFlags(db: Db, wallet: string): WalletFlags {
+  const raw = db.get<{ flags: string }>(`SELECT flags FROM wallets WHERE address = ?`, wallet)?.flags;
+  try { return (JSON.parse(raw ?? '{}') as WalletFlags) ?? {}; } catch { return {}; }
+}
+
+export function rigPublic(db: Db, wallet: string): boolean {
+  return readFlags(db, wallet).rigPublic === true;
+}
+
+export function setRigPublic(db: Db, wallet: string, on: boolean): boolean {
+  const flags = { ...readFlags(db, wallet), rigPublic: on };
+  db.run(`INSERT INTO wallets (address, flags) VALUES (?, ?) ON CONFLICT(address) DO UPDATE SET flags = excluded.flags`, wallet, JSON.stringify(flags));
+  return on;
+}
+
+/** Публичная витрина (§4.5). Чужая доска видна только если владелец включил показ. */
+export function publicRig(db: Db, wallet: string): RigView {
+  if (!rigPublic(db, wallet)) throw new ServiceError(404, 'rig_private', 'This board is not public');
+  // Ограничение обработки профиля (GDPR) сильнее переключателя витрины.
+  if (db.get(`SELECT wallet FROM privacy_restrictions WHERE wallet = ? AND resumed_at IS NULL`, wallet)) {
+    throw new ServiceError(404, 'rig_private', 'This board is not public');
+  }
+  return rigView(db, wallet, false);
+}
+
+// --------------------------------------------------------------------- райдер
+/**
+ * §4.6 Райдер — образ, а не характеристики: силуэт одного из восьми районов
+ * плюс цвет подсветки из темы, которую игрок **купил**. Ни силы, ни шансов, ни
+ * дохода: райдер — это то, что видят другие на витрине (§4.5).
+ *
+ * Хранится в `wallets.flags.rider`, как и публичность витрины: два поля в
+ * существующем JSON вместо новой таблицы, и читается они ровно там же.
+ */
+export const RIDER_SILHOUETTES = 8;
+/** kind сервиса «тема профиля» — откуда берётся цвет подсветки (economy SERVICES). */
+const THEME_KIND = 3;
+
+export interface Rider {
+  /** Индекс района 0..7: какой из восьми силуэтов надет. */
+  silhouette: number;
+  /** id темы из `PROFILE_THEMES`; null — подсветка цветом своего района. */
+  theme: string | null;
+}
+
+/** Темы, которые игрок реально оплатил (kind 3, `payload.theme`). */
+export function ownedThemes(db: Db, wallet: string): string[] {
+  const rows = db.all<{ theme: string | null }>(
+    `SELECT ${jsonAt('payload', 'theme')} AS theme FROM entitlements
+      WHERE wallet = ? AND kind = ? AND (expires_at IS NULL OR expires_at > ?)`,
+    wallet, THEME_KIND, now(),
+  );
+  const rowsAll = db.all<{ payload: string | null }>(
+    `SELECT payload FROM entitlements WHERE wallet = ? AND kind = ? AND (expires_at IS NULL OR expires_at > ?)`,
+    wallet, THEME_KIND, now(),
+  );
+  // Грант без payload — старый: он открывал все темы разом. В точности как на
+  // клиенте (ownedThemes), только без правки списка: эксклюзивные темы такой
+  // грант не открывает, они выдаются за заслуги.
+  const named = rows.map((r) => r.theme).filter((x): x is string => typeof x === 'string' && x.length > 0);
+  // Канонический JSON пустого гранта — `{}`; `null` и пустая строка попадаются в
+  // старых записях, сделанных до того, как колонка стала NOT NULL.
+  const empty = (v: string | null) => !v || ['', '{}', 'null'].includes(String(v).trim());
+  const legacy = rowsAll.some((r) => empty(r.payload));
+  const ids = new Set(named);
+  if (legacy) for (const t of PROFILE_THEMES) if (!t.exclusive) ids.add(t.id);
+  return [...ids].filter((id) => PROFILE_THEMES.some((t) => t.id === id));
+}
+
+export function riderOf(db: Db, wallet: string): Rider {
+  const raw = readFlags(db, wallet).rider;
+  const sil = Number(raw?.silhouette);
+  const theme = typeof raw?.theme === 'string' ? raw.theme : null;
+  return {
+    silhouette: Number.isInteger(sil) && sil >= 0 && sil < RIDER_SILHOUETTES ? sil : 0,
+    // Чужая тема в ответе не покажется: если косметика больше не оплачена
+    // (истёкшая аренда, отзыв), витрина показывает подсветку района.
+    theme: theme && ownedThemes(db, wallet).includes(theme) ? theme : null,
+  };
+}
+
+/**
+ * PUT /v1/me/rider. Идемпотентно: повтор того же выбора ничего не меняет,
+ * поэтому «не сохранилось — нажми ещё раз» безопасно.
+ *
+ * Проверки ровно две, и обе про честность витрины: силуэт — из восьми
+ * существующих, тема — только оплаченная. Надеть некупленную косметику нельзя
+ * не из жадности, а потому что витрина тогда врёт о том, что игрок купил.
+ */
+export function setRider(db: Db, wallet: string, patch: { silhouette?: unknown; theme?: unknown }): Rider {
+  const current = riderOf(db, wallet);
+  let silhouette = current.silhouette;
+  let theme = current.theme;
+  if (patch.silhouette !== undefined) {
+    const n = Number(patch.silhouette);
+    if (!Number.isInteger(n) || n < 0 || n >= RIDER_SILHOUETTES) throw new ServiceError(400, 'bad_silhouette', `silhouette must be 0..${RIDER_SILHOUETTES - 1}`);
+    silhouette = n;
+  }
+  if (patch.theme !== undefined) {
+    if (patch.theme === null || patch.theme === '') theme = null;
+    else {
+      const id = String(patch.theme);
+      if (!ownedThemes(db, wallet).includes(id)) throw new ServiceError(403, 'theme_not_owned', 'Buy this theme in the shop before wearing it');
+      theme = id;
+    }
+  }
+  const flags = { ...readFlags(db, wallet), rider: { silhouette, theme } };
+  db.run(`INSERT INTO wallets (address, flags) VALUES (?, ?) ON CONFLICT(address) DO UPDATE SET flags = excluded.flags`, wallet, JSON.stringify(flags));
+  recordEvent(db, wallet, 'rider', 'set', { silhouette, theme });
+  return { silhouette, theme };
+}
+
+// ------------------------------------------------------------------- запись
+export interface RigUpdate { slot: number; asset: string | null }
+
+/**
+ * PUT /v1/rig — поставить или снять крышки. Запрос идемпотентен: повторная
+ * отправка того же состояния ничего не меняет, поэтому «не сохранилось — нажми
+ * ещё раз» безопасно.
+ */
+export function setRig(db: Db, wallet: string, updates: RigUpdate[], publicOn?: boolean): RigView {
+  const caps = ownedCaps(db, wallet);
+  const owned = new Set(caps.map((c) => c.asset));
+  // Владение проверяем по списку лучших экземпляров: выставить «вторую такую же
+  // крышку» нельзя не потому, что жалко, а потому что копия неотличима в
+  // интерфейсе и разница была бы видна только в базе.
+  const claimed = new Set<string>();
+  return db.tx(() => {
+    for (const u of updates) {
+      const slot = Number(u.slot);
+      if (!Number.isInteger(slot) || slot < 0 || slot >= RIG_SLOTS) throw new ServiceError(400, 'bad_slot', `slot must be 0..${RIG_SLOTS - 1}`);
+      if (u.asset === null || u.asset === undefined || u.asset === '') {
+        db.run(`DELETE FROM rig_exhibit WHERE wallet = ? AND slot = ?`, wallet, slot);
+        recordEvent(db, wallet, 'exhibit', 'unset', { slot });
+        continue;
+      }
+      const unlockAt = RIG_UNLOCK[slot] ?? 0;
+      if (caps.length < unlockAt) throw new ServiceError(409, 'slot_locked', `Slot ${slot + 1} opens at ${unlockAt} caps (you have ${caps.length})`);
+      if (!owned.has(u.asset)) throw new ServiceError(403, 'not_your_chip', 'You can only exhibit a cap you own');
+      if (claimed.has(u.asset)) throw new ServiceError(409, 'chip_in_use', 'The same cap cannot fill two slots');
+      claimed.add(u.asset);
+      db.run(
+        `INSERT INTO rig_exhibit (wallet, slot, asset, updated_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(wallet, slot) DO UPDATE SET asset = excluded.asset, updated_at = excluded.updated_at`,
+        wallet, slot, u.asset, now(),
+      );
+      // Событие пишется в той же транзакции, что и слот: метрика §12 не должна
+      // расходиться с состоянием доски.
+      recordEvent(db, wallet, 'exhibit', 'set', { slot });
+    }
+    // Крышка не может занимать два слота — снимаем её со всех остальных.
+    for (const asset of claimed) {
+      const rows = db.all<{ slot: number }>(`SELECT slot FROM rig_exhibit WHERE wallet = ? AND asset = ?`, wallet, asset);
+      const keep = updates.find((u) => u.asset === asset)?.slot;
+      for (const r of rows) if (r.slot !== keep) db.run(`DELETE FROM rig_exhibit WHERE wallet = ? AND slot = ?`, wallet, r.slot);
+    }
+    if (publicOn !== undefined) {
+      setRigPublic(db, wallet, publicOn);
+      recordEvent(db, wallet, 'exhibit', publicOn ? 'public_on' : 'public_off');
+    }
+    return rigView(db, wallet);
+  });
+}

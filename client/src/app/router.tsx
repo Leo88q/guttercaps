@@ -7,6 +7,26 @@ import { RouteError } from './RouteError';
 
 const Home = lazy(() => import('@/features/home/Home'));
 const Collection = lazy(() => import('@/features/collection/Collection'));
+// Бассейн (docs/16 §4.1) — скейт-мир. Ленивый, в entry-граф не попадает; арт лежит
+// в public/art/skate и вообще не считается в бандл (scripts/skate-art-build.py).
+const Bowl = lazy(() => import('@/features/bowl/Bowl'));
+// Редактор тегов (docs/16 §3.1) — отдельный ленивый роут: канвас и палитра нужны
+// только тем, кто рисует. Владение паком читает обёртка внутри ленивого модуля:
+// импорт @/api/hooks и @/shared/lib/cosmetics сюда, в router, утянул бы их в
+// entry-граф (+1.8 КБ gz — критический путь вылез бы за 350 КБ, было замерено).
+const TagEditorRoute = lazy(() => import('@/features/bowl/TagEditor').then((m) => ({ default: m.TagEditorRoute })));
+// Стена района (docs/16 §3.4) — тот же ленивый принцип: 200 слотов тянутся
+// только когда игрок пришёл на конкретную стену.
+const Wall = lazy(() => import('@/features/bowl/Wall'));
+const Board = lazy(() => import('@/features/bowl/Board'));
+const Line = lazy(() => import('@/features/bowl/Line'));
+const Rig = lazy(() => import('@/features/bowl/Rig'));
+// Команды (docs/16 §5.6): ленивый роут — имя, состав и командная доска нужны
+// только тем, кто дошёл до чаши.
+const Crew = lazy(() => import('@/features/bowl/Crew'));
+const PublicRig = lazy(() => import('@/features/bowl/Rig').then((m) => ({ default: m.PublicRig })));
+// Конструктор доски (docs/16 §4.2): части добываются игрой, собираются на доску.
+const Builder = lazy(() => import('@/features/bowl/Builder'));
 const Shop = lazy(() => import('@/features/shop/Shop'));
 const Opening = lazy(() => import('@/features/shop/Opening'));
 const Fusion = lazy(() => import('@/features/fusion/Fusion'));
@@ -14,6 +34,9 @@ const Arena = lazy(() => import('@/features/arena/Arena'));
 const MatchReplay = lazy(() => import('@/features/arena/MatchReplay'));
 const Market = lazy(() => import('@/features/market/Market'));
 const ChipPage = lazy(() => import('@/features/market/ChipPage'));
+// Инспектор крышки (docs/16 §2.2) — ленивый, как и страница маркета: orbit и
+// паспорт нужны только тому, кто открыл конкретную крышку по ссылке.
+const ChipInspector = lazy(() => import('@/features/chip/ChipInspector'));
 const Staking = lazy(() => import('@/features/staking/Staking'));
 const Quests = lazy(() => import('@/features/quests/Quests'));
 const Grid = lazy(() => import('@/features/grid/Grid'));
@@ -28,6 +51,7 @@ const Admin = lazy(() => import('@/features/admin/Admin'));
 const Language = lazy(() => import('@/features/language/Language'));
 const Rights = lazy(() => import('@/features/rights/Rights'));
 const Guide = lazy(() => import('@/features/guide/Guide'));
+const Achievements = lazy(() => import('@/features/profile/Achievements'));
 const Legal = lazy(() => import('@/features/legal/Legal'));
 
 function Fallback() {
@@ -59,6 +83,19 @@ export const routes: RouteObject[] = [
     children: [
       { index: true, element: S(<Home />) },
       { path: 'collection', element: S(<Collection />) },
+      { path: 'bowl', element: S(<Bowl />) },
+      { path: 'bowl/tag', element: S(<TagEditorRoute />) },
+      { path: 'bowl/wall/:district', element: S(<Wall />) },
+      { path: 'bowl/board', element: S(<Board />) }, // доска недели (docs/16 §3.7): жеребьёвка, а не рейтинг
+      { path: 'bowl/line', element: W(<Line />) }, // линия (docs/16 §5.1): чаша дня, три бесплатных заезда
+      // Команда (docs/16 §5.6): своя — под кошелём, чужая карточка — публична,
+      // потому что имя и состав команды не секрет (секретен только код приглашения).
+      { path: 'bowl/crew', element: W(<Crew />) },
+      { path: 'bowl/crew/:name', element: S(<Crew />) },
+      { path: 'bowl/builder', element: W(<Builder />) }, // конструктор доски (docs/16 §4.2)
+      { path: 'bowl/rig', element: W(<Rig />) },
+      { path: 'achievements', element: W(<Achievements />) }, // docs/16 §4.7: награды — косметика и предметы
+      { path: 'rig/:wallet', element: S(<PublicRig />) }, // витрина (docs/16 §4.5): публичная, но 404, пока владелец её не включил
       { path: 'shop', element: S(<Shop />) },
       { path: 'shop/opening/:nonce', element: W(<Opening />) },
       { path: 'fusion', element: W(<Fusion />) },
@@ -66,6 +103,9 @@ export const routes: RouteObject[] = [
       { path: 'arena/match/:id', element: S(<MatchReplay />) },
       { path: 'market', element: S(<Market />) },
       { path: 'market/:asset', element: S(<ChipPage />) },
+      // Глубокая ссылка на крышку (docs/16 §2.2): открывается без кошелька,
+      // ?view=3d — тот же экран, просто с подсказкой про орбиту.
+      { path: 'chip/:asset', element: S(<ChipInspector />) },
       { path: 'staking', element: W(<Staking />) },
       { path: 'quests', element: W(<Quests />) },
       { path: 'grid', element: W(<Grid />) },

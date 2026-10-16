@@ -211,5 +211,20 @@
   "invalidBubblegumAsset": "Asset id on-chain chip ini tidak cocok dengan daun Bubblegum. Left: {left}. Right: {right}. Dompet tidak diminta dan taruhan tidak dikirim.",
   "noXpTicket": "Tidak ada tiket XP tersisa hari ini — tiket datang bersama pack Limited dan kedaluwarsa tengah malam UTC.",
   "missingAsset": "Pilih cap mana yang menerima XP.",
-  "chipNotFound": "Cap ini tidak ada di dompetmu (atau sudah tidak aktif)."
+  "chipNotFound": "Cap ini tidak ada di dompetmu (atau sudah tidak aktif).",
+  "themeNotOwned": "Tema ini belum kamu punya: beli dulu di toko, lalu pakai.",
+  "achievementNotEarned": "Belum tercapai: penghitungnya belum sampai target.",
+  "lineRunsExhausted": "Percobaan gratis hari ini habis — tambahan berharga 30 $CG (dibakar).",
+  "lineCreditCap": "Itu batas harian untuk percobaan berbayar.",
+  "crewNoCrew": "Tidak ada kru dengan nama itu.",
+  "crewInvalidName": "Nama kru terdiri dari 3–16 karakter: huruf, angka, dan garis bawah.",
+  "crewAlreadyIn": "Kamu sudah berada di sebuah kru — keluar dulu.",
+  "crewNotCaptain": "Hanya kapten yang bisa melakukannya.",
+  "crewBadCode": "Tidak ada kru yang memakai kode undangan itu.",
+  "crewFull": "Kru ini sudah berisi sepuluh rider.",
+  "crewDistrictFull": "Semua segmen kru di distrik ini sudah terpakai.",
+  "crewCodeFailed": "Kode undangan gagal dibuat — coba lagi.",
+  "crewEndpoint": "Nama kru diurus di layar kru.",
+  "badPart": "Bagian ini tidak cocok dengan slot itu.",
+  "partNotOwned": "Dapatkan bagian ini dulu sebelum memasangnya."
 }

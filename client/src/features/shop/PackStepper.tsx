@@ -18,15 +18,19 @@ export function PackStepper({ state, compact, onRefund, onReclaimRent }: { state
   const idx = STEPS.findIndex((s) => s.key.includes(state.phase));
   const errored = state.phase === 'error';
   const stale = state.phase === 'stale';
+  const running = !errored && !stale && state.phase !== 'done';
   return (
-    <div className="stack-sm">
+    // Мобильный кошелёк уводит игрока с экрана: шаги должны говорить, что происходит сейчас,
+    // а не просто подсвечивать номер. Поэтому активный шаг всегда с пояснением и вертушкой.
+    <div className="stack-sm" role="status" aria-live="polite" data-phase={state.phase}>
+      {compact && <div className="strong">{t('common.working')}</div>}
       <div className="stepper">
         {STEPS.map((s, i) => {
           const cls = errored && i === Math.max(0, idx) ? 'error' : i < idx || state.phase === 'done' ? 'done' : i === idx ? 'active' : '';
           return (
             <div key={s.label} className={`step ${cls}`}>
-              <div className="strong">{i + 1} · {t(s.label)}</div>
-              {!compact && <div className="tiny">{t(s.hint)}</div>}
+              <div className="strong">{i + 1} · {t(s.label)}{i === idx && running && <span className="step-spin" aria-hidden />}</div>
+              {(i === idx || !compact) && <div className="tiny">{t(s.hint)}</div>}
             </div>
           );
         })}

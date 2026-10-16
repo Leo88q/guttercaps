@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { ExternalIcon } from '@/shared/ui/action-icons';
-import { PACKS, BUNDLES, FX, bundlePriceCents, effectiveOdds, probabilityAtLeast, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, type PackId } from '@guttercaps/economy';
+import { PACKS, BUNDLES, FX, bundlePriceCents, effectiveOdds, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, type PackId } from '@guttercaps/economy';
 import { useMe, usePackCatalog, useQuote, type PackSku } from '@/api/hooks';
 import { PreorderBanner } from '@/features/preorder/PreorderBanner';
 import type { components } from '@/api/schema';
@@ -13,7 +13,7 @@ import { usePaymentRails } from '@/chain/rails';
 import { toEconPack, rentReserve } from '@/chain/flows/packFlow';
 import { Currency, type CurrencyCode } from '@/chain/ix/chipCore';
 import { FLAGS, ONRAMP_URL } from '@/app/config';
-import { fmtAmount, fmtCents, fmtPct, fmtProb, fmtSol, fmtUsd } from '@/shared/lib/format';
+import { fmtAmount, fmtCents, fmtPct, fmtSol, fmtUsd } from '@/shared/lib/format';
 import { packName, rarityName, rarityColor } from '@/shared/lib/rarity';
 import { packArtUrl } from '@/shared/lib/packArt';
 import { CleanZone, KV, Modal, Pill, Progress } from '@/shared/ui/primitives';
@@ -32,6 +32,14 @@ import { RESTRICTED_REGIONS } from '@/shared/lib/legal';
 
 const SKU_IDS: PackId[] = ['starter', 'standard', 'premium', 'limited'];
 const CUR_LABEL = ['SOL', 'USDC', 'CG', 'SKR'] as const;
+
+/** Тиры витрины пака: пол, середина и верх реально выпадающего диапазона (odds > 0). */
+function packFan(odds: number[], floor: number): number[] {
+  const droppable = odds.map((bps, r) => (bps > 0 ? r : -1)).filter((r) => r >= 0 && r >= floor);
+  if (droppable.length === 0) return [floor];
+  const mid = droppable[Math.floor((droppable.length - 1) / 2)];
+  return [droppable[0], mid, droppable[droppable.length - 1]].filter((v, i, a) => a.indexOf(v) === i);
+}
 
 export default function Shop() {
   const catalog = usePackCatalog();
@@ -146,7 +154,7 @@ export default function Shop() {
         {packs.map(({ sku, id, econ, api, enabled }) => {
           const counter = counters[sku] ?? 0;
           const odds = effectiveOdds(econ, counter);
-          const pLegend = probabilityAtLeast(econ, 6);
+          const fan = packFan(odds, econ.floor);
           const capLeft = econ.dailyCap === null ? null : Math.max(0, econ.dailyCap - (boughtToday[sku] ?? 0));
           const starterGone = id === 'starter' && starterClaimed;
           const disabled = !enabled || shopBlocked || !!cfg.data?.paused || starterGone || capLeft === 0;
@@ -157,7 +165,7 @@ export default function Shop() {
               <div className="row between">
                 <div className="pack-head">
                   <div className="cg-heading" style={{ fontSize: 22 }}>{packName(sku)}</div>
-                  <div className="muted small pack-sub">{t('shop.perPack', { n: econ.chips })} · {t('shop.floor', { rarity: rarityName(econ.floor) })} · {t(econ.pool === 'featured' ? 'ui.featuredOnly' : 'ui.allEight')}</div>
+                  <div className="muted small pack-sub">{t('shop.perPack', { n: econ.chips })} · {t('shop.floor', { rarity: rarityName(econ.floor) })} · {t('shop.topDrop', { rarity: rarityName(fan[fan.length - 1]) })} · {t(econ.pool === 'featured' ? 'ui.featuredOnly' : 'ui.allEight')}</div>
                 </div>
               </div>
               <div className="pack-badges">
@@ -166,8 +174,11 @@ export default function Shop() {
                 {id === 'limited' && <Pill tone="ok">{t('shop.limitedPerks')}</Pill>}
               </div>
 
+              {/* Витрина пака = только те тиры, которые реально выпадают. Раньше третьим всегда
+                  стоял Diamond, хотя Legend/Legend+/Diamond из паков не выпадают вообще
+                  (docs/02 §2.2; on-chain MAX_TOP_TIER_BPS = 0) — витрина обещала лишнее. */}
               <div className="pack-fan" aria-hidden>
-                {[econ.floor, Math.min(8, econ.floor + 3), 8].filter((v, i, a) => a.indexOf(v) === i).map((r) => (
+                {fan.map((r) => (
                   <span key={r}><ChipArt collection={(sku * 2) % 8} rarity={r} imageUrl={chipArtUrl((sku * 2) % 8, r)} /></span>
                 ))}
               </div>
@@ -186,19 +197,16 @@ export default function Shop() {
                   </span>
                 ))}
               </div>
-              <div className="row between small">
-                <span className="muted">{t('ui.legendPack')}</span><b className="mono">{fmtProb(pLegend, 2)}</b>
-              </div>
               {/* The pity zone keeps the same height on every card (Starter rolls without pity): the
                   rows below — cap line, price, button — then land on the same baseline across the row. */}
               {econ.pity ? (
                 <div className="stack-sm">
-                  <div className="row between small"><span className="muted">{t('ui.pityAt', { n: econ.pity.hardAt })}</span><b className="mono">{counter}/{econ.pity.hardAt}</b></div>
+                  <div className="row between small"><span className="muted">{t('ui.pityAt', { rarity: rarityName(econ.pity.tier), n: econ.pity.hardAt })}</span><b className="mono">{counter}/{econ.pity.hardAt}</b></div>
                   <Progress value={counter} max={econ.pity.hardAt} tone={counter >= econ.pity.softStart ? 'orange' : undefined} />
                   {counter >= econ.pity.softStart && <div className="tiny" style={{ color: 'var(--cg-orange-soft)' }}>{t('ui.softPity', { pct: fmtPct(econ.pity.softStepBps * (counter - econ.pity.softStart + 1), 2) })}</div>}
                 </div>
               ) : <div className="pack-pity-spacer" aria-hidden />}
-              <div className="tiny muted pack-cap">{capLeft !== null ? t('services.dailyLeft', { n: capLeft }) : '\u00a0'}</div>
+              <div className="tiny muted pack-cap">{capLeft !== null ? t('services.dailyLeft', { n: capLeft }) : ''}</div>
 
               <CleanZone className="pack-price">
                 <KV k={t('ui.price')} v={`${fmtCents(econ.priceUsdCents)} · ${fmtSol(solLamportsForUsdCents(econ.priceUsdCents))}`} />
@@ -231,7 +239,7 @@ export default function Shop() {
         </div>
       </div>
 
-      <p className="tiny muted" style={{ marginTop: 12 }}> {t('ui.cryptoOnly')} <a className="row" style={{ gap: 4, color: 'var(--cg-cyan-soft)', display: 'inline-flex' }} href={ONRAMP_URL} target="_blank" rel="noreferrer">{t('ui.buyCard')} <ExternalIcon size={11} /></a> · {t('screens.collectibleRisk')}
+      <p className="tiny muted" style={{ marginTop: 12 }}> {t('ui.cryptoOnly')} <a className="row" style={{ gap: 4, color: 'var(--cg-cyan-soft)', display: 'inline-flex', paddingBlock: 5 }} href={ONRAMP_URL} target="_blank" rel="noreferrer">{t('ui.buyCard')} <ExternalIcon size={11} /></a> · {t('screens.collectibleRisk')}
       </p>
 
       {sel && (

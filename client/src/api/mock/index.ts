@@ -2,12 +2,7 @@ import { isRightsPath, mockRights } from './rights';
 // Deterministic in-browser backend used when VITE_API_MOCK=true or when the
 // real API is unreachable in dev. Data is derived from @guttercaps/economy
 // and shared/lib/lore so what you see matches the modelled numbers.
-import {
-  PACKS, FUSION_RECIPES, BOOSTER, RARITY_PROFILES, LOCK_TIERS, DAILY_QUESTS, WEEKLY_QUESTS, PERMANENT_QUESTS, MATCHMAKING, SEASON, FEES, SERVICES, REFERRAL,
-  packExpectedValueMult, probabilityAtLeast, effectiveOdds, bundlePriceCents, impliedApy, FX, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, usdCentsFromSolLamports, type PackId,
-  SKIN_BY_ID, PROFILE_THEME_BY_ID, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, PASS_TRACK, passTierForXp, xpToNext, CHIP_XP,
-  EMISSION_GUARD, GRID as GRID_RULES, generateLevel, levelSeed, applyRotate, isSolved, gridStarsForMoves, gridXpForStars, gridBaseXp,
-} from '@guttercaps/economy';
+import { ACHIEVEMENTS, BOOSTER, CHIP_XP, DAILY_QUESTS, LINE, EMISSION_GUARD, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, FEES, FUSION_RECIPES, FX, GRID, GRID as GRID_RULES, LOCK_TIERS, MATCHMAKING, PACKS, PASS_TRACK, PERMANENT_QUESTS, PROFILE_THEME_BY_ID, RARITY_PROFILES, REFERRAL, SEASON, SERVICES, SKIN_BY_ID, WEEKLY_QUESTS, applyRotate, bundlePriceCents, botReplay, lineLayout, lineSeed, lineTier, runPassXp, simulateRun, CREW, CREW_NAME_RE, SERVICE_BY_ID, crewTier, crewWeekScore, effectiveOdds, generateLevel, gridBaseXp, gridStarsForMoves, gridXpForStars, impliedApy, isSolved, levelSeed, packExpectedValueMult, passTierForXp, probabilityAtLeast, skrMicroForUsdCents, solLamportsForUsdCents, type PackId, usdCentsFromSolLamports, usdcMicroForUsdCents, xpToNext, BOARD_SET_SLOTS, boardDistrictOfWeek, boardSetDistrict, partById, stockLoadout } from '@guttercaps/economy';
 import { PYTH_PRICE_ACCOUNTS } from '@/chain/ids';
 import { COLLECTIONS } from '@/shared/lib/lore';
 import { ApiError, type RequestOpts } from '../client';
@@ -140,7 +135,8 @@ on('get', '/me/chips', (o) => {
   if (q.status === 'staked') items = items.filter((c) => c.flags.staked);
   if (q.status === 'listed') items = items.filter((c) => c.flags.listed);
   items = [...items].sort((a, b) => b.rarity - a.rarity || b.level - a.level);
-  return { items, nextCursor: null, total: items.length };
+  // Маршрут Решётки едет с фишкой и в моке: иначе капли на карточках не видны в демо-режиме.
+  return { items: items.map((c) => { const r = mockRoute(c.asset); return { ...c, gridRoute: { nextLevel: r.nextLevel, chargeDrops: r.chargeDrops } }; }), nextCursor: null, total: items.length };
 });
 on('get', '/me/grid', () => {
   const cells = Array.from({ length: COLLECTIONS.length }, () => Array<number>(9).fill(0));
@@ -186,6 +182,10 @@ on('get', '/grid/me', () => ({
   deep: { week: Math.floor((Date.now() / 1000 - 4 * 86_400) / (7 * 86_400)), level: 75, attemptsUsed: mockDeepUsed, paidCredits: mockDeepCredits, attemptsLeft: Math.max(0, 1 + mockDeepCredits - mockDeepUsed), paidAttemptsLeft: Math.max(0, 3 - mockDeepCredits), attemptPriceCgMicro: 30_000_000, myBest: null, leaderboard: [] },
   ghost: { day: Math.floor(Date.now() / 86_400_000), level: 33, targetMoves: generateLevel(33, 7).parMoves, beaten: mockGhostBeatenDay === Math.floor(Date.now() / 86_400_000) },
   lore: { unlockedDepths: [1], pages: 12 },
+  // Пустые карточки «ладдер» и «цель района» читаются как сломанные: мок показывает те же
+  // структуры, что отдаёт бэкенд (8 районов целиком, таблица лидеров сезона).
+  districtGoal: Array.from({ length: 8 }, (_, district) => ({ district, points: 0, goal: GRID.districtGoalPoints, reached: false })),
+  ladder: { season: 1, myPoints: 0, myRank: null, top: [], myPayout: null },
   fieldThemes: entitlements.filter((e) => e.kind === 11).map((e) => String((e.payload as { theme?: string }).theme ?? '')).filter(Boolean),
 }));
 on('get', '/grid/chip/{asset}', (o) => {
@@ -290,6 +290,674 @@ on('post', '/services/claim', (o) => {
   entitlements.push(e);
   return e;
 });
+// ── «Свой тег» (docs/16 §3.2–3.3): мок повторяет серверную пересборку, чтобы
+// редактор офлайн видел те же отказы, что и боевой бэкенд.
+const mockTags: Array<{ id: string; wallet: string; sha256: string; svg: string; bytes: number; commands: number; status: string; createdAt: string; reports: number }> = [];
+const tagId = (wallet: string, hash: string) => `${hash.slice(0, 24)}${wallet.slice(0, 8)}`;
+const mockTagView = (t: (typeof mockTags)[number]) => ({ ...t, mine: t.wallet === ME });
+on('post', '/tags', (o) => {
+  const svg = String((o.body as { svg?: unknown } | undefined)?.svg ?? '');
+  if (!svg.trim()) throw new ApiError(400, 'tag_empty', 'The tag is empty');
+  if (/<script|javascript:|\son[a-z]+\s*=/i.test(svg)) throw new ApiError(400, 'tag_forbidden', 'A tag may only contain paths and our own stencil images');
+  const commands = (svg.match(/[ML]/g) ?? []).length;
+  if (commands > 400) throw new ApiError(400, 'tag_too_many_commands', 'A tag is at most 400 path commands');
+  const bytes = new TextEncoder().encode(svg).length;
+  if (bytes > 24 * 1024) throw new ApiError(413, 'tag_too_large', 'A tag is at most 24 KB');
+  // Стойкий, но дешёвый отпечаток содержимого: в моке он заменяет sha256 —
+  // совпадение означает «тот же тег», а криптография здесь никому не нужна.
+  // Раньше здесь был свёрточный хеш, который брал `charCodeAt(0)` от строки:
+  // он почти не зависел от начала строки, и два разных тега с одинаковым
+  // хвостом считались одним и тем же. FNV-1a — такой же дешёвый, но честный.
+  let h = 0x811c9dc5;
+  for (let i = 0; i < svg.length; i++) h = Math.imul(h ^ svg.charCodeAt(i), 0x01000193) >>> 0;
+  const hash = h.toString(16).padStart(8, '0');
+  const dupe = mockTags.find((t) => t.wallet === ME && t.sha256 === hash && t.status !== 'removed');
+  if (dupe) return mockTagView(dupe);
+  const t = { id: tagId(ME, hash), wallet: ME, sha256: hash, svg, bytes, commands, status: 'live', createdAt: iso(), reports: 0 };
+  mockTags.push(t);
+  return mockTagView(t);
+});
+on('get', '/me/tags', () => ({ items: mockTags.filter((t) => t.wallet === ME).map(mockTagView).reverse() }));
+on('get', '/tags/{id}', (_o, params) => {
+  const t = mockTags.find((x) => x.id === params.id);
+  if (!t || (t.status !== 'live' && t.wallet !== ME)) throw new ApiError(404, 'not_found', 'No tag with that id');
+  return mockTagView(t);
+});
+// ── Модерация (docs/16 §3.3). Мок ведёт жалобы по одной на пару «тег — кошелёк»
+// и умеет считать SLA, потому что экран модератора без сроков — это просто
+// список картинок: в демо-режиме очередь должна выглядеть так же, как в бою.
+const MOD_SLA_HOURS = 24;
+const mockReports: Array<{ tagId: string; reporter: string; reason: string; createdAt: number; resolvedAt: number | null; resolution: string | null }> = [];
+const openReportsOf = (tagId: string) => mockReports.filter((r) => r.tagId === tagId && r.resolution === null);
+
+on('post', '/tags/{id}/report', (o, params) => {
+  const t = mockTags.find((x) => x.id === params.id);
+  if (!t || t.status !== 'live') throw new ApiError(404, 'not_found', 'No live tag with that id');
+  const reporter = ME;
+  if (mockReports.some((r) => r.tagId === t.id && r.reporter === reporter)) throw new ApiError(409, 'already_reported', 'You have already reported this tag');
+  mockReports.push({ tagId: t.id, reporter, reason: String((o.body as { reason?: unknown })?.reason ?? 'other'), createdAt: Date.now(), resolvedAt: null, resolution: null });
+  t.reports += 1;
+  return { ok: true, reports: t.reports };
+});
+
+on('get', '/mod/tags/queue', () => {
+  const t0 = Date.now();
+  const items = mockTags
+    .filter((t) => t.status === 'live' && openReportsOf(t.id).length > 0)
+    .map((t) => {
+      const open = openReportsOf(t.id);
+      const oldest = Math.min(...open.map((r) => r.createdAt));
+      const hoursLeft = Math.round(((oldest + MOD_SLA_HOURS * 3600_000 - t0) / 3600_000) * 10) / 10;
+      const reasons = [...new Set(open.map((r) => r.reason))].map((reason) => ({ reason, n: open.filter((r) => r.reason === reason).length }));
+      return { ...mockTagView(t), openReports: open.length, oldestOpenAt: new Date(oldest).toISOString(), hoursLeft, overdue: hoursLeft <= 0, reasons, appealNote: null, appealAt: null };
+    })
+    // просроченные первыми, дальше по числу открытых жалоб — как на бэкенде
+    .sort((a, b) => Number(b.overdue) - Number(a.overdue) || b.openReports - a.openReports || Date.parse(a.oldestOpenAt) - Date.parse(b.oldestOpenAt));
+  return { slaHours: MOD_SLA_HOURS, items };
+});
+
+on('get', '/mod/tags/stats', () => {
+  const t0 = Date.now();
+  const open = mockReports.filter((r) => r.resolution === null);
+  const overdue = open.filter((r) => r.createdAt <= t0 - MOD_SLA_HOURS * 3600_000);
+  const resolved = mockReports.filter((r) => r.resolution !== null && r.resolvedAt !== null);
+  const hours = resolved.map((r) => (r.resolvedAt! - r.createdAt) / 3600_000).sort((a, b) => a - b);
+  const mid = hours.length === 0 ? null : hours.length % 2 === 1 ? hours[(hours.length - 1) / 2]! : (hours[hours.length / 2 - 1]! + hours[hours.length / 2]!) / 2;
+  const count = (status: string) => mockTags.filter((t) => t.status === status).length;
+  return {
+    slaHours: MOD_SLA_HOURS,
+    openReports: open.length,
+    overdueReports: overdue.length,
+    medianReactionHours: mid === null ? null : Math.round(mid * 100) / 100,
+    actionedShare: resolved.length === 0 ? null : resolved.filter((r) => r.resolution !== 'tag_live').length / resolved.length,
+    tags: { live: count('live'), hidden: count('hidden'), removed: count('removed') },
+  };
+});
+
+on('put', '/mod/tags/{id}', (o, params) => {
+  const t = mockTags.find((x) => x.id === params.id);
+  if (!t) throw new ApiError(404, 'not_found', 'No tag with that id');
+  const status = String((o.body as { status?: unknown })?.status ?? '');
+  if (!['live', 'hidden', 'removed'].includes(status)) throw new ApiError(400, 'bad_status', 'status must be live | hidden | removed');
+  t.status = status;
+  // решение закрывает все открытые жалобы по тегу — так же, как на бэкенде
+  if (status !== 'live') for (const r of openReportsOf(t.id)) { r.resolvedAt = Date.now(); r.resolution = `tag_${status}`; }
+  else for (const r of openReportsOf(t.id)) { r.resolvedAt = Date.now(); r.resolution = 'tag_restored'; }
+  return mockTagView(t);
+});
+
+// ── Стена района (docs/16 §3.4): слоты занимаются активностью, но мок не
+// моделирует ни логины, ни стейкинг — он один и тот же «операторский» кошелёк,
+// у которого всё есть. Проверки живут в бэкенде (backend/src/wall.ts).
+const mockWall: Array<{ district: number; slot: number; wallet: string; tagId: string; appliedAt: string; expiresAt: string }> = [];
+const mockWallView = (district: number) => {
+  const items = mockWall.filter((s) => s.district === district);
+  return {
+    district, slots: 200, taken: items.length,
+    items: items.map((s) => ({ slot: s.slot, wallet: s.wallet, tagId: s.tagId, appliedAt: s.appliedAt, expiresAt: s.expiresAt, renewedAt: null })),
+    layers: [],
+    me: { activeDays: 7, activeDaysNeeded: 7, stakedCaps: 1, stakedCapsNeeded: 1, eligible: true, reason: null, mySlot: items.find((s) => s.wallet === ME)?.slot ?? null },
+  };
+};
+// Доска недели: в моке город маленький, поэтому доска считается из той же стены,
+// что и экран стены — иначе витрина и стена в демо-режиме расходятся.
+on('get', '/wall/board', (o) => {
+  const week = o.query?.week === undefined ? undefined : Number(o.query.week);
+  const slots = [...mockWall].sort((a, b) => (a.district - b.district) || (a.slot - b.slot));
+  const items = slots.slice(0, 5).map((x) => ({ tagId: x.tagId, wallet: x.wallet, district: x.district, slot: x.slot }));
+  const lines = items.map((i) => `${i.district}:${i.slot}:${i.tagId}`).join('\n');
+  return {
+    week: week ?? Math.floor((Date.now() / 1000 - 4 * 86_400) / (7 * 86_400)),
+    weekStart: iso(0), weekEnd: iso(7 * 86_400), drawnAt: iso(0),
+    slot: 1, seedHex: '0'.repeat(64), tagsHash: lines ? `mock${lines.length}` : 'mock0',
+    candidates: slots.length, items,
+  };
+});
+// Сброс мок-мира между тестами: мок живёт в памяти модуля, а тестам нужен
+// город, в котором стена пустая — иначе «пустая доска» унаследует чужие теги.
+export function resetMockWorld() {
+  mockWall.length = 0;
+  mockTags.length = 0;
+  mockReports.length = 0;
+  mockAchieved.clear();
+  mockAchAt.clear();
+  mockLineRuns.length = 0;
+  mockLineCredits = 0;
+  mockLineReward = null;
+  mockLineXp = { day: lineDay(), xp: 0 };
+  mockBoardParts.clear();
+  mockBoardLoadout.clear();
+  mockBoardWeekGranted.clear();
+  seedMockBoard();
+}
+
+on('get', '/wall/{district}', (_o, params) => mockWallView(Number(params.district)));
+on('post', '/wall/{district}/claim', (o, params) => {
+  const district = Number(params.district);
+  const b = o.body as { tagId?: string; slot?: number };
+  const tag = mockTags.find((x) => x.id === b.tagId);
+  if (!tag) throw new ApiError(400, 'tag_not_live', 'The tag must be yours and live');
+  const taken = new Set(mockWall.filter((s) => s.district === district).map((s) => s.slot));
+  const mine = mockWall.find((s) => s.district === district && s.wallet === ME);
+  if (mine) {
+    mine.tagId = tag.id;
+    mine.appliedAt = iso();
+    mine.expiresAt = iso(30 * 86_400_000);
+    return mine;
+  }
+  let slot = typeof b.slot === 'number' && !taken.has(b.slot) ? b.slot : -1;
+  if (slot < 0) for (let i = 0; i < 200; i++) if (!taken.has(i)) { slot = i; break; }
+  if (slot < 0) throw new ApiError(409, 'wall_full', 'Every slot on this wall is taken');
+  const row = { district, slot, wallet: ME as string, tagId: tag.id, appliedAt: iso(), expiresAt: iso(30 * 86_400_000) };
+  mockWall.push(row);
+  return row;
+});
+on('post', '/wall/{district}/renew', (_o, params) => {
+  const row = mockWall.find((s) => s.district === Number(params.district) && s.wallet === ME);
+  if (!row) throw new ApiError(404, 'no_slot', 'You hold no slot on this wall');
+  row.expiresAt = iso(30 * 86_400_000);
+  return row;
+});
+on('post', '/wall/{district}/release', (_o, params) => {
+  const i = mockWall.findIndex((s) => s.district === Number(params.district) && s.wallet === ME);
+  if (i < 0) throw new ApiError(404, 'no_slot', 'You hold no slot on this wall');
+  mockWall.splice(i, 1);
+  return { ok: true };
+});
+on('get', '/me/wall', () => ({
+  eligibility: { activeDays: 7, activeDaysNeeded: 7, stakedCaps: 1, stakedCapsNeeded: 1, eligible: true, reason: null },
+  items: mockWall.filter((s) => s.wallet === ME).map((s) => ({ district: s.district, slot: s.slot, tagId: s.tagId, appliedAt: s.appliedAt, expiresAt: s.expiresAt, daysLeft: 30 })),
+}));
+
+// ------------------------------------------------- экспозиция крышек (docs/16 §4.3) и витрина (§4.5)
+// Мок повторяет правило бэкенда: слот открыт при 0 / 12 / 36 разных крышках, а
+// владение проверяется при каждом чтении (проданная крышка оставляет слот пустым).
+const RIG_UNLOCK_AT = [0, 12, 36];
+const mockRig = new Map<number, string>();          // slot → asset (только свои)
+let mockRigPublic = false;
+const rigCaps = (wallet = ME) => {
+  const byKey = new Map<string, { asset: string; collection: number; rarity: number; level: number; copies: number }>();
+  for (const c of chips) {
+    if (c.owner !== wallet) continue;
+    const key = `${c.collection}:${c.rarity}`;
+    const prev = byKey.get(key);
+    if (!prev) { byKey.set(key, { asset: c.asset, collection: c.collection, rarity: c.rarity, level: c.level, copies: 1 }); continue; }
+    prev.copies++;
+    if (c.level > prev.level || (c.level === prev.level && c.asset < prev.asset)) { prev.asset = c.asset; prev.level = c.level; }
+  }
+  return [...byKey.values()];
+};
+/** Райдер (§4.6) в моке: такой же объект, что отдаёт бэкенд. */
+let mockRider = { silhouette: 0, theme: null as string | null };
+/** Чужой райдер детерминирован по адресу: витрина одного кошелька всегда одна и та же. */
+const riderOfWallet = (wallet: string) => ({ silhouette: [...wallet].reduce((a, ch) => (a + ch.charCodeAt(0)) % 8, 0), theme: null as string | null });
+
+const rigView = (wallet = ME) => {
+  const caps = rigCaps(wallet);
+  const owned = new Map(caps.map((c) => [c.asset, c]));
+  const slots = [0, 1, 2].map((slot) => {
+    const unlockAt = RIG_UNLOCK_AT[slot];
+    const chip = wallet === ME ? owned.get(mockRig.get(slot) ?? '') : undefined;
+    return {
+      slot, place: slot === 0 ? 'deck' : 'grip', unlocked: caps.length >= unlockAt, unlockAt,
+      chip: chip ? { asset: chip.asset, collection: chip.collection, rarity: chip.rarity, level: chip.level, skin: null, founder: false } : null,
+      updatedAt: chip ? iso(0) : null,
+    };
+  });
+  const locked = slots.find((s) => !s.unlocked);
+  return {
+    wallet, rider: wallet === ME ? mockRider : riderOfWallet(wallet), public: wallet === ME ? mockRigPublic : true,
+    // Чужая витрина показывает три крышки на доске, а не всю коллекцию.
+    caps: wallet === ME ? caps : [],
+    slots, next: locked ? { slot: locked.slot, need: locked.unlockAt - caps.length } : null,
+  };
+};
+on('get', '/rig', () => rigView(ME));
+on('put', '/rig', (o) => {
+  const b = (o.body ?? {}) as { slots?: Array<{ slot?: number; asset?: string | null }>; public?: boolean };
+  const owned = new Set(rigCaps(ME).map((c) => c.asset));
+  for (const u of b.slots ?? []) {
+    const slot = Number(u?.slot);
+    if (!Number.isInteger(slot) || slot < 0 || slot > 2) throw new ApiError(400, 'bad_slot', 'slot must be 0..2');
+    if (!u?.asset) { mockRig.delete(slot); continue; }
+    if (rigCaps(ME).length < RIG_UNLOCK_AT[slot]) throw new ApiError(409, 'slot_locked', `Slot ${slot + 1} opens at ${RIG_UNLOCK_AT[slot]} caps`);
+    if (!owned.has(u.asset)) throw new ApiError(403, 'not_your_chip', 'You can only exhibit a cap you own');
+    for (const [other, asset] of [...mockRig]) if (asset === u.asset && other !== slot) mockRig.delete(other);
+    mockRig.set(slot, u.asset);
+  }
+  if (typeof b.public === 'boolean') mockRigPublic = b.public;
+  return rigView(ME);
+});
+on('put', '/me/rider', (o) => {
+  const b = (o.body ?? {}) as { silhouette?: number; theme?: string | null };
+  if (b.silhouette !== undefined) {
+    const n = Number(b.silhouette);
+    if (!Number.isInteger(n) || n < 0 || n > 7) throw new ApiError(400, 'bad_silhouette', 'silhouette must be 0..7');
+    mockRider = { ...mockRider, silhouette: n };
+  }
+  if (b.theme !== undefined) {
+    if (b.theme === null || b.theme === '') mockRider = { ...mockRider, theme: null };
+    else {
+      // Ровно та проверка, что на сервере: надеть можно только оплаченную тему.
+      const owned = entitlements.filter((e) => e.kind === 3).map((e) => String((e.payload as { theme?: unknown })?.theme ?? ''));
+      if (!owned.includes(String(b.theme))) throw new ApiError(403, 'theme_not_owned', 'Buy this theme in the shop before wearing it');
+      mockRider = { ...mockRider, theme: String(b.theme) };
+    }
+  }
+  return mockRider;
+});
+// --------------------------------------------------- конструктор доски (docs/16 §4.2)
+// Мок повторяет три правила бэкенда: доска никогда не пустая (сток закрывает
+// все шесть слотов), надеть можно только добытое, а выдача за заезд закрывает
+// дыру в сете района недели, а не плодит четыре деки подряд.
+const mockBoardParts = new Map<string, { qty: number; source: string; createdAt: number }>();
+const mockBoardLoadout = new Map<string, string>();
+const mockBoardWeekGranted = new Set<string>();
+const mockBoardWeek = () => Math.floor(Date.now() / 1000 / (7 * 86_400));
+/** Старт мок-города: две части прошлой недели и одна покупная — экран не пустой,
+ *  но и «всё уже собрано» он тоже не показывает (собирать должно быть что). */
+const seedMockBoard = () => {
+  const prev = boardDistrictOfWeek(mockBoardWeek() - 1);
+  mockBoardParts.set(`deck_d${prev}`, { qty: 1, source: 'run', createdAt: Date.now() / 1000 - 9 * 86_400 });
+  mockBoardParts.set(`wheels_d${prev}`, { qty: 1, source: 'run', createdAt: Date.now() / 1000 - 8 * 86_400 });
+  mockBoardParts.set('bolts_acid', { qty: 1, source: 'shop', createdAt: Date.now() / 1000 - 3 * 86_400 });
+  mockBoardParts.set('sticker_moth', { qty: 1, source: 'quest', createdAt: Date.now() / 1000 - 2 * 86_400 });
+  // Деку прошлой недели надеваем сразу: экран открывается собранным, а не с
+  // приглашением «поставь что-нибудь».
+  mockBoardLoadout.set('deck', `deck_d${prev}`);
+  mockBoardLoadout.set('bolts', 'bolts_acid');
+};
+seedMockBoard();
+
+const boardLoadoutOf = () => {
+  const stock = stockLoadout();
+  const out = stock;
+  for (const [slot, part] of mockBoardLoadout) {
+    const known = partById(part);
+    if (!known || known.slot !== slot) continue;
+    // Надеть можно только добытое — ровно та проверка, что на сервере.
+    const stockPart = stock[slot as keyof typeof stock];
+    if (part !== stockPart && !mockBoardParts.has(part)) continue;
+    (out as Record<string, string>)[slot] = part;
+  }
+  return { ...out, set: boardSetDistrict(out) };
+};
+
+const boardViewOf = () => {
+  const district = boardDistrictOfWeek(mockBoardWeek());
+  const owned = [...mockBoardParts].map(([part, v]) => ({ part, qty: v.qty, source: v.source, createdAt: iso(v.createdAt * 1000 - Date.now()) }));
+  const missing = BOARD_SET_SLOTS.filter((slot) => !mockBoardParts.has(`${slot}_d${district}`));
+  return {
+    ...boardLoadoutOf(),
+    wallet: ME,
+    owned,
+    week: { district, part: `${missing[0] ?? 'deck'}_d${district}`, claimed: mockBoardWeekGranted.has(String(mockBoardWeek())), missing },
+    weekProgress: { have: BOARD_SET_SLOTS.length - missing.length, total: BOARD_SET_SLOTS.length },
+  };
+};
+
+on('get', '/me/board', () => boardViewOf());
+on('put', '/me/board', (o) => {
+  const b = (o.body ?? {}) as { slots?: Array<{ slot?: string; part?: string | null }> };
+  const stock = stockLoadout();
+  for (const u of b.slots ?? []) {
+    const slot = String(u?.slot ?? '');
+    if (!(slot in stock)) throw new ApiError(400, 'bad_slot', `unknown slot ${slot}`);
+    if (!u?.part) { mockBoardLoadout.delete(slot); continue; }
+    const part = partById(u.part);
+    if (!part || part.slot !== slot) throw new ApiError(400, 'bad_part', `${u.part} does not fit ${slot}`);
+    const stockPart = stock[slot as keyof typeof stock];
+    if (u.part !== stockPart && !mockBoardParts.has(u.part)) throw new ApiError(403, 'part_not_owned', 'Earn this part before wearing it');
+    mockBoardLoadout.set(slot, u.part);
+  }
+  return boardViewOf();
+});
+on('get', '/board/{wallet}', (_o, params) => ({ wallet: String(params.wallet), ...boardLoadoutOf() }));
+
+// ---------------------------------------------------------- достижения (docs/16 §4.7)
+// Прогресс в моке считается из того же инвентаря, что и остальные экраны: полная
+// коллекция Ночного мотылька (район 0) делает «закрыть район» достигнутым, а
+// остальные метрики берутся из мок-состояния стены, тегов и рефералов.
+const mockAchieved = new Set<string>();
+/** Когда забрали: «Получено 01.01.1970» в демо читается как баг, а не как демо. */
+const mockAchAt = new Map<string, number>();
+const achProgress: Record<string, number> = {
+  sets: 1,                                                     // район 0 собран полностью (см. инвентарь)
+  caps: new Set(chips.map((c) => `${c.collection}:${c.rarity}`)).size,
+  wallDays: mockWall.length > 0 ? 12 : 0,
+  tags: mockTags.length,
+  arenaWins: 18,
+  gridDepth: 3,
+  fusions: 6,
+  referrals: 2,                                                // двое платящих из трёх приведённых
+};
+const achView = (a: (typeof ACHIEVEMENTS)[number]) => {
+  const have = Math.min(achProgress[a.metric] ?? 0, a.target);
+  return {
+    id: a.id, metric: a.metric, target: a.target, have,
+    done: (achProgress[a.metric] ?? 0) >= a.target,
+    claimed: mockAchieved.has(a.id),
+    claimedAt: mockAchAt.get(a.id) !== undefined ? iso((mockAchAt.get(a.id) as number) * 1000) : null,
+    icon: a.icon, reward: a.reward,
+    bannerCollection: a.reward.kind === 'banner' ? 0 : null,
+  };
+};
+/** Награда как настоящий entitlement: проверки владения в остальном клиенте те же. */
+const achGrant = (a: (typeof ACHIEVEMENTS)[number]) => {
+  const r = a.reward as { kind: string; pack?: string; theme?: string; n?: number };
+  const kind = r.kind === 'banner' ? 9 : r.kind === 'emotes' ? 4 : r.kind === 'stencils' ? 12
+    : r.kind === 'fieldTheme' ? 11 : r.kind === 'bench' ? 5 : r.kind === 'skip' ? 8 : 0;
+  if (kind === 0) return;                                      // подсказки Флудгрида — не entitlement
+  const payload = r.kind === 'banner' ? { collection: 0, source: 'achievement' }
+    : r.kind === 'emotes' ? { pack: r.pack, source: 'achievement' }
+    : r.kind === 'stencils' ? { pack: r.pack ?? 'district', source: 'achievement' }
+    : r.kind === 'fieldTheme' ? { theme: r.theme, source: 'achievement' } : { source: 'achievement' };
+  entitlements.push({ id: `ach-${a.id}`, kind, payload, signature: `ach:${a.id}`, currency: 'CG', amount: '0', grantedAt: iso(), expiresAt: null });
+};
+on('get', '/me/achievements', () => ({ items: ACHIEVEMENTS.map(achView) }));
+on('post', '/me/achievements/{id}/claim', (_o, params) => {
+  const id = String(params.id ?? '');
+  const a = ACHIEVEMENTS.find((x) => x.id === id);
+  if (!a) throw new ApiError(400, 'unknown_achievement', `Unknown achievement ${id}`);
+  if ((achProgress[a.metric] ?? 0) < a.target) throw new ApiError(409, 'not_earned', `Achievement needs ${a.target}`);
+  if (mockAchieved.has(id)) throw new ApiError(409, 'already_claimed', `Achievement ${id} already claimed`);
+  mockAchieved.add(id);
+  mockAchAt.set(id, Math.floor(Date.now() / 1000));
+  achGrant(a);
+  return achView(a);
+});
+
+// ---------------------------------------------------------- линия (docs/16 §5.1)
+// Мок считает заезд той же функцией, что продакшен: реплей введён — очки
+// посчитаны переигрыванием. Иначе демо врало бы о единственном, что в заезде
+// важно: очки считает сервер, а не клиент.
+const lineDay = () => Math.floor(Date.now() / 86_400_000);
+interface MockRun { id: number; wallet: string; day: number; week: number; seed: number; inputs: [number, number][]; score: number; tricks: number; bestCombo: number; bails: number; paid: number; at: number }
+const mockLineRuns: MockRun[] = [];
+let mockLineCredits = 0;
+let mockLineReward: { day: number; tier: string; score: number; hints: number; valve: number } | null = null;
+let mockLineXp: { day: number; xp: number } = { day: lineDay(), xp: 0 };
+/**
+ * Чужая езда на доске недели: та же раскладка дня, другие руки.
+ *
+ * Строки доски — не выдуманные числа. У каждой есть настоящий реплей, и его
+ * очки посчитаны тем же переигрыванием, что у живого заезда: иначе «посмотреть
+ * реплей» в демо показывало бы не то, что написано в строке. Чем выше строка,
+ * тем ровнее руки — дрожание растёт с номером.
+ */
+const mockLineBoard = Array.from({ length: 11 }, (_, i) => {
+  const wallet = fakeKey();
+  const handle = pick(['moth_king', 'railqueen', 'drain0', 'sk8_or_die', 'noise_boy', 'inkslinger', 'brakeless99', 'pixelbsmt', 'gutterbeast', 'citymyth', 'coping_cat']);
+  const day = lineDay();
+  const jitter = i; // дрожание в тиках (1 тик = 20 мс): первая строка едет ровно, последняя — как придётся
+  // Реплей хранится в том же виде, в каком уходит на сервер: [тик, действие].
+  const inputs = botReplay(lineLayout(day), jitter, i + 7).map((x) => [x.tick, x.action] as [number, number]);
+  const res = simulateRun(lineLayout(day), inputs.map(([tick, action]) => ({ tick, action: action === 1 ? 1 : 0 })));
+  return {
+    id: 1000 + i, wallet, handle, day, week: Math.floor(day / 7), seed: lineSeed(day), inputs,
+    score: res.score, tricks: res.tricks, bestCombo: res.bestCombo, bails: res.bails, at: Math.floor(Date.now() / 1000) - i * 3600,
+  };
+});
+const lineRewardOf = (day: number, score: number) => {
+  const tier = lineTier(score);
+  if (tier === 'none') return { tier, hints: 0, valve: 0 };
+  const prev = mockLineReward && mockLineReward.day === day ? mockLineReward : null;
+  const order = { none: 0, bronze: 1, silver: 2, gold: 3 } as const;
+  if (prev && order[tier] <= order[prev.tier as keyof typeof order]) return { tier, hints: 0, valve: 0 };
+  const reward = tier === 'gold' ? { hints: 1, valve: 1 } : tier === 'silver' ? { hints: 1, valve: 0 } : { hints: 0, valve: 0 };
+  mockLineReward = { day, tier, score, ...reward };
+  return { tier, ...reward };
+};
+const lineStateView = () => {
+  const day = lineDay();
+  const mine = mockLineRuns.filter((r) => r.day === day);
+  const best = mine.reduce((m, r) => Math.max(m, r.score), 0);
+  return {
+    day, week: Math.floor(day / 7), seed: lineSeed(day), ticks: LINE.runSeconds * LINE.tickHz,
+    length: LINE.trackLength, freeRunsPerDay: LINE.freeRunsPerDay,
+    freeLeft: Math.max(0, LINE.freeRunsPerDay - mine.filter((r) => !r.paid).length),
+    paidLeft: Math.max(0, LINE.maxPaidRunsPerDay - mine.filter((r) => r.paid).length),
+    runsToday: mine.length, bestToday: best, tierToday: lineTier(best),
+    rewardsToday: {
+      passXp: mockLineXp.day === day ? mockLineXp.xp : 0,
+      hints: mockLineReward?.day === day ? mockLineReward.hints : 0,
+      valve: mockLineReward?.day === day ? mockLineReward.valve : 0,
+    },
+    bestWeek: mockLineRuns.filter((r) => r.week === Math.floor(day / 7)).reduce((m, r) => Math.max(m, r.score), 0),
+    extraRunCgMicro: LINE.extraRunCgMicro,
+  };
+};
+on('get', '/me/line', () => lineStateView());
+on('post', '/me/line/runs', (o) => {
+  const b = (o.body ?? {}) as { day?: number; inputs?: unknown };
+  const day = Number(b.day);
+  const today = lineDay();
+  if (!Number.isInteger(day) || day > today || day < today - 1) throw new ApiError(400, 'bad_day', `day must be today (${today}) or yesterday`);
+  const raw = Array.isArray(b.inputs) ? b.inputs : [];
+  if (raw.length > LINE.maxInputs) throw new ApiError(400, 'bad_replay', `At most ${LINE.maxInputs} inputs per run`);
+  const inputs: [number, number][] = raw.map((i) => {
+    const pair = Array.isArray(i) ? i : [];
+    const tick = Number(pair[0]); const action = Number(pair[1]);
+    if (!Number.isInteger(tick) || tick < 0 || tick >= LINE.runSeconds * LINE.tickHz || (action !== 0 && action !== 1)) {
+      throw new ApiError(400, 'bad_replay', 'inputs must be [tick, 0|1]');
+    }
+    return [tick, action] as [number, number];
+  });
+  const st = lineStateView();
+  let paid = 0;
+  if (st.freeLeft > 0) paid = 0;
+  else if (mockLineCredits > 0 && st.paidLeft > 0) { mockLineCredits -= 1; paid = 1; }
+  else throw new ApiError(402, 'runs_exhausted', 'Free runs are over for today — buy an extra one (30 $CG, burned)');
+  const res = simulateRun(lineLayout(day), inputs.map(([tick, action]) => ({ tick, action: action === 1 ? 1 : 0 })));
+  const run: MockRun = {
+    id: mockLineRuns.length + 1, wallet: ME, day, week: Math.floor(day / 7), seed: lineSeed(day), inputs,
+    score: res.score, tricks: res.tricks, bestCombo: res.bestCombo, bails: res.bails, paid, at: Math.floor(Date.now() / 1000),
+  };
+  mockLineRuns.push(run);
+  const xp = runPassXp(res.score);
+  if (mockLineXp.day !== day) mockLineXp = { day, xp: 0 };
+  mockLineXp.xp += xp;
+  const items = lineRewardOf(day, res.score);
+  return {
+    run: { id: run.id, day: run.day, week: run.week, score: run.score, tricks: run.tricks, bestCombo: run.bestCombo, bails: run.bails, paid: run.paid === 1, tier: lineTier(run.score), submittedAt: iso() },
+    granted: { passXp: xp, hints: items.hints, valve: items.valve, tier: items.tier },
+    state: lineStateView(),
+  };
+});
+on('post', '/me/line/runs/buy', (o) => {
+  const b = (o.body ?? {}) as { day?: number; signature?: string };
+  const day = Number(b.day);
+  const today = lineDay();
+  if (!Number.isInteger(day) || day > today || day < today - 1) throw new ApiError(400, 'bad_day', `day must be today (${today}) or yesterday`);
+  if (typeof b.signature !== 'string' || b.signature.length < 32) throw new ApiError(402, 'payment_not_found', 'No ServicePaid event from this wallet in that transaction');
+  if (lineStateView().paidLeft <= 0) throw new ApiError(409, 'run_credit_cap', `At most ${LINE.maxPaidRunsPerDay} paid runs per day`);
+  mockLineCredits += 1;
+  return { day, credits: mockLineCredits };
+});
+// Реплей смотрят, а не скачивают (docs/16 §5.5): строка доски публична, и
+// нажатия в заезде — не секрет. Смотрим и свои заезды, и чужие с доски.
+const runReplayView = (id: number) => {
+  const run = mockLineRuns.find((r) => r.id === id) ?? mockLineBoard.find((r) => r.id === id);
+  if (!run) throw new ApiError(404, 'not_found', 'No such run');
+  return {
+    runId: run.id, day: run.day, seed: run.seed, score: run.score, tricks: run.tricks, bails: run.bails,
+    wallet: run.wallet, handle: ('handle' in run ? run.handle : null) as string | null, at: iso(run.at * 1000), inputs: run.inputs,
+  };
+};
+on('get', '/line/runs/{id}/replay', (_o, p) => runReplayView(Number(p.id)));
+on('get', '/line/leaderboard', (o) => {
+  const week = Number((o.query as { week?: unknown } | undefined)?.week);
+  const w = Number.isFinite(week) && week > 0 ? Math.floor(week) : Math.floor(lineDay() / 7);
+  const mine = mockLineRuns.filter((r) => r.week === w);
+  // Своя строка — это настоящий заезд из mockLineRuns, а не «сводка по лучшим
+  // полям»: иначе очки на доске и очки в реплее были бы двумя разными числами.
+  const best = mine.length ? mine.reduce((a, b) => (b.score > a.score ? b : a)) : null;
+  const rows = [...(best ? [{ ...best, handle: mockHandle }] : []), ...mockLineBoard]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 50)
+    .map((r, i) => ({ ...r, rank: i + 1, runId: r.id, at: iso(r.at * 1000), hasReplay: r.inputs.length > 0 }));
+  return { week: w, rows };
+});
+
+// ------------------------------------------------- команды (docs/16 §5.6)
+// Команда в моке — настоящая модель, а не картинка: имя проверяется тем же
+// алфавитом, состав считается по тем же правилам «пять лучших», а очки
+// участников берутся из заездов линии. Иначе демо показывало бы одну правду на
+// экране и другую в коде.
+interface MockCrewMember { wallet: string; handle: string | null; joinedAt: number; leftAt: number | null; best: number }
+interface MockCrew { id: number; name: string; captain: string; district: number; segment: number; code: string; createdAt: number; renamedAt: number | null; members: MockCrewMember[] }
+let mockCrewSeq = 100;
+/** Очки участника — его лучший заезд недели: доска линии и командная доска считают одно и то же. */
+const crewMemberScores = (n: number, top: number, spread: number) =>
+  Array.from({ length: n }, (_, i) => Math.max(120, Math.round(top - i * spread - (i % 3) * 40)));
+function makeCrew(name: string, captainHandle: string, district: number, segment: number, size: number, top: number): MockCrew {
+  const id = ++mockCrewSeq;
+  const handles = [captainHandle, 'railqueen', 'drain0', 'sk8_or_die', 'noise_boy', 'inkslinger', 'brakeless99', 'pixelbsmt', 'gutterbeast', 'coping_cat'];
+  const best = crewMemberScores(size, top, Math.round(top / 12));
+  const t = Math.floor(Date.now() / 1000);
+  return {
+    id, name, captain: fakeKey(), district, segment, code: `${name.slice(0, 4).toUpperCase()}${1000 + id}`,
+    createdAt: t - 40 * 86_400, renamedAt: null,
+    members: Array.from({ length: size }, (_, i) => ({
+      wallet: fakeKey(), handle: handles[i] ?? `rider_${i}`, joinedAt: t - (size - i) * 86_400, leftAt: null, best: best[i],
+    })),
+  };
+}
+const mockCrews: MockCrew[] = [
+  makeCrew('SlabSisters', 'moth_king', 0, 0, 7, 3120),
+  makeCrew('NightCrew', 'inkslinger', 2, 3, 5, 2860),
+  makeCrew('CopingBlock', 'brakeless99', 4, 1, 6, 1900),
+];
+const crewLive = (c: MockCrew) => c.members.filter((m) => m.leftAt === null);
+/** Пять лучших — не весь состав: формула одна с бэкендом и ончейн-программой. */
+const crewScoreOf = (c: MockCrew) => crewWeekScore(crewLive(c).map((m) => m.best));
+const crewViewOf = (c: MockCrew, viewer?: string) => {
+  const live = crewLive(c);
+  const bests = live.map((m) => m.best).sort((a, b) => b - a);
+  const cut = bests[Math.min(bests.length, CREW.boardCountingMembers) - 1] ?? 0;
+  const mine = viewer !== undefined && live.some((m) => m.wallet === viewer);
+  const from = c.segment * CREW.wallSegmentSlots;
+  return {
+    id: c.id, name: c.name, captain: c.captain, captainHandle: live.find((m) => m.wallet === c.captain)?.handle ?? null,
+    district: c.district, segment: c.segment,
+    slots: { from, to: from + CREW.wallSegmentSlots, size: CREW.wallSegmentSlots },
+    createdAt: iso(c.createdAt * 1000 - Date.now()),
+    members: live.map((m) => ({ wallet: m.wallet, handle: m.handle, joinedAt: iso(m.joinedAt * 1000 - Date.now()), bestWeek: m.best, counting: m.best > 0 && m.best >= cut })),
+    memberCount: live.length, minMembers: CREW.minMembers, maxMembers: CREW.maxMembers,
+    counts: live.length >= CREW.minMembers && live.filter((m) => m.best > 0).length >= CREW.minMembers,
+    week: Math.floor(lineDay() / 7), score: crewScoreOf(c), tier: crewTier(crewScoreOf(c)),
+    inviteCode: mine ? c.code : undefined, mine, iAmCaptain: viewer !== undefined && viewer === c.captain, reports: 0,
+  };
+};
+const crewByKey = (raw: string) => {
+  const key = String(raw ?? '').trim().toLowerCase();
+  return mockCrews.find((c) => c.name.toLowerCase() === key || String(c.id) === key);
+};
+const myMockCrew = () => mockCrews.find((c) => crewLive(c).some((m) => m.wallet === ME)) ?? null;
+const CREW_BLOCKLIST = new Set(['admin', 'guttercaps', 'support', 'moderator', 'treasury', 'solana', 'official', 'team', 'root', 'system']);
+
+on('get', '/me/crew', () => { const c = myMockCrew(); return c ? crewViewOf(c, ME) : null; });
+// Порядок важен: доска и проверка имени стоят РАНЬШЕ '/crew/{name}' — мок матчит
+// маршруты в порядке регистрации, поэтому иначе слово 'board' уехало бы в имя
+// команды и вернуло 404 (в проде порядок тот же — см. backend/src/server.ts).
+on('get', '/crew/board', () => {
+  const week = Math.floor(lineDay() / 7);
+  const rows = mockCrews
+    .filter((c) => crewLive(c).length >= CREW.minMembers && crewLive(c).filter((m) => m.best > 0).length >= CREW.minMembers)
+    .map((c) => ({ rank: 0, id: c.id, name: c.name, district: c.district, segment: c.segment, members: crewLive(c).length, score: crewScoreOf(c), tier: crewTier(crewScoreOf(c)) }))
+    .sort((a, b) => b.score - a.score || a.id - b.id)
+    .map((r, i) => ({ ...r, rank: i + 1 }));
+  return { week, rows };
+});
+on('get', '/crew/check', (o) => {
+  const name = String((o.query as { name?: unknown } | undefined)?.name ?? '').trim();
+  const mine = myMockCrew();
+  const kind = mine ? SERVICE_BY_ID.crewRename.kind : SERVICE_BY_ID.crewCharter.kind;
+  const price = (mine ? SERVICE_BY_ID.crewRename : SERVICE_BY_ID.crewCharter).priceUsdCents;
+  const base = { kind, refHash: 'mock', priceUsdCents: price };
+  if (!name) return { available: false, reason: 'format', ...base };
+  if (!CREW_NAME_RE.test(name)) return { available: false, reason: 'invalid', ...base };
+  const key = name.toLowerCase();
+  if (CREW_BLOCKLIST.has(key)) return { available: false, reason: 'blocked', ...base };
+  if (mine && Math.floor(Date.now() / 1000) - (mine.renamedAt ?? mine.createdAt) < CREW.renameCooldownDays * 86_400) return { available: false, reason: 'cooldown', ...base };
+  const taken = crewByKey(name);
+  if (taken && taken.id !== mine?.id) return { available: false, reason: 'taken', ...base };
+  return { available: true, ...base, reservedUntil: iso(120_000) };
+});
+on('get', '/crew/{name}', (_o, params) => {
+  const c = crewByKey(String(params.name));
+  if (!c) throw new ApiError(404, 'no_crew', 'No crew with that name');
+  return crewViewOf(c, ME);
+});
+on('post', '/crew/charter', (o) => {
+  const b = (o.body ?? {}) as { name?: string; district?: number; signature?: string };
+  const name = String(b.name ?? '').trim();
+  if (!CREW_NAME_RE.test(name)) throw new ApiError(400, 'invalid_name', 'Crew name must be 3–16 chars [a-zA-Z0-9_]');
+  if (myMockCrew()) throw new ApiError(409, 'already_in_crew', 'Leave your crew before chartering a new one');
+  if (crewByKey(name)) throw new ApiError(409, 'crew_taken', 'That name is taken');
+  const district = Number(b.district ?? 0);
+  const takenSegments = new Set(mockCrews.filter((c) => c.district === district).map((c) => c.segment));
+  let segment = 0;
+  while (takenSegments.has(segment)) segment += 1;
+  if (segment >= Math.floor(200 / CREW.wallSegmentSlots)) throw new ApiError(409, 'district_full', 'No free segment in this district');
+  const c = makeCrew(name, mockHandle, district, segment, 1, 0);
+  c.captain = ME;
+  c.members[0] = { wallet: ME, handle: mockHandle, joinedAt: Math.floor(Date.now() / 1000), leftAt: null, best: 0 };
+  c.createdAt = Math.floor(Date.now() / 1000);
+  mockCrews.push(c);
+  return crewViewOf(c, ME);
+});
+on('post', '/crew/rename', (o) => {
+  const b = (o.body ?? {}) as { name?: string; signature?: string };
+  const name = String(b.name ?? '').trim();
+  if (!CREW_NAME_RE.test(name)) throw new ApiError(400, 'invalid_name', 'Crew name must be 3–16 chars [a-zA-Z0-9_]');
+  const mine = myMockCrew();
+  if (!mine) throw new ApiError(409, 'no_crew', 'You are not in a crew');
+  if (mine.captain !== ME) throw new ApiError(403, 'not_captain', 'Only the captain can rename the crew');
+  if (crewByKey(name)) throw new ApiError(409, 'crew_taken', 'That name is taken');
+  mine.name = name;
+  mine.renamedAt = Math.floor(Date.now() / 1000);
+  return crewViewOf(mine, ME);
+});
+on('post', '/crew/join', (o) => {
+  const b = (o.body ?? {}) as { code?: string };
+  const code = String(b.code ?? '').trim().toUpperCase();
+  const c = mockCrews.find((x) => x.code === code);
+  if (!c) throw new ApiError(404, 'bad_code', 'No crew with that invite code');
+  if (myMockCrew()) throw new ApiError(409, 'already_in_crew', 'Leave your crew first');
+  if (crewLive(c).length >= CREW.maxMembers) throw new ApiError(409, 'crew_full', `A crew holds at most ${CREW.maxMembers} riders`);
+  const prior = c.members.find((m) => m.wallet === ME);
+  if (prior) prior.leftAt = null;
+  else c.members.push({ wallet: ME, handle: mockHandle, joinedAt: Math.floor(Date.now() / 1000), leftAt: null, best: 0 });
+  return crewViewOf(c, ME);
+});
+on('post', '/crew/leave', () => {
+  const c = myMockCrew();
+  if (!c) throw new ApiError(409, 'no_crew', 'You are not in a crew');
+  const me = crewLive(c).find((m) => m.wallet === ME)!;
+  me.leftAt = Math.floor(Date.now() / 1000);
+  let captain: string | undefined;
+  if (c.captain === ME) {
+    const heir = crewLive(c).sort((a, b) => a.joinedAt - b.joinedAt)[0];
+    if (heir) { c.captain = heir.wallet; captain = heir.wallet; }
+  }
+  return { ok: true, crew: null, captain };
+});
+on('post', '/crew/{name}/report', (o, params) => {
+  const c = crewByKey(String(params.name));
+  if (!c) throw new ApiError(404, 'no_crew', 'No crew with that name');
+  const reason = String((o.body ?? {}) as { reason?: string } ?? '').trim();
+  if (!reason) throw new ApiError(400, 'bad_reason', 'Say what is wrong with the name');
+  return { ok: true, crew: c.id, reports: 1 };
+});
+
+on('get', '/rig/{wallet}', (_o, params) => {
+  const wallet = String(params.wallet);
+  // Мок показывает витрину любого кошелька: реальная проверка флага живёт в бэкенде.
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(wallet)) throw new ApiError(400, 'bad_request', 'wallet must be an address');
+  return rigView(wallet);
+});
+
 // season pass state (tier ~11 with unclaimed tiers + a skinned showcase cap)
 let mockPassXp = 2360;
 const mockPassClaimed: number[] = [1, 2];

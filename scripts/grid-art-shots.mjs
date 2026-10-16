@@ -67,7 +67,7 @@ async function loadBrowser() {
 
 const SHOTS = [
   // desktop 1280×900 (элемент = карточка доски)
-  { id: 'd1', width: 1280, file: 'board-d1-l1-zinc.png' },
+  { id: 'd1', width: 1280, file: 'board-d1-l1-glass.png' },
   { id: 'd2', width: 1280, file: 'board-d2-l18-chrome.png' },
   { id: 'd3', width: 1280, file: 'board-d3-l33-rust.png' },
   { id: 'd3-magma', width: 1280, file: 'board-d3-l33-thema-magma.png' },

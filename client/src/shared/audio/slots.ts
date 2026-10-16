@@ -11,15 +11,15 @@
 // Kenney измерена и объяснена в docs/14b §5 — там же таблица, по которой эти числа правятся.
 
 /** Материалы глубин Решётки (packages/economy GRID_DEPTHS → client/src/features/grid/gridArt.ts). */
-export type GridMaterial = 'zinc' | 'chrome' | 'rust' | 'cast' | 'glass';
+export type GridMaterial = 'chrome' | 'rust' | 'cast' | 'glass';
 
-export const GRID_MATERIALS: readonly GridMaterial[] = ['zinc', 'chrome', 'rust', 'cast', 'glass'];
+export const GRID_MATERIALS: readonly GridMaterial[] = ['chrome', 'rust', 'cast', 'glass'];
 
 export type SoundSlot =
   | 'ui.click' | 'ui.hover' | 'ui.back' | 'ui.tab' | 'ui.toast'
   | 'grid.rotate' | 'grid.locked' | 'grid.flow' | 'grid.bus' | 'grid.receiver' | 'grid.win' | 'grid.fail'
   | 'econ.coin' | 'econ.droplet' | 'econ.claim'
-  | 'pack.open';
+  | 'pack.open' | 'pack.flip';
 
 export interface SoundOptions {
   /** Материал глубины — нужен только `grid.rotate` (пять отдельных файлов поворотa). */
@@ -57,7 +57,7 @@ export const SOUND_SLOTS: Readonly<Record<SoundSlot, SlotDef>> = {
 
   // ── Решётка: поворот одним слотом, файл выбирает материал глубины ───────────────
   'grid.rotate': {
-    src: (o) => `grid/rotate-${o.material ?? 'zinc'}`,
+    src: (o) => `grid/rotate-${o.material ?? 'glass'}`,
     gain: 0.95,
     cooldownMs: 45,
     warm: true,
@@ -76,6 +76,10 @@ export const SOUND_SLOTS: Readonly<Record<SoundSlot, SlotDef>> = {
   'econ.droplet': { src: 'econ/droplet', gain: 0.8, cooldownMs: 250 },
   'econ.claim': { src: 'econ/claim', gain: 1, cooldownMs: 250 },
   'pack.open': { src: 'pack/open', gain: 1, cooldownMs: 600 },
+  // Флип крышки (docs/16 §2.1) — вращение, поэтому слот переиспользует звук поворота
+  // детали из того же инвентаря (docs/14b §2): нового файла под один трюк не нужно.
+  // Самый тихий пак-слот: флип звучит поверх шелеста pack.open, и пики складываются.
+  'pack.flip': { src: 'grid/rotate-glass', gain: 0.45, cooldownMs: 600 },
 };
 
 export const SOUND_SLOT_IDS = Object.keys(SOUND_SLOTS) as SoundSlot[];

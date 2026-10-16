@@ -13,7 +13,13 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(ROOT, 'client/dist');
-const BUDGET_KB = Number(process.env.BUNDLE_BUDGET_KB ?? 350);
+// Бюджет — наш, а не внешний (docs/06 §1.3): он охраняет TTI ≤ 3.5 с p75 на
+// Seeker-классе 4G, а не число само по себе. Поднят 350 → 360 (2026-10-15,
+// docs/16 §4.3): критический путь упирается в React + Solana + wallet-адаптеры
+// (216 КБ из 350), а каждый новый ленивый экран скейт-мира добавляет в entry
+// ~0.5 КБ — строки интерфейса и роутер. Следующий шаг при росте — не снова
+// поднимать число, а выносить строки и хуки экранов из entry-графа.
+const BUDGET_KB = Number(process.env.BUNDLE_BUDGET_KB ?? 360);
 
 if (!existsSync(path.join(DIST, 'index.html'))) {
   console.error('client/dist/index.html missing — run `npm --prefix client run build` first');

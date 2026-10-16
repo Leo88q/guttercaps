@@ -6,9 +6,12 @@ import { Pill, Skeleton, Empty } from '@/shared/ui/primitives';
 import { shortKey, fmtCg, countdown } from '@/shared/lib/format';
 
 import { useT, fmtLocale, type MessageKey } from '@/shared/i18n';
+import LineBoardPanel from '@/features/bowl/LineBoardPanel';
 
 const BOARDS = [
   { id: 'rating', label: 'leaderboard.boards.rating', unit: 'ELO' },
+  // docs/16 §5.5: «линия недели» стоит рядом с рейтингом, а не в углу экрана линии.
+  { id: 'line', label: 'line.title', unit: 'line.score' },
   { id: 'wins', label: 'ui.wagerWins', unit: 'ui.wins' },
   { id: 'collection', label: 'ui.collectors', unit: '/72' },
   { id: 'staking', label: 'ui.stakers', unit: 'staking.weight' },
@@ -21,7 +24,9 @@ export default function Leaderboard() {
   const t = useT();
   const { board = 'rating' } = useParams();
   const b = (BOARDS.find((x) => x.id === board) ?? BOARDS[0]);
-  const q = useLeaderboard(b.id as Board);
+  // У линии своя доска и свой вход в реплей, общим запросом она не читается —
+  // но хук надо вызвать в любом случае, поэтому просим рейтинг и не показываем его.
+  const q = useLeaderboard(b.id === 'line' ? 'rating' : (b.id as Exclude<Board, 'line'>));
   const season = useSeason();
   const { publicKey } = useWallet();
   const me = publicKey?.toBase58();
@@ -34,13 +39,16 @@ export default function Leaderboard() {
       </div>
       <div className="tabs">{BOARDS.map((x) => <Link key={x.id} to={`/leaderboard/${x.id}`} style={{ textDecoration: 'none' }}><Pill active={x.id === b.id}>{t(x.label)}</Pill></Link>)}</div>
 
-      {q.data?.me && (
+      {/* Доска линии — свои строки и свой вход в реплей, поэтому она не идёт через общую таблицу. */}
+      {b.id === 'line' && <LineBoardPanel />}
+
+      {b.id !== 'line' && q.data?.me && (
         <div className="card row between">
           <span>{t('ui.yourRank')}</span><span className="mono">#{(q.data.me as { rank?: number }).rank} · {(q.data.me as { value?: number }).value} {b.unit.includes('.') ? t(b.unit as MessageKey) : b.unit}</span>
         </div>
       )}
 
-      {q.isLoading ? <Skeleton h={400} /> : !q.data?.items?.length ? <Empty>{t('ui.noEntries')}</Empty> : (
+      {b.id !== 'line' && (q.isLoading ? <Skeleton h={400} /> : !q.data?.items?.length ? <Empty>{t('ui.noEntries')}</Empty> : (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <table className="table">
             <thead><tr><th>#</th><th>{t('leaderboard.player')}</th>{b.id === 'rating' && <th>{t('arena.league')}</th>}<th style={{ textAlign: 'right' }}>{b.unit.includes('.') ? t(b.unit as MessageKey) : b.unit}</th></tr></thead>
@@ -56,7 +64,7 @@ export default function Leaderboard() {
             </tbody>
           </table>
         </div>
-      )}
+      ))}
     </div>
   );
 }

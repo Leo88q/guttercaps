@@ -42,11 +42,13 @@ interface Props {
   remaining?: number;
   /** pack SKU — selects the foil wrapper art; absent (fusion / quest) falls back to the plain pack */
   sku?: number;
+  /** true when the card came out of a fusion — Legend and above then flips twice (docs/16 §2.1) */
+  fused?: boolean;
   founder?: boolean;
   onDone: () => void;
 }
 
-export function PackRevealAnimation({ rarity, chipName, chipImageUrl, chipArt, isOnChain, remaining = 0, sku, founder, onDone }: Props) {
+export function PackRevealAnimation({ rarity, chipName, chipImageUrl, chipArt, isOnChain, remaining = 0, sku, fused, founder, onDone }: Props) {
   const t = useT();
   const [phase, setPhase] = useState<Phase>('buildup');
   const config = TIER_CONFIG[RARITIES[rarity]] ?? TIER_CONFIG.Common;
@@ -59,6 +61,10 @@ export function PackRevealAnimation({ rarity, chipName, chipImageUrl, chipArt, i
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [config.holdMs]);
 
+  // Флип (docs/16 §2.1): детерминирован от редкости ончейн-ролла, нового ран domа нет.
+  // Epic+ — один кикфлип; Legend и выше во фьюжне — двойной; Common…Epic — как раньше.
+  const flips = rarity < 5 ? 0 : fused && rarity >= 6 ? 2 : 1;
+
   // haptics on burst (Android / Seeker via navigator.vibrate) — silent no-op elsewhere
   // Звук раскрытия живёт в том же эффекте и под тем же условием, что вибрация: фаза burst,
   // настройка «Звук и вибрация» включена. 940 мс шелеста упаковки (docs/14b §5) покрывают
@@ -68,6 +74,14 @@ export function PackRevealAnimation({ rarity, chipName, chipImageUrl, chipArt, i
     playSound('pack.open');
     try { navigator.vibrate?.(config.shake ? [30, 40, 60] : 20); } catch { /* ignore */ }
   }, [phase, sound, config.shake]);
+
+  // Звук флипа — на появлении карты, чуть позже шелеста pack.open: сначала крышка
+  // показывается, потом проворачивается. Движение гасит prefers-reduced-motion, звук —
+  // нет: звук и вибрация управляются настройкой «Звук и вибрация», а не системой.
+  useEffect(() => {
+    if (phase !== 'reveal' || !sound || flips === 0) return;
+    playSound('pack.flip', { delayMs: 120, rate: flips === 2 ? 1.15 : 1.25 });
+  }, [phase, sound, flips]);
 
   const particles = Array.from({ length: config.particles }, (_, i) => i);
   const glowStyle = { '--glow-color': config.glow } as React.CSSProperties;
@@ -114,7 +128,7 @@ export function PackRevealAnimation({ rarity, chipName, chipImageUrl, chipArt, i
         )}
 
         {phase === 'reveal' && (
-          <div className="reveal-chip-card vfx-host" style={glowStyle}>
+          <div className={`reveal-chip-card vfx-host${flips ? ` reveal-card-flip${flips}` : ''}`} style={glowStyle}>
             <SplatBackdrop color={raritySplat(rarity).color} variant={raritySplat(rarity).variant} size={150} style={{ right: -28, top: -32 }} />
             {rarity >= 4 && <RareDropFx />}
             {isOnChain && <div className="reveal-onchain-badge">NFT</div>}

@@ -26,7 +26,7 @@
 export type ServiceId =
   | 'handle' | 'handleChange' | 'capSkin' | 'profileTheme' | 'arenaEmotePack'
   | 'extraBenchSlots' | 'seasonPass' | 'booster' | 'packSkipAnim' | 'districtBanner'
-  | 'gridDeepAttempt' | 'gridFieldTheme';
+  | 'gridDeepAttempt' | 'gridFieldTheme' | 'districtStencilPack' | 'lineExtraRun' | 'crewCharter' | 'crewRename';
 
 export interface ServiceDef {
   id: ServiceId;
@@ -66,6 +66,17 @@ export const SERVICES: readonly ServiceDef[] = [
   // (100% burn); the backend grants attempt credits only for $CG payments of exactly that amount.
   { id: 'gridDeepAttempt', kind: 10, rustName: 'GridDeepAttempt', priceUsdCents: 5, dailyCap: 10, fulfilment: 'entitlement', recurring: true, name: 'Deep Flood attempt', blurb: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.' },
   { id: 'gridFieldTheme',  kind: 11, rustName: 'GridFieldTheme',  priceUsdCents: 249, dailyCap: 10, fulfilment: 'entitlement', recurring: false, name: 'Floodgrid field theme', blurb: 'Recolors the Floodgrid board flow lines. Cosmetic only.' },
+  // Skate-city UGC (docs/16 §3.5): five district stencils for the tag editor. Cosmetic
+  // through and through — it buys shapes, never reach. The 14 free shapes stay free.
+  { id: 'districtStencilPack', kind: 12, rustName: 'DistrictStencilPack', priceUsdCents: 199, dailyCap: 10, fulfilment: 'entitlement', recurring: false, name: 'District stencil pack', blurb: 'Five district stencils for the tag editor. Shapes only — the lines and colours stay yours.' },
+  // Skate-city line (docs/16 §5.1): one extra run of the day's bowl. Priced 5 cents so the
+  // $CG rail is exactly 30 $CG (100% burn) — the same price point as a Deep Flood attempt.
+  { id: 'lineExtraRun', kind: 13, rustName: 'LineExtraRun', priceUsdCents: 5, dailyCap: 10, fulfilment: 'entitlement', recurring: true, name: 'Extra run', blurb: 'One more run of today\'s line after the three free ones. $CG only — every coin is burned.' },
+  // Команды (docs/16 §5.6). Хартия стоит как хендл, потому что это ровно то же:
+  // уникальное имя в городе плюс запись, которую модерирует одна и та же очередь.
+  // Переименование — как смена хендла: дешевле, но с 30-дневной паузой.
+  { id: 'crewCharter', kind: 14, rustName: 'CrewCharter', priceUsdCents: 199, dailyCap: 1, fulfilment: 'entitlement', recurring: false, name: 'Crew charter', blurb: 'Register a crew: a unique name, a roster of 5–10 riders and a 20-slot segment of the district wall.' },
+  { id: 'crewRename', kind: 15, rustName: 'CrewRename', priceUsdCents: 99, dailyCap: 1, fulfilment: 'entitlement', recurring: false, name: 'Crew rename', blurb: 'Rename your crew once every 30 days. The old name is released after 90 days — same rule as handles.' },
 ] as const;
 
 export const SERVICE_BY_ID = Object.fromEntries(SERVICES.map((s) => [s.id, s])) as Record<ServiceId, ServiceDef>;

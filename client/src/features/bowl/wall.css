@@ -1,0 +1,79 @@
+/* Стена района (docs/16 §3.4).
+   200 слотов на экране 412 px — это не двадцать колонок по 18 px, а полотно,
+   которое скроллится: сетка 10×20, ячейка ровно 44 px (палец), прокрутка и
+   вправо, и вниз. Фон стены и сами теги — сгенерированные файлы; код делает
+   только раскладку, слои и состояние. */
+
+.wall-scroll {
+  overflow: auto;
+  max-height: 62vh;
+  border: 1px solid var(--gc-line);
+  border-radius: 12px;
+  background: #16151a;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.wall-grid {
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  width: max-content;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.wall-slot {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid rgba(232, 230, 237, 0.16);
+  border-radius: 4px;
+  background: rgba(12, 11, 14, 0.42);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.wall-slot.is-taken { background: rgba(12, 11, 14, 0.72); }
+.wall-slot.is-mine { border-color: var(--acid, #b6ff3c); }
+.wall-slot.is-open { border-color: var(--acid, #b6ff3c); box-shadow: 0 0 0 2px rgba(182, 255, 60, 0.35); }
+
+/* Свежий тег лежит поверх прошлых — слои краски, как и просит docs/16 §3.4. */
+.wall-tag,
+.wall-layer {
+  position: absolute;
+  inset: 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  object-fit: contain;
+  pointer-events: none;
+}
+.wall-layer { filter: grayscale(0.45); }
+
+.wall-preview {
+  width: 100%;
+  background: #16151a;
+  border: 1px solid var(--gc-line);
+  border-radius: 8px;
+}
+/* Таймлапс — инлайновый SVG в том же месте, где была картинка: тот же размер,
+   та же рамка. Движение делает WAAPI по stroke-dashoffset, CSS здесь только
+   про то, чтобы span вёл себя как блок и не раздвигал вёрстку. */
+.tag-timelapse { display: block; }
+.tag-timelapse.wall-preview { aspect-ratio: 2 / 1; }
+.tag-timelapse > svg { display: block; width: 100%; height: 100%; }
+
+@media (prefers-reduced-motion: reduce) {
+  .wall-slot { transition: none; }
+}
+
+/* Доска недели: на телефоне — одна колонка, на широком — две. Карточка тянется
+   по ширине, тег внутри сохраняет пропорции 2:1, как на стене. */
+.board-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 720px) { .board-grid { grid-template-columns: 1fr 1fr; } }
+.board-card { padding: 12px; }
+.board-card .wall-preview { margin-bottom: 8px; }
+.board-card code { font-size: 11px; word-break: break-all; }

@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GUTTERCAPS — «БАССЕЙН»: полная презентация скейт-слоя</title>
+<style>
+  :root {
+    --asphalt: #100f14;
+    --asphalt-2: #17161d;
+    --line: rgba(216,216,220,0.12);
+    --chrome: #d8d8dc;
+    --muted: rgba(216,216,220,0.62);
+    --cyan: #16E5D9;
+    --magenta: #FF2E8A;
+    --acid: #B6FF3C;
+    --orange: #FF7A1A;
+    --trust: #9AD9FF;
+    --display: "Arial Black", "Helvetica Neue", Arial, sans-serif;
+    --body: "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--asphalt); color: var(--chrome); font-family: var(--body); }
+  body { overflow: hidden; }
+  .deck { position: relative; width: 100%; height: 100%; }
+  .slide {
+    position: absolute; inset: 0; display: none; flex-direction: column;
+    padding: clamp(22px, 4.4vw, 64px) clamp(24px, 6.5vw, 88px) clamp(46px, 6vw, 72px);
+    background:
+      radial-gradient(1100px 560px at 10% -12%, rgba(22,229,217,0.10), transparent 60%),
+      radial-gradient(900px 500px at 106% 112%, rgba(255,46,138,0.12), transparent 60%),
+      linear-gradient(160deg, #100f14, #17161d 60%, #100f14);
+  }
+  .slide.active { display: flex; }
+  .kicker { font-family: var(--mono); font-size: 11.5px; letter-spacing: .22em; text-transform: uppercase; color: var(--cyan); margin-bottom: 12px; }
+  h1 { font-family: var(--display); font-size: clamp(26px, 4.8vw, 56px); line-height: 1.03; margin: 0 0 12px; letter-spacing: -0.02em; }
+  h2 { font-family: var(--display); font-size: clamp(20px, 3vw, 34px); line-height: 1.1; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: clamp(13.5px, 1.5vw, 18px); max-width: 66ch; line-height: 1.5; margin: 0 0 18px; }
+  .body { flex: 1; min-height: 0; overflow: auto; }
+  .lead { font-size: clamp(14px, 1.7vw, 20px); line-height: 1.5; max-width: 76ch; border-left: 3px solid var(--cyan); padding-left: 16px; margin: 4px 0 16px; }
+  ul.checks { list-style: none; padding: 0; margin: 0; display: grid; gap: 9px; max-width: 96ch; }
+  ul.checks li { display: flex; gap: 11px; align-items: flex-start; font-size: clamp(12.8px, 1.4vw, 16px); line-height: 1.45; color: rgba(216,216,220,0.88); }
+  ul.checks li::before { content: '▸'; color: var(--cyan); flex: 0 0 auto; margin-top: 1px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
+  .tag { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: rgba(255,255,255,0.02); }
+  table { width: 100%; border-collapse: collapse; font-size: clamp(11.8px, 1.28vw, 15px); }
+  th, td { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+  td:last-child, th:last-child { padding-right: 0; }
+  .num { font-family: var(--mono); color: var(--acid); white-space: nowrap; }
+  .cost { font-family: var(--mono); color: var(--orange); white-space: nowrap; }
+  .loop { font-family: var(--mono); font-size: 11.5px; color: var(--trust); white-space: nowrap; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 16px 26px; }
+  .card { border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; background: rgba(255,255,255,0.02); }
+  .card h3 { font-family: var(--display); font-size: clamp(14px, 1.6vw, 18px); margin: 0 0 5px; }
+  .card p { margin: 0; font-size: clamp(12px, 1.28vw, 14.5px); line-height: 1.45; color: var(--muted); }
+  .c1 h3 { color: var(--cyan); } .c2 h3 { color: var(--magenta); } .c3 h3 { color: var(--acid); } .c4 h3 { color: var(--orange); }
+  .warn { color: var(--magenta); }
+  .ok { color: var(--acid); }
+  .mono { font-family: var(--mono); }
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; font-family: var(--mono); font-size: clamp(11px, 1.24vw, 13.5px); margin: 4px 0 14px; }
+  .flow span { padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,0.03); }
+  .flow i { color: var(--muted); font-style: normal; }
+  .motto { font-family: var(--display); font-size: clamp(17px, 2.4vw, 30px); line-height: 1.2; border: 2px solid var(--acid); border-radius: 16px; padding: 16px 20px; color: var(--acid); margin: 0 0 16px; max-width: 40ch; }
+  .bar { position: fixed; top: 0; left: 0; height: 2px; background: var(--cyan); z-index: 6; transition: width .2s ease; }
+  .nav { position: fixed; bottom: 16px; left: 0; right: 0; display: flex; justify-content: center; align-items: center; gap: 14px; z-index: 5; }
+  .dots { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; max-width: 70vw; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(216,216,220,0.2); border: 0; padding: 0; cursor: pointer; }
+  .dot[aria-current="true"] { background: var(--cyan); box-shadow: 0 0 10px var(--cyan); }
+  .counter { font-family: var(--mono); font-size: 11px; color: rgba(216,216,220,0.45); white-space: nowrap; }
+  .hint { position: fixed; right: 14px; bottom: 12px; font-family: var(--mono); font-size: 10px; color: rgba(216,216,220,0.28); z-index: 5; }
+  @media print {
+    body { overflow: visible; }
+    .slide { display: flex !important; position: relative; page-break-after: always; height: 100vh; }
+    .nav, .hint, .bar { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="bar" id="bar"></div>
+<div class="deck" id="deck">
+
+  <section class="slide active">
+    <div class="kicker">Guttercaps · полная презентация · 15.10.2026</div>
+    <h1>«БАССЕЙН»<br /><span style="color:var(--cyan)">скейт-слой, теги,<br />своя доска и Линия</span></h1>
+    <div class="motto">Мир кормит<br />основную петлю</div>
+    <p class="sub">Всё, что мы внедряем, в одном прогоне: 4 слоя, 20 механик, ончейн-поверхность, бэкенд,
+      бюджет, телеметрия и дорожная карта. Статус: решения владельца приняты, дизайн зафиксирован.</p>
+    <div class="tags">
+      <span class="tag">концепт: docs/15 (принят)</span>
+      <span class="tag">дизайн: docs/16</span>
+      <span class="tag">экономика: не двигается</span>
+      <span class="tag">ончейн: ноль новых программ на фазах 1–2</span>
+    </div>
+    <div class="foot" style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:rgba(216,216,220,0.38);margin-top:14px">← → листать · G обзор · P печать</div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Правило</div>
+    <h2>Девиз как гейт, а не как лозунг</h2>
+    <div class="body">
+      <p class="lead">Каждый элемент скейт-слоя обязан <b>одним измеримым шагом</b> повышать желание владеть
+        крышкой, улучшать её, торговать ею — или возвращать игрока в существующий контур: паки, фьюжн,
+        Решётка, Cap Slam, маркет, стейкинг, квесты, Gutter Pot.</p>
+      <ul class="checks">
+        <li>У каждой фичи в этом прогоне есть поле <span class="loop">→ петля</span>: <b>что</b> кормит и
+          <b>какой метрикой</b> это проверяется.</li>
+        <li>Нет стрелки в петлю — фича не берётся в спринт. Это тот же приём, что спас Решётку от участи
+          «второй игры за соседней вкладкой» (<span class="mono">docs/12-floodgrid-proposal.md</span>).</li>
+        <li>Проверка не вкусовая: по каждой фиче назначается когортная метрика, которую можно посчитать (слайд 23).</li>
+      </ul>
+      <div class="flow" style="margin-top:18px">
+        <span>элемент мира</span><i>→</i><span>желание крышки</span><i>→</i><span>паки / фьюжн / маркет / стейкинг</span><i>→</i><span class="ok">существующая экономика</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Решения</div>
+    <h2>Восемь принятых решений</h2>
+    <div class="body">
+      <table>
+        <thead><tr><th>#</th><th>Вопрос</th><th>Решение</th></tr></thead>
+        <tbody>
+          <tr><td class="num">1</td><td>Доска — косметика или бонусы</td><td class="ok">Строго косметика. Ноль влияния на вес, силу, шансы, доход</td></tr>
+          <tr><td class="num">2</td><td>Части доски — NFT или предметы</td><td class="ok">Предметы в <span class="mono">PlayerItems</span> через существующий <span class="mono">claim_item_root</span></td></tr>
+          <tr><td class="num">3</td><td>Экспозиция крышек</td><td class="ok">3 слота, редкость даёт только визуал</td></tr>
+          <tr><td class="num">4</td><td>Заезды: платный вход?</td><td class="ok">Сначала бесплатные; платный — отдельное моделирование</td></tr>
+          <tr><td class="num">5</td><td>Теги: модерация</td><td class="ok">Пост-модерация + автофильтр + жалобы, SLA 24 ч</td></tr>
+          <tr><td class="num">6</td><td>Слоты стены: по весу или активности</td><td class="ok">По активности</td></tr>
+          <tr><td class="num">7</td><td>Пятая программа</td><td class="ok">Не раньше фазы 3 (переаудит всех четырёх)</td></tr>
+          <tr><td class="num">8</td><td>Бюджет</td><td class="ok">Entry держим 350 КБ; Бассейн ≤ 400 КБ ленивым роутом</td></tr>
+        </tbody>
+      </table>
+      <p class="lead" style="margin-top:18px">Следствия: <b>ни одна таблица </b><span class="mono">docs/02-economy.md</span><b> не переписывается</b>,
+        квоты квестов 25/140 $CG стоят, новой эмиссии нет, крышки не сжигаются.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Карта</div>
+    <h2>Четыре слоя поверх фундамента</h2>
+    <div class="body">
+      <div class="grid2">
+        <div class="card c1"><h3>Слой 1 · Живая крышка</h3><p>Флип на вскрытии, инспектор, стена района, трик-рил арены.
+          ~17 КБ, ноль бэкенда, ноль ончейн, влазит в текущий бюджет.</p></div>
+        <div class="card c2"><h3>Слой 2 · Свой тег</h3><p>Редактор граффити, SVG + хеш, пост-модерация,
+          стена со слотами и выцветанием, трафареты, опциональная подпись ончейн.</p></div>
+        <div class="card c3"><h3>Слой 3 · Своя доска</h3><p>Бассейн-хаб, конструктор, экспозиция крышек,
+          гараж-инвентарь, витрина и шеринг, райдер, достижения.</p></div>
+        <div class="card c4"><h3>Слой 4 · Линия</h3><p>Заезды, честность реплеем, «Линия недели»,
+          платный вход (позже), команды.</p></div>
+      </div>
+      <p class="lead" style="margin-top:20px">Слои 1–2 независимы и дают «вау» каждый сам по себе.
+        Слои 3–4 — это и есть «отдельный мир», но вход в него один: <b>через коллекцию</b>.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Связка</div>
+    <h2>Как мир кормит петлю: одна схема</h2>
+    <div class="body">
+      <div class="flow"><span>флип на дропе Epic+</span><i>→</i><span>запомнился</span><i>→</i><span class="ok">повторная покупка пака</span></div>
+      <div class="flow"><span>стена района</span><i>→</i><span>видно, каких крышек нет</span><i>→</i><span class="ok">фьюжн и маркет</span></div>
+      <div class="flow"><span>экспозиция на доске</span><i>→</i><span>крышка как трофей на виду</span><i>→</i><span class="ok">спрос на редкие крышки</span></div>
+      <div class="flow"><span>слот на стене</span><i>→</i><span>нужны 7 активных дней + стейкинг</span><i>→</i><span class="ok">удержание и стейкинг</span></div>
+      <div class="flow"><span>дополнительный заезд</span><i>→</i><span>30 $CG сжигается</span><i>→</i><span class="ok">сток, как у Глубокого паводка</span></div>
+      <div class="flow"><span>части доски</span><i>→</i><span>добываются квестами, сезоном, заездами</span><i>→</i><span class="ok">возврат в существующие контуры</span></div>
+      <p class="lead" style="margin-top:16px">Обратного потока нет: <b class="warn">мир ничего не выплачивает в $CG</b>
+        и ничего не даёт к силе. Он только создаёт причины хотеть крышки.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Фундамент</div>
+    <h2>Что уже есть и что не меняется</h2>
+    <div class="body">
+      <div class="grid2">
+        <div class="card c1"><h3>Коллекция</h3><p>72 крышки, 8 районов, 9 редкостей. Паки на ончейн-SlotHashes,
+          pity гарантирует Epic+; Legend, Legend+ и Diamond — только фьюжн.</p></div>
+        <div class="card c2"><h3>Петли</h3><p>Фьюжн 3→1, Решётка (75 секторов, звёздный XP, капли заряда, престиж),
+          Cap Slam 3×3 на ставки в $CG, маркет 7,5 %, стейкинг фишек и $CG, Gutter Pot, квесты.</p></div>
+        <div class="card c3"><h3>Предметы</h3><p>Бустеры, XP-билеты, метки Клеммы, аварийные клапаны —
+          ходят через <span class="mono">PlayerItems</span> и <span class="mono">claim_item_root</span>.
+          Этим же конвейером поедут части доски.</p></div>
+        <div class="card c4"><h3>Лор</h3><p>Район с осушенным бассейном (Dry Concrete Clan) уже существует:
+          скейт-культура — не новый IP, а один из восьми районов.</p></div>
+      </div>
+      <p class="lead" style="margin-top:20px">Новый слой не вводит новую технологию: в клиенте уже есть
+        <span class="mono">cg-chip-flip</span>, <span class="mono">reveal-wobble</span>,
+        <span class="mono">reveal-splash</span>, <span class="mono">ric-cg-flip</span> — мы продолжаем этот язык.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Слой 1 · 1 из 2</div>
+    <h2>Флип на вскрытии и инспектор крышки</h2>
+    <div class="body">
+      <table>
+        <thead><tr><th>Фича</th><th>Механика</th><th class="loop">→ петля</th><th class="cost">Вес</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><b>Трик-флип (2.1)</b></td>
+            <td>Epic+ — одиночный флип по оси диска (~700 мс); Legend/Legend+/Diamond (только фьюжн) —
+              двойной флип с удлинённым сплешем (~1100 мс). Детерминировано от редкости из ончейн-ролла.
+              <span class="warn">prefers-reduced-motion</span> — только всплеск</td>
+            <td class="loop">паки, фьюжн</td><td class="cost">~2 КБ CSS</td>
+          </tr>
+          <tr>
+            <td><b>Инспектор (2.2)</b></td>
+            <td>Орбита жестом и стрелками, инерция, два лица + кромка с гравировкой района,
+              рамка основателя как реальная рамка, арт 512 px (256 на мобильном),
+              глубинная ссылка <span class="mono">/chip/:asset?view=3d</span> + «поделиться»</td>
+            <td class="loop">владение, шеринг</td><td class="cost">~4 КБ</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="lead" style="margin-top:18px">Это единственный слой, который не требует ни бэкенда, ни ончейн-работ
+        и влазит в текущий бюджет — поэтому он первый.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Слой 1 · 2 из 2</div>
+    <h2>Стена района и трик-рил арены</h2>
+    <div class="body">
+      <table>
+        <thead><tr><th>Фича</th><th>Механика</th><th class="loop">→ петля</th><th class="cost">Вес</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><b>Стена района (2.3)</b></td>
+            <td>Изометрическая 2.5D-стена в кодексе и профиле: 72 тега (по одному на крышку).
+              Закрытая — окрашена, незакрытая — серое пятно, собранный район — цельный мурал.
+              Считается из существующих данных коллекции, новой прогрессии нет</td>
+            <td class="loop">фьюжн, маркет</td><td class="cost">~6 КБ</td>
+          </tr>
+          <tr>
+            <td><b>Трик-рил арены (2.4)</b></td>
+            <td>Итог боя как линия трюков: разгон → грайнд → олли → приземление (или bail).
+              Последовательность детерминированно разворачивается из <span class="mono">battles.result_hash</span>
+              и <span class="mono">battles.roll</span>. Правила боя не меняются</td>
+            <td class="loop">Cap Slam</td><td class="cost">~5 КБ</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="lead" style="margin-top:18px">Трик-рил — про честность: картинка следует из ончейн-данных,
+        а не наоборот. Проигрыш читается как «не приземлил», а не как «система против меня».</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Слой 2 · 1 из 3</div>
+    <h2>Редактор тега: что рисуем и как храним</h2>
+    <div class="body">
+      <div class="grid2">
+        <div class="card c1"><h3>Инструмент</h3><p>Холст 1024×512, до 3 слоёв, кисть / баллон / трафарет,
+          палитра из токенов темы, undo-redo, автосохранение.</p></div>
+        <div class="card c2"><h3>Текст → пути</h3><p>Буквы рисуются шрифтом игры и конвертируются в SVG-пути.
+          Никаких внешних шрифтов и текстовых узлов в выдаче: модерация работает с формами, а не с глифами.</p></div>
+        <div class="card c3"><h3>Формат и лимиты</h3><p>Только SVG-пути: ≤ 400 команд, ≤ 24 КБ, без растров
+          и без вложенных изображений. Отдаётся инлайном при <span class="mono">img-src 'self'</span>.</p></div>
+        <div class="card c4"><h3>Хранение</h3><p><span class="mono">tag_registry</span>:
+          <span class="mono">id, wallet, sha256, svg, status, created_at, moderated_at, reports, appeal_note</span>.
+          Игрок всегда видит статус своего тега.</p></div>
+      </div>
+      <p class="lead" style="margin-top:18px"><span class="loop">→ петля:</span> ежедневный повод зайти —
+        обновить тег на стене до выцветания. Метрика: доля дней с заходом.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Слой 2 · 2 из 3</div>
+    <h2>Модерация: пять шагов, прописанных до кода</h2>
+    <div class="body">
+      <ul class="checks">
+        <li><b>Автофильтр</b> на клиенте и сервере: запрещённые формы и паттерны, детектор мата по геометрии,
+          лимит команд пути.</li>
+        <li><b>Пост-модерация:</b> тег публикуется сразу; автор видит статус <span class="mono">pending</span>,
+          остальные — только после проверки. SLA реакции на жалобу — 24 ч.</li>
+        <li><b>Жалобы:</b> <span class="mono">wall_reports(id, tag_id, reporter, reason, created_at, resolved_at, resolution)</span>.</li>
+        <li><b>Скрытие без последствий:</b> тег снимается со стены, но крышки, предметы и $CG игрока не трогаются.
+          Это принципиально: модерация не имеет доступа к экономике.</li>
+        <li><b>Правила и апелляция:</b> 18+, прямой запрет (насилие, ненависть, реклама, персональные данные),
+          предупреждение «тег увидят все» до первой публикации, повторная проверка вручную по апелляции.</li>
+      </ul>
+      <p class="lead" style="margin-top:18px"><span class="loop">→ петля:</span> безопасная среда = удержание.
+        Метрика: время реакции на жалобу и доля скрытых тегов.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Слой 2 · 3 из 3</div>
+    <h2>Стена со слотами, трафареты, подпись ончейн</h2>
+    <div class="body">
+      <div class="grid2">
+        <div class="card c1"><h3>Слоты (3.4)</h3><p>200 слотов на район — 1600 живых тегов на город (число для моделирования).
+          Занять: <b>7 активных дней + ≥1 крышка в стейкинге</b>. Не деньги и не вес стейка.</p></div>
+        <div class="card c2"><h3>Выцветание (3.4)</h3><p>30 дней — слот освобождается. Обновить тег бесплатно,
+          счётчик идёт заново. История слота видна как слои краски: дешёвое ощущение живого города.</p></div>
+        <div class="card c3"><h3>Трафареты и банки (3.5)</h3><p>Платные наборы за $CG/SOL/SKR — существующая строка
+          «косметические экстры». Влияние на шансы, силу и доход — <b>ноль</b>.</p></div>
+        <div class="card c4"><h3>Подпись ончейн (3.6)</h3><p>Опционально регистрируется <b>хеш</b> тега:
+          авторство и дата. Сам рисунок — никогда не ончейн. Одна запись на тег, не на редактирование.</p></div>
+      </div>
+      <p class="lead" style="margin-top:18px"><span class="loop">→ петля:</span> чтобы держать слот, нужны стейкинг
+        и ежедневный вход. Метрика: прирост стейкинга у держателей слота.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Слой 3 · 1 из 3</div>
+    <h2>Бассейн и конструктор доски</h2>
+    <div class="body">
+      <div class="grid2">
+        <div class="card c1"><h3>Бассейн (4.1)</h3><p>Хаб мира: осушенная чаша района Dry Concrete Clan.
+          Райдер, доска, стена за спиной, «Линия недели», входы в гараж, стену и заезд.
+          Экран собран из уже существующих данных коллекции.</p></div>
+        <div class="card c2"><h3>Конструктор (4.2)</h3><p>Слоты: дека, траки, колёса, грип + навесное
+          (болты, наклейки). Части = <b>предметы в PlayerItems</b> через существующий
+          <span class="mono">claim_item_root</span>: владение косметикой доказуемо ончейн без минта NFT.</p></div>
+        <div class="card c3"><h3>Откуда части (4.2)</h3><p>Квесты, сезонный пропуск, награды заездов, покупка.
+          Не «купить всё в магазине»: часть должна быть добыта игрой.</p></div>
+        <div class="card c4"><h3>Вес и рендер</h3><p>Ленивый роут ≤ 400 КБ gz. Вариант рендера
+          (CSS 3D / лёгкий WebGL / 2.5D-спрайты) выбирается <b>прототипом с замером</b>: 60 fps на Seeker.</p></div>
+      </div>
+      <p class="lead" style="margin-top:18px"><span class="loop">→ петля:</span> части добываются игрой →
+        возврат в существующие контуры. Метрика: D30 у владельцев ≥1 части.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Слой 3 · 2 из 3 · ключевая связка</div>
+    <h2>Экспозиция крышек: трофей, который видно другим</h2>
+    <div class="body">
+      <div class="flow"><span>крышка (ончейн, без изменений)</span><i>→</i><span>ссылка в слоте доски</span><i>→</i><span>статус на виду</span><i>→</i><span class="ok">спрос на редкие крышки</span></div>
+      <ul class="checks">
+        <li><b>3 слота:</b> один на деку, два на грип. Открываются коллекцией: <span class="num">сразу / 12 крышек / 36 крышек</span>
+          — то есть чем больше коллекция, тем богаче витрина.</li>
+        <li><b>Ничего не сжигается.</b> Крышка не покидает кошелёк, не передаётся и не блокируется:
+          <span class="mono">rig_exhibit(wallet, slot, asset)</span> хранит ссылку. Продал крышку — слот просто пустеет.</li>
+        <li><b>Эффект ровно один — визуальный:</b> арт крышки, свечение редкости, цвет района, «собранный сет» на доске.</li>
+        <li><b>Проверка владения</b> при каждом рендере: чужая крышка на доске невозможна.</li>
+      </ul>
+      <p class="lead" style="margin-top:18px"><span class="loop">→ петля:</span> Δ покупок паков и Δ сделок
+        в когорте «есть ≥1 выставленная крышка» против базовой линии. <b>Это главная метрика всего проекта:</b>
+        если она не двигается, мир не кормит петлю.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Слой 3 · 3 из 3</div>
+    <h2>Гараж, витрина, райдер, достижения</h2>
+    <div class="body">
+      <div class="grid2">
+        <div class="card c1"><h3>Гараж-инвентарь (4.4)</h3><p>Каталог полученных частей (чтение <span class="mono">PlayerItems</span>),
+          примерка, предпросмотр. <b>Пустой слот показывает, где часть добывается</b> — какой квест, конкурс или
+          награда. Каждая дырка в гараже указывает в существующий контур.</p></div>
+        <div class="card c2"><h3>Витрина и шеринг (4.5)</h3><p>Публичная страница <span class="mono">/rig/:wallet</span>
+          только если владелец включил публичность. Постер считается на клиенте (canvas → PNG), сервер не участвует.
+          «Доска недели» на лендинге — 5 сетапов по активности, не по деньгам.</p></div>
+        <div class="card c3"><h3>Райдер (4.6)</h3><p>8 силуэтов по районам + косметика из <span class="mono">PlayerItems</span>.
+          Никаких характеристик — та же косметика.</p></div>
+        <div class="card c4"><h3>Достижения (4.7)</h3><p>«Собрать район на доске», «удержать слой стены 90 дней» —
+          награждаются <b>косметикой и существующими предметами</b>, никогда $CG сверх квот.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Слой 4 · 1 из 2</div>
+    <h2>Заезд и честность реплеем</h2>
+    <div class="body">
+      <div class="grid2">
+        <div class="card c1"><h3>Заезд (5.1)</h3><p>45 секунд линии по Бассейну. <b>Раскладка дня одна для всех</b>:
+          сид берётся из ончейн-случайности — как ежедневный сид Решётки. Трюки складываются в комбо
+          (+0,1 за звено, потолок ×5), bail обрывает незабанкованное комбо, приземление банкует.</p></div>
+        <div class="card c2"><h3>Честность (5.2)</h3><p>Ввод пишется в детерминированный реплей, сервер
+          <b>пересчитывает очки переигрыванием</b> — ровно тот приём, которым проверяется решение в Решётке.
+          Реплей живёт 14 дней, потом удаляется (остаются очки и хеш).</p></div>
+        <div class="card c3"><h3>Экономика входа (5.1)</h3><p>3 заезда в день бесплатно; дополнительный —
+          <b>30 $CG сжигается</b>. Та же цена, что у дополнительного погружения Глубокого паводка:
+          существующая точка цены, а не новая.</p></div>
+        <div class="card c4"><h3>Объём данных</h3><p>Реплей — это список входов (время + код), не видео:
+          килобайты, а не мегабайты. Хранится 14 дней, в ончейн не идёт ничего.</p></div>
+      </div>
+      <p class="lead" style="margin-top:18px"><span class="loop">→ петля:</span> ежедневный повод зайти + сток $CG.
+        Метрика: доля игроков с ≥3 заездами в день, объём сжигания.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Слой 4 · 2 из 2</div>
+    <h2>Награды, Линия недели, команды</h2>
+    <div class="body">
+      <div class="grid2">
+        <div class="card c1"><h3>Награды (5.3)</h3><p>Только косметика и <b>уже существующие</b> предметы:
+          части доски, трафареты, метки Клеммы, аварийные клапаны, XP-билеты, билеты в Gutter Pot.
+          <b>Новой эмиссии $CG нет</b>, квоты 25/140 не двигаются.</p></div>
+        <div class="card c2"><h3>Платный вход (5.4)</h3><p>Отдельное моделирование: взнос в $CG,
+          часть сжигается (как путь пака за $CG), часть — рейк 5 % в призовой фонд по образцу Cap Slam.
+          Открывается только после прогона в <span class="mono">packages/economy</span>.</p></div>
+        <div class="card c3"><h3>«Линия недели» (5.5)</h3><p>Топ-50 рядом с существующей ELO-доской,
+          с входом в просмотр реплея (просмотр, не скачивание).</p></div>
+        <div class="card c4"><h3>Команды (5.6)</h3><p>5–10 человек, общий сегмент стены (20 слотов),
+          командная доска, ежемесячные конкурсы. Требует решения по модерации названий — отдельный скоуп фазы 3.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Ончейн</div>
+    <h2>Ончейн-поверхность: что и где</h2>
+    <div class="body">
+      <table>
+        <thead><tr><th>Сущность</th><th>Где</th><th>Комментарий</th></tr></thead>
+        <tbody>
+          <tr><td>Крышки</td><td class="ok">без изменений</td><td>Экспозиция — ссылка, не передача</td></tr>
+          <tr><td>Части доски, трафареты</td><td><span class="mono">PlayerItems</span> + <span class="mono">claim_item_root</span> (уже есть)</td><td>Без минта, без метадаты, без новой программы</td></tr>
+          <tr><td>Метки, клапаны, бустеры, билеты</td><td class="ok">без изменений</td><td>Существующий конвейер предметов</td></tr>
+          <tr><td>Тег</td><td>оффчейн, опционально хеш</td><td>Рисунок — <b>никогда</b> не ончейн</td></tr>
+          <tr><td>Реплей и очки заезда</td><td>оффчейн, 14 дней</td><td>Ончейн — ничего</td></tr>
+          <tr><td>Результат боя</td><td><span class="mono">battles.result_hash</span> (уже есть)</td><td>Трик-рил только читает</td></tr>
+        </tbody>
+      </table>
+      <p class="lead" style="margin-top:18px">Новая программа не появляется на фазах 1–2.
+        <b class="warn">Пятая программа = переаудит всех четырёх</b>
+        (<span class="mono">docs/06-acceptance-security-testing.md</span>) — цена, которую платим только осознанно.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Бэкенд</div>
+    <h2>Новый контур: таблицы, API, события</h2>
+    <div class="body">
+      <div class="grid2">
+        <div class="card c1"><h3>Таблицы</h3><p><span class="mono">tag_registry</span>,
+          <span class="mono">wall_slots(district, slot)</span>, <span class="mono">wall_reports</span>,
+          <span class="mono">rig_exhibit(wallet, slot)</span>, <span class="mono">runs</span>,
+          <span class="mono">crews</span> + <span class="mono">crew_members</span> (фаза 3).</p></div>
+        <div class="card c2"><h3>API</h3><p><span class="mono">GET/POST /v1/tags</span>,
+          <span class="mono">POST /v1/tags/:id/report</span>, <span class="mono">GET /v1/wall/:district</span>,
+          <span class="mono">POST /v1/wall/:district/claim | renew</span>,
+          <span class="mono">GET/PUT /v1/rig</span>, <span class="mono">POST /v1/runs</span>,
+          <span class="mono">GET /v1/runs/leaders</span>, очередь модератора.</p></div>
+        <div class="card c3"><h3>Сначала мок</h3><p>Весь контур поднимается в
+          <span class="mono">client/src/api/mock/index.ts</span> первым: клиент и UX делаются до бэкенда,
+          как уже сделано для остальных разделов.</p></div>
+        <div class="card c4"><h3>События</h3><p><span class="mono">tag.hidden</span>,
+          <span class="mono">wall.slot_expired</span>, <span class="mono">run.verified</span>,
+          <span class="mono">rig.part_granted</span> — по существующему <span class="mono">ws.ts</span>,
+          чтобы карточки обновлялись без перезагрузки.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Клиент</div>
+    <h2>Роуты, бюджет, рендер, Seeker</h2>
+    <div class="body">
+      <ul class="checks">
+        <li><b>Роуты — все ленивые, вне entry-графа:</b> <span class="mono">/bowl</span>,
+          <span class="mono">/bowl/rig</span>, <span class="mono">/bowl/wall/:district</span>,
+          <span class="mono">/bowl/tag</span>, <span class="mono">/bowl/run</span>,
+          <span class="mono">/rig/:wallet</span>, <span class="mono">/tag/:id</span>.</li>
+        <li><b>Бюджет:</b> entry-граф остаётся ≤ 350 КБ (сегодня 348,1), Бассейну и гаражу — ≤ 400 КБ gz
+          отдельным ленивым роутом. Первая загрузка на Seeker не должна пострадать у тех, кто в Бассейн не ходит.</li>
+        <li><b>Рендер:</b> крышка, тег и стена — CSS 3D + SVG. Бассейн — по замеру прототипа:
+          CSS 3D / лёгкий WebGL / 2.5D-спрайты. Критерий: <b>60 fps на Seeker</b> (Dimensity 7300).</li>
+        <li><b>Текстуры — атласами</b>, не файлами: 72 крышки × 2 лица плюс деки и колёса.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Производство</div>
+    <h2>Арт, звук, локали, доступность</h2>
+    <div class="body">
+      <div class="grid2">
+        <div class="card c1"><h3>Арт (объём)</h3><p>3–5 форм дек, 3 трака, 6 колёс, 6 грипов,
+          8 силуэтов райдера, тайл-сет чаши, 20–40 трафаретов. Всё через
+          <span class="mono">docs/07-art-spec.md</span> и <span class="mono">scripts/art-pipeline.ts</span>.</p></div>
+        <div class="card c2"><h3>Звук и VFX</h3><p>Переиспользуем инвентарь
+          <span class="mono">docs/14b-kenney-audio-vfx-inventory.md</span>: баллон, грайнд, приземление, сплеш.</p></div>
+        <div class="card c3"><h3>Локали</h3><p>Новые ключи <span class="mono">bowl.*</span>,
+          <span class="mono">tag.*</span>, <span class="mono">rig.*</span>, <span class="mono">run.*</span>
+          во всех 7 локалях, гейт 100 % покрытия. Пользовательский контент не переводится,
+          интерфейс редактора — переводится.</p></div>
+        <div class="card c4"><h3>Доступность</h3><p>У редактора — трафаретный режим (без рисования от руки),
+          у тега — <span class="mono">role="img"</span> с подписью, у инспектора — управление стрелками.
+          <span class="mono">prefers-reduced-motion</span> гасит флип и вращение Бассейна.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Инварианты</div>
+    <h2>Пять инвариант и тесты, которые их держат</h2>
+    <div class="body">
+      <table>
+        <thead><tr><th>#</th><th>Инварианта</th><th>Где проверяется</th></tr></thead>
+        <tbody>
+          <tr><td class="num">1</td><td>Шансы паков, pity, фьюжн, стейкинг-вес, рейк, комиссия маркета — не меняются</td><td><span class="mono">packages/economy</span> + <span class="mono">backend/test</span></td></tr>
+          <tr><td class="num">2</td><td>Квоты квестов 25/140 $CG стоят; эмиссия $CG не растёт</td><td><span class="mono">packages/economy</span></td></tr>
+          <tr><td class="num">3</td><td>Крышка не сжигается, не передаётся, не блокируется новыми механиками</td><td>тест на <span class="mono">rig_exhibit</span> и на отсутствие переводов</td></tr>
+          <tr><td class="num">4</td><td>Экспозиция и косметика не влияют на вес, силу, шансы и цену</td><td>тест-инвариант «exhibit is cosmetic»</td></tr>
+          <tr><td class="num">5</td><td>Ончейн-вес UGC — ноль; ончейн только опциональный хеш</td><td>тест размера записи и путей выдачи</td></tr>
+        </tbody>
+      </table>
+      <p class="lead" style="margin-top:18px">Плюс клиентские тесты редактора, модерации и сборки доски,
+        и a11y-smoke (axe) на всех новых экранах — как уже сделано для остальных разделов.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Телеметрия</div>
+    <h2>Как докажем, что мир кормит петлю</h2>
+    <div class="body">
+      <table>
+        <thead><tr><th>Фича</th><th>Метрика (когорта против базовой линии)</th></tr></thead>
+        <tbody>
+          <tr><td>Флип на вскрытии</td><td class="loop">повторная покупка пака в течение 24 ч после дропа Epic+</td></tr>
+          <tr><td>Инспектор</td><td class="loop">доля шеринга карточки и регистрации из переходов</td></tr>
+          <tr><td>Стена района</td><td class="loop">сделки и фьюжны по району, где мурал собран ≥80 %</td></tr>
+          <tr><td>Трик-рил арены</td><td class="loop">доля реванша после проигрыша</td></tr>
+          <tr><td>Теги и слоты</td><td class="loop">доля дней с заходом; прирост стейкинга у держателей слота</td></tr>
+          <tr><td><b>Экспозиция на доске</b></td><td class="loop">Δ покупок паков и Δ сделок у владельцев выставленных крышек — <b>главная метрика проекта</b></td></tr>
+          <tr><td>Части доски</td><td class="loop">D30 у владельцев ≥1 части</td></tr>
+          <tr><td>Заезды</td><td class="loop">доля игроков с ≥3 заездами в день; объём сжигания $CG</td></tr>
+        </tbody>
+      </table>
+      <p class="lead" style="margin-top:16px">Правило простое: <b>фича живёт, пока её метрика двигается</b>.
+        Не двигается два релиза подряд — фича упрощается или уходит.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Риски</div>
+    <h2>Что может пойти не так и что мы делаем заранее</h2>
+    <div class="body">
+      <table>
+        <thead><tr><th>Риск</th><th>Мера</th></tr></thead>
+        <tbody>
+          <tr><td>UGC превращается в операционную нагрузку</td><td>Пост-модерация + автофильтр, SLA 24 ч, скрытие без последствий для экономики</td></tr>
+          <tr><td>«Мир» оттягивает внимание от ядра</td><td>Правило-гейт: нет стрелки в петлю — не берём в спринт</td></tr>
+          <tr><td>Пятая программа сдвигает mainnet</td><td>Фазы 1–2 без ончейна; решение про программу — не раньше фазы 3</td></tr>
+          <tr><td>Вес и GPU на Seeker</td><td>Ленивый роут, выбор рендера по замеру, атласы, перф-базис до начала работ</td></tr>
+          <tr><td>Арт-конвейер не успевает</td><td>Старт с одной формы деки и восьми силуэтов, остальное — по фазам</td></tr>
+          <tr><td>Контент-гонка («мало частей»)</td><td>Части привязаны к существующим контурам (квесты, сезон, заезды), а не к магазину</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">План</div>
+    <h2>Дорожная карта и критерии приёмки</h2>
+    <div class="body">
+      <table>
+        <thead><tr><th>Фаза</th><th>Что</th><th>Критерий приёмки</th></tr></thead>
+        <tbody>
+          <tr><td class="num">0</td><td>Бюджет переписан, перф-базис на Seeker, прототип флипа</td><td>замер fps в трёх вариантах рендера, флип принят владельцем</td></tr>
+          <tr><td class="num">1</td><td>Слой 1 целиком: флип, инспектор, стена района, трик-рил арены</td><td>entry ≤ 350 КБ, ноль новых зависимостей, reduced-motion соблюдён</td></tr>
+          <tr><td class="num">2</td><td>Редактор тега, стена со слотами, гараж, экспозиция, Бассейн-хаб</td><td>модерация работает end-to-end, части выдаются через <span class="mono">PlayerItems</span>, инварианты зелёные</td></tr>
+          <tr><td class="num">3</td><td>Заезды, «Линия недели», команды</td><td>сервер пересчитывает реплей, античит, решение про ончейн обосновано</td></tr>
+          <tr><td class="num">4</td><td>Лендинг, конкурсы, шеринг, «доска недели»</td><td>лендинг собирается, артефакт не распух, 7 локалей закрыты</td></tr>
+        </tbody>
+      </table>
+      <p class="lead" style="margin-top:16px">Фаза 1 — единственная, которая не требует ни бэкенда, ни ончейн-работ.
+        С неё начинаем; параллельно мерим перф-базис.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Открытые числа</div>
+    <h2>Что остаётся модельными числами</h2>
+    <div class="body">
+      <ul class="checks">
+        <li>Число слотов стены на район и окно выцветания — старт <span class="num">200</span> и <span class="num">30 дней</span>.</li>
+        <li>Порог активности на получение слота — старт <span class="num">7 активных дней + ≥1 крышка в стейкинге</span>.</li>
+        <li>Пороги открытия слотов экспозиции — старт <span class="num">сразу / 12 / 36 крышек</span>.</li>
+        <li>Комбо-математика заезда — старт <span class="num">+0,1 за звено, потолок ×5, 45 с</span>.</li>
+        <li>Цена банки и трафарета, глубина косметической линейки.</li>
+        <li>Экономика платного входа: взнос, доля сжигания, рейк 5 %, приз.</li>
+        <li>Доля наград заезда по типам: части / трафареты / метки / клапаны / билеты.</li>
+      </ul>
+      <p class="lead" style="margin-top:18px">Все семь считаются в <span class="mono">packages/economy</span> и попадают
+        в код только через него — как и любая другая цифра экономики.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">Следующий шаг</div>
+    <h2>Что делаем прямо сейчас</h2>
+    <div class="body">
+      <ul class="checks">
+        <li><b>Прототип флипа</b> на вскрытии (CSS 3D, ~2 КБ) — увидеть язык движения руками, а не в документе.</li>
+        <li><b>Перф-базис на Seeker</b> в трёх вариантах рендера — WebGL выбираем по цифрам, а не по вкусу.</li>
+        <li><b>Мок контура тегов</b> в <span class="mono">client/src/api/mock/index.ts</span> — редактор и стена
+          делаются до бэкенда, как остальные разделы игры.</li>
+        <li><b>Черновик чисел</b> в <span class="mono">packages/economy</span> по семи открытым позициям.</li>
+      </ul>
+      <div class="motto" style="margin-top:22px">Мир кормит<br />основную петлю</div>
+      <p class="sub" style="margin-top:10px">Концепт: <span class="mono">docs/15-skate-world-proposal.md</span> (принят).
+        Полный дизайн: <span class="mono">docs/16-skate-world-design.md</span>.</p>
+    </div>
+  </section>
+
+</div>
+
+<div class="nav">
+  <div class="dots" id="dots"></div>
+  <div class="counter" id="counter"></div>
+</div>
+<div class="hint">← → · G обзор · P печать</div>
+
+<script>
+  const slides = [...document.querySelectorAll('.slide')];
+  const dots = document.getElementById('dots');
+  const counter = document.getElementById('counter');
+  const bar = document.getElementById('bar');
+  let i = Math.max(0, Number((location.hash || '').replace('#', '')) - 1);
+
+  slides.forEach((_, n) => {
+    const b = document.createElement('button');
+    b.className = 'dot';
+    b.type = 'button';
+    b.setAttribute('aria-label', 'Слайд ' + (n + 1));
+    b.addEventListener('click', () => go(n));
+    dots.appendChild(b);
+  });
+
+  function go(n) {
+    i = (n + slides.length) % slides.length;
+    slides.forEach((s, k) => s.classList.toggle('active', k === i));
+    [...dots.children].forEach((d, k) => d.setAttribute('aria-current', String(k === i)));
+    counter.textContent = String(i + 1).padStart(2, '0') + ' / ' + String(slides.length).padStart(2, '0');
+    bar.style.width = ((i + 1) / slides.length * 100) + '%';
+    history.replaceState(null, '', '#' + (i + 1));
+  }
+
+  addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); go(i + 1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(i - 1); }
+    else if (e.key === 'Home') go(0);
+    else if (e.key === 'End') go(slides.length - 1);
+    else if (e.key.toLowerCase() === 'g' || e.key.toLowerCase() === 'п') document.body.classList.toggle('overview');
+    else if (e.key.toLowerCase() === 'p' || e.key.toLowerCase() === 'з') print();
+  });
+
+  addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.nav')) return;
+    if (e.clientX < innerWidth * 0.16) go(i - 1);
+    else if (e.clientX > innerWidth * 0.84) go(i + 1);
+  });
+
+  go(i);
+</script>
+<style>
+  body.overview .deck { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; padding: 12px; height: 100%; overflow: auto; }
+  body.overview .slide { position: relative; inset: auto; display: flex !important; min-height: 200px; padding: 14px; overflow: hidden; }
+  body.overview .slide h1, body.overview .slide h2 { font-size: 15px; }
+  body.overview .slide .body, body.overview .slide .foot { display: none; }
+  body.overview .motto { font-size: 13px; padding: 8px 10px; }
+</style>
+</body>
+</html>

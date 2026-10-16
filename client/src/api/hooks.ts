@@ -123,6 +123,75 @@ export function useClaimPassTier() {
   });
 }
 
+// ------------------------------------------------------------------ достижения (docs/16 §4.7)
+export type Achievement = NonNullable<ResponseOf<'/me/achievements', 'get'>['items']>[number];
+export type AchievementList = ResponseOf<'/me/achievements', 'get'>;
+
+/** Прогресс считает сервер из существующих данных, поэтому кэш короткий. */
+export const useAchievements = () =>
+  useQuery({ queryKey: ['me', 'achievements'], queryFn: () => api.get('/me/achievements'), enabled: useAuthenticated(), staleTime: 30_000 });
+
+/** Забрать награду. Косметика и предметы: $CG достижения не платят никогда. */
+export function useClaimAchievement() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post('/me/achievements/{id}/claim', undefined, { path: { id } }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['me', 'achievements'] });
+      void qc.invalidateQueries({ queryKey: ['me', 'services'] });
+      void qc.invalidateQueries({ queryKey: ['grid', 'me'] });
+    },
+  });
+}
+
+// ------------------------------------------------------------------ линия (docs/16 §5.1)
+export type LineState = ResponseOf<'/me/line', 'get'>;
+export type RunSubmit = ResponseOf<'/me/line/runs', 'post'>;
+export type LineBoard = ResponseOf<'/line/leaderboard', 'get'>;
+export type RunReplay = ResponseOf<'/line/runs/{id}/replay', 'get'>;
+
+/** Состояние дня: раскладку клиент строит сам из `day`, сид сверяет. */
+export const useLine = () =>
+  useQuery({ queryKey: ['me', 'line'], queryFn: () => api.get('/me/line'), enabled: useAuthenticated(), staleTime: 30_000 });
+
+/** Отправить реплей. Очки считает сервер; присланные клиентом цифры ни на что не влияют. */
+export function useSubmitRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (b: { day: number; inputs: [number, number][] }) => api.post('/me/line/runs', b),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['me', 'line'] });
+      void qc.invalidateQueries({ queryKey: ['line', 'board'] });
+      void qc.invalidateQueries({ queryKey: ['me', 'pass'] });
+      void qc.invalidateQueries({ queryKey: ['grid', 'me'] });
+    },
+  });
+}
+
+/** Дополнительный заезд за 30 $CG: платит индексированный on-chain платёж, а не обещание. */
+export function useBuyExtraRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (b: { day: number; signature: string }) => api.post('/me/line/runs/buy', b),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['me', 'line'] }); },
+  });
+}
+
+export const useLineBoard = (week?: number) =>
+  useQuery({ queryKey: ['line', 'board', week], queryFn: () => api.get('/line/leaderboard', { query: { week } }), staleTime: 60_000 });
+
+/**
+ * Реплей заезда для просмотра (docs/16 §5.5). Публичный: строка доски и так
+ * видна всем, а в реплее только нажатия. Кэш долгий — заезд не меняется.
+ */
+export const useRunReplay = (runId: number | null) =>
+  useQuery({
+    queryKey: ['line', 'replay', runId],
+    queryFn: () => api.get('/line/runs/{id}/replay', { path: { id: String(runId) } }),
+    enabled: runId !== null && Number.isFinite(runId),
+    staleTime: 3_600_000,
+  });
+
 // ------------------------------------------------------------- beta pre-sale (docs/preorder-beta.md)
 export type PreorderCampaign = ResponseOf<'/preorder', 'get'>;
 export type PreorderIntent = ResponseOf<'/preorder/intent', 'post'>;
@@ -239,7 +308,23 @@ export type FraudSignal = ResponseOf<'/admin/fraud', 'get'>[number];
 export type SimulateReport = ResponseOf<'/admin/simulate', 'post'>;
 export const useAdminParams = (enabled = true) => useQuery({ queryKey: qk.adminParams, queryFn: () => api.get('/admin/params'), enabled: useAuthenticated() && enabled, staleTime: 20_000, retry: false });
 export const useAdminKpi = (enabled = true) => useQuery({ queryKey: qk.adminKpi, queryFn: () => api.get('/admin/kpi'), enabled: useAuthenticated() && enabled, staleTime: 60_000, retry: false });
+export const useAdminWorldMetrics = (days = 30, enabled = true) => useQuery({ queryKey: [...qk.adminWorld, days], queryFn: () => api.get('/admin/world-metrics', { query: { days } }), enabled: useAuthenticated() && enabled, staleTime: 60_000, retry: false });
 export const useAdminFraud = (enabled = true) => useQuery({ queryKey: qk.adminFraud, queryFn: () => api.get('/admin/fraud', { query: { limit: 100 } }), enabled: useAuthenticated() && enabled, staleTime: 15_000, retry: false });
+export const useModQueue = (enabled = true) => useQuery({ queryKey: qk.modQueue, queryFn: () => api.get('/mod/tags/queue'), enabled: useAuthenticated() && enabled, staleTime: 15_000, retry: false });
+export const useModStats = (enabled = true) => useQuery({ queryKey: qk.modStats, queryFn: () => api.get('/mod/tags/stats'), enabled: useAuthenticated() && enabled, staleTime: 30_000, retry: false });
+/**
+ * Решение модератора: скрыть, вернуть или удалить тег (docs/16 §3.3).
+ * Перечитываем очередь и статистику сразу: скрытый тег снимается со стены, и
+ * очередь обязана это показать без перезагрузки страницы.
+ */
+export const useSetTagStatus = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (b: { id: string; status: 'live' | 'hidden' | 'removed'; note?: string }) =>
+      api.put('/mod/tags/{id}', { status: b.status, ...(b.note === undefined ? {} : { note: b.note }) }, { path: { id: b.id } }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: qk.modQueue }); void qc.invalidateQueries({ queryKey: qk.modStats }); },
+  });
+};
 export const useAdminAudit = (enabled = true) => useQuery({ queryKey: qk.adminAudit, queryFn: () => api.get('/admin/audit', { query: { limit: 100 } }), enabled: useAuthenticated() && enabled, staleTime: 15_000, retry: false });
 /** Validate + encode `set_params` / `set_split` for the multisig — nothing is sent by the API. A 422 carries the full Proposal in `details`. */
 export const useProposeParams = () => useMutation({ mutationFn: (b: ParamsProposal) => api.post('/admin/params', b) });
@@ -252,3 +337,9 @@ export const useResolveFraud = () => {
     onSuccess: () => { void qc.invalidateQueries({ queryKey: qk.adminFraud }); void qc.invalidateQueries({ queryKey: qk.adminAudit }); },
   });
 };
+
+// ------------------------------------------------------------- skate city: теги и стена (docs/16 §3)
+export type WallView = ResponseOf<'/wall/{district}', 'get'>;
+export type MyWall = ResponseOf<'/me/wall', 'get'>;
+export type MyTags = ResponseOf<'/me/tags', 'get'>;
+export type Tag = NonNullable<MyTags['items']>[number];

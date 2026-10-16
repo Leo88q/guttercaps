@@ -3,6 +3,8 @@ import { Keypair } from '@solana/web3.js';
 import { ed25519 } from '@noble/curves/ed25519';
 import type { Server } from 'node:http';
 import { Db } from '../src/db.ts';
+import { LINE } from '@guttercaps/economy';
+import { SERVICES, SERVICE_BY_ID, servicePriceCgMicro } from '@guttercaps/economy';
 import { ingestTx } from '../src/ingest.ts';
 import { markFinalized } from '../src/finality.ts';
 import { createApp } from '../src/server.ts';
@@ -79,11 +81,31 @@ describe('public API', () => {
   it('services catalogue quotes every currency', async () => {
     const c = new Client(base);
     const { json } = await c.get('/v1/services');
-    expect(json.services).toHaveLength(12);
+    // 12 + districtStencilPack (kind 12, docs/16 §3.5) + lineExtraRun (kind 13, docs/16 §5.1)
+    // + хартия и переименование команды (kind 14/15, docs/16 §5.6). Число не
+    // зашито: каталог обязан показывать ровно то, что перечислено в economy.
+    // Заезд продаётся только за $CG: смысле цены — сток, а не выручка, поэтому
+    // каталог честно не показывает ему курс в USDC и SKR.
+    expect(json.services).toHaveLength(SERVICES.length);
+    const extraRun = json.services.find((s: { kind: number }) => s.kind === 13);
+    expect(extraRun.priceUsdCents).toBe(5);
+    // Каталог цитирует рельсу отображения (1 ¢ ≙ 1 $CG) — так же, как для
+    // трафаретов района. Главное не в этой цифре, а в том, что клиент спишет
+    // ровно столько, сколько потребует /me/line/runs/buy: обе стороны считают
+    // по CG_MICRO_PER_CENT из packages/economy.
+    expect(extraRun.quotes.CG).toBe('5000000');
+    expect(servicePriceCgMicro(SERVICE_BY_ID.lineExtraRun)).toBe(LINE.extraRunCgMicro); // 30 $CG сжигается
+    expect(servicePriceCgMicro(SERVICE_BY_ID.lineExtraRun)).toBe(servicePriceCgMicro(SERVICE_BY_ID.gridDeepAttempt)); // та же точка цены, что у Паводка
     const handle = json.services.find((s: { kind: number }) => s.kind === 0);
     expect(handle.quotes.CG).toBe('199000000');
     expect(handle.quotes.USDC).toBe('1990000');
     expect(Number(handle.quotes.SKR)).toBeGreaterThan(100_000_000); // ≈ $1.99 / $0.0174 ≈ 114 SKR
+    // district stencil pack: cosmetic at the same $1.99 tier as @handle. The catalogue
+    // quotes at 1 ¢ ≙ 1 $CG (backend/src/services.ts); the on-chain charge is 6 $CG/¢
+    // (CG_MICRO_PER_CENT, packages/economy) — the display rail is the cheaper one.
+    const stencils = json.services.find((s: { kind: number }) => s.kind === 12);
+    expect(stencils.priceUsdCents).toBe(199);
+    expect(stencils.quotes.CG).toBe(handle.quotes.CG);
   });
   it('market + collections + chip detail', async () => {
     const c = new Client(base);

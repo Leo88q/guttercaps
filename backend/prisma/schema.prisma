@@ -988,6 +988,97 @@ model FraudSignal {
   @@map("fraud_signals")
 }
 
+// ── skate city: «Свой тег» (docs/16 §3.2–3.3, backend/src/tags.ts) ──────────
+model TagRegistry {
+  id          String   @id
+  wallet      String
+  sha256      String   // содержимое: дедуп + доказуемое авторство
+  svg         String   // санитайзер пересобрал: только <path> и <image href="/art/skate/…">
+  bytes       Int
+  commands    Int      // число команд пути (M/L), лимит 400
+  status      String   @default("pending") // pending | live | hidden | removed
+  createdAt   DateTime @default(now()) @map("created_at")
+  moderatedAt DateTime? @map("moderated_at")
+  reports     Int      @default(0)
+  appealNote  String?  @map("appeal_note")
+  appealAt    DateTime? @map("appeal_at")
+
+  @@index([wallet, createdAt])
+  @@index([status, createdAt])
+  @@index([sha256])
+  @@index([reports, createdAt])
+  @@map("tag_registry")
+}
+
+model WallSlot {
+  district  Int
+  slot      Int
+  wallet    String
+  tagId     String  @map("tag_id")
+  appliedAt DateTime @default(now()) @map("applied_at")
+  expiresAt DateTime @map("expires_at")
+  renewedAt DateTime? @map("renewed_at")
+  crewId    Int?    @map("crew_id") // docs/16 §5.6: слот внутри сегмента команды
+
+  @@id([district, slot])
+  @@index([wallet, district])
+  @@index([expiresAt])
+  @@map("wall_slots")
+}
+
+model WallSlotHistory {
+  id         Int      @id @default(autoincrement())
+  district   Int
+  slot       Int
+  wallet     String
+  tagId      String   @map("tag_id")
+  appliedAt  DateTime @map("applied_at")
+  releasedAt DateTime @map("released_at")
+
+  @@index([district, slot, releasedAt])
+  @@map("wall_slot_history")
+}
+
+model FeatureEvent {
+  id      Int      @id @default(autoincrement())
+  wallet  String
+  feature String
+  kind    String
+  at      DateTime
+  meta    String?
+
+  @@index([feature, kind, at])
+  @@index([wallet, at])
+  @@map("feature_events")
+}
+
+model RigExhibit {
+  wallet    String
+  slot      Int
+  asset     String
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  @@id([wallet, slot])
+  @@index([asset])
+  @@map("rig_exhibit")
+}
+
+model WallReport {
+  id         Int       @id @default(autoincrement())
+  tagId      String    @map("tag_id")
+  /// docs/16 §5.6: жалоба на имя команды идёт в ту же очередь, что жалоба на тег.
+  crewId     Int?      @map("crew_id")
+  reporter   String
+  reason     String
+  createdAt  DateTime  @default(now()) @map("created_at")
+  resolvedAt DateTime? @map("resolved_at")
+  resolution String?
+
+  @@unique([tagId, reporter])
+  @@index([tagId])
+  @@map("wall_reports")
+}
+
 model AdminUser {
   id     String @id @default(cuid())
   email  String @unique
@@ -1490,6 +1581,138 @@ model PrivacyRestriction {
 }
 
 // Gutter Pot weekly raffle snapshot (oracle-settled; winners claim kind-9 template 4).
+/// Доска недели (docs/16 §3.7): жеребьёвка среди тегов, висящих на стенах, — не рейтинг.
+model WallBoardDraw {
+  week       Int    @id
+  drawnAt    Int    @map("drawn_at")
+  slot       Int
+  seedHex    String @map("seed_hex")
+  tagsHash   String @map("tags_hash")
+  candidates Int
+  winners    String // JSON [{tagId, wallet, district, slot}]
+  tickets    String // JSON всех кандидатов — снимок для пересчёта
+  @@index([drawnAt])
+  @@map("wall_board_draws")
+}
+
+model AchievementClaim {
+  wallet    String
+  id        String // achievement id (economy ACHIEVEMENTS)
+  claimedAt Int    @map("claimed_at")
+  @@id([wallet, id])
+  @@map("achievement_claims")
+}
+
+/// Линия: заезд (docs/16 §5.1). Реплей (inputs) живёт 14 дней, очки и хеш остаются (§5.2).
+/// Команда (docs/16 §5.6): имя, капитан, состав и сегмент стены.
+model Crew {
+  id           Int      @id @default(autoincrement())
+  name         String
+  nameKey      String   @unique @map("name_key")
+  captain      String
+  charterSig   String   @unique @map("charter_sig")
+  wallDistrict Int      @map("wall_district")
+  wallSegment  Int      @map("wall_segment")
+  createdAt    DateTime @default(now()) @map("created_at")
+  renamedAt    DateTime? @map("renamed_at")
+  status       String   @default("live")
+  inviteCode   String   @unique @map("invite_code")
+  members      CrewMember[]
+
+  // Уникальность сегмента — только среди живых команд: SQLite держит её частичным
+  // индексом `... WHERE status = 'live'`, а Prisma частичные индексы не описывает.
+  @@index([captain])
+  @@map("crews")
+}
+
+/// Имя, освобождённое командой: 90 дней карантина (docs/16 §5.6).
+model CrewNameHistory {
+  name       String
+  nameKey    String @map("name_key")
+  crewId     Int    @map("crew_id")
+  releasedAt Int    @map("released_at")
+
+  @@index([nameKey, releasedAt])
+  @@map("crew_name_history")
+}
+
+/// Бронь имени на время оплаты хартии (docs/16 §5.6): та же модель, что у хендлов.
+model CrewReservation {
+  nameKey   String @id @map("name_key")
+  wallet    String
+  expiresAt Int    @map("expires_at")
+
+  @@map("crew_reservations")
+}
+
+/// Состав команды: leftAt == null — участник в команде сейчас.
+model CrewMember {
+  crewId   Int       @map("crew_id")
+  wallet   String
+  joinedAt DateTime  @default(now()) @map("joined_at")
+  leftAt   DateTime? @map("left_at")
+  crew     Crew      @relation(fields: [crewId], references: [id])
+
+  @@id([crewId, wallet])
+  @@index([wallet])
+  @@map("crew_members")
+}
+
+model LineRun {
+  id          Int    @id @default(autoincrement())
+  wallet      String
+  day         Int
+  week        Int
+  seed        Int
+  inputs      String
+  score       Int
+  tricks      Int
+  bestCombo   Int    @map("best_combo")
+  bails       Int
+  paid        Int    @default(0)
+  submittedAt Int    @map("submitted_at")
+  replayTtl   Int    @map("replay_ttl")
+  @@index([wallet, day])
+  @@index([week, score])
+  @@index([replay_ttl])
+  @@map("line_runs")
+}
+
+/// Оплаченный дополнительный заезд (30 $CG, сожжены). Один платёж — один кредит.
+model LineCredit {
+  id        Int    @id @default(autoincrement())
+  wallet    String
+  day       Int
+  signature String @unique
+  grantedAt Int    @map("granted_at")
+  usedBy    Int?   @map("used_by")
+  @@index([wallet, day])
+  @@map("line_credits")
+}
+
+/// Сколько XP косметического трека дала линия за день (счёт трека — в pass_xp).
+model LinePassXp {
+  wallet String
+  day    Int
+  xp     Int
+  runId  Int    @map("run_id")
+  @@index([wallet, day])
+  @@map("line_pass_xp")
+}
+
+/// Предметы за лучший заезд дня: один раз в день (docs/16 §5.3).
+model LineReward {
+  wallet    String
+  day       Int
+  tier      String
+  score     Int
+  hints     Int    @default(0)
+  valve     Int    @default(0)
+  grantedAt Int    @map("granted_at")
+  @@id([wallet, day])
+  @@map("line_rewards")
+}
+
 model GutterPotDraw {
   week         Int    @id
   drawnAt      Int    @map("drawn_at")
@@ -1502,4 +1725,43 @@ model GutterPotDraw {
   tickets      String // JSON [{wallet, weight}]
   @@index([drawnAt])
   @@map("gutter_pot_draws")
+}
+
+/// Конструктор доски (docs/16 §4.2): добытые части. Часть — косметика, она не
+/// сжигается и не передаётся; `source` — первый источник, за который её дали.
+model BoardPart {
+  wallet    String
+  part      String
+  qty       Int    @default(1)
+  source    String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  @@id([wallet, part])
+  @@index([source])
+  @@map("board_parts")
+}
+
+/// Что надето на доску. Хранятся только слоты, которые игрок менял: пропущенный
+/// слот читается как стоковый, поэтому доска никогда не показывает дыру.
+model BoardLoadout {
+  wallet    String
+  slot      String
+  part      String
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  @@id([wallet, slot])
+  @@map("board_loadout")
+}
+
+/// Одна районная часть за заезд в неделю: PK и есть проверка «уже выдавали».
+model BoardRunGrant {
+  wallet    String
+  week      Int
+  part      String
+  grantedAt Int    @map("granted_at")
+
+  @@id([wallet, week])
+  @@index([week])
+  @@map("board_run_grants")
 }

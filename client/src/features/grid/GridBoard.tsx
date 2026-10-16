@@ -5,7 +5,7 @@
 import { useRef } from 'react';
 import { depthOfLevel, poweredCells, tileMask, type Level } from '@guttercaps/economy';
 import { TileArt } from './TileArt';
-import { flowDistance, gridBoardBgUrl, gridMaterialForLevel } from './gridArt';
+import { flowDistance, gridMaterialForLevel } from './gridArt';
 
 export interface GridBoardProps {
   /** Текущий уровень с ходами игрока (маски — источник картинки и «под током»). */
@@ -14,13 +14,15 @@ export interface GridBoardProps {
   vis: number[];
   busy: boolean;
   hintIndex: number | null;
+  /** Все приёмники уже под током, но сеть ещё не одна: помечаем «сухие» трубы (docs/13). */
+  dryHint?: boolean;
   /** Цвет потока: палитра по умолчанию или hex платной темы поля. */
   accent: string;
   onRotate: (idx: number, dir: 1 | -1) => void;
   tileAria: (n: number) => string;
 }
 
-export function GridBoard({ level, vis, busy, hintIndex, accent, onRotate, tileAria }: GridBoardProps) {
+export function GridBoard({ level, vis, busy, hintIndex, dryHint = false, accent, onRotate, tileAria }: GridBoardProps) {
   const lpTimer = useRef<number | null>(null);
   const lpFired = useRef(false);
   const size = level.size;
@@ -33,14 +35,14 @@ export function GridBoard({ level, vis, busy, hintIndex, accent, onRotate, tileA
     <div
       className="gt-board"
       data-depth={depth}
-      style={{ ['--gt-bg' as string]: `url("${gridBoardBgUrl(depth)}")`, ['--flow-accent' as string]: accent }}
+      style={{ ['--flow-accent' as string]: accent }}
     >
       <div className="gt-grid" style={{ gridTemplateColumns: `repeat(${size}, 1fr)` }}>
         {level.tiles.map((tile, i) => (
           <button
             key={i}
             type="button"
-            className={`grid-tile${powered[i] ? ' grid-tile-on' : ''}`}
+            className={`grid-tile${powered[i] ? ' grid-tile-on' : dryHint ? ' grid-tile-dry' : ''}`}
             disabled={busy || tile.fixed}
             onPointerDown={() => {
               lpFired.current = false;

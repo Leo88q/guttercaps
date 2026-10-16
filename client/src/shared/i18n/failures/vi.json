@@ -211,5 +211,20 @@
   "invalidBubblegumAsset": "Asset id on-chain của chip không khớp với lá Bubblegum. Left: {left}. Right: {right}. Không mở ví và không gửi cược.",
   "noXpTicket": "Hôm nay không còn vé XP chưa dùng — vé đi kèm gói Limited và hết hạn lúc nửa đêm UTC.",
   "missingAsset": "Chọn nắp nào sẽ nhận XP.",
-  "chipNotFound": "Nắp này không nằm trong ví của bạn (hoặc không còn hoạt động)."
+  "chipNotFound": "Nắp này không nằm trong ví của bạn (hoặc không còn hoạt động).",
+  "themeNotOwned": "Chủ đề này bạn chưa có: hãy mua trong shop rồi mới dùng.",
+  "achievementNotEarned": "Chưa đạt: bộ đếm thành tựu chưa tới mục tiêu.",
+  "lineRunsExhausted": "Lượt chạy miễn phí hôm nay đã hết — lượt thêm giá 30 $CG (đốt).",
+  "lineCreditCap": "Đó là giới hạn lượt chạy trả phí trong ngày.",
+  "crewNoCrew": "Không có đội nào mang tên đó.",
+  "crewInvalidName": "Tên đội dài 3–16 ký tự: chữ, số và gạch dưới.",
+  "crewAlreadyIn": "Bạn đã ở trong một đội — hãy rời đội trước.",
+  "crewNotCaptain": "Chỉ đội trưởng mới làm được điều đó.",
+  "crewBadCode": "Không có đội nào dùng mã mời này.",
+  "crewFull": "Đội này đã có mười rider.",
+  "crewDistrictFull": "Mọi đoạn tường của đội trong quận này đều đã có chủ.",
+  "crewCodeFailed": "Không tạo được mã mời — hãy thử lại.",
+  "crewEndpoint": "Tên đội được xử lý ở màn hình đội.",
+  "badPart": "Phụ tùng này không vừa vị trí đó.",
+  "partNotOwned": "Hãy kiếm phụ tùng này trước khi lắp."
 }

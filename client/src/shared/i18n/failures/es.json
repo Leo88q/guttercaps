@@ -211,5 +211,20 @@
   "invalidBubblegumAsset": "El asset id on-chain de esta ficha no coincide con su hoja Bubblegum. Left: {left}. Right: {right}. No se abrió el monedero y no se envió ninguna apuesta.",
   "noXpTicket": "Hoy no quedan boletos de XP sin usar: vienen con los packs Limited y caducan a medianoche UTC.",
   "missingAsset": "Elige qué gorra debe recibir el XP.",
-  "chipNotFound": "Esta gorra no está en tu cartera (o ya no está activa)."
+  "chipNotFound": "Esta gorra no está en tu cartera (o ya no está activa).",
+  "themeNotOwned": "Este tema aún no es tuyo: cómpralo en la tienda y luego úsalo.",
+  "achievementNotEarned": "Aún no se ha ganado: el contador del logro no llegó al objetivo.",
+  "lineRunsExhausted": "Los intentos gratis de hoy se acabaron: uno extra cuesta 30 $CG (quemados).",
+  "lineCreditCap": "Ese es el límite diario de carreras de pago.",
+  "crewNoCrew": "No existe ninguna crew con ese nombre.",
+  "crewInvalidName": "El nombre de la crew tiene 3–16 caracteres: letras, números y guion bajo.",
+  "crewAlreadyIn": "Ya estás en una crew: sal primero de ella.",
+  "crewNotCaptain": "Solo el capitán puede hacerlo.",
+  "crewBadCode": "Ninguna crew responde a ese código de invitación.",
+  "crewFull": "Esta crew ya tiene diez riders.",
+  "crewDistrictFull": "Todos los segmentos de crew de este distrito están ocupados.",
+  "crewCodeFailed": "No se pudo generar el código de invitación: inténtalo de nuevo.",
+  "crewEndpoint": "Los nombres de crew se gestionan en la pantalla de la crew.",
+  "badPart": "Esa pieza no encaja en esta ranura.",
+  "partNotOwned": "Gana esta pieza antes de montarla."
 }

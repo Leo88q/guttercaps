@@ -15,7 +15,8 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { useCollections } from '@/shared/lib/lore';
 import {
-  useAdminAudit, useAdminFraud, useAdminKpi, useAdminParams, useAdminSimulate, useKillSwitch, useMe, useProposeParams, useResolveFraud,
+  useAdminAudit, useAdminFraud, useAdminKpi, useAdminParams, useAdminSimulate, useAdminWorldMetrics,
+  useKillSwitch, useMe, useModQueue, useModStats, useProposeParams, useResolveFraud, useSetTagStatus,
   type AdminParams, type ParamsProposal, type Proposal, type SimulateReport,
 } from '@/api/hooks';
 import { ApiError } from '@/api/client';
@@ -25,11 +26,11 @@ import { CleanConfirmButton } from '@/shared/ui/buttons';
 import { fmtCents, fmtPct, fmtUnits, fmtUsd, shortKey, timeAgo } from '@/shared/lib/format';
 import { RARITIES, rarityName, packName } from '@/shared/lib/rarity';
 import { useUiStore } from '@/app/store/ui';
-import { EXPLORER } from '@/app/config';
+import { API_BASE, EXPLORER } from '@/app/config';
 import { t, useT, fmtLocale, getLocale, LOCALE_META, type MessageKey } from '@/shared/i18n';
 
-type Tab = 'params' | 'kill' | 'simulate' | 'kpi' | 'fraud' | 'audit';
-const TABS: Tab[] = ['params', 'kill', 'simulate', 'kpi', 'fraud', 'audit'];
+type Tab = 'params' | 'kill' | 'simulate' | 'kpi' | 'world' | 'mod' | 'fraud' | 'audit';
+const TABS: Tab[] = ['params', 'kill', 'simulate', 'kpi', 'world', 'mod', 'fraud', 'audit'];
 const SLICES = ['chipStaking', 'tokenStaking', 'quests', 'pvpSeason', 'eventsReserve'] as const;
 const sliceLabel = (name: string) => name === 'quests' ? t('quests.title') : SLICES.includes(name as typeof SLICES[number]) ? t(`screens.${name}` as MessageKey) : name;
 type Pack = NonNullable<NonNullable<AdminParams['gameConfig']>['packs']>[number];
@@ -59,7 +60,7 @@ export default function Admin() {
       </div>
       {me.isLoading && <Skeleton h={200} />}
       {me.data?.isAdmin && (
-        tab === 'params' ? <ParamsTab /> : tab === 'kill' ? <KillSwitchTab /> : tab === 'simulate' ? <SimulateTab /> : tab === 'kpi' ? <KpiTab /> : tab === 'fraud' ? <FraudTab /> : <AuditTab />
+        tab === 'params' ? <ParamsTab /> : tab === 'kill' ? <KillSwitchTab /> : tab === 'simulate' ? <SimulateTab /> : tab === 'kpi' ? <KpiTab /> : tab === 'world' ? <WorldTab /> : tab === 'mod' ? <ModTab /> : tab === 'fraud' ? <FraudTab /> : <AuditTab />
       )}
     </div>
   );
@@ -345,6 +346,161 @@ function SimulateTab() {
 }
 const fmtNum = (v: number | undefined | null) => (v === undefined || v === null ? '—' : new Intl.NumberFormat(LOCALE_META[getLocale()].tag, { maximumFractionDigits: Math.abs(v) >= 1000 ? 0 : 3 }).format(v));
 
+// ------------------------------------------------------------------ World (docs/16 §12)
+//
+// The rule-gate (§0.2) says a world feature is only accepted with a cohort metric behind it.
+// This screen is that metric: does touching the wall / the exhibit / the tag change how a wallet
+// plays the main loop? Groups differ in size, so every number is an average per wallet and the
+// answer is a ratio, never a sum. Empty cohort ⇒ the feature has no evidence yet, not "it works".
+type CohortStats = { wallets: number; packsPerWallet: number; tradesPerWallet: number; fusionsPerWallet: number; loginDaysPerWallet: number; stakedCapsPerWallet: number; referralsPerWallet?: number; servicesPerWallet?: number };
+type Delta = { packs: number | null; trades: number | null; fusions: number | null; loginDays: number | null; stakedCaps: number | null; referrals?: number | null; services?: number | null };
+type FeatureReport = { feature: string; windowDays: number; cohort: CohortStats; baseline: CohortStats; delta: Delta; series: { day: number; events: number; wallets: number }[] };
+const COHORT_ROWS: { key: keyof Delta; value: (c: CohortStats) => number }[] = [
+  { key: 'packs', value: (c) => c.packsPerWallet },
+  { key: 'trades', value: (c) => c.tradesPerWallet },
+  { key: 'fusions', value: (c) => c.fusionsPerWallet },
+  { key: 'loginDays', value: (c) => c.loginDaysPerWallet },
+  { key: 'stakedCaps', value: (c) => c.stakedCapsPerWallet },
+  { key: 'referrals', value: (c) => c.referralsPerWallet ?? 0 },
+  // §4.6: косметика, хендлы, скины — контур предметов. Паки его не покрывают.
+  { key: 'services', value: (c) => c.servicesPerWallet ?? 0 },
+];
+
+function WorldTab() {
+  const t = useT();
+  const [days, setDays] = useState(30);
+  const q = useAdminWorldMetrics(days);
+  const num = (v: number) => new Intl.NumberFormat(LOCALE_META[getLocale()].tag, { maximumFractionDigits: 2 }).format(v);
+  const signed = (v: number | null) => (v === null ? '—' : new Intl.NumberFormat(LOCALE_META[getLocale()].tag, { style: 'percent', signDisplay: 'exceptZero', maximumFractionDigits: 0 }).format(v));
+  return (
+    <div className="stack">
+      <div className="tiny muted">{t('admin.world.intro')}</div>
+      <div className="row-wrap">
+        {[7, 30, 90].map((d) => <Pill key={d} active={d === days} onClick={() => setDays(d)}>{t('admin.world.window', { n: d })}</Pill>)}
+      </div>
+      {q.isLoading && <Skeleton h={300} />}
+      {!!q.error && <div className="warn">{t('admin.params.unavailable', { error: '' })}<ErrorNotice error={q.error} /></div>}
+      {(q.data?.features ?? []).map((f) => <WorldFeature key={f.feature} f={f as FeatureReport} num={num} signed={signed} />)}
+      {/* Срезы: то же сравнение, но внутри фичи. У доски недели база — держатели
+          слотов без доски, а не «все игравшие»: попасть на доску можно только
+          держа слот, поэтому иначе мы мерили бы слот, а не доску. */}
+      {(q.data?.slices ?? []).map((f) => <WorldFeature key={f.feature} f={f as FeatureReport} num={num} signed={signed} note={SLICE_NOTES[f.feature ?? '']} />)}
+      {!!q.data?.epicPlus && <EpicPlusCard e={q.data.epicPlus} signed={signed} />}
+      {!!q.data?.arenaRematch && <RematchCard e={q.data.arenaRematch} signed={signed} />}
+    </div>
+  );
+}
+
+type EpicPlusReport = { cohort?: { opens?: number; repeatRate?: number | null }; baseline?: { opens?: number; repeatRate?: number | null }; delta?: number | null };
+
+function EpicPlusCard({ e, signed }: { e: EpicPlusReport; signed: (v: number | null) => string }) {
+  const t = useT();
+  const rate = (r: number | null | undefined) => (r === null || r === undefined ? '—' : new Intl.NumberFormat(LOCALE_META[getLocale()].tag, { style: 'percent', maximumFractionDigits: 0 }).format(r));
+  const opens = (n: number | undefined) => t('admin.world.opens', { n: n ?? 0 });
+  return (
+    <CleanZone className="stack-sm">
+      <div className="label">{t('admin.world.epicPlus')}</div>
+      <div className="world-cohorts">
+        <div className="world-cohorts-head">
+          <span className="muted">{t('admin.world.metric')}</span>
+          <span>{t('admin.world.withEpic')}</span>
+          <span>{t('admin.world.withoutEpic')}</span>
+          <span>{t('admin.world.delta')}</span>
+        </div>
+        <div className="world-cohorts-row">
+          <span className="muted">{t('admin.world.repeat24')}</span>
+          <span className="mono">{rate(e.cohort?.repeatRate)} <span className="muted tiny">· {opens(e.cohort?.opens)}</span></span>
+          <span className="mono">{rate(e.baseline?.repeatRate)} <span className="muted tiny">· {opens(e.baseline?.opens)}</span></span>
+          <span className="mono cg-accent">{signed(e.delta ?? null)}</span>
+        </div>
+      </div>
+    </CleanZone>
+  );
+}
+
+function RematchCard({ e, signed }: { e: EpicPlusReport; signed: (v: number | null) => string }) {
+  const t = useT();
+  const rate = (r: number | null | undefined) => (r === null || r === undefined ? '—' : new Intl.NumberFormat(LOCALE_META[getLocale()].tag, { style: 'percent', maximumFractionDigits: 0 }).format(r));
+  const battles = (n: number | undefined) => t('admin.world.battles', { n: n ?? 0 });
+  return (
+    <CleanZone className="stack-sm">
+      <div className="label">{t('admin.world.rematch')}</div>
+      <div className="world-cohorts">
+        <div className="world-cohorts-head">
+          <span className="muted">{t('admin.world.metric')}</span>
+          <span>{t('admin.world.afterLoss')}</span>
+          <span>{t('admin.world.afterWin')}</span>
+          <span>{t('admin.world.delta')}</span>
+        </div>
+        <div className="world-cohorts-row">
+          <span className="muted">{t('admin.world.again30')}</span>
+          <span className="mono">{rate(e.cohort?.repeatRate)} <span className="muted tiny">· {battles(e.cohort?.opens)}</span></span>
+          <span className="mono">{rate(e.baseline?.repeatRate)} <span className="muted tiny">· {battles(e.baseline?.opens)}</span></span>
+          <span className="mono cg-accent">{signed(e.delta ?? null)}</span>
+        </div>
+      </div>
+    </CleanZone>
+  );
+}
+
+/** Пояснение к срезу: когорта и база у среза не те, что у фичи, и это надо написать. */
+const SLICE_NOTES: Record<string, string> = {
+  'wall.board': 'admin.world.boardNote',
+  'collection.mural': 'admin.world.muralNote',
+};
+
+function WorldFeature({ f, num, signed, note }: { f: FeatureReport; num: (v: number) => string; signed: (v: number | null) => string; note?: string }) {
+  const t = useT();
+  const peak = Math.max(1, ...f.series.map((s) => s.events));
+  return (
+    <CleanZone className="stack-sm">
+      {/* Имя среза — `feature.kind` (например `collection.mural`). Ключи локали
+          с точкой внутри ломают обход дерева переводов: он делит путь по точке
+          и принимает `wall` за уровень вложенности. Поэтому точка уходит в
+          подчёркивание, а подпись остаётся человеческой. */}
+      <div className="label">{t(`admin.world.feat.${(f.feature ?? '').replace(/\./g, '_')}` as MessageKey)}</div>
+      <div className="tiny muted">
+        {t('admin.world.wallets', { n: f.cohort.wallets })} · {t('admin.world.baseline')}: {t('admin.world.wallets', { n: f.baseline.wallets })}
+      </div>
+      {/* Пустая когорта — не «−100 % по всем метрикам». Пока событий нет,
+          показываем одну честную строчку, а не таблицу нулей. */}
+      {f.cohort.wallets === 0
+        ? <div className="tiny muted">{t('admin.world.empty')}</div>
+        : (<>
+      {note ? <div className="tiny muted">{t(note as MessageKey)}</div> : null}
+      <div className="world-cohorts">
+        <div className="world-cohorts-head">
+          <span className="muted">{t('admin.world.metric')}</span>
+          <span>{t('admin.world.cohort')}</span>
+          <span>{t('admin.world.baseline')}</span>
+          <span>{t('admin.world.delta')}</span>
+        </div>
+        {COHORT_ROWS.map((r) => (
+          <div className="world-cohorts-row" key={r.key}>
+            <span className="muted">{t(`admin.world.${r.key}` as MessageKey)}</span>
+            <span className="mono">{num(r.value(f.cohort))}</span>
+            <span className="mono">{num(r.value(f.baseline))}</span>
+            <span className="mono cg-accent">{signed(f.delta[r.key] ?? null)}</span>
+          </div>
+        ))}
+      </div></>)}
+      {f.series.length === 0
+        ? <div className="tiny muted">{t('admin.world.empty')}</div>
+        : (
+          <div className="stack-sm">
+            <div className="tiny muted">{t('admin.world.series')}</div>
+            <div className="world-series" role="img" aria-label={t('admin.world.series')}>
+              {f.series.map((s) => (
+                <span key={s.day} className="world-series-bar" style={{ height: `${Math.max(2, Math.round((s.events / peak) * 40))}px` }} title={`${s.events} · ${s.wallets}`} />
+              ))}
+            </div>
+          </div>
+        )}
+    </CleanZone>
+  );
+}
+
+
 // ------------------------------------------------------------------ KPI
 function KpiTab() {
   const t = useT();
@@ -414,6 +570,89 @@ function KpiTab() {
 
 // ------------------------------------------------------------------ fraud queue
 const RESOLUTIONS = ['ignore', 'rewards_pause', 'shadow_ban', 'ban', 'trust', 'unflag'] as const;
+// ------------------------------------------------- модерация тегов (docs/16 §3.3)
+// Жалобу подаёт улица, решает человек. Интерфейс собран вокруг SLA: сверху —
+// сколько жалоб ждут и сколько уже просрочены, в очереди первыми идут
+// просроченные, а не самые жалобные (иначе тег с пятью свежими жалобами
+// уезжал бы выше одного, который ждёт третьи сутки).
+const MOD_ACTIONS = ['hidden', 'live', 'removed'] as const;
+// Ключи жалоб уже существуют для экрана стены — модератор видит те же слова,
+// что и игрок, который жаловался.
+const reasonKey = (reason: string): MessageKey => `wall.reason_${reason}` as MessageKey;
+
+function ModTab() {
+  const t = useT();
+  const q = useModQueue();
+  const stats = useModStats();
+  const act = useSetTagStatus();
+  const toast = useUiStore((sto) => sto.toast);
+  const [note, setNote] = useState<Record<string, string>>({});
+
+  const decide = async (id: string, status: (typeof MOD_ACTIONS)[number]) => {
+    try {
+      await act.mutateAsync({ id, status, ...(note[id] ? { note: note[id]! } : {}) });
+      toast({ kind: 'success', title: { key: `admin.mod.done.${status}` as MessageKey } });
+    } catch (e) { toast({ kind: 'error', title: { key: 'admin.mod.failed' }, error: e }); }
+  };
+
+  if (q.isLoading) return <Skeleton h={300} />;
+  const rows = q.data?.items ?? [];
+  const s = stats.data;
+  return (
+    <div className="stack">
+      <div className="small muted">{t('admin.mod.explainer', { n: Number(s?.slaHours ?? 24) })}</div>
+      {s ? (
+        <div className="row-wrap">
+          <Pill tone={Number(s.overdueReports ?? 0) > 0 ? 'danger' : undefined}>{t('admin.mod.open', { n: s.openReports })}</Pill>
+          <Pill tone={Number(s.overdueReports ?? 0) > 0 ? 'danger' : undefined}>{t('admin.mod.overdue', { n: s.overdueReports })}</Pill>
+          <Pill>{t('admin.mod.median', { n: s.medianReactionHours === null ? '—' : s.medianReactionHours })}</Pill>
+          <Pill>{t('admin.mod.actioned', { n: s.actionedShare === null ? '—' : Math.round(Number(s.actionedShare) * 100) })}</Pill>
+        </div>
+      ) : null}
+      {rows.length === 0 && <Empty>{t('admin.mod.empty')}</Empty>}
+      {rows.map((tag) => (
+        <div key={tag.id} className="card stack-sm" data-testid="mod-row">
+          <div className="row between" style={{ flexWrap: 'wrap', gap: 8 }}>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+              <span className="mono">{shortKey(tag.wallet ?? '', 6)}</span>
+              {/* Просрочка — главный признак: её видно раньше, чем число жалоб. */}
+              {tag.overdue
+                ? <Pill tone="danger">{t('admin.mod.overdueTag', { n: Math.abs(Math.round(Number(tag.hoursLeft ?? 0))) })}</Pill>
+                : <Pill>{t('admin.mod.hoursLeft', { n: Math.max(0, Math.round(Number(tag.hoursLeft ?? 0))) })}</Pill>}
+              <Pill>{t('admin.mod.reports', { n: tag.openReports })}</Pill>
+            </div>
+            <span className="tiny muted">{tag.createdAt ? timeAgo(Date.parse(tag.createdAt)) : ''}</span>
+          </div>
+          <div className="row-wrap">
+            {(tag.reasons ?? []).map((r) => (
+              <Pill key={r.reason}>{t(reasonKey(String(r.reason ?? 'other')))} · {r.n}</Pill>
+            ))}
+          </div>
+          {/* Тег показываем картинкой, как и везде: инлайнить чужой SVG в админке
+              незачем, а в <img> у него нет исполняемого контекста. */}
+          <img className="mod-tag" src={`${API_BASE}/tags/${tag.id}/svg`} alt={t('wall.tagAlt', { who: shortKey(tag.wallet ?? '') })} />
+          {tag.appealNote ? (
+            <div className="tiny muted">{t('admin.mod.appeal')}: «{tag.appealNote}»</div>
+          ) : null}
+          <div className="row-wrap">
+            <input
+              className="input" style={{ minHeight: 34, maxWidth: 320 }}
+              placeholder={t('admin.mod.note')}
+              value={note[tag.id ?? ''] ?? ''}
+              onChange={(e) => setNote({ ...note, [tag.id ?? '']: e.target.value })}
+            />
+            {MOD_ACTIONS.map((status) => (
+              <Pill key={status} tone={status === 'removed' ? 'danger' : status === 'hidden' ? undefined : 'ok'} onClick={() => void decide(String(tag.id ?? ''), status)}>
+                {t(`admin.mod.${status}` as MessageKey)}
+              </Pill>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function FraudTab() {
   const t = useT();
   const q = useAdminFraud();

@@ -11,6 +11,8 @@ interface Props { id: ServiceId; size?: number; className?: string; }
 const SERVICE_ICON_URL: Partial<Record<ServiceId, string>> = {
   seasonPass: '/icons/gen/svc-pass.webp',
   capSkin: '/icons/gen/svc-skin.webp',
+  // Продаём форму — показываем форму: иконка пакета это сам трафарет из арта.
+  districtStencilPack: '/art/skate/stencil-d0-moth.webp',
 };
 
 /** Handle — a spray-stencil @: loose loop, tail breaking out of the ring. */

@@ -8,7 +8,7 @@ import { canonicalRotOf, flowDistance, gridAtlasUrl, gridBoardBgUrl, gridMateria
 describe('floodgrid art mapping (docs/14a)', () => {
   it('material of a level equals GRID_DEPTHS material of its depth', () => {
     const cases: [number, string][] = [
-      [1, 'zinc'], [15, 'zinc'], [16, 'chrome'], [30, 'chrome'], [31, 'rust'], [45, 'rust'],
+      [1, 'glass'], [15, 'glass'], [16, 'chrome'], [30, 'chrome'], [31, 'rust'], [45, 'rust'],
       [46, 'cast'], [60, 'cast'], [61, 'glass'], [75, 'glass'],
     ];
     for (const [level, material] of cases) expect(gridMaterialForLevel(level)).toBe(material);

@@ -532,13 +532,17 @@ pub enum ServiceKind {
     CapSkin = 2,      // cosmetic frame / spray for one chip (attribute on the Core asset)
     ProfileTheme = 3, // profile wallpaper / color set
     ArenaEmotePack = 4,
-    ExtraBenchSlots = 5,  // +2 fusion bench presets
-    SeasonPass = 6,       // cosmetic-only season track (no odds, no power)
+    ExtraBenchSlots = 5,      // +2 fusion bench presets
+    SeasonPass = 6,           // cosmetic-only season track (no odds, no power)
     Booster = 7, // fusion booster: +15 pp success (cap 95 %). NOT free-form: max 3 per wallet per day
     PackSkipAnim = 8, // permanent "skip reveal" toggle — pure convenience
     DistrictBanner = 9, // profile banner of a completed district
     GridDeepAttempt = 10, // extra Deep Flood attempt (backend grants credits for $CG burns only)
     GridFieldTheme = 11, // Floodgrid board field theme (cosmetic)
+    DistrictStencilPack = 12, // five district stencils for the tag editor (docs/16 §3.5)
+    LineExtraRun = 13, // one extra run of the day's line after the three free ones (docs/16 §5.1)
+    CrewCharter = 14, // crew registration: unique name + wall segment (docs/16 §5.6)
+    CrewRename = 15, // crew rename, once per 30 days (docs/16 §5.6)
 }
 
 impl ServiceKind {
@@ -556,6 +560,10 @@ impl ServiceKind {
             9 => Self::DistrictBanner,
             10 => Self::GridDeepAttempt,
             11 => Self::GridFieldTheme,
+            12 => Self::DistrictStencilPack,
+            13 => Self::LineExtraRun,
+            14 => Self::CrewCharter,
+            15 => Self::CrewRename,
             _ => return None,
         })
     }
@@ -574,6 +582,10 @@ impl ServiceKind {
             Self::DistrictBanner => 199,
             Self::GridDeepAttempt => 5, // 5 cents x 6 $CG/cent = exactly 30 $CG on the burn rail
             Self::GridFieldTheme => 249,
+            Self::DistrictStencilPack => 199,
+            Self::LineExtraRun => 5, // 5 cents x 6 $CG/cent = exactly 30 $CG on the burn rail
+            Self::CrewCharter => 199, // same tier as @handle: a name in the city
+            Self::CrewRename => 99,  // same tier as a handle change
         }
     }
     /// Price in micro-$CG when paid with $CG (burned).
