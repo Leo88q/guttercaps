@@ -249,7 +249,7 @@ const en = {
     noFreeCaps: 'No caps yet — open a pack first', noCompletedDistrict: 'Complete a district set (9/9) to unlock its banner',
     names: {
       handle: '@handle', handleChange: 'Handle change', capSkin: 'Cap skin', profileTheme: 'Profile theme', arenaEmotePack: 'Arena emote pack',
-      extraBenchSlots: '+2 bench presets', seasonPass: 'Season pass', booster: 'Fusion booster', packSkipAnim: 'Instant reveal', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'District banner', districtStencilPack: 'District stencil pack',
+      extraBenchSlots: '+2 bench presets', seasonPass: 'Season pass', booster: 'Fusion booster', packSkipAnim: 'Instant reveal', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'District banner', districtStencilPack: 'District stencil pack', lineExtraRun: 'Extra run',
     },
     blurbs: {
       handle: 'Unique name on leaderboards, arena and your public profile URL.', handleChange: 'Rename once per 30 days. Old handle is released after 90 days.',
@@ -257,7 +257,7 @@ const en = {
       arenaEmotePack: '6 spray-tag emotes for Cap Slam replays.', extraBenchSlots: 'Save more fusion presets on the bench (convenience only).',
       seasonPass: 'Cosmetic track for the 6-week season: 20 tiers of skins, banners, emotes. No odds, no power, no $CG.',
       booster: '+15 pp success on one fusion (cap 95%). Max 3 per day.', packSkipAnim: 'Permanent toggle to skip the reveal animation. Pure convenience.',
-      gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Animated banner for a district you have completed.', districtStencilPack: 'Five district stencils for the tag editor. Shapes only — the lines and colours stay yours.',
+      gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Animated banner for a district you have completed.', districtStencilPack: 'Five district stencils for the tag editor. Shapes only — the lines and colours stay yours.', lineExtraRun: 'One more run of today’s line after the three free ones. $CG only — every coin is burned.',
     },
   },
   inspect: {
@@ -437,6 +437,9 @@ const en = {
     riderPick: 'Rider {n}',
     exhibitTitle: 'Exhibition',
     exhibitEmpty: 'No caps on display yet. Exhibit one and it shows here — it stays yours and stays tradable.',
+    lineTitle: 'The Line',
+    lineSub: '45 seconds down today’s bowl. Three free runs, then 30 $CG — burned.',
+    openLine: 'Ride the line',
     wallTitle: 'District wall',
     note: 'Everything here is cosmetic. Nothing changes in odds, fusion, staking or market — it only gives your caps a room of their own.',
     toCaps: 'To my caps',
@@ -512,6 +515,19 @@ const en = {
     reason_ads: 'Ads or spam',
     reason_personal_data: 'Personal data',
     reason_other: 'Something else',
+  },
+  line: {
+    title: 'The Line',
+    intro: 'One bowl for everyone: the day’s seed, 45 seconds, three free runs. After that an extra run costs 30 $CG — burned.',
+    howto: 'Tap to hop. Tap again in the air to grab. Kickers launch you by themselves.',
+    day: 'Bowl of the day', seed: 'Seed',
+    free: 'Free runs: {n}', left: 'Runs left: {n}', best: 'Best today: {n}', bestWeek: 'Best this week: {n}',
+    start: 'Drop in', again: 'Another run', buy: 'Extra run · 30 $CG', buying: 'Paying…', sending: 'Counting the run…',
+    trick: 'Trick', time: '{n}s', score: 'Score', combo: '×{n}', bails: 'Bails: {n}', tricks: 'Tricks: {n}',
+    tier: 'Result', tiers: { none: 'No result', bronze: 'Bronze', silver: 'Silver', gold: 'Gold' },
+    reward: 'Reward', rwXp: '{n} pass XP', rwHints: '{n} Floodgrid hints', rwValve: 'Emergency valve',
+    board: 'Week’s board', boardEmpty: 'Nobody has ridden yet this week', you: 'you', rank: '#{n}',
+    stale: 'The bowl of the day has changed — reload the page', failed: 'The run was not counted', none: 'No runs today',
   },
   achievements: {
     title: 'Achievements',

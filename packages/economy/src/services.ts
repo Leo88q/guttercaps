@@ -26,7 +26,7 @@
 export type ServiceId =
   | 'handle' | 'handleChange' | 'capSkin' | 'profileTheme' | 'arenaEmotePack'
   | 'extraBenchSlots' | 'seasonPass' | 'booster' | 'packSkipAnim' | 'districtBanner'
-  | 'gridDeepAttempt' | 'gridFieldTheme' | 'districtStencilPack';
+  | 'gridDeepAttempt' | 'gridFieldTheme' | 'districtStencilPack' | 'lineExtraRun';
 
 export interface ServiceDef {
   id: ServiceId;
@@ -69,6 +69,9 @@ export const SERVICES: readonly ServiceDef[] = [
   // Skate-city UGC (docs/16 §3.5): five district stencils for the tag editor. Cosmetic
   // through and through — it buys shapes, never reach. The 14 free shapes stay free.
   { id: 'districtStencilPack', kind: 12, rustName: 'DistrictStencilPack', priceUsdCents: 199, dailyCap: 10, fulfilment: 'entitlement', recurring: false, name: 'District stencil pack', blurb: 'Five district stencils for the tag editor. Shapes only — the lines and colours stay yours.' },
+  // Skate-city line (docs/16 §5.1): one extra run of the day's bowl. Priced 5 cents so the
+  // $CG rail is exactly 30 $CG (100% burn) — the same price point as a Deep Flood attempt.
+  { id: 'lineExtraRun', kind: 13, rustName: 'LineExtraRun', priceUsdCents: 5, dailyCap: 10, fulfilment: 'entitlement', recurring: true, name: 'Extra run', blurb: 'One more run of today\'s line after the three free ones. $CG only — every coin is burned.' },
 ] as const;
 
 export const SERVICE_BY_ID = Object.fromEntries(SERVICES.map((s) => [s.id, s])) as Record<ServiceId, ServiceDef>;

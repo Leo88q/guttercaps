@@ -213,5 +213,7 @@
   "missingAsset": "Pilih cap mana yang menerima XP.",
   "chipNotFound": "Cap ini tidak ada di dompetmu (atau sudah tidak aktif).",
   "themeNotOwned": "Tema ini belum kamu punya: beli dulu di toko, lalu pakai.",
-  "achievementNotEarned": "Belum tercapai: penghitungnya belum sampai target."
+  "achievementNotEarned": "Belum tercapai: penghitungnya belum sampai target.",
+  "lineRunsExhausted": "Percobaan gratis hari ini habis — tambahan berharga 30 $CG (dibakar).",
+  "lineCreditCap": "Itu batas harian untuk percobaan berbayar."
 }

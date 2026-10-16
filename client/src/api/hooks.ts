@@ -144,6 +144,41 @@ export function useClaimAchievement() {
   });
 }
 
+// ------------------------------------------------------------------ линия (docs/16 §5.1)
+export type LineState = ResponseOf<'/me/line', 'get'>;
+export type RunSubmit = ResponseOf<'/me/line/runs', 'post'>;
+export type LineBoard = ResponseOf<'/line/leaderboard', 'get'>;
+
+/** Состояние дня: раскладку клиент строит сам из `day`, сид сверяет. */
+export const useLine = () =>
+  useQuery({ queryKey: ['me', 'line'], queryFn: () => api.get('/me/line'), enabled: useAuthenticated(), staleTime: 30_000 });
+
+/** Отправить реплей. Очки считает сервер; присланные клиентом цифры ни на что не влияют. */
+export function useSubmitRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (b: { day: number; inputs: [number, number][] }) => api.post('/me/line/runs', b),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['me', 'line'] });
+      void qc.invalidateQueries({ queryKey: ['line', 'board'] });
+      void qc.invalidateQueries({ queryKey: ['me', 'pass'] });
+      void qc.invalidateQueries({ queryKey: ['grid', 'me'] });
+    },
+  });
+}
+
+/** Дополнительный заезд за 30 $CG: платит индексированный on-chain платёж, а не обещание. */
+export function useBuyExtraRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (b: { day: number; signature: string }) => api.post('/me/line/runs/buy', b),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['me', 'line'] }); },
+  });
+}
+
+export const useLineBoard = (week?: number) =>
+  useQuery({ queryKey: ['line', 'board', week], queryFn: () => api.get('/line/leaderboard', { query: { week } }), staleTime: 60_000 });
+
 // ------------------------------------------------------------- beta pre-sale (docs/preorder-beta.md)
 export type PreorderCampaign = ResponseOf<'/preorder', 'get'>;
 export type PreorderIntent = ResponseOf<'/preorder/intent', 'post'>;

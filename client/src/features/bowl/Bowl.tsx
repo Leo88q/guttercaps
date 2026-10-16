@@ -121,6 +121,18 @@ export default function Bowl() {
         </div>
       </section>
 
+      {/* Линия (docs/16 §5.1): чаша дня одна на всех, три бесплатных заезда. */}
+      <section className="card stack-sm">
+        <div className="strong">{t('bowl.lineTitle')}</div>
+        <img className="bowl-wide" src="/art/skate/line-bg.webp" alt="" aria-hidden loading="lazy" decoding="async" />
+        <div className="small muted">{t('bowl.lineSub')}</div>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <Link to="/bowl/line" className="btn btn-sm">
+            {t('bowl.openLine')}
+          </Link>
+        </div>
+      </section>
+
       <section className="card stack-sm">
         <div className="strong">{t('bowl.wallTitle')}</div>
         <img className="bowl-wide" src={`${ART}/wall-district.webp`} alt="" />

@@ -29,6 +29,7 @@ import * as wallBoard from './wallBoard.ts';
 import * as rig from './rig.ts';
 import * as worldMetrics from './worldMetrics.ts';
 import * as achievements from './achievements.ts';
+import * as runs from './runs.ts';
 import { publish } from './bus.ts';
 import { claimPassTier, passState } from './pass.ts';
 import { packQuote, validateRequest } from './quote.ts';
@@ -116,6 +117,12 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   const sweepMs = deps.arenaSweepMs ?? Number(process.env.ARENA_SWEEP_MS ?? 3_000);
   if (sweepMs > 0) {
     const timer = setInterval(() => { try { arena.sweep(db); } catch (e) { console.error('[arena] sweep failed:', (e as Error).message); } }, sweepMs);
+    timer.unref();
+  }
+  // Реплей линии живёт 14 дней (docs/16 §5.2): стираем ввод, очки остаются.
+  const lineSweepMs = Number(process.env.LINE_SWEEP_MS ?? 3_600_000);
+  if (lineSweepMs > 0) {
+    const timer = setInterval(() => { try { runs.pruneLineReplays(db); } catch (e) { console.error('[line] sweep failed:', (e as Error).message); } }, lineSweepMs);
     timer.unref();
   }
   // Выцветание стены (docs/16 §3.4): слот живёт 30 дней. Раз в час достаточно —
@@ -493,6 +500,25 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.get('/me/achievements', requireAuth, (req, res) => { res.json(achievements.achievementsOf(db, req.session!.wallet)); });
   v1.post('/me/achievements/:id/claim', requireAuth, rl(POLICIES.mutate), (req, res) => {
     res.json(achievements.claimAchievement(db, req.session!.wallet, String(req.params.id ?? '')));
+  });
+  // Линия (docs/16 §5.1): раскладка дня одна на всех, очки считает сервер
+  // переигрыванием реплея, награды — косметика и существующие предметы.
+  v1.get('/me/line', requireAuth, (req, res) => { res.json(runs.lineState(db, req.session!.wallet)); });
+  v1.post('/me/line/runs', requireAuth, accessGate('rewards'), rl(POLICIES.mutate), (req, res) => {
+    res.json(runs.submitRun(db, req.session!.wallet, req.body));
+  });
+  v1.post('/me/line/runs/buy', requireAuth, accessGate('rewards'), rl(POLICIES.claim), rl(POLICIES.claimNet), (req, res) => {
+    res.json(runs.buyExtraRun(db, req.session!.wallet, req.body));
+  });
+  v1.get('/me/line/runs/:id/replay', requireAuth, (req, res) => {
+    const id = intQuery(req.params.id, { name: 'id', min: 1 });
+    const r = id === undefined ? null : runs.runReplay(db, req.session!.wallet, id);
+    if (!r) { res.status(404).json({ error: 'not_found', message: 'No such run' }); return; }
+    res.json(r);
+  });
+  v1.get('/line/leaderboard', (req, res) => {
+    const week = intQuery(req.query.week, { name: 'week', min: 0 });
+    res.json(runs.lineLeaderboard(db, week ?? runs.currentWeek(), 50));
   });
   // T-B-49 proof of human: Turnstile token → 7-day pass that unlocks quest / SKR settlement (human.ts).
   v1.get('/me/human', requireAuth, (req, res) => { res.json(humanStatus(db, req.session!.wallet)); });

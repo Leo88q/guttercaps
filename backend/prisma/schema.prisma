@@ -1600,6 +1600,62 @@ model AchievementClaim {
   @@map("achievement_claims")
 }
 
+/// Линия: заезд (docs/16 §5.1). Реплей (inputs) живёт 14 дней, очки и хеш остаются (§5.2).
+model LineRun {
+  id          Int    @id @default(autoincrement())
+  wallet      String
+  day         Int
+  week        Int
+  seed        Int
+  inputs      String
+  score       Int
+  tricks      Int
+  bestCombo   Int    @map("best_combo")
+  bails       Int
+  paid        Int    @default(0)
+  submittedAt Int    @map("submitted_at")
+  replayTtl   Int    @map("replay_ttl")
+  @@index([wallet, day])
+  @@index([week, score])
+  @@index([replay_ttl])
+  @@map("line_runs")
+}
+
+/// Оплаченный дополнительный заезд (30 $CG, сожжены). Один платёж — один кредит.
+model LineCredit {
+  id        Int    @id @default(autoincrement())
+  wallet    String
+  day       Int
+  signature String @unique
+  grantedAt Int    @map("granted_at")
+  usedBy    Int?   @map("used_by")
+  @@index([wallet, day])
+  @@map("line_credits")
+}
+
+/// Сколько XP косметического трека дала линия за день (счёт трека — в pass_xp).
+model LinePassXp {
+  wallet String
+  day    Int
+  xp     Int
+  runId  Int    @map("run_id")
+  @@index([wallet, day])
+  @@map("line_pass_xp")
+}
+
+/// Предметы за лучший заезд дня: один раз в день (docs/16 §5.3).
+model LineReward {
+  wallet    String
+  day       Int
+  tier      String
+  score     Int
+  hints     Int    @default(0)
+  valve     Int    @default(0)
+  grantedAt Int    @map("granted_at")
+  @@id([wallet, day])
+  @@map("line_rewards")
+}
+
 model GutterPotDraw {
   week         Int    @id
   drawnAt      Int    @map("drawn_at")

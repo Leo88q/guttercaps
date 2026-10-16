@@ -213,5 +213,7 @@
   "missingAsset": "Piliin kung aling cap ang tatanggap ng XP.",
   "chipNotFound": "Wala sa wallet mo ang cap na ito (o hindi na aktibo).",
   "themeNotOwned": "Hindi mo pa itong tema: bilhin muna sa shop, saka isuot.",
-  "achievementNotEarned": "Hindi pa nakamit: hindi pa umabot ang counter sa target."
+  "achievementNotEarned": "Hindi pa nakamit: hindi pa umabot ang counter sa target.",
+  "lineRunsExhausted": "Ubos na ang libreng takbo ngayon — ang dagdag ay 30 $CG (sinunog).",
+  "lineCreditCap": "Iyan ang pang-araw-araw na limit ng bayad na takbo."
 }

@@ -3,6 +3,8 @@ import { Keypair } from '@solana/web3.js';
 import { ed25519 } from '@noble/curves/ed25519';
 import type { Server } from 'node:http';
 import { Db } from '../src/db.ts';
+import { LINE } from '@guttercaps/economy';
+import { SERVICE_BY_ID, servicePriceCgMicro } from '@guttercaps/economy';
 import { ingestTx } from '../src/ingest.ts';
 import { markFinalized } from '../src/finality.ts';
 import { createApp } from '../src/server.ts';
@@ -79,7 +81,19 @@ describe('public API', () => {
   it('services catalogue quotes every currency', async () => {
     const c = new Client(base);
     const { json } = await c.get('/v1/services');
-    expect(json.services).toHaveLength(13); // 12 + districtStencilPack (kind 12, docs/16 §3.5)
+    // 12 + districtStencilPack (kind 12, docs/16 §3.5) + lineExtraRun (kind 13, docs/16 §5.1).
+    // Заезд продаётся только за $CG: смысле цены — сток, а не выручка, поэтому
+    // каталог честно не показывает ему курс в USDC и SKR.
+    expect(json.services).toHaveLength(14);
+    const extraRun = json.services.find((s: { kind: number }) => s.kind === 13);
+    expect(extraRun.priceUsdCents).toBe(5);
+    // Каталог цитирует рельсу отображения (1 ¢ ≙ 1 $CG) — так же, как для
+    // трафаретов района. Главное не в этой цифре, а в том, что клиент спишет
+    // ровно столько, сколько потребует /me/line/runs/buy: обе стороны считают
+    // по CG_MICRO_PER_CENT из packages/economy.
+    expect(extraRun.quotes.CG).toBe('5000000');
+    expect(servicePriceCgMicro(SERVICE_BY_ID.lineExtraRun)).toBe(LINE.extraRunCgMicro); // 30 $CG сжигается
+    expect(servicePriceCgMicro(SERVICE_BY_ID.lineExtraRun)).toBe(servicePriceCgMicro(SERVICE_BY_ID.gridDeepAttempt)); // та же точка цены, что у Паводка
     const handle = json.services.find((s: { kind: number }) => s.kind === 0);
     expect(handle.quotes.CG).toBe('199000000');
     expect(handle.quotes.USDC).toBe('1990000');

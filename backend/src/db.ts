@@ -1206,6 +1206,58 @@ CREATE TABLE IF NOT EXISTS achievement_claims (
   claimed_at INTEGER NOT NULL,             -- unix s
   PRIMARY KEY (wallet, id)
 );
+-- Линия: заезды (docs/16 §5.1). Реплей — это весь ввод; очки считает сервер
+-- переигрыванием, поэтому в строке лежат и ввод, и посчитанный результат.
+CREATE TABLE IF NOT EXISTS line_runs (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  wallet      TEXT    NOT NULL,
+  day         INTEGER NOT NULL,             -- unix day (dayIndex), раскладка дня одна на всех
+  week        INTEGER NOT NULL,             -- weekIndex, для доски недели (§5.5)
+  seed        INTEGER NOT NULL,             -- сид раскладки: реплей без него не переиграть
+  inputs      TEXT    NOT NULL,             -- JSON [[tick, action], ...] — реплей, живёт 14 дней (§5.2)
+  score       INTEGER NOT NULL,
+  tricks      INTEGER NOT NULL,
+  best_combo  INTEGER NOT NULL,
+  bails       INTEGER NOT NULL,
+  paid        INTEGER NOT NULL DEFAULT 0,   -- 1 = заезд за 30 $CG (сожжены)
+  submitted_at INTEGER NOT NULL,            -- unix s
+  replay_ttl  INTEGER NOT NULL              -- unix s, после которого реплей стирается (§5.2: 14 дней)
+);
+CREATE INDEX IF NOT EXISTS idx_line_runs_wallet_day ON line_runs(wallet, day);
+CREATE INDEX IF NOT EXISTS idx_line_runs_week ON line_runs(week, score DESC);
+CREATE INDEX IF NOT EXISTS idx_line_runs_ttl ON line_runs(replay_ttl);
+-- Оплаченные дополнительные заезды: ровно тот же разбор, что у Глубокого паводка
+-- (ищем платёж по подписи, требуем $CG ровно 30, тратим кредит один раз).
+CREATE TABLE IF NOT EXISTS line_credits (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  wallet      TEXT    NOT NULL,
+  day         INTEGER NOT NULL,
+  signature   TEXT    NOT NULL UNIQUE,      -- подпись on-chain платежа: дважды один платёж не тратится
+  granted_at  INTEGER NOT NULL,
+  used_by     INTEGER                       -- line_runs.id, который crédit потратил
+);
+CREATE INDEX IF NOT EXISTS idx_line_credits_wallet_day ON line_credits(wallet, day);
+-- Сколько XP косметического трека дала линия за день. Счёт трека живёт в pass.ts,
+-- здесь только «что дала линия», чтобы экран мог показать это без пересчёта.
+CREATE TABLE IF NOT EXISTS line_pass_xp (
+  wallet   TEXT    NOT NULL,
+  day      INTEGER NOT NULL,
+  xp       INTEGER NOT NULL,
+  run_id   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_line_pass_xp ON line_pass_xp(wallet, day);
+-- Предметы за лучший заезд дня выдаются один раз в день (§5.3): платные заезды
+-- покупают попытку и очки на доске, а не ещё одну горсть предметов.
+CREATE TABLE IF NOT EXISTS line_rewards (
+  wallet      TEXT    NOT NULL,
+  day         INTEGER NOT NULL,
+  tier        TEXT    NOT NULL,             -- bronze | silver | gold
+  score       INTEGER NOT NULL,             -- за какой результат выдано
+  hints       INTEGER NOT NULL DEFAULT 0,
+  valve       INTEGER NOT NULL DEFAULT 0,
+  granted_at  INTEGER NOT NULL,
+  PRIMARY KEY (wallet, day)
+);
 `;
 
 /** Tables that are pure functions of events_raw (dropped + replayed by `rebuild`). */

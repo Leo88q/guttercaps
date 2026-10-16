@@ -16,6 +16,9 @@ export const API_ERROR_KEYS = {
   wrong_district: 'failures.requestInvalid', contract_locked: 'failures.requestInvalid', contract_done: 'failures.requestInvalid',
   deep_no_hints: 'failures.requestInvalid', deep_attempts_exhausted: 'failures.requestInvalid', ghost_no_hints: 'failures.requestInvalid',
   use_grid_endpoint: 'failures.requestInvalid', cg_burn_required: 'failures.paymentPayload', deep_credit_cap: 'failures.requestInvalid',
+  // §5.1 линия: реплей, день и попытки.
+  bad_replay: 'failures.requestInvalid', bad_day: 'failures.requestInvalid',
+  use_line_endpoint: 'failures.requestInvalid', runs_exhausted: 'failures.lineRunsExhausted', run_credit_cap: 'failures.lineCreditCap',
   prestige_no_hints: 'failures.requestInvalid', prestige_locked: 'failures.requestInvalid', prestige_maxed: 'failures.requestInvalid',
   bad_squad: 'failures.threeSquad', bad_tier: 'failures.staking_InvalidTier', chain_fulfilled: 'failures.chainFulfilled',
   chip_busy: 'failures.arena_ChipBusy', collection_mismatch: 'failures.collectionMismatch', commit_mismatch: 'failures.commitMismatch',

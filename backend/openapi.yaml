@@ -29,6 +29,7 @@ tags:
   - { name: quests }
   - { name: leaderboard }
   - { name: services }
+  - { name: line, description: 'The Line — daily runs down the bowl (docs/16 §5)' }
   - { name: admin }
 security:
   - cookieAuth: []
@@ -275,6 +276,80 @@ paths:
         '200': { description: the achievement as stored, content: { application/json: { schema: { $ref: '#/components/schemas/AchievementClaim' } } } }
         '400': { description: 'unknown_achievement — no such id' }
         '409': { description: 'not_earned (target not reached) · already_claimed · set_not_completed (a banner needs a finished district)' }
+  /me/line:
+    get:
+      tags: [me]
+      summary: 'The Line (docs/16 §5.1): today’s bowl, runs left, today’s best and what it paid'
+      description: |
+        The layout is not sent: it is a pure function of `day` (same seed for everyone, computed by the
+        shared `lineLayout` in packages/economy). The client builds it locally and compares `seed` — if it
+        differs, the client is playing a different bowl than the server will verify against.
+      responses:
+        '200': { description: state, content: { application/json: { schema: { $ref: '#/components/schemas/LineState' } } } }
+  /me/line/runs:
+    post:
+      tags: [me]
+      summary: 'Submit a replay (docs/16 §5.1–5.2) — the server replays it and keeps only its own score'
+      description: |
+        The body carries the replay (a list of `[tick, action]` inputs) and nothing else that matters:
+        any score the client sends is ignored. The server rebuilds the day's layout from the day index and
+        re-runs the same simulation the client played, so a client that lies about its timing simply
+        scores what its inputs are worth. Three runs a day are free; later ones need a credit bought for
+        30 $CG (burned, `POST /me/line/runs/buy`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [day, inputs]
+              properties:
+                day: { type: integer, description: 'unix day index (today, or yesterday for a run started before midnight)' }
+                inputs: { $ref: '#/components/schemas/LineReplay' }
+      responses:
+        '200': { description: the run as stored, content: { application/json: { schema: { $ref: '#/components/schemas/RunSubmit' } } } }
+        '400': { description: 'bad_day (not today) · bad_replay (malformed, too long, tick out of range, unknown action)' }
+        '402': { description: 'runs_exhausted — no free runs left and no credit' }
+        '409': { description: 'run_credit_cap — the daily paid-run cap is reached' }
+  /me/line/runs/buy:
+    post:
+      tags: [me]
+      summary: 'Buy one extra run for 30 $CG (docs/16 §5.1) — $CG only, every coin is burned'
+      description: |
+        Same settlement as a Deep Flood attempt: the on-chain `pay_service` of kind `lineExtraRun` is
+        found by signature, must be $CG and exactly 30 $CG, and is consumed exactly once. Other rails buy
+        nothing here — the point of the price is the burn, not the revenue.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [day, signature]
+              properties:
+                day: { type: integer }
+                signature: { type: string, description: 'transaction signature of the on-chain pay_service' }
+      responses:
+        '200': { description: credits, content: { application/json: { schema: { type: object, properties: { day: { type: integer }, credits: { type: integer } } } } } }
+        '402': { description: 'payment_not_found · cg_burn_required (not $CG, or not exactly 30 $CG) · ref_hash_mismatch · payment_consumed' }
+        '409': { description: 'run_credit_cap — the daily paid-run cap is reached' }
+  /me/line/runs/{id}/replay:
+    get:
+      tags: [me]
+      summary: 'Own replay for re-watching (docs/16 §5.2) — inputs are wiped after 14 days, score stays'
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: replay, content: { application/json: { schema: { $ref: '#/components/schemas/RunReplay' } } } }
+        '404': { description: 'no such run for this wallet' }
+  /line/leaderboard:
+    get:
+      tags: [line]
+      summary: 'Week’s board (docs/16 §5.5): best run per wallet this week'
+      parameters:
+        - { name: week, in: query, required: false, schema: { type: integer, minimum: 0 }, description: 'week index; defaults to the current one' }
+      responses:
+        '200': { description: board, content: { application/json: { schema: { $ref: '#/components/schemas/LineBoard' } } } }
   /me/services:
     get:
       tags: [me]
@@ -2106,6 +2181,92 @@ components:
         theme: { type: string, nullable: true }
         collection: { type: string, nullable: true, description: "'firstCompleted' — the district is taken from progress, not from config" }
         n: { type: integer, nullable: true, description: 'for `hints`: how many (capped by the normal hint stock)' }
+    LineState:
+      type: object
+      required: [day, week, seed, ticks, length, freeRunsPerDay, freeLeft, paidLeft, runsToday, bestToday, tierToday, rewardsToday, bestWeek, extraRunCgMicro]
+      properties:
+        day: { type: integer, description: 'unix day index — the layout is a pure function of it' }
+        week: { type: integer }
+        seed: { type: integer, description: 'layout seed; the client must build the same bowl' }
+        ticks: { type: integer }
+        length: { type: integer }
+        freeRunsPerDay: { type: integer }
+        freeLeft: { type: integer }
+        paidLeft: { type: integer }
+        runsToday: { type: integer }
+        bestToday: { type: integer }
+        tierToday: { type: string, enum: [none, bronze, silver, gold] }
+        rewardsToday:
+          type: object
+          required: [passXp, hints, valve]
+          properties: { passXp: { type: integer }, hints: { type: integer }, valve: { type: integer } }
+        bestWeek: { type: integer }
+        extraRunCgMicro: { type: integer, description: 'price of one extra run in micro-$CG (burned)' }
+    LineReplay:
+      type: array
+      description: 'The whole input: [tick, action] pairs, action 0 = hop, 1 = grab'
+      maxItems: 400
+      items:
+        type: array
+        minItems: 2
+        maxItems: 2
+        items: { type: integer }
+    RunSubmit:
+      type: object
+      required: [run, granted, state]
+      properties:
+        run: { $ref: '#/components/schemas/RunRow' }
+        granted:
+          type: object
+          required: [passXp, hints, valve, tier]
+          properties:
+            passXp: { type: integer }
+            hints: { type: integer }
+            valve: { type: integer }
+            tier: { type: string, enum: [none, bronze, silver, gold] }
+        state: { $ref: '#/components/schemas/LineState' }
+    RunRow:
+      type: object
+      required: [id, day, week, score, tricks, bestCombo, bails, paid, tier, submittedAt]
+      properties:
+        id: { type: integer }
+        day: { type: integer }
+        week: { type: integer }
+        score: { type: integer }
+        tricks: { type: integer }
+        bestCombo: { type: integer }
+        bails: { type: integer }
+        paid: { type: boolean }
+        tier: { type: string, enum: [none, bronze, silver, gold] }
+        submittedAt: { type: string, format: date-time }
+    RunReplay:
+      type: object
+      required: [id, day, seed, score, inputs]
+      properties:
+        id: { type: integer }
+        day: { type: integer }
+        seed: { type: integer }
+        score: { type: integer }
+        inputs: { $ref: '#/components/schemas/LineReplay' }
+    LineBoard:
+      type: object
+      required: [week, rows]
+      properties:
+        week: { type: integer }
+        rows:
+          type: array
+          items:
+            type: object
+            required: [rank, wallet, score, tricks, bails, runId, at]
+            properties:
+              rank: { type: integer }
+              wallet: { type: string }
+              handle: { type: string, nullable: true }
+              score: { type: integer }
+              tricks: { type: integer }
+              bails: { type: integer }
+              runId: { type: integer }
+              at: { type: string, format: date-time }
     AchievementClaim:
       allOf:
         - { $ref: '#/components/schemas/Achievement' }

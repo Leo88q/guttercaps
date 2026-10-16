@@ -213,5 +213,7 @@
   "missingAsset": "Choose which chip should receive the XP.",
   "chipNotFound": "This chip is not in your wallet (or is no longer live).",
   "themeNotOwned": "This theme is not yours yet — buy it in the shop, then wear it.",
-  "achievementNotEarned": "Not earned yet — the achievement counter has not reached its target."
+  "achievementNotEarned": "Not earned yet — the achievement counter has not reached its target.",
+  "lineRunsExhausted": "Free runs are over for today — an extra one costs 30 $CG (burned).",
+  "lineCreditCap": "That is the daily cap on paid runs."
 }

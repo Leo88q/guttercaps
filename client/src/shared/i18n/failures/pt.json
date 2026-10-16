@@ -213,5 +213,7 @@
   "missingAsset": "Escolha qual tampinha deve receber o XP.",
   "chipNotFound": "Esta tampinha não está na sua carteira (ou não está mais ativa).",
   "themeNotOwned": "Este tema ainda não é seu: compre na loja e depois use.",
-  "achievementNotEarned": "Ainda não conquistado: o contador não chegou ao alvo."
+  "achievementNotEarned": "Ainda não conquistado: o contador não chegou ao alvo.",
+  "lineRunsExhausted": "As corridas grátis de hoje acabaram: uma extra custa 30 $CG (queimados).",
+  "lineCreditCap": "Esse é o limite diário de corridas pagas."
 }

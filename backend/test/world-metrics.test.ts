@@ -399,3 +399,51 @@ describe('worldMetrics — реванш после проигрыша (§12 ст
     expect(r.delta).toBeNull();
   });
 });
+
+describe('worldMetrics — заезды (§5.1)', () => {
+  /** Заезд в окне отчёта: `t` и `submitted_at` — unix-секунды, как везде в бэке. */
+  function seedRun(db: Db, wallet: string, t: number, day: number) {
+    db.run(`INSERT INTO line_runs (wallet, day, week, seed, inputs, score, tricks, best_combo, bails, paid, submitted_at, replay_ttl)
+            VALUES (?, ?, ?, ?, '[]', 1200, 4, 3, 0, 0, ?, 0)`, wallet, day, Math.floor(day / 7), 1, t);
+  }
+
+  it('заезды считаются на кошелёк: сколько ездил и сколько дней доезжал до трёх', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const rider = kp();
+    const plain = kp();
+    for (const w of [rider, plain]) for (let i = 0; i < 5; i++) db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, w, Math.floor(t / DAY) - i);
+    const day = Math.floor(t / DAY);
+    // Два полных дня по три заезда и один неполный: строка §12 мерит «≥3 заезда в день».
+    for (let i = 0; i < 3; i++) seedRun(db, rider, t - DAY, day - 1);
+    for (let i = 0; i < 3; i++) seedRun(db, rider, t - 2 * DAY, day - 2);
+    for (let i = 0; i < 2; i++) seedRun(db, rider, t - 3 * DAY, day - 3);
+
+    expect(cohortReport(db, 'line', { windowDays: 30 }, t).cohort.wallets).toBe(0); // события нет — когорты нет
+    recordEvent(db, rider, 'line', 'run', { score: 1200, tier: 'bronze' }, t - DAY);
+
+    const r = cohortReport(db, 'line', { windowDays: 30 }, t);
+    expect(r.cohort.wallets).toBe(1);
+    expect(r.cohort.runsPerWallet).toBe(8);   // 3 + 3 + 2
+    expect(r.cohort.runDaysPerWallet).toBe(2); // только полные дни
+    expect(r.baseline.runsPerWallet).toBe(0);
+  });
+
+  it('заезд за окном отчёта не считается', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const w = kp();
+    recordEvent(db, w, 'line', 'run', { score: 900 }, t - DAY); // событие внутри окна: `to` не входит
+    seedRun(db, w, t - 40 * DAY, Math.floor(t / DAY) - 40);
+    seedRun(db, w, t - 1, Math.floor(t / DAY)); // строго внутри окна: `to` не входит
+    const r = cohortReport(db, 'line', { windowDays: 30 }, t);
+    expect(r.cohort.runsPerWallet).toBe(1); // только сегодняшний
+  });
+
+  it('линия есть в сводном отчёте наравне с остальными фичами', () => {
+    const db = new Db(':memory:');
+    const r = worldReport(db, 7);
+    expect(r.features.map((f) => f.feature)).toEqual([...WORLD_FEATURES]);
+    expect(r.features.map((f) => f.feature)).toContain('line');
+  });
+});

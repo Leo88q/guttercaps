@@ -2,7 +2,7 @@ import { isRightsPath, mockRights } from './rights';
 // Deterministic in-browser backend used when VITE_API_MOCK=true or when the
 // real API is unreachable in dev. Data is derived from @guttercaps/economy
 // and shared/lib/lore so what you see matches the modelled numbers.
-import { ACHIEVEMENTS, BOOSTER, CHIP_XP, DAILY_QUESTS, EMISSION_GUARD, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, FEES, FUSION_RECIPES, FX, GRID, GRID as GRID_RULES, LOCK_TIERS, MATCHMAKING, PACKS, PASS_TRACK, PERMANENT_QUESTS, PROFILE_THEME_BY_ID, RARITY_PROFILES, REFERRAL, SEASON, SERVICES, SKIN_BY_ID, WEEKLY_QUESTS, applyRotate, bundlePriceCents, effectiveOdds, generateLevel, gridBaseXp, gridStarsForMoves, gridXpForStars, impliedApy, isSolved, levelSeed, packExpectedValueMult, passTierForXp, probabilityAtLeast, skrMicroForUsdCents, solLamportsForUsdCents, type PackId, usdCentsFromSolLamports, usdcMicroForUsdCents, xpToNext } from '@guttercaps/economy';
+import { ACHIEVEMENTS, BOOSTER, CHIP_XP, DAILY_QUESTS, LINE, EMISSION_GUARD, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, FEES, FUSION_RECIPES, FX, GRID, GRID as GRID_RULES, LOCK_TIERS, MATCHMAKING, PACKS, PASS_TRACK, PERMANENT_QUESTS, PROFILE_THEME_BY_ID, RARITY_PROFILES, REFERRAL, SEASON, SERVICES, SKIN_BY_ID, WEEKLY_QUESTS, applyRotate, bundlePriceCents, lineLayout, lineSeed, lineTier, runPassXp, simulateRun, effectiveOdds, generateLevel, gridBaseXp, gridStarsForMoves, gridXpForStars, impliedApy, isSolved, levelSeed, packExpectedValueMult, passTierForXp, probabilityAtLeast, skrMicroForUsdCents, solLamportsForUsdCents, type PackId, usdCentsFromSolLamports, usdcMicroForUsdCents, xpToNext } from '@guttercaps/economy';
 import { PYTH_PRICE_ACCOUNTS } from '@/chain/ids';
 import { COLLECTIONS } from '@/shared/lib/lore';
 import { ApiError, type RequestOpts } from '../client';
@@ -421,6 +421,10 @@ export function resetMockWorld() {
   mockReports.length = 0;
   mockAchieved.clear();
   mockAchAt.clear();
+  mockLineRuns.length = 0;
+  mockLineCredits = 0;
+  mockLineReward = null;
+  mockLineXp = { day: lineDay(), xp: 0 };
 }
 
 on('get', '/wall/{district}', (_o, params) => mockWallView(Number(params.district)));
@@ -589,6 +593,113 @@ on('post', '/me/achievements/{id}/claim', (_o, params) => {
   mockAchAt.set(id, Math.floor(Date.now() / 1000));
   achGrant(a);
   return achView(a);
+});
+
+// ---------------------------------------------------------- линия (docs/16 §5.1)
+// Мок считает заезд той же функцией, что продакшен: реплей введён — очки
+// посчитаны переигрыванием. Иначе демо врало бы о единственном, что в заезде
+// важно: очки считает сервер, а не клиент.
+const lineDay = () => Math.floor(Date.now() / 86_400_000);
+interface MockRun { id: number; wallet: string; day: number; week: number; seed: number; inputs: [number, number][]; score: number; tricks: number; bestCombo: number; bails: number; paid: number; at: number }
+const mockLineRuns: MockRun[] = [];
+let mockLineCredits = 0;
+let mockLineReward: { day: number; tier: string; score: number; hints: number; valve: number } | null = null;
+let mockLineXp: { day: number; xp: number } = { day: lineDay(), xp: 0 };
+/** Чужая езда на доске недели: та же раскладка дня, другие руки. */
+const mockLineBoard = Array.from({ length: 11 }, (_, i) => ({
+  wallet: fakeKey(), handle: pick(['moth_king', 'railqueen', 'drain0', 'sk8_or_die', 'noise_boy', 'inkslinger', 'brakeless99', 'pixelbsmt', 'gutterbeast', 'citymyth', 'coping_cat']),
+  score: 3200 - i * 190 - Math.floor(rnd() * 90), tricks: 16 - Math.floor(i / 2), bails: i % 3,
+}));
+const lineRewardOf = (day: number, score: number) => {
+  const tier = lineTier(score);
+  if (tier === 'none') return { tier, hints: 0, valve: 0 };
+  const prev = mockLineReward && mockLineReward.day === day ? mockLineReward : null;
+  const order = { none: 0, bronze: 1, silver: 2, gold: 3 } as const;
+  if (prev && order[tier] <= order[prev.tier as keyof typeof order]) return { tier, hints: 0, valve: 0 };
+  const reward = tier === 'gold' ? { hints: 1, valve: 1 } : tier === 'silver' ? { hints: 1, valve: 0 } : { hints: 0, valve: 0 };
+  mockLineReward = { day, tier, score, ...reward };
+  return { tier, ...reward };
+};
+const lineStateView = () => {
+  const day = lineDay();
+  const mine = mockLineRuns.filter((r) => r.day === day);
+  const best = mine.reduce((m, r) => Math.max(m, r.score), 0);
+  return {
+    day, week: Math.floor(day / 7), seed: lineSeed(day), ticks: LINE.runSeconds * LINE.tickHz,
+    length: LINE.trackLength, freeRunsPerDay: LINE.freeRunsPerDay,
+    freeLeft: Math.max(0, LINE.freeRunsPerDay - mine.filter((r) => !r.paid).length),
+    paidLeft: Math.max(0, LINE.maxPaidRunsPerDay - mine.filter((r) => r.paid).length),
+    runsToday: mine.length, bestToday: best, tierToday: lineTier(best),
+    rewardsToday: {
+      passXp: mockLineXp.day === day ? mockLineXp.xp : 0,
+      hints: mockLineReward?.day === day ? mockLineReward.hints : 0,
+      valve: mockLineReward?.day === day ? mockLineReward.valve : 0,
+    },
+    bestWeek: mockLineRuns.filter((r) => r.week === Math.floor(day / 7)).reduce((m, r) => Math.max(m, r.score), 0),
+    extraRunCgMicro: LINE.extraRunCgMicro,
+  };
+};
+on('get', '/me/line', () => lineStateView());
+on('post', '/me/line/runs', (o) => {
+  const b = (o.body ?? {}) as { day?: number; inputs?: unknown };
+  const day = Number(b.day);
+  const today = lineDay();
+  if (!Number.isInteger(day) || day > today || day < today - 1) throw new ApiError(400, 'bad_day', `day must be today (${today}) or yesterday`);
+  const raw = Array.isArray(b.inputs) ? b.inputs : [];
+  if (raw.length > LINE.maxInputs) throw new ApiError(400, 'bad_replay', `At most ${LINE.maxInputs} inputs per run`);
+  const inputs: [number, number][] = raw.map((i) => {
+    const pair = Array.isArray(i) ? i : [];
+    const tick = Number(pair[0]); const action = Number(pair[1]);
+    if (!Number.isInteger(tick) || tick < 0 || tick >= LINE.runSeconds * LINE.tickHz || (action !== 0 && action !== 1)) {
+      throw new ApiError(400, 'bad_replay', 'inputs must be [tick, 0|1]');
+    }
+    return [tick, action] as [number, number];
+  });
+  const st = lineStateView();
+  let paid = 0;
+  if (st.freeLeft > 0) paid = 0;
+  else if (mockLineCredits > 0 && st.paidLeft > 0) { mockLineCredits -= 1; paid = 1; }
+  else throw new ApiError(402, 'runs_exhausted', 'Free runs are over for today — buy an extra one (30 $CG, burned)');
+  const res = simulateRun(lineLayout(day), inputs.map(([tick, action]) => ({ tick, action: action === 1 ? 1 : 0 })));
+  const run: MockRun = {
+    id: mockLineRuns.length + 1, wallet: ME, day, week: Math.floor(day / 7), seed: lineSeed(day), inputs,
+    score: res.score, tricks: res.tricks, bestCombo: res.bestCombo, bails: res.bails, paid, at: Math.floor(Date.now() / 1000),
+  };
+  mockLineRuns.push(run);
+  const xp = runPassXp(res.score);
+  if (mockLineXp.day !== day) mockLineXp = { day, xp: 0 };
+  mockLineXp.xp += xp;
+  const items = lineRewardOf(day, res.score);
+  return {
+    run: { id: run.id, day: run.day, week: run.week, score: run.score, tricks: run.tricks, bestCombo: run.bestCombo, bails: run.bails, paid: run.paid === 1, tier: lineTier(run.score), submittedAt: iso() },
+    granted: { passXp: xp, hints: items.hints, valve: items.valve, tier: items.tier },
+    state: lineStateView(),
+  };
+});
+on('post', '/me/line/runs/buy', (o) => {
+  const b = (o.body ?? {}) as { day?: number; signature?: string };
+  const day = Number(b.day);
+  const today = lineDay();
+  if (!Number.isInteger(day) || day > today || day < today - 1) throw new ApiError(400, 'bad_day', `day must be today (${today}) or yesterday`);
+  if (typeof b.signature !== 'string' || b.signature.length < 32) throw new ApiError(402, 'payment_not_found', 'No ServicePaid event from this wallet in that transaction');
+  if (lineStateView().paidLeft <= 0) throw new ApiError(409, 'run_credit_cap', `At most ${LINE.maxPaidRunsPerDay} paid runs per day`);
+  mockLineCredits += 1;
+  return { day, credits: mockLineCredits };
+});
+on('get', '/me/line/runs/{id}/replay', (_o, p) => {
+  const run = mockLineRuns.find((r) => r.id === Number(p.id));
+  if (!run) throw new ApiError(404, 'not_found', 'No such run');
+  return { id: run.id, day: run.day, seed: run.seed, score: run.score, inputs: run.inputs };
+});
+on('get', '/line/leaderboard', (o) => {
+  const week = Number((o.query as { week?: unknown } | undefined)?.week);
+  const w = Number.isFinite(week) && week > 0 ? Math.floor(week) : Math.floor(lineDay() / 7);
+  const mine = mockLineRuns.filter((r) => r.week === w);
+  const best = mine.length
+    ? { wallet: ME, handle: mockHandle, score: Math.max(...mine.map((r) => r.score)), tricks: Math.max(...mine.map((r) => r.tricks)), bails: Math.min(...mine.map((r) => r.bails)), runId: mine[0].id }
+    : null;
+  const rows = [...(best ? [best] : []), ...mockLineBoard].sort((a, b) => b.score - a.score).slice(0, 50).map((r, i) => ({ ...r, rank: i + 1, at: iso() }));
+  return { week: w, rows };
 });
 
 on('get', '/rig/{wallet}', (_o, params) => {

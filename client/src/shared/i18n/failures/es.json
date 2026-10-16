@@ -213,5 +213,7 @@
   "missingAsset": "Elige qué gorra debe recibir el XP.",
   "chipNotFound": "Esta gorra no está en tu cartera (o ya no está activa).",
   "themeNotOwned": "Este tema aún no es tuyo: cómpralo en la tienda y luego úsalo.",
-  "achievementNotEarned": "Aún no se ha ganado: el contador del logro no llegó al objetivo."
+  "achievementNotEarned": "Aún no se ha ganado: el contador del logro no llegó al objetivo.",
+  "lineRunsExhausted": "Los intentos gratis de hoy se acabaron: uno extra cuesta 30 $CG (quemados).",
+  "lineCreditCap": "Ese es el límite diario de carreras de pago."
 }

@@ -825,6 +825,269 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/line": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The Line (docs/16 §5.1): today’s bowl, runs left, today’s best and what it paid
+         * @description The layout is not sent: it is a pure function of `day` (same seed for everyone, computed by the
+         *     shared `lineLayout` in packages/economy). The client builds it locally and compares `seed` — if it
+         *     differs, the client is playing a different bowl than the server will verify against.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description state */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LineState"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/line/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit a replay (docs/16 §5.1–5.2) — the server replays it and keeps only its own score
+         * @description The body carries the replay (a list of `[tick, action]` inputs) and nothing else that matters:
+         *     any score the client sends is ignored. The server rebuilds the day's layout from the day index and
+         *     re-runs the same simulation the client played, so a client that lies about its timing simply
+         *     scores what its inputs are worth. Three runs a day are free; later ones need a credit bought for
+         *     30 $CG (burned, `POST /me/line/runs/buy`).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description unix day index (today, or yesterday for a run started before midnight) */
+                        day: number;
+                        inputs: components["schemas"]["LineReplay"];
+                    };
+                };
+            };
+            responses: {
+                /** @description the run as stored */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RunSubmit"];
+                    };
+                };
+                /** @description bad_day (not today) · bad_replay (malformed, too long, tick out of range, unknown action) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description runs_exhausted — no free runs left and no credit */
+                402: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description run_credit_cap — the daily paid-run cap is reached */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/line/runs/buy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Buy one extra run for 30 $CG (docs/16 §5.1) — $CG only, every coin is burned
+         * @description Same settlement as a Deep Flood attempt: the on-chain `pay_service` of kind `lineExtraRun` is
+         *     found by signature, must be $CG and exactly 30 $CG, and is consumed exactly once. Other rails buy
+         *     nothing here — the point of the price is the burn, not the revenue.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        day: number;
+                        /** @description transaction signature of the on-chain pay_service */
+                        signature: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description credits */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            day?: number;
+                            credits?: number;
+                        };
+                    };
+                };
+                /** @description payment_not_found · cg_burn_required (not $CG, or not exactly 30 $CG) · ref_hash_mismatch · payment_consumed */
+                402: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description run_credit_cap — the daily paid-run cap is reached */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/line/runs/{id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Own replay for re-watching (docs/16 §5.2) — inputs are wiped after 14 days, score stays */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description replay */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RunReplay"];
+                    };
+                };
+                /** @description no such run for this wallet */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/line/leaderboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Week’s board (docs/16 §5.5): best run per wallet this week */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description week index; defaults to the current one */
+                    week?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description board */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LineBoard"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/services": {
         parameters: {
             query?: never;
@@ -7018,6 +7281,78 @@ export interface components {
             collection?: string | null;
             /** @description for `hints`: how many (capped by the normal hint stock) */
             n?: number | null;
+        };
+        LineState: {
+            /** @description unix day index — the layout is a pure function of it */
+            day: number;
+            week: number;
+            /** @description layout seed; the client must build the same bowl */
+            seed: number;
+            ticks: number;
+            length: number;
+            freeRunsPerDay: number;
+            freeLeft: number;
+            paidLeft: number;
+            runsToday: number;
+            bestToday: number;
+            /** @enum {string} */
+            tierToday: "none" | "bronze" | "silver" | "gold";
+            rewardsToday: {
+                passXp: number;
+                hints: number;
+                valve: number;
+            };
+            bestWeek: number;
+            /** @description price of one extra run in micro-$CG (burned) */
+            extraRunCgMicro: number;
+        };
+        /** @description The whole input: [tick, action] pairs, action 0 = hop, 1 = grab */
+        LineReplay: number[][];
+        RunSubmit: {
+            run: components["schemas"]["RunRow"];
+            granted: {
+                passXp: number;
+                hints: number;
+                valve: number;
+                /** @enum {string} */
+                tier: "none" | "bronze" | "silver" | "gold";
+            };
+            state: components["schemas"]["LineState"];
+        };
+        RunRow: {
+            id: number;
+            day: number;
+            week: number;
+            score: number;
+            tricks: number;
+            bestCombo: number;
+            bails: number;
+            paid: boolean;
+            /** @enum {string} */
+            tier: "none" | "bronze" | "silver" | "gold";
+            /** Format: date-time */
+            submittedAt: string;
+        };
+        RunReplay: {
+            id: number;
+            day: number;
+            seed: number;
+            score: number;
+            inputs: components["schemas"]["LineReplay"];
+        };
+        LineBoard: {
+            week: number;
+            rows: {
+                rank: number;
+                wallet: string;
+                handle?: string | null;
+                score: number;
+                tricks: number;
+                bails: number;
+                runId: number;
+                /** Format: date-time */
+                at: string;
+            }[];
         };
         AchievementClaim: components["schemas"]["Achievement"] & {
             granted?: {

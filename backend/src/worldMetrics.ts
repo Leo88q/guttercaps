@@ -25,7 +25,11 @@ const DAY = 86_400;
 const iso = (s: number) => new Date(s * 1000).toISOString();
 
 /** Признаки, о которых мы умеем считать когорты (ровно то, что перечислено в §12). */
-export const WORLD_FEATURES = ['wall', 'exhibit', 'tag', 'inspect', 'rider', 'achievement'] as const;
+/**
+ * Фичи мира, у которых есть когорта в отчёте. `line` (§5.1) — заезды: доля
+ * игроков с ≥3 заездами в день и сток $CG на платных заездах.
+ */
+export const WORLD_FEATURES = ['wall', 'exhibit', 'tag', 'inspect', 'rider', 'achievement', 'line'] as const;
 
 /** Порог флипа (docs/16 §2.1) — редкость, начиная с которой дроп считается «редким». */
 export const EPIC_PLUS = 5;
@@ -55,7 +59,7 @@ export interface Repeat24h {
   delta: number | null;
 }
 
-interface GroupRow { n: number; packs: number; trades: number; fusions: number; logins: number; stakes: number; refs: number; services: number }
+interface GroupRow { n: number; packs: number; trades: number; fusions: number; logins: number; stakes: number; refs: number; services: number; runs: number; rundays: number }
 
 export interface CohortStats {
   wallets: number;
@@ -73,6 +77,13 @@ export interface CohortStats {
    * контур не покрывают: косметика продаётся отдельно.
    */
   servicesPerWallet: number;
+  /**
+   * Заездов линии на кошелёк и дней с тремя заездами на кошелёк (§5.1, строка
+   * §12). Дельты по ним в отчёте нет и быть не может: базовая линия набрана так,
+   * что линии не касалась, — сравнивать 8 с 0 значит мерить когорту, а не эффект.
+   */
+  runsPerWallet: number;
+  runDaysPerWallet: number;
 }
 
 export interface CohortReport {
@@ -94,7 +105,7 @@ const ratio = (a: number, b: number): number | null => (b > 0 ? round(a / b - 1)
 const delta = (wallets: number, a: number, b: number): number | null => (wallets > 0 ? ratio(a, b) : null);
 
 function empty(): CohortStats {
-  return { wallets: 0, packsPerWallet: 0, tradesPerWallet: 0, fusionsPerWallet: 0, loginDaysPerWallet: 0, stakedCapsPerWallet: 0, referralsPerWallet: 0, servicesPerWallet: 0 };
+  return { wallets: 0, packsPerWallet: 0, tradesPerWallet: 0, fusionsPerWallet: 0, loginDaysPerWallet: 0, stakedCapsPerWallet: 0, referralsPerWallet: 0, servicesPerWallet: 0, runsPerWallet: 0, runDaysPerWallet: 0 };
 }
 
 function statsOf(row: GroupRow | undefined): CohortStats {
@@ -108,6 +119,8 @@ function statsOf(row: GroupRow | undefined): CohortStats {
     stakedCapsPerWallet: round(row.stakes / row.n),
     referralsPerWallet: round(row.refs / row.n),
     servicesPerWallet: round(row.services / row.n),
+    runsPerWallet: round(row.runs / row.n),
+    runDaysPerWallet: round(row.rundays / row.n),
   };
 }
 
@@ -126,7 +139,9 @@ function group(db: Db, members: string, memberParams: (string | number)[], from:
            COALESCE(SUM(logins), 0) logins,
            COALESCE(SUM(stakes), 0) stakes,
            COALESCE(SUM(refs), 0) refs,
-           COALESCE(SUM(services), 0) services
+           COALESCE(SUM(services), 0) services,
+           COALESCE(SUM(runs), 0) runs,
+           COALESCE(SUM(rundays), 0) rundays
       FROM (
         SELECT w.wallet,
                (SELECT COUNT(*) FROM pack_purchases p WHERE p.buyer = w.wallet AND COALESCE(p.block_time, 0) >= ? AND COALESCE(p.block_time, 0) < ?) packs,
@@ -135,12 +150,15 @@ function group(db: Db, members: string, memberParams: (string | number)[], from:
                (SELECT COUNT(*) FROM quest_logins l WHERE l.wallet = w.wallet AND l.day >= ? AND l.day <= ?) logins,
                (SELECT COUNT(*) FROM stakes k WHERE k.owner = w.wallet AND k.active = 1) stakes,
                (SELECT COUNT(*) FROM wallets r WHERE r.referrer = w.wallet AND COALESCE(r.first_seen, 0) >= ? AND COALESCE(r.first_seen, 0) < ?) refs,
-               (SELECT COUNT(*) FROM service_payments sp WHERE sp.buyer = w.wallet AND COALESCE(sp.block_time, 0) >= ? AND COALESCE(sp.block_time, 0) < ?) services
+               (SELECT COUNT(*) FROM service_payments sp WHERE sp.buyer = w.wallet AND COALESCE(sp.block_time, 0) >= ? AND COALESCE(sp.block_time, 0) < ?) services,
+               (SELECT COUNT(*) FROM line_runs lr WHERE lr.wallet = w.wallet AND lr.submitted_at >= ? AND lr.submitted_at < ?) runs,
+               (SELECT COUNT(*) FROM (SELECT lr2.day FROM line_runs lr2 WHERE lr2.wallet = w.wallet AND lr2.submitted_at >= ? AND lr2.submitted_at < ? GROUP BY lr2.day HAVING COUNT(*) >= 3)) rundays
           FROM (${members}) w
       )`;
   // Порядок биндинга — по порядку появления в тексте: сначала коррелированные
-  // подзапросы в SELECT, потом параметры подзапроса-членства в FROM.
-  return db.get<GroupRow>(sql, from, to, from, to, from, to, dayFrom, dayTo, from, to, from, to, ...memberParams);
+  // подзапросы в SELECT, потом параметры подзапроса-членства в FROM. Окно здесь
+  // в секундах, как и `line_runs.submitted_at`, — переводить нечего.
+  return db.get<GroupRow>(sql, from, to, from, to, from, to, dayFrom, dayTo, from, to, from, to, from, to, from, to, ...memberParams);
 }
 
 /**

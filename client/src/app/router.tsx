@@ -19,6 +19,7 @@ const TagEditorRoute = lazy(() => import('@/features/bowl/TagEditor').then((m) =
 // только когда игрок пришёл на конкретную стену.
 const Wall = lazy(() => import('@/features/bowl/Wall'));
 const Board = lazy(() => import('@/features/bowl/Board'));
+const Line = lazy(() => import('@/features/bowl/Line'));
 const Rig = lazy(() => import('@/features/bowl/Rig'));
 const PublicRig = lazy(() => import('@/features/bowl/Rig').then((m) => ({ default: m.PublicRig })));
 const Shop = lazy(() => import('@/features/shop/Shop'));
@@ -81,6 +82,7 @@ export const routes: RouteObject[] = [
       { path: 'bowl/tag', element: S(<TagEditorRoute />) },
       { path: 'bowl/wall/:district', element: S(<Wall />) },
       { path: 'bowl/board', element: S(<Board />) }, // доска недели (docs/16 §3.7): жеребьёвка, а не рейтинг
+      { path: 'bowl/line', element: W(<Line />) }, // линия (docs/16 §5.1): чаша дня, три бесплатных заезда
       { path: 'bowl/rig', element: W(<Rig />) },
       { path: 'achievements', element: W(<Achievements />) }, // docs/16 §4.7: награды — косметика и предметы
       { path: 'rig/:wallet', element: S(<PublicRig />) }, // витрина (docs/16 §4.5): публичная, но 404, пока владелец её не включил
