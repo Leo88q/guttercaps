@@ -69,3 +69,11 @@
 @media (prefers-reduced-motion: reduce) {
   .wall-slot { transition: none; }
 }
+
+/* Доска недели: на телефоне — одна колонка, на широком — две. Карточка тянется
+   по ширине, тег внутри сохраняет пропорции 2:1, как на стене. */
+.board-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 720px) { .board-grid { grid-template-columns: 1fr 1fr; } }
+.board-card { padding: 12px; }
+.board-card .wall-preview { margin-bottom: 8px; }
+.board-card code { font-size: 11px; word-break: break-all; }

@@ -1578,6 +1578,20 @@ model PrivacyRestriction {
 }
 
 // Gutter Pot weekly raffle snapshot (oracle-settled; winners claim kind-9 template 4).
+/// Доска недели (docs/16 §3.7): жеребьёвка среди тегов, висящих на стенах, — не рейтинг.
+model WallBoardDraw {
+  week       Int    @id
+  drawnAt    Int    @map("drawn_at")
+  slot       Int
+  seedHex    String @map("seed_hex")
+  tagsHash   String @map("tags_hash")
+  candidates Int
+  winners    String // JSON [{tagId, wallet, district, slot}]
+  tickets    String // JSON всех кандидатов — снимок для пересчёта
+  @@index([drawnAt])
+  @@map("wall_board_draws")
+}
+
 model GutterPotDraw {
   week         Int    @id
   drawnAt      Int    @map("drawn_at")

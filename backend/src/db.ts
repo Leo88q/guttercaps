@@ -1171,6 +1171,22 @@ CREATE TABLE IF NOT EXISTS gutter_pot_draws (
 );
 CREATE INDEX IF NOT EXISTS idx_gutter_pot_drawn ON gutter_pot_draws(drawn_at);
 
+-- Доска недели (docs/16 §3.7): пять тегов города, выбранных жеребьёвкой, а не рейтингом.
+-- Розыгрыш замораживается на неделю: доска прошлой недели не переписывается от того,
+-- что автор потом снял тег или его скрыла модерация. Снимок кандидатов лежит рядом с
+-- сидом — доску можно пересчитать и сверить, как Gutter Pot.
+CREATE TABLE IF NOT EXISTS wall_board_draws (
+  week         INTEGER PRIMARY KEY,   -- weekIndex (Monday 00:00 UTC)
+  drawn_at     INTEGER NOT NULL,      -- unix s: когда доску впервые спросили на этой неделе
+  slot         INTEGER NOT NULL,      -- finalizedHorizon в момент розыгрыша, входит в сид
+  seed_hex     TEXT    NOT NULL,      -- sha256(wall-board:v1:week:slot:tagsHash:candidates)
+  tags_hash    TEXT    NOT NULL,      -- sha256 строк district:slot:tagId, отсортированных
+  candidates   INTEGER NOT NULL,      -- сколько тегов участвовало (может быть меньше пяти)
+  winners      TEXT    NOT NULL,      -- JSON [{tagId, wallet, district, slot}]
+  tickets      TEXT    NOT NULL       -- JSON всех кандидатов — снимок для пересчёта
+);
+CREATE INDEX IF NOT EXISTS idx_wall_board_drawn ON wall_board_draws(drawn_at);
+
 CREATE TABLE IF NOT EXISTS oracle_prices (
   symbol       TEXT PRIMARY KEY,           -- SOL | SKR
   usd          REAL    NOT NULL,

@@ -18,6 +18,7 @@ const TagEditorRoute = lazy(() => import('@/features/bowl/TagEditor').then((m) =
 // Стена района (docs/16 §3.4) — тот же ленивый принцип: 200 слотов тянутся
 // только когда игрок пришёл на конкретную стену.
 const Wall = lazy(() => import('@/features/bowl/Wall'));
+const Board = lazy(() => import('@/features/bowl/Board'));
 const Rig = lazy(() => import('@/features/bowl/Rig'));
 const PublicRig = lazy(() => import('@/features/bowl/Rig').then((m) => ({ default: m.PublicRig })));
 const Shop = lazy(() => import('@/features/shop/Shop'));
@@ -78,6 +79,7 @@ export const routes: RouteObject[] = [
       { path: 'bowl', element: S(<Bowl />) },
       { path: 'bowl/tag', element: S(<TagEditorRoute />) },
       { path: 'bowl/wall/:district', element: S(<Wall />) },
+      { path: 'bowl/board', element: S(<Board />) }, // доска недели (docs/16 §3.7): жеребьёвка, а не рейтинг
       { path: 'bowl/rig', element: W(<Rig />) },
       { path: 'rig/:wallet', element: S(<PublicRig />) }, // витрина (docs/16 §4.5): публичная, но 404, пока владелец её не включил
       { path: 'shop', element: S(<Shop />) },

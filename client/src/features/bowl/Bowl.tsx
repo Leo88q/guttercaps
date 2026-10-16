@@ -133,6 +133,10 @@ export default function Bowl() {
           <Link to="/bowl/wall/0" className="btn btn-sm btn-ghost">
             {t('bowl.openWall')}
           </Link>
+          {/* Доска недели: пять тегов города, выбранных жеребьёвкой. */}
+          <Link to="/bowl/board" className="btn btn-sm btn-ghost">
+            {t('board.title')}
+          </Link>
         </div>
       </section>
 

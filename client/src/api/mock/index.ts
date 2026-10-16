@@ -340,6 +340,27 @@ const mockWallView = (district: number) => {
     me: { activeDays: 7, activeDaysNeeded: 7, stakedCaps: 1, stakedCapsNeeded: 1, eligible: true, reason: null, mySlot: items.find((s) => s.wallet === ME)?.slot ?? null },
   };
 };
+// Доска недели: в моке город маленький, поэтому доска считается из той же стены,
+// что и экран стены — иначе витрина и стена в демо-режиме расходятся.
+on('get', '/wall/board', (o) => {
+  const week = o.query?.week === undefined ? undefined : Number(o.query.week);
+  const slots = [...mockWall].sort((a, b) => (a.district - b.district) || (a.slot - b.slot));
+  const items = slots.slice(0, 5).map((x) => ({ tagId: x.tagId, wallet: x.wallet, district: x.district, slot: x.slot }));
+  const lines = items.map((i) => `${i.district}:${i.slot}:${i.tagId}`).join('\n');
+  return {
+    week: week ?? Math.floor((Date.now() / 1000 - 4 * 86_400) / (7 * 86_400)),
+    weekStart: iso(0), weekEnd: iso(7 * 86_400), drawnAt: iso(0),
+    slot: 1, seedHex: '0'.repeat(64), tagsHash: lines ? `mock${lines.length}` : 'mock0',
+    candidates: slots.length, items,
+  };
+});
+// Сброс мок-мира между тестами: мок живёт в памяти модуля, а тестам нужен
+// город, в котором стена пустая — иначе «пустая доска» унаследует чужие теги.
+export function resetMockWorld() {
+  mockWall.length = 0;
+  mockTags.length = 0;
+}
+
 on('get', '/wall/{district}', (_o, params) => mockWallView(Number(params.district)));
 on('post', '/wall/{district}/claim', (o, params) => {
   const district = Number(params.district);

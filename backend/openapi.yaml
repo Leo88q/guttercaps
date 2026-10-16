@@ -366,6 +366,38 @@ paths:
       responses:
         '200': { description: appeal recorded, content: { application/json: { schema: { $ref: '#/components/schemas/Tag' } } } }
         '409': { $ref: '#/components/responses/Error', description: 'not_hidden — only a hidden tag can be appealed' }
+  /wall/board:
+    get:
+      tags: [wall]
+      security: []
+      summary: The board of the week — five tags from across the city, drawn, not ranked
+      description: |
+        Five tags picked by a draw, not by a rating. A rating on user content is a contest for a
+        score, and here the score would be set by the report button — so reports are a *filter*, not
+        a minus: a report the moderator confirmed (`hidden` / `removed`) keeps the tag off the board
+        this week, an unresolved report changes nothing at all. An accusation is not a verdict, and
+        that is precisely why pressing "report" cannot move anyone's place.
+
+        Candidates are the tags hanging on a wall live at draw time, minus any tag that was already
+        on the board in the last four weeks (a soft rule: if the city is too small to fill the board
+        without repeats, repeats are allowed — an empty showcase is worse). The draw itself is
+        unweighted and without replacement; a tag has no weight, only a stake does, and stakes are
+        not involved.
+
+        Seed: `sha256(wall-board:v1:week:slot:tagsHash:candidates)`, where `slot` is the finalized
+        horizon at draw time and `tagsHash` is the sha256 of the sorted `district:slot:tagId` lines.
+        The board is frozen for the week — a tag taken down later does not rewrite Monday's board —
+        and both the seed and the full candidate snapshot are returned, so anyone can recompute the
+        five. Without `week` this is the current week, drawn lazily on first read.
+      parameters:
+        - name: week
+          in: query
+          required: false
+          description: week index (Monday 00:00 UTC); omit for the current week
+          schema: { type: integer, minimum: 0 }
+      responses:
+        '200': { description: the board, content: { application/json: { schema: { $ref: '#/components/schemas/WallBoard' } } } }
+        '404': { $ref: '#/components/responses/Error', description: no_board — that week was never drawn }
   /wall/{district}:
     get:
       tags: [wall]
@@ -1902,6 +1934,28 @@ components:
         appliedAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time, description: '30 days from applied/renewed — then the slot fades' }
         renewedAt: { type: [string, 'null'], format: date-time }
+    WallBoard:
+      type: object
+      required: [week, weekStart, weekEnd, drawnAt, slot, seedHex, tagsHash, candidates, items]
+      properties:
+        week: { type: integer, description: 'weekIndex (Monday 00:00 UTC)' }
+        weekStart: { type: string, format: date-time }
+        weekEnd: { type: string, format: date-time }
+        drawnAt: { type: string, format: date-time }
+        slot: { type: integer, description: finalized horizon baked into the seed }
+        seedHex: { type: string, description: 'sha256(wall-board:v1:week:slot:tagsHash:candidates)' }
+        tagsHash: { type: string, description: sha256 of the sorted candidate snapshot }
+        candidates: { type: integer, description: how many tags took part }
+        items:
+          type: array
+          items:
+            type: object
+            required: [tagId, wallet, district, slot]
+            properties:
+              tagId: { type: string, pattern: '^[0-9a-f]{32}$' }
+              wallet: { $ref: '#/components/schemas/Pubkey' }
+              district: { type: integer, minimum: 0, maximum: 7 }
+              slot: { type: integer, minimum: 0, maximum: 199 }
     WallView:
       type: object
       properties:

@@ -19,6 +19,14 @@ export const useWall = (district: number) =>
   useQuery({ queryKey: ['wall', district], queryFn: () => api.get('/wall/{district}', { path: { district } }), staleTime: 30_000 });
 export const useMyWall = () =>
   useQuery({ queryKey: ['me', 'wall'], queryFn: () => api.get('/me/wall'), enabled: useAuthenticated(), staleTime: 60_000 });
+export const useWallBoard = (week?: number) =>
+  useQuery({
+    queryKey: ['wall', 'board', week ?? 'current'],
+    // `week` уходит в запрос только когда он задан: иначе openapi-fetch честно
+    // отправит `week=undefined` и сервер ответит 400 (SEC-B2 — строгие параметры).
+    queryFn: () => api.get('/wall/board', week === undefined ? {} : { query: { week } }),
+    staleTime: 5 * 60_000,
+  });
 export const useMyTags = () =>
   useQuery({ queryKey: ['me', 'tags'], queryFn: () => api.get('/me/tags'), enabled: useAuthenticated(), staleTime: 60_000 });
 

@@ -1278,6 +1278,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/wall/board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The board of the week — five tags from across the city, drawn, not ranked
+         * @description Five tags picked by a draw, not by a rating. A rating on user content is a contest for a
+         *     score, and here the score would be set by the report button — so reports are a *filter*, not
+         *     a minus: a report the moderator confirmed (`hidden` / `removed`) keeps the tag off the board
+         *     this week, an unresolved report changes nothing at all. An accusation is not a verdict, and
+         *     that is precisely why pressing "report" cannot move anyone's place.
+         *
+         *     Candidates are the tags hanging on a wall live at draw time, minus any tag that was already
+         *     on the board in the last four weeks (a soft rule: if the city is too small to fill the board
+         *     without repeats, repeats are allowed — an empty showcase is worse). The draw itself is
+         *     unweighted and without replacement; a tag has no weight, only a stake does, and stakes are
+         *     not involved.
+         *
+         *     Seed: `sha256(wall-board:v1:week:slot:tagsHash:candidates)`, where `slot` is the finalized
+         *     horizon at draw time and `tagsHash` is the sha256 of the sorted `district:slot:tagId` lines.
+         *     The board is frozen for the week — a tag taken down later does not rewrite Monday's board —
+         *     and both the seed and the full candidate snapshot are returned, so anyone can recompute the
+         *     five. Without `week` this is the current week, drawn lazily on first read.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description week index (Monday 00:00 UTC); omit for the current week */
+                    week?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description the board */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WallBoard"];
+                    };
+                };
+                /** @description no_board — that week was never drawn */
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/wall/{district}": {
         parameters: {
             query?: never;
@@ -6617,6 +6677,30 @@ export interface components {
             expiresAt?: string;
             /** Format: date-time */
             renewedAt?: string | null;
+        };
+        WallBoard: {
+            /** @description weekIndex (Monday 00:00 UTC) */
+            week: number;
+            /** Format: date-time */
+            weekStart: string;
+            /** Format: date-time */
+            weekEnd: string;
+            /** Format: date-time */
+            drawnAt: string;
+            /** @description finalized horizon baked into the seed */
+            slot: number;
+            /** @description sha256(wall-board:v1:week:slot:tagsHash:candidates) */
+            seedHex: string;
+            /** @description sha256 of the sorted candidate snapshot */
+            tagsHash: string;
+            /** @description how many tags took part */
+            candidates: number;
+            items: {
+                tagId: string;
+                wallet: components["schemas"]["Pubkey"];
+                district: number;
+                slot: number;
+            }[];
         };
         WallView: {
             district?: number;

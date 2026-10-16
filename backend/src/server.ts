@@ -25,6 +25,7 @@ import { POLICIES, createLimiter, type Limiter } from './ratelimit.ts';
 import { catalogue, checkHandle, claimHandle, claimService, myServices, ServiceError } from './services.ts';
 import * as tags from './tags.ts';
 import * as wall from './wall.ts';
+import * as wallBoard from './wallBoard.ts';
 import * as rig from './rig.ts';
 import * as worldMetrics from './worldMetrics.ts';
 import { publish } from './bus.ts';
@@ -728,6 +729,15 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   // (SEC-B2) — иначе `Number('0.5')` или `Number('-1')` уходят прямиком в SQL.
   const districtParam = (raw: unknown): number => intQuery(raw, { name: 'district', min: 0, max: MAX_COLLECTION_IDX, def: 0 }) ?? 0;
 
+  // Доска недели (docs/16 §3.5): пять тегов города, выбранных жеребьёвкой.
+  // Маршрут стоит РАНЬШЕ /wall/:district — иначе 'board' уехал бы в номер района
+  // и вернул нулевую стену вместо витрины.
+  v1.get('/wall/board', (req, res) => {
+    const week = intQuery(req.query.week, { name: 'week', min: 0 });
+    const board = wallBoard.wallBoardView(db, week);
+    if (!board) throw new ServiceError(404, 'no_board', 'This week has no board yet');
+    res.json(board);
+  });
   v1.get('/wall/:district', (req, res) => {
     wall.expireSlots(db); // ленивое выцветание: стена не показывает мёртвые слоты
     res.json(wall.wallView(db, districtParam(req.params.district), req.session?.wallet));

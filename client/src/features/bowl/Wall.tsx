@@ -117,6 +117,10 @@ export default function Wall() {
       <div>
         <h1 className="page-title">{t('wall.title')}</h1>
         <p className="page-sub">{district0?.name} — {t('wall.subtitle')}</p>
+        {/* Доска недели — тот же город, другой взгляд: пять тегов со всех стен. */}
+        <div className="row" style={{ gap: 8, marginTop: 8 }}>
+          <Link to="/bowl/board" className="btn btn-sm btn-ghost">{t('board.title')}</Link>
+        </div>
       </div>
 
       {/* Право на слот: показываем, чего не хватает, до того как игрок нажмёт. */}
