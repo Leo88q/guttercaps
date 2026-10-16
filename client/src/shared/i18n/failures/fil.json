@@ -224,5 +224,7 @@
   "crewFull": "Puno na ang crew na ito: sampung rider.",
   "crewDistrictFull": "Lahat ng segment ng crew sa distritong ito ay okupado na.",
   "crewCodeFailed": "Hindi nakabuo ng invite code — subukan muli.",
-  "crewEndpoint": "Ang pangalan ng crew ay inaayos sa screen ng crew."
+  "crewEndpoint": "Ang pangalan ng crew ay inaayos sa screen ng crew.",
+  "badPart": "Hindi kasya ang piyesang ito sa slot na iyon.",
+  "partNotOwned": "Kitain muna ang piyesang ito bago ito ikabit."
 }

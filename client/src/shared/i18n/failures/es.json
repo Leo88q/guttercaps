@@ -224,5 +224,7 @@
   "crewFull": "Esta crew ya tiene diez riders.",
   "crewDistrictFull": "Todos los segmentos de crew de este distrito están ocupados.",
   "crewCodeFailed": "No se pudo generar el código de invitación: inténtalo de nuevo.",
-  "crewEndpoint": "Los nombres de crew se gestionan en la pantalla de la crew."
+  "crewEndpoint": "Los nombres de crew se gestionan en la pantalla de la crew.",
+  "badPart": "Esa pieza no encaja en esta ranura.",
+  "partNotOwned": "Gana esta pieza antes de montarla."
 }

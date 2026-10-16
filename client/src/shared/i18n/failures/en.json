@@ -224,5 +224,7 @@
   "crewFull": "This crew already holds ten riders.",
   "crewDistrictFull": "Every crew segment in this district is taken.",
   "crewCodeFailed": "Could not issue an invite code — try again.",
-  "crewEndpoint": "Crew names are issued on the crew screen."
+  "crewEndpoint": "Crew names are issued on the crew screen.",
+  "badPart": "That part does not fit this slot.",
+  "partNotOwned": "Earn this part before you can wear it."
 }

@@ -224,5 +224,7 @@
   "crewFull": "Đội này đã có mười rider.",
   "crewDistrictFull": "Mọi đoạn tường của đội trong quận này đều đã có chủ.",
   "crewCodeFailed": "Không tạo được mã mời — hãy thử lại.",
-  "crewEndpoint": "Tên đội được xử lý ở màn hình đội."
+  "crewEndpoint": "Tên đội được xử lý ở màn hình đội.",
+  "badPart": "Phụ tùng này không vừa vị trí đó.",
+  "partNotOwned": "Hãy kiếm phụ tùng này trước khi lắp."
 }

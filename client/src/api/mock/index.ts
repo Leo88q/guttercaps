@@ -2,7 +2,7 @@ import { isRightsPath, mockRights } from './rights';
 // Deterministic in-browser backend used when VITE_API_MOCK=true or when the
 // real API is unreachable in dev. Data is derived from @guttercaps/economy
 // and shared/lib/lore so what you see matches the modelled numbers.
-import { ACHIEVEMENTS, BOOSTER, CHIP_XP, DAILY_QUESTS, LINE, EMISSION_GUARD, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, FEES, FUSION_RECIPES, FX, GRID, GRID as GRID_RULES, LOCK_TIERS, MATCHMAKING, PACKS, PASS_TRACK, PERMANENT_QUESTS, PROFILE_THEME_BY_ID, RARITY_PROFILES, REFERRAL, SEASON, SERVICES, SKIN_BY_ID, WEEKLY_QUESTS, applyRotate, bundlePriceCents, botReplay, lineLayout, lineSeed, lineTier, runPassXp, simulateRun, CREW, CREW_NAME_RE, SERVICE_BY_ID, crewTier, crewWeekScore, effectiveOdds, generateLevel, gridBaseXp, gridStarsForMoves, gridXpForStars, impliedApy, isSolved, levelSeed, packExpectedValueMult, passTierForXp, probabilityAtLeast, skrMicroForUsdCents, solLamportsForUsdCents, type PackId, usdCentsFromSolLamports, usdcMicroForUsdCents, xpToNext } from '@guttercaps/economy';
+import { ACHIEVEMENTS, BOOSTER, CHIP_XP, DAILY_QUESTS, LINE, EMISSION_GUARD, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, FEES, FUSION_RECIPES, FX, GRID, GRID as GRID_RULES, LOCK_TIERS, MATCHMAKING, PACKS, PASS_TRACK, PERMANENT_QUESTS, PROFILE_THEME_BY_ID, RARITY_PROFILES, REFERRAL, SEASON, SERVICES, SKIN_BY_ID, WEEKLY_QUESTS, applyRotate, bundlePriceCents, botReplay, lineLayout, lineSeed, lineTier, runPassXp, simulateRun, CREW, CREW_NAME_RE, SERVICE_BY_ID, crewTier, crewWeekScore, effectiveOdds, generateLevel, gridBaseXp, gridStarsForMoves, gridXpForStars, impliedApy, isSolved, levelSeed, packExpectedValueMult, passTierForXp, probabilityAtLeast, skrMicroForUsdCents, solLamportsForUsdCents, type PackId, usdCentsFromSolLamports, usdcMicroForUsdCents, xpToNext, BOARD_SET_SLOTS, boardDistrictOfWeek, boardSetDistrict, partById, stockLoadout } from '@guttercaps/economy';
 import { PYTH_PRICE_ACCOUNTS } from '@/chain/ids';
 import { COLLECTIONS } from '@/shared/lib/lore';
 import { ApiError, type RequestOpts } from '../client';
@@ -425,6 +425,10 @@ export function resetMockWorld() {
   mockLineCredits = 0;
   mockLineReward = null;
   mockLineXp = { day: lineDay(), xp: 0 };
+  mockBoardParts.clear();
+  mockBoardLoadout.clear();
+  mockBoardWeekGranted.clear();
+  seedMockBoard();
 }
 
 on('get', '/wall/{district}', (_o, params) => mockWallView(Number(params.district)));
@@ -542,6 +546,74 @@ on('put', '/me/rider', (o) => {
   }
   return mockRider;
 });
+// --------------------------------------------------- конструктор доски (docs/16 §4.2)
+// Мок повторяет три правила бэкенда: доска никогда не пустая (сток закрывает
+// все шесть слотов), надеть можно только добытое, а выдача за заезд закрывает
+// дыру в сете района недели, а не плодит четыре деки подряд.
+const mockBoardParts = new Map<string, { qty: number; source: string; createdAt: number }>();
+const mockBoardLoadout = new Map<string, string>();
+const mockBoardWeekGranted = new Set<string>();
+const mockBoardWeek = () => Math.floor(Date.now() / 1000 / (7 * 86_400));
+/** Старт мок-города: две части прошлой недели и одна покупная — экран не пустой,
+ *  но и «всё уже собрано» он тоже не показывает (собирать должно быть что). */
+const seedMockBoard = () => {
+  const prev = boardDistrictOfWeek(mockBoardWeek() - 1);
+  mockBoardParts.set(`deck_d${prev}`, { qty: 1, source: 'run', createdAt: Date.now() / 1000 - 9 * 86_400 });
+  mockBoardParts.set(`wheels_d${prev}`, { qty: 1, source: 'run', createdAt: Date.now() / 1000 - 8 * 86_400 });
+  mockBoardParts.set('bolts_acid', { qty: 1, source: 'shop', createdAt: Date.now() / 1000 - 3 * 86_400 });
+  mockBoardParts.set('sticker_moth', { qty: 1, source: 'quest', createdAt: Date.now() / 1000 - 2 * 86_400 });
+  // Деку прошлой недели надеваем сразу: экран открывается собранным, а не с
+  // приглашением «поставь что-нибудь».
+  mockBoardLoadout.set('deck', `deck_d${prev}`);
+  mockBoardLoadout.set('bolts', 'bolts_acid');
+};
+seedMockBoard();
+
+const boardLoadoutOf = () => {
+  const stock = stockLoadout();
+  const out = stock;
+  for (const [slot, part] of mockBoardLoadout) {
+    const known = partById(part);
+    if (!known || known.slot !== slot) continue;
+    // Надеть можно только добытое — ровно та проверка, что на сервере.
+    const stockPart = stock[slot as keyof typeof stock];
+    if (part !== stockPart && !mockBoardParts.has(part)) continue;
+    (out as Record<string, string>)[slot] = part;
+  }
+  return { ...out, set: boardSetDistrict(out) };
+};
+
+const boardViewOf = () => {
+  const district = boardDistrictOfWeek(mockBoardWeek());
+  const owned = [...mockBoardParts].map(([part, v]) => ({ part, qty: v.qty, source: v.source, createdAt: iso(v.createdAt * 1000 - Date.now()) }));
+  const missing = BOARD_SET_SLOTS.filter((slot) => !mockBoardParts.has(`${slot}_d${district}`));
+  return {
+    ...boardLoadoutOf(),
+    wallet: ME,
+    owned,
+    week: { district, part: `${missing[0] ?? 'deck'}_d${district}`, claimed: mockBoardWeekGranted.has(String(mockBoardWeek())), missing },
+    weekProgress: { have: BOARD_SET_SLOTS.length - missing.length, total: BOARD_SET_SLOTS.length },
+  };
+};
+
+on('get', '/me/board', () => boardViewOf());
+on('put', '/me/board', (o) => {
+  const b = (o.body ?? {}) as { slots?: Array<{ slot?: string; part?: string | null }> };
+  const stock = stockLoadout();
+  for (const u of b.slots ?? []) {
+    const slot = String(u?.slot ?? '');
+    if (!(slot in stock)) throw new ApiError(400, 'bad_slot', `unknown slot ${slot}`);
+    if (!u?.part) { mockBoardLoadout.delete(slot); continue; }
+    const part = partById(u.part);
+    if (!part || part.slot !== slot) throw new ApiError(400, 'bad_part', `${u.part} does not fit ${slot}`);
+    const stockPart = stock[slot as keyof typeof stock];
+    if (u.part !== stockPart && !mockBoardParts.has(u.part)) throw new ApiError(403, 'part_not_owned', 'Earn this part before wearing it');
+    mockBoardLoadout.set(slot, u.part);
+  }
+  return boardViewOf();
+});
+on('get', '/board/{wallet}', (_o, params) => ({ wallet: String(params.wallet), ...boardLoadoutOf() }));
+
 // ---------------------------------------------------------- достижения (docs/16 §4.7)
 // Прогресс в моке считается из того же инвентаря, что и остальные экраны: полная
 // коллекция Ночного мотылька (район 0) делает «закрыть район» достигнутым, а

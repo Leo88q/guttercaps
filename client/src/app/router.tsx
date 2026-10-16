@@ -25,6 +25,8 @@ const Rig = lazy(() => import('@/features/bowl/Rig'));
 // только тем, кто дошёл до чаши.
 const Crew = lazy(() => import('@/features/bowl/Crew'));
 const PublicRig = lazy(() => import('@/features/bowl/Rig').then((m) => ({ default: m.PublicRig })));
+// Конструктор доски (docs/16 §4.2): части добываются игрой, собираются на доску.
+const Builder = lazy(() => import('@/features/bowl/Builder'));
 const Shop = lazy(() => import('@/features/shop/Shop'));
 const Opening = lazy(() => import('@/features/shop/Opening'));
 const Fusion = lazy(() => import('@/features/fusion/Fusion'));
@@ -90,6 +92,7 @@ export const routes: RouteObject[] = [
       // потому что имя и состав команды не секрет (секретен только код приглашения).
       { path: 'bowl/crew', element: W(<Crew />) },
       { path: 'bowl/crew/:name', element: S(<Crew />) },
+      { path: 'bowl/builder', element: W(<Builder />) }, // конструктор доски (docs/16 §4.2)
       { path: 'bowl/rig', element: W(<Rig />) },
       { path: 'achievements', element: W(<Achievements />) }, // docs/16 §4.7: награды — косметика и предметы
       { path: 'rig/:wallet', element: S(<PublicRig />) }, // витрина (docs/16 §4.5): публичная, но 404, пока владелец её не включил

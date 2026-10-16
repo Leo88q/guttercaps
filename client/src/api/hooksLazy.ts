@@ -142,3 +142,30 @@ export const useLeaveCrew = () => useCrewAction(() => api.post('/crew/leave', un
 /** Жалоба на имя команды — та же очередь, что у тегов (SLA 24 ч). */
 export const useReportCrew = () =>
   useMutation({ mutationFn: (b: { name: string; reason: string }) => api.post('/crew/{name}/report', { reason: b.reason }, { path: { name: b.name } }) });
+
+// ------------------------------------------------- конструктор доски (docs/16 §4.2)
+export type BoardView = ResponseOf<'/me/board', 'get'>;
+export type BoardPartRow = NonNullable<BoardView['owned']>[number];
+/** Слот доски: шесть штук, первые четыре собирают сет района. */
+export type BoardSlot = 'deck' | 'trucks' | 'wheels' | 'grip' | 'bolts' | 'sticker';
+
+/** Моя доска: что надето, что добыто и что платит заезд на этой неделе. */
+export const useBoard = () =>
+  useQuery({ queryKey: ['board', 'me'], queryFn: () => api.get('/me/board'), enabled: useAuthenticated(), staleTime: 60_000 });
+
+/**
+ * Поставить или снять часть.
+ *
+ * Перечитывает и доску, и витрину: собранная доска показывается на /rig, и
+ * после пересборки витрина не должна врать о том, что надето.
+ */
+export const useSetBoard = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (b: { slots: Array<{ slot: BoardSlot; part: string | null }> }) => api.put('/me/board', b),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['board'] });
+      void qc.invalidateQueries({ queryKey: ['rig'] });
+    },
+  });
+};

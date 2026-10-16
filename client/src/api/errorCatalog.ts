@@ -23,6 +23,8 @@ export const API_ERROR_KEYS = {
   no_crew: 'failures.crewNoCrew', invalid_name: 'failures.crewInvalidName', already_in_crew: 'failures.crewAlreadyIn',
   not_captain: 'failures.crewNotCaptain', bad_code: 'failures.crewBadCode', crew_full: 'failures.crewFull',
   district_full: 'failures.crewDistrictFull', invite_code_failed: 'failures.crewCodeFailed', use_crew_endpoint: 'failures.crewEndpoint',
+  // §4.2 конструктор доски: часть либо не подходит к слоту, либо ещё не добыта.
+  bad_part: 'failures.badPart', part_not_owned: 'failures.partNotOwned',
   prestige_no_hints: 'failures.requestInvalid', prestige_locked: 'failures.requestInvalid', prestige_maxed: 'failures.requestInvalid',
   bad_squad: 'failures.threeSquad', bad_tier: 'failures.staking_InvalidTier', chain_fulfilled: 'failures.chainFulfilled',
   chip_busy: 'failures.arena_ChipBusy', collection_mismatch: 'failures.collectionMismatch', commit_mismatch: 'failures.commitMismatch',

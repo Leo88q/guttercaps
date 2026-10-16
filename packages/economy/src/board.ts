@@ -83,10 +83,10 @@ export const BOARD_PARTS: readonly BoardPart[] = [
   ...districtParts(),
   // Командная часть: приз ежемесячного конкурса команд (§5.6) — косметика,
   // никогда не $CG. Одна на район, но достаётся только призёрам.
+  // Командная часть: приз ежемесячного конкурса команд (§5.6) — косметика,
+  // никогда не $CG. Одна на район, и визуально это дека своего района: отличие
+  // не в картинке, а в происхождении (подпись «Команда» на детали).
   ...COLLECTIONS.map((_, d) => ({ id: `deck_crew_d${d}`, slot: 'deck' as BoardSlot, district: d, tier: 'crew' as BoardTier, source: 'crew' as BoardSource })),
-  // Трофей: событийная дека без района.
-  { id: 'deck_trophy', slot: 'deck', district: null, tier: 'trophy', source: 'crew' },
-  { id: 'grip_trophy', slot: 'grip', district: null, tier: 'trophy', source: 'crew' },
   ...BOLTS.map((b) => ({ id: `bolts_${b}`, slot: 'bolts' as BoardSlot, district: null, tier: (b === 'stock' ? 'stock' : 'district') as BoardTier, source: (b === 'stock' ? 'stock' : 'shop') as BoardSource })),
   ...STICKERS.map((s) => ({ id: `sticker_${s}`, slot: 'sticker' as BoardSlot, district: null, tier: (s === 'none' ? 'stock' : 'district') as BoardTier, source: (s === 'none' ? 'stock' : 'shop') as BoardSource })),
 ];

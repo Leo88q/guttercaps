@@ -115,7 +115,12 @@ export default function Bowl() {
         </div>
         <div className="small muted">{t('bowl.exhibitEmpty')}</div>
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-          <Link to="/bowl/rig" className="btn btn-sm">
+          {/* Конструктор (§4.2) стоит перед экспозицией (§4.3): сначала доску
+              собирают, потом на неё ставят крышки. */}
+          <Link to="/bowl/builder" className="btn btn-sm">
+            {t('bowl.openBuilder')}
+          </Link>
+          <Link to="/bowl/rig" className="btn btn-sm btn-ghost">
             {t('bowl.openRig')}
           </Link>
         </div>

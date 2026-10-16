@@ -23,6 +23,7 @@ import { useUiStore } from '@/app/store/ui';
 import { useRig, useRigOf, useSetRig, type RigCap, type RigChip, type RigSlot, type RigView } from '@/api/hooksLazy';
 import { RiderCard } from './Rider';
 import { shortKey } from '@/shared/lib/format';
+import { partArt } from '@/shared/lib/boardArt';
 import './rig.css';
 
 const ART = '/art/skate';
@@ -54,6 +55,11 @@ function SlotChip({ cap }: { cap: RigChip }) {
 function Board({ view, mine, busy, onSlot }: BoardProps) {
   const t = useT();
   const slots = view.slots ?? [];
+  // Дека — та, что собрана в конструкторе (§4.2): экспозиция стоит именно на
+  // ней. Нет ответа конструктора (старый кэш, чужая витрина без доски) —
+  // показываем стоковую деку, а не дыру.
+  const deckArt = partArt(String(view.board?.deck ?? '')) ?? `${ART}/deck.webp`;
+  const gripArt = partArt(String(view.board?.grip ?? ''));
   const deck = slots.find((s) => s.place === 'deck') ?? slots[0];
   const deckSlot = Number(deck?.slot ?? -1);
   const grips = slots.filter((s) => Number(s.slot) !== deckSlot);
@@ -86,10 +92,11 @@ function Board({ view, mine, busy, onSlot }: BoardProps) {
   return (
     <div className="rig-board">
       <div className="rig-deck">
-        <img className="rig-deck-art" src={`${ART}/deck.webp`} alt="" />
+        <img className="rig-deck-art" src={deckArt} alt="" />
         <div className="rig-deck-slot">{render(deck, true)}</div>
       </div>
-      <div className="rig-grip">
+      {/* Грип — тоже из конструктора: доска собрана целиком, а не наполовину. */}
+      <div className="rig-grip" style={gripArt ? { backgroundImage: `url(${gripArt})` } : undefined}>
         <div className="rig-grip-slots">{grips.map((s) => render(s, false))}</div>
         <span className="rig-grip-label">{t('rig.grip')}</span>
       </div>
@@ -143,6 +150,9 @@ export default function Rig() {
         </div>
         <Board view={view.data ?? { wallet: '', rider: { silhouette: 0, theme: null }, public: false, caps: [], slots: [], next: null } as RigView} mine busy={setRig.isPending} onSlot={(slot) => setPick(slot)} />
         <p className="tiny muted">{t('rig.note')}</p>
+        {/* Доска собирается в конструкторе (§4.2), а крышки ставятся здесь (§4.3):
+            один экран без ссылки на другой оставляет половину доски неookup. */}
+        <Link to="/bowl/builder" className="btn btn-sm btn-ghost">{t('bowl.openBuilder')}</Link>
       </section>
 
       {/* §4.6 Райдер стоит рядом с доской: косметику покупают, чтобы её видели,

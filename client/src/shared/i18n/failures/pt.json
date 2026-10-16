@@ -224,5 +224,7 @@
   "crewFull": "Esta turma já tem dez riders.",
   "crewDistrictFull": "Todos os segmentos de turma deste distrito estão ocupados.",
   "crewCodeFailed": "Não foi possível gerar o código de convite — tente de novo.",
-  "crewEndpoint": "Os nomes de turma são tratados na tela da turma."
+  "crewEndpoint": "Os nomes de turma são tratados na tela da turma.",
+  "badPart": "Essa peça não encaixa nesta ranhura.",
+  "partNotOwned": "Ganha esta peça antes de a montar."
 }

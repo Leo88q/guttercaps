@@ -224,5 +224,7 @@
   "crewFull": "Kru ini sudah berisi sepuluh rider.",
   "crewDistrictFull": "Semua segmen kru di distrik ini sudah terpakai.",
   "crewCodeFailed": "Kode undangan gagal dibuat — coba lagi.",
-  "crewEndpoint": "Nama kru diurus di layar kru."
+  "crewEndpoint": "Nama kru diurus di layar kru.",
+  "badPart": "Bagian ini tidak cocok dengan slot itu.",
+  "partNotOwned": "Dapatkan bagian ini dulu sebelum memasangnya."
 }
