@@ -32,6 +32,13 @@ export const EPIC_PLUS = 5;
 export type WorldFeature = (typeof WORLD_FEATURES)[number];
 
 /**
+ * Псевдофича для когорт, которые считаются из состояния данных, а не из
+ * событий: мурал района (§2.3) — это владение, событий у него нет. Строка
+ * нужна ровно для того, чтобы карточку в админке можно было подписать.
+ */
+export const DATA_COHORT_FEATURE = 'collection' as const;
+
+/**
  * Одно событие мира. Пишется внутри того же запроса, что и само действие:
  * выставить крышку и записать событие — одна транзакция (см. `setRig`).
  * `at` в секундах (как `now()` и `block_time`); параметр нужен тестам и
@@ -150,10 +157,23 @@ export interface CohortOpts {
    * поэтому сравнивать его со «всеми игравшими» — значит измерять слот, а не доску.
    */
   baseline?: 'players' | 'feature';
+  /**
+   * Своё определение когорты: подзапрос с колонкой `wallet` и его параметры.
+   * Нужно там, где когорта — не событие фичи, а состояние данных: мурал района
+   * (§2.3) собран не событием, а подбором коллекции, и отдельную запись в
+   * `feature_events` под него писать незачем — индексатор переигрывается.
+   */
+  members?: { sql: string; params?: (string | number)[] };
+  /** Имя в отчёте, когда когорта не про фичу целиком (например `collection.mural`). */
+  label?: string;
 }
 
-export function cohortReport(db: Db, feature: WorldFeature, opts: CohortOpts = {}, t = now()): CohortReport {
-  const { windowDays = 30, kind, baseline: baselineMode = 'players' } = opts;
+export function cohortReport(db: Db, feature: WorldFeature | typeof DATA_COHORT_FEATURE, opts: CohortOpts = {}, t = now()): CohortReport {
+  const { windowDays = 30, kind, members, label } = opts;
+  // Когорта из данных (§2.3) не про фичу, поэтому базовая линия у неё одна —
+  // игравшие в том же окне. Сравнивать её с «остальными, кто трогал фичу»
+  // не с чем: фичи у неё нет.
+  const baselineMode = members ? 'players' : (opts.baseline ?? 'players');
   const to = t;
   const from = t - windowDays * DAY;
   // Окно в днях — включительно с двух сторон: отчёт за «последние 30 дней»
@@ -162,25 +182,34 @@ export function cohortReport(db: Db, feature: WorldFeature, opts: CohortOpts = {
   const dayTo = Math.floor(to / DAY);
   // Срез по kind — такой же фильтр, что и по фиче: `board` внутри `wall`.
   const sliceSql = kind === undefined ? '' : ' AND kind = ?';
-  const cohortMembers = `SELECT DISTINCT wallet FROM feature_events WHERE feature = ? AND at >= ? AND at < ?${sliceSql}`;
-  const cohortParams: (string | number)[] = kind === undefined ? [feature, from, to] : [feature, from, to, kind];
+  const cohortMembers = members?.sql ?? `SELECT DISTINCT wallet FROM feature_events WHERE feature = ? AND at >= ? AND at < ?${sliceSql}`;
+  // Своя когорта — свои параметры (и их может не быть вовсе). Смешивать с
+  // параметрами фичи нельзя: лишний биндинг ломает весь запрос.
+  const cohortParams: (string | number)[] = members ? (members.params ?? []) : (kind === undefined ? [feature, from, to] : [feature, from, to, kind]);
+  // Базовая линия исключает ровно то же множество, что и когорта, — тем же
+  // подзапросом. Иначе при своей когорте она выродилась бы в «все игравшие»,
+  // и мы сравнивали бы когорту с самой собой.
+  const cohortSel = cohortMembers.replace(/^SELECT DISTINCT wallet FROM /, 'SELECT wallet FROM ');
   // В режиме `feature` базу набирают те же события фичи — но без среза. Это не
   // «все игравшие»: у фичи уже есть своё ядро, и сравнивать срез надо с ним.
   const baselineMembers = baselineMode === 'feature'
     ? `SELECT DISTINCT wallet FROM feature_events WHERE feature = ? AND at >= ? AND at < ?
-        AND wallet NOT IN (SELECT wallet FROM feature_events WHERE feature = ? AND at >= ? AND at < ?${sliceSql})`
+        AND wallet NOT IN (${cohortSel})`
     : `SELECT DISTINCT wallet FROM quest_logins WHERE day >= ? AND day <= ?
-        AND wallet NOT IN (SELECT wallet FROM feature_events WHERE feature = ? AND at >= ? AND at < ?${sliceSql})`;
+        AND wallet NOT IN (${cohortSel})`;
   const baselineParams: (string | number)[] = baselineMode === 'feature'
-    ? [feature, from, to, feature, from, to, ...(kind === undefined ? [] : [kind])]
-    : [dayFrom, dayTo, feature, from, to, ...(kind === undefined ? [] : [kind])];
+    ? [feature, from, to, ...cohortParams]
+    : [dayFrom, dayTo, ...cohortParams];
 
   const cohortRow = group(db, cohortMembers, cohortParams, from, to, dayFrom, dayTo);
   const baselineRow = group(db, baselineMembers, baselineParams, from, to, dayFrom, dayTo);
   const cohort = statsOf(cohortRow);
   const baseline = statsOf(baselineRow);
 
-  const series = db.all<{ day: number; events: number; wallets: number }>(
+  // Кривой принятия здесь нет: у когорты из данных (§2.3) нет событий, а
+  // «сколько муралов собрано по дням» — другой вопрос, и на него отвечает не
+  // этот отчёт. Пустой массив вместо серии нулевых дней.
+  const series = members ? [] : db.all<{ day: number; events: number; wallets: number }>(
     `SELECT at / ${DAY} AS day, COUNT(*) AS events, COUNT(DISTINCT wallet) AS wallets
        FROM feature_events WHERE feature = ? AND at >= ? AND at < ?${sliceSql}
       GROUP BY 1 ORDER BY 1`, ...(kind === undefined ? [feature, from, to] : [feature, from, to, kind]),
@@ -189,7 +218,7 @@ export function cohortReport(db: Db, feature: WorldFeature, opts: CohortOpts = {
   return {
     // Для среза имя — это имя среза, а не фичи: в админке карточки фич и
     // карточки срезов лежат рядом, и подписи не должны повторяться.
-    feature: kind === undefined ? feature : `${feature}.${kind}`, windowDays, from: iso(from), to: iso(to),
+    feature: label ?? (kind === undefined ? feature : `${feature}.${kind}`), windowDays, from: iso(from), to: iso(to),
     cohort, baseline,
     // Пустая когорта — не «−100 %», а «считать нечего». Раньше она давала −1 по
     // каждой метрике, и фича, которой никто не пользовался, выглядела в отчёте
@@ -299,12 +328,41 @@ export function boardCohort(db: Db, windowDays = 30, t = now()): CohortReport {
   return cohortReport(db, 'wall', { windowDays, kind: 'board', baseline: 'feature' }, t);
 }
 
+/**
+ * §2.3: «собранный район» — мурал района собран на ≥80 %, то есть закрыто
+ * восемь крышек из девяти (семь — это 78 %, порог не взят).
+ *
+ * Когорта берётся не из `feature_events`, а из состояния коллекции: собрать
+ * мурал — не действие, а владение, и событие под него пришлось бы
+ * пересчитывать при каждом переигрывании индексатора. База — игравшие в том же
+ * окне, до мурала не дошедшие; срез считает сделки и фьюжны, потому что именно
+ * ими (§2.3) мурал должен кормить основную петлю.
+ *
+ * Сожжённые фьюжном крышки не считаются: их больше нет, и мурал они не держат.
+ */
+export const MURAL_RARITIES = 9;
+export const MURAL_COMPLETE_AT = 8;
+
+export function muralCohort(db: Db, windowDays = 30, t = now()): CohortReport {
+  return cohortReport(db, DATA_COHORT_FEATURE, {
+    windowDays,
+    label: 'collection.mural',
+    members: {
+      sql: `SELECT DISTINCT owner AS wallet
+              FROM chips
+             WHERE owner IS NOT NULL AND owner <> '' AND COALESCE(burned_at, 0) = 0
+             GROUP BY owner, collection_idx
+            HAVING COUNT(DISTINCT rarity) >= ${MURAL_COMPLETE_AT}`,
+    },
+  }, t);
+}
+
 export function worldReport(db: Db, windowDays = 30, t = now()) {
   return {
     windowDays, asOf: iso(t),
     features: WORLD_FEATURES.map((f) => cohortReport(db, f, { windowDays }, t)),
     /** Срезы внутри фич: то же сравнение, но уже внутри тех, кто фичу трогал. */
-    slices: [boardCohort(db, windowDays, t)],
+    slices: [boardCohort(db, windowDays, t), muralCohort(db, windowDays, t)],
     epicPlus: epicPlusRepeat(db, windowDays, t),
     arenaRematch: arenaRematch(db, windowDays, t),
   };

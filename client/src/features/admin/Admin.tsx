@@ -444,6 +444,7 @@ function RematchCard({ e, signed }: { e: EpicPlusReport; signed: (v: number | nu
 /** Пояснение к срезу: когорта и база у среза не те, что у фичи, и это надо написать. */
 const SLICE_NOTES: Record<string, string> = {
   'wall.board': 'admin.world.boardNote',
+  'collection.mural': 'admin.world.muralNote',
 };
 
 function WorldFeature({ f, num, signed, note }: { f: FeatureReport; num: (v: number) => string; signed: (v: number | null) => string; note?: string }) {
@@ -451,7 +452,11 @@ function WorldFeature({ f, num, signed, note }: { f: FeatureReport; num: (v: num
   const peak = Math.max(1, ...f.series.map((s) => s.events));
   return (
     <CleanZone className="stack-sm">
-      <div className="label">{t(`admin.world.feat.${f.feature}` as MessageKey)}</div>
+      {/* Имя среза — `feature.kind` (например `collection.mural`). Ключи локали
+          с точкой внутри ломают обход дерева переводов: он делит путь по точке
+          и принимает `wall` за уровень вложенности. Поэтому точка уходит в
+          подчёркивание, а подпись остаётся человеческой. */}
+      <div className="label">{t(`admin.world.feat.${(f.feature ?? '').replace(/\./g, '_')}` as MessageKey)}</div>
       <div className="tiny muted">
         {t('admin.world.wallets', { n: f.cohort.wallets })} · {t('admin.world.baseline')}: {t('admin.world.wallets', { n: f.baseline.wallets })}
       </div>

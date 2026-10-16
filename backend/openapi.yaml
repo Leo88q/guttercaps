@@ -2251,11 +2251,16 @@ components:
         slices:
           type: array
           description: |
-            Narrower cuts *inside* a feature, compared against the rest of that feature instead of
-            against all players — because a subset inherits its parent's selection. `wall.board` (docs/16
-            §3.7) is exactly that: every board author already holds a slot (§3.4), so measuring them
-            against all players measures the slot, not the board. Here the baseline is slot holders who
-            never made the board.
+            Narrower cuts, compared against a baseline that is not "everyone who played".
+
+            `wall.board` (docs/16 §3.7) cuts *inside* a feature: every board author already holds a slot
+            (§3.4), so measuring them against all players measures the slot, not the board — the
+            baseline is slot holders who never made the board.
+
+            `collection.mural` (docs/16 §2.3) is cut from game state, not from events: the cohort is
+            wallets holding at least 8 of some district's 9 caps (a mural painted 80 % or more), and the
+            baseline is players of the same window who never got that far. It carries no `series`: owning
+            caps is not an event, and "how many murals were finished per day" is a different question.
           items: { $ref: '#/components/schemas/WorldFeatureCohort' }
         epicPlus:
           type: object
@@ -2289,8 +2294,8 @@ components:
       properties:
         feature:
           type: string
-          description: 'feature name, or `feature.kind` for a slice (e.g. `wall.board`)'
-          enum: [wall, exhibit, tag, inspect, 'wall.board']
+          description: 'feature name, or `feature.kind` for a slice (e.g. `wall.board`, `collection.mural`)'
+          enum: [wall, exhibit, tag, inspect, 'wall.board', 'collection.mural']
         windowDays: { type: integer }
         from: { type: string, format: date-time }
         to: { type: string, format: date-time }

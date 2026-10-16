@@ -10,7 +10,7 @@ import { dayIndex } from '../src/quests.ts';
 import { sanitizeTagSvg, saveTag } from '../src/tags.ts';
 import { claimSlot } from '../src/wall.ts';
 import { setRig } from '../src/rig.ts';
-import { EPIC_PLUS, REMATCH_WINDOW_MS, WORLD_FEATURES, arenaRematch, boardCohort, cohortReport, epicPlusRepeat, recordEvent, worldReport } from '../src/worldMetrics.ts';
+import { EPIC_PLUS, MURAL_COMPLETE_AT, MURAL_RARITIES, REMATCH_WINDOW_MS, WORLD_FEATURES, arenaRematch, boardCohort, cohortReport, epicPlusRepeat, muralCohort, recordEvent, worldReport } from '../src/worldMetrics.ts';
 
 const kp = () => Keypair.generate().publicKey.toBase58();
 const DAY = 86_400;
@@ -23,6 +23,15 @@ function seedCap(db: Db, wallet: string, collection: number, rarity: number, lev
   db.run(`INSERT INTO chips (asset, owner, collection_idx, rarity, level, flags, lock_until, origin, updated_slot) VALUES (?, ?, ?, ?, ?, 0, 0, 'pack', 1)`,
     asset, wallet, collection, rarity, level);
   return asset;
+}
+/** Сделка в окне отчёта: §2.3 мерит именно сделки и фьюжны по району. */
+function seedTrade(db: Db, wallet: string, t: number) {
+  db.run(`INSERT INTO sales (signature, event_index, asset, seller, buyer, price, currency, fee, royalty, via_offer, slot, block_time)
+          VALUES (?, 0, ?, ?, ?, '1000', 0, '0', '0', 0, 1, ?)`, kp().slice(0, 32), kp(), wallet, kp(), t);
+}
+function seedFusion(db: Db, wallet: string, t: number) {
+  db.run(`INSERT INTO fusions (signature, event_index, owner, recipe, materials, success, roll_bps, threshold_bps, fee_burned, slot, block_time)
+          VALUES (?, 0, ?, 0, '[]', 1, 0, 0, '0', 1, ?)`, kp().slice(0, 32), wallet, t);
 }
 function seedEligible(db: Db, wallet: string) {
   for (let i = 0; i < 7; i++) db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, wallet, today() - i);
@@ -172,13 +181,82 @@ describe('worldMetrics — когорта против базовой линии
     const db = new Db(':memory:');
     const r = worldReport(db, 7);
     expect(r.features.map((f) => f.feature)).toEqual([...WORLD_FEATURES]);
-    expect(r.slices.map((f) => f.feature)).toEqual(['wall.board']);
+    expect(r.slices.map((f) => f.feature)).toEqual(['wall.board', 'collection.mural']);
   });
 
   it('отчёт покрывает все фичи из §12', () => {
     const db = new Db(':memory:');
     const r = worldReport(db, 7);
     expect(r.features.map((f) => f.feature)).toEqual([...WORLD_FEATURES]);
+  });
+});
+
+describe('worldMetrics — мурал района (§2.3)', () => {
+  /** Закрыть `n` крышек района: мурал собран на 8 из 9 (≥80 %). */
+  function seedDistrict(db: Db, wallet: string, district: number, n: number, t: number) {
+    for (let r = 0; r < n; r++) {
+      const asset = seedCap(db, wallet, district, r);
+      if (r === 0 && n === MURAL_RARITIES - 1) db.run(`UPDATE chips SET burned_at = ? WHERE asset = ?`, t, asset); // порог не взят: крышка сожжена
+    }
+  }
+
+  it('когорта — те, у кого мурал района собран на 8 из 9, а не на 7', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const close = kp();   // 8 из 9 — мурал почти собран
+    const almost = kp();  // 7 из 9 — 78 %, порог не взят
+    for (let r = 0; r < MURAL_COMPLETE_AT; r++) seedCap(db, close, 0, r);
+    for (let r = 0; r < MURAL_COMPLETE_AT - 1; r++) seedCap(db, almost, 0, r);
+    for (const w of [close, almost]) for (let i = 0; i < 5; i++) db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, w, Math.floor(t / DAY) - i);
+
+    const r = muralCohort(db, 30, t);
+    expect(r.feature).toBe('collection.mural');
+    expect(r.cohort.wallets).toBe(1);
+    // база — игравшие в том же окне, но до мурала не дошедшие
+    expect(r.baseline.wallets).toBe(1);
+  });
+
+  it('считает сделки и фьюжны: мурал должен кормить петлю, а не просто радовать глаз', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const close = kp();
+    const passer = kp();
+    for (let r = 0; r < MURAL_COMPLETE_AT; r++) seedCap(db, close, 3, r); // любой район, не только первый
+    for (const w of [close, passer]) for (let i = 0; i < 5; i++) db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, w, Math.floor(t / DAY) - i);
+    seedTrade(db, close, t - DAY); seedTrade(db, close, t - 2 * DAY);
+    seedFusion(db, close, t - DAY);
+    seedTrade(db, passer, t - DAY);
+
+    const r = muralCohort(db, 30, t);
+    expect(r.cohort.wallets).toBe(1);
+    expect(r.cohort.tradesPerWallet).toBe(2);
+    expect(r.baseline.tradesPerWallet).toBe(1);
+    expect(r.delta.trades).toBe(1);       // +100 % сделок на кошелёк
+    expect(r.cohort.fusionsPerWallet).toBe(1);
+    expect(r.baseline.fusionsPerWallet).toBe(0);
+    expect(r.delta.fusions).toBeNull();   // база ноль → отношения нет, а не «бесконечность»
+  });
+
+  it('сожжённая фьюжном крышка мурал не держит: 9 минус 1 = порог не взят', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const w = kp();
+    seedDistrict(db, w, 0, MURAL_RARITIES - 1, t);
+    expect(db.scalar(`SELECT COUNT(*) FROM chips WHERE owner = ?`, w)).toBe(MURAL_RARITIES - 1);
+    const r = muralCohort(db, 30, t);
+    expect(r.cohort.wallets).toBe(0);
+    expect(r.delta.trades).toBeNull(); // пустая когорта — не «−100 %»
+  });
+
+  it('когорта из данных не притворяется фичей: кривой принятия у неё нет', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const w = kp();
+    for (let r = 0; r < MURAL_RARITIES; r++) seedCap(db, w, 5, r); // весь район — мурал целый
+    db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, w, Math.floor(t / DAY));
+    const r = muralCohort(db, 30, t);
+    expect(r.cohort.wallets).toBe(1);
+    expect(r.series).toEqual([]);
   });
 });
 

@@ -7341,11 +7341,16 @@ export interface components {
             /** @description one card per world feature — everyone who touched it vs everyone who played but did not */
             features?: components["schemas"]["WorldFeatureCohort"][];
             /**
-             * @description Narrower cuts *inside* a feature, compared against the rest of that feature instead of
-             *     against all players — because a subset inherits its parent's selection. `wall.board` (docs/16
-             *     §3.7) is exactly that: every board author already holds a slot (§3.4), so measuring them
-             *     against all players measures the slot, not the board. Here the baseline is slot holders who
-             *     never made the board.
+             * @description Narrower cuts, compared against a baseline that is not "everyone who played".
+             *
+             *     `wall.board` (docs/16 §3.7) cuts *inside* a feature: every board author already holds a slot
+             *     (§3.4), so measuring them against all players measures the slot, not the board — the
+             *     baseline is slot holders who never made the board.
+             *
+             *     `collection.mural` (docs/16 §2.3) is cut from game state, not from events: the cohort is
+             *     wallets holding at least 8 of some district's 9 caps (a mural painted 80 % or more), and the
+             *     baseline is players of the same window who never got that far. It carries no `series`: owning
+             *     caps is not an event, and "how many murals were finished per day" is a different question.
              */
             slices?: components["schemas"]["WorldFeatureCohort"][];
             /** @description docs/16 §12 row 1 — share of pack opens followed by another pack purchase within 24 h */
@@ -7382,10 +7387,10 @@ export interface components {
         /** @description one cohort card — per-wallet averages for the group, the baseline and the ratio between them */
         WorldFeatureCohort: {
             /**
-             * @description feature name, or `feature.kind` for a slice (e.g. `wall.board`)
+             * @description feature name, or `feature.kind` for a slice (e.g. `wall.board`, `collection.mural`)
              * @enum {string}
              */
-            feature?: "wall" | "exhibit" | "tag" | "inspect" | "wall.board";
+            feature?: "wall" | "exhibit" | "tag" | "inspect" | "wall.board" | "collection.mural";
             windowDays?: number;
             /** Format: date-time */
             from?: string;
