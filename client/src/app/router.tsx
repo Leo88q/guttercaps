@@ -27,6 +27,9 @@ const Arena = lazy(() => import('@/features/arena/Arena'));
 const MatchReplay = lazy(() => import('@/features/arena/MatchReplay'));
 const Market = lazy(() => import('@/features/market/Market'));
 const ChipPage = lazy(() => import('@/features/market/ChipPage'));
+// Инспектор крышки (docs/16 §2.2) — ленивый, как и страница маркета: orbit и
+// паспорт нужны только тому, кто открыл конкретную крышку по ссылке.
+const ChipInspector = lazy(() => import('@/features/chip/ChipInspector'));
 const Staking = lazy(() => import('@/features/staking/Staking'));
 const Quests = lazy(() => import('@/features/quests/Quests'));
 const Grid = lazy(() => import('@/features/grid/Grid'));
@@ -84,6 +87,9 @@ export const routes: RouteObject[] = [
       { path: 'arena/match/:id', element: S(<MatchReplay />) },
       { path: 'market', element: S(<Market />) },
       { path: 'market/:asset', element: S(<ChipPage />) },
+      // Глубокая ссылка на крышку (docs/16 §2.2): открывается без кошелька,
+      // ?view=3d — тот же экран, просто с подсказкой про орбиту.
+      { path: 'chip/:asset', element: S(<ChipInspector />) },
       { path: 'staking', element: W(<Staking />) },
       { path: 'quests', element: W(<Quests />) },
       { path: 'grid', element: W(<Grid />) },

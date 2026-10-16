@@ -751,6 +751,17 @@ paths:
       responses:
         '200': { description: events, content: { application/json: { schema: { type: object, properties: { events: { type: array, items: { $ref: '#/components/schemas/RawEvent' } } } } } } }
         '400': { $ref: '#/components/responses/Error', description: 'bad_request — `limit` is not a single non-negative integer, or `address` is not a 32-byte base58 key (SEC-B2, SEC-B36)' }
+  /chips/{asset}/share:
+    post:
+      tags: [chips]
+      summary: Mark a chip as shared from the inspector and return the deep link (docs/16 §2.2)
+      description: |
+        Records `inspect.share` so the rule-gate metric («share rate and sign-ups from shared links»)
+        can be measured, and returns the relative deep link carrying the same `ref` parameter the
+        referral program already uses — so a sign-up that arrives through a shared cap is attributed
+        by the existing funnel, not by new plumbing.
+      parameters: [{ in: path, name: asset, required: true, schema: { $ref: '#/components/schemas/Pubkey' } }]
+      responses: { '200': { description: relative deep link, content: { application/json: { schema: { type: object, properties: { path: { type: string, example: '/chip/7xKQ…?ref=7xKQ…' } } } } } } }
   /chips/{asset}:
     get:
       tags: [collections]
@@ -2143,7 +2154,7 @@ components:
               delta:
                 type: object
                 description: 'cohort / baseline − 1 per metric; null when there is nothing to divide by'
-                properties: { packs: { type: [number, 'null'] }, trades: { type: [number, 'null'] }, fusions: { type: [number, 'null'] }, loginDays: { type: [number, 'null'] }, stakedCaps: { type: [number, 'null'] } }
+                properties: { packs: { type: [number, 'null'] }, trades: { type: [number, 'null'] }, fusions: { type: [number, 'null'] }, loginDays: { type: [number, 'null'] }, stakedCaps: { type: [number, 'null'] }, referrals: { type: [number, 'null'] } }
               series:
                 type: array
                 description: adoption curve — events and distinct wallets per day
@@ -2183,6 +2194,7 @@ components:
         fusionsPerWallet: { type: number }
         loginDaysPerWallet: { type: number }
         stakedCapsPerWallet: { type: number }
+        referralsPerWallet: { type: number, description: 'wallets that arrived through this wallet’s link, per wallet' }
     AdminKpi:
       type: object
       properties:

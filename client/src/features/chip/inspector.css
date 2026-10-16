@@ -1,0 +1,69 @@
+/* Инспектор крышки (docs/16 §2.2).
+   Движение — только transform: крышку крутит жест, арт остаётся артом.
+   Оборот — паспорт, а не картинка: рисовать «изнанку» кодом мы не умеем и не
+   должны (правило из задачи H). Кромка — обод в цвет редкости. */
+.inspector-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 300px;
+  padding: 18px 0 26px;
+  perspective: 1000px;
+  touch-action: pan-y;
+  cursor: grab;
+  outline: none;
+}
+.inspector-stage:focus-visible { box-shadow: inset 0 0 0 1px var(--cg-trust-blue); border-radius: 12px; }
+.inspector-stage.is-drag { cursor: grabbing; }
+
+.inspector-coin {
+  position: relative;
+  width: min(320px, 82vw);
+  aspect-ratio: 1;
+  transform-style: preserve-3d;
+  transition: transform 80ms linear;
+  /* кромка: обод в цвет редкости, та самая «гравировка района» по кругу */
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px var(--rim, #d8d8dc), 0 0 0 8px rgba(0, 0, 0, 0.35), 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+.inspector-face {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  backface-visibility: hidden;
+  background: #16151a;
+}
+.inspector-front img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.inspector-back {
+  transform: rotateY(180deg);
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  padding: 14% 12%;
+  background: radial-gradient(circle at 50% 30%, rgba(216, 216, 220, 0.08), #101014 70%);
+  text-align: left;
+}
+/* гравировка района по ободу: сплющенный текст, а не нарисованная картинка */
+.inspector-engraving {
+  font-family: var(--cg-font-display);
+  font-size: 13px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--rim, #d8d8dc);
+  transform: scaleY(1.35);
+  opacity: 0.85;
+}
+.inspector-ground {
+  position: absolute;
+  left: 50%; bottom: 8px;
+  width: min(260px, 70vw); height: 18px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.55), transparent 70%);
+  filter: blur(2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inspector-coin { transition: none; }
+}

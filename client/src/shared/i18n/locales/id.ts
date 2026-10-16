@@ -243,6 +243,13 @@ const id: Messages = {
       gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Banner animasi untuk distrik yang sudah Anda lengkapi.', districtStencilPack: 'Lima stensil distrik untuk editor tag. Hanya bentuknya — garis dan warna tetap milikmu.',
     },
   },
+  inspect: {
+    hint: 'Geser untuk memutar · ← → untuk memutar · ketuk dua kali untuk reset',
+    front: 'Depan', back: 'Belakang', reset: 'Reset', share: 'Bagikan',
+    copied: 'Link disalin', shareHint: 'Salin link ini', shareFailed: 'Gagal membagikan',
+    link: 'Linkmu', refNote: 'Link ini membawa kode referralmu — pendaftaran yang datang lewat link ini dihitung oleh program referral biasa.',
+    spec: 'Spesifikasi', toMarket: 'Halaman market', deepLinkNote: 'Halaman ini adalah deep link: terbuka tanpa wallet dan tanpa sesi.',
+  },
   admin: {
     title: 'Panel operasi', subtitle: 'Penyetelan ekonomi langsung. Tidak ada yang ditandatangani di sini: setiap perubahan kembali sebagai byte instruksi untuk multisig, dan setiap panggilan dicatat ke log audit.',
     tabs: { params: 'Parameter', kill: 'Tombol darurat', simulate: 'Simulasi', kpi: 'KPI', world: 'Dunia', fraud: 'Antrean fraud', audit: 'Log audit' },
@@ -265,6 +272,7 @@ const id: Messages = {
       afterLoss: 'setelah kalah',
       afterWin: 'setelah menang',
       battles: '{n, plural, other{# battle}}',
+      referrals: 'Pendaftar lewat link',
       feat: { wall: 'Dinding distrik', exhibit: 'Pameran cap', tag: 'Tag' },
       empty: 'Belum ada event di periode ini — belum ada yang bisa dibandingkan.',
       series: 'Event per hari',

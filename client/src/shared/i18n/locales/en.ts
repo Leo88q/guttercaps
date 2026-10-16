@@ -254,6 +254,13 @@ const en = {
       gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Animated banner for a district you have completed.', districtStencilPack: 'Five district stencils for the tag editor. Shapes only — the lines and colours stay yours.',
     },
   },
+  inspect: {
+    hint: 'Drag to spin · ← → to turn · double-tap to reset',
+    front: 'Face', back: 'Back', reset: 'Reset', share: 'Share',
+    copied: 'Link copied', shareHint: 'Copy this link', shareFailed: 'Could not share',
+    link: 'Your link', refNote: 'The link carries your referral code — sign-ups through it are attributed to you by the usual referral program.',
+    spec: 'Spec', toMarket: 'Market page', deepLinkNote: 'This page is a deep link: it opens without a wallet and without a session.',
+  },
   admin: {
     title: 'Ops panel', subtitle: 'Live economy tuning. Nothing here signs: every change comes back as instruction bytes for the multisig, and every call is written to the audit log.',
     tabs: { params: 'Parameters', kill: 'Kill switch', simulate: 'Simulate', kpi: 'KPI', world: 'World', fraud: 'Fraud queue', audit: 'Audit log' },
@@ -276,6 +283,7 @@ const en = {
       afterLoss: 'after a loss',
       afterWin: 'after a win',
       battles: '{n, plural, one{# battle} other{# battles}}',
+      referrals: 'Sign-ups from their link',
       feat: { wall: 'District wall', exhibit: 'Cap exhibit', tag: 'Tag' },
       empty: 'No events in the window — there is nothing to compare yet.',
       series: 'Events per day',

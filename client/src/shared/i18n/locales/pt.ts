@@ -243,6 +243,13 @@ const pt: Messages = {
       gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Banner animado de um distrito que você completou.', districtStencilPack: 'Cinco estênceis de distrito para o editor de tags. Só as formas: linhas e cores são suas.',
     },
   },
+  inspect: {
+    hint: 'Arraste para girar · ← → para rotar · toque duplo para reiniciar',
+    front: 'Frente', back: 'Verso', reset: 'Reiniciar', share: 'Compartilhar',
+    copied: 'Link copiado', shareHint: 'Copie este link', shareFailed: 'Não foi possível compartilhar',
+    link: 'Seu link', refNote: 'O link leva seu código de indicação: os cadastros que chegarem por ele entram no programa de indicação de sempre.',
+    spec: 'Ficha', toMarket: 'Página no mercado', deepLinkNote: 'Esta página é um link direto: abre sem carteira e sem sessão.',
+  },
   admin: {
     title: 'Painel de operações', subtitle: 'Ajuste da economia ao vivo. Nada aqui assina: cada mudança volta como bytes de instrução para a multisig e cada chamada vai para o log de auditoria.',
     tabs: { params: 'Parâmetros', kill: 'Botão de pausa', simulate: 'Simular', kpi: 'KPI', world: 'Mundo', fraud: 'Fila de fraude', audit: 'Auditoria' },
@@ -265,6 +272,7 @@ const pt: Messages = {
       afterLoss: 'após derrota',
       afterWin: 'após vitória',
       battles: '{n, plural, one{# batalha} other{# batalhas}}',
+      referrals: 'Cadastros pelo link',
       feat: { wall: 'Muro do distrito', exhibit: 'Exposição de caps', tag: 'Tag' },
       empty: 'Sem eventos na janela — ainda não há nada para comparar.',
       series: 'Eventos por dia',

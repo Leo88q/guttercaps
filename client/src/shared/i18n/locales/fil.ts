@@ -243,6 +243,13 @@ const fil: Messages = {
       gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Animated na banner para sa distritong nakumpleto mo.', districtStencilPack: 'Limang stencil ng distrito para sa tag editor. Hugis lang — linya at kulay, sa iyo.',
     },
   },
+  inspect: {
+    hint: 'I-drag para paikutin · ← → para lumiko · double-tap para i-reset',
+    front: 'Harap', back: 'Likod', reset: 'I-reset', share: 'Ibahagi',
+    copied: 'Nakopya ang link', shareHint: 'Kopyahin ang link na ito', shareFailed: 'Hindi maibahagi',
+    link: 'Link mo', refNote: 'Dala ng link ang referral code mo — ang mga sign-up na dumaan dito ay nabibilang sa karaniwang referral program.',
+    spec: 'Spec', toMarket: 'Pahina sa market', deepLinkNote: 'Deep link ang pahinang ito: bubukas ito kahit walang wallet at walang session.',
+  },
   admin: {
     title: 'Ops panel', subtitle: 'Live na pag-tune ng ekonomiya. Walang pumipirma dito: bawat pagbabago ay bumabalik bilang instruction bytes para sa multisig, at bawat tawag ay naitatala sa audit log.',
     tabs: { params: 'Mga parameter', kill: 'Kill switch', simulate: 'Simulate', kpi: 'KPI', world: 'Mundo', fraud: 'Fraud queue', audit: 'Audit log' },
@@ -265,6 +272,7 @@ const fil: Messages = {
       afterLoss: 'matapos matalo',
       afterWin: 'matapos manalo',
       battles: '{n, plural, other{# battle}}',
+      referrals: 'Mga sign-up mula sa link',
       feat: { wall: 'Dingding ng distrito', exhibit: 'Exhibit ng caps', tag: 'Tag' },
       empty: 'Walang event sa window — wala pang puwedeng paghambingin.',
       series: 'Mga event bawat araw',

@@ -2611,6 +2611,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chips/{asset}/share": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark a chip as shared from the inspector and return the deep link (docs/16 §2.2)
+         * @description Records `inspect.share` so the rule-gate metric («share rate and sign-ups from shared links»)
+         *     can be measured, and returns the relative deep link carrying the same `ref` parameter the
+         *     referral program already uses — so a sign-up that arrives through a shared cap is attributed
+         *     by the existing funnel, not by new plumbing.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    asset: components["schemas"]["Pubkey"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description relative deep link */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example /chip/7xKQ…?ref=7xKQ… */
+                            path?: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/chips/{asset}": {
         parameters: {
             query?: never;
@@ -7151,6 +7198,7 @@ export interface components {
                     fusions?: number | null;
                     loginDays?: number | null;
                     stakedCaps?: number | null;
+                    referrals?: number | null;
                 };
                 /** @description adoption curve — events and distinct wallets per day */
                 series?: {
@@ -7197,6 +7245,8 @@ export interface components {
             fusionsPerWallet?: number;
             loginDaysPerWallet?: number;
             stakedCapsPerWallet?: number;
+            /** @description wallets that arrived through this wallet’s link, per wallet */
+            referralsPerWallet?: number;
         };
         AdminKpi: {
             /** Format: date-time */

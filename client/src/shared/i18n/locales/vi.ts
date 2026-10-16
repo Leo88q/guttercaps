@@ -243,6 +243,13 @@ const vi: Messages = {
       gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Banner động cho quận bạn đã hoàn thành.', districtStencilPack: 'Năm khuôn các quận cho trình sửa tag. Chỉ hình dạng — nét vẽ và màu là của bạn.',
     },
   },
+  inspect: {
+    hint: 'Kéo để xoay · ← → để quay · nhấn đúp để đặt lại',
+    front: 'Mặt trước', back: 'Mặt sau', reset: 'Đặt lại', share: 'Chia sẻ',
+    copied: 'Đã chép link', shareHint: 'Chép link này', shareFailed: 'Không chia sẻ được',
+    link: 'Link của bạn', refNote: 'Link mang mã giới thiệu của bạn — người đăng ký qua link này được tính bởi chương trình giới thiệu như thường.',
+    spec: 'Thông số', toMarket: 'Trang market', deepLinkNote: 'Đây là deep link: mở được không cần ví và không cần đăng nhập.',
+  },
   admin: {
     title: 'Bảng vận hành', subtitle: 'Tinh chỉnh kinh tế trực tiếp. Không có gì ở đây được ký: mọi thay đổi trả về dưới dạng byte lệnh cho multisig, và mọi lệnh gọi đều được ghi vào nhật ký kiểm toán.',
     tabs: { params: 'Tham số', kill: 'Nút dừng', simulate: 'Mô phỏng', kpi: 'KPI', world: 'Thế giới', fraud: 'Hàng đợi gian lận', audit: 'Nhật ký' },
@@ -265,6 +272,7 @@ const vi: Messages = {
       afterLoss: 'sau thua',
       afterWin: 'sau thắng',
       battles: '{n, plural, other{# trận}}',
+      referrals: 'Đăng ký qua link',
       feat: { wall: 'Tường khu', exhibit: 'Trưng bày cap', tag: 'Tag' },
       empty: 'Chưa có sự kiện nào trong khoảng này — chưa có gì để so sánh.',
       series: 'Sự kiện mỗi ngày',

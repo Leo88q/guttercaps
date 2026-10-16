@@ -243,6 +243,13 @@ const ru: Messages = {
       gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Анимированный баннер собранного района.', districtStencilPack: 'Пять трафаретов районов для редактора тегов. Только формы: линии и цвета — ваши.',
     },
   },
+  inspect: {
+    hint: 'Тяни чтобы крутить · ← → поворот · двойной тап — сброс',
+    front: 'Лицо', back: 'Оборот', reset: 'Сброс', share: 'Поделиться',
+    copied: 'Ссылка скопирована', shareHint: 'Скопируй эту ссылку', shareFailed: 'Не получилось поделиться',
+    link: 'Твоя ссылка', refNote: 'В ссылке твой реф-код: пришедшие по ней засчитываются обычной реферальной программой.',
+    spec: 'Паспорт', toMarket: 'Страница на маркете', deepLinkNote: 'Это глубокая ссылка: страница открывается без кошелька и без сессии.',
+  },
   admin: {
     title: 'Панель операций', subtitle: 'Живая настройка экономики. Здесь ничего не подписывается: каждое изменение возвращается байтами инструкций для мультисига, каждый вызов пишется в журнал аудита.',
     tabs: { params: 'Параметры', kill: 'Стоп-кран', simulate: 'Симуляция', kpi: 'KPI', world: 'Мир', fraud: 'Очередь фрода', audit: 'Журнал' },
@@ -265,6 +272,7 @@ const ru: Messages = {
       afterLoss: 'после поражения',
       afterWin: 'после победы',
       battles: '{n, plural, one{# бой} few{# боя} many{# боёв} other{# боя}}',
+      referrals: 'Пришло по ссылке',
       feat: { wall: 'Стена района', exhibit: 'Экспозиция крышек', tag: 'Тег' },
       empty: 'В этом окне событий нет — сравнивать пока нечего.',
       series: 'Событий по дням',

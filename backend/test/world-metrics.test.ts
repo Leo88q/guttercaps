@@ -111,6 +111,23 @@ describe('worldMetrics — когорта против базовой линии
     expect(r.series.find((s) => s.day === Math.floor((t - DAY) / DAY))).toMatchObject({ events: 2, wallets: 1 });
   });
 
+  it('шер инспектора виден в отчёте: приведённые кошельки считаются на одного', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const sharer = kp();
+    const quiet = kp();
+    for (const w of [sharer, quiet]) for (let i = 0; i < 3; i++) db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, w, Math.floor(t / DAY) - i);
+    recordEvent(db, sharer, 'inspect', 'share', { asset: kp() }, t - DAY);
+    // Двое пришли по ссылке делившегося — и это ровно та метрика §12 строка 2.
+    for (let i = 0; i < 2; i++) db.run(`INSERT INTO wallets (address, referrer, first_seen, risk_score, flags) VALUES (?, ?, ?, 0, '{}')`, kp(), sharer, t - DAY);
+
+    const r = cohortReport(db, 'inspect', 30, t);
+    expect(r.cohort.wallets).toBe(1);
+    expect(r.cohort.referralsPerWallet).toBe(2);
+    expect(r.baseline).toMatchObject({ wallets: 1, referralsPerWallet: 0 });
+    expect(r.delta.referrals).toBeNull(); // база нулевая → делить не на что
+  });
+
   it('отчёт покрывает все фичи из §12', () => {
     const db = new Db(':memory:');
     const r = worldReport(db, 7);

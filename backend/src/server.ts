@@ -563,6 +563,19 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     else res.json(r);
   });
 
+  // Шер инспектора (docs/16 §2.2): единственная причина существования этого
+  // вызова — метрика «доля шеринга и регистрации из переходов». Саму ссылку
+  // клиент собирает и без нас; здесь мы (1) записываем событие и (2) отдаём
+  // путь с реф-параметром, тем же, что использует реферальная программа.
+  v1.post('/chips/:asset/share', requireAuth, rl(POLICIES.arena), (req, res) => {
+    const asset = String(req.params.asset ?? '');
+    const wallet = req.session!.wallet;
+    const chip = q.chipDetail(db, asset);
+    if (!chip) { res.status(404).json({ code: 'not_found', message: 'Unknown chip' }); return; }
+    worldMetrics.recordEvent(db, wallet, 'inspect', 'share', { asset });
+    res.json({ path: `/chip/${asset}?ref=${wallet}` });
+  });
+
   // ------------------------------------------------------------ packs: quote (frozen FX — SOL $110 / SKR $0.016)
   v1.post('/packs/quote', requireAuth, accessGate('packs'), rl(POLICIES.quote), wrap(async (req, res) => {
     // The legal gate lives here, not in the UI: `me().flags.geoRestricted` only changes the copy, and a
