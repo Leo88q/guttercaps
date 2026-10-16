@@ -1004,14 +1004,20 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/me/line/runs/{id}/replay": {
+    "/line/runs/{id}/replay": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Own replay for re-watching (docs/16 §5.2) — inputs are wiped after 14 days, score stays */
+        /**
+         * Re-watch a run (docs/16 §5.5) — public, watch-only; inputs are wiped after 14 days, score stays
+         * @description The weekly board is public and a replay carries nothing but keystrokes, so watching
+         *     one needs no wallet. `inputs` is empty once the 14-day sweeper has wiped it: the row
+         *     keeps its score, and the board flags it with `hasReplay: false` so the UI offers no
+         *     dead link.
+         */
         get: {
             parameters: {
                 query?: never;
@@ -1032,7 +1038,7 @@ export interface paths {
                         "application/json": components["schemas"]["RunReplay"];
                     };
                 };
-                /** @description no such run for this wallet */
+                /** @description no such run */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -7334,10 +7340,16 @@ export interface components {
             submittedAt: string;
         };
         RunReplay: {
-            id: number;
+            runId: number;
             day: number;
             seed: number;
             score: number;
+            tricks: number;
+            bails: number;
+            wallet: string;
+            handle?: string | null;
+            /** Format: date-time */
+            at: string;
             inputs: components["schemas"]["LineReplay"];
         };
         LineBoard: {
@@ -7352,6 +7364,8 @@ export interface components {
                 runId: number;
                 /** Format: date-time */
                 at: string;
+                /** @description false once the 14-day sweeper wiped the inputs */
+                hasReplay: boolean;
             }[];
         };
         AchievementClaim: components["schemas"]["Achievement"] & {

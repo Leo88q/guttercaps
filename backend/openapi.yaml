@@ -333,15 +333,20 @@ paths:
         '200': { description: credits, content: { application/json: { schema: { type: object, properties: { day: { type: integer }, credits: { type: integer } } } } } }
         '402': { description: 'payment_not_found · cg_burn_required (not $CG, or not exactly 30 $CG) · ref_hash_mismatch · payment_consumed' }
         '409': { description: 'run_credit_cap — the daily paid-run cap is reached' }
-  /me/line/runs/{id}/replay:
+  /line/runs/{id}/replay:
     get:
-      tags: [me]
-      summary: 'Own replay for re-watching (docs/16 §5.2) — inputs are wiped after 14 days, score stays'
+      tags: [line]
+      summary: 'Re-watch a run (docs/16 §5.5) — public, watch-only; inputs are wiped after 14 days, score stays'
+      description: |
+        The weekly board is public and a replay carries nothing but keystrokes, so watching
+        one needs no wallet. `inputs` is empty once the 14-day sweeper has wiped it: the row
+        keeps its score, and the board flags it with `hasReplay: false` so the UI offers no
+        dead link.
       parameters:
-        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
       responses:
         '200': { description: replay, content: { application/json: { schema: { $ref: '#/components/schemas/RunReplay' } } } }
-        '404': { description: 'no such run for this wallet' }
+        '404': { description: 'no such run' }
   /line/leaderboard:
     get:
       tags: [line]
@@ -2241,12 +2246,17 @@ components:
         submittedAt: { type: string, format: date-time }
     RunReplay:
       type: object
-      required: [id, day, seed, score, inputs]
+      required: [runId, day, seed, score, tricks, bails, wallet, at, inputs]
       properties:
-        id: { type: integer }
+        runId: { type: integer }
         day: { type: integer }
         seed: { type: integer }
         score: { type: integer }
+        tricks: { type: integer }
+        bails: { type: integer }
+        wallet: { type: string }
+        handle: { type: string, nullable: true }
+        at: { type: string, format: date-time }
         inputs: { $ref: '#/components/schemas/LineReplay' }
     LineBoard:
       type: object
@@ -2257,7 +2267,7 @@ components:
           type: array
           items:
             type: object
-            required: [rank, wallet, score, tricks, bails, runId, at]
+            required: [rank, wallet, score, tricks, bails, runId, at, hasReplay]
             properties:
               rank: { type: integer }
               wallet: { type: string }
@@ -2267,6 +2277,7 @@ components:
               bails: { type: integer }
               runId: { type: integer }
               at: { type: string, format: date-time }
+              hasReplay: { type: boolean, description: 'false once the 14-day sweeper wiped the inputs' }
     AchievementClaim:
       allOf:
         - { $ref: '#/components/schemas/Achievement' }

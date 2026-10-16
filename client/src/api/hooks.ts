@@ -148,6 +148,7 @@ export function useClaimAchievement() {
 export type LineState = ResponseOf<'/me/line', 'get'>;
 export type RunSubmit = ResponseOf<'/me/line/runs', 'post'>;
 export type LineBoard = ResponseOf<'/line/leaderboard', 'get'>;
+export type RunReplay = ResponseOf<'/line/runs/{id}/replay', 'get'>;
 
 /** Состояние дня: раскладку клиент строит сам из `day`, сид сверяет. */
 export const useLine = () =>
@@ -178,6 +179,18 @@ export function useBuyExtraRun() {
 
 export const useLineBoard = (week?: number) =>
   useQuery({ queryKey: ['line', 'board', week], queryFn: () => api.get('/line/leaderboard', { query: { week } }), staleTime: 60_000 });
+
+/**
+ * Реплей заезда для просмотра (docs/16 §5.5). Публичный: строка доски и так
+ * видна всем, а в реплее только нажатия. Кэш долгий — заезд не меняется.
+ */
+export const useRunReplay = (runId: number | null) =>
+  useQuery({
+    queryKey: ['line', 'replay', runId],
+    queryFn: () => api.get('/line/runs/{id}/replay', { path: { id: String(runId) } }),
+    enabled: runId !== null && Number.isFinite(runId),
+    staleTime: 3_600_000,
+  });
 
 // ------------------------------------------------------------- beta pre-sale (docs/preorder-beta.md)
 export type PreorderCampaign = ResponseOf<'/preorder', 'get'>;

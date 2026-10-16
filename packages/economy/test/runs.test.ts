@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import {
   LINE, LINE_TICKS, LINE_UNITS_PER_TICK, LINE_HOP, LINE_GRAB,
   lineLayout, lineSeed, featureAt, simulateRun, createRun, airHeight,
-  lineTier, runPassXp, LINE_ITEM_REWARDS, type LineLayout, type RunInput,
+  lineTier, runPassXp, LINE_ITEM_REWARDS, botReplay, type LineLayout, type RunInput
 } from '../src/index.ts';
 
 const U = LINE_UNITS_PER_TICK;
@@ -18,36 +18,14 @@ const U = LINE_UNITS_PER_TICK;
  * Бот «в окно»: прыжок ровно перед препятствием, грэб сразу после толчка,
  * посадка на перила с воздуха. `jitter` — дрожание пальца в тиках (1 тик = 20 мс).
  */
-function planBot(layout: LineLayout, jitter = 0, seed = 1): RunInput[] {
-  let s = seed >>> 0;
-  const rnd = () => (((s = (s * 1103515245 + 12345) & 0x7fffffff) >>> 0) % 1000) / 1000;
-  const jit = () => (jitter ? Math.round((rnd() - 0.5) * jitter) : 0);
-  const inputs: RunInput[] = [];
-  let busyUntil = -1;
-  for (const f of layout.features) {
-    if (f.kind === 'kicker') {
-      const t = Math.floor(f.start / U) + 1 + jit();
-      if (t > busyUntil) inputs.push({ tick: t, action: LINE_GRAB });
-      busyUntil = Math.floor(f.start / U) + LINE.kickTicks;
-      continue;
-    }
-    // перила надо принять с воздуха, пролёт и бордюр — перелететь
-    const t = f.kind === 'rail' ? Math.floor((f.start + 20 - 220) / U) : Math.floor(f.start / U) - 1;
-    const at = t + jit();
-    if (at < 0 || at <= busyUntil) continue;
-    inputs.push({ tick: at, action: LINE_HOP });
-    inputs.push({ tick: at + 1, action: LINE_GRAB });
-    busyUntil = at + LINE.hopTicks;
-  }
-  return inputs.sort((a, b) => a.tick - b.tick);
-}
+
 
 const DAYS = 60;
 const scores = (jitter: number, seed: number) => {
   const out = [];
   for (let day = 0; day < DAYS; day++) {
     const L = lineLayout(day);
-    out.push(simulateRun(L, planBot(L, jitter, seed + day * 31)));
+    out.push(simulateRun(L, botReplay(L, jitter, seed + day * 31)));
   }
   return out;
 };
@@ -102,7 +80,7 @@ describe('линия: раскладка дня', () => {
 describe('линия: пересчёт очков', () => {
   it('реплей считается одинаково сколько угодно раз — это и есть честность §5.2', () => {
     const L = lineLayout(5);
-    const inputs = planBot(L, 4, 3);
+    const inputs = botReplay(L, 4, 3);
     const a = simulateRun(L, inputs);
     const b = simulateRun(L, inputs);
     assert.deepEqual(a, b);
@@ -110,7 +88,7 @@ describe('линия: пересчёт очков', () => {
 
   it('тот же реплей на живом шагателе даёт тот же результат, что и полный прогон', () => {
     const L = lineLayout(9);
-    const inputs = planBot(L, 2, 11);
+    const inputs = botReplay(L, 2, 11);
     const byTick = new Map<number, RunInput[]>();
     for (const i of inputs) {
       const list = byTick.get(i.tick) ?? [];
@@ -124,15 +102,15 @@ describe('линия: пересчёт очков', () => {
 
   it('тайминг решает: сдвиг ввода на 12 тиков меняет результат', () => {
     const L = lineLayout(11);
-    const good = planBot(L);
-    const late = planBot(L).map((i) => ({ tick: i.tick + 12, action: i.action }));
+    const good = botReplay(L);
+    const late = botReplay(L).map((i) => ({ tick: i.tick + 12, action: i.action }));
     assert.ok(simulateRun(L, good).score > simulateRun(L, late).score);
     assert.ok(simulateRun(L, good).bails < simulateRun(L, late).bails);
   });
 
   it('падение обрывает комбо, приземление его банкует', () => {
     const L = lineLayout(0);
-    const clean = simulateRun(L, planBot(L));
+    const clean = simulateRun(L, botReplay(L));
     assert.equal(clean.bails, 0);
     // чистая связка: множитель растёт и никогда не падает
     const mults = clean.log.map((t) => t.multBps);
@@ -141,7 +119,7 @@ describe('линия: пересчёт очков', () => {
     // убираем ровно один прыжок перед пролётом — райдер едет в дыру ногами
     const gap = L.features.find((f) => f.kind === 'gap')!;
     const hopTick = Math.floor(gap.start / U) - 1;
-    const holed = simulateRun(L, planBot(L).filter((i) => i.tick !== hopTick));
+    const holed = simulateRun(L, botReplay(L).filter((i) => i.tick !== hopTick));
     assert.ok(holed.bails >= 1, 'дыра без прыжка обязана ронять');
     assert.ok(holed.score < clean.score, 'падение стоит очков, а не только трюка');
 
@@ -168,19 +146,19 @@ describe('линия: пересчёт очков', () => {
 
   it('множитель растёт на 0,1 за звено и упирается в ×5', () => {
     const L = lineLayout(4);
-    const r = simulateRun(L, planBot(L));
+    const r = simulateRun(L, botReplay(L));
     for (const t of r.log) assert.ok(t.multBps <= LINE.comboCapBps);
     const m = r.log.map((t) => t.multBps);
     assert.equal(m[0], LINE.comboStartBps);
     assert.equal(m[1] - m[0], LINE.comboStepBps);
-    const capped = simulateRun(lineLayout(2), planBot(lineLayout(2)));
+    const capped = simulateRun(lineLayout(2), botReplay(lineLayout(2)));
     assert.ok(capped.bestCombo * LINE.comboStepBps + LINE.comboStartBps >= 0);
   });
 
   it('ввод вне трассы — вне заезда: реплей не может выйти за 45 секунд', () => {
     const L = lineLayout(6);
-    const clean = simulateRun(L, planBot(L));
-    const padded = simulateRun(L, [...planBot(L), { tick: LINE_TICKS + 500, action: LINE_HOP }, { tick: -3, action: LINE_HOP }]);
+    const clean = simulateRun(L, botReplay(L));
+    const padded = simulateRun(L, [...botReplay(L), { tick: LINE_TICKS + 500, action: LINE_HOP }, { tick: -3, action: LINE_HOP }]);
     assert.deepEqual(padded, clean);
   });
 

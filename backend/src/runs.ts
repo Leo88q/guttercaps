@@ -263,11 +263,38 @@ export function pruneLineReplays(db: Db, t = now()): number {
 }
 
 /** Реплей для просмотра (§5.5): только свой или с доски недели — чужую езду не отдаём. */
-export function runReplay(db: Db, wallet: string, id: number): { id: number; day: number; seed: number; score: number; inputs: unknown } | null {
-  const r = db.get<{ id: number; day: number; seed: number; score: number; inputs: string }>(
-    `SELECT id, day, seed, score, inputs FROM line_runs WHERE id = ? AND wallet = ?`, id, wallet);
+/**
+ * Реплей заезда для просмотра (docs/16 §5.5).
+ *
+ * Публичный намеренно: строка заезда и так лежит на доске недели с кошельком и
+ * очками, а в реплее нет ничего, кроме нажатий — секретов там не бывает по
+ * построению. «Просмотр, не скачивание» означает, что интерфейс показывает
+ * заезд, а не отдаёт файл: ввод живёт 14 дней и стирается подметальщиком.
+ */
+export function runReplay(db: Db, id: number): RunReplay | null {
+  const r = db.get<{ id: number; day: number; seed: number; score: number; tricks: number; bails: number; wallet: string; handle: string | null; at: number; inputs: string }>(
+    `SELECT r.id, r.day, r.seed, r.score, r.tricks, r.bails, r.wallet, w.handle, r.submitted_at at, r.inputs
+       FROM line_runs r LEFT JOIN wallets w ON w.address = r.wallet
+      WHERE r.id = ?`, id);
   if (!r) return null;
-  return { id: r.id, day: r.day, seed: r.seed, score: r.score, inputs: JSON.parse(r.inputs) };
+  return {
+    runId: r.id, day: r.day, seed: r.seed, score: r.score, tricks: r.tricks, bails: r.bails,
+    wallet: r.wallet, handle: r.handle, at: iso(r.at), inputs: JSON.parse(r.inputs),
+  };
+}
+
+export interface RunReplay {
+  runId: number;
+  day: number;
+  seed: number;
+  score: number;
+  tricks: number;
+  bails: number;
+  wallet: string;
+  handle: string | null;
+  at: string;
+  /** `[тик, действие]` — ровно то, что прислал клиент; [] когда ввод уже стёрт. */
+  inputs: [number, number][];
 }
 
 export const currentWeek = (t = now()): number => weekIndex(t);
@@ -283,11 +310,13 @@ export interface LeaderRow {
   bails: number;
   runId: number;
   at: string;
+  /** Есть ли что смотреть: ввод живёт 14 дней, и доска не должна давать мёртвую ссылку. */
+  hasReplay: boolean;
 }
 
 export function lineLeaderboard(db: Db, week: number, limit = 50): { week: number; rows: LeaderRow[] } {
-  const rows = db.all<{ wallet: string; handle: string | null; score: number; tricks: number; bails: number; id: number; at: number }>(
-    `SELECT r.wallet, w.handle, r.score, r.tricks, r.bails, r.id, r.submitted_at at
+  const rows = db.all<{ wallet: string; handle: string | null; score: number; tricks: number; bails: number; id: number; at: number; inputs: string }>(
+    `SELECT r.wallet, w.handle, r.score, r.tricks, r.bails, r.id, r.submitted_at at, r.inputs inputs
        FROM line_runs r
        LEFT JOIN wallets w ON w.address = r.wallet
       WHERE r.week = ? AND r.id = (SELECT id FROM line_runs b WHERE b.week = r.week AND b.wallet = r.wallet ORDER BY b.score DESC, b.id ASC LIMIT 1)
@@ -296,7 +325,10 @@ export function lineLeaderboard(db: Db, week: number, limit = 50): { week: numbe
   return {
     week,
     rows: rows.map((r, i) => ({
-      rank: i + 1, wallet: r.wallet, handle: r.handle, score: r.score, tricks: r.tricks, bails: r.bails, runId: r.id, at: iso(r.at),
+      rank: i + 1, wallet: r.wallet, handle: r.handle, score: r.score, tricks: r.tricks, bails: r.bails,
+      runId: r.id, at: iso(r.at),
+      // Строгое сравнение со стёртым вводом: подметальщик пишет ровно '[]'.
+      hasReplay: r.inputs !== '[]',
     })),
   };
 }

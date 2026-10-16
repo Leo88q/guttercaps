@@ -11,39 +11,26 @@
 // 3. **Графика — файлы.** Чаша и препятствия — сгенерированные webp из
 //    /art/skate; код делает только движение камеры, поворот райдера и счёт.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { useConnection } from '@solana/wallet-adapter-react';
 import { LINE, LINE_TICKS, LINE_HOP, LINE_GRAB, createRun, lineLayout, type LineLayout, type RunInput, type RunState, type RunStepper } from '@guttercaps/economy';
 import { api, claimWithRetry, isMock } from '@/api/client';
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
 import { payForService, quoteService, serviceRefHash } from '@/chain/flows/serviceFlow';
 import { Currency } from '@/chain/ix/chipCore';
-import { useLine, useLineBoard, useSubmitRun, type RunSubmit } from '@/api/hooks';
+import { useLine, useSubmitRun, type RunSubmit } from '@/api/hooks';
 import { useRig } from '@/api/hooksLazy';
 import { useT } from '@/shared/i18n';
 import { useUiStore } from '@/app/store/ui';
 import { playSound } from '@/shared/audio';
 import { fmtDecimal } from '@/shared/lib/format';
 import { collectionColor } from '@/shared/lib/rarity';
-import { Empty, Pill, Skeleton } from '@/shared/ui/primitives';
-import { riderArt } from './Rider';
+import { Pill, Skeleton } from '@/shared/ui/primitives';
+import LineBoardPanel from './LineBoardPanel';
+import LineTrack from './LineTrack';
 import './line.css';
 
-/** Пикселей на единицу пути: на телефоне видно ~2 секунды трассы вперёд. */
-const PX = 1;
-/** Где стоит райдер по горизонтали (в единицах пути от левого края окна). */
-const RIDER_X = 200;
-/** Вертикальный масштаб: 146 единиц подъёма не должны уезжать за край окна. */
-const AIR_SCALE = 0.85;
-/** Сколько тиков проигрываем за один кадр максимум — иначе вкладку «догоняет» вечность. */
+// Сколько тиков проигрываем за один кадр максимум — иначе вкладку «догоняет» вечность.
 const MAX_STEPS_PER_FRAME = 12;
-
-const FEATURE_ART: Record<string, string> = {
-  gap: '/art/skate/line-gap.webp',
-  rail: '/art/skate/line-rail.webp',
-  kicker: '/art/skate/line-kicker.webp',
-  bump: '/art/skate/line-bump.webp',
-};
-const FEATURE_H: Record<string, number> = { gap: 74, rail: 70, kicker: 62, bump: 52 };
 
 const tierKey = (tier: string) => `line.tiers.${tier}` as 'line.tiers.none';
 
@@ -51,11 +38,9 @@ export default function Line() {
   const t = useT();
   const toast = useUiStore((s) => s.toast);
   const state = useLine();
-  const board = useLineBoard();
   const submit = useSubmitRun();
   const rig = useRig();
   const { connection } = useConnection();
-  const wallet = useWallet();
   const walletLike = useWalletLike();
   const gameCfg = useGameConfig();
 
@@ -185,7 +170,6 @@ export default function Line() {
     }
   };
 
-  const camera = Math.max(0, (frame?.pos ?? 0) - RIDER_X) * PX;
   const secsLeft = Math.max(0, Math.ceil((LINE_TICKS - (frame?.tick ?? 0)) / LINE.tickHz));
   const mult = (frame?.links ?? 0) > 0 ? Math.min(LINE.comboCapBps, LINE.comboStartBps + LINE.comboStepBps * (frame?.links ?? 0)) / 1000 : 1;
   const score = (frame?.banked ?? 0) + (frame?.unbanked ?? 0);
@@ -210,41 +194,23 @@ export default function Line() {
             <Pill tone={me.tierToday === 'gold' ? 'ok' : undefined}>{t(tierKey(me.tierToday))}</Pill>
           </div>
 
-          <div className="line-track" data-testid="line-track" data-stage={stage}>
-            <img className="line-bg" src="/art/skate/line-bg.webp" alt="" aria-hidden
-              style={{ transform: `translateX(${-camera * 0.25}px)` }} />
-            {layout?.features.map((f, i) => {
-              const left = (f.start - camera) * PX;
-              if (left < -400 || left > 1600) return null;
-              return (
-                <img key={i} className="line-feature" src={FEATURE_ART[f.kind]} alt="" aria-hidden
-                  data-kind={f.kind}
-                  style={{ left: `${left}px`, width: `${Math.max(40, f.len * PX)}px`, height: `${FEATURE_H[f.kind]}px` }} />
-              );
-            })}
-            <span className="line-ground" aria-hidden />
-            <span
-              className={`line-rider${frame?.grinding ? ' is-grinding' : ''}${frame?.stunned ? ' is-down' : ''}`}
-              data-testid="line-rider"
-              data-air={frame?.air ? '1' : '0'}
-              style={{ ['--lamp' as string]: lamp, transform: `translateY(${-(frame?.y ?? 0) * AIR_SCALE}px) rotate(${rot.current}deg)` }}
-            >
-              <img src={riderArt(silhouette)} alt="" aria-hidden />
-            </span>
-            {(stage === 'running' || stage === 'sending') && (
+          <LineTrack
+            layout={layout} frame={frame} silhouette={silhouette} rot={rot.current} lamp={lamp} stage={stage}
+            hud={(stage === 'running' || stage === 'sending') ? (
               <div className="line-hud">
                 <b data-testid="line-score">{score}</b>
                 <span className="tiny muted">{t('line.time', { n: secsLeft })}</span>
                 <span className="line-combo" data-testid="line-combo">{t('line.combo', { n: fmtDecimal(mult, 1, 1) })}</span>
                 <span className="tiny muted">{t('line.bails', { n: frame?.bails ?? 0 })}</span>
               </div>
-            )}
+            ) : null}
+          >
             {stage === 'idle' && (
               <button type="button" className="line-drop" onClick={start} disabled={!canRun} data-testid="line-start">
                 {t('line.start')}
               </button>
             )}
-          </div>
+          </LineTrack>
 
           <p className="tiny muted">{t('line.howto')}</p>
 
@@ -294,20 +260,10 @@ export default function Line() {
             </div>
           )}
 
+          {/* Та же доска, что стоит рядом с ELO (docs/16 §5.5): одна на весь город. */}
           <section className="stack-sm">
             <h2 className="section-title">{t('line.board')}</h2>
-            {board.data?.rows.length ? (
-              <ol className="line-board" data-testid="line-board">
-                {board.data.rows.map((r) => (
-                  <li key={r.wallet} className={r.wallet === wallet.publicKey?.toBase58() ? 'is-me' : undefined}>
-                    <span className="line-rank">{t('line.rank', { n: r.rank })}</span>
-                    <span className="line-who">{r.handle ?? `${r.wallet.slice(0, 4)}…${r.wallet.slice(-4)}`}</span>
-                    <b>{r.score}</b>
-                    <span className="tiny muted">{t('line.tricks', { n: r.tricks })}</span>
-                  </li>
-                ))}
-              </ol>
-            ) : <Empty>{t('line.boardEmpty')}</Empty>}
+            <LineBoardPanel />
           </section>
         </>
       )}

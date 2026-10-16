@@ -231,13 +231,37 @@ describe('линия: реплей живёт 14 дней', () => {
     const row = db.get<{ inputs: string; score: number }>(`SELECT inputs, score FROM line_runs WHERE id = ?`, r.run.id)!;
     expect(row.inputs).toBe('[]');
     expect(row.score).toBe(r.run.score);
-    // свой заезд можно пересмотреть, чужой — нет
-    expect(runs.runReplay(db, w, r.run.id)?.score).toBe(r.run.score);
-    expect(runs.runReplay(db, kp(), r.run.id)).toBeNull();
+    // реплей публичен (§5.5): смотрит кто угодно, но смотреть уже нечего —
+    // подметальщик стёр ввод, а очки и строка заезда остались
+    const gone = runs.runReplay(db, r.run.id)!;
+    expect(gone.score).toBe(r.run.score);
+    expect(gone.inputs).toEqual([]);
   });
 });
 
 describe('линия: доска недели', () => {
+  it('реплей заезда смотрят, а не скачивают: публично и только пока жив ввод', () => {
+    const db = new Db(':memory:'); seedSeason(db, T0);
+    const w = kp();
+    const day = dayIndex(T0);
+    const inputs = plan(lineLayout(day), 0);
+    const r = runs.submitRun(db, w, { day, inputs: replay(inputs) }, T0);
+    const view = runs.runReplay(db, r.run.id)!;
+    expect(view.runId).toBe(r.run.id);
+    expect(view.wallet).toBe(w);
+    expect(view.score).toBe(r.run.score);
+    expect(view.inputs.length).toBe(inputs.length);   // ровно то, что прислал клиент
+    expect(view.seed).toBe(lineSeed(day));            // чаша дня, а не «какая-то»
+    expect(view.handle).toBeNull();
+    expect(runs.runReplay(db, r.run.id + 999)).toBeNull();
+    // доска честно помечает строки, которые уже не посмотреть
+    expect(runs.lineLeaderboard(db, weekIndex(T0), 50).rows[0]?.hasReplay).toBe(true);
+    runs.pruneLineReplays(db, T0 + runs.REPLAY_TTL_S + 1);
+    const board = runs.lineLeaderboard(db, weekIndex(T0), 50);
+    expect(board.rows[0]?.hasReplay).toBe(false);
+    expect(board.rows[0]?.score).toBe(r.run.score); // очки живут дольше ввода
+  });
+
   it('в доске — лучший заезд кошелька за неделю', () => {
     const db = new Db(':memory:'); seedSeason(db, T0);
     const a = kp(); const b = kp();

@@ -397,3 +397,40 @@ export const LINE_ITEM_REWARDS: Record<LineTier, { hints: number; valve: boolean
   silver: { hints: 1, valve: false },
   gold: { hints: 1, valve: true },
 };
+
+/**
+ * Бот «в окно» — те самые руки, которыми мерились пороги наград.
+ *
+ * Он вынесен из теста намеренно: одним и тем же ботом считались медианы
+ * (чистая езда 2,8 тыс., ±160 мс 2,0 тыс., ±300 мс 1,8 тыс.), он же наполняет
+ * демо-доску, чтобы «посмотреть реплей» в моке показывало заезд, а не пустоту.
+ * Два бота разошлись бы, и пороги поехали бы вместе с ними.
+ *
+ * `jitter` — дрожание пальца в тиках (1 тик = 20 мс): 0 — игра в окно,
+ * 8 — ±160 мс, 15 — ±300 мс.
+ */
+export function botReplay(layout: LineLayout, jitter = 0, seed = 1): RunInput[] {
+  let s = seed >>> 0;
+  const rnd = () => (((s = (s * 1103515245 + 12345) & 0x7fffffff) >>> 0) % 1000) / 1000;
+  const jit = () => (jitter ? Math.round((rnd() - 0.5) * jitter) : 0);
+  const inputs: RunInput[] = [];
+  let busyUntil = -1;
+  for (const f of layout.features) {
+    if (f.kind === 'kicker') {
+      const t = Math.floor(f.start / LINE_UNITS_PER_TICK) + 1 + jit();
+      if (t > busyUntil) inputs.push({ tick: t, action: LINE_GRAB });
+      busyUntil = Math.floor(f.start / LINE_UNITS_PER_TICK) + LINE.kickTicks;
+      continue;
+    }
+    // перила надо принять с воздуха, пролёт и бордюр — перелететь
+    const t = f.kind === 'rail'
+      ? Math.floor((f.start + 20 - 220) / LINE_UNITS_PER_TICK)
+      : Math.floor(f.start / LINE_UNITS_PER_TICK) - 1;
+    const at = t + jit();
+    if (at < 0 || at <= busyUntil) continue;
+    inputs.push({ tick: at, action: LINE_HOP });
+    inputs.push({ tick: at + 1, action: LINE_GRAB });
+    busyUntil = at + LINE.hopTicks;
+  }
+  return inputs.sort((a, b) => a.tick - b.tick);
+}

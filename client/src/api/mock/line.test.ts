@@ -83,12 +83,20 @@ describe('mock line', () => {
     expect(mine.score).toBe(r.run.score);
   });
 
-  it('свой заезд можно посмотреть, чужой — нет', async () => {
+  it('реплей смотрят, а не скачивают: свой и чужой, и только пока жив ввод', async () => {
     resetMockWorld();
     const r = await post(plan());
-    const replay = await mockRequest('get', '/me/line/runs/{id}/replay', { path: { id: String(r.run.id) } }) as Record<string, unknown>;
-    expect(replay.score).toBe(r.run.score);
-    expect(replay.seed).toBe(lineSeed(day()));
-    expect(await code(mockRequest('get', '/me/line/runs/{id}/replay', { path: { id: '9999' } }))).toBe('404 not_found');
+    const id = String(r.run.id);
+    const own = await mockRequest('get', '/line/runs/{id}/replay', { path: { id } }) as Record<string, any>;
+    expect(own.score).toBe(r.run.score);
+    expect(own.seed).toBe(lineSeed(day()));            // чаша дня, а не «какая-то»
+    expect(own.inputs.length).toBe(plan().length);
+    // чужой заезд с доски смотрится так же
+    const row = (await board()).rows.find((x: any) => x.runId !== r.run.id);
+    const other = await mockRequest('get', '/line/runs/{id}/replay', { path: { id: String(row.runId) } }) as Record<string, any>;
+    expect(other.inputs.length).toBeGreaterThan(0);
+    expect(other.score).toBe(row.score);               // в строке ровно то, что покажет просмотр
+    expect(simulateRun(lineLayout(day()), other.inputs.map(([tick, action]: [number, number]) => ({ tick, action }))).score).toBe(row.score);
+    expect(await code(mockRequest('get', '/line/runs/{id}/replay', { path: { id: '9999' } }))).toBe('404 not_found');
   });
 });

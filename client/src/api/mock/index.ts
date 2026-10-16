@@ -2,7 +2,7 @@ import { isRightsPath, mockRights } from './rights';
 // Deterministic in-browser backend used when VITE_API_MOCK=true or when the
 // real API is unreachable in dev. Data is derived from @guttercaps/economy
 // and shared/lib/lore so what you see matches the modelled numbers.
-import { ACHIEVEMENTS, BOOSTER, CHIP_XP, DAILY_QUESTS, LINE, EMISSION_GUARD, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, FEES, FUSION_RECIPES, FX, GRID, GRID as GRID_RULES, LOCK_TIERS, MATCHMAKING, PACKS, PASS_TRACK, PERMANENT_QUESTS, PROFILE_THEME_BY_ID, RARITY_PROFILES, REFERRAL, SEASON, SERVICES, SKIN_BY_ID, WEEKLY_QUESTS, applyRotate, bundlePriceCents, lineLayout, lineSeed, lineTier, runPassXp, simulateRun, effectiveOdds, generateLevel, gridBaseXp, gridStarsForMoves, gridXpForStars, impliedApy, isSolved, levelSeed, packExpectedValueMult, passTierForXp, probabilityAtLeast, skrMicroForUsdCents, solLamportsForUsdCents, type PackId, usdCentsFromSolLamports, usdcMicroForUsdCents, xpToNext } from '@guttercaps/economy';
+import { ACHIEVEMENTS, BOOSTER, CHIP_XP, DAILY_QUESTS, LINE, EMISSION_GUARD, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, FEES, FUSION_RECIPES, FX, GRID, GRID as GRID_RULES, LOCK_TIERS, MATCHMAKING, PACKS, PASS_TRACK, PERMANENT_QUESTS, PROFILE_THEME_BY_ID, RARITY_PROFILES, REFERRAL, SEASON, SERVICES, SKIN_BY_ID, WEEKLY_QUESTS, applyRotate, bundlePriceCents, botReplay, lineLayout, lineSeed, lineTier, runPassXp, simulateRun, effectiveOdds, generateLevel, gridBaseXp, gridStarsForMoves, gridXpForStars, impliedApy, isSolved, levelSeed, packExpectedValueMult, passTierForXp, probabilityAtLeast, skrMicroForUsdCents, solLamportsForUsdCents, type PackId, usdCentsFromSolLamports, usdcMicroForUsdCents, xpToNext } from '@guttercaps/economy';
 import { PYTH_PRICE_ACCOUNTS } from '@/chain/ids';
 import { COLLECTIONS } from '@/shared/lib/lore';
 import { ApiError, type RequestOpts } from '../client';
@@ -605,11 +605,27 @@ const mockLineRuns: MockRun[] = [];
 let mockLineCredits = 0;
 let mockLineReward: { day: number; tier: string; score: number; hints: number; valve: number } | null = null;
 let mockLineXp: { day: number; xp: number } = { day: lineDay(), xp: 0 };
-/** Чужая езда на доске недели: та же раскладка дня, другие руки. */
-const mockLineBoard = Array.from({ length: 11 }, (_, i) => ({
-  wallet: fakeKey(), handle: pick(['moth_king', 'railqueen', 'drain0', 'sk8_or_die', 'noise_boy', 'inkslinger', 'brakeless99', 'pixelbsmt', 'gutterbeast', 'citymyth', 'coping_cat']),
-  score: 3200 - i * 190 - Math.floor(rnd() * 90), tricks: 16 - Math.floor(i / 2), bails: i % 3,
-}));
+/**
+ * Чужая езда на доске недели: та же раскладка дня, другие руки.
+ *
+ * Строки доски — не выдуманные числа. У каждой есть настоящий реплей, и его
+ * очки посчитаны тем же переигрыванием, что у живого заезда: иначе «посмотреть
+ * реплей» в демо показывало бы не то, что написано в строке. Чем выше строка,
+ * тем ровнее руки — дрожание растёт с номером.
+ */
+const mockLineBoard = Array.from({ length: 11 }, (_, i) => {
+  const wallet = fakeKey();
+  const handle = pick(['moth_king', 'railqueen', 'drain0', 'sk8_or_die', 'noise_boy', 'inkslinger', 'brakeless99', 'pixelbsmt', 'gutterbeast', 'citymyth', 'coping_cat']);
+  const day = lineDay();
+  const jitter = i; // дрожание в тиках (1 тик = 20 мс): первая строка едет ровно, последняя — как придётся
+  // Реплей хранится в том же виде, в каком уходит на сервер: [тик, действие].
+  const inputs = botReplay(lineLayout(day), jitter, i + 7).map((x) => [x.tick, x.action] as [number, number]);
+  const res = simulateRun(lineLayout(day), inputs.map(([tick, action]) => ({ tick, action: action === 1 ? 1 : 0 })));
+  return {
+    id: 1000 + i, wallet, handle, day, week: Math.floor(day / 7), seed: lineSeed(day), inputs,
+    score: res.score, tricks: res.tricks, bestCombo: res.bestCombo, bails: res.bails, at: Math.floor(Date.now() / 1000) - i * 3600,
+  };
+});
 const lineRewardOf = (day: number, score: number) => {
   const tier = lineTier(score);
   if (tier === 'none') return { tier, hints: 0, valve: 0 };
@@ -686,19 +702,28 @@ on('post', '/me/line/runs/buy', (o) => {
   mockLineCredits += 1;
   return { day, credits: mockLineCredits };
 });
-on('get', '/me/line/runs/{id}/replay', (_o, p) => {
-  const run = mockLineRuns.find((r) => r.id === Number(p.id));
+// Реплей смотрят, а не скачивают (docs/16 §5.5): строка доски публична, и
+// нажатия в заезде — не секрет. Смотрим и свои заезды, и чужие с доски.
+const runReplayView = (id: number) => {
+  const run = mockLineRuns.find((r) => r.id === id) ?? mockLineBoard.find((r) => r.id === id);
   if (!run) throw new ApiError(404, 'not_found', 'No such run');
-  return { id: run.id, day: run.day, seed: run.seed, score: run.score, inputs: run.inputs };
-});
+  return {
+    runId: run.id, day: run.day, seed: run.seed, score: run.score, tricks: run.tricks, bails: run.bails,
+    wallet: run.wallet, handle: ('handle' in run ? run.handle : null) as string | null, at: iso(run.at * 1000), inputs: run.inputs,
+  };
+};
+on('get', '/line/runs/{id}/replay', (_o, p) => runReplayView(Number(p.id)));
 on('get', '/line/leaderboard', (o) => {
   const week = Number((o.query as { week?: unknown } | undefined)?.week);
   const w = Number.isFinite(week) && week > 0 ? Math.floor(week) : Math.floor(lineDay() / 7);
   const mine = mockLineRuns.filter((r) => r.week === w);
-  const best = mine.length
-    ? { wallet: ME, handle: mockHandle, score: Math.max(...mine.map((r) => r.score)), tricks: Math.max(...mine.map((r) => r.tricks)), bails: Math.min(...mine.map((r) => r.bails)), runId: mine[0].id }
-    : null;
-  const rows = [...(best ? [best] : []), ...mockLineBoard].sort((a, b) => b.score - a.score).slice(0, 50).map((r, i) => ({ ...r, rank: i + 1, at: iso() }));
+  // Своя строка — это настоящий заезд из mockLineRuns, а не «сводка по лучшим
+  // полям»: иначе очки на доске и очки в реплее были бы двумя разными числами.
+  const best = mine.length ? mine.reduce((a, b) => (b.score > a.score ? b : a)) : null;
+  const rows = [...(best ? [{ ...best, handle: mockHandle }] : []), ...mockLineBoard]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 50)
+    .map((r, i) => ({ ...r, rank: i + 1, runId: r.id, at: iso(r.at * 1000), hasReplay: r.inputs.length > 0 }));
   return { week: w, rows };
 });
 

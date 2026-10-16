@@ -18,9 +18,14 @@ let boardRows: Array<Record<string, unknown>> = [];
 vi.mock('@/api/hooks', () => ({
   useLine: () => ({ data: state, isLoading: false, error: null, refetch: vi.fn() }),
   useLineBoard: () => ({ data: { week: 0, rows: boardRows }, isLoading: false }),
+  useRunReplay: () => ({ data: null, isLoading: false, error: null }),
   useSubmitRun: () => ({ mutate: submit, isPending: false }),
 }));
-vi.mock('@/api/hooksLazy', () => ({ useRig: () => ({ data: { rider: { silhouette: 3, theme: null } } }) }));
+vi.mock('@/api/hooksLazy', () => ({
+  useRig: () => ({ data: { rider: { silhouette: 3, theme: null } } }),
+  // риг владельца заезда: в просмотре едет его райдер
+  useRigOf: () => ({ data: { rider: { silhouette: 1, theme: null } } }),
+}));
 vi.mock('@/chain/hooks', () => ({ useGameConfig: () => ({ data: null }), useWalletLike: () => null }));
 vi.mock('@solana/wallet-adapter-react', () => ({ useConnection: () => ({ connection: {} }), useWallet: () => ({ publicKey: null }) }));
 vi.mock('@/api/client', () => ({
@@ -35,19 +40,23 @@ const track = () => document.querySelector('[data-testid="line-track"]') as HTML
 
 /** Управляемое время: кадры толкаем сами, иначе 45-секундный заезд не сыграть. */
 let nowMs = 0;
-let frames: FrameRequestCallback[] = [];
+let rafId = 0;
+const queue = new Map<number, FrameRequestCallback>();
 const pump = (count: number, msPerFrame = 160) => {
   for (let i = 0; i < count; i++) {
-    const list = frames; frames = [];
+    const list = [...queue.values()]; queue.clear();
     nowMs += msPerFrame;
     for (const cb of list) cb(nowMs);
   }
 };
 
 beforeEach(() => {
-  nowMs = 0; frames = [];
-  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { frames.push(cb); return frames.length; });
-  vi.stubGlobal('cancelAnimationFrame', () => {});
+  nowMs = 0;
+  // Отмена должна真的 отменять: иначе старый цикл (старая скорость, старый заезд)
+  // продолжает писать кадры поверх нового, и тест видит чужое состояние.
+  queue.clear();
+  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { const id = ++rafId; queue.set(id, cb); return id; });
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => { queue.delete(id); });
   vi.spyOn(performance, 'now').mockImplementation(() => nowMs);
   state = {
     day, week: Math.floor(day / 7), seed: lineSeed(day), ticks: LINE_TICKS,
@@ -168,16 +177,28 @@ describe('линия (docs/16 §5.1)', () => {
     expect(document.querySelector('[data-testid="line-done"]')).not.toBeNull();
   });
 
-  it('доска недели показывает чужие результаты', async () => {
+  it('доска недели показывает чужие результаты и пускает смотреть заезд', async () => {
     await setLocale('ru');
     boardRows = [
-      { rank: 1, wallet: 'A'.repeat(44), handle: 'railqueen', score: 3120, tricks: 16, bails: 0, runId: 7, at: '2026-10-16T09:00:00.000Z' },
-      { rank: 2, wallet: 'B'.repeat(44), handle: null, score: 2100, tricks: 12, bails: 2, runId: 8, at: '2026-10-16T09:10:00.000Z' },
+      { rank: 1, wallet: 'A'.repeat(44), handle: 'railqueen', score: 3120, tricks: 16, bails: 0, runId: 7, hasReplay: true, at: '2026-10-16T09:00:00.000Z' },
+      { rank: 2, wallet: 'B'.repeat(44), handle: null, score: 2100, tricks: 12, bails: 2, runId: 8, hasReplay: false, at: '2026-10-16T09:10:00.000Z' },
     ];
     render(<MemoryRouter><Line /></MemoryRouter>);
     const rows = document.querySelectorAll('[data-testid="line-board"] li');
     expect(rows.length).toBe(2);
     expect(rows[0]?.textContent).toContain('railqueen');
     expect(rows[1]?.textContent).toContain('BBBB…BBBB');
+    // Смотреть можно только то, что ещё живо: у второй строки ввод уже стёрт,
+    // и кнопки там нет — доска не предлагает мёртвую ссылку.
+    const watch = document.querySelectorAll('[data-testid="line-watch"]');
+    expect(watch.length).toBe(1);
+    await waitFor(() => expect(document.querySelector('[data-testid="line-replay"]')).toBeNull());
+    fireEvent.click(watch[0] as HTMLElement);
+    const viewer = await waitFor(() => {
+      const el = document.querySelector('[data-testid="line-replay"]');
+      if (!el) throw new Error('просмотр не открылся');
+      return el as HTMLElement;
+    });
+    expect(viewer.textContent).toContain('railqueen'); // смотрим заезд того, кто его проехал
   });
 });

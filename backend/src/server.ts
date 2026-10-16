@@ -510,9 +510,11 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.post('/me/line/runs/buy', requireAuth, accessGate('rewards'), rl(POLICIES.claim), rl(POLICIES.claimNet), (req, res) => {
     res.json(runs.buyExtraRun(db, req.session!.wallet, req.body));
   });
-  v1.get('/me/line/runs/:id/replay', requireAuth, (req, res) => {
+  // Реплей смотрят, а не скачивают (docs/16 §5.5): доска недели публична, и
+  // нажатия в заезде — не секрет. Просмотр не требует кошелька.
+  v1.get('/line/runs/:id/replay', rl(POLICIES.read), (req, res) => {
     const id = intQuery(req.params.id, { name: 'id', min: 1 });
-    const r = id === undefined ? null : runs.runReplay(db, req.session!.wallet, id);
+    const r = id === undefined ? null : runs.runReplay(db, id);
     if (!r) { res.status(404).json({ error: 'not_found', message: 'No such run' }); return; }
     res.json(r);
   });
