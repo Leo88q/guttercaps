@@ -288,11 +288,13 @@ const es: Messages = {
       afterWin: 'tras ganar',
       battles: '{n, plural, one{# combate} other{# combates}}',
       referrals: 'Registros por su enlace',
+      services: 'Servicios pagados',
       feat: {
         wall: 'Muro del distrito',
         exhibit: 'Exposición de caps',
         tag: 'Tag',
         inspect: 'Inspector de caps',
+        rider: 'Rider (§4.6)',
         wall_board: 'Tablón de la semana (§3.7)',
         collection_mural: 'Mural del distrito (§2.3)',
       },
@@ -492,6 +494,13 @@ const es: Messages = {
     reason_ads: 'Publicidad o spam',
     reason_personal_data: 'Datos personales',
     reason_other: 'Otra cosa',
+  },
+  rider: {
+    title: 'Rider', noStats: 'Solo imagen: sin características ni ventajas',
+    alt: 'Rider del distrito {district}', lampDistrict: 'Luz del color de {district}',
+    pickFigure: 'Figura', pickLamp: 'Luz de borde', pickAlt: 'Ponerse la figura de {district}',
+    buy: 'comprar', hint: 'Los temas se compran en la tienda: la luz es solo la que has pagado.', toShop: 'A la tienda',
+    failed: 'No se pudo guardar el rider',
   },
   rig: {
     title: 'Mi tabla',

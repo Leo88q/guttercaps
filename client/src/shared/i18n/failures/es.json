@@ -211,5 +211,6 @@
   "invalidBubblegumAsset": "El asset id on-chain de esta ficha no coincide con su hoja Bubblegum. Left: {left}. Right: {right}. No se abrió el monedero y no se envió ninguna apuesta.",
   "noXpTicket": "Hoy no quedan boletos de XP sin usar: vienen con los packs Limited y caducan a medianoche UTC.",
   "missingAsset": "Elige qué gorra debe recibir el XP.",
-  "chipNotFound": "Esta gorra no está en tu cartera (o ya no está activa)."
+  "chipNotFound": "Esta gorra no está en tu cartera (o ya no está activa).",
+  "themeNotOwned": "Este tema aún no es tuyo: cómpralo en la tienda y luego úsalo."
 }

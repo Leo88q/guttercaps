@@ -352,8 +352,8 @@ const fmtNum = (v: number | undefined | null) => (v === undefined || v === null 
 // This screen is that metric: does touching the wall / the exhibit / the tag change how a wallet
 // plays the main loop? Groups differ in size, so every number is an average per wallet and the
 // answer is a ratio, never a sum. Empty cohort ⇒ the feature has no evidence yet, not "it works".
-type CohortStats = { wallets: number; packsPerWallet: number; tradesPerWallet: number; fusionsPerWallet: number; loginDaysPerWallet: number; stakedCapsPerWallet: number; referralsPerWallet?: number };
-type Delta = { packs: number | null; trades: number | null; fusions: number | null; loginDays: number | null; stakedCaps: number | null; referrals?: number | null };
+type CohortStats = { wallets: number; packsPerWallet: number; tradesPerWallet: number; fusionsPerWallet: number; loginDaysPerWallet: number; stakedCapsPerWallet: number; referralsPerWallet?: number; servicesPerWallet?: number };
+type Delta = { packs: number | null; trades: number | null; fusions: number | null; loginDays: number | null; stakedCaps: number | null; referrals?: number | null; services?: number | null };
 type FeatureReport = { feature: string; windowDays: number; cohort: CohortStats; baseline: CohortStats; delta: Delta; series: { day: number; events: number; wallets: number }[] };
 const COHORT_ROWS: { key: keyof Delta; value: (c: CohortStats) => number }[] = [
   { key: 'packs', value: (c) => c.packsPerWallet },
@@ -362,6 +362,8 @@ const COHORT_ROWS: { key: keyof Delta; value: (c: CohortStats) => number }[] = [
   { key: 'loginDays', value: (c) => c.loginDaysPerWallet },
   { key: 'stakedCaps', value: (c) => c.stakedCapsPerWallet },
   { key: 'referrals', value: (c) => c.referralsPerWallet ?? 0 },
+  // §4.6: косметика, хендлы, скины — контур предметов. Паки его не покрывают.
+  { key: 'services', value: (c) => c.servicesPerWallet ?? 0 },
 ];
 
 function WorldTab() {

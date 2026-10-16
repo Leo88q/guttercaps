@@ -299,11 +299,13 @@ const en = {
       afterWin: 'after a win',
       battles: '{n, plural, one{# battle} other{# battles}}',
       referrals: 'Sign-ups from their link',
+      services: 'Paid services',
       feat: {
         wall: 'District wall',
         exhibit: 'Cap exhibit',
         tag: 'Tag',
         inspect: 'Cap inspector',
+        rider: 'Rider (§4.6)',
         wall_board: 'Board of the week (§3.7)',
         collection_mural: 'District mural (§2.3)',
       },
@@ -509,6 +511,13 @@ const en = {
     reason_ads: 'Ads or spam',
     reason_personal_data: 'Personal data',
     reason_other: 'Something else',
+  },
+  rider: {
+    title: 'Rider', noStats: 'Looks only — no stats, no odds',
+    alt: 'Rider of {district}', lampDistrict: 'Lit in {district} colour',
+    pickFigure: 'Figure', pickLamp: 'Rim light', pickAlt: 'Wear the {district} figure',
+    buy: 'buy', hint: 'Themes come from the shop: the light is only what you have paid for.', toShop: 'To the shop',
+    failed: 'Could not save the rider',
   },
   rig: {
     title: 'My board',

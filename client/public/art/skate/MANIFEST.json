@@ -1,7 +1,7 @@
 {
   "generated": "2026-10-15T06:05:47Z",
   "tool": "scripts/skate-art-build.py",
-  "note": "Арт скейт-мира: сгенерированные изображения, а не рисунок кодом. Поле prompt — происхождение кадра; мастер в git не идёт (тяжёлый). Палитра docs/07 §2.2, бюджеты docs/16 §8.",
+  "note": "Арт скейт-мира: сгенерированные изображения, а не рисунок кодом. Поле prompt — происхождение кадра; мастер в git не идёт (тяжёлый). Палитра docs/07 §2.2, бюджеты docs/16 §8. rider-0N-thumb — picker tiles derived from rider-0N (scripts/rider-thumbs.py).",
   "assets": [
     {
       "name": "bowl-hero",
@@ -139,6 +139,21 @@
       "prompt": "Full body three-quarter view of a skateboarder mid-air in an ollie above a skateboard, alone in the centre of the frame on a flat pure green #00FF00 background. Baggy streetwear silhouette: hoodie, loose cargo pants, chunky sneakers, backwards cap. Face turned away and obscured so no facial features are readable. Clean dark graphic silhouette with a hot magenta rim light. Stylised vector-like game character illustration with clean edges, sharp focus, no cast shadow on the background. gritty urban street-art game illustration, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
     },
     {
+      "name": "rider-01-thumb",
+      "kind": "sprite",
+      "file": "client/public/art/skate/rider-01-thumb.webp",
+      "width": 116,
+      "height": 160,
+      "bytes": 8192,
+      "kb": 8.0,
+      "budget_kb": 12,
+      "quality": 82,
+      "sha256": "a313af5620baffe1434ebf3cc33d41bf85e90da6ce1e2acaeb6cbecd4a9c4062",
+      "master": "client/public/art/skate/rider-01.webp",
+      "master_sha256": "128fc768342f4138720c334af89e8a2c02f19f7d08e407b1b83c6d86c7d8b6fe",
+      "prompt": "Picker tile derived from rider-01.webp: the same frame fitted into 128×160 (aspect kept), alpha kept, no redraw."
+    },
+    {
       "name": "rider-02",
       "kind": "sprite",
       "file": "client/public/art/skate/rider-02.webp",
@@ -152,6 +167,21 @@
       "master": "art_drafts/skate/rider-02.png",
       "master_sha256": "13d9d3b7c6fe1026296bfcf191de0d14703807f89787702ac9c69b85f1e81263",
       "prompt": "Full body three-quarter view of a skateboarder crouched low grinding a concrete ledge, arms out for balance, alone in the centre of the frame on a flat pure green #00FF00 background. Baggy streetwear silhouette: puffer jacket, baggy jeans, beanie. Face turned away and obscured so no facial features are readable. Clean dark graphic silhouette with a cyan edge light and a hot magenta rim light. Stylised vector-like game character illustration with clean edges, sharp focus, no cast shadow on the background. gritty urban street-art game illustration, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
+    },
+    {
+      "name": "rider-02-thumb",
+      "kind": "sprite",
+      "file": "client/public/art/skate/rider-02-thumb.webp",
+      "width": 105,
+      "height": 160,
+      "bytes": 8344,
+      "kb": 8.1,
+      "budget_kb": 12,
+      "quality": 82,
+      "sha256": "7495f9306339109f533256f3c58a25a052278e0ca16499d71eefc8402f9e4284",
+      "master": "client/public/art/skate/rider-02.webp",
+      "master_sha256": "48c1c6ac3a2722268ac7d492d6249e1454d2a95a622d05b73c931e5c4c5b4058",
+      "prompt": "Picker tile derived from rider-02.webp: the same frame fitted into 128×160 (aspect kept), alpha kept, no redraw."
     },
     {
       "name": "rider-03",
@@ -169,6 +199,21 @@
       "prompt": "Full body three-quarter view of a skateboarder mid kickflip with the board flipping under the feet, alone in the centre of the frame on a flat pure green #00FF00 background. Baggy streetwear silhouette: oversized hoodie with the hood up, baggy shorts, high socks, chunky sneakers. Face turned away and obscured so no facial features are readable. Clean dark graphic silhouette with a acid lime edge light and a hot magenta rim light. Stylised vector-like game character illustration with clean edges, sharp focus, no cast shadow on the background. gritty urban street-art game illustration, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
     },
     {
+      "name": "rider-03-thumb",
+      "kind": "sprite",
+      "file": "client/public/art/skate/rider-03-thumb.webp",
+      "width": 112,
+      "height": 160,
+      "bytes": 8946,
+      "kb": 8.7,
+      "budget_kb": 12,
+      "quality": 82,
+      "sha256": "706af7379b6390a700098eede12b0fa30814ed0d73307305601666f4c74b7001",
+      "master": "client/public/art/skate/rider-03.webp",
+      "master_sha256": "8a0d9cb2f554ab4c53670267439f36bc866a804bac65bf07ea24feac31747ebd",
+      "prompt": "Picker tile derived from rider-03.webp: the same frame fitted into 128×160 (aspect kept), alpha kept, no redraw."
+    },
+    {
       "name": "rider-04",
       "kind": "sprite",
       "file": "client/public/art/skate/rider-04.webp",
@@ -182,6 +227,21 @@
       "master": "art_drafts/skate/rider-04.png",
       "master_sha256": "2058622db650e59431a4247925d7f4e4ed24a6f7714f3a5332565e2da312bfd2",
       "prompt": "Full body three-quarter view of a skateboarder crouched low over the board, one hand reaching down to the deck, alone in the centre of the frame on a flat pure green #00FF00 background. Baggy streetwear silhouette: utility vest over a long sleeve shirt, loose cargo pants, work boots. Face turned away and obscured so no facial features are readable. Clean dark graphic silhouette with a burnt orange edge light and a hot magenta rim light. Stylised vector-like game character illustration with clean edges, sharp focus, no cast shadow on the background. gritty urban street-art game illustration, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
+    },
+    {
+      "name": "rider-04-thumb",
+      "kind": "sprite",
+      "file": "client/public/art/skate/rider-04-thumb.webp",
+      "width": 107,
+      "height": 160,
+      "bytes": 8438,
+      "kb": 8.2,
+      "budget_kb": 12,
+      "quality": 82,
+      "sha256": "95aaa898f1c6b735f8169bb40181f696db37d6875fbbb92df25ca0df1598c3c9",
+      "master": "client/public/art/skate/rider-04.webp",
+      "master_sha256": "947cf9d7b5a722dbd93a61dfa194b985f1c882160d5f5d539bed47ab52770c06",
+      "prompt": "Picker tile derived from rider-04.webp: the same frame fitted into 128×160 (aspect kept), alpha kept, no redraw."
     },
     {
       "name": "rider-05",
@@ -199,6 +259,21 @@
       "prompt": "Full body three-quarter view of a skateboarder airborne in a tail grab, knees tucked, alone in the centre of the frame on a flat pure green #00FF00 background. Baggy streetwear silhouette: bomber jacket, tapered track pants, low sneakers. Face turned away and obscured so no facial features are readable. Clean dark graphic silhouette with a gold edge light and a hot magenta rim light. Stylised vector-like game character illustration with clean edges, sharp focus, no cast shadow on the background. gritty urban street-art game illustration, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
     },
     {
+      "name": "rider-05-thumb",
+      "kind": "sprite",
+      "file": "client/public/art/skate/rider-05-thumb.webp",
+      "width": 88,
+      "height": 160,
+      "bytes": 7540,
+      "kb": 7.4,
+      "budget_kb": 12,
+      "quality": 82,
+      "sha256": "79bc1c026023fad8e446bef9bee14cfabb00bb455c41ebe46e92d4a3da0a7a48",
+      "master": "client/public/art/skate/rider-05.webp",
+      "master_sha256": "d2411691858daf3fdf7a2a4d83305b00eccc2fa9fbd241e9f4feeae9a028f203",
+      "prompt": "Picker tile derived from rider-05.webp: the same frame fitted into 128×160 (aspect kept), alpha kept, no redraw."
+    },
+    {
       "name": "rider-06",
       "kind": "sprite",
       "file": "client/public/art/skate/rider-06.webp",
@@ -212,6 +287,21 @@
       "master": "art_drafts/skate/rider-06.png",
       "master_sha256": "2c5efe1302c05ad4564e56a04970dd9b281f9ab463b516a6e717634fb9fa9ed1",
       "prompt": "Full body three-quarter view of a skateboarder pushing stance, one foot on the board and one leg extended behind, alone in the centre of the frame on a flat pure green #00FF00 background. Baggy streetwear silhouette: short denim jacket, wide leg trousers, canvas sneakers. Face turned away and obscured so no facial features are readable. Clean dark graphic silhouette with a cyan edge light and a hot magenta rim light. Stylised vector-like game character illustration with clean edges, sharp focus, no cast shadow on the background. gritty urban street-art game illustration, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
+    },
+    {
+      "name": "rider-06-thumb",
+      "kind": "sprite",
+      "file": "client/public/art/skate/rider-06-thumb.webp",
+      "width": 86,
+      "height": 160,
+      "bytes": 7506,
+      "kb": 7.3,
+      "budget_kb": 12,
+      "quality": 82,
+      "sha256": "1cbd468703b12808f3513607c6cf1cd7158aebea173eb938fd3767850a5ebe26",
+      "master": "client/public/art/skate/rider-06.webp",
+      "master_sha256": "ffd1112ce448d9d7fba9f8eb8bfe96eb3f7ecc25011d26a01c5fb2bab5ed62ab",
+      "prompt": "Picker tile derived from rider-06.webp: the same frame fitted into 128×160 (aspect kept), alpha kept, no redraw."
     },
     {
       "name": "rider-07",
@@ -229,6 +319,21 @@
       "prompt": "Full body three-quarter view of a skateboarder launching into an ollie with the board tucked up under the body, alone in the centre of the frame on a flat pure green #00FF00 background. Baggy streetwear silhouette: long weathered coat flaring behind, baggy jeans, heavy boots, bandana over the lower face. Face turned away and obscured so no facial features are readable. Clean dark graphic silhouette with a hot magenta edge light and a cyan rim light. Stylised vector-like game character illustration with clean edges, sharp focus, no cast shadow on the background. gritty urban street-art game illustration, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
     },
     {
+      "name": "rider-07-thumb",
+      "kind": "sprite",
+      "file": "client/public/art/skate/rider-07-thumb.webp",
+      "width": 128,
+      "height": 137,
+      "bytes": 9852,
+      "kb": 9.6,
+      "budget_kb": 12,
+      "quality": 82,
+      "sha256": "257c146ed977cf68600d803f71f79bdb1aebbba95d282fabb0a74c5accfbcf7d",
+      "master": "client/public/art/skate/rider-07.webp",
+      "master_sha256": "f403780a0ca5fb03ffde30c7dac853bf258903f188b30c23d5bab28805775f9f",
+      "prompt": "Picker tile derived from rider-07.webp: the same frame fitted into 128×160 (aspect kept), alpha kept, no redraw."
+    },
+    {
       "name": "rider-08",
       "kind": "sprite",
       "file": "client/public/art/skate/rider-08.webp",
@@ -242,6 +347,21 @@
       "master": "art_drafts/skate/rider-08.png",
       "master_sha256": "517d309b0a4864d329eccfd903b275a5fc20add1dcbd163034ef53acf6420c3c",
       "prompt": "Full body three-quarter view of a skateboarder standing still holding the board vertically at their side, relaxed pose, alone in the centre of the frame on a flat pure green #00FF00 background. Baggy streetwear silhouette: fisherman beanie, zip hoodie, loose sweatpants, skate sneakers, backpack over one shoulder. Face turned away and obscured so no facial features are readable. Clean dark graphic silhouette with a pale bone white edge light and a hot magenta rim light. Stylised vector-like game character illustration with clean edges, sharp focus, no cast shadow on the background. gritty urban street-art game illustration, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos"
+    },
+    {
+      "name": "rider-08-thumb",
+      "kind": "sprite",
+      "file": "client/public/art/skate/rider-08-thumb.webp",
+      "width": 64,
+      "height": 160,
+      "bytes": 6206,
+      "kb": 6.1,
+      "budget_kb": 12,
+      "quality": 82,
+      "sha256": "7424dbdc61753487498d73e869a3f7a63c09fb69bc9a45577243902af28904d2",
+      "master": "client/public/art/skate/rider-08.webp",
+      "master_sha256": "de0ed74a8ee68ab1a1ec1748d1bdbe5b7debfe6329795bcf599e870ef21210ad",
+      "prompt": "Picker tile derived from rider-08.webp: the same frame fitted into 128×160 (aspect kept), alpha kept, no redraw."
     },
     {
       "name": "stencil-crown",

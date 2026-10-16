@@ -477,6 +477,11 @@ const rigCaps = (wallet = ME) => {
   }
   return [...byKey.values()];
 };
+/** Райдер (§4.6) в моке: такой же объект, что отдаёт бэкенд. */
+let mockRider = { silhouette: 0, theme: null as string | null };
+/** Чужой райдер детерминирован по адресу: витрина одного кошелька всегда одна и та же. */
+const riderOfWallet = (wallet: string) => ({ silhouette: [...wallet].reduce((a, ch) => (a + ch.charCodeAt(0)) % 8, 0), theme: null as string | null });
+
 const rigView = (wallet = ME) => {
   const caps = rigCaps(wallet);
   const owned = new Map(caps.map((c) => [c.asset, c]));
@@ -491,7 +496,7 @@ const rigView = (wallet = ME) => {
   });
   const locked = slots.find((s) => !s.unlocked);
   return {
-    wallet, public: wallet === ME ? mockRigPublic : true,
+    wallet, rider: wallet === ME ? mockRider : riderOfWallet(wallet), public: wallet === ME ? mockRigPublic : true,
     // Чужая витрина показывает три крышки на доске, а не всю коллекцию.
     caps: wallet === ME ? caps : [],
     slots, next: locked ? { slot: locked.slot, need: locked.unlockAt - caps.length } : null,
@@ -512,6 +517,24 @@ on('put', '/rig', (o) => {
   }
   if (typeof b.public === 'boolean') mockRigPublic = b.public;
   return rigView(ME);
+});
+on('put', '/me/rider', (o) => {
+  const b = (o.body ?? {}) as { silhouette?: number; theme?: string | null };
+  if (b.silhouette !== undefined) {
+    const n = Number(b.silhouette);
+    if (!Number.isInteger(n) || n < 0 || n > 7) throw new ApiError(400, 'bad_silhouette', 'silhouette must be 0..7');
+    mockRider = { ...mockRider, silhouette: n };
+  }
+  if (b.theme !== undefined) {
+    if (b.theme === null || b.theme === '') mockRider = { ...mockRider, theme: null };
+    else {
+      // Ровно та проверка, что на сервере: надеть можно только оплаченную тему.
+      const owned = entitlements.filter((e) => e.kind === 3).map((e) => String((e.payload as { theme?: unknown })?.theme ?? ''));
+      if (!owned.includes(String(b.theme))) throw new ApiError(403, 'theme_not_owned', 'Buy this theme in the shop before wearing it');
+      mockRider = { ...mockRider, theme: String(b.theme) };
+    }
+  }
+  return mockRider;
 });
 on('get', '/rig/{wallet}', (_o, params) => {
   const wallet = String(params.wallet);

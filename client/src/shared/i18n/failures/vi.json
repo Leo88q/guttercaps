@@ -211,5 +211,6 @@
   "invalidBubblegumAsset": "Asset id on-chain của chip không khớp với lá Bubblegum. Left: {left}. Right: {right}. Không mở ví và không gửi cược.",
   "noXpTicket": "Hôm nay không còn vé XP chưa dùng — vé đi kèm gói Limited và hết hạn lúc nửa đêm UTC.",
   "missingAsset": "Chọn nắp nào sẽ nhận XP.",
-  "chipNotFound": "Nắp này không nằm trong ví của bạn (hoặc không còn hoạt động)."
+  "chipNotFound": "Nắp này không nằm trong ví của bạn (hoặc không còn hoạt động).",
+  "themeNotOwned": "Chủ đề này bạn chưa có: hãy mua trong shop rồi mới dùng."
 }

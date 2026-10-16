@@ -47,6 +47,7 @@ export const useRenewSlot = () => useWallAction((b: { district: number }) => api
 export const useReleaseSlot = () => useWallAction((b: { district: number }) => api.post('/wall/{district}/release', undefined, { path: { district: b.district } }));
 // ---------------------------------------------------------------- экспозиция (docs/16 §4.3)
 export type RigView = ResponseOf<'/rig', 'get'>;
+export type Rider = ResponseOf<'/me/rider', 'put'>;
 export type RigSlot = NonNullable<RigView['slots']>[number];
 export type RigChip = NonNullable<RigSlot['chip']>;
 export type RigCap = NonNullable<RigView['caps']>[number];
@@ -66,6 +67,22 @@ export const useSetRig = () => {
     onSuccess: (data: RigView) => {
       qc.setQueryData(['rig'], data);
       void qc.invalidateQueries({ queryKey: ['rig', data.wallet] });
+    },
+  });
+};
+
+/**
+ * §4.6 Райдер: надеть силуэт района и/или цвет подсветки из купленной темы.
+ * Ответ кладём прямо в кэш доски — райдер это часть витрины, и перечитывать
+ * её целиком ради смены цвета незачем.
+ */
+export const useSetRider = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (b: { silhouette?: number; theme?: string | null }) => api.put('/me/rider', b),
+    onSuccess: (data: Rider) => {
+      qc.setQueriesData<RigView>({ queryKey: ['rig'] }, (old) => (old ? { ...old, rider: data } : old));
+      void qc.invalidateQueries({ queryKey: ['rig', 'me'] });
     },
   });
 };

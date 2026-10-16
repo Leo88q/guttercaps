@@ -288,11 +288,13 @@ const ru: Messages = {
       afterWin: 'после победы',
       battles: '{n, plural, one{# бой} few{# боя} many{# боёв} other{# боя}}',
       referrals: 'Пришло по ссылке',
+      services: 'Оплаченные сервисы',
       feat: {
         wall: 'Стена района',
         exhibit: 'Экспозиция крышек',
         tag: 'Тег',
         inspect: 'Инспектор крышки',
+        rider: 'Райдер (§4.6)',
         wall_board: 'Доска недели (§3.7)',
         collection_mural: 'Мурал района (§2.3)',
       },
@@ -492,6 +494,13 @@ const ru: Messages = {
     reason_ads: 'Реклама и спам',
     reason_personal_data: 'Личные данные',
     reason_other: 'Другое',
+  },
+  rider: {
+    title: 'Райдер', noStats: 'Только образ: никаких характеристик и шансов',
+    alt: 'Райдер района {district}', lampDistrict: 'Подсветка цветом района {district}',
+    pickFigure: 'Фигура', pickLamp: 'Подсветка', pickAlt: 'Надеть фигуру района {district}',
+    buy: 'купить', hint: 'Темы берутся в магазине: подсветка — только та, что оплачена.', toShop: 'В магазин',
+    failed: 'Райдера сохранить не удалось',
   },
   rig: {
     title: 'Моя доска',

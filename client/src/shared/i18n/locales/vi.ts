@@ -288,11 +288,13 @@ const vi: Messages = {
       afterWin: 'sau thắng',
       battles: '{n, plural, other{# trận}}',
       referrals: 'Đăng ký qua link',
+      services: 'Dịch vụ đã trả phí',
       feat: {
         wall: 'Tường khu',
         exhibit: 'Trưng bày cap',
         tag: 'Tag',
         inspect: 'Trình kiểm tra cap',
+        rider: 'Rider (§4.6)',
         wall_board: 'Bảng của tuần (§3.7)',
         collection_mural: 'Tranh tường khu (§2.3)',
       },
@@ -492,6 +494,13 @@ const vi: Messages = {
     reason_ads: 'Quảng cáo, spam',
     reason_personal_data: 'Dữ liệu cá nhân',
     reason_other: 'Khác',
+  },
+  rider: {
+    title: 'Rider', noStats: 'Chỉ là diện mạo: không có chỉ số, không tăng tỷ lệ',
+    alt: 'Rider khu {district}', lampDistrict: 'Ánh sáng màu {district}',
+    pickFigure: 'Dáng người', pickLamp: 'Viền sáng', pickAlt: 'Mặc dáng của {district}',
+    buy: 'mua', hint: 'Chủ đề mua ở shop: ánh sáng chỉ là những gì bạn đã trả tiền.', toShop: 'Đến shop',
+    failed: 'Không lưu được rider',
   },
   rig: {
     title: 'Ván của tôi',

@@ -288,11 +288,13 @@ const fil: Messages = {
       afterWin: 'matapos manalo',
       battles: '{n, plural, other{# battle}}',
       referrals: 'Mga sign-up mula sa link',
+      services: 'Mga bayad na serbisyo',
       feat: {
         wall: 'Dingding ng distrito',
         exhibit: 'Exhibit ng caps',
         tag: 'Tag',
         inspect: 'Inspektor ng cap',
+        rider: 'Rider (§4.6)',
         wall_board: 'Pisara ng linggo (§3.7)',
         collection_mural: 'Mural ng distrito (§2.3)',
       },
@@ -492,6 +494,13 @@ const fil: Messages = {
     reason_ads: 'Ads o spam',
     reason_personal_data: 'Personal na datos',
     reason_other: 'Iba pa',
+  },
+  rider: {
+    title: 'Rider', noStats: 'Porma lang: walang stats, walang lamang',
+    alt: 'Rider ng {district}', lampDistrict: 'Liwanag sa kulay ng {district}',
+    pickFigure: 'Pigura', pickLamp: 'Liwanag sa gilid', pickAlt: 'Isuot ang pigura ng {district}',
+    buy: 'bilhin', hint: 'Galing sa shop ang mga tema: ang liwanag ay lang ang binayaran mo.', toShop: 'Sa shop',
+    failed: 'Hindi na-save ang rider',
   },
   rig: {
     title: 'Board ko',

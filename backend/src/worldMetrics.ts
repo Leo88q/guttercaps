@@ -25,7 +25,7 @@ const DAY = 86_400;
 const iso = (s: number) => new Date(s * 1000).toISOString();
 
 /** Признаки, о которых мы умеем считать когорты (ровно то, что перечислено в §12). */
-export const WORLD_FEATURES = ['wall', 'exhibit', 'tag', 'inspect'] as const;
+export const WORLD_FEATURES = ['wall', 'exhibit', 'tag', 'inspect', 'rider'] as const;
 
 /** Порог флипа (docs/16 §2.1) — редкость, начиная с которой дроп считается «редким». */
 export const EPIC_PLUS = 5;
@@ -55,7 +55,7 @@ export interface Repeat24h {
   delta: number | null;
 }
 
-interface GroupRow { n: number; packs: number; trades: number; fusions: number; logins: number; stakes: number; refs: number }
+interface GroupRow { n: number; packs: number; trades: number; fusions: number; logins: number; stakes: number; refs: number; services: number }
 
 export interface CohortStats {
   wallets: number;
@@ -67,6 +67,12 @@ export interface CohortStats {
   stakedCapsPerWallet: number;
   /** Кошельков, пришедших по ссылке этого игрока, на одного делителя (§12 строка 2). */
   referralsPerWallet: number;
+  /**
+   * Оплаченных сервисов на кошелёк (§4.6): косметика, хендлы, скины — ровно тот
+   * «контур предметов», которым райдер должен кормить петлю. Покупки паков этот
+   * контур не покрывают: косметика продаётся отдельно.
+   */
+  servicesPerWallet: number;
 }
 
 export interface CohortReport {
@@ -77,7 +83,7 @@ export interface CohortReport {
   cohort: CohortStats;
   baseline: CohortStats;
   /** Отношение средних минус единица: +0.42 = «на 42 % больше сделок на кошелёк». null, когда считать нечего. */
-  delta: { packs: number | null; trades: number | null; fusions: number | null; loginDays: number | null; stakedCaps: number | null; referrals: number | null };
+  delta: { packs: number | null; trades: number | null; fusions: number | null; loginDays: number | null; stakedCaps: number | null; referrals: number | null; services: number | null };
   /** События по дням: кривая принятия фичи. */
   series: { day: number; events: number; wallets: number }[];
 }
@@ -88,7 +94,7 @@ const ratio = (a: number, b: number): number | null => (b > 0 ? round(a / b - 1)
 const delta = (wallets: number, a: number, b: number): number | null => (wallets > 0 ? ratio(a, b) : null);
 
 function empty(): CohortStats {
-  return { wallets: 0, packsPerWallet: 0, tradesPerWallet: 0, fusionsPerWallet: 0, loginDaysPerWallet: 0, stakedCapsPerWallet: 0, referralsPerWallet: 0 };
+  return { wallets: 0, packsPerWallet: 0, tradesPerWallet: 0, fusionsPerWallet: 0, loginDaysPerWallet: 0, stakedCapsPerWallet: 0, referralsPerWallet: 0, servicesPerWallet: 0 };
 }
 
 function statsOf(row: GroupRow | undefined): CohortStats {
@@ -101,6 +107,7 @@ function statsOf(row: GroupRow | undefined): CohortStats {
     loginDaysPerWallet: round(row.logins / row.n),
     stakedCapsPerWallet: round(row.stakes / row.n),
     referralsPerWallet: round(row.refs / row.n),
+    servicesPerWallet: round(row.services / row.n),
   };
 }
 
@@ -118,7 +125,8 @@ function group(db: Db, members: string, memberParams: (string | number)[], from:
            COALESCE(SUM(fusions), 0) fusions,
            COALESCE(SUM(logins), 0) logins,
            COALESCE(SUM(stakes), 0) stakes,
-           COALESCE(SUM(refs), 0) refs
+           COALESCE(SUM(refs), 0) refs,
+           COALESCE(SUM(services), 0) services
       FROM (
         SELECT w.wallet,
                (SELECT COUNT(*) FROM pack_purchases p WHERE p.buyer = w.wallet AND COALESCE(p.block_time, 0) >= ? AND COALESCE(p.block_time, 0) < ?) packs,
@@ -126,12 +134,13 @@ function group(db: Db, members: string, memberParams: (string | number)[], from:
                (SELECT COUNT(*) FROM fusions f WHERE f.owner = w.wallet AND COALESCE(f.block_time, 0) >= ? AND COALESCE(f.block_time, 0) < ?) fusions,
                (SELECT COUNT(*) FROM quest_logins l WHERE l.wallet = w.wallet AND l.day >= ? AND l.day <= ?) logins,
                (SELECT COUNT(*) FROM stakes k WHERE k.owner = w.wallet AND k.active = 1) stakes,
-               (SELECT COUNT(*) FROM wallets r WHERE r.referrer = w.wallet AND COALESCE(r.first_seen, 0) >= ? AND COALESCE(r.first_seen, 0) < ?) refs
+               (SELECT COUNT(*) FROM wallets r WHERE r.referrer = w.wallet AND COALESCE(r.first_seen, 0) >= ? AND COALESCE(r.first_seen, 0) < ?) refs,
+               (SELECT COUNT(*) FROM service_payments sp WHERE sp.buyer = w.wallet AND COALESCE(sp.block_time, 0) >= ? AND COALESCE(sp.block_time, 0) < ?) services
           FROM (${members}) w
       )`;
   // Порядок биндинга — по порядку появления в тексте: сначала коррелированные
   // подзапросы в SELECT, потом параметры подзапроса-членства в FROM.
-  return db.get<GroupRow>(sql, from, to, from, to, from, to, dayFrom, dayTo, from, to, ...memberParams);
+  return db.get<GroupRow>(sql, from, to, from, to, from, to, dayFrom, dayTo, from, to, from, to, ...memberParams);
 }
 
 /**
@@ -230,6 +239,7 @@ export function cohortReport(db: Db, feature: WorldFeature | typeof DATA_COHORT_
       loginDays: delta(cohort.wallets, cohort.loginDaysPerWallet, baseline.loginDaysPerWallet),
       stakedCaps: delta(cohort.wallets, cohort.stakedCapsPerWallet, baseline.stakedCapsPerWallet),
       referrals: delta(cohort.wallets, cohort.referralsPerWallet, baseline.referralsPerWallet),
+      services: delta(cohort.wallets, cohort.servicesPerWallet, baseline.servicesPerWallet),
     },
     series,
   };

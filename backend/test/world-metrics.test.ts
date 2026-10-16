@@ -29,6 +29,11 @@ function seedTrade(db: Db, wallet: string, t: number) {
   db.run(`INSERT INTO sales (signature, event_index, asset, seller, buyer, price, currency, fee, royalty, via_offer, slot, block_time)
           VALUES (?, 0, ?, ?, ?, '1000', 0, '0', '0', 0, 1, ?)`, kp().slice(0, 32), kp(), wallet, kp(), t);
 }
+/** Оплаченный сервис (косметика, хендл, скин) — контур предметов, а не паки. */
+function seedService(db: Db, wallet: string, t: number) {
+  db.run(`INSERT INTO service_payments (signature, event_index, buyer, kind, currency, amount, burned, ref_hash, slot, block_time)
+          VALUES (?, 0, ?, 3, 0, '1000', '0', ?, 1, ?)`, kp().slice(0, 32), wallet, kp().slice(0, 32), t);
+}
 function seedFusion(db: Db, wallet: string, t: number) {
   db.run(`INSERT INTO fusions (signature, event_index, owner, recipe, materials, success, roll_bps, threshold_bps, fee_burned, slot, block_time)
           VALUES (?, 0, ?, 0, '[]', 1, 0, 0, '0', 1, ?)`, kp().slice(0, 32), wallet, t);
@@ -188,6 +193,48 @@ describe('worldMetrics — когорта против базовой линии
     const db = new Db(':memory:');
     const r = worldReport(db, 7);
     expect(r.features.map((f) => f.feature)).toEqual([...WORLD_FEATURES]);
+  });
+});
+
+describe('worldMetrics — райдер (§4.6)', () => {
+  it('когорта райдера против игравших без него: косметика — это контур предметов', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const dressed = kp();
+    const plain = kp();
+    for (const w of [dressed, plain]) for (let i = 0; i < 5; i++) db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, w, Math.floor(t / DAY) - i);
+    seedService(db, dressed, t - DAY); seedService(db, dressed, t - 2 * DAY);
+    seedService(db, plain, t - DAY);
+    // Райдер надет — событие пишет сама запись (проверено в rig.test.ts), здесь
+    // важен отчёт: до события когорты нет ни у кого.
+    expect(cohortReport(db, 'rider', { windowDays: 30 }, t).cohort.wallets).toBe(0);
+    recordEvent(db, dressed, 'rider', 'set', { silhouette: 2 }, t - DAY);
+
+    const r = cohortReport(db, 'rider', { windowDays: 30 }, t);
+    expect(r.cohort.wallets).toBe(1);
+    expect(r.baseline.wallets).toBe(1);
+    expect(r.cohort.servicesPerWallet).toBe(2);
+    expect(r.baseline.servicesPerWallet).toBe(1);
+    expect(r.delta.services).toBe(1); // +100 % сервисов на кошелёк
+  });
+
+  it('райдер без косметики всё равно когорта: метрика про контур, а не про покупку', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const w = kp();
+    for (let i = 0; i < 3; i++) db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, w, Math.floor(t / DAY) - i);
+    recordEvent(db, w, 'rider', 'set', { silhouette: 0 }, t - DAY);
+    const r = cohortReport(db, 'rider', { windowDays: 30 }, t);
+    expect(r.cohort.wallets).toBe(1);
+    expect(r.cohort.servicesPerWallet).toBe(0);
+    expect(r.delta.services).toBeNull(); // база ноль → отношения нет
+  });
+
+  it('райдер есть в сводном отчёте наравне с остальными фичами', () => {
+    const db = new Db(':memory:');
+    const r = worldReport(db, 7);
+    expect(r.features.map((f) => f.feature)).toEqual([...WORLD_FEATURES]);
+    expect(r.features.map((f) => f.feature)).toContain('rider');
   });
 });
 

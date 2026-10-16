@@ -211,5 +211,6 @@
   "invalidBubblegumAsset": "Asset id on-chain chip ini tidak cocok dengan daun Bubblegum. Left: {left}. Right: {right}. Dompet tidak diminta dan taruhan tidak dikirim.",
   "noXpTicket": "Tidak ada tiket XP tersisa hari ini — tiket datang bersama pack Limited dan kedaluwarsa tengah malam UTC.",
   "missingAsset": "Pilih cap mana yang menerima XP.",
-  "chipNotFound": "Cap ini tidak ada di dompetmu (atau sudah tidak aktif)."
+  "chipNotFound": "Cap ini tidak ada di dompetmu (atau sudah tidak aktif).",
+  "themeNotOwned": "Tema ini belum kamu punya: beli dulu di toko, lalu pakai."
 }

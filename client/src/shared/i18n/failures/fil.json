@@ -211,5 +211,6 @@
   "invalidBubblegumAsset": "Hindi tumutugma ang on-chain asset id ng chip sa Bubblegum leaf. Left: {left}. Right: {right}. Hindi binuksan ang wallet at walang taya na naipadala.",
   "noXpTicket": "Walang natitirang XP ticket ngayong araw — ang mga ticket ay may kasamang Limited pack at mag-e-expire sa hatinggabi UTC.",
   "missingAsset": "Piliin kung aling cap ang tatanggap ng XP.",
-  "chipNotFound": "Wala sa wallet mo ang cap na ito (o hindi na aktibo)."
+  "chipNotFound": "Wala sa wallet mo ang cap na ito (o hindi na aktibo).",
+  "themeNotOwned": "Hindi mo pa itong tema: bilhin muna sa shop, saka isuot."
 }

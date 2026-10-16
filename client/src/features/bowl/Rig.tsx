@@ -21,6 +21,7 @@ import { ChipArt } from '@/shared/ui/ChipArt';
 import { Modal, Pill } from '@/shared/ui/primitives';
 import { useUiStore } from '@/app/store/ui';
 import { useRig, useRigOf, useSetRig, type RigCap, type RigChip, type RigSlot, type RigView } from '@/api/hooksLazy';
+import { RiderCard } from './Rider';
 import { shortKey } from '@/shared/lib/format';
 import './rig.css';
 
@@ -140,9 +141,13 @@ export default function Rig() {
           <span className="strong">{t('rig.collected', { n: collected, total: CAPS_TOTAL })}</span>
           {view.data?.public ? <Pill active>{t('rig.publicOn')}</Pill> : null}
         </div>
-        <Board view={view.data ?? { wallet: '', public: false, caps: [], slots: [], next: null }} mine busy={setRig.isPending} onSlot={(slot) => setPick(slot)} />
+        <Board view={view.data ?? { wallet: '', rider: { silhouette: 0, theme: null }, public: false, caps: [], slots: [], next: null } as RigView} mine busy={setRig.isPending} onSlot={(slot) => setPick(slot)} />
         <p className="tiny muted">{t('rig.note')}</p>
       </section>
+
+      {/* §4.6 Райдер стоит рядом с доской: косметику покупают, чтобы её видели,
+          а витрина — это и есть то место, где её видят. */}
+      <RiderCard view={view.data} mine />
 
       <section className="card stack-sm">
         <label className="row between" style={{ gap: 8 }}>
@@ -215,9 +220,11 @@ export function PublicRig() {
         <p className="page-sub">{t('rig.subtitle')}</p>
       </div>
       <section className="card stack-sm">
-        <Board view={view.data ?? { wallet, public: true, caps: [], slots: [], next: null }} mine={false} busy={false} onSlot={() => {}} />
+        <Board view={view.data ?? { wallet, rider: { silhouette: 0, theme: null }, public: true, caps: [], slots: [], next: null } as RigView} mine={false} busy={false} onSlot={() => {}} />
         <p className="tiny muted">{t('rig.note')}</p>
       </section>
+      {/* Чужой райдер показываем, но не даём трогать: настройки чужие. */}
+      <RiderCard view={view.data} mine={false} />
       <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
         <Link to="/bowl/rig" className="btn btn-sm btn-ghost">{t('rig.viewMine')}</Link>
       </div>

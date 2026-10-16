@@ -480,6 +480,12 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     const b = req.body as { handle: string; signature: string };
     res.json(claimHandle(db, req.session!.wallet, String(b.handle ?? ''), String(b.signature ?? '')));
   });
+  // §4.6 Райдер: силуэт района + цвет подсветки из оплаченной косметики. Никаких
+  // характеристик — это образ, который видят другие на витрине.
+  v1.put('/me/rider', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    const b = req.body as { silhouette?: unknown; theme?: unknown };
+    res.json(rig.setRider(db, req.session!.wallet, { silhouette: b.silhouette, theme: b.theme }));
+  });
   v1.get('/me/services', requireAuth, (req, res) => { res.json(myServices(db, req.session!.wallet)); });
   // T-B-49 proof of human: Turnstile token → 7-day pass that unlocks quest / SKR settlement (human.ts).
   v1.get('/me/human', requireAuth, (req, res) => { res.json(humanStatus(db, req.session!.wallet)); });

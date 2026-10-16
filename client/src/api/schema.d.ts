@@ -659,6 +659,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/rider": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Wear a rider silhouette (docs/16 §4.6) — one of eight district figures plus a rim-light theme
+         * @description The rider is presentation only: no stats, no odds, no income. Two checks, both about the public
+         *     board telling the truth — the silhouette must be one of the eight that exist, and the theme must be
+         *     one the caller has actually paid for (entitlement kind 3). Wearing an unpaid theme is refused
+         *     because the board would then advertise a purchase that never happened.
+         *     Idempotent: repeating the same choice changes nothing.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description district index — which of the eight figures to wear */
+                        silhouette?: number;
+                        /** @description profile theme id (economy PROFILE_THEMES); null = light the figure in its district colour */
+                        theme?: string | null;
+                    };
+                };
+            };
+            responses: {
+                /** @description the rider as stored */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Rider"];
+                    };
+                };
+                /** @description bad_silhouette — no such figure */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description theme_not_owned — buy the theme in the shop first */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/services": {
         parameters: {
             query?: never;
@@ -6803,11 +6869,23 @@ export interface components {
             } | null;
         };
         /**
+         * @description docs/16 §4.6 — the rider: one of eight district silhouettes, lit in the colour of a profile theme
+         *     the owner actually paid for. Presentation only, no stats. Shown on the public board (§4.5), which
+         *     is the point: cosmetics are bought to be seen.
+         *     `theme` comes back null when the cosmetic is not (or no longer) paid for — the board then lights the
+         *     figure in its district colour instead of advertising a purchase that lapsed.
+         */
+        Rider: {
+            silhouette?: number;
+            theme?: string | null;
+        };
+        /**
          * @description Three exhibit slots. `caps` is the number of *distinct* caps collected (8 districts × 9 rarities) —
          *     the same number that opens slots 2 and 3 at 12 and 36.
          */
         RigView: {
             wallet?: string;
+            rider?: components["schemas"]["Rider"];
             /** @description owner has switched the public board on (§4.5) */
             public?: boolean;
             /**
@@ -7406,6 +7484,7 @@ export interface components {
                 loginDays?: number | null;
                 stakedCaps?: number | null;
                 referrals?: number | null;
+                services?: number | null;
             };
             /** @description adoption curve — events and distinct wallets per day */
             series?: {
@@ -7423,6 +7502,8 @@ export interface components {
             stakedCapsPerWallet?: number;
             /** @description wallets that arrived through this wallet’s link, per wallet */
             referralsPerWallet?: number;
+            /** @description paid services (cosmetics, handles, skins) per wallet — the item track the rider is supposed to feed (§4.6) */
+            servicesPerWallet?: number;
         };
         AdminKpi: {
             /** Format: date-time */

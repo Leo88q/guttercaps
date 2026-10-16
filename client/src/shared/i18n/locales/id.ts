@@ -288,11 +288,13 @@ const id: Messages = {
       afterWin: 'setelah menang',
       battles: '{n, plural, other{# battle}}',
       referrals: 'Pendaftar lewat link',
+      services: 'Layanan berbayar',
       feat: {
         wall: 'Dinding distrik',
         exhibit: 'Pameran cap',
         tag: 'Tag',
         inspect: 'Inspektor cap',
+        rider: 'Rider (§4.6)',
         wall_board: 'Papan minggu ini (§3.7)',
         collection_mural: 'Mural distrik (§2.3)',
       },
@@ -492,6 +494,13 @@ const id: Messages = {
     reason_ads: 'Iklan atau spam',
     reason_personal_data: 'Data pribadi',
     reason_other: 'Lainnya',
+  },
+  rider: {
+    title: 'Rider', noStats: 'Cuma tampilan: tanpa stat dan tanpa peluang',
+    alt: 'Rider distrik {district}', lampDistrict: 'Cahaya warna {district}',
+    pickFigure: 'Figur', pickLamp: 'Cahaya tepi', pickAlt: 'Pakai figur {district}',
+    buy: 'beli', hint: 'Tema dibeli di toko: cahayanya hanya yang sudah kamu bayar.', toShop: 'Ke toko',
+    failed: 'Rider gagal disimpan',
   },
   rig: {
     title: 'Papan saya',

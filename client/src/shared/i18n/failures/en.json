@@ -211,5 +211,6 @@
   "invalidBubblegumAsset": "This cap’s on-chain asset id does not match its Bubblegum leaf. Left: {left}. Right: {right}. No wallet prompt and no wager were sent.",
   "noXpTicket": "No unused XP ticket today — tickets come with Limited packs and expire at midnight UTC.",
   "missingAsset": "Choose which chip should receive the XP.",
-  "chipNotFound": "This chip is not in your wallet (or is no longer live)."
+  "chipNotFound": "This chip is not in your wallet (or is no longer live).",
+  "themeNotOwned": "This theme is not yours yet — buy it in the shop, then wear it."
 }
