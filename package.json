@@ -99,7 +99,8 @@
     "privacy:retention": "node --no-warnings=ExperimentalWarning --import tsx backend/src/privacy-maintenance.ts retention",
     "privacy:reapply": "node --no-warnings=ExperimentalWarning --import tsx backend/src/privacy-maintenance.ts reapply-erasure",
     "mac:devnet": "bash scripts/mac-devnet.sh",
-    "population:sim": "node --experimental-strip-types scripts/population-sim.ts"
+    "population:sim": "node --experimental-strip-types scripts/population-sim.ts",
+    "line:sim": "node --experimental-strip-types packages/economy/scripts/line-tournament-sim.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",
