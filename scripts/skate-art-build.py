@@ -36,12 +36,15 @@ import json
 import os
 import sys
 
-from PIL import Image, ImageFilter, ImageOps
+from PIL import Image, ImageChops, ImageFilter, ImageOps
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 MASTERS = os.path.join(REPO, "art_drafts", "skate")
 OUT = os.path.join(REPO, "client", "public", "art", "skate")
+# Арт-входы: то, что в продакшен не уезжает (мастера красок §4.2), но должно
+# лежать рядом с мастерами — иначе «пересобери сборкой» невозможно без генератора.
+BUILD_OUT = os.path.join(MASTERS, "build")
 
 # Фон, на котором генерируются объекты: ровный #00FF00, его и вырезаем.
 CHROMA = (0, 255, 0)
@@ -358,6 +361,246 @@ for _name, _district, _shape in PACK_DISTRICT:
     })
 
 
+# ── Краска районов (docs/16 §4.2) ────────────────────────────────────────────
+# Конструктор доски собирается из восьми районов, и у каждого района своя
+# краска: не «цвет из палитры, который выбрал код», а сгенерированная фактура —
+# распыл, потёки, ржавчина, плесень, потёртости. Код потом только накладывает
+# эту фактуру на существующую пластину (см. COMPOSITES ниже): геометрию детали
+# рисует генератор, а не программист.
+#
+# Цвет района 03 — не trust-blue: docs/07 §2.2 оставляет #2E8BFF за деньгами,
+# поэтому району «Подошвы» (кроссовочная культура) достался стальной
+# маслянистый хром — та же оговорка, что у Rare+ в палитре редкостей.
+PAINTS = [
+    ("paint-d0", "fresh cyan stencil spray on a dark warehouse roller shutter, thin even coats, crisp hard sprayed edges, speckled overspray, faint drip runs, patchy coverage with dark concrete showing through, scuffs, dust and grime"),
+    ("paint-d1", "thick burnt orange roller paint on rough drained swimming pool concrete, porous pitted texture, tide lines and drip runs, chipped flakes showing grey concrete underneath, kerb scratches, dust and grime"),
+    ("paint-d2", "hot magenta train-bombing spray on a rusted steel freight wagon panel, fat-cap coverage with heavy drips, rust bleeding through from underneath, streaked runs, welded seams catching the paint, brake dust"),
+    ("paint-d3", "steel blue-grey oil-slick chrome paint on a smooth sneaker leather panel, iridescent sheen, soft creases and suede scuffs, worn scuff marks, faint glue stains, matte to satin variation"),
+    ("paint-d4", "acid lime spray and marker tags on a painted brick wall, chalky matte finish, layered older tags ghosting through, brick grain showing, chipped edges, soot and dust"),
+    ("paint-d5", "damp swampy teal-green paint on wet sewer concrete, algae bloom patches, mildew spots, water stains running down, slimy sheen, cracked paint, grit and silt"),
+    ("paint-d6", "faded sun-bleached magenta paint on arcade cabinet laminate, visible pixel dithering pattern in the paint, cigarette burns and sticker residue, chipped corners, dusty matte sheen, faint scanline banding"),
+    ("paint-d7", "chalky pale gold poster paint on a poster-plastered wall, torn paper edges showing through the coat, ghostly buffed patches where paint was scrubbed off, gold leaf flakes, wheatpaste bubbles, dust and fibre"),
+]
+
+for _name, _surface in PAINTS:
+    ASSETS.append({
+        "name": _name,
+        "kind": SPRITE,
+        "master": f"{_name}.png",
+        "geometry": (512, 512),
+        "quality": 84,
+        # Краска уезжает не в продакшен, а в композиты: её вес никого не
+        # замедляет, и урезать её качеством — значит испортить все восемь деталей.
+        "budget_kb": 320,
+        "build_only": True,
+        "prompt": (
+            f"Square close-up texture swatch of a painted surface: {_surface}. Flat even lighting, "
+            f"straight-on view, no perspective. The painted square panel sits centred in the frame "
+            f"with a clear margin around it, on a flat pure green #00FF00 background. No text no "
+            f"letters no logos. " + PROMPT_PREFIX
+        ),
+    })
+
+# Болты — навесная косметика (docs/16 §4.2): одна деталь, три покрытия.
+ASSETS.append({
+    "name": "bolts",
+    "kind": SPRITE,
+    "master": "bolts.png",
+    "geometry": (900, 900),
+    "quality": 78,
+    "budget_kb": 250,
+    "prompt": (
+        "Product render of eight small steel skateboard mounting bolts in a neat horizontal row, "
+        "three-quarter studio view, hex socket heads, black oxide finish, cross-thread wear and greasy "
+        "fingerprints, mild rust on two of them, alone in the centre of the frame on a flat pure green "
+        "#00FF00 background. Clean product photography, crisp edges. " + PROMPT_PREFIX
+    ),
+})
+
+
+# ── Детали доски по районам (docs/16 §4.2) ───────────────────────────────────
+# Пластина (дека, траки, колёса, грип, болты) отвечает за форму и свет, краска
+# района — за цвет и фактуру. Склейка делается здесь, а не в браузере, потому
+# что результат должен проверяться сборкой: файл, вес, хеш, палитровый линт.
+#
+# Смешивание — умножение краски на пластину с последующим возвратом части
+# исходного кадра (`strength`): так остаётся и зерно дерева, и блики металла, а
+# район читается по цвету. Краска предварительно осветляется (lighten), иначе
+# умножение на тёмную краску превращает деталь в чёрный силуэт.
+#
+# Названия совпадают с id частей в packages/economy/src/board.ts: deck_dN ->
+# deck-dN.webp. Стоковые части — это сами пластины, отдельного файла им не нужно.
+COMPOSITE_PLATES = [
+    # id слота, пластина, режим, сила покраски
+    # Яркость пластины сохраняется, поэтому краски можно класть почти целиком:
+    # меньше — и район перестаёт читаться на маленьком экране телефона.
+    ("deck", "deck", "coat", 0.88),
+    ("trucks", "trucks", "coat", 0.85),
+    ("wheels", "wheels", "coat", 0.88),
+    ("grip", "grip", "stain", 0.95),
+]
+# Навесная косметика: те же болты в двух покрытиях (chrome — сама пластина).
+COMPOSITE_BOLTS = [("acid", "#B6FF3C"), ("gold", "#FFD34D")]
+
+
+def tint_plate(plate, paint, strength, mode="coat", lighten=0.35, sat=1.2):
+    """Красим пластину краской района, сохраняя её собственный свет.
+
+    Два режима, и выбор между ними — не вкус, а материал:
+      * `coat` — краска как слой: тон и насыщенность берутся из краски района,
+        яркость — из пластины. Так красят деку, колёса и траки: слой непрозрачный,
+        и район читается на трёхдюймовом экране телефона. Фактура краски
+        (потёки, ржавчина, плесень) живёт в её собственных H и S, поэтому
+        деталь не становится плоской заливкой.
+      * `stain` — краска как пропитка: тон и насыщенность берутся из умножения
+        краски на пластину. Так ведёт себя пористая поверхность (грип): цвет
+        впитывается и остаётся приглушённым.
+
+    Яркость (V) в обоих режимах возвращается от пластины: блики на металле и
+    тени под траками обязаны остаться на месте, иначе краска «съедает» кадр и
+    все восемь районов начинают читаться одинаково грязными.
+    """
+    plate = plate.convert("RGBA")
+    size = plate.size
+    prgb = plate.convert("RGB")
+    # Краска растягивается на весь кадр детали: её фактура крупнее самой детали,
+    # и разглядывать на деке узор размером с колёса было бы нечем.
+    paint_rgb = paint.convert("RGB").resize(size, Image.LANCZOS)
+    light = Image.blend(paint_rgb, Image.new("RGB", size, (255, 255, 255)), lighten)
+    painted = ImageChops.multiply(prgb, light)
+    if mode == "stain":
+        ph, _pv_h = painted.convert("HSV").split()[0], None
+        ps = painted.convert("HSV").split()[1]
+    else:
+        ph = paint_rgb.convert("HSV").split()[0]
+        ps = paint_rgb.convert("HSV").split()[1]
+    _oh, _os, ov = prgb.convert("HSV").split()
+    ps = ps.point(lambda v: min(255, int(v * sat)))
+    tinted = Image.merge("HSV", (ph, ps, ov)).convert("RGB")
+    out = Image.blend(prgb, tinted, strength)
+    out = out.convert("RGBA")
+    out.putalpha(plate.getchannel("A"))
+    return out
+
+
+def mean_hue(img):
+    """Средний тон (HSV) по непрозрачным пикселям — чтобы районы не совпали."""
+    rgb = img.convert("RGBA")
+    alpha = rgb.getchannel("A")
+    hsv = rgb.convert("HSV")
+    probe = hsv.resize((64, 64), Image.BILINEAR)
+    ap = alpha.resize((64, 64), Image.BILINEAR).load()
+    px = probe.load()
+    hs, tot = 0.0, 0
+    for y in range(64):
+        for x in range(64):
+            if ap[x, y] < 40:
+                continue
+            hs += px[x, y][0]
+            tot += 1
+    return (hs / tot) if tot else 0.0
+
+
+def composite_names():
+    """Имена всех композитов — чтобы `--only` понимал и их (имена совпадают с id частей)."""
+    return ({f"{slot}-d{d}" for slot, _, _, _ in COMPOSITE_PLATES for d in range(8)}
+            | {f"bolts-{finish}" for finish, _ in COMPOSITE_BOLTS})
+
+
+def build_composites(entries, failures):
+    """Красит каждую пластину каждой краской района и кладёт результат в OUT."""
+    paints = {}
+    for i in range(8):
+        path = os.path.join(BUILD_OUT, f"paint-d{i}.webp")
+        if not os.path.exists(path):
+            path = os.path.join(OUT, f"paint-d{i}.webp")
+        if not os.path.exists(path):
+            print(f"  НЕТ КРАСКИ paint-d{i}.webp — сначала соберите краски")
+            failures.append(f"paint-d{i}")
+            return
+        paints[i] = Image.open(path)
+
+    for slot, plate_name, mode, strength in COMPOSITE_PLATES:
+        plate_path = os.path.join(OUT, f"{plate_name}.webp")
+        if not os.path.exists(plate_path):
+            print(f"  НЕТ ПЛАСТИНЫ {plate_name}.webp")
+            failures.append(plate_name)
+            continue
+        plate = Image.open(plate_path)
+        for d in range(8):
+            name = f"{slot}-d{d}"
+            target = os.path.join(OUT, f"{name}.webp")
+            painted = tint_plate(plate, paints[d], strength, mode)
+            painted.save(target, "WEBP", quality=82, alpha_quality=92, method=6, exact=False)
+            kb = os.path.getsize(target) / 1024
+            blue = blue_share(Image.open(target))
+            ok = kb <= 260 and blue <= BLUE_MAX_SHARE
+            hue = mean_hue(Image.open(target))
+            print(f"  {name:14} композит  {painted.size[0]}x{painted.size[1]:<5} {kb:6.0f} КБ  "
+                  f"blue {blue * 100:.2f}%  hue {hue:5.1f}  {'ok ' if ok else 'ПЛОХО'}")
+            if not ok:
+                failures.append(name)
+            entries.append({
+                "name": name,
+                "kind": SPRITE,
+                "file": f"client/public/art/skate/{name}.webp",
+                "width": painted.size[0],
+                "height": painted.size[1],
+                "bytes": os.path.getsize(target),
+                "kb": round(kb, 1),
+                "budget_kb": 260,
+                "quality": 82,
+                "sha256": sha256(target),
+                "master": f"composite:{plate_name}.webp × paint-d{d}.webp",
+                "master_sha256": "",
+                "prompt": (f"Part of the board builder (docs/16 §4.2): the {plate_name} plate from "
+                           f"{plate_name}.webp painted with the district texture paint-d{d}.webp "
+                           f"({mode} blend, {int(strength * 100)} % paint, plate keeps its own light)."),
+            })
+
+    # Болты: одно покрытие — сама пластина, остальные — поверх неё.
+    bolts_path = os.path.join(OUT, "bolts.webp")
+    if os.path.exists(bolts_path):
+        plate = Image.open(bolts_path)
+        for finish, hex_colour in COMPOSITE_BOLTS:
+            name = f"bolts-{finish}"
+            target = os.path.join(OUT, f"{name}.webp")
+            rgb_hex = hex_colour.lstrip("#")
+            colour = tuple(int(rgb_hex[i:i + 2], 16) for i in (0, 2, 4))
+            flat = Image.new("RGB", plate.size, colour)
+            # Покрытие — это цвет металла, а не краска по трафарету: осветляем
+            # сильно, чтобы фактура резьбы и граней не утонула в заливке.
+            painted = Image.blend(plate.convert("RGB"), ImageChops.multiply(plate.convert("RGB"), Image.blend(flat, Image.new("RGB", plate.size, (255, 255, 255)), 0.55)), 0.85)
+            painted = painted.convert("RGBA")
+            painted.putalpha(plate.convert("RGBA").getchannel("A"))
+            painted.save(target, "WEBP", quality=82, alpha_quality=92, method=6, exact=False)
+            kb = os.path.getsize(target) / 1024
+            blue = blue_share(Image.open(target))
+            ok = kb <= 260 and blue <= BLUE_MAX_SHARE
+            print(f"  {name:14} композит  {painted.size[0]}x{painted.size[1]:<5} {kb:6.0f} КБ  "
+                  f"blue {blue * 100:.2f}%  {'ok ' if ok else 'ПЛОХО'}")
+            if not ok:
+                failures.append(name)
+            entries.append({
+                "name": name,
+                "kind": SPRITE,
+                "file": f"client/public/art/skate/{name}.webp",
+                "width": painted.size[0],
+                "height": painted.size[1],
+                "bytes": os.path.getsize(target),
+                "kb": round(kb, 1),
+                "budget_kb": 260,
+                "quality": 82,
+                "sha256": sha256(target),
+                "master": f"composite:bolts.webp × {hex_colour}",
+                "master_sha256": "",
+                "prompt": (f"Board builder bolt-on cosmetic (docs/16 §4.2): the bolts.webp plate in a "
+                           f"{finish} finish tinted {hex_colour} (multiply blend, 85 %, plate keeps its own light)."),
+            })
+    else:
+        print("  НЕТ ПЛАСТИНЫ bolts.webp")
+
+
 def chroma_key(img, tol=CHROMA_TOL):
     """Прозрачность вместо ровного зелёного фона (per-pixel; быстрее numpy не нужно)."""
     img = img.convert("RGBA")
@@ -490,16 +733,18 @@ def build(asset, entries, failures):
         failures.append(name)
         return
 
+    out_dir = BUILD_OUT if asset.get("build_only") else OUT
+    os.makedirs(out_dir, exist_ok=True)
     if kind == SPRITE:
         img = chroma_key(img)
         img = erode_alpha(img)
         img = trim_alpha(img)
         img = fit_box(img, asset["geometry"])
-        target = os.path.join(OUT, f"{name}.webp")
+        target = os.path.join(out_dir, f"{name}.webp")
         img, used_q, _kb, scale = save_sprite_fit(img, target, asset)
     else:
         img = ImageOps.fit(img.convert("RGB"), asset["geometry"], Image.LANCZOS, centering=(0.5, 0.5))
-        target = os.path.join(OUT, f"{name}.webp")
+        target = os.path.join(out_dir, f"{name}.webp")
         img.save(target, "WEBP", quality=asset["quality"], method=6, exact=False)
 
     kb = os.path.getsize(target) / 1024
@@ -519,7 +764,8 @@ def build(asset, entries, failures):
         {
             "name": name,
             "kind": kind,
-            "file": f"client/public/art/skate/{name}.webp",
+            "file": ((f"art_drafts/skate/build/{name}.webp") if asset.get("build_only")
+                     else f"client/public/art/skate/{name}.webp"),
             "width": img.size[0],
             "height": img.size[1],
             "bytes": os.path.getsize(target),
@@ -530,6 +776,8 @@ def build(asset, entries, failures):
             "master": f"art_drafts/skate/{asset['master']}",
             "master_sha256": sha256(master),
             "prompt": asset["prompt"],
+            # Краски районов — вход для композитов, в продакшен не уезжают.
+            "runtime": (not asset.get("build_only", False)),
         }
     )
 
@@ -546,6 +794,8 @@ def route_budgets():
         ("/bowl — хаб", ["bowl-hero", "ui-panel", "deck", "wheels", "trucks", "grip"]
          + [f"rider-0{i}" for i in range(1, 9)], 1200),
         ("/bowl/tag — сетка трафаретов", stencils, 600),
+        # Конструктор доски (§4.2): на экране ровно шесть надетых деталей.
+        ("/bowl/rig — конструктор доски", ["deck", "trucks", "wheels", "grip", "bolts", "ui-slot"], 700),
     ]
 
 
@@ -573,6 +823,12 @@ def check(assets):
     for e in data["assets"]:
         f = os.path.join(REPO, e["file"])
         if not os.path.exists(f):
+            if e.get("runtime") is False:
+                # Арт-вход: лежит в art_drafts (в git не идёт) и пересобирается
+                # из мастера. Отсутствие — не поломка выпуска, а «мастер не
+                # восстанавливали»; в продакшен этот файл всё равно не уезжает.
+                print(f"  {e['name']:14} арт-вход, в продакшен не уезжает (нет файла — ок)")
+                continue
             print(f"  {e['name']:14} файл отсутствует")
             bad += 1
             continue
@@ -599,7 +855,8 @@ def main():
     wanted = None
     if args.only:
         wanted = {s.strip() for s in args.only.split(",") if s.strip()}
-        unknown = wanted - {a["name"] for a in ASSETS}
+        known_names = {a["name"] for a in ASSETS} | composite_names()
+        unknown = wanted - known_names
         if unknown:
             print("неизвестные ассеты:", ", ".join(sorted(unknown)))
             return 1
@@ -614,6 +871,11 @@ def main():
             continue
         build(asset, entries, failures)
 
+    # Композиты района считаются из уже выпущенных пластин и красок, поэтому
+    # идут вторым проходом — и только когда собирается всё (или попросили явно).
+    if not wanted or any(w.startswith(("deck-", "trucks-", "wheels-", "grip-", "bolts-")) for w in wanted):
+        build_composites(entries, failures)
+
     if entries:
         manifest = {
             "generated": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -625,6 +887,20 @@ def main():
             ),
             "assets": entries,
         }
+        if wanted:
+            # Сборка подмножества не имеет права стирать остальной манифест:
+            # мастера тяжелы и в git не идут, поэтому пересобрать всё сразу
+            # получается не всегда, а манифест — это происхождение каждого кадра.
+            old_path = os.path.join(OUT, "MANIFEST.json")
+            if os.path.exists(old_path):
+                try:
+                    old = json.load(open(old_path, encoding="utf-8"))
+                    known = {e["name"]: e for e in old.get("assets", [])}
+                    known.update({e["name"]: e for e in entries})
+                    manifest["assets"] = [known[k] for k in sorted(known)]
+                    print(f"  манифест дополнен: {len(entries)} новых, всего {len(manifest['assets'])}")
+                except (OSError, ValueError, KeyError):
+                    pass
         path = os.path.join(OUT, "MANIFEST.json")
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(manifest, fh, ensure_ascii=False, indent=2)
