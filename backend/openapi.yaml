@@ -2196,23 +2196,17 @@ components:
         asOf: { type: string, format: date-time }
         features:
           type: array
-          items:
-            type: object
-            properties:
-              feature: { type: string, enum: [wall, exhibit, tag] }
-              windowDays: { type: integer }
-              from: { type: string, format: date-time }
-              to: { type: string, format: date-time }
-              cohort: { $ref: '#/components/schemas/WorldCohortStats' }
-              baseline: { $ref: '#/components/schemas/WorldCohortStats' }
-              delta:
-                type: object
-                description: 'cohort / baseline − 1 per metric; null when there is nothing to divide by'
-                properties: { packs: { type: [number, 'null'] }, trades: { type: [number, 'null'] }, fusions: { type: [number, 'null'] }, loginDays: { type: [number, 'null'] }, stakedCaps: { type: [number, 'null'] }, referrals: { type: [number, 'null'] } }
-              series:
-                type: array
-                description: adoption curve — events and distinct wallets per day
-                items: { type: object, properties: { day: { type: integer }, events: { type: integer }, wallets: { type: integer } } }
+          description: one card per world feature — everyone who touched it vs everyone who played but did not
+          items: { $ref: '#/components/schemas/WorldFeatureCohort' }
+        slices:
+          type: array
+          description: |
+            Narrower cuts *inside* a feature, compared against the rest of that feature instead of
+            against all players — because a subset inherits its parent's selection. `wall.board` (docs/16
+            §3.7) is exactly that: every board author already holds a slot (§3.4), so measuring them
+            against all players measures the slot, not the board. Here the baseline is slot holders who
+            never made the board.
+          items: { $ref: '#/components/schemas/WorldFeatureCohort' }
         epicPlus:
           type: object
           description: 'docs/16 §12 row 1 — share of pack opens followed by another pack purchase within 24 h'
@@ -2239,6 +2233,27 @@ components:
               description: battles the same wallets won in the same window
               properties: { opens: { type: integer }, repeatRate: { type: [number, 'null'] } }
             delta: { type: [number, 'null'], description: 'loss-rematch rate / win-rematch rate − 1' }
+    WorldFeatureCohort:
+      type: object
+      description: one cohort card — per-wallet averages for the group, the baseline and the ratio between them
+      properties:
+        feature:
+          type: string
+          description: 'feature name, or `feature.kind` for a slice (e.g. `wall.board`)'
+          enum: [wall, exhibit, tag, inspect, 'wall.board']
+        windowDays: { type: integer }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        cohort: { $ref: '#/components/schemas/WorldCohortStats' }
+        baseline: { $ref: '#/components/schemas/WorldCohortStats' }
+        delta:
+          type: object
+          description: 'cohort / baseline − 1 per metric; null when there is nothing to divide by — an empty cohort is null too, never −100 %'
+          properties: { packs: { type: [number, 'null'] }, trades: { type: [number, 'null'] }, fusions: { type: [number, 'null'] }, loginDays: { type: [number, 'null'] }, stakedCaps: { type: [number, 'null'] }, referrals: { type: [number, 'null'] } }
+        series:
+          type: array
+          description: adoption curve — events and distinct wallets per day
+          items: { type: object, properties: { day: { type: integer }, events: { type: integer }, wallets: { type: integer } } }
     WorldCohortStats:
       type: object
       properties:

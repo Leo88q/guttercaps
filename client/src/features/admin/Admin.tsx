@@ -379,6 +379,10 @@ function WorldTab() {
       {q.isLoading && <Skeleton h={300} />}
       {!!q.error && <div className="warn">{t('admin.params.unavailable', { error: '' })}<ErrorNotice error={q.error} /></div>}
       {(q.data?.features ?? []).map((f) => <WorldFeature key={f.feature} f={f as FeatureReport} num={num} signed={signed} />)}
+      {/* Срезы: то же сравнение, но внутри фичи. У доски недели база — держатели
+          слотов без доски, а не «все игравшие»: попасть на доску можно только
+          держа слот, поэтому иначе мы мерили бы слот, а не доску. */}
+      {(q.data?.slices ?? []).map((f) => <WorldFeature key={f.feature} f={f as FeatureReport} num={num} signed={signed} note={SLICE_NOTES[f.feature ?? '']} />)}
       {!!q.data?.epicPlus && <EpicPlusCard e={q.data.epicPlus} signed={signed} />}
       {!!q.data?.arenaRematch && <RematchCard e={q.data.arenaRematch} signed={signed} />}
     </div>
@@ -437,7 +441,12 @@ function RematchCard({ e, signed }: { e: EpicPlusReport; signed: (v: number | nu
   );
 }
 
-function WorldFeature({ f, num, signed }: { f: FeatureReport; num: (v: number) => string; signed: (v: number | null) => string }) {
+/** Пояснение к срезу: когорта и база у среза не те, что у фичи, и это надо написать. */
+const SLICE_NOTES: Record<string, string> = {
+  'wall.board': 'admin.world.boardNote',
+};
+
+function WorldFeature({ f, num, signed, note }: { f: FeatureReport; num: (v: number) => string; signed: (v: number | null) => string; note?: string }) {
   const t = useT();
   const peak = Math.max(1, ...f.series.map((s) => s.events));
   return (
@@ -446,6 +455,12 @@ function WorldFeature({ f, num, signed }: { f: FeatureReport; num: (v: number) =
       <div className="tiny muted">
         {t('admin.world.wallets', { n: f.cohort.wallets })} · {t('admin.world.baseline')}: {t('admin.world.wallets', { n: f.baseline.wallets })}
       </div>
+      {/* Пустая когорта — не «−100 % по всем метрикам». Пока событий нет,
+          показываем одну честную строчку, а не таблицу нулей. */}
+      {f.cohort.wallets === 0
+        ? <div className="tiny muted">{t('admin.world.empty')}</div>
+        : (<>
+      {note ? <div className="tiny muted">{t(note as MessageKey)}</div> : null}
       <div className="world-cohorts">
         <div className="world-cohorts-head">
           <span className="muted">{t('admin.world.metric')}</span>
@@ -461,7 +476,7 @@ function WorldFeature({ f, num, signed }: { f: FeatureReport; num: (v: number) =
             <span className="mono cg-accent">{signed(f.delta[r.key] ?? null)}</span>
           </div>
         ))}
-      </div>
+      </div></>)}
       {f.series.length === 0
         ? <div className="tiny muted">{t('admin.world.empty')}</div>
         : (

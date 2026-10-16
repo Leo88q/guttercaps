@@ -7265,32 +7265,16 @@ export interface components {
             windowDays?: number;
             /** Format: date-time */
             asOf?: string;
-            features?: {
-                /** @enum {string} */
-                feature?: "wall" | "exhibit" | "tag";
-                windowDays?: number;
-                /** Format: date-time */
-                from?: string;
-                /** Format: date-time */
-                to?: string;
-                cohort?: components["schemas"]["WorldCohortStats"];
-                baseline?: components["schemas"]["WorldCohortStats"];
-                /** @description cohort / baseline − 1 per metric; null when there is nothing to divide by */
-                delta?: {
-                    packs?: number | null;
-                    trades?: number | null;
-                    fusions?: number | null;
-                    loginDays?: number | null;
-                    stakedCaps?: number | null;
-                    referrals?: number | null;
-                };
-                /** @description adoption curve — events and distinct wallets per day */
-                series?: {
-                    day?: number;
-                    events?: number;
-                    wallets?: number;
-                }[];
-            }[];
+            /** @description one card per world feature — everyone who touched it vs everyone who played but did not */
+            features?: components["schemas"]["WorldFeatureCohort"][];
+            /**
+             * @description Narrower cuts *inside* a feature, compared against the rest of that feature instead of
+             *     against all players — because a subset inherits its parent's selection. `wall.board` (docs/16
+             *     §3.7) is exactly that: every board author already holds a slot (§3.4), so measuring them
+             *     against all players measures the slot, not the board. Here the baseline is slot holders who
+             *     never made the board.
+             */
+            slices?: components["schemas"]["WorldFeatureCohort"][];
             /** @description docs/16 §12 row 1 — share of pack opens followed by another pack purchase within 24 h */
             epicPlus?: {
                 /** @description opens that contained at least one Epic+ cap */
@@ -7321,6 +7305,36 @@ export interface components {
                 /** @description loss-rematch rate / win-rematch rate − 1 */
                 delta?: number | null;
             };
+        };
+        /** @description one cohort card — per-wallet averages for the group, the baseline and the ratio between them */
+        WorldFeatureCohort: {
+            /**
+             * @description feature name, or `feature.kind` for a slice (e.g. `wall.board`)
+             * @enum {string}
+             */
+            feature?: "wall" | "exhibit" | "tag" | "inspect" | "wall.board";
+            windowDays?: number;
+            /** Format: date-time */
+            from?: string;
+            /** Format: date-time */
+            to?: string;
+            cohort?: components["schemas"]["WorldCohortStats"];
+            baseline?: components["schemas"]["WorldCohortStats"];
+            /** @description cohort / baseline − 1 per metric; null when there is nothing to divide by — an empty cohort is null too, never −100 % */
+            delta?: {
+                packs?: number | null;
+                trades?: number | null;
+                fusions?: number | null;
+                loginDays?: number | null;
+                stakedCaps?: number | null;
+                referrals?: number | null;
+            };
+            /** @description adoption curve — events and distinct wallets per day */
+            series?: {
+                day?: number;
+                events?: number;
+                wallets?: number;
+            }[];
         };
         WorldCohortStats: {
             wallets?: number;

@@ -10,7 +10,7 @@ import { dayIndex } from '../src/quests.ts';
 import { sanitizeTagSvg, saveTag } from '../src/tags.ts';
 import { claimSlot } from '../src/wall.ts';
 import { setRig } from '../src/rig.ts';
-import { EPIC_PLUS, REMATCH_WINDOW_MS, WORLD_FEATURES, arenaRematch, cohortReport, epicPlusRepeat, recordEvent, worldReport } from '../src/worldMetrics.ts';
+import { EPIC_PLUS, REMATCH_WINDOW_MS, WORLD_FEATURES, arenaRematch, boardCohort, cohortReport, epicPlusRepeat, recordEvent, worldReport } from '../src/worldMetrics.ts';
 
 const kp = () => Keypair.generate().publicKey.toBase58();
 const DAY = 86_400;
@@ -80,7 +80,7 @@ describe('worldMetrics — когорта против базовой линии
       seedPack(db, w, t - DAY);
     }
 
-    const r = cohortReport(db, 'exhibit', 30, t);
+    const r = cohortReport(db, 'exhibit', { windowDays: 30 }, t);
     expect(r.cohort.wallets).toBe(2);
     expect(r.baseline.wallets).toBe(2);
     expect(r.cohort.packsPerWallet).toBe(2);
@@ -93,7 +93,7 @@ describe('worldMetrics — когорта против базовой линии
 
   it('молчит там, где считать нечего: пустая когорта даёт null, а не ноль', () => {
     const db = new Db(':memory:');
-    const r = cohortReport(db, 'wall', 30);
+    const r = cohortReport(db, 'wall', { windowDays: 30 });
     expect(r.cohort.wallets).toBe(0);
     expect(r.delta.packs).toBeNull();
     expect(r.series).toEqual([]);
@@ -106,7 +106,7 @@ describe('worldMetrics — когорта против базовой линии
     recordEvent(db, w, 'tag', 'save', undefined, t - DAY);
     recordEvent(db, w, 'tag', 'save', undefined, t - DAY);
     recordEvent(db, kp(), 'tag', 'save', undefined, t - 3 * DAY);
-    const r = cohortReport(db, 'tag', 30, t);
+    const r = cohortReport(db, 'tag', { windowDays: 30 }, t);
     expect(r.series).toHaveLength(2);
     expect(r.series.find((s) => s.day === Math.floor((t - DAY) / DAY))).toMatchObject({ events: 2, wallets: 1 });
   });
@@ -121,11 +121,58 @@ describe('worldMetrics — когорта против базовой линии
     // Двое пришли по ссылке делившегося — и это ровно та метрика §12 строка 2.
     for (let i = 0; i < 2; i++) db.run(`INSERT INTO wallets (address, referrer, first_seen, risk_score, flags) VALUES (?, ?, ?, 0, '{}')`, kp(), sharer, t - DAY);
 
-    const r = cohortReport(db, 'inspect', 30, t);
+    const r = cohortReport(db, 'inspect', { windowDays: 30 }, t);
     expect(r.cohort.wallets).toBe(1);
     expect(r.cohort.referralsPerWallet).toBe(2);
     expect(r.baseline).toMatchObject({ wallets: 1, referralsPerWallet: 0 });
     expect(r.delta.referrals).toBeNull(); // база нулевая → делить не на что
+  });
+
+  it('срез внутри фичи: авторы доски сравниваются с держателями слотов, а не со всеми', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const author = kp();      // попал на доску
+    const holder = kp();      // держит слот, но на доску не попал
+    const passer = kp();      // просто играет
+    for (const w of [author, holder, passer]) for (let i = 0; i < 10; i++) db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, w, Math.floor(t / DAY) - i);
+    // все трое играют, но слот и доску делят двое
+    recordEvent(db, holder, 'wall', 'claim', { district: 0, slot: 1 }, t - 2 * DAY);
+    recordEvent(db, author, 'wall', 'claim', { district: 0, slot: 0 }, t - 2 * DAY);
+    recordEvent(db, author, 'wall', 'board', { week: 1, tagId: 'x' }, t - DAY);
+
+    const r = boardCohort(db, 30, t);
+    expect(r.feature).toBe('wall.board');
+    expect(r.cohort.wallets).toBe(1);
+    // база — держатель слота без доски, а не «все, кто играл»
+    expect(r.baseline.wallets).toBe(1);
+    expect(r.cohort.loginDaysPerWallet).toBe(10);
+    expect(r.baseline.loginDaysPerWallet).toBe(10);
+    // и сравнение всей фичи со всеми игравшими даёт другую картину — это проверка,
+    // что срез правда сужается, а не считает то же самое
+    const whole = cohortReport(db, 'wall', { windowDays: 30 }, t);
+    expect(whole.cohort.wallets).toBe(2);
+    expect(whole.baseline.wallets).toBe(1); // passer-by
+    // кривая принятия — по событиям доски, а не по всей стене
+    expect(r.series).toEqual([{ day: Math.floor((t - DAY) / DAY), events: 1, wallets: 1 }]);
+  });
+
+  it('доска без авторов не притворяется нулевой дельтой', () => {
+    const db = new Db(':memory:');
+    const t = now();
+    const holder = kp();
+    for (let i = 0; i < 5; i++) db.run(`INSERT OR IGNORE INTO quest_logins (wallet, day) VALUES (?, ?)`, holder, Math.floor(t / DAY) - i);
+    recordEvent(db, holder, 'wall', 'claim', { district: 0, slot: 2 }, t - DAY);
+    const r = boardCohort(db, 30, t);
+    expect(r.cohort.wallets).toBe(0);
+    expect(r.baseline.wallets).toBe(1);
+    expect(r.delta.loginDays).toBeNull(); // делить не на что — и это не ноль
+  });
+
+  it('отчёт несёт и фичи, и срезы', () => {
+    const db = new Db(':memory:');
+    const r = worldReport(db, 7);
+    expect(r.features.map((f) => f.feature)).toEqual([...WORLD_FEATURES]);
+    expect(r.slices.map((f) => f.feature)).toEqual(['wall.board']);
   });
 
   it('отчёт покрывает все фичи из §12', () => {

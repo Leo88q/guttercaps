@@ -77,6 +77,8 @@ export interface CohortReport {
 
 const round = (v: number) => Math.round(v * 1000) / 1000;
 const ratio = (a: number, b: number): number | null => (b > 0 ? round(a / b - 1) : null);
+/** Отношение средних, но только когда в когорте кто-то есть: пустая когорта — null, а не −1. */
+const delta = (wallets: number, a: number, b: number): number | null => (wallets > 0 ? ratio(a, b) : null);
 
 function empty(): CohortStats {
   return { wallets: 0, packsPerWallet: 0, tradesPerWallet: 0, fusionsPerWallet: 0, loginDaysPerWallet: 0, stakedCapsPerWallet: 0, referralsPerWallet: 0 };
@@ -132,38 +134,73 @@ function group(db: Db, members: string, memberParams: (string | number)[], from:
  * трогавшие фичу. Сравнивать с «всеми кошельками» нельзя: тогда в базу
  * попадают мёртвые аккаунты, и любая фича выглядит как чудо-удержание.
  */
-export function cohortReport(db: Db, feature: WorldFeature, windowDays = 30, t = now()): CohortReport {
+export interface CohortOpts {
+  windowDays?: number;
+  /**
+   * Узкий срез внутри фичи: только события с этим `kind` (например, `board`
+   * внутри `wall`). Без него считается вся фича целиком.
+   */
+  kind?: string;
+  /**
+   * С кем сравниваем.
+   * `players` (по умолчанию) — все, кто играл в окне, но среза не касался.
+   * `feature` — трогавшие ту же фичу, но в срез не попавшие. Второй вариант
+   * отвечает на вопрос «добавляет ли срез что-то сверх самой фичи», и именно
+   * он честен для доски недели: каждый автор доски и так держит слот (§3.4),
+   * поэтому сравнивать его со «всеми игравшими» — значит измерять слот, а не доску.
+   */
+  baseline?: 'players' | 'feature';
+}
+
+export function cohortReport(db: Db, feature: WorldFeature, opts: CohortOpts = {}, t = now()): CohortReport {
+  const { windowDays = 30, kind, baseline: baselineMode = 'players' } = opts;
   const to = t;
   const from = t - windowDays * DAY;
   // Окно в днях — включительно с двух сторон: отчёт за «последние 30 дней»
   // обязан видеть сегодняшний вход, иначе базовая линия каждый день теряет сутки.
   const dayFrom = Math.floor(from / DAY);
   const dayTo = Math.floor(to / DAY);
-  const cohortMembers = `SELECT DISTINCT wallet FROM feature_events WHERE feature = ? AND at >= ? AND at < ?`;
-  const baselineMembers = `SELECT DISTINCT wallet FROM quest_logins WHERE day >= ? AND day <= ?
-                            AND wallet NOT IN (SELECT wallet FROM feature_events WHERE feature = ? AND at >= ? AND at < ?)`;
+  // Срез по kind — такой же фильтр, что и по фиче: `board` внутри `wall`.
+  const sliceSql = kind === undefined ? '' : ' AND kind = ?';
+  const cohortMembers = `SELECT DISTINCT wallet FROM feature_events WHERE feature = ? AND at >= ? AND at < ?${sliceSql}`;
+  const cohortParams: (string | number)[] = kind === undefined ? [feature, from, to] : [feature, from, to, kind];
+  // В режиме `feature` базу набирают те же события фичи — но без среза. Это не
+  // «все игравшие»: у фичи уже есть своё ядро, и сравнивать срез надо с ним.
+  const baselineMembers = baselineMode === 'feature'
+    ? `SELECT DISTINCT wallet FROM feature_events WHERE feature = ? AND at >= ? AND at < ?
+        AND wallet NOT IN (SELECT wallet FROM feature_events WHERE feature = ? AND at >= ? AND at < ?${sliceSql})`
+    : `SELECT DISTINCT wallet FROM quest_logins WHERE day >= ? AND day <= ?
+        AND wallet NOT IN (SELECT wallet FROM feature_events WHERE feature = ? AND at >= ? AND at < ?${sliceSql})`;
+  const baselineParams: (string | number)[] = baselineMode === 'feature'
+    ? [feature, from, to, feature, from, to, ...(kind === undefined ? [] : [kind])]
+    : [dayFrom, dayTo, feature, from, to, ...(kind === undefined ? [] : [kind])];
 
-  const cohortRow = group(db, cohortMembers, [feature, from, to], from, to, dayFrom, dayTo);
-  const baselineRow = group(db, baselineMembers, [dayFrom, dayTo, feature, from, to], from, to, dayFrom, dayTo);
+  const cohortRow = group(db, cohortMembers, cohortParams, from, to, dayFrom, dayTo);
+  const baselineRow = group(db, baselineMembers, baselineParams, from, to, dayFrom, dayTo);
   const cohort = statsOf(cohortRow);
   const baseline = statsOf(baselineRow);
 
   const series = db.all<{ day: number; events: number; wallets: number }>(
     `SELECT at / ${DAY} AS day, COUNT(*) AS events, COUNT(DISTINCT wallet) AS wallets
-       FROM feature_events WHERE feature = ? AND at >= ? AND at < ?
-      GROUP BY 1 ORDER BY 1`, feature, from, to,
+       FROM feature_events WHERE feature = ? AND at >= ? AND at < ?${sliceSql}
+      GROUP BY 1 ORDER BY 1`, ...(kind === undefined ? [feature, from, to] : [feature, from, to, kind]),
   ).map((r) => ({ day: r.day, events: Number(r.events), wallets: Number(r.wallets) }));
 
   return {
-    feature, windowDays, from: iso(from), to: iso(to),
+    // Для среза имя — это имя среза, а не фичи: в админке карточки фич и
+    // карточки срезов лежат рядом, и подписи не должны повторяться.
+    feature: kind === undefined ? feature : `${feature}.${kind}`, windowDays, from: iso(from), to: iso(to),
     cohort, baseline,
+    // Пустая когорта — не «−100 %», а «считать нечего». Раньше она давала −1 по
+    // каждой метрике, и фича, которой никто не пользовался, выглядела в отчёте
+    // как фича, всё испортившая. §12 требует null ровно в этом случае.
     delta: {
-      packs: ratio(cohort.packsPerWallet, baseline.packsPerWallet),
-      trades: ratio(cohort.tradesPerWallet, baseline.tradesPerWallet),
-      fusions: ratio(cohort.fusionsPerWallet, baseline.fusionsPerWallet),
-      loginDays: ratio(cohort.loginDaysPerWallet, baseline.loginDaysPerWallet),
-      stakedCaps: ratio(cohort.stakedCapsPerWallet, baseline.stakedCapsPerWallet),
-      referrals: ratio(cohort.referralsPerWallet, baseline.referralsPerWallet),
+      packs: delta(cohort.wallets, cohort.packsPerWallet, baseline.packsPerWallet),
+      trades: delta(cohort.wallets, cohort.tradesPerWallet, baseline.tradesPerWallet),
+      fusions: delta(cohort.wallets, cohort.fusionsPerWallet, baseline.fusionsPerWallet),
+      loginDays: delta(cohort.wallets, cohort.loginDaysPerWallet, baseline.loginDaysPerWallet),
+      stakedCaps: delta(cohort.wallets, cohort.stakedCapsPerWallet, baseline.stakedCapsPerWallet),
+      referrals: delta(cohort.wallets, cohort.referralsPerWallet, baseline.referralsPerWallet),
     },
     series,
   };
@@ -249,10 +286,25 @@ export function arenaRematch(db: Db, windowDays = 30, t = now()): Repeat24h {
 }
 
 /** Все фичи сразу — ровно то, что смотрит админский экран. */
+/**
+ * §12 строка «доска недели» (§3.7): авторы доски против держателей слотов,
+ * которые на доску не попали.
+ *
+ * Именно такое сравнение, а не «авторы против всех игравших»: попасть на доску
+ * можно только держа слот (§3.4), а держатель слота и так заходит чаще среднего
+ * игрока (он выполнил 7 дней подряд и застейкал крышку). Сравни со всеми —
+ * измеришь слот. Сравни с держателями — измеришь доску.
+ */
+export function boardCohort(db: Db, windowDays = 30, t = now()): CohortReport {
+  return cohortReport(db, 'wall', { windowDays, kind: 'board', baseline: 'feature' }, t);
+}
+
 export function worldReport(db: Db, windowDays = 30, t = now()) {
   return {
     windowDays, asOf: iso(t),
-    features: WORLD_FEATURES.map((f) => cohortReport(db, f, windowDays, t)),
+    features: WORLD_FEATURES.map((f) => cohortReport(db, f, { windowDays }, t)),
+    /** Срезы внутри фич: то же сравнение, но уже внутри тех, кто фичу трогал. */
+    slices: [boardCohort(db, windowDays, t)],
     epicPlus: epicPlusRepeat(db, windowDays, t),
     arenaRematch: arenaRematch(db, windowDays, t),
   };
