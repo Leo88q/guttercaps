@@ -585,7 +585,7 @@ impl ServiceKind {
             Self::DistrictStencilPack => 199,
             Self::LineExtraRun => 5, // 5 cents x 6 $CG/cent = exactly 30 $CG on the burn rail
             Self::CrewCharter => 199, // same tier as @handle: a name in the city
-            Self::CrewRename => 99, // same tier as a handle change
+            Self::CrewRename => 99,  // same tier as a handle change
         }
     }
     /// Price in micro-$CG when paid with $CG (burned).
