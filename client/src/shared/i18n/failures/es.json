@@ -212,5 +212,6 @@
   "noXpTicket": "Hoy no quedan boletos de XP sin usar: vienen con los packs Limited y caducan a medianoche UTC.",
   "missingAsset": "Elige qué gorra debe recibir el XP.",
   "chipNotFound": "Esta gorra no está en tu cartera (o ya no está activa).",
-  "themeNotOwned": "Este tema aún no es tuyo: cómpralo en la tienda y luego úsalo."
+  "themeNotOwned": "Este tema aún no es tuyo: cómpralo en la tienda y luego úsalo.",
+  "achievementNotEarned": "Aún no se ha ganado: el contador del logro no llegó al objetivo."
 }

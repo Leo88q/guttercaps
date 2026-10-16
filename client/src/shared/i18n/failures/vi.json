@@ -212,5 +212,6 @@
   "noXpTicket": "Hôm nay không còn vé XP chưa dùng — vé đi kèm gói Limited và hết hạn lúc nửa đêm UTC.",
   "missingAsset": "Chọn nắp nào sẽ nhận XP.",
   "chipNotFound": "Nắp này không nằm trong ví của bạn (hoặc không còn hoạt động).",
-  "themeNotOwned": "Chủ đề này bạn chưa có: hãy mua trong shop rồi mới dùng."
+  "themeNotOwned": "Chủ đề này bạn chưa có: hãy mua trong shop rồi mới dùng.",
+  "achievementNotEarned": "Chưa đạt: bộ đếm thành tựu chưa tới mục tiêu."
 }

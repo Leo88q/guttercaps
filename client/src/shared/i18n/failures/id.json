@@ -212,5 +212,6 @@
   "noXpTicket": "Tidak ada tiket XP tersisa hari ini — tiket datang bersama pack Limited dan kedaluwarsa tengah malam UTC.",
   "missingAsset": "Pilih cap mana yang menerima XP.",
   "chipNotFound": "Cap ini tidak ada di dompetmu (atau sudah tidak aktif).",
-  "themeNotOwned": "Tema ini belum kamu punya: beli dulu di toko, lalu pakai."
+  "themeNotOwned": "Tema ini belum kamu punya: beli dulu di toko, lalu pakai.",
+  "achievementNotEarned": "Belum tercapai: penghitungnya belum sampai target."
 }

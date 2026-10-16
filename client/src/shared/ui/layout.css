@@ -1303,3 +1303,21 @@ html.reduced-motion .gt-shutter-body { transition: none; }
 .rider-pick:hover { border-color: var(--gc-accent, #16E5D9); }
 @media (max-width: 420px) { .rider-picks { grid-template-columns: repeat(3, 1fr); } }
 @media (prefers-reduced-motion: reduce) { .rider-pick { transition: none; } }
+
+/* docs/16 §4.7 — achievements: a real badge file, the progress, and a reward
+   that is never money. */
+.ach-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.ach-card {
+  display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: start;
+  padding: 10px 12px; border-radius: 12px; border: 1px solid var(--gc-line, #2a2933);
+  background: rgba(255, 255, 255, 0.02);
+}
+.ach-card.is-done { border-color: var(--gc-accent, #16E5D9); }
+.ach-card.is-claimed { opacity: 0.75; }
+.ach-badge {
+  display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%;
+  border: 1px solid var(--gc-line, #2a2933); background: #0c0b10;
+}
+.ach-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ach-act { display: flex; align-items: center; min-height: 28px; }
+@media (max-width: 420px) { .ach-card { grid-template-columns: 36px 1fr; } .ach-act { grid-column: 2; } }

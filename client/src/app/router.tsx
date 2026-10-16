@@ -45,6 +45,7 @@ const Admin = lazy(() => import('@/features/admin/Admin'));
 const Language = lazy(() => import('@/features/language/Language'));
 const Rights = lazy(() => import('@/features/rights/Rights'));
 const Guide = lazy(() => import('@/features/guide/Guide'));
+const Achievements = lazy(() => import('@/features/profile/Achievements'));
 const Legal = lazy(() => import('@/features/legal/Legal'));
 
 function Fallback() {
@@ -81,6 +82,7 @@ export const routes: RouteObject[] = [
       { path: 'bowl/wall/:district', element: S(<Wall />) },
       { path: 'bowl/board', element: S(<Board />) }, // доска недели (docs/16 §3.7): жеребьёвка, а не рейтинг
       { path: 'bowl/rig', element: W(<Rig />) },
+      { path: 'achievements', element: W(<Achievements />) }, // docs/16 §4.7: награды — косметика и предметы
       { path: 'rig/:wallet', element: S(<PublicRig />) }, // витрина (docs/16 §4.5): публичная, но 404, пока владелец её не включил
       { path: 'shop', element: S(<Shop />) },
       { path: 'shop/opening/:nonce', element: W(<Opening />) },

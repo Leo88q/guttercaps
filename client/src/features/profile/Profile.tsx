@@ -104,6 +104,13 @@ export default function Profile() {
 
       <ProfileMural cells={grid.data?.cells} />
 
+      {/* §4.7: достижения — единственный экран, где видно, за что именно мир
+          даёт косметику; из профиля он в один тап. */}
+      <div className="row-wrap" style={{ gap: 8 }}>
+        <Link to="/achievements" className="btn btn-sm btn-ghost">{t('achievements.title')}</Link>
+        <Link to="/bowl/rig" className="btn btn-sm btn-ghost">{t('rig.viewMine')}</Link>
+      </div>
+
       <CleanZone className="stack-sm">
         <div className="label">{t('profile.balances')}</div>
         <KV k="SOL" v={fmtUnits(me.data?.balances?.lamports, 9, 4)} />

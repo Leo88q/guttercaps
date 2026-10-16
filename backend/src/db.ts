@@ -1195,6 +1195,17 @@ CREATE TABLE IF NOT EXISTS oracle_prices (
   account      TEXT,                       -- PriceUpdateV2 account it was read from (our shard)
   conf_bps     INTEGER                     -- conf / price in bps at that time
 );
+
+-- Достижения (docs/16 §4.7): кто и когда забрал награду. Сам прогресс здесь не
+-- лежит — он считается из существующих таблиц (коллекция, стена, теги, бои,
+-- фьюжн, Флудгрид, рефералы), а таблица хранит ровно факт выдачи, чтобы
+-- повторный тап не выдал награду дважды.
+CREATE TABLE IF NOT EXISTS achievement_claims (
+  wallet     TEXT    NOT NULL,
+  id         TEXT    NOT NULL,             -- achievement id (economy ACHIEVEMENTS)
+  claimed_at INTEGER NOT NULL,             -- unix s
+  PRIMARY KEY (wallet, id)
+);
 `;
 
 /** Tables that are pure functions of events_raw (dropped + replayed by `rebuild`). */

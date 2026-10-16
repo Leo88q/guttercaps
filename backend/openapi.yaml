@@ -250,6 +250,31 @@ paths:
         '200': { description: the rider as stored, content: { application/json: { schema: { $ref: '#/components/schemas/Rider' } } } }
         '400': { description: 'bad_silhouette — no such figure' }
         '403': { description: 'theme_not_owned — buy the theme in the shop first' }
+  /me/achievements:
+    get:
+      tags: [me]
+      summary: 'Achievements (docs/16 §4.7): progress toward each, and what has been claimed'
+      description: |
+        Progress is not stored — it is recomputed from tables the game already keeps (collection, wall
+        slots and their history, tags, resolved matches, fusions, Floodgrid attempts, paid referrals), so
+        an achievement can never drift from the state that earned it. Only the *claim* is stored.
+      responses:
+        '200': { description: achievements, content: { application/json: { schema: { $ref: '#/components/schemas/AchievementList' } } } }
+  /me/achievements/{id}/claim:
+    post:
+      tags: [me]
+      summary: 'Claim an earned achievement (docs/16 §4.7) — cosmetics and items only, never $CG'
+      description: |
+        Idempotent by refusal: a second claim answers 409 `already_claimed` rather than granting the
+        reward twice, because a cosmetic handed out twice is not a cosmetic any more. The reward is
+        granted as a regular entitlement (or as Floodgrid hints for the item reward), so every existing
+        ownership check keeps working unchanged.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string }, description: 'achievement id, e.g. `set.first`' }
+      responses:
+        '200': { description: the achievement as stored, content: { application/json: { schema: { $ref: '#/components/schemas/AchievementClaim' } } } }
+        '400': { description: 'unknown_achievement — no such id' }
+        '409': { description: 'not_earned (target not reached) · already_claimed · set_not_completed (a banner needs a finished district)' }
   /me/services:
     get:
       tags: [me]
@@ -2049,6 +2074,48 @@ components:
       properties:
         silhouette: { type: integer, minimum: 0, maximum: 7 }
         theme: { type: string, nullable: true }
+    AchievementList:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Achievement' } }
+    Achievement:
+      type: object
+      description: |
+        docs/16 §4.7. `have` never exceeds `target` — a counter reading «127 of 36» looks broken, and the
+        reward depends on `done`, not on the number.
+      properties:
+        id: { type: string, example: 'set.first' }
+        metric: { type: string, enum: [sets, caps, wallDays, tags, arenaWins, gridDepth, fusions, referrals] }
+        target: { type: integer }
+        have: { type: integer, description: 'progress, capped at target' }
+        done: { type: boolean }
+        claimed: { type: boolean }
+        claimedAt: { type: string, format: date-time, nullable: true }
+        icon: { type: string, description: 'file name in client/public/icons/gen — a real asset, not a drawn glyph' }
+        reward: { $ref: '#/components/schemas/AchievementReward' }
+        bannerCollection: { type: integer, nullable: true, description: 'for a banner reward: the finished district it will show (null until one is finished)' }
+    AchievementReward:
+      type: object
+      description: |
+        Cosmetics and existing items only — never $CG, and never above the quota (docs/02). Each kind is
+        an entitlement the rest of the app already understands; `hints` is a Floodgrid item and lands in
+        the same stock quests and the season pass use.
+      properties:
+        kind: { type: string, enum: [banner, emotes, stencils, fieldTheme, bench, skip, hints] }
+        pack: { type: string, nullable: true }
+        theme: { type: string, nullable: true }
+        collection: { type: string, nullable: true, description: "'firstCompleted' — the district is taken from progress, not from config" }
+        n: { type: integer, nullable: true, description: 'for `hints`: how many (capped by the normal hint stock)' }
+    AchievementClaim:
+      allOf:
+        - { $ref: '#/components/schemas/Achievement' }
+        - type: object
+          properties:
+            granted:
+              type: object
+              properties:
+                entitlement: { $ref: '#/components/schemas/Entitlement' }
+                hints: { type: integer, nullable: true }
     RigView:
       type: object
       description: |
@@ -2331,7 +2398,7 @@ components:
         feature:
           type: string
           description: 'feature name, or `feature.kind` for a slice (e.g. `wall.board`, `collection.mural`)'
-          enum: [wall, exhibit, tag, inspect, 'wall.board', 'collection.mural']
+          enum: [wall, exhibit, tag, inspect, rider, achievement, 'wall.board', 'collection.mural']
         windowDays: { type: integer }
         from: { type: string, format: date-time }
         to: { type: string, format: date-time }

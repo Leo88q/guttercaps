@@ -2,7 +2,7 @@ import { isRightsPath, mockRights } from './rights';
 // Deterministic in-browser backend used when VITE_API_MOCK=true or when the
 // real API is unreachable in dev. Data is derived from @guttercaps/economy
 // and shared/lib/lore so what you see matches the modelled numbers.
-import { BOOSTER, CHIP_XP, DAILY_QUESTS, EMISSION_GUARD, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, FEES, FUSION_RECIPES, FX, GRID, GRID as GRID_RULES, LOCK_TIERS, MATCHMAKING, PACKS, PASS_TRACK, PERMANENT_QUESTS, PROFILE_THEME_BY_ID, RARITY_PROFILES, REFERRAL, SEASON, SERVICES, SKIN_BY_ID, WEEKLY_QUESTS, applyRotate, bundlePriceCents, effectiveOdds, generateLevel, gridBaseXp, gridStarsForMoves, gridXpForStars, impliedApy, isSolved, levelSeed, packExpectedValueMult, passTierForXp, probabilityAtLeast, skrMicroForUsdCents, solLamportsForUsdCents, type PackId, usdCentsFromSolLamports, usdcMicroForUsdCents, xpToNext } from '@guttercaps/economy';
+import { ACHIEVEMENTS, BOOSTER, CHIP_XP, DAILY_QUESTS, EMISSION_GUARD, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, FEES, FUSION_RECIPES, FX, GRID, GRID as GRID_RULES, LOCK_TIERS, MATCHMAKING, PACKS, PASS_TRACK, PERMANENT_QUESTS, PROFILE_THEME_BY_ID, RARITY_PROFILES, REFERRAL, SEASON, SERVICES, SKIN_BY_ID, WEEKLY_QUESTS, applyRotate, bundlePriceCents, effectiveOdds, generateLevel, gridBaseXp, gridStarsForMoves, gridXpForStars, impliedApy, isSolved, levelSeed, packExpectedValueMult, passTierForXp, probabilityAtLeast, skrMicroForUsdCents, solLamportsForUsdCents, type PackId, usdCentsFromSolLamports, usdcMicroForUsdCents, xpToNext } from '@guttercaps/economy';
 import { PYTH_PRICE_ACCOUNTS } from '@/chain/ids';
 import { COLLECTIONS } from '@/shared/lib/lore';
 import { ApiError, type RequestOpts } from '../client';
@@ -419,6 +419,8 @@ export function resetMockWorld() {
   mockWall.length = 0;
   mockTags.length = 0;
   mockReports.length = 0;
+  mockAchieved.clear();
+  mockAchAt.clear();
 }
 
 on('get', '/wall/{district}', (_o, params) => mockWallView(Number(params.district)));
@@ -536,6 +538,59 @@ on('put', '/me/rider', (o) => {
   }
   return mockRider;
 });
+// ---------------------------------------------------------- достижения (docs/16 §4.7)
+// Прогресс в моке считается из того же инвентаря, что и остальные экраны: полная
+// коллекция Ночного мотылька (район 0) делает «закрыть район» достигнутым, а
+// остальные метрики берутся из мок-состояния стены, тегов и рефералов.
+const mockAchieved = new Set<string>();
+/** Когда забрали: «Получено 01.01.1970» в демо читается как баг, а не как демо. */
+const mockAchAt = new Map<string, number>();
+const achProgress: Record<string, number> = {
+  sets: 1,                                                     // район 0 собран полностью (см. инвентарь)
+  caps: new Set(chips.map((c) => `${c.collection}:${c.rarity}`)).size,
+  wallDays: mockWall.length > 0 ? 12 : 0,
+  tags: mockTags.length,
+  arenaWins: 18,
+  gridDepth: 3,
+  fusions: 6,
+  referrals: 2,                                                // двое платящих из трёх приведённых
+};
+const achView = (a: (typeof ACHIEVEMENTS)[number]) => {
+  const have = Math.min(achProgress[a.metric] ?? 0, a.target);
+  return {
+    id: a.id, metric: a.metric, target: a.target, have,
+    done: (achProgress[a.metric] ?? 0) >= a.target,
+    claimed: mockAchieved.has(a.id),
+    claimedAt: mockAchAt.get(a.id) !== undefined ? iso((mockAchAt.get(a.id) as number) * 1000) : null,
+    icon: a.icon, reward: a.reward,
+    bannerCollection: a.reward.kind === 'banner' ? 0 : null,
+  };
+};
+/** Награда как настоящий entitlement: проверки владения в остальном клиенте те же. */
+const achGrant = (a: (typeof ACHIEVEMENTS)[number]) => {
+  const r = a.reward as { kind: string; pack?: string; theme?: string; n?: number };
+  const kind = r.kind === 'banner' ? 9 : r.kind === 'emotes' ? 4 : r.kind === 'stencils' ? 12
+    : r.kind === 'fieldTheme' ? 11 : r.kind === 'bench' ? 5 : r.kind === 'skip' ? 8 : 0;
+  if (kind === 0) return;                                      // подсказки Флудгрида — не entitlement
+  const payload = r.kind === 'banner' ? { collection: 0, source: 'achievement' }
+    : r.kind === 'emotes' ? { pack: r.pack, source: 'achievement' }
+    : r.kind === 'stencils' ? { pack: r.pack ?? 'district', source: 'achievement' }
+    : r.kind === 'fieldTheme' ? { theme: r.theme, source: 'achievement' } : { source: 'achievement' };
+  entitlements.push({ id: `ach-${a.id}`, kind, payload, signature: `ach:${a.id}`, currency: 'CG', amount: '0', grantedAt: iso(), expiresAt: null });
+};
+on('get', '/me/achievements', () => ({ items: ACHIEVEMENTS.map(achView) }));
+on('post', '/me/achievements/{id}/claim', (_o, params) => {
+  const id = String(params.id ?? '');
+  const a = ACHIEVEMENTS.find((x) => x.id === id);
+  if (!a) throw new ApiError(400, 'unknown_achievement', `Unknown achievement ${id}`);
+  if ((achProgress[a.metric] ?? 0) < a.target) throw new ApiError(409, 'not_earned', `Achievement needs ${a.target}`);
+  if (mockAchieved.has(id)) throw new ApiError(409, 'already_claimed', `Achievement ${id} already claimed`);
+  mockAchieved.add(id);
+  mockAchAt.set(id, Math.floor(Date.now() / 1000));
+  achGrant(a);
+  return achView(a);
+});
+
 on('get', '/rig/{wallet}', (_o, params) => {
   const wallet = String(params.wallet);
   // Мок показывает витрину любого кошелька: реальная проверка флага живёт в бэкенде.

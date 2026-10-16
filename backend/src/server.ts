@@ -28,6 +28,7 @@ import * as wall from './wall.ts';
 import * as wallBoard from './wallBoard.ts';
 import * as rig from './rig.ts';
 import * as worldMetrics from './worldMetrics.ts';
+import * as achievements from './achievements.ts';
 import { publish } from './bus.ts';
 import { claimPassTier, passState } from './pass.ts';
 import { packQuote, validateRequest } from './quote.ts';
@@ -487,6 +488,12 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     res.json(rig.setRider(db, req.session!.wallet, { silhouette: b.silhouette, theme: b.theme }));
   });
   v1.get('/me/services', requireAuth, (req, res) => { res.json(myServices(db, req.session!.wallet)); });
+  // Достижения (docs/16 §4.7): прогресс считается из существующих данных, а
+  // выдача — косметикой или предметом, никогда не $CG.
+  v1.get('/me/achievements', requireAuth, (req, res) => { res.json(achievements.achievementsOf(db, req.session!.wallet)); });
+  v1.post('/me/achievements/:id/claim', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    res.json(achievements.claimAchievement(db, req.session!.wallet, String(req.params.id ?? '')));
+  });
   // T-B-49 proof of human: Turnstile token → 7-day pass that unlocks quest / SKR settlement (human.ts).
   v1.get('/me/human', requireAuth, (req, res) => { res.json(humanStatus(db, req.session!.wallet)); });
   v1.post('/me/human', requireAuth, rl(POLICIES.human), rl(POLICIES.humanNet), wrap(async (req, res) => {

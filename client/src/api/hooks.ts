@@ -123,6 +123,27 @@ export function useClaimPassTier() {
   });
 }
 
+// ------------------------------------------------------------------ достижения (docs/16 §4.7)
+export type Achievement = NonNullable<ResponseOf<'/me/achievements', 'get'>['items']>[number];
+export type AchievementList = ResponseOf<'/me/achievements', 'get'>;
+
+/** Прогресс считает сервер из существующих данных, поэтому кэш короткий. */
+export const useAchievements = () =>
+  useQuery({ queryKey: ['me', 'achievements'], queryFn: () => api.get('/me/achievements'), enabled: useAuthenticated(), staleTime: 30_000 });
+
+/** Забрать награду. Косметика и предметы: $CG достижения не платят никогда. */
+export function useClaimAchievement() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post('/me/achievements/{id}/claim', undefined, { path: { id } }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['me', 'achievements'] });
+      void qc.invalidateQueries({ queryKey: ['me', 'services'] });
+      void qc.invalidateQueries({ queryKey: ['grid', 'me'] });
+    },
+  });
+}
+
 // ------------------------------------------------------------- beta pre-sale (docs/preorder-beta.md)
 export type PreorderCampaign = ResponseOf<'/preorder', 'get'>;
 export type PreorderIntent = ResponseOf<'/preorder/intent', 'post'>;

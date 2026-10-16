@@ -212,5 +212,6 @@
   "noXpTicket": "Nenhum ticket de XP sobrando hoje — tickets vêm com packs Limited e expiram à meia-noite UTC.",
   "missingAsset": "Escolha qual tampinha deve receber o XP.",
   "chipNotFound": "Esta tampinha não está na sua carteira (ou não está mais ativa).",
-  "themeNotOwned": "Este tema ainda não é seu: compre na loja e depois use."
+  "themeNotOwned": "Este tema ainda não é seu: compre na loja e depois use.",
+  "achievementNotEarned": "Ainda não conquistado: o contador não chegou ao alvo."
 }

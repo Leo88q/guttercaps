@@ -1592,6 +1592,14 @@ model WallBoardDraw {
   @@map("wall_board_draws")
 }
 
+model AchievementClaim {
+  wallet    String
+  id        String // achievement id (economy ACHIEVEMENTS)
+  claimedAt Int    @map("claimed_at")
+  @@id([wallet, id])
+  @@map("achievement_claims")
+}
+
 model GutterPotDraw {
   week         Int    @id
   drawnAt      Int    @map("drawn_at")

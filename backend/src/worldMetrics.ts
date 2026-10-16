@@ -25,7 +25,7 @@ const DAY = 86_400;
 const iso = (s: number) => new Date(s * 1000).toISOString();
 
 /** Признаки, о которых мы умеем считать когорты (ровно то, что перечислено в §12). */
-export const WORLD_FEATURES = ['wall', 'exhibit', 'tag', 'inspect', 'rider'] as const;
+export const WORLD_FEATURES = ['wall', 'exhibit', 'tag', 'inspect', 'rider', 'achievement'] as const;
 
 /** Порог флипа (docs/16 §2.1) — редкость, начиная с которой дроп считается «редким». */
 export const EPIC_PLUS = 5;

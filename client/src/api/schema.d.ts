@@ -725,6 +725,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/achievements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Achievements (docs/16 §4.7): progress toward each, and what has been claimed
+         * @description Progress is not stored — it is recomputed from tables the game already keeps (collection, wall
+         *     slots and their history, tags, resolved matches, fusions, Floodgrid attempts, paid referrals), so
+         *     an achievement can never drift from the state that earned it. Only the *claim* is stored.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description achievements */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AchievementList"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/achievements/{id}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claim an earned achievement (docs/16 §4.7) — cosmetics and items only, never $CG
+         * @description Idempotent by refusal: a second claim answers 409 `already_claimed` rather than granting the
+         *     reward twice, because a cosmetic handed out twice is not a cosmetic any more. The reward is
+         *     granted as a regular entitlement (or as Floodgrid hints for the item reward), so every existing
+         *     ownership check keeps working unchanged.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description achievement id, e.g. `set.first` */
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description the achievement as stored */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AchievementClaim"];
+                    };
+                };
+                /** @description unknown_achievement — no such id */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not_earned (target not reached) · already_claimed · set_not_completed (a banner needs a finished district) */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/services": {
         parameters: {
             query?: never;
@@ -6879,6 +6979,52 @@ export interface components {
             silhouette?: number;
             theme?: string | null;
         };
+        AchievementList: {
+            items?: components["schemas"]["Achievement"][];
+        };
+        /**
+         * @description docs/16 §4.7. `have` never exceeds `target` — a counter reading «127 of 36» looks broken, and the
+         *     reward depends on `done`, not on the number.
+         */
+        Achievement: {
+            /** @example set.first */
+            id?: string;
+            /** @enum {string} */
+            metric?: "sets" | "caps" | "wallDays" | "tags" | "arenaWins" | "gridDepth" | "fusions" | "referrals";
+            target?: number;
+            /** @description progress, capped at target */
+            have?: number;
+            done?: boolean;
+            claimed?: boolean;
+            /** Format: date-time */
+            claimedAt?: string | null;
+            /** @description file name in client/public/icons/gen — a real asset, not a drawn glyph */
+            icon?: string;
+            reward?: components["schemas"]["AchievementReward"];
+            /** @description for a banner reward: the finished district it will show (null until one is finished) */
+            bannerCollection?: number | null;
+        };
+        /**
+         * @description Cosmetics and existing items only — never $CG, and never above the quota (docs/02). Each kind is
+         *     an entitlement the rest of the app already understands; `hints` is a Floodgrid item and lands in
+         *     the same stock quests and the season pass use.
+         */
+        AchievementReward: {
+            /** @enum {string} */
+            kind?: "banner" | "emotes" | "stencils" | "fieldTheme" | "bench" | "skip" | "hints";
+            pack?: string | null;
+            theme?: string | null;
+            /** @description 'firstCompleted' — the district is taken from progress, not from config */
+            collection?: string | null;
+            /** @description for `hints`: how many (capped by the normal hint stock) */
+            n?: number | null;
+        };
+        AchievementClaim: components["schemas"]["Achievement"] & {
+            granted?: {
+                entitlement?: components["schemas"]["Entitlement"];
+                hints?: number | null;
+            };
+        };
         /**
          * @description Three exhibit slots. `caps` is the number of *distinct* caps collected (8 districts × 9 rarities) —
          *     the same number that opens slots 2 and 3 at 12 and 36.
@@ -7468,7 +7614,7 @@ export interface components {
              * @description feature name, or `feature.kind` for a slice (e.g. `wall.board`, `collection.mural`)
              * @enum {string}
              */
-            feature?: "wall" | "exhibit" | "tag" | "inspect" | "wall.board" | "collection.mural";
+            feature?: "wall" | "exhibit" | "tag" | "inspect" | "rider" | "achievement" | "wall.board" | "collection.mural";
             windowDays?: number;
             /** Format: date-time */
             from?: string;

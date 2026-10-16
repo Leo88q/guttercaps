@@ -62,6 +62,8 @@ export const API_ERROR_KEYS = {
   not_your_chip: 'failures.requestInvalid', chip_in_use: 'failures.requestInvalid',
   // §4.6 райдер: фигура должна существовать, а тема — быть оплаченной.
   bad_silhouette: 'failures.requestInvalid', theme_not_owned: 'failures.themeNotOwned',
+  // §4.7 достижения: такого достижения нет, либо оно ещё не заслужено.
+  unknown_achievement: 'failures.requestInvalid', not_earned: 'failures.achievementNotEarned',
   rig_private: 'failures.notFound',
   route_locked: 'failures.requestInvalid', no_emergency_hint: 'failures.requestInvalid', no_hints: 'failures.requestInvalid',
   attempt_not_found: 'failures.notFound', attempt_settled: 'failures.requestInvalid', bad_proof: 'failures.requestInvalid', no_skin_entitlement: 'failures.requestInvalid',
