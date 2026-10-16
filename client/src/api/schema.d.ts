@@ -1985,6 +1985,511 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/crew/board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Crew board of the week (docs/16 §5.6): the five best members’ best runs, summed
+         * @description Only full crews are ranked: at least five members, at least five of them with a run this week.
+         *     The score is a sum of five best runs, never of all ten — a bigger roster does not beat a better
+         *     one by headcount alone (the rule lives in `crewWeekScore`, shared with the client and the program).
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description week index; defaults to the current one */
+                    week?: number;
+                    /** @description rows to return (default 50) */
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description board */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CrewBoard"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/crew/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check a crew name (docs/16 §5.6) and hold it for two minutes while the payment settles
+         * @description The same name model as handles: 3–16 chars `[a-zA-Z0-9_]`, case-insensitive uniqueness, the city
+         *     blocklist, 30 days between renames and a 90-day quarantine for a released name. `kind` tells the
+         *     client which `pay_service` to sign (14 charter, 15 rename) and `refHash` is what the payment must
+         *     commit to — a payment for another name is rejected, not reinterpreted.
+         */
+        get: {
+            parameters: {
+                query: {
+                    name: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description availability */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CrewCheck"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/crew/charter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Charter a crew (docs/16 §5.6): $1.99 buys the name, the roster and the board — never the wall
+         * @description The payment (kind 14) is consumed exactly once and only for this name: `refHash` binds signature,
+         *     wallet and payload. The wall segment that comes with the crew is allocated from the district's free
+         *     segments, but holding it still takes the same activity as any slot (§3.4, decision 6) — there is no
+         *     paid route to the wall. The captain is the chartering wallet; the roster starts at one.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        /** @description district whose wall segment the crew paints */
+                        district: number;
+                        /** @description transaction signature of the on-chain pay_service (kind 14) */
+                        signature: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description the crew */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CrewView"];
+                    };
+                };
+                /** @description invalid_name · bad_district */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description payment_not_found · ref_hash_mismatch · payment_consumed */
+                402: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description already_in_crew · crew_taken · crew_reserved · crew_blocked · crew_cooldown · district_full */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/crew/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rename a crew (docs/16 §5.6): captain only, $0.99, once per 30 days
+         * @description The old name goes into a 90-day quarantine, so a crew cannot drop a name and have a friend pick it
+         *     up the next day. Only the captain pays and only the captain decides.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        /** @description transaction signature of the on-chain pay_service (kind 15) */
+                        signature: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description the crew */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CrewView"];
+                    };
+                };
+                /** @description invalid_name */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description payment_not_found · ref_hash_mismatch · payment_consumed */
+                402: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not_captain */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description no_crew · crew_taken · crew_reserved · crew_blocked · crew_cooldown */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/crew/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Join a crew by invite code (docs/16 §5.6) — five to ten riders, one crew per wallet */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description eight-character invite code, case-insensitive */
+                        code: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description the crew */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CrewView"];
+                    };
+                };
+                /** @description bad_code */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description bad_code — no live crew with that invite code */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description already_in_crew · crew_full */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/crew/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Leave a crew (docs/16 §5.6) — a departing captain hands the role to the longest-serving member */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description ok */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok?: boolean;
+                            crew?: components["schemas"]["CrewView"];
+                            /** @description new captain, when the departing wallet was one */
+                            captain?: string | null;
+                        };
+                    };
+                };
+                /** @description no_crew */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/crew/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A crew’s public card (docs/16 §5.6): roster, week score, wall segment
+         * @description The invite code is returned only to members. `counts` says whether the crew is ranked this week
+         *     (five members with a run); `counting` on a member says whether their run made the top five.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description crew name (case-insensitive) or numeric crew id */
+                    name: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description the crew */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CrewView"];
+                    };
+                };
+                /** @description no_crew */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/crew/{name}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report a crew name (docs/16 §5.6) — the same moderation queue as tags, one report per reporter */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        reason: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description reported */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok?: boolean;
+                            crew?: number;
+                            /** @description open reports against this crew */
+                            reports?: number;
+                        };
+                    };
+                };
+                /** @description bad_reason */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description no_crew */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description already_reported */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/crew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The crew I ride with (docs/16 §5.6), or null */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description the crew or null */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CrewView"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rig": {
         parameters: {
             query?: never;
@@ -7366,6 +7871,83 @@ export interface components {
                 at: string;
                 /** @description false once the 14-day sweeper wiped the inputs */
                 hasReplay: boolean;
+            }[];
+        };
+        CrewCheck: {
+            available: boolean;
+            /** @enum {string|null} */
+            reason?: "taken" | "reserved" | "blocked" | "cooldown" | "invalid" | "format" | null;
+            /** @description 14 = charter a new crew ($1.99), 15 = rename ($0.99) */
+            kind: number;
+            /** @description what the on-chain pay_service must commit to */
+            refHash: string;
+            priceUsdCents: number;
+            /** Format: date-time */
+            reservedUntil?: string | null;
+        };
+        CrewMember: {
+            wallet: string;
+            handle?: string | null;
+            /** Format: date-time */
+            joinedAt: string;
+            /** @description best Line score of this member for the week (0 = no run) */
+            bestWeek: number;
+            /** @description their run is inside the crew’s five best */
+            counting: boolean;
+        };
+        /**
+         * @description A crew: name, roster, wall segment and the week's score. `score` is the sum of the five best
+         *     members' best runs — never the sum of the whole roster (docs/16 §5.6).
+         */
+        CrewView: {
+            id: number;
+            name: string;
+            captain: string;
+            captainHandle?: string | null;
+            district: number;
+            /** @description segment index inside the district wall */
+            segment: number;
+            slots: {
+                /** @description first slot of the segment (inclusive) */
+                from: number;
+                /** @description last slot of the segment (exclusive) */
+                to: number;
+                /** @description slots per crew segment (20) */
+                size: number;
+            };
+            /** Format: date-time */
+            createdAt: string;
+            members: components["schemas"]["CrewMember"][];
+            memberCount: number;
+            /** @description below this the crew is not ranked (5) */
+            minMembers: number;
+            /** @description roster cap (10) */
+            maxMembers: number;
+            /** @description five members with a run this week — the crew is on the board */
+            counts: boolean;
+            week: number;
+            score: number;
+            /** @enum {string} */
+            tier: "none" | "bronze" | "silver" | "gold";
+            /** @description members only */
+            inviteCode?: string | null;
+            mine: boolean;
+            iAmCaptain: boolean;
+            /** @description open moderation reports against the name */
+            reports: number;
+        };
+        CrewBoard: {
+            week: number;
+            rows: {
+                rank: number;
+                id: number;
+                name: string;
+                district: number;
+                segment: number;
+                members: number;
+                score: number;
+                /** @enum {string} */
+                tier: "none" | "bronze" | "silver" | "gold";
             }[];
         };
         AchievementClaim: components["schemas"]["Achievement"] & {

@@ -1000,6 +1000,7 @@ CREATE INDEX IF NOT EXISTS idx_tag_registry_queue ON tag_registry(reports DESC, 
 CREATE TABLE IF NOT EXISTS wall_reports (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   tag_id      TEXT    NOT NULL,
+  crew_id     INTEGER,                      -- docs/16 §5.6: жалоба на имя команды (одна очередь на весь UGC)
   reporter    TEXT    NOT NULL,
   reason      TEXT    NOT NULL,
   created_at  INTEGER NOT NULL,
@@ -1018,10 +1019,15 @@ CREATE TABLE IF NOT EXISTS wall_slots (
   applied_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL,
   renewed_at INTEGER,
+  crew_id    INTEGER,                       -- docs/16 §5.6: слот внутри сегмента команды
   PRIMARY KEY (district, slot)
 );
 CREATE INDEX IF NOT EXISTS idx_wall_slots_wallet ON wall_slots(wallet, district);
 CREATE INDEX IF NOT EXISTS idx_wall_slots_due ON wall_slots(expires_at);
+-- Слот может принадлежать сегменту команды (docs/16 §5.6): стена одна, но у
+-- команды свой диапазон, и занять его может только участник.
+-- NOTE: колонка crew_id добавляется migrate(), а не здесь: старая база должна
+-- открыться без ошибки «no such column».
 CREATE TABLE IF NOT EXISTS wall_slot_history (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   district    INTEGER NOT NULL,
@@ -1208,6 +1214,52 @@ CREATE TABLE IF NOT EXISTS achievement_claims (
 );
 -- Линия: заезды (docs/16 §5.1). Реплей — это весь ввод; очки считает сервер
 -- переигрыванием, поэтому в строке лежат и ввод, и посчитанный результат.
+-- Команды (docs/16 §5.6). Имя — модель хендла (тот алфавит, та же уникальность
+-- без регистра, те же паузы), состав — список живых участников, сегмент стены —
+-- диапазон слотов, который занимается той же активностью, что обычный слот.
+CREATE TABLE IF NOT EXISTS crews (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  name          TEXT    NOT NULL,             -- как показываем
+  name_key      TEXT    NOT NULL UNIQUE,      -- как сравниваем: «Gutter» и «gutter» — одно имя
+  captain       TEXT    NOT NULL,             -- координатор: кик и переименование за ним
+  charter_sig   TEXT    NOT NULL UNIQUE,      -- подпись платежа kind 14: одна хартия — одна команда
+  wall_district INTEGER NOT NULL,             -- район сегмента
+  wall_segment  INTEGER NOT NULL,             -- номер сегмента: слоты [n*20, n*20+20)
+  created_at    INTEGER NOT NULL,             -- unix s
+  renamed_at    INTEGER,                      -- последняя смена имени (пауза 30 дней)
+  status        TEXT    NOT NULL DEFAULT 'live', -- live | banned (скрыто модерацией)
+  invite_code   TEXT    NOT NULL UNIQUE       -- вступление по коду: без ончейн-шагов
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_crews_segment ON crews(wall_district, wall_segment) WHERE status = 'live';
+CREATE INDEX IF NOT EXISTS idx_crews_captain ON crews(captain);
+-- Состав: left_at IS NULL — в команде сейчас. Выход не стирает строку: вернувшийся
+-- участник не считается новым, а история взносов в командную доску остаётся правдой.
+CREATE TABLE IF NOT EXISTS crew_members (
+  crew_id   INTEGER NOT NULL,
+  wallet    TEXT    NOT NULL,
+  joined_at INTEGER NOT NULL,                 -- unix s
+  left_at   INTEGER,                          -- NULL = в составе
+  PRIMARY KEY (crew_id, wallet)
+);
+CREATE INDEX IF NOT EXISTS idx_crew_members_live ON crew_members(crew_id) WHERE left_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_crew_members_one ON crew_members(wallet) WHERE left_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_crew_members_wallet ON crew_members(wallet);
+--- Освобождённые имена: 90 дней карантина, чтобы «Gutter» нельзя было подобрать
+--- на следующий день после распада команды и представиться её историей.
+CREATE TABLE IF NOT EXISTS crew_name_history (
+  name        TEXT    NOT NULL,
+  name_key    TEXT    NOT NULL,
+  crew_id     INTEGER NOT NULL,
+  released_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_crew_name_history ON crew_name_history(name_key, released_at);
+--- Предварительная бронь имени на время оплаты: ровно та же модель, что у хендлов,
+--- чтобы «проверить → заплатить → забрать» не превращалось в гонку двух кошельков.
+CREATE TABLE IF NOT EXISTS crew_reservations (
+  name_key   TEXT    PRIMARY KEY,
+  wallet     TEXT    NOT NULL,
+  expires_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS line_runs (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   wallet      TEXT    NOT NULL,
@@ -1294,6 +1346,12 @@ export class Db {
     // its attempts and stops at the cap — otherwise a handful of permanent NULLs would occupy every batch
     // for ever and starve the rows that *are* healable. `stuck` rows are surfaced in /health.
     if (!ev.has('time_heal_attempts')) this.raw.exec(`ALTER TABLE events_raw ADD COLUMN time_heal_attempts INTEGER NOT NULL DEFAULT 0`);
+    // docs/16 §5.6: слот стены может принадлежать сегменту команды; жалоба — имени команды.
+    const wallCols = new Set(this.raw.prepare(`PRAGMA table_info(wall_slots)`).all().map((c) => String((c as { name: unknown }).name)));
+    if (!wallCols.has('crew_id')) this.raw.exec(`ALTER TABLE wall_slots ADD COLUMN crew_id INTEGER`);
+    const repCols = new Set(this.raw.prepare(`PRAGMA table_info(wall_reports)`).all().map((c) => String((c as { name: unknown }).name)));
+    if (!repCols.has('crew_id')) this.raw.exec(`ALTER TABLE wall_reports ADD COLUMN crew_id INTEGER`);
+    if (!repCols.has('crew_id')) this.raw.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_crew_reports_once ON wall_reports(crew_id, reporter) WHERE crew_id IS NOT NULL`);
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_events_unfinalized ON events_raw(finalized_at, slot)`);
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_events_untimed ON events_raw(slot) WHERE block_time IS NULL`);
     const ch = new Set((this.raw.prepare(`PRAGMA table_info(chips)`).all() as { name: string }[]).map((c) => c.name));

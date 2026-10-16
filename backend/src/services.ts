@@ -207,6 +207,9 @@ export function claimService(db: Db, wallet: string, signature: string, kind: nu
   if (s.fulfilment === 'chain') throw new ServiceError(400, 'chain_fulfilled', `${s.name} is fulfilled on-chain; nothing to claim`);
   if (s.id === 'gridDeepAttempt') throw new ServiceError(400, 'use_grid_endpoint', 'Deep Flood attempts are claimed via POST /grid/deep/buy');
   if (s.id === 'lineExtraRun') throw new ServiceError(400, 'use_line_endpoint', 'Extra runs are claimed via POST /me/line/runs/buy');
+  // docs/16 §5.6: у хартии и переименования команды есть побочный эффект (строка
+  // в `crews` и состав), поэтому они идут через /v1/crew, а не через общий клэйм.
+  if (s.id === 'crewCharter' || s.id === 'crewRename') throw new ServiceError(400, 'use_crew_endpoint', 'Crew names are claimed via POST /v1/crew/charter and /v1/crew/rename');
   const problem = PAYLOAD_RULES[s.id]?.(payload);
   if (problem) throw new ServiceError(400, 'bad_payload', problem);
   return db.tx(() => {

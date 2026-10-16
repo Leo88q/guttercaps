@@ -541,6 +541,8 @@ pub enum ServiceKind {
     GridFieldTheme = 11, // Floodgrid board field theme (cosmetic)
     DistrictStencilPack = 12, // five district stencils for the tag editor (docs/16 §3.5)
     LineExtraRun = 13, // one extra run of the day's line after the three free ones (docs/16 §5.1)
+    CrewCharter = 14, // crew registration: unique name + wall segment (docs/16 §5.6)
+    CrewRename = 15, // crew rename, once per 30 days (docs/16 §5.6)
 }
 
 impl ServiceKind {
@@ -560,6 +562,8 @@ impl ServiceKind {
             11 => Self::GridFieldTheme,
             12 => Self::DistrictStencilPack,
             13 => Self::LineExtraRun,
+            14 => Self::CrewCharter,
+            15 => Self::CrewRename,
             _ => return None,
         })
     }
@@ -580,6 +584,8 @@ impl ServiceKind {
             Self::GridFieldTheme => 249,
             Self::DistrictStencilPack => 199,
             Self::LineExtraRun => 5, // 5 cents x 6 $CG/cent = exactly 30 $CG on the burn rail
+            Self::CrewCharter => 199, // same tier as @handle: a name in the city
+            Self::CrewRename => 99, // same tier as a handle change
         }
     }
     /// Price in micro-$CG when paid with $CG (burned).

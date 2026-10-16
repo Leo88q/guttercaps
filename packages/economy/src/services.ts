@@ -26,7 +26,7 @@
 export type ServiceId =
   | 'handle' | 'handleChange' | 'capSkin' | 'profileTheme' | 'arenaEmotePack'
   | 'extraBenchSlots' | 'seasonPass' | 'booster' | 'packSkipAnim' | 'districtBanner'
-  | 'gridDeepAttempt' | 'gridFieldTheme' | 'districtStencilPack' | 'lineExtraRun';
+  | 'gridDeepAttempt' | 'gridFieldTheme' | 'districtStencilPack' | 'lineExtraRun' | 'crewCharter' | 'crewRename';
 
 export interface ServiceDef {
   id: ServiceId;
@@ -72,6 +72,11 @@ export const SERVICES: readonly ServiceDef[] = [
   // Skate-city line (docs/16 §5.1): one extra run of the day's bowl. Priced 5 cents so the
   // $CG rail is exactly 30 $CG (100% burn) — the same price point as a Deep Flood attempt.
   { id: 'lineExtraRun', kind: 13, rustName: 'LineExtraRun', priceUsdCents: 5, dailyCap: 10, fulfilment: 'entitlement', recurring: true, name: 'Extra run', blurb: 'One more run of today\'s line after the three free ones. $CG only — every coin is burned.' },
+  // Команды (docs/16 §5.6). Хартия стоит как хендл, потому что это ровно то же:
+  // уникальное имя в городе плюс запись, которую модерирует одна и та же очередь.
+  // Переименование — как смена хендла: дешевле, но с 30-дневной паузой.
+  { id: 'crewCharter', kind: 14, rustName: 'CrewCharter', priceUsdCents: 199, dailyCap: 1, fulfilment: 'entitlement', recurring: false, name: 'Crew charter', blurb: 'Register a crew: a unique name, a roster of 5–10 riders and a 20-slot segment of the district wall.' },
+  { id: 'crewRename', kind: 15, rustName: 'CrewRename', priceUsdCents: 99, dailyCap: 1, fulfilment: 'entitlement', recurring: false, name: 'Crew rename', blurb: 'Rename your crew once every 30 days. The old name is released after 90 days — same rule as handles.' },
 ] as const;
 
 export const SERVICE_BY_ID = Object.fromEntries(SERVICES.map((s) => [s.id, s])) as Record<ServiceId, ServiceDef>;

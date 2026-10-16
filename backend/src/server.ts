@@ -30,6 +30,7 @@ import * as rig from './rig.ts';
 import * as worldMetrics from './worldMetrics.ts';
 import * as achievements from './achievements.ts';
 import * as runs from './runs.ts';
+import * as crew from './crew.ts';
 import { publish } from './bus.ts';
 import { claimPassTier, passState } from './pass.ts';
 import { packQuote, validateRequest } from './quote.ts';
@@ -794,6 +795,49 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     res.json(wall.releaseSlot(db, req.session!.wallet, districtParam(req.params.district)));
   });
   v1.get('/me/wall', requireAuth, (req, res) => { res.json(wall.myWall(db, req.session!.wallet)); });
+
+  // ------------------------------------------------------------ команды (docs/16 §5.6)
+  // Команда — имя, состав и сегмент стены. Хартия покупает имя и командную доску,
+  // но не стену: сегмент занимается по тем же правилам активности, что слот (§3.4).
+  // Имя команды модерируется той же очередью, что тег: жалоба уходит в wall_reports.
+  //
+  // Порядок маршрутов важен: /crew/board и /crew/check стоят РАНЬШЕ /crew/:name —
+  // иначе слово 'board' уехало бы в имя команды и вернуло 404 «нет такой команды».
+  v1.get('/crew/board', (req, res) => {
+    const week = intQuery(req.query.week, { name: 'week', min: 0 });
+    const limit = intQuery(req.query.limit, { name: 'limit', min: 1, max: 100 });
+    res.json(crew.crewBoard(db, week ?? runs.currentWeek(), limit ?? 50));
+  });
+  v1.get('/crew/check', requireAuth, (req, res) => {
+    const name = String(req.query.name ?? '');
+    res.json(crew.crewCheck(db, req.session!.wallet, name));
+  });
+  // Вступление и выход меняют состав, но не деньги: лимит как у любой мутации.
+  v1.post('/crew/join', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    const b = req.body as { code?: string };
+    res.json(crew.joinCrew(db, req.session!.wallet, String(b.code ?? '')));
+  });
+  v1.post('/crew/leave', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    res.json(crew.leaveCrew(db, req.session!.wallet));
+  });
+  // Хартия и переименование — платные (kind 14 / 15), поэтому двойной лимит:
+  // на попытку и на сеть, как у остальных покупок сервисов.
+  v1.post('/crew/charter', requireAuth, rl(POLICIES.claim), rl(POLICIES.claimNet), (req, res) => {
+    const b = req.body as { name?: string; district?: number; signature?: string };
+    res.json(crew.charterCrew(db, req.session!.wallet, String(b.name ?? ''), Number(b.district), String(b.signature ?? '')));
+  });
+  v1.post('/crew/rename', requireAuth, rl(POLICIES.claim), rl(POLICIES.claimNet), (req, res) => {
+    const b = req.body as { name?: string; signature?: string };
+    res.json(crew.renameCrew(db, req.session!.wallet, String(b.name ?? ''), String(b.signature ?? '')));
+  });
+  v1.get('/me/crew', requireAuth, (req, res) => { res.json(crew.myCrew(db, req.session!.wallet)); });
+  // Карточка команды публична (имя и состав — не секрет); жалоба — как на тег:
+  // один репортёр — одна жалоба на команду.
+  v1.get('/crew/:name', (req, res) => { res.json(crew.crewView(db, req.params.name, req.session?.wallet)); });
+  v1.post('/crew/:name/report', requireAuth, rl(POLICIES.mutate), (req, res) => {
+    const b = req.body as { reason?: string };
+    res.json(crew.reportCrew(db, req.session!.wallet, req.params.name, String(b.reason ?? '')));
+  });
 
   // ------------------------------------------------- экспозиция крышек (docs/16 §4.3) и витрина (§4.5)
   // Экспозиция — чистый визуал: редкая крышка на доске не даёт ни веса, ни шанса,

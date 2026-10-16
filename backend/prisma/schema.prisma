@@ -1018,6 +1018,7 @@ model WallSlot {
   appliedAt DateTime @default(now()) @map("applied_at")
   expiresAt DateTime @map("expires_at")
   renewedAt DateTime? @map("renewed_at")
+  crewId    Int?    @map("crew_id") // docs/16 §5.6: слот внутри сегмента команды
 
   @@id([district, slot])
   @@index([wallet, district])
@@ -1065,6 +1066,8 @@ model RigExhibit {
 model WallReport {
   id         Int       @id @default(autoincrement())
   tagId      String    @map("tag_id")
+  /// docs/16 §5.6: жалоба на имя команды идёт в ту же очередь, что жалоба на тег.
+  crewId     Int?      @map("crew_id")
   reporter   String
   reason     String
   createdAt  DateTime  @default(now()) @map("created_at")
@@ -1601,6 +1604,60 @@ model AchievementClaim {
 }
 
 /// Линия: заезд (docs/16 §5.1). Реплей (inputs) живёт 14 дней, очки и хеш остаются (§5.2).
+/// Команда (docs/16 §5.6): имя, капитан, состав и сегмент стены.
+model Crew {
+  id           Int      @id @default(autoincrement())
+  name         String
+  nameKey      String   @unique @map("name_key")
+  captain      String
+  charterSig   String   @unique @map("charter_sig")
+  wallDistrict Int      @map("wall_district")
+  wallSegment  Int      @map("wall_segment")
+  createdAt    DateTime @default(now()) @map("created_at")
+  renamedAt    DateTime? @map("renamed_at")
+  status       String   @default("live")
+  inviteCode   String   @unique @map("invite_code")
+  members      CrewMember[]
+
+  // Уникальность сегмента — только среди живых команд: SQLite держит её частичным
+  // индексом `... WHERE status = 'live'`, а Prisma частичные индексы не описывает.
+  @@index([captain])
+  @@map("crews")
+}
+
+/// Имя, освобождённое командой: 90 дней карантина (docs/16 §5.6).
+model CrewNameHistory {
+  name       String
+  nameKey    String @map("name_key")
+  crewId     Int    @map("crew_id")
+  releasedAt Int    @map("released_at")
+
+  @@index([nameKey, releasedAt])
+  @@map("crew_name_history")
+}
+
+/// Бронь имени на время оплаты хартии (docs/16 §5.6): та же модель, что у хендлов.
+model CrewReservation {
+  nameKey   String @id @map("name_key")
+  wallet    String
+  expiresAt Int    @map("expires_at")
+
+  @@map("crew_reservations")
+}
+
+/// Состав команды: leftAt == null — участник в команде сейчас.
+model CrewMember {
+  crewId   Int       @map("crew_id")
+  wallet   String
+  joinedAt DateTime  @default(now()) @map("joined_at")
+  leftAt   DateTime? @map("left_at")
+  crew     Crew      @relation(fields: [crewId], references: [id])
+
+  @@id([crewId, wallet])
+  @@index([wallet])
+  @@map("crew_members")
+}
+
 model LineRun {
   id          Int    @id @default(autoincrement())
   wallet      String

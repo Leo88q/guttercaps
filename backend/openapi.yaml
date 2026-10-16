@@ -588,6 +588,159 @@ paths:
       summary: My slots and whether I currently qualify for one (the wall screen answers the button before it is pressed)
       responses:
         '200': { description: my wall, content: { application/json: { schema: { $ref: '#/components/schemas/MyWall' } } } }
+  /crew/board:
+    get:
+      tags: [crew]
+      summary: 'Crew board of the week (docs/16 §5.6): the five best members’ best runs, summed'
+      description: |
+        Only full crews are ranked: at least five members, at least five of them with a run this week.
+        The score is a sum of five best runs, never of all ten — a bigger roster does not beat a better
+        one by headcount alone (the rule lives in `crewWeekScore`, shared with the client and the program).
+      parameters:
+        - { name: week, in: query, required: false, schema: { type: integer, minimum: 0 }, description: 'week index; defaults to the current one' }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100 }, description: 'rows to return (default 50)' }
+      responses:
+        '200': { description: board, content: { application/json: { schema: { $ref: '#/components/schemas/CrewBoard' } } } }
+  /crew/check:
+    get:
+      tags: [crew]
+      summary: 'Check a crew name (docs/16 §5.6) and hold it for two minutes while the payment settles'
+      description: |
+        The same name model as handles: 3–16 chars `[a-zA-Z0-9_]`, case-insensitive uniqueness, the city
+        blocklist, 30 days between renames and a 90-day quarantine for a released name. `kind` tells the
+        client which `pay_service` to sign (14 charter, 15 rename) and `refHash` is what the payment must
+        commit to — a payment for another name is rejected, not reinterpreted.
+      parameters:
+        - { name: name, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 32 } }
+      responses:
+        '200': { description: availability, content: { application/json: { schema: { $ref: '#/components/schemas/CrewCheck' } } } }
+  /crew/charter:
+    post:
+      tags: [crew]
+      summary: 'Charter a crew (docs/16 §5.6): $1.99 buys the name, the roster and the board — never the wall'
+      description: |
+        The payment (kind 14) is consumed exactly once and only for this name: `refHash` binds signature,
+        wallet and payload. The wall segment that comes with the crew is allocated from the district's free
+        segments, but holding it still takes the same activity as any slot (§3.4, decision 6) — there is no
+        paid route to the wall. The captain is the chartering wallet; the roster starts at one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, district, signature]
+              properties:
+                name: { type: string, minLength: 3, maxLength: 16 }
+                district: { type: integer, minimum: 0, description: 'district whose wall segment the crew paints' }
+                signature: { type: string, description: 'transaction signature of the on-chain pay_service (kind 14)' }
+      responses:
+        '200': { description: the crew, content: { application/json: { schema: { $ref: '#/components/schemas/CrewView' } } } }
+        '400': { description: 'invalid_name · bad_district' }
+        '402': { description: 'payment_not_found · ref_hash_mismatch · payment_consumed' }
+        '409': { description: 'already_in_crew · crew_taken · crew_reserved · crew_blocked · crew_cooldown · district_full' }
+  /crew/rename:
+    post:
+      tags: [crew]
+      summary: 'Rename a crew (docs/16 §5.6): captain only, $0.99, once per 30 days'
+      description: |
+        The old name goes into a 90-day quarantine, so a crew cannot drop a name and have a friend pick it
+        up the next day. Only the captain pays and only the captain decides.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, signature]
+              properties:
+                name: { type: string, minLength: 3, maxLength: 16 }
+                signature: { type: string, description: 'transaction signature of the on-chain pay_service (kind 15)' }
+      responses:
+        '200': { description: the crew, content: { application/json: { schema: { $ref: '#/components/schemas/CrewView' } } } }
+        '400': { description: 'invalid_name' }
+        '402': { description: 'payment_not_found · ref_hash_mismatch · payment_consumed' }
+        '403': { description: 'not_captain' }
+        '409': { description: 'no_crew · crew_taken · crew_reserved · crew_blocked · crew_cooldown' }
+  /crew/join:
+    post:
+      tags: [crew]
+      summary: 'Join a crew by invite code (docs/16 §5.6) — five to ten riders, one crew per wallet'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string, description: 'eight-character invite code, case-insensitive' }
+      responses:
+        '200': { description: the crew, content: { application/json: { schema: { $ref: '#/components/schemas/CrewView' } } } }
+        '400': { description: 'bad_code' }
+        '404': { description: 'bad_code — no live crew with that invite code' }
+        '409': { description: 'already_in_crew · crew_full' }
+  /crew/leave:
+    post:
+      tags: [crew]
+      summary: 'Leave a crew (docs/16 §5.6) — a departing captain hands the role to the longest-serving member'
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  crew: { $ref: '#/components/schemas/CrewView', nullable: true }
+                  captain: { type: string, nullable: true, description: 'new captain, when the departing wallet was one' }
+        '409': { description: 'no_crew' }
+  /crew/{name}:
+    get:
+      tags: [crew]
+      summary: 'A crew’s public card (docs/16 §5.6): roster, week score, wall segment'
+      description: |
+        The invite code is returned only to members. `counts` says whether the crew is ranked this week
+        (five members with a run); `counting` on a member says whether their run made the top five.
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string }, description: 'crew name (case-insensitive) or numeric crew id' }
+      responses:
+        '200': { description: the crew, content: { application/json: { schema: { $ref: '#/components/schemas/CrewView' } } } }
+        '404': { description: 'no_crew' }
+  /crew/{name}/report:
+    post:
+      tags: [crew]
+      summary: 'Report a crew name (docs/16 §5.6) — the same moderation queue as tags, one report per reporter'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 280 }
+      responses:
+        '200':
+          description: reported
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  crew: { type: integer }
+                  reports: { type: integer, description: 'open reports against this crew' }
+        '400': { description: 'bad_reason' }
+        '404': { description: 'no_crew' }
+        '409': { description: 'already_reported' }
+  /me/crew:
+    get:
+      tags: [me]
+      summary: 'The crew I ride with (docs/16 §5.6), or null'
+      responses:
+        '200': { description: the crew or null, content: { application/json: { schema: { $ref: '#/components/schemas/CrewView' }, nullable: true } } }
   /rig:
     get:
       tags: [rig]
@@ -2278,6 +2431,77 @@ components:
               runId: { type: integer }
               at: { type: string, format: date-time }
               hasReplay: { type: boolean, description: 'false once the 14-day sweeper wiped the inputs' }
+    CrewCheck:
+      type: object
+      required: [available, kind, refHash, priceUsdCents]
+      properties:
+        available: { type: boolean }
+        reason: { type: string, nullable: true, enum: [taken, reserved, blocked, cooldown, invalid, format, null] }
+        kind: { type: integer, description: '14 = charter a new crew ($1.99), 15 = rename ($0.99)' }
+        refHash: { type: string, description: 'what the on-chain pay_service must commit to' }
+        priceUsdCents: { type: integer }
+        reservedUntil: { type: string, format: date-time, nullable: true }
+    CrewMember:
+      type: object
+      required: [wallet, joinedAt, bestWeek, counting]
+      properties:
+        wallet: { type: string }
+        handle: { type: string, nullable: true }
+        joinedAt: { type: string, format: date-time }
+        bestWeek: { type: integer, description: 'best Line score of this member for the week (0 = no run)' }
+        counting: { type: boolean, description: 'their run is inside the crew’s five best' }
+    CrewView:
+      type: object
+      description: |
+        A crew: name, roster, wall segment and the week's score. `score` is the sum of the five best
+        members' best runs — never the sum of the whole roster (docs/16 §5.6).
+      required: [id, name, captain, district, segment, slots, createdAt, members, memberCount, minMembers, maxMembers, counts, week, score, tier, mine, iAmCaptain, reports]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        captain: { type: string }
+        captainHandle: { type: string, nullable: true }
+        district: { type: integer }
+        segment: { type: integer, description: 'segment index inside the district wall' }
+        slots:
+          type: object
+          required: [from, to, size]
+          properties:
+            from: { type: integer, description: 'first slot of the segment (inclusive)' }
+            to: { type: integer, description: 'last slot of the segment (exclusive)' }
+            size: { type: integer, description: 'slots per crew segment (20)' }
+        createdAt: { type: string, format: date-time }
+        members: { type: array, items: { $ref: '#/components/schemas/CrewMember' } }
+        memberCount: { type: integer }
+        minMembers: { type: integer, description: 'below this the crew is not ranked (5)' }
+        maxMembers: { type: integer, description: 'roster cap (10)' }
+        counts: { type: boolean, description: 'five members with a run this week — the crew is on the board' }
+        week: { type: integer }
+        score: { type: integer }
+        tier: { type: string, enum: [none, bronze, silver, gold] }
+        inviteCode: { type: string, nullable: true, description: 'members only' }
+        mine: { type: boolean }
+        iAmCaptain: { type: boolean }
+        reports: { type: integer, description: 'open moderation reports against the name' }
+    CrewBoard:
+      type: object
+      required: [week, rows]
+      properties:
+        week: { type: integer }
+        rows:
+          type: array
+          items:
+            type: object
+            required: [rank, id, name, district, segment, members, score, tier]
+            properties:
+              rank: { type: integer }
+              id: { type: integer }
+              name: { type: string }
+              district: { type: integer }
+              segment: { type: integer }
+              members: { type: integer }
+              score: { type: integer }
+              tier: { type: string, enum: [none, bronze, silver, gold] }
     AchievementClaim:
       allOf:
         - { $ref: '#/components/schemas/Achievement' }
