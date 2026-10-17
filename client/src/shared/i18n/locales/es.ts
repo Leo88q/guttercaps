@@ -14,7 +14,7 @@ const es: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Inicio', caps: 'Caps', shop: 'Tienda', market: 'Mercado', arena: 'Arena', stake: 'Stake', fusion: 'Fusión', guide: 'Guía', quests: 'Misiones', grid: 'Floodgrid', leaderboard: 'Ranking', profile: 'Perfil', more: 'Más' },
+  nav: { home: 'Inicio', caps: 'Caps', shop: 'Tienda', market: 'Mercado', arena: 'Arena', bowl: 'Skate', stake: 'Stake', fusion: 'Fusión', guide: 'Guía', quests: 'Misiones', grid: 'Floodgrid', leaderboard: 'Ranking', profile: 'Perfil', more: 'Más' },
   grid: {
     title: 'Floodgrid', subtitle: 'Route the flood through 75 sectors. Every chip walks its own route — XP, charge and gifts included.',
     applySkin: 'Apply skin to selected chip', passXp: '+{n} Pass XP', dailyDistrict: 'District of the day #{n}', epicDaily: 'Epic flood of the day', backpack: 'Diver gear', hints: 'Terminal marks', valves: 'Emergency valves', drops: 'Flood charge',
@@ -408,6 +408,18 @@ const es: Messages = {
     chestBlurb: '4 packs Limited + marcos de fundador. En la tienda $119,96 — 0,999 SOL, un cofre por billetera.',
     reserveChest: 'Reservar cofre',
     founderFrame: 'Cada chapa de este cofre lleva un marco de fundador permanente — origen, no poder extra.',
+  },
+  skate: {
+    kicker: 'Nuevo en Gutter City', intro: 'Rueda la Línea, dibuja un tag, gana piezas de la tabla y defiende el muro del distrito: el mundo skate alimenta el ciclo de chapas.',
+    cta: 'Entrar al Bowl', browse: 'Abierto para explorar · el muro y el tablero semanal no exigen wallet', wallet: 'Wallet necesaria: descensos de la Línea, constructor, crews y ocupar un hueco del muro',
+    mock: 'Modo demo activo: explorar es real, pero los descensos y pagos se simulan; no se firma ni se paga nada.',
+    play: 'Rodar', create: 'Crear y mostrar', together: 'En equipo',
+    lineHint: 'Descensos de 45 s · 3 gratis al día · el torneo diario paga piezas', tournament: 'Torneo diario',
+    wallHint: 'Dibuja un tag y luego ocupa y defiende un hueco del muro', boardHint: 'Cinco tags sorteados por semana: sorteo, no ranking',
+    builderHint: 'Seis huecos: gana piezas rodando; la tienda solo vende accesorios', rigHint: 'Muestra tres chapas: siguen siendo tuyas y vendibles',
+    crewHint: '5–10 riders · tableros semanal y mensual de crews', questsHint: 'Las misiones y logros también pueden pagar piezas',
+    start: 'Empieza aquí', step1: 'Rueda la Línea: tres descensos gratis hoy', step2: 'Dibuja un tag y visita el muro del distrito', step3: 'Arma tu tabla con las piezas ganadas',
+    next: 'Siguiente paso sugerido',
   },
   bowl: {
     title: 'El Pozo',

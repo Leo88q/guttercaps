@@ -48,6 +48,18 @@ describe('Bowl — хаб скейт-мира', () => {
     }
   });
 
+  it('хаб показывает старт, доступность и прямые входы в Линию/турнир/стену/конструктор/команды', () => {
+    mount();
+    expect(screen.getByTestId('bowl-start')).toBeTruthy();
+    expect(screen.getByText(/Open to browse/)).toBeTruthy();
+    expect(screen.getByText(/Wallet needed/)).toBeTruthy();
+    const hrefs = [...document.querySelectorAll('a')].map((a) => a.getAttribute('href'));
+    for (const to of ['/bowl/line', '/bowl/tag', '/bowl/wall/0', '/bowl/builder', '/bowl/crew', '/bowl/board', '/bowl/rig']) {
+      expect(hrefs, `missing link to ${to}`).toContain(to);
+    }
+    expect(screen.getByTestId('bowl-open-tournament')).toBeTruthy();
+  });
+
   it('экспозиция показывает пустое состояние и три слота под крышки', () => {
     const { container } = mount();
     expect(container.querySelectorAll('.bowl-slot').length).toBe(3);

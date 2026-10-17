@@ -230,7 +230,8 @@ describe('the language picker is a header control, not a tab (placement regressi
     // The bar is a fixed-height single row: one grid column per tab, or the overflow spills off
     // screen. This has drifted before (7 columns against 10 tabs), so the coupling is pinned here.
     const tabs = bar.querySelectorAll('a').length;
-    expect(tabs).toBe(10); // 9 core tabs + Floodgrid (docs/13)
+    expect(tabs).toBe(11); // 9 core tabs + Floodgrid (docs/13) + Bowl/скейт-мир (docs/16, PR #66)
+    expect(bar.querySelector('a[href="/bowl"]'), 'the Bowl must be a main-nav tab, not only a footer link').not.toBeNull();
     const css = readFileSync(resolve(import.meta.dirname, '../shared/ui/layout.css'), 'utf8');
     const columns = Number(/--gc-nav-tabs:\s*(\d+)/.exec(css)?.[1]);
     expect(columns, 'layout.css must declare one grid column per tab').toBe(tabs);

@@ -14,7 +14,7 @@ const pt: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Início', caps: 'Caps', shop: 'Loja', market: 'Mercado', arena: 'Arena', stake: 'Stake', fusion: 'Fusão', guide: 'Guia', quests: 'Missões', grid: 'Floodgrid', leaderboard: 'Ranking', profile: 'Perfil', more: 'Mais' },
+  nav: { home: 'Início', caps: 'Caps', shop: 'Loja', market: 'Mercado', arena: 'Arena', bowl: 'Skate', stake: 'Stake', fusion: 'Fusão', guide: 'Guia', quests: 'Missões', grid: 'Floodgrid', leaderboard: 'Ranking', profile: 'Perfil', more: 'Mais' },
   grid: {
     title: 'Floodgrid', subtitle: 'Route the flood through 75 sectors. Every chip walks its own route — XP, charge and gifts included.',
     applySkin: 'Apply skin to selected chip', passXp: '+{n} Pass XP', dailyDistrict: 'District of the day #{n}', epicDaily: 'Epic flood of the day', backpack: 'Diver gear', hints: 'Terminal marks', valves: 'Emergency valves', drops: 'Flood charge',
@@ -408,6 +408,18 @@ const pt: Messages = {
     chestBlurb: '4 packs Limited + molduras de fundador. Na loja $119,96 — 0,999 SOL, um baú por carteira.',
     reserveChest: 'Reservar baú',
     founderFrame: 'Cada tampa deste baú leva uma moldura de fundador permanente — origem, não poder extra.',
+  },
+  skate: {
+    kicker: 'Novo em Gutter City', intro: 'Ande na Linha, desenhe uma tag, ganhe peças da prancha e segure o muro do distrito — o mundo skate alimenta o ciclo das tampas.',
+    cta: 'Entrar no Bowl', browse: 'Aberto para explorar · o muro e o quadro semanal não exigem carteira', wallet: 'Carteira necessária: descidas da Linha, montador, equipes e ocupar um espaço no muro',
+    mock: 'Modo demo ativo: explorar é real, mas descidas e pagamentos são simulados — nada é assinado nem pago.',
+    play: 'Andar', create: 'Criar e mostrar', together: 'Juntos',
+    lineHint: 'Descidas de 45s · 3 grátis por dia · o torneio diário paga peças', tournament: 'Torneio diário',
+    wallHint: 'Desenhe uma tag, depois ocupe e segure um espaço no muro', boardHint: 'Cinco tags sorteadas por semana — sorteio, não ranking',
+    builderHint: 'Seis espaços: ganhe peças andando, compre só acessórios', rigHint: 'Mostre três tampas — continuam suas e negociáveis',
+    crewHint: '5–10 skatistas · quadros semanal e mensal de equipes', questsHint: 'Missões e conquistas também podem pagar peças',
+    start: 'Comece aqui', step1: 'Ande na Linha — três descidas grátis hoje', step2: 'Desenhe uma tag e visite o muro do distrito', step3: 'Monte sua prancha com as peças ganhas',
+    next: 'Próximo passo sugerido',
   },
   bowl: {
     title: 'O Pozo',

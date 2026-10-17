@@ -140,7 +140,6 @@ export default function Line() {
     setResult(null);
     setFrame(stepper.current.state());
     setStage('running');
-    playSound('ui.click');
   };
 
   /** Единственное управление: на земле — прыжок, в воздухе — грэб. */
@@ -150,7 +149,6 @@ export default function Line() {
     const st = run.state();
     const action = st.air || st.grinding ? LINE_GRAB : LINE_HOP;
     queue.current.push({ tick: st.tick + 1, action });
-    playSound('ui.click');
   };
 
   const buyExtra = async () => {

@@ -15,7 +15,7 @@ const en = {
   ui,
   catalog,
   nav: {
-    home: 'Home', caps: 'Caps', shop: 'Shop', market: 'Market', arena: 'Arena', stake: 'Stake',
+    home: 'Home', caps: 'Caps', shop: 'Shop', market: 'Market', arena: 'Arena', bowl: 'Bowl', stake: 'Stake',
     fusion: 'Fusion', guide: 'Guide', quests: 'Quests', grid: 'Floodgrid', leaderboard: 'Ranks', profile: 'Profile', more: 'More',
   },
   grid: {
@@ -427,6 +427,18 @@ const en = {
     chestBlurb: '4 Limited packs + founder frames. Shop value $119.96 — 0.999 SOL / 109.89 USDC / 6 868.125 SKR, one chest per wallet.',
     reserveChest: 'Reserve chest',
     founderFrame: 'Every cap from this chest wears a permanent founder frame — origin, not extra power.',
+  },
+  skate: {
+    kicker: 'New in Gutter City', intro: 'Ride the Line, draw a tag, earn board parts and hold the district wall — the skate world feeds the cap loop.',
+    cta: 'Enter the Bowl', browse: 'Open to browse · the wall and weekly board need no wallet', wallet: 'Wallet needed: Line runs, the builder, crews and claiming a wall slot',
+    mock: 'Demo mode is on: browsing is real, but runs and payments are simulated — nothing is signed or paid.',
+    play: 'Ride', create: 'Create & show', together: 'Together',
+    lineHint: '45-second runs · 3 free a day · daily tournament pays board parts', tournament: 'Daily tournament',
+    wallHint: 'Draw a tag, then claim and hold a wall slot', boardHint: 'Five tags drawn weekly — a draw, not a ranking',
+    builderHint: 'Six slots: earn parts by riding, bolt on shop mounts', rigHint: 'Show three caps — they stay yours and tradable',
+    crewHint: '5–10 riders · weekly and monthly crew boards', questsHint: 'Quests and achievements can also pay board parts',
+    start: 'Start here', step1: 'Ride the Line — three free runs today', step2: 'Draw a tag and visit the district wall', step3: 'Build your board from earned parts',
+    next: 'Suggested next step',
   },
   bowl: {
     title: 'The Bowl',

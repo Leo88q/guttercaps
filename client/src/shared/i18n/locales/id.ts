@@ -14,7 +14,7 @@ const id: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Beranda', caps: 'Caps', shop: 'Toko', market: 'Pasar', arena: 'Arena', stake: 'Stake', fusion: 'Fusi', guide: 'Panduan', quests: 'Misi', grid: 'Floodgrid', leaderboard: 'Peringkat', profile: 'Profil', more: 'Lainnya' },
+  nav: { home: 'Beranda', caps: 'Caps', shop: 'Toko', market: 'Pasar', arena: 'Arena', bowl: 'Skate', stake: 'Stake', fusion: 'Fusi', guide: 'Panduan', quests: 'Misi', grid: 'Floodgrid', leaderboard: 'Peringkat', profile: 'Profil', more: 'Lainnya' },
   grid: {
     title: 'Floodgrid', subtitle: 'Route the flood through 75 sectors. Every chip walks its own route — XP, charge and gifts included.',
     applySkin: 'Apply skin to selected chip', passXp: '+{n} Pass XP', dailyDistrict: 'District of the day #{n}', epicDaily: 'Epic flood of the day', backpack: 'Diver gear', hints: 'Terminal marks', valves: 'Emergency valves', drops: 'Flood charge',
@@ -408,6 +408,18 @@ const id: Messages = {
     chestBlurb: '4 pack Limited + bingkai pendiri. Harga toko $119,96 — 0,999 SOL, satu peti per wallet.',
     reserveChest: 'Pesan peti',
     founderFrame: 'Setiap cap dari peti ini memakai bingkai pendiri permanen — asal, bukan kekuatan extra.',
+  },
+  skate: {
+    kicker: 'Baru di Gutter City', intro: 'Mainkan Line, gambar tag, dapatkan suku cadang papan, dan pertahankan dinding distrik — dunia skate menghidupi loop cap.',
+    cta: 'Masuk Bowl', browse: 'Terbuka untuk dilihat · dinding dan papan mingguan tak perlu dompet', wallet: 'Dompet diperlukan: run Line, builder, kru, dan mengambil slot dinding',
+    mock: 'Mode demo aktif: melihat itu nyata, tetapi run dan pembayaran disimulasikan — tidak ada yang ditandatangani atau dibayar.',
+    play: 'Bermain', create: 'Buat & pamerkan', together: 'Bersama',
+    lineHint: 'Run 45 detik · 3 gratis sehari · turnamen harian membayar suku cadang papan', tournament: 'Turnamen harian',
+    wallHint: 'Gambar tag, lalu ambil dan pertahankan slot dinding', boardHint: 'Lima tag diundi tiap minggu — undian, bukan peringkat',
+    builderHint: 'Enam slot: dapatkan suku cadang dengan bermain, aksesori tempel di toko', rigHint: 'Pamerkan tiga cap — tetap milikmu dan bisa dijual',
+    crewHint: '5–10 rider · papan kru mingguan dan bulanan', questsHint: 'Quest dan pencapaian juga bisa membayar suku cadang papan',
+    start: 'Mulai di sini', step1: 'Mainkan Line — tiga run gratis hari ini', step2: 'Gambar tag dan kunjungi dinding distrik', step3: 'Rakit papanmu dari suku cadang yang didapat',
+    next: 'Langkah berikutnya yang disarankan',
   },
   bowl: {
     title: 'Bowl',

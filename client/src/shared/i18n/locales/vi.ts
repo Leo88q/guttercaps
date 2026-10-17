@@ -14,7 +14,7 @@ const vi: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Trang chủ', caps: 'Nắp', shop: 'Cửa hàng', market: 'Chợ', arena: 'Đấu trường', stake: 'Stake', fusion: 'Hợp nhất', guide: 'Hướng dẫn', quests: 'Nhiệm vụ', grid: 'Floodgrid', leaderboard: 'Xếp hạng', profile: 'Hồ sơ', more: 'Thêm' },
+  nav: { home: 'Trang chủ', caps: 'Nắp', shop: 'Cửa hàng', market: 'Chợ', arena: 'Đấu trường', bowl: 'Skate', stake: 'Stake', fusion: 'Hợp nhất', guide: 'Hướng dẫn', quests: 'Nhiệm vụ', grid: 'Floodgrid', leaderboard: 'Xếp hạng', profile: 'Hồ sơ', more: 'Thêm' },
   grid: {
     title: 'Floodgrid', subtitle: 'Route the flood through 75 sectors. Every chip walks its own route — XP, charge and gifts included.',
     applySkin: 'Apply skin to selected chip', passXp: '+{n} Pass XP', dailyDistrict: 'District of the day #{n}', epicDaily: 'Epic flood of the day', backpack: 'Diver gear', hints: 'Terminal marks', valves: 'Emergency valves', drops: 'Flood charge',
@@ -408,6 +408,18 @@ const vi: Messages = {
     chestBlurb: '4 pack Limited + khung founder. Giá cửa hàng $119,96 — 0,999 SOL, một rương mỗi ví.',
     reserveChest: 'Đặt rương',
     founderFrame: 'Mỗi nắp từ rương này mang khung founder vĩnh viễn — nguồn gốc, không thêm sức mạnh.',
+  },
+  skate: {
+    kicker: 'Mới ở Gutter City', intro: 'Trượt Line, vẽ tag, kiếm linh kiện ván và giữ tường khu phố — thế giới skate nuôi vòng lặp nắp.',
+    cta: 'Vào Bowl', browse: 'Mở để xem · tường và bảng tuần không cần ví', wallet: 'Cần ví: lượt trượt Line, xưởng lắp ván, đội và chiếm ô tường',
+    mock: 'Đang ở chế độ demo: xem là thật, nhưng lượt trượt và thanh toán được mô phỏng — không ký hay trả gì.',
+    play: 'Trượt', create: 'Tạo & trưng bày', together: 'Cùng nhau',
+    lineHint: 'Lượt trượt 45 giây · 3 lượt miễn phí/ngày · giải ngày trả linh kiện ván', tournament: 'Giải đấu ngày',
+    wallHint: 'Vẽ tag rồi chiếm và giữ một ô tường', boardHint: 'Năm tag được bốc thăm mỗi tuần — bốc thăm, không xếp hạng',
+    builderHint: 'Sáu ô: kiếm linh kiện bằng cách trượt, phụ kiện gắn thêm ở shop', rigHint: 'Trưng bày ba nắp — vẫn là của bạn và giao dịch được',
+    crewHint: '5–10 rider · bảng đội tuần và tháng', questsHint: 'Nhiệm vụ và thành tựu cũng có thể trả linh kiện ván',
+    start: 'Bắt đầu tại đây', step1: 'Trượt Line — ba lượt miễn phí hôm nay', step2: 'Vẽ tag và ghé tường khu phố', step3: 'Lắp ván từ linh kiện đã kiếm',
+    next: 'Bước tiếp theo gợi ý',
   },
   bowl: {
     title: 'Bể trượt',

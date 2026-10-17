@@ -6,7 +6,6 @@ import { LanguageIcon, SettingsIcon, QuestsIcon, FusionNavIcon, GuideNavIcon, Gr
 import { useT, useLocale, LOCALE_META, type MessageKey } from '@/shared/i18n';
 import { PaintTrail } from '@/shared/ui/PaintTrail';
 import { Toasts } from '@/shared/ui/primitives';
-import { playSound } from '@/shared/audio';
 import { WaitStatusPill } from './WaitStatusPill';
 import { RevealQueue } from '@/features/reveal/RevealQueue';
 import { BalanceChip } from './BalanceChip';
@@ -24,6 +23,9 @@ const NAV: { to: string; key: MessageKey; Icon?: React.ComponentType<{ size?: nu
   { to: '/fusion', key: 'nav.fusion', Icon: FusionNavIcon },
   { to: '/market', key: 'nav.market', gen: '/icons/gen/nav-market.webp' },
   { to: '/arena', key: 'nav.arena', gen: '/icons/gen/nav-arena.webp' },
+  // Скейт-мир (docs/16, PR #66/#67) — в основной навигации, а не только в футере:
+  // иначе бассейн, стена, Линия и конструктор невидимы для нового игрока.
+  { to: '/bowl', key: 'nav.bowl', gen: '/icons/gen/wheels.webp' },
   { to: '/staking', key: 'nav.stake', gen: '/icons/gen/nav-stake.webp' },
   { to: '/quests', key: 'nav.quests', Icon: QuestsIcon },
   { to: '/grid', key: 'nav.grid', Icon: GridNavIcon },
@@ -84,16 +86,13 @@ export function Shell({ children }: { children: ReactNode }) {
     <div className="shell" ref={shellRef}>
       <nav className="shell-nav" aria-label={t('ui.primaryNav')}>
         {NAV.map(({ to, key, Icon, gen, end }) => (
-          // Вкладка звучит как ui.tab (не ui.click): переход по карте игры — другой жест, чем
-          // нажатие кнопки. Hover — только здесь и только на десктопе, с cooldown 90 мс в
-          // движке, поэтому «веер» звуков при ведении мыши невозможен (docs/14b §2, §6).
+          // Вкладки — без звука: короткие UI-«писки» при нажатиях/наведении убраны по
+          // жалобе игроков. Звучат только игровые события (повороты, награды, победа).
           <NavLink
             key={to}
             to={to}
             end={end}
             className={({ isActive }) => (isActive ? 'active' : '')}
-            onClick={() => playSound('ui.tab')}
-            onMouseEnter={() => playSound('ui.hover')}
           >
             {gen
               ? <img src={gen} width={24} height={24} alt="" aria-hidden loading="eager" decoding="async" className="nav-img" />
