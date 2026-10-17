@@ -45,6 +45,11 @@ async function detectMock(): Promise<boolean> {
   return mockMode;
 }
 
+/** Для потребителей, которым режим нужен до первого запроса (например, WS):
+ *  без этого сокет успевал подключиться к прокси выключенного бэкенда и потом
+ *  вечно переподключался с бэкоффом, засыпая dev-консоль Vite ошибками 8787. */
+export const resolveMockMode = () => detectMock();
+
 function buildUrl(path: string, opts: RequestOpts): string {
   let p = path;
   if (opts.path) for (const [k, v] of Object.entries(opts.path)) p = p.replace(`{${k}}`, encodeURIComponent(String(v)));

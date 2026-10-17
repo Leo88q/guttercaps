@@ -87,11 +87,15 @@ describe('линия (docs/16 §5.1)', () => {
   it('чаша и препятствия — настоящие файлы, а не рисунок кодом', async () => {
     await setLocale('ru');
     render(<MemoryRouter><Line /></MemoryRouter>);
-    expect((document.querySelector('.line-bg') as HTMLImageElement).getAttribute('src')).toBe('/art/skate/line-bg.webp');
+    // Фон трассы — тайлящийся div: панорама не уезжает в чёрную пустоту.
+    expect((document.querySelector('.line-bg') as HTMLElement).style.backgroundImage).toContain('/art/skate/line-bg.webp');
     const art = Array.from(document.querySelectorAll<HTMLImageElement>('.line-feature')).map((i) => i.getAttribute('src'));
     expect(art.length).toBeGreaterThan(0);
     for (const src of art) expect(src).toMatch(/^\/art\/skate\/line-(rail|kicker|gap|bump)\.webp$/);
     // райдер — тот же спрайт, что на витрине (§4.6): силуэт 3 → rider-04
+    // Райдер — 3D-модель (Skater3D); в тестовой среде без WebGL виден её
+    // спрайт-фолбэк того же силуэта.
+    expect(document.querySelector('.line-rider .skater3d')).toBeTruthy();
     expect((document.querySelector('.line-rider img') as HTMLImageElement).getAttribute('src')).toBe('/art/skate/rider-04.webp');
   });
 

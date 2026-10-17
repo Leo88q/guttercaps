@@ -14,7 +14,7 @@ const fil: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Home', caps: 'Caps', shop: 'Tindahan', market: 'Palengke', arena: 'Arena', stake: 'Stake', fusion: 'Fusion', guide: 'Gabay', quests: 'Quests', grid: 'Floodgrid', leaderboard: 'Ranggo', profile: 'Profile', more: 'Iba pa' },
+  nav: { home: 'Home', caps: 'Caps', shop: 'Tindahan', market: 'Palengke', arena: 'Arena', bowl: 'Skate', stake: 'Stake', fusion: 'Fusion', guide: 'Gabay', quests: 'Quests', grid: 'Floodgrid', leaderboard: 'Ranggo', profile: 'Profile', more: 'Iba pa' },
   grid: {
     title: 'Floodgrid', subtitle: 'Route the flood through 75 sectors. Every chip walks its own route — XP, charge and gifts included.',
     applySkin: 'Apply skin to selected chip', passXp: '+{n} Pass XP', dailyDistrict: 'District of the day #{n}', epicDaily: 'Epic flood of the day', backpack: 'Diver gear', hints: 'Terminal marks', valves: 'Emergency valves', drops: 'Flood charge',
@@ -409,6 +409,18 @@ const fil: Messages = {
     reserveChest: 'I-reserve ang chest',
     founderFrame: 'Bawat cap mula sa chest na ito ay may permanenteng founder frame — pinagmulan, hindi extra power.',
   },
+  skate: {
+    kicker: 'Bago sa Gutter City', intro: 'Laruin ang Line, gumuhit ng tag, kumita ng piyesa ng board, at hawakan ang pader ng distrito — pinapakain ng skate world ang cap loop.',
+    cta: 'Pumasok sa Bowl', browse: 'Bukas tingnan · hindi kailangan ng wallet ang pader at weekly board', wallet: 'Kailangan ng wallet: Line runs, builder, crews, at pagkuha ng wall slot',
+    mock: 'Naka-on ang demo mode: totoo ang pagtingin, pero simulated ang runs at bayad — walang pinipirmahan o binabayaran.',
+    play: 'Maglaro', create: 'Gumawa at magpakita', together: 'Sama-sama',
+    lineHint: '45-segundong runs · 3 libre araw-araw · board parts ang premyo ng daily tournament', tournament: 'Daily tournament',
+    wallHint: 'Gumuhit ng tag, tapos kumuha at humawak ng wall slot', boardHint: 'Limang tag ang binubunot linggo-linggo — bunutan, hindi ranking',
+    builderHint: 'Anim na slot: kumita ng piyesa sa paglaro, bolt-ons lang sa shop', rigHint: 'Magpakita ng tatlong cap — iyo pa rin at puwedeng ibenta',
+    crewHint: '5–10 riders · weekly at monthly crew boards', questsHint: 'Puwede ring magbayad ng board parts ang quests at achievements',
+    start: 'Dito magsimula', step1: 'Laruin ang Line — tatlong libreng run ngayon', step2: 'Gumuhit ng tag at bisitahin ang district wall', step3: 'Buuin ang board mo mula sa kinita mong piyesa',
+    next: 'Iminumungkahing susunod na hakbang',
+  },
   bowl: {
     title: 'Ang Bowl',
     subtitle: 'Sarili mong sulok sa Gutter City: buuin ang board, ilagay ang cap, mag-iwan ng tag.',
@@ -529,6 +541,7 @@ const fil: Messages = {
     finalScore: 'Score {n}',
     speed: 'bilis ×{n}',
     watch: 'Panoorin', you: 'ikaw', rank: '#{n}',
+    submitError: 'Hindi nabilang ang run ({code}). Buo pa ang free runs mo — subukan ulit.',
     stale: 'Nagbago ang bowl ng araw — i-reload ang page', failed: 'Hindi nabibilang ang takbo', none: 'Wala pang takbo ngayon',
   },
 
@@ -649,6 +662,8 @@ const fil: Messages = {
     copies: '{n} pcs',
   },
   builder: {
+    choose: 'Pumili',
+    boards: 'Boards ng mga distrito', boardsHint: 'Isang buong board artwork bawat distrito — walang flat na pagbubuo ng layers. Kumita ng apat na piyesa ng distrito at isuot ang board bilang set.', wearSet: 'Isuot ang set', boardProgress: '{have} sa {total} piyesa ang nakuha', boardReady: 'Buo na ang set — iyo ang board na ito', decks: 'Gallery ng decks',
     buy: 'Bili · {cents}¢', buying: 'Nagbabayad…', bought: 'Binili na ang accessory',
     title: 'Buuin ang skate',
     intro: 'Anim na slot, isang skate. Ang mga piyesa ay kinita sa pag-ride — sa Line, sa quests, sa contest ng crew. Ang tindahan ay nagbebenta lang ng dagdag.',

@@ -14,7 +14,7 @@ const id: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Beranda', caps: 'Caps', shop: 'Toko', market: 'Pasar', arena: 'Arena', stake: 'Stake', fusion: 'Fusi', guide: 'Panduan', quests: 'Misi', grid: 'Floodgrid', leaderboard: 'Peringkat', profile: 'Profil', more: 'Lainnya' },
+  nav: { home: 'Beranda', caps: 'Caps', shop: 'Toko', market: 'Pasar', arena: 'Arena', bowl: 'Skate', stake: 'Stake', fusion: 'Fusi', guide: 'Panduan', quests: 'Misi', grid: 'Floodgrid', leaderboard: 'Peringkat', profile: 'Profil', more: 'Lainnya' },
   grid: {
     title: 'Floodgrid', subtitle: 'Route the flood through 75 sectors. Every chip walks its own route — XP, charge and gifts included.',
     applySkin: 'Apply skin to selected chip', passXp: '+{n} Pass XP', dailyDistrict: 'District of the day #{n}', epicDaily: 'Epic flood of the day', backpack: 'Diver gear', hints: 'Terminal marks', valves: 'Emergency valves', drops: 'Flood charge',
@@ -409,6 +409,18 @@ const id: Messages = {
     reserveChest: 'Pesan peti',
     founderFrame: 'Setiap cap dari peti ini memakai bingkai pendiri permanen — asal, bukan kekuatan extra.',
   },
+  skate: {
+    kicker: 'Baru di Gutter City', intro: 'Mainkan Line, gambar tag, dapatkan suku cadang papan, dan pertahankan dinding distrik — dunia skate menghidupi loop cap.',
+    cta: 'Masuk Bowl', browse: 'Terbuka untuk dilihat · dinding dan papan mingguan tak perlu dompet', wallet: 'Dompet diperlukan: run Line, builder, kru, dan mengambil slot dinding',
+    mock: 'Mode demo aktif: melihat itu nyata, tetapi run dan pembayaran disimulasikan — tidak ada yang ditandatangani atau dibayar.',
+    play: 'Bermain', create: 'Buat & pamerkan', together: 'Bersama',
+    lineHint: 'Run 45 detik · 3 gratis sehari · turnamen harian membayar suku cadang papan', tournament: 'Turnamen harian',
+    wallHint: 'Gambar tag, lalu ambil dan pertahankan slot dinding', boardHint: 'Lima tag diundi tiap minggu — undian, bukan peringkat',
+    builderHint: 'Enam slot: dapatkan suku cadang dengan bermain, aksesori tempel di toko', rigHint: 'Pamerkan tiga cap — tetap milikmu dan bisa dijual',
+    crewHint: '5–10 rider · papan kru mingguan dan bulanan', questsHint: 'Quest dan pencapaian juga bisa membayar suku cadang papan',
+    start: 'Mulai di sini', step1: 'Mainkan Line — tiga run gratis hari ini', step2: 'Gambar tag dan kunjungi dinding distrik', step3: 'Rakit papanmu dari suku cadang yang didapat',
+    next: 'Langkah berikutnya yang disarankan',
+  },
   bowl: {
     title: 'Bowl',
     subtitle: 'Sudutmu di Gutter City: rakit papan, pajang tutup, tinggalkan tag.',
@@ -529,6 +541,7 @@ const id: Messages = {
     finalScore: 'Skor {n}',
     speed: 'kecepatan ×{n}',
     watch: 'Tonton', you: 'kamu', rank: '#{n}',
+    submitError: 'Run tidak terhitung ({code}). Run gratismu utuh — coba lagi.',
     stale: 'Bowl hari ini berubah — muat ulang halaman', failed: 'Percobaan tidak dihitung', none: 'Belum ada percobaan hari ini',
   },
 
@@ -649,6 +662,8 @@ const id: Messages = {
     copies: '{n} pcs',
   },
   builder: {
+    choose: 'Pilih',
+    boards: 'Papan distrik', boardsHint: 'Satu artwork papan utuh per distrik — tanpa rakitan lapisan datar. Dapatkan empat suku cadang distrik dan pakai papannya sebagai satu set.', wearSet: 'Pakai set', boardProgress: '{have} dari {total} suku cadang didapat', boardReady: 'Set lengkap — papan ini milikmu', decks: 'Galeri dek',
     buy: 'Beli · {cents}¢', buying: 'Membayar…', bought: 'Aksesori dibeli',
     title: 'Rakit papan',
     intro: 'Enam slot, satu papan. Suku cadang didapat dengan riding — di Line, di quest, di kontes kru. Toko hanya menjual aksesoris.',

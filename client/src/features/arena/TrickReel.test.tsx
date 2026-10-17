@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { TrickReel } from './TrickReel';
-import { trickLine, type ReelRound } from './trickReel';
+import { trickLine, type ReelRound } from './trickLine';
 import { setLocale, LOCALES, t } from '@/shared/i18n';
 
 afterEach(async () => { cleanup(); vi.useRealTimers(); await setLocale('en'); });
