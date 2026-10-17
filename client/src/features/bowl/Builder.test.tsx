@@ -60,6 +60,15 @@ beforeAll(() => {
 afterEach(() => { cleanup(); resetMockWorld(); });
 
 describe('Builder — конструктор доски (docs/16 §4.2)', () => {
+  it('витрина досок районов: восемь целых артов, а не плоская сборка слоями', async () => {
+    mount();
+    const gallery = await waitFor(() => screen.getByTestId('builder-boards'));
+    const arts = gallery.querySelectorAll('img[src*="/art/skate/board-d"]');
+    expect(arts.length).toBe(8);
+    expect(screen.getByTestId('builder-fullboard')).toBeTruthy();
+    expect(document.querySelector('.bd-layer')).toBeNull();
+  });
+
   it('доска открывается собранной: шесть слотов и ни одной дыры', async () => {
     mount();
     await waitFor(() => expect(screen.getAllByText('Deck').length).toBeGreaterThan(0));
@@ -110,7 +119,7 @@ describe('Builder — конструктор доски (docs/16 §4.2)', () => 
     await waitFor(() => expect(screen.getAllByText('Deck').length).toBeGreaterThan(0));
 
     // Витрина слота открывается по кнопке «Bolt on» у строки деки.
-    const rowButtons = screen.getAllByRole('button', { name: 'Bolt on' });
+    const rowButtons = screen.getAllByRole('button', { name: 'Choose' });
     fireEvent.click(rowButtons[0]);
     await waitFor(() => expect(screen.getByText(/What goes on/)).toBeTruthy());
 
@@ -122,5 +131,29 @@ describe('Builder — конструктор доски (docs/16 §4.2)', () => 
     // Тап по добытой детали закрывает витрину: доска пересобрана.
     fireEvent.click(worn!.closest('button')!);
     await waitFor(() => expect(screen.queryByText(/What goes on/)).toBeNull());
+  });
+
+  it('постановка колёс района МЕНЯЕТ превью доски на арт этого района', async () => {
+    const prev = boardDistrictOfWeek(Math.floor(Date.now() / 1000 / (7 * 86_400)) - 1);
+    mount();
+    await waitFor(() => expect(screen.getAllByText('Deck').length).toBeGreaterThan(0));
+    // Снимаем деку района через API: остаются только колёса района в инвентаре,
+    // превью при этом показывает сток — постановка колёс должна его сменить.
+    await boardPut([{ slot: 'deck', part: null }]);
+    const rows = screen.getAllByRole('button', { name: 'Choose' });
+    fireEvent.click(rows[2]); // слот колёс
+    await waitFor(() => expect(screen.getByText(/What goes on/)).toBeTruthy());
+    const tile = screen.getAllByText(COLLECTIONS[prev].name)
+      .map((el) => el.closest('button'))
+      .find((b) => b && !b.className.includes('is-worn') && !b.className.includes('is-locked'));
+    expect(tile).toBeTruthy();
+    // Миниатюра детали района — целая доска района, а не плоская пластина колёс.
+    expect(tile!.querySelector(`img[src*="/art/skate/board-d${prev}.webp"]`)).toBeTruthy();
+    fireEvent.click(tile!);
+    await waitFor(() => expect(screen.queryByText(/What goes on/)).toBeNull());
+    await waitFor(() => {
+      const preview = screen.getByTestId('builder-fullboard') as HTMLImageElement;
+      expect(preview.src).toContain(`/art/skate/board-d${prev}.webp`);
+    });
   });
 });

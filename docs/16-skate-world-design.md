@@ -143,7 +143,7 @@ Epic+ — один кикфлип 700 мс (`reveal-card-flip1`), Legend и вы
 - Последовательность разворачивается **детерминированно из `battles.result_hash` и `battles.roll`** — тех же
   ончейн-данных, которыми бой был рассчитан. Правила боя не меняются.
 
-**Статус на 2026-10-16 — сделано.** Рил живёт в `client/src/features/arena/trickReel.ts` (чистая функция)
+**Статус на 2026-10-16 — сделано.** Рил живёт в `client/src/features/arena/trickLine.ts` (чистая функция; до 2026-10-17 файл назывался `trickReel.ts`, но пара `TrickReel.tsx`/`trickReel.ts` различается только регистром и на case-insensitive ФС macOS Vite/esbuild резолвил расширениеless-импорт не в тот файл — переименование убирает коллизию)
 и `TrickReel.tsx` (показ), встроен в экран реплея `/arena/match/:id`. Устройство:
 
 - Словарь трюков взят из THPS-образных референсов: ollie, kickflip, grind, manual, wallplant, vert —

@@ -14,7 +14,7 @@ const es: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Inicio', caps: 'Caps', shop: 'Tienda', market: 'Mercado', arena: 'Arena', stake: 'Stake', fusion: 'Fusión', guide: 'Guía', quests: 'Misiones', grid: 'Floodgrid', leaderboard: 'Ranking', profile: 'Perfil', more: 'Más' },
+  nav: { home: 'Inicio', caps: 'Caps', shop: 'Tienda', market: 'Mercado', arena: 'Arena', bowl: 'Skate', stake: 'Stake', fusion: 'Fusión', guide: 'Guía', quests: 'Misiones', grid: 'Floodgrid', leaderboard: 'Ranking', profile: 'Perfil', more: 'Más' },
   grid: {
     title: 'Floodgrid', subtitle: 'Route the flood through 75 sectors. Every chip walks its own route — XP, charge and gifts included.',
     applySkin: 'Apply skin to selected chip', passXp: '+{n} Pass XP', dailyDistrict: 'District of the day #{n}', epicDaily: 'Epic flood of the day', backpack: 'Diver gear', hints: 'Terminal marks', valves: 'Emergency valves', drops: 'Flood charge',
@@ -409,6 +409,18 @@ const es: Messages = {
     reserveChest: 'Reservar cofre',
     founderFrame: 'Cada chapa de este cofre lleva un marco de fundador permanente — origen, no poder extra.',
   },
+  skate: {
+    kicker: 'Nuevo en Gutter City', intro: 'Rueda la Línea, dibuja un tag, gana piezas de la tabla y defiende el muro del distrito: el mundo skate alimenta el ciclo de chapas.',
+    cta: 'Entrar al Bowl', browse: 'Abierto para explorar · el muro y el tablero semanal no exigen wallet', wallet: 'Wallet necesaria: descensos de la Línea, constructor, crews y ocupar un hueco del muro',
+    mock: 'Modo demo activo: explorar es real, pero los descensos y pagos se simulan; no se firma ni se paga nada.',
+    play: 'Rodar', create: 'Crear y mostrar', together: 'En equipo',
+    lineHint: 'Descensos de 45 s · 3 gratis al día · el torneo diario paga piezas', tournament: 'Torneo diario',
+    wallHint: 'Dibuja un tag y luego ocupa y defiende un hueco del muro', boardHint: 'Cinco tags sorteados por semana: sorteo, no ranking',
+    builderHint: 'Seis huecos: gana piezas rodando; la tienda solo vende accesorios', rigHint: 'Muestra tres chapas: siguen siendo tuyas y vendibles',
+    crewHint: '5–10 riders · tableros semanal y mensual de crews', questsHint: 'Las misiones y logros también pueden pagar piezas',
+    start: 'Empieza aquí', step1: 'Rueda la Línea: tres descensos gratis hoy', step2: 'Dibuja un tag y visita el muro del distrito', step3: 'Arma tu tabla con las piezas ganadas',
+    next: 'Siguiente paso sugerido',
+  },
   bowl: {
     title: 'El Pozo',
     subtitle: 'Tu rincón de Gutter City: arma la tabla, exhibe una chapita, deja tu tag.',
@@ -529,6 +541,7 @@ const es: Messages = {
     finalScore: 'Puntos {n}',
     speed: 'velocidad ×{n}',
     watch: 'Ver', you: 'tú', rank: '#{n}',
+    submitError: 'El descenso no contó ({code}). Tus descensos gratis están intactos: inténtalo de nuevo.',
     stale: 'El bowl del día ha cambiado — recarga la página', failed: 'La carrera no se contó', none: 'Ninguna carrera hoy',
   },
 
@@ -649,6 +662,8 @@ const es: Messages = {
     copies: '{n} uds.',
   },
   builder: {
+    choose: 'Elegir',
+    boards: 'Tablas de los distritos', boardsHint: 'Una ilustración de tabla completa por distrito: nada de montar capas planas. Gana las cuatro piezas de un distrito y usa la tabla como conjunto.', wearSet: 'Usar el conjunto', boardProgress: '{have} de {total} piezas ganadas', boardReady: 'Conjunto completo: la tabla es tuya', decks: 'Galería de tablas',
     buy: 'Comprar · {cents}¢', buying: 'Pagando…', bought: 'Accesorio comprado',
     title: 'Constructor de tabla',
     intro: 'Seis ranuras, una tabla. Las piezas se ganan rodando: en la Línea, en misiones, en concursos de crew. La tienda solo vende accesorios.',
