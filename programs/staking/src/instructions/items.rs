@@ -164,8 +164,9 @@ pub fn claim_item_root(
         StakeError::RootTimelocked
     );
     require!(proof.len() <= 24, StakeError::BadProof);
-    require!(amount > 0, StakeError::ZeroAmount);
-    // Kind 8 caps the booster count; kind 10 caps the catalogue index.
+    // Kind 8 caps the booster count; kind 10 carries a catalogue index,
+    // where 0 is a VALID part (the first catalogue entry) — the
+    // greater-than-zero rule is a booster-count rule, not an index rule.
     let part_claim = r.kind == ITEM_KIND_BOARD_PARTS;
     if part_claim {
         require!(
@@ -173,6 +174,7 @@ pub fn claim_item_root(
             StakeError::ItemBudgetExceeded
         );
     } else {
+        require!(amount > 0, StakeError::ZeroAmount);
         require!(amount <= MAX_ITEM_CLAIM, StakeError::ItemBudgetExceeded);
     }
     let leaf = hashv(&[
