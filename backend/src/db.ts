@@ -1279,7 +1279,7 @@ CREATE TABLE IF NOT EXISTS crews (
   wall_segment  INTEGER NOT NULL,             -- номер сегмента: слоты [n*20, n*20+20)
   created_at    INTEGER NOT NULL,             -- unix s
   renamed_at    INTEGER,                      -- последняя смена имени (пауза 30 дней)
-  status        TEXT    NOT NULL DEFAULT 'live', -- live | banned (скрыто модерацией)
+  status        TEXT    NOT NULL DEFAULT 'live', -- live | archived (выцвел по неактивности) | banned (модерация)
   invite_code   TEXT    NOT NULL UNIQUE       -- вступление по коду: без ончейн-шагов
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_crews_segment ON crews(wall_district, wall_segment) WHERE status = 'live';

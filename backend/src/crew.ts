@@ -351,9 +351,47 @@ export function leaveCrew(db: Db, wallet: string): { ok: true; crew: CrewView | 
       }
     }
     recordEvent(db, wallet, 'crew', 'leave', { crew: row.id }, t);
-    // Пустая команда не исчезает: имя остаётся в карантине, сегмент освобождается
-    // только когда статус уходит из `live`, а решить это должна модерация.
+    // Пустая команда живёт до экспирации неактивности: имя и сегмент
+    // освободит expireCrewSegments, а не молчаливое удаление.
     return { ok: true as const, crew: myCrew(db, wallet), captain };
+  });
+}
+
+// ---------------------------------------------------------------- экспирация
+
+/**
+ * Сегмент держится активностью (решение 6, §0.3): если состав не ездил
+ * CREW.segmentExpireDays дней, команда архивируется — статус уходит из
+ * 'live' (частичный индекс idx_crews_segment освобождает сегмент), имя
+ * падает в карантин на те же 90 дней, что у распавшихся команд.
+ * «Последний заезд» — максимум submitted_at живых участников; у команды
+ * без заезсов — дата хартии. Своп вызывает это hourly, как expireSlots.
+ */
+export function expireCrewSegments(db: Db, t = now()): number {
+  const stale = db.all<{ id: number; captain: string; name: string; name_key: string; wall_district: number; wall_segment: number }>(
+    `SELECT c.id, c.captain, c.name, c.name_key, c.wall_district, c.wall_segment
+       FROM crews c
+      WHERE c.status = 'live'
+        AND COALESCE((
+              SELECT MAX(r.submitted_at)
+                FROM crew_members m
+                JOIN line_runs r ON r.wallet = m.wallet
+               WHERE m.crew_id = c.id AND m.left_at IS NULL
+           ), c.created_at) <= ?`,
+    t - CREW.segmentExpireDays * DAY);
+  if (!stale.length) return 0;
+  return db.tx(() => {
+    for (const c of stale) {
+      // имя — в карантин ДО смены статуса: пока команда live,
+      // никто не может прихватить вывеску под тем же key
+      db.run(
+        `INSERT INTO crew_name_history (name, name_key, crew_id, released_at) VALUES (?, ?, ?, ?)`,
+        c.name, c.name_key, c.id, t);
+      db.run(`UPDATE crews SET status = 'archived' WHERE id = ? AND status = 'live'`, c.id);
+      recordEvent(db, c.captain, 'crew', 'expire',
+        { crew: c.id, district: c.wall_district, segment: c.wall_segment }, t);
+    }
+    return stale.length;
   });
 }
 

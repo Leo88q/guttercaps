@@ -164,6 +164,14 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     const timer = setInterval(() => { try { wall.expireSlots(db); } catch (e) { console.error('[wall] sweep failed:', (e as Error).message); } }, wallSweepMs);
     timer.unref();
   }
+  // Выцветание сегментов команд (docs/16 §5.6, решение 6): сегмент держится
+  // активностью состава. Тот же часовой ритм, что у стены — на чтении
+  // просроченные команды тоже отсекаются лениво (crew.expireCrewSegments).
+  const crewSweepMs = Number(process.env.CREW_SWEEP_MS ?? 3_600_000);
+  if (crewSweepMs > 0) {
+    const timer = setInterval(() => { try { crew.expireCrewSegments(db); } catch (e) { console.error('[crew] sweep failed:', (e as Error).message); } }, crewSweepMs);
+    timer.unref();
+  }
   // Behind a CDN/LB `trust proxy` is what makes `req.ip` the client, not the edge. `true` trusts every
   // hop, which is right for compose/nginx and wrong for an open origin — the IP is a rate-limit key,
   // so a spoofable XFF is a free bypass. Set TRUST_PROXY_HOPS to a number in production.
@@ -847,6 +855,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   // Порядок маршрутов важен: /crew/board и /crew/check стоят РАНЬШЕ /crew/:name —
   // иначе слово 'board' уехало бы в имя команды и вернуло 404 «нет такой команды».
   v1.get('/crew/board', (req, res) => {
+    crew.expireCrewSegments(db); // ленивое выцветание: доска не показывает мёртвые сегменты
     const week = intQuery(req.query.week, { name: 'week', min: 0 });
     const limit = intQuery(req.query.limit, { name: 'limit', min: 1, max: 100 });
     res.json(crew.crewBoard(db, week ?? runs.currentWeek(), limit ?? 50));
