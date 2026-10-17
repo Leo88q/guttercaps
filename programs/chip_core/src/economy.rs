@@ -566,6 +566,8 @@ impl ServiceKind {
             13 => Self::LineExtraRun,
             14 => Self::CrewCharter,
             15 => Self::CrewRename,
+            16 => Self::LineTournamentEntry,
+            17 => Self::BoardMount,
             _ => return None,
         })
     }

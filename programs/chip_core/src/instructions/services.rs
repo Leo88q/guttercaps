@@ -32,7 +32,7 @@ use anchor_spl::token::{self, Mint, Token, TokenAccount};
 pub struct ServiceLedger {
     pub owner: Pubkey,
     pub day_start: i64,
-    pub bought_today: [u8; 16], // indexed by ServiceKind
+    pub bought_today: [u8; 18], // indexed by ServiceKind (0..=17: keep in sync with economy.rs)
     pub spent_usd_cents_total: u64,
     pub bump: u8,
 }
@@ -103,7 +103,7 @@ pub fn pay_service(
     );
     if clock.unix_timestamp - ledger.day_start >= 86_400 {
         ledger.day_start = clock.unix_timestamp;
-        ledger.bought_today = [0; 16];
+        ledger.bought_today = [0; 18];
     }
     let slot = &mut ledger.bought_today[kind as usize];
     require!(*slot < svc.daily_cap(), ChipError::ServiceDailyCap);

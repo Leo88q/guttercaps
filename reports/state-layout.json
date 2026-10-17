@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "fingerprint": "513fd754e75afbef144f9301967f6cda2e00ad81d81819feee973157b33229c1",
+  "fingerprint": "1418b0a5ef775dba95802bc3cd21fa609e8f5fc7848e76fabc3a42c9119fb5c2",
   "accounts": [
     {
       "program": "arena",
@@ -47,7 +47,7 @@
       "fields": [
         "owner: Pubkey",
         "day_start: i64",
-        "bought_today: [u8; 16]",
+        "bought_today: [u8; 18]",
         "spent_usd_cents_total: u64",
         "bump: u8"
       ]

@@ -78,6 +78,12 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   `withdrawn_today`). No mainnet pool exists; `init_skr_pool` writes the new `INIT_SPACE`. A leftover
   devnet account from before this change will fail to deserialize — close/re-init, do not `--write` over
   a live layout again.
+  **ServiceLedger (2026-10-17, service kinds 16/17):** `bought_today` grew `[u8; 16]` →
+  `[u8; 18]` — the new `LineTournamentEntry` (16) and `BoardMount` (17) index the daily-cap
+  array by kind, and `ServiceKind::from_u8` previously returned `None` for both, so the
+  payments could not even deserialize. The program has not launched: a `ServiceLedger` is
+  created on a wallet's first service payment, so no live account exists on any cluster;
+  devnet ledgers from debugging fail to deserialize and must be closed/re-created.
   **PreorderDrop / PreorderGrant (2026-10-06, mainnet pre-sale):** two new accounts
   (seeds `["drop", &[sku]]` and `["pregrant", drop, beneficiary]`) backing the limited-pack pre-sale
   (docs/preorder-beta.md). No chain bytes exist at either address yet, so nothing existing is
