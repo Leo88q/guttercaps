@@ -532,3 +532,70 @@ WS/Geyser, Turnstile-ключи, Sentry/uptime, домены, юридическ
 ладдер посчитался, выплата kind-4 заклеймилась тем же путём, что рефералы; воскресная цель
 района начислила клапан участникам. Любой пункт красным — mainnet Решётки не включаем, игра
 при этом живёт (фича выключается отсутствием воркеров, а не откатом).
+
+## 9. Приёмка devnet/staging-стенда (новые контуры: турнир + месячный конкурс)
+
+Чек-лист для стенда, который поднимают перед G3-бетой. Отличие от §8 — это не «один вечер
+на devnet», а именно стенд: свой compose, своя сеть, свои ключи.
+
+### 9.1 Чем стенд отличается от дефолтного compose
+
+Три переменные, без которых новые контуры не работают:
+
+```bash
+# ops/deploy/.env стенда
+WORKERS=crank,pyth,reward          # дефолт compose — только crank,pyth: без reward
+                                   # части НИКОГДА не уходят ончейн (P0-D аудита:
+                                   # settle кладёт их в проекцию, а kind-10 root не публикуется)
+QUEST_ORACLE_KEYPAIR=/секреты/quest_oracle.json   # подписывает kind-10 root (publishItemRootIx);
+                                   # кошелёк должен быть FUNDED — иначе publish роняется,
+                                   # листья копятся pending (в /v1/quests/claims они видны
+                                   # с published=false)
+SETTLE_SWEEP_MS=60000              # на стенде сеттл раз в минуту, а не раз в час (дефолт 3 600 000)
+```
+
+`PART_MIN_BATCH=1` — дефолт, менять не надо: батч частей коренит листья, а не $CG, порог
+бюджета для item-корней — `ITEM_REWARDS.maxRootBudget` в листьях.
+
+### 9.2 Команды приёмки (API, без браузера)
+
+```bash
+# турнир: вход → заезд → доска
+curl -s -b cookies.txt -X POST $API/v1/me/line/runs \
+  -H 'content-type: application/json' -d '{"day":<сегодня>,"inputs":[[0,0],[1,1],[2,0],[3,2],[4,1]],"tournament":true}'
+curl -s -b cookies.txt $API/v1/me/line/tournament     # entries.unused == 0, best != null, rank != null
+curl -s "$API/v1/line/tournament/board?day=<сегодня>" # rows с этим кошельком
+curl -s -b cookies.txt -X POST $API/v1/me/line/runs -H 'content-type: application/json' \
+  -d '{"day":<сегодня>,"inputs":[[0,0],[1,1]],"tournament":true}'   # → 402 tournament_entries_exhausted
+# выплата (после полуночи UTC + сета): призы сразу в проекции …
+curl -s -b cookies.txt $API/v1/me/board                 # owned содержит призовые parts
+# … и ончейн-доставка: лист kind 10 публикуется reward-воркером (до 6 ч, REWARD_ORACLE_INTERVAL_MS),
+# claim открывается через 1 ч после root (timelock):
+curl -s -b cookies.txt $API/v1/quests/claims           # массив; ищем kind=10, published=true
+# месячный конкурс команд: хартия — сервис-14 (name + district + signature), отдельный платёж
+curl -s -b cookies.txt -X POST $API/v1/crew/charter \
+  -H 'content-type: application/json' -d '{"name":"<crew>","district":1,"signature":"<phantom>"}'
+curl -s -b cookies.txt $API/v1/crew/month              # month > 202600, rows.part ~ ^deck_crew_d\d$
+```
+
+Ранг в `/crew/month` требует ≥ 5 членов и ≥ 5 заездов/неделю (`minMembers`) — одиночный
+кошелёк на стенде чартерит команду и видит карточку 1/10 + инвайт-код (8 символов), но в
+рейтинг не попадает; сеттлмент месяца принимается бэкенд-тестами `settleCrewMonth`.
+
+### 9.3 Браузерная приёмка
+
+```bash
+E2E_PHANTOM_EXTENSION=/путь/к/unpacked/phantom \
+E2E_DEVNET_MNEMONIC="…" \
+E2E_APP_URL=https://<стенд> \
+npx playwright test tournament-crew-loop --headed
+```
+
+`tests/e2e/tournament-crew-loop.spec.ts` (T-E-02) — тот же харнесс Phantom, что и T-E-00:
+вход→заезд→доска в первом тесте, выплата (с самоскипом до полуночи+сета+timelock) во втором,
+хартия команды в третьем. Tier-1 `mock-shell.spec.ts` эти экраны не покрывает: `/bowl/line`
+и `/bowl/crew` за `RequireWallet`, а в PR-гейте расширения нет.
+
+Известный docs-drift: `backend/openapi.yaml` (:2861) перечисляет kinds ClaimLeaf 2..9, код знает
+kind 10 (board parts, currency ITEM, `amountMicro` = количество частей, `memo` = `part:idx`).
+Описание стоит дополнить при следующем проходе openapi.
