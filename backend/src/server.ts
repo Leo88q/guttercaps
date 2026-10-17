@@ -142,11 +142,12 @@ export function createApp(db: Db, deps: AppOptions = {}) {
         }
         // Месяц считается закрытым на первом числе; t - DAY гарантирует,
         // что текущий (незакрытый) месяц никогда не сетыится. Сет идёт
-        // от месяца первой живой команды: своп, проспавший границу
-        // месяца, догоняет пропущенные, а не теряет их (PK месяца
-        // делает повторные вызовы no-op).
-        const firstCrew = db.scalar(
-          `SELECT MIN(created_at) FROM crews WHERE status = 'live'`);
+        // от месяца первой команды — хоть живой, хоть выцветшей: своп,
+        // проспавший границу месяца, догоняет пропущенные, а не теряет
+        // их (PK месяца делает повторные вызовы no-op).
+        // Любая команда, хоть когда-то жившая: если все к этому
+        // моменту выцвели, прошлые месяцы всё равно надо закрыть.
+        const firstCrew = db.scalar(`SELECT MIN(created_at) FROM crews`);
         if (firstCrew) {
           const prevMonth = crew.monthKeyOf(now() - 86_400);
           for (let m = crew.monthKeyOf(Number(firstCrew)); m <= prevMonth; m = crew.nextMonthKey(m)) {

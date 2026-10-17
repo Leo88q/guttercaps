@@ -42,7 +42,7 @@ function payName(wallet: string, sig: string, kind: number, payload: Record<stri
 
 const charter = (wallet: string, name: string, district = 0, sig = sig58(), t = T0) => {
   payName(wallet, sig, SERVICE_BY_ID.crewCharter.kind, { id: 'crewCharter', name }, t);
-  return crew.charterCrew(db, wallet, name, district, sig);
+  return crew.charterCrew(db, wallet, name, district, sig, t);
 };
 /** Заезд участника за неделю: командная доска считается по лучшим заездам линии. */
 const runOf = (wallet: string, score: number, week = WEEK) =>
@@ -132,6 +132,8 @@ describe('команда: имя — это модель хендла', () => {
     fails(() => crew.renameCrew(db, mate, 'NewName', badSig), 'not_captain');
 
     // пауза 30 дней считается от создания: свежая команда имени не меняет
+    // (хартия выше — в fabрикованном T0, «свежесть» отмеряем от now())
+    db.run(`UPDATE crews SET created_at = ? WHERE captain = ?`, now(), captain);
     expect(crew.crewCheck(db, captain, 'NewName').reason).toBe('cooldown');
 
     // команда создана 31 день назад — пауза прошла

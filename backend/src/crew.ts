@@ -238,7 +238,7 @@ const i0 = (db: Db, code: string) => db.scalar(`SELECT COUNT(*) FROM crews WHERE
  * списать платёж → записать команду → записать капитана. Платёж списывается
  * один раз: `consume` — это UPDATE с условием `consumed_by IS NULL`.
  */
-export function charterCrew(db: Db, wallet: string, raw: string, district: number, signature: string): CrewView {
+export function charterCrew(db: Db, wallet: string, raw: string, district: number, signature: string, t = now()): CrewView {
   const name = String(raw ?? '').trim();
   if (!CREW_NAME_RE.test(name)) throw new ServiceError(400, 'invalid_name', `Crew name must be ${CREW.nameMin}–${CREW.nameMax} chars [a-zA-Z0-9_]`);
   if (!Number.isInteger(district) || district < 0 || district >= COLLECTIONS.length) {
@@ -255,7 +255,6 @@ export function charterCrew(db: Db, wallet: string, raw: string, district: numbe
     const p = findPayment(db, signature, wallet, [check.kind], expected);
     if (p.ref_hash !== expected) throw new ServiceError(402, 'ref_hash_mismatch', 'Payment was committed for a different crew name');
     const segment = freeSegment(db, district);
-    const t = now();
     const res = db.run(
       `INSERT INTO crews (name, name_key, captain, charter_sig, wall_district, wall_segment, created_at, status, invite_code)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'live', ?)`,
@@ -532,8 +531,11 @@ export function settleCrewMonth(db: Db, month: number, t = now()): { month: numb
     const ws = w * WEEK + WEEK_EPOCH_OFFSET;
     if (ws >= start && ws < end) weeks.push(w);
   }
+  // Месяц судится по активности того месяца, а не по статусу на
+  // момент сета/просмотра: команда, отъездившая месяц и выцветшая
+  // (archived) до свопа, всё равно в конкурсе; забаненная — нет.
   const crews = db.all<{ id: number; name: string; wall_district: number }>(
-    `SELECT id, name, wall_district FROM crews WHERE status = 'live'`);
+    `SELECT id, name, wall_district FROM crews WHERE created_at <= ? AND status != 'banned'`, end);
   const scored: { id: number; name: string; district: number; score: number }[] = [];
   for (const c of crews) {
     let score = 0;
@@ -585,8 +587,11 @@ export function crewMonthBoard(db: Db, month: number, limit = CREW.monthlyContes
     const ws = w * WEEK + WEEK_EPOCH_OFFSET;
     if (ws >= start && ws < end) weeks.push(w);
   }
+  // Месяц судится по активности того месяца, а не по статусу на
+  // момент сета/просмотра: команда, отъездившая месяц и выцветшая
+  // (archived) до свопа, всё равно в конкурсе; забаненная — нет.
   const crews = db.all<{ id: number; name: string; wall_district: number }>(
-    `SELECT id, name, wall_district FROM crews WHERE status = 'live'`);
+    `SELECT id, name, wall_district FROM crews WHERE created_at <= ? AND status != 'banned'`, end);
   const rows: { rank: number; id: number; name: string; district: number; score: number; part: string }[] = [];
   for (const c of crews) {
     let score = 0;

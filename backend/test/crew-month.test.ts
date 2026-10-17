@@ -53,7 +53,7 @@ function payName(wallet: string, sig: string, kind: number, payload: Record<stri
 const charter = (wallet: string, name: string, district: number, t: number) => {
   const sig = sig58();
   payName(wallet, sig, SERVICE_BY_ID.crewCharter.kind, { id: 'crewCharter', name }, t);
-  return crew.charterCrew(db, wallet, name, district, sig);
+  return crew.charterCrew(db, wallet, name, district, sig, t);
 };
 
 /** Заезды райдера (капитан уже в составе — ему нужны только заезды). */
@@ -203,5 +203,30 @@ describe('settleCrewMonth: ранжирование и состав', () => {
   it('nextMonthKey: декабрь переходит в январь следующего года', () => {
     expect(crew.nextMonthKey(202601)).toBe(202602);
     expect(crew.nextMonthKey(202612)).toBe(202701);
+  });
+});
+
+describe('settleCrewMonth: выцветшие и забаненные команды', () => {
+  it('выцветшая к сету команда всё равно в конкурсе (archived ≠ не было)', () => {
+    const { start, end, weeks } = monthBounds(202601);
+    const v = fullCrew('JanuaryHeroes', 0, weeks, start + DAY);
+    // вся активность месяца была, но к свопу команда выцвела
+    crew.expireCrewSegments(db, end + 40 * DAY);
+    expect(db.get<{ status: string }>(`SELECT status FROM crews WHERE id = ?`, v.id)!.status).toBe('archived');
+    const r = crew.settleCrewMonth(db, 202601, end + 41 * DAY);
+    expect(r.prizes.length).toBe(1);
+    // приз — весь состав месяца: капитан + четверо райдеров
+    expect(r.prizes[0].part).toBe('deck_crew_d0');
+    expect(r.prizes[0].members.length).toBe(CREW.minMembers);
+    expect(crew.crewMonthBoard(db, 202601).rows.find((x) => x.name === 'JanuaryHeroes')?.rank).toBe(1);
+  });
+
+  it('забаненная модерацией команда вне конкурса', () => {
+    const { start, end, weeks } = monthBounds(202601);
+    fullCrew('Cheaters', 0, weeks, start + DAY);
+    db.run(`UPDATE crews SET status = 'banned'`);
+    const r = crew.settleCrewMonth(db, 202601, end + DAY);
+    expect(r.prizes).toEqual([]);
+    expect(crew.crewMonthBoard(db, 202601).rows.find((x) => x.name === 'Cheaters')).toBeUndefined();
   });
 });
