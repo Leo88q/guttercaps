@@ -83,14 +83,13 @@ const claimItemRootRawIx = (wallet: PublicKey, kind: number, epoch: number, amou
   const [root] = rewardRootPda(kind, epoch);
   const w = new BorshWriter().u64(amount);
   w.vec(proof, (p) => w.bytes(p));
-  const partClaim = kind === 10;
   return new TransactionInstruction({
     programId: STAKING_ID,
     keys: [
       signer(wallet), ro(emissionPda()[0]), rw(root), rw(claimReceiptPda(root, wallet)[0]),
       ro(rewarderPda()[0]), ro(configPda()[0]),
-      partClaim ? ro(playerItemsPda(wallet)[0]) : rw(playerItemsPda(wallet)[0]),
-      partClaim ? rw(playerBoardPartsPda(wallet)[0]) : ro(playerBoardPartsPda(wallet)[0]),
+      // оба writable: Anchor проверяет флаг tx, а не фактические записи CPI
+      rw(playerItemsPda(wallet)[0]), rw(playerBoardPartsPda(wallet)[0]),
       ro(CHIP_CORE_ID), ro(SYSTEM_PROGRAM_ID),
     ],
     data: Buffer.from(ixData('claim_item_root', w.toBytes())),

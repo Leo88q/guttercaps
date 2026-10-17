@@ -129,16 +129,16 @@ pub struct ClaimItemRoot<'info> {
     pub config: Account<'info, GameConfig>,
     // sentio-ignore-next-line SW002
     /// CHECK: chip_core `["items", wallet]` — `init_if_needed` inside the CPI (payer = wallet), so an
-    /// UncheckedAccount here; chip_core derives and checks the seeds itself. Kind 8 only. NO `mut`:
-    /// the client passes this account read-only for kind-10 roots, and Anchor's mut constraint
-    /// would fail the whole instruction before the timelock/error checks (S25 caught it on LiteSVM).
-    /// Writability is a tx-level flag the CPI inherits — the ACTIVE account is still passed rw.
-    #[account]
+    /// UncheckedAccount here; chip_core derives and checks the seeds itself. Kind 8 only.
+    /// `mut` stays REQUIRED even for kind-10 claims: Anchor checks the tx flag, not the CPI's
+    /// actual writes, so every builder passes BOTH target accounts writable (S25 on LiteSVM
+    /// caught the read-only variant as ConstraintMut before the timelock check).
+    #[account(mut)]
     pub items: UncheckedAccount<'info>,
     // sentio-ignore-next-line SW002
-    /// CHECK: chip_core `["board_parts", wallet]` — same story as `items`, kind 10 only, same
-    /// no-`mut` reasoning (read-only for kind-8 roots).
-    #[account]
+    /// CHECK: chip_core `["board_parts", wallet]` — same story as `items`, kind 10 only,
+    /// writable on every claim for the same reason.
+    #[account(mut)]
     pub board_parts: UncheckedAccount<'info>,
     pub chip_core: Program<'info, ChipCore>,
     pub system_program: Program<'info, System>,

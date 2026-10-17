@@ -217,10 +217,10 @@ export function claimItemRootIx(a: { wallet: PublicKey; kind: number; epoch: num
     keys: [
       signer(a.wallet), ro(emissionPda()[0]), rw(root), rw(claimReceiptPda(root, a.wallet)[0]),
       ro(rewarderPda()[0]), ro(configPda()[0]),
-      // The program only mutates the account matching the root kind; the other is
-      // passed read-only so one builder serves both item roots.
-      partClaim ? ro(items) : rw(items),
-      partClaim ? rw(parts) : ro(parts),
+      // BOTH targets ride writable: Anchor's `mut` on the two UncheckedAccounts
+      // checks the tx flag (not the CPI's actual writes), so a read-only inactive
+      // account fails the instruction with ConstraintMut before any root check.
+      rw(items), rw(parts),
       ro(CHIP_CORE_ID), ro(SYSTEM_PROGRAM_ID),
     ],
     data: Buffer.from(ixData('claim_item_root', w.toBytes())),
