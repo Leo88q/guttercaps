@@ -177,7 +177,7 @@ const vi: Messages = {
     setBonus: 'Thưởng bộ ×{mult}', weight: 'Trọng số', pending: 'Thưởng chờ nhận', apyBand: 'Dải APY', flexible: 'Linh hoạt', days: '{n} ngày',
   },
   quests: {
-    partLeaf: 'phần ván #{n}', partsRoot: 'Phần ván',
+    partLeaf: 'phần ván #{n}', partsTotal: '{n, plural, one{# phần ván} other{# phần ván}}', partsRoot: 'Phần ván',
     visitGame: 'Mở trò chơi',
     title: 'Nhiệm vụ', subtitle: 'Làm nhiệm vụ để nhận $CG, booster và phiếu cap. Phần thưởng về đây mỗi vài giờ — rồi bạn nhận. Máy chủ không bao giờ giữ $CG của bạn.',
     daily: 'Ngày', weekly: 'Tuần', permanent: 'Vĩnh viễn', claim: 'Nhận', claimed: 'Đã nhận', claimable: 'Sẵn sàng nhận', progress: '{done}/{total}',

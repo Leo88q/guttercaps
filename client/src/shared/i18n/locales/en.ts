@@ -182,7 +182,7 @@ const en = {
     setBonus: 'Set bonus ×{mult}', weight: 'Weight', pending: 'Pending rewards', apyBand: 'APY band', flexible: 'Flexible', days: '{n} days',
   },
   quests: {
-    partLeaf: 'board part #{n}', partsRoot: 'Board parts',
+    partLeaf: 'board part #{n}', partsTotal: '{n, plural, one{# board part} other{# board parts}}', partsRoot: 'Board parts',
     visitGame: 'Open the game',
     title: 'Quests', subtitle: 'Finish quests for $CG, boosters and cap vouchers. Payouts land here every few hours — then you claim them. The server never holds your $CG.',
     daily: 'Daily', weekly: 'Weekly', permanent: 'Permanent', claim: 'Claim', claimed: 'Claimed', claimable: 'Ready to claim', progress: '{done}/{total}',

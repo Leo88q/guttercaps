@@ -177,7 +177,7 @@ const id: Messages = {
     setBonus: 'Bonus set ×{mult}', weight: 'Bobot', pending: 'Reward tertunda', apyBand: 'Rentang APY', flexible: 'Fleksibel', days: '{n} hari',
   },
   quests: {
-    partLeaf: 'bagian papan #{n}', partsRoot: 'Bagian papan',
+    partLeaf: 'bagian papan #{n}', partsTotal: '{n, plural, one{# bagian papan} other{# bagian papan}}', partsRoot: 'Bagian papan',
     visitGame: 'Buka gim',
     title: 'Misi', subtitle: 'Selesaikan misi untuk $CG, booster, dan voucher cap. Hadiah masuk ke sini setiap beberapa jam — lalu kamu klaim. Server tidak pernah memegang $CG Anda.',
     daily: 'Harian', weekly: 'Mingguan', permanent: 'Permanen', claim: 'Klaim', claimed: 'Diklaim', claimable: 'Siap diklaim', progress: '{done}/{total}',

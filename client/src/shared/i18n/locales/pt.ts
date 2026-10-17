@@ -177,7 +177,7 @@ const pt: Messages = {
     setBonus: 'Bônus de set ×{mult}', weight: 'Peso', pending: 'Recompensas pendentes', apyBand: 'Faixa de APY', flexible: 'Flexível', days: '{n} dias',
   },
   quests: {
-    partLeaf: 'peça de prancha #{n}', partsRoot: 'Peças de prancha',
+    partLeaf: 'peça de prancha #{n}', partsTotal: '{n, plural, one{# peça de prancha} other{# peças de prancha}}', partsRoot: 'Peças de prancha',
     visitGame: 'Abrir o jogo',
     title: 'Missões', subtitle: 'Conclua missões por $CG, boosters e vales de cap. Os pagamentos chegam aqui a cada poucas horas — depois você resgata. O servidor nunca segura seu $CG.',
     daily: 'Diárias', weekly: 'Semanais', permanent: 'Permanentes', claim: 'Resgatar', claimed: 'Resgatado', claimable: 'Pronto para resgatar', progress: '{done}/{total}',

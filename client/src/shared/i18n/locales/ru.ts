@@ -177,7 +177,7 @@ const ru: Messages = {
     setBonus: 'Бонус за сеты ×{mult}', weight: 'Вес', pending: 'Накоплено', apyBand: 'Диапазон APY', flexible: 'Гибкий', days: '{n} дн.',
   },
   quests: {
-    partLeaf: 'часть доски #{n}', partsRoot: 'Части доски',
+    partLeaf: 'часть доски #{n}', partsTotal: '{n, plural, one{# часть доски} few{# части доски} many{# частей доски} other{# части доски}}', partsRoot: 'Части доски',
     visitGame: 'Открыть игру',
     title: 'Квесты', subtitle: 'За квесты — $CG, бустеры и ваучеры на фишки. Выплаты приходят сюда раз в несколько часов, потом забираешь. Сервер никогда не держит ваши $CG.',
     daily: 'Дневные', weekly: 'Недельные', permanent: 'Постоянные', claim: 'Забрать', claimed: 'Получено', claimable: 'Можно забрать', progress: '{done}/{total}',

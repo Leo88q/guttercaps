@@ -110,7 +110,10 @@ export default function Quests() {
   // Деки райдеров (корневой вид 10) — не бустеры: своя строка в квитанции
   // и своя инвалидация (PlayerBoardParts, а не PlayerItems).
   const totalBoosters = sumOf((k) => isItemRootKind(k) && k !== REWARD_ROOT_KINDS.itemBoardParts);
-  const totalParts = sumOf((k) => k === REWARD_ROOT_KINDS.itemBoardParts);
+  // У листа доски amountMicro — ИНДЕКС части в каталоге, не
+  // количество: сумма индексов выдумала бы несуществующую
+  // часть. В квитанции — число листьев.
+  const totalParts = BigInt(claimable.filter((c) => c.kind === REWARD_ROOT_KINDS.itemBoardParts).length);
   const totalText = rewardTotalText(totalCg, totalSkr, totalBoosters, totalParts);
   const REASONS = new Set(['account_too_new', 'play_10_matches_or_buy_a_pack', 'rewards_paused', 'device_limit', 'human_check_required']);
   /** Server reason codes → player copy (unknown codes are shown raw so nothing is hidden). */

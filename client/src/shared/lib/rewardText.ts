@@ -26,6 +26,6 @@ export function rewardTotalText(cg: bigint, skr: bigint, boosters: bigint, board
   if (cg > 0n || (skr === 0n && boosters === 0n && boardParts === 0n)) parts.push(amountText(cg, 'CG'));
   if (skr > 0n) parts.push(amountText(skr, 'SKR'));
   if (boosters > 0n) parts.push({ key: 'quests.boosterLeaf', params: { n: boosters } });
-  if (boardParts > 0n) parts.push({ key: 'quests.partLeaf', params: { n: boardParts } });
+  if (boardParts > 0n) parts.push({ key: 'quests.partsTotal', params: { n: boardParts } });
   return joinText(parts, ' + ');
 }

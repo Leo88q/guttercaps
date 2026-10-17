@@ -177,7 +177,7 @@ const es: Messages = {
     setBonus: 'Bono de set ×{mult}', weight: 'Peso', pending: 'Recompensas pendientes', apyBand: 'Rango de APY', flexible: 'Flexible', days: '{n} días',
   },
   quests: {
-    partLeaf: 'pieza de tabla #{n}', partsRoot: 'Piezas de tabla',
+    partLeaf: 'pieza de tabla #{n}', partsTotal: '{n, plural, one{# pieza de tabla} other{# piezas de tabla}}', partsRoot: 'Piezas de tabla',
     visitGame: 'Abrir el juego',
     title: 'Misiones', subtitle: 'Completa misiones por $CG, boosters y vales de cap. Los pagos llegan aquí cada pocas horas — luego los reclamas. El servidor nunca retiene tu $CG.',
     daily: 'Diarias', weekly: 'Semanales', permanent: 'Permanentes', claim: 'Reclamar', claimed: 'Reclamado', claimable: 'Listo para reclamar', progress: '{done}/{total}',

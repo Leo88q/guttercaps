@@ -177,7 +177,7 @@ const fil: Messages = {
     setBonus: 'Set bonus ×{mult}', weight: 'Weight', pending: 'Nakabinbing rewards', apyBand: 'APY band', flexible: 'Flexible', days: '{n} araw',
   },
   quests: {
-    partLeaf: 'bahagi ng board #{n}', partsRoot: 'Mga bahagi ng board',
+    partLeaf: 'bahagi ng board #{n}', partsTotal: '{n, plural, one{# bahagi ng board} other{# mga bahagi ng board}}', partsRoot: 'Mga bahagi ng board',
     visitGame: 'Buksan ang laro',
     title: 'Quests', subtitle: 'Tapusin ang quests para sa $CG, boosters, at cap vouchers. Dumarating dito ang payout tuwing ilang oras — saka mo i-claim. Hindi kailanman hawak ng server ang $CG mo.',
     daily: 'Araw-araw', weekly: 'Lingguhan', permanent: 'Permanente', claim: 'I-claim', claimed: 'Na-claim', claimable: 'Puwede nang i-claim', progress: '{done}/{total}',
