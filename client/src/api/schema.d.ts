@@ -8190,6 +8190,7 @@ export interface components {
                 score: number;
                 tricks: number;
                 bails: number;
+                /** @description line_runs.id — the id /line/runs/{id}/replay accepts (not the tournament row id) */
                 runId: number;
                 /** Format: date-time */
                 at: string;
@@ -8210,6 +8211,7 @@ export interface components {
             };
             best: {
                 score: number;
+                /** @description line_runs.id of my best tournament run today */
                 runId: number;
                 /** Format: date-time */
                 at: string;
@@ -8624,7 +8626,7 @@ export interface components {
             resetsAt?: string | null;
         };
         ClaimLeaf: {
-            /** @description 2 quests · 3 PvP season · 4 events ($CG, minted from emission) · 5 quests · 6 season · 7 events (SKR, prize pool) · 8 fusion boosters (ITEM — claim_item_root delivers into chip_core PlayerItems by CPI) · 9 quest chip vouchers (CHIP — claim_chip_root CPIs chip_core open_voucher; the chip is VRF-minted by the pack crank) */
+            /** @description 2 quests · 3 PvP season · 4 events ($CG, minted from emission) · 5 quests · 6 season · 7 events (SKR, prize pool) · 8 fusion boosters (ITEM — claim_item_root delivers into chip_core PlayerItems by CPI) · 9 quest chip vouchers (CHIP — claim_chip_root CPIs chip_core open_voucher; the chip is VRF-minted by the pack crank) · 10 board parts (ITEM — claim_item_root CPIs chip_core grant_board_part; the leaf amount is the part catalogue index, memo part:idx, one part per leaf) */
             kind?: number;
             epoch?: number;
             /**
@@ -8633,7 +8635,7 @@ export interface components {
              */
             currency?: "CG" | "SKR" | "ITEM" | "CHIP";
             rootPda?: components["schemas"]["Pubkey"];
-            /** @description micro-units of the currency; for ITEM roots the item count; for CHIP roots the voucher template id */
+            /** @description micro-units of the currency; for ITEM roots the item count (kind 8) or the part catalogue index (kind 10); for CHIP roots the voucher template id */
             amountMicro?: string;
             proof?: string[];
             root?: string;
