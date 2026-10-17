@@ -208,7 +208,7 @@ pub fn claim_item_root(
                 &[seeds],
             ),
             amount as u8, // < BOARD_PART_COUNT — checked above
-            1,              // one part per leaf; the oracle carries the rest over
+            1,            // one part per leaf; the oracle carries the rest over
         )?;
     } else {
         chip_core::cpi::grant_booster(

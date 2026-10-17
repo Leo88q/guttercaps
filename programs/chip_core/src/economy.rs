@@ -589,7 +589,7 @@ impl ServiceKind {
             Self::CrewCharter => 199, // same tier as @handle: a name in the city
             Self::CrewRename => 99,  // same tier as a handle change
             Self::LineTournamentEntry => 5, // 5 cents x 6 $CG/cent = exactly 30 $CG on the burn rail
-            Self::BoardMount => 49, // mounts are the only board parts the shop sells
+            Self::BoardMount => 49,         // mounts are the only board parts the shop sells
         }
     }
     /// Price in micro-$CG when paid with $CG (burned).

@@ -719,7 +719,10 @@ pub fn grant_board_part(ctx: Context<GrantBoardPart>, part_idx: u8, count: u16) 
     let (rewarder, _) = Pubkey::find_program_address(&[b"rewarder"], &c.staking_program);
     let a = ctx.accounts.authority.key();
     require!(a == c.admin || a == rewarder, ChipError::Unauthorized);
-    require!((part_idx as usize) < BOARD_PART_COUNT, ChipError::InvalidQuantity);
+    require!(
+        (part_idx as usize) < BOARD_PART_COUNT,
+        ChipError::InvalidQuantity
+    );
     require!(count > 0 && count <= 10, ChipError::InvalidQuantity);
     let parts = &mut ctx.accounts.parts;
     if parts.owner == Pubkey::default() {
@@ -735,10 +738,7 @@ pub fn grant_board_part(ctx: Context<GrantBoardPart>, part_idx: u8, count: u16) 
     // дубль из двух источников копится до потолка и останавливается,
     // поэтому ончейн и проекция никогда не расходятся.
     let i = part_idx as usize;
-    parts.parts[i] = parts
-        .parts[i]
-        .saturating_add(count)
-        .min(MAX_PART_QTY);
+    parts.parts[i] = parts.parts[i].saturating_add(count).min(MAX_PART_QTY);
     Ok(())
 }
 
