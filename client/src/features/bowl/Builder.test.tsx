@@ -60,6 +60,15 @@ beforeAll(() => {
 afterEach(() => { cleanup(); resetMockWorld(); });
 
 describe('Builder — конструктор доски (docs/16 §4.2)', () => {
+  it('витрина досок районов: восемь целых артов, а не плоская сборка слоями', async () => {
+    mount();
+    const gallery = await waitFor(() => screen.getByTestId('builder-boards'));
+    const arts = gallery.querySelectorAll('img[src*="/art/skate/board-d"]');
+    expect(arts.length).toBe(8);
+    expect(screen.getByTestId('builder-fullboard')).toBeTruthy();
+    expect(document.querySelector('.bd-layer')).toBeNull();
+  });
+
   it('доска открывается собранной: шесть слотов и ни одной дыры', async () => {
     mount();
     await waitFor(() => expect(screen.getAllByText('Deck').length).toBeGreaterThan(0));

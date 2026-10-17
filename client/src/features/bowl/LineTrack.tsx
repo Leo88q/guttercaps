@@ -4,6 +4,15 @@
 //
 // Графика — файлы из /art/skate: код двигает камеру, ставит препятствия по
 // раскладке дня и поворачивает спрайт райдера. Всё.
+//
+// Игровой «фил» (2026-10-17, по жалобе «картинка не ездит»): спрайтовые
+// состояния райдера — беговая посадка, воздух, флип доски при грэбе, гринд с
+// наклоном, падение кувырком — и бегущая разметка асфальта под камерой.
+// Модель состояний и трюк-в-воздухе-вторым вводом адаптированы из ThorBoard
+// (MIT, © 2016 Thorbjørn Bonvik, github.com/thorbjxrn/thorBoard, LICENSE —
+// рядом в THIRD_PARTY_THORBOARD.md); физика и очки при этом по-прежнему
+// считаются детерминированным движком economy, который сервер пересчитывает
+// по реплею, — иначе турнир перестал бы быть честным.
 import type { ReactNode } from 'react';
 import type { LineLayout, RunState } from '@guttercaps/economy';
 import { riderArt } from './Rider';
@@ -56,11 +65,14 @@ export default function LineTrack({ layout, frame, silhouette, rot = 0, lamp, st
             style={{ left: `${left}px`, width: `${Math.max(40, f.len * PX)}px`, height: `${FEATURE_H[f.kind]}px` }} />
         );
       })}
-      <span className="line-ground" aria-hidden />
+      {/* Разметка асфальта бежит с камерой в полный рост: скорость читается
+          землёй, а не только цифрами HUD. */}
+      <span className="line-ground" aria-hidden style={{ backgroundPositionX: `${-camera}px` }} />
       <span
-        className={`line-rider${frame?.grinding ? ' is-grinding' : ''}${frame?.stunned ? ' is-down' : ''}`}
+        className={`line-rider${frame?.grinding ? ' is-grinding' : ''}${frame?.stunned ? ' is-down' : ''}${frame?.air ? ' is-air' : ''}${frame?.grabbed ? ' is-grab' : ''}${frame && !frame.air && !frame.grinding && !frame.stunned ? ' is-riding' : ''}`}
         data-testid="line-rider"
         data-air={frame?.air ? '1' : '0'}
+        data-grab={frame?.grabbed ? '1' : '0'}
         style={{ ['--lamp' as string]: lamp, transform: `translateY(${-(frame?.y ?? 0) * AIR_SCALE}px) rotate(${rot}deg)` }}
       >
         <img src={riderArt(silhouette)} alt="" aria-hidden />

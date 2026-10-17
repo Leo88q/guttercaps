@@ -9,31 +9,27 @@
 // разной скоростью на CSS, и он целиком гасится prefers-reduced-motion
 // (класс .reduced-motion вешает Shell на <html>).
 //
-// Бэкенда пока нет: состояние живёт в компоненте, контур API (docs/16 §7)
-// поднимается моком отдельным шагом. Ничего из показанного здесь не влияет на
-// шансы, фьюжн, стейкинг и маркет — инварианты docs/16 §9.
+// Хаб — только витрина и навигация: игровые действия живут на подмаршрутах
+// (/bowl/line, /bowl/wall/:district, /bowl/builder, /bowl/crew, …) и ходят
+// в реальный API (в демо-режиме — в in-browser mock, что подписано ниже).
+// Ничего из показанного здесь не влияет на шансы, фьюжн, стейкинг и маркет —
+// инварианты docs/16 §9.
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { isMock } from '@/api/client';
 import { useUiStore } from '@/app/store/ui';
 import { useT } from '@/shared/i18n';
+import { collectionName } from '@/shared/lib/rarity';
 import './bowl.css';
 
 const ART = '/art/skate';
 const RIDERS = ['01', '02', '03', '04', '05', '06', '07', '08'] as const;
 
-/** Слоты доски: файл спрайта и ключ подписи. Порядок — порядок слоёв в превью. */
-const PARTS = [
-  { file: 'wheels', label: 'bowl.partWheels' },
-  { file: 'trucks', label: 'bowl.partTrucks' },
-  { file: 'deck', label: 'bowl.partDeck' },
-  { file: 'grip', label: 'bowl.partGrip' },
-] as const;
-
 export default function Bowl() {
   const t = useT();
   const reducedMotion = useUiStore((s) => s.reducedMotion);
   const [rider, setRider] = useState<string>('01');
-  const [off, setOff] = useState<Record<string, boolean>>({});
+  const [boardDistrict, setBoardDistrict] = useState(1);
 
   return (
     <div className="page stack">
@@ -53,33 +49,50 @@ export default function Bowl() {
         <img className="bowl-hero-near" src={`${ART}/rider-${rider}.webp`} alt="" />
       </section>
 
+      {/* Старт для нового игрока: порядок действий, доступность и демо-режим —
+          до первого клика, а не после первой ошибки. */}
+      <section className="card stack-sm" data-testid="bowl-start">
+        <div className="strong">{t('skate.start')}</div>
+        <ol className="stack-sm" style={{ margin: 0, paddingLeft: 20 }}>
+          <li><Link to="/bowl/line">{t('skate.step1')}</Link></li>
+          <li><Link to="/bowl/tag">{t('skate.step2')}</Link></li>
+          <li><Link to="/bowl/builder">{t('skate.step3')}</Link></li>
+        </ol>
+        <div className="tiny muted">{t('skate.browse')}</div>
+        <div className="tiny muted">{t('skate.wallet')}</div>
+        {isMock() && <div className="warn tiny" data-testid="bowl-mock-note">{t('skate.mock')}</div>}
+      </section>
+
+      <div className="strong" aria-hidden>{t('skate.create')}</div>
       <section className="card stack-sm">
-        <div className="strong">{t('bowl.rigTitle')}</div>
-        <div className="small muted">{t('bowl.rigSub')}</div>
+        <div className="strong">{t('builder.boards')}</div>
+        <div className="small muted">{t('builder.boardsHint')}</div>
 
-        <div className="bowl-board">
-          {PARTS.map((p) => (
-            <img
-              key={p.file}
-              className={`bowl-board-part bowl-board-${p.file}${off[p.file] ? ' is-off' : ''}`}
-              src={`${ART}/${p.file}.webp`}
-              alt=""
-            />
-          ))}
-        </div>
-
-        <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-          {PARTS.map((p) => (
+        {/* Целая доска района одним артом: раньше здесь стопкой лежали плоские
+            картинки деталей и выглядели разобранным скейтом. */}
+        <img
+          className="bowl-wide"
+          src={`${ART}/board-d${boardDistrict}.webp`}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          data-testid="bowl-fullboard"
+        />
+        <div className="row" style={{ flexWrap: 'wrap', gap: 8 }} role="group" aria-label={t('builder.boards')}>
+          {[0, 1, 2, 3, 4, 5, 6, 7].map((d) => (
             <button
-              key={p.file}
+              key={d}
               type="button"
-              className={`btn btn-sm${off[p.file] ? '' : ' btn-ghost'}`}
-              aria-pressed={!off[p.file]}
-              onClick={() => setOff((prev) => ({ ...prev, [p.file]: !prev[p.file] }))}
+              className={`btn btn-sm${boardDistrict === d ? '' : ' btn-ghost'}`}
+              aria-pressed={boardDistrict === d}
+              onClick={() => setBoardDistrict(d)}
             >
-              {t(p.label)}
+              {collectionName(d)}
             </button>
           ))}
+        </div>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <Link to="/bowl/builder" className="btn btn-sm">{t('bowl.openBuilder')}</Link>
         </div>
       </section>
 
@@ -128,8 +141,10 @@ export default function Bowl() {
 
       {/* Команда (docs/16 §5.6): имя, состав и сегмент стены. Хартия покупает
           имя и доску — стену всё так же зарабатывают ездой (§3.4). */}
+      <div className="strong" aria-hidden>{t('skate.together')}</div>
       <section className="card stack-sm">
         <div className="strong">{t('crew.title')}</div>
+        <div className="small muted">{t('skate.crewHint')}</div>
         <div className="small muted">{t('crew.intro')}</div>
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
           <Link to="/bowl/crew" className="btn btn-sm">
@@ -138,14 +153,24 @@ export default function Bowl() {
         </div>
       </section>
 
+      <div className="strong" aria-hidden>{t('skate.play')}</div>
       {/* Линия (docs/16 §5.1): чаша дня одна на всех, три бесплатных заезда. */}
       <section className="card stack-sm">
         <div className="strong">{t('bowl.lineTitle')}</div>
         <img className="bowl-wide" src="/art/skate/line-bg.webp" alt="" aria-hidden loading="lazy" decoding="async" />
         <div className="small muted">{t('bowl.lineSub')}</div>
+        <div className="small muted">{t('skate.lineHint')}</div>
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
           <Link to="/bowl/line" className="btn btn-sm">
             {t('bowl.openLine')}
+          </Link>
+          {/* Турнир дня (§5.4, PR #67) живёт секцией на экране Линии — ведём туда напрямую. */}
+          <Link to="/bowl/line" className="btn btn-sm btn-ghost" data-testid="bowl-open-tournament">
+            {t('skate.tournament')}
+          </Link>
+          {/* Детали доски также платят квесты/достижения (PR #66/#67). */}
+          <Link to="/quests" className="btn btn-sm btn-ghost">
+            {t('nav.quests')}
           </Link>
         </div>
       </section>
