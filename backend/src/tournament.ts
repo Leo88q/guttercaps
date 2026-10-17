@@ -40,40 +40,49 @@ const iso = (s: number) => new Date(s * 1000).toISOString();
  * Купить вход в турнир дня: платёж услуги `lineTournamentEntry`
  * (kind 16, ровно 30M µ$CG, CG-рельс) → один неиспользованный кредит.
  *
- * ref-хеш считается от `{ id, day }` — платёж за сегодня не зайдёт
- * в турнир вчера (и наоборот).
+ * ref-хеш считается от `{ id, day }` — платёж за вчера не зайдёт
+ * в турнир сегодня. Кроме одного случая: платёж, подписанный на
+ * дне X и принятый сервером уже на дне X+1 (переход UTC-полуночи
+ * между оплатой и запросом). День — свойство раскладки, а не
+ * покупателя, поэтому такой платёж честно продаёт вход СЕГОДНЯ:
+ * сжигание то же, вход тот же, consume() держит платёж одноразовым.
  */
 export function enterTournament(db: Db, wallet: string, body: Record<string, unknown> | undefined, t = now()): { day: number; entries: number } {
   const day = Number(body?.day);
   const today = dayIndex(t);
-  if (!Number.isInteger(day) || day !== today) {
+  if (!Number.isInteger(day) || Math.abs(day - today) > 1) {
     throw new ServiceError(400, 'bad_day', `day must be today (${today})`);
   }
   const signature = String(body?.signature ?? '').trim();
   if (!/^[1-9A-HJ-NP-Za-km-z]{32,128}$/.test(signature)) throw new ServiceError(400, 'bad_signature', 'signature must be a transaction id');
   const kind = SERVICE_BY_ID.lineTournamentEntry.kind;
-  const payload = { id: 'lineTournamentEntry', day };
-  const expected = toHex(serviceRefHash(kind, wallet, payload));
   return db.tx(() => {
     // Общий дневной потолок paid-попыток (линия + турнир): потраченные
     // платежом заезды видны в `paid`, купленные, но ещё не потраченные
     // кредиты — отдельным счётом. Иначе вход продавался бы в обход
     // лимита, который держит ёмкость фермы.
-    const paid = db.scalar(`SELECT COALESCE(SUM(paid), 0) FROM line_runs WHERE wallet = ? AND day = ?`, wallet, day);
-    const unusedLine = db.scalar(`SELECT COUNT(*) FROM line_credits WHERE wallet = ? AND day = ? AND used_by IS NULL`, wallet, day);
-    const unusedT = db.scalar(`SELECT COUNT(*) FROM line_tournament_entries WHERE wallet = ? AND day = ? AND used_by IS NULL`, wallet, day);
+    const paid = db.scalar(`SELECT COALESCE(SUM(paid), 0) FROM line_runs WHERE wallet = ? AND day = ?`, wallet, today);
+    const unusedLine = db.scalar(`SELECT COUNT(*) FROM line_credits WHERE wallet = ? AND day = ? AND used_by IS NULL`, wallet, today);
+    const unusedT = db.scalar(`SELECT COUNT(*) FROM line_tournament_entries WHERE wallet = ? AND day = ? AND used_by IS NULL`, wallet, today);
     if (paid + unusedLine + unusedT >= LINE.maxPaidRunsPerDay) {
       throw new ServiceError(409, 'run_credit_cap', `At most ${LINE.maxPaidRunsPerDay} paid runs per day`);
     }
-    const p = findPayment(db, signature, wallet, [kind], expected);
-    if (p.ref_hash !== expected) throw new ServiceError(402, 'ref_hash_mismatch', 'Payment was committed for a different day');
+    // Платёж привязан к дню, на который он был подписан. Ожидаем
+    // сегодня; принимаем ещё вчера — полночь застала между оплатой
+    // и запросом. Любой другой день — чужой платёж.
+    const refFor = (d: number) => toHex(serviceRefHash(kind, wallet, { id: 'lineTournamentEntry', day: d }));
+    const p = findPayment(db, signature, wallet, [kind], refFor(today));
+    if (p.ref_hash !== refFor(today)) {
+      if (p.ref_hash !== refFor(today - 1)) throw new ServiceError(402, 'ref_hash_mismatch', 'Payment was committed for a different day');
+      recordEvent(db, wallet, 'tournament', 'enter_rollover', { paidFor: today - 1, granted: today }, t);
+    }
     if (p.currency !== 2 || BigInt(p.amount) !== BigInt(TOURNAMENT.entryCgMicro)) {
       throw new ServiceError(402, 'cg_burn_required', `Tournament entries are bought with exactly ${TOURNAMENT.entryCgMicro / 1_000_000} $CG (burned)`);
     }
-    db.run(`INSERT INTO line_tournament_entries (wallet, day, signature, granted_at) VALUES (?, ?, ?, ?)`, wallet, day, p.signature, t);
-    consume(db, p, `tournament:${day}`);
-    recordEvent(db, wallet, 'tournament', 'enter', { day }, t);
-    return { day, entries: unusedT + 1 };
+    db.run(`INSERT INTO line_tournament_entries (wallet, day, signature, granted_at) VALUES (?, ?, ?, ?)`, wallet, today, p.signature, t);
+    consume(db, p, `tournament:${today}`);
+    recordEvent(db, wallet, 'tournament', 'enter', { day: today }, t);
+    return { day: today, entries: unusedT + 1 };
   });
 }
 
@@ -110,8 +119,8 @@ export function tournamentState(db: Db, wallet: string, t = now()): TournamentSt
   const mine = db.get<{ bought: number; unused: number }>(
     `SELECT COUNT(*) bought, COALESCE(SUM(CASE WHEN used_by IS NULL THEN 1 ELSE 0 END), 0) unused
        FROM line_tournament_entries WHERE wallet = ? AND day = ?`, wallet, day);
-  const best = db.get<{ score: number; id: number; at: number }>(
-    `SELECT r.score, r.id, r.submitted_at at FROM line_tournament_runs r
+  const best = db.get<{ score: number; run_id: number; at: number }>(
+    `SELECT r.score, r.run_id, r.submitted_at at FROM line_tournament_runs r
       WHERE r.day = ? AND r.wallet = ? ORDER BY r.score DESC, r.run_id ASC LIMIT 1`, day, wallet);
   const board = tournamentBoard(db, day);
   const rank = board.rows.findIndex((r) => r.wallet === wallet);
@@ -128,7 +137,7 @@ export function tournamentState(db: Db, wallet: string, t = now()): TournamentSt
   return {
     day, week,
     entries: { bought: mine?.bought ?? 0, unused: mine?.unused ?? 0, left },
-    best: best ? { score: best.score, runId: best.id, at: iso(best.at) } : null,
+    best: best ? { score: best.score, runId: best.run_id, at: iso(best.at) } : null,
     rank: rank >= 0 ? rank + 1 : null,
     entrants: board.entrants,
     poolCgMicro: dayRow?.pool_cg_micro ?? '0',
@@ -166,13 +175,13 @@ export interface TournamentBoard {
  * публична на доске недели, а в турнирном заезде нет ничего своего.
  */
 export function tournamentBoard(db: Db, day: number, limit = 50): TournamentBoard {
-  const rows = db.all<{ wallet: string; handle: string | null; score: number; id: number; at: number; inputs: string }>(
-    `SELECT r.wallet, w.handle, r.score, r.id, r.submitted_at at, lr.inputs
+  const rows = db.all<{ wallet: string; handle: string | null; score: number; run_id: number; at: number; inputs: string }>(
+    `SELECT r.wallet, w.handle, r.score, r.run_id, r.submitted_at at, lr.inputs
        FROM line_tournament_runs r
        LEFT JOIN wallets w ON w.address = r.wallet
        LEFT JOIN line_runs lr ON lr.id = r.run_id
-      WHERE r.day = ? AND r.id = (SELECT id FROM line_tournament_runs b WHERE b.day = r.day AND b.wallet = r.wallet ORDER BY b.score DESC, b.run_id ASC LIMIT 1)
-      ORDER BY r.score DESC, r.id ASC
+      WHERE r.day = ? AND r.run_id = (SELECT run_id FROM line_tournament_runs b WHERE b.day = r.day AND b.wallet = r.wallet ORDER BY b.score DESC, b.run_id ASC LIMIT 1)
+      ORDER BY r.score DESC, r.run_id ASC
       LIMIT ?`, day, limit);
   const entrants = db.scalar(`SELECT COUNT(DISTINCT wallet) FROM line_tournament_runs WHERE day = ?`, day);
   const dayRow = db.get<{ pool_cg_micro: string; settled_at: number | null }>(
@@ -183,7 +192,7 @@ export function tournamentBoard(db: Db, day: number, limit = 50): TournamentBoar
     poolCgMicro: dayRow?.pool_cg_micro ?? '0',
     settled: dayRow?.settled_at != null,
     rows: rows.map((r, i) => ({
-      rank: i + 1, wallet: r.wallet, handle: r.handle, score: r.score, runId: r.id, at: iso(r.at),
+      rank: i + 1, wallet: r.wallet, handle: r.handle, score: r.score, runId: r.run_id, at: iso(r.at),
       hasReplay: r.inputs !== '[]',
       band: tournamentBandOfRank(i + 1, Number(entrants)),
     })),
@@ -219,10 +228,10 @@ export function settleLineTournament(db: Db, day: number, t = now()): Tournament
     return { day, entrants: existing.entrants, poolCgMicro: existing.pool_cg_micro, alreadySettled: true, prizes };
   }
   return db.tx(() => {
-    const ranked = db.all<{ wallet: string; score: number; id: number }>(
-      `SELECT wallet, score, id FROM line_tournament_runs r
-        WHERE r.day = ? AND r.id = (SELECT id FROM line_tournament_runs b WHERE b.day = r.day AND b.wallet = r.wallet ORDER BY b.score DESC, b.run_id ASC LIMIT 1)
-        ORDER BY r.score DESC, r.id ASC`, day);
+    const ranked = db.all<{ wallet: string; score: number; run_id: number }>(
+      `SELECT wallet, score, run_id FROM line_tournament_runs r
+        WHERE r.day = ? AND r.run_id = (SELECT run_id FROM line_tournament_runs b WHERE b.day = r.day AND b.wallet = r.wallet ORDER BY b.score DESC, b.run_id ASC LIMIT 1)
+        ORDER BY r.score DESC, r.run_id ASC`, day);
     const entrants = ranked.length;
     if (entrants === 0) return { day, entrants: 0, poolCgMicro: '0', alreadySettled: false, prizes: [] };
     // Учётная сумма пула: доля взносов (15 %). Дотация eventsReserve —

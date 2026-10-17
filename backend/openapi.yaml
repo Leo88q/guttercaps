@@ -2535,7 +2535,7 @@ components:
               score: { type: integer }
               tricks: { type: integer }
               bails: { type: integer }
-              runId: { type: integer }
+              runId: { type: integer, description: 'line_runs.id — the id /line/runs/{id}/replay accepts (not the tournament row id)' }
               at: { type: string, format: date-time }
               hasReplay: { type: boolean, description: 'false once the 14-day sweeper wiped the inputs' }
     TournamentState:
@@ -2555,7 +2555,7 @@ components:
           type: object
           nullable: true
           required: [score, runId, at]
-          properties: { score: { type: integer }, runId: { type: integer }, at: { type: string, format: date-time } }
+          properties: { score: { type: integer }, runId: { type: integer, description: 'line_runs.id of my best tournament run today' }, at: { type: string, format: date-time } }
         rank: { type: integer, nullable: true, description: 'my place on today’s board; null outside it' }
         entrants: { type: integer }
         poolCgMicro: { type: string, description: 'accounting model of the day’s prize pool (15% of entries); no $CG ever leaves it — the prize is parts' }
