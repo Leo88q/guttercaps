@@ -16,7 +16,22 @@
 import type { ReactNode } from 'react';
 import type { LineLayout, RunState } from '@guttercaps/economy';
 import { riderArt } from './Rider';
-import Skater3D, { type SkaterClip } from './Skater3D';
+
+/**
+ * Кадровая анимация райдера — как в старых 2D-играх: не один статичный
+ * спрайт и не чужая 3D-модель (Kenney-манекен стилю игры не подошёл,
+ * 2026-10-18), а набор поз в родной неоновой стилистике, которые движок
+ * переключает по состоянию заезда. Толчок и кат чередуются по тикам —
+ * получается цикл ходьбы на доске.
+ */
+export function riderPose(frame: RunState | null): string {
+  if (!frame) return riderArt(3); // поза ката (rider-04) — кадр покоя
+  if (frame.stunned) return '/art/skate/rider-pose-bail.webp';
+  if (frame.grabbed) return '/art/skate/rider-pose-grab.webp';
+  if (frame.air) return '/art/skate/rider-pose-air.webp';
+  if (frame.grinding) return riderArt(3);
+  return frame.tick % 36 < 16 ? '/art/skate/rider-pose-push.webp' : riderArt(3);
+}
 
 /** Пикселей на единицу пути: на телефоне видно ~2 секунды трассы вперёд. */
 const PX = 1;
@@ -50,7 +65,7 @@ export interface LineTrackProps {
   testId?: string;
 }
 
-export default function LineTrack({ layout, frame, silhouette, rot = 0, lamp, stage, hud, children, testId = 'line-track' }: LineTrackProps) {
+export default function LineTrack({ layout, frame, rot = 0, lamp, stage, hud, children, testId = 'line-track' }: LineTrackProps) {
   const camera = Math.max(0, (frame?.pos ?? 0) - RIDER_X) * PX;
   return (
     <div className="line-track" data-testid={testId} data-stage={stage}>
@@ -79,17 +94,10 @@ export default function LineTrack({ layout, frame, silhouette, rot = 0, lamp, st
         data-grab={frame?.grabbed ? '1' : '0'}
         style={{ ['--lamp' as string]: lamp, transform: `translateY(${-(frame?.y ?? 0) * AIR_SCALE}px) rotate(${rot}deg)` }}
       >
-        {/* Живой 3D-райдер (Kenney CC0): клип выбирает состояние заезда.
-            Пока модель грузится или если WebGL нет — тот же спрайт, что раньше. */}
-        <Skater3D
-          silhouette={silhouette}
-          fallback={riderArt(silhouette)}
-          clip={(frame?.stunned ? 'down'
-            : frame?.grabbed ? 'grab'
-            : frame?.grinding ? 'grind'
-            : frame?.air ? 'air'
-            : frame ? 'ride' : 'stand') as SkaterClip}
-        />
+        {/* Позу выбирает состояние заезда (riderPose выше). Чёрный фон поз
+            гасится mix-blend-mode: screen в CSS — персонаж стоит прямо на
+            трассе, а не в чёрном прямоугольнике. */}
+        <img className="line-rider-pose" src={riderPose(frame)} alt="" aria-hidden data-pose={frame?.stunned ? 'bail' : frame?.grabbed ? 'grab' : frame?.air ? 'air' : 'ride'} />
       </span>
       {hud}
       {children}

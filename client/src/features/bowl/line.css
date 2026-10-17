@@ -175,8 +175,12 @@
   .line-rider img { animation: none !important; }
 }
 
-/* 3D-райдер (Kenney CC0, three.js): канвас на весь бокс райдера, спрайт —
-   только пока модель грузится. */
-.skater3d { display: block; width: 100%; height: 100%; }
-.skater3d canvas { display: block; width: 100% !important; height: 100% !important; }
-.skater3d img { width: 100%; height: 100%; object-fit: contain; object-position: bottom center; }
+/* Кадры поз райдера: чёрный фон артов гасится screen-блендом, поэтому
+   персонаж стоит на трассе, а не в чёрной плашке. */
+.line-rider-pose {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: bottom center;
+  mix-blend-mode: screen;
+}
