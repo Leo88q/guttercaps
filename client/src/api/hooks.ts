@@ -154,11 +154,12 @@ export type RunReplay = ResponseOf<'/line/runs/{id}/replay', 'get'>;
 export const useLine = () =>
   useQuery({ queryKey: ['me', 'line'], queryFn: () => api.get('/me/line'), enabled: useAuthenticated(), staleTime: 30_000 });
 
-/** Отправить реплей. Очки считает сервер; присланные клиентом цифры ни на что не влияют. */
+/** Отправить реплей. Очки считает сервер; присланные клиентом цифры ни на что не влияют.
+ *  `tournament: true` тратит кредит турнира (§5.4) и ранжирует заезд в турнире дня. */
 export function useSubmitRun() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (b: { day: number; inputs: [number, number][] }) => api.post('/me/line/runs', b),
+    mutationFn: (b: { day: number; inputs: [number, number][]; tournament?: boolean }) => api.post('/me/line/runs', b),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['me', 'line'] });
       void qc.invalidateQueries({ queryKey: ['line', 'board'] });
@@ -179,6 +180,30 @@ export function useBuyExtraRun() {
 
 export const useLineBoard = (week?: number) =>
   useQuery({ queryKey: ['line', 'board', week], queryFn: () => api.get('/line/leaderboard', { query: { week } }), staleTime: 60_000 });
+
+// ------------------------------------------------------------------ турнир линии (docs/16 §5.4)
+export type TournamentState = ResponseOf<'/me/line/tournament', 'get'>;
+export type TournamentBoard = ResponseOf<'/line/tournament/board', 'get'>;
+
+/** Мой день турнира: входы, лучший заезд, место, расписание призов. */
+export const useTournament = () =>
+  useQuery({ queryKey: ['me', 'line', 'tournament'], queryFn: () => api.get('/me/line/tournament'), enabled: useAuthenticated(), staleTime: 30_000 });
+
+/** Вход в турнир дня: 30 $CG за попытку (платёж индексируется on-chain). */
+export function useEnterTournament() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (b: { day: number; signature: string }) => api.post('/me/line/tournament/enter', b),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['me', 'line', 'tournament'] }); },
+  });
+}
+
+/** Доска дня: лучший турнирный заезд кошелька, полоса приза. */
+export const useTournamentBoard = (day?: number) =>
+  useQuery({ queryKey: ['line', 'tournament', 'board', day], queryFn: () => api.get('/line/tournament/board', { query: { day } }), staleTime: 60_000 });
+
+// ------------------------------------------------------------------ месяц команд (docs/16 §5.6)
+// (хук — в hooksLazy: экран команды ленивый, §5.6)
 
 /**
  * Реплей заезда для просмотра (docs/16 §5.5). Публичный: строка доски и так

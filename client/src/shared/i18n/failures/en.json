@@ -215,6 +215,7 @@
   "themeNotOwned": "This theme is not yours yet — buy it in the shop, then wear it.",
   "achievementNotEarned": "Not earned yet — the achievement counter has not reached its target.",
   "lineRunsExhausted": "Free runs are over for today — an extra one costs 30 $CG (burned).",
+  "tournamentEntriesExhausted": "No tournament entry left for today — enter the tournament first.",
   "lineCreditCap": "That is the daily cap on paid runs.",
   "crewNoCrew": "There is no crew with that name.",
   "crewInvalidName": "A crew name is 3–16 characters: letters, numbers and underscore.",

@@ -12,19 +12,19 @@
 //    /art/skate; код делает только движение камеры, поворот райдера и счёт.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useConnection } from '@solana/wallet-adapter-react';
-import { LINE, LINE_TICKS, LINE_HOP, LINE_GRAB, createRun, lineLayout, type LineLayout, type RunInput, type RunState, type RunStepper } from '@guttercaps/economy';
+import { LINE, LINE_TICKS, LINE_HOP, LINE_GRAB, SERVICE_BY_ID, TOURNAMENT, createRun, lineLayout, partById, type LineLayout, type RunInput, type RunState, type RunStepper } from '@guttercaps/economy';
 import { api, claimWithRetry, isMock } from '@/api/client';
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
 import { payForService, quoteService, serviceRefHash } from '@/chain/flows/serviceFlow';
 import { Currency } from '@/chain/ix/chipCore';
-import { useLine, useSubmitRun, type RunSubmit } from '@/api/hooks';
+import { useLine, useSubmitRun, useTournament, useEnterTournament, useTournamentBoard, type RunSubmit } from '@/api/hooks';
 import { useRig } from '@/api/hooksLazy';
 import { useT } from '@/shared/i18n';
 import { useUiStore } from '@/app/store/ui';
 import { playSound } from '@/shared/audio';
 import { fmtDecimal } from '@/shared/lib/format';
 import { collectionColor } from '@/shared/lib/rarity';
-import { Pill, Skeleton } from '@/shared/ui/primitives';
+import { Pill, Skeleton, Empty } from '@/shared/ui/primitives';
 import LineBoardPanel from './LineBoardPanel';
 import LineTrack from './LineTrack';
 import './line.css';
@@ -33,6 +33,7 @@ import './line.css';
 const MAX_STEPS_PER_FRAME = 12;
 
 const tierKey = (tier: string) => `line.tiers.${tier}` as 'line.tiers.none';
+const slotKey = (slot: string) => `builder.slots.${slot}` as 'builder.slots.deck';
 
 export default function Line() {
   const t = useT();
@@ -48,6 +49,14 @@ export default function Line() {
   const [frame, setFrame] = useState<RunState | null>(null);
   const [result, setResult] = useState<RunSubmit | null>(null);
   const [buying, setBuying] = useState(false);
+  // Турнир дня (§5.4): отдельный экран-секция — вход за попытку,
+  // доска и призы косметика. Заезд в турнире — тот же заезд,
+  // но с флагом: попытка оплачена входом.
+  const [tourneyOn, setTourneyOn] = useState(false);
+  const tourney = useTournament();
+  const tourneyBoard = useTournamentBoard();
+  const enter = useEnterTournament();
+  const tourneyData = tourney.data;
 
   const stepper = useRef<RunStepper | null>(null);
   const queue = useRef<RunInput[]>([]);
@@ -66,7 +75,7 @@ export default function Line() {
   const send = useCallback((day: number) => {
     setStage('sending');
     submit.mutate(
-      { day, inputs: inputs.current.map((i) => [i.tick, i.action] as [number, number]) },
+      { day, inputs: inputs.current.map((i) => [i.tick, i.action] as [number, number]), tournament: tourneyOn },
       {
         onSuccess: (r) => {
           setResult(r);
@@ -170,6 +179,30 @@ export default function Line() {
     }
   };
 
+  /** Вход в турнир дня: 30 $CG за попытку (§5.4), платёж — on-chain. */
+  const enterTourney = async () => {
+    if (!me || enter.isPending) return;
+    try {
+      const day = me.day;
+      if (isMock()) {
+        await api.post('/me/line/tournament/enter', { day, signature: `mock-${Date.now()}` } as never);
+      } else {
+        if (!walletLike || !gameCfg.data) throw new Error('wallet');
+        const payload = { id: 'lineTournamentEntry', day };
+        const refHash = serviceRefHash(SERVICE_BY_ID.lineTournamentEntry.kind, walletLike.publicKey, payload);
+        const { signature } = await payForService({
+          connection, wallet: walletLike, id: 'lineTournamentEntry', currency: Currency.CG, refHash,
+          quote: quoteService('lineTournamentEntry', Currency.CG), cfg: gameCfg.data,
+        });
+        await claimWithRetry(() => api.post('/me/line/tournament/enter', { day, signature } as never));
+      }
+      await tourney.refetch();
+      playSound('econ.coin');
+    } catch (e) {
+      toast({ kind: 'error', title: { key: 'line.tournament.title' }, body: { key: 'line.failed' } });
+    }
+  };
+
   const secsLeft = Math.max(0, Math.ceil((LINE_TICKS - (frame?.tick ?? 0)) / LINE.tickHz));
   const mult = (frame?.links ?? 0) > 0 ? Math.min(LINE.comboCapBps, LINE.comboStartBps + LINE.comboStepBps * (frame?.links ?? 0)) / 1000 : 1;
   const score = (frame?.banked ?? 0) + (frame?.unbanked ?? 0);
@@ -233,6 +266,82 @@ export default function Line() {
             <span className="tiny muted" data-testid="line-done">{t('line.none')}</span>
           )}
 
+          {/* Турнир дня (docs/16 §5.4): вход за попытку, приз — косметика. */}
+          <section className="stack-sm" data-testid="line-tournament">
+            <div className="row between">
+              <h2 className="section-title">{t('line.tournament.title')}</h2>
+              <Pill tone={tourneyOn ? 'ok' : undefined}>{t(tourneyOn ? 'line.tournament.on' : 'line.tournament.off')}</Pill>
+            </div>
+            <p className="tiny muted">{t('line.tournament.intro', { cg: TOURNAMENT.entryCgMicro / 1_000_000 })}</p>
+            {tourney.data && (
+              <div className="row-wrap">
+                <Pill>{t('line.tournament.entrants', { n: tourney.data.entrants })}</Pill>
+                <Pill>{t('line.tournament.pool', { n: Number(tourney.data.poolCgMicro) / 1_000_000 })}</Pill>
+                <Pill>{t('line.tournament.rank', { n: tourney.data.rank ?? '—' })}</Pill>
+                <Pill>{t('line.tournament.best', { n: tourney.data.best?.score ?? 0 })}</Pill>
+                <Pill tone={(tourneyData?.entries.left ?? 0) > 0 ? 'ok' : undefined}>
+                  {t('line.tournament.entriesLeft', { n: tourneyData?.entries.left ?? 0 })}
+                </Pill>
+              </div>
+            )}
+            <div className="row-wrap">
+              <button
+                type="button" className="btn btn-sm" data-testid="tourney-toggle"
+                onClick={() => setTourneyOn((v) => !v)}
+                disabled={!tourneyOn && !!tourneyData && tourneyData.entries.unused === 0}
+              >
+                {t(tourneyOn ? 'line.tournament.runOn' : 'line.tournament.runOff')}
+              </button>
+              <button
+                type="button" className="btn btn-sm" data-testid="tourney-enter"
+                onClick={enterTourney} disabled={enter.isPending || !!tourneyData && tourneyData.entries.left <= 0}
+              >
+                {enter.isPending ? t('line.tournament.entering') : t('line.tournament.enter')}
+              </button>
+            </div>
+            {tourney.data && tourney.data.schedule.length > 0 && (
+              <div className="stack-sm">
+                <span className="label">{t('line.tournament.schedule')}</span>
+                {tourney.data.schedule.map((b) => (
+                  <div key={b.band} className="row tiny" data-testid={`tourney-band-${b.band}`}>
+                    <span className="muted">{t('line.tournament.band', { n: b.band + 1 })}</span>
+                    <span className="grow">{t('line.tournament.top', { pct: b.topPct })}</span>
+                    <span>
+                      {b.trophies.map((p) => {
+                        // Трофей называют слот и уровень каталога:
+                        // своих имён у частей нет (§4.2).
+                        const part = partById(p);
+                        return part
+                          ? `${t(slotKey(part.slot))} · ${t(`builder.tier.${part.tier}` as 'builder.tier.stock')}`
+                          : p;
+                      }).join(' · ')}
+                      {b.trophies.length > 0 && b.districtSlots > 0 ? ' · ' : ''}
+                      {b.districtSlots > 0 && t('line.tournament.districtSlots', { n: b.districtSlots })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {tourney.data?.prizesYesterday.length ? (
+              <div className="stack-sm">
+                <span className="label">{t('line.tournament.yesterday')}</span>
+                {tourney.data.prizesYesterday.map((p) => {
+                  const part = partById(p.part);
+                  return (
+                    <div key={p.part} className="row tiny">
+                      <span>#{p.rank}</span>
+                      <span className="grow">
+                        {part
+                          ? `${t(slotKey(part.slot))} · ${t(`builder.tier.${part.tier}` as 'builder.tier.stock')}`
+                          : p.part}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+          </section>
+
           {stage === 'done' && result && (
             <div className="card stack-sm" data-testid="line-result">
               <div className="row between">
@@ -264,6 +373,26 @@ export default function Line() {
           <section className="stack-sm">
             <h2 className="section-title">{t('line.board')}</h2>
             <LineBoardPanel />
+          </section>
+
+          {/* Доска турнира дня (§5.4): лучший турнирный заезд,
+              полоса приза рядом с местом. */}
+          <section className="stack-sm">
+            <h2 className="section-title">{t('line.tournament.board')}</h2>
+            {tourneyBoard.data?.rows.length ? (
+              <ol className="line-board" data-testid="tourney-board">
+                {tourneyBoard.data.rows.map((r) => (
+                  <li key={r.rank}>
+                    <span className="line-rank">{t('line.rank', { n: r.rank })}</span>
+                    <span className="line-who">{r.handle ?? `${r.wallet.slice(0, 4)}…${r.wallet.slice(-4)}`}</span>
+                    <b>{r.score}</b>
+                    <Pill tone={r.band >= 0 ? 'ok' : undefined}>
+                      {r.band >= 0 ? t('line.tournament.band', { n: r.band + 1 }) : '—'}
+                    </Pill>
+                  </li>
+                ))}
+              </ol>
+            ) : <Empty>{t('line.tournament.empty')}</Empty>}
           </section>
         </>
       )}

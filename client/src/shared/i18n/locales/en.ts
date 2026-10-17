@@ -182,6 +182,7 @@ const en = {
     setBonus: 'Set bonus ×{mult}', weight: 'Weight', pending: 'Pending rewards', apyBand: 'APY band', flexible: 'Flexible', days: '{n} days',
   },
   quests: {
+    partLeaf: 'board part #{n}', partsRoot: 'Board parts',
     visitGame: 'Open the game',
     title: 'Quests', subtitle: 'Finish quests for $CG, boosters and cap vouchers. Payouts land here every few hours — then you claim them. The server never holds your $CG.',
     daily: 'Daily', weekly: 'Weekly', permanent: 'Permanent', claim: 'Claim', claimed: 'Claimed', claimable: 'Ready to claim', progress: '{done}/{total}',
@@ -251,6 +252,7 @@ const en = {
       handle: '@handle', handleChange: 'Handle change', capSkin: 'Cap skin', profileTheme: 'Profile theme', arenaEmotePack: 'Arena emote pack',
       extraBenchSlots: '+2 bench presets', seasonPass: 'Season pass', booster: 'Fusion booster', packSkipAnim: 'Instant reveal', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'District banner', districtStencilPack: 'District stencil pack', lineExtraRun: 'Extra run',
         crewCharter: 'Crew charter', crewRename: 'Crew rename',
+        lineTournamentEntry: 'Line tournament entry', boardMount: 'Board mount',
     },
     blurbs: {
       handle: 'Unique name on leaderboards, arena and your public profile URL.', handleChange: 'Rename once per 30 days. Old handle is released after 90 days.',
@@ -260,6 +262,7 @@ const en = {
       booster: '+15 pp success on one fusion (cap 95%). Max 3 per day.', packSkipAnim: 'Permanent toggle to skip the reveal animation. Pure convenience.',
       gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Animated banner for a district you have completed.', districtStencilPack: 'Five district stencils for the tag editor. Shapes only — the lines and colours stay yours.', lineExtraRun: 'One more run of today’s line after the three free ones. $CG only — every coin is burned.',
         crewCharter: 'Name, roster and a shared 20-slot wall segment for five to ten riders. $1.99 buys the name — the wall is still earned by riding (§3.4).', crewRename: 'A new name for the crew, once per 30 days. The old one returns to the city after 90 days.',
+        lineTournamentEntry: 'One paid run that also enters the day’s tournament. 30 $CG — burned; the prize pool pays in board parts, never $CG.', boardMount: 'One bolt-on for the board: a bolts finish or a sticker. Cosmetic only.',
     },
   },
   inspect: {
@@ -520,6 +523,15 @@ const en = {
     reason_other: 'Something else',
   },
   line: {
+    tournament: {
+      title: 'Daily tournament',
+      intro: 'Enter with one paid run: {cg} $CG per attempt, burned. The best run of the day ranks; prizes are board parts — never $CG.',
+      entrants: '{n} riders', pool: 'Pool (model): {n} $CG', rank: 'Rank #{n}', best: 'Best: {n}',
+      entriesLeft: '{n} paid attempts left today', enter: 'Enter · 30 $CG', entering: 'Paying…',
+      on: 'Tournament mode', off: 'Free ride', runOn: 'Riding for the tournament', runOff: 'Ride in the tournament',
+      schedule: 'Prize bands', band: 'Band {n}', top: 'top {pct}%', districtSlots: '+{n} district parts',
+      yesterday: 'Yesterday’s prizes', board: 'Tournament board', empty: 'No tournament runs yet today',
+    },
     title: 'The Line',
     intro: 'One bowl for everyone: the day’s seed, 45 seconds, three free runs. After that an extra run costs 30 $CG — burned.',
     howto: 'Tap to hop. Tap again in the air to grab. Kickers launch you by themselves.',
@@ -541,6 +553,10 @@ const en = {
 
   // Команды (docs/16 §5.6): общее имя, состав и сегмент стены.
   crew: {
+    month: 'Month of crews',
+    monthNote: 'The week board summed over the calendar month: a crew’s score is the sum of its weekly results.',
+    monthEmpty: 'No crew has ridden this month yet',
+    monthPrize: 'The top {n} crews win the crew deck of their wall district — cosmetics, never $CG.',
     title: 'Crew',
     intro: 'Five to ten riders share one name and one wall segment. The board counts your five best riders — never the whole roster.',
     open: 'Open',
@@ -653,6 +669,7 @@ const en = {
   },
   // Конструктор доски (docs/16 §4.2): части добываются игрой, а не покупаются.
   builder: {
+    buy: 'Buy · {cents}¢', buying: 'Paying…', bought: 'Mount bought',
     title: 'Board builder',
     intro: 'Six slots, one board. Parts are earned by riding — in the Line, in quests, in crew contests. The shop sells bolt-ons only.',
     slots: { deck: 'Deck', trucks: 'Trucks', wheels: 'Wheels', grip: 'Grip', bolts: 'Bolts', sticker: 'Sticker' },
@@ -681,7 +698,7 @@ const en = {
     empty: 'Only the stock part so far: parts come from runs, quests and crew contests.',
     partAlt: '{slot} of {district}',
     tier: { stock: 'Stock', district: 'District', crew: 'Crew', trophy: 'Trophy' },
-    source: { stock: 'Starter', run: 'Run', achievement: 'Achievement', crew: 'Crew contest', quest: 'Quest', track: 'Season track', shop: 'Shop' },
+    source: { stock: 'Starter', run: 'Run', achievement: 'Achievement', crew: 'Crew contest', tournament: 'Tournament', shop: 'Shop' },
   },
   footer: { legal: 'Legal', ages: '18+' },
 

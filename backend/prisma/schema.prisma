@@ -1765,3 +1765,68 @@ model BoardRunGrant {
   @@index([week])
   @@map("board_run_grants")
 }
+
+// ---------------------------------------------------------------- турнир линии (docs/16 §5.4)
+/// Вход в турнир дня: один платёж (услуга lineTournamentEntry, 30M µ$CG) — один
+/// кредит; кредит тратится на ПОПЫТКУ (submitRun с tournament:true), а не на день.
+model LineTournamentEntry {
+  id        Int    @id @default(autoincrement())
+  wallet    String
+  day       Int
+  signature String @unique
+  grantedAt Int    @map("granted_at")
+  usedBy    Int?   @map("used_by")
+  @@index([wallet, day])
+  @@map("line_tournament_entries")
+}
+
+/// Турнирный заезд: строка ранжирования дня (score — тот же счёт, что в линии).
+model LineTournamentRun {
+  runId       Int    @id @map("run_id")
+  wallet      String
+  day         Int
+  score       Int
+  submittedAt Int    @map("submitted_at")
+  @@index([day, score])
+  @@map("line_tournament_runs")
+}
+
+/// День турнира: участники и пул (учёт, ончейн $CG не движется — приз чисто
+/// косметика); settledAt — отметка идемпотентности сета.
+model LineTournamentDay {
+  day        Int    @id
+  entrants   Int    @default(0)
+  poolCgMicro String  @map("pool_cg_micro")
+  settledAt  Int?   @map("settled_at")
+  @@map("line_tournament_days")
+}
+
+/// Приз дня: часть каталога BOARD_PARTS. PK — проверка «уже выдавали».
+model LineTournamentPrize {
+  day       Int
+  wallet    String
+  rank      Int
+  band      Int
+  part      String
+  grantedAt Int    @map("granted_at")
+
+  @@id([day, wallet, part])
+  @@index([day, rank])
+  @@map("line_tournament_prizes")
+}
+
+/// Очередь ончейн-выдачи части (docs/16 §5.4): строка = один лист корня kind 10,
+/// amount листа — индекс части в каталоге BOARD_PARTS. Пока root_epoch IS NULL,
+/// лист не опубликован; после — ждёт клейма игрока (permissionless).
+model BoardPartLeaf {
+  id        Int    @id @default(autoincrement())
+  wallet    String
+  partIdx   Int    @map("part_idx")
+  rootKind  Int?   @map("root_kind")
+  rootEpoch Int?   @map("root_epoch")
+  grantedAt Int    @map("granted_at")
+
+  @@index([rootKind, rootEpoch])
+  @@index([grantedAt])
+  @@map("board_part_leaves")
+}

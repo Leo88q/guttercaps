@@ -19,7 +19,7 @@ import { geoOf } from './geo.ts';
 import { readiness, type Readiness } from './health.ts';
 import { balanceGauge } from './balance.ts';
 import type { RequestHandler } from 'express';
-import { type Db } from './db.ts';
+import { type Db, now } from './db.ts';
 import { attachSession, requireAuth, issueNonce, verifySiws, createSession, setSessionCookie, destroySession, AuthError } from './auth.ts';
 import { POLICIES, createLimiter, type Limiter } from './ratelimit.ts';
 import { catalogue, checkHandle, claimHandle, claimService, myServices, ServiceError } from './services.ts';
@@ -32,6 +32,7 @@ import * as worldMetrics from './worldMetrics.ts';
 import * as achievements from './achievements.ts';
 import * as runs from './runs.ts';
 import * as crew from './crew.ts';
+import * as tournament from './tournament.ts';
 import { publish } from './bus.ts';
 import { claimPassTier, passState } from './pass.ts';
 import { packQuote, validateRequest } from './quote.ts';
@@ -125,6 +126,25 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   const lineSweepMs = Number(process.env.LINE_SWEEP_MS ?? 3_600_000);
   if (lineSweepMs > 0) {
     const timer = setInterval(() => { try { runs.pruneLineReplays(db); } catch (e) { console.error('[line] sweep failed:', (e as Error).message); } }, lineSweepMs);
+    timer.unref();
+  }
+  // Сеты турнира линии и командного конкурса (docs/16 §5.4/§5.6). Оба
+  // идемпотентны (PK дня / маркер created_at месяца), поэтому интервал
+  // — это только задержка после полуночи / первого числа, а не точность.
+  const settleMs = Number(process.env.SETTLE_SWEEP_MS ?? 3_600_000);
+  if (settleMs > 0) {
+    const timer = setInterval(() => {
+      try {
+        const today = Math.floor(now() / 86_400);
+        for (const day of db.all<{ day: number }>(
+          `SELECT DISTINCT day FROM line_tournament_runs WHERE day < ? ORDER BY day`, today)) {
+          tournament.settleLineTournament(db, day.day);
+        }
+        // Месяц считается закрытым на первом числе; t - DAY гарантирует,
+        // что текущий (незакрытый) месяц никогда не сетыится.
+        crew.settleCrewMonth(db, crew.monthKeyOf(now() - 86_400));
+      } catch (e) { console.error('[settle] sweep failed:', (e as Error).message); }
+    }, settleMs);
     timer.unref();
   }
   // Выцветание стены (docs/16 §3.4): слот живёт 30 дней. Раз в час достаточно —
@@ -512,6 +532,18 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.post('/me/line/runs/buy', requireAuth, accessGate('rewards'), rl(POLICIES.claim), rl(POLICIES.claimNet), (req, res) => {
     res.json(runs.buyExtraRun(db, req.session!.wallet, req.body));
   });
+  // Турнир линии (docs/16 §5.4): вход — платная услуга (30 $CG за
+  // попытку), приз — косметика. Доска публична, как доска недели.
+  v1.get('/me/line/tournament', requireAuth, (req, res) => {
+    res.json(tournament.tournamentState(db, req.session!.wallet));
+  });
+  v1.post('/me/line/tournament/enter', requireAuth, accessGate('rewards'), rl(POLICIES.claim), rl(POLICIES.claimNet), (req, res) => {
+    res.json(tournament.enterTournament(db, req.session!.wallet, req.body));
+  });
+  v1.get('/line/tournament/board', (req, res) => {
+    const day = intQuery(req.query.day, { name: 'day', min: 0 });
+    res.json(tournament.tournamentBoard(db, day ?? Math.floor(now() / 86_400)));
+  });
   // Реплей смотрят, а не скачивают (docs/16 §5.5): доска недели публична, и
   // нажатия в заезде — не секрет. Просмотр не требует кошелька.
   v1.get('/line/runs/:id/replay', rl(POLICIES.read), (req, res) => {
@@ -808,6 +840,12 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     const week = intQuery(req.query.week, { name: 'week', min: 0 });
     const limit = intQuery(req.query.limit, { name: 'limit', min: 1, max: 100 });
     res.json(crew.crewBoard(db, week ?? runs.currentWeek(), limit ?? 50));
+  });
+  // Ежемесячный конкурс команд (docs/16 §5.6): та же доска, но
+  // сумма недель месяца; приз — командная дека района стены.
+  v1.get('/crew/month', (req, res) => {
+    const month = intQuery(req.query.month, { name: 'month', min: 202601 });
+    res.json(crew.crewMonthBoard(db, month ?? crew.monthKeyOf(now())));
   });
   v1.get('/crew/check', requireAuth, (req, res) => {
     const name = String(req.query.name ?? '');

@@ -24,17 +24,18 @@
 
 use anchor_lang::prelude::*;
 
-use chip_core::cpi::accounts::GrantBooster;
+use chip_core::cpi::accounts::{GrantBoardPart, GrantBooster};
 use chip_core::program::ChipCore;
-use chip_core::state::GameConfig;
+use chip_core::state::{GameConfig, BOARD_PART_COUNT};
 
 use crate::errors::StakeError;
 use crate::instructions::emission::verify_proof;
 use crate::state::*;
 
-/// Kind 8 only for now; the const range leaves room for tickets / skins later.
+/// Item roots pay boosters (kind 8) and board parts (kind 10).
+/// The const range leaves room for tickets / skins later.
 pub fn is_item_kind(kind: u8) -> bool {
-    kind == ITEM_KIND_BOOSTERS
+    kind == ITEM_KIND_BOOSTERS || kind == ITEM_KIND_BOARD_PARTS
 }
 
 #[derive(Accounts)]
@@ -49,7 +50,9 @@ pub struct PublishItemRoot<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// `budget` = total boosters in the tree (Σ leaf amounts), ≤ `MAX_ITEM_ROOT_BUDGET`.
+/// `budget` = what the root pays out, ≤ `MAX_ITEM_ROOT_BUDGET`: boosters for
+/// kind 8 (Σ leaf amounts), LEAVES for kind 10 (each claim delivers one part,
+/// so the budget counts parts, not indices).
 pub fn publish_item_root(
     ctx: Context<PublishItemRoot>,
     kind: u8,
@@ -109,7 +112,7 @@ pub fn revoke_item_root(ctx: Context<RevokeItemRoot>) -> Result<()> {
 
 #[derive(Accounts)]
 pub struct ClaimItemRoot<'info> {
-    /// Pays the receipt rent and (first time) the `PlayerItems` rent inside chip_core.
+    /// Pays the receipt rent and (first time) the `PlayerItems` / `PlayerBoardParts` rent inside chip_core.
     #[account(mut)]
     pub wallet: Signer<'info>,
     #[account(seeds = [b"emission"], bump = emission.bump, constraint = !emission.paused @ StakeError::Paused)]
@@ -119,21 +122,29 @@ pub struct ClaimItemRoot<'info> {
     #[account(init, payer = wallet, space = 8 + ClaimReceipt::INIT_SPACE, seeds = [b"claim", root.key().as_ref(), wallet.key().as_ref()], bump)]
     pub receipt: Box<Account<'info, ClaimReceipt>>,
     // sentio-ignore-next-line SW013
-    /// CHECK: `["rewarder"]` — the authority chip_core's `grant_booster` accepts next to its admin.
+    /// CHECK: `["rewarder"]` — the authority chip_core's `grant_booster` / `grant_board_part` accepts next to its admin.
     #[account(seeds = [b"rewarder"], bump)]
     pub rewarder: UncheckedAccount<'info>,
     #[account(seeds = [b"config"], bump = config.bump, seeds::program = chip_core::ID)]
     pub config: Account<'info, GameConfig>,
     // sentio-ignore-next-line SW002
     /// CHECK: chip_core `["items", wallet]` — `init_if_needed` inside the CPI (payer = wallet), so an
-    /// UncheckedAccount here; chip_core derives and checks the seeds itself.
+    /// UncheckedAccount here; chip_core derives and checks the seeds itself. Kind 8 only.
     #[account(mut)]
     pub items: UncheckedAccount<'info>,
+    // sentio-ignore-next-line SW002
+    /// CHECK: chip_core `["board_parts", wallet]` — same story as `items`, kind 10 only.
+    #[account(mut)]
+    pub board_parts: UncheckedAccount<'info>,
     pub chip_core: Program<'info, ChipCore>,
     pub system_program: Program<'info, System>,
 }
 
-/// Same proof check as `claim_root` / `claim_skr_root`; delivery = `grant_booster(amount)` by CPI.
+/// Same proof check as `claim_root` / `claim_skr_root`; delivery depends on the
+/// root kind: boosters (`grant_booster(amount)`) or exactly one board part
+/// (`grant_board_part(part_idx, 1)`) — for parts the leaf amount is the part's
+/// catalogue index, so the part identity rides the same leaf format as the
+/// booster count.
 pub fn claim_item_root(
     ctx: Context<ClaimItemRoot>,
     amount: u64,
@@ -150,7 +161,16 @@ pub fn claim_item_root(
     );
     require!(proof.len() <= 24, StakeError::BadProof);
     require!(amount > 0, StakeError::ZeroAmount);
-    require!(amount <= MAX_ITEM_CLAIM, StakeError::ItemBudgetExceeded);
+    // Kind 8 caps the booster count; kind 10 caps the catalogue index.
+    let part_claim = r.kind == ITEM_KIND_BOARD_PARTS;
+    if part_claim {
+        require!(
+            (amount as usize) < BOARD_PART_COUNT,
+            StakeError::ItemBudgetExceeded
+        );
+    } else {
+        require!(amount <= MAX_ITEM_CLAIM, StakeError::ItemBudgetExceeded);
+    }
     let leaf = hashv(&[
         &[0u8],
         ctx.accounts.wallet.key().as_ref(),
@@ -160,29 +180,53 @@ pub fn claim_item_root(
     ])
     .to_bytes();
     require!(verify_proof(&r.root, leaf, &proof), StakeError::BadProof);
-    r.claimed = r.claimed.checked_add(amount).ok_or(StakeError::Overflow)?;
+    // Boosters debit the budget by the count delivered; a board part
+    // leaf is one part, so each claim debits exactly one unit.
+    let debit = if part_claim { 1 } else { amount };
+    r.claimed = r.claimed.checked_add(debit).ok_or(StakeError::Overflow)?;
     require!(r.claimed <= r.budget, StakeError::RootBudgetExceeded);
     ctx.accounts.receipt.amount = amount;
     ctx.accounts.receipt.bump = ctx.bumps.receipt;
 
-    // `items` is not re-derived here: chip_core's `GrantBooster` enforces `["items", owner]` with
-    // `owner = wallet` (ConstraintSeeds otherwise), so a foreign account can never be credited.
+    // The target account is not re-derived here: chip_core enforces its own
+    // seeds (`["items", owner]` / `["board_parts", owner]`) with
+    // `owner = wallet` (ConstraintSeeds otherwise), so a foreign account
+    // can never be credited.
     let seeds: &[&[u8]] = &[b"rewarder", &[ctx.bumps.rewarder]];
-    chip_core::cpi::grant_booster(
-        CpiContext::new_with_signer(
-            ctx.accounts.chip_core.to_account_info(),
-            GrantBooster {
-                authority: ctx.accounts.rewarder.to_account_info(),
-                payer: ctx.accounts.wallet.to_account_info(),
-                config: ctx.accounts.config.to_account_info(),
-                owner: ctx.accounts.wallet.to_account_info(),
-                items: ctx.accounts.items.to_account_info(),
-                system_program: ctx.accounts.system_program.to_account_info(),
-            },
-            &[seeds],
-        ),
-        amount as u16, // ≤ MAX_ITEM_CLAIM (10) — checked above
-    )?;
+    if part_claim {
+        chip_core::cpi::grant_board_part(
+            CpiContext::new_with_signer(
+                ctx.accounts.chip_core.to_account_info(),
+                GrantBoardPart {
+                    authority: ctx.accounts.rewarder.to_account_info(),
+                    payer: ctx.accounts.wallet.to_account_info(),
+                    config: ctx.accounts.config.to_account_info(),
+                    owner: ctx.accounts.wallet.to_account_info(),
+                    parts: ctx.accounts.board_parts.to_account_info(),
+                    system_program: ctx.accounts.system_program.to_account_info(),
+                },
+                &[seeds],
+            ),
+            amount as u8, // < BOARD_PART_COUNT — checked above
+            1,              // one part per leaf; the oracle carries the rest over
+        )?;
+    } else {
+        chip_core::cpi::grant_booster(
+            CpiContext::new_with_signer(
+                ctx.accounts.chip_core.to_account_info(),
+                GrantBooster {
+                    authority: ctx.accounts.rewarder.to_account_info(),
+                    payer: ctx.accounts.wallet.to_account_info(),
+                    config: ctx.accounts.config.to_account_info(),
+                    owner: ctx.accounts.wallet.to_account_info(),
+                    items: ctx.accounts.items.to_account_info(),
+                    system_program: ctx.accounts.system_program.to_account_info(),
+                },
+                &[seeds],
+            ),
+            amount as u16, // ≤ MAX_ITEM_CLAIM (10) — checked above
+        )?;
+    }
     emit!(RootClaimed {
         kind: r.kind,
         epoch: r.epoch,

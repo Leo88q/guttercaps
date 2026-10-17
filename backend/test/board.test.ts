@@ -148,7 +148,7 @@ describe('конструктор: часть за заезд', () => {
   it('выдаётся недостающий слот, а не четыре деки подряд', () => {
     const w = kp();
     const d = boardDistrictOfWeek(WEEK);
-    board.grantPart(db, w, `deck_d${d}`, 'quest', T0);
+    board.grantPart(db, w, `deck_d${d}`, 'achievement', T0);
     const got = board.grantWeeklyRunPart(db, w, 'gold', T0);
     expect(got?.part).toBe(`trucks_d${d}`);
     // А на следующей неделе — следующий район, там дека снова первая дыра.

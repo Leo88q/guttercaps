@@ -1004,6 +1004,161 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/line/tournament": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Line tournament of the day (docs/16 §5.4): my entries, best run, rank, prize schedule
+         * @description The daily paid tournament of the Line. An entry costs 30 $CG (burned) per ATTEMPT —
+         *     the credit is spent by a tournament run, not by the day — and the daily paid-run cap
+         *     (5) is shared with extra runs. Prizes are board parts only: never $CG.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description state */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TournamentState"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/line/tournament/enter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enter the day’s tournament — one 30 $CG payment buys one attempt credit
+         * @description Same settlement as an extra run: the on-chain `pay_service` of kind `lineTournamentEntry`
+         *     is found by signature, must be $CG and exactly 30 $CG, and is consumed exactly once.
+         *     The ref-hash binds the payment to the day. The credit is spent by the next
+         *     `tournament: true` run submission.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description unix day index; must be today */
+                        day: number;
+                        /** @description transaction signature of the on-chain pay_service */
+                        signature: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description entries */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            day?: number;
+                            entries?: number;
+                        };
+                    };
+                };
+                /** @description bad_day (not today) · bad_signature */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description payment_not_found · cg_burn_required (not $CG, or not exactly 30 $CG) · ref_hash_mismatch · payment_consumed */
+                402: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description run_credit_cap — the daily paid-run cap is shared with extra runs */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/line/tournament/board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tournament board of a day (docs/16 §5.4): best tournament run per wallet, prize bands */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description unix day index; defaults to today */
+                    day?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description board */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TournamentBoard"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/line/runs/{id}/replay": {
         parameters: {
             query?: never;
@@ -2019,6 +2174,51 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["CrewBoard"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/crew/month": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Monthly crew contest (docs/16 §5.6): the week board summed over the month
+         * @description A calendar month; a crew's score is the sum of its weekly board scores of the
+         *     weeks that STARTED in the month. The top 3 crews win the crew deck part of
+         *     their wall district — cosmetics only, never $CG. Every member of the month's
+         *     roster holds the part.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description calendar month YYYYMM; defaults to the current one */
+                    month?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description board */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CrewMonthBoard"];
                     };
                 };
             };
@@ -7995,6 +8195,78 @@ export interface components {
                 at: string;
                 /** @description false once the 14-day sweeper wiped the inputs */
                 hasReplay: boolean;
+            }[];
+        };
+        TournamentState: {
+            day: number;
+            week: number;
+            entries: {
+                /** @description entries bought today (spent or not) */
+                bought: number;
+                /** @description entry credits not yet spent by a run */
+                unused: number;
+                /** @description how many more paid attempts fit under the shared daily cap */
+                left: number;
+            };
+            best: {
+                score: number;
+                runId: number;
+                /** Format: date-time */
+                at: string;
+            } | null;
+            /** @description my place on today’s board; null outside it */
+            rank: number | null;
+            entrants: number;
+            /** @description accounting model of the day’s prize pool (15% of entries); no $CG ever leaves it — the prize is parts */
+            poolCgMicro: string;
+            /** @description the day has been closed and prizes granted */
+            settled: boolean;
+            schedule: {
+                band: number;
+                /** @description top percent of the field that takes this band */
+                topPct: number;
+                /** @description fixed trophy part ids */
+                trophies: string[];
+                /** @description missing district-of-week parts this band grants */
+                districtSlots: number;
+            }[];
+            prizesYesterday: {
+                rank: number;
+                band: number;
+                part: string;
+            }[];
+        };
+        TournamentBoard: {
+            day: number;
+            entrants: number;
+            poolCgMicro: string;
+            settled: boolean;
+            rows: {
+                rank: number;
+                wallet: string;
+                handle?: string | null;
+                score: number;
+                runId: number;
+                /** Format: date-time */
+                at: string;
+                hasReplay: boolean;
+                /** @description prize band of the rank (-1 = outside the prizes) */
+                band: number;
+            }[];
+        };
+        CrewMonthBoard: {
+            /** @description calendar month YYYYMM */
+            month: number;
+            rows: {
+                rank: number;
+                id: number;
+                name: string;
+                /** @description wall district of the crew */
+                district: number;
+                /** @description sum of the crew’s weekly board scores of the month */
+                score: number;
+                /** @description the crew deck part the top crews win */
+                part: string;
             }[];
         };
         CrewCheck: {

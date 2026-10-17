@@ -483,6 +483,37 @@ pub struct PlayerItems {
     pub bump: u8,
 }
 
+/// Board parts the player owns (docs/16 §4.2, §5.4, §6): quantities by
+/// catalogue index. The catalogue lives in `packages/economy/src/board.ts`
+/// (`BOARD_PARTS`); the index of a part in that array is its on-chain id,
+/// pinned by `scripts/sync-check.ts` so the two cannot drift. Parts are
+/// cosmetic only (owner decision 1, docs/16 §0.3): nothing here feeds
+/// weight, odds, income or scores.
+///
+/// Ownership is rooted here once a part is earned (weekly run grant,
+/// Line tournament prize, crew monthly prize, shop mount): the backend
+/// publishes a kind-10 item root over the grants and the wallet claims
+/// it through the staking program's `claim_item_root`, which CPIs
+/// `grant_board_part` signed by the `["rewarder"]` PDA — the same
+/// no-ops-key delivery as boosters.
+#[account]
+#[derive(InitSpace)]
+pub struct PlayerBoardParts {
+    pub owner: Pubkey,
+    /// One quantity per catalogue entry, `[u16; BOARD_PART_COUNT]`.
+    pub parts: [u16; BOARD_PART_COUNT],
+    pub bump: u8,
+}
+
+/// Length of the board-part catalogue (`BOARD_PARTS.length` in
+/// `packages/economy/src/board.ts`). Checked against the TS model by
+/// `scripts/sync-check.ts` — a part added in the catalogue without
+/// this const (or the other way round) would desync the registry.
+pub const BOARD_PART_COUNT: usize = 54;
+/// Most parts of one kind a wallet can hold (off-chain `BOARD.maxQtyPerPart`):
+/// doubles from two sources stack up to this and then stop.
+pub const MAX_PART_QTY: u16 = 9;
+
 /// Beta pre-sale delivery window for one pack SKU (`["drop", sku]`): the admin opens it with a
 /// hard `total` and `grant_preorder_pack` converts paid off-chain preorders into real packs,
 /// incrementing `granted`. The program refuses the `total + 1`-th pack; the off-chain registry

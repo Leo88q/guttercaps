@@ -150,6 +150,10 @@ export function submitRun(db: Db, wallet: string, body: Record<string, unknown> 
     throw new ServiceError(400, 'bad_day', `day must be today (${today}) or yesterday`);
   }
   const inputs = parseReplay(body?.inputs);
+  // Турнирный заезд (§5.4): тот же реплей и тот же счёт, но попытка
+  // оплачена входом в турнир (кредит `line_tournament_entries`),
+  // а не кредитом доп. заезда, и заезд дополнительно попадает в ранжирование дня.
+  const tournament = body?.tournament === true;
   // Клиент играет раскладкой дня локально; сервер её не спрашивает — он её знает.
   const layout = lineLayout(day);
 
@@ -160,7 +164,18 @@ export function submitRun(db: Db, wallet: string, body: Record<string, unknown> 
     const paidUsed = used?.paid ?? 0;
     let paid = false;
     let creditId: number | null = null;
-    if (freeUsed < LINE.freeRunsPerDay) {
+    let tournamentEntryId: number | null = null;
+    if (tournament) {
+      // Турнирная попытка не берёт ни бесплатную, ни кредит доп.
+      // заезда: она оплачена входом. Потолок общий — paid-заезды
+      // (любого вида) уже видны в `paidUsed`.
+      const entry = db.get<{ id: number }>(
+        `SELECT id FROM line_tournament_entries WHERE wallet = ? AND day = ? AND used_by IS NULL ORDER BY id LIMIT 1`, wallet, day);
+      if (!entry) throw new ServiceError(402, 'tournament_entries_exhausted', 'No unused tournament entry for today — enter the tournament first');
+      if (paidUsed >= LINE.maxPaidRunsPerDay) throw new ServiceError(409, 'run_credit_cap', `At most ${LINE.maxPaidRunsPerDay} paid runs per day`);
+      tournamentEntryId = entry.id;
+      paid = true;
+    } else if (freeUsed < LINE.freeRunsPerDay) {
       paid = false;
     } else {
       const credit = db.get<{ id: number }>(
@@ -180,6 +195,12 @@ export function submitRun(db: Db, wallet: string, body: Record<string, unknown> 
     );
     const id = Number(info.lastInsertRowid);
     if (creditId !== null) db.run(`UPDATE line_credits SET used_by = ? WHERE id = ? AND used_by IS NULL`, id, creditId);
+    if (tournamentEntryId !== null) {
+      db.run(`UPDATE line_tournament_entries SET used_by = ? WHERE id = ? AND used_by IS NULL`, id, tournamentEntryId);
+      db.run(
+        `INSERT INTO line_tournament_runs (run_id, wallet, day, score, submitted_at) VALUES (?, ?, ?, ?, ?)`,
+        id, wallet, day, res.score, t);
+    }
 
     // Награда 1: косметический трек. За каждый заезд, потолок на заезд стоит в economy.
     const xp = runPassXp(res.score);
@@ -215,6 +236,7 @@ export function submitRun(db: Db, wallet: string, body: Record<string, unknown> 
     const part = tier === 'none' ? null : grantWeeklyRunPart(db, wallet, tier, t);
 
     recordEvent(db, wallet, 'line', 'run', { score: res.score, paid, tier, bails: res.bails }, t);
+    if (tournament) recordEvent(db, wallet, 'tournament', 'run', { score: res.score, tier }, t);
 
     return {
       run: {

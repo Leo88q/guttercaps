@@ -177,6 +177,7 @@ const id: Messages = {
     setBonus: 'Bonus set ×{mult}', weight: 'Bobot', pending: 'Reward tertunda', apyBand: 'Rentang APY', flexible: 'Fleksibel', days: '{n} hari',
   },
   quests: {
+    partLeaf: 'bagian papan #{n}', partsRoot: 'Bagian papan',
     visitGame: 'Buka gim',
     title: 'Misi', subtitle: 'Selesaikan misi untuk $CG, booster, dan voucher cap. Hadiah masuk ke sini setiap beberapa jam — lalu kamu klaim. Server tidak pernah memegang $CG Anda.',
     daily: 'Harian', weekly: 'Mingguan', permanent: 'Permanen', claim: 'Klaim', claimed: 'Diklaim', claimable: 'Siap diklaim', progress: '{done}/{total}',
@@ -239,7 +240,7 @@ const id: Messages = {
     expires: 'berakhir {date}', noPower: 'Tanpa pay-to-win: terverifikasi on-chain', boosterCap: 'Booster: maks 3 per hari', bought: 'Dibeli', buyFailed: 'Pembelian gagal',
     pickCap: 'Pilih tutup botol untuk dicat', pickSkin: 'Pilih skin', pickTheme: 'Pilih tema', pickPack: 'Pilih pak', pickDistrict: 'Pilih distrik', stencilPackIncludes: 'Yang Anda dapat',
     noFreeCaps: 'Belum punya tutup botol — buka pak dulu', noCompletedDistrict: 'Lengkapi satu distrik (9/9) untuk membuka bannernya',
-    names: { handle: '@handle', handleChange: 'Ganti handle', capSkin: 'Skin cap', profileTheme: 'Tema profil', arenaEmotePack: 'Paket emote arena', extraBenchSlots: '+2 preset meja', seasonPass: 'Season pass', booster: 'Booster fusi', packSkipAnim: 'Reveal instan', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'Banner distrik', districtStencilPack: 'Paket stensil distrik' , lineExtraRun: 'Percobaan tambahan', crewCharter: 'Piagam kru', crewRename: 'Ganti nama kru', },
+    names: { handle: '@handle', handleChange: 'Ganti handle', capSkin: 'Skin cap', profileTheme: 'Tema profil', arenaEmotePack: 'Paket emote arena', extraBenchSlots: '+2 preset meja', seasonPass: 'Season pass', booster: 'Booster fusi', packSkipAnim: 'Reveal instan', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'Banner distrik', districtStencilPack: 'Paket stensil distrik' , lineExtraRun: 'Percobaan tambahan', crewCharter: 'Piagam kru', crewRename: 'Ganti nama kru', lineTournamentEntry: 'Entri turnamen garis', boardMount: 'Aksesori papan', },
     blurbs: {
       handle: 'Nama unik di peringkat, arena, dan URL profil Anda.', handleChange: 'Ganti nama sekali per 30 hari. Handle lama dilepas setelah 90 hari.',
       capSkin: 'Efek bingkai / semprotan kosmetik pada satu cap. Ikut cap saat dijual.', profileTheme: 'Tekstur dinding + warna lampu untuk profil dan intro arena Anda.',
@@ -248,6 +249,7 @@ const id: Messages = {
       booster: '+15 pp keberhasilan pada satu fusi (maks 95%). Maks 3 per hari.', packSkipAnim: 'Opsi permanen melewati animasi reveal. Murni kenyamanan.',
       gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Banner animasi untuk distrik yang sudah Anda lengkapi.', districtStencilPack: 'Lima stensil distrik untuk editor tag. Hanya bentuknya — garis dan warna tetap milikmu.', lineExtraRun: 'Satu percobaan lagi di lintasan hari ini setelah tiga yang gratis. Hanya $CG — semuanya dibakar.',
         crewCharter: 'Nama, anggota, dan satu segmen tembok 20 slot bersama untuk lima sampai sepuluh rider. $1,99 membeli nama — tembok tetap didapat dengan main (§3.4).', crewRename: 'Nama baru untuk kru, sekali setiap 30 hari. Nama lama kembali ke kota setelah 90 hari.',
+        lineTournamentEntry: 'Satu run berbayar yang sekaligus masuk turnamen hari. 30 $CG dibakar; pool hadiah membayar dengan bagian papan, bukan $CG.', boardMount: 'Satu aksesori papan: finishing baut atau stiker. Hanya kosmetik.',
     },
   },
   inspect: {
@@ -502,6 +504,15 @@ const id: Messages = {
     reason_other: 'Lainnya',
   },
   line: {
+    tournament: {
+      title: 'Turnamen harian',
+      intro: 'Masuk dengan satu run berbayar: {cg} $CG per percobaan, dibakar. Run terbaik hari ini masuk papan; hadiahnya bagian papan — bukan $CG.',
+      entrants: '{n} rider', pool: 'Pool (model): {n} $CG', rank: 'Peringkat #{n}', best: 'Terbaik: {n}',
+      entriesLeft: 'Sisa percobaan berbayar hari ini: {n}', enter: 'Masuk · 30 $CG', entering: 'Membayar…',
+      on: 'Mode turnamen', off: 'Naik biasa', runOn: 'Naik di turnamen', runOff: 'Naik di turnamen',
+      schedule: 'Pita hadiah', band: 'Pita {n}', top: 'top {pct}%', districtSlots: '+{n} bagian distrik',
+      yesterday: 'Hadiah kemarin', board: 'Papan turnamen', empty: 'Belum ada yang naik di turnamen hari ini',
+    },
     title: 'Garis',
     intro: 'Satu bowl untuk semua: seed hari ini, 45 detik, tiga percobaan gratis. Setelah itu, tambahan 30 $CG — dibakar.',
     howto: 'Ketuk untuk melompat. Ketuk lagi di udara untuk grab. Kicker meluncurkan sendiri.',
@@ -523,6 +534,10 @@ const id: Messages = {
 
   // Команды (docs/16 §5.6): общее имя, состав и сегмент стены.
   crew: {
+    month: 'Bulan crew',
+    monthNote: 'Papan minggu yang dijumlahkan sebulan kalender: skor crew adalah jumlah hasil mingguannya.',
+    monthEmpty: 'Bulan ini crew belum naik',
+    monthPrize: 'Top-{n} crew mendapat deck crew distrik dindingnya — kosmetik, bukan $CG.',
     title: 'Kru',
     intro: 'Lima sampai sepuluh rider berbagi satu nama dan satu segmen tembok. Papan menghitung lima rider terbaikmu — bukan seluruh anggota.',
     open: 'Buka',
@@ -634,6 +649,7 @@ const id: Messages = {
     copies: '{n} pcs',
   },
   builder: {
+    buy: 'Beli · {cents}¢', buying: 'Membayar…', bought: 'Aksesori dibeli',
     title: 'Rakit papan',
     intro: 'Enam slot, satu papan. Suku cadang didapat dengan riding — di Line, di quest, di kontes kru. Toko hanya menjual aksesoris.',
     slots: { deck: 'Dek', trucks: 'Truk', wheels: 'Roda', grip: 'Grip', bolts: 'Baut', sticker: 'Stiker' },
@@ -662,7 +678,7 @@ const id: Messages = {
     empty: 'Baru bagian bawaan: bagian datang dari run, quest dan kontes kru.',
     partAlt: '{slot} {district}',
     tier: { stock: 'Bawaan', district: 'Distrik', crew: 'Kru', trophy: 'Trofi' },
-    source: { stock: 'Awal', run: 'Run', achievement: 'Pencapaian', crew: 'Kontes kru', quest: 'Quest', track: 'Jalur musim', shop: 'Toko' },
+    source: { stock: 'Awal', run: 'Run', achievement: 'Pencapaian', crew: 'Kontes kru', tournament: 'Turnamen', shop: 'Toko' },
   },
   footer: { legal: 'Legal', ages: '18+' },
 

@@ -1,5 +1,5 @@
 {
-  "generated": "2026-10-16T23:10:24Z",
+  "generated": "2026-10-17T00:32:02Z",
   "tool": "scripts/skate-art-build.py",
   "note": "Арт скейт-мира: сгенерированные изображения, а не рисунок кодом. Поле prompt — происхождение кадра; мастер в git не идёт (тяжёлый). Палитра docs/07 §2.2, бюджеты docs/16 §8.",
   "assets": [
@@ -200,6 +200,22 @@
       "prompt": "Part of the board builder (docs/16 §4.2): the deck plate from deck.webp painted with the district texture paint-d7.webp (coat blend, 88 % paint, plate keeps its own light)."
     },
     {
+      "name": "deck-trophy",
+      "kind": "sprite",
+      "file": "client/public/art/skate/deck-trophy.webp",
+      "width": 1024,
+      "height": 668,
+      "bytes": 118144,
+      "kb": 115.4,
+      "budget_kb": 250,
+      "quality": 78,
+      "sha256": "d64c827f71af0942855a7837d7820fe016478b257bc842f4e1959beb119e3fc0",
+      "master": "art_drafts/skate/deck-trophy.png",
+      "master_sha256": "3c139a389485d63429c48e72e8ea633b51e4a8cd58379e76f75dff5652e48d05",
+      "prompt": "Product render of a single skateboard deck, three-quarter top angle, alone in the centre of the frame on a flat pure solid green #00FF00 chroma key screen background. The deck has a gilded gold-leaf finish all over the top face with a champion trophy cup engraving in the middle, worn gold leaf with scratches and scuffed edges showing the wood underneath, seven-ply maple edge, black griptape underside, slight concave, mild nose and tail kick. Studio product photography, warm golden highlights, subtle grime, crisp edges. Gritty urban street-art game illustration style, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos, no people.",
+      "runtime": true
+    },
+    {
       "name": "empty-garage",
       "kind": "background",
       "file": "client/public/art/skate/empty-garage.webp",
@@ -378,6 +394,22 @@
       "master": "composite:grip.webp × paint-d7.webp",
       "master_sha256": "",
       "prompt": "Part of the board builder (docs/16 §4.2): the grip plate from grip.webp painted with the district texture paint-d7.webp (stain blend, 95 % paint, plate keeps its own light)."
+    },
+    {
+      "name": "grip-trophy",
+      "kind": "sprite",
+      "file": "client/public/art/skate/grip-trophy.webp",
+      "width": 900,
+      "height": 775,
+      "bytes": 211236,
+      "kb": 206.3,
+      "budget_kb": 250,
+      "quality": 78,
+      "sha256": "db2c5fbb20cc6019eaedab12efcf7b3cde729411c7f2e72b1111046c902fbde7",
+      "master": "art_drafts/skate/grip-trophy.png",
+      "master_sha256": "3589e08c80996a9a5cd42bcee2ddf8b4c0f59173a8a9c3e3a55eb143a89c9bbb",
+      "prompt": "Product render of a square sheet of coarse black griptape with torn edges, in the centre of the frame a large champion trophy cup emblem made of bright gold leaf, alone on a flat pure solid green #00FF00 chroma key screen background, three-quarter studio view. Coarse gritty texture, dust and wear, gold emblem slightly raised with sharp edges. Studio product photography, crisp edges. Gritty urban street-art game illustration style, overcast diffused daylight with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no letters no logos, no people.",
+      "runtime": true
     },
     {
       "name": "line-bg",

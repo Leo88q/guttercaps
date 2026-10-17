@@ -25,9 +25,9 @@ import { fmtCg, fmtSkr, countdown } from '@/shared/lib/format';
 import { useUiStore } from '@/app/store/ui';
 import { isMock } from '@/api/client';
 import { EXPLORER, MINTS } from '@/app/config';
-import { ANTI_FARM, QUEST_CHIP_TEMPLATES, SKR_ANTI_FARM, isChipRootKind, isItemRootKind, isSkrRootKind } from '@guttercaps/economy';
+import { ANTI_FARM, QUEST_CHIP_TEMPLATES, REWARD_ROOT_KINDS, SKR_ANTI_FARM, isChipRootKind, isItemRootKind, isSkrRootKind } from '@guttercaps/economy';
 import { useT, type MessageKey } from '@/shared/i18n';
-import { RewardGlyph, type RewardKind, CgCoinIcon, SkrTokenIcon, BoosterIcon, VoucherIcon, StreakIcon, StashIcon } from '@/shared/ui/reward-icons';
+import { RewardGlyph, type RewardKind, CgCoinIcon, SkrTokenIcon, BoosterIcon, VoucherIcon, StreakIcon, StashIcon, PartIcon } from '@/shared/ui/reward-icons';
 import { ExternalIcon } from '@/shared/ui/action-icons';
 import { isClaimReady } from './claimReadiness';
 
@@ -75,7 +75,7 @@ export default function Quests() {
   const oddsText = (odds: readonly number[]) => resolveUiText(rewardOddsText(odds));
   const fmtRoot = (...args: Parameters<typeof rewardText>) => resolveUiText(rewardText(...args));
   /** The face each reward kind wears in the rewards panel (reward-icons set). */
-  const kindGlyph = (kind: number): RewardKind => isChipRootKind(kind) ? 'voucher' : isItemRootKind(kind) ? 'booster' : isSkrRootKind(kind) ? 'skr' : 'cg';
+  const kindGlyph = (kind: number): RewardKind => isChipRootKind(kind) ? 'voucher' : kind === REWARD_ROOT_KINDS.itemBoardParts ? 'part' : isItemRootKind(kind) ? 'booster' : isSkrRootKind(kind) ? 'skr' : 'cg';
   // d_streak7 is a 7-day meta reward (DAILY_QUESTS[4]), not a same-day daily.
   // The streak card above already tracks it — leaving the row in the daily list
   // makes the day look unfinished after every other daily is done.
@@ -107,8 +107,11 @@ export default function Quests() {
   const sumOf = (pick: (kind: number) => boolean) => claimable.filter((c) => pick(c.kind!)).reduce((s, c) => s + BigInt(c.amountMicro ?? '0'), 0n);
   const totalCg = sumOf((k) => !isSkrRootKind(k) && !isItemRootKind(k));
   const totalSkr = sumOf(isSkrRootKind);
-  const totalBoosters = sumOf(isItemRootKind);
-  const totalText = rewardTotalText(totalCg, totalSkr, totalBoosters);
+  // Деки райдеров (корневой вид 10) — не бустеры: своя строка в квитанции
+  // и своя инвалидация (PlayerBoardParts, а не PlayerItems).
+  const totalBoosters = sumOf((k) => isItemRootKind(k) && k !== REWARD_ROOT_KINDS.itemBoardParts);
+  const totalParts = sumOf((k) => k === REWARD_ROOT_KINDS.itemBoardParts);
+  const totalText = rewardTotalText(totalCg, totalSkr, totalBoosters, totalParts);
   const REASONS = new Set(['account_too_new', 'play_10_matches_or_buy_a_pack', 'rewards_paused', 'device_limit', 'human_check_required']);
   /** Server reason codes → player copy (unknown codes are shown raw so nothing is hidden). */
   const reasonText = (code: string) => (REASONS.has(code) ? t(`quests.reason.${code}` as MessageKey, { n: ANTI_FARM.maxWalletsPerDevice }) : code);
@@ -129,6 +132,7 @@ export default function Quests() {
       void qc.invalidateQueries({ queryKey: ['quests'] });
       void qc.invalidateQueries({ queryKey: ['chain', 'balances'] });
       if (totalBoosters > 0n) void qc.invalidateQueries({ queryKey: ['chain', 'items'] }); // PlayerItems changed by the CPI grant
+      if (totalParts > 0n) void qc.invalidateQueries({ queryKey: ['board'] }); // PlayerBoardParts changed by the CPI grant
     } catch (e) {
       toast({ kind: 'error', title: { key: 'quests.claimFailed' }, error: e });
     } finally { setBusy(false); }
@@ -190,6 +194,7 @@ export default function Quests() {
               {totalCg > 0n && <span className="reward-chip"><CgCoinIcon size={16} /> {fmtCg(totalCg)}</span>}
               {totalSkr > 0n && <span className="reward-chip"><SkrTokenIcon size={16} /> {fmtSkr(totalSkr)}</span>}
               {totalBoosters > 0n && <span className="reward-chip"><BoosterIcon size={16} /> {t('quests.boosterLeaf', { n: Number(totalBoosters) })}</span>}
+              {totalParts > 0n && <span className="reward-chip"><PartIcon size={16} /> {t('quests.partLeaf', { n: Number(totalParts) })}</span>}
               {vouchers.length > 0 && <span className="reward-chip"><VoucherIcon size={16} /> {t('quests.chipLeaves', { n: vouchers.length })}</span>}
             </div>
           )}

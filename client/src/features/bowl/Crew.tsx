@@ -18,7 +18,7 @@ import { useConnection } from '@solana/wallet-adapter-react';
 import { CREW, CREW_NAME_RE, SERVICE_BY_ID } from '@guttercaps/economy';
 import { claimWithRetry, isMock } from '@/api/client';
 import {
-  useCharterCrew, useCrew, useCrewBoard, useCrewCheck, useJoinCrew, useLeaveCrew, useMyCrew, useRenameCrew, useReportCrew,
+  useCharterCrew, useCrew, useCrewBoard, useCrewCheck, useCrewMonth, useJoinCrew, useLeaveCrew, useMyCrew, useRenameCrew, useReportCrew,
   type CrewView,
 } from '@/api/hooksLazy';
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
@@ -230,6 +230,7 @@ export default function Crew() {
   const mine = useMyCrew();
   const other = useCrew(name);
   const board = useCrewBoard();
+  const month = useCrewMonth();
   const join = useJoinCrew();
   const leave = useLeaveCrew();
   const report = useReportCrew();
@@ -320,6 +321,34 @@ export default function Crew() {
           <div className="tiny muted">{t('crew.join')}</div>
         </div>
       )}
+
+      {/* Ежемесячный конкурс (§5.6): та же доска, сумма недель
+          месяца. Приз — командная дека района стены, косметика. */}
+      <div className="card stack-sm">
+        <div className="strong">{t('crew.month')}</div>
+        <div className="tiny muted">{t('crew.monthNote')}</div>
+        {month.isLoading && <Skeleton h={120} />}
+        {!month.isLoading && (month.data?.rows?.length ?? 0) === 0 && <div className="tiny muted">{t('crew.monthEmpty')}</div>}
+        {(month.data?.rows?.length ?? 0) > 0 && (
+          <div className="crew-board">
+            <div className="crew-board-head">
+              <span className="muted">#</span>
+              <span className="muted">{t('crew.crewCol')}</span>
+              <span className="muted">{t('crew.score')}</span>
+            </div>
+            {(month.data?.rows ?? []).map((r) => (
+              <Link key={r.id} to={`/bowl/crew/${r.name}`} className="crew-board-row">
+                <span className="mono muted">{r.rank ?? 0}</span>
+                <span>{r.name}</span>
+                <span className="mono cg-accent">{r.score ?? 0}</span>
+              </Link>
+            ))}
+          </div>
+        )}
+        {(month.data?.rows?.length ?? 0) > 0 && (
+          <div className="tiny muted">{t('crew.monthPrize', { n: CREW.monthlyContestPlaces })}</div>
+        )}
+      </div>
 
       {!name && (
         <div className="card stack-sm">

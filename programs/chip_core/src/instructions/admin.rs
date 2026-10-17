@@ -687,6 +687,61 @@ pub fn grant_booster(ctx: Context<GrantBooster>, count: u16) -> Result<()> {
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Grant a board part (docs/16 §4.2, §5.4): the on-chain half of the board
+// builder's ownership. Same authority rule as boosters — admin for support
+// cases, the staking program's ["rewarder"] PDA for root claims — and the
+// same idempotent-by-construction delivery: the part registry is a plain
+// counter array, so a re-claimed root leaf just adds to it.
+// ---------------------------------------------------------------------------
+
+#[derive(Accounts)]
+pub struct GrantBoardPart<'info> {
+    pub authority: Signer<'info>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(seeds = [b"config"], bump = config.bump)]
+    pub config: Box<Account<'info, GameConfig>>,
+    /// CHECK: any wallet
+    pub owner: UncheckedAccount<'info>,
+    // sentio-ignore-next-line SW013, SW016
+    #[account(init_if_needed, payer = payer, space = 8 + PlayerBoardParts::INIT_SPACE, seeds = [b"board_parts", owner.key().as_ref()], bump)]
+    pub parts: Box<Account<'info, PlayerBoardParts>>,
+    pub system_program: Program<'info, System>,
+}
+
+/// `part_idx` is the index into the catalogue (`BOARD_PARTS` in
+/// `packages/economy/src/board.ts`), `count` is how many units of it to add
+/// (root claims always deliver exactly one).
+pub fn grant_board_part(ctx: Context<GrantBoardPart>, part_idx: u8, count: u16) -> Result<()> {
+    let c = &ctx.accounts.config;
+    // authority = admin (support) or the staking program's reward-signer PDA ["rewarder"] (root claims)
+    let (rewarder, _) = Pubkey::find_program_address(&[b"rewarder"], &c.staking_program);
+    let a = ctx.accounts.authority.key();
+    require!(a == c.admin || a == rewarder, ChipError::Unauthorized);
+    require!((part_idx as usize) < BOARD_PART_COUNT, ChipError::InvalidQuantity);
+    require!(count > 0 && count <= 10, ChipError::InvalidQuantity);
+    let parts = &mut ctx.accounts.parts;
+    if parts.owner == Pubkey::default() {
+        parts.owner = ctx.accounts.owner.key();
+        parts.bump = ctx.bumps.parts;
+    }
+    require_keys_eq!(
+        parts.owner,
+        ctx.accounts.owner.key(),
+        ChipError::Unauthorized
+    );
+    // Насыщение у реестра то же, что у оффчейн-записи (BOARD.maxQtyPerPart):
+    // дубль из двух источников копится до потолка и останавливается,
+    // поэтому ончейн и проекция никогда не расходятся.
+    let i = part_idx as usize;
+    parts.parts[i] = parts
+        .parts[i]
+        .saturating_add(count)
+        .min(MAX_PART_QTY);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

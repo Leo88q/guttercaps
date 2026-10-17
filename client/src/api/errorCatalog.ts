@@ -19,6 +19,8 @@ export const API_ERROR_KEYS = {
   // §5.1 линия: реплей, день и попытки.
   bad_replay: 'failures.requestInvalid', bad_day: 'failures.requestInvalid',
   use_line_endpoint: 'failures.requestInvalid', runs_exhausted: 'failures.lineRunsExhausted', run_credit_cap: 'failures.lineCreditCap',
+  // §5.4 турнир: бесплатные входы дня кончились.
+  tournament_entries_exhausted: 'failures.tournamentEntriesExhausted',
   // §5.6 команды: имя, состав, сегмент стены и модерация имени.
   no_crew: 'failures.crewNoCrew', invalid_name: 'failures.crewInvalidName', already_in_crew: 'failures.crewAlreadyIn',
   not_captain: 'failures.crewNotCaptain', bad_code: 'failures.crewBadCode', crew_full: 'failures.crewFull',

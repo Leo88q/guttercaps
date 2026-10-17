@@ -177,6 +177,7 @@ const fil: Messages = {
     setBonus: 'Set bonus ×{mult}', weight: 'Weight', pending: 'Nakabinbing rewards', apyBand: 'APY band', flexible: 'Flexible', days: '{n} araw',
   },
   quests: {
+    partLeaf: 'bahagi ng board #{n}', partsRoot: 'Mga bahagi ng board',
     visitGame: 'Buksan ang laro',
     title: 'Quests', subtitle: 'Tapusin ang quests para sa $CG, boosters, at cap vouchers. Dumarating dito ang payout tuwing ilang oras — saka mo i-claim. Hindi kailanman hawak ng server ang $CG mo.',
     daily: 'Araw-araw', weekly: 'Lingguhan', permanent: 'Permanente', claim: 'I-claim', claimed: 'Na-claim', claimable: 'Puwede nang i-claim', progress: '{done}/{total}',
@@ -239,7 +240,7 @@ const fil: Messages = {
     expires: 'mag-e-expire {date}', noPower: 'Walang pay-to-win: na-verify on-chain', boosterCap: 'Boosters: max 3 bawat araw', bought: 'Nabili', buyFailed: 'Nabigo ang pagbili',
     pickCap: 'Pumili ng cap na pipintahan', pickSkin: 'Pumili ng skin', pickTheme: 'Pumili ng tema', pickPack: 'Pumili ng pack', pickDistrict: 'Pumili ng distrito', stencilPackIncludes: 'Ang makukuha mo',
     noFreeCaps: 'Wala pang cap — magbukas muna ng pack', noCompletedDistrict: 'Kumpletuhin ang isang distrito (9/9) para ma-unlock ang banner',
-    names: { handle: '@handle', handleChange: 'Palit ng handle', capSkin: 'Cap skin', profileTheme: 'Profile theme', arenaEmotePack: 'Arena emote pack', extraBenchSlots: '+2 bench preset', seasonPass: 'Season pass', booster: 'Fusion booster', packSkipAnim: 'Instant reveal', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'District banner', districtStencilPack: 'Pack ng stencil ng mga distrito' , lineExtraRun: 'Dagdag na takbo', crewCharter: 'Charter ng crew', crewRename: 'Palitan ang pangalan', },
+    names: { handle: '@handle', handleChange: 'Palit ng handle', capSkin: 'Cap skin', profileTheme: 'Profile theme', arenaEmotePack: 'Arena emote pack', extraBenchSlots: '+2 bench preset', seasonPass: 'Season pass', booster: 'Fusion booster', packSkipAnim: 'Instant reveal', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'District banner', districtStencilPack: 'Pack ng stencil ng mga distrito' , lineExtraRun: 'Dagdag na takbo', crewCharter: 'Charter ng crew', crewRename: 'Palitan ang pangalan', lineTournamentEntry: 'Pasok sa torneyo ng linya', boardMount: 'Accessory ng board', },
     blurbs: {
       handle: 'Natatanging pangalan sa leaderboard, arena, at URL ng profile mo.', handleChange: 'Magpalit ng pangalan isang beses bawat 30 araw. Malalaya ang lumang handle pagkalipas ng 90 araw.',
       capSkin: 'Cosmetic na rim / spray effect na nakasulat sa isang cap. Kasama ng cap kapag naibenta.', profileTheme: 'Wall texture + kulay ng ilaw para sa profile at arena intro mo.',
@@ -248,6 +249,7 @@ const fil: Messages = {
       booster: '+15 pp na tagumpay sa isang fusion (max 95%). Max 3 bawat araw.', packSkipAnim: 'Permanenteng toggle para laktawan ang reveal animation. Purong convenience.',
       gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Animated na banner para sa distritong nakumpleto mo.', districtStencilPack: 'Limang stencil ng distrito para sa tag editor. Hugis lang — linya at kulay, sa iyo.', lineExtraRun: 'Isang dagdag na takbo sa linya ngayon pagkatapos ng tatlong libre. $CG lang — sinusunog lahat.',
         crewCharter: 'Pangalan, lineup, at isang shared na 20-slot na segment ng pader para sa lima hanggang sampung rider. Ang $1.99 ay bumibili ng pangalan — ang pader ay kikitain pa rin sa pag-skate (§3.4).', crewRename: 'Bagong pangalan para sa crew, isang beses bawat 30 araw. Ang lumang pangalan ay babalik sa lungsod pagkatapos ng 90 araw.',
+        lineTournamentEntry: 'Isang paid run na pasok din sa torneyo ng araw. 30 $CG ang sinusunog; ang pool ay nagbabayad sa mga bahagi ng board, hindi kailanman $CG.', boardMount: 'Isang accessory para sa board: finish ng mga bolt o sticker. Kosmetiko lamang.',
     },
   },
   inspect: {
@@ -502,6 +504,15 @@ const fil: Messages = {
     reason_other: 'Iba pa',
   },
   line: {
+    tournament: {
+      title: 'Torneyo ng araw',
+      intro: 'Pasok na isang paid run: {cg} $CG kada pagtatangka, sinusunog. Ang pinakamahusay na run ng araw ay sa board; ang mga parangal ay mga bahagi ng board — hindi kailanman $CG.',
+      entrants: '{n} rider', pool: 'Pool (modelo): {n} $CG', rank: 'Ranggo #{n}', best: 'Pinakamahusay: {n}',
+      entriesLeft: 'Natitirang paid na pagtatangka ngayon: {n}', enter: 'Pasok · 30 $CG', entering: 'Nagbabayad…',
+      on: 'Mode ng torneyo', off: 'Libreng pag-ride', runOn: 'Sumasakay sa torneyo', runOff: 'Sumakay sa torneyo',
+      schedule: 'Mga band ng parangal', band: 'Band {n}', top: 'top {pct}%', districtSlots: '+{n} na bahagi ng distrito',
+      yesterday: 'Mga parangal kahapon', board: 'Board ng torneyo', empty: 'Wala pang sumakay sa torneyo ngayon',
+    },
     title: 'Ang Linya',
     intro: 'Isang bowl para sa lahat: seed ng araw, 45 segundo, tatlong libreng takbo. Pagkatapos, dagdag ay 30 $CG — sinusunog.',
     howto: 'Tap para tumalon. Tap ulit sa hangin para sa grab. Ang kicker ay nagpapalipad mag-isa.',
@@ -523,6 +534,10 @@ const fil: Messages = {
 
   // Команды (docs/16 §5.6): общее имя, состав и сегмент стены.
   crew: {
+    month: 'Buwan ng mga crew',
+    monthNote: 'Ang board ng linggo na dinagdagan sa buwang kalendaryo: ang puntos ng crew ay ang kabuuang nito na mga resulta sa linggo.',
+    monthEmpty: 'Wala pang sumakay ang mga crew sa buwang ito',
+    monthPrize: 'Ang top-{n} na crew ay nakakakuha ng crew deck ng kanilang distrito ng pader — kosmetiko, hindi kailanman $CG.',
     title: 'Crew',
     intro: 'Lima hanggang sampung rider, iisang pangalan at iisang segment ng pader. Ang board ay bumibilang ng limang pinakamagaling — hindi ang buong lineup.',
     open: 'Buksan',
@@ -634,6 +649,7 @@ const fil: Messages = {
     copies: '{n} pcs',
   },
   builder: {
+    buy: 'Bili · {cents}¢', buying: 'Nagbabayad…', bought: 'Binili na ang accessory',
     title: 'Buuin ang skate',
     intro: 'Anim na slot, isang skate. Ang mga piyesa ay kinita sa pag-ride — sa Line, sa quests, sa contest ng crew. Ang tindahan ay nagbebenta lang ng dagdag.',
     slots: { deck: 'Deck', trucks: 'Trucks', wheels: 'Gulong', grip: 'Grip', bolts: 'Turnilyo', sticker: 'Sticker' },
@@ -662,7 +678,7 @@ const fil: Messages = {
     empty: 'Stock pa lang: ang mga piyesa ay galing sa runs, quests at contest ng crew.',
     partAlt: '{slot} ng {district}',
     tier: { stock: 'Stock', district: 'Distrito', crew: 'Crew', trophy: 'Tropeo' },
-    source: { stock: 'Panimula', run: 'Run', achievement: 'Achievement', crew: 'Contest ng crew', quest: 'Quest', track: 'Season track', shop: 'Tindahan' },
+    source: { stock: 'Panimula', run: 'Run', achievement: 'Achievement', crew: 'Contest ng crew', tournament: 'Tournament', shop: 'Tindahan' },
   },
   footer: { legal: 'Legal', ages: '18+' },
 

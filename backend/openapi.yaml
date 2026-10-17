@@ -333,6 +333,48 @@ paths:
         '200': { description: credits, content: { application/json: { schema: { type: object, properties: { day: { type: integer }, credits: { type: integer } } } } } }
         '402': { description: 'payment_not_found · cg_burn_required (not $CG, or not exactly 30 $CG) · ref_hash_mismatch · payment_consumed' }
         '409': { description: 'run_credit_cap — the daily paid-run cap is reached' }
+  /me/line/tournament:
+    get:
+      tags: [me]
+      summary: 'Line tournament of the day (docs/16 §5.4): my entries, best run, rank, prize schedule'
+      description: |
+        The daily paid tournament of the Line. An entry costs 30 $CG (burned) per ATTEMPT —
+        the credit is spent by a tournament run, not by the day — and the daily paid-run cap
+        (5) is shared with extra runs. Prizes are board parts only: never $CG.
+      responses:
+        '200': { description: state, content: { application/json: { schema: { $ref: '#/components/schemas/TournamentState' } } } }
+  /me/line/tournament/enter:
+    post:
+      tags: [me]
+      summary: 'Enter the day’s tournament — one 30 $CG payment buys one attempt credit'
+      description: |
+        Same settlement as an extra run: the on-chain `pay_service` of kind `lineTournamentEntry`
+        is found by signature, must be $CG and exactly 30 $CG, and is consumed exactly once.
+        The ref-hash binds the payment to the day. The credit is spent by the next
+        `tournament: true` run submission.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [day, signature]
+              properties:
+                day: { type: integer, description: 'unix day index; must be today' }
+                signature: { type: string, description: 'transaction signature of the on-chain pay_service' }
+      responses:
+        '200': { description: entries, content: { application/json: { schema: { type: object, properties: { day: { type: integer }, entries: { type: integer } } } } } }
+        '400': { description: 'bad_day (not today) · bad_signature' }
+        '402': { description: 'payment_not_found · cg_burn_required (not $CG, or not exactly 30 $CG) · ref_hash_mismatch · payment_consumed' }
+        '409': { description: 'run_credit_cap — the daily paid-run cap is shared with extra runs' }
+  /line/tournament/board:
+    get:
+      tags: [line]
+      summary: 'Tournament board of a day (docs/16 §5.4): best tournament run per wallet, prize bands'
+      parameters:
+        - { name: day, in: query, required: false, schema: { type: integer, minimum: 0 }, description: 'unix day index; defaults to today' }
+      responses:
+        '200': { description: board, content: { application/json: { schema: { $ref: '#/components/schemas/TournamentBoard' } } } }
   /line/runs/{id}/replay:
     get:
       tags: [line]
@@ -601,6 +643,19 @@ paths:
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100 }, description: 'rows to return (default 50)' }
       responses:
         '200': { description: board, content: { application/json: { schema: { $ref: '#/components/schemas/CrewBoard' } } } }
+  /crew/month:
+    get:
+      tags: [crew]
+      summary: 'Monthly crew contest (docs/16 §5.6): the week board summed over the month'
+      description: |
+        A calendar month; a crew's score is the sum of its weekly board scores of the
+        weeks that STARTED in the month. The top 3 crews win the crew deck part of
+        their wall district — cosmetics only, never $CG. Every member of the month's
+        roster holds the part.
+      parameters:
+        - { name: month, in: query, required: false, schema: { type: integer, minimum: 202601 }, description: 'calendar month YYYYMM; defaults to the current one' }
+      responses:
+        '200': { description: board, content: { application/json: { schema: { $ref: '#/components/schemas/CrewMonthBoard' } } } }
   /crew/check:
     get:
       tags: [crew]
@@ -2483,6 +2538,80 @@ components:
               runId: { type: integer }
               at: { type: string, format: date-time }
               hasReplay: { type: boolean, description: 'false once the 14-day sweeper wiped the inputs' }
+    TournamentState:
+      type: object
+      required: [day, week, entries, best, rank, entrants, poolCgMicro, settled, schedule, prizesYesterday]
+      properties:
+        day: { type: integer }
+        week: { type: integer }
+        entries:
+          type: object
+          required: [bought, unused, left]
+          properties:
+            bought: { type: integer, description: 'entries bought today (spent or not)' }
+            unused: { type: integer, description: 'entry credits not yet spent by a run' }
+            left: { type: integer, description: 'how many more paid attempts fit under the shared daily cap' }
+        best:
+          type: object
+          nullable: true
+          required: [score, runId, at]
+          properties: { score: { type: integer }, runId: { type: integer }, at: { type: string, format: date-time } }
+        rank: { type: integer, nullable: true, description: 'my place on today’s board; null outside it' }
+        entrants: { type: integer }
+        poolCgMicro: { type: string, description: 'accounting model of the day’s prize pool (15% of entries); no $CG ever leaves it — the prize is parts' }
+        settled: { type: boolean, description: 'the day has been closed and prizes granted' }
+        schedule:
+          type: array
+          items:
+            type: object
+            required: [band, topPct, trophies, districtSlots]
+            properties:
+              band: { type: integer }
+              topPct: { type: number, description: 'top percent of the field that takes this band' }
+              trophies: { type: array, items: { type: string }, description: 'fixed trophy part ids' }
+              districtSlots: { type: integer, description: 'missing district-of-week parts this band grants' }
+        prizesYesterday:
+          type: array
+          items: { type: object, required: [rank, band, part], properties: { rank: { type: integer }, band: { type: integer }, part: { type: string } } }
+    TournamentBoard:
+      type: object
+      required: [day, entrants, poolCgMicro, settled, rows]
+      properties:
+        day: { type: integer }
+        entrants: { type: integer }
+        poolCgMicro: { type: string }
+        settled: { type: boolean }
+        rows:
+          type: array
+          items:
+            type: object
+            required: [rank, wallet, score, runId, at, hasReplay, band]
+            properties:
+              rank: { type: integer }
+              wallet: { type: string }
+              handle: { type: string, nullable: true }
+              score: { type: integer }
+              runId: { type: integer }
+              at: { type: string, format: date-time }
+              hasReplay: { type: boolean }
+              band: { type: integer, description: 'prize band of the rank (-1 = outside the prizes)' }
+    CrewMonthBoard:
+      type: object
+      required: [month, rows]
+      properties:
+        month: { type: integer, description: 'calendar month YYYYMM' }
+        rows:
+          type: array
+          items:
+            type: object
+            required: [rank, id, name, district, score, part]
+            properties:
+              rank: { type: integer }
+              id: { type: integer }
+              name: { type: string }
+              district: { type: integer, description: 'wall district of the crew' }
+              score: { type: integer, description: 'sum of the crew’s weekly board scores of the month' }
+              part: { type: string, description: 'the crew deck part the top crews win' }
     CrewCheck:
       type: object
       required: [available, kind, refHash, priceUsdCents]

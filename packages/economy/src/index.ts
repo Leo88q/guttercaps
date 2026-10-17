@@ -19,3 +19,4 @@ export * from './achievements.ts';
 export * from './runs.ts';
 export * from './crew.ts';
 export * from './board.ts';
+export * from './tournament.ts';

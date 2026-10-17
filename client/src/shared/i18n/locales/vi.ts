@@ -177,6 +177,7 @@ const vi: Messages = {
     setBonus: 'Thưởng bộ ×{mult}', weight: 'Trọng số', pending: 'Thưởng chờ nhận', apyBand: 'Dải APY', flexible: 'Linh hoạt', days: '{n} ngày',
   },
   quests: {
+    partLeaf: 'phần ván #{n}', partsRoot: 'Phần ván',
     visitGame: 'Mở trò chơi',
     title: 'Nhiệm vụ', subtitle: 'Làm nhiệm vụ để nhận $CG, booster và phiếu cap. Phần thưởng về đây mỗi vài giờ — rồi bạn nhận. Máy chủ không bao giờ giữ $CG của bạn.',
     daily: 'Ngày', weekly: 'Tuần', permanent: 'Vĩnh viễn', claim: 'Nhận', claimed: 'Đã nhận', claimable: 'Sẵn sàng nhận', progress: '{done}/{total}',
@@ -239,7 +240,7 @@ const vi: Messages = {
     expires: 'hết hạn {date}', noPower: 'Không pay-to-win: kiểm chứng on-chain', boosterCap: 'Booster: tối đa 3 mỗi ngày', bought: 'Đã mua', buyFailed: 'Mua thất bại',
     pickCap: 'Chọn một nắp chai để sơn', pickSkin: 'Chọn một skin', pickTheme: 'Chọn một chủ đề', pickPack: 'Chọn một gói', pickDistrict: 'Chọn một quận', stencilPackIncludes: 'Bạn nhận được',
     noFreeCaps: 'Chưa có nắp chai — hãy mở gói trước', noCompletedDistrict: 'Hoàn thành một quận (9/9) để mở biểu ngữ',
-    names: { handle: '@handle', handleChange: 'Đổi handle', capSkin: 'Skin nắp', profileTheme: 'Giao diện hồ sơ', arenaEmotePack: 'Gói emote đấu trường', extraBenchSlots: '+2 ô lưu bàn hợp nhất', seasonPass: 'Vé mùa', booster: 'Booster hợp nhất', packSkipAnim: 'Lật ngay', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'Banner quận', districtStencilPack: 'Gói stencil các quận' , lineExtraRun: 'Lượt chạy thêm', crewCharter: 'Lập đội', crewRename: 'Đổi tên đội', },
+    names: { handle: '@handle', handleChange: 'Đổi handle', capSkin: 'Skin nắp', profileTheme: 'Giao diện hồ sơ', arenaEmotePack: 'Gói emote đấu trường', extraBenchSlots: '+2 ô lưu bàn hợp nhất', seasonPass: 'Vé mùa', booster: 'Booster hợp nhất', packSkipAnim: 'Lật ngay', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'Banner quận', districtStencilPack: 'Gói stencil các quận' , lineExtraRun: 'Lượt chạy thêm', crewCharter: 'Lập đội', crewRename: 'Đổi tên đội', lineTournamentEntry: 'Vào giải đấu ngày', boardMount: 'Phụ kiện ván', },
     blurbs: {
       handle: 'Tên duy nhất trên bảng xếp hạng, đấu trường và URL hồ sơ.', handleChange: 'Đổi tên một lần mỗi 30 ngày. Handle cũ được giải phóng sau 90 ngày.',
       capSkin: 'Viền / hiệu ứng sơn trang trí ghi trên một nắp. Đi cùng nắp khi bán.', profileTheme: 'Họa tiết tường + màu đèn cho hồ sơ và màn mở đầu đấu trường.',
@@ -248,6 +249,7 @@ const vi: Messages = {
       booster: '+15 điểm thành công cho một lần hợp nhất (tối đa 95%). Tối đa 3 mỗi ngày.', packSkipAnim: 'Bật vĩnh viễn bỏ qua hoạt ảnh lật. Thuần tiện ích.',
       gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Banner động cho quận bạn đã hoàn thành.', districtStencilPack: 'Năm khuôn các quận cho trình sửa tag. Chỉ hình dạng — nét vẽ và màu là của bạn.', lineExtraRun: 'Thêm một lượt chạy trên đường đua hôm nay sau ba lượt miễn phí. Chỉ $CG — tất cả bị đốt.',
         crewCharter: 'Tên, thành viên và một đoạn tường chung 20 slot cho năm đến mười rider. $1.99 mua tên — đoạn tường vẫn phải kiếm bằng cách chạy (§3.4).', crewRename: 'Tên mới cho đội, mỗi 30 ngày một lần. Tên cũ trở lại thành phố sau 90 ngày.',
+        lineTournamentEntry: 'Một run trả phí đồng thời vào giải đấu ngày. 30 $CG bị đốt; giải thưởng trả bằng phụ kiện ván, không bao giờ là $CG.', boardMount: 'Một phụ kiện cho ván: lớp hoàn thiện ốc vít hoặc decal. Chỉ cosmetic.',
     },
   },
   inspect: {
@@ -502,6 +504,15 @@ const vi: Messages = {
     reason_other: 'Khác',
   },
   line: {
+    tournament: {
+      title: 'Giải đấu ngày',
+      intro: 'Vào bằng một run trả phí: {cg} $CG mỗi lần thử, đốt cháy. Run hay nhất ngày lên bảng; giải là phụ kiện ván — không bao giờ là $CG.',
+      entrants: '{n} tay lái', pool: 'Giải (mô hình): {n} $CG', rank: 'Hạng #{n}', best: 'Tốt nhất: {n}',
+      entriesLeft: 'Số lần trả phí còn lại hôm nay: {n}', enter: 'Vào · 30 $CG', entering: 'Đang thanh toán…',
+      on: 'Chế độ giải đấu', off: 'Chơi tự do', runOn: 'Đang thi giải', runOff: 'Thi giải',
+      schedule: 'Các bậc giải', band: 'Bậc {n}', top: 'top {pct}%', districtSlots: '+{n} phần khu',
+      yesterday: 'Giải hôm qua', board: 'Bảng giải đấu', empty: 'Hôm nay chưa ai thi giải',
+    },
     title: 'Đường đua',
     intro: 'Một bowl cho tất cả: seed của ngày, 45 giây, ba lượt chạy miễn phí. Sau đó, mỗi lượt thêm giá 30 $CG — bị đốt.',
     howto: 'Chạm để nhảy. Chạm lại trên không để grab. Kicker tự đẩy bạn lên.',
@@ -523,6 +534,10 @@ const vi: Messages = {
 
   // Команды (docs/16 §5.6): общее имя, состав и сегмент стены.
   crew: {
+    month: 'Tháng của crew',
+    monthNote: 'Bảng tuần cộng lại theo tháng dương lịch: điểm crew là tổng kết quả các tuần của nó.',
+    monthEmpty: 'Tháng này crew chưa chạy',
+    monthPrize: 'Top-{n} crew nhận deck crew của quận tường mình — cosmetic, không bao giờ là $CG.',
     title: 'Đội',
     intro: 'Năm đến mười rider chung một tên và một đoạn tường. Bảng tính năm rider xuất sắc nhất — không bao giờ tính cả đội.',
     open: 'Mở',
@@ -634,6 +649,7 @@ const vi: Messages = {
     copies: '{n} chiếc',
   },
   builder: {
+    buy: 'Mua · {cents}¢', buying: 'Đang thanh toán…', bought: 'Đã mua phụ kiện',
     title: 'Lắp ván',
     intro: 'Sáu vị trí, một chiếc ván. Phụ tùng kiếm được bằng cách chạy — ở Line, trong nhiệm vụ, trong cuộc thi crew. Cửa hàng chỉ bán đồ gắn ngoài.',
     slots: { deck: 'Ván', trucks: 'Trục', wheels: 'Bánh', grip: 'Nhám', bolts: 'Ốc', sticker: 'Hình dán' },
@@ -662,7 +678,7 @@ const vi: Messages = {
     empty: 'Mới có phần cơ bản: phụ tùng đến từ các lần chạy, nhiệm vụ và cuộc thi crew.',
     partAlt: '{slot} của {district}',
     tier: { stock: 'Cơ bản', district: 'Quận', crew: 'Crew', trophy: 'Danh hiệu' },
-    source: { stock: 'Ban đầu', run: 'Lần chạy', achievement: 'Thành tựu', crew: 'Cuộc thi crew', quest: 'Nhiệm vụ', track: 'Vụ mùa', shop: 'Cửa hàng' },
+    source: { stock: 'Ban đầu', run: 'Lần chạy', achievement: 'Thành tựu', crew: 'Cuộc thi crew', tournament: 'Giải đấu', shop: 'Cửa hàng' },
   },
   footer: { legal: 'Pháp lý', ages: '18+' },
 

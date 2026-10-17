@@ -7,7 +7,7 @@ import { accountDiscriminator, ixDiscriminator, eventsFromLogs, findEvent, optio
 import {
   decodeChipState, decodeChipGridCharge, gridChargeMultBps, decodeGameConfig, decodePendingPack, decodePendingClaimFusion, decodePlayerPity, decodeListing, decodeTokenStake, decodeVaultLedger, decodeCompressedAssetListing, decodeCompressedPackSettlement, decodeCompressedMintClaim, sumLedgers, readPackOpened, readCompressedClaimsCreated, readCompressedPackOpened, readCompressedPackSettled, readClaimFusionRevealed, chipIsFree, claimIsListable, claimFusionBlock, CHIP_FLAG,
 } from './accounts';
-import { vaultPda, assetPda, chipStatePda, collectionMetaPda, configPda, pendingPackPda, claimFusionPda, compressedMintClaimPda, compressedSettlementPda, bubblegumTreeConfigPda, compressedChipStatePda, bubblegumTreeMetaPda, pityPda, pendingFusionPda, battlePda, ata, freshNonce, rewardRootPda, rewarderPda, gridChargePda, playerItemsPda, skrPoolPda, emissionPda, seasonPoolAuthPda, RNG_KIND, rngAuthPda, rngPda, sbLutPda, sbLutSignerPda, sbStatePda, sbOracleStatsPda, sbRewardEscrow, LEDGER_SHARDS, allLedgerPdas, ledgerPda, ledgerPdaOf, ledgerShardOf } from './pdas';
+import { vaultPda, assetPda, chipStatePda, collectionMetaPda, configPda, pendingPackPda, claimFusionPda, compressedMintClaimPda, compressedSettlementPda, bubblegumTreeConfigPda, compressedChipStatePda, bubblegumTreeMetaPda, pityPda, pendingFusionPda, battlePda, ata, freshNonce, rewardRootPda, rewarderPda, gridChargePda, playerItemsPda, playerBoardPartsPda, skrPoolPda, emissionPda, seasonPoolAuthPda, RNG_KIND, rngAuthPda, rngPda, sbLutPda, sbLutSignerPda, sbStatePda, sbOracleStatsPda, sbRewardEscrow, LEDGER_SHARDS, allLedgerPdas, ledgerPda, ledgerPdaOf, ledgerShardOf } from './pdas';
 import { fitsInTx } from './tx';
 import { buyPackIx, openPackIx, payServiceIx, Currency, fuseIx, mintCompressedChipIx, createBubblegumTreeIx, openCompressedPackIx, registerCompressedChipIx, cancelCompressedClaimIx, finalizeCompressedPackIx, fuseClaimsCommitIx, fuseClaimsRevealIx, cancelStaleClaimFusionIx, closeExpiredClaimIx } from './ix/chipCore';
 import { v2LeafHash, foldCompressionProof, discoverLeafNonce, verifyBubblegumProofLocal, deriveBubblegumLeafAssetId } from './bubblegum';
@@ -920,16 +920,27 @@ describe('economy glue', () => {
     const item = claimAnyRootIx({ ...base, kind: 8, amount: 2n });
     expect(item.data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('claim_item_root')));
     expect(item.data.readBigUInt64LE(8)).toBe(2n);
-    expect(item.keys).toHaveLength(9);
+    expect(item.keys).toHaveLength(10);
     expect(item.keys[1].isWritable).toBe(false);                                        // emission read-only (nothing minted)
     expect(item.keys[2].pubkey.equals(rewardRootPda(8, 7)[0])).toBe(true);
     expect(item.keys[4].pubkey.equals(rewarderPda()[0]) && !item.keys[4].isWritable).toBe(true);
     expect(item.keys[5].pubkey.equals(configPda()[0])).toBe(true);
     expect(item.keys[6].pubkey.equals(playerItemsPda(wallet)[0]) && item.keys[6].isWritable).toBe(true);
-    expect(item.keys[7].pubkey.equals(CHIP_CORE_ID)).toBe(true);
+    expect(item.keys[7].pubkey.equals(playerBoardPartsPda(wallet)[0]) && !item.keys[7].isWritable).toBe(true); // kind 8 never touches it
+    expect(item.keys[8].pubkey.equals(CHIP_CORE_ID)).toBe(true);
     expect(() => claimItemRootIx({ ...base, kind: 8, amount: 11n })).toThrow(/1\.\.10/);  // chip_core grant_booster cap
     expect(() => claimItemRootIx({ ...base, kind: 2 })).toThrow(/not an item root/);
     expect(() => claimRootIx({ ...base, kind: 8, cgMint })).toThrow(/item root/);
+    // board-part path (kind 10, docs/16 §5.4): amount = part catalogue index; the grant CPI
+    // writes ["board_parts", wallet] and leaves ["items", wallet] untouched
+    const part = claimAnyRootIx({ ...base, kind: 10, amount: 11n });
+    expect(part.data.subarray(0, 8)).toEqual(Buffer.from(ixDiscriminator('claim_item_root')));
+    expect(part.data.readBigUInt64LE(8)).toBe(11n);
+    expect(part.keys).toHaveLength(10);
+    expect(part.keys[6].pubkey.equals(playerItemsPda(wallet)[0]) && !part.keys[6].isWritable).toBe(true);
+    expect(part.keys[7].pubkey.equals(playerBoardPartsPda(wallet)[0]) && part.keys[7].isWritable).toBe(true);
+    expect(() => claimItemRootIx({ ...base, kind: 10, amount: 54n })).toThrow(/board part index/); // BOARD_PART_COUNT
+    expect(() => claimItemRootIx({ ...base, kind: 10, amount: -1n })).toThrow(/board part index/);
     // chip voucher path (kind 9, backlog #28): claim_chip_root — amount = template id, args + nonce; 16 accounts incl. the
     // chip_core pending / pity / randomness PDAs of (wallet, nonce) and the Switchboard commit accounts (open_voucher CPI)
     const queue = Keypair.generate().publicKey, oracle = Keypair.generate().publicKey;

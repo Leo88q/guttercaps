@@ -215,6 +215,7 @@
   "themeNotOwned": "Este tema aún no es tuyo: cómpralo en la tienda y luego úsalo.",
   "achievementNotEarned": "Aún no se ha ganado: el contador del logro no llegó al objetivo.",
   "lineRunsExhausted": "Los intentos gratis de hoy se acabaron: uno extra cuesta 30 $CG (quemados).",
+  "tournamentEntriesExhausted": "Se acabaron las entradas del torneo de hoy: entra primero en el torneo.",
   "lineCreditCap": "Ese es el límite diario de carreras de pago.",
   "crewNoCrew": "No existe ninguna crew con ese nombre.",
   "crewInvalidName": "El nombre de la crew tiene 3–16 caracteres: letras, números y guion bajo.",

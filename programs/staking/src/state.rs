@@ -64,6 +64,15 @@ pub const DEFAULT_MAX_SKR_ROOT_BUDGET: u64 = 100_000 * MICRO;
 /// (`REWARD_ROOT_KINDS.itemBoosters`, `ITEM_REWARDS`) and checked by sync-check.
 pub const ITEM_ROOT_KIND_BASE: u8 = 8;
 pub const ITEM_KIND_BOOSTERS: u8 = 8;
+/// Board parts (docs/16 §4.2/§5.4/§5.6): kind 10 pays one catalogue
+/// part per leaf. The leaf amount is the PART INDEX (position in
+/// `BOARD_PARTS`, `packages/economy/src/board.ts`), not a count —
+/// the part identity is the payload, and each claim delivers exactly
+/// one unit through `chip_core::grant_board_part` (CPIs the same
+/// `["rewarder"]` PDA as boosters). Root budget = leaf count.
+/// Mirrored in packages/economy/src/skrRewards.ts
+/// (`REWARD_ROOT_KINDS.itemBoardParts`) and checked by sync-check.
+pub const ITEM_KIND_BOARD_PARTS: u8 = 10;
 /// Boosters per root (≈ $790 at the $0.79 service price): the blast radius of a leaked quest-oracle
 /// key inside the 1 h revoke window. The oracle splits a bigger backlog across epochs.
 pub const MAX_ITEM_ROOT_BUDGET: u64 = 1_000;

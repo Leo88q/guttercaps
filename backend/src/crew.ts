@@ -30,8 +30,9 @@ import {
 import { HANDLE_BLOCKLIST, HANDLE_MAX_RESERVATIONS, HANDLE_RESERVE_MS } from './config.ts';
 import { ServiceError, consume, findPayment, serviceRefHash, toHex } from './services.ts';
 import { WALL_SLOTS } from './wall.ts';
-import { weekIndex } from './quests.ts';
+import { WEEK, WEEK_EPOCH_OFFSET, weekIndex } from './quests.ts';
 import { recordEvent } from './worldMetrics.ts';
+import { grantPart } from './board.ts';
 
 const DAY = 86_400;
 const isoOr = (s: number) => new Date(s * 1000).toISOString();
@@ -441,4 +442,112 @@ export function crewSegments(db: Db): { district: number; segments: number; take
   const rows = db.all<{ district: number; taken: number }>(
     `SELECT wall_district district, COUNT(*) taken FROM crews WHERE status = 'live' GROUP BY wall_district ORDER BY 1`);
   return rows.map((r) => ({ district: Number(r.district), segments: CREW_SEGMENTS_PER_DISTRICT, taken: Number(r.taken) }));
+}
+
+// ------------------------------------------------------------------- месяц
+/** Ключ календарного месяца: `YYYYMM`. */
+export const monthKeyOf = (t: number): number => {
+  const d = new Date(t * 1000);
+  return d.getUTCFullYear() * 100 + d.getUTCMonth() + 1;
+};
+const monthStart = (month: number) => Math.floor(Date.UTC(Math.floor(month / 100), (month % 100) - 1, 1) / 1000);
+const monthEnd = (month: number) => Math.floor(Date.UTC(Math.floor(month / 100), month % 100, 1) / 1000);
+
+export interface CrewMonthPrize { crewId: number; name: string; district: number; rank: number; score: number; part: string; members: string[] }
+
+/**
+ * Ежемесячный конкурс команд (§5.6): месяц — календарный, счёт
+ * команды — сумма её недельных результатов тех недель, которые
+ * НАЧАЛИСЬ в этом месяце (неделя учитывается ровно один раз,
+ * в месяце своего понедельника). Полнота команды та же, что у
+ * доски недели: ≥5 человек и ≥5 с заездом.
+ *
+ * Приз — `deck_crew_d{район стены команды}` (§5.4: приз всегда
+ * косметика). Получает **состав месяца** — участники, вступившие
+ * до конца месяца и не ушедшие раньше его начала: сегмент стены
+ * общий, трофей — командный, а не капитанский.
+ *
+ * Идемпотентность без новой таблицы (решение хендоффа): призёры
+ * месяца держат свою часть с `created_at` ≥ начала месяца, поэтому
+ * повторный сет видит её и пропускает выдачу; ранжирование
+ * детерминировано (счёт DESC, id команды ASC).
+ */
+export function settleCrewMonth(db: Db, month: number, t = now()): { month: number; prizes: CrewMonthPrize[]; alreadySettled: boolean } {
+  const start = monthStart(month);
+  const end = monthEnd(month);
+  // Маркер сета: командная часть выдаётся только здесь, поэтому
+  // любая такая часть с `created_at` месяца означает — месяц закрыт.
+  const marker = db.scalar(
+    `SELECT 1 FROM board_parts WHERE part LIKE 'deck_crew_d%' AND created_at >= ? LIMIT 1`, start);
+  if (marker) return { month, prizes: [], alreadySettled: true };
+  // Недели месяца: те, чей понедельник лежит внутри месяца.
+  const weeks: number[] = [];
+  for (let w = weekIndex(start); w <= weekIndex(end - 1); w++) {
+    const ws = w * WEEK + WEEK_EPOCH_OFFSET;
+    if (ws >= start && ws < end) weeks.push(w);
+  }
+  const crews = db.all<{ id: number; name: string; wall_district: number }>(
+    `SELECT id, name, wall_district FROM crews WHERE status = 'live'`);
+  const scored: { id: number; name: string; district: number; score: number }[] = [];
+  for (const c of crews) {
+    let score = 0;
+    for (const w of weeks) score += crewMonthWeekScore(db, c.id, w);
+    if (score > 0) scored.push({ id: c.id, name: c.name, district: c.wall_district, score });
+  }
+  scored.sort((a, b) => b.score - a.score || a.id - b.id);
+  const prizes: CrewMonthPrize[] = [];
+  scored.slice(0, CREW.monthlyContestPlaces).forEach((c, i) => {
+    const part = `deck_crew_d${c.district}`;
+    // Состав месяца: вступил до конца месяца и не уходил раньше его начала.
+    const members = db.all<{ wallet: string }>(
+      `SELECT wallet FROM crew_members WHERE crew_id = ? AND joined_at <= ? AND (left_at IS NULL OR left_at >= ?) ORDER BY joined_at ASC`,
+      c.id, end, start).map((r) => r.wallet);
+    const granted: string[] = [];
+    for (const wallet of members) {
+      // Идемпотентность сета: часть с created_at месяца уже есть —
+      // этот кошелёк приз месяца получил.
+      const has = db.scalar(`SELECT 1 FROM board_parts WHERE wallet = ? AND part = ? AND created_at >= ?`, wallet, part, start);
+      if (has) continue;
+      grantPart(db, wallet, part, 'crew', t);
+      recordEvent(db, wallet, 'crew', 'prize', { month, crew: c.id, rank: i + 1, part }, t);
+      granted.push(wallet);
+    }
+    prizes.push({ crewId: c.id, name: c.name, district: c.district, rank: i + 1, score: c.score, part, members: granted });
+  });
+  return { month, prizes, alreadySettled: false };
+}
+
+/** Счёт команды за неделю (0 — команда не попала на доску недели). */
+function crewMonthWeekScore(db: Db, crewId: number, week: number): number {
+  const n = db.scalar(`SELECT COUNT(*) FROM crew_members WHERE crew_id = ? AND left_at IS NULL`, crewId);
+  if (Number(n) < CREW.minMembers) return 0;
+  const scores = db.all<{ best: number }>(
+    `SELECT COALESCE(MAX(r.score), 0) best
+       FROM crew_members m LEFT JOIN line_runs r ON r.wallet = m.wallet AND r.week = ?
+      WHERE m.crew_id = ? AND m.left_at IS NULL
+      GROUP BY m.wallet`, week, crewId).map((r) => Number(r.best));
+  if (scores.filter((s) => s > 0).length < CREW.minMembers) return 0;
+  return crewWeekScore(scores);
+}
+
+/** Месячный приз команды для экрана: место, счёт и есть ли часть у кошелька. */
+export function crewMonthBoard(db: Db, month: number, limit = CREW.monthlyContestPlaces * 3): { month: number; rows: { rank: number; id: number; name: string; district: number; score: number; part: string }[] } {
+  const start = monthStart(month);
+  const end = monthEnd(month);
+  const weeks: number[] = [];
+  for (let w = weekIndex(start); w <= weekIndex(end - 1); w++) {
+    const ws = w * WEEK + WEEK_EPOCH_OFFSET;
+    if (ws >= start && ws < end) weeks.push(w);
+  }
+  const crews = db.all<{ id: number; name: string; wall_district: number }>(
+    `SELECT id, name, wall_district FROM crews WHERE status = 'live'`);
+  const rows: { rank: number; id: number; name: string; district: number; score: number; part: string }[] = [];
+  for (const c of crews) {
+    let score = 0;
+    for (const w of weeks) score += crewMonthWeekScore(db, c.id, w);
+    if (score > 0) rows.push({ rank: 0, id: c.id, name: c.name, district: c.wall_district, score, part: `deck_crew_d${c.wall_district}` });
+  }
+  rows.sort((a, b) => b.score - a.score || a.id - b.id);
+  rows.forEach((r, i) => { r.rank = i + 1; });
+  return { month, rows: rows.slice(0, limit) };
 }
