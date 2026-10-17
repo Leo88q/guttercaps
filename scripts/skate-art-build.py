@@ -401,6 +401,43 @@ for _name, _surface in PAINTS:
         ),
     })
 
+# Трофейные части (docs/16 §5.4): приз дневного турнира Линии и
+# вершинные полосы. Золочёная дека и грип с кубком — мастера
+# генерируются отдельно от районных пластин (у них нет краски
+# района: трофей не привязан к району), поэтому это готовые
+# SPRITE-кадры, а не композиты.
+TROPHIES = [
+    ("deck-trophy", "deck", (1024, 1024),
+     "Product render of a single skateboard deck, three-quarter top angle, alone in the centre "
+     "of the frame on a flat pure solid green #00FF00 chroma key screen background. The deck has "
+     "a gilded gold-leaf finish all over the top face with a champion trophy cup engraving in the "
+     "middle, worn gold leaf with scratches and scuffed edges showing the wood underneath, "
+     "seven-ply maple edge, black griptape underside, slight concave, mild nose and tail kick. "
+     "Studio product photography, warm golden highlights, subtle grime, crisp edges. "),
+    ("grip-trophy", "grip", (900, 900),
+     "Product render of a square sheet of coarse black griptape with torn edges, in the centre "
+     "of the frame a large champion trophy cup emblem made of bright gold leaf, alone on a flat "
+     "pure solid green #00FF00 chroma key screen background, three-quarter studio view. Coarse "
+     "gritty texture, dust and wear, gold emblem slightly raised with sharp edges. Studio "
+     "product photography, crisp edges. "),
+]
+
+for _name, _plate, _geo, _body in TROPHIES:
+    ASSETS.append({
+        "name": _name,
+        "kind": SPRITE,
+        "master": f"{_name}.png",
+        "geometry": _geo,
+        "quality": 78,
+        "budget_kb": 250,
+        "prompt": (
+            f"{_body}Gritty urban street-art game illustration style, overcast diffused daylight "
+            "with a hot magenta rim light, palette asphalt black #16151A / hot magenta #FF2E8A / "
+            "cyan #16E5D9 / acid lime #B6FF3C / burnt orange #FF7A1A / gold #FFD34D, no text no "
+            "letters no logos, no people."
+        ),
+    })
+
 # Болты — навесная косметика (docs/16 §4.2): одна деталь, три покрытия.
 ASSETS.append({
     "name": "bolts",

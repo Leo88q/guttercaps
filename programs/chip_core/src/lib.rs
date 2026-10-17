@@ -246,6 +246,12 @@ pub mod chip_core {
     pub fn grant_booster(ctx: Context<GrantBooster>, count: u16) -> Result<()> {
         instructions::grant_booster(ctx, count)
     }
+    /// Board-part grant (docs/16 §4.2/§5.4): authority is the admin
+    /// (support) or the staking program's ["rewarder"] PDA (item-root
+    /// claims). `part_idx` indexes the catalogue pinned by sync-check.
+    pub fn grant_board_part(ctx: Context<GrantBoardPart>, part_idx: u8, count: u16) -> Result<()> {
+        instructions::grant_board_part(ctx, part_idx, count)
+    }
 
     // ----- preorder (beta pre-sale delivery) -----
     /// Opens the limited pre-sale drop for one SKU: hard `total`, optional `max_per_wallet`

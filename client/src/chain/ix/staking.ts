@@ -7,11 +7,12 @@ import { BorshWriter } from '../borsh';
 import { ixData, ro, rw, signer } from '../anchor';
 import { CHIP_CORE_ID, MPL_ACCOUNT_COMPRESSION_ID, STAKING_ID, SYSTEM_PROGRAM_ID, TOKEN_PROGRAM_ID } from '../ids';
 import {
-  ata, chipPlayPda, chipPoolPda, gridChargePda, claimReceiptPda, compressedChipStakePda, configPda, emissionPda, pendingPackPda, pityPda, playerItemsPda, rewardRootPda,
+  ata, chipPlayPda, chipPoolPda, gridChargePda, claimReceiptPda, compressedChipStakePda, configPda, emissionPda, pendingPackPda, pityPda, playerBoardPartsPda, playerItemsPda, rewardRootPda,
   rewarderPda, RNG_KIND, rngAuthPda, rngPda, seasonPoolAuthPda, setBonusPda, skrPoolPda, stakeAuthPda, tokenPoolPda, tokenStakePda, walletStakeDayPda,
 } from '../pdas';
 import { SWITCHBOARD_ON_DEMAND_ID, SYSVAR_SLOT_HASHES_ID } from '../ids';
-import { CHIP_VOUCHER_REWARDS, ITEM_REWARDS, isChipRootKind, isItemRootKind, isSkrRootKind } from '@guttercaps/economy';
+import { CHIP_VOUCHER_REWARDS, ITEM_REWARDS, REWARD_ROOT_KINDS, isChipRootKind, isItemRootKind, isSkrRootKind } from '@guttercaps/economy';
+import { BOARD_PART_COUNT } from '../accounts';
 import type { CompressedLeafProof } from './chipCore';
 import { createAtaIdempotentIx } from './spl';
 
@@ -188,21 +189,39 @@ export function claimSkrRootIx(a: { wallet: PublicKey; kind: number; epoch: numb
 }
 
 /**
- * Item Merkle claim (kind 8 = fusion boosters, backlog #27) — `amount` is the booster COUNT (≤ 10). The program
- * verifies the proof and CPIs chip_core `grant_booster` signed by its `["rewarder"]` PDA, so the boosters land in
- * `PlayerItems` (`["items", wallet]`, created on first claim with the wallet as payer) in this transaction.
+ * Item Merkle claim (kinds 8/10 — boosters / board parts) — the program verifies the
+ * proof and CPIs chip_core signed by its `["rewarder"]` PDA, so the entitlement lands
+ * on-chain in this transaction: boosters into `PlayerItems` (`["items", wallet]`),
+ * a board part into `PlayerBoardParts` (`["board_parts", wallet]`) — both created on
+ * first claim with the wallet as payer.
+ *
+ * Kind 8: `amount` is the booster COUNT (≤ 10).
+ * Kind 10 (docs/16 §5.4): `amount` is the part's catalogue INDEX in BOARD_PARTS — one
+ * part per leaf, the oracle carries any remainder over to the next root.
  */
 export function claimItemRootIx(a: { wallet: PublicKey; kind: number; epoch: number; amount: bigint; proof: Uint8Array[] }): TransactionInstruction {
   if (!isItemRootKind(a.kind)) throw new Error(`kind ${a.kind} is not an item root — use claimRootIx / claimSkrRootIx`);
-  if (a.amount <= 0n || a.amount > BigInt(ITEM_REWARDS.maxClaim)) throw new Error(`item claim must be 1..${ITEM_REWARDS.maxClaim} boosters`);
+  const partClaim = a.kind === REWARD_ROOT_KINDS.itemBoardParts;
+  if (partClaim) {
+    if (a.amount < 0n || a.amount >= BigInt(BOARD_PART_COUNT)) throw new Error(`board part index must be 0..${BOARD_PART_COUNT - 1}`);
+  } else if (a.amount <= 0n || a.amount > BigInt(ITEM_REWARDS.maxClaim)) {
+    throw new Error(`item claim must be 1..${ITEM_REWARDS.maxClaim} boosters`);
+  }
   const [root] = rewardRootPda(a.kind, a.epoch);
+  const [items] = playerItemsPda(a.wallet);
+  const [parts] = playerBoardPartsPda(a.wallet);
   const w = new BorshWriter().u64(a.amount);
   w.vec(a.proof, (p) => w.bytes(p));
   return new TransactionInstruction({
     programId: STAKING_ID,
     keys: [
       signer(a.wallet), ro(emissionPda()[0]), rw(root), rw(claimReceiptPda(root, a.wallet)[0]),
-      ro(rewarderPda()[0]), ro(configPda()[0]), rw(playerItemsPda(a.wallet)[0]), ro(CHIP_CORE_ID), ro(SYSTEM_PROGRAM_ID),
+      ro(rewarderPda()[0]), ro(configPda()[0]),
+      // BOTH targets ride writable: Anchor's `mut` on the two UncheckedAccounts
+      // checks the tx flag (not the CPI's actual writes), so a read-only inactive
+      // account fails the instruction with ConstraintMut before any root check.
+      rw(items), rw(parts),
+      ro(CHIP_CORE_ID), ro(SYSTEM_PROGRAM_ID),
     ],
     data: Buffer.from(ixData('claim_item_root', w.toBytes())),
   });
@@ -235,7 +254,7 @@ export function claimChipRootIx(a: { wallet: PublicKey; kind: number; epoch: num
   });
 }
 
-/** Route a claim leaf to the right instruction by its root kind (2..4 $CG, 5..7 SKR, 8 boosters). Kind 9 (chip vouchers) needs its own tx — `claimChipRootIx`. */
+/** Route a claim leaf to the right instruction by its root kind (2..4 $CG, 5..7 SKR, item kinds 8 boosters and 10 board parts). Kind 9 (chip vouchers) needs its own tx — `claimChipRootIx`. */
 export function claimAnyRootIx(a: { wallet: PublicKey; kind: number; epoch: number; amount: bigint; proof: Uint8Array[]; cgMint?: PublicKey; skrMint?: PublicKey }): TransactionInstruction {
   if (isChipRootKind(a.kind)) throw new Error('chip voucher claims need a randomness account in the same tx — use claimChipRootIx');
   if (isItemRootKind(a.kind)) return claimItemRootIx(a);

@@ -42,7 +42,7 @@ function payName(wallet: string, sig: string, kind: number, payload: Record<stri
 
 const charter = (wallet: string, name: string, district = 0, sig = sig58(), t = T0) => {
   payName(wallet, sig, SERVICE_BY_ID.crewCharter.kind, { id: 'crewCharter', name }, t);
-  return crew.charterCrew(db, wallet, name, district, sig);
+  return crew.charterCrew(db, wallet, name, district, sig, t);
 };
 /** Заезд участника за неделю: командная доска считается по лучшим заездам линии. */
 const runOf = (wallet: string, score: number, week = WEEK) =>
@@ -132,6 +132,8 @@ describe('команда: имя — это модель хендла', () => {
     fails(() => crew.renameCrew(db, mate, 'NewName', badSig), 'not_captain');
 
     // пауза 30 дней считается от создания: свежая команда имени не меняет
+    // (хартия выше — в fabрикованном T0, «свежесть» отмеряем от now())
+    db.run(`UPDATE crews SET created_at = ? WHERE captain = ?`, now(), captain);
     expect(crew.crewCheck(db, captain, 'NewName').reason).toBe('cooldown');
 
     // команда создана 31 день назад — пауза прошла
@@ -269,5 +271,65 @@ describe('команда: модерация имени — одна очере�
     fails(() => crew.reportCrew(db, viewer, 'Reported', 'again'), 'already_reported');
     fails(() => crew.reportCrew(db, viewer, 'Reported', ''), 'bad_reason');
     fails(() => crew.reportCrew(db, kp(), 'no-such-crew', 'impersonating a district crew'), 'no_crew');
+  });
+});
+
+describe('команда: сегмент держится активностью (решение 6, §0.3)', () => {
+  /** Заезд с явным submitted_at — экспирация смотрит на свежесть активности. */
+  const runAt = (wallet: string, submittedAt: number) =>
+    db.run(`INSERT INTO line_runs (wallet, day, week, seed, inputs, score, tricks, best_combo, bails, paid, submitted_at, replay_ttl)
+            VALUES (?, 0, 0, 1, '[]', 10, 1, 1, 0, 0, ?, ?)`, wallet, submittedAt, submittedAt + DAY);
+
+  it('неактивный состав теряет сегмент: archived, имя в карантин, сегмент свободен', () => {
+    charter(kp(), 'SleepyCrew');
+    const t = now() + (CREW.segmentExpireDays + 1) * DAY;
+    expect(crew.expireCrewSegments(db, t)).toBe(1);
+    expect(db.get<{ status: string }>(`SELECT status FROM crews WHERE name = 'SleepyCrew'`)!.status).toBe('archived');
+    // сегмент занимает новая хартия сразу — тот же район, тот же сегмент
+    const fresh = charter(kp(), 'FreshCrew');
+    expect(fresh.slots).toEqual({ from: 0, to: CREW.wallSegmentSlots, size: CREW.wallSegmentSlots });
+    // имя ушло в карантин: 90 дней вывеску не подберёшь (reason 'taken', как у распавшихся)
+    const check = crew.crewCheck(db, kp(), 'SleepyCrew');
+    expect(check.available).toBe(false);
+    expect(check.reason).toBe('taken');
+    // доска и карточка мёртвую команду не показывают
+    expect(crew.crewBoard(db).rows.find((r) => r.name === 'SleepyCrew')).toBeUndefined();
+    fails(() => crew.crewView(db, 'SleepyCrew'), 'no_crew');
+  });
+
+  it('заезд живого участника держит сегмент', () => {
+    const captain = kp();
+    charter(captain, 'Riders');
+    const t = now() + (CREW.segmentExpireDays + 1) * DAY;
+    runAt(captain, t - DAY); // заезд за день до проверки — в окне 30 дней
+    expect(crew.expireCrewSegments(db, t)).toBe(0);
+    expect(db.get<{ status: string }>(`SELECT status FROM crews WHERE name = 'Riders'`)!.status).toBe('live');
+  });
+
+  it('заезд ушедшего участника сегмент не держит', () => {
+    const captain = kp();
+    charter(captain, 'Ghosted');
+    const mate = kp();
+    crew.joinCrew(db, mate, crew.myCrew(db, captain)!.inviteCode!);
+    const t = now() + (CREW.segmentExpireDays + 1) * DAY;
+    runAt(mate, t - DAY);
+    crew.leaveCrew(db, mate);
+    expect(crew.expireCrewSegments(db, t)).toBe(1);
+  });
+
+  it('команда без единого заезда выцветает по дате хартии', () => {
+    charter(kp(), 'SoloCrew');
+    // COALESCE(MAX(submitted_at), created_at): без заездов живёт дата хартии
+    expect(crew.expireCrewSegments(db, now() + CREW.segmentExpireDays * DAY + 1)).toBe(1);
+  });
+
+  it('экспирация пишет событие капитану и идемпотентна', () => {
+    const captain = kp();
+    charter(captain, 'Evented');
+    const t = now() + (CREW.segmentExpireDays + 1) * DAY;
+    crew.expireCrewSegments(db, t);
+    expect(crew.expireCrewSegments(db, t)).toBe(0); // второй прогон не находит live-команды
+    const ev = db.all<{ feature: string; kind: string }>(`SELECT feature, kind FROM feature_events`);
+    expect(ev).toContainEqual({ feature: 'crew', kind: 'expire' });
   });
 });

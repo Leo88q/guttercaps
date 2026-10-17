@@ -113,6 +113,10 @@ export const useCrew = (name: string | undefined) =>
 export const useCrewBoard = () =>
   useQuery({ queryKey: ['crew', 'board'], queryFn: () => api.get('/crew/board'), staleTime: 5 * 60_000 });
 
+/** Ежемесячный конкурс команд (§5.6): сумма недельных результатов месяца. */
+export const useCrewMonth = () =>
+  useQuery({ queryKey: ['crew', 'month'], queryFn: () => api.get('/crew/month'), staleTime: 5 * 60_000 });
+
 /**
  * Проверка имени с бронью на время оплаты. Запрос уходит только с трёх символов:
  * на каждый удар по клавиатуре слать его незачем, а ответ «занято» на 'Gu'

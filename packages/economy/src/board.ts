@@ -36,7 +36,7 @@ export type BoardSetSlot = (typeof BOARD_SET_SLOTS)[number];
  * `stock` есть у каждого с первого входа — доска не бывает пустой, и новый
  * игрок не видит дыр вместо деки. Остальное добывается.
  */
-export const BOARD_SOURCES = ['stock', 'run', 'achievement', 'crew', 'quest', 'track', 'shop'] as const;
+export const BOARD_SOURCES = ['stock', 'run', 'achievement', 'crew', 'tournament', 'shop'] as const;
 export type BoardSource = (typeof BOARD_SOURCES)[number];
 
 /**
@@ -87,6 +87,11 @@ export const BOARD_PARTS: readonly BoardPart[] = [
   // никогда не $CG. Одна на район, и визуально это дека своего района: отличие
   // не в картинке, а в происхождении (подпись «Команда» на детали).
   ...COLLECTIONS.map((_, d) => ({ id: `deck_crew_d${d}`, slot: 'deck' as BoardSlot, district: d, tier: 'crew' as BoardTier, source: 'crew' as BoardSource })),
+  // Трофейные части: приз дневного турнира Линии (§5.4). Дека и грип,
+  // района нет — трофей принадлежит городу, а не району. source =
+  // 'tournament': подсказка на экране должна велеть в турнир, а не
+  // в обычный заезд недели.
+  ...(['deck', 'grip'] as const).map((slot) => ({ id: `${slot}_trophy`, slot, district: null, tier: 'trophy' as BoardTier, source: 'tournament' as BoardSource })),
   ...BOLTS.map((b) => ({ id: `bolts_${b}`, slot: 'bolts' as BoardSlot, district: null, tier: (b === 'stock' ? 'stock' : 'district') as BoardTier, source: (b === 'stock' ? 'stock' : 'shop') as BoardSource })),
   ...STICKERS.map((s) => ({ id: `sticker_${s}`, slot: 'sticker' as BoardSlot, district: null, tier: (s === 'none' ? 'stock' : 'district') as BoardTier, source: (s === 'none' ? 'stock' : 'shop') as BoardSource })),
 ];

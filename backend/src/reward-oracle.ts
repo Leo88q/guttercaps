@@ -83,6 +83,11 @@ export const KIND_ITEM_BOOSTERS = 8;
 export const CU_PUBLISH_ITEM_ROOT = 50_000;
 /** Boosters pending before a kind-8 root is worth its rent + tx (default: any). */
 export const ITEM_MIN_BATCH = Number(env.ITEM_MIN_BATCH ?? 1);
+/** Board-part roots (docs/16 §5.4): kind 10 = one board part per leaf, signed by the quest
+ *  oracle, leaf amount = the part's catalogue index in BOARD_PARTS. */
+export const KIND_ITEM_BOARD_PARTS = 10;
+/** Part leaves pending before a kind-10 root is worth its rent + tx (default: any). */
+export const PART_MIN_BATCH = Number(env.PART_MIN_BATCH ?? 1);
 /** Chip voucher roots (backlog #28): kind 9 = one free quest chip per leaf, signed by the quest oracle, leaf amount = voucher template id. */
 export const KIND_CHIP_VOUCHERS = 9;
 export const CU_PUBLISH_CHIP_ROOT = 50_000;
@@ -115,10 +120,10 @@ export function publishSkrRootIx(oracle: PublicKey, kind: number, epoch: number,
   });
 }
 export const isSkrKind = (kind: number) => kind >= 5 && kind <= 7;
-export const isItemKind = (kind: number) => kind === KIND_ITEM_BOOSTERS;
+export const isItemKind = (kind: number) => kind === KIND_ITEM_BOOSTERS || kind === KIND_ITEM_BOARD_PARTS;
 export const isChipKind = (kind: number) => kind === KIND_CHIP_VOUCHERS;
 
-/** `publish_item_root(kind: u8, epoch: u32, root: [u8; 32], budget: u64)` — accounts: oracle (signer, mut), emission, root (init), system. `budget` = Σ boosters. */
+/** `publish_item_root(kind: u8, epoch: u32, root: [u8; 32], budget: u64)` — accounts: oracle (signer, mut), emission, root (init), system. `budget` = Σ boosters (kind 8) or leaf count (kind 10). */
 export function publishItemRootIx(oracle: PublicKey, kind: number, epoch: number, root: Uint8Array, budget: bigint): TransactionInstruction {
   if (root.length !== 32) throw new Error('root must be 32 bytes');
   if (!isItemKind(kind)) throw new Error(`kind ${kind} is not an item root`);
@@ -299,8 +304,11 @@ const min2 = (a: bigint, b: bigint) => (a < b ? a : b);
 /**
  * Store a batch + leaves (shared by the $CG / SKR / item / voucher builders); wallets must be sorted.
  * `budget` defaults to Σ amounts; chip voucher roots (#28) pass the LEAF COUNT because their amounts are template ids.
+ * `mark` (optional) runs INSIDE the same transaction with the new epoch: the
+ * source rows of a kind whose payload is not a sum (board parts) are marked
+ * here, so a batch and its markers commit atomically.
  */
-function insertBatch(db: Db, kind: number, leaves: { wallet: string; amount: bigint; memo: string[] }[], t: number, budgetOverride?: bigint): Batch {
+function insertBatch(db: Db, kind: number, leaves: { wallet: string; amount: bigint; memo: string[] }[], t: number, budgetOverride?: bigint, mark?: (epoch: number) => void): Batch {
   const epoch = nextEpoch(db, kind);
   const tree = buildRewardTree(leaves.map((l) => ({ wallet: l.wallet, amountMicro: l.amount, kind, epoch })));
   const root = toHex(tree.root);
@@ -310,6 +318,7 @@ function insertBatch(db: Db, kind: number, leaves: { wallet: string; amount: big
     leaves.forEach((l, i) => {
       db.run(`INSERT INTO reward_leaves (kind, epoch, wallet, amount, proof, memo) VALUES (?, ?, ?, ?, ?, ?)`, kind, epoch, l.wallet, l.amount.toString(), JSON.stringify(tree.proofs[i].map(toHex)), JSON.stringify(l.memo));
     });
+    mark?.(epoch);
   });
   return { kind, epoch, root, budget, leaves: leaves.length };
 }
@@ -464,7 +473,40 @@ export function buildChipBatch(db: Db, t = now(), min = CHIP_MIN_BATCH): Batch |
   return batch;
 }
 
-export interface OracleDeps { connection: Connection; db: Db; questOracle?: Keypair; seasonOracle?: Keypair; log?: (s: string) => void; minBatchMicro?: bigint; minSkrBatchMicro?: bigint; minItemBatch?: number; minChipBatch?: number }
+// ---------------------------------------------------------------- board parts (kind 10)
+/** Part leaves (board_part_leaves) not yet in a kind-10 root, oldest first — the unit is one part grant. */
+export function pendingPartRows(db: Db): { id: number; wallet: string; part_idx: number }[] {
+  return db.all(`SELECT id, wallet, part_idx FROM board_part_leaves WHERE root_kind IS NULL ORDER BY granted_at, id`);
+}
+
+/**
+ * Build the next kind-10 (board parts) batch: ONE LEAF PER GRANT. Unlike
+ * boosters (where the leaf amount is a count and one wallet aggregates into
+ * one leaf), a part leaf's amount is the part's catalogue INDEX — the part
+ * identity rides the leaf — so each grant is its own leaf and the root's
+ * budget is the LEAF COUNT (on-chain cap: ITEM_REWARDS.maxRootBudget).
+ * Leaves that do not fit stay unrooted and ride the next epoch — never
+ * dropped, never doubled (only the leaves actually published are marked).
+ */
+export function buildPartBatch(db: Db, t = now(), min = PART_MIN_BATCH): Batch | undefined {
+  const kind = KIND_ITEM_BOARD_PARTS;
+  if (db.get(`SELECT 1 FROM reward_batches WHERE kind = ? AND status = 'pending'`, kind)) return undefined;
+  const pending = pendingPartRows(db);
+  const taken = pending.slice(0, ITEM_REWARDS.maxRootBudget);
+  if (taken.length === 0) return undefined;
+  if (taken.length < min) return undefined;
+  const leaves = taken.map((r) => ({
+    wallet: r.wallet,
+    amount: BigInt(r.part_idx),
+    memo: [`part:${r.part_idx}`, `leaf:${r.id}`],
+  }));
+  const marked = new Set(taken.map((r) => r.id));
+  return insertBatch(db, kind, leaves, t, BigInt(taken.length), (epoch) => {
+    for (const id of marked) db.run(`UPDATE board_part_leaves SET root_kind = ?, root_epoch = ? WHERE id = ?`, kind, epoch, id);
+  });
+}
+
+export interface OracleDeps { connection: Connection; db: Db; questOracle?: Keypair; seasonOracle?: Keypair; log?: (s: string) => void; minBatchMicro?: bigint; minSkrBatchMicro?: bigint; minItemBatch?: number; minChipBatch?: number; minPartBatch?: number }
 
 /** Publish every pending batch whose signer we hold; already-indexed roots are just marked published. */
 export async function publishPending(d: OracleDeps): Promise<{ published: number; failed: number; skipped: number }> {
@@ -548,6 +590,8 @@ export async function runOnce(d: OracleDeps, t = now()): Promise<{ settled: numb
   tryBuild('kind 8 boosters', () => buildItemBatch(d.db, t, d.minItemBatch ?? ITEM_MIN_BATCH));
   // chip voucher roots (kind 9, quest chips — #28): one leaf per wallet per epoch, weekly free-chip cap in the builder
   tryBuild('kind 9 quest chips', () => buildChipBatch(d.db, t, d.minChipBatch ?? CHIP_MIN_BATCH));
+  // board-part roots (kind 10, docs/16 §5.4): one leaf per granted part, oldest first
+  tryBuild('kind 10 board parts', () => buildPartBatch(d.db, t, d.minPartBatch ?? PART_MIN_BATCH));
   // SKR prize pool (kinds 5 / 6): only when the pool exists on chain; sized from its live budget
   try {
     const pool = await readSkrPool(d.connection);
@@ -572,6 +616,7 @@ export function rewardOracleStatus(db: Db) {
   const rake = unfundedRake(db);
   const boosterRows = pendingBoosterRows(db);
   const voucherRows = pendingVoucherRows(db);
+  const partRows = pendingPartRows(db);
   return {
     lastPublishedAt: last?.published_at ?? null,
     finalizedHorizonSlot: finalizedHorizon(db),
@@ -579,6 +624,8 @@ export function rewardOracleStatus(db: Db) {
     unrootedMicro: { quests: sum(unrooted.quests), pvp: sum(unrooted.pvp), referrals: sum(unrooted.referrals) },
     // backlog #27: boosters owed but not yet in a kind-8 root (unit count, not micro)
     unrootedBoosters: { count: boosterRows.reduce((s, r) => s + r.reward_booster, 0), wallets: new Set(boosterRows.map((r) => r.wallet)).size },
+    // docs/16 §5.4: parts owed but not yet in a kind-10 root (leaf count)
+    unrootedParts: { count: partRows.length, wallets: new Set(partRows.map((r) => r.wallet)).size },
     // backlog #28: quest chips owed but not yet in a kind-9 root (`unknownTemplate` rows need ops attention — their reward_chip matches no template)
     unrootedVouchers: { count: voucherRows.length, wallets: new Set(voucherRows.map((r) => r.wallet)).size, unknownTemplate: voucherRows.filter((r) => voucherTemplateOf(r.reward_chip) === undefined).length },
     gutterPot: (() => {
@@ -609,7 +656,7 @@ export async function rewardOracle(log: (s: string) => void = console.log) {
   while (true) {
     try {
       const r = await runOnce({ connection, db, questOracle, seasonOracle, log });
-      log(`[reward-oracle] horizon slot ${r.horizon} · ${r.signals} new fraud signals · settled ${r.settled} completions · referrals ${r.referrals.rows} rows / ${r.referrals.paidMicro + r.referrals.welcomeMicro} µ$CG${r.referrals.postponed ? ` (${r.referrals.postponed} postponed)` : ''}${r.seasons.length ? ` · seasons ${r.seasons.join(',')}` : ''}${r.rakeFundedMicro > 0n ? ` · rake recycled ${r.rakeFundedMicro} µ$CG` : ''} · built ${r.built.map((b) => `k${b.kind}e${b.epoch}=${b.budget}${isSkrKind(b.kind) ? 'µSKR' : isItemKind(b.kind) ? ' boosters' : ''}`).join(',') || 'nothing'} · published ${r.published} failed ${r.failed} skipped ${r.skipped}`);
+      log(`[reward-oracle] horizon slot ${r.horizon} · ${r.signals} new fraud signals · settled ${r.settled} completions · referrals ${r.referrals.rows} rows / ${r.referrals.paidMicro + r.referrals.welcomeMicro} µ$CG${r.referrals.postponed ? ` (${r.referrals.postponed} postponed)` : ''}${r.seasons.length ? ` · seasons ${r.seasons.join(',')}` : ''}${r.rakeFundedMicro > 0n ? ` · rake recycled ${r.rakeFundedMicro} µ$CG` : ''} · built ${r.built.map((b) => `k${b.kind}e${b.epoch}=${b.budget}${isSkrKind(b.kind) ? 'µSKR' : b.kind === KIND_ITEM_BOARD_PARTS ? ' parts' : isItemKind(b.kind) ? ' boosters' : ''}`).join(',') || 'nothing'} · published ${r.published} failed ${r.failed} skipped ${r.skipped}`);
     } catch (e) {
       log(`[reward-oracle] cycle failed: ${(e as Error).message}`);
     }

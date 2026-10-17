@@ -30,8 +30,9 @@ import {
 import { HANDLE_BLOCKLIST, HANDLE_MAX_RESERVATIONS, HANDLE_RESERVE_MS } from './config.ts';
 import { ServiceError, consume, findPayment, serviceRefHash, toHex } from './services.ts';
 import { WALL_SLOTS } from './wall.ts';
-import { weekIndex } from './quests.ts';
+import { WEEK, WEEK_EPOCH_OFFSET, weekIndex } from './quests.ts';
 import { recordEvent } from './worldMetrics.ts';
+import { grantPart } from './board.ts';
 
 const DAY = 86_400;
 const isoOr = (s: number) => new Date(s * 1000).toISOString();
@@ -237,7 +238,7 @@ const i0 = (db: Db, code: string) => db.scalar(`SELECT COUNT(*) FROM crews WHERE
  * списать платёж → записать команду → записать капитана. Платёж списывается
  * один раз: `consume` — это UPDATE с условием `consumed_by IS NULL`.
  */
-export function charterCrew(db: Db, wallet: string, raw: string, district: number, signature: string): CrewView {
+export function charterCrew(db: Db, wallet: string, raw: string, district: number, signature: string, t = now()): CrewView {
   const name = String(raw ?? '').trim();
   if (!CREW_NAME_RE.test(name)) throw new ServiceError(400, 'invalid_name', `Crew name must be ${CREW.nameMin}–${CREW.nameMax} chars [a-zA-Z0-9_]`);
   if (!Number.isInteger(district) || district < 0 || district >= COLLECTIONS.length) {
@@ -254,7 +255,6 @@ export function charterCrew(db: Db, wallet: string, raw: string, district: numbe
     const p = findPayment(db, signature, wallet, [check.kind], expected);
     if (p.ref_hash !== expected) throw new ServiceError(402, 'ref_hash_mismatch', 'Payment was committed for a different crew name');
     const segment = freeSegment(db, district);
-    const t = now();
     const res = db.run(
       `INSERT INTO crews (name, name_key, captain, charter_sig, wall_district, wall_segment, created_at, status, invite_code)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'live', ?)`,
@@ -350,9 +350,47 @@ export function leaveCrew(db: Db, wallet: string): { ok: true; crew: CrewView | 
       }
     }
     recordEvent(db, wallet, 'crew', 'leave', { crew: row.id }, t);
-    // Пустая команда не исчезает: имя остаётся в карантине, сегмент освобождается
-    // только когда статус уходит из `live`, а решить это должна модерация.
+    // Пустая команда живёт до экспирации неактивности: имя и сегмент
+    // освободит expireCrewSegments, а не молчаливое удаление.
     return { ok: true as const, crew: myCrew(db, wallet), captain };
+  });
+}
+
+// ---------------------------------------------------------------- экспирация
+
+/**
+ * Сегмент держится активностью (решение 6, §0.3): если состав не ездил
+ * CREW.segmentExpireDays дней, команда архивируется — статус уходит из
+ * 'live' (частичный индекс idx_crews_segment освобождает сегмент), имя
+ * падает в карантин на те же 90 дней, что у распавшихся команд.
+ * «Последний заезд» — максимум submitted_at живых участников; у команды
+ * без заезсов — дата хартии. Своп вызывает это hourly, как expireSlots.
+ */
+export function expireCrewSegments(db: Db, t = now()): number {
+  const stale = db.all<{ id: number; captain: string; name: string; name_key: string; wall_district: number; wall_segment: number }>(
+    `SELECT c.id, c.captain, c.name, c.name_key, c.wall_district, c.wall_segment
+       FROM crews c
+      WHERE c.status = 'live'
+        AND COALESCE((
+              SELECT MAX(r.submitted_at)
+                FROM crew_members m
+                JOIN line_runs r ON r.wallet = m.wallet
+               WHERE m.crew_id = c.id AND m.left_at IS NULL
+           ), c.created_at) <= ?`,
+    t - CREW.segmentExpireDays * DAY);
+  if (!stale.length) return 0;
+  return db.tx(() => {
+    for (const c of stale) {
+      // имя — в карантин ДО смены статуса: пока команда live,
+      // никто не может прихватить вывеску под тем же key
+      db.run(
+        `INSERT INTO crew_name_history (name, name_key, crew_id, released_at) VALUES (?, ?, ?, ?)`,
+        c.name, c.name_key, c.id, t);
+      db.run(`UPDATE crews SET status = 'archived' WHERE id = ? AND status = 'live'`, c.id);
+      recordEvent(db, c.captain, 'crew', 'expire',
+        { crew: c.id, district: c.wall_district, segment: c.wall_segment }, t);
+    }
+    return stale.length;
   });
 }
 
@@ -441,4 +479,126 @@ export function crewSegments(db: Db): { district: number; segments: number; take
   const rows = db.all<{ district: number; taken: number }>(
     `SELECT wall_district district, COUNT(*) taken FROM crews WHERE status = 'live' GROUP BY wall_district ORDER BY 1`);
   return rows.map((r) => ({ district: Number(r.district), segments: CREW_SEGMENTS_PER_DISTRICT, taken: Number(r.taken) }));
+}
+
+// ------------------------------------------------------------------- месяц
+/** Ключ календарного месяца: `YYYYMM`. */
+export const monthKeyOf = (t: number): number => {
+  const d = new Date(t * 1000);
+  return d.getUTCFullYear() * 100 + d.getUTCMonth() + 1;
+};
+/** Следующий календарный месяц (202612 → 202701) — для догона свопа. */
+export const nextMonthKey = (month: number): number => {
+  const y = Math.floor(month / 100), m = month % 100;
+  return m === 12 ? (y + 1) * 100 + 1 : month + 1;
+};
+const monthStart = (month: number) => Math.floor(Date.UTC(Math.floor(month / 100), (month % 100) - 1, 1) / 1000);
+const monthEnd = (month: number) => Math.floor(Date.UTC(Math.floor(month / 100), month % 100, 1) / 1000);
+
+export interface CrewMonthPrize { crewId: number; name: string; district: number; rank: number; score: number; part: string; members: string[] }
+
+/**
+ * Ежемесячный конкурс команд (§5.6): месяц — календарный, счёт
+ * команды — сумма её недельных результатов тех недель, которые
+ * НАЧАЛИСЬ в этом месяце (неделя учитывается ровно один раз,
+ * в месяце своего понедельника). Полнота команды та же, что у
+ * доски недели: ≥5 человек и ≥5 с заездом.
+ *
+ * Приз — `deck_crew_d{район стены команды}` (§5.4: приз всегда
+ * косметика). Получает **состав месяца** — участники, вступившие
+ * до конца месяца и не ушедшие раньше его начала: сегмент стены
+ * общий, трофей — командный, а не капитанский.
+ *
+ * Идемпотентность — `crew_month_settlements` (PK месяца), тот же
+ * приём, что у `line_tournament_days`: сет — одна транзакция,
+ * повторный вызов видит строку и возвращает прежний результат.
+ * (Маркер «часть с created_at ≥ начала месяца» не работает: сет
+ * месяца M-1 выполняется в самом начале месяца M, и его части
+ * удовлетворяли бы маркер M — второй и каждый следующий месяц
+ * молча пропускались бы. Проверено прогоном на двух месяцах.)
+ * Внутри транзакции выдача по кошельку не нуждается в собственной
+ * проверке: состав месяца — список без дублей, а повторного сета
+ * не бывает. */
+export function settleCrewMonth(db: Db, month: number, t = now()): { month: number; prizes: CrewMonthPrize[]; alreadySettled: boolean } {
+  const start = monthStart(month);
+  const end = monthEnd(month);
+  if (db.get(`SELECT 1 FROM crew_month_settlements WHERE month = ?`, month)) {
+    return { month, prizes: [], alreadySettled: true };
+  }
+  // Недели месяца: те, чей понедельник лежит внутри месяца.
+  const weeks: number[] = [];
+  for (let w = weekIndex(start); w <= weekIndex(end - 1); w++) {
+    const ws = w * WEEK + WEEK_EPOCH_OFFSET;
+    if (ws >= start && ws < end) weeks.push(w);
+  }
+  // Месяц судится по активности того месяца, а не по статусу на
+  // момент сета/просмотра: команда, отъездившая месяц и выцветшая
+  // (archived) до свопа, всё равно в конкурсе; забаненная — нет.
+  const crews = db.all<{ id: number; name: string; wall_district: number }>(
+    `SELECT id, name, wall_district FROM crews WHERE created_at <= ? AND status != 'banned'`, end);
+  const scored: { id: number; name: string; district: number; score: number }[] = [];
+  for (const c of crews) {
+    let score = 0;
+    for (const w of weeks) score += crewMonthWeekScore(db, c.id, w);
+    if (score > 0) scored.push({ id: c.id, name: c.name, district: c.wall_district, score });
+  }
+  const prizes: CrewMonthPrize[] = [];
+  return db.tx(() => {
+    scored.slice(0, CREW.monthlyContestPlaces).forEach((c, i) => {
+      const part = `deck_crew_d${c.district}`;
+      // Состав месяца: вступил до конца месяца и не уходил раньше его начала.
+      const members = db.all<{ wallet: string }>(
+        `SELECT wallet FROM crew_members WHERE crew_id = ? AND joined_at <= ? AND (left_at IS NULL OR left_at >= ?) ORDER BY joined_at ASC`,
+        c.id, end, start).map((r) => r.wallet);
+      for (const wallet of members) {
+        grantPart(db, wallet, part, 'crew', t);
+        recordEvent(db, wallet, 'crew', 'prize', { month, crew: c.id, rank: i + 1, part }, t);
+      }
+      prizes.push({ crewId: c.id, name: c.name, district: c.district, rank: i + 1, score: c.score, part, members });
+    });
+    db.run(`INSERT INTO crew_month_settlements (month, settled_at) VALUES (?, ?)`, month, t);
+    return { month, prizes, alreadySettled: false } as { month: number; prizes: CrewMonthPrize[]; alreadySettled: boolean };
+  });
+}
+
+/** Счёт команды за неделю (0 — команда не попала на доску недели).
+ *  Состав — ростер НЕДЕЛИ (вступил до её конца и не ушёл раньше её
+ *  начала), а не текущий: месяц считается после его конца, и уход
+ *  райдера в следующем месяце не должен обнулять прошлые недели. */
+function crewMonthWeekScore(db: Db, crewId: number, week: number): number {
+  const ws = week * WEEK + WEEK_EPOCH_OFFSET;
+  const we = ws + WEEK;
+  const scores = db.all<{ best: number }>(
+    `SELECT COALESCE(MAX(r.score), 0) best
+       FROM crew_members m LEFT JOIN line_runs r ON r.wallet = m.wallet AND r.week = ?
+      WHERE m.crew_id = ? AND m.joined_at <= ? AND (m.left_at IS NULL OR m.left_at >= ?)
+      GROUP BY m.wallet`, week, crewId, we, ws).map((r) => Number(r.best));
+  if (scores.length < CREW.minMembers) return 0;
+  if (scores.filter((s) => s > 0).length < CREW.minMembers) return 0;
+  return crewWeekScore(scores);
+}
+
+/** Месячный приз команды для экрана: место, счёт и есть ли часть у кошелька. */
+export function crewMonthBoard(db: Db, month: number, limit = CREW.monthlyContestPlaces * 3): { month: number; rows: { rank: number; id: number; name: string; district: number; score: number; part: string }[] } {
+  const start = monthStart(month);
+  const end = monthEnd(month);
+  const weeks: number[] = [];
+  for (let w = weekIndex(start); w <= weekIndex(end - 1); w++) {
+    const ws = w * WEEK + WEEK_EPOCH_OFFSET;
+    if (ws >= start && ws < end) weeks.push(w);
+  }
+  // Месяц судится по активности того месяца, а не по статусу на
+  // момент сета/просмотра: команда, отъездившая месяц и выцветшая
+  // (archived) до свопа, всё равно в конкурсе; забаненная — нет.
+  const crews = db.all<{ id: number; name: string; wall_district: number }>(
+    `SELECT id, name, wall_district FROM crews WHERE created_at <= ? AND status != 'banned'`, end);
+  const rows: { rank: number; id: number; name: string; district: number; score: number; part: string }[] = [];
+  for (const c of crews) {
+    let score = 0;
+    for (const w of weeks) score += crewMonthWeekScore(db, c.id, w);
+    if (score > 0) rows.push({ rank: 0, id: c.id, name: c.name, district: c.wall_district, score, part: `deck_crew_d${c.wall_district}` });
+  }
+  rows.sort((a, b) => b.score - a.score || a.id - b.id);
+  rows.forEach((r, i) => { r.rank = i + 1; });
+  return { month, rows: rows.slice(0, limit) };
 }

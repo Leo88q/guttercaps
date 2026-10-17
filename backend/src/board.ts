@@ -109,11 +109,22 @@ export function missingOfDistrict(db: Db, wallet: string, district: number): Boa
  *
  * `qty` растёт до `BOARD.maxQtyPerPart` — дубль из двух источников не должен
  * падать с ошибкой, но и копиться бесконечно незачем.
+ *
+ * §5.4: выдача — две плоскости. `board_parts` — оффчейн-реестр,
+ * немедленно видимый игре и витрине; `board_part_leaves` — очередь
+ * ончейн-выдачи (корни kind 10, клейм `claim_item_root` →
+ * `grant_board_part`). Лист кладётся только когда количество
+ * реально растёт: насыщенная часть не рождает лист, которого
+ * ончейн-регистр всё равно не примет (MAX_PART_QTY там же).
  */
 export function grantPart(db: Db, wallet: string, partId: string, source: BoardSource, t = now()): BoardPartRow {
   const part = partById(partId);
   if (!part) throw new ServiceError(400, 'bad_part', `Unknown board part: ${partId}`);
-  const existing = db.get<{ qty: number }>(`SELECT qty FROM board_parts WHERE wallet = ? AND part = ?`, wallet, partId);
+  const existing = db.get<{ qty: number; source: string; created_at: number }>(
+    `SELECT qty, source, created_at FROM board_parts WHERE wallet = ? AND part = ?`, wallet, partId);
+  if (existing && existing.qty >= BOARD.maxQtyPerPart) {
+    return { part: partId, qty: existing.qty, source: existing.source as BoardSource, createdAt: iso(existing.created_at) };
+  }
   const qty = Math.min(BOARD.maxQtyPerPart, (existing?.qty ?? 0) + 1);
   db.run(
     // `source` и `created_at` не перезаписываются: часть остаётся «добытой
@@ -123,6 +134,10 @@ export function grantPart(db: Db, wallet: string, partId: string, source: BoardS
       ['qty = excluded.qty', 'updated_at = excluded.updated_at']),
     wallet, partId, qty, source, t, t,
   );
+  // Индекс части в каталоге — это и есть leaf amount ончейн-корня
+  // (формат листа тот же, что у бустеров; amount = индекс).
+  db.run(`INSERT INTO board_part_leaves (wallet, part_idx, granted_at) VALUES (?, ?, ?)`,
+    wallet, BOARD_PARTS.findIndex((p) => p.id === partId), t);
   recordEvent(db, wallet, 'builder', 'grant', { part: partId, district: part.district, source }, t);
   return { part: partId, qty, source, createdAt: iso(t) };
 }

@@ -55,19 +55,21 @@ export const REWARD_ROOT_KINDS = {
   skrEvents: 7,
   itemBoosters: 8,
   chipVouchers: 9,
+  /** Части доски (docs/16 §4.2/§5.4): лист несёт индекс части в каталоге BOARD_PARTS. */
+  itemBoardParts: 10,
 } as const;
 export type RewardRootKind = (typeof REWARD_ROOT_KINDS)[keyof typeof REWARD_ROOT_KINDS];
 export const SKR_ROOT_KIND_BASE = 5;
 export const isSkrRootKind = (kind: number): boolean => kind >= SKR_ROOT_KIND_BASE && kind < SKR_ROOT_KIND_BASE + 3;
 export const ITEM_ROOT_KIND_BASE = 8;
-export const isItemRootKind = (kind: number): boolean => kind === REWARD_ROOT_KINDS.itemBoosters;
+export const isItemRootKind = (kind: number): boolean => kind === REWARD_ROOT_KINDS.itemBoosters || kind === REWARD_ROOT_KINDS.itemBoardParts;
 export const CHIP_ROOT_KIND_BASE = 9;
 export const isChipRootKind = (kind: number): boolean => kind === REWARD_ROOT_KINDS.chipVouchers;
 /** What a reward root pays out: a token (micro-units), an item (unit count) or a chip voucher (template id). */
 export type RootCurrency = 'CG' | 'SKR' | 'ITEM' | 'CHIP';
 export const rootCurrency = (kind: number): RootCurrency => (isSkrRootKind(kind) ? 'SKR' : isItemRootKind(kind) ? 'ITEM' : isChipRootKind(kind) ? 'CHIP' : 'CG');
 export const ROOT_KIND_LABEL: Record<number, string> = {
-  2: 'Quests', 3: 'PvP season', 4: 'Referrals & events', 5: 'Quests (SKR)', 6: 'PvP season (SKR)', 7: 'Events (SKR)', 8: 'Boosters', 9: 'Quest chips',
+  2: 'Quests', 3: 'PvP season', 4: 'Referrals & events', 5: 'Quests (SKR)', 6: 'PvP season (SKR)', 7: 'Events (SKR)', 8: 'Boosters', 9: 'Quest chips', 10: 'Board parts',
 };
 
 /**
@@ -77,6 +79,11 @@ export const ROOT_KIND_LABEL: Record<number, string> = {
  *  - `maxClaim`: boosters per leaf = chip_core `grant_booster(count ≤ 10)`; the remainder rolls over.
  * There is no on-chain supply to debit: boosters are a non-transferable counter (no market, no DEX), so the
  * only economy guard is the quest design itself (2 booster quests: `w_stake` weekly, `p_set1` once).
+ *
+ * Kind 10 (board parts, docs/16 §4.2/§5.4) rides the same machinery with a
+ * different leaf payload: the amount field is the part's catalogue INDEX
+ * (`BOARD_PARTS`), one part per leaf, budget = leaf count. Parts are also a
+ * non-transferable registry (no market), so the same guard logic applies.
  */
 export const ITEM_REWARDS = { maxRootBudget: 1_000, maxClaim: 10 } as const;
 

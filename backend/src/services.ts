@@ -8,11 +8,12 @@
 //   other payloads  = canonical JSON (sorted keys, no whitespace)
 import { keccak_256 } from '@noble/hashes/sha3';
 import { PublicKey } from '@solana/web3.js';
-import { SERVICES, SERVICE_BY_ID, SERVICE_BY_KIND, SKIN_BY_ID, PROFILE_THEME_BY_ID, GRID_FIELD_THEME_BY_ID, EMOTE_PACK_BY_ID, COLLECTIONS, FX, GRID, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, type ServiceDef } from '@guttercaps/economy';
+import { SERVICES, SERVICE_BY_ID, SERVICE_BY_KIND, SKIN_BY_ID, PROFILE_THEME_BY_ID, GRID_FIELD_THEME_BY_ID, EMOTE_PACK_BY_ID, COLLECTIONS, FX, GRID, partById, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, type ServiceDef } from '@guttercaps/economy';
 import { HANDLE_BLOCKLIST, HANDLE_CHANGE_COOLDOWN_S, HANDLE_MAX_RESERVATIONS, HANDLE_QUARANTINE_S, HANDLE_RE, HANDLE_RESERVE_MS } from './config.ts';
 import { type Db, now } from './db.ts';
 import { FinalityError, requireFinalized } from './finality.ts';
 import { foldEq } from './sql.ts';
+import { grantPart } from './board.ts';
 
 export const enc = new TextEncoder();
 
@@ -197,6 +198,9 @@ const PAYLOAD_RULES: Record<string, (p: Record<string, unknown>) => string | und
   districtBanner: (p) => (typeof p.collection === 'number' && Number.isInteger(p.collection) && p.collection >= 0 && p.collection < COLLECTIONS.length ? undefined : 'payload needs {collection} with a live district index'),
   gridFieldTheme: (p) => (typeof p.theme === 'string' && GRID_FIELD_THEME_BY_ID[p.theme] ? undefined : 'payload needs {theme} with a Floodgrid field theme id'),
   districtStencilPack: (p) => (p.id === 'districtStencilPack' ? undefined : 'payload needs {id: "districtStencilPack"}'),
+  // docs/16 §5.4: навесная косметика продаётся в конструкторе;
+  // покупабельны только части с источником 'shop'.
+  boardMount: (p) => (typeof p.part === 'string' && partById(p.part)?.source === 'shop' ? undefined : 'payload needs {part} with a shop-mountable part id'),
 };
 
 /** POST /services/claim */
@@ -223,7 +227,11 @@ export function claimService(db: Db, wallet: string, signature: string, kind: nu
     if (s.id === 'districtBanner' && !districtCompleted(db, wallet, Number(payload.collection))) {
       throw new ServiceError(409, 'set_not_completed', 'Finish the district set first');
     }
+    // §5.4: навесное — единственная платная косметика доски. Выдача
+    // в той же транзакции, что и consume: платёж не пропадёт между
+    // строками, а grantPart кладёт лист ончейн-выдачи.
     const granted = now();
+    if (s.id === 'boardMount') grantPart(db, wallet, String(payload.part), 'shop', granted);
     const res = db.run(
       `INSERT INTO entitlements (wallet, kind, payload, signature, currency, amount, granted_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       wallet, kind, canonicalJson(payload), signature, p.currency, p.amount, granted, expiryFor(s, granted),

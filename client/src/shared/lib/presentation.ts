@@ -19,5 +19,6 @@ export const originLabel = (origin?: string) => t(ORIGINS[origin ?? ''] ?? 'scre
 const ROOT_KINDS: Record<number, MessageKey> = {
   2: 'quests.title', 3: 'screens.pvpSeason', 4: 'screens.referralsEvents', 5: 'quests.title',
   6: 'screens.pvpSeason', 7: 'screens.events', 8: 'fusion.booster', 9: 'screens.questCaps',
+  10: 'quests.partsRoot',
 };
 export const rootKindLabel = (kind: number) => `${t(ROOT_KINDS[kind] ?? 'quests.root')}${kind >= 5 && kind <= 7 ? ' · SKR' : kind >= 2 && kind <= 4 ? ' · $CG' : ''}`;

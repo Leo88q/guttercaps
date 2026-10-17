@@ -26,7 +26,8 @@
 export type ServiceId =
   | 'handle' | 'handleChange' | 'capSkin' | 'profileTheme' | 'arenaEmotePack'
   | 'extraBenchSlots' | 'seasonPass' | 'booster' | 'packSkipAnim' | 'districtBanner'
-  | 'gridDeepAttempt' | 'gridFieldTheme' | 'districtStencilPack' | 'lineExtraRun' | 'crewCharter' | 'crewRename';
+  | 'gridDeepAttempt' | 'gridFieldTheme' | 'districtStencilPack' | 'lineExtraRun' | 'crewCharter' | 'crewRename'
+  | 'lineTournamentEntry' | 'boardMount';
 
 export interface ServiceDef {
   id: ServiceId;
@@ -77,6 +78,14 @@ export const SERVICES: readonly ServiceDef[] = [
   // Переименование — как смена хендла: дешевле, но с 30-дневной паузой.
   { id: 'crewCharter', kind: 14, rustName: 'CrewCharter', priceUsdCents: 199, dailyCap: 1, fulfilment: 'entitlement', recurring: false, name: 'Crew charter', blurb: 'Register a crew: a unique name, a roster of 5–10 riders and a 20-slot segment of the district wall.' },
   { id: 'crewRename', kind: 15, rustName: 'CrewRename', priceUsdCents: 99, dailyCap: 1, fulfilment: 'entitlement', recurring: false, name: 'Crew rename', blurb: 'Rename your crew once every 30 days. The old name is released after 90 days — same rule as handles.' },
+  // Платный вход в Линию (docs/16 §5.4): взнос в дневной турнир, 30 $CG
+  // по $CG-рельсу (100 % сжигаются — путь пака). Приз — части доски,
+  // никогда не $CG. Потолок попыток на кошелёк в день держит бэкенд
+  // (общий с доп. заездами), ончейн дневной потолок только страхует.
+  { id: 'lineTournamentEntry', kind: 16, rustName: 'LineTournamentEntry', priceUsdCents: 5, dailyCap: 10, fulfilment: 'entitlement', recurring: true, name: 'Line tournament entry', blurb: 'Enter the daily Line tournament with one paid run. 30 $CG burned; prizes are board parts, never $CG.' },
+  // Навесное доски (docs/16 §4.2): болты и наклейки — единственное,
+  // что магазин продаёт из конструктора. Сет района не продаётся.
+  { id: 'boardMount', kind: 17, rustName: 'BoardMount', priceUsdCents: 49, dailyCap: 10, fulfilment: 'entitlement', recurring: false, name: 'Board mount', blurb: 'One bolt finish or sticker for the board builder. Cosmetic only — district sets are earned, never bought.' },
 ] as const;
 
 export const SERVICE_BY_ID = Object.fromEntries(SERVICES.map((s) => [s.id, s])) as Record<ServiceId, ServiceDef>;

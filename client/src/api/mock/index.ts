@@ -2,7 +2,7 @@ import { isRightsPath, mockRights } from './rights';
 // Deterministic in-browser backend used when VITE_API_MOCK=true or when the
 // real API is unreachable in dev. Data is derived from @guttercaps/economy
 // and shared/lib/lore so what you see matches the modelled numbers.
-import { ACHIEVEMENTS, BOOSTER, CHIP_XP, DAILY_QUESTS, LINE, EMISSION_GUARD, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, FEES, FUSION_RECIPES, FX, GRID, GRID as GRID_RULES, LOCK_TIERS, MATCHMAKING, PACKS, PASS_TRACK, PERMANENT_QUESTS, PROFILE_THEME_BY_ID, RARITY_PROFILES, REFERRAL, SEASON, SERVICES, SKIN_BY_ID, WEEKLY_QUESTS, applyRotate, bundlePriceCents, botReplay, lineLayout, lineSeed, lineTier, runPassXp, simulateRun, CREW, CREW_NAME_RE, SERVICE_BY_ID, crewTier, crewWeekScore, effectiveOdds, generateLevel, gridBaseXp, gridStarsForMoves, gridXpForStars, impliedApy, isSolved, levelSeed, packExpectedValueMult, passTierForXp, probabilityAtLeast, skrMicroForUsdCents, solLamportsForUsdCents, type PackId, usdCentsFromSolLamports, usdcMicroForUsdCents, xpToNext, BOARD_SET_SLOTS, boardDistrictOfWeek, boardSetDistrict, partById, stockLoadout } from '@guttercaps/economy';
+import { ACHIEVEMENTS, BOOSTER, CHIP_XP, DAILY_QUESTS, LINE, EMISSION_GUARD, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, FEES, FUSION_RECIPES, FX, GRID, GRID as GRID_RULES, LOCK_TIERS, MATCHMAKING, PACKS, PASS_TRACK, PERMANENT_QUESTS, PROFILE_THEME_BY_ID, RARITY_PROFILES, REFERRAL, SEASON, SERVICES, SERVICE_BY_ID, SKIN_BY_ID, WEEKLY_QUESTS, applyRotate, botReplay, bundlePriceCents, CREW, CREW_NAME_RE, TOURNAMENT, crewTier, crewWeekScore, effectiveOdds, generateLevel, gridBaseXp, gridStarsForMoves, gridXpForStars, impliedApy, isSolved, levelSeed, lineLayout, lineSeed, lineTier, packExpectedValueMult, passTierForXp, partById, probabilityAtLeast, runPassXp, simulateRun, skrMicroForUsdCents, solLamportsForUsdCents, stockLoadout, tournamentBandOfRank, tournamentPrizeSchedule, usdCentsFromSolLamports, usdcMicroForUsdCents, xpToNext, BOARD_SET_SLOTS, boardDistrictOfWeek, boardSetDistrict, type PackId } from '@guttercaps/economy';
 import { PYTH_PRICE_ACCOUNTS } from '@/chain/ids';
 import { COLLECTIONS } from '@/shared/lib/lore';
 import { ApiError, type RequestOpts } from '../client';
@@ -425,6 +425,9 @@ export function resetMockWorld() {
   mockLineCredits = 0;
   mockLineReward = null;
   mockLineXp = { day: lineDay(), xp: 0 };
+  mockTournamentBought = 0;
+  mockTournamentUnused = 0;
+  mockTournamentRuns.length = 0;
   mockBoardParts.clear();
   mockBoardLoadout.clear();
   mockBoardWeekGranted.clear();
@@ -561,7 +564,7 @@ const seedMockBoard = () => {
   mockBoardParts.set(`deck_d${prev}`, { qty: 1, source: 'run', createdAt: Date.now() / 1000 - 9 * 86_400 });
   mockBoardParts.set(`wheels_d${prev}`, { qty: 1, source: 'run', createdAt: Date.now() / 1000 - 8 * 86_400 });
   mockBoardParts.set('bolts_acid', { qty: 1, source: 'shop', createdAt: Date.now() / 1000 - 3 * 86_400 });
-  mockBoardParts.set('sticker_moth', { qty: 1, source: 'quest', createdAt: Date.now() / 1000 - 2 * 86_400 });
+  mockBoardParts.set('sticker_moth', { qty: 1, source: 'achievement', createdAt: Date.now() / 1000 - 2 * 86_400 });
   // Деку прошлой недели надеваем сразу: экран открывается собранным, а не с
   // приглашением «поставь что-нибудь».
   mockBoardLoadout.set('deck', `deck_d${prev}`);
@@ -729,7 +732,7 @@ const lineStateView = () => {
 };
 on('get', '/me/line', () => lineStateView());
 on('post', '/me/line/runs', (o) => {
-  const b = (o.body ?? {}) as { day?: number; inputs?: unknown };
+  const b = (o.body ?? {}) as { day?: number; inputs?: unknown; tournament?: boolean };
   const day = Number(b.day);
   const today = lineDay();
   if (!Number.isInteger(day) || day > today || day < today - 1) throw new ApiError(400, 'bad_day', `day must be today (${today}) or yesterday`);
@@ -744,8 +747,16 @@ on('post', '/me/line/runs', (o) => {
     return [tick, action] as [number, number];
   });
   const st = lineStateView();
+  const tournament = b.tournament === true;
   let paid = 0;
-  if (st.freeLeft > 0) paid = 0;
+  if (tournament) {
+    // Турнирная попытка оплачена входом (не бесплатной и не
+    // кредитом доп. заезда), но считается в общем paid-потолке.
+    if (mockTournamentUnused <= 0) throw new ApiError(402, 'tournament_entries_exhausted', 'No unused tournament entry for today — enter the tournament first');
+    if (st.paidLeft <= 0) throw new ApiError(409, 'run_credit_cap', `At most ${LINE.maxPaidRunsPerDay} paid runs per day`);
+    mockTournamentUnused -= 1;
+    paid = 1;
+  } else if (st.freeLeft > 0) paid = 0;
   else if (mockLineCredits > 0 && st.paidLeft > 0) { mockLineCredits -= 1; paid = 1; }
   else throw new ApiError(402, 'runs_exhausted', 'Free runs are over for today — buy an extra one (30 $CG, burned)');
   const res = simulateRun(lineLayout(day), inputs.map(([tick, action]) => ({ tick, action: action === 1 ? 1 : 0 })));
@@ -754,6 +765,7 @@ on('post', '/me/line/runs', (o) => {
     score: res.score, tricks: res.tricks, bestCombo: res.bestCombo, bails: res.bails, paid, at: Math.floor(Date.now() / 1000),
   };
   mockLineRuns.push(run);
+  if (tournament) mockTournamentRuns.push({ id: run.id, wallet: ME, day, score: res.score, at: run.at });
   const xp = runPassXp(res.score);
   if (mockLineXp.day !== day) mockLineXp = { day, xp: 0 };
   mockLineXp.xp += xp;
@@ -797,6 +809,80 @@ on('get', '/line/leaderboard', (o) => {
     .slice(0, 50)
     .map((r, i) => ({ ...r, rank: i + 1, runId: r.id, at: iso(r.at * 1000), hasReplay: r.inputs.length > 0 }));
   return { week: w, rows };
+});
+
+// ------------------------------------------------- турнир линии (docs/16 §5.4)
+// Свои турнирные заезды — настоящие (из POST /me/line/runs с
+// tournament:true); чужие строки — бот-реплеи той же чаши дня,
+// как на доске недели: демо не показывает чисел, которых
+// не могло получиться переигрыванием.
+let mockTournamentBought = 0;
+let mockTournamentUnused = 0;
+const mockTournamentRuns: { id: number; wallet: string; day: number; score: number; at: number }[] = [];
+const mockTournamentRivals = Array.from({ length: 9 }, (_, i) => {
+  const day = lineDay();
+  const layout = lineLayout(day);
+  const inputs = botReplay(layout, i + 3, i + 11);
+  const res = simulateRun(layout, inputs.map((x) => ({ tick: x.tick, action: x.action === 1 ? 1 : 0 })));
+  return {
+    wallet: fakeKey(), handle: pick(['moth_king', 'railqueen', 'drain0', 'sk8_or_die', 'noise_boy', 'inkslinger', 'brakeless99', 'pixelbsmt', 'gutterbeast']),
+    day, score: res.score, at: Math.floor(Date.now() / 1000) - i * 720,
+  };
+});
+const tournamentBoardRows = (day: number) => {
+  const mine = mockTournamentRuns.filter((r) => r.day === day);
+  const best = mine.length ? mine.reduce((a, b) => (b.score > a.score ? b : a)) : null;
+  return [
+    ...mockTournamentRivals.filter((r) => r.day === day).map((r) => ({ wallet: r.wallet, handle: r.handle, score: r.score, runId: 0, at: r.at, hasReplay: false })),
+    ...(best ? [{ wallet: ME, handle: mockHandle, score: best.score, runId: best.id, at: best.at, hasReplay: true }] : []),
+  ].sort((a, b) => b.score - a.score || a.runId - b.runId);
+};
+const tournamentStateView = () => {
+  const day = lineDay();
+  const week = Math.floor(day / 7);
+  const rows = tournamentBoardRows(day);
+  const entrants = rows.length;
+  const myRank = rows.findIndex((r) => r.wallet === ME);
+  const st = lineStateView();
+  return {
+    day, week,
+    entries: {
+      bought: mockTournamentBought, unused: mockTournamentUnused,
+      left: Math.max(0, LINE.maxPaidRunsPerDay - (st.runsToday - st.freeLeft) - mockLineCredits - mockTournamentUnused),
+    },
+    best: rows.find((r) => r.wallet === ME) ? { score: rows.find((r) => r.wallet === ME)!.score, runId: rows.find((r) => r.wallet === ME)!.runId, at: iso(rows.find((r) => r.wallet === ME)!.at * 1000) } : null,
+    rank: myRank >= 0 ? myRank + 1 : null,
+    entrants,
+    poolCgMicro: String(BigInt(entrants) * BigInt(TOURNAMENT.entryCgMicro) * BigInt(TOURNAMENT.poolBps) / 10_000n),
+    settled: false,
+    schedule: tournamentPrizeSchedule().map((b, i) => ({ band: i, topPct: b.topPct, trophies: [...b.trophies], districtSlots: b.districtSlots })),
+    prizesYesterday: [],
+  };
+};
+on('get', '/me/line/tournament', () => tournamentStateView());
+on('post', '/me/line/tournament/enter', (o) => {
+  const b = (o.body ?? {}) as { day?: number; signature?: string };
+  const day = Number(b.day);
+  const today = lineDay();
+  if (!Number.isInteger(day) || day !== today) throw new ApiError(400, 'bad_day', `day must be today (${today})`);
+  if (typeof b.signature !== 'string' || b.signature.length < 32) throw new ApiError(402, 'payment_not_found', 'No ServicePaid event from this wallet in that transaction');
+  const st = lineStateView();
+  const paidUsed = st.runsToday - st.freeLeft;
+  if (paidUsed + mockLineCredits + mockTournamentUnused >= LINE.maxPaidRunsPerDay) throw new ApiError(409, 'run_credit_cap', `At most ${LINE.maxPaidRunsPerDay} paid runs per day`);
+  mockTournamentBought += 1;
+  mockTournamentUnused += 1;
+  return { day, entries: mockTournamentUnused };
+});
+on('get', '/line/tournament/board', (o) => {
+  const day = Number((o.query as { day?: unknown } | undefined)?.day);
+  const d = Number.isFinite(day) && day > 0 ? Math.floor(day) : lineDay();
+  const rows = tournamentBoardRows(d);
+  return {
+    day: d, entrants: rows.length,
+    poolCgMicro: String(BigInt(rows.length) * BigInt(TOURNAMENT.entryCgMicro) * BigInt(TOURNAMENT.poolBps) / 10_000n),
+    settled: false,
+    rows: rows.map((r, i) => ({ ...r, rank: i + 1, band: tournamentBandOfRank(i + 1, rows.length) })),
+  };
 });
 
 // ------------------------------------------------- команды (docs/16 §5.6)
@@ -868,6 +954,24 @@ on('get', '/crew/board', () => {
     .sort((a, b) => b.score - a.score || a.id - b.id)
     .map((r, i) => ({ ...r, rank: i + 1 }));
   return { week, rows };
+});
+// Ежемесячный конкурс (§5.6): демо-стойка со СВОИМИ командами —
+// в месячный зачёт попадает другой срез экипажей, чем в недельную
+// гонку, поэтому имена не дублируют недельную доску на экране.
+const mockMonthCrews = [
+  { id: 901, name: 'VertRats', district: 1, score: 12_480 },
+  { id: 902, name: 'ConcretePoets', district: 3, score: 11_205 },
+  { id: 903, name: 'Hillcrest', district: 5, score: 9_730 },
+];
+on('get', '/crew/month', (o) => {
+  const month = Number((o.query as { month?: unknown } | undefined)?.month);
+  const d = new Date();
+  const m = Number.isFinite(month) && month > 202600 ? Math.floor(month) : d.getUTCFullYear() * 100 + d.getUTCMonth() + 1;
+  const rows = mockMonthCrews
+    .map((c) => ({ rank: 0, id: c.id, name: c.name, district: c.district, score: c.score, part: `deck_crew_d${c.district}` }))
+    .sort((a, b) => b.score - a.score || a.id - b.id)
+    .map((r, i) => ({ ...r, rank: i + 1 }));
+  return { month: m, rows };
 });
 on('get', '/crew/check', (o) => {
   const name = String((o.query as { name?: unknown } | undefined)?.name ?? '').trim();

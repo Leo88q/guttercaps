@@ -80,9 +80,11 @@ describe('Crew — команда (docs/16 §5.6)', () => {
 
     // Команда появилась: имя, состав 1/10 и сегмент стены. Сегмент 0 района
     // уже занят SlabSisters, поэтому хартия берёт следующий свободный — первый
-    // и есть «стена не продаётся: место ищется, а не покупается».
-    await waitFor(() => expect(screen.getByText('TestCrew')).toBeTruthy());
-    expect(screen.getByText(`1/${CREW.maxMembers}`)).toBeTruthy();
+    // и есть «стена не продаётся: место ищется, а не покупается». Карточка
+    // своей команды рисуется после рефетча «моей» команды (инвалидация кэша
+    // асинхронна), поэтому ждём именно её, а не строк досок.
+    await waitFor(() => expect(screen.getByText(`1/${CREW.maxMembers}`)).toBeTruthy());
+    expect(screen.getByText('TestCrew')).toBeTruthy();
     expect(screen.getByText(/slots 20–39 of district 0/)).toBeTruthy();
     // код приглашения виден только своим — значит, он на экране
     expect(screen.getByText(/^TEST\d{4}$/)).toBeTruthy();

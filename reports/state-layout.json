@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "fingerprint": "035586b086f0c2229067f651c3a39ca3f1ec75ef5a061efbaaab27965894a4b0",
+  "fingerprint": "1418b0a5ef775dba95802bc3cd21fa609e8f5fc7848e76fabc3a42c9119fb5c2",
   "accounts": [
     {
       "program": "arena",
@@ -47,7 +47,7 @@
       "fields": [
         "owner: Pubkey",
         "day_start: i64",
-        "bought_today: [u8; 16]",
+        "bought_today: [u8; 18]",
         "spent_usd_cents_total: u64",
         "bump: u8"
       ]
@@ -269,6 +269,15 @@
       "fields": [
         "owner: Pubkey",
         "boosters: u16",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "chip_core",
+      "name": "PlayerBoardParts",
+      "fields": [
+        "owner: Pubkey",
+        "parts: [u16; BOARD_PART_COUNT]",
         "bump: u8"
       ]
     },

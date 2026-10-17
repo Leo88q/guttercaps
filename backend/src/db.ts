@@ -1089,6 +1089,20 @@ CREATE TABLE IF NOT EXISTS board_run_grants (
   PRIMARY KEY (wallet, week)
 );
 CREATE INDEX IF NOT EXISTS idx_board_run_grants_week ON board_run_grants(week);
+-- Очередь ончейн-выдачи частей (docs/16 §5.4): каждая выдача grantPart
+-- кладёт сюда лист; оракл наград публикует листья корнем kind 10, игрок
+-- забирает permissionless клеймом (claim_item_root → grant_board_part).
+-- root_epoch IS NULL — лист ещё не попал в опубликованный корень.
+CREATE TABLE IF NOT EXISTS board_part_leaves (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  wallet     TEXT    NOT NULL,
+  part_idx   INTEGER NOT NULL,             -- индекс части в каталоге BOARD_PARTS (leaf amount)
+  root_kind  INTEGER,                      -- 10, как только лист попал в корень
+  root_epoch INTEGER,
+  granted_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_board_part_leaves_unpublished ON board_part_leaves(root_kind, root_epoch);
+CREATE INDEX IF NOT EXISTS idx_board_part_leaves_granted ON board_part_leaves(granted_at);
 
 -- Телеметрия скейт-мира (docs/16 §12): без неё правило-гейт из §0.2 нечем
 -- проверять — фича без когортной метрики не принята, а не «принята на веру».
@@ -1265,7 +1279,7 @@ CREATE TABLE IF NOT EXISTS crews (
   wall_segment  INTEGER NOT NULL,             -- номер сегмента: слоты [n*20, n*20+20)
   created_at    INTEGER NOT NULL,             -- unix s
   renamed_at    INTEGER,                      -- последняя смена имени (пауза 30 дней)
-  status        TEXT    NOT NULL DEFAULT 'live', -- live | banned (скрыто модерацией)
+  status        TEXT    NOT NULL DEFAULT 'live', -- live | archived (выцвел по неактивности) | banned (модерация)
   invite_code   TEXT    NOT NULL UNIQUE       -- вступление по коду: без ончейн-шагов
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_crews_segment ON crews(wall_district, wall_segment) WHERE status = 'live';
@@ -1297,6 +1311,16 @@ CREATE TABLE IF NOT EXISTS crew_reservations (
   name_key   TEXT    PRIMARY KEY,
   wallet     TEXT    NOT NULL,
   expires_at INTEGER NOT NULL
+);
+--- Закрытый месяц командного конкурса (docs/16 §5.6). PK месяца —
+--- маркер сета: без строки месяц не считается закрытым, повторный
+--- сет видит её и ничего не выдаёт. (Раньше маркером служила
+--- «любая часть deck_crew_d% с created_at ≥ начала месяца» — это
+--- ломалось на втором месяце: сет месяца M-1 выполняется в самом
+--- начале месяца M и его части удовлетворяли маркер M.)
+CREATE TABLE IF NOT EXISTS crew_month_settlements (
+  month       INTEGER PRIMARY KEY,
+  settled_at  INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS line_runs (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1348,6 +1372,50 @@ CREATE TABLE IF NOT EXISTS line_rewards (
   granted_at  INTEGER NOT NULL,
   PRIMARY KEY (wallet, day)
 );
+-- Дневной турнир линии (docs/16 §5.4). Взнос 30 $CG за ПОПЫТКУ:
+-- платёж покупает вход (кредит), кредит тратится заездом. Приз —
+-- чисто косметика (части доски): $CG из пула никуда не платится,
+-- расщепление взноса 75/10/15 — оффчейн-учёт.
+CREATE TABLE IF NOT EXISTS line_tournament_entries (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  wallet     TEXT    NOT NULL,
+  day        INTEGER NOT NULL,
+  signature  TEXT    NOT NULL UNIQUE,      -- подпись платежа: дважды один платёж не входит
+  granted_at INTEGER NOT NULL,
+  used_by    INTEGER                       -- line_runs.id, который израсходовал вход
+);
+CREATE INDEX IF NOT EXISTS idx_line_tournament_entries ON line_tournament_entries(wallet, day);
+-- Турнирный заезд: строка ранжирования дня (score — тот же счёт линии).
+-- run_id = line_runs.id: турнирный заезд — обычный платный заезд линии,
+-- плюс участие в ранжировании.
+CREATE TABLE IF NOT EXISTS line_tournament_runs (
+  run_id       INTEGER PRIMARY KEY,
+  wallet       TEXT    NOT NULL,
+  day          INTEGER NOT NULL,
+  score        INTEGER NOT NULL,
+  submitted_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_line_tournament_runs_day ON line_tournament_runs(day, score DESC);
+-- День турнира: участники, пул (учёт) и отметка сета — PK дня и есть
+-- идемпотентность settleLineTournament.
+CREATE TABLE IF NOT EXISTS line_tournament_days (
+  day          INTEGER PRIMARY KEY,
+  entrants     INTEGER NOT NULL DEFAULT 0,
+  pool_cg_micro TEXT   NOT NULL,
+  settled_at   INTEGER
+);
+-- Приз дня: часть каталога BOARD_PARTS. PK (day, wallet, part) — проверка
+-- «уже выдавали» (сет повторного сета не дублирует).
+CREATE TABLE IF NOT EXISTS line_tournament_prizes (
+  day        INTEGER NOT NULL,
+  wallet     TEXT    NOT NULL,
+  rank       INTEGER NOT NULL,
+  band       INTEGER NOT NULL,
+  part       TEXT    NOT NULL,
+  granted_at INTEGER NOT NULL,
+  PRIMARY KEY (day, wallet, part)
+);
+CREATE INDEX IF NOT EXISTS idx_line_tournament_prizes_day ON line_tournament_prizes(day, rank);
 `;
 
 /** Tables that are pure functions of events_raw (dropped + replayed by `rebuild`). */

@@ -177,6 +177,7 @@ const pt: Messages = {
     setBonus: 'Bônus de set ×{mult}', weight: 'Peso', pending: 'Recompensas pendentes', apyBand: 'Faixa de APY', flexible: 'Flexível', days: '{n} dias',
   },
   quests: {
+    partLeaf: 'peça de prancha #{n}', partsTotal: '{n, plural, one{# peça de prancha} other{# peças de prancha}}', partsRoot: 'Peças de prancha',
     visitGame: 'Abrir o jogo',
     title: 'Missões', subtitle: 'Conclua missões por $CG, boosters e vales de cap. Os pagamentos chegam aqui a cada poucas horas — depois você resgata. O servidor nunca segura seu $CG.',
     daily: 'Diárias', weekly: 'Semanais', permanent: 'Permanentes', claim: 'Resgatar', claimed: 'Resgatado', claimable: 'Pronto para resgatar', progress: '{done}/{total}',
@@ -239,7 +240,7 @@ const pt: Messages = {
     expires: 'expira em {date}', noPower: 'Sem pay-to-win: verificável on-chain', boosterCap: 'Boosters: máx. 3 por dia', bought: 'Comprado', buyFailed: 'Falha na compra',
     pickCap: 'Escolha uma tampinha para pintar', pickSkin: 'Escolha uma skin', pickTheme: 'Escolha um tema', pickPack: 'Escolha um pacote', pickDistrict: 'Escolha um distrito', stencilPackIncludes: 'O que vem',
     noFreeCaps: 'Você ainda não tem tampinhas — abra um pacote primeiro', noCompletedDistrict: 'Complete um distrito (9/9) para desbloquear o estandarte',
-    names: { handle: '@handle', handleChange: 'Troca de handle', capSkin: 'Skin de cap', profileTheme: 'Tema de perfil', arenaEmotePack: 'Pacote de emotes', extraBenchSlots: '+2 presets de bancada', seasonPass: 'Passe de temporada', booster: 'Booster de fusão', packSkipAnim: 'Revelação instantânea', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'Banner de distrito', districtStencilPack: 'Pack de estênceis de distritos' , lineExtraRun: 'Corrida extra', crewCharter: 'Fundação da turma', crewRename: 'Renomear turma', },
+    names: { handle: '@handle', handleChange: 'Troca de handle', capSkin: 'Skin de cap', profileTheme: 'Tema de perfil', arenaEmotePack: 'Pacote de emotes', extraBenchSlots: '+2 presets de bancada', seasonPass: 'Passe de temporada', booster: 'Booster de fusão', packSkipAnim: 'Revelação instantânea', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'Banner de distrito', districtStencilPack: 'Pack de estênceis de distritos' , lineExtraRun: 'Corrida extra', crewCharter: 'Fundação da turma', crewRename: 'Renomear turma', lineTournamentEntry: 'Entrada no torneio da linha', boardMount: 'Acessório de prancha', },
     blurbs: {
       handle: 'Nome único no ranking, na arena e na URL do seu perfil.', handleChange: 'Renomeie uma vez a cada 30 dias. O handle antigo é liberado após 90 dias.',
       capSkin: 'Borda / efeito de spray cosmético gravado em um cap. Acompanha o cap quando vendido.', profileTheme: 'Textura de parede + cor de lâmpada para seu perfil e intro da arena.',
@@ -248,6 +249,7 @@ const pt: Messages = {
       booster: '+15 pp de sucesso em uma fusão (máx. 95%). Máx. 3 por dia.', packSkipAnim: 'Opção permanente para pular a animação de revelação. Pura conveniência.',
       gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Banner animado de um distrito que você completou.', districtStencilPack: 'Cinco estênceis de distrito para o editor de tags. Só as formas: linhas e cores são suas.', lineExtraRun: 'Mais uma corrida no traçado de hoje depois das três grátis. Só $CG — tudo é queimado.',
         crewCharter: 'Nome, plantel e um segmento compartilhado de 20 slots do muro para cinco a dez riders. Os $1,99 compram o nome — o muro ainda se ganha andando (§3.4).', crewRename: 'Um nome novo para a turma, uma vez a cada 30 dias. O antigo volta para a cidade depois de 90 dias.',
+        lineTournamentEntry: 'Um run pago que também entra no torneio do dia. 30 $CG queimados; o prêmio paga em peças de prancha, nunca $CG.', boardMount: 'Um acessório para a prancha: acabamento dos parafusos ou adesivo. Somente cosmético.',
     },
   },
   inspect: {
@@ -502,6 +504,15 @@ const pt: Messages = {
     reason_other: 'Outra coisa',
   },
   line: {
+    tournament: {
+      title: 'Torneio do dia',
+      intro: 'Entrada com um run pago: {cg} $CG por tentativa, queimados. O melhor run do dia entra no quadro; os prêmios são peças de prancha, nunca $CG.',
+      entrants: '{n} riders', pool: 'Premiação (modelo): {n} $CG', rank: 'Posição #{n}', best: 'Melhor: {n}',
+      entriesLeft: 'Tentativas pagas restantes hoje: {n}', enter: 'Entrar · 30 $CG', entering: 'Pagando…',
+      on: 'Modo torneio', off: 'Passeio livre', runOn: 'Andando no torneio', runOff: 'Andar no torneio',
+      schedule: 'Faixas de prêmio', band: 'Faixa {n}', top: 'top {pct}%', districtSlots: '+{n} peças do distrito',
+      yesterday: 'Prêmios de ontem', board: 'Quadro do torneio', empty: 'Ninguém andou no torneio hoje',
+    },
     title: 'A Linha',
     intro: 'Um mesmo bowl para todos: a semente do dia, 45 segundos, três corridas grátis. Depois, cada extra custa 30 $CG — queimados.',
     howto: 'Toque para pular. Toque de novo no ar para agarrar. Os kickers te lançam sozinhos.',
@@ -523,6 +534,10 @@ const pt: Messages = {
 
   // Команды (docs/16 §5.6): общее имя, состав и сегмент стены.
   crew: {
+    month: 'Mês das crews',
+    monthNote: 'O mesmo quadro da semana somado ao mês civil: a pontuação de uma crew é a soma dos seus resultados semanais.',
+    monthEmpty: 'Este mês as crews ainda não andaram',
+    monthPrize: 'As {n} melhores crews ganham o deck de crew do seu distrito de parede — cosmético, nunca $CG.',
     title: 'Turma',
     intro: 'De cinco a dez riders dividem um nome e um segmento do muro. A tabela conta os seus cinco melhores riders — nunca o plantel inteiro.',
     open: 'Abrir',
@@ -634,6 +649,7 @@ const pt: Messages = {
     copies: '{n} un.',
   },
   builder: {
+    buy: 'Comprar · {cents}¢', buying: 'Pagando…', bought: 'Acessório comprado',
     title: 'Montagem do shape',
     intro: 'Seis encaixes, um shape. As peças ganham-se andando: na Linha, em missões, em concursos de crew. A loja só vende extras.',
     slots: { deck: 'Shape', trucks: 'Trucks', wheels: 'Rodas', grip: 'Lixa', bolts: 'Parafusos', sticker: 'Autocolante' },
@@ -662,7 +678,7 @@ const pt: Messages = {
     empty: 'Só a peça de série: as peças vêm de corridas, missões e concursos de crew.',
     partAlt: '{slot} de {district}',
     tier: { stock: 'De série', district: 'Bairro', crew: 'Crew', trophy: 'Troféu' },
-    source: { stock: 'Inicial', run: 'Corrida', achievement: 'Conquista', crew: 'Concurso de crews', quest: 'Missão', track: 'Passe de temporada', shop: 'Loja' },
+    source: { stock: 'Inicial', run: 'Corrida', achievement: 'Conquista', crew: 'Concurso de crews', tournament: 'Torneio', shop: 'Loja' },
   },
   footer: { legal: 'Jurídico', ages: '18+' },
 

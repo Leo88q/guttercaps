@@ -11,7 +11,7 @@ interface IconProps {
   className?: string;
 }
 
-export type RewardKind = 'cg' | 'skr' | 'booster' | 'voucher' | 'streak' | 'stash';
+export type RewardKind = 'cg' | 'skr' | 'booster' | 'voucher' | 'streak' | 'stash' | 'part';
 
 /** Generated faces (extend after the next art batch). */
 const REWARD_ICON_URL: Partial<Record<RewardKind, string>> = {
@@ -21,6 +21,9 @@ const REWARD_ICON_URL: Partial<Record<RewardKind, string>> = {
   voucher: '/icons/gen/voucher.webp',
   streak: '/icons/gen/streak.webp',
   stash: '/icons/gen/stash.webp',
+  // Board-part leaves (reward root kind 10): the trophy deck art doubles as
+  // the face of the board-parts prize line (docs/16 §5.4).
+  part: '/art/skate/deck-trophy.webp',
 };
 
 function GenIcon({ url, size = 20, onActivate, className }: IconProps & { url: string }) {
@@ -67,6 +70,11 @@ export function StreakIcon(props: IconProps) {
 /** Stash — the taped quest crate (lime stencil). */
 export function StashIcon(props: IconProps) {
   return <GenIcon url="/icons/gen/stash.webp" {...props} />;
+}
+
+/** Board part — the trophy deck (reward root kind 10). */
+export function PartIcon(props: IconProps) {
+  return <GenIcon url="/art/skate/deck-trophy.webp" {...props} />;
 }
 
 /** Dispatcher so call sites can stay data-driven (quest leaves, pass track). */

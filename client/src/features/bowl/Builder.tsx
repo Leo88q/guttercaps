@@ -15,8 +15,13 @@
 // (пластина, окрашенная краской района скриптом сборки арта).
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BOARD_PARTS, BOARD_SET_SLOTS, BOARD_SLOTS, partById, stockLoadout, type BoardPart } from '@guttercaps/economy';
+import { useConnection } from '@solana/wallet-adapter-react';
+import { BOARD_PARTS, BOARD_SET_SLOTS, BOARD_SLOTS, SERVICE_BY_ID, partById, stockLoadout, type BoardPart } from '@guttercaps/economy';
+import { api, claimWithRetry, isMock } from '@/api/client';
 import { useBoard, useSetBoard, type BoardSlot } from '@/api/hooksLazy';
+import { useGameConfig, useWalletLike } from '@/chain/hooks';
+import { payForService, quoteService, serviceRefHash } from '@/chain/flows/serviceFlow';
+import { Currency } from '@/chain/ix/chipCore';
 import { useT } from '@/shared/i18n';
 import { useUiStore } from '@/app/store/ui';
 import { collectionName } from '@/shared/lib/rarity';
@@ -37,18 +42,24 @@ function partLabel(partId: string): { name: string; district: number | null; tie
 
 const slotKey = (slot: string) => `builder.slots.${slot}` as 'builder.slots.deck';
 
-/** Одна деталь в витрине: кадр, подпись и состояние («добыто» или «где взять»). */
-function PartTile({ part, slot, worn, owned, onPick }: {
-  part: BoardPart; slot: BoardSlot; worn: boolean; owned: boolean; onPick: () => void;
+/**
+ * Одна деталь в витрине: кадр, подпись и состояние («добыто» или
+ * «где взять»). Навесное из магазина (§5.4 п.5) покупается здесь
+ * же: тап по закрытой плитке платит 49¢ и выдаёт деталь, второй
+ * тап — надевает.
+ */
+function PartTile({ part, slot, worn, owned, onPick, onBuy, buying }: {
+  part: BoardPart; slot: BoardSlot; worn: boolean; owned: boolean; onPick: () => void; onBuy: () => void; buying: boolean;
 }) {
   const t = useT();
   const art = partArt(part.id);
   const label = partLabel(part.id);
+  const shopLocked = !owned && part.source === 'shop';
   return (
     <button
       type="button"
       className={`bd-tile${worn ? ' is-worn' : ''}${owned ? '' : ' is-locked'}`}
-      onClick={onPick}
+      onClick={shopLocked ? onBuy : onPick}
       aria-label={t('builder.partAlt', { slot: t(slotKey(slot)), district: label.name || t(`builder.tier.${part.tier}` as 'builder.tier.stock') })}
     >
       <span className="bd-tile-art">
@@ -58,8 +69,13 @@ function PartTile({ part, slot, worn, owned, onPick }: {
       </span>
       <span className="tiny">{label.name || t(`builder.tier.${part.tier}` as 'builder.tier.stock')}</span>
       <span className="tiny muted">
-        {owned ? t('builder.owned') : t(`builder.source.${part.source}` as 'builder.source.run')}
+        {owned
+          ? t('builder.owned')
+          : shopLocked
+            ? t('builder.buy', { cents: SERVICE_BY_ID.boardMount.priceUsdCents })
+            : t(`builder.source.${part.source}` as 'builder.source.run')}
       </span>
+      {shopLocked && buying ? <span className="tiny muted">{t('builder.buying')}</span> : null}
       {worn ? <span className="bd-worn tiny">{t('builder.wearing')}</span> : null}
     </button>
   );
@@ -96,6 +112,10 @@ export default function Builder() {
   const view = useBoard();
   const setBoard = useSetBoard();
   const [slot, setSlot] = useState<BoardSlot | null>(null);
+  const [buyingPart, setBuyingPart] = useState<string | null>(null);
+  const { connection } = useConnection();
+  const walletLike = useWalletLike();
+  const gameCfg = useGameConfig();
 
   const data = view.data;
   const stock = useMemo(() => stockLoadout(), []);
@@ -120,6 +140,37 @@ export default function Builder() {
       },
       onError: () => toast({ kind: 'error', title: { key: 'builder.title' }, body: { key: 'builder.failed' } }),
     });
+  }
+
+  /**
+   * Купить навесное (§5.4 п.5): услуга boardMount, 49¢, payload
+   * {part} — реф-хеш связывает платёж с конкретной деталью,
+   * выдача (grantPart source 'shop') — в той же транзакции, что
+   * и consume, на сервере.
+   */
+  async function buyPart(partId: string) {
+    if (buyingPart) return;
+    setBuyingPart(partId);
+    try {
+      if (isMock()) {
+        await api.post('/services/claim', {
+          signature: `mock-${Date.now()}`, kind: SERVICE_BY_ID.boardMount.kind, payload: { part: partId },
+        } as never);
+      } else {
+        if (!walletLike || !gameCfg.data) throw new Error('wallet');
+        const payload = { part: partId };
+        const refHash = serviceRefHash(SERVICE_BY_ID.boardMount.kind, walletLike.publicKey, payload);
+        const { signature } = await payForService({
+          connection, wallet: walletLike, id: 'boardMount', currency: Currency.USDC, refHash,
+          quote: quoteService('boardMount', Currency.USDC), cfg: gameCfg.data,
+        });
+        await claimWithRetry(() => api.post('/services/claim', { signature, kind: SERVICE_BY_ID.boardMount.kind, payload } as never));
+      }
+      await view.refetch();
+      toast({ kind: 'money', title: { key: 'builder.title' }, body: { key: 'builder.bought' } });
+    } catch (e) {
+      toast({ kind: 'error', title: { key: 'builder.title' }, body: { key: 'builder.failed' } });
+    } finally { setBuyingPart(null); }
   }
 
   return (
@@ -206,6 +257,8 @@ export default function Builder() {
                       worn={loadout[slot] === p.id}
                       owned={owned.has(p.id) || p.tier === 'stock'}
                       onPick={() => wear(p.id)}
+                      onBuy={() => buyPart(p.id)}
+                      buying={buyingPart === p.id}
                     />
                   ))}
                 </div>

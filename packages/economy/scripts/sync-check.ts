@@ -13,6 +13,7 @@ import { SERVICES, SERVICES_DAILY_CAP_RUST, CG_MICRO_PER_CENT } from '../src/ser
 import { MATCHMAKING, MATCH_REWARDS, WAGER } from '../src/pvp.ts';
 import { REWARD_ROOT_KINDS, SKR_ROOT_KIND_BASE, DEFAULT_MAX_SKR_ROOT_BUDGET_MICRO, ITEM_ROOT_KIND_BASE, ITEM_REWARDS, CHIP_ROOT_KIND_BASE, CHIP_VOUCHER_REWARDS } from '../src/skrRewards.ts';
 import { QUEST_CHIP_TEMPLATES, DAILY_QUESTS, WEEKLY_QUESTS, PERMANENT_QUESTS, GUTTER_POT } from '../src/faucets.ts';
+import { BOARD, BOARD_PARTS } from '../src/board.ts';
 import { PYTH_FEEDS, PYTH_MAX_AGE_SECS, PYTH_SLIPPAGE_BPS, PYTH_MAX_CONF_BPS, PYTH_PUSHER, PYTH_WORST_CASE_AGE_S, PYTH_PROGRAMS } from '../src/oracle.ts';
 import { FX } from '../src/fx.ts';
 import { GRID } from '../src/grid.ts';
@@ -202,6 +203,14 @@ check('item root kind (boosters)', Number(line(stakingState, /ITEM_KIND_BOOSTERS
 check('item root budget cap', int(line(stakingState, /MAX_ITEM_ROOT_BUDGET: u64 = ([\d_]+)/)), ITEM_REWARDS.maxRootBudget);
 check('item claim cap', int(line(stakingState, /MAX_ITEM_CLAIM: u64 = ([\d_]+)/)), ITEM_REWARDS.maxClaim);
 check('item claim cap ≤ chip_core grant_booster cap', ITEM_REWARDS.maxClaim <= int(line(rs('programs/chip_core/src/instructions/admin.rs'), /require!\(count <= (\d+), ChipError::InvalidQuantity\)/)), true);
+// ---- board parts (docs/16 §5.4): on-chain registry PlayerBoardParts, reward-root kind 10 ----
+// Каталог частей — единый для выдачи оффчейн и ончейн: индекс в
+// BOARD_PARTS есть leaf amount корня kind 10, поэтому длина
+// каталога и квант тиража должны совпадать в трёх местах.
+check('board part count (chip_core ↔ catalogue)', int(line(rs('programs/chip_core/src/state.rs'), /BOARD_PART_COUNT: usize = (\d+)/)), BOARD_PARTS.length);
+check('board part qty cap (chip_core ↔ BOARD.maxQtyPerPart)', int(line(rs('programs/chip_core/src/state.rs'), /MAX_PART_QTY: u16 = (\d+)/)), BOARD.maxQtyPerPart);
+check('board part root kind (staking ↔ economy)', Number(line(stakingState, /ITEM_KIND_BOARD_PARTS: u8 = (\d+)/)), REWARD_ROOT_KINDS.itemBoardParts);
+check('grant_board_part accepts the rewarder PDA', rs('programs/chip_core/src/instructions/admin.rs').includes('rewarder'), true);
 // ---- chip voucher roots (backlog #28: kind 9 quest chips via claim_chip_root → chip_core open_voucher) ----
 check('chip root kind base', Number(line(stakingState, /CHIP_ROOT_KIND_BASE: u8 = (\d+)/)), CHIP_ROOT_KIND_BASE);
 check('chip root kind (vouchers)', Number(line(stakingState, /CHIP_KIND_VOUCHERS: u8 = (\d+)/)), REWARD_ROOT_KINDS.chipVouchers);

@@ -45,6 +45,8 @@ export const pendingFusionPda = (owner: PublicKey, nonce: bigint) => find([enc('
 export const claimFusionPda = (owner: PublicKey, nonce: bigint) => find([enc('claim_fusion'), owner.toBytes(), u64le(nonce)], CHIP_CORE_ID);
 export const serviceLedgerPda = (wallet: PublicKey) => find([enc('services'), wallet.toBytes()], CHIP_CORE_ID);
 export const playerItemsPda = (wallet: PublicKey) => find([enc('items'), wallet.toBytes()], CHIP_CORE_ID);
+// docs/16 §5.4 — ончейн-реестр частей доски (chip_core `PlayerBoardParts`).
+export const playerBoardPartsPda = (wallet: PublicKey) => find([enc('board_parts'), wallet.toBytes()], CHIP_CORE_ID);
 /** Core asset address minted by open_pack (pack_no, slot i) or fuse (0, 0). */
 export const assetPda = (pending: PublicKey, packNo: number, i: number) =>
   find([enc('asset'), pending.toBytes(), u8(packNo), u8(i)], CHIP_CORE_ID);

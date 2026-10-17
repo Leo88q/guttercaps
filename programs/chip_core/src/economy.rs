@@ -543,6 +543,8 @@ pub enum ServiceKind {
     LineExtraRun = 13, // one extra run of the day's line after the three free ones (docs/16 §5.1)
     CrewCharter = 14, // crew registration: unique name + wall segment (docs/16 §5.6)
     CrewRename = 15, // crew rename, once per 30 days (docs/16 §5.6)
+    LineTournamentEntry = 16, // paid entry into the day's Line tournament (docs/16 §5.4): 30 $CG burned, prizes are board parts, never $CG
+    BoardMount = 17, // one bolt finish / sticker for the board builder (docs/16 §4.2): mounts only, district sets are earned
 }
 
 impl ServiceKind {
@@ -564,6 +566,8 @@ impl ServiceKind {
             13 => Self::LineExtraRun,
             14 => Self::CrewCharter,
             15 => Self::CrewRename,
+            16 => Self::LineTournamentEntry,
+            17 => Self::BoardMount,
             _ => return None,
         })
     }
@@ -586,6 +590,8 @@ impl ServiceKind {
             Self::LineExtraRun => 5, // 5 cents x 6 $CG/cent = exactly 30 $CG on the burn rail
             Self::CrewCharter => 199, // same tier as @handle: a name in the city
             Self::CrewRename => 99,  // same tier as a handle change
+            Self::LineTournamentEntry => 5, // 5 cents x 6 $CG/cent = exactly 30 $CG on the burn rail
+            Self::BoardMount => 49,         // mounts are the only board parts the shop sells
         }
     }
     /// Price in micro-$CG when paid with $CG (burned).

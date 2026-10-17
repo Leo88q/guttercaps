@@ -20,6 +20,10 @@ vi.mock('@/api/hooks', () => ({
   useLineBoard: () => ({ data: { week: 0, rows: boardRows }, isLoading: false }),
   useRunReplay: () => ({ data: null, isLoading: false, error: null }),
   useSubmitRun: () => ({ mutate: submit, isPending: false }),
+  // Турнир дня (§5.4): в тестах — пустой день, входов нет.
+  useTournament: () => ({ data: null, isLoading: false, error: null, refetch: vi.fn() }),
+  useEnterTournament: () => ({ mutate: vi.fn(), isPending: false }),
+  useTournamentBoard: () => ({ data: { day: 0, entrants: 0, poolCgMicro: '0', settled: false, rows: [] }, isLoading: false }),
 }));
 vi.mock('@/api/hooksLazy', () => ({
   useRig: () => ({ data: { rider: { silhouette: 3, theme: null } } }),

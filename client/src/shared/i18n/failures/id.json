@@ -215,6 +215,7 @@
   "themeNotOwned": "Tema ini belum kamu punya: beli dulu di toko, lalu pakai.",
   "achievementNotEarned": "Belum tercapai: penghitungnya belum sampai target.",
   "lineRunsExhausted": "Percobaan gratis hari ini habis — tambahan berharga 30 $CG (dibakar).",
+  "tournamentEntriesExhausted": "Tidak ada lagi entry turnamen hari ini — masuk ke turnamen dulu.",
   "lineCreditCap": "Itu batas harian untuk percobaan berbayar.",
   "crewNoCrew": "Tidak ada kru dengan nama itu.",
   "crewInvalidName": "Nama kru terdiri dari 3–16 karakter: huruf, angka, dan garis bawah.",

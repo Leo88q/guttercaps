@@ -36,7 +36,7 @@ const iso = (s: number) => new Date(s * 1000).toISOString();
  * конструктор доски: когорта «получил первую часть», метрика — заезды линии,
  * потому что именно заезд — главный источник частей.
  */
-export const WORLD_FEATURES = ['wall', 'exhibit', 'tag', 'inspect', 'rider', 'achievement', 'line', 'crew', 'builder'] as const;
+export const WORLD_FEATURES = ['wall', 'exhibit', 'tag', 'inspect', 'rider', 'achievement', 'line', 'crew', 'builder', 'tournament'] as const;
 
 /** Порог флипа (docs/16 §2.1) — редкость, начиная с которой дроп считается «редким». */
 export const EPIC_PLUS = 5;

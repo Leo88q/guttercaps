@@ -9,6 +9,9 @@ export const MAX_CHIPS_PER_PACK = 5;
 export const MATERIALS_PER_FUSION = 3;
 export const SQUAD = 3;
 export const SPLIT_COUNT = 5;
+// Mirrors chip_core::state::BOARD_PART_COUNT (checked by scripts/sync-check.ts against
+// the TS catalogue — the array length is what the client renders with).
+export const BOARD_PART_COUNT = 54;
 
 // ---------------------------------------------------------------- chip_core
 export interface PackDef {
@@ -363,6 +366,13 @@ export interface PlayerItems { owner: PublicKey; boosters: number; bump: number 
 export function decodePlayerItems(data: Uint8Array): PlayerItems {
   const r = expectDiscriminator(data, 'PlayerItems');
   return { owner: r.pubkey(), boosters: r.u16(), bump: r.u8() };
+}
+
+/** docs/16 §5.4 — the on-chain board-parts registry (one row per part, quantities ≤ 9). */
+export interface PlayerBoardParts { owner: PublicKey; parts: number[]; bump: number }
+export function decodePlayerBoardParts(data: Uint8Array): PlayerBoardParts {
+  const r = expectDiscriminator(data, 'PlayerBoardParts');
+  return { owner: r.pubkey(), parts: r.array(BOARD_PART_COUNT, () => r.u16()), bump: r.u8() };
 }
 
 // events

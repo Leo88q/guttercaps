@@ -177,6 +177,7 @@ const ru: Messages = {
     setBonus: 'Бонус за сеты ×{mult}', weight: 'Вес', pending: 'Накоплено', apyBand: 'Диапазон APY', flexible: 'Гибкий', days: '{n} дн.',
   },
   quests: {
+    partLeaf: 'часть доски #{n}', partsTotal: '{n, plural, one{# часть доски} few{# части доски} many{# частей доски} other{# части доски}}', partsRoot: 'Части доски',
     visitGame: 'Открыть игру',
     title: 'Квесты', subtitle: 'За квесты — $CG, бустеры и ваучеры на фишки. Выплаты приходят сюда раз в несколько часов, потом забираешь. Сервер никогда не держит ваши $CG.',
     daily: 'Дневные', weekly: 'Недельные', permanent: 'Постоянные', claim: 'Забрать', claimed: 'Получено', claimable: 'Можно забрать', progress: '{done}/{total}',
@@ -239,7 +240,7 @@ const ru: Messages = {
     expires: 'до {date}', noPower: 'Без pay-to-win: проверяемо ончейн', boosterCap: 'Бустеры: не более 3 в день', bought: 'Куплено', buyFailed: 'Покупка не удалась',
     pickCap: 'Выберите фишку для покраски', pickSkin: 'Выберите скин', pickTheme: 'Выберите тему', pickPack: 'Выберите пак', pickDistrict: 'Выберите район', stencilPackIncludes: 'Что внутри',
     noFreeCaps: 'Пока нет фишек — открой пак', noCompletedDistrict: 'Собери район целиком (9/9), чтобы открыть его баннер',
-    names: { handle: '@хендл', handleChange: 'Смена хендла', capSkin: 'Скин фишки', profileTheme: 'Тема профиля', arenaEmotePack: 'Эмоции для арены', extraBenchSlots: '+2 пресета верстака', seasonPass: 'Сезонный пропуск', booster: 'Бустер слияния', packSkipAnim: 'Мгновенное раскрытие', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'Баннер района', districtStencilPack: 'Пак трафаретов районов' , lineExtraRun: 'Дополнительный заезд', crewCharter: 'Хартия команды', crewRename: 'Смена имени команды', },
+    names: { handle: '@хендл', handleChange: 'Смена хендла', capSkin: 'Скин фишки', profileTheme: 'Тема профиля', arenaEmotePack: 'Эмоции для арены', extraBenchSlots: '+2 пресета верстака', seasonPass: 'Сезонный пропуск', booster: 'Бустер слияния', packSkipAnim: 'Мгновенное раскрытие', gridDeepAttempt: 'Deep Flood attempt', gridFieldTheme: 'Floodgrid field theme', districtBanner: 'Баннер района', districtStencilPack: 'Пак трафаретов районов' , lineExtraRun: 'Дополнительный заезд', crewCharter: 'Хартия команды', crewRename: 'Смена имени команды', lineTournamentEntry: 'Вход в турнир линии', boardMount: 'Навесное доски', },
     blurbs: {
       handle: 'Уникальное имя в топах, на арене и в ссылке на профиль.', handleChange: 'Переименование раз в 30 дней. Старый хендл освобождается через 90 дней.',
       capSkin: 'Косметический обод / эффект краски на одной фишке. Переходит вместе с фишкой при продаже.', profileTheme: 'Текстура стены и цвет фонаря для профиля и интро арены.',
@@ -248,6 +249,7 @@ const ru: Messages = {
       booster: '+15 п.п. к успеху одного слияния (макс. 95%). Не более 3 в день.', packSkipAnim: 'Постоянный пропуск анимации раскрытия. Чистое удобство.',
       gridDeepAttempt: 'One extra Deep Flood attempt this week. $CG only — every coin is burned.', gridFieldTheme: 'Recolors the Floodgrid board flow lines. Cosmetic only.', districtBanner: 'Анимированный баннер собранного района.', districtStencilPack: 'Пять трафаретов районов для редактора тегов. Только формы: линии и цвета — ваши.', lineExtraRun: 'Ещё один заезд по сегодняшней линии после трёх бесплатных. Только $CG — всё сжигается.',
         crewCharter: 'Имя, состав и общий сегмент стены на 20 слотов для пяти-десяти райдеров. $1.99 покупает имя — стену всё так же зарабатывают ездой (§3.4).', crewRename: 'Новое имя команды, раз в 30 дней. Старое возвращается в город через 90 дней.',
+        lineTournamentEntry: 'Платный заезд, который одновременно входит в турнир дня. 30 $CG сжигаются; призовой фонд платит частями доски, никогда $CG.', boardMount: 'Навесное на доску: финиш болтов или наклейка. Только косметика.',
     },
   },
   inspect: {
@@ -502,6 +504,15 @@ const ru: Messages = {
     reason_other: 'Другое',
   },
   line: {
+    tournament: {
+      title: 'Турнир дня',
+      intro: 'Вход — платный заезд: {cg} $CG за попытку, сжигаются. Лучший заезд дня попадает в доску; призы — части доски, никогда не $CG.',
+      entrants: '{n} райдеров', pool: 'Пул (модель): {n} $CG', rank: 'Место #{n}', best: 'Лучший: {n}',
+      entriesLeft: 'Осталось платных попыток: {n}', enter: 'Войти · 30 $CG', entering: 'Оплата…',
+      on: 'Турнирный заезд', off: 'Обычная езда', runOn: 'Еду в турнире', runOff: 'Ехать в турнире',
+      schedule: 'Призовые полосы', band: 'Полоса {n}', top: 'топ {pct}%', districtSlots: '+{n} частей района',
+      yesterday: 'Призы вчера', board: 'Доска турнира', empty: 'Сегодня в турнире ещё никто не ехал',
+    },
     title: 'Линия',
     intro: 'Одна чаша на всех: сид дня, 45 секунд, три бесплатных заезда. Дальше заезд стоит 30 $CG — и они сгорают.',
     howto: 'Тап — прыжок. В воздухе тап — грэб. Трамплины подкидывают сами.',
@@ -523,6 +534,10 @@ const ru: Messages = {
 
   // Команды (docs/16 §5.6): общее имя, состав и сегмент стены.
   crew: {
+    month: 'Месяц команд',
+    monthNote: 'Та же доска недели, сложенная за календарный месяц: счёт команды — сумма её недельных результатов.',
+    monthEmpty: 'В этом месяце команды ещё не ездили',
+    monthPrize: 'Топ-{n} команд получает командную деку своего района стены — косметика, никогда не $CG.',
     title: 'Команда',
     intro: 'Пять-десять райдеров делят одно имя и один сегмент стены. Доска считает пятерых лучших — никогда не весь состав.',
     open: 'Открыть',
@@ -634,6 +649,7 @@ const ru: Messages = {
     copies: '{n} шт.',
   },
   builder: {
+    buy: 'Купить · {cents}¢', buying: 'Оплата…', bought: 'Навесное куплено',
     title: 'Конструктор доски',
     intro: 'Шесть слотов, одна доска. Части добываются ездой — в Линии, в квестах, в командных конкурсах. Магазин продаёт только навесное.',
     slots: { deck: 'Дека', trucks: 'Траки', wheels: 'Колёса', grip: 'Грип', bolts: 'Болты', sticker: 'Наклейка' },
@@ -662,7 +678,7 @@ const ru: Messages = {
     empty: 'Пока только сток: части даются за заезды, квесты и командные конкурсы.',
     partAlt: '{slot} района {district}',
     tier: { stock: 'Сток', district: 'Район', crew: 'Команда', trophy: 'Трофей' },
-    source: { stock: 'Стартовая', run: 'Заезд', achievement: 'Достижение', crew: 'Конкурс команд', quest: 'Квест', track: 'Сезонный трек', shop: 'Магазин' },
+    source: { stock: 'Стартовая', run: 'Заезд', achievement: 'Достижение', crew: 'Конкурс команд', tournament: 'Турнир', shop: 'Магазин' },
   },
   footer: { legal: 'Правовое', ages: '18+' },
 
