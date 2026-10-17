@@ -254,7 +254,7 @@ export function claimChipRootIx(a: { wallet: PublicKey; kind: number; epoch: num
   });
 }
 
-/** Route a claim leaf to the right instruction by its root kind (2..4 $CG, 5..7 SKR, 8 boosters). Kind 9 (chip vouchers) needs its own tx — `claimChipRootIx`. */
+/** Route a claim leaf to the right instruction by its root kind (2..4 $CG, 5..7 SKR, item kinds 8 boosters and 10 board parts). Kind 9 (chip vouchers) needs its own tx — `claimChipRootIx`. */
 export function claimAnyRootIx(a: { wallet: PublicKey; kind: number; epoch: number; amount: bigint; proof: Uint8Array[]; cgMint?: PublicKey; skrMint?: PublicKey }): TransactionInstruction {
   if (isChipRootKind(a.kind)) throw new Error('chip voucher claims need a randomness account in the same tx — use claimChipRootIx');
   if (isItemRootKind(a.kind)) return claimItemRootIx(a);

@@ -450,6 +450,11 @@ export const monthKeyOf = (t: number): number => {
   const d = new Date(t * 1000);
   return d.getUTCFullYear() * 100 + d.getUTCMonth() + 1;
 };
+/** Следующий календарный месяц (202612 → 202701) — для догона свопа. */
+export const nextMonthKey = (month: number): number => {
+  const y = Math.floor(month / 100), m = month % 100;
+  return m === 12 ? (y + 1) * 100 + 1 : month + 1;
+};
 const monthStart = (month: number) => Math.floor(Date.UTC(Math.floor(month / 100), (month % 100) - 1, 1) / 1000);
 const monthEnd = (month: number) => Math.floor(Date.UTC(Math.floor(month / 100), month % 100, 1) / 1000);
 
@@ -467,19 +472,22 @@ export interface CrewMonthPrize { crewId: number; name: string; district: number
  * до конца месяца и не ушедшие раньше его начала: сегмент стены
  * общий, трофей — командный, а не капитанский.
  *
- * Идемпотентность без новой таблицы (решение хендоффа): призёры
- * месяца держат свою часть с `created_at` ≥ начала месяца, поэтому
- * повторный сет видит её и пропускает выдачу; ранжирование
- * детерминировано (счёт DESC, id команды ASC).
- */
+ * Идемпотентность — `crew_month_settlements` (PK месяца), тот же
+ * приём, что у `line_tournament_days`: сет — одна транзакция,
+ * повторный вызов видит строку и возвращает прежний результат.
+ * (Маркер «часть с created_at ≥ начала месяца» не работает: сет
+ * месяца M-1 выполняется в самом начале месяца M, и его части
+ * удовлетворяли бы маркер M — второй и каждый следующий месяц
+ * молча пропускались бы. Проверено прогоном на двух месяцах.)
+ * Внутри транзакции выдача по кошельку не нуждается в собственной
+ * проверке: состав месяца — список без дублей, а повторного сета
+ * не бывает. */
 export function settleCrewMonth(db: Db, month: number, t = now()): { month: number; prizes: CrewMonthPrize[]; alreadySettled: boolean } {
   const start = monthStart(month);
   const end = monthEnd(month);
-  // Маркер сета: командная часть выдаётся только здесь, поэтому
-  // любая такая часть с `created_at` месяца означает — месяц закрыт.
-  const marker = db.scalar(
-    `SELECT 1 FROM board_parts WHERE part LIKE 'deck_crew_d%' AND created_at >= ? LIMIT 1`, start);
-  if (marker) return { month, prizes: [], alreadySettled: true };
+  if (db.get(`SELECT 1 FROM crew_month_settlements WHERE month = ?`, month)) {
+    return { month, prizes: [], alreadySettled: true };
+  }
   // Недели месяца: те, чей понедельник лежит внутри месяца.
   const weeks: number[] = [];
   for (let w = weekIndex(start); w <= weekIndex(end - 1); w++) {
@@ -494,38 +502,38 @@ export function settleCrewMonth(db: Db, month: number, t = now()): { month: numb
     for (const w of weeks) score += crewMonthWeekScore(db, c.id, w);
     if (score > 0) scored.push({ id: c.id, name: c.name, district: c.wall_district, score });
   }
-  scored.sort((a, b) => b.score - a.score || a.id - b.id);
   const prizes: CrewMonthPrize[] = [];
-  scored.slice(0, CREW.monthlyContestPlaces).forEach((c, i) => {
-    const part = `deck_crew_d${c.district}`;
-    // Состав месяца: вступил до конца месяца и не уходил раньше его начала.
-    const members = db.all<{ wallet: string }>(
-      `SELECT wallet FROM crew_members WHERE crew_id = ? AND joined_at <= ? AND (left_at IS NULL OR left_at >= ?) ORDER BY joined_at ASC`,
-      c.id, end, start).map((r) => r.wallet);
-    const granted: string[] = [];
-    for (const wallet of members) {
-      // Идемпотентность сета: часть с created_at месяца уже есть —
-      // этот кошелёк приз месяца получил.
-      const has = db.scalar(`SELECT 1 FROM board_parts WHERE wallet = ? AND part = ? AND created_at >= ?`, wallet, part, start);
-      if (has) continue;
-      grantPart(db, wallet, part, 'crew', t);
-      recordEvent(db, wallet, 'crew', 'prize', { month, crew: c.id, rank: i + 1, part }, t);
-      granted.push(wallet);
-    }
-    prizes.push({ crewId: c.id, name: c.name, district: c.district, rank: i + 1, score: c.score, part, members: granted });
+  return db.tx(() => {
+    scored.slice(0, CREW.monthlyContestPlaces).forEach((c, i) => {
+      const part = `deck_crew_d${c.district}`;
+      // Состав месяца: вступил до конца месяца и не уходил раньше его начала.
+      const members = db.all<{ wallet: string }>(
+        `SELECT wallet FROM crew_members WHERE crew_id = ? AND joined_at <= ? AND (left_at IS NULL OR left_at >= ?) ORDER BY joined_at ASC`,
+        c.id, end, start).map((r) => r.wallet);
+      for (const wallet of members) {
+        grantPart(db, wallet, part, 'crew', t);
+        recordEvent(db, wallet, 'crew', 'prize', { month, crew: c.id, rank: i + 1, part }, t);
+      }
+      prizes.push({ crewId: c.id, name: c.name, district: c.district, rank: i + 1, score: c.score, part, members });
+    });
+    db.run(`INSERT INTO crew_month_settlements (month, settled_at) VALUES (?, ?)`, month, t);
+    return { month, prizes, alreadySettled: false } as { month: number; prizes: CrewMonthPrize[]; alreadySettled: boolean };
   });
-  return { month, prizes, alreadySettled: false };
 }
 
-/** Счёт команды за неделю (0 — команда не попала на доску недели). */
+/** Счёт команды за неделю (0 — команда не попала на доску недели).
+ *  Состав — ростер НЕДЕЛИ (вступил до её конца и не ушёл раньше её
+ *  начала), а не текущий: месяц считается после его конца, и уход
+ *  райдера в следующем месяце не должен обнулять прошлые недели. */
 function crewMonthWeekScore(db: Db, crewId: number, week: number): number {
-  const n = db.scalar(`SELECT COUNT(*) FROM crew_members WHERE crew_id = ? AND left_at IS NULL`, crewId);
-  if (Number(n) < CREW.minMembers) return 0;
+  const ws = week * WEEK + WEEK_EPOCH_OFFSET;
+  const we = ws + WEEK;
   const scores = db.all<{ best: number }>(
     `SELECT COALESCE(MAX(r.score), 0) best
        FROM crew_members m LEFT JOIN line_runs r ON r.wallet = m.wallet AND r.week = ?
-      WHERE m.crew_id = ? AND m.left_at IS NULL
-      GROUP BY m.wallet`, week, crewId).map((r) => Number(r.best));
+      WHERE m.crew_id = ? AND m.joined_at <= ? AND (m.left_at IS NULL OR m.left_at >= ?)
+      GROUP BY m.wallet`, week, crewId, we, ws).map((r) => Number(r.best));
+  if (scores.length < CREW.minMembers) return 0;
   if (scores.filter((s) => s > 0).length < CREW.minMembers) return 0;
   return crewWeekScore(scores);
 }

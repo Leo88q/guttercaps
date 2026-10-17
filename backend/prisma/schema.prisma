@@ -1801,6 +1801,14 @@ model LineTournamentDay {
   @@map("line_tournament_days")
 }
 
+/// Закрытый месяц командного конкурса (docs/16 §5.6): PK месяца —
+/// маркер сета, повторный сет ничего не выдаёт.
+model CrewMonthSettlement {
+  month     Int  @id
+  settledAt Int  @map("settled_at")
+  @@map("crew_month_settlements")
+}
+
 /// Приз дня: часть каталога BOARD_PARTS. PK — проверка «уже выдавали».
 model LineTournamentPrize {
   day       Int

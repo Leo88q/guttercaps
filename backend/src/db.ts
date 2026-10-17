@@ -1312,6 +1312,16 @@ CREATE TABLE IF NOT EXISTS crew_reservations (
   wallet     TEXT    NOT NULL,
   expires_at INTEGER NOT NULL
 );
+--- Закрытый месяц командного конкурса (docs/16 §5.6). PK месяца —
+--- маркер сета: без строки месяц не считается закрытым, повторный
+--- сет видит её и ничего не выдаёт. (Раньше маркером служила
+--- «любая часть deck_crew_d% с created_at ≥ начала месяца» — это
+--- ломалось на втором месяце: сет месяца M-1 выполняется в самом
+--- начале месяца M и его части удовлетворяли маркер M.)
+CREATE TABLE IF NOT EXISTS crew_month_settlements (
+  month       INTEGER PRIMARY KEY,
+  settled_at  INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS line_runs (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   wallet      TEXT    NOT NULL,

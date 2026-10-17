@@ -163,6 +163,11 @@ export function useSubmitRun() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['me', 'line'] });
       void qc.invalidateQueries({ queryKey: ['line', 'board'] });
+      // Турнирный заезд меняет и турнирное состояние (лучший заезд,
+      // место, израсходованный вход), и доску дня — без этой
+      // инвалидации pills висят до окончания staleTime.
+      void qc.invalidateQueries({ queryKey: ['me', 'line', 'tournament'] });
+      void qc.invalidateQueries({ queryKey: ['line', 'tournament', 'board'] });
       void qc.invalidateQueries({ queryKey: ['me', 'pass'] });
       void qc.invalidateQueries({ queryKey: ['grid', 'me'] });
     },

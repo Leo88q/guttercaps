@@ -141,8 +141,18 @@ export function createApp(db: Db, deps: AppOptions = {}) {
           tournament.settleLineTournament(db, day.day);
         }
         // Месяц считается закрытым на первом числе; t - DAY гарантирует,
-        // что текущий (незакрытый) месяц никогда не сетыится.
-        crew.settleCrewMonth(db, crew.monthKeyOf(now() - 86_400));
+        // что текущий (незакрытый) месяц никогда не сетыится. Сет идёт
+        // от месяца первой живой команды: своп, проспавший границу
+        // месяца, догоняет пропущенные, а не теряет их (PK месяца
+        // делает повторные вызовы no-op).
+        const firstCrew = db.scalar(
+          `SELECT MIN(created_at) FROM crews WHERE status = 'live'`);
+        if (firstCrew) {
+          const prevMonth = crew.monthKeyOf(now() - 86_400);
+          for (let m = crew.monthKeyOf(Number(firstCrew)); m <= prevMonth; m = crew.nextMonthKey(m)) {
+            crew.settleCrewMonth(db, m);
+          }
+        }
       } catch (e) { console.error('[settle] sweep failed:', (e as Error).message); }
     }, settleMs);
     timer.unref();
