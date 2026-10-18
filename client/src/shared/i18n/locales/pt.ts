@@ -16,6 +16,11 @@ const pt: Messages = {
   catalog,
   nav: { home: 'Início', caps: 'Caps', shop: 'Loja', market: 'Mercado', arena: 'Arena', bowl: 'Skate', stake: 'Stake', fusion: 'Fusão', guide: 'Guia', quests: 'Missões', grid: 'Floodgrid', leaderboard: 'Ranking', profile: 'Perfil', more: 'Mais' },
   pipes: {
+    live: 'Sua rede, ao vivo',
+    flow: 'Fluxo p/ receptores',
+    fed: 'Receptores alimentados',
+    maxVel: 'Velocidade máx.',
+    leaks: 'Pontas abertas',
     title: 'Tubos do distrito',
     hint: 'Hidráulica real do escoamento: bomba, válvulas e tanque resolvidos ao vivo. Toque numa válvula 3D ou use os controles.',
     pump: 'Bomba', valveA: 'Válvula A — saídas 1–2', valveC: 'Válvula C — tanque', time: 'Tempo do tanque',

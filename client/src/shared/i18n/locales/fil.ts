@@ -16,6 +16,11 @@ const fil: Messages = {
   catalog,
   nav: { home: 'Home', caps: 'Caps', shop: 'Tindahan', market: 'Palengke', arena: 'Arena', bowl: 'Skate', stake: 'Stake', fusion: 'Fusion', guide: 'Gabay', quests: 'Quests', grid: 'Floodgrid', leaderboard: 'Ranggo', profile: 'Profile', more: 'Iba pa' },
   pipes: {
+    live: 'Network mo, live',
+    flow: 'Daloy sa receivers',
+    fed: 'Receivers na may tubig',
+    maxVel: 'Peak speed',
+    leaks: 'Bukas na dulo',
     title: 'Tubo ng distrito',
     hint: 'Tunay na hydraulics ng drainage: bomba, balbula at tangke ay live na kinukwenta. Pindutin ang balbula sa 3D o gamitin ang sliders.',
     pump: 'Bomba', valveA: 'Balbula A — drains 1–2', valveC: 'Balbula C — tangke', time: 'Oras ng tangke',

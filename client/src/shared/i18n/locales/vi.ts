@@ -16,6 +16,11 @@ const vi: Messages = {
   catalog,
   nav: { home: 'Trang chủ', caps: 'Nắp', shop: 'Cửa hàng', market: 'Chợ', arena: 'Đấu trường', bowl: 'Skate', stake: 'Stake', fusion: 'Hợp nhất', guide: 'Hướng dẫn', quests: 'Nhiệm vụ', grid: 'Floodgrid', leaderboard: 'Xếp hạng', profile: 'Hồ sơ', more: 'Thêm' },
   pipes: {
+    live: 'Mạng của bạn, trực tiếp',
+    flow: 'Lưu lượng tới đầu nhận',
+    fed: 'Đầu nhận có nước',
+    maxVel: 'Tốc độ đỉnh',
+    leaks: 'Đầu hở',
     title: 'Ống của quận',
     hint: 'Thủy lực thoát nước thật: bơm, van và bể được giải trực tiếp. Chạm van 3D hoặc dùng thanh trượt.',
     pump: 'Bơm', valveA: 'Van A — cống 1–2', valveC: 'Van C — bể chứa', time: 'Thời gian bể',

@@ -16,6 +16,11 @@ const es: Messages = {
   catalog,
   nav: { home: 'Inicio', caps: 'Caps', shop: 'Tienda', market: 'Mercado', arena: 'Arena', bowl: 'Skate', stake: 'Stake', fusion: 'Fusión', guide: 'Guía', quests: 'Misiones', grid: 'Floodgrid', leaderboard: 'Ranking', profile: 'Perfil', more: 'Más' },
   pipes: {
+    live: 'Tu red, en vivo',
+    flow: 'Flujo a receptores',
+    fed: 'Receptores alimentados',
+    maxVel: 'Velocidad máx.',
+    leaks: 'Extremos abiertos',
     title: 'Tuberías del distrito',
     hint: 'Hidráulica real del drenaje: bomba, válvulas y tanque se resuelven en vivo. Toca una válvula 3D o usa los controles.',
     pump: 'Bomba', valveA: 'Válvula A — salidas 1–2', valveC: 'Válvula C — tanque', time: 'Tiempo del tanque',

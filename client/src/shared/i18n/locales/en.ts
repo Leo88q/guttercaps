@@ -19,6 +19,11 @@ const en = {
     fusion: 'Fusion', guide: 'Guide', quests: 'Quests', grid: 'Floodgrid', leaderboard: 'Ranks', profile: 'Profile', more: 'More',
   },
   pipes: {
+    live: 'Your network, live',
+    flow: 'Flow to receivers',
+    fed: 'Receivers fed',
+    maxVel: 'Peak speed',
+    leaks: 'Open ends',
     title: 'District pipes',
     hint: 'Real storm-drain hydraulics: pump, valves and the buffer tank are solved live (Darcy–Weisbach network solver). Tap a valve wheel in 3D or use the sliders.',
     pump: 'Pump speed',

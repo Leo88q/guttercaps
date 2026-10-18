@@ -16,6 +16,11 @@ const id: Messages = {
   catalog,
   nav: { home: 'Beranda', caps: 'Caps', shop: 'Toko', market: 'Pasar', arena: 'Arena', bowl: 'Skate', stake: 'Stake', fusion: 'Fusi', guide: 'Panduan', quests: 'Misi', grid: 'Floodgrid', leaderboard: 'Peringkat', profile: 'Profil', more: 'Lainnya' },
   pipes: {
+    live: 'Jaringanmu, langsung',
+    flow: 'Aliran ke penerima',
+    fed: 'Penerima teraliri',
+    maxVel: 'Kecepatan puncak',
+    leaks: 'Ujung terbuka',
     title: 'Pipa distrik',
     hint: 'Hidraulika drainase nyata: pompa, katup, dan tangki dihitung langsung. Ketuk katup 3D atau geser kontrol.',
     pump: 'Pompa', valveA: 'Katup A — drain 1–2', valveC: 'Katup C — tangki', time: 'Waktu tangki',

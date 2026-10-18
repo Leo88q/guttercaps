@@ -1,5 +1,62 @@
 import { ROUGHNESS } from './pipeSolver';
-import type { NetworkDef } from './pipeSolver';
+import type { LinkDef, NetworkDef, NodeDef } from './pipeSolver';
+import { E, N, S, W, rotateMask, type Level } from '@guttercaps/economy';
+
+/**
+ * Головоломка Grid → гидравлическая сеть решателя (встраивание в игру,
+ * 2026-10-18): каждая клетка — узел на плоскости квартала, каждая взаимно
+ * соединённая пара портов — труба, шина — резервуар с напором, приёмники —
+ * форсунки. Игрок крутит фрагменты в головоломке — решатель честно считает
+ * расходы, а 3D-сцена показывает именно его сеть. Очки сектора при этом
+ * по-прежнему считает сервер по своим правилам: гидравлика здесь — живая
+ * обратная связь, а не второй судья.
+ */
+export function networkFromLevel(level: Level): NetworkDef {
+  const size = level.size;
+  const CELL = 0.55;
+  const nodes: NodeDef[] = [];
+  const links: LinkDef[] = [];
+  const mask = (i: number) => rotateMask(level.tiles[i].base, level.tiles[i].rot);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = y * size + x;
+      const pos: [number, number, number] = [x * CELL, 0, y * CELL];
+      if (i === level.bus) nodes.push({ kind: 'reservoir', id: `c${i}`, position: pos, head: 2.4 });
+      else if (level.receivers.includes(i)) nodes.push({ kind: 'junction', id: `c${i}`, position: pos, nozzleDiameter: 0.02 });
+      else nodes.push({ kind: 'junction', id: `c${i}`, position: pos });
+    }
+  }
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = y * size + x;
+      if (x + 1 < size && (mask(i) & E) && (mask(i + 1) & W)) {
+        links.push({ kind: 'pipe', id: `l${i}_${i + 1}`, from: `c${i}`, to: `c${i + 1}`, diameter: 0.045, length: CELL, roughness: ROUGHNESS.pvc });
+      }
+      if (y + 1 < size && (mask(i) & S) && (mask(i + size) & N)) {
+        links.push({ kind: 'pipe', id: `l${i}_${i + size}`, from: `c${i}`, to: `c${i + size}`, diameter: 0.045, length: CELL, roughness: ROUGHNESS.pvc });
+      }
+    }
+  }
+  return { nodes, links };
+}
+
+/** Открытые концы: порт смотрит в соседа, который не отвечает, или за край. */
+export function openEnds(level: Level): number {
+  const size = level.size;
+  const mask = (i: number) => rotateMask(level.tiles[i].base, level.tiles[i].rot);
+  let leaks = 0;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = y * size + x;
+      const m = mask(i);
+      if ((m & N) && (y === 0 || !(mask(i - size) & S))) leaks++;
+      if ((m & S) && (y === size - 1 || !(mask(i + size) & N))) leaks++;
+      if ((m & W) && (x === 0 || !(mask(i - 1) & E))) leaks++;
+      if ((m & E) && (x === size - 1 || !(mask(i + 1) & W))) leaks++;
+    }
+  }
+  return leaks;
+}
 
 /**
  * Ливнёвка района Gutter City, метры, y вверх (топология демо-сети входящего модуля):
