@@ -15,22 +15,23 @@
 // по реплею, — иначе турнир перестал бы быть честным.
 import type { ReactNode } from 'react';
 import type { LineLayout, RunState } from '@guttercaps/economy';
-import { riderArt } from './Rider';
-
 /**
- * Кадровая анимация райдера — как в старых 2D-играх: не один статичный
- * спрайт и не чужая 3D-модель (Kenney-манекен стилю игры не подошёл,
- * 2026-10-18), а набор поз в родной неоновой стилистике, которые движок
- * переключает по состоянию заезда. Толчок и кат чередуются по тикам —
- * получается цикл ходьбы на доске.
+ * Кадровая анимация райдера — как в старых платформеров: пиксельный
+ * спрайт-шит из 7 кадров (толчок/кат ×4, олли, грэб, падение), кадры
+ * переключает состояние заезда, цикл ката идёт по тикам. Чужие проекты с
+ * GitHub (thorBoard, phaser_skater, tutasmaster/skateboard и др.) для этого
+ * не подошли: у них либо нет лицензии, либо это чужие движки целиком —
+ * поэтому шит сгенерирован в палитре игры, а механика заезда по-прежнему
+ * наш детерминированный движок с серверным пересчётом.
  */
+const RIDE_CYCLE = [0, 1, 2, 3, 2, 1] as const;
 export function riderPose(frame: RunState | null): string {
-  if (!frame) return riderArt(3); // поза ката (rider-04) — кадр покоя
-  if (frame.stunned) return '/art/skate/rider-pose-bail.webp';
-  if (frame.grabbed) return '/art/skate/rider-pose-grab.webp';
-  if (frame.air) return '/art/skate/rider-pose-air.webp';
-  if (frame.grinding) return riderArt(3);
-  return frame.tick % 36 < 16 ? '/art/skate/rider-pose-push.webp' : riderArt(3);
+  if (!frame) return '/art/skate/pixel-ride-3.webp';
+  if (frame.stunned) return '/art/skate/pixel-bail.webp';
+  if (frame.grabbed) return '/art/skate/pixel-grab.webp';
+  if (frame.air) return '/art/skate/pixel-air.webp';
+  if (frame.grinding) return '/art/skate/pixel-ride-2.webp';
+  return `/art/skate/pixel-ride-${RIDE_CYCLE[Math.floor(frame.tick / 5) % RIDE_CYCLE.length]}.webp`;
 }
 
 /** Пикселей на единицу пути: на телефоне видно ~2 секунды трассы вперёд. */

@@ -93,8 +93,8 @@ describe('линия (docs/16 §5.1)', () => {
     expect(art.length).toBeGreaterThan(0);
     for (const src of art) expect(src).toMatch(/^\/art\/skate\/line-(rail|kicker|gap|bump)\.webp$/);
     // райдер — тот же спрайт, что на витрине (§4.6): силуэт 3 → rider-04
-    // Райдер — кадровая анимация поз: до старта стоит поза ката rider-04.
-    expect((document.querySelector('.line-rider img') as HTMLImageElement).getAttribute('src')).toBe('/art/skate/rider-04.webp');
+    // Райдер — пиксельный спрайт-шит: до старта стоит кадр ката.
+    expect((document.querySelector('.line-rider img') as HTMLImageElement).getAttribute('src')).toBe('/art/skate/pixel-ride-3.webp');
     expect(document.querySelector('.line-rider-pose')).toBeTruthy();
   });
 

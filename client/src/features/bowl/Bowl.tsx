@@ -68,22 +68,18 @@ export default function Bowl() {
         <div className="strong">{t('builder.boards')}</div>
         <div className="small muted">{t('builder.boardsHint')}</div>
 
-        {/* Целая доска района одним артом на общем арт-фоне чаши
-            (board-stage.webp) с подсветкой цветом района: раньше доска висела
-            на пустом тёмном фоне карточки и читалась как наклейка. */}
-        <div
-          className="board-stage"
-          style={{ backgroundImage: `url(${ART}/board-stage.webp)`, ['--tint' as string]: collectionColor(boardDistrict) }}
-        >
-          <img
-            className="bowl-wide"
-            src={`${ART}/board-d${boardDistrict}.webp`}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            data-testid="bowl-fullboard"
-          />
-        </div>
+        {/* Целая доска района одним артом: фон района — в самом арте,
+            вторая подложка-сцена давала двойной фон (жалоба 2026-10-18),
+            поэтому здесь только рамка цветом района. */}
+        <img
+          className="bowl-wide"
+          style={{ border: `2px solid ${collectionColor(boardDistrict)}`, borderRadius: 14 }}
+          src={`${ART}/board-d${boardDistrict}.webp`}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          data-testid="bowl-fullboard"
+        />
         <div className="row" style={{ flexWrap: 'wrap', gap: 8 }} role="group" aria-label={t('builder.boards')}>
           {[0, 1, 2, 3, 4, 5, 6, 7].map((d) => (
             <button

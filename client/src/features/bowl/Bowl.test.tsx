@@ -61,14 +61,12 @@ describe('Bowl — хаб скейт-мира', () => {
     expect(screen.getByTestId('bowl-open-tournament')).toBeTruthy();
   });
 
-  it('экспозиции-пустышки больше нет: доска стоит на арт-фоне чаши', () => {
+  it('экспозиции-пустышки больше нет: витрина досок без второй подложки', () => {
     const { container } = mount();
-    // Три вечно пустые рамки убраны с хаба (2026-10-18) — вместо них витрина
-    // досок на общем фоне board-stage с оттенком района.
+    // Три вечно пустые рамки убраны с хаба (2026-10-18); фон у доски — в
+    // самом её арте, второй сцены-подложки (двойной фон) больше нет.
     expect(container.querySelectorAll('.bowl-slot').length).toBe(0);
-    const stage = container.querySelector('.board-stage') as HTMLElement;
-    expect(stage).toBeTruthy();
-    expect(stage.style.backgroundImage).toContain('/art/skate/board-stage.webp');
+    expect(container.querySelector('.board-stage')).toBeNull();
     expect(screen.getByTestId('bowl-fullboard')).toBeTruthy();
   });
 });

@@ -100,15 +100,14 @@ function BoardPreview({ loadout, districtSet, onSlot }: { loadout: Record<string
   const d = districtSet ?? deckPart?.district ?? wornDistrict;
   return (
     <div className="stack-sm">
-      <div className="board-stage" style={{ backgroundImage: 'url(/art/skate/board-stage.webp)', ['--tint' as string]: d === null ? 'rgba(255,255,255,0.25)' : collectionColor(d) }}>
-        <img
-          className="bd-fullboard"
-          src={d === null ? `${BOARD_ART}/deck.webp` : boardFullArt(d)}
-          alt=""
-          decoding="async"
-          data-testid="builder-fullboard"
-        />
-      </div>
+      <img
+        className="bd-fullboard"
+        style={{ borderColor: d === null ? undefined : collectionColor(d) }}
+        src={d === null ? `${BOARD_ART}/deck.webp` : boardFullArt(d)}
+        alt=""
+        decoding="async"
+        data-testid="builder-fullboard"
+      />
       <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
         {BOARD_SLOTS.map((slot) => (
           <button key={slot} type="button" className="btn btn-sm btn-ghost" onClick={() => onSlot(slot as BoardSlot)}>

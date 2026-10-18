@@ -77,7 +77,7 @@ describe('просмотр реплея (docs/16 §5.5)', () => {
     expect((document.querySelector('.line-bg') as HTMLElement).style.backgroundImage).toContain('/art/skate/line-bg.webp');
     // Поза заезда — кадр анимации (толчок/кат/воздух/грэб/падение), а не
     // статичный портрет: первый кадр реплея — толчок.
-    expect((document.querySelector('.line-rider img') as HTMLImageElement).getAttribute('src')).toMatch(/^\/art\/skate\/rider-(pose-push|04)\.webp$/);
+    expect((document.querySelector('.line-rider img') as HTMLImageElement).getAttribute('src')).toMatch(/^\/art\/skate\/pixel-(ride-\d|air|grab|bail)\.webp$/);
     const art = Array.from(document.querySelectorAll<HTMLImageElement>('.line-feature')).map((i) => i.getAttribute('src'));
     for (const src of art) expect(src).toMatch(/^\/art\/skate\/line-(rail|kicker|gap|bump)\.webp$/);
     expect(document.querySelector('[data-testid="line-replay"]')?.textContent).toContain('railqueen');

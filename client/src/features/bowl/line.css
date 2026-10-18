@@ -48,8 +48,8 @@
   position: absolute;
   left: 200px;
   bottom: 22px;
-  width: 88px;
-  height: 156px;
+  width: 122px;
+  height: 128px;
   transform-origin: 50% 100%;
   will-change: transform;
   filter: drop-shadow(0 0 7px var(--lamp, #ff2e8a));
@@ -175,12 +175,13 @@
   .line-rider img { animation: none !important; }
 }
 
-/* Кадры поз райдера: чёрный фон артов гасится screen-блендом, поэтому
-   персонаж стоит на трассе, а не в чёрной плашке. */
+/* Кадры пиксельного спрайт-шита райдера: чёрный фон гасится screen-блендом,
+   пиксели не сглаживаем — персонаж стоит на трассе, а не в чёрной плашке. */
 .line-rider-pose {
   width: 100%;
   height: 100%;
   object-fit: contain;
   object-position: bottom center;
   mix-blend-mode: screen;
+  image-rendering: pixelated;
 }
