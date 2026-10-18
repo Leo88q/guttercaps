@@ -440,6 +440,10 @@ export default function Grid() {
             {(me.data?.flood ?? []).length === 0 && <span className="tiny muted">—</span>}
             {(me.data?.flood ?? []).map((f) => <Pill key={f.district}>#{f.district + 1}: {f.points}</Pill>)}
           </div>
+          {/* Трубы района: живая гидравлика ливнёвки (входящий решатель). */}
+          <div>
+            <Link to="/grid/pipes" className="btn btn-sm btn-ghost">{t('pipes.title')}</Link>
+          </div>
           {(me.data?.gifts ?? []).length > 0 && <>
             <div className="strong">{t('grid.gifts')}</div>
             <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>{me.data!.gifts.map((g, i) => <Pill key={i}>{g.level}: {g.kind}</Pill>)}</div>

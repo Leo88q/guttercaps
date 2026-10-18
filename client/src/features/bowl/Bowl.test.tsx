@@ -29,28 +29,44 @@ describe('Bowl — хаб скейт-мира', () => {
     expect(riders[0].getAttribute('aria-pressed')).toBe('false');
   });
 
-  it('снимает деталь доски и возвращает её обратно', () => {
-    const { container } = mount();
-    const toggle = screen.getByRole('button', { name: 'Wheels' });
-    expect(container.querySelector('.bowl-board-wheels')?.className).not.toContain('is-off');
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute('aria-pressed')).toBe('false');
-    expect(container.querySelector('.bowl-board-wheels')?.className).toContain('is-off');
-    fireEvent.click(toggle);
-    expect(container.querySelector('.bowl-board-wheels')?.className).not.toContain('is-off');
+  it('показывает целую доску района и переключает районы', () => {
+    mount();
+    const board = screen.getByTestId('bowl-fullboard') as HTMLImageElement;
+    expect(board.getAttribute('src')).toContain('/art/skate/board-d1.webp');
+    const districtBtn = screen.getByRole('button', { name: /Rail Kings|Короли/i });
+    fireEvent.click(districtBtn);
+    expect((screen.getByTestId('bowl-fullboard') as HTMLImageElement).getAttribute('src')).toContain('/art/skate/board-d2.webp');
+    expect(districtBtn.getAttribute('aria-pressed')).toBe('true');
+    // Плоской «сборки» слоями больше нет.
+    expect(document.querySelector('.bowl-board-part')).toBeNull();
   });
 
   it('герой описан для скринридера, а декоративные картинки — нет', () => {
     const { container } = mount();
     expect(screen.getByRole('img', { name: /concrete skate bowl/i })).toBeTruthy();
-    for (const img of container.querySelectorAll('.bowl-board-part, .bowl-niche-bg, .bowl-slot')) {
+    for (const img of container.querySelectorAll('.bowl-niche-bg, .bowl-slot')) {
       expect(img.getAttribute('alt')).toBe('');
     }
   });
 
-  it('экспозиция показывает пустое состояние и три слота под крышки', () => {
+  it('хаб показывает старт, доступность и прямые входы в Линию/турнир/стену/конструктор/команды', () => {
+    mount();
+    expect(screen.getByTestId('bowl-start')).toBeTruthy();
+    expect(screen.getByText(/Open to browse/)).toBeTruthy();
+    expect(screen.getByText(/Wallet needed/)).toBeTruthy();
+    const hrefs = [...document.querySelectorAll('a')].map((a) => a.getAttribute('href'));
+    for (const to of ['/bowl/line', '/bowl/tag', '/bowl/wall/0', '/bowl/builder', '/bowl/crew', '/bowl/board']) {
+      expect(hrefs, `missing link to ${to}`).toContain(to);
+    }
+    expect(screen.getByTestId('bowl-open-tournament')).toBeTruthy();
+  });
+
+  it('экспозиции-пустышки больше нет: витрина досок без второй подложки', () => {
     const { container } = mount();
-    expect(container.querySelectorAll('.bowl-slot').length).toBe(3);
-    expect(screen.getByText(/No caps on display yet/)).toBeTruthy();
+    // Три вечно пустые рамки убраны с хаба (2026-10-18); фон у доски — в
+    // самом её арте, второй сцены-подложки (двойной фон) больше нет.
+    expect(container.querySelectorAll('.bowl-slot').length).toBe(0);
+    expect(container.querySelector('.board-stage')).toBeNull();
+    expect(screen.getByTestId('bowl-fullboard')).toBeTruthy();
   });
 });

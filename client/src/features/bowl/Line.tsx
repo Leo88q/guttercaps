@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { LINE, LINE_TICKS, LINE_HOP, LINE_GRAB, SERVICE_BY_ID, TOURNAMENT, createRun, lineLayout, partById, type LineLayout, type RunInput, type RunState, type RunStepper } from '@guttercaps/economy';
-import { api, claimWithRetry, isMock } from '@/api/client';
+import { api, ApiError, claimWithRetry, isMock } from '@/api/client';
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
 import { payForService, quoteService, serviceRefHash } from '@/chain/flows/serviceFlow';
 import { Currency } from '@/chain/ix/chipCore';
@@ -48,6 +48,7 @@ export default function Line() {
   const [stage, setStage] = useState<'idle' | 'running' | 'sending' | 'done'>('idle');
   const [frame, setFrame] = useState<RunState | null>(null);
   const [result, setResult] = useState<RunSubmit | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [buying, setBuying] = useState(false);
   // Турнир дня (§5.4): отдельный экран-секция — вход за попытку,
   // доска и призы косметика. Заезд в турнире — тот же заезд,
@@ -83,9 +84,12 @@ export default function Line() {
           if (r.granted.hints > 0 || r.granted.valve > 0) playSound('econ.claim');
           else if (r.run.tier === 'gold') playSound('grid.win');
         },
-        onError: () => {
+        onError: (e) => {
           setStage('done');
-          toast({ kind: 'error', title: { key: 'line.title' }, body: { key: 'line.failed' } });
+          // Раньше здесь был общий тост «не засчитан» без причины — игрок не мог
+          // понять, что случилось (жалоба 2026-10-17). Показываем код ошибки
+          // сервера прямо под трассой, где её видно.
+          setSubmitError(e instanceof ApiError ? e.code : 'failed');
         },
       },
     );
@@ -138,10 +142,24 @@ export default function Line() {
     inputs.current = [];
     rot.current = 0;
     setResult(null);
+    setSubmitError(null);
     setFrame(stepper.current.state());
     setStage('running');
-    playSound('ui.click');
   };
+
+  // Клавиатура — второй способ того же одного жеста (ThorBoard-подобная игра
+  // обязана отвечать и без тачскрина): пробел/стрелка вверх во время заезда =
+  // тот же тап. На земле — прыжок, в воздухе — грэб; реплей от этого не меняется.
+  useEffect(() => {
+    if (stage !== 'running') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); tap(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage]);
 
   /** Единственное управление: на земле — прыжок, в воздухе — грэб. */
   const tap = () => {
@@ -150,7 +168,6 @@ export default function Line() {
     const st = run.state();
     const action = st.air || st.grinding ? LINE_GRAB : LINE_HOP;
     queue.current.push({ tick: st.tick + 1, action });
-    playSound('ui.click');
   };
 
   const buyExtra = async () => {
@@ -246,6 +263,11 @@ export default function Line() {
           </LineTrack>
 
           <p className="tiny muted">{t('line.howto')}</p>
+          {submitError && (
+            <div className="warn" data-testid="line-submit-error" role="alert">
+              {t('line.submitError', { code: submitError })}
+            </div>
+          )}
 
           {stage === 'running' && (
             <button

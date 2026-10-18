@@ -14,20 +14,18 @@ import { Link } from 'react-router-dom';
 import { useT, fmtLocale, useLocale } from '@/shared/i18n';
 import { useCollections } from '@/shared/lib/lore';
 import { shortKey } from '@/shared/lib/format';
-import { API_BASE } from '@/app/config';
 import { useWallBoard } from '@/api/hooksLazy';
 import { Pill } from '@/shared/ui/primitives';
-import { sanitizeInlineSvg, TagTimeLapse, useTagSvg } from './TagTimeLapse';
+import { sanitizeInlineSvg, TagThumb, TagTimeLapse, useTagSvgById } from './TagTimeLapse';
 import './wall.css';
 
-const tagImageUrl = (id: string) => `${API_BASE}/tags/${id}/svg`;
 const DAY_MS = 86_400_000;
 
 /** Одна карточка доски: тег рисует себя сам — это и есть подача витрины. */
 function BoardTag({ tagId, wallet, district, slot, runId }: { tagId: string; wallet: string; district: number; slot: number; runId: number }) {
   const t = useT();
   const collections = useCollections();
-  const { svg } = useTagSvg(tagId ? tagImageUrl(tagId) : undefined);
+  const { svg } = useTagSvgById(tagId || undefined);
   const safe = useMemo(() => (svg ? sanitizeInlineSvg(svg) : ''), [svg]);
   const name = collections[district]?.name ?? t('grid.districtN', { n: district });
 
@@ -35,7 +33,7 @@ function BoardTag({ tagId, wallet, district, slot, runId }: { tagId: string; wal
     <article className="card board-card stack-sm">
       {safe
         ? <TagTimeLapse svg={safe} className="wall-preview" runId={runId} />
-        : <img className="wall-preview" src={tagImageUrl(tagId)} alt="" />}
+        : <TagThumb id={tagId || undefined} className="wall-preview" />}
       <div className="row between" style={{ alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
         <span className="strong">{shortKey(wallet)}</span>
         <Pill>{name}</Pill>

@@ -74,9 +74,10 @@ describe('просмотр реплея (docs/16 §5.5)', () => {
   it('райдер и чаша — настоящие файлы; райдер того, кто ехал', async () => {
     await setLocale('ru');
     render(<MemoryRouter><LineReplay runId={7} who="railqueen" onClose={() => {}} /></MemoryRouter>);
-    expect((document.querySelector('.line-bg') as HTMLImageElement).getAttribute('src')).toBe('/art/skate/line-bg.webp');
-    // силуэт 5 → rider-06: в просмотре едет райдер владельца заезда, а не мой
-    expect((document.querySelector('.line-rider img') as HTMLImageElement).getAttribute('src')).toBe('/art/skate/rider-06.webp');
+    expect((document.querySelector('.line-bg') as HTMLElement).style.backgroundImage).toContain('/art/skate/line-bg.webp');
+    // Поза заезда — кадр анимации (толчок/кат/воздух/грэб/падение), а не
+    // статичный портрет: первый кадр реплея — толчок.
+    expect((document.querySelector('.line-rider img') as HTMLImageElement).getAttribute('src')).toMatch(/^\/art\/skate\/pixel-(ride-\d|air|grab|bail)\.webp$/);
     const art = Array.from(document.querySelectorAll<HTMLImageElement>('.line-feature')).map((i) => i.getAttribute('src'));
     for (const src of art) expect(src).toMatch(/^\/art\/skate\/line-(rail|kicker|gap|bump)\.webp$/);
     expect(document.querySelector('[data-testid="line-replay"]')?.textContent).toContain('railqueen');

@@ -40,6 +40,7 @@ const ChipInspector = lazy(() => import('@/features/chip/ChipInspector'));
 const Staking = lazy(() => import('@/features/staking/Staking'));
 const Quests = lazy(() => import('@/features/quests/Quests'));
 const Grid = lazy(() => import('@/features/grid/Grid'));
+const PipesPanel = lazy(() => import('@/features/grid/PipesPanel'));
 const Leaderboard = lazy(() => import('@/features/leaderboard/Leaderboard'));
 const Profile = lazy(() => import('@/features/profile/Profile'));
 const Codex = lazy(() => import('@/features/codex/Codex'));
@@ -109,6 +110,7 @@ export const routes: RouteObject[] = [
       { path: 'staking', element: W(<Staking />) },
       { path: 'quests', element: W(<Quests />) },
       { path: 'grid', element: W(<Grid />) },
+      { path: 'grid/pipes', element: W(<PipesPanel />) },
       { path: 'leaderboard/:board?', element: S(<Leaderboard />) },
       { path: 'profile', element: W(<Profile />) },
       { path: 'admin', element: W(<Admin />) }, // ops panel — shown only to `me.isAdmin`; the API enforces ADMIN_WALLETS

@@ -1,7 +1,7 @@
 // Трик-рил (docs/16 §2.4): линия обязана быть детерминированной и обязана
 // заканчиваться bail при проигрыше — иначе это украшение, а не итог боя.
 import { describe, expect, it } from 'vitest';
-import { trickLine, type ReelRound } from './trickReel';
+import { trickLine, type ReelRound } from './trickLine';
 
 const ROUNDS: ReelRound[] = [
   { lane: 0, luckA: 1.4, luckB: 0.6, elementEdge: 0.15, winner: 'A' },

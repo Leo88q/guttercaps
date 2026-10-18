@@ -15,19 +15,20 @@
 
 .line-bg {
   position: absolute;
-  inset: 0 auto 0 0;
-  width: 240%;
-  height: 100%;
-  object-fit: cover;
-  object-position: left center;
+  inset: 0;
+  background-repeat: repeat-x;
+  background-size: auto 100%;
+  background-position-y: center;
   opacity: 0.85;
-  will-change: transform;
+  will-change: background-position;
 }
 
 .line-feature {
   position: absolute;
   bottom: 22px;
-  object-fit: cover;
+  /* contain, а не cover: cover обрубал арт препятствия по краям кадра, и по
+     трассе висели «куски обуви» вместо трамплинов и перил. */
+  object-fit: contain;
   object-position: center bottom;
   pointer-events: none;
 }
@@ -47,8 +48,8 @@
   position: absolute;
   left: 200px;
   bottom: 22px;
-  width: 46px;
-  height: 84px;
+  width: 122px;
+  height: 128px;
   transform-origin: 50% 100%;
   will-change: transform;
   filter: drop-shadow(0 0 7px var(--lamp, #ff2e8a));
@@ -126,10 +127,61 @@
 
 @media (max-width: 420px) {
   .line-track { height: 210px; }
-  .line-rider { left: 150px; width: 38px; height: 70px; }
+  .line-rider { left: 150px; width: 66px; height: 118px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .line-bg, .line-rider { transition: none; }
   .line-tap:active { transform: none; }
+}
+
+/* ── Игровой фил (2026-10-17): скорость землёй, состояния райдера ──────────
+   Асфальт размечен полосами и швами: пока камера едет, разметка бежит под
+   колёсами — до этого «земля» была статичной и скорость не читалась. */
+.line-ground {
+  background-image:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.10) 0 2px, transparent 2px 46px),
+    repeating-linear-gradient(90deg, rgba(255, 46, 138, 0.16) 0 10px, transparent 10px 184px),
+    linear-gradient(180deg, #1b1a20 0%, #100f14 100%);
+  background-size: 46px 100%, 184px 100%, 100% 100%;
+}
+
+/* Беговая посадка: лёгкое покачивание в такт «толчкам», а не приклеенная картинка. */
+@keyframes line-bob {
+  0%, 100% { margin-bottom: 0; }
+  50% { margin-bottom: 2px; }
+}
+.line-rider.is-riding img { animation: line-bob 0.28s ease-in-out infinite; }
+
+/* Воздух: райдер поджимается; при грэбе доска «флипает» (вращение по X
+   читается как kickflip даже на одном спрайте). */
+.line-rider.is-air img { transform: scaleY(0.94); }
+@keyframes line-flip {
+  0% { transform: scaleY(0.94) rotate(-4deg); }
+  50% { transform: scaleY(0.82) rotate(5deg) translateY(-3px); }
+  100% { transform: scaleY(0.94) rotate(-4deg); }
+}
+.line-rider.is-grab img { animation: line-flip 0.36s ease-in-out infinite; }
+
+/* Гринд: наклон по перилам; падение: кувырок и затухание вместо стоп-кадра. */
+.line-rider.is-grinding img { transform: rotate(-7deg); }
+@keyframes line-bail {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(-38deg) translateY(4px); }
+}
+.line-rider.is-down img { animation: line-bail 0.3s ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .line-rider img { animation: none !important; }
+}
+
+/* Кадры пиксельного спрайт-шита райдера: чёрный фон гасится screen-блендом,
+   пиксели не сглаживаем — персонаж стоит на трассе, а не в чёрной плашке. */
+.line-rider-pose {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: bottom center;
+  mix-blend-mode: screen;
+  image-rendering: pixelated;
 }
