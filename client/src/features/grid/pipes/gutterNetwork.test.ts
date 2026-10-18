@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { E, N, S, W, type Level, type Tile } from '@guttercaps/economy';
 import { FLUIDS, PipeNetwork } from './pipeSolver';
-import { networkFromLevel, openEnds } from './gutterNetwork';
+import { networkFromLevel, openEnds, solveLevel } from './gutterNetwork';
 
 const tile = (base: number, rot = 0): Tile => ({
   kind: 'straight', base, rot, fixed: false, role: 'line',
@@ -33,5 +33,15 @@ describe('networkFromLevel — головоломка Grid в решателе �
     expect(openEnds(broken)).toBeGreaterThan(0);
     const def = networkFromLevel(broken);
     expect(def.links.length).toBeLessThan(4);
+  });
+
+  it('solveLevel для доски: в собранном кольце вода есть и не течёт, в сломанном — течёт', () => {
+    const good = solveLevel(ring());
+    expect(good.totalFlow).toBeGreaterThan(0);
+    expect(good.fed).toBe(1);
+    expect(good.speed[3]).toBeGreaterThan(0);
+    expect(good.leaking.some(Boolean)).toBe(false);
+    const bad = solveLevel(ring(1));
+    expect(bad.leaking.some(Boolean)).toBe(true);
   });
 });

@@ -1,6 +1,6 @@
-import { ROUGHNESS } from './pipeSolver';
+import { FLUIDS, GRAVITY, PipeNetwork, ROUGHNESS } from './pipeSolver';
 import type { LinkDef, NetworkDef, NodeDef } from './pipeSolver';
-import { E, N, S, W, rotateMask, type Level } from '@guttercaps/economy';
+import { E, N, S, W, poweredCells, rotateMask, type Level } from '@guttercaps/economy';
 
 /**
  * Головоломка Grid → гидравлическая сеть решателя (встраивание в игру,
@@ -42,20 +42,77 @@ export function networkFromLevel(level: Level): NetworkDef {
 
 /** Открытые концы: порт смотрит в соседа, который не отвечает, или за край. */
 export function openEnds(level: Level): number {
+  return openEndCells(level).filter(Boolean).length;
+}
+
+/** Клетки с открытым концом (порт без ответа соседа или за край поля). */
+export function openEndCells(level: Level): boolean[] {
   const size = level.size;
   const mask = (i: number) => rotateMask(level.tiles[i].base, level.tiles[i].rot);
-  let leaks = 0;
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const i = y * size + x;
-      const m = mask(i);
-      if ((m & N) && (y === 0 || !(mask(i - size) & S))) leaks++;
-      if ((m & S) && (y === size - 1 || !(mask(i + size) & N))) leaks++;
-      if ((m & W) && (x === 0 || !(mask(i - 1) & E))) leaks++;
-      if ((m & E) && (x === size - 1 || !(mask(i + 1) & W))) leaks++;
+  return level.tiles.map((_, i) => {
+    const x = i % size;
+    const y = Math.floor(i / size);
+    const m = mask(i);
+    return Boolean(
+      ((m & N) && (y === 0 || !(mask(i - size) & S)))
+      || ((m & S) && (y === size - 1 || !(mask(i + size) & N)))
+      || ((m & W) && (x === 0 || !(mask(i - 1) & E)))
+      || ((m & E) && (x === size - 1 || !(mask(i + 1) & W))),
+    );
+  });
+}
+
+export interface LevelHydraulics {
+  /** Пиковая скорость воды в трубах каждой клетки, м/с (0 — сухо). */
+  speed: number[];
+  /** Под током, но есть открытый конец: вода уходит в никуда. */
+  leaking: boolean[];
+  /** Суммарный расход на приёмники, м³/с. */
+  totalFlow: number;
+  /** Сколько приёмников реально получает воду. */
+  fed: number;
+}
+
+/**
+ * Гидравлика текущего состояния головоломки — для самой доски, а не для
+ * отдельной сцены: скорость воды в каждой клетке берётся из решателя
+ * (максимум по инцидентным трубам), и доска красит поток по этим цифрам.
+ */
+export function solveLevel(level: Level): LevelHydraulics {
+  const speed = level.tiles.map(() => 0);
+  const open = openEndCells(level);
+  let net: PipeNetwork | null = null;
+  try {
+    net = new PipeNetwork(networkFromLevel(level), FLUIDS.water20, { gravity: GRAVITY.earth });
+    net.solve();
+  } catch {
+    net = null;
+  }
+  if (net) {
+    for (const [id, s] of net.linkStates) {
+      const m = /^l(\d+)_(\d+)$/.exec(id);
+      if (!m) continue;
+      const v = Math.abs(s.velocity);
+      speed[Number(m[1])] = Math.max(speed[Number(m[1])], v);
+      speed[Number(m[2])] = Math.max(speed[Number(m[2])], v);
     }
   }
-  return leaks;
+  const powered = poweredCells(level);
+  let totalFlow = 0;
+  let fed = 0;
+  if (net) {
+    for (const i of level.receivers) {
+      const out = net.nodeStates.get(`c${i}`)?.outflow ?? 0;
+      totalFlow += out;
+      if (out > 1e-9) fed++;
+    }
+  }
+  return {
+    speed,
+    leaking: level.tiles.map((_, i) => powered[i] && open[i]),
+    totalFlow,
+    fed,
+  };
 }
 
 /**

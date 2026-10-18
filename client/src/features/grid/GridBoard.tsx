@@ -2,10 +2,11 @@
 // from the schematic render: click rotates CW, right-click / 450 ms long-press rotates CCW; aria/dedicated
 // disabled states come from the same props. Pure presentation — turns are reported via onRotate and the
 // engine state stays in the caller.
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { depthOfLevel, poweredCells, tileMask, type Level } from '@guttercaps/economy';
 import { TileArt } from './TileArt';
 import { flowDistance, gridMaterialForLevel } from './gridArt';
+import { solveLevel } from './pipes/gutterNetwork';
 
 export interface GridBoardProps {
   /** Текущий уровень с ходами игрока (маски — источник картинки и «под током»). */
@@ -30,6 +31,14 @@ export function GridBoard({ level, vis, busy, hintIndex, dryHint = false, accent
   const material = gridMaterialForLevel(level.level);
   const powered = poweredCells(level);
   const flow = flowDistance(level);
+  // Настоящая гидравлика в самой доске: скорость воды в каждой трубе и
+  // утечки из открытых концов считает присланный решатель (solveLevel),
+  // доска только красит поток по этим цифрам — никакой отдельной сцены.
+  const hyd = useMemo(
+    () => solveLevel(level),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [level.size, level.bus, level.tiles.map((x) => x.rot).join(',')],
+  );
 
   return (
     <div
@@ -80,6 +89,8 @@ export function GridBoard({ level, vis, busy, hintIndex, dryHint = false, accent
               accent={accent}
               material={material}
               flowStep={flow[i] ?? 0}
+              flowVel={Math.min(1, (hyd.speed[i] ?? 0) / 1.5)}
+              leaking={!!hyd.leaking[i]}
             />
           </button>
         ))}

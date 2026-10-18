@@ -44,9 +44,13 @@ export interface TileArtProps {
   material: GridTileSet;
   /** Шаг волны потока (BFS-расстояние от шины). */
   flowStep: number;
+  /** Скорость воды 0..1 из гидравлического решателя: быстрее поток — живее вода. */
+  flowVel?: number;
+  /** Под током, но есть открытый конец: вода уходит наружу (капля на клетке). */
+  leaking?: boolean;
 }
 
-export function TileArt({ mask, vis, powered, isBus, isReceiver, fixed, highlight, accent, material, flowStep }: TileArtProps) {
+export function TileArt({ mask, vis, powered, isBus, isReceiver, fixed, highlight, accent, material, flowStep, flowVel = 0, leaking = false }: TileArtProps) {
   const status = useAtlasStatus(material);
   const atlas = gridAtlasUrl(material);
   /** Ячейка спрайта в полосе атласа: x-позиция фона/маски в процентах (по форме текущей маски). */
@@ -83,10 +87,13 @@ export function TileArt({ mask, vis, powered, isBus, isReceiver, fixed, highligh
       <span className="gt-s" style={{ ...rotStyle, backgroundImage: `url("${atlas}")`, backgroundPosition: pos }} />
       {powered && (
         <>
-          <span className="gt-f" style={{ ...maskStyle, animationDelay: `${-flowStep * 140}ms` }} />
-          <span className="gt-w" style={{ ...maskStyle, animationDelay: `${-flowStep * 90}ms` }} />
+          {/* Скорость и плотность воды — из решателя: в быстрых трубах пузыри
+              несутся, в едва подключённых вода едва ползёт. */}
+          <span className="gt-f" style={{ ...maskStyle, animationDelay: `${-flowStep * 140}ms`, opacity: 0.25 + flowVel * 0.45 }} />
+          <span className="gt-w" style={{ ...maskStyle, animationDelay: `${-flowStep * 90}ms`, animationDuration: `${(1.5 - flowVel * 1.1).toFixed(2)}s`, opacity: 0.3 + flowVel * 0.55 }} />
         </>
       )}
+      {leaking && powered && <span className="gt-leak" />}
       {splash && <span className="gt-splash" />}
       {isReceiver && <span className={`gt-ring${powered ? ' gt-lit' : ''}`} />}
       {isBus && <span className="gt-bus" />}

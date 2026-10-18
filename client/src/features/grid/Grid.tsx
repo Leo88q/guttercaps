@@ -14,7 +14,6 @@ import { payForService, quoteService, serviceRefHash } from '@/chain/flows/servi
 import { Currency } from '@/chain/ix/chipCore';
 import { GRID_FIELD_THEMES } from '@/shared/lib/cosmetics';
 import { useGridChip, useGridMe } from '@/api/hooks';
-import GridHydraulics from './GridHydraulics';
 import { qk } from '@/api/keys';
 import { fmtLocale, getLocale, useT } from '@/shared/i18n';
 import { useUiStore } from '@/app/store/ui';
@@ -391,9 +390,6 @@ export default function Grid() {
         {play.mode === 'training' && <Pill onClick={() => setPlay(null)} disabled={play.busy}>{t('common.close')}</Pill>}
         {(play.mode === 'contract' || play.mode === 'deep' || play.mode === 'ghost' || play.mode === 'prestige') && <Pill tone="danger" onClick={() => void giveUp()} disabled={play.busy}>{t('grid.giveUp')}</Pill>}
       </div>
-      {/* Живая гидравлика этой самой сети: решатель труб считает расход по
-          текущим поворотам, 3D показывает сеть игрока (GridHydraulics). */}
-      {playLevel && <GridHydraulics level={playLevel} />}
     </div>
   ) : null;
 
