@@ -23,7 +23,7 @@ import { useUiStore } from '@/app/store/ui';
 import { useRig, useRigOf, useSetRig, type RigCap, type RigChip, type RigSlot, type RigView } from '@/api/hooksLazy';
 import { RiderCard } from './Rider';
 import { shortKey } from '@/shared/lib/format';
-import { partArt } from '@/shared/lib/boardArt';
+import { partArt, partVisual } from '@/shared/lib/boardArt';
 import './rig.css';
 
 const ART = '/art/skate';
@@ -58,7 +58,7 @@ function Board({ view, mine, busy, onSlot }: BoardProps) {
   // Дека — та, что собрана в конструкторе (§4.2): экспозиция стоит именно на
   // ней. Нет ответа конструктора (старый кэш, чужая витрина без доски) —
   // показываем стоковую деку, а не дыру.
-  const deckArt = partArt(String(view.board?.deck ?? '')) ?? `${ART}/deck.webp`;
+  const deckArt = partVisual(String(view.board?.deck ?? '')) ?? `${ART}/deck.webp`;
   const gripArt = partArt(String(view.board?.grip ?? ''));
   const deck = slots.find((s) => s.place === 'deck') ?? slots[0];
   const deckSlot = Number(deck?.slot ?? -1);
