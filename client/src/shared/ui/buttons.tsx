@@ -1,6 +1,5 @@
 import { useState, type ReactNode, type ButtonHTMLAttributes } from 'react';
 import { CheckIcon } from '@/shared/ui/action-icons';
-import { playSound } from '@/shared/audio';
 
 // Every object-button fires a one-shot "activation" class for a moment,
 // then removes it — see theme.css for what that class animates. Disabled
@@ -25,7 +24,7 @@ export function SprayNozzleButton({ children, onClick, disabled, ...rest }: ObjB
   return (
     <button
       className={`cg-btn-primary ${fired ? 'cg-fired' : ''} ${disabled ? 'cg-btn-disabled' : ''}`}
-      onClick={(e) => { fire(); playSound('ui.click'); onClick?.(e); }}
+      onClick={(e) => { fire(); onClick?.(e); }}
       disabled={disabled}
       {...rest}
     >
@@ -42,7 +41,7 @@ export function CleanConfirmButton({ children, onClick, disabled, ...rest }: Obj
   return (
     <button
       className={`cg-btn-clean ${fired ? 'cg-fired' : ''} ${disabled ? 'cg-btn-disabled' : ''}`}
-      onClick={(e) => { fire(); playSound('ui.click'); onClick?.(e); }}
+      onClick={(e) => { fire(); onClick?.(e); }}
       disabled={disabled}
       {...rest}
     >
@@ -55,11 +54,9 @@ export function CleanConfirmButton({ children, onClick, disabled, ...rest }: Obj
 /** Toggle: capped (grey) = off, uncapped+glow = on. */
 export function SprayCapToggle({ on, onChange, label, icon }: { on: boolean; onChange: (v: boolean) => void; label?: string; icon?: ReactNode }) {
   return (
-    // Переключатель звучит как вкладка (ui.tab), а не как клик: это другой жест — «перевёл
-    // состояние», и он обязан отличаться от нажатия кнопки (docs/14b §2). Здесь же сидит
-    // переключатель звука, поэтому звук играется до onChange — иначе собственное выключение
-    // успевало бы прозвучать.
-    <div className={`cg-toggle ${on ? 'cg-on' : ''}`} onClick={() => { playSound('ui.tab'); onChange(!on); }} role="switch" aria-checked={on}>
+    // Переключатель — без звука при нажатии (как и остальные кнопки): короткие
+    // UI-«писки» убраны по жалобе игроков, звучат только игровые события.
+    <div className={`cg-toggle ${on ? 'cg-on' : ''}`} onClick={() => { onChange(!on); }} role="switch" aria-checked={on}>
       {icon && <span className="cg-toggle-icon" aria-hidden>{icon}</span>}
       <span className="cg-toggle-cap" />
       {label && <span style={{ fontSize: 13, color: '#aaa' }}>{label}</span>}

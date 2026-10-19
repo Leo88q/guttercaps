@@ -5,6 +5,7 @@ import { useMe, useGrid, useGridMe, useQuests, usePendingOps, useStreak, useSeas
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/api/client';
 import { PreorderBanner } from '@/features/preorder/PreorderBanner';
+import SkateWorldCard from '@/features/bowl/SkateWorldCard';
 import { SplatBackdrop } from '@/features/vfx/vfx';
 import { usePity } from '@/chain/hooks';
 import { useActiveOps } from '@/app/store/txs';
@@ -182,6 +183,11 @@ function Landing({ onConnect }: { onConnect: () => void }) {
       <p className="muted" style={{ maxWidth: 480, margin: '0 auto' }}>
         {t('ui.homeIntro')}
       </p>
+      {/* Анонимный игрок тоже должен увидеть скейт-мир до подключения кошелька:
+          просмотр открыт, а действия за кошельком уводит RequireWallet. */}
+      <div style={{ maxWidth: 720, margin: '0 auto', textAlign: 'left', width: '100%' }}>
+        <SkateWorldCard />
+      </div>
       <Link to="/drain" className="btn btn-ghost">{t('drain.title')}</Link>
       <Link to="/pot" className="btn btn-ghost">{t('pot.title')}</Link>
       <div className="row" style={{ justifyContent: 'center', gap: 12 }}>
