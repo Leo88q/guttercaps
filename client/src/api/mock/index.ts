@@ -228,7 +228,20 @@ on('post', '/grid/complete', (o) => {
   const due = Math.max(0, gridXpForStars(a.level, stars) - (prev?.xp_accounted ?? 0));
   r.claims.set(a.level, { best_stars: Math.max(prev?.best_stars ?? 0, stars), xp_accounted: (prev?.xp_accounted ?? 0) + due });
   if (!prev && a.level === r.nextLevel) r.nextLevel = Math.min(GRID_RULES.totalLevels + 1, r.nextLevel + 1);
-  return { ok: true, training: false, stars, xpGranted: due, xpPending: 0, dropletGained: false, gifts: [] };
+  // Доски через Floodgrid (2026-10-19): сектор на 2+ звезды раз в неделю даёт
+  // недостающую часть района недели — как серверный grantWeeklyGridPart.
+  let boardPart: string | null = null;
+  if (stars >= 2 && !mockBoardWeekGranted.has(String(mockBoardWeek()))) {
+    const district = boardDistrictOfWeek(mockBoardWeek());
+    const missingSlot = BOARD_SET_SLOTS.find((slot) => !mockBoardParts.has(`${slot}_d${district}`));
+    if (missingSlot) {
+      boardPart = `${missingSlot}_d${district}`;
+      const cur = mockBoardParts.get(boardPart);
+      mockBoardParts.set(boardPart, { qty: (cur?.qty ?? 0) + 1, source: 'grid', createdAt: Date.now() / 1000 });
+      mockBoardWeekGranted.add(String(mockBoardWeek()));
+    }
+  }
+  return { ok: true, training: false, stars, xpGranted: due, xpPending: 0, dropletGained: false, gifts: [], boardPart };
 });
 on('post', '/grid/fail', (o) => {
   const b = (o.body ?? {}) as { attemptId: string; useValve?: boolean };
@@ -262,7 +275,7 @@ const entitlements: { id: string; kind: number; payload: Record<string, unknown>
 ];
 on('get', '/me/services', () => ({ entitlements, dailyLeft: { '7': 3, '0': 1, '1': 1 } }));
 on('get', '/services', () => ({
-  services: SERVICES.map((sv) => ({ id: sv.id, kind: sv.kind, name: sv.name, priceUsdCents: sv.priceUsdCents, dailyCap: sv.dailyCap, recurring: sv.recurring, quotes: {
+  services: SERVICES.filter((sv) => !sv.retired).map((sv) => ({ id: sv.id, kind: sv.kind, name: sv.name, priceUsdCents: sv.priceUsdCents, dailyCap: sv.dailyCap, recurring: sv.recurring, quotes: {
     SOL: String(solLamportsForUsdCents(sv.priceUsdCents)), USDC: String(usdcMicroForUsdCents(sv.priceUsdCents)), CG: String(sv.priceUsdCents * 1_000_000), SKR: String(skrMicroForUsdCents(sv.priceUsdCents)),
   } })),
   solUsd: SOL_USD, skrUsd: SKR_USD,
@@ -561,8 +574,8 @@ const mockBoardWeek = () => Math.floor(Date.now() / 1000 / (7 * 86_400));
  *  но и «всё уже собрано» он тоже не показывает (собирать должно быть что). */
 const seedMockBoard = () => {
   const prev = boardDistrictOfWeek(mockBoardWeek() - 1);
-  mockBoardParts.set(`deck_d${prev}`, { qty: 1, source: 'run', createdAt: Date.now() / 1000 - 9 * 86_400 });
-  mockBoardParts.set(`wheels_d${prev}`, { qty: 1, source: 'run', createdAt: Date.now() / 1000 - 8 * 86_400 });
+  mockBoardParts.set(`deck_d${prev}`, { qty: 1, source: 'grid', createdAt: Date.now() / 1000 - 9 * 86_400 });
+  mockBoardParts.set(`wheels_d${prev}`, { qty: 1, source: 'grid', createdAt: Date.now() / 1000 - 8 * 86_400 });
   mockBoardParts.set('bolts_acid', { qty: 1, source: 'shop', createdAt: Date.now() / 1000 - 3 * 86_400 });
   mockBoardParts.set('sticker_moth', { qty: 1, source: 'achievement', createdAt: Date.now() / 1000 - 2 * 86_400 });
   // Деку прошлой недели надеваем сразу: экран открывается собранным, а не с

@@ -46,7 +46,7 @@ img { max-width: 100%; display: block; }
      into a second row that overflowed the 64px box and pushed half the bar off the screen. Bumping a
      tab means bumping this; `smoke.test.tsx` fails if they disagree. The language picker used to be
      the 10th entry and now lives in the header next to the balance. */
-  --gc-nav-tabs: 10;
+  --gc-nav-tabs: 11;
   order: 2; position: relative; left: auto; right: auto; bottom: auto; z-index: 30; display: grid;
   flex-shrink: 0; width: 100%;
   grid-template-columns: repeat(var(--gc-nav-tabs), minmax(0, 1fr));
@@ -1073,7 +1073,8 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 
 .gt-s,
 .gt-f,
-.gt-w {
+.gt-w,
+.gt-core {
   position: absolute;
   inset: 0;
   background-size: 500% 100%;
@@ -1194,6 +1195,38 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
   0% { transform: scale(.55); opacity: .9; }
   70% { opacity: .18; }
   100% { transform: scale(1.45); opacity: 0; }
+}
+
+/* Ядро потока: светлая «жила» по оси трубы с бликом — поверх пузырей, быстрее
+   их (центр профиля скорости обгоняет стенки, как в шейдере жидкости). */
+.gt-core {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  mask-size: 500% 100%;
+  -webkit-mask-size: 500% 100%;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  background-image:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, .95), rgba(255, 255, 255, 0) 55%),
+    linear-gradient(90deg, rgba(10, 90, 140, .55), rgba(190, 240, 255, .85) 50%, rgba(10, 90, 140, .55));
+  background-size: 11px 11px, 100% 100%;
+  background-repeat: repeat, no-repeat;
+  opacity: .5;
+  filter: blur(.4px);
+  animation: gt-water .62s linear infinite;
+}
+
+/* Фронт заполнения при подключении: вода входит в трубу фронтом, а не
+   загорается по всей длине разом (uFill из шейдера патча). */
+.gt-prime {
+  animation: gt-prime .55s ease-out, gt-water .8s linear infinite;
+}
+
+@keyframes gt-prime {
+  from { clip-path: inset(0 88% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
 }
 
 /* Вода течёт: пузыри ползут вдоль трубы ровно на один шаг своего узора (15 и 9 px) —

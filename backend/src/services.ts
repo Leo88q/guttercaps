@@ -62,7 +62,9 @@ export function prices(_db?: Db): { solUsd: number; skrUsd: number; source: 'fx'
 export function catalogue(db: Db) {
   const { solUsd, skrUsd, source } = prices(db);
   return {
-    services: SERVICES.map((s) => ({ id: s.id, kind: s.kind, name: s.name, priceUsdCents: s.priceUsdCents, dailyCap: s.dailyCap, recurring: s.recurring, quotes: quoteUsdCents(s.priceUsdCents) })),
+    // Retired-услуги (удалённая игра Line) в витрину не попадают: kind в контракте
+    // зарезервирован, но купить их больше нельзя.
+    services: SERVICES.filter((s) => !s.retired).map((s) => ({ id: s.id, kind: s.kind, name: s.name, priceUsdCents: s.priceUsdCents, dailyCap: s.dailyCap, recurring: s.recurring, quotes: quoteUsdCents(s.priceUsdCents) })),
     solUsd, skrUsd, priceSource: source,
   };
 }
