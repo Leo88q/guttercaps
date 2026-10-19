@@ -33,7 +33,7 @@ import { CleanConfirmButton } from '@/shared/ui/buttons';
 import { ErrorNotice } from '@/shared/ui/ErrorNotice';
 import './crew.css';
 
-const tierKey = (tier: string) => `line.tiers.${tier}` as 'line.tiers.none';
+const tierKey = (tier: string) => `crew.tiers.${tier}` as 'crew.tiers.none';
 /** Район сегмента: восемь районов города, как в стене и каталоге. */
 const DISTRICTS = Array.from({ length: 8 }, (_, i) => i);
 
@@ -73,7 +73,7 @@ function CrewCard({ crew, onRename, onLeave, onReport, reporting }: {
           <div className="mono strong">{crew.memberCount ?? 0}/{crew.maxMembers ?? CREW.maxMembers}</div>
         </div>
         <div>
-          <span className="tiny muted">{t('line.tier')}</span>
+          <span className="tiny muted">{t('crew.tierLabel')}</span>
           <div className="strong">{t(tierKey(crew.tier ?? 'none'))}</div>
         </div>
       </div>

@@ -18,7 +18,7 @@ export const API_ERROR_KEYS = {
   use_grid_endpoint: 'failures.requestInvalid', cg_burn_required: 'failures.paymentPayload', deep_credit_cap: 'failures.requestInvalid',
   // §5.1 линия: реплей, день и попытки.
   bad_replay: 'failures.requestInvalid', bad_day: 'failures.requestInvalid',
-  use_line_endpoint: 'failures.requestInvalid', runs_exhausted: 'failures.lineRunsExhausted', run_credit_cap: 'failures.lineCreditCap',
+  use_line_endpoint: 'failures.requestInvalid', line_retired: 'failures.requestInvalid', runs_exhausted: 'failures.lineRunsExhausted', run_credit_cap: 'failures.lineCreditCap',
   // §5.4 турнир: бесплатные входы дня кончились.
   tournament_entries_exhausted: 'failures.tournamentEntriesExhausted',
   // §5.6 команды: имя, состав, сегмент стены и модерация имени.

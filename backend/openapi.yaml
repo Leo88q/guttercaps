@@ -228,29 +228,6 @@ paths:
         SOL/USDC/SKR go to the treasury. Handle changes are limited to 1 per 30 days; released handles are quarantined 90 days.
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [handle, signature], properties: { handle: { type: string, pattern: '^[a-zA-Z0-9_]{3,16}$' }, signature: { type: string } } } } } }
       responses: { '200': { description: ok }, '402': { description: payment not found / already consumed }, '409': { $ref: '#/components/responses/Error', description: 'handle_taken / handle_cooldown / same_handle — or payment_pending: the payment is confirmed but not yet finalized (SEC-M5); retry in ~30 s' } }
-  /me/rider:
-    put:
-      tags: [me]
-      summary: 'Wear a rider silhouette (docs/16 §4.6) — one of eight district figures plus a rim-light theme'
-      description: |
-        The rider is presentation only: no stats, no odds, no income. Two checks, both about the public
-        board telling the truth — the silhouette must be one of the eight that exist, and the theme must be
-        one the caller has actually paid for (entitlement kind 3). Wearing an unpaid theme is refused
-        because the board would then advertise a purchase that never happened.
-        Idempotent: repeating the same choice changes nothing.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                silhouette: { type: integer, minimum: 0, maximum: 7, description: 'district index — which of the eight figures to wear' }
-                theme: { type: string, nullable: true, description: 'profile theme id (economy PROFILE_THEMES); null = light the figure in its district colour' }
-      responses:
-        '200': { description: the rider as stored, content: { application/json: { schema: { $ref: '#/components/schemas/Rider' } } } }
-        '400': { description: 'bad_silhouette — no such figure' }
-        '403': { description: 'theme_not_owned — buy the theme in the shop first' }
   /me/achievements:
     get:
       tags: [me]
@@ -2403,17 +2380,6 @@ components:
         items: { type: array, items: { $ref: '#/components/schemas/WallSlot' } }
         layers: { type: array, description: previous tags of a slot, shown as faded paint underneath, items: { type: object, properties: { slot: { type: integer }, wallet: { type: string }, tagId: { type: string }, appliedAt: { type: string, format: date-time }, releasedAt: { type: string, format: date-time } } } }
         me: { type: object, nullable: true, properties: { activeDays: { type: integer }, activeDaysNeeded: { type: integer }, stakedCaps: { type: integer }, stakedCapsNeeded: { type: integer }, eligible: { type: boolean }, reason: { type: [string, 'null'], enum: [need_active_days, need_staked_cap] }, mySlot: { type: [integer, 'null'] } } }
-    Rider:
-      type: object
-      description: |
-        docs/16 §4.6 — the rider: one of eight district silhouettes, lit in the colour of a profile theme
-        the owner actually paid for. Presentation only, no stats. Shown on the public board (§4.5), which
-        is the point: cosmetics are bought to be seen.
-        `theme` comes back null when the cosmetic is not (or no longer) paid for — the board then lights the
-        figure in its district colour instead of advertising a purchase that lapsed.
-      properties:
-        silhouette: { type: integer, minimum: 0, maximum: 7 }
-        theme: { type: string, nullable: true }
     AchievementList:
       type: object
       properties:
@@ -2702,8 +2668,6 @@ components:
         wallet: { type: string }
         board:
           $ref: '#/components/schemas/BoardLoadout'
-        rider:
-          $ref: '#/components/schemas/Rider'
         public: { type: boolean, description: 'owner has switched the public board on (§4.5)' }
         caps:
           type: array

@@ -21,7 +21,7 @@ import { useClaimSlot, useMyTags, useMyWall, useReleaseSlot, useRenewSlot, useRe
 import { fmtLocale, useLocale } from '@/shared/i18n';
 import { Pill, Modal } from '@/shared/ui/primitives';
 import { shortKey } from '@/shared/lib/format';
-import { sanitizeInlineSvg, TagTimeLapse, useTagSvg } from './TagTimeLapse';
+import { sanitizeInlineSvg, TagThumb, TagTimeLapse, useTagSvgById } from './TagTimeLapse';
 import './wall.css';
 
 const REASONS: TagReportReason[] = ['hate', 'violence', 'sexual', 'ads', 'personal_data', 'other'];
@@ -98,7 +98,7 @@ export default function Wall() {
   const opened = open === null ? null : bySlot.get(open) ?? null;
   /** Перезапуск таймлапса: по кнопке «ещё раз» тег рисуется заново. */
   const [replay, setReplay] = useState(0);
-  const { svg: tagSvg } = useTagSvg(opened?.tagId ? tagImageUrl(opened.tagId) : undefined);
+  const { svg: tagSvg } = useTagSvgById(opened?.tagId ?? undefined);
   // Инлайним только то, что прошло санитайзер; иначе тег остаётся картинкой.
   const timelapse = useMemo(() => (tagSvg ? sanitizeInlineSvg(tagSvg) : ''), [tagSvg]);
   const mineOpened = opened !== null && mySlot === open;
@@ -144,7 +144,7 @@ export default function Wall() {
               <div className="tag-list">
                 {myTags.map((x, i) => (
                   <Pill key={x.id ?? i} active={tagId === x.id} onClick={() => setTagId(x.id ?? '')}>
-                    <img src={tagImageUrl(x.id ?? '')} alt="" width={28} height={14} />
+                    <TagThumb id={x.id ?? undefined} className="wall-pill-thumb" />
                     {fmtLocale.dateTime(Date.parse(x.createdAt ?? ''), locale)}
                   </Pill>
                 ))}
@@ -180,9 +180,9 @@ export default function Wall() {
               >
                 {/* Прошлое стены: прошлые теги лежат под свежим слоем краски. */}
                 {under.map((l, k) => (
-                  <img key={`${l.tagId}-${k}`} className="wall-layer" src={tagImageUrl(l.tagId ?? '')} alt="" style={{ opacity: 0.3 - k * 0.08 }} />
+                  <TagThumb key={`${l.tagId}-${k}`} id={l.tagId ?? undefined} className="wall-layer" style={{ opacity: 0.3 - k * 0.08 }} />
                 ))}
-                {item ? <img className="wall-tag" src={tagImageUrl(item.tagId ?? '')} alt="" /> : null}
+                {item ? <TagThumb id={item.tagId ?? undefined} className="wall-tag" /> : null}
               </button>
             );
           })}
@@ -199,7 +199,7 @@ export default function Wall() {
                     тега не достался — остаётся старая картинка. */}
                 {timelapse
                   ? <TagTimeLapse svg={timelapse} className="wall-preview" runId={replay} />
-                  : <img className="wall-preview" src={tagImageUrl(opened.tagId ?? '')} alt={t('wall.tagAlt', { who: shortKey(opened.wallet ?? '') })} />}
+                  : <TagThumb id={opened.tagId ?? undefined} className="wall-preview" />}
                 <button type="button" className="btn btn-sm btn-ghost" onClick={() => setReplay((n) => n + 1)}>{t('wall.replay')}</button>
                 <div className="tiny muted">
                   {shortKey(opened.wallet ?? '')} · {fmtLocale.dateTime(Date.parse(opened.appliedAt ?? ''), locale)}
