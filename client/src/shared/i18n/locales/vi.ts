@@ -14,7 +14,8 @@ const vi: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Trang chủ', caps: 'Nắp', shop: 'Cửa hàng', market: 'Chợ', arena: 'Đấu trường', bowl: 'Skate', stake: 'Stake', fusion: 'Hợp nhất', guide: 'Hướng dẫn', quests: 'Nhiệm vụ', grid: 'Floodgrid', leaderboard: 'Xếp hạng', profile: 'Hồ sơ', more: 'Thêm' },
+  nav: {
+    roomPlay: 'Chơi', roomCollection: 'Bộ sưu tập', roomCity: 'Thành phố', roomMenu: 'Menu', home: 'Trang chủ', caps: 'Nắp', shop: 'Cửa hàng', market: 'Chợ', arena: 'Đấu trường', bowl: 'Skate', stake: 'Stake', fusion: 'Hợp nhất', guide: 'Hướng dẫn', quests: 'Nhiệm vụ', grid: 'Floodgrid', leaderboard: 'Xếp hạng', profile: 'Hồ sơ', more: 'Thêm' },
   grid: {
     title: 'Floodgrid', subtitle: 'Route the flood through 75 sectors. Every chip walks its own route — XP, charge and gifts included.',
     boardPart: 'Nhận được mảnh ván — xem trong Trình dựng', chipsCount: '{n} chip', floodEmpty: 'Chưa có điểm tuần này — khu vực hoàn thành ghi điểm cho quận của chip',

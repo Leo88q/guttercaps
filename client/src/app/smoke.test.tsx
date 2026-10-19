@@ -225,16 +225,18 @@ describe('the language picker is a header control, not a tab (placement regressi
     expect(link!.textContent?.trim()).toMatch(/^[A-Z]{2}$/);
     expect(link!.getAttribute('title')).toBeTruthy();
 
-    const bar = container.querySelector('.shell-nav')!;
+    const bar = container.querySelector('.shell-nav-side')!;
     expect(bar.querySelector('a[href="/language"]'), 'the bar must not also carry it').toBeNull();
-    // The bar is a fixed-height single row: one grid column per tab, or the overflow spills off
-    // screen. This has drifted before (7 columns against 10 tabs), so the coupling is pinned here.
+    // Навигация комнатами (2026-10-20): десктопная панель показывает все разделы
+    // группами, мобильный нижний бар — 4 комнаты. Рассинхрон ловится здесь.
     const tabs = bar.querySelectorAll('a').length;
-    expect(tabs).toBe(11); // 9 core tabs + Floodgrid (docs/13) + Bowl/скейт-мир (docs/16, PR #66)
+    expect(tabs).toBe(13); // Игра 3 + Коллекция 3 + Город 4 (Бассейн, Стейк, Пот, Квесты) + Меню 3
     expect(bar.querySelector('a[href="/bowl"]'), 'the Bowl must be a main-nav tab, not only a footer link').not.toBeNull();
+    const rooms = container.querySelectorAll('.shell-nav-rooms button');
+    expect(rooms.length).toBe(4);
     const css = readFileSync(resolve(import.meta.dirname, '../shared/ui/layout.css'), 'utf8');
     const columns = Number(/--gc-nav-tabs:\s*(\d+)/.exec(css)?.[1]);
-    expect(columns, 'layout.css must declare one grid column per tab').toBe(tabs);
+    expect(columns, 'layout.css must declare one grid column per room').toBe(rooms.length);
 
     // It is a real route, still a full screen — this is a placement change, not a redesign.
     cleanup();

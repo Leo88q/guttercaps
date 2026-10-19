@@ -15,6 +15,7 @@ const en = {
   ui,
   catalog,
   nav: {
+    roomPlay: 'Play', roomCollection: 'Collection', roomCity: 'City', roomMenu: 'Menu',
     home: 'Home', caps: 'Caps', shop: 'Shop', market: 'Market', arena: 'Arena', bowl: 'Bowl', stake: 'Stake',
     fusion: 'Fusion', guide: 'Guide', quests: 'Quests', grid: 'Floodgrid', leaderboard: 'Ranks', profile: 'Profile', more: 'More',
   },

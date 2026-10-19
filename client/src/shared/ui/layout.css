@@ -41,12 +41,9 @@ img { max-width: 100%; display: block; }
   background-size: cover; background-position: center top; background-repeat: no-repeat;
 }
 .shell-nav {
-  /* One column per tab, and the bar is a fixed-height single row — so this number has to equal the
-     NAV length in Shell.tsx. It drifted once already: 7 here against 10 tabs, which silently wrapped
-     into a second row that overflowed the 64px box and pushed half the bar off the screen. Bumping a
-     tab means bumping this; `smoke.test.tsx` fails if they disagree. The language picker used to be
-     the 10th entry and now lives in the header next to the balance. */
-  --gc-nav-tabs: 11;
+  /* One column per ROOM in the mobile bottom bar (Shell.tsx ROOMS). Sections live
+     inside rooms now, so this counts rooms (4), not sections; smoke.test.tsx pins it. */
+  --gc-nav-tabs: 4;
   order: 2; position: relative; left: auto; right: auto; bottom: auto; z-index: 30; display: grid;
   flex-shrink: 0; width: 100%;
   grid-template-columns: repeat(var(--gc-nav-tabs), minmax(0, 1fr));
@@ -54,6 +51,17 @@ img { max-width: 100%; display: block; }
   background: rgba(22, 21, 26, 0.96); border-top: 1px solid var(--gc-line);
 }
 .shell-nav a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-decoration: none; color: var(--gc-muted); font-size: 10.5px; min-height: 44px; }
+.shell-nav-side { display: none; }
+.shell-nav-rooms button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; background: none; border: 0; color: var(--gc-muted); font: inherit; font-size: 11px; min-height: 44px; cursor: pointer; padding: 4px 2px; }
+.shell-nav-rooms button.active { color: var(--cg-chrome); }
+.shell-nav-rooms button.active .nav-img { filter: drop-shadow(0 0 6px rgba(255, 61, 139, 0.45)); }
+.shell-nav-rooms .nav-img { filter: grayscale(0.55) brightness(0.8); opacity: 0.75; border-radius: 50%; transition: filter 0.2s ease, opacity 0.2s ease; }
+.shell-nav-rooms button.active .nav-img, .shell-nav-rooms button:hover .nav-img { filter: none; opacity: 1; }
+/* Вкладки комнаты на телефоне: верхний ряд под шапкой. */
+.room-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 8px 12px; position: sticky; top: 0; z-index: 25; background: rgba(13, 12, 16, 0.92); backdrop-filter: blur(6px); border-bottom: 1px solid var(--gc-line); scrollbar-width: none; }
+.room-tabs::-webkit-scrollbar { display: none; }
+.room-tab { flex: 0 0 auto; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--gc-line); color: var(--gc-muted); text-decoration: none; font-size: 12.5px; min-height: 32px; display: inline-flex; align-items: center; }
+.room-tab.active { color: #0c0b10; background: var(--cg-neon-magenta); border-color: var(--cg-neon-magenta); font-weight: 600; }
 .shell-nav a span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
 /* 9 tabs at 360px is 40px each: long labels and long locales both need the tighter face, and the
    word-break rules further down turn "Collection" into two lines rather than a clipped one.
@@ -70,7 +78,11 @@ img { max-width: 100%; display: block; }
 @media (min-width: 900px) {
   .shell { flex-direction: row; }
   .shell-header { position: sticky; }
-  .shell-nav { order: 0; position: relative; top: 0; bottom: auto; height: 100%; width: 92px; grid-template-columns: 1fr; grid-auto-rows: 72px; align-content: start; padding-top: 12px; border-top: 0; border-right: 1px solid var(--gc-line); }
+  .shell-nav-rooms { display: none; }
+  .room-tabs { display: none; }
+  .shell-nav-side { order: 0; position: relative; top: 0; bottom: auto; height: 100%; width: 92px; display: flex; flex-direction: column; align-content: start; padding-top: 8px; border-top: 0; border-right: 1px solid var(--gc-line); overflow-y: auto; }
+  .shell-nav-side a { min-height: 58px; flex: 0 0 auto; }
+  .nav-group-title { padding: 10px 4px 2px; text-align: center; font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gc-muted); }
   .shell-body { order: 0; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
   .shell-main { padding-bottom: 32px; }
   .wait-pill { bottom: 24px; }

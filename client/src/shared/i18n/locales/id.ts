@@ -14,7 +14,8 @@ const id: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Beranda', caps: 'Caps', shop: 'Toko', market: 'Pasar', arena: 'Arena', bowl: 'Skate', stake: 'Stake', fusion: 'Fusi', guide: 'Panduan', quests: 'Misi', grid: 'Floodgrid', leaderboard: 'Peringkat', profile: 'Profil', more: 'Lainnya' },
+  nav: {
+    roomPlay: 'Main', roomCollection: 'Koleksi', roomCity: 'Kota', roomMenu: 'Menu', home: 'Beranda', caps: 'Caps', shop: 'Toko', market: 'Pasar', arena: 'Arena', bowl: 'Skate', stake: 'Stake', fusion: 'Fusi', guide: 'Panduan', quests: 'Misi', grid: 'Floodgrid', leaderboard: 'Peringkat', profile: 'Profil', more: 'Lainnya' },
   grid: {
     title: 'Floodgrid', subtitle: 'Route the flood through 75 sectors. Every chip walks its own route — XP, charge and gifts included.',
     boardPart: 'Dapat suku cadang papan — lihat di Builder', chipsCount: '{n} chip', floodEmpty: 'Belum ada poin minggu ini — sektor yang selesai memberi poin ke distrik chip-nya',

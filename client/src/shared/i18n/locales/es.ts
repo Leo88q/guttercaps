@@ -14,7 +14,8 @@ const es: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Inicio', caps: 'Caps', shop: 'Tienda', market: 'Mercado', arena: 'Arena', bowl: 'Skate', stake: 'Stake', fusion: 'Fusión', guide: 'Guía', quests: 'Misiones', grid: 'Floodgrid', leaderboard: 'Ranking', profile: 'Perfil', more: 'Más' },
+  nav: {
+    roomPlay: 'Jugar', roomCollection: 'Colección', roomCity: 'Ciudad', roomMenu: 'Menú', home: 'Inicio', caps: 'Caps', shop: 'Tienda', market: 'Mercado', arena: 'Arena', bowl: 'Skate', stake: 'Stake', fusion: 'Fusión', guide: 'Guía', quests: 'Misiones', grid: 'Floodgrid', leaderboard: 'Ranking', profile: 'Perfil', more: 'Más' },
   grid: {
     title: 'Floodgrid', subtitle: 'Route the flood through 75 sectors. Every chip walks its own route — XP, charge and gifts included.',
     boardPart: 'Pieza de tabla ganada: mírala en el Constructor', chipsCount: '{n} fichas', floodEmpty: 'Aún no hay puntos esta semana: los sectores superados puntúan para el distrito de su ficha',

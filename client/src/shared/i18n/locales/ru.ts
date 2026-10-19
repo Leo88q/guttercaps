@@ -14,7 +14,8 @@ const ru: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Главная', caps: 'Фишки', shop: 'Паки', market: 'Маркет', arena: 'Арена', bowl: 'Бассейн', stake: 'Стейк', fusion: 'Слияние', guide: 'Гайд', quests: 'Квесты', grid: 'Floodgrid', leaderboard: 'Топ', profile: 'Профиль', more: 'Ещё' },
+  nav: {
+    roomPlay: 'Игра', roomCollection: 'Коллекция', roomCity: 'Город', roomMenu: 'Меню', home: 'Главная', caps: 'Фишки', shop: 'Паки', market: 'Маркет', arena: 'Арена', bowl: 'Бассейн', stake: 'Стейк', fusion: 'Слияние', guide: 'Гайд', quests: 'Квесты', grid: 'Floodgrid', leaderboard: 'Топ', profile: 'Профиль', more: 'Ещё' },
   grid: {
     title: 'Решётка', subtitle: 'Проведи паводок через 75 секторов. У каждой фишки — свой маршрут, XP, заряд и подарки.',
     boardPart: 'Получена часть доски — смотри в конструкторе', chipsCount: 'Фишек: {n}', floodEmpty: 'Очков за неделю пока нет — пройденные секторы дают очки району своей фишки',

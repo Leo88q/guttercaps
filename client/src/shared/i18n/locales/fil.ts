@@ -14,7 +14,8 @@ const fil: Messages = {
   screens,
   ui,
   catalog,
-  nav: { home: 'Home', caps: 'Caps', shop: 'Tindahan', market: 'Palengke', arena: 'Arena', bowl: 'Skate', stake: 'Stake', fusion: 'Fusion', guide: 'Gabay', quests: 'Quests', grid: 'Floodgrid', leaderboard: 'Ranggo', profile: 'Profile', more: 'Iba pa' },
+  nav: {
+    roomPlay: 'Laro', roomCollection: 'Koleksyon', roomCity: 'Lungsod', roomMenu: 'Menu', home: 'Home', caps: 'Caps', shop: 'Tindahan', market: 'Palengke', arena: 'Arena', bowl: 'Skate', stake: 'Stake', fusion: 'Fusion', guide: 'Gabay', quests: 'Quests', grid: 'Floodgrid', leaderboard: 'Ranggo', profile: 'Profile', more: 'Iba pa' },
   grid: {
     title: 'Floodgrid', subtitle: 'Route the flood through 75 sectors. Every chip walks its own route — XP, charge and gifts included.',
     boardPart: 'May nakuha kang piyesa ng board — tingnan sa Builder', chipsCount: '{n} chips', floodEmpty: 'Wala pang points ngayong linggo — ang mga natapos na sector ay nagbibigay ng points sa distrito ng chip nito',
