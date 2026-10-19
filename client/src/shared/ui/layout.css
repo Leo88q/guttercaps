@@ -655,7 +655,8 @@ html.reduced-motion .step-spin { animation: none; opacity: .7; }
 .page-bg-verify { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-verify.jpg); }
 .page-bg-drain { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-drain.jpg); }
 .page-bg-pot { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-pot.jpg); }
-.pot-art { width: 160px; height: 160px; border-radius: 50%; object-fit: cover; }
+.pot-art { width: 160px; height: 160px; border-radius: 50%; object-fit: cover; background: #0c0b10; box-shadow: 0 0 0 2px rgba(255, 46, 138, 0.55), 0 0 28px rgba(255, 46, 138, 0.28); }
+.pot-art-sm { background: #0c0b10; box-shadow: 0 0 0 1px rgba(255, 46, 138, 0.45); }
 .pot-art-sm { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
 .pot-winners { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; text-align: left; }
 .pot-winners li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 8px; border-radius: 8px; background: color-mix(in srgb, var(--cg-asphalt) 70%, transparent); }
