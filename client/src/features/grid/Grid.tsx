@@ -37,7 +37,7 @@ interface AttemptStart {
   board: { size: number; bus: number; receivers: number[]; tiles: BoardTile[] };
 }
 type CompleteResult =
-  | { ok: true; training: boolean; kind?: string; beaten?: boolean; rank?: number; stars?: number; xpGranted?: number; xpPending?: number; passXp?: number; dropletGained?: boolean; gifts?: { kind: string; amount: number }[] }
+  | { ok: true; training: boolean; kind?: string; beaten?: boolean; rank?: number; stars?: number; xpGranted?: number; xpPending?: number; passXp?: number; dropletGained?: boolean; boardPart?: string | null; gifts?: { kind: string; amount: number }[] }
   | { ok: false; xpLoss?: number; emergencyGranted?: boolean };
 
 interface PlayState {
@@ -613,6 +613,7 @@ export default function Grid() {
                 {!result.training && <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
                   <span>{t('grid.stars', { n: result.stars ?? 0 })}</span>
                   {(result.xpGranted ?? 0) > 0 && <span>{t('grid.xp', { n: result.xpGranted })}</span>}
+                  {result.boardPart && <span>{t('grid.boardPart')}</span>}
                   {(result.xpPending ?? 0) > 0 && <span>{t('grid.pending', { n: result.xpPending })}</span>}
                   {(result.passXp ?? 0) > 0 && <span>{t('grid.passXp', { n: result.passXp })}</span>}
                   {result.dropletGained && <span className="vfx-host" style={{ display: 'inline-block', padding: '2px 10px' }}><SplatBackdrop color="acid" variant="a" size={56} style={{ right: -12, top: -18 }} />{t('grid.droplet')}</span>}

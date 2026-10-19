@@ -13,6 +13,7 @@ import { type Db, now } from './db.ts';
 import { creditChipXp } from './chip-xp.ts';
 import { ServiceError, claimGridDeepAttempt } from './services.ts';
 import { addPassXp, passSeasonId } from './pass.ts';
+import { grantWeeklyGridPart, grantDistrictGridPart, grantDeepTrophyPart } from './board.ts';
 
 const DAY = 86_400;
 export const gridDay = (t: number) => Math.floor(t / DAY);
@@ -419,10 +420,15 @@ export function completeGridAttempt(db: Db, wallet: string, body: GridCompleteIn
     for (const m of GRID.starMilestones) if (prev < m.stars && totalStars >= m.stars) { grantGridHints(db, wallet, m.hints, t); if (m.valves) grantGridValve(db, wallet, t); if (m.skin) grantGridCosmetic(db, wallet, 'skin', m.skin, `grid:stars:${m.stars}:skin:${m.skin}`, t); }
   }
   db.run(`UPDATE grid_attempts SET settled = 1, settled_at = ? WHERE id = ?`, t, attempt.id);
+  // Доски коллекционируются через Floodgrid (2026-10-19): сектор на 2+ звезды
+  // раз в неделю даёт недостающую часть района недели, а первый 3★-сектор
+  // фишкой района — следующую недостающую часть именно этого района.
+  const boardPart = grantWeeklyGridPart(db, wallet, stars, t)
+    ?? grantDistrictGridPart(db, wallet, chip.collection_idx, stars, existing?.best_stars ?? 0, t);
   return {
     ok: true as const, training: false, level: attempt.level, moves, par: lv.parMoves, stars, hintsUsed: totalHints,
     xpGranted: credit.granted, xpPending: pendingAdd, fromLevel: credit.fromLevel, toLevel: credit.toLevel,
-    dropletGained, gifts, route: gridRoute(db, attempt.asset), wallet: ensureGridWallet(db, wallet, t),
+    dropletGained, gifts, boardPart: boardPart?.part ?? null, route: gridRoute(db, attempt.asset), wallet: ensureGridWallet(db, wallet, t),
   };
 }
 
@@ -494,8 +500,11 @@ function settleSpecialAttempt(db: Db, wallet: string, attempt: { id: string; ass
           ON CONFLICT(wallet, week) DO UPDATE SET moves = excluded.moves, stars = excluded.stars, asset = excluded.asset, created_at = excluded.created_at WHERE excluded.moves < grid_deep_results.moves`, wallet, week, attempt.asset, moves, stars, t);
   const best = db.get<{ moves: number; stars: number }>(`SELECT moves, stars FROM grid_deep_results WHERE wallet = ? AND week = ?`, wallet, week);
   const rank = db.scalar(`SELECT COUNT(*) FROM grid_deep_results WHERE week = ? AND moves < ?`, week, best?.moves ?? moves) + 1;
+  // Трофеи Deep Flood (2026-10-19): победа в бюджете даёт городскую трофейную
+  // часть доски — сначала деку, второй победой грип (grantDeepTrophyPart).
+  const boardPart = grantDeepTrophyPart(db, wallet, t);
   settle();
-  return { ok: true as const, training: false as const, kind, stars, moves, par, xpGranted: 0, xpPending: 0, rank, wallet: ensureGridWallet(db, wallet, t) };
+  return { ok: true as const, training: false as const, kind, stars, moves, par, xpGranted: 0, xpPending: 0, rank, boardPart: boardPart?.part ?? null, wallet: ensureGridWallet(db, wallet, t) };
 }
 
 export function failGridAttempt(db: Db, wallet: string, body: GridCompleteInput, t = now()) {

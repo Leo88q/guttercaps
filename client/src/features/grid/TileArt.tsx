@@ -44,6 +44,10 @@ export interface TileArtProps {
   material: GridTileSet;
   /** Шаг волны потока (BFS-расстояние от шины). */
   flowStep: number;
+  /** Скорость воды 0..1 из гидравлического решателя: быстрее поток — живее вода. */
+  flowVel?: number;
+  /** Под током, но есть открытый конец: вода уходит наружу (капля на клетке). */
+  leaking?: boolean;
 }
 
 export function TileArt({ mask, vis, powered, isBus, isReceiver, fixed, highlight, accent, material, flowStep }: TileArtProps) {
@@ -51,15 +55,19 @@ export function TileArt({ mask, vis, powered, isBus, isReceiver, fixed, highligh
   const atlas = gridAtlasUrl(material);
   /** Ячейка спрайта в полосе атласа: x-позиция фона/маски в процентах (по форме текущей маски). */
   const pos = useMemo(() => `${(shapeIndexOf(mask) / 4) * 100}% 0%`, [mask]);
-  /** Брызги в момент стыковки: один проход, пока труба только что подключилась. */
+  /** Брызги и фронт заполнения в момент стыковки: вода не «включается»
+   *  разом по всей трубе, а входит фронтом (priming front — приём из
+   *  шейдера жидкости: фронт идёт по трубе и только за ним поток). */
   const [splash, setSplash] = useState(false);
+  const [priming, setPriming] = useState(false);
   const wasPowered = useRef(powered);
   useEffect(() => {
     const joined = powered && !wasPowered.current;
     wasPowered.current = powered;
     if (!joined) return;
     setSplash(true);
-    const id = window.setTimeout(() => setSplash(false), 560);
+    setPriming(true);
+    const id = window.setTimeout(() => { setSplash(false); setPriming(false); }, 620);
     return () => window.clearTimeout(id);
   }, [powered]);
 
@@ -84,7 +92,11 @@ export function TileArt({ mask, vis, powered, isBus, isReceiver, fixed, highligh
       {powered && (
         <>
           <span className="gt-f" style={{ ...maskStyle, animationDelay: `${-flowStep * 140}ms` }} />
-          <span className="gt-w" style={{ ...maskStyle, animationDelay: `${-flowStep * 90}ms` }} />
+          {/* Жидкость слоями, как в шейдере: быстрый светлый «стержень» по оси
+              трубы и медленные пузыри у стенок (профиль скорости), а при
+              подключении сначала проходит фронт заполнения (gt-prime). */}
+          <span className={`gt-w${priming ? ' gt-prime' : ''}`} style={{ ...maskStyle, animationDelay: `${-flowStep * 90}ms`, animationDuration: `${Math.round((0.95 + Math.min(flowStep * 0.05, 0.7)) * 100) / 100}s` }} />
+          <span className={`gt-core${priming ? ' gt-prime' : ''}`} style={{ ...maskStyle, animationDelay: `${-flowStep * 90}ms` }} />
         </>
       )}
       {splash && <span className="gt-splash" />}
