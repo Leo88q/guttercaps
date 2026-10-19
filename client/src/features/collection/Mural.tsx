@@ -11,7 +11,7 @@
 // здесь занимается только раскладкой, поворотом и состоянием.
 import type { CSSProperties } from 'react';
 import { useCollections } from '@/shared/lib/lore';
-import { collectionColor, rarityColor, rarityName, chipName, chipArtUrl } from '@/shared/lib/rarity';
+import { collectionColor, rarityName, chipName, chipArtUrl } from '@/shared/lib/rarity';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { useT } from '@/shared/i18n';
 
@@ -67,7 +67,7 @@ export function Mural({
               key={ri}
               type="button"
               className={`mural-tag${owned ? '' : ' is-missing'}`}
-              style={{ left: `${s.x}%`, top: `${s.y}%`, ['--rot' as string]: `${s.r}deg`, borderColor: owned ? rarityColor(ri) : undefined }}
+              style={{ left: `${s.x}%`, top: `${s.y}%`, ['--rot' as string]: `${s.r}deg` }}
               aria-label={owned ? t('mural.painted', { name }) : t('mural.blank', { name })}
               title={owned ? `${name} · ${rarityName(ri)}` : `${t('mural.blank', { name })} · ${rarityName(ri)}`}
               onClick={() => onPick?.(ri, owned)}

@@ -229,11 +229,10 @@ export function submitRun(db: Db, wallet: string, body: Record<string, unknown> 
       }
     }
 
-    // Награда 3: часть доски (§4.2). Один раз в неделю и только за «проехал
-    // линию» — ниже silver доска не собирается: «выехал и упал» не то же, что
-    // «проехал». Выдаётся недостающий слот района недели, а не всегда дека,
-    // поэтому повтор недели не складывает в инвентарь четыре деки подряд.
-    const part = tier === 'none' ? null : grantWeeklyRunPart(db, wallet, tier, t);
+    // Награда 3: часть доски — ОТКЛЮЧЕНА (2026-10-19): скейт-заезды убраны из
+    // продукта, доски коллекционируются через Floodgrid (grantWeeklyGridPart).
+    // Исторические выдачи остаются в БД, новые из заездов не начисляются.
+    const part = null as null;
 
     recordEvent(db, wallet, 'line', 'run', { score: res.score, paid, tier, bails: res.bails }, t);
     if (tournament) recordEvent(db, wallet, 'tournament', 'run', { score: res.score, tier }, t);
@@ -243,7 +242,7 @@ export function submitRun(db: Db, wallet: string, body: Record<string, unknown> 
         id, day, week: weekIndex(t), score: res.score, tricks: res.tricks, bestCombo: res.bestCombo,
         bails: res.bails, paid, tier, submittedAt: iso(t),
       },
-      granted: { passXp: xp, hints, valve, tier, part: part?.part ?? null },
+      granted: { passXp: xp, hints, valve, tier, part },
       state: lineState(db, wallet, t),
     };
   });
@@ -264,7 +263,10 @@ export function buyExtraRun(db: Db, wallet: string, body: Record<string, unknown
   }
   const signature = String(body?.signature ?? '').trim();
   if (!/^[1-9A-HJ-NP-Za-km-z]{32,128}$/.test(signature)) throw new ServiceError(400, 'bad_signature', 'signature must be a transaction id');
-  const kind = SERVICE_BY_ID.lineExtraRun.kind;
+  // Заезды убраны из продукта (2026-10-19): услуга снята с продажи, покупка закрыта.
+  const svc = SERVICE_BY_ID.lineExtraRun as typeof SERVICE_BY_ID.lineExtraRun | undefined;
+  if (!svc) throw new ServiceError(410, 'line_retired', 'The Line is retired');
+  const kind = svc.kind;
   const payload = { id: 'lineExtraRun', day };
   const expected = toHex(serviceRefHash(kind, wallet, payload));
   return db.tx(() => {

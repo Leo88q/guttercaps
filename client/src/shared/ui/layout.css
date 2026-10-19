@@ -41,12 +41,9 @@ img { max-width: 100%; display: block; }
   background-size: cover; background-position: center top; background-repeat: no-repeat;
 }
 .shell-nav {
-  /* One column per tab, and the bar is a fixed-height single row — so this number has to equal the
-     NAV length in Shell.tsx. It drifted once already: 7 here against 10 tabs, which silently wrapped
-     into a second row that overflowed the 64px box and pushed half the bar off the screen. Bumping a
-     tab means bumping this; `smoke.test.tsx` fails if they disagree. The language picker used to be
-     the 10th entry and now lives in the header next to the balance. */
-  --gc-nav-tabs: 10;
+  /* One column per ROOM in the mobile bottom bar (Shell.tsx ROOMS). Sections live
+     inside rooms now, so this counts rooms (4), not sections; smoke.test.tsx pins it. */
+  --gc-nav-tabs: 4;
   order: 2; position: relative; left: auto; right: auto; bottom: auto; z-index: 30; display: grid;
   flex-shrink: 0; width: 100%;
   grid-template-columns: repeat(var(--gc-nav-tabs), minmax(0, 1fr));
@@ -54,6 +51,17 @@ img { max-width: 100%; display: block; }
   background: rgba(22, 21, 26, 0.96); border-top: 1px solid var(--gc-line);
 }
 .shell-nav a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-decoration: none; color: var(--gc-muted); font-size: 10.5px; min-height: 44px; }
+.shell-nav-side { display: none; }
+.shell-nav-rooms button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; background: none; border: 0; color: var(--gc-muted); font: inherit; font-size: 11px; min-height: 44px; cursor: pointer; padding: 4px 2px; }
+.shell-nav-rooms button.active { color: var(--cg-chrome); }
+.shell-nav-rooms button.active .nav-img { filter: drop-shadow(0 0 6px rgba(255, 61, 139, 0.45)); }
+.shell-nav-rooms .nav-img { filter: grayscale(0.55) brightness(0.8); opacity: 0.75; border-radius: 50%; transition: filter 0.2s ease, opacity 0.2s ease; }
+.shell-nav-rooms button.active .nav-img, .shell-nav-rooms button:hover .nav-img { filter: none; opacity: 1; }
+/* Вкладки комнаты на телефоне: верхний ряд под шапкой. */
+.room-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 8px 12px; position: sticky; top: 0; z-index: 25; background: rgba(13, 12, 16, 0.92); backdrop-filter: blur(6px); border-bottom: 1px solid var(--gc-line); scrollbar-width: none; }
+.room-tabs::-webkit-scrollbar { display: none; }
+.room-tab { flex: 0 0 auto; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--gc-line); color: var(--gc-muted); text-decoration: none; font-size: 12.5px; min-height: 32px; display: inline-flex; align-items: center; }
+.room-tab.active { color: #0c0b10; background: var(--cg-neon-magenta); border-color: var(--cg-neon-magenta); font-weight: 600; }
 .shell-nav a span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
 /* 9 tabs at 360px is 40px each: long labels and long locales both need the tighter face, and the
    word-break rules further down turn "Collection" into two lines rather than a clipped one.
@@ -70,7 +78,11 @@ img { max-width: 100%; display: block; }
 @media (min-width: 900px) {
   .shell { flex-direction: row; }
   .shell-header { position: sticky; }
-  .shell-nav { order: 0; position: relative; top: 0; bottom: auto; height: 100%; width: 92px; grid-template-columns: 1fr; grid-auto-rows: 72px; align-content: start; padding-top: 12px; border-top: 0; border-right: 1px solid var(--gc-line); }
+  .shell-nav-rooms { display: none; }
+  .room-tabs { display: none; }
+  .shell-nav-side { order: 0; position: relative; top: 0; bottom: auto; height: 100%; width: 92px; display: flex; flex-direction: column; align-content: start; padding-top: 8px; border-top: 0; border-right: 1px solid var(--gc-line); overflow-y: auto; }
+  .shell-nav-side a { min-height: 58px; flex: 0 0 auto; }
+  .nav-group-title { padding: 10px 4px 2px; text-align: center; font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gc-muted); }
   .shell-body { order: 0; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
   .shell-main { padding-bottom: 32px; }
   .wait-pill { bottom: 24px; }
@@ -374,7 +386,7 @@ img { max-width: 100%; display: block; }
 html.reduced-motion .step-spin { animation: none; opacity: .7; }
 
 /* ---------- fusion bench ---------- */
-.bench { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; align-items: center; }
+.bench { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: center; }
 .bench .slot { aspect-ratio: 1; border-radius: 50%; border: 2px dashed color-mix(in srgb, var(--gc-line-strong) 70%, transparent); display: grid; place-items: center; color: var(--gc-muted); font-size: 12px; cursor: pointer; }
 /* empty slot = spray-stencil circle + spinning live-slot ring, not baked graffiti art */
 .bench .slot.slot-empty,
@@ -411,7 +423,7 @@ html.reduced-motion .step-spin { animation: none; opacity: .7; }
 .bench-arrow { text-align: center; font-size: 24px; color: var(--gc-muted); }
 
 /* ---------- arena ---------- */
-.squad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.squad { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 /* empty squad pick slot: generated spray-stencil circle art, «+» stays pressable via the wrapper */
 .squad-slot-empty {
   border-radius: 50%;
@@ -655,7 +667,8 @@ html.reduced-motion .step-spin { animation: none; opacity: .7; }
 .page-bg-verify { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-verify.jpg); }
 .page-bg-drain { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-drain.jpg); }
 .page-bg-pot { background-image: linear-gradient(rgba(13,12,16,0.60), rgba(13,12,16,0.60)), url(/bg/game-pot.jpg); }
-.pot-art { width: 160px; height: 160px; border-radius: 50%; object-fit: cover; }
+.pot-art { width: 160px; height: 160px; border-radius: 50%; object-fit: cover; background: #0c0b10; box-shadow: 0 0 0 2px rgba(255, 46, 138, 0.55), 0 0 28px rgba(255, 46, 138, 0.28); }
+.pot-art-sm { background: #0c0b10; box-shadow: 0 0 0 1px rgba(255, 46, 138, 0.45); }
 .pot-art-sm { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
 .pot-winners { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; text-align: left; }
 .pot-winners li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 8px; border-radius: 8px; background: color-mix(in srgb, var(--cg-asphalt) 70%, transparent); }
@@ -717,17 +730,22 @@ html.reduced-motion .step-spin { animation: none; opacity: .7; }
   content: ''; position: absolute; inset: 0; background: var(--district, #16E5D9);
   opacity: 0.1; pointer-events: none;
 }
+/* No square frames on the wall: tags sit directly on the paint — the round
+   chip art is the whole tag. Owned and missing differ by colour only. */
 .mural-tag {
   position: absolute; width: 25%; aspect-ratio: 1 / 1; padding: 0; overflow: visible;
-  border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 8px; background: rgba(9, 8, 12, 0.5);
-  box-shadow: 0 8px 20px -12px #000; cursor: pointer;
+  border: none; border-radius: 50%; background: transparent;
+  box-shadow: none; cursor: pointer;
   transform: rotate(var(--rot, 0deg)); transition: transform 0.18s ease, filter 0.18s ease, opacity 0.18s ease;
 }
 .mural-tag:hover, .mural-tag:focus-visible { transform: rotate(var(--rot, 0deg)) scale(1.07); z-index: 3; }
-.mural-tag.is-missing { filter: grayscale(1) brightness(0.6); opacity: 0.5; border-style: dashed; }
+.mural-tag:hover { filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.55)); }
+.mural-tag:focus-visible { outline: 2px solid var(--district, #16E5D9); outline-offset: 3px; }
+.mural-tag.is-missing { filter: grayscale(1) brightness(0.6); opacity: 0.5; }
 .mural-dust {
-  position: absolute; left: 0; right: 0; bottom: -1px; font-size: 9px; line-height: 14px;
-  color: #d8d7de; background: rgba(0, 0, 0, 0.55); border-radius: 0 0 7px 7px;
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: 4px; padding: 0 6px;
+  font-size: 9px; line-height: 14px; white-space: nowrap;
+  color: #d8d7de; background: rgba(0, 0, 0, 0.55); border-radius: 999px;
 }
 .mural-done {
   position: absolute; right: 8px; bottom: 8px; z-index: 4; padding: 3px 9px; border-radius: 999px;
@@ -1073,7 +1091,8 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 
 .gt-s,
 .gt-f,
-.gt-w {
+.gt-w,
+.gt-core {
   position: absolute;
   inset: 0;
   background-size: 500% 100%;
@@ -1196,6 +1215,38 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
   100% { transform: scale(1.45); opacity: 0; }
 }
 
+/* Ядро потока: светлая «жила» по оси трубы с бликом — поверх пузырей, быстрее
+   их (центр профиля скорости обгоняет стенки, как в шейдере жидкости). */
+.gt-core {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  mask-size: 500% 100%;
+  -webkit-mask-size: 500% 100%;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  background-image:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, .95), rgba(255, 255, 255, 0) 55%),
+    linear-gradient(90deg, rgba(10, 90, 140, .55), rgba(190, 240, 255, .85) 50%, rgba(10, 90, 140, .55));
+  background-size: 11px 11px, 100% 100%;
+  background-repeat: repeat, no-repeat;
+  opacity: .5;
+  filter: blur(.4px);
+  animation: gt-water .62s linear infinite;
+}
+
+/* Фронт заполнения при подключении: вода входит в трубу фронтом, а не
+   загорается по всей длине разом (uFill из шейдера патча). */
+.gt-prime {
+  animation: gt-prime .55s ease-out, gt-water .8s linear infinite;
+}
+
+@keyframes gt-prime {
+  from { clip-path: inset(0 88% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
 /* Вода течёт: пузыри ползут вдоль трубы ровно на один шаг своего узора (15 и 9 px) —
    петля бесшовная. Полоски сознательно убраны: на границе соседних клеток узор ломался и
    щель читалась сильнее, чем сама труба; редкие пузыри шва не дают. */
@@ -1270,40 +1321,6 @@ html.reduced-motion .gt-f,
 html.reduced-motion .gt-w { transition: none; }
 html.reduced-motion .gt-shutter-body { transition: none; }
 
-/* docs/16 §4.6 — the rider: a district silhouette lit by a paid theme. Looks
-   only, so the whole block is presentation: no numbers anywhere near it.
-   No color-mix here either (same reason as the mural): the glow is a layer
-   with its own opacity, which every engine we ship to understands. */
-.rider {
-  position: relative; display: flex; align-items: flex-end; gap: 12px; padding: 10px 12px;
-  border-radius: 12px; border: 1px solid var(--gc-line, #2a2933); background: #0c0b10; overflow: hidden;
-}
-.rider::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0.16;
-  background: radial-gradient(120% 130% at 28% 12%, var(--lamp, #16E5D9), transparent 68%);
-}
-.rider.is-themed { border-color: var(--lamp, #16E5D9); }
-.rider-figure { position: relative; flex: 0 0 auto; width: 96px; height: 132px; display: block; }
-.rider-figure img {
-  width: 100%; height: 100%; object-fit: contain; object-position: bottom center; display: block;
-  /* Свет темы ложится вокруг кадра, а не перекрашивает его: искусство остаётся
-     своим, меняется только подсветка. */
-  filter: drop-shadow(0 0 10px var(--lamp, #16E5D9))
-          drop-shadow(0 0 26px color-mix(in srgb, var(--lamp, #16E5D9) 45%, transparent));
-}
-.rider-meta { position: relative; display: flex; flex-direction: column; gap: 2px; padding-bottom: 6px; }
-.rider-picks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.rider-pick {
-  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px;
-  border: 1px solid var(--gc-line, #2a2933); border-radius: 10px; background: rgba(255, 255, 255, 0.02);
-  color: inherit; cursor: pointer; transition: border-color 0.15s ease, background 0.15s ease;
-}
-.rider-pick img { width: 100%; height: 64px; object-fit: contain; object-position: bottom center; display: block; }
-.rider-pick.is-active { border-color: var(--gc-accent, #16E5D9); background: rgba(22, 229, 217, 0.08); }
-.rider-pick:hover { border-color: var(--gc-accent, #16E5D9); }
-@media (max-width: 420px) { .rider-picks { grid-template-columns: repeat(3, 1fr); } }
-@media (prefers-reduced-motion: reduce) { .rider-pick { transition: none; } }
-
 /* docs/16 §4.7 — achievements: a real badge file, the progress, and a reward
    that is never money. */
 .ach-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
@@ -1321,3 +1338,30 @@ html.reduced-motion .gt-shutter-body { transition: none; }
 .ach-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .ach-act { display: flex; align-items: center; min-height: 28px; }
 @media (max-width: 420px) { .ach-card { grid-template-columns: 36px 1fr; } .ach-act { grid-column: 2; } }
+
+/* Пустой слот с артом (Слияние/Арена, 2026-10-19): сгенерированный кадр
+   закрывает круг целиком, плюс остаётся маленьким значком поверх. */
+.slot.slot-empty, .slot.squad-slot-empty { position: relative; overflow: hidden; }
+.slot-art-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
+.slot-art-plus {
+  position: relative; z-index: 1; display: grid; place-items: center;
+  width: 34px; height: 34px; border-radius: 50%;
+  background: rgba(5, 5, 8, 0.62); color: #F2F4F5; font-size: 20px; line-height: 1;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+/* Шторка фишек Floodgrid: компактные строки вместо ленты карточек. */
+.gx-chip-list { display: flex; flex-direction: column; gap: 6px; padding: 0 12px 12px; max-height: 320px; overflow-y: auto; }
+.gx-chip-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 7px 10px; border: 1px solid var(--gc-line, #2a2933); border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02); color: inherit; cursor: pointer;
+}
+.gx-chip-row:hover { border-color: var(--gc-accent, #16E5D9); }
+.gx-chip-row.is-active { border-color: var(--acid, #B6FF3C); background: rgba(182, 255, 60, 0.06); }
+.gx-chip-row:focus-visible { outline: 2px solid var(--gc-accent, #16E5D9); outline-offset: 2px; }
+.gx-chip-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+/* Цель района: имя, полоса прогресса, счёт. */
+.gx-goal { display: grid; grid-template-columns: minmax(86px, 1fr) 90px auto; align-items: center; gap: 8px; }
+.gx-goal-bar { height: 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; display: block; }
+.gx-goal-bar > span { display: block; height: 100%; background: var(--acid, #B6FF3C); border-radius: 999px; }
