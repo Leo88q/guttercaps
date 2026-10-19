@@ -228,7 +228,20 @@ on('post', '/grid/complete', (o) => {
   const due = Math.max(0, gridXpForStars(a.level, stars) - (prev?.xp_accounted ?? 0));
   r.claims.set(a.level, { best_stars: Math.max(prev?.best_stars ?? 0, stars), xp_accounted: (prev?.xp_accounted ?? 0) + due });
   if (!prev && a.level === r.nextLevel) r.nextLevel = Math.min(GRID_RULES.totalLevels + 1, r.nextLevel + 1);
-  return { ok: true, training: false, stars, xpGranted: due, xpPending: 0, dropletGained: false, gifts: [] };
+  // Доски через Floodgrid (2026-10-19): сектор на 2+ звезды раз в неделю даёт
+  // недостающую часть района недели — как серверный grantWeeklyGridPart.
+  let boardPart: string | null = null;
+  if (stars >= 2 && !mockBoardWeekGranted.has(String(mockBoardWeek()))) {
+    const district = boardDistrictOfWeek(mockBoardWeek());
+    const missingSlot = BOARD_SET_SLOTS.find((slot) => !mockBoardParts.has(`${slot}_d${district}`));
+    if (missingSlot) {
+      boardPart = `${missingSlot}_d${district}`;
+      const cur = mockBoardParts.get(boardPart);
+      mockBoardParts.set(boardPart, { qty: (cur?.qty ?? 0) + 1, source: 'grid', createdAt: Date.now() / 1000 });
+      mockBoardWeekGranted.add(String(mockBoardWeek()));
+    }
+  }
+  return { ok: true, training: false, stars, xpGranted: due, xpPending: 0, dropletGained: false, gifts: [], boardPart };
 });
 on('post', '/grid/fail', (o) => {
   const b = (o.body ?? {}) as { attemptId: string; useValve?: boolean };
@@ -262,7 +275,7 @@ const entitlements: { id: string; kind: number; payload: Record<string, unknown>
 ];
 on('get', '/me/services', () => ({ entitlements, dailyLeft: { '7': 3, '0': 1, '1': 1 } }));
 on('get', '/services', () => ({
-  services: SERVICES.map((sv) => ({ id: sv.id, kind: sv.kind, name: sv.name, priceUsdCents: sv.priceUsdCents, dailyCap: sv.dailyCap, recurring: sv.recurring, quotes: {
+  services: SERVICES.filter((sv) => !sv.retired).map((sv) => ({ id: sv.id, kind: sv.kind, name: sv.name, priceUsdCents: sv.priceUsdCents, dailyCap: sv.dailyCap, recurring: sv.recurring, quotes: {
     SOL: String(solLamportsForUsdCents(sv.priceUsdCents)), USDC: String(usdcMicroForUsdCents(sv.priceUsdCents)), CG: String(sv.priceUsdCents * 1_000_000), SKR: String(skrMicroForUsdCents(sv.priceUsdCents)),
   } })),
   solUsd: SOL_USD, skrUsd: SKR_USD,
@@ -491,9 +504,7 @@ const rigCaps = (wallet = ME) => {
   return [...byKey.values()];
 };
 /** Райдер (§4.6) в моке: такой же объект, что отдаёт бэкенд. */
-let mockRider = { silhouette: 0, theme: null as string | null };
 /** Чужой райдер детерминирован по адресу: витрина одного кошелька всегда одна и та же. */
-const riderOfWallet = (wallet: string) => ({ silhouette: [...wallet].reduce((a, ch) => (a + ch.charCodeAt(0)) % 8, 0), theme: null as string | null });
 
 const rigView = (wallet = ME) => {
   const caps = rigCaps(wallet);
@@ -509,7 +520,7 @@ const rigView = (wallet = ME) => {
   });
   const locked = slots.find((s) => !s.unlocked);
   return {
-    wallet, rider: wallet === ME ? mockRider : riderOfWallet(wallet), public: wallet === ME ? mockRigPublic : true,
+    wallet, public: wallet === ME ? mockRigPublic : true,
     // Чужая витрина показывает три крышки на доске, а не всю коллекцию.
     caps: wallet === ME ? caps : [],
     slots, next: locked ? { slot: locked.slot, need: locked.unlockAt - caps.length } : null,
@@ -531,24 +542,6 @@ on('put', '/rig', (o) => {
   if (typeof b.public === 'boolean') mockRigPublic = b.public;
   return rigView(ME);
 });
-on('put', '/me/rider', (o) => {
-  const b = (o.body ?? {}) as { silhouette?: number; theme?: string | null };
-  if (b.silhouette !== undefined) {
-    const n = Number(b.silhouette);
-    if (!Number.isInteger(n) || n < 0 || n > 7) throw new ApiError(400, 'bad_silhouette', 'silhouette must be 0..7');
-    mockRider = { ...mockRider, silhouette: n };
-  }
-  if (b.theme !== undefined) {
-    if (b.theme === null || b.theme === '') mockRider = { ...mockRider, theme: null };
-    else {
-      // Ровно та проверка, что на сервере: надеть можно только оплаченную тему.
-      const owned = entitlements.filter((e) => e.kind === 3).map((e) => String((e.payload as { theme?: unknown })?.theme ?? ''));
-      if (!owned.includes(String(b.theme))) throw new ApiError(403, 'theme_not_owned', 'Buy this theme in the shop before wearing it');
-      mockRider = { ...mockRider, theme: String(b.theme) };
-    }
-  }
-  return mockRider;
-});
 // --------------------------------------------------- конструктор доски (docs/16 §4.2)
 // Мок повторяет три правила бэкенда: доска никогда не пустая (сток закрывает
 // все шесть слотов), надеть можно только добытое, а выдача за заезд закрывает
@@ -561,8 +554,8 @@ const mockBoardWeek = () => Math.floor(Date.now() / 1000 / (7 * 86_400));
  *  но и «всё уже собрано» он тоже не показывает (собирать должно быть что). */
 const seedMockBoard = () => {
   const prev = boardDistrictOfWeek(mockBoardWeek() - 1);
-  mockBoardParts.set(`deck_d${prev}`, { qty: 1, source: 'run', createdAt: Date.now() / 1000 - 9 * 86_400 });
-  mockBoardParts.set(`wheels_d${prev}`, { qty: 1, source: 'run', createdAt: Date.now() / 1000 - 8 * 86_400 });
+  mockBoardParts.set(`deck_d${prev}`, { qty: 1, source: 'grid', createdAt: Date.now() / 1000 - 9 * 86_400 });
+  mockBoardParts.set(`wheels_d${prev}`, { qty: 1, source: 'grid', createdAt: Date.now() / 1000 - 8 * 86_400 });
   mockBoardParts.set('bolts_acid', { qty: 1, source: 'shop', createdAt: Date.now() / 1000 - 3 * 86_400 });
   mockBoardParts.set('sticker_moth', { qty: 1, source: 'achievement', createdAt: Date.now() / 1000 - 2 * 86_400 });
   // Деку прошлой недели надеваем сразу: экран открывается собранным, а не с

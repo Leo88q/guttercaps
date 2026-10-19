@@ -64,8 +64,6 @@ export interface RigView {
    * инвентарь частей (`/me/board`) остаётся приватным.
    */
   board: BoardLoadout;
-  /** Райдер (§4.6): силуэт района + цвет подсветки из купленной косметики. */
-  rider: Rider;
   /** Витрина включена владельцем (§4.5): публичная страница /rig/:wallet живёт только с этим флагом. */
   public: boolean;
   /**
@@ -147,7 +145,7 @@ export function rigView(db: Db, wallet: string, withCaps = true): RigView {
     });
     if (!unlocked && next === null) next = { slot: i, need: unlockAt - count };
   }
-  return { wallet, board: boardLoadout(db, wallet), rider: riderOf(db, wallet), public: rigPublic(db, wallet), caps: withCaps ? caps : [], slots, next };
+  return { wallet, board: boardLoadout(db, wallet), public: rigPublic(db, wallet), caps: withCaps ? caps : [], slots, next };
 }
 
 // ------------------------------------------------------------------ витрина
@@ -183,93 +181,6 @@ export function publicRig(db: Db, wallet: string): RigView {
     throw new ServiceError(404, 'rig_private', 'This board is not public');
   }
   return rigView(db, wallet, false);
-}
-
-// --------------------------------------------------------------------- райдер
-/**
- * §4.6 Райдер — образ, а не характеристики: силуэт одного из восьми районов
- * плюс цвет подсветки из темы, которую игрок **купил**. Ни силы, ни шансов, ни
- * дохода: райдер — это то, что видят другие на витрине (§4.5).
- *
- * Хранится в `wallets.flags.rider`, как и публичность витрины: два поля в
- * существующем JSON вместо новой таблицы, и читается они ровно там же.
- */
-export const RIDER_SILHOUETTES = 8;
-/** kind сервиса «тема профиля» — откуда берётся цвет подсветки (economy SERVICES). */
-const THEME_KIND = 3;
-
-export interface Rider {
-  /** Индекс района 0..7: какой из восьми силуэтов надет. */
-  silhouette: number;
-  /** id темы из `PROFILE_THEMES`; null — подсветка цветом своего района. */
-  theme: string | null;
-}
-
-/** Темы, которые игрок реально оплатил (kind 3, `payload.theme`). */
-export function ownedThemes(db: Db, wallet: string): string[] {
-  const rows = db.all<{ theme: string | null }>(
-    `SELECT ${jsonAt('payload', 'theme')} AS theme FROM entitlements
-      WHERE wallet = ? AND kind = ? AND (expires_at IS NULL OR expires_at > ?)`,
-    wallet, THEME_KIND, now(),
-  );
-  const rowsAll = db.all<{ payload: string | null }>(
-    `SELECT payload FROM entitlements WHERE wallet = ? AND kind = ? AND (expires_at IS NULL OR expires_at > ?)`,
-    wallet, THEME_KIND, now(),
-  );
-  // Грант без payload — старый: он открывал все темы разом. В точности как на
-  // клиенте (ownedThemes), только без правки списка: эксклюзивные темы такой
-  // грант не открывает, они выдаются за заслуги.
-  const named = rows.map((r) => r.theme).filter((x): x is string => typeof x === 'string' && x.length > 0);
-  // Канонический JSON пустого гранта — `{}`; `null` и пустая строка попадаются в
-  // старых записях, сделанных до того, как колонка стала NOT NULL.
-  const empty = (v: string | null) => !v || ['', '{}', 'null'].includes(String(v).trim());
-  const legacy = rowsAll.some((r) => empty(r.payload));
-  const ids = new Set(named);
-  if (legacy) for (const t of PROFILE_THEMES) if (!t.exclusive) ids.add(t.id);
-  return [...ids].filter((id) => PROFILE_THEMES.some((t) => t.id === id));
-}
-
-export function riderOf(db: Db, wallet: string): Rider {
-  const raw = readFlags(db, wallet).rider;
-  const sil = Number(raw?.silhouette);
-  const theme = typeof raw?.theme === 'string' ? raw.theme : null;
-  return {
-    silhouette: Number.isInteger(sil) && sil >= 0 && sil < RIDER_SILHOUETTES ? sil : 0,
-    // Чужая тема в ответе не покажется: если косметика больше не оплачена
-    // (истёкшая аренда, отзыв), витрина показывает подсветку района.
-    theme: theme && ownedThemes(db, wallet).includes(theme) ? theme : null,
-  };
-}
-
-/**
- * PUT /v1/me/rider. Идемпотентно: повтор того же выбора ничего не меняет,
- * поэтому «не сохранилось — нажми ещё раз» безопасно.
- *
- * Проверки ровно две, и обе про честность витрины: силуэт — из восьми
- * существующих, тема — только оплаченная. Надеть некупленную косметику нельзя
- * не из жадности, а потому что витрина тогда врёт о том, что игрок купил.
- */
-export function setRider(db: Db, wallet: string, patch: { silhouette?: unknown; theme?: unknown }): Rider {
-  const current = riderOf(db, wallet);
-  let silhouette = current.silhouette;
-  let theme = current.theme;
-  if (patch.silhouette !== undefined) {
-    const n = Number(patch.silhouette);
-    if (!Number.isInteger(n) || n < 0 || n >= RIDER_SILHOUETTES) throw new ServiceError(400, 'bad_silhouette', `silhouette must be 0..${RIDER_SILHOUETTES - 1}`);
-    silhouette = n;
-  }
-  if (patch.theme !== undefined) {
-    if (patch.theme === null || patch.theme === '') theme = null;
-    else {
-      const id = String(patch.theme);
-      if (!ownedThemes(db, wallet).includes(id)) throw new ServiceError(403, 'theme_not_owned', 'Buy this theme in the shop before wearing it');
-      theme = id;
-    }
-  }
-  const flags = { ...readFlags(db, wallet), rider: { silhouette, theme } };
-  db.run(`INSERT INTO wallets (address, flags) VALUES (?, ?) ON CONFLICT(address) DO UPDATE SET flags = excluded.flags`, wallet, JSON.stringify(flags));
-  recordEvent(db, wallet, 'rider', 'set', { silhouette, theme });
-  return { silhouette, theme };
 }
 
 // ------------------------------------------------------------------- запись

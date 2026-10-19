@@ -46,7 +46,7 @@ img { max-width: 100%; display: block; }
      into a second row that overflowed the 64px box and pushed half the bar off the screen. Bumping a
      tab means bumping this; `smoke.test.tsx` fails if they disagree. The language picker used to be
      the 10th entry and now lives in the header next to the balance. */
-  --gc-nav-tabs: 10;
+  --gc-nav-tabs: 11;
   order: 2; position: relative; left: auto; right: auto; bottom: auto; z-index: 30; display: grid;
   flex-shrink: 0; width: 100%;
   grid-template-columns: repeat(var(--gc-nav-tabs), minmax(0, 1fr));
@@ -1073,7 +1073,8 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
 
 .gt-s,
 .gt-f,
-.gt-w {
+.gt-w,
+.gt-core {
   position: absolute;
   inset: 0;
   background-size: 500% 100%;
@@ -1196,6 +1197,38 @@ html[data-lang="vi"] { --cg-font-display: 'Inter', sans-serif; }
   100% { transform: scale(1.45); opacity: 0; }
 }
 
+/* Ядро потока: светлая «жила» по оси трубы с бликом — поверх пузырей, быстрее
+   их (центр профиля скорости обгоняет стенки, как в шейдере жидкости). */
+.gt-core {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  mask-size: 500% 100%;
+  -webkit-mask-size: 500% 100%;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  background-image:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, .95), rgba(255, 255, 255, 0) 55%),
+    linear-gradient(90deg, rgba(10, 90, 140, .55), rgba(190, 240, 255, .85) 50%, rgba(10, 90, 140, .55));
+  background-size: 11px 11px, 100% 100%;
+  background-repeat: repeat, no-repeat;
+  opacity: .5;
+  filter: blur(.4px);
+  animation: gt-water .62s linear infinite;
+}
+
+/* Фронт заполнения при подключении: вода входит в трубу фронтом, а не
+   загорается по всей длине разом (uFill из шейдера патча). */
+.gt-prime {
+  animation: gt-prime .55s ease-out, gt-water .8s linear infinite;
+}
+
+@keyframes gt-prime {
+  from { clip-path: inset(0 88% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
 /* Вода течёт: пузыри ползут вдоль трубы ровно на один шаг своего узора (15 и 9 px) —
    петля бесшовная. Полоски сознательно убраны: на границе соседних клеток узор ломался и
    щель читалась сильнее, чем сама труба; редкие пузыри шва не дают. */
@@ -1269,40 +1302,6 @@ html.reduced-motion .gt-s,
 html.reduced-motion .gt-f,
 html.reduced-motion .gt-w { transition: none; }
 html.reduced-motion .gt-shutter-body { transition: none; }
-
-/* docs/16 §4.6 — the rider: a district silhouette lit by a paid theme. Looks
-   only, so the whole block is presentation: no numbers anywhere near it.
-   No color-mix here either (same reason as the mural): the glow is a layer
-   with its own opacity, which every engine we ship to understands. */
-.rider {
-  position: relative; display: flex; align-items: flex-end; gap: 12px; padding: 10px 12px;
-  border-radius: 12px; border: 1px solid var(--gc-line, #2a2933); background: #0c0b10; overflow: hidden;
-}
-.rider::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0.16;
-  background: radial-gradient(120% 130% at 28% 12%, var(--lamp, #16E5D9), transparent 68%);
-}
-.rider.is-themed { border-color: var(--lamp, #16E5D9); }
-.rider-figure { position: relative; flex: 0 0 auto; width: 96px; height: 132px; display: block; }
-.rider-figure img {
-  width: 100%; height: 100%; object-fit: contain; object-position: bottom center; display: block;
-  /* Свет темы ложится вокруг кадра, а не перекрашивает его: искусство остаётся
-     своим, меняется только подсветка. */
-  filter: drop-shadow(0 0 10px var(--lamp, #16E5D9))
-          drop-shadow(0 0 26px color-mix(in srgb, var(--lamp, #16E5D9) 45%, transparent));
-}
-.rider-meta { position: relative; display: flex; flex-direction: column; gap: 2px; padding-bottom: 6px; }
-.rider-picks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.rider-pick {
-  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px;
-  border: 1px solid var(--gc-line, #2a2933); border-radius: 10px; background: rgba(255, 255, 255, 0.02);
-  color: inherit; cursor: pointer; transition: border-color 0.15s ease, background 0.15s ease;
-}
-.rider-pick img { width: 100%; height: 64px; object-fit: contain; object-position: bottom center; display: block; }
-.rider-pick.is-active { border-color: var(--gc-accent, #16E5D9); background: rgba(22, 229, 217, 0.08); }
-.rider-pick:hover { border-color: var(--gc-accent, #16E5D9); }
-@media (max-width: 420px) { .rider-picks { grid-template-columns: repeat(3, 1fr); } }
-@media (prefers-reduced-motion: reduce) { .rider-pick { transition: none; } }
 
 /* docs/16 §4.7 — achievements: a real badge file, the progress, and a reward
    that is never money. */

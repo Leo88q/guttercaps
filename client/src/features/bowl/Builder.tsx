@@ -24,8 +24,8 @@ import { payForService, quoteService, serviceRefHash } from '@/chain/flows/servi
 import { Currency } from '@/chain/ix/chipCore';
 import { useT } from '@/shared/i18n';
 import { useUiStore } from '@/app/store/ui';
-import { collectionName } from '@/shared/lib/rarity';
-import { BOARD_ART, partArt } from '@/shared/lib/boardArt';
+import { collectionColor, collectionName } from '@/shared/lib/rarity';
+import { BOARD_ART, boardFullArt, partVisual } from '@/shared/lib/boardArt';
 import { Modal, Pill, Skeleton } from '@/shared/ui/primitives';
 import './builder.css';
 
@@ -52,7 +52,7 @@ function PartTile({ part, slot, worn, owned, onPick, onBuy, buying }: {
   part: BoardPart; slot: BoardSlot; worn: boolean; owned: boolean; onPick: () => void; onBuy: () => void; buying: boolean;
 }) {
   const t = useT();
-  const art = partArt(part.id);
+  const art = partVisual(part.id);
   const label = partLabel(part.id);
   const shopLocked = !owned && part.source === 'shop';
   return (
@@ -73,7 +73,7 @@ function PartTile({ part, slot, worn, owned, onPick, onBuy, buying }: {
           ? t('builder.owned')
           : shopLocked
             ? t('builder.buy', { cents: SERVICE_BY_ID.boardMount.priceUsdCents })
-            : t(`builder.source.${part.source}` as 'builder.source.run')}
+            : t(`builder.source.${part.source}` as 'builder.source.grid')}
       </span>
       {shopLocked && buying ? <span className="tiny muted">{t('builder.buying')}</span> : null}
       {worn ? <span className="bd-worn tiny">{t('builder.wearing')}</span> : null}
@@ -81,27 +81,40 @@ function PartTile({ part, slot, worn, owned, onPick, onBuy, buying }: {
   );
 }
 
-/** Собранная доска: детали лежат так же, как на настоящей — снизу вверх. */
-function BoardPreview({ loadout, onSlot }: { loadout: Record<string, string>; onSlot: (slot: BoardSlot) => void }) {
+/**
+ * Собранная доска — целым артом района, а не стопкой плоских слоёв: до
+ * 2026-10-17 превью складывало отдельные картинки деки/траков/колёс друг на
+ * друга и выглядело разобранным скейтом. Теперь: если надет сет района (или
+ * хотя бы его дека) — показываем готовую доску этого района одним файлом
+ * (board-dN.webp), а слоты живут строкой кнопок под артом.
+ */
+function BoardPreview({ loadout, districtSet, onSlot }: { loadout: Record<string, string>; districtSet: number | null | undefined; onSlot: (slot: BoardSlot) => void }) {
   const t = useT();
-  const stack: BoardSlot[] = ['deck', 'grip', 'trucks', 'wheels', 'bolts', 'sticker'];
+  const deckPart = partById(loadout.deck);
+  // Показывать район ЛЮБОЙ надетой районной детали, не только деки: иначе
+  // постановка траков/колёс/грипа визуально «никуда не ставится» — сервер
+  // деталь принял, а превью доски не изменилось.
+  const wornDistrict = (['deck', 'trucks', 'wheels', 'grip'] as const)
+    .map((s) => partById(loadout[s])?.district)
+    .find((x) => x !== null && x !== undefined) ?? null;
+  const d = districtSet ?? deckPart?.district ?? wornDistrict;
   return (
-    <div className="bd-board">
-      {stack.map((slot) => {
-        const art = partArt(loadout[slot]);
-        return (
-          <button
-            key={slot}
-            type="button"
-            className={`bd-layer bd-layer-${slot}`}
-            onClick={() => onSlot(slot)}
-            aria-label={t('builder.pickTitle', { slot: t(slotKey(slot)) })}
-          >
-            {art ? <img src={art} alt="" decoding="async" /> : <span className="bd-layer-none tiny muted">{t('builder.stock')}</span>}
-            <span className="bd-layer-tag tiny">{t(slotKey(slot))}</span>
+    <div className="stack-sm">
+      <img
+        className="bd-fullboard"
+        style={{ borderColor: d === null ? undefined : collectionColor(d) }}
+        src={d === null ? `${BOARD_ART}/deck.webp` : boardFullArt(d)}
+        alt=""
+        decoding="async"
+        data-testid="builder-fullboard"
+      />
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        {BOARD_SLOTS.map((slot) => (
+          <button key={slot} type="button" className="btn btn-sm btn-ghost" onClick={() => onSlot(slot as BoardSlot)}>
+            {t(slotKey(slot))}
           </button>
-        );
-      })}
+        ))}
+      </div>
     </div>
   );
 }
@@ -192,8 +205,49 @@ export default function Builder() {
                 ? <span className="tiny muted">{t('builder.setHint')}</span>
                 : <Pill active>{`${collectionName(Number(districtSet))} · ${t('builder.setDone')}`}</Pill>}
             </div>
-            {/* Собранная доска: тап по детали открывает её слот. */}
-            <BoardPreview loadout={loadout} onSlot={(s) => setSlot(s)} />
+            {/* Собранная доска: целый арт района; тап по слоту открывает его детали. */}
+            <BoardPreview loadout={loadout} districtSet={districtSet} onSlot={(s) => setSlot(s)} />
+          </section>
+
+          {/* Доски районов: витрина целых артов. Четыре добытые части района
+              открывают его доску, и её можно надеть сетом одним тапом. */}
+          <section className="card stack-sm" data-testid="builder-boards">
+            <div className="strong">{t('builder.boards')}</div>
+            <div className="small muted">{t('builder.boardsHint')}</div>
+            <div className="bd-boards">
+              {[0, 1, 2, 3, 4, 5, 6, 7].map((d) => {
+                const have = BOARD_SET_SLOTS.filter((s) => owned.has(`${s}_d${d}`)).length;
+                const complete = have >= BOARD_SET_SLOTS.length;
+                const isSet = districtSet !== null && districtSet !== undefined && Number(districtSet) === d;
+                return (
+                  <article key={d} className={`bd-board-card${complete ? '' : ' is-locked'}`}>
+                    {/* Арт-фон чаши под каждой доской + оттенок её района. */}
+                    <div className="board-stage" style={{ backgroundImage: 'url(/art/skate/board-stage.webp)', ['--tint' as string]: collectionColor(d) }}>
+                      <img src={boardFullArt(d)} alt="" loading="lazy" decoding="async" />
+                    </div>
+                    <div className="row between" style={{ gap: 6, flexWrap: 'wrap' }}>
+                      <span className="small strong">{collectionName(d)}</span>
+                      <span className="tiny muted">{t('builder.boardProgress', { have, total: BOARD_SET_SLOTS.length })}</span>
+                    </div>
+                    {complete ? (
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        disabled={isSet || setBoard.isPending}
+                        onClick={() => setBoard.mutate(
+                          { slots: BOARD_SET_SLOTS.map((s) => ({ slot: s as BoardSlot, part: `${s}_d${d}` })) },
+                          { onSuccess: () => toast({ kind: 'success', title: { key: 'builder.title' }, body: { key: 'builder.saved' } }), onError: () => toast({ kind: 'error', title: { key: 'builder.title' }, body: { key: 'builder.failed' } }) },
+                        )}
+                      >
+                        {isSet ? t('builder.boardReady') : t('builder.wearSet')}
+                      </button>
+                    ) : (
+                      <span className="tiny muted">{t('builder.where')}</span>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
           </section>
 
           {/* Район недели: один на весь город, поэтому заезд платит известную
@@ -212,9 +266,12 @@ export default function Builder() {
               {t('builder.progress', { have: Number(data.weekProgress?.have ?? 0), total: Number(data.weekProgress?.total ?? 4) })}
             </div>
             <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-              <Link to="/bowl/line" className="btn btn-sm">{t('builder.toLine')}</Link>
+              <Link to="/grid" className="btn btn-sm">{t('builder.toGrid')}</Link>
               <Link to="/quests" className="btn btn-sm btn-ghost">{t('builder.toQuests')}</Link>
               <Link to="/bowl/crew" className="btn btn-sm btn-ghost">{t('builder.toCrew')}</Link>
+              {/* Крышки на собранную доску: бывшая «Экспозиция» живёт здесь,
+                  рядом с доской, а не отдельным пустым экраном. */}
+              <Link to="/bowl/rig" className="btn btn-sm btn-ghost">{t('bowl.openRig')}</Link>
             </div>
           </section>
 
@@ -222,7 +279,7 @@ export default function Builder() {
           <section className="card stack-sm">
             {BOARD_SLOTS.map((s) => {
               const partId = loadout[s] ?? String(stock[s as BoardSlot]);
-              const art = partArt(partId);
+              const art = partVisual(partId);
               const label = partLabel(partId);
               return (
                 <div key={s} className="bd-row">
@@ -233,11 +290,11 @@ export default function Builder() {
                     <span className="small strong">{t(slotKey(s))}</span>
                     <span className="tiny muted">
                       {label.name || t(`builder.tier.${partById(partId)?.tier ?? 'stock'}` as 'builder.tier.stock')}
-                      {partById(partId)?.source ? ` · ${t(`builder.source.${partById(partId)?.source}` as 'builder.source.run')}` : ''}
+                      {partById(partId)?.source ? ` · ${t(`builder.source.${partById(partId)?.source}` as 'builder.source.grid')}` : ''}
                     </span>
                   </span>
                   <button type="button" className="btn btn-sm btn-ghost" onClick={() => setSlot(s as BoardSlot)}>
-                    {t('builder.wear')}
+                    {t('builder.choose')}
                   </button>
                 </div>
               );
@@ -248,6 +305,7 @@ export default function Builder() {
           {slot !== null && (
             <Modal open onClose={() => setSlot(null)} title={t('builder.pickTitle', { slot: t(slotKey(slot)) })}>
               <div className="stack-sm">
+                {slot === 'deck' && <div className="strong">{t('builder.decks')}</div>}
                 <div className="bd-grid">
                   {parts.map((p) => (
                     <PartTile

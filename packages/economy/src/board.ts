@@ -36,7 +36,7 @@ export type BoardSetSlot = (typeof BOARD_SET_SLOTS)[number];
  * `stock` есть у каждого с первого входа — доска не бывает пустой, и новый
  * игрок не видит дыр вместо деки. Остальное добывается.
  */
-export const BOARD_SOURCES = ['stock', 'run', 'achievement', 'crew', 'tournament', 'shop'] as const;
+export const BOARD_SOURCES = ['stock', 'run', 'grid', 'achievement', 'crew', 'tournament', 'shop'] as const;
 export type BoardSource = (typeof BOARD_SOURCES)[number];
 
 /**
@@ -65,7 +65,7 @@ function districtParts(): BoardPart[] {
   const out: BoardPart[] = [];
   for (let d = 0; d < COLLECTIONS.length; d++) {
     for (const slot of BOARD_SET_SLOTS) {
-      out.push({ id: `${slot}_d${d}`, slot, district: d, tier: 'district', source: 'run' });
+      out.push({ id: `${slot}_d${d}`, slot, district: d, tier: 'district', source: 'grid' });
     }
   }
   return out;

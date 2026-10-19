@@ -229,5 +229,26 @@ export function grantWeeklyRunPart(db: Db, wallet: string, tier: string, t = now
   return { part, district };
 }
 
+/**
+ * Награда Floodgrid (с 2026-10-19 заезды убраны из продукта, доски остались
+ * коллекцией): сектор, завершённый на 2+ звезды, раз в неделю даёт
+ * недостающую часть района недели. Порог по звёздам — аналог бывшего
+ * silver-порога заезда: «просто доехал» частью не платится. Таблица
+ * board_run_grants переиспользована как реестр недельных выдач (PK
+ * wallet+week), чтобы старые заездные выдачи и новые не задвоились.
+ */
+export function grantWeeklyGridPart(db: Db, wallet: string, stars: number, t = now()): { part: string; district: number } | null {
+  if (stars < 2) return null;
+  const week = weekIndex(t);
+  const district = boardDistrictOfWeek(week);
+  const missing = missingOfDistrict(db, wallet, district);
+  if (missing.length === 0) return null;
+  const part = `${missing[0]}_d${district}`;
+  const info = db.run(insertIgnore('board_run_grants', ['wallet', 'week', 'part', 'granted_at']), wallet, week, part, t);
+  if (!Number(info.changes)) return null;
+  grantPart(db, wallet, part, 'grid', t);
+  return { part, district };
+}
+
 /** Все части каталога — витрина конструктора; клиент показывает, какие есть. */
 export const BOARD_CATALOGUE = BOARD_PARTS;

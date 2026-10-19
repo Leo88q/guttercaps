@@ -13,6 +13,7 @@ import { type Db, now } from './db.ts';
 import { creditChipXp } from './chip-xp.ts';
 import { ServiceError, claimGridDeepAttempt } from './services.ts';
 import { addPassXp, passSeasonId } from './pass.ts';
+import { grantWeeklyGridPart } from './board.ts';
 
 const DAY = 86_400;
 export const gridDay = (t: number) => Math.floor(t / DAY);
@@ -419,10 +420,13 @@ export function completeGridAttempt(db: Db, wallet: string, body: GridCompleteIn
     for (const m of GRID.starMilestones) if (prev < m.stars && totalStars >= m.stars) { grantGridHints(db, wallet, m.hints, t); if (m.valves) grantGridValve(db, wallet, t); if (m.skin) grantGridCosmetic(db, wallet, 'skin', m.skin, `grid:stars:${m.stars}:skin:${m.skin}`, t); }
   }
   db.run(`UPDATE grid_attempts SET settled = 1, settled_at = ? WHERE id = ?`, t, attempt.id);
+  // Доски коллекционируются через Floodgrid (2026-10-19): сектор на 2+ звезды
+  // раз в неделю даёт недостающую часть района недели.
+  const boardPart = grantWeeklyGridPart(db, wallet, stars, t);
   return {
     ok: true as const, training: false, level: attempt.level, moves, par: lv.parMoves, stars, hintsUsed: totalHints,
     xpGranted: credit.granted, xpPending: pendingAdd, fromLevel: credit.fromLevel, toLevel: credit.toLevel,
-    dropletGained, gifts, route: gridRoute(db, attempt.asset), wallet: ensureGridWallet(db, wallet, t),
+    dropletGained, gifts, boardPart: boardPart?.part ?? null, route: gridRoute(db, attempt.asset), wallet: ensureGridWallet(db, wallet, t),
   };
 }
 
