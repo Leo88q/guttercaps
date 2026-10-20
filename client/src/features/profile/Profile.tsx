@@ -1,5 +1,3 @@
-import { RpcDiagnostics } from './RpcDiagnostics';
-import { phaseLabel } from '@/shared/lib/presentation';
 import { skinText, emotePackName } from '@/shared/lib/cosmetics';
 import { useMemo, useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -12,7 +10,6 @@ import { HandleModal } from './HandleModal';
 import { useT, useLocale, LOCALE_META, fmtLocale } from '@/shared/i18n';
 import { useSignIn } from '@/app/session';
 import { useUiStore } from '@/app/store/ui';
-import { useTxStore, useActiveOps } from '@/app/store/txs';
 import { CleanZone, KV, Modal, Stat, Skeleton, Empty, Pill, Progress } from '@/shared/ui/primitives';
 import { localizedCollection, useCollections } from '@/shared/lib/lore';
 import { collectionColor } from '@/shared/lib/rarity';
@@ -22,13 +19,12 @@ import { CapPicker } from '@/shared/ui/CapPicker';
 import { SprayCapToggle } from '@/shared/ui/buttons';
 import { HumanCheck } from '@/shared/ui/HumanCheck';
 import { shortKey, timeAgo, fmtUnits, fmtCg, fmtUsd, fmtDecimal } from '@/shared/lib/format';
-import { CLUSTER, EXPLORER, FLAGS, RPC_URL, PROGRAM_IDS } from '@/app/config';
-import { isMock, setMockMode } from '@/api/client';
+import { EXPLORER } from '@/app/config';
 import { REFERRAL } from '@guttercaps/economy';
 import { Link } from 'react-router-dom';
 import { CgCoinIcon, SkrTokenIcon } from '@/shared/ui/reward-icons';
 import { ServiceGlyph } from '@/shared/ui/service-icons';
-import { ChevronRightIcon as ChevronIcon, CopyIcon, ExternalIcon, LangIcon, LogoutIcon, MotionIcon, ServerIcon, ShieldIcon, SparkIcon, TrashIcon, WrenchIcon } from '@/shared/ui/action-icons';
+import { ChevronRightIcon as ChevronIcon, CopyIcon, ExternalIcon, LangIcon, LogoutIcon, MotionIcon, ShieldIcon, SparkIcon, WrenchIcon } from '@/shared/ui/action-icons';
 import { SoundIcon } from '@/shared/ui/icons';
 
 export default function Profile() {
@@ -40,11 +36,8 @@ export default function Profile() {
   const grid = useGrid();
   const activity = useActivity();
   const ui = useUiStore();
-  const txs = useTxStore();
-  const [rpc, setRpc] = useState(ui.rpcOverride ?? '');
   const addr = publicKey?.toBase58() ?? '';
   const refLink = `${window.location.origin}/?ref=${addr}`;
-  const active = useActiveOps(addr);
   const t = useT();
   const { locale } = useLocale();
   const services = useMyServices();
@@ -205,22 +198,6 @@ export default function Profile() {
             <span className="row" style={{ gap: 8 }}><WrenchIcon size={16} />{t('profile.opsPanel')}</span>
             <Link to="/admin" className="btn btn-sm" data-testid="ops-link">{t('profile.openOps')}</Link>
           </div>
-        )}
-        {FLAGS.debugPanel && (
-          <>
-          <div className="stack-sm" style={{ marginTop: 8 }}>
-            <span className="label row" style={{ gap: 6, display: 'inline-flex' }}><ServerIcon size={14} />{t('profile.rpc', { cluster: CLUSTER, url: RPC_URL })}</span>
-            <div className="row"><input className="input mono" placeholder="https://…" value={rpc} onChange={(e) => setRpc(e.target.value)} /><button className="btn" onClick={() => { ui.setRpcOverride(rpc || undefined); ui.toast({ kind: 'info', title: { key: 'profile.rpcSaved' }, body: { key: 'profile.reload' } }); }}>{t('common.save')}</button></div>
-          </div>
-          <RpcDiagnostics />
-          <div className="stack-sm" style={{ marginTop: 8 }}>
-            <span className="label">{t('ui.debug')}</span>
-            <SprayCapToggle on={isMock()} onChange={(v) => { setMockMode(v); window.location.reload(); }} label={t('screens.mockApi', { state: isMock() ? t('screens.enabled') : t('ui.off') })} />
-            <div className="tiny mono muted">chip_core {PROGRAM_IDS.chipCore.toBase58()}<br />{t('market.title')} {PROGRAM_IDS.market.toBase58()}<br />{t('leaderboard.boards.staking')} {PROGRAM_IDS.staking.toBase58()}<br />{t('admin.kpi.arena')} {PROGRAM_IDS.arena.toBase58()}</div>
-            {(active.packs.length > 0 || active.fusions.length > 0) && <div className="tiny">{t('ui.unfinished')}: {active.packs.map((p) => <Link key={p.id} to={`/shop/opening/${p.nonce}`}>{t('ui.pack')} {String(p.nonce ?? '').slice(-6)} ({phaseLabel(p.phase)}) </Link>)}{active.fusions.map((f) => <span key={f.id}>{t('ui.fusion')} {String(f.nonce ?? '').slice(-6)} ({phaseLabel(f.phase)}) </span>)}</div>}
-            <button className="btn btn-sm" onClick={() => { Object.keys(txs.packs).forEach(txs.remove); Object.keys(txs.fusions).forEach(txs.remove); }}><TrashIcon size={14} /> {t('ui.clearHistory')}</button>
-          </div>
-          </>
         )}
       </div>
 
