@@ -56,7 +56,7 @@
 /* Строка слота: название, что надето, кнопка «изменить». */
 .bd-row {
   display: grid;
-  grid-template-columns: 56px 1fr auto;
+  grid-template-columns: 96px 1fr auto;
   align-items: center;
   gap: 10px;
   padding: 8px 0;
@@ -66,18 +66,18 @@
   border-top: none;
 }
 .bd-row-art {
-  display: grid;
-  place-items: center;
-  width: 56px;
-  height: 56px;
+  display: block;
+  width: 96px;
+  height: 64px;
   border-radius: 10px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.04);
+  background: #141318;
 }
 .bd-row-art img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 .bd-row-text {
   display: grid;
@@ -104,15 +104,17 @@
   min-height: 44px;
 }
 .bd-tile-art {
-  display: grid;
-  place-items: center;
-  height: 62px;
+  display: block;
+  height: 84px;
+  border-radius: 8px;
   overflow: hidden;
+  background: #141318;
 }
 .bd-tile-art img {
-  max-width: 100%;
-  max-height: 62px;
-  object-fit: contain;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 /* Недобытая деталь видна, но не светится: игрок должен понимать, чего у него
    нет, иначе «собери район» превращается в угадайку. */
@@ -136,3 +138,25 @@
   opacity: 0.35;
   max-height: 48px;
 }
+
+/* Целый арт доски района (2026-10-17): одна картинка вместо стопки слоёв. */
+.bd-fullboard { width: 100%; border-radius: 12px; display: block; background: #141318; }
+.bd-board-card > img { border: 2px solid rgba(255,255,255,0.2); border-radius: 12px; width: 100%; display: block; }
+.bd-fullboard { border: 2px solid rgba(255,255,255,0.2); }
+.bd-boards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.bd-board-card { display: flex; flex-direction: column; gap: 8px; }
+.bd-board-card img { width: 100%; border-radius: 10px; display: block; background: #141318; }
+.bd-board-card.is-locked img { filter: saturate(0.35) brightness(0.75); }
+
+/* Части сета на карточке района: каждая деталь — своей миниатюрой и
+   состоянием; недобытая приглушена, добытая — в полный цвет. */
+.bd-card-slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.bd-slot-chip {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 6px 4px; border: 1px solid var(--gc-line, #2a2933); border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02); color: inherit; cursor: pointer;
+}
+.bd-slot-chip img { width: 100%; height: 44px; object-fit: contain; display: block; }
+.bd-slot-chip:not(.is-owned) img { filter: saturate(0.3) brightness(0.7); }
+.bd-slot-chip:hover { border-color: var(--gc-accent, #16E5D9); }
+.bd-slot-chip:focus-visible { outline: 2px solid var(--gc-accent, #16E5D9); outline-offset: 2px; }

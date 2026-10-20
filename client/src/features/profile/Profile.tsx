@@ -16,7 +16,6 @@ import { useTxStore, useActiveOps } from '@/app/store/txs';
 import { CleanZone, KV, Modal, Stat, Skeleton, Empty, Pill, Progress } from '@/shared/ui/primitives';
 import { localizedCollection, useCollections } from '@/shared/lib/lore';
 import { collectionColor } from '@/shared/lib/rarity';
-import { Mural } from '@/features/collection/Mural';
 import { KIND, PROFILE_THEMES, loadBanner, loadTheme, ownedBanners, ownedThemes, owns, saveBanner, saveTheme, themeById } from '@/shared/lib/cosmetics';
 import { GRID, PASS_TRACK, type PassReward } from '@guttercaps/economy';
 import { CapPicker } from '@/shared/ui/CapPicker';
@@ -26,7 +25,7 @@ import { shortKey, timeAgo, fmtUnits, fmtCg, fmtUsd, fmtDecimal } from '@/shared
 import { CLUSTER, EXPLORER, FLAGS, RPC_URL, PROGRAM_IDS } from '@/app/config';
 import { isMock, setMockMode } from '@/api/client';
 import { REFERRAL } from '@guttercaps/economy';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { CgCoinIcon, SkrTokenIcon } from '@/shared/ui/reward-icons';
 import { ServiceGlyph } from '@/shared/ui/service-icons';
 import { ChevronRightIcon as ChevronIcon, CopyIcon, ExternalIcon, LangIcon, LogoutIcon, MotionIcon, ServerIcon, ShieldIcon, SparkIcon, TrashIcon, WrenchIcon } from '@/shared/ui/action-icons';
@@ -102,7 +101,6 @@ export default function Profile() {
         <div className="card"><Stat label={t('profile.accountAge')} value={me.data?.flags?.accountAgeH ? t('common.day', { n: Math.floor(me.data.flags.accountAgeH / 24) }) : '—'} /></div>
       </div>
 
-      <ProfileMural cells={grid.data?.cells} />
 
       {/* §4.7: достижения — единственный экран, где видно, за что именно мир
           даёт косметику; из профиля он в один тап. */}
@@ -289,33 +287,6 @@ function PassCard() {
         })}
       </div>
       {skinTier !== null && <ClaimSkinModal tier={skinTier} busy={claim.isPending} onClose={() => setSkinTier(null)} onClaim={(asset) => doClaim(skinTier, asset)} />}
-    </div>
-  );
-}
-
-/** §2.3 — the district wall on the profile: the district this wallet is closest
- *  to finishing. Nothing to show until at least one cap of it is owned, and a
- *  tap on a grey spot goes straight to the market filtered for that cap. */
-function ProfileMural({ cells }: { cells?: number[][] | null }) {
-  const t = useT();
-  const nav = useNavigate();
-  const best = useMemo(() => {
-    let out: number | null = null;
-    (cells ?? []).forEach((row, ci) => {
-      const have = row?.filter((n) => n > 0).length ?? 0;
-      if (have > 0 && (out === null || have > (cells?.[out]?.filter((n) => n > 0).length ?? 0))) out = ci;
-    });
-    return out;
-  }, [cells]);
-  if (best === null || !cells?.[best]) return null;
-  return (
-    <div className="card">
-      <Mural
-        ci={best}
-        cells={cells[best]}
-        title={t('mural.title')}
-        onPick={(ri, owned) => nav(owned ? '/collection' : `/market?collection=${best}&rarity=${ri}&missing=1`)}
-      />
     </div>
   );
 }
