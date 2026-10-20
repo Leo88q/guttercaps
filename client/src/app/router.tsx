@@ -19,7 +19,6 @@ const TagEditorRoute = lazy(() => import('@/features/bowl/TagEditor').then((m) =
 // только когда игрок пришёл на конкретную стену.
 const Wall = lazy(() => import('@/features/bowl/Wall'));
 const Board = lazy(() => import('@/features/bowl/Board'));
-const Line = lazy(() => import('@/features/bowl/Line'));
 const Rig = lazy(() => import('@/features/bowl/Rig'));
 // Команды (docs/16 §5.6): ленивый роут — имя, состав и командная доска нужны
 // только тем, кто дошёл до чаши.
@@ -87,7 +86,7 @@ export const routes: RouteObject[] = [
       { path: 'bowl/tag', element: S(<TagEditorRoute />) },
       { path: 'bowl/wall/:district', element: S(<Wall />) },
       { path: 'bowl/board', element: S(<Board />) }, // доска недели (docs/16 §3.7): жеребьёвка, а не рейтинг
-      { path: 'bowl/line', element: W(<Line />) }, // линия (docs/16 §5.1): чаша дня, три бесплатных заезда
+      // Скейт-заездов больше нет (2026-10-19): доски коллекционируют через Floodgrid.
       // Команда (docs/16 §5.6): своя — под кошелём, чужая карточка — публична,
       // потому что имя и состав команды не секрет (секретен только код приглашения).
       { path: 'bowl/crew', element: W(<Crew />) },

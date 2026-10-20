@@ -16,7 +16,6 @@ import { useTxStore, useActiveOps } from '@/app/store/txs';
 import { CleanZone, KV, Modal, Stat, Skeleton, Empty, Pill, Progress } from '@/shared/ui/primitives';
 import { localizedCollection, useCollections } from '@/shared/lib/lore';
 import { collectionColor } from '@/shared/lib/rarity';
-import { Mural } from '@/features/collection/Mural';
 import { KIND, PROFILE_THEMES, loadBanner, loadTheme, ownedBanners, ownedThemes, owns, saveBanner, saveTheme, themeById } from '@/shared/lib/cosmetics';
 import { GRID, PASS_TRACK, type PassReward } from '@guttercaps/economy';
 import { CapPicker } from '@/shared/ui/CapPicker';
@@ -26,7 +25,7 @@ import { shortKey, timeAgo, fmtUnits, fmtCg, fmtUsd, fmtDecimal } from '@/shared
 import { CLUSTER, EXPLORER, FLAGS, RPC_URL, PROGRAM_IDS } from '@/app/config';
 import { isMock, setMockMode } from '@/api/client';
 import { REFERRAL } from '@guttercaps/economy';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { CgCoinIcon, SkrTokenIcon } from '@/shared/ui/reward-icons';
 import { ServiceGlyph } from '@/shared/ui/service-icons';
 import { ChevronRightIcon as ChevronIcon, CopyIcon, ExternalIcon, LangIcon, LogoutIcon, MotionIcon, ServerIcon, ShieldIcon, SparkIcon, TrashIcon, WrenchIcon } from '@/shared/ui/action-icons';
@@ -102,7 +101,6 @@ export default function Profile() {
         <div className="card"><Stat label={t('profile.accountAge')} value={me.data?.flags?.accountAgeH ? t('common.day', { n: Math.floor(me.data.flags.accountAgeH / 24) }) : '—'} /></div>
       </div>
 
-      <ProfileMural cells={grid.data?.cells} />
 
       {/* §4.7: достижения — единственный экран, где видно, за что именно мир
           даёт косметику; из профиля он в один тап. */}
@@ -134,7 +132,7 @@ export default function Profile() {
           const def = e.kind !== undefined ? SERVICE_BY_KIND[e.kind] : undefined;
           return (
             <div key={e.id} className="row between small">
-              <span>{e.kind === 10 ? <><GenBadge name="item-flood" size={15} /> {String((e.payload as { cosmetic?: unknown })?.cosmetic ?? 'Floodgrid')}</> : def ? t(`services.names.${def.id}`) : `#${e.kind}`}</span>
+              <span>{e.kind === 10 ? <><GenBadge name="item-flood" size={15} /> {String((e.payload as { cosmetic?: unknown })?.cosmetic ?? 'Floodgrid')}</> : def ? t(`services.names.${def.id}`) : String((e.payload as { cosmetic?: unknown })?.cosmetic ?? t('profile.extraItem'))}</span>
               <span className="muted">{e.expiresAt ? t('services.expires', { date: fmtLocale.date(e.expiresAt, locale) }) : t('services.owned')}</span>
             </div>
           );
@@ -180,12 +178,14 @@ export default function Profile() {
             {(referrals.data.totals?.unsettledPurchases ?? 0) > 0 && <div className="tiny muted">{t('profile.referralStats.unsettled', { n: referrals.data.totals?.unsettledPurchases ?? 0 })}</div>}
             {referrals.data.welcome && <KV k={t('profile.referralStats.welcome')} v={fmtCg(referrals.data.welcome.amountCgMicro)} accent />}
             {(referrals.data.referees ?? []).length === 0 && <div className="small muted">{t('profile.referralStats.none')}</div>}
+            {(referrals.data.referees ?? []).length > 0 && <details><summary className="tiny muted" style={{ cursor: 'pointer' }}>{t('common.seeAll')} · {(referrals.data.referees ?? []).length}</summary><div className="stack-sm" style={{ marginTop: 6 }}>
             {(referrals.data.referees ?? []).map((r) => (
               <div key={r.wallet} className="row between small">
                 <span className="mono">{r.handle ? `@${r.handle}` : shortKey(r.wallet, 5)} <span className="muted">· {fmtDecimal(r.paidPurchases, 0)} × · {fmtUsd(r.spendUsd)}</span></span>
                 <span className="mono">{fmtCg(r.earnedCgMicro)} <span className="muted tiny">({t('profile.referralStats.capLeft')} {fmtCg(r.capLeftCgMicro, 0)})</span></span>
               </div>
             ))}
+            </div></details>}
           </CleanZone>
         )}
       </div>
@@ -206,12 +206,13 @@ export default function Profile() {
             <Link to="/admin" className="btn btn-sm" data-testid="ops-link">{t('profile.openOps')}</Link>
           </div>
         )}
-        <div className="stack-sm" style={{ marginTop: 8 }}>
-          <span className="label row" style={{ gap: 6, display: 'inline-flex' }}><ServerIcon size={14} />{t('profile.rpc', { cluster: CLUSTER, url: RPC_URL })}</span>
-          <div className="row"><input className="input mono" placeholder="https://…" value={rpc} onChange={(e) => setRpc(e.target.value)} /><button className="btn" onClick={() => { ui.setRpcOverride(rpc || undefined); ui.toast({ kind: 'info', title: { key: 'profile.rpcSaved' }, body: { key: 'profile.reload' } }); }}>{t('common.save')}</button></div>
-        </div>
-        <RpcDiagnostics />
         {FLAGS.debugPanel && (
+          <>
+          <div className="stack-sm" style={{ marginTop: 8 }}>
+            <span className="label row" style={{ gap: 6, display: 'inline-flex' }}><ServerIcon size={14} />{t('profile.rpc', { cluster: CLUSTER, url: RPC_URL })}</span>
+            <div className="row"><input className="input mono" placeholder="https://…" value={rpc} onChange={(e) => setRpc(e.target.value)} /><button className="btn" onClick={() => { ui.setRpcOverride(rpc || undefined); ui.toast({ kind: 'info', title: { key: 'profile.rpcSaved' }, body: { key: 'profile.reload' } }); }}>{t('common.save')}</button></div>
+          </div>
+          <RpcDiagnostics />
           <div className="stack-sm" style={{ marginTop: 8 }}>
             <span className="label">{t('ui.debug')}</span>
             <SprayCapToggle on={isMock()} onChange={(v) => { setMockMode(v); window.location.reload(); }} label={t('screens.mockApi', { state: isMock() ? t('screens.enabled') : t('ui.off') })} />
@@ -219,18 +220,26 @@ export default function Profile() {
             {(active.packs.length > 0 || active.fusions.length > 0) && <div className="tiny">{t('ui.unfinished')}: {active.packs.map((p) => <Link key={p.id} to={`/shop/opening/${p.nonce}`}>{t('ui.pack')} {String(p.nonce ?? '').slice(-6)} ({phaseLabel(p.phase)}) </Link>)}{active.fusions.map((f) => <span key={f.id}>{t('ui.fusion')} {String(f.nonce ?? '').slice(-6)} ({phaseLabel(f.phase)}) </span>)}</div>}
             <button className="btn btn-sm" onClick={() => { Object.keys(txs.packs).forEach(txs.remove); Object.keys(txs.fusions).forEach(txs.remove); }}><TrashIcon size={14} /> {t('ui.clearHistory')}</button>
           </div>
+          </>
         )}
       </div>
 
       <div className="card stack-sm">
         <div className="strong">{t('profile.activity')}</div>
         {activity.isLoading && <Skeleton h={100} />}
-        {((activity.data?.pages ?? []).flatMap((p) => p?.items ?? [])).map((a, i) => (
-          <div key={`${a.signature}-${i}`} className="row between small">
-            <span>{a.kind?.replace(/_/g, ' ')}</span>
-            <span className="muted">{a.blockTime ? timeAgo(a.blockTime) : ''} {a.signature && <a href={EXPLORER.tx(a.signature)} target="_blank" rel="noreferrer" aria-label={t('ui.explorer')}><ExternalIcon size={12} /></a>}</span>
-          </div>
-        ))}
+        {(() => {
+          const items = (activity.data?.pages ?? []).flatMap((p) => p?.items ?? []);
+          const row = (a: (typeof items)[number], i: number) => (
+            <div key={`${a.signature}-${i}`} className="row between small">
+              <span>{t(`profile.activityKinds.${a.kind}` as 'profile.activityKinds.fused')}</span>
+              <span className="muted">{a.blockTime ? timeAgo(a.blockTime) : ''} {a.signature && <a href={EXPLORER.tx(a.signature)} target="_blank" rel="noreferrer" aria-label={t('ui.explorer')}><ExternalIcon size={12} /></a>}</span>
+            </div>
+          );
+          return (<>
+            {items.slice(0, 8).map(row)}
+            {items.length > 8 && <details><summary className="tiny muted" style={{ cursor: 'pointer' }}>{t('common.seeAll')}</summary><div className="stack-sm" style={{ marginTop: 6 }}>{items.slice(8).map(row)}</div></details>}
+          </>);
+        })()}
         {activity.data && activity.data.pages[0]?.items?.length === 0 && <Empty>{t('profile.noActivity')}</Empty>}
       </div>
     </div>
@@ -273,7 +282,10 @@ function PassCard() {
       </div>
       {next && <Progress value={d.xp ?? 0} max={next.xp} tone="magenta" />}
       {!d.hasPass && <div className="small muted">{t('pass.noPass')} <Link className="row" style={{ gap: 3, display: 'inline-flex' }} to="/shop?tab=services">{t('common.seeAll')} <ChevronIcon size={11} /></Link></div>}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 6 }}>
+      {(() => { const canCount = PASS_TRACK.filter((tr) => !!d.hasPass && (d.xp ?? 0) >= tr.xp && !(d.claimed ?? []).includes(tr.tier)).length; return canCount > 0 ? <div className="tiny" style={{ color: 'var(--cg-acid-green)' }}>{t('pass.claim')} ×{canCount}</div> : null; })()}
+      <details>
+        <summary className="tiny muted" style={{ cursor: 'pointer' }}>{t('profile.passAll')}</summary>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 6, marginTop: 6 }}>
         {PASS_TRACK.map((tr) => {
           const unlocked = (d.xp ?? 0) >= tr.xp;
           const claimed = (d.claimed ?? []).includes(tr.tier);
@@ -288,34 +300,8 @@ function PassCard() {
           );
         })}
       </div>
+      </details>
       {skinTier !== null && <ClaimSkinModal tier={skinTier} busy={claim.isPending} onClose={() => setSkinTier(null)} onClaim={(asset) => doClaim(skinTier, asset)} />}
-    </div>
-  );
-}
-
-/** §2.3 — the district wall on the profile: the district this wallet is closest
- *  to finishing. Nothing to show until at least one cap of it is owned, and a
- *  tap on a grey spot goes straight to the market filtered for that cap. */
-function ProfileMural({ cells }: { cells?: number[][] | null }) {
-  const t = useT();
-  const nav = useNavigate();
-  const best = useMemo(() => {
-    let out: number | null = null;
-    (cells ?? []).forEach((row, ci) => {
-      const have = row?.filter((n) => n > 0).length ?? 0;
-      if (have > 0 && (out === null || have > (cells?.[out]?.filter((n) => n > 0).length ?? 0))) out = ci;
-    });
-    return out;
-  }, [cells]);
-  if (best === null || !cells?.[best]) return null;
-  return (
-    <div className="card">
-      <Mural
-        ci={best}
-        cells={cells[best]}
-        title={t('mural.title')}
-        onPick={(ri, owned) => nav(owned ? '/collection' : `/market?collection=${best}&rarity=${ri}&missing=1`)}
-      />
     </div>
   );
 }

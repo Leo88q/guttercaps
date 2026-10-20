@@ -345,3 +345,12 @@ html[data-lang="vi"], html[data-lang="ru"] { --display: 'Inter', sans-serif; }
   .why-card h3 { font-family: var(--display); font-size: 19px; color: var(--chrome); margin: 0 0 8px; }
   .why-card p { margin: 0; font-size: 13.5px; line-height: 1.55; color: rgba(216,216,220,0.72); }
   @media (max-width: 760px) { .why-grid { grid-template-columns: 1fr; } }
+
+/* Boards section (2026-10-20): the tag-wall art as an in-flow strip — the
+   section background already carries bg-boards, this one shows the wall. */
+.boards-img {
+  height: 240px; border-radius: 14px; margin: 18px 0 6px;
+  background-size: cover; background-position: center 38%;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.14), 0 10px 34px rgba(0,0,0,0.45);
+}
+@media (max-width: 640px) { .boards-img { height: 170px; } }
