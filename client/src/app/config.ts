@@ -56,6 +56,10 @@ export const FLAGS = {
 
 export const ONRAMP_URL: string = env.VITE_ONRAMP_URL ?? 'https://buy.moonpay.com/?defaultCurrencyCode=sol';
 
+/** Public Solana dApp Store listing URL. Empty until the listing is live;
+ *  the 'Rate the game' entry renders only when this is set (no dead buttons). */
+export const DAPP_STORE_URL: string = env.VITE_DAPP_STORE_URL ?? '';
+
 // Program ids — placeholders until `anchor keys sync` (see programs/README.md).
 export const PROGRAM_IDS = {
   chipCore: pk(env.VITE_PROGRAM_CHIP_CORE, 'J68G8KrbLTSdi68LHr9Kkw1YbRRHv3uBPirWCd5Xt13V'),
