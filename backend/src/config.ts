@@ -222,6 +222,14 @@ export function assertProductionConfig(): void {
     if (!CG_MINT) problems.push('LAUNCH_PHASE=g requires CG_MINT ($CG pack rail + reward payouts)');
     if (!MINT_AUTHORITY_KEYPAIR) problems.push('LAUNCH_PHASE=g requires MINT_AUTHORITY_KEYPAIR (paid orders would never mint)');
     if (!Number.isInteger(PHASEG_FEATURED_COLLECTION) || PHASEG_FEATURED_COLLECTION < 0 || PHASEG_FEATURED_COLLECTION > 7) problems.push('PHASEG_FEATURED_COLLECTION must be 0..7');
+    // A malformed collection address would only surface as a failed mint AFTER payment;
+    // fail the boot instead. Empty slots are legal (collection-less mints), malformed are not.
+    CORE_COLLECTIONS.forEach((c, i) => {
+      if (!c) return;
+      try { new PublicKey(c); } catch { problems.push(`CORE_COLLECTION_${i} is not a valid pubkey (setup-minimal prints them)`); }
+    });
+    try { new PublicKey(SHARED_MERKLE_TREE); } catch { problems.push('SHARED_MERKLE_TREE is not a valid pubkey'); }
+    try { new PublicKey(CG_MINT); } catch { problems.push('CG_MINT is not a valid pubkey'); }
   }
   if (!API_INGEST && EVENT_BUS !== 'redis') problems.push('API_INGEST=0 with a non-redis event bus: nothing would ever reach /ws — either run the indexer in this process, or set EVENT_BUS=redis + REDIS_URL');
   if (!API_INGEST && !LISTEN_HEAL_EVERY_MS) problems.push('API_INGEST=0 assumes a separate `npm run listen` process is running (docs/09 §4.1) — if it is not, the projections never advance');
