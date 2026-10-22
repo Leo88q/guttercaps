@@ -112,6 +112,9 @@
 
 ### 2.2 Findings
 
+#### SEC-B7 · запись 2026-10-22 · программа `settle` (фаза В) — новые аккаунты, миграции нет
+Программа фазы В (`programs/settle`) задеплоена не была, существующих аккаунтов нет; базовая раскладка `reports/state-layout.json` пополнена шестью новыми аккаунтами без изменения существующих: `SettleConfig` (admin, mint/root oracle, treasury, минты, emission cap, market fee), `PackOrder` (эскроу заказа покупки), `AnchoredRoot` (Merkle-руты выплат, repo-конвенция keccak), `RewardClaimReceipt` (одноразовость claim), `GrantReceipt` (одноразовость fusion-грантов), `EscrowListing` (эскроу маркета фазы F). Любое будущее изменение этих раскладок — только новой версией + миграцией, как требует гейт.
+
 Формат: **ID · Severity · Где · Суть · Последствие · Исправление · Тест**. Критические и высокие — блокеры G-1.
 
 #### SEC-C1 · Critical · `packs.rs:79/250/476`, `fusion.rs:43/316/429`, `arena/lib.rs:188/263` — randomness-аккаунт не проверяется на владельца

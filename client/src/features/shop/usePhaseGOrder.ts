@@ -9,7 +9,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { api, isMock } from '@/api/client';
 import { buildPaymentInstructions, waitForOrderMinted, type PackOrder, type PhaseGCurrency } from './phaseG';
 import { FLAGS } from '@/app/config';
-import { buyPackIx, grantOrSettleIx } from './phaseVFlow';
 
 export type PhaseGStage = 'idle' | 'creating' | 'paying' | 'confirming' | 'minting' | 'done' | 'error';
 
@@ -36,6 +35,8 @@ export function usePhaseGOrder() {
         if (!wallet.publicKey || !wallet.sendTransaction) throw new Error('Wallet is not connected');
         const me = wallet.publicKey;
         setStage('paying');
+        // Phase V is opt-in at launch; keep its builders out of the critical bundle.
+        const { buyPackIx, grantOrSettleIx } = await import('./phaseVFlow');
         const escrowTx = new Transaction().add(buyPackIx({
           buyer: me, orderId: BigInt(orderId), currency,
           amount: BigInt(created.amount ?? '0'),
@@ -43,7 +44,7 @@ export function usePhaseGOrder() {
         }));
         await wallet.sendTransaction(escrowTx, connection);
         setStage('confirming');
-        const payload = await api.post('/packs/order/{id}/settle-auth', {}, { path: { id: orderId } });
+        const payload = await api.post('/packs/order/{id}/settle-auth', undefined, { path: { id: orderId } });
         const settleTx = new Transaction().add(...grantOrSettleIx(payload as unknown as import('./phaseV').SettlePayloadLike, {
           relayer: me,
           treasury: new PublicKey(created.payToOwner ?? ''),

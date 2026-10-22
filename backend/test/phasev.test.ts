@@ -9,6 +9,7 @@ import { Keypair, PublicKey } from '@solana/web3.js';
 import { Db } from '../src/db.ts';
 import * as orders from '../src/pack-orders.ts';
 import { base58Decode } from '../src/base58.ts';
+import type { MintAuth } from '../src/phasev.ts';
 
 let pv: typeof import('../src/phasev.ts');
 beforeAll(async () => {
@@ -37,7 +38,7 @@ describe('byte twins of programs/settle', () => {
 
   it('MintAuth message layout + oracle signature verifies', () => {
     const oracle = Keypair.generate();
-    const auth: pv.MintAuth = {
+    const auth: MintAuth = {
       wallet: BUYER.publicKey, orderId: 42n, specsHash: Buffer.alloc(32, 7), nonce: 42n, expiresAtSlot: 999n,
     };
     const msg = pv.mintAuthMessage(auth);
@@ -99,7 +100,7 @@ describe('settle-auth issuance', () => {
     expect(p1.specs).toHaveLength(5);
     expect(p1.auth.expiresAtSlot).toBe('3500');
     // signature binds the payload's specs
-    const auth: pv.MintAuth = {
+    const auth: MintAuth = {
       wallet: BUYER.publicKey, orderId: BigInt(o.orderId),
       specsHash: pv.specsHash(p1.specs.map((x) => ({ ...x, collection: new PublicKey(x.collection) }))),
       nonce: BigInt(o.orderId), expiresAtSlot: 3500n,

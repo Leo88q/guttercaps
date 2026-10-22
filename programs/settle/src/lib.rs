@@ -43,6 +43,11 @@ pub const MPL_CORE_ID: Pubkey = pubkey!("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZ
 pub const MPL_ACCOUNT_COMPRESSION_ID: Pubkey =
     pubkey!("mcmt6YrQEMKw8Mw43FmpRLmf7BqRnFMKmAcbxE3xkAW");
 pub const MPL_NOOP_ID: Pubkey = pubkey!("mnoopTCrg4p8ry25e4bcWA9XZjbNjMTfgYVGGEdRsf3");
+
+/// The Bubblegum V2 CPI signer PDA (signs the MPL Core collection CPI).
+pub fn mpl_core_cpi_signer() -> Pubkey {
+    Pubkey::find_program_address(&[b"mpl_core_cpi_signer"], &BUBBLEGUM_V2_ID).0
+}
 pub const ED25519_PROGRAM_ID: Pubkey = pubkey!("Ed25519SigVerify111111111111111111111111111");
 
 /// Same royalty the backend metadata and chip_core collections carry.
@@ -190,7 +195,7 @@ pub struct AnchoredRoot {
 
 #[account]
 #[derive(InitSpace)]
-pub struct ClaimReceipt {
+pub struct RewardClaimReceipt {
     pub bump: u8,
 }
 
@@ -205,7 +210,7 @@ pub struct GrantReceipt {
 
 #[account]
 #[derive(InitSpace)]
-pub struct Listing {
+pub struct EscrowListing {
     pub seller: Pubkey,
     pub asset: Pubkey,
     pub merkle_tree: Pubkey,
@@ -262,7 +267,7 @@ pub struct ConfigInitialized {
     pub treasury: Pubkey,
 }
 #[event]
-pub struct PackBought {
+pub struct PackEscrowed {
     pub buyer: Pubkey,
     pub order_id: u64,
     pub currency: u8,
@@ -307,6 +312,22 @@ pub struct EscrowSold {
     pub price: u64,
     pub fee: u64,
 }
+#[event]
+pub struct OraclesUpdated {
+    pub admin: Pubkey,
+    pub mint_oracle: Pubkey,
+    pub root_oracle: Pubkey,
+    pub treasury: Pubkey,
+}
+
+#[event]
+pub struct LimitsUpdated {
+    pub admin: Pubkey,
+    pub emission_cap: u64,
+    pub market_fee_bps: u16,
+    pub packs_paused: bool,
+}
+
 #[event]
 pub struct EscrowCancelled {
     pub seller: Pubkey,
@@ -397,9 +418,12 @@ pub struct InitConfig<'info> {
         associated_token::mint = cg_mint, associated_token::authority = config,
     )]
     pub escrow_cg: Account<'info, TokenAccount>,
+    /// Reward funds live apart from pack escrow: a program-owned token PDA,
+    /// funded deliberately before any reward root is anchored.
     #[account(
         init, payer = admin,
-        associated_token::mint = cg_mint, associated_token::authority = config,
+        token::mint = cg_mint, token::authority = config,
+        seeds = [b"rewards_vault"], bump,
     )]
     pub rewards_vault: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
@@ -467,15 +491,15 @@ pub struct SettlePack<'info> {
     /// Treasury ATA receiving the SPL rails (required unless currency = SOL).
     #[account(mut)]
     pub treasury_token: Option<Account<'info, TokenAccount>>,
-    /// CHECK: address pinned in the handler.
+    #[account(address = mpl_core_cpi_signer() @ SettleError::BadAccount)]
     pub mpl_core_cpi_signer: UncheckedAccount<'info>,
-    /// CHECK: address pinned in the handler.
+    #[account(address = MPL_NOOP_ID @ SettleError::BadAccount)]
     pub log_wrapper: UncheckedAccount<'info>,
-    /// CHECK: address pinned in the handler.
+    #[account(address = ACCOUNT_COMPRESSION_ID @ SettleError::BadAccount)]
     pub compression_program: UncheckedAccount<'info>,
-    /// CHECK: address pinned in the handler.
+    #[account(address = BUBBLEGUM_V2_ID @ SettleError::BadAccount)]
     pub bubblegum_program: UncheckedAccount<'info>,
-    /// CHECK: address pinned in the handler.
+    #[account(address = MPL_CORE_ID @ SettleError::BadAccount)]
     pub mpl_core_program: UncheckedAccount<'info>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
@@ -499,9 +523,8 @@ pub struct RefundPack<'info> {
     #[account(mut)]
     pub buyer: Signer<'info>,
     #[account(
-        mut, close = buyer,
+        mut, close = buyer, has_one = buyer @ SettleError::BadOrderStatus,
         seeds = [b"order", buyer.key().as_ref(), &order_id.to_le_bytes()], bump = order.bump,
-        constraint = order.buyer == buyer.key() @ SettleError::BadOrderStatus,
     )]
     pub order: Account<'info, PackOrder>,
     /// Escrow ATA for SPL refunds (required unless currency = SOL).
@@ -541,10 +564,10 @@ pub struct ClaimReward<'info> {
     )]
     pub root: Account<'info, AnchoredRoot>,
     #[account(
-        init, payer = claimant, space = 8 + ClaimReceipt::INIT_SPACE,
+        init, payer = claimant, space = 8 + RewardClaimReceipt::INIT_SPACE,
         seeds = [b"claim", root.key().as_ref(), claimant.key().as_ref()], bump
     )]
-    pub receipt: Account<'info, ClaimReceipt>,
+    pub receipt: Account<'info, RewardClaimReceipt>,
     #[account(mut)]
     pub claimant: Signer<'info>,
     #[account(
@@ -552,7 +575,7 @@ pub struct ClaimReward<'info> {
         associated_token::mint = cg_mint, associated_token::authority = claimant,
     )]
     pub claimant_cg: Account<'info, TokenAccount>,
-    #[account(mut)]
+    #[account(mut, seeds = [b"rewards_vault"], bump)]
     pub rewards_vault: Account<'info, TokenAccount>,
     #[account(address = config.cg_mint @ SettleError::BadAccount)]
     pub cg_mint: Account<'info, Mint>,
@@ -569,10 +592,10 @@ pub struct EscrowList<'info> {
     #[account(mut)]
     pub seller: Signer<'info>,
     #[account(
-        init, payer = seller, space = 8 + Listing::INIT_SPACE,
+        init, payer = seller, space = 8 + EscrowListing::INIT_SPACE,
         seeds = [b"listing", asset.as_ref()], bump
     )]
-    pub listing: Account<'info, Listing>,
+    pub listing: Account<'info, EscrowListing>,
     /// CHECK: validated against the tree in the handler.
     #[account(mut)]
     pub tree_config: UncheckedAccount<'info>,
@@ -582,11 +605,11 @@ pub struct EscrowList<'info> {
     /// CHECK: MPL Core collection of the leaf, or the Bubblegum program id
     /// as sentinel for a collection-less leaf (mirrors the market program).
     pub core_collection: UncheckedAccount<'info>,
-    /// CHECK: address pinned in the handler.
+    #[account(address = MPL_NOOP_ID @ SettleError::BadAccount)]
     pub log_wrapper: UncheckedAccount<'info>,
-    /// CHECK: address pinned in the handler.
+    #[account(address = ACCOUNT_COMPRESSION_ID @ SettleError::BadAccount)]
     pub compression_program: UncheckedAccount<'info>,
-    /// CHECK: address pinned in the handler.
+    #[account(address = BUBBLEGUM_V2_ID @ SettleError::BadAccount)]
     pub bubblegum_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
@@ -601,9 +624,9 @@ pub struct EscrowBuy<'info> {
         mut, close = seller,
         seeds = [b"listing", listing.asset.as_ref()], bump = listing.bump,
     )]
-    pub listing: Account<'info, Listing>,
-    /// CHECK: compared against listing.seller in the handler.
-    #[account(mut)]
+    pub listing: Account<'info, EscrowListing>,
+    /// The seller receives the payment and the listing rent.
+    #[account(mut, address = listing.seller @ SettleError::BadAccount)]
     pub seller: UncheckedAccount<'info>,
     /// CHECK: compared against config.treasury in the handler.
     #[account(mut)]
@@ -616,11 +639,11 @@ pub struct EscrowBuy<'info> {
     pub merkle_tree: UncheckedAccount<'info>,
     /// CHECK: MPL Core collection of the leaf, or sentinel (see EscrowList).
     pub core_collection: UncheckedAccount<'info>,
-    /// CHECK: address pinned in the handler.
+    #[account(address = MPL_NOOP_ID @ SettleError::BadAccount)]
     pub log_wrapper: UncheckedAccount<'info>,
-    /// CHECK: address pinned in the handler.
+    #[account(address = ACCOUNT_COMPRESSION_ID @ SettleError::BadAccount)]
     pub compression_program: UncheckedAccount<'info>,
-    /// CHECK: address pinned in the handler.
+    #[account(address = BUBBLEGUM_V2_ID @ SettleError::BadAccount)]
     pub bubblegum_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
@@ -632,10 +655,10 @@ pub struct EscrowCancel<'info> {
     #[account(mut, constraint = seller.key() == listing.seller @ SettleError::BadAccount)]
     pub seller: Signer<'info>,
     #[account(
-        mut, close = seller,
+        mut, close = seller, has_one = seller @ SettleError::BadAccount,
         seeds = [b"listing", listing.asset.as_ref()], bump = listing.bump,
     )]
-    pub listing: Account<'info, Listing>,
+    pub listing: Account<'info, EscrowListing>,
     /// CHECK: validated against listing.merkle_tree in the handler.
     #[account(mut)]
     pub tree_config: UncheckedAccount<'info>,
@@ -644,11 +667,11 @@ pub struct EscrowCancel<'info> {
     pub merkle_tree: UncheckedAccount<'info>,
     /// CHECK: MPL Core collection of the leaf, or sentinel (see EscrowList).
     pub core_collection: UncheckedAccount<'info>,
-    /// CHECK: address pinned in the handler.
+    #[account(address = MPL_NOOP_ID @ SettleError::BadAccount)]
     pub log_wrapper: UncheckedAccount<'info>,
-    /// CHECK: address pinned in the handler.
+    #[account(address = ACCOUNT_COMPRESSION_ID @ SettleError::BadAccount)]
     pub compression_program: UncheckedAccount<'info>,
-    /// CHECK: address pinned in the handler.
+    #[account(address = BUBBLEGUM_V2_ID @ SettleError::BadAccount)]
     pub bubblegum_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
@@ -677,15 +700,15 @@ pub struct GrantMint<'info> {
     /// CHECK: the shared phase-G tree.
     #[account(mut)]
     pub merkle_tree: UncheckedAccount<'info>,
-    /// CHECK: address pinned in the handler.
+    #[account(address = mpl_core_cpi_signer() @ SettleError::BadAccount)]
     pub mpl_core_cpi_signer: UncheckedAccount<'info>,
-    /// CHECK: address pinned in the handler.
+    #[account(address = MPL_NOOP_ID @ SettleError::BadAccount)]
     pub log_wrapper: UncheckedAccount<'info>,
-    /// CHECK: address pinned in the handler.
+    #[account(address = ACCOUNT_COMPRESSION_ID @ SettleError::BadAccount)]
     pub compression_program: UncheckedAccount<'info>,
-    /// CHECK: address pinned in the handler.
+    #[account(address = BUBBLEGUM_V2_ID @ SettleError::BadAccount)]
     pub bubblegum_program: UncheckedAccount<'info>,
-    /// CHECK: address pinned in the handler.
+    #[account(address = MPL_CORE_ID @ SettleError::BadAccount)]
     pub mpl_core_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
     /// CHECK: address pinned in the handler.
@@ -770,7 +793,7 @@ pub fn buy_pack_handler(ctx: Context<BuyPack>, order_id: u64, currency: u8, amou
     o.status = STATUS_PAID;
     o.created_slot = Clock::get()?.slot;
     o.bump = ctx.bumps.order;
-    emit!(PackBought { buyer, order_id, currency, amount });
+    emit!(PackEscrowed { buyer, order_id, currency, amount });
     Ok(())
 }
 
@@ -822,12 +845,10 @@ pub fn settle_pack_handler(ctx: Context<SettlePack>, order_id: u64, args: Settle
             let mint = if currency == CURRENCY_USDC { cfg.usdc_mint } else { cfg.cg_mint };
             let escrow_token = ctx.accounts.escrow_token.as_ref().ok_or(SettleError::BadAccount)?;
             let treasury_token = ctx.accounts.treasury_token.as_ref().ok_or(SettleError::BadAccount)?;
-            require!(
-                escrow_token.key() == get_associated_token_address(&config_key, &mint)
-                    && treasury_token.mint == mint
-                    && treasury_token.owner == cfg.treasury,
-                SettleError::BadAccount
-            );
+            require!(escrow_token.key() == get_associated_token_address(&config_key, &mint), SettleError::BadAccount);
+            require_keys_eq!(escrow_token.mint, mint, SettleError::BadAccount);
+            require_keys_eq!(treasury_token.mint, mint, SettleError::BadAccount);
+            require_keys_eq!(treasury_token.owner, cfg.treasury, SettleError::BadAccount);
             let seeds = config_seeds(config_bump);
             let signer_seeds: Vec<&[u8]> = seeds.iter().map(|s| s.as_slice()).collect();
             token::transfer(
@@ -988,12 +1009,10 @@ pub fn refund_pack_handler(ctx: Context<RefundPack>, order_id: u64) -> Result<()
             let mint = if order.currency == CURRENCY_USDC { cfg.usdc_mint } else { cfg.cg_mint };
             let escrow_token = ctx.accounts.escrow_token.as_ref().ok_or(SettleError::BadAccount)?;
             let buyer_token = ctx.accounts.buyer_token.as_ref().ok_or(SettleError::BadAccount)?;
-            require!(
-                escrow_token.key() == get_associated_token_address(&cfg.key(), &mint)
-                    && buyer_token.mint == mint
-                    && buyer_token.owner == ctx.accounts.buyer.key(),
-                SettleError::BadAccount
-            );
+            require!(escrow_token.key() == get_associated_token_address(&cfg.key(), &mint), SettleError::BadAccount);
+            require_keys_eq!(escrow_token.mint, mint, SettleError::BadAccount);
+            require_keys_eq!(buyer_token.mint, mint, SettleError::BadAccount);
+            require_keys_eq!(buyer_token.owner, ctx.accounts.buyer.key(), SettleError::BadAccount);
             let seeds = config_seeds(cfg.bump);
             let signer_seeds: Vec<&[u8]> = seeds.iter().map(|s| s.as_slice()).collect();
             token::transfer(
@@ -1025,13 +1044,15 @@ pub fn anchor_root_handler(ctx: Context<AnchorRoot>, kind: u8, epoch: u64, root:
 pub fn claim_reward_handler(ctx: Context<ClaimReward>, kind: u8, epoch: u64, amount: u64, proof: Vec<[u8; 32]>) -> Result<()> {
     require!(amount > 0, SettleError::BadAmount);
     let claimant = ctx.accounts.claimant.key();
+    // A6: the init_if_needed ATA is adopted only as the claimant's own $CG
+    // account — an uninitialised or foreign account at this address is refused.
+    let claimant_cg = &ctx.accounts.claimant_cg;
+    require!(claimant_cg.owner == claimant || claimant_cg.owner == Pubkey::default(), SettleError::BadAccount);
+    require_keys_eq!(claimant_cg.owner, claimant, SettleError::BadAccount);
+    require_keys_eq!(claimant_cg.mint, ctx.accounts.config.cg_mint, SettleError::BadAccount);
+    require_keys_eq!(ctx.accounts.rewards_vault.mint, ctx.accounts.config.cg_mint, SettleError::BadAccount);
     let leaf = reward_leaf(&claimant, amount, kind, epoch);
     require!(verify_merkle_proof(&ctx.accounts.root.root, leaf, &proof), SettleError::BadProof);
-    require!(
-        ctx.accounts.rewards_vault.key()
-            == get_associated_token_address(&ctx.accounts.config.key(), &ctx.accounts.config.cg_mint),
-        SettleError::BadAccount
-    );
     let seeds = config_seeds(ctx.accounts.config.bump);
     let signer_seeds: Vec<&[u8]> = seeds.iter().map(|s| s.as_slice()).collect();
     token::transfer(
@@ -1266,6 +1287,7 @@ pub fn set_oracles_handler(
     if let Some(v) = root_oracle { c.root_oracle = v; }
     if let Some(v) = treasury { c.treasury = v; }
     if let Some(v) = new_admin { c.admin = v; }
+    emit!(OraclesUpdated { admin: c.admin, mint_oracle: c.mint_oracle, root_oracle: c.root_oracle, treasury: c.treasury });
     Ok(())
 }
 
@@ -1282,6 +1304,7 @@ pub fn set_limits_handler(
         c.market_fee_bps = v;
     }
     if let Some(v) = packs_paused { c.packs_paused = v; }
+    emit!(LimitsUpdated { admin: c.admin, emission_cap: c.emission_cap, market_fee_bps: c.market_fee_bps, packs_paused: c.packs_paused });
     Ok(())
 }
 
@@ -1303,7 +1326,7 @@ pub mod settle {
         init_config_handler(ctx, mint_oracle, root_oracle, treasury, emission_cap, market_fee_bps)
     }
 
-    pub fn buy_pack(ctx: Context<BuyPack>, order_id: u64, currency: u8, amount: u64) -> Result<()> {
+    pub fn escrow_buy_pack(ctx: Context<BuyPack>, order_id: u64, currency: u8, amount: u64) -> Result<()> {
         buy_pack_handler(ctx, order_id, currency, amount)
     }
 
@@ -1339,7 +1362,7 @@ pub mod settle {
         escrow_cancel_handler(ctx, proof)
     }
 
-    pub fn set_oracles(
+    pub fn set_mint_oracles(
         ctx: Context<Admin>,
         mint_oracle: Option<Pubkey>,
         root_oracle: Option<Pubkey>,

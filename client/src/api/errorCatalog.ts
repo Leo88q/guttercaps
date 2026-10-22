@@ -38,9 +38,9 @@ export const API_ERROR_KEYS = {
   phase_g_off: 'failures.unavailable', orders_unavailable: 'failures.unavailable', fusion_unavailable: 'failures.unavailable',
   // phase-V settle path: same truthful summaries, originals stay in ErrorNotice.
   phase_v_off: 'failures.unavailable', phase_v_unconfigured: 'failures.unavailable',
-  not_paid_onchain: 'failures.chainUnconfirmable', not_paid: 'failures.chainUnconfirmable',
+  not_paid_onchain: 'failures.confirmationUnknown', not_paid: 'failures.confirmationUnknown',
   escrow_mismatch: 'failures.requestInvalid', bad_order_account: 'failures.requestInvalid',
-  already_settled: 'failures.chainFulfilled', settle_unverified: 'failures.chainUnconfirmable',
+  already_settled: 'failures.chainFulfilled', settle_unverified: 'failures.confirmationUnknown',
   already_minted: 'failures.chainFulfilled', already_burned: 'failures.requestInvalid', already_promised: 'failures.requestInvalid',
   chip_locked: 'failures.chip_core_StillLocked', diamond_gate: 'failures.unavailable', burn_unverified: 'failures.requestInvalid',
   already_staked: 'failures.requestInvalid', not_staked: 'failures.notFound', nothing_to_claim: 'failures.staking_NothingToClaim',

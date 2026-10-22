@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Keypair } from '@solana/web3.js';
 import { buyPackIx, grantMintIx, oracleAuthIx, settlePackIx, orderPda, type SettlePayloadLike } from './phaseV';
-import { base58Decode, base58Encode } from '@/shared/lib/base58';
+import { base58Encode } from '@/shared/lib/base58';
+import { base58Decode } from '@/shared/lib/base58Decode';
 
 const buyer = Keypair.generate().publicKey;
 const oracle = Keypair.generate().publicKey;
@@ -60,6 +61,12 @@ describe('phase-V instruction builders', () => {
     expect(ix.programId.toBase58()).toBe('Ed25519SigVerify111111111111111111111111111');
     const text = Buffer.from(ix.data).toString('latin1');
     expect(text).toContain('GUTCAP/MINTAUTH/V1');
+    // header: 1 signature, sig @16, pubkey @80, message @112, self-indexed
+    expect(ix.data[0]).toBe(1);
+    expect(ix.data.readUInt16LE(2)).toBe(16);
+    expect(ix.data.readUInt16LE(4)).toBe(0xffff);
+    expect(ix.data.readUInt16LE(6)).toBe(80);
+    expect(ix.data.readUInt16LE(10)).toBe(112);
   });
 
   it('grant_mint: receipt account and args without order prefix', () => {

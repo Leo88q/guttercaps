@@ -6,7 +6,7 @@
 // pinned by unit tests against the repo's LeafProofArgs; checklist item 1.4
 // (devnet run) is its on-chain confirmation, same as mint_v2.
 import { ixDiscriminator } from '@/chain/anchor';
-import { PublicKey, SystemProgram, TransactionInstruction, type Connection } from '@solana/web3.js';
+import { PublicKey, SystemProgram, Transaction, TransactionInstruction, type Connection } from '@solana/web3.js';
 import { api, isMock } from '@/api/client';
 import { sendTx, type WalletLike } from '@/chain/tx';
 import { DAS_RPC_URL } from '@/app/config';
@@ -114,7 +114,6 @@ export async function runPhaseGFusion(args: {
     // authorized by the oracle payload the backend attaches once paid.
     if (!isMock() && !grantSent && args.signer && view.grant) {
       const { grantIx } = await import('@/features/shop/phaseVFlow');
-      const { Transaction } = await import('@solana/web3.js');
       const tx = new Transaction().add(...grantIx(view.grant as unknown as import('@/features/shop/phaseV').SettlePayloadLike, { relayer: args.signer.publicKey }));
       const sig = await sendTx(args.connection, args.signer, tx.instructions);
       await api.post('/fusion/order/{id}/grant-confirm', { signature: sig.signature }, { path: { id: fusionId } });
