@@ -12,6 +12,9 @@ import { base58Decode, base58Encode, isSolanaAddress } from './base58.ts';
 import { CORS_ORIGINS, CORS_ALLOW_CREDENTIALS, WS_PATH, EVENT_BUS, REDIS_URL, TRUST_PROXY_HOPS, assertProductionConfig } from './config.ts';
 import { LAUNCH_PHASE, SHARED_MERKLE_TREE } from './config.ts';
 import * as packOrders from './pack-orders.ts';
+import * as phasegFusion from './phaseg-fusion.ts';
+import { DasClient } from './das.ts';
+import { DAS_RPC_URL, DAS_TIMEOUT_MS } from './config.ts';
 import { bus } from './bus.ts';
 import { wsConfigFromEnv } from './ws.ts';
 import { readBackupStatus } from './backup-status.ts';
@@ -645,6 +648,35 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     if (!r) { res.status(404).json({ code: 'not_found', message: 'Unknown or unminted order' }); return; }
     res.json(r);
   });
+
+  // ------------------------------------------------------------ phase-G fusion (§4)
+  const dasBurnVerifier = async (assetIds: string[]): Promise<boolean> => {
+    const das = new DasClient({ endpoint: DAS_RPC_URL, timeoutMs: DAS_TIMEOUT_MS });
+    for (const a of assetIds) {
+      const local = db.get<{ burned_at: number | null }>(`SELECT burned_at FROM chips WHERE asset = ?`, a);
+      if (local?.burned_at !== null && local?.burned_at !== undefined) continue; // indexer already saw the burn
+      try {
+        await das.getAsset(a);
+        return false; // the asset still exists — not burned (yet)
+      } catch { /* gone from DAS → burned */ }
+    }
+    return true;
+  };
+  v1.post('/fusion/order', requireAuth, accessGate('packs'), rl(POLICIES.mutate), wrap(async (req, res) => {
+    phaseG();
+    res.json(phasegFusion.createFusion(db, req.session!.wallet, req.body?.assets));
+  }));
+  v1.get('/fusion/order/:id', requireAuth, (req, res) => {
+    phaseG();
+    res.json(phasegFusion.getFusion(db, req.session!.wallet, Number(req.params.id)));
+  });
+  v1.post('/fusion/order/:id/confirm', requireAuth, accessGate('packs'), rl(POLICIES.claim), wrap(async (req, res) => {
+    phaseG();
+    res.json(await phasegFusion.confirmFusion(db, req.session!.wallet, Number(req.params.id), req.body ?? {}, {
+      fetchPayment: packOrders.orderPaymentFetcher(connection()),
+      verifyBurned: dasBurnVerifier,
+    }));
+  }));
 
   // ------------------------------------------------------------ beta pre-sale (docs/preorder-beta.md)
   // Money lands in the Squads treasury on MAINNET while the game beta runs; packs are granted

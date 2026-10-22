@@ -18,6 +18,7 @@ import {
 } from '@solana/web3.js';
 import { COLLECTIONS } from '../../packages/economy/src/lore.ts';
 import { type Db, now } from './db.ts';
+import { upsert } from './sql.ts';
 import { deriveBubblegumLeafAssetId } from './das.ts';
 import { pityBeforeFor, rollPack, type MintedChip, type PackOrderRow } from './pack-orders.ts';
 
@@ -128,9 +129,8 @@ export type MintSender = (order: PackOrderRow, chip: ChipToMint) => Promise<void
 /** Allocate the next per-collection chip number (`SYMBOL #n`). Gaps on failure are fine. */
 export function nextGameIndex(db: Db, collectionIdx: number): number {
   db.run(
-    `INSERT INTO phaseg_counters (collection_idx, minted) VALUES (?, 1)
-     ON CONFLICT(collection_idx) DO UPDATE SET minted = minted + 1`,
-    collectionIdx,
+    upsert('phaseg_counters', ['collection_idx', 'minted'], ['collection_idx'], ['minted = phaseg_counters.minted + 1']),
+    collectionIdx, 1,
   );
   return db.get<{ minted: number }>(`SELECT minted FROM phaseg_counters WHERE collection_idx = ?`, collectionIdx)!.minted;
 }
@@ -164,6 +164,11 @@ export async function processPaidOrders(
           assetId: deriveBubblegumLeafAssetId(deps.tree, leaf).toBase58(),
         };
         await deps.sendMint(row, chip);
+        // Register the projection row: ownership/staking/fusion read `chips`.
+        db.run(
+          upsert('chips', ['asset', 'owner', 'collection_idx', 'rarity', 'level', 'flags', 'lock_until', 'origin', 'origin_signature', 'minted_at'], ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'origin = excluded.origin', 'minted_at = excluded.minted_at']),
+          chip.assetId, row.wallet, chip.collectionIdx, chip.rarity, 1, 0, 0, 'pack', row.tx_sig, t,
+        );
         done.push({ assetId: chip.assetId, collectionIdx: chip.collectionIdx, rarity: chip.rarity, gameIndex });
         leaf++;
         mintedChips++;
@@ -178,20 +183,28 @@ export async function processPaidOrders(
   return { mintedOrders, mintedChips };
 }
 
+/** Mint one chip to `wallet` — shared by pack orders and fusion results. */
+export async function sendChipMint(
+  connection: Connection,
+  authority: Keypair,
+  tree: PublicKey,
+  wallet: string,
+  chip: ChipToMint,
+): Promise<void> {
+  const ix = buildMintV2Ix({
+    merkleTree: tree,
+    payer: authority.publicKey,
+    treeAuthority: authority.publicKey,
+    leafOwner: new PublicKey(wallet),
+    metadata: chipMetadata(chip.collectionIdx, chip.rarity, chip.gameIndex),
+  });
+  const tx = new Transaction().add(ix);
+  await sendAndConfirmTransaction(connection, tx, [authority], { commitment: 'confirmed' });
+}
+
 /** Real chain sender: one mint_v2 per tx, signed by payer + tree authority (same key in phase G). */
 export function makeChainMintSender(connection: Connection, authority: Keypair, tree: PublicKey): MintSender {
-  return async (order, chip) => {
-    const owner = new PublicKey(order.wallet);
-    const ix = buildMintV2Ix({
-      merkleTree: tree,
-      payer: authority.publicKey,
-      treeAuthority: authority.publicKey,
-      leafOwner: owner,
-      metadata: chipMetadata(chip.collectionIdx, chip.rarity, chip.gameIndex),
-    });
-    const tx = new Transaction().add(ix);
-    await sendAndConfirmTransaction(connection, tx, [authority], { commitment: 'confirmed' });
-  };
+  return async (order, chip) => sendChipMint(connection, authority, tree, order.wallet, chip);
 }
 
 export async function chainFirstLeafIndex(connection: Connection, tree: PublicKey): Promise<number> {

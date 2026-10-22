@@ -49,7 +49,7 @@ export const sha256Hex = (s: string) => createHash('sha256').update(s).digest('h
 /** Payment destination for a currency: SOL pays the treasury wallet, tokens pay its ATA. */
 export function payToFor(treasury: string, currency: OrderCurrency): { payTo: string; mint: string | null } {
   if (currency === 'SOL') return { payTo: treasury, mint: null };
-  const mint = currency === 'USDC' ? USDC_MINT : new PublicKey(CG_MINT);
+  const mint = currency === 'USDC' ? USDC_MINT : new PublicKey(process.env.CG_MINT ?? CG_MINT);
   const ata = getAssociatedTokenAddressSync(mint, new PublicKey(treasury), false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
   return { payTo: ata.toBase58(), mint: mint.toBase58() };
 }

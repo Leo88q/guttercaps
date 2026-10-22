@@ -997,6 +997,8 @@ export async function crank(log: (s: string) => void = console.log) {
   // minting for paid pack orders. Inert unless LAUNCH_PHASE=g and configured.
   const { LAUNCH_PHASE: lp, SHARED_MERKLE_TREE: smt, MINT_AUTHORITY_KEYPAIR: mak } = await import('./config.ts');
   const { processPaidOrders, makeChainMintSender, chainFirstLeafIndex } = await import('./bubblegum-mint.ts');
+  const { processPaidFusions } = await import('./phaseg-fusion.ts');
+  const { sendChipMint } = await import('./bubblegum-mint.ts');
   const { PublicKey: PK } = await import('@solana/web3.js');
   const phaseGTree = lp === 'g' && smt && mak ? new PK(smt) : null;
   const phaseGAuthority = phaseGTree ? loadKeypair(mak) : null;
@@ -1014,6 +1016,12 @@ export async function crank(log: (s: string) => void = console.log) {
           firstLeafIndex: () => chainFirstLeafIndex(connection, phaseGTree),
         });
         if (r.mintedOrders > 0) log(`[crank] phase-G minted ${r.mintedChips} chips for ${r.mintedOrders} orders`);
+        const f = await processPaidFusions(sharedDb(), {
+          tree: phaseGTree,
+          sendChip: (wallet, chip) => sendChipMint(connection, phaseGAuthority, phaseGTree, wallet, chip),
+          firstLeafIndex: () => chainFirstLeafIndex(connection, phaseGTree),
+        });
+        if (f.settled > 0) log(`[crank] phase-G settled ${f.settled} fusions`);
       } catch (e) {
         log(`[crank] phase-G mint error: ${(e as Error).message}`);
       }

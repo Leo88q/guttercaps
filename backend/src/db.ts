@@ -428,6 +428,28 @@ CREATE TABLE IF NOT EXISTS pack_orders (
 CREATE INDEX IF NOT EXISTS idx_pack_orders_wallet ON pack_orders(wallet);
 CREATE INDEX IF NOT EXISTS idx_pack_orders_status ON pack_orders(status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_pack_orders_tx ON pack_orders(tx_sig);
+-- Phase-G fusions (docs/MINIMAL-LAUNCH-CHECKLIST.md §4): burn 3 cNFTs client-side,
+-- the backend verifies burn + $CG fee, rolls the recipe chance from a committed
+-- seed and mints the result (or the fail refund) into the shared tree.
+CREATE TABLE IF NOT EXISTS phaseg_fusions (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,  -- payment memo id (GCF|<id>)
+  wallet        TEXT    NOT NULL,
+  recipe_from   INTEGER NOT NULL,
+  recipe_to     INTEGER NOT NULL,
+  inputs        TEXT    NOT NULL,                   -- JSON [assetId x3]
+  fee_micro     TEXT    NOT NULL,
+  status        TEXT    NOT NULL DEFAULT 'created', -- created | paid | minted
+  seed          TEXT    NOT NULL,
+  seed_hash     TEXT    NOT NULL,
+  burn_sig      TEXT,
+  pay_sig       TEXT,
+  success       INTEGER,                            -- 1/0 once rolled
+  result_assets TEXT,                               -- JSON [assetId]
+  created_at    INTEGER NOT NULL,
+  minted_at     INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_phaseg_fusions_wallet ON phaseg_fusions(wallet);
+CREATE INDEX IF NOT EXISTS idx_phaseg_fusions_status ON phaseg_fusions(status);
 -- Phase-G mint counters: per-collection chip numbering (SYMBOL #n) without a program.
 CREATE TABLE IF NOT EXISTS phaseg_counters (
   collection_idx INTEGER PRIMARY KEY,
