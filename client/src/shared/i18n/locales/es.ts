@@ -259,7 +259,7 @@ const es: Messages = {
     front: 'Cara', back: 'Reverso', reset: 'Reiniciar', share: 'Compartir',
     copied: 'Enlace copiado', shareHint: 'Copia este enlace', shareFailed: 'No se pudo compartir',
     link: 'Tu enlace', refNote: 'El enlace lleva tu código de referido: los registros que lleguen por él se cuentan en el programa de referidos habitual.',
-    spec: 'Ficha', toMarket: 'Página en el mercado', deepLinkNote: 'Esta página es un enlace profundo: se abre sin billetera y sin sesión.',
+    spec: 'Ficha', toMarket: 'Página en el mercado', phasegTrade: 'Vender en un marketplace', phasegStake: 'Stake suave · gana $CG', phasegUnstake: 'Retirar stake', deepLinkNote: 'Esta página es un enlace profundo: se abre sin billetera y sin sesión.',
   },
   admin: {
     mod: {
@@ -378,7 +378,7 @@ const es: Messages = {
     soulbound: 'Ligado {n} días',
     unstaked: 'Si retiras el stake antes del sorteo, quedas fuera.',
   },
-  verify: { title: 'Demostrablemente justo', subtitle: 'Pega una transacción de apertura de sobre. Leemos el roll on-chain de SlotHashes del evento y repetimos exactamente la expansión que usó el programa.', placeholder: 'Firma de la transacción', check: 'Verificar', match: 'Coincide con el resultado on-chain', mismatch: 'No coincide — por favor repórtalo', slotHashes: 'Seed = sha256(tu commit ‖ SlotHashes[slot+retraso]). El estudio nunca elige el resultado.' },
+  verify: { title: 'Demostrablemente justo', subtitle: 'Pega una transacción de apertura de sobre. Leemos el roll on-chain de SlotHashes del evento y repetimos exactamente la expansión que usó el programa.', placeholder: 'Firma de la transacción', check: 'Verificar', match: 'Coincide con el resultado on-chain', mismatch: 'No coincide — por favor repórtalo', slotHashes: 'Seed = sha256(tu commit ‖ SlotHashes[slot+retraso]). El estudio nunca elige el resultado.' , phasegTitle: 'Emisiones del modo de lanzamiento', phasegBody: 'En el modo de lanzamiento el servidor emite tus fichas. La semilla del sorteo se comprometió (sha256) antes de tu pago y se revela aquí tras la emisión: repite la comprobación y verifica que el resultado no se eligió después.', phasegOrder: 'Número de pedido', phasegCheck: 'Comprobar pedido', phasegMatches: 'Coincide con la semilla comprometida', phasegMismatch: 'No coincide: avísanos, por favor', phasegNotFound: 'Aún no hay un pedido emitido con ese número', phasegJournal: 'Registro público de emisiones', phasegEmpty: 'Aún no hay emisiones', phasegChips: 'fichas' },
   codex: { registry: 'Underground Registry', registryIntro: 'The guild registry: 12 pages per depth. Close a depth with any chip to unseal its pages.', sealed: 'Sealed — close this depth with any chip to read.', title: 'Los Ocho Distritos' },
   errors: { rejected: 'Rechazaste la firma', insufficient: 'Saldo insuficiente', network: 'Error de red — inténtalo de nuevo', stale: 'La cotización expiró — actualiza', generic: 'Algo salió mal' },
   legal: { title: 'Legal', terms: 'Términos del servicio', privacy: 'Privacidad', updated: 'Vigente desde {date}', canonical: 'El texto en inglés es la versión oficial; las traducciones son una cortesía.', ages: 'Solo 18+', noSaleIn: 'sin venta de sobres en', verify: 'Verificar un sorteo', notFound: 'Ese documento no existe. Los dos que sí:' },

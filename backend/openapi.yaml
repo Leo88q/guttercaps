@@ -1049,6 +1049,137 @@ paths:
       summary: Public audit snapshot — every paid/granted reservation (wallets not included) and the campaign state
       responses:
         '200': { description: snapshot, content: { application/json: { schema: { type: object, required: [campaign, rows], properties: { campaign: { $ref: '#/components/schemas/PreorderCampaign' }, rows: { type: array, items: { type: object, properties: { refId: { type: integer }, qty: { type: integer }, status: { type: string }, paidAt: { type: integer, nullable: true }, grantedAt: { type: integer, nullable: true } } } } } } } } }
+  /packs/order:
+    post:
+      tags: [packs]
+      summary: Phase-G — create a pack order (seed commitment published before payment)
+      description: |
+        Only when `LAUNCH_PHASE=g` (else 410 `phase_g_off`). Creates an order whose server seed's
+        sha256 is returned immediately; the seed itself is revealed only after minting, so anyone can
+        recompute the roll from the public journal. Pay the treasury with memo `GC-ORD|<orderId>`.
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [sku, qty, currency], properties: { sku: { type: integer, minimum: 0, maximum: 3 }, qty: { type: integer, minimum: 1, maximum: 25 }, currency: { type: string, enum: [SOL, USDC, CG] } } } } } }
+      responses:
+        '200': { description: order payment instructions, content: { application/json: { schema: { $ref: '#/components/schemas/PackOrderCreated' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { description: sign-in required }
+        '403': { $ref: '#/components/responses/Error', description: geo_blocked }
+        '409': { $ref: '#/components/responses/Error', description: 'starter_claimed | daily_cap' }
+        '410': { $ref: '#/components/responses/Error', description: phase_g_off }
+  /packs/order/{id}:
+    get:
+      tags: [packs]
+      summary: Phase-G — order status (seed revealed after minting)
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '200': { description: order, content: { application/json: { schema: { $ref: '#/components/schemas/PackOrder' } } } }
+        '401': { description: sign-in required }
+        '403': { $ref: '#/components/responses/Error', description: not_yours }
+        '404': { $ref: '#/components/responses/Error', description: not_found }
+  /packs/order/{id}/confirm:
+    post:
+      tags: [packs]
+      summary: Phase-G — submit the payment signature; backend verifies and marks paid
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [signature], properties: { signature: { type: string } } } } } }
+      responses:
+        '200': { description: order, content: { application/json: { schema: { $ref: '#/components/schemas/PackOrder' } } } }
+        '400': { $ref: '#/components/responses/Error', description: bad_signature }
+        '401': { description: sign-in required }
+        '404': { $ref: '#/components/responses/Error', description: 'not_found | tx_not_found' }
+        '409': { $ref: '#/components/responses/Error', description: 'not_payable | already_confirmed | already_minted' }
+        '422': { $ref: '#/components/responses/Error', description: payment_* }
+  /packs/order/{id}/verify:
+    get:
+      tags: [packs]
+      security: []
+      summary: Phase-G — recompute an order's roll from its revealed seed
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '200': { description: verdict, content: { application/json: { schema: { $ref: '#/components/schemas/PackOrderVerify' } } } }
+        '404': { $ref: '#/components/responses/Error', description: not_found }
+  /packs/mint-journal:
+    get:
+      tags: [packs]
+      security: []
+      summary: Phase-G — public mint journal (order, revealed seed, assets)
+      parameters: [{ name: limit, in: query, schema: { type: integer, default: 100 } }]
+      responses:
+        '200': { description: journal, content: { application/json: { schema: { type: object, properties: { tree: { type: string, nullable: true }, entries: { type: array, items: { $ref: '#/components/schemas/MintJournalEntry' } } } } } } }
+  /fusion/order:
+    post:
+      tags: [fusion]
+      summary: Phase-G — create a fusion intent (burn 3 chips yourself, pay the $CG fee)
+      description: |
+        Only when `LAUNCH_PHASE=g`. Validates the 3 materials (owner, rarity, collection rule,
+        locks) and commits a seed hash for the recipe chance roll. Diamond (7→8) stays on the
+        program path. Pay the fee to `payTo` with memo `GCF|<fusionId>`, burn the materials,
+        then confirm with both signatures.
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [assets], properties: { assets: { type: array, items: { type: string }, minItems: 3, maxItems: 3 } } } } } }
+      responses:
+        '200': { description: intent, content: { application/json: { schema: { $ref: '#/components/schemas/FusionOrderCreated' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { description: sign-in required }
+        '403': { $ref: '#/components/responses/Error', description: not_yours }
+        '404': { $ref: '#/components/responses/Error', description: chip_not_found }
+        '409': { $ref: '#/components/responses/Error', description: 'already_burned | chip_locked | chip_busy | already_promised' }
+        '410': { $ref: '#/components/responses/Error', description: 'diamond_gate | fusion_unavailable | phase_g_off' }
+  /fusion/order/{id}:
+    get:
+      tags: [fusion]
+      summary: Phase-G — fusion intent status (seed revealed after minting)
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '200': { description: intent, content: { application/json: { schema: { $ref: '#/components/schemas/FusionOrder' } } } }
+        '401': { description: sign-in required }
+        '404': { $ref: '#/components/responses/Error', description: not_found }
+  /fusion/order/{id}/confirm:
+    post:
+      tags: [fusion]
+      summary: Phase-G — submit burn + fee signatures; backend verifies both, result mints async
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [burnSig, paySig], properties: { burnSig: { type: string }, paySig: { type: string } } } } } }
+      responses:
+        '200': { description: intent, content: { application/json: { schema: { $ref: '#/components/schemas/FusionOrder' } } } }
+        '400': { $ref: '#/components/responses/Error', description: bad_signature }
+        '401': { description: sign-in required }
+        '404': { $ref: '#/components/responses/Error', description: 'not_found | tx_not_found' }
+        '409': { $ref: '#/components/responses/Error', description: already_confirmed }
+        '422': { $ref: '#/components/responses/Error', description: 'payment_* | burn_unverified' }
+  /staking/soft/me:
+    get:
+      tags: [staking]
+      summary: Phase-G — my soft stakes, pending/claimed rewards, payouts
+      responses:
+        '200': { description: state, content: { application/json: { schema: { $ref: '#/components/schemas/SoftStakingMe' } } } }
+        '401': { description: sign-in required }
+  /staking/soft/stake:
+    post:
+      tags: [staking]
+      summary: Phase-G — soft-stake a chip (no custody; ownership-checked accrual)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [asset], properties: { asset: { type: string } } } } } }
+      responses:
+        '200': { description: staked, content: { application/json: { schema: { type: object, properties: { asset: { type: string }, stakedAt: { type: integer } } } } } }
+        '401': { description: sign-in required }
+        '403': { $ref: '#/components/responses/Error', description: not_yours }
+        '404': { $ref: '#/components/responses/Error', description: chip_not_found }
+        '409': { $ref: '#/components/responses/Error', description: 'already_staked | chip_locked | chip_busy | already_burned' }
+  /staking/soft/unstake:
+    post:
+      tags: [staking]
+      summary: Phase-G — unstake a chip
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [asset], properties: { asset: { type: string } } } } } }
+      responses:
+        '200': { description: unstaked, content: { application/json: { schema: { type: object, properties: { asset: { type: string }, unstakedAt: { type: integer } } } } } }
+        '401': { description: sign-in required }
+        '404': { $ref: '#/components/responses/Error', description: not_staked }
+  /staking/soft/claim:
+    post:
+      tags: [staking]
+      summary: Phase-G — claim pending rewards (one idempotent payout; crank sends $CG)
+      responses:
+        '200': { description: payout, content: { application/json: { schema: { type: object, properties: { payoutId: { type: integer }, amountMicro: { type: string }, status: { type: string } } } } } }
+        '401': { description: sign-in required }
+        '409': { $ref: '#/components/responses/Error', description: nothing_to_claim }
   /prices:
     get:
       tags: [packs]
@@ -2048,6 +2179,99 @@ components:
         enabled: { type: boolean }
         pAtLeastLegend: { type: number }
         evPct: { type: number }
+    PackOrderCreated:
+      type: object
+      properties:
+        orderId: { type: integer }
+        memo: { type: string }
+        payTo: { type: string }
+        payToOwner: { type: string }
+        mint: { type: string, nullable: true }
+        amount: { type: string }
+        currency: { type: string, enum: [SOL, USDC, CG] }
+        seedHash: { type: string }
+        expiresAt: { type: integer }
+    MintedChip:
+      type: object
+      properties:
+        assetId: { type: string }
+        collectionIdx: { type: integer }
+        rarity: { type: integer }
+        gameIndex: { type: integer }
+    PackOrder:
+      type: object
+      properties:
+        orderId: { type: integer }
+        sku: { type: integer }
+        qty: { type: integer }
+        currency: { type: string }
+        amount: { type: string }
+        payTo: { type: string }
+        mint: { type: string, nullable: true }
+        memo: { type: string }
+        status: { type: string, enum: [created, paid, minted, expired, failed] }
+        seedHash: { type: string }
+        seed: { type: string, nullable: true }
+        txSig: { type: string, nullable: true }
+        assets: { type: array, nullable: true, items: { $ref: '#/components/schemas/MintedChip' } }
+        createdAt: { type: integer }
+        expiresAt: { type: integer }
+        mintedAt: { type: integer, nullable: true }
+    PackOrderVerify:
+      type: object
+      properties:
+        orderId: { type: integer }
+        matches: { type: boolean }
+        rarities: { type: array, items: { type: integer } }
+        collections: { type: array, items: { type: integer } }
+        assets: { type: array, items: { $ref: '#/components/schemas/MintedChip' } }
+    MintJournalEntry:
+      type: object
+      properties:
+        orderId: { type: integer }
+        wallet: { type: string }
+        sku: { type: integer }
+        qty: { type: integer }
+        seedHash: { type: string }
+        seed: { type: string }
+        assets: { type: array, items: { $ref: '#/components/schemas/MintedChip' } }
+        txSig: { type: string, nullable: true }
+        mintedAt: { type: integer, nullable: true }
+    FusionOrderCreated:
+      type: object
+      properties:
+        fusionId: { type: integer }
+        memo: { type: string }
+        payTo: { type: string }
+        mint: { type: string, nullable: true }
+        feeMicro: { type: string }
+        seedHash: { type: string }
+        from: { type: integer }
+        to: { type: integer }
+    FusionOrder:
+      type: object
+      properties:
+        fusionId: { type: integer }
+        from: { type: integer }
+        to: { type: integer }
+        inputs: { type: array, items: { type: string } }
+        feeMicro: { type: string }
+        memo: { type: string }
+        status: { type: string, enum: [created, paid, minted] }
+        seedHash: { type: string }
+        seed: { type: string, nullable: true }
+        success: { type: boolean, nullable: true }
+        resultAssets: { type: array, nullable: true, items: { type: string } }
+        resultLockUntil: { type: integer, nullable: true }
+        createdAt: { type: integer }
+        mintedAt: { type: integer, nullable: true }
+    SoftStakingMe:
+      type: object
+      properties:
+        staked: { type: array, items: { type: object, properties: { asset: { type: string }, stakedAt: { type: integer } } } }
+        pendingMicro: { type: string }
+        claimedMicro: { type: string }
+        payouts: { type: array, items: { type: object, properties: { id: { type: integer }, amount_micro: { type: string }, status: { type: string }, tx_sig: { type: string, nullable: true } } } }
     PreorderCampaign:
       type: object
       required: [active, sku, priceLamports, treasury, total, remaining, sold, granted, memoPrefix, intentTtlS]

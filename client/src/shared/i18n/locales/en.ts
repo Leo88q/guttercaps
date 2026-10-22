@@ -272,7 +272,7 @@ const en = {
     front: 'Face', back: 'Back', reset: 'Reset', share: 'Share',
     copied: 'Link copied', shareHint: 'Copy this link', shareFailed: 'Could not share',
     link: 'Your link', refNote: 'The link carries your referral code — sign-ups through it are attributed to you by the usual referral program.',
-    spec: 'Spec', toMarket: 'Market page', deepLinkNote: 'This page is a deep link: it opens without a wallet and without a session.',
+    spec: 'Spec', toMarket: 'Market page', phasegTrade: 'Trade on a marketplace', phasegStake: 'Soft-stake · earn $CG', phasegUnstake: 'Unstake', deepLinkNote: 'This page is a deep link: it opens without a wallet and without a session.',
   },
   admin: {
     mod: {
@@ -395,6 +395,16 @@ const en = {
     title: 'Provably fair', subtitle: 'Paste a pack-open transaction. We read the on-chain SlotHashes roll from the event and re-run the exact expansion the program used.',
     placeholder: 'Transaction signature', check: 'Verify', match: 'Matches on-chain result', mismatch: 'Does not match — please report this',
     slotHashes: 'Seed = sha256(your commit ‖ SlotHashes[slot+delay]). The studio never picks a result.',
+    phasegTitle: 'Launch-mode mints',
+    phasegBody: 'In launch mode the server mints your chips. The roll seed was committed (sha256) before you paid and is revealed here after minting — re-run the check to prove the result was not picked afterwards.',
+    phasegOrder: 'Order number',
+    phasegCheck: 'Check order',
+    phasegMatches: 'Matches the committed seed',
+    phasegMismatch: 'Does not match — please report this',
+    phasegNotFound: 'No minted order with that number yet',
+    phasegJournal: 'Public mint journal',
+    phasegEmpty: 'No mints yet',
+    phasegChips: 'chips',
   },
   codex: { registry: 'Underground Registry', registryIntro: 'The guild registry: 12 pages per depth. Close a depth with any chip to unseal its pages.', sealed: 'Sealed — close this depth with any chip to read.', title: 'The Eight Districts' },
   errors: {

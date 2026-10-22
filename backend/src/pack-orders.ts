@@ -66,7 +66,7 @@ export function createOrder(
   t = now(),
   deps: { treasury?: string; seedHex?: string } = {},
 ): {
-  orderId: number; memo: string; payTo: string; mint: string | null; amount: string;
+  orderId: number; memo: string; payTo: string; payToOwner: string; mint: string | null; amount: string;
   currency: OrderCurrency; seedHash: string; expiresAt: number;
 } {
   const treasury = deps.treasury ?? PACK_TREASURY;
@@ -104,7 +104,7 @@ export function createOrder(
     wallet, req.sku, req.qty, currency, amount, payTo, mint, seed, sha256Hex(seed), t, t + PACK_ORDER_TTL_S,
   );
   const id = Number(r.lastInsertRowid);
-  return { orderId: id, memo: orderMemo(id), payTo, mint, amount, currency, seedHash: sha256Hex(seed), expiresAt: t + PACK_ORDER_TTL_S };
+  return { orderId: id, memo: orderMemo(id), payTo, payToOwner: treasury, mint, amount, currency, seedHash: sha256Hex(seed), expiresAt: t + PACK_ORDER_TTL_S };
 }
 
 /** Buyer-facing order view — the seed appears ONLY after minting (reveal). */

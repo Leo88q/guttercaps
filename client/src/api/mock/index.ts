@@ -1600,6 +1600,61 @@ export async function mockRequest(method: string, path: string, opts: RequestOpt
   throw Object.assign(new Error(`mock: no route ${method.toUpperCase()} ${p}`), { status: 404 });
 }
 
+// ------------------------------------------------------------- phase-G launch simulator
+// The mock stands in for the phase-G backend: an order is created with a seed
+// commitment, 'confirm' marks it paid, and the next polls 'mint' it — the same
+// states the real backend walks through, nothing hidden.
+interface MockOrder { id: number; sku: number; qty: number; currency: string; status: string; polls: number; assets: { assetId: string; collectionIdx: number; rarity: number; gameIndex: number }[] }
+const mockOrders = new Map<number, MockOrder>();
+let mockOrderSeq = 1000;
+const MOCK_TREASURY = 'MockTreasury1111111111111111111111111111111';
+on('post', '/packs/order', (o) => {
+  const b = (o.body ?? {}) as { sku: number; qty: number; currency: string };
+  const id = ++mockOrderSeq;
+  mockOrders.set(id, { id, sku: b.sku, qty: b.qty, currency: b.currency, status: 'created', polls: 0, assets: [] });
+  return { orderId: id, memo: `GC-ORD|${id}`, payTo: MOCK_TREASURY, payToOwner: MOCK_TREASURY, mint: null, amount: '54454545', currency: b.currency, seedHash: 'ab'.repeat(32), expiresAt: Math.floor(Date.now() / 1000) + 1800 };
+});
+on('post', '/packs/order/{id}/confirm', (_o, p) => {
+  const m = mockOrders.get(Number(p.id));
+  if (!m) throw new ApiError(404, 'not_found', 'Unknown order');
+  m.status = 'paid';
+  return mockOrderView(m);
+});
+function mockOrderView(m: MockOrder) {
+  if (m.status === 'paid' && ++m.polls >= 2) {
+    m.status = 'minted';
+    const roll = mockRoll(m.sku, m.qty).flat();
+    m.assets = roll.map((r, i) => ({ assetId: `mockAsset${m.id}x${i}`, collectionIdx: r.collection, rarity: r.rarity, gameIndex: i + 1 }));
+  }
+  return {
+    orderId: m.id, sku: m.sku, qty: m.qty, currency: m.currency, amount: '54454545', payTo: MOCK_TREASURY, mint: null,
+    memo: `GC-ORD|${m.id}`, status: m.status, seedHash: 'ab'.repeat(32), seed: m.status === 'minted' ? 'cd'.repeat(32) : null,
+    txSig: 'mock-payment', assets: m.status === 'minted' ? m.assets : null,
+    createdAt: Math.floor(Date.now() / 1000), expiresAt: Math.floor(Date.now() / 1000) + 1800, mintedAt: m.status === 'minted' ? Math.floor(Date.now() / 1000) : null,
+  };
+}
+on('get', '/packs/order/{id}', (_o, p) => {
+  const m = mockOrders.get(Number(p.id));
+  if (!m) throw new ApiError(404, 'not_found', 'Unknown order');
+  return mockOrderView(m);
+});
+on('get', '/packs/order/{id}/verify', (_o, p) => {
+  const m = mockOrders.get(Number(p.id));
+  if (!m || m.status !== 'minted') throw new ApiError(404, 'not_found', 'Unknown or unminted order');
+  return { orderId: m.id, matches: true, rarities: m.assets.map((a) => a.rarity), collections: m.assets.map((a) => a.collectionIdx), assets: m.assets };
+});
+on('get', '/packs/mint-journal', () => ({
+  tree: null,
+  entries: [...mockOrders.values()].filter((m) => m.status === 'minted').map((m) => ({
+    orderId: m.id, wallet: ME, sku: m.sku, qty: m.qty, seedHash: 'ab'.repeat(32), seed: 'cd'.repeat(32), assets: m.assets, txSig: 'mock-payment', mintedAt: Math.floor(Date.now() / 1000),
+  })),
+}));
+const mockSoftStakes = new Set<string>();
+on('post', '/staking/soft/stake', (o) => { const a = String((o.body as { asset?: string })?.asset ?? ''); mockSoftStakes.add(a); return { asset: a, stakedAt: Math.floor(Date.now() / 1000) }; });
+on('post', '/staking/soft/unstake', (o) => { const a = String((o.body as { asset?: string })?.asset ?? ''); mockSoftStakes.delete(a); return { asset: a, unstakedAt: Math.floor(Date.now() / 1000) }; });
+on('get', '/staking/soft/me', () => ({ staked: [...mockSoftStakes].map((asset) => ({ asset, stakedAt: Math.floor(Date.now() / 1000) })), pendingMicro: '125000000', claimedMicro: '0', payouts: [] }));
+on('post', '/staking/soft/claim', () => ({ payoutId: 1, amountMicro: '125000000', status: 'sent' }));
+
 /** Used by the mock pack flow to fabricate a believable result. */
 export function mockRoll(sku: number, qty: number) {
   const p = PACKS[SKUS[sku]];

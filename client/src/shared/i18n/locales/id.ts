@@ -259,7 +259,7 @@ const id: Messages = {
     front: 'Depan', back: 'Belakang', reset: 'Reset', share: 'Bagikan',
     copied: 'Link disalin', shareHint: 'Salin link ini', shareFailed: 'Gagal membagikan',
     link: 'Linkmu', refNote: 'Link ini membawa kode referralmu — pendaftaran yang datang lewat link ini dihitung oleh program referral biasa.',
-    spec: 'Spesifikasi', toMarket: 'Halaman market', deepLinkNote: 'Halaman ini adalah deep link: terbuka tanpa wallet dan tanpa sesi.',
+    spec: 'Spesifikasi', toMarket: 'Halaman market', phasegTrade: 'Jual di marketplace', phasegStake: 'Soft-stake · dapat $CG', phasegUnstake: 'Lepas stake', deepLinkNote: 'Halaman ini adalah deep link: terbuka tanpa wallet dan tanpa sesi.',
   },
   admin: {
     mod: {
@@ -378,7 +378,7 @@ const id: Messages = {
     soulbound: 'Terikat {n} hari',
     unstaked: 'Unstake sebelum undian dan kamu keluar.',
   },
-  verify: { title: 'Terbukti adil', subtitle: 'Tempel transaksi pembukaan pack. Kami membaca roll on-chain SlotHashes dari event dan menjalankan ulang ekspansi persis seperti yang dipakai program.', placeholder: 'Tanda tangan transaksi', check: 'Verifikasi', match: 'Cocok dengan hasil on-chain', mismatch: 'Tidak cocok — mohon laporkan', slotHashes: 'Seed = sha256(commit kamu ‖ SlotHashes[slot+tunda]). Studio tidak pernah memilih hasil.' },
+  verify: { title: 'Terbukti adil', subtitle: 'Tempel transaksi pembukaan pack. Kami membaca roll on-chain SlotHashes dari event dan menjalankan ulang ekspansi persis seperti yang dipakai program.', placeholder: 'Tanda tangan transaksi', check: 'Verifikasi', match: 'Cocok dengan hasil on-chain', mismatch: 'Tidak cocok — mohon laporkan', slotHashes: 'Seed = sha256(commit kamu ‖ SlotHashes[slot+tunda]). Studio tidak pernah memilih hasil.' , phasegTitle: 'Penerbitan mode peluncuran', phasegBody: 'Di mode peluncuran server menerbitkan chip kamu. Seed undian dikomitmenkan (sha256) sebelum kamu membayar dan diungkap di sini setelah penerbitan — jalankan pemeriksaan untuk membuktikan hasilnya tidak dipilih belakangan.', phasegOrder: 'Nomor pesanan', phasegCheck: 'Periksa pesanan', phasegMatches: 'Cocok dengan seed yang dikomitmenkan', phasegMismatch: 'Tidak cocok — mohon laporkan', phasegNotFound: 'Belum ada pesanan terbit dengan nomor itu', phasegJournal: 'Jurnal penerbitan publik', phasegEmpty: 'Belum ada penerbitan', phasegChips: 'chip' },
   codex: { registry: 'Underground Registry', registryIntro: 'The guild registry: 12 pages per depth. Close a depth with any chip to unseal its pages.', sealed: 'Sealed — close this depth with any chip to read.', title: 'Delapan Distrik' },
   errors: { rejected: 'Anda menolak tanda tangan', insufficient: 'Saldo tidak cukup', network: 'Kesalahan jaringan — coba lagi', stale: 'Kuotasi kedaluwarsa — segarkan', generic: 'Terjadi kesalahan' },
   legal: { title: 'Legal', terms: 'Ketentuan Layanan', privacy: 'Privasi', updated: 'Berlaku sejak {date}', canonical: 'Teks bahasa Inggris adalah versi resmi; terjemahan hanya untuk kemudahan.', ages: 'Hanya 18+', noSaleIn: 'tidak ada penjualan pack di', verify: 'Verifikasi undian', notFound: 'Dokumen itu tidak ada. Yang tersedia:' },

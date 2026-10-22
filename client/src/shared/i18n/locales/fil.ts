@@ -259,7 +259,7 @@ const fil: Messages = {
     front: 'Harap', back: 'Likod', reset: 'I-reset', share: 'Ibahagi',
     copied: 'Nakopya ang link', shareHint: 'Kopyahin ang link na ito', shareFailed: 'Hindi maibahagi',
     link: 'Link mo', refNote: 'Dala ng link ang referral code mo — ang mga sign-up na dumaan dito ay nabibilang sa karaniwang referral program.',
-    spec: 'Spec', toMarket: 'Pahina sa market', deepLinkNote: 'Deep link ang pahinang ito: bubukas ito kahit walang wallet at walang session.',
+    spec: 'Spec', toMarket: 'Pahina sa market', phasegTrade: 'I-trade sa marketplace', phasegStake: 'Soft-stake · kumita ng $CG', phasegUnstake: 'I-unstake', deepLinkNote: 'Deep link ang pahinang ito: bubukas ito kahit walang wallet at walang session.',
   },
   admin: {
     mod: {
@@ -378,7 +378,7 @@ const fil: Messages = {
     soulbound: 'Nakatali {n} araw',
     unstaked: 'Mag-unstake bago ang draw at wala ka sa round na ito.',
   },
-  verify: { title: 'Mapapatunayang patas', subtitle: 'I-paste ang pack-open na transaksyon. Babasahin namin ang on-chain SlotHashes roll mula sa event at uulitin ang eksaktong expansion na ginamit ng program.', placeholder: 'Transaction signature', check: 'I-verify', match: 'Tugma sa on-chain na resulta', mismatch: 'Hindi tugma — paki-report', slotHashes: 'Seed = sha256(iyong commit ‖ SlotHashes[slot+delay]). Hindi kailanman pumipili ng resulta ang studio.' },
+  verify: { title: 'Mapapatunayang patas', subtitle: 'I-paste ang pack-open na transaksyon. Babasahin namin ang on-chain SlotHashes roll mula sa event at uulitin ang eksaktong expansion na ginamit ng program.', placeholder: 'Transaction signature', check: 'I-verify', match: 'Tugma sa on-chain na resulta', mismatch: 'Hindi tugma — paki-report', slotHashes: 'Seed = sha256(iyong commit ‖ SlotHashes[slot+delay]). Hindi kailanman pumipili ng resulta ang studio.' , phasegTitle: 'Mga mint ng launch mode', phasegBody: 'Sa launch mode ang server ang gumagawa ng chips mo. Ang seed ng roll ay naka-commit (sha256) bago ka nagbayad at inilalantad dito pagkatapos ng mint — patakbuhin ang check para patunayang hindi pinili ang resulta pagkatapos.', phasegOrder: 'Numero ng order', phasegCheck: 'I-check ang order', phasegMatches: 'Tugma sa naka-commit na seed', phasegMismatch: 'Hindi tugma — i-report mo ito sa amin', phasegNotFound: 'Wala pang na-mint na order sa numerong iyan', phasegJournal: 'Pampublikong mint journal', phasegEmpty: 'Wala pang mint', phasegChips: 'chips' },
   codex: { registry: 'Underground Registry', registryIntro: 'The guild registry: 12 pages per depth. Close a depth with any chip to unseal its pages.', sealed: 'Sealed — close this depth with any chip to read.', title: 'Ang Walong Distrito' },
   errors: { rejected: 'Tinanggihan mo ang pirma', insufficient: 'Kulang ang balanse', network: 'Network error — subukan ulit', stale: 'Nag-expire ang quote — i-refresh', generic: 'May nagkamali' },
   legal: { title: 'Legal', terms: 'Mga Tuntunin ng Serbisyo', privacy: 'Privacy', updated: 'Epektibo noong {date}', canonical: 'Ang bersyon sa Ingles ang opisyal; ang mga pagsasalin ay para sa kaginhawaan lamang.', ages: '18+ lamang', noSaleIn: 'walang benta ng pack sa', verify: 'Beripikahin ang draw', notFound: 'Wala ang dokumentong iyan. Ang dalawang meron:' },

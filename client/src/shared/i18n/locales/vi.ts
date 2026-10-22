@@ -259,7 +259,7 @@ const vi: Messages = {
     front: 'Mặt trước', back: 'Mặt sau', reset: 'Đặt lại', share: 'Chia sẻ',
     copied: 'Đã chép link', shareHint: 'Chép link này', shareFailed: 'Không chia sẻ được',
     link: 'Link của bạn', refNote: 'Link mang mã giới thiệu của bạn — người đăng ký qua link này được tính bởi chương trình giới thiệu như thường.',
-    spec: 'Thông số', toMarket: 'Trang market', deepLinkNote: 'Đây là deep link: mở được không cần ví và không cần đăng nhập.',
+    spec: 'Thông số', toMarket: 'Trang market', phasegTrade: 'Giao dịch trên marketplace', phasegStake: 'Soft-stake · kiếm $CG', phasegUnstake: 'Bỏ stake', deepLinkNote: 'Đây là deep link: mở được không cần ví và không cần đăng nhập.',
   },
   admin: {
     mod: {
@@ -378,7 +378,7 @@ const vi: Messages = {
     soulbound: 'Khoá {n} ngày',
     unstaked: 'Gỡ stake trước giờ mở là bạn ra khỏi vòng này.',
   },
-  verify: { title: 'Công bằng có thể kiểm chứng', subtitle: 'Dán giao dịch mở gói. Chúng tôi đọc roll on-chain SlotHashes từ sự kiện và chạy lại đúng phép mở rộng mà chương trình đã dùng.', placeholder: 'Chữ ký giao dịch', check: 'Kiểm tra', match: 'Khớp với kết quả on-chain', mismatch: 'Không khớp — vui lòng báo cáo', slotHashes: 'Seed = sha256(commit của bạn ‖ SlotHashes[slot+độ trễ]). Studio không bao giờ chọn kết quả.' },
+  verify: { title: 'Công bằng có thể kiểm chứng', subtitle: 'Dán giao dịch mở gói. Chúng tôi đọc roll on-chain SlotHashes từ sự kiện và chạy lại đúng phép mở rộng mà chương trình đã dùng.', placeholder: 'Chữ ký giao dịch', check: 'Kiểm tra', match: 'Khớp với kết quả on-chain', mismatch: 'Không khớp — vui lòng báo cáo', slotHashes: 'Seed = sha256(commit của bạn ‖ SlotHashes[slot+độ trễ]). Studio không bao giờ chọn kết quả.' , phasegTitle: 'Phát hành ở chế độ ra mắt', phasegBody: 'Ở chế độ ra mắt máy chủ phát hành chip cho bạn. Seed của lượt quay đã được cam kết (sha256) trước khi bạn trả và được tiết lộ tại đây sau khi phát hành — chạy kiểm tra để chứng minh kết quả không bị chọn sau.', phasegOrder: 'Số đơn hàng', phasegCheck: 'Kiểm tra đơn', phasegMatches: 'Khớp với seed đã cam kết', phasegMismatch: 'Không khớp — hãy báo cho chúng tôi', phasegNotFound: 'Chưa có đơn đã phát hành với số này', phasegJournal: 'Nhật ký phát hành công khai', phasegEmpty: 'Chưa có phát hành nào', phasegChips: 'chip' },
   codex: { registry: 'Underground Registry', registryIntro: 'The guild registry: 12 pages per depth. Close a depth with any chip to unseal its pages.', sealed: 'Sealed — close this depth with any chip to read.', title: 'Tám Quận' },
   errors: { rejected: 'Bạn đã từ chối ký', insufficient: 'Không đủ số dư', network: 'Lỗi mạng — thử lại', stale: 'Báo giá hết hạn — làm mới', generic: 'Đã xảy ra lỗi' },
   legal: { title: 'Pháp lý', terms: 'Điều khoản sử dụng', privacy: 'Quyền riêng tư', updated: 'Hiệu lực từ {date}', canonical: 'Bản tiếng Anh là bản chính thức; các bản dịch chỉ để tham khảo.', ages: 'Chỉ 18+', noSaleIn: 'không bán gói tại', verify: 'Kiểm tra một lượt mở', notFound: 'Không có tài liệu này. Hai tài liệu có sẵn:' },
