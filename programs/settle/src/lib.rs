@@ -345,23 +345,30 @@ fn verify_oracle_signature(instructions: &AccountInfo, oracle: &Pubkey, expected
     Ok(())
 }
 
-/// Sorted-pair Merkle verification; leaf layout is pinned with the TS twin
-/// in backend/src/phasev.ts: sha256(wallet ‖ amount_le ‖ kind ‖ epoch_le).
+/// Merkle verification in the repo-wide reward-root convention (byte-for-byte
+/// programs/staking emission.rs `verify_proof`, backend/src/merkle.ts):
+///   leaf = keccak(0x00 ‖ wallet ‖ amount_le_u64 ‖ kind_u8 ‖ epoch_le_u32)
+///   node = keccak(0x01 ‖ min(a, b) ‖ max(a, b))   (sorted pair)
+/// epoch is u64 in this program's accounts; roots published for claims must
+/// use epochs that fit the u32 leaf field (the backend builder enforces it).
 pub fn reward_leaf(wallet: &Pubkey, amount: u64, kind: u8, epoch: u64) -> [u8; 32] {
-    hashv(&[
+    use anchor_lang::solana_program::keccak::hashv as khashv;
+    khashv(&[
+        &[0u8],
         wallet.as_ref(),
         &amount.to_le_bytes(),
         &[kind],
-        &epoch.to_le_bytes(),
+        &(epoch as u32).to_le_bytes(),
     ])
     .to_bytes()
 }
 
 pub fn verify_merkle_proof(root: &[u8; 32], leaf: [u8; 32], proof: &[[u8; 32]]) -> bool {
+    use anchor_lang::solana_program::keccak::hashv as khashv;
     let mut node = leaf;
     for sibling in proof {
         let (a, b): (&[u8; 32], &[u8; 32]) = if node <= *sibling { (&node, sibling) } else { (sibling, &node) };
-        node = hashv(&[a.as_ref(), b.as_ref()]).to_bytes();
+        node = khashv(&[&[1u8], a.as_ref(), b.as_ref()]).to_bytes();
     }
     &node == root
 }
