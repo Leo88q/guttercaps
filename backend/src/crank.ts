@@ -993,9 +993,31 @@ export async function crank(log: (s: string) => void = console.log) {
   const bal = await c.connection.getBalance(payer.publicKey, 'confirmed');
   log(`[crank] ${RPC_URL} — payer ${payer.publicKey.toBase58()} (${(bal / LAMPORTS).toFixed(3)} SOL) · switchboard ${SWITCHBOARD_PROGRAM_ID.toBase58()} · LUT ${lookupTables.length ? lookupTables.map((l) => l.key.toBase58()).join(',') : 'none (reveal and open go in separate transactions)'} · poll ${CRANK_POLL_MS} ms · sweep ${CRANK_SWEEP_MS} ms · ${CRANK_CONCURRENCY} workers`);
   if (bal / LAMPORTS > CRANK_MAX_BALANCE_SOL) log(`[crank] WARN payer holds ${(bal / LAMPORTS).toFixed(2)} SOL > cap ${CRANK_MAX_BALANCE_SOL} — keep the hot key small`);
+  // Phase-G mint crank (docs/MINIMAL-LAUNCH-CHECKLIST.md 3.2): direct Bubblegum
+  // minting for paid pack orders. Inert unless LAUNCH_PHASE=g and configured.
+  const { LAUNCH_PHASE: lp, SHARED_MERKLE_TREE: smt, MINT_AUTHORITY_KEYPAIR: mak } = await import('./config.ts');
+  const { processPaidOrders, makeChainMintSender, chainFirstLeafIndex } = await import('./bubblegum-mint.ts');
+  const { PublicKey: PK } = await import('@solana/web3.js');
+  const phaseGTree = lp === 'g' && smt && mak ? new PK(smt) : null;
+  const phaseGAuthority = phaseGTree ? loadKeypair(mak) : null;
+  if (phaseGTree && phaseGAuthority) log(`[crank] phase-G mint crank on tree ${phaseGTree.toBase58()} authority ${phaseGAuthority.publicKey.toBase58()}`);
+  let lastPhaseG = 0;
   let lastSweep = 0, lastReport = 0;
   while (true) {
     const t = Date.now();
+    if (phaseGTree && phaseGAuthority && t - lastPhaseG >= 5_000) {
+      lastPhaseG = t;
+      try {
+        const r = await processPaidOrders(sharedDb(), {
+          tree: phaseGTree,
+          sendMint: makeChainMintSender(connection, phaseGAuthority, phaseGTree),
+          firstLeafIndex: () => chainFirstLeafIndex(connection, phaseGTree),
+        });
+        if (r.mintedOrders > 0) log(`[crank] phase-G minted ${r.mintedChips} chips for ${r.mintedOrders} orders`);
+      } catch (e) {
+        log(`[crank] phase-G mint error: ${(e as Error).message}`);
+      }
+    }
     try {
       await c.tick({ sweep: t - lastSweep >= CRANK_SWEEP_MS });
       if (t - lastSweep >= CRANK_SWEEP_MS) lastSweep = t;

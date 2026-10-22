@@ -10,6 +10,8 @@ import type { Connection } from '@solana/web3.js';
 import cors from 'cors';
 import { base58Decode, base58Encode, isSolanaAddress } from './base58.ts';
 import { CORS_ORIGINS, CORS_ALLOW_CREDENTIALS, WS_PATH, EVENT_BUS, REDIS_URL, TRUST_PROXY_HOPS, assertProductionConfig } from './config.ts';
+import { LAUNCH_PHASE, SHARED_MERKLE_TREE } from './config.ts';
+import * as packOrders from './pack-orders.ts';
 import { bus } from './bus.ts';
 import { wsConfigFromEnv } from './ws.ts';
 import { readBackupStatus } from './backup-status.ts';
@@ -609,6 +611,38 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     // the pool is live chain state (see queries.verifyPackOpen).
     const r = q.verifyPackOpen(db, String(req.body?.signature ?? ''));
     if (!r) { res.status(404).json({ code: 'not_found', message: 'Unknown signature' }); return; }
+    res.json(r);
+  });
+
+  // ------------------------------------------------------------ phase-G pack orders (docs/MINIMAL-LAUNCH-CHECKLIST.md §2–3)
+  // Only live when LAUNCH_PHASE=g; in the default 'full' phase these answer 410 and the
+  // program flow above is the only purchase path. The mint crank lives in crank.ts.
+  const phaseG = () => { if (LAUNCH_PHASE !== 'g') throw new ServiceError(410, 'phase_g_off', 'Phase-G orders are not enabled on this backend'); };
+  v1.post('/packs/order', requireAuth, accessGate('packs'), rl(POLICIES.mutate), wrap(async (req, res) => {
+    phaseG();
+    const geo = geoOf(req.headers);
+    if (geo.restricted) throw new ServiceError(403, 'geo_blocked', 'Randomised packs are not available in your region.', { country: geo.country, mode: geo.mode });
+    res.set('Cache-Control', 'no-store');
+    res.json(packOrders.createOrder(db, req.session!.wallet, req.body));
+  }));
+  v1.get('/packs/order/:id', requireAuth, (req, res) => {
+    phaseG();
+    res.json(packOrders.getOrder(db, req.session!.wallet, Number(req.params.id)));
+  });
+  v1.post('/packs/order/:id/confirm', requireAuth, accessGate('packs'), rl(POLICIES.claim), wrap(async (req, res) => {
+    phaseG();
+    const signature = String(req.body?.signature ?? '');
+    if (signature.length < 32) throw new ServiceError(400, 'bad_signature', 'signature is required');
+    res.json(await packOrders.confirmOrder(db, req.session!.wallet, Number(req.params.id), signature, packOrders.orderPaymentFetcher(connection())));
+  }));
+  v1.get('/packs/mint-journal', (req, res) => {
+    phaseG();
+    res.json({ entries: packOrders.mintJournal(db, Number(req.query.limit ?? 100) || 100), tree: SHARED_MERKLE_TREE || null });
+  });
+  v1.get('/packs/order/:id/verify', (req, res) => {
+    phaseG();
+    const r = packOrders.verifyOrder(db, Number(req.params.id));
+    if (!r) { res.status(404).json({ code: 'not_found', message: 'Unknown or unminted order' }); return; }
     res.json(r);
   });
 

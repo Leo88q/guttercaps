@@ -58,6 +58,20 @@ export function parseLaunchPhase(v: string | undefined): LaunchPhase {
 }
 export const LAUNCH_PHASE: LaunchPhase = parseLaunchPhase(env.LAUNCH_PHASE);
 
+/** Phase-G (launchPhase 'g') settings — inert while LAUNCH_PHASE=full. */
+/** Treasury that receives pack payments (SOL = the wallet itself, tokens = its ATA). */
+export const PACK_TREASURY = env.TREASURY_WALLET ?? env.PREORDER_TREASURY ?? '';
+/** The one shared Bubblegum tree of the minimal launch (scripts/setup-minimal.ts prints it). */
+export const SHARED_MERKLE_TREE = env.SHARED_MERKLE_TREE ?? '';
+/** $CG SPL mint (phase-G pack currency + reward payouts). */
+export const CG_MINT = env.CG_MINT ?? '';
+/** solana-keygen JSON of the tree-authority/mint key (prod: KMS-backed signer service). */
+export const MINT_AUTHORITY_KEYPAIR = env.MINT_AUTHORITY_KEYPAIR ?? '';
+/** MPL Core collections 0..7 (phase-G mint binds chips to these when set). */
+export const CORE_COLLECTIONS: string[] = Array.from({ length: 8 }, (_, i) => env[`CORE_COLLECTION_${i}`] ?? '');
+/** Pack-order lifetime: an unpaid order frees its seed commitment after this. */
+export const PACK_ORDER_TTL_S = Number(env.PACK_ORDER_TTL_S ?? 1800);
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 /** SQLite file for local/dev and the explicitly acknowledged single-instance production mode. `:memory:` is for tests; the Prisma Postgres schema is not the running adapter yet. */
 export const DB_PATH = env.DB_PATH ?? path.join(here, '..', 'guttercaps.sqlite');

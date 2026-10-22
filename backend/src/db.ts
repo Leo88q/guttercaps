@@ -401,6 +401,38 @@ CREATE TABLE IF NOT EXISTS preorders (
   granted_at  INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_preorders_wallet ON preorders(wallet);
+-- Phase-G pack orders (docs/MINIMAL-LAUNCH-CHECKLIST.md §2): the server-side
+-- purchase ledger of the zero-custom-program launch. NOT a projection — rows are
+-- created by the API (order + seed commitment), confirmed by payment signature,
+-- and fulfilled by the mint crank writing asset ids back. The seed stays hidden
+-- until status='minted' (commit-reveal: seed_hash is public from creation).
+CREATE TABLE IF NOT EXISTS pack_orders (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,  -- also the payment memo id (GC-ORD|<id>)
+  wallet      TEXT    NOT NULL,
+  sku         INTEGER NOT NULL,
+  qty         INTEGER NOT NULL,
+  currency    TEXT    NOT NULL,                   -- SOL | USDC | CG
+  amount      TEXT    NOT NULL,                   -- native units of the currency, decimal string
+  pay_to      TEXT    NOT NULL,                   -- treasury wallet (SOL) or its ATA (tokens)
+  mint        TEXT,                               -- token mint for USDC/CG, NULL for SOL
+  status      TEXT    NOT NULL DEFAULT 'created', -- created | paid | minted | expired | failed
+  seed        TEXT    NOT NULL,                   -- server secret until minted
+  seed_hash   TEXT    NOT NULL,                   -- sha256(seed) — public commitment from creation
+  tx_sig      TEXT,
+  assets      TEXT,                               -- JSON [{assetId, collectionIdx, rarity, gameIndex}]
+  created_at  INTEGER NOT NULL,
+  paid_at     INTEGER,
+  minted_at   INTEGER,
+  expires_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pack_orders_wallet ON pack_orders(wallet);
+CREATE INDEX IF NOT EXISTS idx_pack_orders_status ON pack_orders(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pack_orders_tx ON pack_orders(tx_sig);
+-- Phase-G mint counters: per-collection chip numbering (SYMBOL #n) without a program.
+CREATE TABLE IF NOT EXISTS phaseg_counters (
+  collection_idx INTEGER PRIMARY KEY,
+  minted         INTEGER NOT NULL DEFAULT 0
+);
 CREATE INDEX IF NOT EXISTS idx_preorders_status ON preorders(status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_preorders_tx ON preorders(tx_sig);
 -- Projection of chip_core PackGranted (preorder delivery at mainnet launch).
