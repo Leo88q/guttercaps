@@ -38,8 +38,6 @@
     "assets:qa": "python3 scripts/asset-visual-qa.py",
     "assets:pipeline": "node --experimental-strip-types scripts/art-pipeline.ts",
     "assets:portfolio": "python3 scripts/export-portfolio.py",
-    "rider:thumbs": "python3 scripts/rider-thumbs.py",
-    "rider:thumbs:check": "python3 scripts/rider-thumbs.py --check",
     "economy:check": "npm --prefix packages/economy run check && npm --prefix packages/economy run golden && node --experimental-strip-types packages/economy/scripts/sync-check.ts",
     "programs:test": "cargo test --workspace",
     "programs:build": "anchor build",
@@ -100,7 +98,8 @@
     "privacy:reapply": "node --no-warnings=ExperimentalWarning --import tsx backend/src/privacy-maintenance.ts reapply-erasure",
     "mac:devnet": "bash scripts/mac-devnet.sh",
     "population:sim": "node --experimental-strip-types scripts/population-sim.ts",
-    "line:sim": "node --experimental-strip-types packages/economy/scripts/line-tournament-sim.ts"
+    "line:sim": "node --experimental-strip-types packages/economy/scripts/line-tournament-sim.ts",
+    "setup:minimal": "node --experimental-strip-types scripts/setup-minimal.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",

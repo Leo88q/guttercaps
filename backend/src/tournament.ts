@@ -55,7 +55,10 @@ export function enterTournament(db: Db, wallet: string, body: Record<string, unk
   }
   const signature = String(body?.signature ?? '').trim();
   if (!/^[1-9A-HJ-NP-Za-km-z]{32,128}$/.test(signature)) throw new ServiceError(400, 'bad_signature', 'signature must be a transaction id');
-  const kind = SERVICE_BY_ID.lineTournamentEntry.kind;
+  // Турниры линии убраны из продукта (2026-10-19): услуга снята с продажи.
+  const svc = SERVICE_BY_ID.lineTournamentEntry as typeof SERVICE_BY_ID.lineTournamentEntry | undefined;
+  if (!svc) throw new ServiceError(410, 'line_retired', 'The Line is retired');
+  const kind = svc.kind;
   return db.tx(() => {
     // Общий дневной потолок paid-попыток (линия + турнир): потраченные
     // платежом заезды видны в `paid`, купленные, но ещё не потраченные

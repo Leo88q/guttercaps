@@ -61,7 +61,7 @@ describe('Crew — команда (docs/16 §5.6)', () => {
     await waitFor(() => expect(screen.getByText('SlabSisters')).toBeTruthy());
     expect(screen.getByText('NightCrew')).toBeTruthy();
     // «десятеро не побеждают пятерых» — подпись доски на экране
-    expect(screen.getByText(/only the five best runs count/)).toBeTruthy();
+    expect(screen.getByText(/only the five best scores count/)).toBeTruthy();
   });
 
   it('хартия создаёт команду: имя, состав из одного и сегмент стены', async () => {

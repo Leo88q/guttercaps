@@ -6,7 +6,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WS_BASE } from '@/app/config';
 import { qk } from './keys';
-import { isMock } from './client';
+import { isMock, resolveMockMode } from './client';
 import { chainKeys } from '@/chain/hooks';
 import { useUiStore } from '@/app/store/ui';
 
@@ -41,7 +41,7 @@ export function useIndexerSocket() {
   const toast = useUiStore((s) => s.toast);
 
   useEffect(() => {
-    if (isMock() || !wallet) return;
+    if (!wallet) return;
     let ws: WebSocket | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let closed = false;
@@ -73,12 +73,19 @@ export function useIndexerSocket() {
         } catch { /* ignore */ }
       };
       ws.onclose = () => {
-        if (closed) return;
+        // Бэкенд мог умереть посреди сессии: если клиент уже ушёл в демо-режим,
+        // переподключаться не к кому — иначе прокси Vite вечно получает
+        // ECONNREFUSED 127.0.0.1:8787 и печатает «ws proxy error» по кругу.
+        if (closed || isMock()) return;
         timer = setTimeout(connect, backoff);
         backoff = Math.min(backoff * 2, 30_000);
       };
     };
-    timer = setTimeout(connect, 25);
+    // Сначала режим, потом сокет: в mock сокет не открывается вовсе.
+    void resolveMockMode().then((mock) => {
+      if (closed || mock) return;
+      timer = setTimeout(connect, 25);
+    });
     return () => {
       closed = true;
       if (timer) clearTimeout(timer);
