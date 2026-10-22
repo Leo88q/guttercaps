@@ -39,9 +39,9 @@ describe('конструктор доски: каталог', () => {
     }
   });
 
-  it('ни одна часть не продаётся как районная: районный сет добывается', () => {
+  it('ни одна часть не продаётся как районная: районный сет добывается во Floodgrid', () => {
     const districts = BOARD_PARTS.filter((p) => p.tier === 'district' && BOARD_SET_SLOTS.includes(p.slot as 'deck'));
-    for (const p of districts) assert.equal(p.source, 'run', `${p.id} должен добываться заездом`);
+    for (const p of districts) assert.equal(p.source, 'grid', `${p.id} должен добываться во Floodgrid`);
   });
 
   it('магазин продаёт только навесное', () => {

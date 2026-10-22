@@ -119,6 +119,8 @@ export interface NormalizedDasAsset {
   collectionHash: Uint8Array;
   assetDataHash: Uint8Array;
   flags: number;
+  /** MPL Core collection from the DAS grouping, when present and parseable. */
+  collection?: PublicKey;
 }
 
 export function normalizeDasAsset(raw: unknown): NormalizedDasAsset {
@@ -129,6 +131,12 @@ export function normalizeDasAsset(raw: unknown): NormalizedDasAsset {
   const ownership = a.ownership;
   if (!ownership) fail('schema', 'DAS asset is missing ownership');
   const owner = pk(ownership.owner, 'ownership.owner');
+  const grouping = Array.isArray(a.grouping) ? a.grouping : [];
+  const col = grouping.find((g) => g?.group_key === 'collection')?.group_value;
+  let collection: PublicKey | undefined;
+  if (typeof col === 'string' && col.length > 0) {
+    try { collection = new PublicKey(col); } catch { collection = undefined; }
+  }
   return {
     assetId: pk(a.id, 'asset.id'),
     owner,
@@ -140,6 +148,7 @@ export function normalizeDasAsset(raw: unknown): NormalizedDasAsset {
     collectionHash: requiredHash(c.collection_hash, 'compression.collection_hash'),
     assetDataHash: requiredHash(c.asset_data_hash, 'compression.asset_data_hash'),
     flags: byte(c.flags, 'compression.flags'),
+    collection,
   };
 }
 
@@ -244,7 +253,7 @@ export class DasClient {
     if (asset.leafId !== proof.leafIndex) fail('mismatch', 'asset leaf_id does not match proof leaf index');
     if (!asset.assetId.equals(id)) fail('mismatch', 'DAS returned a different asset id than requested');
     return {
-      assetId: asset.assetId, leafOwner: asset.owner, leafDelegate: asset.delegate, merkleTree: asset.merkleTree,
+      assetId: asset.assetId, leafOwner: asset.owner, leafDelegate: asset.delegate, collection: asset.collection, merkleTree: asset.merkleTree,
       root: proof.root, dataHash: asset.dataHash, creatorHash: asset.creatorHash, collectionHash: asset.collectionHash,
       assetDataHash: asset.assetDataHash, flags: asset.flags, leafNonce: asset.leafId, leafIndex: asset.leafId, proof: proof.proof,
     };

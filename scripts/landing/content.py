@@ -33,6 +33,12 @@ T = {
   'world.f3': ('"+" tiers survived a second flood', '«+»-тиры пережили второй потоп'),
   'world.f4': ('Provenance lives on-chain, not in a logbook', 'Происхождение хранится в блокчейне, а не в тетрадке'),
 
+  'nav.boards': ('Boards', 'Доски'),
+  'boards.h': ('District <span class="tag-accent">boards</span>', 'Доски <span class="tag-accent">районов</span>'),
+  'boards.p': ('Caps are only half the collection. Every district also has a board — deck, trucks, wheels and grip — earned by playing, never sold as a set: clear Floodgrid sectors at 3★ with a chip of that district, take the weekly part at 2★+, dive the Deep Flood for the city trophies, and win your crew deck in the monthly crew contest. Bolt on shop mounts, put three caps on the board and open your public showcase.', 'Фишки — только половина коллекции. У каждого района есть ещё и доска — дека, траки, колёса и грип, — которую добывают игрой, а не покупают сетом: проходите секторы Floodgrid на 3★ фишкой нужного района, забирайте часть недели за 2★+, ныряйте в Deep Flood за городскими трофеями и выигрывайте командную деку в ежемесячном конкурсе команд. Поставьте магазинное навесное, три фишки на доску — и открывайте публичную витрину.'),
+  'boards.f1': ('8 district sets × 4 parts each', '8 районных сетов × 4 части'),
+  'boards.f2': ('Parts come from the Floodgrid — sets are earned, not bought', 'Части даёт Floodgrid — сеты добывают, а не покупают'),
+  'boards.f3': ('Crews hold wall segments; boards live on a public showcase', 'Команды держат сегменты стены; доски живут на публичной витрине'),
   'how.h': ('How to <span class="tag-accent">play</span>', 'Как <span class="tag-accent">играть</span>'),
   'how.p': ('Five moves from an empty wallet to a full district. Everything that touches money happens in transactions you sign yourself — the buy in one, the reveal and settlement relayed by our crank.',
             'Пять шагов от пустого кошелька до полного района. Всё, что касается денег, происходит в транзакциях, которые подписываете вы сами: покупка — в одной, раскрытие и расчёт релеит наш crank.'),

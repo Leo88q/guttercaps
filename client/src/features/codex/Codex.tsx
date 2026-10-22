@@ -42,11 +42,11 @@ export default function Codex() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
                 {pages.map((pg) => (
                   <div key={pg.page} style={{ border: '1px solid #2a2a2a', borderRadius: 10, padding: 10, opacity: unlocked ? 1 : 0.55 }}>
-                    <div style={{ fontFamily: 'var(--cg-font-mono)', fontSize: 10, color: '#666' }}>#{pg.page}</div>
+                    <div style={{ fontFamily: 'var(--cg-font-mono)', fontSize: 10, color: '#9d97ab' }}>#{pg.page}</div>
                     {unlocked ? <>
                       <div style={{ fontSize: 13, fontWeight: 600, margin: '2px 0' }}>{pg.title}</div>
                       <div style={{ fontSize: 12, color: '#aaa', lineHeight: 1.5 }}>{pg.body}</div>
-                    </> : <div style={{ fontSize: 12, color: '#777' }}>{t('codex.sealed')}</div>}
+                    </> : <div style={{ fontSize: 12, color: '#b3aec2' }}>{t('codex.sealed')}</div>}
                   </div>
                 ))}
               </div>
@@ -58,7 +58,7 @@ export default function Codex() {
       {COLLECTIONS.map((col, ci) => (
         <div key={col.symbol} id={col.symbol} style={{ marginBottom: 28, borderTop: '1px solid #2a2a2a', paddingTop: 16 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
-            <span style={{ fontFamily: 'var(--cg-font-mono)', fontSize: 12, color: '#666' }}>{col.num}</span>
+            <span style={{ fontFamily: 'var(--cg-font-mono)', fontSize: 12, color: '#9d97ab' }}>{col.num}</span>
             <strong style={{ fontSize: 16, color: collectionColor(ci) }}>{col.name}</strong>
           </div>
           <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>{col.district} · {col.theme} · <Link to={`/grid?district=${ci}`}><span style={{ color: '#16E5D9', display: 'inline-flex', verticalAlign: -2, marginRight: 4 }}><FloodIcon size={13} /></span>{t('grid.title')}</Link></p>
@@ -70,7 +70,7 @@ export default function Codex() {
               <div key={cap.name} className="codex-slot" title={`${rarityName(i)}: ${cap.desc}`}>
                 <div className="codex-chip"><ChipArt collection={ci} rarity={i} imageUrl={`/art/${col.num}-${i}-256.webp`} /></div>
                 <span className="codex-tier" style={{ color: '#888' }}>{rarityName(i)}</span>
-                <div className="codex-cap" style={{ color: '#666' }}>{cap.name}</div>
+                <div className="codex-cap" style={{ color: '#9d97ab' }}>{cap.name}</div>
               </div>
             ))}
           </div>

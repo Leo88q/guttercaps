@@ -3,8 +3,9 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { useMe, useGrid, useGridMe, useQuests, usePendingOps, useStreak, useSeason } from '@/api/hooks';
 import { useEffect, useRef, useState } from 'react';
-import { api } from '@/api/client';
+import { api, isDemo, setDemoMode } from '@/api/client';
 import { PreorderBanner } from '@/features/preorder/PreorderBanner';
+import SkateWorldCard from '@/features/bowl/SkateWorldCard';
 import { SplatBackdrop } from '@/features/vfx/vfx';
 import { usePity } from '@/chain/hooks';
 import { useActiveOps } from '@/app/store/txs';
@@ -44,7 +45,7 @@ export default function Home() {
   }, [showOnboard]);
   const onboardEvent = (event: 'clicked' | 'dismissed') => { void api.post('/grid/onboard', { event } as never).catch(() => undefined); };
   const active = useActiveOps(publicKey?.toBase58());
-  if (!connected) return <Landing onConnect={() => setVisible(true)} />;
+  if (!connected && !isDemo()) return <Landing onConnect={() => setVisible(true)} />;
 
   const owned = grid.data?.cells?.flat().filter((n) => n > 0).length ?? 0;
   const claimable = quests.data?.filter((q) => q.claimable).length ?? 0;
@@ -182,10 +183,16 @@ function Landing({ onConnect }: { onConnect: () => void }) {
       <p className="muted" style={{ maxWidth: 480, margin: '0 auto' }}>
         {t('ui.homeIntro')}
       </p>
+      {/* Анонимный игрок тоже должен увидеть скейт-мир до подключения кошелька:
+          просмотр открыт, а действия за кошельком уводит RequireWallet. */}
+      <div style={{ maxWidth: 720, margin: '0 auto', textAlign: 'left', width: '100%' }}>
+        <SkateWorldCard />
+      </div>
       <Link to="/drain" className="btn btn-ghost">{t('drain.title')}</Link>
       <Link to="/pot" className="btn btn-ghost">{t('pot.title')}</Link>
       <div className="row" style={{ justifyContent: 'center', gap: 12 }}>
         <SprayNozzleButton onClick={onConnect}>{t('common.connectWallet')}</SprayNozzleButton>
+        <button type="button" className="btn" onClick={() => { setDemoMode(true); window.location.assign('/grid'); }}>{t('demo.play')}</button>
         <Link to="/market" className="btn">{t('home.heroSecondary')}</Link>
         <Link to="/preorder" className="btn btn-ghost">{t('preorder.title')}</Link>
       </div>

@@ -137,10 +137,10 @@ export function Pill({ children, active, onClick, tone, ...aria }: PillProps) {
   // "button[tabindex]" as an unallowed child of a tablist. Interactive pills stay buttons; the CSS does
   // not care which tag it is.
   if (!onClick && !aria.role) return <span className={cls}>{children}</span>;
-  // Звук — opt-in через общий компонент, а не глобальным listener'ом на клики (docs/14b §6):
-  // кликабельная пилюля звучит, пилюля-подпись нет, disabled не fires вовсе.
+  // Нажатие пилюли — без звука: короткий ui.click («писк») убран по жалобе игроков,
+  // кнопки в игре молчат; звучат только игровые события (docs/14b: win/coin/поворот…).
   const handle = onClick
-    ? () => { playSound('ui.click'); onClick(); }
+    ? () => { onClick(); }
     : undefined;
   return (
     <button type="button" className={cls} onClick={handle} style={{ cursor: onClick ? 'pointer' : 'default' }} {...aria}>
