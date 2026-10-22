@@ -450,6 +450,38 @@ CREATE TABLE IF NOT EXISTS phaseg_fusions (
 );
 CREATE INDEX IF NOT EXISTS idx_phaseg_fusions_wallet ON phaseg_fusions(wallet);
 CREATE INDEX IF NOT EXISTS idx_phaseg_fusions_status ON phaseg_fusions(status);
+-- Phase-G soft staking (docs/MINIMAL-LAUNCH-CHECKLIST.md §5): chips keep earning
+-- while the indexer sees them with the staking wallet; claims pay out as plain
+-- $CG treasury transfers with an idempotent payout row per claim.
+CREATE TABLE IF NOT EXISTS phaseg_stakes (
+  asset       TEXT PRIMARY KEY,
+  wallet      TEXT    NOT NULL,
+  staked_at   INTEGER NOT NULL,
+  unstaked_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_phaseg_stakes_wallet ON phaseg_stakes(wallet);
+CREATE TABLE IF NOT EXISTS phaseg_stake_days (
+  day_index INTEGER PRIMARY KEY,
+  budget_micro TEXT NOT NULL,
+  total_weight TEXT NOT NULL,
+  created_at   INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS phaseg_rewards (
+  wallet       TEXT PRIMARY KEY,
+  pending_micro TEXT NOT NULL DEFAULT '0',
+  claimed_micro TEXT NOT NULL DEFAULT '0',
+  updated_at    INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS phaseg_payouts (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  wallet      TEXT    NOT NULL,
+  amount_micro TEXT   NOT NULL,
+  status      TEXT    NOT NULL DEFAULT 'pending',  -- pending | sent
+  tx_sig      TEXT,
+  created_at  INTEGER NOT NULL,
+  sent_at     INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_phaseg_payouts_wallet ON phaseg_payouts(wallet);
 -- Phase-G mint counters: per-collection chip numbering (SYMBOL #n) without a program.
 CREATE TABLE IF NOT EXISTS phaseg_counters (
   collection_idx INTEGER PRIMARY KEY,

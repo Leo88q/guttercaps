@@ -998,6 +998,8 @@ export async function crank(log: (s: string) => void = console.log) {
   const { LAUNCH_PHASE: lp, SHARED_MERKLE_TREE: smt, MINT_AUTHORITY_KEYPAIR: mak } = await import('./config.ts');
   const { processPaidOrders, makeChainMintSender, chainFirstLeafIndex } = await import('./bubblegum-mint.ts');
   const { processPaidFusions } = await import('./phaseg-fusion.ts');
+  const { accrueStakingDay, processPayouts } = await import('./phaseg-staking.ts');
+  const { latestEmissionDay } = await import('./staking.ts');
   const { sendChipMint } = await import('./bubblegum-mint.ts');
   const { PublicKey: PK } = await import('@solana/web3.js');
   const phaseGTree = lp === 'g' && smt && mak ? new PK(smt) : null;
@@ -1022,6 +1024,12 @@ export async function crank(log: (s: string) => void = console.log) {
           firstLeafIndex: () => chainFirstLeafIndex(connection, phaseGTree),
         });
         if (f.settled > 0) log(`[crank] phase-G settled ${f.settled} fusions`);
+        const day = latestEmissionDay(sharedDb()).dayIndex;
+        const acc = accrueStakingDay(sharedDb(), day);
+        if (acc.credited > 0) log(`[crank] phase-G staking day ${day}: credited ${acc.credited} wallets (budget ${acc.budgetMicro} micro)`);
+        const { makeCgPayoutSender } = await import('./phaseg-payout.ts');
+        const pay = await processPayouts(sharedDb(), makeCgPayoutSender(connection, phaseGAuthority));
+        if (pay.paid > 0) log(`[crank] phase-G paid ${pay.paid} reward claims`);
       } catch (e) {
         log(`[crank] phase-G mint error: ${(e as Error).message}`);
       }

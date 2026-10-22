@@ -13,6 +13,7 @@ import { CORS_ORIGINS, CORS_ALLOW_CREDENTIALS, WS_PATH, EVENT_BUS, REDIS_URL, TR
 import { LAUNCH_PHASE, SHARED_MERKLE_TREE } from './config.ts';
 import * as packOrders from './pack-orders.ts';
 import * as phasegFusion from './phaseg-fusion.ts';
+import * as phasegStaking from './phaseg-staking.ts';
 import { DasClient } from './das.ts';
 import { DAS_RPC_URL, DAS_TIMEOUT_MS } from './config.ts';
 import { bus } from './bus.ts';
@@ -676,6 +677,24 @@ export function createApp(db: Db, deps: AppOptions = {}) {
       fetchPayment: packOrders.orderPaymentFetcher(connection()),
       verifyBurned: dasBurnVerifier,
     }));
+  }));
+
+  // ------------------------------------------------------------ phase-G soft staking (§5)
+  v1.post('/staking/soft/stake', requireAuth, rl(POLICIES.mutate), wrap(async (req, res) => {
+    phaseG();
+    res.json(phasegStaking.stakeChip(db, req.session!.wallet, String(req.body?.asset ?? '')));
+  }));
+  v1.post('/staking/soft/unstake', requireAuth, rl(POLICIES.mutate), wrap(async (req, res) => {
+    phaseG();
+    res.json(phasegStaking.unstakeChip(db, req.session!.wallet, String(req.body?.asset ?? '')));
+  }));
+  v1.get('/staking/soft/me', requireAuth, (req, res) => {
+    phaseG();
+    res.json(phasegStaking.stakingMe(db, req.session!.wallet));
+  });
+  v1.post('/staking/soft/claim', requireAuth, rl(POLICIES.claim), wrap(async (req, res) => {
+    phaseG();
+    res.json(phasegStaking.claimRewards(db, req.session!.wallet));
   }));
 
   // ------------------------------------------------------------ beta pre-sale (docs/preorder-beta.md)
