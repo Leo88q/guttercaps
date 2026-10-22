@@ -50,7 +50,7 @@ export default function Fusion() {
   const enqueue = useUiStore((s) => s.enqueueReveal);
   const upsertFusion = useTxStore((s) => s.upsertFusion);
 
-  const all = useMemo(() => (chips.data?.pages.flatMap((p) => p.items ?? []) ?? []).filter((c) => !c.flags?.soulbound && !c.lockUntil && c.rarity! < 8), [chips.data]);
+  const all = useMemo(() => (chips.data?.pages.flatMap((p) => p.items ?? []) ?? []).filter((c) => !c.flags?.soulbound && !(c.lockUntil && new Date(c.lockUntil).getTime() > Date.now()) && c.rarity! < 8), [chips.data]);
   const [slots, setSlots] = useState<(Chip | null)[]>([null, null, null]);
   const [resultCol, setResultCol] = useState<number | null>(null);
   const [booster, setBooster] = useState(false);
@@ -240,13 +240,13 @@ export default function Fusion() {
         <div className="bench">
           {slots.map((s, i) => (
             <div key={i} className={`slot ${s ? 'filled' : 'slot-empty live-slot'}`} onClick={() => setPickFor(i)} style={s ? { border: 'none' } : undefined} aria-label={`${t('ui.slot')} ${i + 1}`}>
-              {s ? <ChipArt collection={s.collection!} rarity={s.rarity!} index={s.index} level={s.level} size="100%" imageUrl={chipImageOf(s)} skin={s.skin} crimp={rarityColor(s.rarity!)} founder={!!s.flags?.founder} /> : <span className="slot-hint" aria-hidden>+</span>}
+              {s ? <ChipArt collection={s.collection!} rarity={s.rarity!} index={s.index} level={s.level} size="100%" imageUrl={chipImageOf(s)} skin={s.skin} crimp={rarityColor(s.rarity!)} founder={!!s.flags?.founder} /> : <><img className="slot-art-img" src={`/art/fusion/slot-${i + 1}.jpg`} alt="" aria-hidden loading="lazy" decoding="async" /><span className="slot-hint slot-art-plus" aria-hidden>+</span></>}
             </div>
           ))}
         </div>
         <div className="bench-arrow">↓</div>
         <div className="row" style={{ justifyContent: 'center', gap: 16, flexWrap: 'wrap' }}>
-          <div style={{ width: 180 }}>{recipe && effectiveResultCol !== null ? <ChipArt collection={effectiveResultCol} rarity={recipe.to} imageUrl={chipArtUrl(effectiveResultCol, recipe.to, 512)} crimp={rarityColor(recipe.to)} /> : <div className="slot slot-empty live-slot" style={{ width: 180, height: 180 }}><span className="slot-hint">?</span></div>}</div>
+          <div style={{ width: 180 }}>{recipe && effectiveResultCol !== null ? <ChipArt collection={effectiveResultCol} rarity={recipe.to} imageUrl={chipArtUrl(effectiveResultCol, recipe.to, 512)} crimp={rarityColor(recipe.to)} /> : <div className="slot slot-empty live-slot" style={{ width: 180, height: 180 }}><img className="slot-art-img" src="/art/fusion/result.jpg" alt="" aria-hidden loading="lazy" decoding="async" /><span className="slot-hint slot-art-plus">?</span></div>}</div>
           <div className="stack-sm">
             {recipe ? (
               <>

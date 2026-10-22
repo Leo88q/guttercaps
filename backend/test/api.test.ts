@@ -86,15 +86,12 @@ describe('public API', () => {
     // зашито: каталог обязан показывать ровно то, что перечислено в economy.
     // Заезд продаётся только за $CG: смысле цены — сток, а не выручка, поэтому
     // каталог честно не показывает ему курс в USDC и SKR.
-    expect(json.services).toHaveLength(SERVICES.length);
-    const extraRun = json.services.find((s: { kind: number }) => s.kind === 13);
-    expect(extraRun.priceUsdCents).toBe(5);
-    // Каталог цитирует рельсу отображения (1 ¢ ≙ 1 $CG) — так же, как для
-    // трафаретов района. Главное не в этой цифре, а в том, что клиент спишет
-    // ровно столько, сколько потребует /me/line/runs/buy: обе стороны считают
-    // по CG_MICRO_PER_CENT из packages/economy.
-    expect(extraRun.quotes.CG).toBe('5000000');
-    expect(servicePriceCgMicro(SERVICE_BY_ID.lineExtraRun)).toBe(LINE.extraRunCgMicro); // 30 $CG сжигается
+    // Витрина показывает только не-retired услуги: Line снята с продажи
+    // (2026-10-19), её kind 13/16 в economy остаются зарезервированы.
+    expect(json.services).toHaveLength(SERVICES.filter((x) => !x.retired).length);
+    expect(json.services.find((s: { kind: number }) => s.kind === 13)).toBeUndefined();
+    expect(json.services.find((s: { kind: number }) => s.kind === 16)).toBeUndefined();
+    expect(servicePriceCgMicro(SERVICE_BY_ID.lineExtraRun)).toBe(LINE.extraRunCgMicro); // цена в модели не изменилась
     expect(servicePriceCgMicro(SERVICE_BY_ID.lineExtraRun)).toBe(servicePriceCgMicro(SERVICE_BY_ID.gridDeepAttempt)); // та же точка цены, что у Паводка
     const handle = json.services.find((s: { kind: number }) => s.kind === 0);
     expect(handle.quotes.CG).toBe('199000000');
