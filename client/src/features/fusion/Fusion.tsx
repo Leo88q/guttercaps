@@ -17,6 +17,8 @@ import { qk } from '@/api/keys';
 import { ClaimFusionFlow } from '@/chain/flows/claimFusionFlow';
 import { FusionFlow, successBps, type FusionFlowState } from '@/chain/flows/fusionFlow';
 import { FusionStages } from './FusionStages';
+import { FLAGS } from '@/app/config';
+import { runPhaseGFusion } from './phaseGFusion';
 import { useTxStore, fusionId } from '@/app/store/txs';
 import { useUiStore } from '@/app/store/ui';
 import { ChipArt } from '@/shared/ui/ChipArt';
@@ -108,6 +110,29 @@ export default function Fusion() {
     if (!ready || !recipe) return;
     setBusy(true);
     try {
+      if (FLAGS.launchPhase === 'g') {
+        // Phase-G: burn the materials yourself + pay the fee; the backend mints the result.
+        const assets = filled.map((c) => c.asset!).filter(Boolean);
+        setFlow({ phase: 'signing', nonce: 1n, recipe: recipe.from, boosted: false, materials: [], resultCollectionIdx: effectiveResultCol!, signatures: [] });
+        const r = await runPhaseGFusion({
+          assets,
+          connection,
+          signer: wallet,
+          onStage: (st) => setFlow((f) => (f ? { ...f, phase: st === 'done' ? 'done' : st === 'minting' || st === 'confirming' ? 'revealing' : 'signing' } : f)),
+        });
+        if (r.status === 'minted' && r.success && r.resultAssets[0]) {
+          setFlow({ phase: 'done', nonce: 1n, recipe: recipe.from, boosted: false, materials: [], resultCollectionIdx: effectiveResultCol!, signatures: [], result: { owner: wallet?.publicKey ?? PublicKey.default, recipe: recipe.from, materials: [], result: new PublicKey(r.resultAssets[0]), success: true, rollBps: 0, thresholdBps: chance, feeBurned: BigInt(recipe.feeCgMicro) } });
+          enqueue([{ id: r.resultAssets[0], asset: r.resultAssets[0], rarity: recipe.to, collectionIdx: effectiveResultCol!, fused: true }]);
+          toast({ kind: 'success', title: { key: 'fusion.success' } });
+        } else if (r.status === 'minted') {
+          toast({ kind: 'error', title: { key: 'fusion.failed' } });
+        } else {
+          toast({ kind: 'info', title: { key: 'screens.fusionTimeout' } });
+        }
+        setSlots([null, null, null]);
+        void qc.invalidateQueries({ queryKey: ['me'] });
+        return;
+      }
       if (isMock()) {
         const seq: FusionFlowState[] = [];
         const base: FusionFlowState = { phase: 'signing', nonce: 1n, recipe: recipe.from, boosted: booster, materials: [], resultCollectionIdx: effectiveResultCol!, signatures: [] };

@@ -8127,6 +8127,7 @@ export interface components {
             fusionId?: number;
             memo?: string;
             payTo?: string;
+            payToOwner?: string;
             mint?: string | null;
             feeMicro?: string;
             seedHash?: string;

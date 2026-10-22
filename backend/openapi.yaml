@@ -2243,6 +2243,7 @@ components:
         fusionId: { type: integer }
         memo: { type: string }
         payTo: { type: string }
+        payToOwner: { type: string }
         mint: { type: string, nullable: true }
         feeMicro: { type: string }
         seedHash: { type: string }

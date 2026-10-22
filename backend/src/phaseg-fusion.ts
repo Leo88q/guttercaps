@@ -102,7 +102,7 @@ export function createFusion(
   );
   const id = Number(r.lastInsertRowid);
   const { payTo, mint } = payToFor(treasury(), 'CG');
-  return { fusionId: id, memo: fusionMemo(id), payTo, mint, feeMicro: String(recipe.feeCgMicro), seedHash: sha256Hex(seed), from: recipe.from, to: recipe.to };
+  return { fusionId: id, memo: fusionMemo(id), payTo, payToOwner: treasury(), mint, feeMicro: String(recipe.feeCgMicro), seedHash: sha256Hex(seed), from: recipe.from, to: recipe.to };
 }
 
 export type BurnVerifier = (assetIds: string[], wallet: string) => Promise<boolean>; // wallet reserved for tx-level checks

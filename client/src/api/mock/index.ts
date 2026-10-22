@@ -1649,6 +1649,35 @@ on('get', '/packs/mint-journal', () => ({
     orderId: m.id, wallet: ME, sku: m.sku, qty: m.qty, seedHash: 'ab'.repeat(32), seed: 'cd'.repeat(32), assets: m.assets, txSig: 'mock-payment', mintedAt: Math.floor(Date.now() / 1000),
   })),
 }));
+interface MockFusion { id: number; inputs: string[]; status: string; polls: number; resultAssets: string[] }
+const mockFusions = new Map<number, MockFusion>();
+let mockFusionSeq = 2000;
+function mockFusionView(f: MockFusion) {
+  if (f.status === 'paid' && ++f.polls >= 2) { f.status = 'minted'; f.resultAssets = [`mockFusionResult${f.id}`]; }
+  return {
+    fusionId: f.id, from: 0, to: 1, inputs: f.inputs, feeMicro: '25000000', memo: `GCF|${f.id}`, status: f.status,
+    seedHash: 'ab'.repeat(32), seed: f.status === 'minted' ? 'cd'.repeat(32) : null,
+    success: f.status === 'minted' ? true : null, resultAssets: f.status === 'minted' ? f.resultAssets : null,
+    resultLockUntil: null, createdAt: Math.floor(Date.now() / 1000), mintedAt: f.status === 'minted' ? Math.floor(Date.now() / 1000) : null,
+  };
+}
+on('post', '/fusion/order', (o) => {
+  const assets = ((o.body as { assets?: string[] })?.assets ?? []).map(String);
+  const id = ++mockFusionSeq;
+  mockFusions.set(id, { id, inputs: assets, status: 'created', polls: 0, resultAssets: [] });
+  return { fusionId: id, memo: `GCF|${id}`, payTo: MOCK_TREASURY, payToOwner: MOCK_TREASURY, mint: 'MockCGMint1111111111111111111111111111111111', feeMicro: '25000000', seedHash: 'ab'.repeat(32), from: 0, to: 1 };
+});
+on('post', '/fusion/order/{id}/confirm', (_o, p) => {
+  const f = mockFusions.get(Number(p.id));
+  if (!f) throw new ApiError(404, 'not_found', 'Unknown fusion intent');
+  f.status = 'paid';
+  return mockFusionView(f);
+});
+on('get', '/fusion/order/{id}', (_o, p) => {
+  const f = mockFusions.get(Number(p.id));
+  if (!f) throw new ApiError(404, 'not_found', 'Unknown fusion intent');
+  return mockFusionView(f);
+});
 const mockSoftStakes = new Set<string>();
 on('post', '/staking/soft/stake', (o) => { const a = String((o.body as { asset?: string })?.asset ?? ''); mockSoftStakes.add(a); return { asset: a, stakedAt: Math.floor(Date.now() / 1000) }; });
 on('post', '/staking/soft/unstake', (o) => { const a = String((o.body as { asset?: string })?.asset ?? ''); mockSoftStakes.delete(a); return { asset: a, unstakedAt: Math.floor(Date.now() / 1000) }; });
