@@ -33,7 +33,19 @@ describe('phase-G burn_v2 instruction', () => {
     expect(ix.keys[0].isWritable).toBe(true);
     expect(ix.keys[2].pubkey.equals(p.leafOwner)).toBe(true);
     expect(ix.keys[2].isSigner).toBe(true);
-    expect(ix.keys[3].pubkey.equals(p.merkleTree)).toBe(true);
-    expect(ix.keys.length).toBe(7 + p.proof.length);
+    expect(ix.keys[5].pubkey.equals(p.merkleTree)).toBe(true);
+    // no collection in the proof -> program-id sentinels at 6/7, mpl_core at 10
+    expect(ix.keys[6].pubkey.equals(BUBBLEGUM_PROGRAM)).toBe(true);
+    expect(ix.programId.equals(BUBBLEGUM_PROGRAM)).toBe(true);
+    expect(ix.keys.length).toBe(12 + p.proof.length);
   });
 });
+  it('with a Core collection: collection + cpi signer occupy slots 6/7', () => {
+    const p = proof();
+    const collection = Keypair.generate().publicKey;
+    const payer = Keypair.generate().publicKey;
+    const ix = buildBurnV2Ix({ ...p, collection }, payer);
+    expect(ix.keys[6].pubkey.equals(collection)).toBe(true);
+    expect(ix.keys[6].isWritable).toBe(true);
+    expect(ix.keys.length).toBe(12 + p.proof.length);
+  });

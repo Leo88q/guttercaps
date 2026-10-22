@@ -22,11 +22,13 @@ import { type Db, now } from './db.ts';
 import { upsert } from './sql.ts';
 import { deriveBubblegumLeafAssetId } from './das.ts';
 import { pityBeforeFor, rollPack, type MintedChip, type PackOrderRow } from './pack-orders.ts';
+import { CORE_COLLECTIONS } from './config.ts';
 
 export const BUBBLEGUM_PROGRAM = new PublicKey('BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY');
 export const ACCOUNT_COMPRESSION = new PublicKey('mcmt6YrQEMKw8Mw43FmpRLmf7BqRnFMKmAcbxE3xkAW');
 export const MPL_NOOP = new PublicKey('mnoopTCrg4p8ry25e4bcWA9XZjbNjMTfgYVGGEdRsf3');
 export const MPL_CORE_CPI_SIGNER = PublicKey.findProgramAddressSync([Buffer.from('mpl_core_cpi_signer')], BUBBLEGUM_PROGRAM)[0];
+export const MPL_CORE = new PublicKey('CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d');
 
 export function treeConfigPda(merkleTree: PublicKey): PublicKey {
   return PublicKey.findProgramAddressSync([merkleTree.toBuffer()], BUBBLEGUM_PROGRAM)[0];
@@ -89,30 +91,32 @@ export function buildMintV2Ix(o: {
       collection: o.coreCollection ?? null,
     }),
   ]);
+  // Canonical mint_v2 account list (mpl-bubblegum's generated instruction,
+  // mirrored by chip_core's MintV2CpiBuilder): 13 metas, always. Absent
+  // optionals take the Bubblegum program id as sentinel — Anchor's convention
+  // for Option accounts — and mpl_core_program is a required trailing account
+  // even for collection-less leaves. Omitting either breaks the positional
+  // account parse on-chain.
+  const absent = { pubkey: BUBBLEGUM_PROGRAM, isSigner: false, isWritable: false };
   const keys = [
     { pubkey: treeConfigPda(o.merkleTree), isSigner: false, isWritable: true },
     { pubkey: o.payer, isSigner: true, isWritable: true },
     { pubkey: o.treeAuthority, isSigner: true, isWritable: false },
-  ];
-  if (o.coreCollection) {
-    keys.push({ pubkey: o.collectionAuthority ?? o.treeAuthority, isSigner: true, isWritable: false });
-  }
-  keys.push(
+    o.coreCollection
+      ? { pubkey: o.collectionAuthority ?? o.treeAuthority, isSigner: true, isWritable: false }
+      : absent,
     { pubkey: o.leafOwner, isSigner: false, isWritable: false },
     { pubkey: o.leafOwner, isSigner: false, isWritable: false }, // leaf_delegate = owner
     { pubkey: o.merkleTree, isSigner: false, isWritable: true },
-  );
-  if (o.coreCollection) {
-    keys.push(
-      { pubkey: o.coreCollection, isSigner: false, isWritable: true },
-      { pubkey: MPL_CORE_CPI_SIGNER, isSigner: false, isWritable: false },
-    );
-  }
-  keys.push(
+    o.coreCollection
+      ? { pubkey: o.coreCollection, isSigner: false, isWritable: true }
+      : { ...absent, isWritable: true },
+    o.coreCollection ? { pubkey: MPL_CORE_CPI_SIGNER, isSigner: false, isWritable: false } : absent,
     { pubkey: MPL_NOOP, isSigner: false, isWritable: false },
     { pubkey: ACCOUNT_COMPRESSION, isSigner: false, isWritable: false },
+    { pubkey: MPL_CORE, isSigner: false, isWritable: false },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-  );
+  ];
   return new TransactionInstruction({ programId: BUBBLEGUM_PROGRAM, keys, data });
 }
 
@@ -195,12 +199,15 @@ export async function sendChipMint(
   wallet: string,
   chip: ChipToMint,
 ): Promise<void> {
+  const configured = CORE_COLLECTIONS[chip.collectionIdx];
   const ix = buildMintV2Ix({
     merkleTree: tree,
     payer: authority.publicKey,
     treeAuthority: authority.publicKey,
     leafOwner: new PublicKey(wallet),
     metadata: chipMetadata(chip.collectionIdx, chip.rarity, chip.gameIndex),
+    coreCollection: configured ? new PublicKey(configured) : null,
+    collectionAuthority: authority.publicKey,
   });
   const tx = new Transaction().add(ix);
   await sendAndConfirmTransaction(connection, tx, [authority], { commitment: 'confirmed' });

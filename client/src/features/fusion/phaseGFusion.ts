@@ -17,6 +17,8 @@ import { associatedTokenAddress, createAtaIdempotentIx, memoInstruction, tokenTr
 export const BUBBLEGUM_PROGRAM = new PublicKey('BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY');
 export const ACCOUNT_COMPRESSION = new PublicKey('mcmt6YrQEMKw8Mw43FmpRLmf7BqRnFMKmAcbxE3xkAW');
 export const MPL_NOOP = new PublicKey('mnoopTCrg4p8ry25e4bcWA9XZjbNjMTfgYVGGEdRsf3');
+export const MPL_CORE = new PublicKey('CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d');
+export const MPL_CORE_CPI_SIGNER = PublicKey.findProgramAddressSync([Buffer.from('mpl_core_cpi_signer')], BUBBLEGUM_PROGRAM)[0];
 
 export const treeConfigPda = (merkleTree: PublicKey): PublicKey =>
   PublicKey.findProgramAddressSync([merkleTree.toBuffer()], BUBBLEGUM_PROGRAM)[0];
@@ -33,13 +35,23 @@ export function buildBurnV2Ix(proof: BubblegumProof, payer: PublicKey): Transact
     Buffer.from(proof.collectionHash), Buffer.from(proof.assetDataHash),
     Buffer.of(proof.flags), u64, u32,
   ]);
+  // Canonical burn_v2 account list (mpl-bubblegum's generated instruction):
+  // 12 fixed metas, then the proof nodes. Without a Core collection the two
+  // collection slots take the Bubblegum program-id sentinel (Anchor's Option
+  // convention); mpl_core_program is a required trailing account either way.
+  const absent = { pubkey: BUBBLEGUM_PROGRAM, isSigner: false, isWritable: false };
   const keys = [
     { pubkey: treeConfigPda(proof.merkleTree), isSigner: false, isWritable: true },
     { pubkey: payer, isSigner: true, isWritable: true },
-    { pubkey: proof.leafOwner, isSigner: true, isWritable: false }, // leaf_owner_or_delegate
+    { pubkey: proof.leafOwner, isSigner: true, isWritable: false }, // authority = owner/delegate
+    { pubkey: proof.leafOwner, isSigner: false, isWritable: false },
+    { pubkey: proof.leafDelegate, isSigner: false, isWritable: false },
     { pubkey: proof.merkleTree, isSigner: false, isWritable: true },
+    proof.collection ? { pubkey: proof.collection, isSigner: false, isWritable: true } : { ...absent, isWritable: true },
+    proof.collection ? { pubkey: MPL_CORE_CPI_SIGNER, isSigner: false, isWritable: false } : absent,
     { pubkey: MPL_NOOP, isSigner: false, isWritable: false },
     { pubkey: ACCOUNT_COMPRESSION, isSigner: false, isWritable: false },
+    { pubkey: MPL_CORE, isSigner: false, isWritable: false },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ...bubblegumProofMetas(proof),
   ];

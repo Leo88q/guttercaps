@@ -99,7 +99,8 @@
     "mac:devnet": "bash scripts/mac-devnet.sh",
     "population:sim": "node --experimental-strip-types scripts/population-sim.ts",
     "line:sim": "node --experimental-strip-types packages/economy/scripts/line-tournament-sim.ts",
-    "setup:minimal": "node --experimental-strip-types scripts/setup-minimal.ts"
+    "setup:minimal": "node --experimental-strip-types scripts/setup-minimal.ts",
+    "launch:check": "node --experimental-strip-types scripts/launch-check.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",

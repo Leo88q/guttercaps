@@ -6,9 +6,10 @@
  *      must already exist under the founder multisig, same rule as setup.ts),
  *   2. ONE shared Bubblegum V2 merkle tree (depth 20 / buffer 64 / canopy 0,
  *      ≈1M chips) + its TreeConfig, tree authority = payer key (KMS in prod),
- *   3. optionally the 8 MPL Core collections, when the MPL Core JS SDK is
- *      installed (it is not a runtime dependency of this repo; the script
- *      prints the exact specs and install line instead of guessing layouts).
+ *   3. the 8 MPL Core collections (raw CreateCollectionV2, no SDK — layout
+ *      pinned in --selftest against the mpl-core generated serializers:
+ *      discriminator 21, Royalties 250 bps to the treasury, BubblegumV2
+ *      plugin so mint_v2 can attach chips to a verified collection).
  *
  * The full 4-program setup lives in scripts/setup.ts and is NOT touched.
  *
@@ -96,6 +97,67 @@ export function createTreeConfigV2Ix(o: {
   });
 }
 
+/**
+ * MPL Core CreateCollectionV2 (discriminator 21), serialized by hand to match
+ * @metaplex-foundation/mpl-core's generated serializers (struct order:
+ * name, uri, plugins: Option<Vec<PluginAuthorityPair>>, external: Option<vec>).
+ * Plugin enum ordinals: Royalties=0, BubblegumV2=15. PluginAuthority:
+ * None=0, Owner=1, UpdateAuthority=2, Address=3. RuleSet: None=0.
+ * Mirrors chip_core create_collection's plugin set minus the program-only
+ * PermanentTransferDelegate (phase G has no market program to delegate to):
+ * enforced 250 bps royalties to the treasury + the BubblegumV2 plugin.
+ */
+export function createCoreCollectionV2Ix(o: {
+  collection: PublicKey;
+  payer: PublicKey;
+  updateAuthority?: PublicKey;
+  name: string;
+  uri: string;
+  royaltyCreator: PublicKey;
+  royaltyBps?: number;
+}): TransactionInstruction {
+  const str = (v: string) => {
+    const b = Buffer.from(v, 'utf8');
+    const len = Buffer.alloc(4);
+    len.writeUInt32LE(b.length);
+    return Buffer.concat([len, b]);
+  };
+  const bps = Buffer.alloc(2);
+  bps.writeUInt16LE(o.royaltyBps ?? 250);
+  const creatorsLen = Buffer.alloc(4);
+  creatorsLen.writeUInt32LE(1);
+  const royalties = Buffer.concat([
+    Buffer.of(0), // Plugin::Royalties
+    bps,
+    creatorsLen, Buffer.from(o.royaltyCreator.toBytes()), Buffer.of(100),
+    Buffer.of(0), // RuleSet::None
+    Buffer.of(1, 2), // authority: Some(UpdateAuthority)
+  ]);
+  const bubblegum = Buffer.concat([
+    Buffer.of(15), // Plugin::BubblegumV2 (empty payload)
+    Buffer.of(0), // authority: None
+  ]);
+  const pairCount = Buffer.alloc(4);
+  pairCount.writeUInt32LE(2);
+  const data = Buffer.concat([
+    Buffer.of(21), // CreateCollectionV2
+    str(o.name),
+    str(o.uri),
+    Buffer.of(1), pairCount, royalties, bubblegum, // plugins: Some([..])
+    Buffer.of(0), // external plugin adapters: None
+  ]);
+  return new TransactionInstruction({
+    programId: MPL_CORE,
+    keys: [
+      { pubkey: o.collection, isSigner: true, isWritable: true },
+      { pubkey: o.updateAuthority ?? o.payer, isSigner: false, isWritable: false },
+      { pubkey: o.payer, isSigner: true, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data,
+  });
+}
+
 export interface PlanStep {
   name: string;
   lamports: number;
@@ -127,6 +189,22 @@ function selftest(): void {
   const expectedDisc = [210, 250, 32, 91, 95, 119, 221, 96];
   if (!expectedDisc.every((b, i) => ix.data[i] === b)) throw new Error('discriminator drift');
   if (buildPlan({ hasCgMint: true }).length !== 4) throw new Error('plan drift');
+  const colIx = createCoreCollectionV2Ix({
+    collection: Keypair.generate().publicKey, payer: Keypair.generate().publicKey,
+    name: 'Night Moth', uri: 'https://cdn.guttercaps.gg/c/0.json', royaltyCreator: Keypair.generate().publicKey,
+  });
+  const d = colIx.data;
+  if (d[0] !== 21) throw new Error('CreateCollectionV2 discriminator drift');
+  let off = 1;
+  const rdStr = () => { const n = d.readUInt32LE(off); off += 4 + n; return n; };
+  rdStr(); rdStr();
+  if (d[off] !== 1 || d.readUInt32LE(off + 1) !== 2) throw new Error('plugins vec drift');
+  off += 5;
+  if (d[off] !== 0 || d.readUInt16LE(off + 1) !== 250) throw new Error('royalties plugin drift'); // variant + bps
+  off += 3 + 4 + 32 + 1 + 1 + 2; // creators len + creator + pct + ruleset + authority
+  if (d[off] !== 15 || d[off + 1] !== 0) throw new Error('bubblegum plugin drift');
+  if (d[off + 2] !== 0 || off + 3 !== d.length) throw new Error('external adapters drift');
+  if (colIx.keys.length !== 4 || !colIx.keys[0].isSigner) throw new Error('collection accounts drift');
   console.log('setup-minimal selftest OK: tree 44 280 B ≈', (lamports / 1e9).toFixed(4), 'SOL');
 }
 
@@ -147,8 +225,7 @@ async function main(): Promise<void> {
     console.log(`  SHARED_MERKLE_TREE=<адрес дерева>`);
     console.log(`  CG_MINT=<минт>`);
     console.log('  TREASURY_WALLET=<казна>; MINT_AUTHORITY — KMS-ключ tree authority');
-    console.log('\nMPL Core коллекции: SDK не является зависимостью репозитория. Для --execute коллекций:');
-    console.log('  npm i -D @metaplex-foundation/umi @metaplex-foundation/mpl-core @metaplex-foundation/umi-bundle-defaults');
+    console.log('\nMPL Core коллекции: --execute создаёт их этим же скриптом (CreateCollectionV2, без SDK).');
     return;
   }
   // ---- execute path (devnet first; checklist 1.4 verifies on the owner's machine)
@@ -189,12 +266,31 @@ async function main(): Promise<void> {
   await sendAndConfirmTransaction(conn, cfgTx, [payer]);
   console.log('shared tree:', treeKp.publicKey.toBase58(), 'config:', treeConfigPda(treeKp.publicKey).toBase58());
 
+  const metadataBase = process.env.METADATA_BASE ?? 'https://cdn.guttercaps.gg/c';
+  const royaltyCreator = process.env.TREASURY_WALLET ? new PublicKey(process.env.TREASURY_WALLET) : payer.publicKey;
+  const coreCollections: string[] = [];
+  for (let i = 0; i < COLLECTIONS.length; i++) {
+    const existing = process.env[`CORE_COLLECTION_${i}`];
+    if (existing) { coreCollections.push(existing); console.log(`collection ${i} (existing):`, existing); continue; }
+    const colKp = Keypair.generate();
+    const c = COLLECTIONS[i];
+    const tx = new Transaction().add(createCoreCollectionV2Ix({
+      collection: colKp.publicKey, payer: payer.publicKey,
+      name: c.name, uri: `${metadataBase}/${i}.json`, royaltyCreator,
+    }));
+    await sendAndConfirmTransaction(conn, tx, [payer, colKp]);
+    coreCollections.push(colKp.publicKey.toBase58());
+    console.log(`collection ${i} ${c.symbol}:`, colKp.publicKey.toBase58());
+  }
+
   console.log('\n--- env для backend/client (чек-лист п. 1.3) ---');
   console.log('LAUNCH_PHASE=g');
   console.log(`CG_MINT=${cgMint.toBase58()}`);
   console.log(`SHARED_MERKLE_TREE=${treeKp.publicKey.toBase58()}`);
   console.log(`SHARED_TREE_CONFIG=${treeConfigPda(treeKp.publicKey).toBase58()}`);
-  console.log('(!) MPL Core коллекции: создайте SDK-ом выше и задайте CORE_COLLECTION_0..7 — минт фазы Г требует их.');
+  coreCollections.forEach((a, i) => console.log(`CORE_COLLECTION_${i}=${a}`));
+  console.log('(!) update authority коллекций и tree authority — ключ payer этого запуска:');
+  console.log('    MINT_AUTHORITY_KEYPAIR бэкенда должен быть ЭТИМ ключом (в проде — KMS).');
 }
 
 const isMain = process.argv[1]?.endsWith('setup-minimal.ts');

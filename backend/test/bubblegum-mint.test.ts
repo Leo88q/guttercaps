@@ -2,7 +2,7 @@
 // byte layout pinned against chip_core, mint_v2 instruction shape, and the
 // mint crank's resume/no-double-mint semantics with an injected sender.
 import { describe, expect, it } from 'vitest';
-import { Keypair, PublicKey } from '@solana/web3.js';
+import { Keypair, PublicKey, SystemProgram } from '@solana/web3.js';
 import { Db } from '../src/db.ts';
 import * as mint from '../src/bubblegum-mint.ts';
 import * as orders from '../src/pack-orders.ts';
@@ -43,13 +43,37 @@ describe('metadata + instruction layout (§3.1)', () => {
       metadata: mint.chipMetadata(1, 2, 7),
     });
     expect(ix.programId.equals(mint.BUBBLEGUM_PROGRAM)).toBe(true);
-    expect(ix.keys).toHaveLength(9); // no collection accounts in phase-G default
+    // Canonical mint_v2: 13 metas. No collection → Bubblegum program-id
+    // sentinels in the optional slots (3, 7, 8); mpl_core_program at 11.
+    expect(ix.keys).toHaveLength(13);
     expect(ix.keys[0].pubkey.equals(mint.treeConfigPda(TREE))).toBe(true);
     expect(ix.keys[0].isWritable).toBe(true);
-    expect(ix.keys[3].pubkey.equals(owner)).toBe(true); // leaf owner
-    expect(ix.keys[5].pubkey.equals(TREE)).toBe(true);
-    expect(ix.keys[5].isWritable).toBe(true);
+    expect(ix.keys[3].pubkey.equals(mint.BUBBLEGUM_PROGRAM)).toBe(true);
+    expect(ix.keys[4].pubkey.equals(owner)).toBe(true); // leaf owner
+    expect(ix.keys[6].pubkey.equals(TREE)).toBe(true);
+    expect(ix.keys[6].isWritable).toBe(true);
+    expect(ix.keys[7].pubkey.equals(mint.BUBBLEGUM_PROGRAM)).toBe(true);
+    expect(ix.keys[11].pubkey.equals(mint.MPL_CORE)).toBe(true);
+    expect(ix.keys[12].pubkey.equals(SystemProgram.programId)).toBe(true);
     expect(ix.data.length).toBeGreaterThan(8);
+  });
+
+  it('with a Core collection: real collection + cpi signer slots, metadata carries it', () => {
+    const owner = Keypair.generate().publicKey;
+    const core = Keypair.generate().publicKey;
+    const ix = mint.buildMintV2Ix({
+      merkleTree: TREE, payer: AUTH.publicKey, treeAuthority: AUTH.publicKey, leafOwner: owner,
+      metadata: mint.chipMetadata(1, 2, 7), coreCollection: core,
+    });
+    expect(ix.keys).toHaveLength(13);
+    expect(ix.keys[3].pubkey.equals(AUTH.publicKey)).toBe(true); // collection authority signs
+    expect(ix.keys[3].isSigner).toBe(true);
+    expect(ix.keys[7].pubkey.equals(core)).toBe(true);
+    expect(ix.keys[7].isWritable).toBe(true);
+    expect(ix.keys[8].pubkey.equals(mint.MPL_CORE_CPI_SIGNER)).toBe(true);
+    // MetadataArgsV2 ends with Some(collection)
+    expect(ix.data.subarray(ix.data.length - 33, ix.data.length - 32)).toEqual(Buffer.of(1));
+    expect(ix.data.subarray(ix.data.length - 32).equals(Buffer.from(core.toBytes()))).toBe(true);
   });
 
   it('nextLeafIndex reads the tree header like das.ts', () => {
