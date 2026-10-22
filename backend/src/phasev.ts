@@ -131,6 +131,8 @@ const CURRENCY_CODE: Record<string, number> = { SOL: 0, USDC: 1, CG: 2 };
 // ------------------------------------------------------------------ settle payloads
 export interface SettlePayload {
   program: string;
+  /** MINT_ORACLE pubkey — the client builds the Ed25519 instruction from it. */
+  oracle: string;
   config: string;
   treeAuth: string;
   tree: string;
@@ -153,6 +155,7 @@ function payloadFor(wallet: string, authOrderId: bigint, specs: (LeafSpec & { co
   const tree = new PublicKey(SHARED_MERKLE_TREE);
   return {
     program: SETTLE_PROGRAM.toBase58(),
+    oracle: oracle.publicKey.toBase58(),
     config: settleConfigPda().toBase58(),
     treeAuth: treeAuthPda().toBase58(),
     tree: tree.toBase58(),

@@ -243,10 +243,10 @@ export default function Shop() {
       <p className="tiny muted" style={{ marginTop: 12 }}> {t('ui.cryptoOnly')} <a className="row" style={{ gap: 4, color: 'var(--cg-cyan-soft)', display: 'inline-flex', paddingBlock: 5 }} href={ONRAMP_URL} target="_blank" rel="noreferrer">{t('ui.buyCard')} <ExternalIcon size={11} /></a> · {t('screens.collectibleRisk')}
       </p>
 
-      {sel && FLAGS.launchPhase === 'g' && (
+      {sel && FLAGS.launchPhase !== 'full' && (
         <PhaseGBuyModal sku={sel.sku} packId={SKU_IDS[sel.sku]} onClose={() => setSel(null)} />
       )}
-      {sel && FLAGS.launchPhase !== 'g' && (
+      {sel && FLAGS.launchPhase === 'full' && (
         <BuyModal
           sel={sel}
           setSel={setSel}

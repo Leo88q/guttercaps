@@ -3631,6 +3631,124 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/packs/order/{id}/settle-auth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Phase-V — verify the on-chain buy_pack escrow and issue the MINT_ORACLE settle authorization */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            responses: {
+                /** @description settle payload */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SettlePayload"];
+                    };
+                };
+                /** @description sign-in required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not_yours */
+                403: components["responses"]["Error"];
+                /** @description not_found */
+                404: components["responses"]["Error"];
+                /** @description not_paid_onchain | already_settled | already_minted */
+                409: components["responses"]["Error"];
+                /** @description phase_v_off */
+                410: components["responses"]["Error"];
+                /** @description escrow_mismatch */
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/packs/order/{id}/settle-confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Phase-V — submit the settle_pack signature; backend registers the minted chips */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        signature: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description order */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PackOrder"];
+                    };
+                };
+                /** @description sign-in required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not_yours */
+                403: components["responses"]["Error"];
+                /** @description not_found */
+                404: components["responses"]["Error"];
+                /** @description phase_v_off */
+                410: components["responses"]["Error"];
+                /** @description settle_unverified */
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/packs/order/{id}/verify": {
         parameters: {
             query?: never;
@@ -3817,6 +3935,69 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/fusion/order/{id}/grant-confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Phase-V — submit the grant_mint signature; backend registers the fusion result */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        signature: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description result */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status?: string;
+                            success?: boolean | null;
+                            resultAssets?: string[] | null;
+                        };
+                    };
+                };
+                /** @description sign-in required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not_yours */
+                403: components["responses"]["Error"];
+                /** @description not_found */
+                404: components["responses"]["Error"];
+                /** @description phase_v_off */
+                410: components["responses"]["Error"];
+                /** @description settle_unverified */
+                422: components["responses"]["Error"];
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -8105,6 +8286,35 @@ export interface components {
             expiresAt?: number;
             mintedAt?: number | null;
         };
+        /** @description Phase-V oracle authorization — the client builds the Ed25519 + settle_pack (or grant_mint) instructions from it */
+        SettlePayload: {
+            program?: string;
+            oracle?: string;
+            config?: string;
+            treeAuth?: string;
+            tree?: string;
+            treeConfig?: string;
+            orderPda?: string | null;
+            grantReceipt?: string | null;
+            status?: string;
+            auth?: {
+                wallet?: string;
+                orderId?: string;
+                specsHash?: string;
+                nonce?: string;
+                expiresAtSlot?: string;
+            };
+            signature?: string;
+            specs?: {
+                collection?: string;
+                name?: string;
+                symbol?: string;
+                uri?: string;
+                collectionIdx?: number;
+                rarity?: number;
+                gameIndex?: number;
+            }[];
+        };
         PackOrderVerify: {
             orderId?: number;
             matches?: boolean;
@@ -8140,6 +8350,7 @@ export interface components {
             to?: number;
             inputs?: string[];
             feeMicro?: string;
+            grant?: components["schemas"]["SettlePayload"];
             memo?: string;
             /** @enum {string} */
             status?: "created" | "paid" | "minted";

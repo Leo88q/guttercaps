@@ -156,7 +156,7 @@ export default function Verify() {
         <button className="btn" type="submit">{t('ui.verify')}</button>
       </form>
       <div className="tiny muted">{t('verify.slotHashes')} · <Link to="/drain">{t('drain.title')}</Link></div>
-      {FLAGS.launchPhase === 'g' && <PhaseGVerify />}
+      {FLAGS.launchPhase !== 'full' && <PhaseGVerify />}
 
       {signature && (chain.isLoading || api.isLoading) && <Skeleton h={200} />}
       {signature && chain.error && api.error && <div className="danger"><ErrorNotice error={chain.error} /><div>{t('screens.backend')}:</div><ErrorNotice error={api.error} /></div>}

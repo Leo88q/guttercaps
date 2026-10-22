@@ -107,8 +107,19 @@ export async function runPhaseGFusion(args: {
   stage('confirming');
   await api.post('/fusion/order/{id}/confirm', { burnSig, paySig }, { path: { id: fusionId } });
   stage('minting');
+  let grantSent = false;
   for (let i = 0; i < 40; i++) {
     const view = await api.get('/fusion/order/{id}', { path: { id: fusionId } });
+    // Phase V: the result mints inside the player's grant_mint transaction,
+    // authorized by the oracle payload the backend attaches once paid.
+    if (!isMock() && !grantSent && args.signer && view.grant) {
+      const { grantIx } = await import('@/features/shop/phaseVFlow');
+      const { Transaction } = await import('@solana/web3.js');
+      const tx = new Transaction().add(...grantIx(view.grant as unknown as import('@/features/shop/phaseV').SettlePayloadLike, { relayer: args.signer.publicKey }));
+      const sig = await sendTx(args.connection, args.signer, tx.instructions);
+      await api.post('/fusion/order/{id}/grant-confirm', { signature: sig.signature }, { path: { id: fusionId } });
+      grantSent = true;
+    }
     if (view.status === 'minted') {
       stage('done');
       return { success: view.success === true, resultAssets: view.resultAssets ?? [], status: view.status ?? 'minted' };

@@ -4,10 +4,12 @@
 // simulates confirm + mint so the UX is reviewable offline.
 import { useCallback, useRef, useState } from 'react';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { Transaction } from '@solana/web3.js';
+import { PublicKey, Transaction } from '@solana/web3.js';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, isMock } from '@/api/client';
 import { buildPaymentInstructions, waitForOrderMinted, type PackOrder, type PhaseGCurrency } from './phaseG';
+import { FLAGS } from '@/app/config';
+import { buyPackIx, grantOrSettleIx } from './phaseVFlow';
 
 export type PhaseGStage = 'idle' | 'creating' | 'paying' | 'confirming' | 'minting' | 'done' | 'error';
 
@@ -28,7 +30,28 @@ export function usePhaseGOrder() {
       setStage('creating');
       const created = await api.post('/packs/order', { sku, qty, currency });
       const orderId = created.orderId ?? 0;
-      if (!isMock()) {
+      if (!isMock() && FLAGS.launchPhase === 'v') {
+        // Phase V: escrow on-chain, oracle authorizes, the player's own
+        // settle transaction mints. No backend mint queue.
+        if (!wallet.publicKey || !wallet.sendTransaction) throw new Error('Wallet is not connected');
+        const me = wallet.publicKey;
+        setStage('paying');
+        const escrowTx = new Transaction().add(buyPackIx({
+          buyer: me, orderId: BigInt(orderId), currency,
+          amount: BigInt(created.amount ?? '0'),
+          mint: created.mint ? new PublicKey(created.mint) : null,
+        }));
+        await wallet.sendTransaction(escrowTx, connection);
+        setStage('confirming');
+        const payload = await api.post('/packs/order/{id}/settle-auth', {}, { path: { id: orderId } });
+        const settleTx = new Transaction().add(...grantOrSettleIx(payload as unknown as import('./phaseV').SettlePayloadLike, {
+          relayer: me,
+          treasury: new PublicKey(created.payToOwner ?? ''),
+          mint: created.mint ? new PublicKey(created.mint) : null,
+        }));
+        const settleSig = await wallet.sendTransaction(settleTx, connection);
+        await api.post('/packs/order/{id}/settle-confirm', { signature: settleSig }, { path: { id: orderId } });
+      } else if (!isMock()) {
         if (!wallet.publicKey || !wallet.sendTransaction) throw new Error('Wallet is not connected');
         setStage('paying');
         const tx = new Transaction().add(...buildPaymentInstructions(created, wallet.publicKey));

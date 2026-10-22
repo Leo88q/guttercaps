@@ -128,7 +128,7 @@ export default function ChipInspector() {
           <h1 className="page-title">{chipName(collection, rarity)}</h1>
           <p className="page-sub">{t('inspect.hint')}</p>
         </div>
-        {FLAGS.launchPhase === 'g'
+        {FLAGS.launchPhase !== 'full'
           ? <span className="row" style={{ gap: 8 }}><PhaseGChipActions asset={asset} owner={c.owner} /></span>
           : <Link to={`/market/${asset}`} className="btn btn-sm">{t('inspect.toMarket')}</Link>}
       </div>

@@ -1088,6 +1088,33 @@ paths:
         '404': { $ref: '#/components/responses/Error', description: 'not_found | tx_not_found' }
         '409': { $ref: '#/components/responses/Error', description: 'not_payable | already_confirmed | already_minted' }
         '422': { $ref: '#/components/responses/Error', description: payment_* }
+  /packs/order/{id}/settle-auth:
+    post:
+      tags: [packs]
+      summary: Phase-V — verify the on-chain buy_pack escrow and issue the MINT_ORACLE settle authorization
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody: { required: false, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '200': { description: settle payload, content: { application/json: { schema: { $ref: '#/components/schemas/SettlePayload' } } } }
+        '401': { description: sign-in required }
+        '403': { $ref: '#/components/responses/Error', description: not_yours }
+        '404': { $ref: '#/components/responses/Error', description: not_found }
+        '409': { $ref: '#/components/responses/Error', description: 'not_paid_onchain | already_settled | already_minted' }
+        '410': { $ref: '#/components/responses/Error', description: phase_v_off }
+        '422': { $ref: '#/components/responses/Error', description: escrow_mismatch }
+  /packs/order/{id}/settle-confirm:
+    post:
+      tags: [packs]
+      summary: Phase-V — submit the settle_pack signature; backend registers the minted chips
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [signature], properties: { signature: { type: string } } } } } }
+      responses:
+        '200': { description: order, content: { application/json: { schema: { $ref: '#/components/schemas/PackOrder' } } } }
+        '401': { description: sign-in required }
+        '403': { $ref: '#/components/responses/Error', description: not_yours }
+        '404': { $ref: '#/components/responses/Error', description: not_found }
+        '410': { $ref: '#/components/responses/Error', description: phase_v_off }
+        '422': { $ref: '#/components/responses/Error', description: settle_unverified }
   /packs/order/{id}/verify:
     get:
       tags: [packs]
@@ -1132,6 +1159,19 @@ paths:
         '200': { description: intent, content: { application/json: { schema: { $ref: '#/components/schemas/FusionOrder' } } } }
         '401': { description: sign-in required }
         '404': { $ref: '#/components/responses/Error', description: not_found }
+  /fusion/order/{id}/grant-confirm:
+    post:
+      tags: [fusion]
+      summary: Phase-V — submit the grant_mint signature; backend registers the fusion result
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [signature], properties: { signature: { type: string } } } } } }
+      responses:
+        '200': { description: result, content: { application/json: { schema: { type: object, properties: { status: { type: string }, success: { type: boolean, nullable: true }, resultAssets: { type: array, items: { type: string }, nullable: true } } } } } }
+        '401': { description: sign-in required }
+        '403': { $ref: '#/components/responses/Error', description: not_yours }
+        '404': { $ref: '#/components/responses/Error', description: not_found }
+        '410': { $ref: '#/components/responses/Error', description: phase_v_off }
+        '422': { $ref: '#/components/responses/Error', description: settle_unverified }
   /fusion/order/{id}/confirm:
     post:
       tags: [fusion]
@@ -2217,6 +2257,40 @@ components:
         createdAt: { type: integer }
         expiresAt: { type: integer }
         mintedAt: { type: integer, nullable: true }
+    SettlePayload:
+      type: object
+      description: Phase-V oracle authorization — the client builds the Ed25519 + settle_pack (or grant_mint) instructions from it
+      properties:
+        program: { type: string }
+        oracle: { type: string }
+        config: { type: string }
+        treeAuth: { type: string }
+        tree: { type: string }
+        treeConfig: { type: string }
+        orderPda: { type: string, nullable: true }
+        grantReceipt: { type: string, nullable: true }
+        status: { type: string }
+        auth:
+          type: object
+          properties:
+            wallet: { type: string }
+            orderId: { type: string }
+            specsHash: { type: string }
+            nonce: { type: string }
+            expiresAtSlot: { type: string }
+        signature: { type: string }
+        specs:
+          type: array
+          items:
+            type: object
+            properties:
+              collection: { type: string }
+              name: { type: string }
+              symbol: { type: string }
+              uri: { type: string }
+              collectionIdx: { type: integer }
+              rarity: { type: integer }
+              gameIndex: { type: integer }
     PackOrderVerify:
       type: object
       properties:
@@ -2257,6 +2331,7 @@ components:
         to: { type: integer }
         inputs: { type: array, items: { type: string } }
         feeMicro: { type: string }
+        grant: { $ref: '#/components/schemas/SettlePayload' }
         memo: { type: string }
         status: { type: string, enum: [created, paid, minted] }
         seedHash: { type: string }

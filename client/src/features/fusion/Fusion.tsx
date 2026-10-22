@@ -110,7 +110,7 @@ export default function Fusion() {
     if (!ready || !recipe) return;
     setBusy(true);
     try {
-      if (FLAGS.launchPhase === 'g') {
+      if (FLAGS.launchPhase !== 'full') {
         // Phase-G: burn the materials yourself + pay the fee; the backend mints the result.
         const assets = filled.map((c) => c.asset!).filter(Boolean);
         setFlow({ phase: 'signing', nonce: 1n, recipe: recipe.from, boosted: false, materials: [], resultCollectionIdx: effectiveResultCol!, signatures: [] });
