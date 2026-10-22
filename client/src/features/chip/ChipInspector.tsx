@@ -17,7 +17,8 @@ import { ElementGlyph } from '@/shared/ui/element-icons';
 import { CleanZone, Empty, KV, Skeleton } from '@/shared/ui/primitives';
 import { useUiStore } from '@/app/store/ui';
 import { useT } from '@/shared/i18n';
-import { EXPLORER } from '@/app/config';
+import { EXPLORER, FLAGS } from '@/app/config';
+import { PhaseGChipActions } from './PhaseGChipActions';
 import { ExternalIcon } from '@/shared/ui/action-icons';
 import {
   chipArtUrl, chipImageOf, chipLore, chipName, chipPower, collectionName, collectionSymbol,
@@ -127,7 +128,9 @@ export default function ChipInspector() {
           <h1 className="page-title">{chipName(collection, rarity)}</h1>
           <p className="page-sub">{t('inspect.hint')}</p>
         </div>
-        <Link to={`/market/${asset}`} className="btn btn-sm">{t('inspect.toMarket')}</Link>
+        {FLAGS.launchPhase === 'g'
+          ? <span className="row" style={{ gap: 8 }}><PhaseGChipActions asset={asset} owner={c.owner} /></span>
+          : <Link to={`/market/${asset}`} className="btn btn-sm">{t('inspect.toMarket')}</Link>}
       </div>
 
       {/* Орбита: жест мышью/пальцем, стрелки — для клавиатуры, двойной тап — сброс. */}

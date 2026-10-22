@@ -18,7 +18,7 @@ export const API_ERROR_KEYS = {
   use_grid_endpoint: 'failures.requestInvalid', cg_burn_required: 'failures.paymentPayload', deep_credit_cap: 'failures.requestInvalid',
   // §5.1 линия: реплей, день и попытки.
   bad_replay: 'failures.requestInvalid', bad_day: 'failures.requestInvalid',
-  use_line_endpoint: 'failures.requestInvalid', runs_exhausted: 'failures.lineRunsExhausted', run_credit_cap: 'failures.lineCreditCap',
+  use_line_endpoint: 'failures.requestInvalid', line_retired: 'failures.requestInvalid', runs_exhausted: 'failures.lineRunsExhausted', run_credit_cap: 'failures.lineCreditCap',
   // §5.4 турнир: бесплатные входы дня кончились.
   tournament_entries_exhausted: 'failures.tournamentEntriesExhausted',
   // §5.6 команды: имя, состав, сегмент стены и модерация имени.
@@ -34,6 +34,11 @@ export const API_ERROR_KEYS = {
   daily_cap: 'failures.chip_core_DailyCapReached', duplicate_chip: 'failures.arena_DuplicateChip',
   duplicate_material: 'failures.chip_core_DuplicateMaterial', emission_missing: 'failures.unavailable',
   geo_blocked: 'failures.geoBlocked', guard_rail: 'failures.guardRail', handle_cooldown: 'failures.handleCooldown',
+  // phase-G launch (docs/MINIMAL-LAUNCH-CHECKLIST.md): broad truthful summaries, originals stay in ErrorNotice.
+  phase_g_off: 'failures.unavailable', orders_unavailable: 'failures.unavailable', fusion_unavailable: 'failures.unavailable',
+  already_minted: 'failures.chainFulfilled', already_burned: 'failures.requestInvalid', already_promised: 'failures.requestInvalid',
+  chip_locked: 'failures.chip_core_StillLocked', diamond_gate: 'failures.unavailable', burn_unverified: 'failures.requestInvalid',
+  already_staked: 'failures.requestInvalid', not_staked: 'failures.notFound', nothing_to_claim: 'failures.staking_NothingToClaim',
   human_check_unavailable: 'failures.humanUnavailable', invalid_handle: 'failures.invalidHandle',
   match_pending: 'failures.matchPending', match_tagged_out: 'failures.matchTaggedOut', material_not_free: 'failures.chip_core_ChipNotFree',
   need_asset: 'failures.needAsset', no_pass: 'failures.noPass', no_recipe: 'failures.chip_core_NoRecipe',

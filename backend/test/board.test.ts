@@ -231,3 +231,39 @@ describe('конструктор: каталог', () => {
     expect(Object.keys(stock).sort()).toEqual(['bolts', 'deck', 'grip', 'sticker', 'trucks', 'wheels']);
   });
 });
+
+describe('конструктор: части за Floodgrid (2026-10-19)', () => {
+  it('часть недели: 2★ дают недостающую часть района недели, 1★ — нет', () => {
+    const w = kp();
+    const d = boardDistrictOfWeek(WEEK);
+    expect(board.grantWeeklyGridPart(db, w, 1, T0)).toBe(null);
+    expect(board.grantWeeklyGridPart(db, w, 2, T0)?.part).toBe(`deck_d${d}`);
+    // Одна в неделю: повторный сектор той же недели часть не дублирует.
+    expect(board.grantWeeklyGridPart(db, w, 3, T0)).toBe(null);
+    expect(board.ownedParts(db, w).length).toBe(1);
+  });
+
+  it('3★ фишкой района даёт часть именно этого района — и закрывает слоты по порядку', () => {
+    const w = kp();
+    // Район 5 не район недели: игрок сам выбрал его своей фишкой.
+    expect(board.grantDistrictGridPart(db, w, 5, 3, 0, T0)?.part).toBe('deck_d5');
+    expect(board.grantDistrictGridPart(db, w, 5, 3, 0, T0)?.part).toBe('trucks_d5');
+    // Рост до 3★ уже был (prevBest 3) — повторный проход не платит.
+    expect(board.grantDistrictGridPart(db, w, 5, 3, 3, T0)).toBe(null);
+    // 2★ — не мастерство: районная часть не положена.
+    expect(board.grantDistrictGridPart(db, w, 5, 2, 0, T0)).toBe(null);
+    expect(board.grantDistrictGridPart(db, w, 5, 3, 0, T0)?.part).toBe('wheels_d5');
+    expect(board.grantDistrictGridPart(db, w, 5, 3, 0, T0)?.part).toBe('grip_d5');
+    // Сет собран — дальше платить нечего.
+    expect(board.grantDistrictGridPart(db, w, 5, 3, 0, T0)).toBe(null);
+  });
+
+  it('трофеи Deep Flood: первая победа — дека, вторая — грип, третья — ничего', () => {
+    const w = kp();
+    expect(board.grantDeepTrophyPart(db, w, T0)?.part).toBe('deck_trophy');
+    expect(board.grantDeepTrophyPart(db, w, T0)?.part).toBe('grip_trophy');
+    expect(board.grantDeepTrophyPart(db, w, T0)).toBe(null);
+    const trophy = board.ownedParts(db, w).filter((p) => p.part.endsWith('_trophy'));
+    expect(trophy.map((p) => p.source)).toEqual(['deep', 'deep']);
+  });
+});

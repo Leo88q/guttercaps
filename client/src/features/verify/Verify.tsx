@@ -20,7 +20,8 @@ import { chipName, rarityColor, rarityName, collectionName, chipImageOf } from '
 /** One row of the verification table: the API path fills `rarity` only, the chain path fills both (SEC-B6). */
 type RollRow = { rarity?: number; collection?: number };
 import { fmtPct, shortKey } from '@/shared/lib/format';
-import { EXPLORER } from '@/app/config';
+import { EXPLORER, FLAGS } from '@/app/config';
+import { PhaseGVerify } from './PhaseGVerify';
 import { Skeleton } from '@/shared/ui/primitives';
 import { CheckIcon, CrossIcon } from '@/shared/ui/action-icons';
 import { ChipArt } from '@/shared/ui/ChipArt';
@@ -155,6 +156,7 @@ export default function Verify() {
         <button className="btn" type="submit">{t('ui.verify')}</button>
       </form>
       <div className="tiny muted">{t('verify.slotHashes')} · <Link to="/drain">{t('drain.title')}</Link></div>
+      {FLAGS.launchPhase === 'g' && <PhaseGVerify />}
 
       {signature && (chain.isLoading || api.isLoading) && <Skeleton h={200} />}
       {signature && chain.error && api.error && <div className="danger"><ErrorNotice error={chain.error} /><div>{t('screens.backend')}:</div><ErrorNotice error={api.error} /></div>}
