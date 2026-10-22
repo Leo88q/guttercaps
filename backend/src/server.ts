@@ -631,21 +631,21 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   }));
   v1.get('/packs/order/:id', requireAuth, (req, res) => {
     phaseG();
-    res.json(packOrders.getOrder(db, req.session!.wallet, Number(req.params.id)));
+    res.json(packOrders.getOrder(db, req.session!.wallet, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0));
   });
   v1.post('/packs/order/:id/confirm', requireAuth, accessGate('packs'), rl(POLICIES.claim), wrap(async (req, res) => {
     phaseG();
     const signature = String(req.body?.signature ?? '');
     if (signature.length < 32) throw new ServiceError(400, 'bad_signature', 'signature is required');
-    res.json(await packOrders.confirmOrder(db, req.session!.wallet, Number(req.params.id), signature, packOrders.orderPaymentFetcher(connection())));
+    res.json(await packOrders.confirmOrder(db, req.session!.wallet, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0, signature, packOrders.orderPaymentFetcher(connection())));
   }));
   v1.get('/packs/mint-journal', (req, res) => {
     phaseG();
-    res.json({ entries: packOrders.mintJournal(db, Number(req.query.limit ?? 100) || 100), tree: SHARED_MERKLE_TREE || null });
+    res.json({ entries: packOrders.mintJournal(db, intQuery(req.query.limit, { name: 'limit', min: 1, max: 500, def: 100 }) ?? 100), tree: SHARED_MERKLE_TREE || null });
   });
   v1.get('/packs/order/:id/verify', (req, res) => {
     phaseG();
-    const r = packOrders.verifyOrder(db, Number(req.params.id));
+    const r = packOrders.verifyOrder(db, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0);
     if (!r) { res.status(404).json({ code: 'not_found', message: 'Unknown or unminted order' }); return; }
     res.json(r);
   });
@@ -669,11 +669,11 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   }));
   v1.get('/fusion/order/:id', requireAuth, (req, res) => {
     phaseG();
-    res.json(phasegFusion.getFusion(db, req.session!.wallet, Number(req.params.id)));
+    res.json(phasegFusion.getFusion(db, req.session!.wallet, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0));
   });
   v1.post('/fusion/order/:id/confirm', requireAuth, accessGate('packs'), rl(POLICIES.claim), wrap(async (req, res) => {
     phaseG();
-    res.json(await phasegFusion.confirmFusion(db, req.session!.wallet, Number(req.params.id), req.body ?? {}, {
+    res.json(await phasegFusion.confirmFusion(db, req.session!.wallet, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0, req.body ?? {}, {
       fetchPayment: packOrders.orderPaymentFetcher(connection()),
       verifyBurned: dasBurnVerifier,
     }));

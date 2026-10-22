@@ -27,24 +27,28 @@ export function PhaseGBuyModal({ sku, packId, onClose }: {
   const t = useT();
   const econ = PACKS[packId];
   const [qty, setQty] = useState(1);
+  // Same rule as the backend quote: Starter and Limited never get bundle discounts.
+  const bundlesAllowed = packId === 'standard' || packId === 'premium';
   const [currency, setCurrency] = useState<PhaseGCurrency>('SOL');
   const flow = usePhaseGOrder();
   const busy = flow.stage !== 'idle' && flow.stage !== 'done' && flow.stage !== 'error';
-  const cents = bundlePriceCents(econ, qty);
+  const cents = bundlesAllowed ? bundlePriceCents(econ, qty) : econ.priceUsdCents * qty;
   const assets = flow.order?.assets ?? [];
 
   return (
     <Modal open onClose={onClose} title={t('shop.buy', { name: packName(sku) })}>
       <div className="stack">
         <p className="tiny muted">{t('ui.phasegNote')}</p>
-        <div className="stack-sm">
-          <span className="label">{t('shop.quantity')}</span>
-          <div className="tag-list">
-            {BUNDLES.map((b) => (
-              <Pill key={b.qty} active={qty === b.qty} onClick={() => !busy && setQty(b.qty)}>×{b.qty}</Pill>
-            ))}
+        {bundlesAllowed && (
+          <div className="stack-sm">
+            <span className="label">{t('shop.quantity')}</span>
+            <div className="tag-list">
+              {BUNDLES.map((b) => (
+                <Pill key={b.qty} active={qty === b.qty} onClick={() => !busy && setQty(b.qty)}>×{b.qty}</Pill>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
         <div className="stack-sm">
           <span className="label">{t('shop.payWith')}</span>
           <div className="tag-list">

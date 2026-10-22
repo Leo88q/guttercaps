@@ -91,7 +91,13 @@ export function createFusion(
     throw new ServiceError(400, 'collection_mismatch', 'This recipe needs one collection');
   }
   // one live intent per material set — a chip cannot be promised twice
-  const live = db.all<FusionRow>(`SELECT * FROM phaseg_fusions WHERE wallet = ? AND status IN ('created','paid')`, wallet);
+  // Intents older than 24h no longer promise their materials: an abandoned intent
+  // must not lock a player's chips out of fusion forever (the burn still has to be
+  // proven at confirm time, so a stale intent completing late is harmless).
+  const live = db.all<FusionRow>(
+    `SELECT * FROM phaseg_fusions WHERE wallet = ? AND status IN ('created','paid') AND (status = 'paid' OR created_at > ?)`,
+    wallet, t - 86_400,
+  );
   const promised = new Set(live.flatMap((f) => JSON.parse(f.inputs) as string[]));
   if ((assetIds as string[]).some((a) => promised.has(a))) throw new ServiceError(409, 'already_promised', 'A chip is already in a live fusion intent');
   const seed = deps.seedHex ?? randomBytes(32).toString('hex');

@@ -416,6 +416,7 @@ CREATE TABLE IF NOT EXISTS pack_orders (
   pay_to      TEXT    NOT NULL,                   -- treasury wallet (SOL) or its ATA (tokens)
   mint        TEXT,                               -- token mint for USDC/CG, NULL for SOL
   status      TEXT    NOT NULL DEFAULT 'created', -- created | paid | minted | expired | failed
+  featured_idx INTEGER NOT NULL DEFAULT 0,        -- featured collection snapshot for 'featured'-pool SKUs
   seed        TEXT    NOT NULL,                   -- server secret until minted
   seed_hash   TEXT    NOT NULL,                   -- sha256(seed) — public commitment from creation
   tx_sig      TEXT,

@@ -69,6 +69,8 @@ export const CG_MINT = env.CG_MINT ?? '';
 export const MINT_AUTHORITY_KEYPAIR = env.MINT_AUTHORITY_KEYPAIR ?? '';
 /** MPL Core collections 0..7 (phase-G mint binds chips to these when set). */
 export const CORE_COLLECTIONS: string[] = Array.from({ length: 8 }, (_, i) => env[`CORE_COLLECTION_${i}`] ?? '');
+/** Featured collection for Limited (pool='featured') in phase G; snapshot onto each order. */
+export const PHASEG_FEATURED_COLLECTION = Number(env.PHASEG_FEATURED_COLLECTION ?? 0);
 /** Pack-order lifetime: an unpaid order frees its seed commitment after this. */
 export const PACK_ORDER_TTL_S = Number(env.PACK_ORDER_TTL_S ?? 1800);
 
@@ -212,6 +214,15 @@ export function assertProductionConfig(): void {
   if (!env.DB_PATH || DB_PATH === ':memory:') problems.push('DB_PATH must be explicit and persistent in production — an indexer restart would otherwise wipe or split projections');
   if (env.PRODUCTION_DB_MODE !== 'sqlite-single-instance') problems.push('the running backend uses node:sqlite; set PRODUCTION_DB_MODE=sqlite-single-instance only for one API/indexer instance with a persistent volume, or implement the Postgres adapter before scaling');
   if (EVENT_BUS === 'redis' && !REDIS_URL) problems.push('EVENT_BUS=redis requires REDIS_URL (otherwise the API process never sees events indexed by the listener process)');
+  if (LAUNCH_PHASE === 'g') {
+    // Phase G sells for real money through the backend: an unconfigured mint path would take
+    // payments for packs that can never be minted, so these are startup errors, not 410s.
+    if (!PACK_TREASURY) problems.push('LAUNCH_PHASE=g requires TREASURY_WALLET (pack payments have nowhere to land)');
+    if (!SHARED_MERKLE_TREE) problems.push('LAUNCH_PHASE=g requires SHARED_MERKLE_TREE (setup-minimal prints it)');
+    if (!CG_MINT) problems.push('LAUNCH_PHASE=g requires CG_MINT ($CG pack rail + reward payouts)');
+    if (!MINT_AUTHORITY_KEYPAIR) problems.push('LAUNCH_PHASE=g requires MINT_AUTHORITY_KEYPAIR (paid orders would never mint)');
+    if (!Number.isInteger(PHASEG_FEATURED_COLLECTION) || PHASEG_FEATURED_COLLECTION < 0 || PHASEG_FEATURED_COLLECTION > 7) problems.push('PHASEG_FEATURED_COLLECTION must be 0..7');
+  }
   if (!API_INGEST && EVENT_BUS !== 'redis') problems.push('API_INGEST=0 with a non-redis event bus: nothing would ever reach /ws — either run the indexer in this process, or set EVENT_BUS=redis + REDIS_URL');
   if (!API_INGEST && !LISTEN_HEAL_EVERY_MS) problems.push('API_INGEST=0 assumes a separate `npm run listen` process is running (docs/09 §4.1) — if it is not, the projections never advance');
   if (EVENT_BUS === 'off' && !CORS_ORIGINS.includes('*')) problems.push('EVENT_BUS=off disables /ws fan-out: the client silently degrades to polling, which is a choice, not a default');

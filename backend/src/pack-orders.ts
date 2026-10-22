@@ -14,7 +14,7 @@ import { PublicKey, type Connection } from '@solana/web3.js';
 import { PACKS, solLamportsForUsdCents, usdcMicroForUsdCents, type PackId } from '@guttercaps/economy';
 import { type Db, now } from './db.ts';
 import { ServiceError } from './services.ts';
-import { CG_MINT, PACK_ORDER_TTL_S, PACK_TREASURY, USDC_MINT } from './config.ts';
+import { CG_MINT, PACK_ORDER_TTL_S, PACK_TREASURY, PHASEG_FEATURED_COLLECTION, USDC_MINT } from './config.ts';
 import { priceCents, SKUS, validateRequest, type QuoteCurrency } from './quote.ts';
 import { checkPayment, parseRpcPayment, type ParsedPaymentTx, type PaymentFetcher } from './preorders.ts';
 
@@ -30,6 +30,7 @@ export interface PackOrderRow {
   amount: string;
   pay_to: string;
   mint: string | null;
+  featured_idx: number;
   status: OrderStatus;
   seed: string;
   seed_hash: string;
@@ -71,7 +72,7 @@ export function createOrder(
 } {
   const treasury = deps.treasury ?? PACK_TREASURY;
   if (!treasury) throw new ServiceError(410, 'orders_unavailable', 'Pack orders are not configured (no treasury)');
-  if (CG_MINT === '' && (body as { currency?: string })?.currency === 'CG') {
+  if ((process.env.CG_MINT ?? CG_MINT) === '' && (body as { currency?: string })?.currency === 'CG') {
     throw new ServiceError(410, 'orders_unavailable', '$CG payments are not configured yet');
   }
   const req = validateRequest(body); // sku/qty/currency rules identical to the program quote
@@ -89,19 +90,22 @@ export function createOrder(
     const todayQty = live.filter((o) => o.created_at >= t - 86_400).reduce((a, o) => a + o.qty, 0);
     if (todayQty + req.qty > pack.dailyCap) throw new ServiceError(409, 'daily_cap', `At most ${pack.dailyCap} per day`);
   }
-  const { cents } = priceCents(req.sku, req.qty, req.currency as QuoteCurrency);
+  const { cents, discountBps } = priceCents(req.sku, req.qty, req.currency as QuoteCurrency);
   const amount = currency === 'SOL'
     ? solLamportsForUsdCents(cents).toString()
     : currency === 'USDC'
       ? usdcMicroForUsdCents(cents).toString()
-      : (BigInt(pack.priceCgMicro ?? 0) * BigInt(req.qty)).toString();
+      // $CG rail: same bundle discount the program/client apply (priceCents already
+      // discounted `cents`; the CG list price is discounted by the same bps here).
+      : (BigInt(pack.priceCgMicro ?? 0) * BigInt(req.qty) * BigInt(10_000 - discountBps) / 10_000n).toString();
   if (amount === '0') throw new ServiceError(400, 'currency_not_accepted', `${pack.name} cannot be bought with ${currency}`);
   const { payTo, mint } = payToFor(treasury, currency);
   const seed = deps.seedHex ?? randomBytes(32).toString('hex');
+  const featuredIdx = PHASEG_FEATURED_COLLECTION;
   const r = db.run(
-    `INSERT INTO pack_orders (wallet, sku, qty, currency, amount, pay_to, mint, status, seed, seed_hash, created_at, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'created', ?, ?, ?, ?)`,
-    wallet, req.sku, req.qty, currency, amount, payTo, mint, seed, sha256Hex(seed), t, t + PACK_ORDER_TTL_S,
+    `INSERT INTO pack_orders (wallet, sku, qty, currency, amount, pay_to, mint, featured_idx, status, seed, seed_hash, created_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'created', ?, ?, ?, ?)`,
+    wallet, req.sku, req.qty, currency, amount, payTo, mint, featuredIdx, seed, sha256Hex(seed), t, t + PACK_ORDER_TTL_S,
   );
   const id = Number(r.lastInsertRowid);
   return { orderId: id, memo: orderMemo(id), payTo, payToOwner: treasury, mint, amount, currency, seedHash: sha256Hex(seed), expiresAt: t + PACK_ORDER_TTL_S };
@@ -152,7 +156,9 @@ export async function confirmOrder(
   if (row.wallet !== wallet) throw new ServiceError(403, 'not_yours', 'This order belongs to another wallet');
   if (row.status === 'paid' && row.tx_sig === signature) return orderView(row);
   if (row.status === 'minted') throw new ServiceError(409, 'already_minted', 'This order is already minted');
-  if (row.status !== 'created') throw new ServiceError(409, 'not_payable', `Order is ${row.status}, not payable`);
+  // 'expired' stays confirmable: expireOrders only means "no payment seen yet"; a real
+  // payment proof below revives the order instead of stranding the buyer's money.
+  if (row.status !== 'created' && row.status !== 'expired') throw new ServiceError(409, 'not_payable', `Order is ${row.status}, not payable`);
   const tx = await fetchPayment(signature);
   if (!tx) throw new ServiceError(404, 'tx_not_found', 'Payment transaction not found yet');
   const check = checkPayment(tx, {
@@ -166,7 +172,7 @@ export async function confirmOrder(
   const used = db.get<{ id: number }>(`SELECT id FROM pack_orders WHERE tx_sig = ?`, signature);
   if (used) throw new ServiceError(409, 'already_confirmed', 'This payment signature was already credited');
   const r = db.run(
-    `UPDATE pack_orders SET status = 'paid', tx_sig = ?, paid_at = ? WHERE id = ? AND status = 'created' AND tx_sig IS NULL`,
+    `UPDATE pack_orders SET status = 'paid', tx_sig = ?, paid_at = ? WHERE id = ? AND status IN ('created', 'expired') AND tx_sig IS NULL`,
     signature, t, id,
   );
   if (Number(r.changes) === 0) throw new ServiceError(409, 'already_confirmed', 'This payment was already credited');
@@ -196,6 +202,7 @@ export function rollPack(
   sku: number,
   qty: number,
   pityBefore: number,
+  featuredIdx = 0,
 ): { rarities: number[]; collections: number[]; pityAfter: number } {
   const pack: (typeof PACKS)[PackId] = PACKS[SKUS[sku]];
   const seed = Buffer.from(seedHex, 'hex');
@@ -228,7 +235,7 @@ export function rollPack(
       for (let rI = 0; rI < odds.length; rI++) { acc += odds[rI]; if (roll < acc) { rarity = rI; break; } rarity = rI; }
       if (c === pack.chips - 1) rarity = Math.max(rarity, pack.floor); // guaranteed floor on the last chip
       rarities.push(rarity);
-      collections.push(Number(draw('c', i) % 8n));
+      collections.push(pack.pool === 'featured' ? featuredIdx : Number(draw('c', i) % 8n));
       if (rarity > packBest) packBest = rarity;
     }
     if (pack.pity) {
@@ -288,7 +295,7 @@ export function verifyOrder(db: Db, id: number) {
   if (sha256Hex(row.seed) !== row.seed_hash) return { orderId: id, matches: false, reason: 'seed_hash_mismatch' };
   const assets = JSON.parse(row.assets ?? '[]') as MintedChip[];
   const pityBefore = pityBeforeFor(db, row.wallet, row.sku, row.id);
-  const roll = rollPack(row.seed, row.id, row.sku, row.qty, pityBefore);
+  const roll = rollPack(row.seed, row.id, row.sku, row.qty, pityBefore, row.featured_idx);
   const matches = assets.length === roll.rarities.length
     && assets.every((a, i) => a.rarity === roll.rarities[i] && a.collectionIdx === roll.collections[i]);
   return { orderId: id, matches, rarities: roll.rarities, collections: roll.collections, assets };

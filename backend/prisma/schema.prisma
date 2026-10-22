@@ -1838,3 +1838,106 @@ model BoardPartLeaf {
   @@index([grantedAt])
   @@map("board_part_leaves")
 }
+
+/// Phase-G pack orders (docs/MINIMAL-LAUNCH-CHECKLIST.md §2): серверный заказ пака
+/// фазы запуска без своих программ. seed раскрывается только при status='minted'.
+model PackOrder {
+  id          Int     @id @default(autoincrement())
+  wallet      String
+  sku         Int
+  qty         Int
+  currency    String
+  amount      String
+  payTo       String  @map("pay_to")
+  mint        String?
+  featuredIdx Int     @default(0) @map("featured_idx")
+  status      String  @default("created")
+  seed        String
+  seedHash    String  @map("seed_hash")
+  txSig       String? @unique @map("tx_sig")
+  assets      String?
+  createdAt   Int     @map("created_at")
+  paidAt      Int?    @map("paid_at")
+  mintedAt    Int?    @map("minted_at")
+  expiresAt   Int     @map("expires_at")
+
+  @@index([wallet])
+  @@index([status])
+  @@map("pack_orders")
+}
+
+/// Phase-G счётчики нумерации фишек по коллекциям (SYMBOL #n).
+model PhasegCounter {
+  collectionIdx Int @id @map("collection_idx")
+  minted        Int @default(0)
+
+  @@map("phaseg_counters")
+}
+
+/// Phase-G слияния (§4): интент бёрна+фи, результат минтится кранком.
+model PhasegFusion {
+  id           Int     @id @default(autoincrement())
+  wallet       String
+  recipeFrom   Int     @map("recipe_from")
+  recipeTo     Int     @map("recipe_to")
+  inputs       String
+  feeMicro     String  @map("fee_micro")
+  status       String  @default("created")
+  seed         String
+  seedHash     String  @map("seed_hash")
+  burnSig      String? @map("burn_sig")
+  paySig       String? @map("pay_sig")
+  success      Int?
+  resultAssets String? @map("result_assets")
+  createdAt    Int     @map("created_at")
+  mintedAt     Int?    @map("minted_at")
+
+  @@index([wallet])
+  @@index([status])
+  @@map("phaseg_fusions")
+}
+
+/// Phase-G мягкий стейкинг (§5): запись без кастоди, фишка остаётся у игрока.
+model PhasegStake {
+  asset      String @id
+  wallet     String
+  stakedAt   Int    @map("staked_at")
+  unstakedAt Int?   @map("unstaked_at")
+
+  @@index([wallet])
+  @@map("phaseg_stakes")
+}
+
+/// Дни начислений мягкого стейкинга (идемпотентность по дню).
+model PhasegStakeDay {
+  dayIndex    Int    @id @map("day_index")
+  budgetMicro String @map("budget_micro")
+  totalWeight String @map("total_weight")
+  createdAt   Int    @map("created_at")
+
+  @@map("phaseg_stake_days")
+}
+
+/// Балансы наград мягкого стейкинга.
+model PhasegReward {
+  wallet       String @id
+  pendingMicro String @default("0") @map("pending_micro")
+  claimedMicro String @default("0") @map("claimed_micro")
+  updatedAt    Int    @map("updated_at")
+
+  @@map("phaseg_rewards")
+}
+
+/// Выплаты наград $CG (одна pending-выплата на кошелёк за раз).
+model PhasegPayout {
+  id          Int     @id @default(autoincrement())
+  wallet      String
+  amountMicro String  @map("amount_micro")
+  status      String  @default("pending")
+  txSig       String? @map("tx_sig")
+  createdAt   Int     @map("created_at")
+  sentAt      Int?    @map("sent_at")
+
+  @@index([wallet])
+  @@map("phaseg_payouts")
+}

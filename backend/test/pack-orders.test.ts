@@ -124,3 +124,30 @@ describe('journal + verify (§3.3)', () => {
     expect(orders.verifyOrder(db, o.orderId)?.matches).toBe(false);
   });
 });
+
+describe('audit fixes: featured pool, CG discount, expired revival', () => {
+  it('Limited rolls only the featured collection', () => {
+    const r = orders.rollPack('ab'.repeat(32), 5, 3, 2, 0, 6);
+    expect(new Set(r.collections)).toEqual(new Set([6]));
+    // featured snapshot defaults to 0
+    const r0 = orders.rollPack('ab'.repeat(32), 5, 3, 1, 0);
+    expect(new Set(r0.collections)).toEqual(new Set([0]));
+  });
+
+  it('$CG price carries the bundle discount like the program quote', () => {
+    process.env.CG_MINT = 'So11111111111111111111111111111111111111112';
+    const single = orders.createOrder(db, WALLET, { sku: 1, qty: 1, currency: 'CG' }, T0, { treasury: TREASURY, seedHex: 'ab'.repeat(32) });
+    const bundle = orders.createOrder(db, WALLET, { sku: 1, qty: 5, currency: 'CG' }, T0, { treasury: TREASURY, seedHex: 'ab'.repeat(32) });
+    // standard $CG list 2_700_000_000 per pack; x5 bundle gets the BUNDLES discount (>0)
+    expect(BigInt(bundle.amount)).toBeLessThan(2_700_000_000n * 5n);
+    expect(BigInt(single.amount)).toBe(2_700_000_000n);
+    delete process.env.CG_MINT;
+  });
+
+  it('a real payment revives an expired order instead of stranding the money', async () => {
+    const o = mk();
+    // let the TTL lapse, then pay with a valid in-window payment proof
+    const v = await orders.confirmOrder(db, WALLET, o.orderId, 'sig'.padEnd(40, 'y'), async () => payTx(o), T0 + 7200);
+    expect(v.status).toBe('paid');
+  });
+});

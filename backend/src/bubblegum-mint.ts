@@ -17,6 +17,7 @@ import {
   sendAndConfirmTransaction,
 } from '@solana/web3.js';
 import { COLLECTIONS } from '../../packages/economy/src/lore.ts';
+import { STARTER_SOULBOUND_DAYS } from '@guttercaps/economy';
 import { type Db, now } from './db.ts';
 import { upsert } from './sql.ts';
 import { deriveBubblegumLeafAssetId } from './das.ts';
@@ -151,7 +152,7 @@ export async function processPaidOrders(
   let mintedChips = 0;
   for (const row of rows) {
     const pityBefore = pityBeforeFor(db, row.wallet, row.sku, row.id);
-    const roll = rollPack(row.seed, row.id, row.sku, row.qty, pityBefore);
+    const roll = rollPack(row.seed, row.id, row.sku, row.qty, pityBefore, row.featured_idx);
     const done: MintedChip[] = row.assets ? (JSON.parse(row.assets) as MintedChip[]) : [];
     try {
       for (let i = done.length; i < roll.rarities.length; i++) {
@@ -165,9 +166,12 @@ export async function processPaidOrders(
         };
         await deps.sendMint(row, chip);
         // Register the projection row: ownership/staking/fusion read `chips`.
+        // Starter chips are soulbound-windowed by the program (STARTER_SOULBOUND_DAYS):
+        // the same lock rides in chips.lock_until so fusion/market/staking honour it.
+        const lockUntil = row.sku === 0 ? t + STARTER_SOULBOUND_DAYS * 86_400 : 0;
         db.run(
           upsert('chips', ['asset', 'owner', 'collection_idx', 'rarity', 'level', 'flags', 'lock_until', 'origin', 'origin_signature', 'minted_at'], ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'origin = excluded.origin', 'minted_at = excluded.minted_at']),
-          chip.assetId, row.wallet, chip.collectionIdx, chip.rarity, 1, 0, 0, 'pack', row.tx_sig, t,
+          chip.assetId, row.wallet, chip.collectionIdx, chip.rarity, 1, 0, lockUntil, 'pack', row.tx_sig, t,
         );
         done.push({ assetId: chip.assetId, collectionIdx: chip.collectionIdx, rarity: chip.rarity, gameIndex });
         leaf++;

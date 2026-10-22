@@ -999,7 +999,6 @@ export async function crank(log: (s: string) => void = console.log) {
   const { processPaidOrders, makeChainMintSender, chainFirstLeafIndex } = await import('./bubblegum-mint.ts');
   const { processPaidFusions } = await import('./phaseg-fusion.ts');
   const { accrueStakingDay, processPayouts } = await import('./phaseg-staking.ts');
-  const { latestEmissionDay } = await import('./staking.ts');
   const { sendChipMint } = await import('./bubblegum-mint.ts');
   const { PublicKey: PK } = await import('@solana/web3.js');
   const phaseGTree = lp === 'g' && smt && mak ? new PK(smt) : null;
@@ -1024,7 +1023,10 @@ export async function crank(log: (s: string) => void = console.log) {
           firstLeafIndex: () => chainFirstLeafIndex(connection, phaseGTree),
         });
         if (f.settled > 0) log(`[crank] phase-G settled ${f.settled} fusions`);
-        const day = latestEmissionDay(sharedDb()).dayIndex;
+        // Phase G has no on-chain emission clock: the staking day is the UTC day.
+        // (latestEmissionDay would sit at day 0 forever without the staking program,
+        // and accrual would credit exactly one day for the whole launch.)
+        const day = Math.floor(Date.now() / 86_400_000);
         const acc = accrueStakingDay(sharedDb(), day);
         if (acc.credited > 0) log(`[crank] phase-G staking day ${day}: credited ${acc.credited} wallets (budget ${acc.budgetMicro} micro)`);
         const { makeCgPayoutSender } = await import('./phaseg-payout.ts');
