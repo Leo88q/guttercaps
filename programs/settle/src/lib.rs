@@ -194,6 +194,15 @@ pub struct ClaimReceipt {
     pub bump: u8,
 }
 
+/// One-time receipt for an oracle-authorized grant mint (fusion results,
+/// quest chips). The PDA existing at all is the replay protection: a grant
+/// id can be minted exactly once, whoever relays it.
+#[account]
+#[derive(InitSpace)]
+pub struct GrantReceipt {
+    pub bump: u8,
+}
+
 #[account]
 #[derive(InitSpace)]
 pub struct Listing {
@@ -638,6 +647,46 @@ pub struct EscrowCancel<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(args: SettleArgs)]
+pub struct GrantMint<'info> {
+    #[account(mut, seeds = [b"config"], bump = config.bump)]
+    pub config: Account<'info, SettleConfig>,
+    #[account(
+        init, payer = relayer, space = 8 + GrantReceipt::INIT_SPACE,
+        seeds = [b"grant", &args.auth.order_id.to_le_bytes()], bump
+    )]
+    pub receipt: Account<'info, GrantReceipt>,
+    /// Grant recipient; bound by the oracle signature (auth.wallet).
+    /// CHECK: compared against args.auth.wallet in the handler.
+    pub buyer: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub relayer: Signer<'info>,
+    /// CHECK: derived PDA, also the mint CPI signer.
+    #[account(seeds = [b"tree_auth"], bump)]
+    pub tree_auth: UncheckedAccount<'info>,
+    /// CHECK: validated against the tree in the handler.
+    #[account(mut)]
+    pub tree_config: UncheckedAccount<'info>,
+    /// CHECK: the shared phase-G tree.
+    #[account(mut)]
+    pub merkle_tree: UncheckedAccount<'info>,
+    /// CHECK: address pinned in the handler.
+    pub mpl_core_cpi_signer: UncheckedAccount<'info>,
+    /// CHECK: address pinned in the handler.
+    pub log_wrapper: UncheckedAccount<'info>,
+    /// CHECK: address pinned in the handler.
+    pub compression_program: UncheckedAccount<'info>,
+    /// CHECK: address pinned in the handler.
+    pub bubblegum_program: UncheckedAccount<'info>,
+    /// CHECK: address pinned in the handler.
+    pub mpl_core_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+    /// CHECK: address pinned in the handler.
+    #[account(address = INSTRUCTIONS_SYSVAR_ID @ SettleError::BadAccount)]
+    pub instructions: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
 pub struct Admin<'info> {
     #[account(mut, seeds = [b"config"], bump = config.bump, has_one = admin @ SettleError::BadAccount)]
     pub config: Account<'info, SettleConfig>,
@@ -787,27 +836,57 @@ pub fn settle_pack_handler(ctx: Context<SettlePack>, order_id: u64, args: Settle
 
     // Mint every leaf to the buyer. The tree_auth PDA signs as tree delegate
     // and, after activation, as collection update authority.
-    let tree_auth_bump = ctx.bumps.tree_auth;
+    mint_specs(
+        &bubblegum_program,
+        &tree_config,
+        &payer,
+        &tree_auth,
+        ctx.bumps.tree_auth,
+        &leaf_owner,
+        &merkle_tree,
+        &cpi_signer,
+        &log_wrapper,
+        &compression_program,
+        &mpl_core_program,
+        &system_program,
+        &args.specs,
+        ctx.remaining_accounts,
+    )?;
+
+    let cfg = &mut ctx.accounts.config;
+    cfg.emission_minted = new_emission;
+    let order = &mut ctx.accounts.order;
+    order.status = STATUS_SETTLED;
+    emit!(PackSettled { buyer: order.buyer, order_id, leaves: args.specs.len() as u8 });
+    Ok(())
+}
+
+/// Mint every spec to `leaf_owner` — shared by settle_pack and grant_mint.
+/// `remaining` carries the MPL Core collection accounts referenced by specs.
+#[allow(clippy::too_many_arguments)]
+pub fn mint_specs(
+    bubblegum_program: &AccountInfo,
+    tree_config: &AccountInfo,
+    payer: &AccountInfo,
+    tree_auth: &AccountInfo,
+    tree_auth_bump: u8,
+    leaf_owner: &AccountInfo,
+    merkle_tree: &AccountInfo,
+    cpi_signer: &AccountInfo,
+    log_wrapper: &AccountInfo,
+    compression_program: &AccountInfo,
+    mpl_core_program: &AccountInfo,
+    system_program: &AccountInfo,
+    specs: &[LeafSpec],
+    remaining: &[AccountInfo],
+) -> Result<()> {
     let auth_seeds: Vec<Vec<u8>> = vec![b"tree_auth".to_vec(), vec![tree_auth_bump]];
     let auth_signer: Vec<&[u8]> = auth_seeds.iter().map(|s| s.as_slice()).collect();
-    let bubblegum_program = ctx.accounts.bubblegum_program.to_account_info();
-    let tree_config = ctx.accounts.tree_config.to_account_info();
-    let payer = ctx.accounts.relayer.to_account_info();
-    let tree_auth = ctx.accounts.tree_auth.to_account_info();
-    let leaf_owner = ctx.accounts.buyer.to_account_info();
-    let merkle_tree = ctx.accounts.merkle_tree.to_account_info();
-    let cpi_signer = ctx.accounts.mpl_core_cpi_signer.to_account_info();
-    let log_wrapper = ctx.accounts.log_wrapper.to_account_info();
-    let compression_program = ctx.accounts.compression_program.to_account_info();
-    let mpl_core_program = ctx.accounts.mpl_core_program.to_account_info();
-    let system_program = ctx.accounts.system_program.to_account_info();
-
-    for spec in &args.specs {
+    for spec in specs {
         let collection_info: Option<AccountInfo> = if spec.collection == Pubkey::default() {
             None
         } else {
-            let found = ctx
-                .remaining_accounts
+            let found = remaining
                 .iter()
                 .find(|a| a.key() == spec.collection)
                 .ok_or(SettleError::BadAccount)?;
@@ -825,29 +904,62 @@ pub fn settle_pack_handler(ctx: Context<SettlePack>, order_id: u64, args: Settle
             creators: vec![Creator { address: tree_auth.key(), verified: true, share: 100 }],
             collection: if spec.collection == Pubkey::default() { None } else { Some(spec.collection) },
         };
-        let mut mint = MintV2CpiBuilder::new(&bubblegum_program);
-        mint.tree_config(&tree_config)
-            .payer(&payer)
-            .tree_creator_or_delegate(Some(&tree_auth))
-            .collection_authority(collection_info.as_ref().map(|_| &tree_auth))
-            .leaf_owner(&leaf_owner)
-            .leaf_delegate(Some(&leaf_owner))
-            .merkle_tree(&merkle_tree)
+        let mut mint = MintV2CpiBuilder::new(bubblegum_program);
+        mint.tree_config(tree_config)
+            .payer(payer)
+            .tree_creator_or_delegate(Some(tree_auth))
+            .collection_authority(collection_info.as_ref().map(|_| tree_auth))
+            .leaf_owner(leaf_owner)
+            .leaf_delegate(Some(leaf_owner))
+            .merkle_tree(merkle_tree)
             .core_collection(collection_info.as_ref())
-            .mpl_core_cpi_signer(collection_info.as_ref().map(|_| &cpi_signer))
-            .log_wrapper(&log_wrapper)
-            .compression_program(&compression_program)
-            .mpl_core_program(&mpl_core_program)
-            .system_program(&system_program)
+            .mpl_core_cpi_signer(collection_info.as_ref().map(|_| cpi_signer))
+            .log_wrapper(log_wrapper)
+            .compression_program(compression_program)
+            .mpl_core_program(mpl_core_program)
+            .system_program(system_program)
             .metadata(metadata);
         mint.invoke_signed(&[&auth_signer])?;
     }
+    Ok(())
+}
 
-    let cfg = &mut ctx.accounts.config;
-    cfg.emission_minted = new_emission;
-    let order = &mut ctx.accounts.order;
-    order.status = STATUS_SETTLED;
-    emit!(PackSettled { buyer: order.buyer, order_id, leaves: args.specs.len() as u8 });
+pub fn grant_mint_handler(ctx: Context<GrantMint>, args: SettleArgs) -> Result<()> {
+    let cfg = &ctx.accounts.config;
+    require!(!cfg.packs_paused, SettleError::Paused);
+    require!(args.specs.len() <= MAX_SPECS && !args.specs.is_empty(), SettleError::TooManySpecs);
+    let auth = &args.auth;
+    require!(auth.wallet == ctx.accounts.buyer.key() && auth.nonce == auth.order_id, SettleError::BadOracleSignature);
+    require!(Clock::get()?.slot <= auth.expires_at_slot, SettleError::AuthExpired);
+    require!(specs_hash(&args.specs) == auth.specs_hash, SettleError::SpecsMismatch);
+    verify_oracle_signature(&ctx.accounts.instructions.to_account_info(), &cfg.mint_oracle, &mint_auth_message(auth))?;
+    require!(ctx.accounts.tree_config.key() == tree_config_pda(&ctx.accounts.merkle_tree.key()), SettleError::BadTreeConfig);
+    require!(ctx.accounts.mpl_core_cpi_signer.key() == mpl_core_cpi_signer(), SettleError::BadAccount);
+    require!(ctx.accounts.log_wrapper.key() == MPL_NOOP_ID, SettleError::BadAccount);
+    require!(ctx.accounts.compression_program.key() == MPL_ACCOUNT_COMPRESSION_ID, SettleError::BadAccount);
+    require!(ctx.accounts.bubblegum_program.key() == BUBBLEGUM_V2_ID, SettleError::BadAccount);
+    require!(ctx.accounts.mpl_core_program.key() == MPL_CORE_ID, SettleError::BadAccount);
+    let new_emission = cfg.emission_minted.checked_add(args.specs.len() as u64).ok_or(SettleError::Overflow)?;
+    require!(new_emission <= cfg.emission_cap, SettleError::EmissionCap);
+    mint_specs(
+        &ctx.accounts.bubblegum_program.to_account_info(),
+        &ctx.accounts.tree_config.to_account_info(),
+        &ctx.accounts.relayer.to_account_info(),
+        &ctx.accounts.tree_auth.to_account_info(),
+        ctx.bumps.tree_auth,
+        &ctx.accounts.buyer.to_account_info(),
+        &ctx.accounts.merkle_tree.to_account_info(),
+        &ctx.accounts.mpl_core_cpi_signer.to_account_info(),
+        &ctx.accounts.log_wrapper.to_account_info(),
+        &ctx.accounts.compression_program.to_account_info(),
+        &ctx.accounts.mpl_core_program.to_account_info(),
+        &ctx.accounts.system_program.to_account_info(),
+        &args.specs,
+        ctx.remaining_accounts,
+    )?;
+    ctx.accounts.config.emission_minted = new_emission;
+    ctx.accounts.receipt.bump = ctx.bumps.receipt;
+    emit!(PackSettled { buyer: auth.wallet, order_id: auth.order_id, leaves: args.specs.len() as u8 });
     Ok(())
 }
 
@@ -1190,6 +1302,10 @@ pub mod settle {
 
     pub fn settle_pack(ctx: Context<SettlePack>, order_id: u64, args: SettleArgs) -> Result<()> {
         settle_pack_handler(ctx, order_id, args)
+    }
+
+    pub fn grant_mint(ctx: Context<GrantMint>, args: SettleArgs) -> Result<()> {
+        grant_mint_handler(ctx, args)
     }
 
     pub fn refund_pack(ctx: Context<RefundPack>, order_id: u64) -> Result<()> {
