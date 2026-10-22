@@ -1855,6 +1855,8 @@ model PackOrder {
   seed        String
   seedHash    String  @map("seed_hash")
   txSig       String? @unique @map("tx_sig")
+  settleSig   String? @map("settle_sig")
+  settleSpecs String? @map("settle_specs")
   assets      String?
   createdAt   Int     @map("created_at")
   paidAt      Int?    @map("paid_at")
@@ -1886,6 +1888,8 @@ model PhasegFusion {
   seed         String
   seedHash     String  @map("seed_hash")
   burnSig      String? @map("burn_sig")
+  grantSig     String? @map("grant_sig")
+  grantSpecs   String? @map("grant_specs")
   paySig       String? @map("pay_sig")
   success      Int?
   resultAssets String? @map("result_assets")

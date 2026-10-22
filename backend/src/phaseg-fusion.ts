@@ -160,6 +160,17 @@ export function getFusion(db: Db, wallet: string, id: number) {
   return fusionView(row);
 }
 
+/** Mark a fusion minted once its result chips exist (either mint path). */
+export function finalizeFusionMint(db: Db, row: FusionRow, assetIds: string[], success: boolean, t = now()): void {
+  for (const a of JSON.parse(row.inputs) as string[]) {
+    db.run(`UPDATE chips SET burned_at = COALESCE(burned_at, ?) WHERE asset = ?`, t, a);
+  }
+  db.run(
+    `UPDATE phaseg_fusions SET status='minted', success=?, minted_at=?, result_assets=? WHERE id=?`,
+    success ? 1 : 0, t, JSON.stringify(assetIds), row.id,
+  );
+}
+
 /** Deterministic recipe roll: draw < successBps wins. */
 export function rollFusion(seedHex: string, fusionId: number, successBps: number): boolean {
   const h = createHash('sha256').update(Buffer.from(seedHex, 'hex')).update(`fusion:${fusionId}`).digest();
@@ -216,11 +227,7 @@ export async function processPaidFusions(
     } catch {
       continue;
     }
-    // materials are consumed on-chain; reflect it in the projection immediately
-    for (const a of JSON.parse(row.inputs) as string[]) {
-      db.run(`UPDATE chips SET burned_at = COALESCE(burned_at, ?) WHERE asset = ?`, t, a);
-    }
-    db.run(`UPDATE phaseg_fusions SET status='minted', success=?, minted_at=? WHERE id=?`, success ? 1 : 0, t, row.id);
+    finalizeFusionMint(db, row, done, success, t);
     settled++;
   }
   return { settled };

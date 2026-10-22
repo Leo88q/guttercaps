@@ -1005,6 +1005,7 @@ export async function crank(log: (s: string) => void = console.log) {
   const phaseGAuthority = phaseGTree ? loadKeypair(mak) : null;
   if (phaseGTree && phaseGAuthority) log(`[crank] phase-G mint crank on tree ${phaseGTree.toBase58()} authority ${phaseGAuthority.publicKey.toBase58()}`);
   let lastPhaseG = 0;
+  let lastPhaseV = 0;
   let lastSweep = 0, lastReport = 0;
   while (true) {
     const t = Date.now();
@@ -1034,6 +1035,33 @@ export async function crank(log: (s: string) => void = console.log) {
         if (pay.paid > 0) log(`[crank] phase-G paid ${pay.paid} reward claims`);
       } catch (e) {
         log(`[crank] phase-G mint error: ${(e as Error).message}`);
+      }
+    }
+    // Phase V: the program mints, the crank only registers settled chips into
+    // the projection (DAS name match) and runs the phase-agnostic soft staking.
+    if (lp === 'v' && t - lastPhaseV >= 15_000) {
+      lastPhaseV = t;
+      try {
+        const { confirmSettle, confirmFusionGrant } = await import('./phasev.ts');
+        const dbv = sharedDb();
+        const orders = dbv.all<{ id: number; wallet: string }>(
+          `SELECT id, wallet FROM pack_orders WHERE status = 'paid' AND settle_sig IS NOT NULL LIMIT 20`,
+        );
+        for (const o of orders) await confirmSettle(dbv, o.wallet, o.id, '', { connection });
+        const fusions = dbv.all<{ id: number; wallet: string }>(
+          `SELECT id, wallet FROM phaseg_fusions WHERE status = 'paid' AND grant_sig IS NOT NULL LIMIT 20`,
+        );
+        for (const f of fusions) await confirmFusionGrant(dbv, f.wallet, f.id, '', { connection });
+        const day = Math.floor(Date.now() / 86_400_000);
+        const acc = accrueStakingDay(dbv, day);
+        if (acc.credited > 0) log(`[crank] phase-V staking day ${day}: credited ${acc.credited} wallets (budget ${acc.budgetMicro} micro)`);
+        if (mak) {
+          const { makeCgPayoutSender } = await import('./phaseg-payout.ts');
+          const pay = await processPayouts(dbv, makeCgPayoutSender(connection, loadKeypair(mak)));
+          if (pay.paid > 0) log(`[crank] phase-V paid ${pay.paid} reward claims`);
+        }
+      } catch (e) {
+        log(`[crank] phase-V registration error: ${(e as Error).message}`);
       }
     }
     try {

@@ -35,6 +35,8 @@ export interface PackOrderRow {
   seed: string;
   seed_hash: string;
   tx_sig: string | null;
+  settle_sig?: string | null;
+  settle_specs?: string | null;
   assets: string | null;
   created_at: number;
   paid_at: number | null;

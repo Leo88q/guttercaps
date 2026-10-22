@@ -14,6 +14,7 @@ import { LAUNCH_PHASE, SHARED_MERKLE_TREE } from './config.ts';
 import * as packOrders from './pack-orders.ts';
 import * as phasegFusion from './phaseg-fusion.ts';
 import * as phasegStaking from './phaseg-staking.ts';
+import * as phasev from './phasev.ts';
 import { DasClient } from './das.ts';
 import { DAS_RPC_URL, DAS_TIMEOUT_MS } from './config.ts';
 import { bus } from './bus.ts';
@@ -621,7 +622,8 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   // ------------------------------------------------------------ phase-G pack orders (docs/MINIMAL-LAUNCH-CHECKLIST.md §2–3)
   // Only live when LAUNCH_PHASE=g; in the default 'full' phase these answer 410 and the
   // program flow above is the only purchase path. The mint crank lives in crank.ts.
-  const phaseG = () => { if (LAUNCH_PHASE !== 'g') throw new ServiceError(410, 'phase_g_off', 'Phase-G orders are not enabled on this backend'); };
+  const phaseG = () => { if (LAUNCH_PHASE === 'full') throw new ServiceError(410, 'phase_g_off', 'Phased-launch orders are not enabled on this backend'); };
+  const phaseV = () => { if (LAUNCH_PHASE !== 'v') throw new ServiceError(410, 'phase_v_off', 'Phase-V settle is not enabled on this backend'); };
   v1.post('/packs/order', requireAuth, accessGate('packs'), rl(POLICIES.mutate), wrap(async (req, res) => {
     phaseG();
     const geo = geoOf(req.headers);
@@ -650,6 +652,17 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     res.json(r);
   });
 
+  // ------------------------------------------------------------ phase-V settle (§3 of the phased plan)
+  // buy_pack escrow lives on-chain; the backend only authorizes (oracle) and registers.
+  v1.post('/packs/order/:id/settle-auth', requireAuth, accessGate('packs'), rl(POLICIES.claim), wrap(async (req, res) => {
+    phaseV();
+    res.json(await phasev.settleAuthForOrder(db, req.session!.wallet, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0, { connection: connection() }));
+  }));
+  v1.post('/packs/order/:id/settle-confirm', requireAuth, accessGate('packs'), rl(POLICIES.claim), wrap(async (req, res) => {
+    phaseV();
+    res.json(await phasev.confirmSettle(db, req.session!.wallet, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0, String(req.body?.signature ?? ''), { connection: connection() }));
+  }));
+
   // ------------------------------------------------------------ phase-G fusion (§4)
   const dasBurnVerifier = async (assetIds: string[]): Promise<boolean> => {
     const das = new DasClient({ endpoint: DAS_RPC_URL, timeoutMs: DAS_TIMEOUT_MS });
@@ -667,10 +680,19 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     phaseG();
     res.json(phasegFusion.createFusion(db, req.session!.wallet, req.body?.assets));
   }));
-  v1.get('/fusion/order/:id', requireAuth, (req, res) => {
+  v1.get('/fusion/order/:id', requireAuth, wrap(async (req, res) => {
     phaseG();
-    res.json(phasegFusion.getFusion(db, req.session!.wallet, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0));
-  });
+    const view = phasegFusion.getFusion(db, req.session!.wallet, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0);
+    if (LAUNCH_PHASE === 'v' && view.status === 'paid') {
+      res.json({ ...view, grant: await phasev.fusionGrantFor(db, req.session!.wallet, view.fusionId, { connection: connection() }) });
+      return;
+    }
+    res.json(view);
+  }));
+  v1.post('/fusion/order/:id/grant-confirm', requireAuth, accessGate('packs'), rl(POLICIES.claim), wrap(async (req, res) => {
+    phaseV();
+    res.json(await phasev.confirmFusionGrant(db, req.session!.wallet, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0, String(req.body?.signature ?? ''), { connection: connection() }));
+  }));
   v1.post('/fusion/order/:id/confirm', requireAuth, accessGate('packs'), rl(POLICIES.claim), wrap(async (req, res) => {
     phaseG();
     res.json(await phasegFusion.confirmFusion(db, req.session!.wallet, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0, req.body ?? {}, {

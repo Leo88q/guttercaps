@@ -420,6 +420,8 @@ CREATE TABLE IF NOT EXISTS pack_orders (
   seed        TEXT    NOT NULL,                   -- server secret until minted
   seed_hash   TEXT    NOT NULL,                   -- sha256(seed) — public commitment from creation
   tx_sig      TEXT,
+  settle_sig  TEXT,                               -- phase V: the settle_pack tx that minted this order
+  settle_specs TEXT,                              -- phase V: LeafSpec[] issued at settle-auth (names are the DAS registration key)
   assets      TEXT,                               -- JSON [{assetId, collectionIdx, rarity, gameIndex}]
   created_at  INTEGER NOT NULL,
   paid_at     INTEGER,
@@ -444,6 +446,9 @@ CREATE TABLE IF NOT EXISTS phaseg_fusions (
   seed_hash     TEXT    NOT NULL,
   burn_sig      TEXT,
   pay_sig       TEXT,
+  grant_sig     TEXT,                               -- phase V: the grant_mint tx that minted the result
+  grant_specs   TEXT,                               -- phase V: LeafSpec[] issued with the fusion grant
+
   success       INTEGER,                            -- 1/0 once rolled
   result_assets TEXT,                               -- JSON [assetId]
   created_at    INTEGER NOT NULL,
@@ -1524,6 +1529,12 @@ export class Db {
 
   /** Additive, idempotent column migrations for dev SQLite files created by older builds. */
   private migrate() {
+    const orderCols = new Set((this.raw.prepare('PRAGMA table_info(pack_orders)').all() as { name: string }[]).map((c) => c.name));
+    if (!orderCols.has('settle_sig')) this.raw.exec('ALTER TABLE pack_orders ADD COLUMN settle_sig TEXT');
+    if (!orderCols.has('settle_specs')) this.raw.exec('ALTER TABLE pack_orders ADD COLUMN settle_specs TEXT');
+    const fusionCols = new Set((this.raw.prepare('PRAGMA table_info(phaseg_fusions)').all() as { name: string }[]).map((c) => c.name));
+    if (!fusionCols.has('grant_sig')) this.raw.exec('ALTER TABLE phaseg_fusions ADD COLUMN grant_sig TEXT');
+    if (!fusionCols.has('grant_specs')) this.raw.exec('ALTER TABLE phaseg_fusions ADD COLUMN grant_specs TEXT');
     const privacyCols = new Set((this.raw.prepare('PRAGMA table_info(privacy_restrictions)').all() as { name: string }[]).map(c => c.name));
     if (!privacyCols.has('resumed_at')) this.raw.exec('ALTER TABLE privacy_restrictions ADD COLUMN resumed_at INTEGER');
     const nonces = new Set((this.raw.prepare(`PRAGMA table_info(siws_nonces)`).all() as { name: string }[]).map((c) => c.name));

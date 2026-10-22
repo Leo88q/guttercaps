@@ -10,7 +10,7 @@ function pk(v: string | undefined, fallback: string): PublicKey {
   return new PublicKey(v && v.length > 0 ? v : fallback);
 }
 
-export type ProgramName = 'chip_core' | 'market' | 'staking' | 'arena';
+export type ProgramName = 'chip_core' | 'market' | 'staking' | 'arena' | 'settle';
 
 /** The four GUTTERCAPS programs. Same defaults as the client — override per cluster with env. */
 export const PROGRAMS: Record<ProgramName, PublicKey> = {
@@ -18,6 +18,7 @@ export const PROGRAMS: Record<ProgramName, PublicKey> = {
   market: pk(env.PROGRAM_MARKET, '5skEmmhgFYn5xjHEdrcsiQ68kUg5kvhXKhjWTWSppjfo'),
   staking: pk(env.PROGRAM_STAKING, 'Ewkbp7WpqbiJAu3ofEcTPinqnr5oH3e94YJDZFg1eSJn'),
   arena: pk(env.PROGRAM_ARENA, 'DUTokrhWBYL7nJ9VbMy7bFELQFf8TN1tmvVpKLsskqD6'),
+  settle: pk(env.PROGRAM_SETTLE, 'B9ousNDpe29G45KFHyndvHXpLigBtxCh9xbboWuCeXyP'),
 };
 
 export const PROGRAM_NAMES = Object.keys(PROGRAMS) as ProgramName[];
@@ -50,7 +51,7 @@ export const BUBBLEGUM_V2_ENABLED = (env.BUBBLEGUM_V2_ENABLED ?? '0') === '1';
  * startup error, never a silent fallback — a mis-set phase must not quietly
  * change who is allowed to mint.
  */
-export type LaunchPhase = 'full' | 'g';
+export type LaunchPhase = 'full' | 'g' | 'v';
 export function parseLaunchPhase(v: string | undefined): LaunchPhase {
   if (v === undefined || v === '' || v === 'full') return 'full';
   if (v === 'g') return 'g';
@@ -71,6 +72,9 @@ export const MINT_AUTHORITY_KEYPAIR = env.MINT_AUTHORITY_KEYPAIR ?? '';
 export const CORE_COLLECTIONS: string[] = Array.from({ length: 8 }, (_, i) => env[`CORE_COLLECTION_${i}`] ?? '');
 /** Featured collection for Limited (pool='featured') in phase G; snapshot onto each order. */
 export const PHASEG_FEATURED_COLLECTION = Number(env.PHASEG_FEATURED_COLLECTION ?? 0);
+/** Phase-V (launchPhase 'v') MINT_ORACLE keypair file (solana-keygen JSON). The oracle
+ * authorizes settles/grants; it can never mint by itself — the settle program can. */
+export const PHASEV_ORACLE_KEYPAIR = env.PHASEV_ORACLE_KEYPAIR ?? '';
 /** Pack-order lifetime: an unpaid order frees its seed commitment after this. */
 export const PACK_ORDER_TTL_S = Number(env.PACK_ORDER_TTL_S ?? 1800);
 
@@ -214,6 +218,15 @@ export function assertProductionConfig(): void {
   if (!env.DB_PATH || DB_PATH === ':memory:') problems.push('DB_PATH must be explicit and persistent in production — an indexer restart would otherwise wipe or split projections');
   if (env.PRODUCTION_DB_MODE !== 'sqlite-single-instance') problems.push('the running backend uses node:sqlite; set PRODUCTION_DB_MODE=sqlite-single-instance only for one API/indexer instance with a persistent volume, or implement the Postgres adapter before scaling');
   if (EVENT_BUS === 'redis' && !REDIS_URL) problems.push('EVENT_BUS=redis requires REDIS_URL (otherwise the API process never sees events indexed by the listener process)');
+  if (LAUNCH_PHASE === 'v') {
+    // Phase V sells through the settle program: without the oracle key the backend
+    // could take on-chain payments it can never authorize a mint for.
+    if (!PACK_TREASURY) problems.push('LAUNCH_PHASE=v requires TREASURY_WALLET');
+    if (!SHARED_MERKLE_TREE) problems.push('LAUNCH_PHASE=v requires SHARED_MERKLE_TREE (the phase-G tree carries over)');
+    if (!CG_MINT) problems.push('LAUNCH_PHASE=v requires CG_MINT');
+    if (!PHASEV_ORACLE_KEYPAIR) problems.push('LAUNCH_PHASE=v requires PHASEV_ORACLE_KEYPAIR (MINT_ORACLE signer)');
+    if (!Number.isInteger(PHASEG_FEATURED_COLLECTION) || PHASEG_FEATURED_COLLECTION < 0 || PHASEG_FEATURED_COLLECTION > 7) problems.push('PHASEG_FEATURED_COLLECTION must be 0..7');
+  }
   if (LAUNCH_PHASE === 'g') {
     // Phase G sells for real money through the backend: an unconfigured mint path would take
     // payments for packs that can never be minted, so these are startup errors, not 410s.
