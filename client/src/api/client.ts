@@ -28,9 +28,20 @@ export interface RequestOpts {
   signal?: AbortSignal;
 }
 
-let mockMode: boolean | undefined = FLAGS.apiMock ? true : undefined;
+// Guest demo: the whole game on the in-browser mock, entered deliberately
+// from the landing ("Play as guest") and labelled as a demo everywhere it
+// matters. Persisted so a store reviewer / new player can wander the game
+// without a wallet; nothing in demo mode touches the chain or real money.
+const DEMO_KEY = 'gc-demo';
+const demoOn = () => { try { return localStorage.getItem(DEMO_KEY) === '1'; } catch { return false; } };
+let mockMode: boolean | undefined = FLAGS.apiMock || demoOn() ? true : undefined;
 export const isMock = () => mockMode === true;
+export const isDemo = () => demoOn();
 export function setMockMode(on: boolean) { mockMode = on; }
+export function setDemoMode(on: boolean) {
+  try { if (on) localStorage.setItem(DEMO_KEY, '1'); else localStorage.removeItem(DEMO_KEY); } catch { /* private mode */ }
+  setMockMode(on);
+}
 
 async function detectMock(): Promise<boolean> {
   if (mockMode !== undefined) return mockMode;
@@ -44,6 +55,11 @@ async function detectMock(): Promise<boolean> {
   if (mockMode) console.info('[api] backend unreachable → using in-browser mock');
   return mockMode;
 }
+
+/** Для потребителей, которым режим нужен до первого запроса (например, WS):
+ *  без этого сокет успевал подключиться к прокси выключенного бэкенда и потом
+ *  вечно переподключался с бэкоффом, засыпая dev-консоль Vite ошибками 8787. */
+export const resolveMockMode = () => detectMock();
 
 function buildUrl(path: string, opts: RequestOpts): string {
   let p = path;

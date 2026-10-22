@@ -42,6 +42,36 @@ export const DAS_TIMEOUT_MS = Number(env.METAPLEX_DAS_TIMEOUT_MS ?? 10_000);
 /** Closed-market migration gate: no cNFT ownership path is enabled until the V2 fixtures are deployed. */
 export const BUBBLEGUM_V2_ENABLED = (env.BUBBLEGUM_V2_ENABLED ?? '0') === '1';
 
+/**
+ * Launch phase (docs/MINIMAL-LAUNCH-CHECKLIST.md §0): `full` = the current
+ * all-on-chain programs; `g` = the phased zero-custom-program launch
+ * (backend-issued cNFT, see docs/PHASED-ONCHAIN-PLAN.md). Default `full`:
+ * nothing changes until phase G is complete end to end. Garbage is a
+ * startup error, never a silent fallback — a mis-set phase must not quietly
+ * change who is allowed to mint.
+ */
+export type LaunchPhase = 'full' | 'g';
+export function parseLaunchPhase(v: string | undefined): LaunchPhase {
+  if (v === undefined || v === '' || v === 'full') return 'full';
+  if (v === 'g') return 'g';
+  throw new Error(`LAUNCH_PHASE must be "full" or "g", got "${v}"`);
+}
+export const LAUNCH_PHASE: LaunchPhase = parseLaunchPhase(env.LAUNCH_PHASE);
+
+/** Phase-G (launchPhase 'g') settings — inert while LAUNCH_PHASE=full. */
+/** Treasury that receives pack payments (SOL = the wallet itself, tokens = its ATA). */
+export const PACK_TREASURY = env.TREASURY_WALLET ?? env.PREORDER_TREASURY ?? '';
+/** The one shared Bubblegum tree of the minimal launch (scripts/setup-minimal.ts prints it). */
+export const SHARED_MERKLE_TREE = env.SHARED_MERKLE_TREE ?? '';
+/** $CG SPL mint (phase-G pack currency + reward payouts). */
+export const CG_MINT = env.CG_MINT ?? '';
+/** solana-keygen JSON of the tree-authority/mint key (prod: KMS-backed signer service). */
+export const MINT_AUTHORITY_KEYPAIR = env.MINT_AUTHORITY_KEYPAIR ?? '';
+/** MPL Core collections 0..7 (phase-G mint binds chips to these when set). */
+export const CORE_COLLECTIONS: string[] = Array.from({ length: 8 }, (_, i) => env[`CORE_COLLECTION_${i}`] ?? '');
+/** Pack-order lifetime: an unpaid order frees its seed commitment after this. */
+export const PACK_ORDER_TTL_S = Number(env.PACK_ORDER_TTL_S ?? 1800);
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 /** SQLite file for local/dev and the explicitly acknowledged single-instance production mode. `:memory:` is for tests; the Prisma Postgres schema is not the running adapter yet. */
 export const DB_PATH = env.DB_PATH ?? path.join(here, '..', 'guttercaps.sqlite');

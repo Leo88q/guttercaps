@@ -21,6 +21,7 @@ import { SprayNozzleButton, CleanConfirmButton } from '@/shared/ui/buttons';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { chipArtUrl } from '@/shared/lib/rarity';
 import { usePackFlow } from './usePackFlow';
+import { PhaseGBuyModal } from './PhaseGBuyModal';
 import { PackStepper } from './PackStepper';
 import { Services } from './Services';
 
@@ -242,7 +243,10 @@ export default function Shop() {
       <p className="tiny muted" style={{ marginTop: 12 }}> {t('ui.cryptoOnly')} <a className="row" style={{ gap: 4, color: 'var(--cg-cyan-soft)', display: 'inline-flex', paddingBlock: 5 }} href={ONRAMP_URL} target="_blank" rel="noreferrer">{t('ui.buyCard')} <ExternalIcon size={11} /></a> · {t('screens.collectibleRisk')}
       </p>
 
-      {sel && (
+      {sel && FLAGS.launchPhase === 'g' && (
+        <PhaseGBuyModal sku={sel.sku} packId={SKU_IDS[sel.sku]} onClose={() => setSel(null)} />
+      )}
+      {sel && FLAGS.launchPhase !== 'g' && (
         <BuyModal
           sel={sel}
           setSel={setSel}

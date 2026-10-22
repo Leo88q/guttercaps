@@ -16,7 +16,7 @@ import { ownedPacks, emoteLabel } from '@/shared/lib/cosmetics';
 import { useUiStore } from '@/app/store/ui';
 import { FightStage } from './FightStage';
 import { TrickReel } from './TrickReel';
-import { trickLine } from './trickReel';
+import { trickLine } from './trickLine';
 
 function reduceMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
