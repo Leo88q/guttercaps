@@ -2,7 +2,8 @@
 // every number is filled from @guttercaps/economy so it tracks the on-chain params.
 import { Link } from 'react-router-dom';
 import { PACKS, FUSION_RECIPES, BOOSTER, FEES, LOCK_TIERS, COLLECTIONS, CHIP_XP, RARITY_PROFILES, levelMult, GUTTER_POT, GRID } from '@guttercaps/economy';
-import { useLocale } from '@/shared/i18n';
+import { useLocale, useT } from '@/shared/i18n';
+import { FLAGS } from '@/app/config';
 import { fmtCents, fmtCg, fmtPct } from '@/shared/lib/format';
 import { GUIDE_COPY } from './copy';
 
@@ -13,6 +14,7 @@ function fill(s: string, v: Record<string, string>) { return s.replace(/\{(\w+)\
 
 export default function Guide() {
   const { locale } = useLocale();
+  const t = useT();
   const c = GUIDE_COPY[locale] ?? GUIDE_COPY.en;
   const mult = (x: number) => x.toLocaleString(locale, { maximumFractionDigits: 1 });
   const v: Record<string, string> = {
@@ -60,6 +62,7 @@ export default function Guide() {
           </div>
           <p style={{ margin: 0, fontStyle: 'italic', color: 'var(--cg-chrome, #d8d8dc)' }}>{s.lead}</p>
           {s.body.map((p, j) => <p key={j} className="small" style={{ margin: 0, lineHeight: 1.6, color: '#bbb' }}>{fill(p, v)}</p>)}
+          {s.id === 'packs' && FLAGS.launchPhase === 'g' && <p className="small" style={{ margin: 0, lineHeight: 1.6, color: '#bbb' }}>{t('verify.phasegBody')}</p>}
         </section>
       ))}
       <p className="tiny muted" style={{ textAlign: 'center' }}>{c.outro}</p>

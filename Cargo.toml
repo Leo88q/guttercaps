@@ -7,6 +7,9 @@ members = [
   "programs/arena",
   # localnet-only Switchboard stand-in (tests/localnet); built with the rest, deployed only via [[test.genesis]]
   "programs/sb_mock",
+  # phase-V thin settlement program (docs/PHASED-ONCHAIN-PLAN.md §3); built with the rest,
+  # deployed separately at phase-V activation (docs/PHASEV-ACTIVATION.md)
+  "programs/settle",
 ]
 # The v0.1 monolith lives in `legacy/chip-game`, NOT in `programs/`, and it is not a member.
 # It used to be `programs/_legacy_chip_game` + `exclude = [...]`, which was enough for cargo and not

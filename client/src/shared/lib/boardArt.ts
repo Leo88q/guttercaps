@@ -12,6 +12,32 @@ import { BOARD_SLOTS, partById, type BoardSlot } from '@guttercaps/economy';
 
 export const BOARD_ART = '/art/skate';
 
+/**
+ * Целый арт доски района: собранный скейт с иллюстрацией района, одним
+ * файлом (board-d0…d7.webp). Это витринный показ доски с 2026-10-17: плоская
+ * «сборка» слоями (дека/траки/колёса отдельными картинками друг на друге)
+ * выглядела разобранным скейтом, а материал на неё не ложился — теперь
+ * игрок видит готовую доску, а части остаются прогрессом её разблокировки.
+ */
+export const boardFullArt = (district: number): string => `${BOARD_ART}/board-d${district}.webp`;
+
+/** Арт деки района для галереи дек (та же пластина, что и часть deck_dN). */
+export const deckArt = (district: number): string => `${BOARD_ART}/deck-d${district}.webp`;
+
+/**
+ * Как показывать деталь в конструкторе. Плоские пластины частей районов
+ * выглядели «разобранным скейтом»: вместо них — целая доска этого района
+ * (та же картинка, что и в превью), а какая деталь имеется в виду, говорит
+ * подпись. Трофей и сток остаются своими артами.
+ */
+export function partVisual(partId: string | null | undefined): string | null {
+  const part = partId ? partById(partId) : undefined;
+  if (!part) return null;
+  if (part.district !== null && BOARD_STACK.includes(part.slot)) return boardFullArt(part.district);
+  if (part.tier === 'trophy') return `${BOARD_ART}/${part.slot}-trophy.webp`;
+  return partArt(partId);
+}
+
 /** Кадр части. `null` — у части нет картинки (нет наклейки). */
 export function partArt(partId: string | null | undefined): string | null {
   if (!partId) return null;

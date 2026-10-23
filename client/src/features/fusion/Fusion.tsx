@@ -17,6 +17,8 @@ import { qk } from '@/api/keys';
 import { ClaimFusionFlow } from '@/chain/flows/claimFusionFlow';
 import { FusionFlow, successBps, type FusionFlowState } from '@/chain/flows/fusionFlow';
 import { FusionStages } from './FusionStages';
+import { FLAGS } from '@/app/config';
+import { runPhaseGFusion } from './phaseGFusion';
 import { useTxStore, fusionId } from '@/app/store/txs';
 import { useUiStore } from '@/app/store/ui';
 import { ChipArt } from '@/shared/ui/ChipArt';
@@ -50,7 +52,7 @@ export default function Fusion() {
   const enqueue = useUiStore((s) => s.enqueueReveal);
   const upsertFusion = useTxStore((s) => s.upsertFusion);
 
-  const all = useMemo(() => (chips.data?.pages.flatMap((p) => p.items ?? []) ?? []).filter((c) => !c.flags?.soulbound && !c.lockUntil && c.rarity! < 8), [chips.data]);
+  const all = useMemo(() => (chips.data?.pages.flatMap((p) => p.items ?? []) ?? []).filter((c) => !c.flags?.soulbound && !(c.lockUntil && new Date(c.lockUntil).getTime() > Date.now()) && c.rarity! < 8), [chips.data]);
   const [slots, setSlots] = useState<(Chip | null)[]>([null, null, null]);
   const [resultCol, setResultCol] = useState<number | null>(null);
   const [booster, setBooster] = useState(false);
@@ -108,6 +110,29 @@ export default function Fusion() {
     if (!ready || !recipe) return;
     setBusy(true);
     try {
+      if (FLAGS.launchPhase !== 'full') {
+        // Phase-G: burn the materials yourself + pay the fee; the backend mints the result.
+        const assets = filled.map((c) => c.asset!).filter(Boolean);
+        setFlow({ phase: 'signing', nonce: 1n, recipe: recipe.from, boosted: false, materials: [], resultCollectionIdx: effectiveResultCol!, signatures: [] });
+        const r = await runPhaseGFusion({
+          assets,
+          connection,
+          signer: wallet,
+          onStage: (st) => setFlow((f) => (f ? { ...f, phase: st === 'done' ? 'done' : st === 'minting' || st === 'confirming' ? 'revealing' : 'signing' } : f)),
+        });
+        if (r.status === 'minted' && r.success && r.resultAssets[0]) {
+          setFlow({ phase: 'done', nonce: 1n, recipe: recipe.from, boosted: false, materials: [], resultCollectionIdx: effectiveResultCol!, signatures: [], result: { owner: wallet?.publicKey ?? PublicKey.default, recipe: recipe.from, materials: [], result: new PublicKey(r.resultAssets[0]), success: true, rollBps: 0, thresholdBps: chance, feeBurned: BigInt(recipe.feeCgMicro) } });
+          enqueue([{ id: r.resultAssets[0], asset: r.resultAssets[0], rarity: recipe.to, collectionIdx: effectiveResultCol!, fused: true }]);
+          toast({ kind: 'success', title: { key: 'fusion.success' } });
+        } else if (r.status === 'minted') {
+          toast({ kind: 'error', title: { key: 'fusion.failed' } });
+        } else {
+          toast({ kind: 'info', title: { key: 'screens.fusionTimeout' } });
+        }
+        setSlots([null, null, null]);
+        void qc.invalidateQueries({ queryKey: ['me'] });
+        return;
+      }
       if (isMock()) {
         const seq: FusionFlowState[] = [];
         const base: FusionFlowState = { phase: 'signing', nonce: 1n, recipe: recipe.from, boosted: booster, materials: [], resultCollectionIdx: effectiveResultCol!, signatures: [] };
@@ -240,13 +265,13 @@ export default function Fusion() {
         <div className="bench">
           {slots.map((s, i) => (
             <div key={i} className={`slot ${s ? 'filled' : 'slot-empty live-slot'}`} onClick={() => setPickFor(i)} style={s ? { border: 'none' } : undefined} aria-label={`${t('ui.slot')} ${i + 1}`}>
-              {s ? <ChipArt collection={s.collection!} rarity={s.rarity!} index={s.index} level={s.level} size="100%" imageUrl={chipImageOf(s)} skin={s.skin} crimp={rarityColor(s.rarity!)} founder={!!s.flags?.founder} /> : <span className="slot-hint" aria-hidden>+</span>}
+              {s ? <ChipArt collection={s.collection!} rarity={s.rarity!} index={s.index} level={s.level} size="100%" imageUrl={chipImageOf(s)} skin={s.skin} crimp={rarityColor(s.rarity!)} founder={!!s.flags?.founder} /> : <><img className="slot-art-img" src={`/art/fusion/slot-${i + 1}.jpg`} alt="" aria-hidden loading="lazy" decoding="async" /><span className="slot-hint slot-art-plus" aria-hidden>+</span></>}
             </div>
           ))}
         </div>
         <div className="bench-arrow">↓</div>
         <div className="row" style={{ justifyContent: 'center', gap: 16, flexWrap: 'wrap' }}>
-          <div style={{ width: 180 }}>{recipe && effectiveResultCol !== null ? <ChipArt collection={effectiveResultCol} rarity={recipe.to} imageUrl={chipArtUrl(effectiveResultCol, recipe.to, 512)} crimp={rarityColor(recipe.to)} /> : <div className="slot slot-empty live-slot" style={{ width: 180, height: 180 }}><span className="slot-hint">?</span></div>}</div>
+          <div style={{ width: 180 }}>{recipe && effectiveResultCol !== null ? <ChipArt collection={effectiveResultCol} rarity={recipe.to} imageUrl={chipArtUrl(effectiveResultCol, recipe.to, 512)} crimp={rarityColor(recipe.to)} /> : <div className="slot slot-empty live-slot" style={{ width: 180, height: 180 }}><img className="slot-art-img" src="/art/fusion/result.jpg" alt="" aria-hidden loading="lazy" decoding="async" /><span className="slot-hint slot-art-plus">?</span></div>}</div>
           <div className="stack-sm">
             {recipe ? (
               <>
