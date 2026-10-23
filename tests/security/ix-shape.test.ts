@@ -76,7 +76,11 @@ test('M-3 the scope limits are exactly the ones written down', () => {
   // recorded so a jump in it is visible rather than silent.
   const encoded = new Set(encodings.filter((e) => e.name).map((e) => e.name));
   const neverEncoded = [...byName.values()].filter((ix) => !encoded.has(ix.name));
-  assert.ok(neverEncoded.length > 0 && neverEncoded.length <= 40,
+  // 48 = 39 (pre-settle) + settle's 9 ops/keeper-only instructions with no launch-client call site:
+  // init_config, anchor_root, claim_reward, escrow_list, escrow_buy, escrow_cancel, refund_pack,
+  // set_mint_oracles, set_limits — encoded by scripts/phasev-activate.ts / Rust callers, and the
+  // escrow-market + Merkle-claim surfaces are deliberately not wired into the launch client.
+  assert.ok(neverEncoded.length > 0 && neverEncoded.length <= 48,
     `${neverEncoded.length} of ${byName.size} instructions have no client call site — keeper-only, or the reader has stopped seeing them`);
 });
 
