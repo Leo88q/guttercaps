@@ -39,6 +39,11 @@ run_setup() {
 BACKEND_PID=""
 run_backend() {
   echo "== backend (LAUNCH_PHASE=g) on :$PORT =="
+  # A backend from an earlier run may still hold the port — the health poll
+  # would then pass against the WRONG tree/collections. Refuse to guess.
+  if curl -sf --max-time 3 "http://127.0.0.1:$PORT/v1/health" > /dev/null 2>&1; then
+    echo "something already serves :$PORT — kill the stale backend first (lsof -i :$PORT)"; exit 1
+  fi
   rm -f "${TMPDIR:-/tmp}/guttercaps-phaseg-devnet.db"
   ( set -a; . "$ENV_FILE"; set +a; cd backend && npm run start ) > /tmp/phaseg-backend.log 2>&1 &
   BACKEND_PID=$!
@@ -46,7 +51,7 @@ run_backend() {
   # RPC stretches that past a minute, so wait longer and show the log head
   # (the tail is usually just web3.js 429-retry noise).
   for i in $(seq 1 180); do
-    curl -sf "http://127.0.0.1:$PORT/v1/health" > /dev/null && return 0
+    curl -sf --max-time 5 "http://127.0.0.1:$PORT/v1/health" > /dev/null && return 0
     sleep 1
   done
   echo "backend did not come up — first log lines:"; head -30 /tmp/phaseg-backend.log

@@ -301,8 +301,14 @@ async function main(): Promise<void> {
 
 const isMain = process.argv[1]?.endsWith('setup-minimal.ts');
 if (isMain) {
-  main().catch((e) => {
-    console.error(e);
-    process.exit(1);
-  });
+  // Exit explicitly on success too: web3.js's confirm subscriptions leave the
+  // websocket open, so falling off the end hangs forever (every caller of
+  // this script — mac-phaseg-devnet.sh pipes through tee — waits for EOF).
+  main().then(
+    () => process.exit(0),
+    (e) => {
+      console.error(e);
+      process.exit(1);
+    },
+  );
 }

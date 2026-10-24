@@ -143,4 +143,9 @@ async function main(): Promise<void> {
   for (const a of assets) console.log(`  asset:    ${a} (DAS getAsset on a DAS endpoint shows it under its Core collection)`);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+// Exit explicitly on success too: web3.js's confirm subscriptions leave the
+// websocket open, so falling off the end hangs forever after SMOKE PASSED.
+main().then(
+  () => process.exit(0),
+  (e) => { console.error(e); process.exit(1); },
+);
