@@ -1,5 +1,6 @@
 // Tiny base58 (Bitcoin alphabet) encoder — avoids pulling an untyped bs58 build.
-const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+export const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+const ALPHABET = BASE58_ALPHABET;
 
 export function base58Encode(bytes: Uint8Array): string {
   if (bytes.length === 0) return '';
@@ -20,3 +21,4 @@ export function base58Encode(bytes: Uint8Array): string {
   for (let i = digits.length - 1; i >= 0; i--) out += ALPHABET[digits[i]];
   return out;
 }
+
