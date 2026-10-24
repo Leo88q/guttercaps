@@ -993,9 +993,77 @@ export async function crank(log: (s: string) => void = console.log) {
   const bal = await c.connection.getBalance(payer.publicKey, 'confirmed');
   log(`[crank] ${RPC_URL} — payer ${payer.publicKey.toBase58()} (${(bal / LAMPORTS).toFixed(3)} SOL) · switchboard ${SWITCHBOARD_PROGRAM_ID.toBase58()} · LUT ${lookupTables.length ? lookupTables.map((l) => l.key.toBase58()).join(',') : 'none (reveal and open go in separate transactions)'} · poll ${CRANK_POLL_MS} ms · sweep ${CRANK_SWEEP_MS} ms · ${CRANK_CONCURRENCY} workers`);
   if (bal / LAMPORTS > CRANK_MAX_BALANCE_SOL) log(`[crank] WARN payer holds ${(bal / LAMPORTS).toFixed(2)} SOL > cap ${CRANK_MAX_BALANCE_SOL} — keep the hot key small`);
+  // Phase-G mint crank (docs/MINIMAL-LAUNCH-CHECKLIST.md 3.2): direct Bubblegum
+  // minting for paid pack orders. Inert unless LAUNCH_PHASE=g and configured.
+  const { LAUNCH_PHASE: lp, SHARED_MERKLE_TREE: smt, MINT_AUTHORITY_KEYPAIR: mak } = await import('./config.ts');
+  const { processPaidOrders, makeChainMintSender, chainFirstLeafIndex } = await import('./bubblegum-mint.ts');
+  const { processPaidFusions } = await import('./phaseg-fusion.ts');
+  const { accrueStakingDay, processPayouts } = await import('./phaseg-staking.ts');
+  const { sendChipMint } = await import('./bubblegum-mint.ts');
+  const { PublicKey: PK } = await import('@solana/web3.js');
+  const phaseGTree = lp === 'g' && smt && mak ? new PK(smt) : null;
+  const phaseGAuthority = phaseGTree ? loadKeypair(mak) : null;
+  if (phaseGTree && phaseGAuthority) log(`[crank] phase-G mint crank on tree ${phaseGTree.toBase58()} authority ${phaseGAuthority.publicKey.toBase58()}`);
+  let lastPhaseG = 0;
+  let lastPhaseV = 0;
   let lastSweep = 0, lastReport = 0;
   while (true) {
     const t = Date.now();
+    if (phaseGTree && phaseGAuthority && t - lastPhaseG >= 5_000) {
+      lastPhaseG = t;
+      try {
+        const r = await processPaidOrders(sharedDb(), {
+          tree: phaseGTree,
+          sendMint: makeChainMintSender(connection, phaseGAuthority, phaseGTree),
+          firstLeafIndex: () => chainFirstLeafIndex(connection, phaseGTree),
+        });
+        if (r.mintedOrders > 0) log(`[crank] phase-G minted ${r.mintedChips} chips for ${r.mintedOrders} orders`);
+        const f = await processPaidFusions(sharedDb(), {
+          tree: phaseGTree,
+          sendChip: (wallet, chip) => sendChipMint(connection, phaseGAuthority, phaseGTree, wallet, chip),
+          firstLeafIndex: () => chainFirstLeafIndex(connection, phaseGTree),
+        });
+        if (f.settled > 0) log(`[crank] phase-G settled ${f.settled} fusions`);
+        // Phase G has no on-chain emission clock: the staking day is the UTC day.
+        // (latestEmissionDay would sit at day 0 forever without the staking program,
+        // and accrual would credit exactly one day for the whole launch.)
+        const day = Math.floor(Date.now() / 86_400_000);
+        const acc = accrueStakingDay(sharedDb(), day);
+        if (acc.credited > 0) log(`[crank] phase-G staking day ${day}: credited ${acc.credited} wallets (budget ${acc.budgetMicro} micro)`);
+        const { makeCgPayoutSender } = await import('./phaseg-payout.ts');
+        const pay = await processPayouts(sharedDb(), makeCgPayoutSender(connection, phaseGAuthority));
+        if (pay.paid > 0) log(`[crank] phase-G paid ${pay.paid} reward claims`);
+      } catch (e) {
+        log(`[crank] phase-G mint error: ${(e as Error).message}`);
+      }
+    }
+    // Phase V: the program mints, the crank only registers settled chips into
+    // the projection (DAS name match) and runs the phase-agnostic soft staking.
+    if (lp === 'v' && t - lastPhaseV >= 15_000) {
+      lastPhaseV = t;
+      try {
+        const { confirmSettle, confirmFusionGrant } = await import('./phasev.ts');
+        const dbv = sharedDb();
+        const orders = dbv.all<{ id: number; wallet: string }>(
+          `SELECT id, wallet FROM pack_orders WHERE status = 'paid' AND settle_sig IS NOT NULL LIMIT 20`,
+        );
+        for (const o of orders) await confirmSettle(dbv, o.wallet, o.id, '', { connection });
+        const fusions = dbv.all<{ id: number; wallet: string }>(
+          `SELECT id, wallet FROM phaseg_fusions WHERE status = 'paid' AND grant_sig IS NOT NULL LIMIT 20`,
+        );
+        for (const f of fusions) await confirmFusionGrant(dbv, f.wallet, f.id, '', { connection });
+        const day = Math.floor(Date.now() / 86_400_000);
+        const acc = accrueStakingDay(dbv, day);
+        if (acc.credited > 0) log(`[crank] phase-V staking day ${day}: credited ${acc.credited} wallets (budget ${acc.budgetMicro} micro)`);
+        if (mak) {
+          const { makeCgPayoutSender } = await import('./phaseg-payout.ts');
+          const pay = await processPayouts(dbv, makeCgPayoutSender(connection, loadKeypair(mak)));
+          if (pay.paid > 0) log(`[crank] phase-V paid ${pay.paid} reward claims`);
+        }
+      } catch (e) {
+        log(`[crank] phase-V registration error: ${(e as Error).message}`);
+      }
+    }
     try {
       await c.tick({ sweep: t - lastSweep >= CRANK_SWEEP_MS });
       if (t - lastSweep >= CRANK_SWEEP_MS) lastSweep = t;

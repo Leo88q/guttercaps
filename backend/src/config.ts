@@ -10,7 +10,7 @@ function pk(v: string | undefined, fallback: string): PublicKey {
   return new PublicKey(v && v.length > 0 ? v : fallback);
 }
 
-export type ProgramName = 'chip_core' | 'market' | 'staking' | 'arena';
+export type ProgramName = 'chip_core' | 'market' | 'staking' | 'arena' | 'settle';
 
 /** The four GUTTERCAPS programs. Same defaults as the client — override per cluster with env. */
 export const PROGRAMS: Record<ProgramName, PublicKey> = {
@@ -18,6 +18,7 @@ export const PROGRAMS: Record<ProgramName, PublicKey> = {
   market: pk(env.PROGRAM_MARKET, '5skEmmhgFYn5xjHEdrcsiQ68kUg5kvhXKhjWTWSppjfo'),
   staking: pk(env.PROGRAM_STAKING, 'Ewkbp7WpqbiJAu3ofEcTPinqnr5oH3e94YJDZFg1eSJn'),
   arena: pk(env.PROGRAM_ARENA, 'DUTokrhWBYL7nJ9VbMy7bFELQFf8TN1tmvVpKLsskqD6'),
+  settle: pk(env.PROGRAM_SETTLE, 'B9ousNDpe29G45KFHyndvHXpLigBtxCh9xbboWuCeXyP'),
 };
 
 export const PROGRAM_NAMES = Object.keys(PROGRAMS) as ProgramName[];
@@ -41,6 +42,41 @@ export const DAS_RPC_URL = env.METAPLEX_DAS_RPC_URL ?? RPC_URL;
 export const DAS_TIMEOUT_MS = Number(env.METAPLEX_DAS_TIMEOUT_MS ?? 10_000);
 /** Closed-market migration gate: no cNFT ownership path is enabled until the V2 fixtures are deployed. */
 export const BUBBLEGUM_V2_ENABLED = (env.BUBBLEGUM_V2_ENABLED ?? '0') === '1';
+
+/**
+ * Launch phase (docs/MINIMAL-LAUNCH-CHECKLIST.md §0): `full` = the current
+ * all-on-chain programs; `g` = the phased zero-custom-program launch
+ * (backend-issued cNFT, see docs/PHASED-ONCHAIN-PLAN.md). Default `full`:
+ * nothing changes until phase G is complete end to end. Garbage is a
+ * startup error, never a silent fallback — a mis-set phase must not quietly
+ * change who is allowed to mint.
+ */
+export type LaunchPhase = 'full' | 'g' | 'v';
+export function parseLaunchPhase(v: string | undefined): LaunchPhase {
+  if (v === undefined || v === '' || v === 'full') return 'full';
+  if (v === 'g') return 'g';
+  throw new Error(`LAUNCH_PHASE must be "full" or "g", got "${v}"`);
+}
+export const LAUNCH_PHASE: LaunchPhase = parseLaunchPhase(env.LAUNCH_PHASE);
+
+/** Phase-G (launchPhase 'g') settings — inert while LAUNCH_PHASE=full. */
+/** Treasury that receives pack payments (SOL = the wallet itself, tokens = its ATA). */
+export const PACK_TREASURY = env.TREASURY_WALLET ?? env.PREORDER_TREASURY ?? '';
+/** The one shared Bubblegum tree of the minimal launch (scripts/setup-minimal.ts prints it). */
+export const SHARED_MERKLE_TREE = env.SHARED_MERKLE_TREE ?? '';
+/** $CG SPL mint (phase-G pack currency + reward payouts). */
+export const CG_MINT = env.CG_MINT ?? '';
+/** solana-keygen JSON of the tree-authority/mint key (prod: KMS-backed signer service). */
+export const MINT_AUTHORITY_KEYPAIR = env.MINT_AUTHORITY_KEYPAIR ?? '';
+/** MPL Core collections 0..7 (phase-G mint binds chips to these when set). */
+export const CORE_COLLECTIONS: string[] = Array.from({ length: 8 }, (_, i) => env[`CORE_COLLECTION_${i}`] ?? '');
+/** Featured collection for Limited (pool='featured') in phase G; snapshot onto each order. */
+export const PHASEG_FEATURED_COLLECTION = Number(env.PHASEG_FEATURED_COLLECTION ?? 0);
+/** Phase-V (launchPhase 'v') MINT_ORACLE keypair file (solana-keygen JSON). The oracle
+ * authorizes settles/grants; it can never mint by itself — the settle program can. */
+export const PHASEV_ORACLE_KEYPAIR = env.PHASEV_ORACLE_KEYPAIR ?? '';
+/** Pack-order lifetime: an unpaid order frees its seed commitment after this. */
+export const PACK_ORDER_TTL_S = Number(env.PACK_ORDER_TTL_S ?? 1800);
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 /** SQLite file for local/dev and the explicitly acknowledged single-instance production mode. `:memory:` is for tests; the Prisma Postgres schema is not the running adapter yet. */
@@ -182,6 +218,32 @@ export function assertProductionConfig(): void {
   if (!env.DB_PATH || DB_PATH === ':memory:') problems.push('DB_PATH must be explicit and persistent in production — an indexer restart would otherwise wipe or split projections');
   if (env.PRODUCTION_DB_MODE !== 'sqlite-single-instance') problems.push('the running backend uses node:sqlite; set PRODUCTION_DB_MODE=sqlite-single-instance only for one API/indexer instance with a persistent volume, or implement the Postgres adapter before scaling');
   if (EVENT_BUS === 'redis' && !REDIS_URL) problems.push('EVENT_BUS=redis requires REDIS_URL (otherwise the API process never sees events indexed by the listener process)');
+  if (LAUNCH_PHASE === 'v') {
+    // Phase V sells through the settle program: without the oracle key the backend
+    // could take on-chain payments it can never authorize a mint for.
+    if (!PACK_TREASURY) problems.push('LAUNCH_PHASE=v requires TREASURY_WALLET');
+    if (!SHARED_MERKLE_TREE) problems.push('LAUNCH_PHASE=v requires SHARED_MERKLE_TREE (the phase-G tree carries over)');
+    if (!CG_MINT) problems.push('LAUNCH_PHASE=v requires CG_MINT');
+    if (!PHASEV_ORACLE_KEYPAIR) problems.push('LAUNCH_PHASE=v requires PHASEV_ORACLE_KEYPAIR (MINT_ORACLE signer)');
+    if (!Number.isInteger(PHASEG_FEATURED_COLLECTION) || PHASEG_FEATURED_COLLECTION < 0 || PHASEG_FEATURED_COLLECTION > 7) problems.push('PHASEG_FEATURED_COLLECTION must be 0..7');
+  }
+  if (LAUNCH_PHASE === 'g') {
+    // Phase G sells for real money through the backend: an unconfigured mint path would take
+    // payments for packs that can never be minted, so these are startup errors, not 410s.
+    if (!PACK_TREASURY) problems.push('LAUNCH_PHASE=g requires TREASURY_WALLET (pack payments have nowhere to land)');
+    if (!SHARED_MERKLE_TREE) problems.push('LAUNCH_PHASE=g requires SHARED_MERKLE_TREE (setup-minimal prints it)');
+    if (!CG_MINT) problems.push('LAUNCH_PHASE=g requires CG_MINT ($CG pack rail + reward payouts)');
+    if (!MINT_AUTHORITY_KEYPAIR) problems.push('LAUNCH_PHASE=g requires MINT_AUTHORITY_KEYPAIR (paid orders would never mint)');
+    if (!Number.isInteger(PHASEG_FEATURED_COLLECTION) || PHASEG_FEATURED_COLLECTION < 0 || PHASEG_FEATURED_COLLECTION > 7) problems.push('PHASEG_FEATURED_COLLECTION must be 0..7');
+    // A malformed collection address would only surface as a failed mint AFTER payment;
+    // fail the boot instead. Empty slots are legal (collection-less mints), malformed are not.
+    CORE_COLLECTIONS.forEach((c, i) => {
+      if (!c) return;
+      try { new PublicKey(c); } catch { problems.push(`CORE_COLLECTION_${i} is not a valid pubkey (setup-minimal prints them)`); }
+    });
+    try { new PublicKey(SHARED_MERKLE_TREE); } catch { problems.push('SHARED_MERKLE_TREE is not a valid pubkey'); }
+    try { new PublicKey(CG_MINT); } catch { problems.push('CG_MINT is not a valid pubkey'); }
+  }
   if (!API_INGEST && EVENT_BUS !== 'redis') problems.push('API_INGEST=0 with a non-redis event bus: nothing would ever reach /ws — either run the indexer in this process, or set EVENT_BUS=redis + REDIS_URL');
   if (!API_INGEST && !LISTEN_HEAL_EVERY_MS) problems.push('API_INGEST=0 assumes a separate `npm run listen` process is running (docs/09 §4.1) — if it is not, the projections never advance');
   if (EVENT_BUS === 'off' && !CORS_ORIGINS.includes('*')) problems.push('EVENT_BUS=off disables /ws fan-out: the client silently degrades to polling, which is a choice, not a default');

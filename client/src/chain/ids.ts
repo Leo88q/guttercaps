@@ -4,6 +4,7 @@ import { CLUSTER, PROGRAM_IDS } from '@/app/config';
 export const CHIP_CORE_ID = PROGRAM_IDS.chipCore;
 export const MARKET_ID = PROGRAM_IDS.market;
 export const STAKING_ID = PROGRAM_IDS.staking;
+export const SETTLE_ID = PROGRAM_IDS.settle;
 export const ARENA_ID = PROGRAM_IDS.arena;
 
 export const MPL_CORE_ID = new PublicKey('CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d');
@@ -14,6 +15,7 @@ export const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9
 export const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
 export const SYSTEM_PROGRAM_ID = new PublicKey('11111111111111111111111111111111');
 export const SYSVAR_SLOT_HASHES_ID = new PublicKey('SysvarS1otHashes111111111111111111111111111');
+export const SYSVAR_INSTRUCTIONS_ID = new PublicKey('Sysvar1nstructions1111111111111111111111111');
 export const ADDRESS_LOOKUP_TABLE_PROGRAM_ID = new PublicKey('AddressLookupTab1e1111111111111111111111111');
 export const WSOL_MINT = new PublicKey('So11111111111111111111111111111111111111112');
 

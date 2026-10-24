@@ -20,6 +20,7 @@ import { useUiStore } from '@/app/store/ui';
 import { playSound, prefetchSound } from '@/shared/audio';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { fmtCg } from '@/shared/lib/format';
+import { collectionName } from '@/shared/lib/rarity';
 import { BoltIcon, ChevronIcon, ContractIcon, DeepIcon, FloodIcon, GhostIcon, GoalIcon, LadderIcon, PrestigeIcon } from '@/shared/ui/GridIcons';
 import { GenBadge } from '@/shared/ui/GenBadge';
 import { Empty, Pill, Progress, Skeleton, Stat } from '@/shared/ui/primitives';
@@ -37,7 +38,7 @@ interface AttemptStart {
   board: { size: number; bus: number; receivers: number[]; tiles: BoardTile[] };
 }
 type CompleteResult =
-  | { ok: true; training: boolean; kind?: string; beaten?: boolean; rank?: number; stars?: number; xpGranted?: number; xpPending?: number; passXp?: number; dropletGained?: boolean; gifts?: { kind: string; amount: number }[] }
+  | { ok: true; training: boolean; kind?: string; beaten?: boolean; rank?: number; stars?: number; xpGranted?: number; xpPending?: number; passXp?: number; dropletGained?: boolean; boardPart?: string | null; gifts?: { kind: string; amount: number }[] }
   | { ok: false; xpLoss?: number; emergencyGranted?: boolean };
 
 interface PlayState {
@@ -86,6 +87,8 @@ export default function Grid() {
   const [fieldTheme, setFieldTheme] = useState<string>(() => localStorage.getItem('gridFieldTheme') ?? '');
   /** Шторка выбора сектора: раскрыта/свёрнута и выбранная в ней глубина (свёрнутая сама за собой следит). */
   const [pickOpen, setPickOpen] = useState(false);
+  /** Шторка фишек: свёрнута в одну строку выбранной фишки, список — по тапу. */
+  const [chipsOpen, setChipsOpen] = useState(false);
   const [pickDepth, setPickDepth] = useState(1);
   /** Листание глубин в шторке: шаг сразу раскрывает список секторов новой глубины. */
   const stepDepth = (d: 1 | -1) => {
@@ -437,8 +440,8 @@ export default function Grid() {
         <div className="card stack-sm">
           <div className="strong"><span style={{ color: '#16E5D9', display: 'inline-flex', verticalAlign: -4, marginRight: 6 }}><FloodIcon /></span>{t('grid.flood')}</div>
           <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-            {(me.data?.flood ?? []).length === 0 && <span className="tiny muted">—</span>}
-            {(me.data?.flood ?? []).map((f) => <Pill key={f.district}>#{f.district + 1}: {f.points}</Pill>)}
+            {(me.data?.flood ?? []).length === 0 && <span className="tiny muted">{t('grid.floodEmpty')}</span>}
+            {(me.data?.flood ?? []).map((f) => <Pill key={f.district}>{collectionName(f.district)} · {f.points}</Pill>)}
           </div>
           {(me.data?.gifts ?? []).length > 0 && <>
             <div className="strong">{t('grid.gifts')}</div>
@@ -501,7 +504,13 @@ export default function Grid() {
             <div className="strong"><span style={{ color: '#B6FF3C', display: 'inline-flex', verticalAlign: -4, marginRight: 6 }}><GoalIcon /></span>{t('grid.coopGoal')}</div>
             {(me.data?.districtGoal ?? []).length === 0
               ? <div className="tiny muted">{t('grid.coopEmpty')}</div>
-              : (me.data?.districtGoal ?? []).map((g) => <div key={g.district} className="tiny">#{g.district + 1}: {g.points}/{g.goal} {g.reached ? '✔' : ''}</div>)}
+              : (me.data?.districtGoal ?? []).map((g) => (
+                <div key={g.district} className="gx-goal">
+                  <span className="tiny">{collectionName(g.district)} {g.reached ? '✔' : ''}</span>
+                  <span className="gx-goal-bar"><span style={{ width: `${Math.min(100, Math.round((g.points / Math.max(1, g.goal)) * 100))}%` }} /></span>
+                  <span className="tiny muted">{g.points}/{g.goal}</span>
+                </div>
+              ))}
             {me.data?.coopReward && <div className="tiny muted">✔ +1 {t('grid.valves')}</div>}
           </div>
         </div>
@@ -509,15 +518,46 @@ export default function Grid() {
 
       {chips.length === 0 ? <Empty>{t('grid.noChips')}</Empty> : (
         <>
-          <div className="row" style={{ gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
-            {chips.map((c) => (
-              <button key={c.asset} type="button" onClick={() => { setAsset(c.asset); setPlay(null); setResult(null); }}
-                style={{ minWidth: 92, border: selected?.asset === c.asset ? '2px solid var(--acid, #B6FF3C)' : '1px solid #333', borderRadius: 12, padding: 8, background: 'transparent', cursor: 'pointer', textAlign: 'center' }}>
-                <ChipArt collection={c.collection} rarity={c.rarity} level={c.chipLevel} size={54} skin={c.skin} />
-                <div className="tiny row" style={{ gap: 4, justifyContent: 'center' }}>Lv{c.chipLevel} · <DropletMeter drops={c.route.chargeDrops} size={13} showProgress={false} /></div>
-                <div className="tiny muted">{t('grid.routeNext', { n: Math.min(75, c.route.nextLevel) })}</div>
+          {/* Шторка фишек (2026-10-19): раньше все фишки лежали лентой карточек
+              на пол-экрана. Теперь — одна строка выбранной фишки; полный список
+              раскрывается шторкой, выбор сворачивает её обратно. */}
+          <div className="gt-shutter" data-open={chipsOpen ? 'true' : 'false'}>
+            <div className="gt-shutter-head">
+              <button type="button" className="gt-shutter-toggle" aria-expanded={chipsOpen} onClick={() => setChipsOpen((v) => !v)}>
+                <span className="row" style={{ gap: 10, alignItems: 'center', minWidth: 0 }}>
+                  {selected && <ChipArt collection={selected.collection} rarity={selected.rarity} level={selected.chipLevel} size={38} skin={selected.skin} />}
+                  <span style={{ textAlign: 'left', minWidth: 0 }}>
+                    <span className="strong" style={{ display: 'block' }}>{selected ? collectionName(selected.collection) : t('grid.noChips')}</span>
+                    <span className="tiny muted" style={{ display: 'block' }}>{selected ? `Lv${selected.chipLevel} · ${t('grid.routeNext', { n: Math.min(75, selected.route.nextLevel) })}` : ''}</span>
+                  </span>
+                </span>
+                <span className="row" style={{ gap: 8, alignItems: 'center' }}>
+                  <span className="tiny muted">{t('grid.chipsCount', { n: chips.length })}</span>
+                  <span className="gt-shutter-chev" aria-hidden><ChevronIcon size={18} /></span>
+                </span>
               </button>
-            ))}
+            </div>
+            <div className="gt-shutter-body">
+              <div className="gx-chip-list" role="listbox" aria-label={t('grid.chipsCount', { n: chips.length })}>
+                {chips.map((c) => {
+                  const stars = (c.claims ?? []).reduce((a, x) => a + (x.best_stars ?? 0), 0);
+                  const active = selected?.asset === c.asset;
+                  return (
+                    <button key={c.asset} type="button" role="option" aria-selected={active}
+                      className={`gx-chip-row${active ? ' is-active' : ''}`}
+                      onClick={() => { setAsset(c.asset); setPlay(null); setResult(null); setChipsOpen(false); }}>
+                      <ChipArt collection={c.collection} rarity={c.rarity} level={c.chipLevel} size={40} skin={c.skin} />
+                      <span className="gx-chip-main">
+                        <span className="small strong">{collectionName(c.collection)}</span>
+                        <span className="tiny muted">Lv{c.chipLevel} · {t('grid.routeNext', { n: Math.min(75, c.route.nextLevel) })}</span>
+                      </span>
+                      <span className="tiny muted">★{stars}</span>
+                      <DropletMeter drops={c.route.chargeDrops} size={14} showProgress={false} />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
           {selected && !play && (
@@ -613,6 +653,7 @@ export default function Grid() {
                 {!result.training && <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
                   <span>{t('grid.stars', { n: result.stars ?? 0 })}</span>
                   {(result.xpGranted ?? 0) > 0 && <span>{t('grid.xp', { n: result.xpGranted })}</span>}
+                  {result.boardPart && <span>{t('grid.boardPart')}</span>}
                   {(result.xpPending ?? 0) > 0 && <span>{t('grid.pending', { n: result.xpPending })}</span>}
                   {(result.passXp ?? 0) > 0 && <span>{t('grid.passXp', { n: result.passXp })}</span>}
                   {result.dropletGained && <span className="vfx-host" style={{ display: 'inline-block', padding: '2px 10px' }}><SplatBackdrop color="acid" variant="a" size={56} style={{ right: -12, top: -18 }} />{t('grid.droplet')}</span>}

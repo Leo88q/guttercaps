@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 // =============================================================================
 // Команды (crew) — docs/16 §5.6
 // -----------------------------------------------------------------------------
@@ -224,7 +225,7 @@ function inviteCode(db: Db): string {
   const alphabet = 'ACDEFGHJKLMNPQRTUVWXY3479';
   for (let attempt = 0; attempt < 20; attempt++) {
     let code = '';
-    for (let i = 0; i < 8; i++) code += alphabet[Math.floor(Math.random() * alphabet.length)];
+    for (let i = 0; i < 8; i++) code += alphabet[randomInt(alphabet.length)];
     if (i0(db, code)) return code;
   }
   throw new ServiceError(503, 'invite_code_failed', 'Could not allocate an invite code — try again');
