@@ -90,6 +90,11 @@ export function buildMintV2Ix(o: {
       creator: o.treeAuthority,
       collection: o.coreCollection ?? null,
     }),
+    // mint_v2(metadata, asset_data: Option<Vec<u8>>, asset_data_schema:
+    // Option<AssetDataSchema>) — both None. Omitting the two option bytes
+    // makes Anchor's arg decode run off the end: the first live devnet mint
+    // failed simulation for exactly this (checklist 1.4, 2026-10-26).
+    Buffer.of(0, 0),
   ]);
   // Canonical mint_v2 account list (mpl-bubblegum's generated instruction,
   // mirrored by chip_core's MintV2CpiBuilder): 13 metas, always. Absent
@@ -214,7 +219,17 @@ export async function sendChipMint(
     collectionAuthority: authority.publicKey,
   });
   const tx = new Transaction().add(ix);
-  await sendAndConfirmTransaction(connection, tx, [authority], { commitment: 'confirmed' });
+  try {
+    await sendAndConfirmTransaction(connection, tx, [authority], { commitment: 'confirmed' });
+  } catch (e) {
+    // SendTransactionError.message is the generic "Simulation failed" — the
+    // program's own reason lives in the attached logs. A mint retry loop
+    // that cannot say WHY it fails is undebuggable (and was, for one run).
+    const logs = (e as { transactionLogs?: string[]; logs?: string[] }).transactionLogs
+      ?? (e as { logs?: string[] }).logs;
+    const tail = logs?.length ? ` | program logs: ${logs.slice(-6).join(' ⏎ ')}` : '';
+    throw new Error(`${(e as Error).message}${tail}`);
+  }
 }
 
 /** Real chain sender: one mint_v2 per tx, signed by payer + tree authority (same key in phase G). */

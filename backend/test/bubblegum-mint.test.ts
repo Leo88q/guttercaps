@@ -58,6 +58,19 @@ describe('metadata + instruction layout (§3.1)', () => {
     expect(ix.data.length).toBeGreaterThan(8);
   });
 
+  it('instruction data ends with the two trailing Option args (asset_data, asset_data_schema = None)', () => {
+    // Ground truth: mpl-bubblegum's generated mintV2 serializer is
+    // disc ‖ metadata ‖ option(assetData) ‖ option(assetDataSchema). The
+    // backend once omitted both option bytes and Anchor arg-decode ran off
+    // the end — the first live devnet mint failed simulation (2026-10-26).
+    const owner = Keypair.generate().publicKey;
+    const ix = mint.buildMintV2Ix({
+      merkleTree: TREE, payer: AUTH.publicKey, treeAuthority: AUTH.publicKey, leafOwner: owner,
+      metadata: mint.chipMetadata(1, 2, 7),
+    });
+    expect(ix.data.subarray(ix.data.length - 2)).toEqual(Buffer.of(0, 0));
+  });
+
   it('with a Core collection: real collection + cpi signer slots, metadata carries it', () => {
     const owner = Keypair.generate().publicKey;
     const core = Keypair.generate().publicKey;
@@ -71,9 +84,11 @@ describe('metadata + instruction layout (§3.1)', () => {
     expect(ix.keys[7].pubkey.equals(core)).toBe(true);
     expect(ix.keys[7].isWritable).toBe(true);
     expect(ix.keys[8].pubkey.equals(mint.MPL_CORE_CPI_SIGNER)).toBe(true);
-    // MetadataArgsV2 ends with Some(collection)
-    expect(ix.data.subarray(ix.data.length - 33, ix.data.length - 32)).toEqual(Buffer.of(1));
-    expect(ix.data.subarray(ix.data.length - 32).equals(Buffer.from(core.toBytes()))).toBe(true);
+    // MetadataArgsV2 carries Some(collection) — followed by the two trailing
+    // None option bytes of the instruction args.
+    expect(ix.data.subarray(ix.data.length - 35, ix.data.length - 34)).toEqual(Buffer.of(1));
+    expect(ix.data.subarray(ix.data.length - 34, ix.data.length - 2).equals(Buffer.from(core.toBytes()))).toBe(true);
+    expect(ix.data.subarray(ix.data.length - 2)).toEqual(Buffer.of(0, 0));
   });
 
   it('nextLeafIndex reads the tree header like das.ts', () => {

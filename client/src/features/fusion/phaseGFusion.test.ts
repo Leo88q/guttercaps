@@ -17,18 +17,21 @@ function proof(): BubblegumProof {
 }
 
 describe('phase-G burn_v2 instruction', () => {
-  it('layout: discriminator, LeafProofArgs order, accounts + proof metas', () => {
+  it('layout: discriminator, SDK arg order, accounts + proof metas', () => {
     const p = proof();
     const payer = Keypair.generate().publicKey;
     const ix = buildBurnV2Ix(p, payer);
     expect(ix.programId.equals(BUBBLEGUM_PROGRAM)).toBe(true);
-    // 8 disc + 5*32 hashes + 1 flags + 8 nonce + 4 index
-    expect(ix.data.length).toBe(8 + 160 + 1 + 8 + 4);
+    // SDK burn_v2 data: 8 disc + 3*32 hashes + Option<assetDataHash> (1+32)
+    // + Option<flags> (1+1) + 8 nonce + 4 index — no collectionHash argument.
+    expect(ix.data.length).toBe(8 + 96 + 33 + 2 + 8 + 4);
     expect(ix.data.subarray(8, 40)).toEqual(Buffer.from(p.root));
-    expect(ix.data.subarray(8 + 128, 8 + 160)).toEqual(Buffer.from(p.assetDataHash));
-    expect(ix.data[8 + 160]).toBe(0);
-    expect(ix.data.readBigUInt64LE(8 + 161)).toBe(42n);
-    expect(ix.data.readUInt32LE(8 + 169)).toBe(7);
+    expect(ix.data[8 + 96]).toBe(1); // assetDataHash: Some
+    expect(ix.data.subarray(8 + 97, 8 + 129)).toEqual(Buffer.from(p.assetDataHash));
+    expect(ix.data[8 + 129]).toBe(1); // flags: Some
+    expect(ix.data[8 + 130]).toBe(0);
+    expect(ix.data.readBigUInt64LE(8 + 131)).toBe(42n);
+    expect(ix.data.readUInt32LE(8 + 139)).toBe(7);
     expect(ix.keys[0].pubkey.equals(treeConfigPda(p.merkleTree))).toBe(true);
     expect(ix.keys[0].isWritable).toBe(true);
     expect(ix.keys[2].pubkey.equals(p.leafOwner)).toBe(true);

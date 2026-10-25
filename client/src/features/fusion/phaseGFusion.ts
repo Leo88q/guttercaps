@@ -25,15 +25,22 @@ export const treeConfigPda = (merkleTree: PublicKey): PublicKey =>
 
 const anchorDisc = (name: string): Buffer => Buffer.from(ixDiscriminator(name));
 
-/** mpl-bubblegum burn_v2: LeafProofArgs order (programs/chip_core bubblegum.rs) + proof metas. */
+/** mpl-bubblegum burn_v2 ix data (mpl-bubblegum generated SDK, getBurnV2InstructionDataSerializer):
+ *  root ‖ dataHash ‖ creatorHash ‖ Option<assetDataHash> ‖ Option<flags> ‖ nonce u64 ‖ index u32.
+ *  There is NO collectionHash argument — the collection rides in the leaf the
+ *  program reconstructs from these fields. The client once serialized the
+ *  chip_core LeafProofArgs hash-layout here instead (bare collectionHash +
+ *  bare flags), which the program cannot decode; caught by the same SDK
+ *  cross-check that fixed mint_v2 (checklist 1.4, 2026-10-26). */
 export function buildBurnV2Ix(proof: BubblegumProof, payer: PublicKey): TransactionInstruction {
   const u64 = Buffer.alloc(8); u64.writeBigUInt64LE(proof.leafNonce);
   const u32 = Buffer.alloc(4); u32.writeUInt32LE(Number(proof.leafIndex));
   const data = Buffer.concat([
     anchorDisc('burn_v2'),
     Buffer.from(proof.root), Buffer.from(proof.dataHash), Buffer.from(proof.creatorHash),
-    Buffer.from(proof.collectionHash), Buffer.from(proof.assetDataHash),
-    Buffer.of(proof.flags), u64, u32,
+    Buffer.of(1), Buffer.from(proof.assetDataHash), // assetDataHash: Some(..)
+    Buffer.of(1, proof.flags), // flags: Some(..)
+    u64, u32,
   ]);
   // Canonical burn_v2 account list (mpl-bubblegum's generated instruction):
   // 12 fixed metas, then the proof nodes. Without a Core collection the two

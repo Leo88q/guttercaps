@@ -53,7 +53,14 @@
   живёт внутри кранка, поэтому заказ висел в `paid`. Скрипт теперь пишет оба
   ключа и чинит старые env-файлы; `launch:check` и прод-конфиг требуют
   `CRANK_KEYPAIR`. Заодно чинен `parseLaunchPhase`: отвергал `v`, и активация
-  фазы В упала бы при буте бэкенда. Осталось: сам smoke до `SMOKE PASSED`.
+  фазы В упала бы при буте бэкенда.
+  Пятый (2026-10-26): минт падал на симуляции — в data `mint_v2` не хватало
+  двух завершающих Option-байт (`asset_data`, `asset_data_schema` = None);
+  сверено с generated SDK (`getMintV2InstructionDataSerializer`), тест запинен.
+  Заодно найден и чинен той же сверкой клиентский `burn_v2`: сериализовался
+  hash-layout `LeafProofArgs` (голый `collectionHash`), а инструкция ждёт
+  `Option<assetDataHash>`/`Option<flags>` без `collectionHash`. Ошибки минта
+  теперь логируют хвосты program logs. Осталось: сам smoke до `SMOKE PASSED`.
 
 ## Фаза 2. Бэкенд: заказы и оплата (ядро фазы Г)
 
