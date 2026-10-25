@@ -54,8 +54,8 @@ export const BUBBLEGUM_V2_ENABLED = (env.BUBBLEGUM_V2_ENABLED ?? '0') === '1';
 export type LaunchPhase = 'full' | 'g' | 'v';
 export function parseLaunchPhase(v: string | undefined): LaunchPhase {
   if (v === undefined || v === '' || v === 'full') return 'full';
-  if (v === 'g') return 'g';
-  throw new Error(`LAUNCH_PHASE must be "full" or "g", got "${v}"`);
+  if (v === 'g' || v === 'v') return v;
+  throw new Error(`LAUNCH_PHASE must be "full", "g" or "v", got "${v}"`);
 }
 export const LAUNCH_PHASE: LaunchPhase = parseLaunchPhase(env.LAUNCH_PHASE);
 
@@ -225,6 +225,7 @@ export function assertProductionConfig(): void {
     if (!SHARED_MERKLE_TREE) problems.push('LAUNCH_PHASE=v requires SHARED_MERKLE_TREE (the phase-G tree carries over)');
     if (!CG_MINT) problems.push('LAUNCH_PHASE=v requires CG_MINT');
     if (!PHASEV_ORACLE_KEYPAIR) problems.push('LAUNCH_PHASE=v requires PHASEV_ORACLE_KEYPAIR (MINT_ORACLE signer)');
+    if (!CRANK_KEYPAIR) problems.push('LAUNCH_PHASE=v requires CRANK_KEYPAIR (the crank worker hosts the phase-V settle-confirm tick)');
     if (!Number.isInteger(PHASEG_FEATURED_COLLECTION) || PHASEG_FEATURED_COLLECTION < 0 || PHASEG_FEATURED_COLLECTION > 7) problems.push('PHASEG_FEATURED_COLLECTION must be 0..7');
   }
   if (LAUNCH_PHASE === 'g') {
@@ -234,6 +235,7 @@ export function assertProductionConfig(): void {
     if (!SHARED_MERKLE_TREE) problems.push('LAUNCH_PHASE=g requires SHARED_MERKLE_TREE (setup-minimal prints it)');
     if (!CG_MINT) problems.push('LAUNCH_PHASE=g requires CG_MINT ($CG pack rail + reward payouts)');
     if (!MINT_AUTHORITY_KEYPAIR) problems.push('LAUNCH_PHASE=g requires MINT_AUTHORITY_KEYPAIR (paid orders would never mint)');
+    if (!CRANK_KEYPAIR) problems.push('LAUNCH_PHASE=g requires CRANK_KEYPAIR (the crank worker hosts the phase-G mint tick — without it paid orders never mint while the API stays green)');
     if (!Number.isInteger(PHASEG_FEATURED_COLLECTION) || PHASEG_FEATURED_COLLECTION < 0 || PHASEG_FEATURED_COLLECTION > 7) problems.push('PHASEG_FEATURED_COLLECTION must be 0..7');
     // A malformed collection address would only surface as a failed mint AFTER payment;
     // fail the boot instead. Empty slots are legal (collection-less mints), malformed are not.

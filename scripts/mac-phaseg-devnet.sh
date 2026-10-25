@@ -27,6 +27,7 @@ run_setup() {
     grep -E '^(CG_MINT|SHARED_MERKLE_TREE|SHARED_TREE_CONFIG|CORE_COLLECTION_[0-7])=' /tmp/phaseg-setup.out
     echo "TREASURY_WALLET=$(ANCHOR_WALLET="$WALLET" node -e "const fs=require('fs');const {Keypair}=require('@solana/web3.js');console.log(Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(process.env.ANCHOR_WALLET,'utf8')))).publicKey.toBase58())")"
     echo "MINT_AUTHORITY_KEYPAIR=$WALLET"
+    echo "CRANK_KEYPAIR=$WALLET"
     echo "SOLANA_RPC_URL=$RPC"
     echo "METAPLEX_DAS_RPC_URL=${METAPLEX_DAS_RPC_URL:-$RPC}"
     echo "SESSION_SECRET=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
@@ -42,8 +43,12 @@ run_backend() {
   # A backend from an earlier run may still hold the port — the health poll
   # would then pass against the WRONG tree/collections. Refuse to guess.
   if curl -sf --max-time 3 "http://127.0.0.1:$PORT/v1/health" > /dev/null 2>&1; then
-    echo "something already serves :$PORT — kill the stale backend first (lsof -i :$PORT)"; exit 1
+    echo "something already serves :$PORT — kill the stale backend first: kill \$(lsof -ti :$PORT)"; exit 1
   fi
+  # Env files written before CRANK_KEYPAIR was included lack the crank key —
+  # the crank worker then crash-loops and paid orders never mint (the API
+  # itself looks healthy, which cost a full devnet run to find). Heal in place.
+  grep -q '^CRANK_KEYPAIR=' "$ENV_FILE" || echo "CRANK_KEYPAIR=$WALLET" >> "$ENV_FILE"
   rm -f "${TMPDIR:-/tmp}/guttercaps-phaseg-devnet.db"
   ( set -a; . "$ENV_FILE"; set +a; cd backend && npm run start ) > /tmp/phaseg-backend.log 2>&1 &
   BACKEND_PID=$!
@@ -66,12 +71,13 @@ run_smoke() {
 
 case "$ONLY" in
   setup) run_setup ;;
-  backend) run_backend; echo "backend running (pid $BACKEND_PID); stop with: kill $BACKEND_PID" ;;
+  backend) run_backend; echo "backend running on :$PORT; stop with: kill \$(lsof -ti :$PORT)" ;;
   smoke) run_smoke ;;
   all)
     [ -f "$ENV_FILE" ] || run_setup
     run_backend
-    trap 'kill $BACKEND_PID 2>/dev/null || true' EXIT
+    # $BACKEND_PID is only the npm wrapper — kill whoever holds the port.
+    trap 'kill $(lsof -ti :$PORT 2>/dev/null) 2>/dev/null || kill $BACKEND_PID 2>/dev/null || true' EXIT
     run_smoke
     echo "== done. Paste the asset id + explorer link into checklist 1.4. =="
     ;;

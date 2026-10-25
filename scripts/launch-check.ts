@@ -35,6 +35,7 @@ export function evaluateLaunch(env: Record<string, string | undefined>): LaunchF
   if (!isPubkey(env.SHARED_MERKLE_TREE)) err('SHARED_MERKLE_TREE must be a valid pubkey (scripts/setup-minimal.ts --execute prints it)');
   if (!isPubkey(env.CG_MINT)) err('CG_MINT must be a valid pubkey ($CG pack rail + staking payouts)');
   if (!env.MINT_AUTHORITY_KEYPAIR) err('MINT_AUTHORITY_KEYPAIR is required (paid orders would never mint; in prod this key lives in KMS)');
+  if (!env.CRANK_KEYPAIR) err('CRANK_KEYPAIR is required (the crank worker hosts the phase-G mint tick — without it the API stays green while paid orders never mint; first live devnet run, 2026-10-25)');
   const featured = Number(env.PHASEG_FEATURED_COLLECTION ?? '0');
   if (!Number.isInteger(featured) || featured < 0 || featured > 7) err('PHASEG_FEATURED_COLLECTION must be an integer 0..7 and match the featured collection of the week');
   const missingCollections: number[] = [];
@@ -76,6 +77,7 @@ function selftest(): void {
     SHARED_MERKLE_TREE: '4hLLPXowUAxC8GTSvUuVtJDLVhphTDzZLBVSJzVKvJYC',
     CG_MINT: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
     MINT_AUTHORITY_KEYPAIR: 'kms://treasury-authority',
+    CRANK_KEYPAIR: '/keys/crank.json',
     PHASEG_FEATURED_COLLECTION: '3',
     SESSION_SECRET: 'x'.repeat(40),
     COOKIE_SECURE: '1',
@@ -97,6 +99,8 @@ function selftest(): void {
   if (empty.errors.length < 8) throw new Error(`selftest: empty env under-flagged (${empty.errors.length})`);
   const mismatched = evaluateLaunch({ ...good, VITE_LAUNCH_PHASE: 'full' });
   if (!mismatched.errors.some((e) => e.includes('VITE_LAUNCH_PHASE'))) throw new Error('selftest: phase mismatch not caught');
+  const noCrank = evaluateLaunch({ ...good, CRANK_KEYPAIR: undefined });
+  if (!noCrank.errors.some((e) => e.includes('CRANK_KEYPAIR'))) throw new Error('selftest: missing crank key not caught');
   const badKey = evaluateLaunch({ ...good, CORE_COLLECTION_2: 'not-a-key' });
   if (!badKey.errors.some((e) => e.includes('CORE_COLLECTION_2'))) throw new Error('selftest: bad collection key not caught');
   console.log('launch-check selftest OK: complete env passes, empty/mismatched/corrupt envs fail');
