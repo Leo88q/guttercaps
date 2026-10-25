@@ -36,8 +36,18 @@
 - ☑ **1.3 Env-выход.** Скрипт печатает готовый блок env для backend/client
   (дерево, минт, коллекции, казна).
   Приёмка: вывод копируется в `.env` без ручных правок.
-- ☐ **1.4 Devnet-прогон** (на машине владельца): дерево и коллекции созданы,
-  тестовый минт cNFT виден в DAS.
+- ☑ **1.4 Devnet-прогон** (на машине владельца): дерево и коллекции созданы,
+  тестовый минт cNFT виден в DAS. **ПРОЙДЕН 2026-10-26, `SMOKE PASSED`:**
+  SIWS → заказ #1 → оплата → кранк заминтил 4 фишки → Verify matches=true.
+  Активы прогона (devnet, RPC — Helius): $CG `UQgAZrXtNH6dYMTiPc7qc2zLtUWJhp1HsCCHcspioxn`,
+  дерево `GSt3NaoGzfZvKL71xnkMnZ1WKik8iBUCbxBQbDMzt9SG`, TreeConfig
+  `wv7WhpgZ8K1DyVjDbq5rhppRg42RzNkj66YxgrA4Yj6`, коллекции 0–7 — в
+  `scripts/.phaseg-devnet.env`. Оплата:
+  https://explorer.solana.com/tx/Bn98mNHM41pZB1WVp2a1WynMide43dJHGMNoQuq9cM5yxpXxRo2jq1jofA7XCZLp53Axyc7X5hKJv7gPX4CFeCW?cluster=devnet
+  Фишки: `7SWTHBQcB9cCBGc79rJZ4qKtiKL33RpqTG86pRPX1TRm`,
+  `BfVFrhs8scmSJwUPh3vJeZogwhPCbHM9pqD3saPwLcpn`,
+  `8BCQcc7QxhMmzrTVExFiwZu4aiRbsyq3w9yhjWaKa7oV`,
+  `5LA6tiwCuQ4D16u3Q7Be7CuaE9H1vB9rxDRVgHJ5j5Ht`.
   Прогон одной командой: `bash scripts/mac-phaseg-devnet.sh` (сетап → бэкенд
   фазы Г → `scripts/phaseg-smoke.ts`: SIWS → заказ → оплата → минт → Verify).
   Приёмка: вывод smoke `SMOKE PASSED` — asset id тестовой фишки + ссылка explorer в задаче.
@@ -60,7 +70,7 @@
   Заодно найден и чинен той же сверкой клиентский `burn_v2`: сериализовался
   hash-layout `LeafProofArgs` (голый `collectionHash`), а инструкция ждёт
   `Option<assetDataHash>`/`Option<flags>` без `collectionHash`. Ошибки минта
-  теперь логируют хвосты program logs. Осталось: сам smoke до `SMOKE PASSED`.
+  теперь логируют хвосты program logs.
 
 ## Фаза 2. Бэкенд: заказы и оплата (ядро фазы Г)
 
