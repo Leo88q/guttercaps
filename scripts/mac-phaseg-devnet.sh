@@ -72,13 +72,15 @@ run_smoke() {
 case "$ONLY" in
   setup) run_setup ;;
   backend) run_backend; echo "backend running on :$PORT; stop with: kill \$(lsof -ti :$PORT)" ;;
-  smoke) run_smoke ;;
+  smoke) run_smoke || { echo "smoke failed — backend crank diagnostics:"; grep -E 'phase-G|phase-g|crank|worker' /tmp/phaseg-backend.log | tail -30; exit 1; } ;;
   all)
     [ -f "$ENV_FILE" ] || run_setup
     run_backend
     # $BACKEND_PID is only the npm wrapper — kill whoever holds the port.
     trap 'kill $(lsof -ti :$PORT 2>/dev/null) 2>/dev/null || kill $BACKEND_PID 2>/dev/null || true' EXIT
-    run_smoke
+    # On failure, print the crank's own words — three live runs were lost to
+    # asking for this log by hand.
+    run_smoke || { echo "smoke failed — backend crank diagnostics:"; grep -E 'phase-G|phase-g|crank|worker' /tmp/phaseg-backend.log | tail -30; exit 1; }
     echo "== done. Paste the asset id + explorer link into checklist 1.4. =="
     ;;
   *) echo "usage: bash scripts/mac-phaseg-devnet.sh [--only setup|backend|smoke]"; exit 1 ;;
