@@ -302,7 +302,7 @@ export default function Arena() {
             const c = squad[i];
             return (
               <div key={i} className="stack-sm center" onClick={() => setPick(true)} style={{ cursor: 'pointer' }}>
-                {c ? <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c)} skin={c.skin} crimp={rarityColor(c.rarity!)} founder={!!c.flags?.founder} /> : <div className="slot squad-slot-empty live-slot" style={{ aspectRatio: 1 }}><span className="squad-slot-plus" aria-hidden="true">+</span></div>}
+                {c ? <ChipArt collection={c.collection!} rarity={c.rarity!} index={c.index} level={c.level} imageUrl={chipImageOf(c)} skin={c.skin} crimp={rarityColor(c.rarity!)} founder={!!c.flags?.founder} /> : <div className="slot squad-slot-empty live-slot" style={{ aspectRatio: 1 }}><img className="slot-art-img" src={`/art/arena/slot-${i + 1}.jpg`} alt="" aria-hidden loading="lazy" decoding="async" /><span className="squad-slot-plus slot-art-plus" aria-hidden="true">+</span></div>}
                 <div className="tiny">{c ? <><ElementGlyph element={ELEMENT_OF_COLLECTION[c.collection!]} /> {chipPower(c.rarity!, c.level!)} {t('ui.power')}</> : t('ui.pick')}</div>
                 {c ? <ChipXpMeter compact level={c.level} rarity={c.rarity!} xp={c.xp} xpToNext={c.xpToNext} maxLevel={c.maxLevel} xpToday={c.xpToday} xpDailyCap={c.xpDailyCap} /> : null}
               </div>

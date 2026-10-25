@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "fingerprint": "1418b0a5ef775dba95802bc3cd21fa609e8f5fc7848e76fabc3a42c9119fb5c2",
+  "fingerprint": "1ba428ddecb2e52795a743e50ce72e3e7ca992b4dbd6570c3c32e328a04878a3",
   "accounts": [
     {
       "program": "arena",
@@ -354,6 +354,73 @@
         "price: u64",
         "currency: Currency",
         "created_at: i64",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "settle",
+      "name": "SettleConfig",
+      "fields": [
+        "admin: Pubkey",
+        "mint_oracle: Pubkey",
+        "root_oracle: Pubkey",
+        "treasury: Pubkey",
+        "cg_mint: Pubkey",
+        "usdc_mint: Pubkey",
+        "emission_minted: u64",
+        "emission_cap: u64",
+        "market_fee_bps: u16",
+        "packs_paused: bool",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "settle",
+      "name": "PackOrder",
+      "fields": [
+        "buyer: Pubkey",
+        "order_id: u64",
+        "currency: u8",
+        "amount: u64",
+        "status: u8",
+        "created_slot: u64",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "settle",
+      "name": "AnchoredRoot",
+      "fields": [
+        "kind: u8",
+        "epoch: u64",
+        "root: [u8; 32]",
+        "total_claimed: u64",
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "settle",
+      "name": "RewardClaimReceipt",
+      "fields": [
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "settle",
+      "name": "GrantReceipt",
+      "fields": [
+        "bump: u8"
+      ]
+    },
+    {
+      "program": "settle",
+      "name": "EscrowListing",
+      "fields": [
+        "seller: Pubkey",
+        "asset: Pubkey",
+        "merkle_tree: Pubkey",
+        "core_collection: Pubkey",
+        "price: u64",
         "bump: u8"
       ]
     },

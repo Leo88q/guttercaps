@@ -401,6 +401,98 @@ CREATE TABLE IF NOT EXISTS preorders (
   granted_at  INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_preorders_wallet ON preorders(wallet);
+-- Phase-G pack orders (docs/MINIMAL-LAUNCH-CHECKLIST.md §2): the server-side
+-- purchase ledger of the zero-custom-program launch. NOT a projection — rows are
+-- created by the API (order + seed commitment), confirmed by payment signature,
+-- and fulfilled by the mint crank writing asset ids back. The seed stays hidden
+-- until status='minted' (commit-reveal: seed_hash is public from creation).
+CREATE TABLE IF NOT EXISTS pack_orders (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,  -- also the payment memo id (GC-ORD|<id>)
+  wallet      TEXT    NOT NULL,
+  sku         INTEGER NOT NULL,
+  qty         INTEGER NOT NULL,
+  currency    TEXT    NOT NULL,                   -- SOL | USDC | CG
+  amount      TEXT    NOT NULL,                   -- native units of the currency, decimal string
+  pay_to      TEXT    NOT NULL,                   -- treasury wallet (SOL) or its ATA (tokens)
+  mint        TEXT,                               -- token mint for USDC/CG, NULL for SOL
+  status      TEXT    NOT NULL DEFAULT 'created', -- created | paid | minted | expired | failed
+  featured_idx INTEGER NOT NULL DEFAULT 0,        -- featured collection snapshot for 'featured'-pool SKUs
+  seed        TEXT    NOT NULL,                   -- server secret until minted
+  seed_hash   TEXT    NOT NULL,                   -- sha256(seed) — public commitment from creation
+  tx_sig      TEXT,
+  settle_sig  TEXT,                               -- phase V: the settle_pack tx that minted this order
+  settle_specs TEXT,                              -- phase V: LeafSpec[] issued at settle-auth (names are the DAS registration key)
+  assets      TEXT,                               -- JSON [{assetId, collectionIdx, rarity, gameIndex}]
+  created_at  INTEGER NOT NULL,
+  paid_at     INTEGER,
+  minted_at   INTEGER,
+  expires_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pack_orders_wallet ON pack_orders(wallet);
+CREATE INDEX IF NOT EXISTS idx_pack_orders_status ON pack_orders(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pack_orders_tx ON pack_orders(tx_sig);
+-- Phase-G fusions (docs/MINIMAL-LAUNCH-CHECKLIST.md §4): burn 3 cNFTs client-side,
+-- the backend verifies burn + $CG fee, rolls the recipe chance from a committed
+-- seed and mints the result (or the fail refund) into the shared tree.
+CREATE TABLE IF NOT EXISTS phaseg_fusions (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,  -- payment memo id (GCF|<id>)
+  wallet        TEXT    NOT NULL,
+  recipe_from   INTEGER NOT NULL,
+  recipe_to     INTEGER NOT NULL,
+  inputs        TEXT    NOT NULL,                   -- JSON [assetId x3]
+  fee_micro     TEXT    NOT NULL,
+  status        TEXT    NOT NULL DEFAULT 'created', -- created | paid | minted
+  seed          TEXT    NOT NULL,
+  seed_hash     TEXT    NOT NULL,
+  burn_sig      TEXT,
+  pay_sig       TEXT,
+  grant_sig     TEXT,                               -- phase V: the grant_mint tx that minted the result
+  grant_specs   TEXT,                               -- phase V: LeafSpec[] issued with the fusion grant
+
+  success       INTEGER,                            -- 1/0 once rolled
+  result_assets TEXT,                               -- JSON [assetId]
+  created_at    INTEGER NOT NULL,
+  minted_at     INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_phaseg_fusions_wallet ON phaseg_fusions(wallet);
+CREATE INDEX IF NOT EXISTS idx_phaseg_fusions_status ON phaseg_fusions(status);
+-- Phase-G soft staking (docs/MINIMAL-LAUNCH-CHECKLIST.md §5): chips keep earning
+-- while the indexer sees them with the staking wallet; claims pay out as plain
+-- $CG treasury transfers with an idempotent payout row per claim.
+CREATE TABLE IF NOT EXISTS phaseg_stakes (
+  asset       TEXT PRIMARY KEY,
+  wallet      TEXT    NOT NULL,
+  staked_at   INTEGER NOT NULL,
+  unstaked_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_phaseg_stakes_wallet ON phaseg_stakes(wallet);
+CREATE TABLE IF NOT EXISTS phaseg_stake_days (
+  day_index INTEGER PRIMARY KEY,
+  budget_micro TEXT NOT NULL,
+  total_weight TEXT NOT NULL,
+  created_at   INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS phaseg_rewards (
+  wallet       TEXT PRIMARY KEY,
+  pending_micro TEXT NOT NULL DEFAULT '0',
+  claimed_micro TEXT NOT NULL DEFAULT '0',
+  updated_at    INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS phaseg_payouts (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  wallet      TEXT    NOT NULL,
+  amount_micro TEXT   NOT NULL,
+  status      TEXT    NOT NULL DEFAULT 'pending',  -- pending | sent
+  tx_sig      TEXT,
+  created_at  INTEGER NOT NULL,
+  sent_at     INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_phaseg_payouts_wallet ON phaseg_payouts(wallet);
+-- Phase-G mint counters: per-collection chip numbering (SYMBOL #n) without a program.
+CREATE TABLE IF NOT EXISTS phaseg_counters (
+  collection_idx INTEGER PRIMARY KEY,
+  minted         INTEGER NOT NULL DEFAULT 0
+);
 CREATE INDEX IF NOT EXISTS idx_preorders_status ON preorders(status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_preorders_tx ON preorders(tx_sig);
 -- Projection of chip_core PackGranted (preorder delivery at mainnet launch).
@@ -1437,6 +1529,12 @@ export class Db {
 
   /** Additive, idempotent column migrations for dev SQLite files created by older builds. */
   private migrate() {
+    const orderCols = new Set((this.raw.prepare('PRAGMA table_info(pack_orders)').all() as { name: string }[]).map((c) => c.name));
+    if (!orderCols.has('settle_sig')) this.raw.exec('ALTER TABLE pack_orders ADD COLUMN settle_sig TEXT');
+    if (!orderCols.has('settle_specs')) this.raw.exec('ALTER TABLE pack_orders ADD COLUMN settle_specs TEXT');
+    const fusionCols = new Set((this.raw.prepare('PRAGMA table_info(phaseg_fusions)').all() as { name: string }[]).map((c) => c.name));
+    if (!fusionCols.has('grant_sig')) this.raw.exec('ALTER TABLE phaseg_fusions ADD COLUMN grant_sig TEXT');
+    if (!fusionCols.has('grant_specs')) this.raw.exec('ALTER TABLE phaseg_fusions ADD COLUMN grant_specs TEXT');
     const privacyCols = new Set((this.raw.prepare('PRAGMA table_info(privacy_restrictions)').all() as { name: string }[]).map(c => c.name));
     if (!privacyCols.has('resumed_at')) this.raw.exec('ALTER TABLE privacy_restrictions ADD COLUMN resumed_at INTEGER');
     const nonces = new Set((this.raw.prepare(`PRAGMA table_info(siws_nonces)`).all() as { name: string }[]).map((c) => c.name));
