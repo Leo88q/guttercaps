@@ -659,72 +659,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/me/rider": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Wear a rider silhouette (docs/16 §4.6) — one of eight district figures plus a rim-light theme
-         * @description The rider is presentation only: no stats, no odds, no income. Two checks, both about the public
-         *     board telling the truth — the silhouette must be one of the eight that exist, and the theme must be
-         *     one the caller has actually paid for (entitlement kind 3). Wearing an unpaid theme is refused
-         *     because the board would then advertise a purchase that never happened.
-         *     Idempotent: repeating the same choice changes nothing.
-         */
-        put: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        /** @description district index — which of the eight figures to wear */
-                        silhouette?: number;
-                        /** @description profile theme id (economy PROFILE_THEMES); null = light the figure in its district colour */
-                        theme?: string | null;
-                    };
-                };
-            };
-            responses: {
-                /** @description the rider as stored */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Rider"];
-                    };
-                };
-                /** @description bad_silhouette — no such figure */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description theme_not_owned — buy the theme in the shop first */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/me/achievements": {
         parameters: {
             query?: never;
@@ -3519,6 +3453,815 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/packs/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Phase-G — create a pack order (seed commitment published before payment)
+         * @description Only when `LAUNCH_PHASE=g` (else 410 `phase_g_off`). Creates an order whose server seed's
+         *     sha256 is returned immediately; the seed itself is revealed only after minting, so anyone can
+         *     recompute the roll from the public journal. Pay the treasury with memo `GC-ORD|<orderId>`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        sku: number;
+                        qty: number;
+                        /** @enum {string} */
+                        currency: "SOL" | "USDC" | "CG";
+                    };
+                };
+            };
+            responses: {
+                /** @description order payment instructions */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PackOrderCreated"];
+                    };
+                };
+                400: components["responses"]["Error"];
+                /** @description sign-in required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description geo_blocked */
+                403: components["responses"]["Error"];
+                /** @description starter_claimed | daily_cap */
+                409: components["responses"]["Error"];
+                /** @description phase_g_off */
+                410: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/packs/order/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Phase-G — order status (seed revealed after minting) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description order */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PackOrder"];
+                    };
+                };
+                /** @description sign-in required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not_yours */
+                403: components["responses"]["Error"];
+                /** @description not_found */
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/packs/order/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Phase-G — submit the payment signature; backend verifies and marks paid */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        signature: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description order */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PackOrder"];
+                    };
+                };
+                /** @description bad_signature */
+                400: components["responses"]["Error"];
+                /** @description sign-in required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not_found | tx_not_found */
+                404: components["responses"]["Error"];
+                /** @description not_payable | already_confirmed | already_minted */
+                409: components["responses"]["Error"];
+                /** @description payment_* */
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/packs/order/{id}/settle-auth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Phase-V — verify the on-chain buy_pack escrow and issue the MINT_ORACLE settle authorization */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            responses: {
+                /** @description settle payload */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SettlePayload"];
+                    };
+                };
+                /** @description sign-in required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not_yours */
+                403: components["responses"]["Error"];
+                /** @description not_found */
+                404: components["responses"]["Error"];
+                /** @description not_paid_onchain | already_settled | already_minted */
+                409: components["responses"]["Error"];
+                /** @description phase_v_off */
+                410: components["responses"]["Error"];
+                /** @description escrow_mismatch */
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/packs/order/{id}/settle-confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Phase-V — submit the settle_pack signature; backend registers the minted chips */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        signature: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description order */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PackOrder"];
+                    };
+                };
+                /** @description sign-in required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not_yours */
+                403: components["responses"]["Error"];
+                /** @description not_found */
+                404: components["responses"]["Error"];
+                /** @description phase_v_off */
+                410: components["responses"]["Error"];
+                /** @description settle_unverified */
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/packs/order/{id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Phase-G — recompute an order's roll from its revealed seed */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description verdict */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PackOrderVerify"];
+                    };
+                };
+                /** @description not_found */
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/packs/mint-journal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Phase-G — public mint journal (order, revealed seed, assets) */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description journal */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            tree?: string | null;
+                            entries?: components["schemas"]["MintJournalEntry"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/fusion/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Phase-G — create a fusion intent (burn 3 chips yourself, pay the $CG fee)
+         * @description Only when `LAUNCH_PHASE=g`. Validates the 3 materials (owner, rarity, collection rule,
+         *     locks) and commits a seed hash for the recipe chance roll. Diamond (7→8) stays on the
+         *     program path. Pay the fee to `payTo` with memo `GCF|<fusionId>`, burn the materials,
+         *     then confirm with both signatures.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        assets: string[];
+                    };
+                };
+            };
+            responses: {
+                /** @description intent */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FusionOrderCreated"];
+                    };
+                };
+                400: components["responses"]["Error"];
+                /** @description sign-in required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not_yours */
+                403: components["responses"]["Error"];
+                /** @description chip_not_found */
+                404: components["responses"]["Error"];
+                /** @description already_burned | chip_locked | chip_busy | already_promised */
+                409: components["responses"]["Error"];
+                /** @description diamond_gate | fusion_unavailable | phase_g_off */
+                410: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/fusion/order/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Phase-G — fusion intent status (seed revealed after minting) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description intent */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FusionOrder"];
+                    };
+                };
+                /** @description sign-in required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not_found */
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/fusion/order/{id}/grant-confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Phase-V — submit the grant_mint signature; backend registers the fusion result */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        signature: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description result */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status?: string;
+                            success?: boolean | null;
+                            resultAssets?: string[] | null;
+                        };
+                    };
+                };
+                /** @description sign-in required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not_yours */
+                403: components["responses"]["Error"];
+                /** @description not_found */
+                404: components["responses"]["Error"];
+                /** @description phase_v_off */
+                410: components["responses"]["Error"];
+                /** @description settle_unverified */
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/fusion/order/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Phase-G — submit burn + fee signatures; backend verifies both, result mints async */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        burnSig: string;
+                        paySig: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description intent */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FusionOrder"];
+                    };
+                };
+                /** @description bad_signature */
+                400: components["responses"]["Error"];
+                /** @description sign-in required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not_found | tx_not_found */
+                404: components["responses"]["Error"];
+                /** @description already_confirmed */
+                409: components["responses"]["Error"];
+                /** @description payment_* | burn_unverified */
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/staking/soft/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Phase-G — my soft stakes, pending/claimed rewards, payouts */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description state */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SoftStakingMe"];
+                    };
+                };
+                /** @description sign-in required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/staking/soft/stake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Phase-G — soft-stake a chip (no custody; ownership-checked accrual) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        asset: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description staked */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            asset?: string;
+                            stakedAt?: number;
+                        };
+                    };
+                };
+                /** @description sign-in required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not_yours */
+                403: components["responses"]["Error"];
+                /** @description chip_not_found */
+                404: components["responses"]["Error"];
+                /** @description already_staked | chip_locked | chip_busy | already_burned */
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/staking/soft/unstake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Phase-G — unstake a chip */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        asset: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description unstaked */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            asset?: string;
+                            unstakedAt?: number;
+                        };
+                    };
+                };
+                /** @description sign-in required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not_staked */
+                404: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/staking/soft/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Phase-G — claim pending rewards (one idempotent payout; crank sends $CG) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description payout */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            payoutId?: number;
+                            amountMicro?: string;
+                            status?: string;
+                        };
+                    };
+                };
+                /** @description sign-in required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description nothing_to_claim */
+                409: components["responses"]["Error"];
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -7506,6 +8249,133 @@ export interface components {
             pAtLeastLegend?: number;
             evPct?: number;
         };
+        PackOrderCreated: {
+            orderId?: number;
+            memo?: string;
+            payTo?: string;
+            payToOwner?: string;
+            mint?: string | null;
+            amount?: string;
+            /** @enum {string} */
+            currency?: "SOL" | "USDC" | "CG";
+            seedHash?: string;
+            expiresAt?: number;
+        };
+        MintedChip: {
+            assetId?: string;
+            collectionIdx?: number;
+            rarity?: number;
+            gameIndex?: number;
+        };
+        PackOrder: {
+            orderId?: number;
+            sku?: number;
+            qty?: number;
+            currency?: string;
+            amount?: string;
+            payTo?: string;
+            mint?: string | null;
+            memo?: string;
+            /** @enum {string} */
+            status?: "created" | "paid" | "minted" | "expired" | "failed";
+            seedHash?: string;
+            seed?: string | null;
+            txSig?: string | null;
+            assets?: components["schemas"]["MintedChip"][] | null;
+            createdAt?: number;
+            expiresAt?: number;
+            mintedAt?: number | null;
+        };
+        /** @description Phase-V oracle authorization — the client builds the Ed25519 + settle_pack (or grant_mint) instructions from it */
+        SettlePayload: {
+            program?: string;
+            oracle?: string;
+            config?: string;
+            treeAuth?: string;
+            tree?: string;
+            treeConfig?: string;
+            orderPda?: string | null;
+            grantReceipt?: string | null;
+            status?: string;
+            auth?: {
+                wallet?: string;
+                orderId?: string;
+                specsHash?: string;
+                nonce?: string;
+                expiresAtSlot?: string;
+            };
+            signature?: string;
+            specs?: {
+                collection?: string;
+                name?: string;
+                symbol?: string;
+                uri?: string;
+                collectionIdx?: number;
+                rarity?: number;
+                gameIndex?: number;
+            }[];
+        };
+        PackOrderVerify: {
+            orderId?: number;
+            matches?: boolean;
+            rarities?: number[];
+            collections?: number[];
+            assets?: components["schemas"]["MintedChip"][];
+        };
+        MintJournalEntry: {
+            orderId?: number;
+            wallet?: string;
+            sku?: number;
+            qty?: number;
+            seedHash?: string;
+            seed?: string;
+            assets?: components["schemas"]["MintedChip"][];
+            txSig?: string | null;
+            mintedAt?: number | null;
+        };
+        FusionOrderCreated: {
+            fusionId?: number;
+            memo?: string;
+            payTo?: string;
+            payToOwner?: string;
+            mint?: string | null;
+            feeMicro?: string;
+            seedHash?: string;
+            from?: number;
+            to?: number;
+        };
+        FusionOrder: {
+            fusionId?: number;
+            from?: number;
+            to?: number;
+            inputs?: string[];
+            feeMicro?: string;
+            grant?: components["schemas"]["SettlePayload"];
+            memo?: string;
+            /** @enum {string} */
+            status?: "created" | "paid" | "minted";
+            seedHash?: string;
+            seed?: string | null;
+            success?: boolean | null;
+            resultAssets?: string[] | null;
+            resultLockUntil?: number | null;
+            createdAt?: number;
+            mintedAt?: number | null;
+        };
+        SoftStakingMe: {
+            staked?: {
+                asset?: string;
+                stakedAt?: number;
+            }[];
+            pendingMicro?: string;
+            claimedMicro?: string;
+            payouts?: {
+                id?: number;
+                amount_micro?: string;
+                status?: string;
+                tx_sig?: string | null;
+            }[];
+        };
         PreorderCampaign: {
             /** @description campaign switched on AND treasury configured AND at least one offer remains */
             active: boolean;
@@ -8066,17 +8936,6 @@ export interface components {
                 mySlot?: number | null;
             } | null;
         };
-        /**
-         * @description docs/16 §4.6 — the rider: one of eight district silhouettes, lit in the colour of a profile theme
-         *     the owner actually paid for. Presentation only, no stats. Shown on the public board (§4.5), which
-         *     is the point: cosmetics are bought to be seen.
-         *     `theme` comes back null when the cosmetic is not (or no longer) paid for — the board then lights the
-         *     figure in its district colour instead of advertising a purchase that lapsed.
-         */
-        Rider: {
-            silhouette?: number;
-            theme?: string | null;
-        };
         AchievementList: {
             items?: components["schemas"]["Achievement"][];
         };
@@ -8361,7 +9220,6 @@ export interface components {
         RigView: {
             wallet?: string;
             board?: components["schemas"]["BoardLoadout"];
-            rider?: components["schemas"]["Rider"];
             /** @description owner has switched the public board on (§4.5) */
             public?: boolean;
             /**

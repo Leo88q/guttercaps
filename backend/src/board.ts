@@ -229,5 +229,57 @@ export function grantWeeklyRunPart(db: Db, wallet: string, tier: string, t = now
   return { part, district };
 }
 
+/**
+ * Награда Floodgrid (с 2026-10-19 заезды убраны из продукта, доски остались
+ * коллекцией): сектор, завершённый на 2+ звезды, раз в неделю даёт
+ * недостающую часть района недели. Порог по звёздам — аналог бывшего
+ * silver-порога заезда: «просто доехал» частью не платится. Таблица
+ * board_run_grants переиспользована как реестр недельных выдач (PK
+ * wallet+week), чтобы старые заездные выдачи и новые не задвоились.
+ */
+export function grantWeeklyGridPart(db: Db, wallet: string, stars: number, t = now()): { part: string; district: number } | null {
+  if (stars < 2) return null;
+  const week = weekIndex(t);
+  const district = boardDistrictOfWeek(week);
+  const missing = missingOfDistrict(db, wallet, district);
+  if (missing.length === 0) return null;
+  const part = `${missing[0]}_d${district}`;
+  const info = db.run(insertIgnore('board_run_grants', ['wallet', 'week', 'part', 'granted_at']), wallet, week, part, t);
+  if (!Number(info.changes)) return null;
+  grantPart(db, wallet, part, 'grid', t);
+  return { part, district };
+}
+
+/**
+ * Районная часть за мастерство (2026-10-19): первый сектор, пройденный на 3★
+ * фишкой района D, даёт следующую недостающую часть именно этого района.
+ * Район выбирает игрок — какой фишкой идёт по секторам, — поэтому траки,
+ * колёса и грип добываются целенаправленно, а не только каплей «части недели».
+ * Срабатывает на росте best_stars до 3 (prevBest < 3): повторный 3★-проход
+ * того же сектора той же фишкой часть не дублирует.
+ */
+export function grantDistrictGridPart(db: Db, wallet: string, district: number, stars: number, prevBest: number, t = now()): { part: string; district: number } | null {
+  if (stars < 3 || prevBest >= 3) return null;
+  const missing = missingOfDistrict(db, wallet, district);
+  if (missing.length === 0) return null;
+  const part = `${missing[0]}_d${district}`;
+  grantPart(db, wallet, part, 'grid', t);
+  return { part, district };
+}
+
+/**
+ * Трофеи Deep Flood (2026-10-19): победа в Deep в пределах бюджета даёт
+ * городские трофейные части — сначала деку, второй победой грип. Раньше это
+ * был приз турнира Линии; турнир убран, трофей переехал в самое глубокое
+ * место Floodgrid. По одной части за победу, дальше — только почёт.
+ */
+export function grantDeepTrophyPart(db: Db, wallet: string, t = now()): { part: string } | null {
+  const owned = new Set(ownedParts(db, wallet).map((p) => p.part));
+  const part = !owned.has('deck_trophy') ? 'deck_trophy' : !owned.has('grip_trophy') ? 'grip_trophy' : null;
+  if (!part) return null;
+  grantPart(db, wallet, part, 'deep', t);
+  return { part };
+}
+
 /** Все части каталога — витрина конструктора; клиент показывает, какие есть. */
 export const BOARD_CATALOGUE = BOARD_PARTS;

@@ -17,6 +17,8 @@ export interface BubblegumProof {
   assetId: PublicKey;
   leafOwner: PublicKey;
   leafDelegate: PublicKey;
+  /** MPL Core collection from the DAS grouping, when the leaf belongs to one. */
+  collection?: PublicKey;
   merkleTree: PublicKey;
   root: Uint8Array;
   dataHash: Uint8Array;
