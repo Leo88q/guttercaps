@@ -9,6 +9,7 @@
 // атрибутов, всё остальное выбрасывается. Порядок элементов — порядок мазков,
 // поэтому таймлапс и правда повторяет, как тег рисовался.
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { api } from '@/api/client';
 
 const ALLOWED_TAGS = new Set(['path', 'image']);
 const ALLOWED_ATTRS: Record<string, Set<string>> = {
@@ -141,6 +142,48 @@ export function TagTimeLapse({ svg, className = '', play = true, runId = 0, onDo
 
   if (!safe) return null;
   return <span ref={host} className={`tag-timelapse ${className}`} dangerouslySetInnerHTML={{ __html: safe }} />;
+}
+
+/**
+ * SVG тега по его id — через API-слой (`api.get('/tags/{id}')`), а не сырым
+ * fetch на `/v1/tags/…/svg`. Разница видна в демо-режиме: `<img src>` и голый
+ * fetch идут мимо in-browser mock напрямую в выключенный бэкенд, и стена
+ * показывала битую иконку вместо рисунка (жалоба 2026-10-17). Через api тег
+ * одинаково отдаётся и бэкендом, и моком.
+ */
+export function useTagSvgById(id: string | undefined): { svg: string | null } {
+  const [svg, setSvg] = useState<string | null>(null);
+  useEffect(() => {
+    setSvg(null);
+    if (!id) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const tag = await api.get('/tags/{id}', { path: { id } });
+        const text = (tag as { svg?: unknown } | null)?.svg;
+        if (alive && typeof text === 'string' && text.startsWith('<')) setSvg(text);
+      } catch { /* нет тега — останется заглушка, а не битая картинка */ }
+    })();
+    return () => { alive = false; };
+  }, [id]);
+  return { svg };
+}
+
+/**
+ * Миниатюра тега: санитизированный inline-SVG. Раньше здесь был
+ * `<img src="/v1/tags/…/svg">` — в демо он битый, потому что запрос не проходит
+ * через mock. Пока SVG не пришёл (или тег снят), показываем пустой слот,
+ * а не иконку битой картинки.
+ */
+export function TagThumb({ id, className = '', style }: { id: string | undefined; className?: string; style?: React.CSSProperties }) {
+  const { svg } = useTagSvgById(id);
+  const safe = useMemo(() => (svg ? sanitizeInlineSvg(svg) : ''), [svg]);
+  if (!safe) return <span className={`tag-thumb-empty ${className}`} style={style} aria-hidden />;
+  return (
+    <span className={`tag-timelapse tag-thumb ${className}`} style={style} aria-hidden>
+      <span dangerouslySetInnerHTML={{ __html: safe }} style={{ display: 'contents' }} />
+    </span>
+  );
 }
 
 /** Текст тега для таймлапса. Тег отдаётся как картинка, поэтому тянем его как текст. */
