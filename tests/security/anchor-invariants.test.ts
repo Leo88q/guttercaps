@@ -20,7 +20,7 @@ import {
 } from './lib/rust-scan.ts';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const PROGRAMS = ['chip_core', 'market', 'staking', 'arena'] as const;
+const PROGRAMS = ['chip_core', 'market', 'staking', 'arena', 'settle'] as const;
 const files: SourceFile[] = loadSources(REPO, [...PROGRAMS]);
 const structs: AccountsStruct[] = files.flatMap(parseAccountsStructs);
 const fns: FnItem[] = files.flatMap(parseFns);

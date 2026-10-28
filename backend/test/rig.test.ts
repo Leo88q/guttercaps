@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { Keypair } from '@solana/web3.js';
 import { Db, now } from '../src/db.ts';
 import { ServiceError } from '../src/services.ts';
-import { RIDER_SILHOUETTES, RIG_SLOTS, RIG_UNLOCK, ownedCaps, ownedThemes, publicRig, riderOf, rigView, setRider, setRig, setRigPublic } from '../src/rig.ts';
+import { RIG_SLOTS, RIG_UNLOCK, ownedCaps, publicRig, rigView, setRig, setRigPublic } from '../src/rig.ts';
 
 const kp = () => Keypair.generate().publicKey.toBase58();
 const fails = (fn: () => unknown, code: string) => {
@@ -44,76 +44,6 @@ function seedTheme(db: Db, wallet: string, theme: string | null, expired = false
   );
 }
 
-describe('rig — райдер (docs/16 §4.6)', () => {
-  it('по умолчанию это первый район и подсветка своим цветом', () => {
-    const db = new Db(':memory:');
-    const w = kp();
-    expect(rigView(db, w).rider).toEqual({ silhouette: 0, theme: null });
-    expect(riderOf(db, w).theme).toBeNull();
-  });
-
-  it('силуэтов восемь, девятого не существует', () => {
-    const db = new Db(':memory:');
-    const w = kp();
-    expect(setRider(db, w, { silhouette: RIDER_SILHOUETTES - 1 }).silhouette).toBe(RIDER_SILHOUETTES - 1);
-    fails(() => setRider(db, w, { silhouette: RIDER_SILHOUETTES }), 'bad_silhouette');
-    fails(() => setRider(db, w, { silhouette: -1 }), 'bad_silhouette');
-    fails(() => setRider(db, w, { silhouette: 1.5 }), 'bad_silhouette');
-  });
-
-  it('надеть некупленную косметику нельзя: витрина не должна врать о покупке', () => {
-    const db = new Db(':memory:');
-    const w = kp();
-    fails(() => setRider(db, w, { theme: 'cyan' }), 'theme_not_owned');
-    seedTheme(db, w, 'cyan');
-    expect(ownedThemes(db, w)).toEqual(['cyan']);
-    expect(setRider(db, w, { theme: 'cyan' })).toEqual({ silhouette: 0, theme: 'cyan' });
-    // грант без темы (старая выдача) открывает все обычные темы, но не эксклюзивные
-    const legacy = kp();
-    seedTheme(db, legacy, null);
-    expect(ownedThemes(db, legacy)).not.toContain('collector-heart');
-    expect(ownedThemes(db, legacy).length).toBeGreaterThan(1);
-  });
-
-  it('истёкшая аренда снимает косметику сама, без обработчика', () => {
-    const db = new Db(':memory:');
-    const w = kp();
-    seedTheme(db, w, 'acid', true);
-    expect(ownedThemes(db, w)).toEqual([]);
-    fails(() => setRider(db, w, { theme: 'acid' }), 'theme_not_owned');
-    expect(riderOf(db, w).theme).toBeNull();
-  });
-
-  it('силуэт и тема живут рядом: смена одного не сбрасывает другое', () => {
-    const db = new Db(':memory:');
-    const w = kp();
-    seedTheme(db, w, 'magenta');
-    setRider(db, w, { silhouette: 4, theme: 'magenta' });
-    expect(setRider(db, w, { silhouette: 2 })).toEqual({ silhouette: 2, theme: 'magenta' });
-    // запись идемпотентна: повтор того же выбора — тот же результат
-    expect(setRider(db, w, { silhouette: 2, theme: 'magenta' })).toEqual({ silhouette: 2, theme: 'magenta' });
-    expect(setRider(db, w, { theme: null })).toEqual({ silhouette: 2, theme: null });
-  });
-
-  it('райдер — часть витрины: виден другим, но только когда показ включён', () => {
-    const db = new Db(':memory:');
-    const w = kp();
-    seedTheme(db, w, 'cyan');
-    setRider(db, w, { silhouette: 6, theme: 'cyan' });
-    fails(() => publicRig(db, w), 'rig_private');
-    setRigPublic(db, w, true);
-    expect(publicRig(db, w).rider).toEqual({ silhouette: 6, theme: 'cyan' });
-  });
-
-  it('выбор райдера оставляет след: событие пишется самой записью', () => {
-    const db = new Db(':memory:');
-    const w = kp();
-    setRider(db, w, { silhouette: 3 });
-    const ev = db.all<{ feature: string; kind: string; meta: string }>(`SELECT feature, kind, meta FROM feature_events WHERE wallet = ? ORDER BY id`, w);
-    expect(ev.map((e) => `${e.feature}.${e.kind}`)).toEqual(['rider.set']);
-    expect(JSON.parse(ev[0]!.meta ?? '{}')).toEqual({ silhouette: 3, theme: null });
-  });
-});
 
 describe('rig — экспозиция крышек', () => {
   it('открывает слоты коллекцией, а не покупкой', () => {

@@ -66,6 +66,11 @@ describe('Bubblegum DAS normalization', () => {
     expect(() => normalizeDasAsset({ ...rawAsset(), compression: { compressed: false } })).toThrowError(DasError);
   });
 
+  it('surfaces the DAS burnt marker (burnt assets stay queryable, flagged)', () => {
+    expect(normalizeDasAsset(rawAsset()).burnt).toBe(false);
+    expect(normalizeDasAsset(rawAsset({ burnt: true })).burnt).toBe(true);
+  });
+
   it('fails closed when asset and proof refer to different trees', () => {
     expect(() => combineDasAssetProof(rawAsset(), rawProof({ tree_id: key() }))).toThrowError(/tree/);
   });
@@ -107,7 +112,7 @@ describe('local V2 leaf verification (mpl-bubblegum@2.1.1 LeafSchema::V2::to_nod
     const root = rootOverride ?? foldCompressionProof(leaf, 5n, siblings.map((s) => Uint8Array.from(s.toBytes())));
     return {
       asset: {
-        assetId, interface: 'MplBubblegum', owner: o, delegate: o, frozen: false, merkleTree: new PublicKey(h(9)), leafId: 5n,
+        assetId, interface: 'MplBubblegum', owner: o, delegate: o, frozen: false, burnt: false, merkleTree: new PublicKey(h(9)), leafId: 5n,
         sequence: undefined, dataHash: preimage.dataHash, creatorHash: preimage.creatorHash, collectionHash: preimage.collectionHash,
         assetDataHash: preimage.assetDataHash, flags: 0, jsonUri: undefined, raw: {} as never,
       },
