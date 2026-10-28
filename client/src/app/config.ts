@@ -52,9 +52,15 @@ export const FLAGS = {
   debugPanel: bool(env.VITE_FLAG_DEBUG_PANEL, env.DEV),
   /** Use the deterministic in-browser mock API instead of the backend. Auto-enabled in dev when /v1/health is unreachable. */
   apiMock: bool(env.VITE_API_MOCK),
+  /** Launch phase (docs/MINIMAL-LAUNCH-CHECKLIST.md §0): 'g' = phased zero-program launch UX. Default 'full' — current behaviour. */
+  launchPhase: (env.VITE_LAUNCH_PHASE === 'g' ? 'g' : env.VITE_LAUNCH_PHASE === 'v' ? 'v' : 'full') as 'full' | 'g' | 'v',
 } as const;
 
 export const ONRAMP_URL: string = env.VITE_ONRAMP_URL ?? 'https://buy.moonpay.com/?defaultCurrencyCode=sol';
+
+/** Public Solana dApp Store listing URL. Empty until the listing is live;
+ *  the 'Rate the game' entry renders only when this is set (no dead buttons). */
+export const DAPP_STORE_URL: string = env.VITE_DAPP_STORE_URL ?? '';
 
 // Program ids — placeholders until `anchor keys sync` (see programs/README.md).
 export const PROGRAM_IDS = {
@@ -62,6 +68,7 @@ export const PROGRAM_IDS = {
   market: pk(env.VITE_PROGRAM_MARKET, '5skEmmhgFYn5xjHEdrcsiQ68kUg5kvhXKhjWTWSppjfo'),
   staking: pk(env.VITE_PROGRAM_STAKING, 'Ewkbp7WpqbiJAu3ofEcTPinqnr5oH3e94YJDZFg1eSJn'),
   arena: pk(env.VITE_PROGRAM_ARENA, 'DUTokrhWBYL7nJ9VbMy7bFELQFf8TN1tmvVpKLsskqD6'),
+  settle: pk(env.VITE_PROGRAM_SETTLE, 'B9ousNDpe29G45KFHyndvHXpLigBtxCh9xbboWuCeXyP'),
 } as const;
 
 export const MINTS = {

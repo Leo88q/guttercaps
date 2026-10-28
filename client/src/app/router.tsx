@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ReactNode } from 'react';
 import { createBrowserRouter, Navigate, Outlet, useLocation, type RouteObject } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { isDemo } from '@/api/client';
 import { Shell } from './layout/Shell';
 import { Skeleton } from '@/shared/ui/primitives';
 import { RouteError } from './RouteError';
@@ -19,7 +20,6 @@ const TagEditorRoute = lazy(() => import('@/features/bowl/TagEditor').then((m) =
 // только когда игрок пришёл на конкретную стену.
 const Wall = lazy(() => import('@/features/bowl/Wall'));
 const Board = lazy(() => import('@/features/bowl/Board'));
-const Line = lazy(() => import('@/features/bowl/Line'));
 const Rig = lazy(() => import('@/features/bowl/Rig'));
 // Команды (docs/16 §5.6): ленивый роут — имя, состав и командная доска нужны
 // только тем, кто дошёл до чаши.
@@ -68,7 +68,8 @@ function RequireWallet({ children }: { children: ReactNode }) {
   const { connected, connecting } = useWallet();
   const loc = useLocation();
   if (connecting) return <Fallback />;
-  if (!connected) return <Navigate to={`/?connect=1&next=${encodeURIComponent(loc.pathname + loc.search + loc.hash)}`} replace />;
+  // Guest demo runs on the mock API without a wallet — let it through.
+  if (!connected && !isDemo()) return <Navigate to={`/?connect=1&next=${encodeURIComponent(loc.pathname + loc.search + loc.hash)}`} replace />;
   return <>{children}</>;
 }
 
@@ -87,7 +88,7 @@ export const routes: RouteObject[] = [
       { path: 'bowl/tag', element: S(<TagEditorRoute />) },
       { path: 'bowl/wall/:district', element: S(<Wall />) },
       { path: 'bowl/board', element: S(<Board />) }, // доска недели (docs/16 §3.7): жеребьёвка, а не рейтинг
-      { path: 'bowl/line', element: W(<Line />) }, // линия (docs/16 §5.1): чаша дня, три бесплатных заезда
+      // Скейт-заездов больше нет (2026-10-19): доски коллекционируют через Floodgrid.
       // Команда (docs/16 §5.6): своя — под кошелём, чужая карточка — публична,
       // потому что имя и состав команды не секрет (секретен только код приглашения).
       { path: 'bowl/crew', element: W(<Crew />) },

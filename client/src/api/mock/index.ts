@@ -218,7 +218,7 @@ on('post', '/grid/complete', (o) => {
   for (const [i, d] of b.turns) applyRotate(lv, i, d);
   const r = mockRoute(a.asset);
   if (a.mode === 'ghost') { const beaten = isSolved(lv) && b.turns.length <= lv.parMoves; let hintGranted = 0; const day = Math.floor(Date.now() / 86_400_000); if (beaten && mockGhostBeatenDay !== day) { mockGhostBeatenDay = day; hintGranted = mockGridHints < 10 ? 1 : 0; mockGridHints += hintGranted; } return { ok: isSolved(lv), training: false, kind: 'ghost', beaten, stars: 0, xpGranted: 0, xpPending: 0, hintGranted }; }
-  if (a.mode === 'contract' || a.mode === 'deep') { const solved = isSolved(lv); const stars: number = solved ? gridStarsForMoves(b.turns.length, lv.parMoves) : 0; if (a.mode === 'contract' && solved && stars >= 2) { r.chargeProgress += 1; while (r.chargeProgress >= 5 && r.chargeDrops < 3) { r.chargeDrops += 1; r.chargeProgress -= 5; } } return { ok: solved && stars > 0, training: false, kind: a.mode, stars, xpGranted: 0, xpPending: 0, dropletGained: false, gifts: [] }; }
+  if (a.mode === 'contract' || a.mode === 'deep') { const solved = isSolved(lv); const stars: number = solved ? gridStarsForMoves(b.turns.length, lv.parMoves) : 0; if (a.mode === 'contract' && solved && stars >= 2) { r.chargeProgress += 1; while (r.chargeProgress >= 5 && r.chargeDrops < 3) { r.chargeDrops += 1; r.chargeProgress -= 5; } } let deepPart: string | null = null; if (a.mode === 'deep' && solved) { deepPart = !mockBoardParts.has('deck_trophy') ? giveMockPart('deck_trophy', 'deep') : !mockBoardParts.has('grip_trophy') ? giveMockPart('grip_trophy', 'deep') : null; } return { ok: solved && stars > 0, training: false, kind: a.mode, stars, xpGranted: 0, xpPending: 0, dropletGained: false, gifts: [], boardPart: deepPart }; }
   if (a.mode === 'training') return { ok: isSolved(lv), training: true, stars: 0, xpGranted: 0, xpPending: 0 };
   if (!isSolved(lv)) return { ok: false, xpLoss: b.useValve ? 0 : GRID_RULES.failXp, emergencyGranted: false };
   let stars: number = gridStarsForMoves(b.turns.length, lv.parMoves);
@@ -228,7 +228,28 @@ on('post', '/grid/complete', (o) => {
   const due = Math.max(0, gridXpForStars(a.level, stars) - (prev?.xp_accounted ?? 0));
   r.claims.set(a.level, { best_stars: Math.max(prev?.best_stars ?? 0, stars), xp_accounted: (prev?.xp_accounted ?? 0) + due });
   if (!prev && a.level === r.nextLevel) r.nextLevel = Math.min(GRID_RULES.totalLevels + 1, r.nextLevel + 1);
-  return { ok: true, training: false, stars, xpGranted: due, xpPending: 0, dropletGained: false, gifts: [] };
+  // Доски через Floodgrid (2026-10-19): сектор на 2+ звезды раз в неделю даёт
+  // недостающую часть района недели — как серверный grantWeeklyGridPart.
+  let boardPart: string | null = null;
+  if (stars >= 2 && !mockBoardWeekGranted.has(String(mockBoardWeek()))) {
+    const district = boardDistrictOfWeek(mockBoardWeek());
+    const missingSlot = BOARD_SET_SLOTS.find((slot) => !mockBoardParts.has(`${slot}_d${district}`));
+    if (missingSlot) {
+      boardPart = giveMockPart(`${missingSlot}_d${district}`, 'grid');
+      mockBoardWeekGranted.add(String(mockBoardWeek()));
+    }
+  }
+  // Первый 3★-сектор фишкой района даёт часть именно этого района
+  // (серверный grantDistrictGridPart): район выбирает игрок своей фишкой.
+  if (!boardPart && stars >= 3 && (prev?.best_stars ?? 0) < 3) {
+    const chip = chips.find((c) => c.asset === a.asset);
+    const d = chip?.collection;
+    if (typeof d === 'number') {
+      const missingSlot = BOARD_SET_SLOTS.find((slot) => !mockBoardParts.has(`${slot}_d${d}`));
+      if (missingSlot) boardPart = giveMockPart(`${missingSlot}_d${d}`, 'grid');
+    }
+  }
+  return { ok: true, training: false, stars, xpGranted: due, xpPending: 0, dropletGained: false, gifts: [], boardPart };
 });
 on('post', '/grid/fail', (o) => {
   const b = (o.body ?? {}) as { attemptId: string; useValve?: boolean };
@@ -262,7 +283,7 @@ const entitlements: { id: string; kind: number; payload: Record<string, unknown>
 ];
 on('get', '/me/services', () => ({ entitlements, dailyLeft: { '7': 3, '0': 1, '1': 1 } }));
 on('get', '/services', () => ({
-  services: SERVICES.map((sv) => ({ id: sv.id, kind: sv.kind, name: sv.name, priceUsdCents: sv.priceUsdCents, dailyCap: sv.dailyCap, recurring: sv.recurring, quotes: {
+  services: SERVICES.filter((sv) => !sv.retired).map((sv) => ({ id: sv.id, kind: sv.kind, name: sv.name, priceUsdCents: sv.priceUsdCents, dailyCap: sv.dailyCap, recurring: sv.recurring, quotes: {
     SOL: String(solLamportsForUsdCents(sv.priceUsdCents)), USDC: String(usdcMicroForUsdCents(sv.priceUsdCents)), CG: String(sv.priceUsdCents * 1_000_000), SKR: String(skrMicroForUsdCents(sv.priceUsdCents)),
   } })),
   solUsd: SOL_USD, skrUsd: SKR_USD,
@@ -491,9 +512,7 @@ const rigCaps = (wallet = ME) => {
   return [...byKey.values()];
 };
 /** Райдер (§4.6) в моке: такой же объект, что отдаёт бэкенд. */
-let mockRider = { silhouette: 0, theme: null as string | null };
 /** Чужой райдер детерминирован по адресу: витрина одного кошелька всегда одна и та же. */
-const riderOfWallet = (wallet: string) => ({ silhouette: [...wallet].reduce((a, ch) => (a + ch.charCodeAt(0)) % 8, 0), theme: null as string | null });
 
 const rigView = (wallet = ME) => {
   const caps = rigCaps(wallet);
@@ -509,7 +528,7 @@ const rigView = (wallet = ME) => {
   });
   const locked = slots.find((s) => !s.unlocked);
   return {
-    wallet, rider: wallet === ME ? mockRider : riderOfWallet(wallet), public: wallet === ME ? mockRigPublic : true,
+    wallet, public: wallet === ME ? mockRigPublic : true,
     // Чужая витрина показывает три крышки на доске, а не всю коллекцию.
     caps: wallet === ME ? caps : [],
     slots, next: locked ? { slot: locked.slot, need: locked.unlockAt - caps.length } : null,
@@ -531,24 +550,6 @@ on('put', '/rig', (o) => {
   if (typeof b.public === 'boolean') mockRigPublic = b.public;
   return rigView(ME);
 });
-on('put', '/me/rider', (o) => {
-  const b = (o.body ?? {}) as { silhouette?: number; theme?: string | null };
-  if (b.silhouette !== undefined) {
-    const n = Number(b.silhouette);
-    if (!Number.isInteger(n) || n < 0 || n > 7) throw new ApiError(400, 'bad_silhouette', 'silhouette must be 0..7');
-    mockRider = { ...mockRider, silhouette: n };
-  }
-  if (b.theme !== undefined) {
-    if (b.theme === null || b.theme === '') mockRider = { ...mockRider, theme: null };
-    else {
-      // Ровно та проверка, что на сервере: надеть можно только оплаченную тему.
-      const owned = entitlements.filter((e) => e.kind === 3).map((e) => String((e.payload as { theme?: unknown })?.theme ?? ''));
-      if (!owned.includes(String(b.theme))) throw new ApiError(403, 'theme_not_owned', 'Buy this theme in the shop before wearing it');
-      mockRider = { ...mockRider, theme: String(b.theme) };
-    }
-  }
-  return mockRider;
-});
 // --------------------------------------------------- конструктор доски (docs/16 §4.2)
 // Мок повторяет три правила бэкенда: доска никогда не пустая (сток закрывает
 // все шесть слотов), надеть можно только добытое, а выдача за заезд закрывает
@@ -561,8 +562,8 @@ const mockBoardWeek = () => Math.floor(Date.now() / 1000 / (7 * 86_400));
  *  но и «всё уже собрано» он тоже не показывает (собирать должно быть что). */
 const seedMockBoard = () => {
   const prev = boardDistrictOfWeek(mockBoardWeek() - 1);
-  mockBoardParts.set(`deck_d${prev}`, { qty: 1, source: 'run', createdAt: Date.now() / 1000 - 9 * 86_400 });
-  mockBoardParts.set(`wheels_d${prev}`, { qty: 1, source: 'run', createdAt: Date.now() / 1000 - 8 * 86_400 });
+  mockBoardParts.set(`deck_d${prev}`, { qty: 1, source: 'grid', createdAt: Date.now() / 1000 - 9 * 86_400 });
+  mockBoardParts.set(`wheels_d${prev}`, { qty: 1, source: 'grid', createdAt: Date.now() / 1000 - 8 * 86_400 });
   mockBoardParts.set('bolts_acid', { qty: 1, source: 'shop', createdAt: Date.now() / 1000 - 3 * 86_400 });
   mockBoardParts.set('sticker_moth', { qty: 1, source: 'achievement', createdAt: Date.now() / 1000 - 2 * 86_400 });
   // Деку прошлой недели надеваем сразу: экран открывается собранным, а не с
@@ -585,6 +586,14 @@ const boardLoadoutOf = () => {
   }
   return { ...out, set: boardSetDistrict(out) };
 };
+
+
+/** Выдача части доски в моке: тот же инвариант, что серверный grantPart. */
+function giveMockPart(part: string, source: string): string {
+  const cur = mockBoardParts.get(part);
+  mockBoardParts.set(part, { qty: Math.min(3, (cur?.qty ?? 0) + 1), source, createdAt: Date.now() / 1000 });
+  return part;
+}
 
 const boardViewOf = () => {
   const district = boardDistrictOfWeek(mockBoardWeek());
@@ -1590,6 +1599,90 @@ export async function mockRequest(method: string, path: string, opts: RequestOpt
   }
   throw Object.assign(new Error(`mock: no route ${method.toUpperCase()} ${p}`), { status: 404 });
 }
+
+// ------------------------------------------------------------- phase-G launch simulator
+// The mock stands in for the phase-G backend: an order is created with a seed
+// commitment, 'confirm' marks it paid, and the next polls 'mint' it — the same
+// states the real backend walks through, nothing hidden.
+interface MockOrder { id: number; sku: number; qty: number; currency: string; status: string; polls: number; assets: { assetId: string; collectionIdx: number; rarity: number; gameIndex: number }[] }
+const mockOrders = new Map<number, MockOrder>();
+let mockOrderSeq = 1000;
+const MOCK_TREASURY = 'MockTreasury1111111111111111111111111111111';
+on('post', '/packs/order', (o) => {
+  const b = (o.body ?? {}) as { sku: number; qty: number; currency: string };
+  const id = ++mockOrderSeq;
+  mockOrders.set(id, { id, sku: b.sku, qty: b.qty, currency: b.currency, status: 'created', polls: 0, assets: [] });
+  return { orderId: id, memo: `GC-ORD|${id}`, payTo: MOCK_TREASURY, payToOwner: MOCK_TREASURY, mint: null, amount: '54454545', currency: b.currency, seedHash: 'ab'.repeat(32), expiresAt: Math.floor(Date.now() / 1000) + 1800 };
+});
+on('post', '/packs/order/{id}/confirm', (_o, p) => {
+  const m = mockOrders.get(Number(p.id));
+  if (!m) throw new ApiError(404, 'not_found', 'Unknown order');
+  m.status = 'paid';
+  return mockOrderView(m);
+});
+function mockOrderView(m: MockOrder) {
+  if (m.status === 'paid' && ++m.polls >= 2) {
+    m.status = 'minted';
+    const roll = mockRoll(m.sku, m.qty).flat();
+    m.assets = roll.map((r, i) => ({ assetId: `mockAsset${m.id}x${i}`, collectionIdx: r.collection, rarity: r.rarity, gameIndex: i + 1 }));
+  }
+  return {
+    orderId: m.id, sku: m.sku, qty: m.qty, currency: m.currency, amount: '54454545', payTo: MOCK_TREASURY, mint: null,
+    memo: `GC-ORD|${m.id}`, status: m.status, seedHash: 'ab'.repeat(32), seed: m.status === 'minted' ? 'cd'.repeat(32) : null,
+    txSig: 'mock-payment', assets: m.status === 'minted' ? m.assets : null,
+    createdAt: Math.floor(Date.now() / 1000), expiresAt: Math.floor(Date.now() / 1000) + 1800, mintedAt: m.status === 'minted' ? Math.floor(Date.now() / 1000) : null,
+  };
+}
+on('get', '/packs/order/{id}', (_o, p) => {
+  const m = mockOrders.get(Number(p.id));
+  if (!m) throw new ApiError(404, 'not_found', 'Unknown order');
+  return mockOrderView(m);
+});
+on('get', '/packs/order/{id}/verify', (_o, p) => {
+  const m = mockOrders.get(Number(p.id));
+  if (!m || m.status !== 'minted') throw new ApiError(404, 'not_found', 'Unknown or unminted order');
+  return { orderId: m.id, matches: true, rarities: m.assets.map((a) => a.rarity), collections: m.assets.map((a) => a.collectionIdx), assets: m.assets };
+});
+on('get', '/packs/mint-journal', () => ({
+  tree: null,
+  entries: [...mockOrders.values()].filter((m) => m.status === 'minted').map((m) => ({
+    orderId: m.id, wallet: ME, sku: m.sku, qty: m.qty, seedHash: 'ab'.repeat(32), seed: 'cd'.repeat(32), assets: m.assets, txSig: 'mock-payment', mintedAt: Math.floor(Date.now() / 1000),
+  })),
+}));
+interface MockFusion { id: number; inputs: string[]; status: string; polls: number; resultAssets: string[] }
+const mockFusions = new Map<number, MockFusion>();
+let mockFusionSeq = 2000;
+function mockFusionView(f: MockFusion) {
+  if (f.status === 'paid' && ++f.polls >= 2) { f.status = 'minted'; f.resultAssets = [`mockFusionResult${f.id}`]; }
+  return {
+    fusionId: f.id, from: 0, to: 1, inputs: f.inputs, feeMicro: '25000000', memo: `GCF|${f.id}`, status: f.status,
+    seedHash: 'ab'.repeat(32), seed: f.status === 'minted' ? 'cd'.repeat(32) : null,
+    success: f.status === 'minted' ? true : null, resultAssets: f.status === 'minted' ? f.resultAssets : null,
+    resultLockUntil: null, createdAt: Math.floor(Date.now() / 1000), mintedAt: f.status === 'minted' ? Math.floor(Date.now() / 1000) : null,
+  };
+}
+on('post', '/fusion/order', (o) => {
+  const assets = ((o.body as { assets?: string[] })?.assets ?? []).map(String);
+  const id = ++mockFusionSeq;
+  mockFusions.set(id, { id, inputs: assets, status: 'created', polls: 0, resultAssets: [] });
+  return { fusionId: id, memo: `GCF|${id}`, payTo: MOCK_TREASURY, payToOwner: MOCK_TREASURY, mint: 'MockCGMint1111111111111111111111111111111111', feeMicro: '25000000', seedHash: 'ab'.repeat(32), from: 0, to: 1 };
+});
+on('post', '/fusion/order/{id}/confirm', (_o, p) => {
+  const f = mockFusions.get(Number(p.id));
+  if (!f) throw new ApiError(404, 'not_found', 'Unknown fusion intent');
+  f.status = 'paid';
+  return mockFusionView(f);
+});
+on('get', '/fusion/order/{id}', (_o, p) => {
+  const f = mockFusions.get(Number(p.id));
+  if (!f) throw new ApiError(404, 'not_found', 'Unknown fusion intent');
+  return mockFusionView(f);
+});
+const mockSoftStakes = new Set<string>();
+on('post', '/staking/soft/stake', (o) => { const a = String((o.body as { asset?: string })?.asset ?? ''); mockSoftStakes.add(a); return { asset: a, stakedAt: Math.floor(Date.now() / 1000) }; });
+on('post', '/staking/soft/unstake', (o) => { const a = String((o.body as { asset?: string })?.asset ?? ''); mockSoftStakes.delete(a); return { asset: a, unstakedAt: Math.floor(Date.now() / 1000) }; });
+on('get', '/staking/soft/me', () => ({ staked: [...mockSoftStakes].map((asset) => ({ asset, stakedAt: Math.floor(Date.now() / 1000) })), pendingMicro: '125000000', claimedMicro: '0', payouts: [] }));
+on('post', '/staking/soft/claim', () => ({ payoutId: 1, amountMicro: '125000000', status: 'sent' }));
 
 /** Used by the mock pack flow to fabricate a believable result. */
 export function mockRoll(sku: number, qty: number) {

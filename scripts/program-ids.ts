@@ -24,7 +24,7 @@ import { pathToFileURL } from 'node:url';
 import { Keypair, PublicKey } from '@solana/web3.js';
 
 const root = resolve(import.meta.dirname, '..');
-const PROGRAMS = ['chip_core', 'market', 'staking', 'arena'] as const;
+const PROGRAMS = ['chip_core', 'market', 'staking', 'arena', 'settle'] as const;
 type ProgramName = (typeof PROGRAMS)[number];
 
 /** The freeze record: written by `manifest` at the ceremony, committed with the deploy, and read by every
@@ -54,7 +54,7 @@ const ID_RE = '[1-9A-HJ-NP-Za-km-z]{32,44}';
 
 /** `declare_id!` per program — the anchor-side truth that everything else has to agree with. */
 function declaredIds(): Record<ProgramName, string> {
-  const file: Record<string, string> = { chip_core: 'programs/chip_core/src/lib.rs', market: 'programs/market/src/lib.rs', staking: 'programs/staking/src/lib.rs', arena: 'programs/arena/src/lib.rs' };
+  const file: Record<string, string> = { chip_core: 'programs/chip_core/src/lib.rs', market: 'programs/market/src/lib.rs', staking: 'programs/staking/src/lib.rs', arena: 'programs/arena/src/lib.rs' , settle: 'programs/settle/src/lib.rs' };
   return Object.fromEntries(PROGRAMS.map((p) => {
     const m = new RegExp(`declare_id!\\("(${ID_RE})"\\)`).exec(read(file[p]));
     if (!m) throw new Error(`no declare_id! in ${file[p]}`);
@@ -71,7 +71,7 @@ function anchorIds(cluster: 'localnet' | 'devnet' | 'mainnet'): Record<string, s
     if (/^\[programs\./.test(l)) { inside = l.trim() === `[programs.${cluster}]`; continue; }
     if (inside && /^\[/.test(l)) break;
     if (!inside) continue;
-    const m = /^\s*(chip_core|market|staking|arena)\s*=\s*"([1-9A-HJ-NP-Za-km-z]{32,44})"/.exec(l);
+    const m = /^\s*(chip_core|market|staking|arena|settle)\s*=\s*"([1-9A-HJ-NP-Za-km-z]{32,44})"/.exec(l);
     if (m) out[m[1]] = m[2];
   }
   return out;
@@ -80,8 +80,8 @@ function anchorIds(cluster: 'localnet' | 'devnet' | 'mainnet'): Record<string, s
 /** Default program ids the client / backend / CI use when no env override is set. */
 function siteIds(): { site: string; name: string; id: string }[] {
   const out: { site: string; name: string; id: string }[] = [];
-  const camel: Record<string, string> = { chip_core: 'chipCore', market: 'market', staking: 'staking', arena: 'arena' };
-  const envName: Record<string, string> = { chip_core: 'CHIP_CORE', market: 'MARKET', staking: 'STAKING', arena: 'ARENA' };
+  const camel: Record<string, string> = { chip_core: 'chipCore', market: 'market', staking: 'staking', arena: 'arena', settle: 'settle' };
+  const envName: Record<string, string> = { chip_core: 'CHIP_CORE', market: 'MARKET', staking: 'STAKING', arena: 'ARENA', settle: 'SETTLE' };
   for (const p of PROGRAMS) {
     const client = new RegExp(`${camel[p]}: pk\\(env\\.VITE_PROGRAM_${envName[p]}, '(${ID_RE})'\\)`).exec(read('client/src/app/config.ts'))?.[1];
     if (client) out.push({ site: 'client/src/app/config.ts', name: p, id: client });
