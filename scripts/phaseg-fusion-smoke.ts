@@ -177,6 +177,25 @@ async function getAssetWithProof(assetId: string): Promise<BurnProof> {
   };
 }
 
+/**
+ * DAS indexes a fresh mint seconds-to-a-minute after the crank's tx lands;
+ * until then getAsset answers RecordNotFound. That is lag, not absence -
+ * wait it out (live finding 2026-10-26: burn #1 died on exactly this, three
+ * quick retries were not enough for Helius devnet indexing).
+ */
+async function getAssetWithProofIndexed(assetId: string, timeoutMs = 180_000): Promise<BurnProof> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      return await getAssetWithProof(assetId);
+    } catch (e) {
+      const msg = (e as Error)?.message ?? String(e);
+      if (!/not found|recordnotfound/i.test(msg) || Date.now() >= deadline) throw e;
+      await sleep(5000);
+    }
+  }
+}
+
 // Canopy shape from the live tree account (same header layout the client's
 // readConcurrentTree parses: capacity u32 @2, depth u32 @6; the canopy trails
 // the changelog + rightmost proof as (2^(c+1) - 2) nodes). DAS serves the
@@ -502,7 +521,7 @@ async function main(): Promise<void> {
     let lastErr: unknown;
     for (let attempt = 0; attempt < 3 && !assetBurnSig; attempt++) {
       try {
-        const proof = await getAssetWithProof(assetId);
+        const proof = await getAssetWithProofIndexed(assetId);
         if (proof.burnt) fail(`${assetId} is already burnt`);
         if (!proof.leafOwner.equals(kp.publicKey)) fail(`${assetId} is owned by ${proof.leafOwner.toBase58()}, not the smoke wallet`);
         let shape = canopyCache.get(proof.merkleTree.toBase58());
