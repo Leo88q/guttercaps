@@ -10,6 +10,13 @@ import type { Connection } from '@solana/web3.js';
 import cors from 'cors';
 import { base58Decode, base58Encode, isSolanaAddress } from './base58.ts';
 import { CORS_ORIGINS, CORS_ALLOW_CREDENTIALS, WS_PATH, EVENT_BUS, REDIS_URL, TRUST_PROXY_HOPS, assertProductionConfig } from './config.ts';
+import { LAUNCH_PHASE, SHARED_MERKLE_TREE } from './config.ts';
+import * as packOrders from './pack-orders.ts';
+import * as phasegFusion from './phaseg-fusion.ts';
+import * as phasegStaking from './phaseg-staking.ts';
+import * as phasev from './phasev.ts';
+import { DasClient } from './das.ts';
+import { DAS_RPC_URL, DAS_TIMEOUT_MS } from './config.ts';
 import { bus } from './bus.ts';
 import { wsConfigFromEnv } from './ws.ts';
 import { readBackupStatus } from './backup-status.ts';
@@ -529,12 +536,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     const b = req.body as { handle: string; signature: string };
     res.json(claimHandle(db, req.session!.wallet, String(b.handle ?? ''), String(b.signature ?? '')));
   });
-  // §4.6 Райдер: силуэт района + цвет подсветки из оплаченной косметики. Никаких
-  // характеристик — это образ, который видят другие на витрине.
-  v1.put('/me/rider', requireAuth, rl(POLICIES.mutate), (req, res) => {
-    const b = req.body as { silhouette?: unknown; theme?: unknown };
-    res.json(rig.setRider(db, req.session!.wallet, { silhouette: b.silhouette, theme: b.theme }));
-  });
+  // Райдер удалён из продукта (2026-10-19): витрина показывает доску и крышки.
   v1.get('/me/services', requireAuth, (req, res) => { res.json(myServices(db, req.session!.wallet)); });
   // Достижения (docs/16 §4.7): прогресс считается из существующих данных, а
   // выдача — косметикой или предметом, никогда не $CG.
@@ -616,6 +618,110 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     if (!r) { res.status(404).json({ code: 'not_found', message: 'Unknown signature' }); return; }
     res.json(r);
   });
+
+  // ------------------------------------------------------------ phase-G pack orders (docs/MINIMAL-LAUNCH-CHECKLIST.md §2–3)
+  // Only live when LAUNCH_PHASE=g; in the default 'full' phase these answer 410 and the
+  // program flow above is the only purchase path. The mint crank lives in crank.ts.
+  const phaseG = () => { if (LAUNCH_PHASE === 'full') throw new ServiceError(410, 'phase_g_off', 'Phased-launch orders are not enabled on this backend'); };
+  const phaseV = () => { if (LAUNCH_PHASE !== 'v') throw new ServiceError(410, 'phase_v_off', 'Phase-V settle is not enabled on this backend'); };
+  v1.post('/packs/order', requireAuth, accessGate('packs'), rl(POLICIES.mutate), wrap(async (req, res) => {
+    phaseG();
+    const geo = geoOf(req.headers);
+    if (geo.restricted) throw new ServiceError(403, 'geo_blocked', 'Randomised packs are not available in your region.', { country: geo.country, mode: geo.mode });
+    res.set('Cache-Control', 'no-store');
+    res.json(packOrders.createOrder(db, req.session!.wallet, req.body));
+  }));
+  v1.get('/packs/order/:id', requireAuth, (req, res) => {
+    phaseG();
+    res.json(packOrders.getOrder(db, req.session!.wallet, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0));
+  });
+  v1.post('/packs/order/:id/confirm', requireAuth, accessGate('packs'), rl(POLICIES.claim), wrap(async (req, res) => {
+    phaseG();
+    const signature = String(req.body?.signature ?? '');
+    if (signature.length < 32) throw new ServiceError(400, 'bad_signature', 'signature is required');
+    res.json(await packOrders.confirmOrder(db, req.session!.wallet, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0, signature, packOrders.orderPaymentFetcher(connection())));
+  }));
+  v1.get('/packs/mint-journal', (req, res) => {
+    phaseG();
+    res.json({ entries: packOrders.mintJournal(db, intQuery(req.query.limit, { name: 'limit', min: 1, max: 500, def: 100 }) ?? 100), tree: SHARED_MERKLE_TREE || null });
+  });
+  v1.get('/packs/order/:id/verify', (req, res) => {
+    phaseG();
+    const r = packOrders.verifyOrder(db, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0);
+    if (!r) { res.status(404).json({ code: 'not_found', message: 'Unknown or unminted order' }); return; }
+    res.json(r);
+  });
+
+  // ------------------------------------------------------------ phase-V settle (§3 of the phased plan)
+  // buy_pack escrow lives on-chain; the backend only authorizes (oracle) and registers.
+  v1.post('/packs/order/:id/settle-auth', requireAuth, accessGate('packs'), rl(POLICIES.claim), wrap(async (req, res) => {
+    phaseV();
+    res.json(await phasev.settleAuthForOrder(db, req.session!.wallet, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0, { connection: connection() }));
+  }));
+  v1.post('/packs/order/:id/settle-confirm', requireAuth, accessGate('packs'), rl(POLICIES.claim), wrap(async (req, res) => {
+    phaseV();
+    res.json(await phasev.confirmSettle(db, req.session!.wallet, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0, String(req.body?.signature ?? ''), { connection: connection() }));
+  }));
+
+  // ------------------------------------------------------------ phase-G fusion (§4)
+  const dasBurnVerifier = async (assetIds: string[]): Promise<boolean> => {
+    const das = new DasClient({ endpoint: DAS_RPC_URL, timeoutMs: DAS_TIMEOUT_MS });
+    for (const a of assetIds) {
+      const local = db.get<{ burned_at: number | null }>(`SELECT burned_at FROM chips WHERE asset = ?`, a);
+      if (local?.burned_at !== null && local?.burned_at !== undefined) continue; // indexer already saw the burn
+      try {
+        const asset = await das.getAsset(a);
+        // DAS keeps burnt assets queryable with `burnt: true` instead of
+        // erroring (live finding 2026-10-26: three on-chain burns verified
+        // on-chain but this check read them as alive forever). Only a live,
+        // unflagged asset means "not burned (yet)".
+        if (!asset.burnt) return false;
+      } catch { /* gone from DAS → burned */ }
+    }
+    return true;
+  };
+  v1.post('/fusion/order', requireAuth, accessGate('packs'), rl(POLICIES.mutate), wrap(async (req, res) => {
+    phaseG();
+    res.json(phasegFusion.createFusion(db, req.session!.wallet, req.body?.assets));
+  }));
+  v1.get('/fusion/order/:id', requireAuth, wrap(async (req, res) => {
+    phaseG();
+    const view = phasegFusion.getFusion(db, req.session!.wallet, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0);
+    if (LAUNCH_PHASE === 'v' && view.status === 'paid') {
+      res.json({ ...view, grant: await phasev.fusionGrantFor(db, req.session!.wallet, view.fusionId, { connection: connection() }) });
+      return;
+    }
+    res.json(view);
+  }));
+  v1.post('/fusion/order/:id/grant-confirm', requireAuth, accessGate('packs'), rl(POLICIES.claim), wrap(async (req, res) => {
+    phaseV();
+    res.json(await phasev.confirmFusionGrant(db, req.session!.wallet, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0, String(req.body?.signature ?? ''), { connection: connection() }));
+  }));
+  v1.post('/fusion/order/:id/confirm', requireAuth, accessGate('packs'), rl(POLICIES.claim), wrap(async (req, res) => {
+    phaseG();
+    res.json(await phasegFusion.confirmFusion(db, req.session!.wallet, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0, req.body ?? {}, {
+      fetchPayment: packOrders.orderPaymentFetcher(connection()),
+      verifyBurned: dasBurnVerifier,
+    }));
+  }));
+
+  // ------------------------------------------------------------ phase-G soft staking (§5)
+  v1.post('/staking/soft/stake', requireAuth, rl(POLICIES.mutate), wrap(async (req, res) => {
+    phaseG();
+    res.json(phasegStaking.stakeChip(db, req.session!.wallet, String(req.body?.asset ?? '')));
+  }));
+  v1.post('/staking/soft/unstake', requireAuth, rl(POLICIES.mutate), wrap(async (req, res) => {
+    phaseG();
+    res.json(phasegStaking.unstakeChip(db, req.session!.wallet, String(req.body?.asset ?? '')));
+  }));
+  v1.get('/staking/soft/me', requireAuth, (req, res) => {
+    phaseG();
+    res.json(phasegStaking.stakingMe(db, req.session!.wallet));
+  });
+  v1.post('/staking/soft/claim', requireAuth, rl(POLICIES.claim), wrap(async (req, res) => {
+    phaseG();
+    res.json(phasegStaking.claimRewards(db, req.session!.wallet));
+  }));
 
   // ------------------------------------------------------------ beta pre-sale (docs/preorder-beta.md)
   // Money lands in the Squads treasury on MAINNET while the game beta runs; packs are granted

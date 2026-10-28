@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Keypair } from '@solana/web3.js';
 import { keccak_256 } from '@noble/hashes/sha3';
-import { deriveBubblegumLeafAssetId, deriveBubblegumLeafAssetIdU32, foldCompressionProof, leafAssetIdCandidates, resolveRegisteredLeafFromTreeAccount, v2LeafHash } from './bubblegum';
+import { canopyDepthFromTreeData, deriveBubblegumLeafAssetId, deriveBubblegumLeafAssetIdU32, foldCompressionProof, leafAssetIdCandidates, resolveRegisteredLeafFromTreeAccount, trimProofForCanopy, v2LeafHash } from './bubblegum';
 
 // Independently materialize every tree level after appends AND replacements. ChangeLog.path
 // contains the changed branch, whereas rightmost_proof contains siblings. Both are real CMT layout.
@@ -99,5 +99,30 @@ describe('leaf asset id seed width', () => {
       expect(c.fromIndexU32.equals(four)).toBe(true);
       expect(c.fromNonce.equals(eight)).toBe(true);
     }
+  });
+});
+
+describe('canopy trim for DAS proofs (live burn tx-size fix, 2026-10-26)', () => {
+  // Synthetic account bytes in the exact layout readConcurrentTree parses:
+  // header @2 capacity, @6 depth; canopy trails the changelog + rightmost proof.
+  const treeData = (depth: number, capacity: number, canopyDepth: number): Uint8Array => {
+    const stride = 40 + 32 * depth;
+    const end = 56 + 24 + capacity * stride + 32 * depth + 40;
+    const data = new Uint8Array(end + (canopyDepth === 0 ? 0 : 2 ** (canopyDepth + 1) - 2) * 32);
+    const dv = new DataView(data.buffer);
+    dv.setUint32(2, capacity, true); dv.setUint32(6, depth, true);
+    return data;
+  };
+  it('derives depth/canopy from the tree account (production tree: 20/64/3)', () => {
+    expect(canopyDepthFromTreeData(treeData(20, 64, 3))).toEqual({ maxDepth: 20, canopyDepth: 3 });
+    expect(canopyDepthFromTreeData(treeData(20, 64, 0))).toEqual({ maxDepth: 20, canopyDepth: 0 });
+    expect(canopyDepthFromTreeData(treeData(14, 8, 5))).toEqual({ maxDepth: 14, canopyDepth: 5 });
+    expect(() => canopyDepthFromTreeData(new Uint8Array(10))).toThrow(/layout/);
+  });
+  it('trims the root-adjacent tail DAS repeats from the canopy', () => {
+    const proof = Array.from({ length: 20 }, (_, i) => i);
+    expect(trimProofForCanopy(proof, 20, 3)).toEqual(proof.slice(0, 17));
+    expect(trimProofForCanopy(proof, 20, 0)).toEqual(proof);
+    expect(trimProofForCanopy(proof.slice(0, 17), 20, 3)).toEqual(proof.slice(0, 17)); // already truncated: no-op
   });
 });

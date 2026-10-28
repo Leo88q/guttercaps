@@ -83,7 +83,10 @@ export function chipToApi(r: ChipRow, grid?: { nextLevel: number; chargeDrops: n
     level: r.level,
     index: chipIndexOf(r.game_index),
     flags: { staked: (r.flags & 1) !== 0, listed: (r.flags & 2) !== 0, fusing: (r.flags & 4) !== 0, soulbound: (r.flags & 8) !== 0, founder: (r.flags & 16) !== 0 },
-    lockUntil: r.lock_until > 0 ? iso(r.lock_until) : null,
+    // An expired fusion result-lock is no lock at all: reporting the stale
+    // timestamp made every consumer that trusts the field (fusion bench)
+    // hide the chip forever. The chain keeps the old value until thaw.
+    lockUntil: r.lock_until > Math.floor(Date.now() / 1000) ? iso(r.lock_until) : null,
     skin: r.skin ?? null,
     power: Math.round(p.basePower * lm),
     stakeWeight: String(Math.round(p.stakeWeight * lm * aliveStakeMult(r.last_played ?? 0) * 1000)),
