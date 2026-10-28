@@ -17,6 +17,8 @@ export interface BubblegumProof {
   assetId: PublicKey;
   leafOwner: PublicKey;
   leafDelegate: PublicKey;
+  /** MPL Core collection from the DAS grouping, when the leaf belongs to one. */
+  collection?: PublicKey;
   merkleTree: PublicKey;
   root: Uint8Array;
   dataHash: Uint8Array;
@@ -184,6 +186,37 @@ function readConcurrentTree(data: Uint8Array) {
   const rightmostIndex = dv.getUint32(rmBase + 32 * (maxDepth + 1), true);
   const rightmostProof = Array.from({ length: maxDepth }, (_, level) => data.slice(rmBase + level * 32, rmBase + (level + 1) * 32));
   return { maxDepth, logs, rightmostIndex, rightmostProof, canopy: data.subarray(end), root: logs[0].root };
+}
+
+/**
+ * Canopy shape of a live tree account, from the header + account length only
+ * (no changelog parsing): the canopy occupies the trailing
+ * (2^(canopyDepth+1) − 2) nodes. DAS serves the FULL depth-long proof path,
+ * but the top `canopyDepth` nodes already live in the tree account — passing
+ * them as remaining accounts both overflows the 1232-byte transaction limit
+ * (a depth-20/canopy-3 burn measured 1249 B live, 2026-10-26) and duplicates
+ * what the compression program reads from the canopy.
+ */
+export function canopyDepthFromTreeData(data: Uint8Array): { maxDepth: number; canopyDepth: number } {
+  if (data.length < CMT_HEADER_SIZE + 24) throw new Error('Invalid ConcurrentMerkleTree account layout');
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const maxBufferSize = dv.getUint32(2, true), maxDepth = dv.getUint32(6, true);
+  const stride = 40 + 32 * maxDepth;
+  const end = CMT_HEADER_SIZE + 24 + maxBufferSize * stride + 32 * maxDepth + 40;
+  const canopyBytes = data.length - end;
+  if (!maxDepth || maxDepth > 30 || !maxBufferSize || canopyBytes < 0 || canopyBytes % 32 !== 0) {
+    throw new Error('Invalid ConcurrentMerkleTree account layout');
+  }
+  const nodes = canopyBytes / 32;
+  const canopyDepth = Math.round(Math.log2(nodes + 2)) - 1;
+  if (canopyDepth < 0 || 2 ** (canopyDepth + 1) - 2 !== nodes) throw new Error('Invalid canopy size in ConcurrentMerkleTree account');
+  return { maxDepth, canopyDepth };
+}
+
+/** Drop the DAS proof nodes already stored in the tree canopy (root-adjacent tail). */
+export function trimProofForCanopy<T>(proof: readonly T[], maxDepth: number, canopyDepth: number): T[] {
+  const keep = Math.max(0, maxDepth - canopyDepth);
+  return proof.length > keep ? proof.slice(0, keep) : [...proof];
 }
 
 /**

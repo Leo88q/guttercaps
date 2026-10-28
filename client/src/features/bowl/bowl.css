@@ -28,17 +28,6 @@
   animation: bowl-drift-far 26s ease-in-out infinite alternate;
 }
 
-.bowl-hero-near {
-  position: absolute;
-  right: 7%;
-  bottom: 0;
-  height: 88%;
-  width: auto;
-  object-fit: contain;
-  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.6));
-  animation: bowl-drift-near 18s ease-in-out infinite alternate;
-}
-
 @keyframes bowl-drift-far {
   from { transform: translate3d(-1.5%, 0, 0) scale(1.02); }
   to   { transform: translate3d(1.5%, 0, 0) scale(1.06); }
@@ -52,11 +41,7 @@
 .reduced-motion .bowl-hero-far,
 .reduced-motion .bowl-hero-near,
 .bowl-still .bowl-hero-far,
-.bowl-still .bowl-hero-near {
-  animation: none;
-}
-
-/* ── Конструктор доски ─────────────────────────────────────────────────────
+.bowl-still /* ── Конструктор доски ─────────────────────────────────────────────────────
  * Спрайты приходят в разных пропорциях (дека 1024×589, колёса 900×214),
  * поэтому каждый слой позиционируется своей полосой, а не общим центром:
  * колёса снизу, траки над ними, дека сверху, грип — подложкой под декой.
@@ -88,40 +73,6 @@
 .bowl-board-part.is-off {
   opacity: 0;
   transform: scale(0.96);
-}
-
-/* ── Выбор райдера ─────────────────────────────────────────────────────────── */
-.bowl-riders {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 4px;
-}
-
-.bowl-rider {
-  flex: 0 0 auto;
-  width: 62px;
-  height: 62px;
-  padding: 4px;
-  border-radius: 10px;
-  border: 1px solid #2a2833;
-  background: #1d1b23;
-  cursor: pointer;
-}
-
-.bowl-rider img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-.bowl-rider.is-on {
-  border-color: var(--cg-neon-magenta);
-}
-
-.bowl-rider:focus-visible {
-  outline: 2px solid var(--cg-neon-cyan);
-  outline-offset: 2px;
 }
 
 /* ── Ниша экспозиции ───────────────────────────────────────────────────────── */
@@ -166,5 +117,4 @@
 /* На Seeker (412 px) герой не должен съедать пол-экрана. */
 @media (max-width: 480px) {
   .bowl-hero { height: 168px; }
-  .bowl-rider { width: 54px; height: 54px; }
 }

@@ -206,7 +206,7 @@ const hex = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, '
 export const fromHex = (h: string): Uint8Array => Uint8Array.from(h.match(/.{1,2}/g) ?? [], (x) => parseInt(x, 16));
 
 // discriminator (hex) → spec, per program (two programs could in theory share an event name)
-const TABLE: Record<ProgramName, Map<string, EventSpec>> = { chip_core: new Map(), market: new Map(), staking: new Map(), arena: new Map() };
+const TABLE: Record<ProgramName, Map<string, EventSpec>> = { chip_core: new Map(), market: new Map(), staking: new Map(), arena: new Map(), settle: new Map() };
 for (const s of EVENT_SPECS) for (const p of [s.program, ...(s.alsoFrom ?? [])]) TABLE[p].set(hex(eventDiscriminator(s.name)), s);
 export const SPEC_BY_NAME = new Map(EVENT_SPECS.map((s) => [s.name, s]));
 
