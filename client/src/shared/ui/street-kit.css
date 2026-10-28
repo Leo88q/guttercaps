@@ -56,7 +56,7 @@
   background-repeat:no-repeat}
 
 /* ---------- БЕЙДЖ: пятно краски (добавьте .st-drip — потечёт) ---------- */
-.st-sticker{position:relative;isolation:isolate;display:inline-block;padding:9px 22px;rotate:-2deg;--p:var(--st-accent);
+.st-sticker{position:relative;isolation:isolate;display:inline-block;padding:9px 22px;rotate:-2deg;--p:var(--st-accent);background:var(--st-accent);border-radius:30px 18px 34px 20px/22px 30px 20px 32px;
   font-family:var(--st-display);text-transform:uppercase;letter-spacing:.06em;color:var(--st-ink)}
 .st-sticker::before{content:"";position:absolute;inset:-3px -7px;z-index:-1;border-radius:30px 18px 34px 20px/22px 30px 20px 32px;filter:url(#st-spray);
   background:radial-gradient(ellipse 70% 90% at 30% 35%,rgba(255,255,255,.4),transparent 60%),var(--st-accent);
@@ -70,7 +70,7 @@
 
 /* ---------- КНОПКИ: пятно краски неровной плотности + потёки ---------- */
 .st-btn{--b:var(--st-pink);--p:var(--b);position:relative;isolation:isolate;display:inline-flex;align-items:center;justify-content:center;
-  min-height:52px;padding:.75em 1.9em;border:0;background:none;cursor:pointer;color:var(--st-ink);
+  min-height:52px;padding:.75em 1.9em;border:0;background:var(--b);border-radius:22px 40px 24px 44px/40px 26px 44px 28px;cursor:pointer;color:var(--st-ink);
   font:400 1.1rem/1 var(--st-display);letter-spacing:.07em;text-transform:uppercase;text-shadow:0 0 6px rgba(255,255,255,.35);transition:transform .15s ease}
 .st-btn::before{content:"";position:absolute;inset:-2px -5px;z-index:-1;border-radius:22px 40px 24px 44px/40px 26px 44px 28px;filter:url(#st-spray);
   background:radial-gradient(ellipse 70% 90% at 30% 35%,rgba(255,255,255,.38),transparent 60%),radial-gradient(ellipse at 85% 92%,rgba(0,0,0,.24),transparent 55%),var(--b);
@@ -89,6 +89,9 @@
 .st-btn--pill::after{display:none}
 .st-btn--pill[aria-pressed="true"]{color:var(--st-ink);text-shadow:none}
 .st-btn--pill[aria-pressed="true"]::before{background:var(--b);box-shadow:0 0 16px color-mix(in srgb,var(--b) 60%,transparent)}
+/* the solid fallback above is only for filled paint buttons — ghost/pill/stencil stay translucent */
+.st-btn--ghost,.st-btn--pill{background:color-mix(in srgb,var(--b) 15%,transparent)}
+.st-btn--stencil,.st-btn--clean{background:none}
 
 /* вторичная: трафаретные уголки (Claim / Unstake) */
 .st-btn--stencil{--b:var(--st-teal);--k:var(--b);--n:12px;min-height:44px;padding:.6em 1.4em;color:var(--b);
