@@ -21,9 +21,8 @@ import { ChipArt } from '@/shared/ui/ChipArt';
 import { Modal, Pill } from '@/shared/ui/primitives';
 import { useUiStore } from '@/app/store/ui';
 import { useRig, useRigOf, useSetRig, type RigCap, type RigChip, type RigSlot, type RigView } from '@/api/hooksLazy';
-import { RiderCard } from './Rider';
 import { shortKey } from '@/shared/lib/format';
-import { partArt } from '@/shared/lib/boardArt';
+import { partArt, partVisual } from '@/shared/lib/boardArt';
 import './rig.css';
 
 const ART = '/art/skate';
@@ -58,7 +57,7 @@ function Board({ view, mine, busy, onSlot }: BoardProps) {
   // Дека — та, что собрана в конструкторе (§4.2): экспозиция стоит именно на
   // ней. Нет ответа конструктора (старый кэш, чужая витрина без доски) —
   // показываем стоковую деку, а не дыру.
-  const deckArt = partArt(String(view.board?.deck ?? '')) ?? `${ART}/deck.webp`;
+  const deckArt = partVisual(String(view.board?.deck ?? '')) ?? `${ART}/deck.webp`;
   const gripArt = partArt(String(view.board?.grip ?? ''));
   const deck = slots.find((s) => s.place === 'deck') ?? slots[0];
   const deckSlot = Number(deck?.slot ?? -1);
@@ -148,16 +147,12 @@ export default function Rig() {
           <span className="strong">{t('rig.collected', { n: collected, total: CAPS_TOTAL })}</span>
           {view.data?.public ? <Pill active>{t('rig.publicOn')}</Pill> : null}
         </div>
-        <Board view={view.data ?? { wallet: '', rider: { silhouette: 0, theme: null }, public: false, caps: [], slots: [], next: null } as RigView} mine busy={setRig.isPending} onSlot={(slot) => setPick(slot)} />
+        <Board view={view.data ?? { wallet: '', public: false, caps: [], slots: [], next: null } as RigView} mine busy={setRig.isPending} onSlot={(slot) => setPick(slot)} />
         <p className="tiny muted">{t('rig.note')}</p>
         {/* Доска собирается в конструкторе (§4.2), а крышки ставятся здесь (§4.3):
-            один экран без ссылки на другой оставляет половину доски неookup. */}
+            один экран без ссылки на другой оставляет половину доски невидимой. */}
         <Link to="/bowl/builder" className="btn btn-sm btn-ghost">{t('bowl.openBuilder')}</Link>
       </section>
-
-      {/* §4.6 Райдер стоит рядом с доской: косметику покупают, чтобы её видели,
-          а витрина — это и есть то место, где её видят. */}
-      <RiderCard view={view.data} mine />
 
       <section className="card stack-sm">
         <label className="row between" style={{ gap: 8 }}>
@@ -230,11 +225,9 @@ export function PublicRig() {
         <p className="page-sub">{t('rig.subtitle')}</p>
       </div>
       <section className="card stack-sm">
-        <Board view={view.data ?? { wallet, rider: { silhouette: 0, theme: null }, public: true, caps: [], slots: [], next: null } as RigView} mine={false} busy={false} onSlot={() => {}} />
+        <Board view={view.data ?? { wallet, public: true, caps: [], slots: [], next: null } as RigView} mine={false} busy={false} onSlot={() => {}} />
         <p className="tiny muted">{t('rig.note')}</p>
       </section>
-      {/* Чужой райдер показываем, но не даём трогать: настройки чужие. */}
-      <RiderCard view={view.data} mine={false} />
       <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
         <Link to="/bowl/rig" className="btn btn-sm btn-ghost">{t('rig.viewMine')}</Link>
       </div>

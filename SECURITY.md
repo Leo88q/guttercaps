@@ -36,6 +36,10 @@ escrows + staking budget.
 
 Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
 
+- Phase V (`programs/settle`, 2026-10-22): pack payments escrow on-chain and minting is authorized by
+  a backend MINT_ORACLE Ed25519 signature introspected by the program — the oracle cannot mint alone,
+  and fusion results mint once (GrantReceipt PDA). New accounts only, no migration (SEC-B7 record in
+  docs/06 §2.2); activation is ops-only (docs/PHASEV-ACTIVATION.md), launch stays on phase G until then.
 - Arena does not freeze chips during a wager battle (`SEC-L2`); squads are snapshotted.
 - Pyth SKR/USD feed is thin: ±2 % confidence guard, 1 % slippage, charge at `price − conf`; no EMA yet.
 - The treasury SKR wallet is currently a single-signer hardware key (migration to Squads before launch).
