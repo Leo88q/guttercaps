@@ -36,7 +36,7 @@ test.describe('the built app boots', () => {
     // Скейт-мир (PR #66/#67) — в основной навигации и на главной, а не только в футере.
     await expect(page.locator('.shell-nav a[href="/bowl"]')).toBeVisible();
     await expect(page.getByTestId('skate-world-card')).toBeVisible();
-    await expect(page.getByTestId('skate-entry-line')).toBeVisible();
+    await expect(page.getByTestId('skate-entry-grid')).toBeVisible();
     await expect(page.getByTestId('skate-entry-wall')).toBeVisible();
     await expect(page.getByRole('link', { name: 'GUTTERCAPS' })).toBeVisible();
     // A production build must not discover its own API: /v1 is proxied by the same origin (vite preview

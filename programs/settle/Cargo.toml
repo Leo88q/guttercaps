@@ -14,6 +14,10 @@ no-idl = []
 no-log-ix-name = []
 cpi = ["no-entrypoint"]
 default = []
+# Cluster flags exist only so `anchor build -- --features devnet|localnet` builds the whole workspace;
+# settle never reads them (no cluster-dependent addresses in this program).
+devnet = []
+localnet = []
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]
