@@ -7,8 +7,9 @@
 // 1. **Часть не даёт силы.** Ни веса, ни шанса, ни дохода, ни очков в заезде
 //    (решение 1 из §0.3). Единственный эффект — визуальный: районная краска,
 //    трафарет района на деке, «собранный сет» светится.
-// 2. **Часть добывается, а не покупается.** Источники — заезды (§5.1),
-//    достижения (§4.7), командные конкурсы (§5.6), квесты и сезонный трек.
+// 2. **Часть добывается, а не покупается.** Источники — Floodgrid
+//    (часть недели за 2★+ и районные части за 3★ фишкой района), Deep Flood
+//    (трофеи), командные конкурсы (§5.6). Заездов больше нет (2026-10-19).
 //    Магазин продаёт косметику поверх этого, но не закрывает дырку в доске:
 //    стартовый комплект есть у каждого с первого входа.
 // 3. **Собранный сет района — не бонус, а почёт.** Четыре основные части одного
@@ -36,7 +37,7 @@ export type BoardSetSlot = (typeof BOARD_SET_SLOTS)[number];
  * `stock` есть у каждого с первого входа — доска не бывает пустой, и новый
  * игрок не видит дыр вместо деки. Остальное добывается.
  */
-export const BOARD_SOURCES = ['stock', 'run', 'achievement', 'crew', 'tournament', 'shop'] as const;
+export const BOARD_SOURCES = ['stock', 'run', 'grid', 'deep', 'achievement', 'crew', 'tournament', 'shop'] as const;
 export type BoardSource = (typeof BOARD_SOURCES)[number];
 
 /**
@@ -65,7 +66,7 @@ function districtParts(): BoardPart[] {
   const out: BoardPart[] = [];
   for (let d = 0; d < COLLECTIONS.length; d++) {
     for (const slot of BOARD_SET_SLOTS) {
-      out.push({ id: `${slot}_d${d}`, slot, district: d, tier: 'district', source: 'run' });
+      out.push({ id: `${slot}_d${d}`, slot, district: d, tier: 'district', source: 'grid' });
     }
   }
   return out;
@@ -87,11 +88,11 @@ export const BOARD_PARTS: readonly BoardPart[] = [
   // никогда не $CG. Одна на район, и визуально это дека своего района: отличие
   // не в картинке, а в происхождении (подпись «Команда» на детали).
   ...COLLECTIONS.map((_, d) => ({ id: `deck_crew_d${d}`, slot: 'deck' as BoardSlot, district: d, tier: 'crew' as BoardTier, source: 'crew' as BoardSource })),
-  // Трофейные части: приз дневного турнира Линии (§5.4). Дека и грип,
-  // района нет — трофей принадлежит городу, а не району. source =
-  // 'tournament': подсказка на экране должна велеть в турнир, а не
-  // в обычный заезд недели.
-  ...(['deck', 'grip'] as const).map((slot) => ({ id: `${slot}_trophy`, slot, district: null, tier: 'trophy' as BoardTier, source: 'tournament' as BoardSource })),
+  // Трофейные части: приз Deep Flood (с 2026-10-19; раньше — турнира Линии,
+  // который убран из продукта). Дека и грип, района нет — трофей принадлежит
+  // городу, а не району. source = 'deep': подсказка на экране ведёт в
+  // Deep Flood, а не в обычный сектор.
+  ...(['deck', 'grip'] as const).map((slot) => ({ id: `${slot}_trophy`, slot, district: null, tier: 'trophy' as BoardTier, source: 'deep' as BoardSource })),
   ...BOLTS.map((b) => ({ id: `bolts_${b}`, slot: 'bolts' as BoardSlot, district: null, tier: (b === 'stock' ? 'stock' : 'district') as BoardTier, source: (b === 'stock' ? 'stock' : 'shop') as BoardSource })),
   ...STICKERS.map((s) => ({ id: `sticker_${s}`, slot: 'sticker' as BoardSlot, district: null, tier: (s === 'none' ? 'stock' : 'district') as BoardTier, source: (s === 'none' ? 'stock' : 'shop') as BoardSource })),
 ];
@@ -168,7 +169,7 @@ export function boardDistrictOfWeek(week: number): number {
   return ((week % n) + n) % n;
 }
 
-/** Часть района недели для слота — ровно то, что выдаст награда заезда. */
+/** Часть района недели для слота — ровно то, что выдаст награда Floodgrid. */
 export function weeklyBoardPart(week: number, slot: BoardSetSlot = 'deck'): string {
   return `${slot}_d${boardDistrictOfWeek(week)}`;
 }

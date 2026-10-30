@@ -11,7 +11,7 @@ import { chipImageOf } from '@/shared/lib/rarity';
 import { useT, type MessageKey } from '@/shared/i18n';
 import { fmtDecimal } from '@/shared/lib/format';
 import type { FightCap } from './FightStage';
-import type { TrickBeat, TrickLine } from './trickReel';
+import type { TrickBeat, TrickLine } from './trickLine';
 
 const BEAT_MS = 420;
 

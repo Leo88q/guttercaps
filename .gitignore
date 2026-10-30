@@ -117,3 +117,6 @@ reports/seeker-shots/
 reports/art-drafts/
 reports/kenney-catalog.html
 reports/kenney-style-sheet.jpg
+
+# phase-G devnet run state (contains RPC api keys / session secret)
+scripts/.phaseg-devnet.env

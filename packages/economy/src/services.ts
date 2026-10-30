@@ -40,6 +40,9 @@ export interface ServiceDef {
   /** what the player gets; 'chain' = state on-chain (PlayerItems), 'entitlement' = backend record keyed by ServicePaid.ref_hash */
   fulfilment: 'chain' | 'entitlement';
   recurring: boolean;
+  /** Снято с продажи (напр. услуги удалённой игры): kind в контракте остаётся
+   *  зарезервирован, но каталог магазина такую услугу не показывает. */
+  retired?: boolean;
   name: string;
   blurb: string;
 }
@@ -72,7 +75,7 @@ export const SERVICES: readonly ServiceDef[] = [
   { id: 'districtStencilPack', kind: 12, rustName: 'DistrictStencilPack', priceUsdCents: 199, dailyCap: 10, fulfilment: 'entitlement', recurring: false, name: 'District stencil pack', blurb: 'Five district stencils for the tag editor. Shapes only — the lines and colours stay yours.' },
   // Skate-city line (docs/16 §5.1): one extra run of the day's bowl. Priced 5 cents so the
   // $CG rail is exactly 30 $CG (100% burn) — the same price point as a Deep Flood attempt.
-  { id: 'lineExtraRun', kind: 13, rustName: 'LineExtraRun', priceUsdCents: 5, dailyCap: 10, fulfilment: 'entitlement', recurring: true, name: 'Extra run', blurb: 'One more run of today\'s line after the three free ones. $CG only — every coin is burned.' },
+  { id: 'lineExtraRun', retired: true, kind: 13, rustName: 'LineExtraRun', priceUsdCents: 5, dailyCap: 10, fulfilment: 'entitlement', recurring: true, name: 'Extra run', blurb: 'One more run of today\'s line after the three free ones. $CG only — every coin is burned.' },
   // Команды (docs/16 §5.6). Хартия стоит как хендл, потому что это ровно то же:
   // уникальное имя в городе плюс запись, которую модерирует одна и та же очередь.
   // Переименование — как смена хендла: дешевле, но с 30-дневной паузой.
@@ -82,7 +85,7 @@ export const SERVICES: readonly ServiceDef[] = [
   // по $CG-рельсу (100 % сжигаются — путь пака). Приз — части доски,
   // никогда не $CG. Потолок попыток на кошелёк в день держит бэкенд
   // (общий с доп. заездами), ончейн дневной потолок только страхует.
-  { id: 'lineTournamentEntry', kind: 16, rustName: 'LineTournamentEntry', priceUsdCents: 5, dailyCap: 10, fulfilment: 'entitlement', recurring: true, name: 'Line tournament entry', blurb: 'Enter the daily Line tournament with one paid run. 30 $CG burned; prizes are board parts, never $CG.' },
+  { id: 'lineTournamentEntry', retired: true, kind: 16, rustName: 'LineTournamentEntry', priceUsdCents: 5, dailyCap: 10, fulfilment: 'entitlement', recurring: true, name: 'Line tournament entry', blurb: 'Enter the daily Line tournament with one paid run. 30 $CG burned; prizes are board parts, never $CG.' },
   // Навесное доски (docs/16 §4.2): болты и наклейки — единственное,
   // что магазин продаёт из конструктора. Сет района не продаётся.
   { id: 'boardMount', kind: 17, rustName: 'BoardMount', priceUsdCents: 49, dailyCap: 10, fulfilment: 'entitlement', recurring: false, name: 'Board mount', blurb: 'One bolt finish or sticker for the board builder. Cosmetic only — district sets are earned, never bought.' },

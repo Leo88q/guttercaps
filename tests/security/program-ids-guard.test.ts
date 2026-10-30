@@ -46,7 +46,7 @@ import { freezeIds } from '../../scripts/deploy-build-env.ts';
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (rel: string) => readFileSync(join(REPO, rel), 'utf8');
 const RECORD = 'programs/program-ids.json';
-const PROGRAMS = ['chip_core', 'market', 'staking', 'arena'] as const;
+const PROGRAMS = ['chip_core', 'market', 'staking', 'arena', 'settle'] as const;
 
 /** `declare_id!` per program, read from the tree: an expectation taken from the module under test would
  * only ever say that the module agrees with itself. */

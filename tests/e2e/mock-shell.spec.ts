@@ -32,7 +32,12 @@ test.describe('the built app boots', () => {
 
     await page.goto('/');
     await expect(page.locator('nav[aria-label="Primary"]')).toBeVisible();
-    await expect(page.locator('.shell-nav a')).toHaveCount(10);
+    await expect(page.locator('.shell-nav a')).toHaveCount(13);
+    // Скейт-мир (PR #66/#67) — в основной навигации и на главной, а не только в футере.
+    await expect(page.locator('.shell-nav a[href="/bowl"]')).toBeVisible();
+    await expect(page.getByTestId('skate-world-card')).toBeVisible();
+    await expect(page.getByTestId('skate-entry-grid')).toBeVisible();
+    await expect(page.getByTestId('skate-entry-wall')).toBeVisible();
     await expect(page.getByRole('link', { name: 'GUTTERCAPS' })).toBeVisible();
     // A production build must not discover its own API: /v1 is proxied by the same origin (vite preview
     // in CI, nginx in prod). Any other host here means a VITE_API_BASE baked for another deployment.
