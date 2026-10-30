@@ -32,7 +32,7 @@ test.describe('the built app boots', () => {
 
     await page.goto('/');
     await expect(page.locator('nav[aria-label="Primary"]')).toBeVisible();
-    await expect(page.locator('.shell-nav a')).toHaveCount(11);
+    await expect(page.locator('.shell-nav a')).toHaveCount(13);
     // Скейт-мир (PR #66/#67) — в основной навигации и на главной, а не только в футере.
     await expect(page.locator('.shell-nav a[href="/bowl"]')).toBeVisible();
     await expect(page.getByTestId('skate-world-card')).toBeVisible();
