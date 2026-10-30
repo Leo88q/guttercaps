@@ -112,7 +112,7 @@
     "@switchboard-xyz/on-demand": "^3.10.6"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.10.1",
+    "@axe-core/playwright": "^4.13.0",
     "@lhci/cli": "^0.14.0",
     "@playwright/test": "^1.50.1",
     "@types/node": "^24.19.1",
