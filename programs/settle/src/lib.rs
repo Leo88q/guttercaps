@@ -517,6 +517,9 @@ pub struct SettlePack<'info> {
     /// Treasury ATA receiving the SPL rails (required unless currency = SOL).
     #[account(mut)]
     pub treasury_token: Option<Account<'info, TokenAccount>>,
+    /// CHECK: Bubblegum's `collection_cpi` signer PDA — address-pinned to the
+    /// MPL Core CPI signer (`CbNY…`) by the constraint here; never read or
+    /// written, only forwarded into the mint_v2 CPI.
     #[account(address = crate::mpl_core_cpi_signer() @ SettleError::BadAccount)]
     pub mpl_core_cpi_signer: UncheckedAccount<'info>,
     #[account(address = MPL_NOOP_ID @ SettleError::BadAccount)]
@@ -726,6 +729,9 @@ pub struct GrantMint<'info> {
     /// CHECK: the shared phase-G tree.
     #[account(mut)]
     pub merkle_tree: UncheckedAccount<'info>,
+    /// CHECK: Bubblegum's `collection_cpi` signer PDA — address-pinned to the
+    /// MPL Core CPI signer (`CbNY…`) by the constraint here; never read or
+    /// written, only forwarded into the mint_v2 CPI.
     #[account(address = crate::mpl_core_cpi_signer() @ SettleError::BadAccount)]
     pub mpl_core_cpi_signer: UncheckedAccount<'info>,
     #[account(address = MPL_NOOP_ID @ SettleError::BadAccount)]
