@@ -138,7 +138,11 @@ pub fn tree_config_pda(merkle_tree: &Pubkey) -> Pubkey {
 
 pub fn leaf_asset_id(merkle_tree: &Pubkey, index: u32) -> Pubkey {
     Pubkey::find_program_address(
-        &[b"asset", merkle_tree.as_ref(), &(index as u64).to_le_bytes()],
+        &[
+            b"asset",
+            merkle_tree.as_ref(),
+            &(index as u64).to_le_bytes(),
+        ],
         &BUBBLEGUM_V2_ID,
     )
     .0
@@ -338,14 +342,24 @@ pub struct EscrowCancelled {
 // (the whole transaction fails), so here we only bind the instruction to
 // our oracle key and to the exact MintAuth message we expect.
 
-fn verify_oracle_signature(instructions: &AccountInfo, oracle: &Pubkey, expected_msg: &[u8]) -> Result<()> {
+fn verify_oracle_signature(
+    instructions: &AccountInfo,
+    oracle: &Pubkey,
+    expected_msg: &[u8],
+) -> Result<()> {
     let current = load_current_index_checked(instructions)? as usize;
     require!(current >= 1, SettleError::BadOracleInstruction);
     let ix: Instruction = load_instruction_at_checked(current - 1, instructions)?;
-    require!(ix.program_id == ED25519_PROGRAM_ID, SettleError::BadOracleInstruction);
+    require!(
+        ix.program_id == ED25519_PROGRAM_ID,
+        SettleError::BadOracleInstruction
+    );
     let d = &ix.data;
     // Header: num_signatures u8, padding u8, then 14-byte offset records.
-    require!(d.len() >= 2 + 14 && d[0] == 1, SettleError::BadOracleInstruction);
+    require!(
+        d.len() >= 2 + 14 && d[0] == 1,
+        SettleError::BadOracleInstruction
+    );
     let u16le = |o: usize| -> u16 { u16::from_le_bytes([d[o], d[o + 1]]) };
     let sig_ix = u16le(4);
     let pk_off = u16le(6) as usize;
@@ -355,10 +369,22 @@ fn verify_oracle_signature(instructions: &AccountInfo, oracle: &Pubkey, expected
     let msg_ix = u16le(14);
     // All parts must live inside the ed25519 instruction itself (0xffff =
     // "this instruction", the only form createEd25519Instruction emits).
-    require!(sig_ix == u16::MAX && pk_ix == u16::MAX && msg_ix == u16::MAX, SettleError::BadOracleInstruction);
-    require!(pk_off + 32 <= d.len() && msg_off + msg_len <= d.len(), SettleError::BadOracleInstruction);
-    require!(d[pk_off..pk_off + 32] == oracle.to_bytes(), SettleError::BadOracleSignature);
-    require!(&d[msg_off..msg_off + msg_len] == expected_msg, SettleError::BadOracleSignature);
+    require!(
+        sig_ix == u16::MAX && pk_ix == u16::MAX && msg_ix == u16::MAX,
+        SettleError::BadOracleInstruction
+    );
+    require!(
+        pk_off + 32 <= d.len() && msg_off + msg_len <= d.len(),
+        SettleError::BadOracleInstruction
+    );
+    require!(
+        d[pk_off..pk_off + 32] == oracle.to_bytes(),
+        SettleError::BadOracleSignature
+    );
+    require!(
+        &d[msg_off..msg_off + msg_len] == expected_msg,
+        SettleError::BadOracleSignature
+    );
     Ok(())
 }
 
@@ -384,7 +410,11 @@ pub fn verify_merkle_proof(root: &[u8; 32], leaf: [u8; 32], proof: &[[u8; 32]]) 
     use anchor_lang::solana_program::keccak::hashv as khashv;
     let mut node = leaf;
     for sibling in proof {
-        let (a, b): (&[u8; 32], &[u8; 32]) = if node <= *sibling { (&node, sibling) } else { (sibling, &node) };
+        let (a, b): (&[u8; 32], &[u8; 32]) = if node <= *sibling {
+            (&node, sibling)
+        } else {
+            (sibling, &node)
+        };
         node = khashv(&[&[1u8], a.as_ref(), b.as_ref()]).to_bytes();
     }
     &node == root
@@ -742,11 +772,20 @@ pub fn init_config_handler(
     c.market_fee_bps = market_fee_bps;
     c.packs_paused = false;
     c.bump = ctx.bumps.config;
-    emit!(ConfigInitialized { admin: c.admin, mint_oracle, treasury });
+    emit!(ConfigInitialized {
+        admin: c.admin,
+        mint_oracle,
+        treasury
+    });
     Ok(())
 }
 
-pub fn buy_pack_handler<'info>(ctx: Context<'_, '_, '_, 'info, BuyPack<'info>>, order_id: u64, currency: u8, amount: u64) -> Result<()> {
+pub fn buy_pack_handler<'info>(
+    ctx: Context<'_, '_, '_, 'info, BuyPack<'info>>,
+    order_id: u64,
+    currency: u8,
+    amount: u64,
+) -> Result<()> {
     let cfg = &ctx.accounts.config;
     require!(!cfg.packs_paused, SettleError::Paused);
     require!(currency <= CURRENCY_CG, SettleError::BadCurrency);
@@ -764,10 +803,25 @@ pub fn buy_pack_handler<'info>(ctx: Context<'_, '_, '_, 'info, BuyPack<'info>>, 
             amount,
         )?;
     } else {
-        let buyer_token = ctx.accounts.buyer_token.as_ref().ok_or(SettleError::BadAccount)?;
-        let escrow_token = ctx.accounts.escrow_token.as_ref().ok_or(SettleError::BadAccount)?;
-        let mint = if currency == CURRENCY_USDC { cfg.usdc_mint } else { cfg.cg_mint };
-        require!(buyer_token.mint == mint && buyer_token.owner == buyer, SettleError::BadAccount);
+        let buyer_token = ctx
+            .accounts
+            .buyer_token
+            .as_ref()
+            .ok_or(SettleError::BadAccount)?;
+        let escrow_token = ctx
+            .accounts
+            .escrow_token
+            .as_ref()
+            .ok_or(SettleError::BadAccount)?;
+        let mint = if currency == CURRENCY_USDC {
+            cfg.usdc_mint
+        } else {
+            cfg.cg_mint
+        };
+        require!(
+            buyer_token.mint == mint && buyer_token.owner == buyer,
+            SettleError::BadAccount
+        );
         require!(
             escrow_token.mint == mint
                 && escrow_token.key() == get_associated_token_address(&cfg.key(), &mint),
@@ -776,7 +830,11 @@ pub fn buy_pack_handler<'info>(ctx: Context<'_, '_, '_, 'info, BuyPack<'info>>, 
         token::transfer(
             CpiContext::new(
                 ctx.accounts.token_program.to_account_info(),
-                Transfer { from: buyer_token.to_account_info(), to: escrow_token.to_account_info(), authority: ctx.accounts.buyer.to_account_info() },
+                Transfer {
+                    from: buyer_token.to_account_info(),
+                    to: escrow_token.to_account_info(),
+                    authority: ctx.accounts.buyer.to_account_info(),
+                },
             ),
             amount,
         )?;
@@ -789,23 +847,47 @@ pub fn buy_pack_handler<'info>(ctx: Context<'_, '_, '_, 'info, BuyPack<'info>>, 
     o.status = STATUS_PAID;
     o.created_slot = Clock::get()?.slot;
     o.bump = ctx.bumps.order;
-    emit!(PackEscrowed { buyer, order_id, currency, amount });
+    emit!(PackEscrowed {
+        buyer,
+        order_id,
+        currency,
+        amount
+    });
     Ok(())
 }
 
-pub fn settle_pack_handler<'info>(ctx: Context<'_, '_, '_, 'info, SettlePack<'info>>, order_id: u64, args: SettleArgs) -> Result<()> {
+pub fn settle_pack_handler<'info>(
+    ctx: Context<'_, '_, '_, 'info, SettlePack<'info>>,
+    order_id: u64,
+    args: SettleArgs,
+) -> Result<()> {
     let cfg = &ctx.accounts.config;
     require!(!cfg.packs_paused, SettleError::Paused);
     let order = &ctx.accounts.order;
     require!(order.status == STATUS_PAID, SettleError::BadOrderStatus);
-    require!(ctx.accounts.buyer.key() == order.buyer, SettleError::BadAccount);
-    require!(args.specs.len() <= MAX_SPECS && !args.specs.is_empty(), SettleError::TooManySpecs);
+    require!(
+        ctx.accounts.buyer.key() == order.buyer,
+        SettleError::BadAccount
+    );
+    require!(
+        args.specs.len() <= MAX_SPECS && !args.specs.is_empty(),
+        SettleError::TooManySpecs
+    );
 
     // Oracle authorization binds: wallet, order, the exact leaf specs, expiry.
     let auth = &args.auth;
-    require!(auth.wallet == order.buyer && auth.order_id == order_id && auth.nonce == order_id, SettleError::BadOracleSignature);
-    require!(Clock::get()?.slot <= auth.expires_at_slot, SettleError::AuthExpired);
-    require!(specs_hash(&args.specs) == auth.specs_hash, SettleError::SpecsMismatch);
+    require!(
+        auth.wallet == order.buyer && auth.order_id == order_id && auth.nonce == order_id,
+        SettleError::BadOracleSignature
+    );
+    require!(
+        Clock::get()?.slot <= auth.expires_at_slot,
+        SettleError::AuthExpired
+    );
+    require!(
+        specs_hash(&args.specs) == auth.specs_hash,
+        SettleError::SpecsMismatch
+    );
     verify_oracle_signature(
         &ctx.accounts.instructions.to_account_info(),
         &cfg.mint_oracle,
@@ -813,13 +895,34 @@ pub fn settle_pack_handler<'info>(ctx: Context<'_, '_, '_, 'info, SettlePack<'in
     )?;
 
     // Tree plumbing pins (same checks as the canonical mint_v2 layout).
-    require!(ctx.accounts.tree_config.key() == tree_config_pda(&ctx.accounts.merkle_tree.key()), SettleError::BadTreeConfig);
-    require!(ctx.accounts.mpl_core_cpi_signer.key() == mpl_core_cpi_signer(), SettleError::BadAccount);
-    require!(ctx.accounts.log_wrapper.key() == MPL_NOOP_ID, SettleError::BadAccount);
-    require!(ctx.accounts.compression_program.key() == MPL_ACCOUNT_COMPRESSION_ID, SettleError::BadAccount);
-    require!(ctx.accounts.bubblegum_program.key() == BUBBLEGUM_V2_ID, SettleError::BadAccount);
-    require!(ctx.accounts.mpl_core_program.key() == MPL_CORE_ID, SettleError::BadAccount);
-    require!(ctx.accounts.treasury.key() == cfg.treasury, SettleError::BadAccount);
+    require!(
+        ctx.accounts.tree_config.key() == tree_config_pda(&ctx.accounts.merkle_tree.key()),
+        SettleError::BadTreeConfig
+    );
+    require!(
+        ctx.accounts.mpl_core_cpi_signer.key() == mpl_core_cpi_signer(),
+        SettleError::BadAccount
+    );
+    require!(
+        ctx.accounts.log_wrapper.key() == MPL_NOOP_ID,
+        SettleError::BadAccount
+    );
+    require!(
+        ctx.accounts.compression_program.key() == MPL_ACCOUNT_COMPRESSION_ID,
+        SettleError::BadAccount
+    );
+    require!(
+        ctx.accounts.bubblegum_program.key() == BUBBLEGUM_V2_ID,
+        SettleError::BadAccount
+    );
+    require!(
+        ctx.accounts.mpl_core_program.key() == MPL_CORE_ID,
+        SettleError::BadAccount
+    );
+    require!(
+        ctx.accounts.treasury.key() == cfg.treasury,
+        SettleError::BadAccount
+    );
 
     let new_emission = cfg
         .emission_minted
@@ -834,14 +937,33 @@ pub fn settle_pack_handler<'info>(ctx: Context<'_, '_, '_, 'info, SettlePack<'in
     let config_bump = cfg.bump;
     match currency {
         CURRENCY_SOL => {
-            **ctx.accounts.order.to_account_info().try_borrow_mut_lamports()? -= amount;
+            **ctx
+                .accounts
+                .order
+                .to_account_info()
+                .try_borrow_mut_lamports()? -= amount;
             **ctx.accounts.treasury.try_borrow_mut_lamports()? += amount;
         }
         _ => {
-            let mint = if currency == CURRENCY_USDC { cfg.usdc_mint } else { cfg.cg_mint };
-            let escrow_token = ctx.accounts.escrow_token.as_ref().ok_or(SettleError::BadAccount)?;
-            let treasury_token = ctx.accounts.treasury_token.as_ref().ok_or(SettleError::BadAccount)?;
-            require!(escrow_token.key() == get_associated_token_address(&config_key, &mint), SettleError::BadAccount);
+            let mint = if currency == CURRENCY_USDC {
+                cfg.usdc_mint
+            } else {
+                cfg.cg_mint
+            };
+            let escrow_token = ctx
+                .accounts
+                .escrow_token
+                .as_ref()
+                .ok_or(SettleError::BadAccount)?;
+            let treasury_token = ctx
+                .accounts
+                .treasury_token
+                .as_ref()
+                .ok_or(SettleError::BadAccount)?;
+            require!(
+                escrow_token.key() == get_associated_token_address(&config_key, &mint),
+                SettleError::BadAccount
+            );
             require_keys_eq!(escrow_token.mint, mint, SettleError::BadAccount);
             require_keys_eq!(treasury_token.mint, mint, SettleError::BadAccount);
             require_keys_eq!(treasury_token.owner, cfg.treasury, SettleError::BadAccount);
@@ -850,7 +972,11 @@ pub fn settle_pack_handler<'info>(ctx: Context<'_, '_, '_, 'info, SettlePack<'in
             token::transfer(
                 CpiContext::new_with_signer(
                     ctx.accounts.token_program.to_account_info(),
-                    Transfer { from: escrow_token.to_account_info(), to: treasury_token.to_account_info(), authority: ctx.accounts.config.to_account_info() },
+                    Transfer {
+                        from: escrow_token.to_account_info(),
+                        to: treasury_token.to_account_info(),
+                        authority: ctx.accounts.config.to_account_info(),
+                    },
                     &[&signer_seeds],
                 ),
                 amount,
@@ -881,7 +1007,11 @@ pub fn settle_pack_handler<'info>(ctx: Context<'_, '_, '_, 'info, SettlePack<'in
     cfg.emission_minted = new_emission;
     let order = &mut ctx.accounts.order;
     order.status = STATUS_SETTLED;
-    emit!(PackSettled { buyer: order.buyer, order_id, leaves: args.specs.len() as u8 });
+    emit!(PackSettled {
+        buyer: order.buyer,
+        order_id,
+        leaves: args.specs.len() as u8
+    });
     Ok(())
 }
 
@@ -925,8 +1055,16 @@ pub fn mint_specs<'info>(
             primary_sale_happened: false,
             is_mutable: false,
             token_standard: Some(TokenStandard::NonFungible),
-            creators: vec![Creator { address: tree_auth.key(), verified: true, share: 100 }],
-            collection: if spec.collection == Pubkey::default() { None } else { Some(spec.collection) },
+            creators: vec![Creator {
+                address: tree_auth.key(),
+                verified: true,
+                share: 100,
+            }],
+            collection: if spec.collection == Pubkey::default() {
+                None
+            } else {
+                Some(spec.collection)
+            },
         };
         let mut mint = MintV2CpiBuilder::new(bubblegum_program);
         mint.tree_config(tree_config)
@@ -948,22 +1086,62 @@ pub fn mint_specs<'info>(
     Ok(())
 }
 
-pub fn grant_mint_handler<'info>(ctx: Context<'_, '_, '_, 'info, GrantMint<'info>>, args: SettleArgs) -> Result<()> {
+pub fn grant_mint_handler<'info>(
+    ctx: Context<'_, '_, '_, 'info, GrantMint<'info>>,
+    args: SettleArgs,
+) -> Result<()> {
     let cfg = &ctx.accounts.config;
     require!(!cfg.packs_paused, SettleError::Paused);
-    require!(args.specs.len() <= MAX_SPECS && !args.specs.is_empty(), SettleError::TooManySpecs);
+    require!(
+        args.specs.len() <= MAX_SPECS && !args.specs.is_empty(),
+        SettleError::TooManySpecs
+    );
     let auth = &args.auth;
-    require!(auth.wallet == ctx.accounts.buyer.key() && auth.nonce == auth.order_id, SettleError::BadOracleSignature);
-    require!(Clock::get()?.slot <= auth.expires_at_slot, SettleError::AuthExpired);
-    require!(specs_hash(&args.specs) == auth.specs_hash, SettleError::SpecsMismatch);
-    verify_oracle_signature(&ctx.accounts.instructions.to_account_info(), &cfg.mint_oracle, &mint_auth_message(auth))?;
-    require!(ctx.accounts.tree_config.key() == tree_config_pda(&ctx.accounts.merkle_tree.key()), SettleError::BadTreeConfig);
-    require!(ctx.accounts.mpl_core_cpi_signer.key() == mpl_core_cpi_signer(), SettleError::BadAccount);
-    require!(ctx.accounts.log_wrapper.key() == MPL_NOOP_ID, SettleError::BadAccount);
-    require!(ctx.accounts.compression_program.key() == MPL_ACCOUNT_COMPRESSION_ID, SettleError::BadAccount);
-    require!(ctx.accounts.bubblegum_program.key() == BUBBLEGUM_V2_ID, SettleError::BadAccount);
-    require!(ctx.accounts.mpl_core_program.key() == MPL_CORE_ID, SettleError::BadAccount);
-    let new_emission = cfg.emission_minted.checked_add(args.specs.len() as u64).ok_or(SettleError::Overflow)?;
+    require!(
+        auth.wallet == ctx.accounts.buyer.key() && auth.nonce == auth.order_id,
+        SettleError::BadOracleSignature
+    );
+    require!(
+        Clock::get()?.slot <= auth.expires_at_slot,
+        SettleError::AuthExpired
+    );
+    require!(
+        specs_hash(&args.specs) == auth.specs_hash,
+        SettleError::SpecsMismatch
+    );
+    verify_oracle_signature(
+        &ctx.accounts.instructions.to_account_info(),
+        &cfg.mint_oracle,
+        &mint_auth_message(auth),
+    )?;
+    require!(
+        ctx.accounts.tree_config.key() == tree_config_pda(&ctx.accounts.merkle_tree.key()),
+        SettleError::BadTreeConfig
+    );
+    require!(
+        ctx.accounts.mpl_core_cpi_signer.key() == mpl_core_cpi_signer(),
+        SettleError::BadAccount
+    );
+    require!(
+        ctx.accounts.log_wrapper.key() == MPL_NOOP_ID,
+        SettleError::BadAccount
+    );
+    require!(
+        ctx.accounts.compression_program.key() == MPL_ACCOUNT_COMPRESSION_ID,
+        SettleError::BadAccount
+    );
+    require!(
+        ctx.accounts.bubblegum_program.key() == BUBBLEGUM_V2_ID,
+        SettleError::BadAccount
+    );
+    require!(
+        ctx.accounts.mpl_core_program.key() == MPL_CORE_ID,
+        SettleError::BadAccount
+    );
+    let new_emission = cfg
+        .emission_minted
+        .checked_add(args.specs.len() as u64)
+        .ok_or(SettleError::Overflow)?;
     require!(new_emission <= cfg.emission_cap, SettleError::EmissionCap);
     mint_specs(
         &ctx.accounts.bubblegum_program.to_account_info(),
@@ -983,11 +1161,18 @@ pub fn grant_mint_handler<'info>(ctx: Context<'_, '_, '_, 'info, GrantMint<'info
     )?;
     ctx.accounts.config.emission_minted = new_emission;
     ctx.accounts.receipt.bump = ctx.bumps.receipt;
-    emit!(PackSettled { buyer: auth.wallet, order_id: auth.order_id, leaves: args.specs.len() as u8 });
+    emit!(PackSettled {
+        buyer: auth.wallet,
+        order_id: auth.order_id,
+        leaves: args.specs.len() as u8
+    });
     Ok(())
 }
 
-pub fn refund_pack_handler<'info>(ctx: Context<'_, '_, '_, 'info, RefundPack<'info>>, order_id: u64) -> Result<()> {
+pub fn refund_pack_handler<'info>(
+    ctx: Context<'_, '_, '_, 'info, RefundPack<'info>>,
+    order_id: u64,
+) -> Result<()> {
     let order = &ctx.accounts.order;
     require!(order.status == STATUS_PAID, SettleError::BadOrderStatus);
     require!(
@@ -997,24 +1182,55 @@ pub fn refund_pack_handler<'info>(ctx: Context<'_, '_, '_, 'info, RefundPack<'in
     let amount = order.amount;
     match order.currency {
         CURRENCY_SOL => {
-            **ctx.accounts.order.to_account_info().try_borrow_mut_lamports()? -= amount;
-            **ctx.accounts.buyer.to_account_info().try_borrow_mut_lamports()? += amount;
+            **ctx
+                .accounts
+                .order
+                .to_account_info()
+                .try_borrow_mut_lamports()? -= amount;
+            **ctx
+                .accounts
+                .buyer
+                .to_account_info()
+                .try_borrow_mut_lamports()? += amount;
         }
         _ => {
             let cfg = &ctx.accounts.config;
-            let mint = if order.currency == CURRENCY_USDC { cfg.usdc_mint } else { cfg.cg_mint };
-            let escrow_token = ctx.accounts.escrow_token.as_ref().ok_or(SettleError::BadAccount)?;
-            let buyer_token = ctx.accounts.buyer_token.as_ref().ok_or(SettleError::BadAccount)?;
-            require!(escrow_token.key() == get_associated_token_address(&cfg.key(), &mint), SettleError::BadAccount);
+            let mint = if order.currency == CURRENCY_USDC {
+                cfg.usdc_mint
+            } else {
+                cfg.cg_mint
+            };
+            let escrow_token = ctx
+                .accounts
+                .escrow_token
+                .as_ref()
+                .ok_or(SettleError::BadAccount)?;
+            let buyer_token = ctx
+                .accounts
+                .buyer_token
+                .as_ref()
+                .ok_or(SettleError::BadAccount)?;
+            require!(
+                escrow_token.key() == get_associated_token_address(&cfg.key(), &mint),
+                SettleError::BadAccount
+            );
             require_keys_eq!(escrow_token.mint, mint, SettleError::BadAccount);
             require_keys_eq!(buyer_token.mint, mint, SettleError::BadAccount);
-            require_keys_eq!(buyer_token.owner, ctx.accounts.buyer.key(), SettleError::BadAccount);
+            require_keys_eq!(
+                buyer_token.owner,
+                ctx.accounts.buyer.key(),
+                SettleError::BadAccount
+            );
             let seeds = config_seeds(cfg.bump);
             let signer_seeds: Vec<&[u8]> = seeds.iter().map(|s| s.as_slice()).collect();
             token::transfer(
                 CpiContext::new_with_signer(
                     ctx.accounts.token_program.to_account_info(),
-                    Transfer { from: escrow_token.to_account_info(), to: buyer_token.to_account_info(), authority: ctx.accounts.config.to_account_info() },
+                    Transfer {
+                        from: escrow_token.to_account_info(),
+                        to: buyer_token.to_account_info(),
+                        authority: ctx.accounts.config.to_account_info(),
+                    },
                     &[&signer_seeds],
                 ),
                 amount,
@@ -1022,11 +1238,20 @@ pub fn refund_pack_handler<'info>(ctx: Context<'_, '_, '_, 'info, RefundPack<'in
         }
     }
     ctx.accounts.order.status = STATUS_REFUNDED;
-    emit!(PackRefunded { buyer: ctx.accounts.buyer.key(), order_id, amount });
+    emit!(PackRefunded {
+        buyer: ctx.accounts.buyer.key(),
+        order_id,
+        amount
+    });
     Ok(())
 }
 
-pub fn anchor_root_handler(ctx: Context<AnchorRoot>, kind: u8, epoch: u64, root: [u8; 32]) -> Result<()> {
+pub fn anchor_root_handler(
+    ctx: Context<AnchorRoot>,
+    kind: u8,
+    epoch: u64,
+    root: [u8; 32],
+) -> Result<()> {
     let r = &mut ctx.accounts.root;
     r.kind = kind;
     r.epoch = epoch;
@@ -1037,18 +1262,38 @@ pub fn anchor_root_handler(ctx: Context<AnchorRoot>, kind: u8, epoch: u64, root:
     Ok(())
 }
 
-pub fn claim_reward_handler<'info>(ctx: Context<'_, '_, '_, 'info, ClaimReward<'info>>, kind: u8, epoch: u64, amount: u64, proof: Vec<[u8; 32]>) -> Result<()> {
+pub fn claim_reward_handler<'info>(
+    ctx: Context<'_, '_, '_, 'info, ClaimReward<'info>>,
+    kind: u8,
+    epoch: u64,
+    amount: u64,
+    proof: Vec<[u8; 32]>,
+) -> Result<()> {
     require!(amount > 0, SettleError::BadAmount);
     let claimant = ctx.accounts.claimant.key();
     // A6: the init_if_needed ATA is adopted only as the claimant's own $CG
     // account — an uninitialised or foreign account at this address is refused.
     let claimant_cg = &ctx.accounts.claimant_cg;
-    require!(claimant_cg.owner == claimant || claimant_cg.owner == Pubkey::default(), SettleError::BadAccount);
+    require!(
+        claimant_cg.owner == claimant || claimant_cg.owner == Pubkey::default(),
+        SettleError::BadAccount
+    );
     require_keys_eq!(claimant_cg.owner, claimant, SettleError::BadAccount);
-    require_keys_eq!(claimant_cg.mint, ctx.accounts.config.cg_mint, SettleError::BadAccount);
-    require_keys_eq!(ctx.accounts.rewards_vault.mint, ctx.accounts.config.cg_mint, SettleError::BadAccount);
+    require_keys_eq!(
+        claimant_cg.mint,
+        ctx.accounts.config.cg_mint,
+        SettleError::BadAccount
+    );
+    require_keys_eq!(
+        ctx.accounts.rewards_vault.mint,
+        ctx.accounts.config.cg_mint,
+        SettleError::BadAccount
+    );
     let leaf = reward_leaf(&claimant, amount, kind, epoch);
-    require!(verify_merkle_proof(&ctx.accounts.root.root, leaf, &proof), SettleError::BadProof);
+    require!(
+        verify_merkle_proof(&ctx.accounts.root.root, leaf, &proof),
+        SettleError::BadProof
+    );
     let seeds = config_seeds(ctx.accounts.config.bump);
     let signer_seeds: Vec<&[u8]> = seeds.iter().map(|s| s.as_slice()).collect();
     token::transfer(
@@ -1070,7 +1315,12 @@ pub fn claim_reward_handler<'info>(ctx: Context<'_, '_, '_, 'info, ClaimReward<'
         .checked_add(amount)
         .ok_or(SettleError::Overflow)?;
     ctx.accounts.receipt.bump = ctx.bumps.receipt;
-    emit!(RewardClaimed { claimant, kind, epoch, amount });
+    emit!(RewardClaimed {
+        claimant,
+        kind,
+        epoch,
+        amount
+    });
     Ok(())
 }
 
@@ -1093,7 +1343,19 @@ fn transfer_leaf<'info>(
     proof_accounts: &[AccountInfo<'info>],
     signer_seeds: Option<&[&[u8]]>,
 ) -> Result<()> {
-    let (bg, tree_config, payer, authority, leaf_owner, new_leaf_owner, merkle_tree, core_collection, log_wrapper, compression_program, system_program) = ctx_accounts;
+    let (
+        bg,
+        tree_config,
+        payer,
+        authority,
+        leaf_owner,
+        new_leaf_owner,
+        merkle_tree,
+        core_collection,
+        log_wrapper,
+        compression_program,
+        system_program,
+    ) = ctx_accounts;
     let mut transfer = TransferV2CpiBuilder::new(bg);
     transfer
         .tree_config(tree_config)
@@ -1103,7 +1365,11 @@ fn transfer_leaf<'info>(
         .leaf_delegate(Some(leaf_owner))
         .new_leaf_owner(new_leaf_owner)
         .merkle_tree(merkle_tree)
-        .core_collection(if collection == Pubkey::default() { None } else { Some(core_collection) })
+        .core_collection(if collection == Pubkey::default() {
+            None
+        } else {
+            Some(core_collection)
+        })
         .log_wrapper(log_wrapper)
         .compression_program(compression_program)
         .system_program(system_program)
@@ -1124,15 +1390,32 @@ fn transfer_leaf<'info>(
     Ok(())
 }
 
-fn require_tree_plumbing(tree_config: &Pubkey, merkle_tree: &Pubkey, log_wrapper: &Pubkey, compression: &Pubkey, bubblegum: &Pubkey) -> Result<()> {
-    require!(*tree_config == tree_config_pda(merkle_tree), SettleError::BadTreeConfig);
+fn require_tree_plumbing(
+    tree_config: &Pubkey,
+    merkle_tree: &Pubkey,
+    log_wrapper: &Pubkey,
+    compression: &Pubkey,
+    bubblegum: &Pubkey,
+) -> Result<()> {
+    require!(
+        *tree_config == tree_config_pda(merkle_tree),
+        SettleError::BadTreeConfig
+    );
     require!(*log_wrapper == MPL_NOOP_ID, SettleError::BadAccount);
-    require!(*compression == MPL_ACCOUNT_COMPRESSION_ID, SettleError::BadAccount);
+    require!(
+        *compression == MPL_ACCOUNT_COMPRESSION_ID,
+        SettleError::BadAccount
+    );
     require!(*bubblegum == BUBBLEGUM_V2_ID, SettleError::BadAccount);
     Ok(())
 }
 
-pub fn escrow_list_handler<'info>(ctx: Context<'_, '_, '_, 'info, EscrowList<'info>>, asset: Pubkey, price: u64, proof: LeafProofArgs) -> Result<()> {
+pub fn escrow_list_handler<'info>(
+    ctx: Context<'_, '_, '_, 'info, EscrowList<'info>>,
+    asset: Pubkey,
+    price: u64,
+    proof: LeafProofArgs,
+) -> Result<()> {
     require!(price > 0, SettleError::BadAmount);
     require_tree_plumbing(
         &ctx.accounts.tree_config.key(),
@@ -1141,7 +1424,10 @@ pub fn escrow_list_handler<'info>(ctx: Context<'_, '_, '_, 'info, EscrowList<'in
         &ctx.accounts.compression_program.key(),
         &ctx.accounts.bubblegum_program.key(),
     )?;
-    require!(leaf_asset_id(&ctx.accounts.merkle_tree.key(), proof.index) == asset, SettleError::BadAccount);
+    require!(
+        leaf_asset_id(&ctx.accounts.merkle_tree.key(), proof.index) == asset,
+        SettleError::BadAccount
+    );
     let collection = if ctx.accounts.core_collection.key() == BUBBLEGUM_V2_ID {
         Pubkey::default()
     } else {
@@ -1174,15 +1460,31 @@ pub fn escrow_list_handler<'info>(ctx: Context<'_, '_, '_, 'info, EscrowList<'in
     l.core_collection = collection;
     l.price = price;
     l.bump = ctx.bumps.listing;
-    emit!(EscrowListed { seller: l.seller, asset, price });
+    emit!(EscrowListed {
+        seller: l.seller,
+        asset,
+        price
+    });
     Ok(())
 }
 
-pub fn escrow_buy_handler<'info>(ctx: Context<'_, '_, '_, 'info, EscrowBuy<'info>>, proof: LeafProofArgs) -> Result<()> {
+pub fn escrow_buy_handler<'info>(
+    ctx: Context<'_, '_, '_, 'info, EscrowBuy<'info>>,
+    proof: LeafProofArgs,
+) -> Result<()> {
     let listing = &ctx.accounts.listing;
-    require!(ctx.accounts.seller.key() == listing.seller, SettleError::BadAccount);
-    require!(ctx.accounts.treasury.key() == ctx.accounts.config.treasury, SettleError::BadAccount);
-    require!(ctx.accounts.merkle_tree.key() == listing.merkle_tree, SettleError::BadAccount);
+    require!(
+        ctx.accounts.seller.key() == listing.seller,
+        SettleError::BadAccount
+    );
+    require!(
+        ctx.accounts.treasury.key() == ctx.accounts.config.treasury,
+        SettleError::BadAccount
+    );
+    require!(
+        ctx.accounts.merkle_tree.key() == listing.merkle_tree,
+        SettleError::BadAccount
+    );
     require_tree_plumbing(
         &ctx.accounts.tree_config.key(),
         &ctx.accounts.merkle_tree.key(),
@@ -1197,18 +1499,34 @@ pub fn escrow_buy_handler<'info>(ctx: Context<'_, '_, '_, 'info, EscrowBuy<'info
     let system = ctx.accounts.system_program.to_account_info();
     if seller_amount > 0 {
         anchor_lang::system_program::transfer(
-            CpiContext::new(system.clone(), anchor_lang::system_program::Transfer { from: buyer.clone(), to: ctx.accounts.seller.to_account_info() }),
+            CpiContext::new(
+                system.clone(),
+                anchor_lang::system_program::Transfer {
+                    from: buyer.clone(),
+                    to: ctx.accounts.seller.to_account_info(),
+                },
+            ),
             seller_amount,
         )?;
     }
     if fee > 0 {
         anchor_lang::system_program::transfer(
-            CpiContext::new(system, anchor_lang::system_program::Transfer { from: buyer.clone(), to: ctx.accounts.treasury.to_account_info() }),
+            CpiContext::new(
+                system,
+                anchor_lang::system_program::Transfer {
+                    from: buyer.clone(),
+                    to: ctx.accounts.treasury.to_account_info(),
+                },
+            ),
             fee,
         )?;
     }
     let asset = listing.asset;
-    let seeds: Vec<Vec<u8>> = vec![b"listing".to_vec(), asset.to_bytes().to_vec(), vec![listing.bump]];
+    let seeds: Vec<Vec<u8>> = vec![
+        b"listing".to_vec(),
+        asset.to_bytes().to_vec(),
+        vec![listing.bump],
+    ];
     let signer: Vec<&[u8]> = seeds.iter().map(|s| s.as_slice()).collect();
     let listing_info = ctx.accounts.listing.to_account_info();
     transfer_leaf(
@@ -1230,13 +1548,25 @@ pub fn escrow_buy_handler<'info>(ctx: Context<'_, '_, '_, 'info, EscrowBuy<'info
         ctx.remaining_accounts,
         Some(&signer),
     )?;
-    emit!(EscrowSold { seller: listing.seller, buyer: ctx.accounts.buyer.key(), asset, price, fee });
+    emit!(EscrowSold {
+        seller: listing.seller,
+        buyer: ctx.accounts.buyer.key(),
+        asset,
+        price,
+        fee
+    });
     Ok(())
 }
 
-pub fn escrow_cancel_handler<'info>(ctx: Context<'_, '_, '_, 'info, EscrowCancel<'info>>, proof: LeafProofArgs) -> Result<()> {
+pub fn escrow_cancel_handler<'info>(
+    ctx: Context<'_, '_, '_, 'info, EscrowCancel<'info>>,
+    proof: LeafProofArgs,
+) -> Result<()> {
     let listing = &ctx.accounts.listing;
-    require!(ctx.accounts.merkle_tree.key() == listing.merkle_tree, SettleError::BadAccount);
+    require!(
+        ctx.accounts.merkle_tree.key() == listing.merkle_tree,
+        SettleError::BadAccount
+    );
     require_tree_plumbing(
         &ctx.accounts.tree_config.key(),
         &ctx.accounts.merkle_tree.key(),
@@ -1245,7 +1575,11 @@ pub fn escrow_cancel_handler<'info>(ctx: Context<'_, '_, '_, 'info, EscrowCancel
         &ctx.accounts.bubblegum_program.key(),
     )?;
     let asset = listing.asset;
-    let seeds: Vec<Vec<u8>> = vec![b"listing".to_vec(), asset.to_bytes().to_vec(), vec![listing.bump]];
+    let seeds: Vec<Vec<u8>> = vec![
+        b"listing".to_vec(),
+        asset.to_bytes().to_vec(),
+        vec![listing.bump],
+    ];
     let signer: Vec<&[u8]> = seeds.iter().map(|s| s.as_slice()).collect();
     let listing_info = ctx.accounts.listing.to_account_info();
     let seller = ctx.accounts.seller.to_account_info();
@@ -1268,7 +1602,10 @@ pub fn escrow_cancel_handler<'info>(ctx: Context<'_, '_, '_, 'info, EscrowCancel
         ctx.remaining_accounts,
         Some(&signer),
     )?;
-    emit!(EscrowCancelled { seller: ctx.accounts.seller.key(), asset });
+    emit!(EscrowCancelled {
+        seller: ctx.accounts.seller.key(),
+        asset
+    });
     Ok(())
 }
 
@@ -1280,11 +1617,24 @@ pub fn set_oracles_handler(
     new_admin: Option<Pubkey>,
 ) -> Result<()> {
     let c = &mut ctx.accounts.config;
-    if let Some(v) = mint_oracle { c.mint_oracle = v; }
-    if let Some(v) = root_oracle { c.root_oracle = v; }
-    if let Some(v) = treasury { c.treasury = v; }
-    if let Some(v) = new_admin { c.admin = v; }
-    emit!(OraclesUpdated { admin: c.admin, mint_oracle: c.mint_oracle, root_oracle: c.root_oracle, treasury: c.treasury });
+    if let Some(v) = mint_oracle {
+        c.mint_oracle = v;
+    }
+    if let Some(v) = root_oracle {
+        c.root_oracle = v;
+    }
+    if let Some(v) = treasury {
+        c.treasury = v;
+    }
+    if let Some(v) = new_admin {
+        c.admin = v;
+    }
+    emit!(OraclesUpdated {
+        admin: c.admin,
+        mint_oracle: c.mint_oracle,
+        root_oracle: c.root_oracle,
+        treasury: c.treasury
+    });
     Ok(())
 }
 
@@ -1295,13 +1645,22 @@ pub fn set_limits_handler(
     packs_paused: Option<bool>,
 ) -> Result<()> {
     let c = &mut ctx.accounts.config;
-    if let Some(v) = emission_cap { c.emission_cap = v; }
+    if let Some(v) = emission_cap {
+        c.emission_cap = v;
+    }
     if let Some(v) = market_fee_bps {
         require!(v <= 1_000, SettleError::BadAmount);
         c.market_fee_bps = v;
     }
-    if let Some(v) = packs_paused { c.packs_paused = v; }
-    emit!(LimitsUpdated { admin: c.admin, emission_cap: c.emission_cap, market_fee_bps: c.market_fee_bps, packs_paused: c.packs_paused });
+    if let Some(v) = packs_paused {
+        c.packs_paused = v;
+    }
+    emit!(LimitsUpdated {
+        admin: c.admin,
+        emission_cap: c.emission_cap,
+        market_fee_bps: c.market_fee_bps,
+        packs_paused: c.packs_paused
+    });
     Ok(())
 }
 
@@ -1320,42 +1679,86 @@ pub mod settle {
         emission_cap: u64,
         market_fee_bps: u16,
     ) -> Result<()> {
-        init_config_handler(ctx, mint_oracle, root_oracle, treasury, emission_cap, market_fee_bps)
+        init_config_handler(
+            ctx,
+            mint_oracle,
+            root_oracle,
+            treasury,
+            emission_cap,
+            market_fee_bps,
+        )
     }
 
-    pub fn escrow_buy_pack<'info>(ctx: Context<'_, '_, '_, 'info, BuyPack<'info>>, order_id: u64, currency: u8, amount: u64) -> Result<()> {
+    pub fn escrow_buy_pack<'info>(
+        ctx: Context<'_, '_, '_, 'info, BuyPack<'info>>,
+        order_id: u64,
+        currency: u8,
+        amount: u64,
+    ) -> Result<()> {
         buy_pack_handler(ctx, order_id, currency, amount)
     }
 
-    pub fn settle_pack<'info>(ctx: Context<'_, '_, '_, 'info, SettlePack<'info>>, order_id: u64, args: SettleArgs) -> Result<()> {
+    pub fn settle_pack<'info>(
+        ctx: Context<'_, '_, '_, 'info, SettlePack<'info>>,
+        order_id: u64,
+        args: SettleArgs,
+    ) -> Result<()> {
         settle_pack_handler(ctx, order_id, args)
     }
 
-    pub fn grant_mint<'info>(ctx: Context<'_, '_, '_, 'info, GrantMint<'info>>, args: SettleArgs) -> Result<()> {
+    pub fn grant_mint<'info>(
+        ctx: Context<'_, '_, '_, 'info, GrantMint<'info>>,
+        args: SettleArgs,
+    ) -> Result<()> {
         grant_mint_handler(ctx, args)
     }
 
-    pub fn refund_pack<'info>(ctx: Context<'_, '_, '_, 'info, RefundPack<'info>>, order_id: u64) -> Result<()> {
+    pub fn refund_pack<'info>(
+        ctx: Context<'_, '_, '_, 'info, RefundPack<'info>>,
+        order_id: u64,
+    ) -> Result<()> {
         refund_pack_handler(ctx, order_id)
     }
 
-    pub fn anchor_root(ctx: Context<AnchorRoot>, kind: u8, epoch: u64, root: [u8; 32]) -> Result<()> {
+    pub fn anchor_root(
+        ctx: Context<AnchorRoot>,
+        kind: u8,
+        epoch: u64,
+        root: [u8; 32],
+    ) -> Result<()> {
         anchor_root_handler(ctx, kind, epoch, root)
     }
 
-    pub fn claim_reward<'info>(ctx: Context<'_, '_, '_, 'info, ClaimReward<'info>>, kind: u8, epoch: u64, amount: u64, proof: Vec<[u8; 32]>) -> Result<()> {
+    pub fn claim_reward<'info>(
+        ctx: Context<'_, '_, '_, 'info, ClaimReward<'info>>,
+        kind: u8,
+        epoch: u64,
+        amount: u64,
+        proof: Vec<[u8; 32]>,
+    ) -> Result<()> {
         claim_reward_handler(ctx, kind, epoch, amount, proof)
     }
 
-    pub fn escrow_list<'info>(ctx: Context<'_, '_, '_, 'info, EscrowList<'info>>, asset: Pubkey, price: u64, proof: LeafProofArgs) -> Result<()> {
+    pub fn escrow_list<'info>(
+        ctx: Context<'_, '_, '_, 'info, EscrowList<'info>>,
+        asset: Pubkey,
+        price: u64,
+        proof: LeafProofArgs,
+    ) -> Result<()> {
         escrow_list_handler(ctx, asset, price, proof)
     }
 
-    pub fn escrow_buy<'info>(ctx: Context<'_, '_, '_, 'info, EscrowBuy<'info>>, proof: LeafProofArgs) -> Result<()> {
+    pub fn escrow_buy<'info>(
+        ctx: Context<'_, '_, '_, 'info, EscrowBuy<'info>>,
+        proof: LeafProofArgs,
+    ) -> Result<()> {
         escrow_buy_handler(ctx, proof)
     }
 
-    pub fn escrow_cancel<'info>(ctx: Context<'_, '_, '_, 'info, EscrowCancel<'info>>, proof: LeafProofArgs) -> Result<()> {
+    pub fn escrow_cancel<'info>(
+        ctx: Context<'_, '_, '_, 'info, EscrowCancel<'info>>,
+        proof: LeafProofArgs,
+    ) -> Result<()> {
         escrow_cancel_handler(ctx, proof)
     }
 
