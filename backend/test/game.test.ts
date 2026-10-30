@@ -97,6 +97,11 @@ describe('fusion planner', () => {
     const [e] = mint(db, w.bob, [{ rarity: 0, collection: 0 }]);
     ingestTx(tx([{ program: 'chip_core', name: 'ChipFlagsChanged', data: { asset: e, flags: 8, lockUntil: String(Math.floor(Date.now() / 1000) + 86_400) } }]), db);
     expect(err(() => fusion.plan(db, w.bob, { materials: [a, c, e] })).message).toContain('locked');
+    // ...but the same soulbound flag with an EXPIRED result-lock is a legal
+    // material again (the table's lock is a cooldown, not a life sentence).
+    const [f] = mint(db, w.bob, [{ rarity: 0, collection: 0 }]);
+    ingestTx(tx([{ program: 'chip_core', name: 'ChipFlagsChanged', data: { asset: f, flags: 8, lockUntil: String(Math.floor(Date.now() / 1000) - 60) } }]), db);
+    expect(fusion.plan(db, w.bob, { materials: [a, c, f] }).materials).toHaveLength(3);
     const diamonds = mint(db, w.bob, [{ rarity: 8, collection: 0 }, { rarity: 8, collection: 0 }, { rarity: 8, collection: 0 }]);
     expect(err(() => fusion.plan(db, w.bob, { materials: diamonds })).code).toBe('no_recipe');
     expect(err(() => fusion.validatePlanRequest({ materials: [a, b] })).code).toBe('bad_materials');

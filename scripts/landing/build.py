@@ -333,6 +333,7 @@ BODY = f'''
     <a href="#packs" data-i18n="nav.packs">{t('nav.packs')}</a>
     <a href="#rarity" data-i18n="nav.rarity">{t('nav.rarity')}</a>
     <a href="#world" data-i18n="nav.world">{t('nav.world')}</a>
+    <a href="#boards" data-i18n="nav.boards">{t('nav.boards')}</a>
     <a href="#economy" data-i18n="nav.economy">{t('nav.economy')}</a>
     <a href="#road" data-i18n="nav.roadmap">{t('nav.roadmap')}</a>
     <a href="#faq" data-i18n="nav.faq">{t('nav.faq')}</a>
@@ -468,6 +469,21 @@ BODY = f'''
       <span class="lore-fact" data-i18n="world.f2">{t('world.f2')}</span>
       <span class="lore-fact" data-i18n="world.f3">{t('world.f3')}</span>
       <span class="lore-fact" data-i18n="world.f4">{t('world.f4')}</span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= BOARDS / SKATE WORLD ================= -->
+<section class="section brick wall-world torn-top" id="boards">
+  <div class="wall-photo" data-photo="bg-boards"></div>
+  <div class="lamp-glow" style="top:-200px; left:8%; background: radial-gradient(circle, rgba(255,46,138,0.20), transparent 70%);"></div>
+  <div class="wrap">
+{head_block('boards.h', 'boards.p', 'var(--magenta)')}
+    <div class="boards-img" style="background-image: url({PHOTOS['bg-wall']})" role="img" aria-hidden="true"></div>
+    <div class="lore-facts">
+      <span class="lore-fact" data-i18n="boards.f1">{t('boards.f1')}</span>
+      <span class="lore-fact" data-i18n="boards.f2">{t('boards.f2')}</span>
+      <span class="lore-fact" data-i18n="boards.f3">{t('boards.f3')}</span>
     </div>
   </div>
 </section>

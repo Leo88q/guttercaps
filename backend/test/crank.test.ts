@@ -119,7 +119,7 @@ function fakeDas(o: { leafId?: bigint; depth?: number } = {}) {
     const root = foldCompressionProof(leaf, leafId, siblings.map((s) => Uint8Array.from(s.toBytes())));
     return {
       asset: {
-        assetId, interface: 'MplBubblegum', owner: buyer, delegate: buyer, frozen: false, merkleTree, leafId, sequence: undefined,
+        assetId, interface: 'MplBubblegum', owner: buyer, delegate: buyer, frozen: false, burnt: false, merkleTree, leafId, sequence: undefined,
         dataHash, creatorHash, collectionHash, assetDataHash, flags: 0, jsonUri: undefined, raw: {} as never,
       },
       proof: { root, treeId: merkleTree, nodeIndex: (1n << BigInt(depth)) + leafId, leafIndex: leafId, proof: siblings, raw: {} as never },

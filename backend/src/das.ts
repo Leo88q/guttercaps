@@ -43,6 +43,8 @@ export interface RawDasAsset {
   };
   grouping?: Array<{ group_key?: string; group_value?: string }>;
   content?: { json_uri?: string; metadata?: Record<string, unknown> };
+  /** DAS keeps burnt assets queryable and marks them instead of 404ing. */
+  burnt?: boolean;
 }
 
 export interface RawDasProof {
@@ -68,6 +70,8 @@ export interface NormalizedDasAsset {
   assetDataHash: Uint8Array;
   /** Bubblegum V2 leaf flags; never inferred from the DAS frozen display field. */
   flags: number;
+  /** DAS `burnt` marker: a burnt asset still answers getAsset, flagged. */
+  burnt: boolean;
   jsonUri: string | undefined;
   raw: RawDasAsset;
 }
@@ -153,6 +157,7 @@ export function normalizeDasAsset(raw: unknown): NormalizedDasAsset {
     owner,
     delegate,
     frozen: ownership.frozen === true,
+    burnt: a.burnt === true,
     merkleTree,
     leafId,
     sequence: c.seq == null ? undefined : integer(c.seq, 'compression.seq'),
@@ -629,6 +634,7 @@ export function resolveClaimFromTreeAccount(input: OnChainClaimTreeInput): DasAs
       owner: input.buyer,
       delegate: input.buyer,
       frozen: false,
+      burnt: false, // resolved from the live on-chain leaf — it exists
       merkleTree: input.merkleTree,
       leafId: leafIdxBig,
       sequence: undefined,

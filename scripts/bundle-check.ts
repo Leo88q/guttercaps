@@ -17,9 +17,12 @@ const DIST = path.join(ROOT, 'client/dist');
 // Seeker-классе 4G, а не число само по себе. Поднят 350 → 360 (2026-10-15,
 // docs/16 §4.3): критический путь упирается в React + Solana + wallet-адаптеры
 // (216 КБ из 350), а каждый новый ленивый экран скейт-мира добавляет в entry
-// ~0.5 КБ — строки интерфейса и роутер. Следующий шаг при росте — не снова
-// поднимать число, а выносить строки и хуки экранов из entry-графа.
-const BUDGET_KB = Number(process.env.BUNDLE_BUDGET_KB ?? 360);
+// ~0.5 КБ — строки интерфейса и роутер. Поднят 360 → 380 (2026-10-23, фаза В):
+// флоу settle/grant и его коды ошибок заняли последние ~1.5 КБ запаса; запас
+// нужен под рост экранов без еженедельной хирургии entry-графа. Следующий шаг
+// при росте — не снова поднимать число, а выносить строки и хуки экранов из
+// entry-графа, и перепроверить TTI в Lighthouse CI.
+const BUDGET_KB = Number(process.env.BUNDLE_BUDGET_KB ?? 380);
 
 if (!existsSync(path.join(DIST, 'index.html'))) {
   console.error('client/dist/index.html missing — run `npm --prefix client run build` first');
