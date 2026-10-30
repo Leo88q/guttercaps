@@ -184,6 +184,7 @@ const ui = {
   "verifyMatch": "Perhitungan lokal sesuai hasil on-chain.",
   "verifyMismatch": "TIDAK COCOK — hasil on-chain tidak sesuai data acak. Laporkan hal ini.",
   "primaryNav": "Navigasi utama",
+  "roomsNav": "Ruangan",
   "chooseWallet": "Pilih dompet",
   "noWallet": "Dompet yang kompatibel tidak ditemukan. Pasang dompet Solana lalu muat ulang halaman.",
   "connectGrid": "Hubungkan dompet untuk melihat koleksi.",

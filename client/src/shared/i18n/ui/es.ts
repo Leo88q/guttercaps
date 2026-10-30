@@ -184,6 +184,7 @@ const ui = {
   "verifyMatch": "El cálculo local coincide con el resultado en cadena.",
   "verifyMismatch": "DISCREPANCIA — el resultado en cadena no corresponde a los datos aleatorios. Infórmanos.",
   "primaryNav": "Navegación principal",
+  "roomsNav": "Salas",
   "chooseWallet": "Elige una cartera",
   "noWallet": "No hay carteras compatibles. Instala una cartera Solana y recarga la página.",
   "connectGrid": "Conecta una cartera para ver tu colección.",

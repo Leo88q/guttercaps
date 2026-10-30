@@ -140,7 +140,7 @@ export function Shell({ children }: { children: ReactNode }) {
         ))}
       </nav>
       {/* Телефон: нижний бар из 4 комнат. */}
-      <nav className="shell-nav shell-nav-rooms" aria-label={t('ui.primaryNav')}>
+      <nav className="shell-nav shell-nav-rooms" aria-label={t('ui.roomsNav')}>
         {ROOMS.map((r) => (
           <button key={r.id} type="button" className={r.id === room ? 'active' : ''} aria-pressed={r.id === room} onClick={() => goRoom(r)}>
             <img src={r.gen} width={24} height={24} alt="" aria-hidden loading="eager" decoding="async" className="nav-img" />

@@ -25,12 +25,6 @@ export const ACCEPTED: Accepted[] = [
     until: '2027-03-31',
     why: 'toBigIntLE() overflow lives in the optional native addon; the only caller is @solana/buffer-layout-utils, which passes fixed-length (8/16/24/32-byte) layout blobs, never attacker-sized input, and our images fall back to the pure-JS path (no node-gyp). No upstream fix exists: bigint-buffer is unmaintained and @solana/spl-token 0.4.x is the last web3.js-1.x line. Re-evaluate when spl-token/buffer-layout-utils drop it.',
   },
-  {
-    id: 'GHSA-vfj7-8cjw-p6xm',
-    pkg: 'braces',
-    until: '2027-03-31',
-    why: 'braces <= 3.0.3: stack exhaustion from a deeply nested expansion (CWE-674, published 2026-09-18). There is no patched release to move to — GitHub reports first_patched_version: null and the registry has nothing above 3.0.3, while micromatch (the holder) asks for `^3.0.3` — so `npm audit fix` cannot satisfy this and the only alternatives are dropping the chain or accepting it. The chain is braces ← micromatch ← metro-file-map ← metro ← @react-native/community-cli-plugin ← react-native ← @solana-mobile/mobile-wallet-adapter-protocol ← @solana-mobile/wallet-standard-mobile (the client calls registerMwa()): metro is React Native\'s bundler, this repo builds the web client with Vite and never runs metro, and the vulnerable function expands a pattern the caller chooses — no request data reaches it. Re-evaluate when braces publishes a fix (the registry is queried on every run of this gate) or when the mobile wallet adapter stack drops react-native.',
-  },
 ];
 
 // npm audit --json (v7+ "auditReportVersion": 2) — only the fields the gate reads.

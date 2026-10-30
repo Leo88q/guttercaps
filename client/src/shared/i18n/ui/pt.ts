@@ -184,6 +184,7 @@ const ui = {
   "verifyMatch": "O cálculo local coincide com o resultado on-chain.",
   "verifyMismatch": "DIVERGÊNCIA — o resultado on-chain não corresponde aos dados aleatórios. Avise-nos.",
   "primaryNav": "Navegação principal",
+  "roomsNav": "Salas",
   "chooseWallet": "Escolha uma carteira",
   "noWallet": "Nenhuma carteira compatível. Instale uma carteira Solana e recarregue a página.",
   "connectGrid": "Conecte uma carteira para ver sua coleção.",

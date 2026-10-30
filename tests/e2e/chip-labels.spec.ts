@@ -43,7 +43,15 @@ for (const width of [360, 1280]) test(`RU cap labels and arena picker stay reada
   await page.getByRole('button', { name: 'Localization Test Wallet', exact: true }).click();
   await expect(page.getByTestId('settings-link')).toBeVisible();
   await expect.poll(() => page.evaluate(() => JSON.parse(sessionStorage.getItem('gc.session') ?? '{}').state?.status)).toBe('authenticated');
-  await page.locator('.shell-nav a[href="/collection"]').click();
+  // Desktop navigates via the side rail; on a phone the side rail is hidden and the
+  // same routes live behind the bottom rooms bar + room tabs, so go by URL there
+  // (the labels under test do not depend on which chrome got us to the page).
+  const goNav = async (path: string) => {
+    const side = page.locator(`.shell-nav-side a[href="${path}"]`);
+    if (await side.isVisible().catch(() => false)) await side.click();
+    else await page.goto(`${path}?lang=ru`);
+  };
+  await goNav('/collection');
   await page.locator('.cgrid .cell.owned').first().click();
   const drawer = page.getByRole('dialog');
   await expectLevelMark(drawer.locator('.chip-lvl').first());
@@ -51,7 +59,7 @@ for (const width of [360, 1280]) test(`RU cap labels and arena picker stay reada
   await page.keyboard.press('Escape');
   await expect(drawer).toHaveCount(0);
 
-  await page.locator('.shell-nav a[href="/arena"]').click();
+  await goNav('/arena');
   await page.getByRole('button', { name: 'Выберите отряд (3)', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();

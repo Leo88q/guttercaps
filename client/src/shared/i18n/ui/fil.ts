@@ -184,6 +184,7 @@ const ui = {
   "verifyMatch": "Tugma ang lokal na kalkulasyon sa resulta sa blockchain.",
   "verifyMismatch": "HINDI TUGMA — hindi tumutugma ang resulta sa random na datos. Pakireport ito.",
   "primaryNav": "Pangunahing nabigasyon",
+  "roomsNav": "Mga kuwarto",
   "chooseWallet": "Pumili ng wallet",
   "noWallet": "Walang nakitang angkop na wallet. Mag-install ng Solana wallet at i-reload ang pahina.",
   "connectGrid": "Ikonekta ang wallet para makita ang koleksiyon.",

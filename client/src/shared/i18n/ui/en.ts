@@ -183,6 +183,7 @@ const ui = {
   "verifyMatch": "Local recomputation matches the on-chain result.",
   "verifyMismatch": "MISMATCH — the on-chain result does not follow from the randomness. Please report this.",
   "primaryNav": "Primary",
+  "roomsNav": "Rooms",
   "chooseWallet": "Choose a wallet",
   "noWallet": "No compatible wallet found. Install a Solana wallet, then reload this page.",
   "connectGrid": "Connect a wallet to see your collection.",

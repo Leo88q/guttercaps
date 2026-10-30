@@ -184,6 +184,7 @@ const ui = {
   "verifyMatch": "Kết quả tính lại khớp với kết quả trên chuỗi.",
   "verifyMismatch": "KHÔNG KHỚP — kết quả trên chuỗi không khớp dữ liệu ngẫu nhiên. Vui lòng báo lỗi.",
   "primaryNav": "Điều hướng chính",
+  "roomsNav": "Các phòng",
   "chooseWallet": "Chọn ví",
   "noWallet": "Không tìm thấy ví tương thích. Cài ví Solana rồi tải lại trang.",
   "connectGrid": "Kết nối ví để xem bộ sưu tập.",
