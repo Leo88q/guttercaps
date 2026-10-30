@@ -522,12 +522,16 @@ pub struct SettlePack<'info> {
     /// written, only forwarded into the mint_v2 CPI.
     #[account(address = crate::mpl_core_cpi_signer() @ SettleError::BadAccount)]
     pub mpl_core_cpi_signer: UncheckedAccount<'info>,
+    /// CHECK: fixed MPL Noop log wrapper, address-pinned to MPL_NOOP_ID below; only receives the bubblegum log CPI, never read or written.
     #[account(address = MPL_NOOP_ID @ SettleError::BadAccount)]
     pub log_wrapper: UncheckedAccount<'info>,
+    /// CHECK: account-compression program, address-pinned to MPL_ACCOUNT_COMPRESSION_ID below; forwarded into bubblegum CPIs only.
     #[account(address = MPL_ACCOUNT_COMPRESSION_ID @ SettleError::BadAccount)]
     pub compression_program: UncheckedAccount<'info>,
+    /// CHECK: mpl-bubblegum program, address-pinned to BUBBLEGUM_V2_ID below; the CPI target of mint/burn/transfer, never read or written directly.
     #[account(address = BUBBLEGUM_V2_ID @ SettleError::BadAccount)]
     pub bubblegum_program: UncheckedAccount<'info>,
+    /// CHECK: MPL Core program, address-pinned to MPL_CORE_ID below; forwarded into the mint_v2 CPI for collection verification only.
     #[account(address = MPL_CORE_ID @ SettleError::BadAccount)]
     pub mpl_core_program: UncheckedAccount<'info>,
     pub token_program: Program<'info, Token>,
@@ -634,10 +638,13 @@ pub struct EscrowList<'info> {
     /// CHECK: MPL Core collection of the leaf, or the Bubblegum program id
     /// as sentinel for a collection-less leaf (mirrors the market program).
     pub core_collection: UncheckedAccount<'info>,
+    /// CHECK: fixed MPL Noop log wrapper, address-pinned to MPL_NOOP_ID below; only receives the bubblegum log CPI, never read or written.
     #[account(address = MPL_NOOP_ID @ SettleError::BadAccount)]
     pub log_wrapper: UncheckedAccount<'info>,
+    /// CHECK: account-compression program, address-pinned to MPL_ACCOUNT_COMPRESSION_ID below; forwarded into bubblegum CPIs only.
     #[account(address = MPL_ACCOUNT_COMPRESSION_ID @ SettleError::BadAccount)]
     pub compression_program: UncheckedAccount<'info>,
+    /// CHECK: mpl-bubblegum program, address-pinned to BUBBLEGUM_V2_ID below; the CPI target of mint/burn/transfer, never read or written directly.
     #[account(address = BUBBLEGUM_V2_ID @ SettleError::BadAccount)]
     pub bubblegum_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
@@ -655,6 +662,7 @@ pub struct EscrowBuy<'info> {
     )]
     pub listing: Account<'info, EscrowListing>,
     /// The seller receives the payment and the listing rent.
+    /// CHECK: the listing's seller, address-pinned to listing.seller below; only receives the payment and the closed listing's rent.
     #[account(mut, address = listing.seller @ SettleError::BadAccount)]
     pub seller: UncheckedAccount<'info>,
     /// CHECK: compared against config.treasury in the handler.
@@ -668,10 +676,13 @@ pub struct EscrowBuy<'info> {
     pub merkle_tree: UncheckedAccount<'info>,
     /// CHECK: MPL Core collection of the leaf, or sentinel (see EscrowList).
     pub core_collection: UncheckedAccount<'info>,
+    /// CHECK: fixed MPL Noop log wrapper, address-pinned to MPL_NOOP_ID below; only receives the bubblegum log CPI, never read or written.
     #[account(address = MPL_NOOP_ID @ SettleError::BadAccount)]
     pub log_wrapper: UncheckedAccount<'info>,
+    /// CHECK: account-compression program, address-pinned to MPL_ACCOUNT_COMPRESSION_ID below; forwarded into bubblegum CPIs only.
     #[account(address = MPL_ACCOUNT_COMPRESSION_ID @ SettleError::BadAccount)]
     pub compression_program: UncheckedAccount<'info>,
+    /// CHECK: mpl-bubblegum program, address-pinned to BUBBLEGUM_V2_ID below; the CPI target of mint/burn/transfer, never read or written directly.
     #[account(address = BUBBLEGUM_V2_ID @ SettleError::BadAccount)]
     pub bubblegum_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
@@ -696,10 +707,13 @@ pub struct EscrowCancel<'info> {
     pub merkle_tree: UncheckedAccount<'info>,
     /// CHECK: MPL Core collection of the leaf, or sentinel (see EscrowList).
     pub core_collection: UncheckedAccount<'info>,
+    /// CHECK: fixed MPL Noop log wrapper, address-pinned to MPL_NOOP_ID below; only receives the bubblegum log CPI, never read or written.
     #[account(address = MPL_NOOP_ID @ SettleError::BadAccount)]
     pub log_wrapper: UncheckedAccount<'info>,
+    /// CHECK: account-compression program, address-pinned to MPL_ACCOUNT_COMPRESSION_ID below; forwarded into bubblegum CPIs only.
     #[account(address = MPL_ACCOUNT_COMPRESSION_ID @ SettleError::BadAccount)]
     pub compression_program: UncheckedAccount<'info>,
+    /// CHECK: mpl-bubblegum program, address-pinned to BUBBLEGUM_V2_ID below; the CPI target of mint/burn/transfer, never read or written directly.
     #[account(address = BUBBLEGUM_V2_ID @ SettleError::BadAccount)]
     pub bubblegum_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
@@ -734,12 +748,16 @@ pub struct GrantMint<'info> {
     /// written, only forwarded into the mint_v2 CPI.
     #[account(address = crate::mpl_core_cpi_signer() @ SettleError::BadAccount)]
     pub mpl_core_cpi_signer: UncheckedAccount<'info>,
+    /// CHECK: fixed MPL Noop log wrapper, address-pinned to MPL_NOOP_ID below; only receives the bubblegum log CPI, never read or written.
     #[account(address = MPL_NOOP_ID @ SettleError::BadAccount)]
     pub log_wrapper: UncheckedAccount<'info>,
+    /// CHECK: account-compression program, address-pinned to MPL_ACCOUNT_COMPRESSION_ID below; forwarded into bubblegum CPIs only.
     #[account(address = MPL_ACCOUNT_COMPRESSION_ID @ SettleError::BadAccount)]
     pub compression_program: UncheckedAccount<'info>,
+    /// CHECK: mpl-bubblegum program, address-pinned to BUBBLEGUM_V2_ID below; the CPI target of mint/burn/transfer, never read or written directly.
     #[account(address = BUBBLEGUM_V2_ID @ SettleError::BadAccount)]
     pub bubblegum_program: UncheckedAccount<'info>,
+    /// CHECK: MPL Core program, address-pinned to MPL_CORE_ID below; forwarded into the mint_v2 CPI for collection verification only.
     #[account(address = MPL_CORE_ID @ SettleError::BadAccount)]
     pub mpl_core_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
