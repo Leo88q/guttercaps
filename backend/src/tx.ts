@@ -33,6 +33,12 @@ export interface SendOpts {
   /** skip the RPC preflight (Switchboard reveal) — errors are then decoded from the confirmed tx logs */
   skipPreflight?: boolean;
   lookupTables?: AddressLookupTableAccount[];
+  /**
+   * §1.1: вызывается синхронно после подписи и ДО `sendRawTransaction`. Ledger операций пишет здесь
+   * подпись, поэтому падение процесса сразу после отправки оставляет след, а не «ничего не было».
+   * Исключение из хука означает «не отправлять» (fail closed).
+   */
+  onSigned?: (signature: string, extra: { rawTx: string; lastValidBlockHeight: number; cuPrice: number }) => void;
 }
 
 /**
@@ -107,6 +113,7 @@ export async function sendAndConfirm(connection: Connection, payer: Keypair, ixs
     const tx = compile(payer.publicKey, blockhash, ixs, opts.cuLimit, cuPrice, opts.lookupTables);
     tx.sign([payer]);
     const signature = base58Encode(tx.signatures[0]);
+    opts.onSigned?.(signature, { rawTx: Buffer.from(tx.serialize()).toString('base64'), lastValidBlockHeight, cuPrice });
     try {
       await connection.sendRawTransaction(tx.serialize(), { skipPreflight: opts.skipPreflight ?? false, maxRetries: 3, preflightCommitment: 'confirmed' });
       const conf = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');

@@ -59,6 +59,7 @@ import {
 } from './chain.ts';
 import { DasClient, discoverLeafNonce, resolveClaimFromTreeAccount, type DasAssetWithProof } from './das.ts';
 import { TxError, fitsInTx, loadLookupTables, sendAndConfirm } from './tx.ts';
+import { reconcileChainOps } from './chain-ops.ts';
 
 const LAMPORTS = 1_000_000_000;
 export const SKU_IDS = ['starter', 'standard', 'premium', 'limited'] as const;
@@ -1004,8 +1005,18 @@ export async function crank(log: (s: string) => void = console.log) {
   const phaseGTree = lp === 'g' && smt && mak ? new PK(smt) : null;
   const phaseGAuthority = phaseGTree ? loadKeypair(mak) : null;
   if (phaseGTree && phaseGAuthority) log(`[crank] phase-G mint crank on tree ${phaseGTree.toBase58()} authority ${phaseGAuthority.publicKey.toBase58()}`);
+  // §1.2: старт-ап проход по ledger'у — «что было отправлено до падения» досверяется ДО того, как
+  // воркер начнёт принимать новую работу. Иначе первый же тик может отправить второй платёж по строке,
+  // подпись которой уже ушла в сеть.
+  try {
+    const r0 = await reconcileChainOps(sharedDb(), connection, { limit: 500 });
+    if (r0.checked) log(`[crank] chain_ops startup reconcile: ${r0.confirmed} confirmed, ${r0.failed} failed, ${r0.orphaned} orphaned, ${r0.pending} pending`);
+  } catch (e) {
+    log(`[crank] chain_ops startup reconcile failed: ${(e as Error).message}`);
+  }
   let lastPhaseG = 0;
   let lastPhaseV = 0;
+  let lastOps = Date.now();
   let lastSweep = 0, lastReport = 0;
   while (true) {
     const t = Date.now();
@@ -1032,7 +1043,7 @@ export async function crank(log: (s: string) => void = console.log) {
         const acc = accrueStakingDay(sharedDb(), day);
         if (acc.credited > 0) log(`[crank] phase-G staking day ${day}: credited ${acc.credited} wallets (budget ${acc.budgetMicro} micro)`);
         const { makeCgPayoutSender } = await import('./phaseg-payout.ts');
-        const pay = await processPayouts(sharedDb(), makeCgPayoutSender(connection, phaseGAuthority));
+        const pay = await processPayouts(sharedDb(), makeCgPayoutSender(connection, phaseGAuthority, sharedDb()));
         if (pay.paid > 0) log(`[crank] phase-G paid ${pay.paid} reward claims`);
       } catch (e) {
         log(`[crank] phase-G mint error: ${(e as Error).message}`);
@@ -1058,11 +1069,21 @@ export async function crank(log: (s: string) => void = console.log) {
         if (acc.credited > 0) log(`[crank] phase-V staking day ${day}: credited ${acc.credited} wallets (budget ${acc.budgetMicro} micro)`);
         if (mak) {
           const { makeCgPayoutSender } = await import('./phaseg-payout.ts');
-          const pay = await processPayouts(dbv, makeCgPayoutSender(connection, loadKeypair(mak)));
+          const pay = await processPayouts(dbv, makeCgPayoutSender(connection, loadKeypair(mak), dbv));
           if (pay.paid > 0) log(`[crank] phase-V paid ${pay.paid} reward claims`);
         }
       } catch (e) {
         log(`[crank] phase-V registration error: ${(e as Error).message}`);
+      }
+    }
+    // §1.2: досверка исходящих операций. Только по данным цепи: `sent → confirmed|failed|orphaned`.
+    if (t - lastOps >= 10_000) {
+      lastOps = t;
+      try {
+        const r = await reconcileChainOps(sharedDb(), connection, { olderThanS: 5 });
+        if (r.confirmed || r.failed || r.orphaned) log(`[crank] chain_ops: ${r.confirmed} confirmed, ${r.failed} failed, ${r.orphaned} orphaned, ${r.pending} pending`);
+      } catch (e) {
+        log(`[crank] chain_ops reconcile failed: ${(e as Error).message}`);
       }
     }
     try {

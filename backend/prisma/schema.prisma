@@ -1144,6 +1144,44 @@ model ServicePayment {
   @@map("service_payments")
 }
 
+/// «Этот платёж уже потрачен» — durable ledger вне проекций (reports/REMEDIATION-DESIGN.md §1.5).
+/// Первичный ключ (signature, event_index) делает повторную выдачу по тому же платежу невозможной
+/// даже после `dropSignatures`/`rebuild`, которые пересоздают service_payments из событий.
+model PaymentConsumption {
+  signature  String
+  eventIndex Int      @map("event_index")
+  scope      String   // entitlement | handle | crew | line | tournament | grid-deep
+  subject    String   // entitlement id / handle / week / day
+  consumedBy String   @map("consumed_by") // исходная строка 'scope:subject'
+  consumedAt DateTime @map("consumed_at")
+
+  @@id([signature, eventIndex])
+  @@index([scope, subject])
+  @@map("payment_consumption")
+}
+
+/// Ledger исходящих транзакций backend (§1.1): подпись пишется ДО отправки, статус меняется только
+/// по данным цепи. Одна строка на бизнес-действие: (kind, biz_key) уникален.
+model ChainOp {
+  id                  String   @id
+  kind                String
+  bizKey              String   @map("biz_key")
+  payloadHash         String   @map("payload_hash")
+  status              String   // intent | signed | sent | landed | confirmed | failed | orphaned
+  signature           String?  @unique
+  rawTx               Bytes?   @map("raw_tx")
+  lastValidBlockHeight BigInt? @map("last_valid_block_height")
+  cuPrice             BigInt?  @map("cu_price")
+  attempts            Int      @default(0)
+  error               String?
+  createdAt           DateTime @map("created_at")
+  updatedAt           DateTime @map("updated_at")
+
+  @@unique([kind, bizKey])
+  @@index([status, updatedAt])
+  @@map("chain_ops")
+}
+
 /// What a payment bought (handle, skin on a cap, theme, emote pack, season pass …).
 model Entitlement {
   id        BigInt   @id @default(autoincrement())

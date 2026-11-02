@@ -7,6 +7,8 @@ import type { DatabaseSync as DatabaseSyncT, StatementSync, SQLInputValue, SQLOu
 import { DB_PATH } from './config.ts';
 import { PublicKey } from '@solana/web3.js';
 import { compressedMintClaimPda } from './chain.ts';
+import { healPaymentConsumption } from './consumption.ts';
+import { insertIgnore } from './sql.ts';
 
 // `import { DatabaseSync } from 'node:sqlite'` breaks under vitest's module
 // resolver (it does not know the builtin yet); getBuiltinModule is the
@@ -821,6 +823,44 @@ CREATE TABLE IF NOT EXISTS service_payments (
   PRIMARY KEY (signature, event_index)
 );
 CREATE INDEX IF NOT EXISTS idx_service_payments_buyer ON service_payments(buyer, kind, slot);
+-- Consumption ledger (reports/REMEDIATION-DESIGN.md §1.5). WHO spent WHICH payment event is NOT a
+-- projection: dropSignatures/rebuild rewrite service_payments from events_raw and cannot re-create the
+-- consumed_by mark (the chain has no such fact), which used to un-spend every payment that had already
+-- bought something while the grant itself (entitlements, grid_deep_credits, board_parts) lived outside
+-- the projection set and was never rewound. One row per payment event, written in the same transaction
+-- as the grant, never deleted.
+CREATE TABLE IF NOT EXISTS payment_consumption (
+  signature   TEXT    NOT NULL,
+  event_index INTEGER NOT NULL,
+  scope       TEXT    NOT NULL,             -- entitlement | handle | crew | line | tournament | grid-deep
+  subject     TEXT    NOT NULL,             -- entitlement id / handle / week / day — for audit, not for uniqueness
+  consumed_by TEXT    NOT NULL,             -- the original 'scope:subject' string the callers used
+  consumed_at INTEGER NOT NULL,
+  PRIMARY KEY (signature, event_index)      -- one payment event can be spent exactly once, forever
+);
+CREATE INDEX IF NOT EXISTS idx_payment_consumption_scope ON payment_consumption(scope, subject);
+-- Outbound chain operations (§1.1). The signature is stored BEFORE the send and the row is the single
+-- place that knows whether it landed: intent -> signed -> sent -> landed -> confirmed | failed | orphaned.
+-- ux_chain_ops_biz makes "one business action = one transaction" a database fact, ux_chain_ops_sig makes
+-- "one signature = one op" one too. Not a projection: it survives rebuilds by design.
+CREATE TABLE IF NOT EXISTS chain_ops (
+  id                      TEXT PRIMARY KEY,  -- sha256(kind ‖ biz_key), so a retried intent finds the row
+  kind                    TEXT    NOT NULL,  -- phaseg_payout | phaseg_mint | reward_root | …
+  biz_key                 TEXT    NOT NULL,  -- wallet | order#chip | epoch … — the business identity
+  payload_hash            TEXT    NOT NULL,  -- sha256 of the normalised intent (guards against a changed payload)
+  status                  TEXT    NOT NULL,  -- intent | signed | sent | landed | confirmed | failed | orphaned
+  signature               TEXT,
+  raw_tx                  BLOB,              -- signed transaction, so a resend is the SAME transaction
+  last_valid_block_height INTEGER,
+  cu_price                INTEGER,
+  attempts                INTEGER NOT NULL DEFAULT 0,
+  error                   TEXT,
+  created_at              INTEGER NOT NULL,
+  updated_at              INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_chain_ops_biz ON chain_ops(kind, biz_key);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_chain_ops_sig ON chain_ops(signature) WHERE signature IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_chain_ops_due ON chain_ops(status, updated_at);
 CREATE TABLE IF NOT EXISTS entitlements (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   wallet     TEXT    NOT NULL,
@@ -1529,6 +1569,25 @@ export class Db {
 
   /** Additive, idempotent column migrations for dev SQLite files created by older builds. */
   private migrate() {
+    // §1.5 backfill: before this build the "spent" mark lived only on `service_payments.consumed_by`,
+    // which a rebuild wipes. Copy every existing mark into the durable ledger once (idempotent).
+    const legacy = this.raw.prepare(`SELECT signature, event_index, consumed_by, consumed_at FROM service_payments WHERE consumed_by IS NOT NULL`).all() as
+      { signature: string; event_index: number; consumed_by: string; consumed_at: number | null }[];
+    if (legacy.length > 0) {
+      const ins = this.raw.prepare(insertIgnore('payment_consumption', ['signature', 'event_index', 'scope', 'subject', 'consumed_by', 'consumed_at']));
+      const at = Math.floor(Date.now() / 1000);
+      this.raw.exec('BEGIN IMMEDIATE');
+      try {
+        for (const r of legacy) {
+          const i = r.consumed_by.indexOf(':');
+          ins.run(r.signature, r.event_index, i < 0 ? r.consumed_by : r.consumed_by.slice(0, i), i < 0 ? '' : r.consumed_by.slice(i + 1), r.consumed_by, r.consumed_at ?? at);
+        }
+        this.raw.exec('COMMIT');
+      } catch (e) { this.raw.exec('ROLLBACK'); throw e; }
+    }
+    // A projection rebuild replays `service_payments` without the mark (the chain has no such fact), so
+    // the mirror column is re-derived from the ledger on every boot as well as after every replay.
+    healPaymentConsumption(this);
     const orderCols = new Set((this.raw.prepare('PRAGMA table_info(pack_orders)').all() as { name: string }[]).map((c) => c.name));
     if (!orderCols.has('settle_sig')) this.raw.exec('ALTER TABLE pack_orders ADD COLUMN settle_sig TEXT');
     if (!orderCols.has('settle_specs')) this.raw.exec('ALTER TABLE pack_orders ADD COLUMN settle_specs TEXT');

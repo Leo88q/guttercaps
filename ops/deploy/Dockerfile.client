@@ -14,32 +14,47 @@ FROM ${NODE_IMAGE} AS build
 WORKDIR /app
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false NPM_CONFIG_FUND=false
 
+# Имена ниже — ровно те, что читает client/src/app/config.ts (находка 6). До этого образ объявлял
+# VITE_SOLANA_RPC / VITE_SOLANA_WS, которых приложение не читает вовсе, а VITE_RPC_URL, VITE_RPC_WS_URL,
+# VITE_DAS_RPC_URL, VITE_PROGRAM_SETTLE, VITE_LAUNCH_PHASE и все VITE_FLAG_* объявлены не были — то есть
+# «build args ok» печаталось для набора, из которого половина ни на что не влияла, а нужное оставалось
+# константой: браузер уходил на публичный clusterApiUrl(mainnet), а фазовый запуск работал как full.
 ARG VITE_CLUSTER
-ARG VITE_SOLANA_RPC
-ARG VITE_SOLANA_WS
+ARG VITE_RPC_URL
+ARG VITE_RPC_WS_URL
+ARG VITE_DAS_RPC_URL
 ARG VITE_API_BASE
 ARG VITE_WS_BASE
 ARG VITE_PROGRAM_CHIP_CORE
 ARG VITE_PROGRAM_MARKET
 ARG VITE_PROGRAM_STAKING
 ARG VITE_PROGRAM_ARENA
+ARG VITE_PROGRAM_SETTLE
 ARG VITE_CG_MINT
 ARG VITE_USDC_MINT
 ARG VITE_SKR_MINT
 ARG VITE_LOOKUP_TABLE
-ARG VITE_TURNSTILE_SITE_KEY
-ARG VITE_SENTRY_DSN
+ARG VITE_LAUNCH_PHASE
+ARG VITE_FLAG_GEO_GATE
+ARG VITE_FLAG_AGE_GATE
+ARG VITE_FLAG_LIMITED_PACK
+ARG VITE_FLAG_DEBUG_PANEL
+ARG VITE_ONRAMP_URL
+ARG VITE_DAPP_STORE_URL
 # SEC-B55: declared purely so it can be *refused* below. The in-browser mock answers /v1 and /ws with
 # plausible data and "signs in" a wallet nobody owns; it must never be the backend of a deployed origin.
 ARG VITE_API_MOCK
 # ARG → ENV: this is the step people skip, and the only thing Vite reads is the environment.
-ENV VITE_CLUSTER=$VITE_CLUSTER VITE_SOLANA_RPC=$VITE_SOLANA_RPC VITE_SOLANA_WS=$VITE_SOLANA_WS \
-    VITE_API_BASE=$VITE_API_BASE VITE_WS_BASE=$VITE_WS_BASE \
+ENV VITE_CLUSTER=$VITE_CLUSTER VITE_RPC_URL=$VITE_RPC_URL VITE_RPC_WS_URL=$VITE_RPC_WS_URL \
+    VITE_DAS_RPC_URL=$VITE_DAS_RPC_URL VITE_API_BASE=$VITE_API_BASE VITE_WS_BASE=$VITE_WS_BASE \
     VITE_PROGRAM_CHIP_CORE=$VITE_PROGRAM_CHIP_CORE VITE_PROGRAM_MARKET=$VITE_PROGRAM_MARKET \
     VITE_PROGRAM_STAKING=$VITE_PROGRAM_STAKING VITE_PROGRAM_ARENA=$VITE_PROGRAM_ARENA \
+    VITE_PROGRAM_SETTLE=$VITE_PROGRAM_SETTLE \
     VITE_CG_MINT=$VITE_CG_MINT VITE_USDC_MINT=$VITE_USDC_MINT VITE_SKR_MINT=$VITE_SKR_MINT \
-    VITE_LOOKUP_TABLE=$VITE_LOOKUP_TABLE VITE_TURNSTILE_SITE_KEY=$VITE_TURNSTILE_SITE_KEY \
-    VITE_SENTRY_DSN=$VITE_SENTRY_DSN VITE_API_MOCK=$VITE_API_MOCK
+    VITE_LOOKUP_TABLE=$VITE_LOOKUP_TABLE VITE_LAUNCH_PHASE=$VITE_LAUNCH_PHASE \
+    VITE_FLAG_GEO_GATE=$VITE_FLAG_GEO_GATE VITE_FLAG_AGE_GATE=$VITE_FLAG_AGE_GATE \
+    VITE_FLAG_LIMITED_PACK=$VITE_FLAG_LIMITED_PACK VITE_FLAG_DEBUG_PANEL=$VITE_FLAG_DEBUG_PANEL \
+    VITE_ONRAMP_URL=$VITE_ONRAMP_URL VITE_DAPP_STORE_URL=$VITE_DAPP_STORE_URL VITE_API_MOCK=$VITE_API_MOCK
 
 COPY package.json package-lock.json ./
 COPY client/package.json client/
@@ -52,7 +67,7 @@ COPY packages packages/
 # devnet placeholders (docs/09 §2); if one of them reached a mainnet build, players would be signing
 # transactions for a program that holds nothing, and the app would look *healthy* while doing it.
 RUN node --input-type=module -e " \
-const need = { VITE_CLUSTER: process.env.VITE_CLUSTER, VITE_PROGRAM_CHIP_CORE: process.env.VITE_PROGRAM_CHIP_CORE, VITE_PROGRAM_MARKET: process.env.VITE_PROGRAM_MARKET, VITE_PROGRAM_STAKING: process.env.VITE_PROGRAM_STAKING, VITE_PROGRAM_ARENA: process.env.VITE_PROGRAM_ARENA, VITE_CG_MINT: process.env.VITE_CG_MINT, VITE_SKR_MINT: process.env.VITE_SKR_MINT }; \
+const need = { VITE_CLUSTER: process.env.VITE_CLUSTER, VITE_RPC_URL: process.env.VITE_RPC_URL, VITE_API_BASE: process.env.VITE_API_BASE, VITE_PROGRAM_CHIP_CORE: process.env.VITE_PROGRAM_CHIP_CORE, VITE_PROGRAM_MARKET: process.env.VITE_PROGRAM_MARKET, VITE_PROGRAM_STAKING: process.env.VITE_PROGRAM_STAKING, VITE_PROGRAM_ARENA: process.env.VITE_PROGRAM_ARENA, VITE_PROGRAM_SETTLE: process.env.VITE_PROGRAM_SETTLE, VITE_CG_MINT: process.env.VITE_CG_MINT, VITE_SKR_MINT: process.env.VITE_SKR_MINT }; \
 const missing = Object.entries(need).filter(([, v]) => !v).map(([k]) => k); \
 if (missing.length) { console.error('missing build args: ' + missing.join(', ')); process.exit(1); } \
 const PLACEHOLDERS = ['GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q','GCA2aUeX7ZFbGz3zvjqvsbjD1G3QjWxLhBpK5jwwPdcz','GCuGx7fnLcKnw1NWU4dLzQvnJWggMVniQ4u7EuMaQevA','GCfERiohebYDJLtNwAZpGxudwbXRqnxmuTT413fkTYrM']; \
@@ -72,7 +87,7 @@ console.log('build args ok for cluster ' + need.VITE_CLUSTER); \
 # files out of the context; this is the half that holds if the ignore list ever drifts.
 RUN node --input-type=module -e " \
 import { existsSync, readFileSync } from 'node:fs'; \
-const DECLARED = new Set(['VITE_CLUSTER','VITE_SOLANA_RPC','VITE_SOLANA_WS','VITE_API_BASE','VITE_WS_BASE','VITE_PROGRAM_CHIP_CORE','VITE_PROGRAM_MARKET','VITE_PROGRAM_STAKING','VITE_PROGRAM_ARENA','VITE_CG_MINT','VITE_USDC_MINT','VITE_SKR_MINT','VITE_LOOKUP_TABLE','VITE_TURNSTILE_SITE_KEY','VITE_SENTRY_DSN','VITE_API_MOCK']); \
+const DECLARED = new Set(['VITE_CLUSTER','VITE_RPC_URL','VITE_RPC_WS_URL','VITE_DAS_RPC_URL','VITE_API_BASE','VITE_WS_BASE','VITE_PROGRAM_CHIP_CORE','VITE_PROGRAM_MARKET','VITE_PROGRAM_STAKING','VITE_PROGRAM_ARENA','VITE_PROGRAM_SETTLE','VITE_CG_MINT','VITE_USDC_MINT','VITE_SKR_MINT','VITE_LOOKUP_TABLE','VITE_LAUNCH_PHASE','VITE_FLAG_GEO_GATE','VITE_FLAG_AGE_GATE','VITE_FLAG_LIMITED_PACK','VITE_FLAG_DEBUG_PANEL','VITE_ONRAMP_URL','VITE_DAPP_STORE_URL','VITE_API_MOCK']); \
 const files = ['client/.env','client/.env.local','client/.env.production','client/.env.production.local']; \
 const strays = []; \
 for (const f of files) { \

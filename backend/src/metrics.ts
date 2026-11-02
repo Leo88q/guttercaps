@@ -100,12 +100,24 @@ export async function exposition(): Promise<string> {
     out.push(`# HELP ${name} ${(HELP.get(name) ?? name).replace(/\n/g, ' ')}`, `# TYPE ${name} ${name.endsWith('_total') ? 'counter' : 'gauge'}`);
     out.push(...rows);
   }
+  // §6.1/находка 64: у гистограммы ОДИН HELP и один TYPE на имя, а серий может быть много (по одной
+  // на каждую комбинацию меток: route, policy, reason). Prometheus отклоняет скрейп целиком, если имя
+  // объявлено дважды, поэтому объявления собираются по имени, а не по ключу серии.
+  const histByName = new Map<string, [string, Hist][]>();
   for (const [k, h] of [...histograms].sort()) {
     const base = nameOf(k);
-    const suffix = k.slice(base.length);
-    out.push(`# HELP ${base} ${(HELP.get(base) ?? `${base} latency`).replace(/\n/g, ' ')}`, `# TYPE ${base} histogram`);
-    for (const b of BUCKETS) out.push(`${base}_bucket${suffix} le="${b}" ${h.buckets.get(b) ?? 0}`);
-    out.push(`${base}_bucket${suffix} le="+Inf" ${h.count}`, `${base}_sum${suffix} ${format(h.sum)}`, `${base}_count${suffix} ${h.count}`);
+    const arr = histByName.get(base);
+    if (arr) arr.push([k, h]); else histByName.set(base, [[k, h]]);
+  }
+  for (const [base, series] of [...histByName].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))) {
+    if (!families.has(base)) {
+      out.push(`# HELP ${base} ${(HELP.get(base) ?? `${base} latency`).replace(/\n/g, ' ')}`, `# TYPE ${base} histogram`);
+    }
+    for (const [k, h] of series) {
+      const suffix = k.slice(base.length);
+      for (const b of BUCKETS) out.push(`${base}_bucket${suffix} le="${b}" ${h.buckets.get(b) ?? 0}`);
+      out.push(`${base}_bucket${suffix} le="+Inf" ${h.count}`, `${base}_sum${suffix} ${format(h.sum)}`, `${base}_count${suffix} ${h.count}`);
+    }
   }
   return [...lines, ...out].join('\n') + '\n';
 }

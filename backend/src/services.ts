@@ -14,6 +14,7 @@ import { type Db, now } from './db.ts';
 import { FinalityError, requireFinalized } from './finality.ts';
 import { foldEq } from './sql.ts';
 import { grantPart } from './board.ts';
+import { consumedMark, markConsumed } from './consumption.ts';
 
 export const enc = new TextEncoder();
 
@@ -86,28 +87,48 @@ export interface PaymentRow { signature: string; event_index: number; buyer: str
  * SEC-M5: an entitlement is value leaving the treasury — only a finalized payment can buy it.
  */
 export function findPayment(db: Db, signature: string, buyer: string, kinds: number[], expectedRefHash?: string): PaymentRow {
-  const rows = db.all<PaymentRow>(`SELECT * FROM service_payments WHERE signature = ? AND buyer = ? ORDER BY event_index ASC`, signature, buyer);
+  // §1.5: «потрачен» читается из ledger'а, а не из зеркала в проекции — иначе пересборка проекций
+  // возвращала бы уже использованный платёж в оборот.
+  const rows = db.all<PaymentRow>(
+    `SELECT sp.*, COALESCE(pc.consumed_by, sp.consumed_by) AS consumed_by
+       FROM service_payments sp
+       LEFT JOIN payment_consumption pc ON pc.signature = sp.signature AND pc.event_index = sp.event_index
+      WHERE sp.signature = ? AND sp.buyer = ?
+      ORDER BY sp.event_index ASC`,
+    signature, buyer,
+  );
   if (rows.length === 0) throw new ServiceError(402, 'payment_not_found', 'No ServicePaid event from this wallet in that transaction (indexer may still be catching up — retry in a few seconds)');
   const mine = rows.filter((r) => kinds.includes(r.kind));
   const match =
     (expectedRefHash ? mine.find((r) => !r.consumed_by && r.ref_hash === expectedRefHash) : undefined) ??
     mine.find((r) => !r.consumed_by) ?? mine[0];
   if (!match) throw new ServiceError(402, 'payment_kind_mismatch', `Transaction paid for kind ${rows[0].kind}, expected ${kinds.join('/')}`);
-  if (match.consumed_by) throw new ServiceError(402, 'payment_consumed', 'This payment was already used');
+  if (match.consumed_by || isConsumed(db, match)) throw new ServiceError(402, 'payment_consumed', 'This payment was already used');
   try { requireFinalized(db, signature); } catch (e) { if (e instanceof FinalityError) throw new ServiceError(409, e.code, e.message); throw e; }
   return match;
 }
 
 /**
- * Spend a payment exactly once. The `consumed_by IS NULL` predicate is the guard, not the earlier
- * SELECT: two API replicas (or a retried request racing the first) could both read the row as free and
- * both grant an entitlement for one payment — the second UPDATE now changes no row and the claim fails
- * with `payment_consumed`. One statement decides, and it decides in SQLite.
+ * Потратить платёж ровно один раз.
+ *
+ * Решение принимает не SELECT и не UPDATE проекции, а INSERT в `payment_consumption` по первичному
+ * ключу (signature, event_index) — таблица вне PROJECTION_TABLES, её не стирает `dropSignatures`
+ * (находка 67). Две реплики, повтор запроса и пересборка проекций одинаково упираются в этот ключ;
+ * вторая попытка получает 409 `payment_consumed` и ничего не выдаёт.
+ *
+ * Вызывающий уже внутри `db.tx()`, поэтому отдельная транзакция здесь не открывается: выдача и метка
+ * расхода фиксируются вместе.
+ *
+ * Экспортировано для тех же разборов вне services (линия — docs/16 §5.1, команды, турнир).
  */
-/** Потратить платёж ровно один раз. Экспортировано для тех же разборов вне services (линия — docs/16 §5.1). */
 export function consume(db: Db, p: PaymentRow, by: string) {
-  const r = db.run(`UPDATE service_payments SET consumed_by = ?, consumed_at = ? WHERE signature = ? AND event_index = ? AND consumed_by IS NULL`, by, now(), p.signature, p.event_index);
-  if (Number(r.changes) !== 1) throw new ServiceError(409, 'payment_consumed', 'This payment was already used');
+  if (!markConsumed(db, p, by, now())) throw new ServiceError(409, 'payment_consumed', 'This payment was already used');
+  p.consumed_by = by;
+}
+
+/** Уже потрачен ли платёж (по ledger'у, не по проекции). */
+export function isConsumed(db: Db, p: { signature: string; event_index: number }): boolean {
+  return consumedMark(db, p.signature, p.event_index) !== null;
 }
 
 // ---------------------------------------------------------------- handles

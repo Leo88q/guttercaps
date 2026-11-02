@@ -114,7 +114,13 @@ export function claimRewards(db: Db, wallet: string, t = now()) {
   return { payoutId: Number(r.lastInsertRowid), amountMicro: amount.toString(), status: 'pending' };
 }
 
-export type PayoutSender = (wallet: string, amountMicro: bigint) => Promise<string>;
+/**
+ * Третья часть «что именно платим» — бизнес-ключ операции в `chain_ops` (§1.1). Отправитель,
+ * подключённый к ledger'у, по нему находит уже подписанную транзакцию и не отправляет вторую.
+ */
+export interface PayoutTask { id: number; kind: 'phaseg_payout'; bizKey: string; payload: { wallet: string; amountMicro: string } }
+
+export type PayoutSender = (wallet: string, amountMicro: bigint, task?: PayoutTask) => Promise<string>;
 
 /** Crank: pay out pending claims (idempotent — sent rows are never re-sent). */
 export async function processPayouts(db: Db, send: PayoutSender, t = now()): Promise<{ paid: number }> {
@@ -123,7 +129,12 @@ export async function processPayouts(db: Db, send: PayoutSender, t = now()): Pro
   let paid = 0;
   for (const row of rows) {
     try {
-      const sig = await send(row.wallet, BigInt(row.amount_micro));
+      const sig = await send(row.wallet, BigInt(row.amount_micro), {
+        id: row.id,
+        kind: 'phaseg_payout',
+        bizKey: `payout:${row.id}`,
+        payload: { wallet: row.wallet, amountMicro: row.amount_micro },
+      });
       db.run(`UPDATE phaseg_payouts SET status = 'sent', tx_sig = ?, sent_at = ? WHERE id = ? AND status = 'pending'`, sig, t, row.id);
       const cur = db.get<{ claimed_micro: string }>(`SELECT claimed_micro FROM phaseg_rewards WHERE wallet = ?`, row.wallet);
       const next = (BigInt(cur?.claimed_micro ?? '0') + BigInt(row.amount_micro)).toString();

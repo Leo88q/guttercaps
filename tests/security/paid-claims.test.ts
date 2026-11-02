@@ -9,9 +9,12 @@
 //      row that matches what the caller is about to grant. It used to return "the first unconsumed row of
 //      that kind", so the second purchase could never be claimed: the ref_hash compare in the caller
 //      rejected the wrong row and the right one was never looked at — money in, entitlement lost.
-//   2. SINGLE SPEND — `consume` is one conditional UPDATE (`consumed_by IS NULL`, exactly one row
-//      changed). The earlier SELECT is a check, not a lock: two API replicas (or a retried request
-//      racing the first) could both read the row as free and both grant an entitlement for one payment.
+//   2. SINGLE SPEND — `consume` inserts one row into `payment_consumption`, whose primary key is
+//      (signature, event_index); exactly one insert succeeds. The earlier SELECT is a check, not a lock:
+//      two API replicas (or a retried request racing the first) could both read the row as free and both
+//      grant an entitlement for one payment. The ledger is deliberately NOT in PROJECTION_TABLES: a
+//      `dropSignatures`/`rebuild` replays `service_payments` from `events_raw`, which knows nothing about
+//      the spend, so a mark stored on that table comes back «free» (находка 67).
 //
 // `backend/test/cosmetics.test.ts` is the behavioural half (two same-kind purchases in one tx claimed in
 // reverse event order; a consumed payment refused a second time). These are the static rules; each one
@@ -26,6 +29,8 @@ import { fileURLToPath } from 'node:url';
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (rel: string) => readFileSync(join(REPO, rel), 'utf8');
 const SERVICES = read('backend/src/services.ts');
+const CONSUMPTION = read('backend/src/consumption.ts');
+const DB = read('backend/src/db.ts');
 
 /** One function's source, from its declaration to the closing brace at the declaration's indentation. */
 function fnBody(src: string, name: string): string {
@@ -54,11 +59,26 @@ test('both callers pass the ref hash they are about to grant', () => {
   assert.match(claim, /const expected = toHex\(serviceRefHash\(kind, wallet, payload\)\);\s*\n\s*const p = findPayment\(db, signature, wallet, \[kind\], expected\)/, 'claimService too');
 });
 
-test('a payment is spent by one conditional UPDATE, and a second spender fails closed', () => {
-  const body = fnBody(SERVICES, 'consume');
-  assert.match(body, /consumed_by IS NULL/, 'the guard is the WHERE clause, not the earlier SELECT');
-  assert.match(body, /Number\(r\.changes\) !== 1/, 'a no-op UPDATE must be an error, not a silent success');
-  assert.match(body, /throw new ServiceError\(409, 'payment_consumed'/, 'and it surfaces as the same 409 the stale-row path uses');
+test('a payment is spent by one INSERT on a primary key, and a second spender fails closed', () => {
+  const body = fnBody(CONSUMPTION, 'markConsumed');
+  assert.match(body, /insertIgnore\('payment_consumption'/, 'the guard is the unique key of the ledger row, not the earlier SELECT');
+  assert.match(body, /if \(Number\(r\.changes\) !== 1\) return false/, 'a no-op insert must be reported, not swallowed');
+  const consume = fnBody(SERVICES, 'consume');
+  assert.match(consume, /if \(!markConsumed\(db, p, by, now\(\)\)\)/, 'consume delegates the decision to the ledger');
+  assert.match(consume, /throw new ServiceError\(409, 'payment_consumed'/, 'and it surfaces as the same 409 the stale-row path uses');
+});
+
+test('the ledger is outside the projection set, so a rebuild cannot un-spend a payment', () => {
+  const list = /export const PROJECTION_TABLES = \[([\s\S]*?)\];/.exec(DB)?.[1] ?? '';
+  assert.ok(list.includes('service_payments'), 'service_payments is a projection — that is exactly why the mark cannot live on it');
+  assert.ok(!list.includes('payment_consumption'), 'the consumption ledger must never be wiped by a replay');
+  assert.match(
+    DB,
+    /CREATE TABLE IF NOT EXISTS payment_consumption \([\s\S]*?PRIMARY KEY \(signature, event_index\)/,
+    'one payment event = one spend, forever (primary key), not an index on a projection',
+  );
+  // and the lookup reads the ledger, not just the mirrored column
+  assert.match(fnBody(SERVICES, 'findPayment'), /LEFT JOIN payment_consumption/, 'findPayment must consult the durable ledger');
 });
 
 // ---------------------------------------------------------------- mutations
@@ -78,11 +98,17 @@ test('mutations: the gates above are wired to the code they claim to guard', () 
   const noHint = mutate(fnBody(SERVICES, 'claimService'), /findPayment\(db, signature, wallet, \[kind\], expected\)/, 'findPayment(db, signature, wallet, [kind])');
   assert.ok(fails(() => assert.match(noHint, /findPayment\(db, signature, wallet, \[kind\], expected\)/)));
 
-  // 3. the single-spend guard loses its predicate
-  const ungated = mutate(fnBody(SERVICES, 'consume'), / AND consumed_by IS NULL/, '');
-  assert.ok(fails(() => assert.match(ungated, /consumed_by IS NULL/)));
+  // 3. the single-spend guard goes back to an UPDATE on the projection (the shape a rebuild un-does)
+  const projection = mutate(fnBody(CONSUMPTION, 'markConsumed'), /insertIgnore\('payment_consumption'[\s\S]*?\);/,
+    "db.run(`UPDATE service_payments SET consumed_by = ? WHERE signature = ? AND event_index = ?`);");
+  assert.ok(fails(() => assert.match(projection, /insertIgnore\('payment_consumption'/)));
 
   // 4. the single-spend guard stops checking what SQLite did
-  const unchecked = mutate(fnBody(SERVICES, 'consume'), /if \(Number\(r\.changes\) !== 1\) throw new ServiceError\(409, 'payment_consumed', 'This payment was already used'\);/, 'void r;');
-  assert.ok(fails(() => assert.match(unchecked, /Number\(r\.changes\) !== 1/)));
+  const unchecked = mutate(fnBody(CONSUMPTION, 'markConsumed'), /if \(Number\(r\.changes\) !== 1\) return false;/, 'void r;');
+  assert.ok(fails(() => assert.match(unchecked, /Number\(r\.changes\) !== 1\) return false/)));
+
+  // 5. the ledger is dragged into the projection set, so the next replay re-sells every payment
+  const wiped = mutate(DB, /export const PROJECTION_TABLES = \[/, `export const PROJECTION_TABLES = [\n  'payment_consumption',`);
+  const list = /export const PROJECTION_TABLES = \[([\s\S]*?)\];/.exec(wiped)?.[1] ?? '';
+  assert.ok(fails(() => assert.ok(!list.includes('payment_consumption'))));
 });

@@ -506,7 +506,7 @@ test('each deploy-surface rule fails on a deliberately broken input', () => {
     `the rule must reject a context carrying client/.env.local, got ${JSON.stringify(preProblems)}`,
   );
   // and the Dockerfile half: a refuse-list whose failing branch was dropped, or a name not pinned by ENV
-  const unpinned = DOCKERFILE_CLIENT.replace("VITE_SENTRY_DSN=$VITE_SENTRY_DSN VITE_API_MOCK=$VITE_API_MOCK", "VITE_SENTRY_DSN=$VITE_SENTRY_DSN");
+  const unpinned = DOCKERFILE_CLIENT.replace("VITE_DAPP_STORE_URL=$VITE_DAPP_STORE_URL VITE_API_MOCK=$VITE_API_MOCK", "VITE_DAPP_STORE_URL=$VITE_DAPP_STORE_URL");
   assert.notEqual(unpinned, DOCKERFILE_CLIENT, 'the ENV mutation must actually apply');
   assert.ok(clientDockerfileProblems(unpinned).some((p) => p.includes('VITE_API_MOCK')), 'the rule must reject a mock switch that is not pinned by ENV');
 

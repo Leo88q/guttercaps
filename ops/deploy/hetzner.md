@@ -170,7 +170,7 @@ npm run create-lut          # адрес → LOOKUP_TABLE в обоих env и �
 
 ```bash
 cp ops/deploy/hosts/guttercaps.env.example ops/deploy/.env          # или guttercapsdev
-# заполнить пустые PROGRAM_* / CG_MINT / SKR_MINT / VITE_SOLANA_RPC / BACKUP_S3_URI
+# заполнить пустые PROGRAM_* / CG_MINT / SKR_MINT / VITE_RPC_URL / BACKUP_S3_URI
 # GHCR: только после этой копии —
 #   cat ops/deploy/images.env >> ops/deploy/.env
 cp backend/.env.example backend/.env
