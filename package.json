@@ -105,7 +105,7 @@
     "phasev:smoke": "node --experimental-strip-types scripts/phasev-smoke.ts"
   },
   "dependencies": {
-    "@coral-xyz/anchor": "^0.30.1",
+    "@coral-xyz/anchor": "^0.32.1",
     "@guttercaps/economy": "*",
     "@solana/spl-token": "^0.4.8",
     "@solana/web3.js": "^1.99.0",
