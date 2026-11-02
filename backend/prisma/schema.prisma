@@ -1167,6 +1167,7 @@ model ChainOp {
   kind                String
   bizKey              String   @map("biz_key")
   payloadHash         String   @map("payload_hash")
+  payload             String?  // сам интент: по нему восстановима бизнес-запись после рестарта
   status              String   // intent | signed | sent | landed | confirmed | failed | orphaned
   signature           String?  @unique
   rawTx               Bytes?   @map("raw_tx")

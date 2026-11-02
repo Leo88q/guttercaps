@@ -1025,15 +1025,26 @@ export async function crank(log: (s: string) => void = console.log) {
       try {
         const r = await processPaidOrders(sharedDb(), {
           tree: phaseGTree,
-          sendMint: makeChainMintSender(connection, phaseGAuthority, phaseGTree),
+          sendMint: makeChainMintSender(connection, phaseGAuthority, phaseGTree, sharedDb()),
           firstLeafIndex: () => chainFirstLeafIndex(connection, phaseGTree),
           log,
+          ledger: true,
         });
         if (r.mintedOrders > 0) log(`[crank] phase-G minted ${r.mintedChips} chips for ${r.mintedOrders} orders`);
         const f = await processPaidFusions(sharedDb(), {
           tree: phaseGTree,
-          sendChip: (wallet, chip) => sendChipMint(connection, phaseGAuthority, phaseGTree, wallet, chip),
+          sendChip: async (wallet, chip, op) => {
+            if (!op) { await sendChipMint(connection, phaseGAuthority, phaseGTree, wallet, chip); return; }
+            const { submitChainOp } = await import('./chain-ops.ts');
+            const r = await submitChainOp(
+              sharedDb(),
+              { kind: op.kind, bizKey: op.bizKey, payload: op.payload },
+              async (hooks) => ({ signature: await sendChipMint(connection, phaseGAuthority, phaseGTree, wallet, chip, (sig, extra) => hooks.beforeSend(sig, extra)) }),
+            );
+            if (r.reused) throw new Error(`fusion mint op ${op.bizKey} is already confirmed — re-projected on the next tick`);
+          },
           firstLeafIndex: () => chainFirstLeafIndex(connection, phaseGTree),
+          ledger: true,
         });
         if (f.settled > 0) log(`[crank] phase-G settled ${f.settled} fusions`);
         // Phase G has no on-chain emission clock: the staking day is the UTC day.

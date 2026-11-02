@@ -20,6 +20,7 @@ import { checkPayment, type PaymentFetcher } from './preorders.ts';
 import { nextGameIndex, type ChipToMint } from './bubblegum-mint.ts';
 import { deriveBubblegumLeafAssetId } from './das.ts';
 import type { PublicKey } from '@solana/web3.js';
+import { ChainOpInFlight, findChainOp, inFlight, opPayload } from './chain-ops.ts';
 
 export const fusionMemo = (id: number) => `GCF|${id}`;
 
@@ -185,9 +186,11 @@ export function rollFusion(seedHex: string, fusionId: number, successBps: number
 export async function processPaidFusions(
   db: Db,
   deps: {
-    sendChip: (wallet: string, chip: ChipToMint) => Promise<void>;
+    sendChip: (wallet: string, chip: ChipToMint, op?: { kind: 'phaseg_fusion_mint'; bizKey: string; payload: ChipToMint }) => Promise<void>;
     firstLeafIndex: () => Promise<number>;
     tree: PublicKey;
+    /** §1.1: результат fusion минчится через `chain_ops` — «отправлено, но не записано» не даёт второго листа. */
+    ledger?: boolean;
   },
   t = now(),
 ): Promise<{ settled: number }> {
@@ -207,22 +210,40 @@ export async function processPaidFusions(
     const done: string[] = row.result_assets ? (JSON.parse(row.result_assets) as string[]) : [];
     try {
       for (let i = done.length; i < plan.length; i++) {
-        const gameIndex = nextGameIndex(db, collectionIdx);
-        const chip: ChipToMint = {
-          collectionIdx,
-          rarity: plan[i].rarity,
-          gameIndex,
-          leafIndex: leaf,
-          assetId: deriveBubblegumLeafAssetId(deps.tree, leaf).toBase58(),
-        };
-        await deps.sendChip(row.wallet, chip);
+        const bizKey = `fusion:${row.id}:${i}`;
+        let chip: ChipToMint | undefined;
+        let reused = false;
+        if (deps.ledger) {
+          const op = findChainOp(db, 'phaseg_fusion_mint', bizKey);
+          if (op && inFlight(op.status)) throw new ChainOpInFlight(op);
+          if (op?.status === 'confirmed') {
+            chip = opPayload<ChipToMint>(op);
+            if (!chip) throw new Error(`chain op ${bizKey} is confirmed but has no payload`);
+            reused = true;
+          }
+        }
+        if (!chip) {
+          const gameIndex = nextGameIndex(db, collectionIdx);
+          chip = {
+            collectionIdx,
+            rarity: plan[i].rarity,
+            gameIndex,
+            leafIndex: leaf,
+            assetId: deriveBubblegumLeafAssetId(deps.tree, leaf).toBase58(),
+          };
+        }
+        if (!reused) {
+          await deps.sendChip(row.wallet, chip, deps.ledger ? { kind: 'phaseg_fusion_mint', bizKey, payload: chip } : undefined);
+          leaf++;
+        }
         db.run(
           upsert('chips', ['asset', 'owner', 'collection_idx', 'rarity', 'level', 'flags', 'lock_until', 'origin', 'origin_signature', 'minted_at'], ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'origin = excluded.origin', 'minted_at = excluded.minted_at']),
           chip.assetId, row.wallet, collectionIdx, chip.rarity, 1, 0, t + recipe.resultLockSeconds, 'fusion', row.burn_sig, t,
         );
-        done.push(chip.assetId);
-        leaf++;
-        db.run(`UPDATE phaseg_fusions SET result_assets = ? WHERE id = ?`, JSON.stringify(done), row.id);
+        if (!done.includes(chip.assetId)) {
+          done.push(chip.assetId);
+          db.run(`UPDATE phaseg_fusions SET result_assets = ? WHERE id = ?`, JSON.stringify(done), row.id);
+        }
       }
     } catch {
       continue;

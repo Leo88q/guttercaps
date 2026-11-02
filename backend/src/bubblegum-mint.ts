@@ -23,6 +23,8 @@ import { upsert } from './sql.ts';
 import { deriveBubblegumLeafAssetId } from './das.ts';
 import { pityBeforeFor, rollPack, type MintedChip, type PackOrderRow } from './pack-orders.ts';
 import { CORE_COLLECTIONS } from './config.ts';
+import { ChainOpInFlight, findChainOp, inFlight, opPayload, submitChainOp } from './chain-ops.ts';
+import { base58Encode } from './base58.ts';
 
 export const BUBBLEGUM_PROGRAM = new PublicKey('BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY');
 export const ACCOUNT_COMPRESSION = new PublicKey('mcmt6YrQEMKw8Mw43FmpRLmf7BqRnFMKmAcbxE3xkAW');
@@ -143,7 +145,12 @@ export function nextLeafIndex(treeConfigData: Uint8Array): number {
 
 // ------------------------------------------------------------------ mint crank
 export interface ChipToMint { collectionIdx: number; rarity: number; gameIndex: number; leafIndex: number; assetId: string }
-export type MintSender = (order: PackOrderRow, chip: ChipToMint) => Promise<void>;
+/**
+ * Третий аргумент — бизнес-ключ операции в `chain_ops` (§1.1). Отправитель, подключённый к ledger'у,
+ * по нему находит уже подписанную транзакцию и не отправляет вторую.
+ */
+export interface MintOp { kind: 'phaseg_mint'; bizKey: string; payload: ChipToMint }
+export type MintSender = (order: PackOrderRow, chip: ChipToMint, op?: MintOp) => Promise<void>;
 
 /** Allocate the next per-collection chip number (`SYMBOL #n`). Gaps on failure are fine. */
 export function nextGameIndex(db: Db, collectionIdx: number): number {
@@ -159,9 +166,22 @@ export function nextGameIndex(db: Db, collectionIdx: number): number {
  * persisted after each successful mint, so a crash mid-order resumes exactly
  * where it stopped and never double-mints (checklist 3.2).
  */
+export const MINT_OP_KIND = 'phaseg_mint' as const;
+
 export async function processPaidOrders(
   db: Db,
-  deps: { sendMint: MintSender; firstLeafIndex: () => Promise<number>; tree: PublicKey; log?: (s: string) => void },
+  deps: {
+    sendMint: MintSender;
+    firstLeafIndex: () => Promise<number>;
+    tree: PublicKey;
+    log?: (s: string) => void;
+    /**
+     * §1.1: вести минты через `chain_ops`. Тогда «минт отправлен, но процесс умер до записи» не даёт
+     * второго листа: следующий тик находит подтверждённую операцию и перепроецирует заказ из её
+     * payload'а, а нумерация листьев и `game_index` не разъезжаются (пп. 8, 33, 72).
+     */
+    ledger?: boolean;
+  },
   t = now(),
 ): Promise<{ mintedOrders: number; mintedChips: number }> {
   const rows = db.all<PackOrderRow>(`SELECT * FROM pack_orders WHERE status = 'paid' ORDER BY id ASC LIMIT 20`);
@@ -174,15 +194,33 @@ export async function processPaidOrders(
     const done: MintedChip[] = row.assets ? (JSON.parse(row.assets) as MintedChip[]) : [];
     try {
       for (let i = done.length; i < roll.rarities.length; i++) {
-        const gameIndex = nextGameIndex(db, roll.collections[i]);
-        const chip: ChipToMint = {
-          collectionIdx: roll.collections[i],
-          rarity: roll.rarities[i],
-          gameIndex,
-          leafIndex: leaf,
-          assetId: deriveBubblegumLeafAssetId(deps.tree, leaf).toBase58(),
-        };
-        await deps.sendMint(row, chip);
+        const bizKey = `order:${row.id}:${i}`;
+        let chip: ChipToMint | undefined;
+        let reused = false;
+        if (deps.ledger) {
+          const op = findChainOp(db, MINT_OP_KIND, bizKey);
+          // Подпись ушла, судьба неизвестна: планировать следующий лист нельзя — они нумеруются подряд.
+          if (op && inFlight(op.status)) throw new ChainOpInFlight(op);
+          if (op?.status === 'confirmed') {
+            chip = opPayload<ChipToMint>(op);
+            if (!chip) throw new Error(`chain op ${bizKey} is confirmed but has no payload — cannot re-project the chip`);
+            reused = true;
+          }
+        }
+        if (!chip) {
+          const gameIndex = nextGameIndex(db, roll.collections[i]);
+          chip = {
+            collectionIdx: roll.collections[i],
+            rarity: roll.rarities[i],
+            gameIndex,
+            leafIndex: leaf,
+            assetId: deriveBubblegumLeafAssetId(deps.tree, leaf).toBase58(),
+          };
+        }
+        if (!reused) {
+          await deps.sendMint(row, chip, deps.ledger ? { kind: MINT_OP_KIND, bizKey, payload: chip } : undefined);
+          leaf++;
+        }
         // Register the projection row: ownership/staking/fusion read `chips`.
         // Starter chips are soulbound-windowed by the program (STARTER_SOULBOUND_DAYS):
         // the same lock rides in chips.lock_until so fusion/market/staking honour it.
@@ -191,10 +229,13 @@ export async function processPaidOrders(
           upsert('chips', ['asset', 'owner', 'collection_idx', 'rarity', 'level', 'flags', 'lock_until', 'origin', 'origin_signature', 'minted_at'], ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'origin = excluded.origin', 'minted_at = excluded.minted_at']),
           chip.assetId, row.wallet, chip.collectionIdx, chip.rarity, 1, 0, lockUntil, 'pack', row.tx_sig, t,
         );
-        done.push({ assetId: chip.assetId, collectionIdx: chip.collectionIdx, rarity: chip.rarity, gameIndex });
-        leaf++;
-        mintedChips++;
-        db.run(`UPDATE pack_orders SET assets = ? WHERE id = ?`, JSON.stringify(done), row.id);
+        // Идемпотентно: строка проекции пишется и на пути «операция уже подтверждена» — иначе чип,
+        // оплаченный и заминченный до падения процесса, не появился бы в `chips` вовсе.
+        if (!done.some((d) => d.assetId === chip.assetId)) {
+          done.push({ assetId: chip.assetId, collectionIdx: chip.collectionIdx, rarity: chip.rarity, gameIndex: chip.gameIndex });
+          if (!reused) mintedChips++;
+          db.run(`UPDATE pack_orders SET assets = ? WHERE id = ?`, JSON.stringify(done), row.id);
+        }
       }
     } catch (e) {
       // stays 'paid' with partial assets — next tick resumes. Logged, never
@@ -216,7 +257,8 @@ export async function sendChipMint(
   tree: PublicKey,
   wallet: string,
   chip: ChipToMint,
-): Promise<void> {
+  onSigned?: (signature: string, extra: { rawTx: string; lastValidBlockHeight: number }) => void,
+): Promise<string> {
   const configured = CORE_COLLECTIONS[chip.collectionIdx];
   const ix = buildMintV2Ix({
     merkleTree: tree,
@@ -229,7 +271,19 @@ export async function sendChipMint(
   });
   const tx = new Transaction().add(ix);
   try {
-    await sendAndConfirmTransaction(connection, tx, [authority], { commitment: 'confirmed' });
+    if (onSigned) {
+      // §1.1: подпись фиксируется ДО отправки — падение процесса сразу после send оставляет след,
+      // и следующий тик переиспользует эту транзакцию вместо нового минта того же слота.
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = authority.publicKey;
+      tx.sign(authority);
+      onSigned(base58Encode(tx.signatures[0].signature!), {
+        rawTx: Buffer.from(tx.serialize({ requireAllSignatures: true, verifySignatures: false })).toString('base64'),
+        lastValidBlockHeight,
+      });
+    }
+    return await sendAndConfirmTransaction(connection, tx, [authority], { commitment: 'confirmed' });
   } catch (e) {
     // SendTransactionError.message is the generic "Simulation failed" — the
     // program's own reason lives in the attached logs. A mint retry loop
@@ -242,8 +296,24 @@ export async function sendChipMint(
 }
 
 /** Real chain sender: one mint_v2 per tx, signed by payer + tree authority (same key in phase G). */
-export function makeChainMintSender(connection: Connection, authority: Keypair, tree: PublicKey): MintSender {
-  return async (order, chip) => sendChipMint(connection, authority, tree, order.wallet, chip);
+export function makeChainMintSender(connection: Connection, authority: Keypair, tree: PublicKey, ops?: Db): MintSender {
+  return async (order, chip, op) => {
+    if (!ops || !op) {
+      await sendChipMint(connection, authority, tree, order.wallet, chip);
+      return;
+    }
+    const r = await submitChainOp(
+      ops,
+      { kind: op.kind, bizKey: op.bizKey, payload: op.payload },
+      async (hooks) => {
+        const signature = await sendChipMint(connection, authority, tree, order.wallet, chip, (sig, extra) => hooks.beforeSend(sig, extra));
+        return { signature };
+      },
+    );
+    // Гонка двух кранов: подпись уже подтверждена другим процессом — свой лист не минтим, порядок
+    // перепроецируется на следующем тике из payload'а операции (иначе нумерация листьев разъедется, п. 72).
+    if (r.reused) throw new Error(`mint op ${op.bizKey} is already confirmed — the order will be re-projected from the ledger on the next tick`);
+  };
 }
 
 export async function chainFirstLeafIndex(connection: Connection, tree: PublicKey): Promise<number> {

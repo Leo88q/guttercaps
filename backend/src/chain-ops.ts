@@ -30,6 +30,7 @@ export interface ChainOp {
   kind: string;
   biz_key: string;
   payload_hash: string;
+  payload: string | null;
   status: ChainOpStatus;
   signature: string | null;
   raw_tx: string | null;
@@ -89,8 +90,8 @@ export function beginChainOp(
   const id = chainOpId(spec.kind, spec.bizKey);
   const hash = payloadHash(spec.payload);
   db.run(
-    insertIgnore('chain_ops', ['id', 'kind', 'biz_key', 'payload_hash', 'status', 'cu_price', 'attempts', 'created_at', 'updated_at']),
-    id, spec.kind, spec.bizKey, hash, 'intent', spec.cuPrice ?? null, 0, t, t,
+    insertIgnore('chain_ops', ['id', 'kind', 'biz_key', 'payload_hash', 'payload', 'status', 'cu_price', 'attempts', 'created_at', 'updated_at']),
+    id, spec.kind, spec.bizKey, hash, stableJson(spec.payload), 'intent', spec.cuPrice ?? null, 0, t, t,
   );
   const op = db.get<ChainOp>(`SELECT * FROM chain_ops WHERE id = ?`, id);
   if (!op) throw new Error(`chain op ${id} vanished`);
@@ -136,6 +137,15 @@ export function recordConfirmed(db: Db, id: string, signature: string, t = nowS(
 export function recordFailed(db: Db, id: string, error: string, t = nowS()): void {
   updateChainOp(db, id, { status: 'failed', error }, t);
 }
+
+/** Интент подтверждённой операции: по нему восстанавливается бизнес-запись без повторной отправки. */
+export function opPayload<T = Record<string, unknown>>(op: ChainOp): T | undefined {
+  if (!op.payload) return undefined;
+  try { return JSON.parse(op.payload) as T; } catch { return undefined; }
+}
+
+/** Операция в состоянии, когда повторять отправку нельзя (подпись могла попасть в сеть). */
+export const inFlight = (status: ChainOpStatus): boolean => status === 'signed' || status === 'sent' || status === 'landed';
 
 export interface StatusSource {
   getSignatureStatuses(sigs: string[], cfg: { searchTransactionHistory: boolean }): Promise<{ value: ({ confirmationStatus?: string; err: unknown } | null)[] }>;
@@ -214,15 +224,15 @@ export interface OpSendHooks {
  * Провал фиксируется как `failed` только когда отправитель доказал, что транзакция исполнена с ошибкой
  * (`proven: true`). Всё остальное — «отправлено, неизвестно» и ждёт `reconcileChainOps`.
  */
-export async function submitChainOp(
+export async function submitChainOp<T = Record<string, unknown>>(
   db: Db,
   spec: { kind: string; bizKey: string; payload: unknown; cuPrice?: number },
   send: (hooks: OpSendHooks) => Promise<{ signature: string; proven?: boolean; error?: string }>,
   t: number = nowS(),
-): Promise<{ signature: string; reused: boolean; status: ChainOpStatus }> {
+): Promise<{ signature: string; reused: boolean; status: ChainOpStatus; payload?: T }> {
   const op = beginChainOp(db, spec, t);
-  if (op.status === 'confirmed' && op.signature) return { signature: op.signature, reused: true, status: op.status };
-  if (op.status === 'signed' || op.status === 'sent' || op.status === 'landed') throw new ChainOpInFlight(op);
+  if (op.status === 'confirmed' && op.signature) return { signature: op.signature, reused: true, status: op.status, payload: opPayload<T>(op) };
+  if (inFlight(op.status)) throw new ChainOpInFlight(op);
   let sent: string | null = null;
   try {
     const r = await send({

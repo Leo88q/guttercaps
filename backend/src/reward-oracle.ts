@@ -60,6 +60,7 @@ import { rankedSeasonWallets, settleSeason, unsettledSeasons, type SeasonRow } f
 import { ANTI_FARM, CHIP_VOUCHER_REWARDS, GUTTER_POT, ITEM_REWARDS, QUEST_CHIP_TEMPLATES, SKR_ANTI_FARM, SKR_MICRO, SKR_POOL_SPLIT, seasonPayoutByRank } from '@guttercaps/economy';
 import { recordSignals, runDetectors } from './antifraud.ts';
 import { emissionPda } from './burn-oracle.ts';
+import { ChainOpInFlight, findChainOp, inFlight, submitChainOp } from './chain-ops.ts';
 
 const env = process.env;
 export const QUEST_ORACLE_KEYPAIR = env.QUEST_ORACLE_KEYPAIR ?? '';
@@ -526,11 +527,33 @@ export async function publishPending(d: OracleDeps): Promise<{ published: number
         : isItemKind(b.kind) ? publishItemRootIx(key.publicKey, b.kind, b.epoch, root, budget)
         : isChipKind(b.kind) ? publishChipRootIx(key.publicKey, b.kind, b.epoch, root, budget)
         : publishRootIx(key.publicKey, b.kind, b.epoch, root, budget);
-      const { signature } = await sendAndConfirm(d.connection, key, [ix], { cuLimit: isSkrKind(b.kind) ? CU_PUBLISH_SKR_ROOT : isItemKind(b.kind) || isChipKind(b.kind) ? CU_PUBLISH_ITEM_ROOT : CU_PUBLISH_ROOT });
+      // §1.1: корень (kind, epoch) публикуется ровно одной операцией. Раньше «нет ответа» после send
+      // приводило к повторной публикации в следующем проходе: цепь отвечала «аккаунт уже существует»,
+      // батч навсегда оставался pending с last_error, а индексер мог так и не увидеть корень (пп. 31, 37, 61).
+      const r = await submitChainOp(
+        d.db,
+        { kind: 'reward_root', bizKey: `root:${b.kind}:${b.epoch}`, payload: { kind: b.kind, epoch: b.epoch, root: b.root, budget: b.budget } },
+        async (hooks) => {
+          const { signature } = await sendAndConfirm(d.connection, key, [ix], {
+            cuLimit: isSkrKind(b.kind) ? CU_PUBLISH_SKR_ROOT : isItemKind(b.kind) || isChipKind(b.kind) ? CU_PUBLISH_ITEM_ROOT : CU_PUBLISH_ROOT,
+            onSigned: (signature, extra) => hooks.beforeSend(signature, { rawTx: extra.rawTx, lastValidBlockHeight: extra.lastValidBlockHeight, cuPrice: extra.cuPrice }),
+          });
+          return { signature };
+        },
+      );
+      const signature = r.signature;
+      if (r.reused) log(`[reward-oracle] publish_root kind ${b.kind} epoch ${b.epoch} already confirmed by an earlier attempt → ${signature}`);
       d.db.run(`UPDATE reward_batches SET status = 'published', signature = ?, published_at = ? WHERE kind = ? AND epoch = ?`, signature, now(), b.kind, b.epoch);
       log(`[reward-oracle] publish_root kind ${b.kind} epoch ${b.epoch} budget ${b.budget} → ${signature}`);
       published++;
     } catch (e) {
+      if (e instanceof ChainOpInFlight) {
+        // Подпись ушла, судьба неизвестна: повторять нельзя, следующий проход дождётся reconcile.
+        d.db.run(`UPDATE reward_batches SET last_error = ? WHERE kind = ? AND epoch = ?`, 'publish sent, awaiting reconciliation', b.kind, b.epoch);
+        log(`[reward-oracle] publish_root kind ${b.kind} epoch ${b.epoch} sent earlier (${e.op.signature ?? '—'}), waiting for reconciliation`);
+        skipped++;
+        continue;
+      }
       const msg = (e as Error).message;
       d.db.run(`UPDATE reward_batches SET last_error = ? WHERE kind = ? AND epoch = ?`, msg, b.kind, b.epoch);
       log(`[reward-oracle] publish_root kind ${b.kind} epoch ${b.epoch} failed: ${msg}`);

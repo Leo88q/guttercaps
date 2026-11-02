@@ -848,6 +848,7 @@ CREATE TABLE IF NOT EXISTS chain_ops (
   kind                    TEXT    NOT NULL,  -- phaseg_payout | phaseg_mint | reward_root | …
   biz_key                 TEXT    NOT NULL,  -- wallet | order#chip | epoch … — the business identity
   payload_hash            TEXT    NOT NULL,  -- sha256 of the normalised intent (guards against a changed payload)
+  payload                 TEXT,              -- сам интент: по нему восстановима бизнес-запись после рестарта
   status                  TEXT    NOT NULL,  -- intent | signed | sent | landed | confirmed | failed | orphaned
   signature               TEXT,
   raw_tx                  BLOB,              -- signed transaction, so a resend is the SAME transaction

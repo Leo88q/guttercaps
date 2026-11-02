@@ -128,7 +128,7 @@ services:
       # дефолтный `ops:up` из этой же папки не поднимался НИКОГДА (контейнер падал на старте). Дефолта
       # больше нет — значение обязано быть сказано явно, и первое же `docker compose config`/запуск
       # покажет, чего не хватает, вместо тихого наследования решения, которое противоречит fail-fast.
-      COMPLIANCE_ENFORCE: ${COMPLIANCE_ENFORCE:?set explicitly: 1 = enforce access-policy.json in production (the API refuses to start with anything else while NODE_ENV=production); see runbook "Возраст, доступ"}
+      COMPLIANCE_ENFORCE: ${COMPLIANCE_ENFORCE:?set explicitly — 1 = enforce access-policy.json in production (the API refuses to start otherwise while NODE_ENV=production); see runbook «Возраст, доступ»}
       GEO_GATE: ${GEO_GATE:-off}
       GEO_TRUST_HEADER: ${GEO_TRUST_HEADER:-0}
       GEO_RESTRICT_COUNTRIES: ${GEO_RESTRICT_COUNTRIES:-BE,NL}
