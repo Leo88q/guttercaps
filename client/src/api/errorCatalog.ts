@@ -14,6 +14,8 @@ export const API_ERROR_KEYS = {
   bad_pubkey: 'diagnostics.pubkey', bad_qty: 'failures.badQuantity', bad_request: 'failures.requestInvalid',
   bad_resolution: 'failures.requestInvalid', bad_sku: 'failures.chip_core_InvalidSku', bad_sort: 'failures.requestInvalid',
   wrong_district: 'failures.requestInvalid', contract_locked: 'failures.requestInvalid', contract_done: 'failures.requestInvalid',
+  // находка 39: контракт уже открыт другой попыткой того же слота
+  contract_in_progress: 'failures.requestInvalid',
   deep_no_hints: 'failures.requestInvalid', deep_attempts_exhausted: 'failures.requestInvalid', ghost_no_hints: 'failures.requestInvalid',
   use_grid_endpoint: 'failures.requestInvalid', cg_burn_required: 'failures.paymentPayload', deep_credit_cap: 'failures.requestInvalid',
   // §5.1 линия: реплей, день и попытки.
