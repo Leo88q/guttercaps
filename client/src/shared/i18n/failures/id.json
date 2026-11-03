@@ -195,6 +195,7 @@
   "preorderWalletCap": "Kamu mencapai batas per wallet untuk drop ini.",
   "preorderNotYours": "Reservasi ini milik wallet lain.",
   "preorderAlreadyGranted": "Pack ini sudah dikirim.",
+  "packRefundNotPossible": "Pesanan ada di antrean pengembalian dana — tim mengembalikan pembayaran ke dompet asalnya; tidak ada pak yang dikirim.",
   "preorderNotPayable": "Reservasi ini tidak bisa dibayar lagi — kedaluwarsa atau sudah diproses.",
   "preorderTxNotFound": "Transaksi pembayaran tidak ditemukan di mainnet (finalized).",
   "preorderPaymentFailed": "Transaksi pembayaran gagal on-chain.",

@@ -82,7 +82,9 @@ export function PhaseGBuyModal({ sku, packId, onClose }: {
             </div>
           </div>
         )}
-        {flow.stage === 'error' && <p className="small danger">{t('ui.phasegFailed')}{flow.error ? ` (${flow.error})` : ''}</p>}
+        {flow.order?.status === 'refund_due' || flow.order?.status === 'refunded'
+          ? <p className="small danger">{t('ui.phasegRefundQueued')}</p>
+          : flow.stage === 'error' && <p className="small danger">{t('ui.phasegFailed')}{flow.error ? ` (${flow.error})` : ''}</p>}
         {flow.stage !== 'done' ? (
           <button className="btn" type="button" disabled={busy} onClick={() => void flow.buy(sku, qty, currency)}>
             {t('ui.phasegPay')}

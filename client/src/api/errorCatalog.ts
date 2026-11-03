@@ -91,6 +91,8 @@ export const API_ERROR_KEYS = {
   route_locked: 'failures.requestInvalid', no_emergency_hint: 'failures.requestInvalid', no_hints: 'failures.requestInvalid',
   attempt_not_found: 'failures.notFound', attempt_settled: 'failures.requestInvalid', bad_proof: 'failures.requestInvalid', no_skin_entitlement: 'failures.requestInvalid',
   already_granted: 'failures.preorderAlreadyGranted', not_payable: 'failures.preorderNotPayable',
+  // Находка 32: оплата пришла, когда лимит кошелька уже занял другой заказ — заказ в очереди возврата.
+  not_refundable: 'failures.packRefundNotPossible', already_refunded: 'failures.packRefundNotPossible',
   tx_not_found: 'failures.preorderTxNotFound', already_confirmed: 'failures.preorderAlreadyConfirmed',
   payment_tx_failed: 'failures.preorderPaymentFailed', payment_no_transfer: 'failures.preorderNoTransfer',
   payment_amount_low: 'failures.preorderAmountLow', payment_memo_mismatch: 'failures.preorderMemoMismatch',

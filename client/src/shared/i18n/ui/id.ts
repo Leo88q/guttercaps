@@ -155,6 +155,7 @@ const ui = {
   "phasegDone": "Selesai! {n} chip sudah ada di koleksimu.",
   "phasegDoneClose": "Ke koleksiku",
   "phasegFailed": "Pesanan tidak selesai. Jika kamu sudah membayar, simpan tanda tangan transaksi dan hubungi dukungan.",
+  "phasegRefundQueued": "Pesanan dibayar setelah kedaluwarsa dan batas dompetmu sudah dipakai pesanan lain. Tidak ada pak yang dikirim; pembayaran dikembalikan ke dompetmu — tim mengirimnya ke alamat yang kamu pakai untuk membayar.",
   "phasegPay": "Bayar & buka",
   "cryptoOnly": "Hanya kripto. Butuh SOL?",
   "noResale": "Isi paket adalah koleksi digital tanpa jaminan nilai jual kembali.",

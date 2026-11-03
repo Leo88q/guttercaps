@@ -195,6 +195,7 @@
   "preorderWalletCap": "Alcanzaste el límite por billetera de este drop.",
   "preorderNotYours": "Esta reserva pertenece a otra billetera.",
   "preorderAlreadyGranted": "Estos packs ya fueron entregados.",
+  "packRefundNotPossible": "El pedido está en la cola de reembolso: el equipo devuelve el pago a la cartera de origen; no se entrega ningún sobre.",
   "preorderNotPayable": "Esta reserva ya no puede pagarse: expiró o ya fue procesada.",
   "preorderTxNotFound": "Transacción de pago no encontrada en mainnet (finalizada).",
   "preorderPaymentFailed": "La transacción de pago falló en la cadena.",

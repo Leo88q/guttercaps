@@ -155,6 +155,7 @@ const ui = {
   "phasegDone": "Pronto! {n} fichas estão na sua coleção.",
   "phasegDoneClose": "Para minha coleção",
   "phasegFailed": "O pedido não foi concluído. Se você pagou, guarde a assinatura da transação e fale com o suporte.",
+  "phasegRefundQueued": "O pedido foi pago depois de expirar e o limite da sua carteira já tinha sido usado por outro pedido. Nenhum pacote é entregue; o pagamento volta para a sua carteira — a equipe devolve para o endereço de onde você pagou.",
   "phasegPay": "Pagar e abrir",
   "cryptoOnly": "Só cripto. Precisa de SOL?",
   "noResale": "Os itens dos pacotes são colecionáveis digitais sem valor de revenda garantido.",

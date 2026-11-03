@@ -195,6 +195,7 @@
   "preorderWalletCap": "You reached the per-wallet limit for this drop.",
   "preorderNotYours": "This reservation belongs to another wallet.",
   "preorderAlreadyGranted": "These packs were already delivered.",
+  "packRefundNotPossible": "This order is in the refund queue — the team returns the payment to the wallet it came from; no pack is delivered.",
   "preorderNotPayable": "This reservation can no longer be paid — it expired or was already processed.",
   "preorderTxNotFound": "Payment transaction not found on mainnet (finalized).",
   "preorderPaymentFailed": "The payment transaction failed on-chain.",

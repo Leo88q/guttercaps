@@ -1746,6 +1746,19 @@ paths:
       parameters: [{ in: path, name: wallet, required: true, schema: { $ref: '#/components/schemas/Pubkey' } }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [resolution], properties: { resolution: { type: string, enum: [ignore, shadow_ban, rewards_pause, ban, unflag, trust] }, note: { type: string, maxLength: 280 } } } } } }
       responses: { '200': { description: ok, content: { application/json: { schema: { type: object, properties: { flags: { $ref: '#/components/schemas/WalletFlags' }, closed: { type: integer, description: open signals closed by this resolution } } } } } }, '400': { description: bad wallet }, '422': { description: bad resolution / note } }
+  /admin/pack-refunds:
+    get:
+      tags: [admin]
+      summary: Refund queue (находка 32) — orders paid after expiry whose wallet cap was already taken by another order; money is queued, not delivered
+      parameters: [{ in: query, name: limit, schema: { type: integer, maximum: 500, default: 100 } }]
+      responses: { '200': { description: queue, content: { application/json: { schema: { type: object, properties: { orders: { type: array, items: { $ref: '#/components/schemas/PackOrder' } } } } } } } }
+  /admin/pack-refunds/{id}:
+    post:
+      tags: [admin]
+      summary: Mark a queued refund as done — the treasury transfer signature is the proof (packOrders.markRefunded, audited, idempotent)
+      parameters: [{ in: path, name: id, required: true, schema: { type: integer, minimum: 1 } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [signature], properties: { signature: { type: string, minLength: 32 } } } } } }
+      responses: { '200': { description: order, content: { application/json: { schema: { $ref: '#/components/schemas/PackOrder' } } } }, '404': { description: unknown order }, '409': { description: not awaiting a refund / already refunded }, '400': { description: signature missing } }
   /admin/kpi:
     get:
       tags: [admin]
@@ -2245,7 +2258,10 @@ components:
         payTo: { type: string }
         mint: { type: string, nullable: true }
         memo: { type: string }
-        status: { type: string, enum: [created, paid, minted, expired, failed] }
+        status: { type: string, enum: [created, paid, minted, expired, failed, refund_due, refunded] }
+        refundReason: { type: string, nullable: true, description: "refund_due: why the paid order is held (starter_claimed / daily_cap) — находка 32" }
+        refundedAt: { type: integer, nullable: true }
+        refundSig: { type: string, nullable: true, description: treasury transfer signature that proves the refund }
         seedHash: { type: string }
         seed: { type: string, nullable: true }
         txSig: { type: string, nullable: true }

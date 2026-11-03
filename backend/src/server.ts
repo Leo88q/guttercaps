@@ -1106,6 +1106,15 @@ export function createApp(db: Db, deps: AppOptions = {}) {
       throw e;
     }
   });
+  // Находка 32: очередь возвратов по заказам, чья оплата пришла, когда лимит кошелька уже занял другой
+  // заказ. Возврат выполняет оператор, подпись перевода — доказательство; без этой пары маршрутов
+  // оплата «постфактум» просто оставалась бы в казне.
+  v1.get('/admin/pack-refunds', audited('pack_refunds.list', (req) => ({
+    orders: packOrders.refundQueue(db, limitQuery(req.query.limit, { max: 500, def: 100 })),
+  })));
+  v1.post('/admin/pack-refunds/:id', audited('pack_refunds.mark', (req) => packOrders.markRefunded(
+    db, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0, String(req.body?.signature ?? ''),
+  )));
   v1.get('/admin/rights', rightsAudited('rights.queue', () => db.all<compliance.RightsRequest>("SELECT * FROM rights_requests ORDER BY CASE WHEN status = 'closed' THEN 1 ELSE 0 END, due_at LIMIT 200").map(r => compliance.requestView(db, r))));
   v1.post('/admin/rights/:id', rightsAudited('rights.reply', req => compliance.updateRequest(db, req.params.id, req.body, 'operator')));
   v1.post('/admin/rights/:id/correct-access', rightsAudited('rights.correct_access', req => compliance.correctAccess(db, req.params.id, req.body)));

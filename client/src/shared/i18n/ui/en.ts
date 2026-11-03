@@ -154,6 +154,7 @@ const ui = {
   "phasegDone": "Done! {n} chips are in your collection.",
   "phasegDoneClose": "To my collection",
   "phasegFailed": "The order did not complete. If you paid, keep the transaction signature and contact support.",
+  "phasegRefundQueued": "This order was paid after it expired and your wallet limit was already taken by another order. No pack is delivered; the payment goes back to your wallet — the team returns it to the address you paid from.",
   "phasegPay": "Pay & open",
   "cryptoOnly": "Crypto only. Need SOL?",
   "noResale": "Pack contents are digital collectibles with no guaranteed resale value.",

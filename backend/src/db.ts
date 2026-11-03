@@ -419,7 +419,7 @@ CREATE TABLE IF NOT EXISTS pack_orders (
   amount      TEXT    NOT NULL,                   -- native units of the currency, decimal string
   pay_to      TEXT    NOT NULL,                   -- treasury wallet (SOL) or its ATA (tokens)
   mint        TEXT,                               -- token mint for USDC/CG, NULL for SOL
-  status      TEXT    NOT NULL DEFAULT 'created', -- created | paid | minted | expired | failed
+  status      TEXT    NOT NULL DEFAULT 'created', -- created | paid | minted | expired | failed | refund_due | refunded
   featured_idx INTEGER NOT NULL DEFAULT 0,        -- featured collection snapshot for 'featured'-pool SKUs
   seed        TEXT    NOT NULL,                   -- server secret until minted
   seed_hash   TEXT    NOT NULL,                   -- sha256(seed) — public commitment from creation
@@ -429,7 +429,8 @@ CREATE TABLE IF NOT EXISTS pack_orders (
   settle_leaves INTEGER,                          -- находка 54: сколько листьев реально выпустил settle_pack (событие PackSettled)
   refunded_amount TEXT,                           -- находка 54: возврат по refund_pack (PackRefunded), нативные единицы
   refunded_at  INTEGER,
-  refund_sig   TEXT,
+  refund_sig   TEXT,                               -- подпись перевода возврата из казны
+  refund_reason TEXT,                              -- находка 32: почему оплаченный заказ не выдан (quota_race)
   assets      TEXT,                               -- JSON [{assetId, collectionIdx, rarity, gameIndex}]
   created_at  INTEGER NOT NULL,
   paid_at     INTEGER,
@@ -1677,6 +1678,9 @@ export class Db {
     const po54 = new Set((this.raw.prepare(`PRAGMA table_info(pack_orders)`).all() as { name: string }[]).map((c) => c.name));
     if (po54.size > 0) {
       if (!po54.has('settle_leaves')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN settle_leaves INTEGER`);
+      // Находка 32: оплата, пришедшая после истечения заказа, больше не выдаётся молча — она встаёт в
+      // очередь возврата, и причина должна переживать перезапуск.
+      if (!po54.has('refund_reason')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN refund_reason TEXT`);
       if (!po54.has('refunded_amount')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN refunded_amount TEXT`);
       if (!po54.has('refunded_at')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN refunded_at INTEGER`);
       if (!po54.has('refund_sig')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN refund_sig TEXT`);

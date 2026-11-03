@@ -195,6 +195,7 @@
   "preorderWalletCap": "Bạn đã chạm giới hạn mỗi ví của đợt này.",
   "preorderNotYours": "Đơn đặt này thuộc về ví khác.",
   "preorderAlreadyGranted": "Các gói này đã được phát.",
+  "packRefundNotPossible": "Đơn đang trong hàng chờ hoàn tiền — đội ngũ hoàn khoản thanh toán về ví gốc; không có gói nào được giao.",
   "preorderNotPayable": "Đơn đặt này không còn thanh toán được — đã hết hạn hoặc đã xử lý.",
   "preorderTxNotFound": "Không tìm thấy giao dịch thanh toán trên mainnet (finalized).",
   "preorderPaymentFailed": "Giao dịch thanh toán thất bại trên chain.",

@@ -92,7 +92,10 @@ export async function waitForOrderMinted(
   let last: PackOrder | undefined;
   for (let i = 0; i < tries; i++) {
     last = await fetchOrder();
-    if (last.status === 'minted' || last.status === 'expired' || last.status === 'failed') return last;
+    // Находка 32: `refund_due`/`refunded` — тоже терминальные состояния. Без них опрос после
+    // оплаты, пришедшей слишком поздно, крутился бы до таймаута и показывал «ещё минтается».
+    if (last.status === 'minted' || last.status === 'expired' || last.status === 'failed'
+      || last.status === 'refund_due' || last.status === 'refunded') return last;
     await sleep(delayMs);
   }
   return last as PackOrder;

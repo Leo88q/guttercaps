@@ -195,6 +195,7 @@
   "preorderWalletCap": "Naabot mo na ang limit bawat wallet sa drop na ito.",
   "preorderNotYours": "Sa ibang wallet ang reservation na ito.",
   "preorderAlreadyGranted": "Naipamahagi na ang mga pack na ito.",
+  "packRefundNotPossible": "Nasa refund queue ang order — ibinabalik ng team ang bayad sa wallet na pinagmulan nito; walang pack na ibibigay.",
   "preorderNotPayable": "Hindi na mababayaran ang reservation na ito — paso na o naproseso na.",
   "preorderTxNotFound": "Hindi makita ang payment transaction sa mainnet (finalized).",
   "preorderPaymentFailed": "Nabigo on-chain ang payment transaction.",

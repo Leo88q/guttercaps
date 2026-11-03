@@ -6852,6 +6852,111 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/pack-refunds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Refund queue (находка 32) — orders paid after expiry whose wallet cap was already taken by another order; money is queued, not delivered */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description queue */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            orders?: components["schemas"]["PackOrder"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/pack-refunds/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a queued refund as done — the treasury transfer signature is the proof (packOrders.markRefunded, audited, idempotent) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        signature: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description order */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PackOrder"];
+                    };
+                };
+                /** @description signature missing */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description unknown order */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not awaiting a refund / already refunded */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/kpi": {
         parameters: {
             query?: never;
@@ -8255,7 +8360,12 @@ export interface components {
             mint?: string | null;
             memo?: string;
             /** @enum {string} */
-            status?: "created" | "paid" | "minted" | "expired" | "failed";
+            status?: "created" | "paid" | "minted" | "expired" | "failed" | "refund_due" | "refunded";
+            /** @description refund_due: why the paid order is held (starter_claimed / daily_cap) — находка 32 */
+            refundReason?: string | null;
+            refundedAt?: number | null;
+            /** @description treasury transfer signature that proves the refund */
+            refundSig?: string | null;
             seedHash?: string;
             seed?: string | null;
             txSig?: string | null;
