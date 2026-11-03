@@ -8,17 +8,16 @@ import { PublicKey, Transaction } from '@solana/web3.js';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, isMock } from '@/api/client';
 import {
-  buildPaymentInstructions, confirmWithRetry, forgetPayment, rememberedPayment, rememberPayment,
-  waitForOrderMinted, waitForSignature, type PackOrder, type PhaseGCurrency,
+  browserStore, buildPaymentInstructions, confirmWithRetry, forgetPayment, forgetPendingOrder,
+  rememberedPayment, rememberedPendingOrder, rememberPayment, rememberPendingOrder,
+  waitForOrderMinted, waitForSignature, type PackOrder, type PhaseGCurrency, type PendingPhase,
 } from './phaseG';
 import { FLAGS } from '@/app/config';
 
 export type PhaseGStage = 'idle' | 'creating' | 'paying' | 'confirming' | 'minting' | 'done' | 'error';
 
-/** localStorage в браузере, null — в тестах и в среде без хранилища. */
-const storage = (): Storage | null => {
-  try { return typeof window === 'undefined' ? null : window.localStorage; } catch { return null; }
-};
+const storage = browserStore;
+
 
 export function usePhaseGOrder() {
   const { connection } = useConnection();
@@ -37,6 +36,10 @@ export function usePhaseGOrder() {
       setStage('creating');
       const created = await api.post('/packs/order', { sku, qty, currency });
       const orderId = created.orderId ?? 0;
+      // Находка 11: запись о заказе кладётся ДО отправки транзакции — иначе после перезагрузки страница
+      // не знает, к какому заказу относится сохранённая подпись, и восстановить оплату нечем.
+      const pendingPhase: PendingPhase = FLAGS.launchPhase === 'v' ? 'v' : 'g';
+      if (!isMock()) rememberPendingOrder(storage(), { orderId, sku, phase: pendingPhase });
       if (!isMock() && FLAGS.launchPhase === 'v') {
         // Phase V: escrow on-chain, oracle authorizes, the player's own
         // settle transaction mints. No backend mint queue.
@@ -69,6 +72,7 @@ export function usePhaseGOrder() {
           settleSig,
         );
         forgetPayment(storage(), orderId);
+        forgetPendingOrder(storage());
       } else if (!isMock()) {
         if (!wallet.publicKey || !wallet.sendTransaction) throw new Error('Wallet is not connected');
         setStage('paying');
@@ -84,6 +88,7 @@ export function usePhaseGOrder() {
           signature,
         );
         forgetPayment(storage(), orderId);
+        forgetPendingOrder(storage());
       } else {
         // mock backend simulates the payment + confirm in one step
         await api.post('/packs/order/{id}/confirm', { signature: 'mock-payment' }, { path: { id: orderId } });
@@ -112,27 +117,42 @@ export function usePhaseGOrder() {
 
   /**
    * Дослать оплату, отправленную в прошлой сессии: подпись сохранена локально, новая транзакция не
-   * создаётся. Возвращает true, если заказ догнан (paid/minted).
+   * создаётся. Заказ берётся из сохранённой записи (id + фаза), поэтому Phase V подтверждается своим
+   * эндпоинтом. Возвращает true, если заказ догнан (paid/minted).
    */
-  const resumePayment = useCallback(async (orderId: number): Promise<boolean> => {
-    const signature = rememberedPayment(storage(), orderId);
-    if (!signature) return false;
+  const resumePayment = useCallback(async (orderId?: number): Promise<boolean> => {
+    if (busy.current) return false;
+    const record = rememberedPendingOrder(storage());
+    const id = orderId ?? record?.orderId ?? null;
+    const signature = id === null ? null : rememberedPayment(storage(), id);
+    if (id === null || !signature) return false;
+    const phase: PendingPhase = FLAGS.launchPhase === 'v' ? 'v' : 'g';
+    busy.current = true;
+    setError(null);
     try {
       setStage('confirming');
+      // Запись помнит, как оформлялся заказ; без неё считаем по текущей фазе запуска.
+      const effective = record && record.orderId === id ? record.phase : phase;
       await confirmWithRetry(
-        (sig) => api.post('/packs/order/{id}/confirm', { signature: sig }, { path: { id: orderId } }),
+        (sig) => (effective === 'v'
+          ? api.post('/packs/order/{id}/settle-confirm', { signature: sig }, { path: { id } })
+          : api.post('/packs/order/{id}/confirm', { signature: sig }, { path: { id } })),
         signature,
       );
-      forgetPayment(storage(), orderId);
+      forgetPayment(storage(), id);
+      forgetPendingOrder(storage());
       setStage('minting');
-      const final = await waitForOrderMinted(() => api.get('/packs/order/{id}', { path: { id: orderId } }));
+      const final = await waitForOrderMinted(() => api.get('/packs/order/{id}', { path: { id } }));
       setOrder(final);
       setStage(final.status === 'minted' ? 'done' : 'error');
+      if (final.status !== 'minted') setError(`Order ${final.status}`);
       return final.status === 'paid' || final.status === 'minted';
     } catch (e) {
       setStage('error');
       setError(e instanceof Error ? e.message : String(e));
       return false;
+    } finally {
+      busy.current = false;
     }
   }, []);
 

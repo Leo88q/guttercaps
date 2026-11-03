@@ -2,14 +2,17 @@
 // the treasury instead of a program transaction. The copy says plainly that
 // the server mints after payment and that the roll was committed before it —
 // no pretending this is the on-chain program flow.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BUNDLES, PACKS, bundlePriceCents, type PackId } from '@guttercaps/economy';
 import { fmtCents } from '@/shared/lib/format';
 import { packName, rarityName } from '@/shared/lib/rarity';
 import { KV, Modal, Pill } from '@/shared/ui/primitives';
 import { useT } from '@/shared/i18n';
+import { isMock } from '@/api/client';
 import { usePhaseGOrder } from './usePhaseGOrder';
-import type { PhaseGCurrency } from './phaseG';
+import {
+  browserStore, rememberedPayment, rememberedPendingOrder, shouldResumePending, type PhaseGCurrency,
+} from './phaseG';
 
 const CURRENCIES: PhaseGCurrency[] = ['SOL', 'USDC', 'CG'];
 const STAGE_KEY = {
@@ -32,6 +35,18 @@ export function PhaseGBuyModal({ sku, packId, onClose }: {
   const [currency, setCurrency] = useState<PhaseGCurrency>('SOL');
   const flow = usePhaseGOrder();
   const busy = flow.stage !== 'idle' && flow.stage !== 'done' && flow.stage !== 'error';
+  // Находка 11: прерванная оплата этого же пака досылается сама при открытии модалки — иначе подпись
+  // лежала бы в localStorage, а деньги оставались в treasury без выдачи. Один раз на открытие.
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (resumed.current || isMock()) return;
+    const store = browserStore();
+    const record = rememberedPendingOrder(store);
+    const hasSignature = record ? rememberedPayment(store, record.orderId) !== null : false;
+    if (!shouldResumePending(record, sku, flow.stage, hasSignature)) return;
+    resumed.current = true;
+    void flow.resumePayment(record!.orderId);
+  }, [flow.stage, flow.resumePayment, sku]);
   const cents = bundlesAllowed ? bundlePriceCents(econ, qty) : econ.priceUsdCents * qty;
   const assets = flow.order?.assets ?? [];
 

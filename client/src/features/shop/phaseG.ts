@@ -187,3 +187,60 @@ export function rememberedPayment(store: SignatureStore | null, orderId: number)
 export function forgetPayment(store: SignatureStore | null, orderId: number): void {
   try { store?.removeItem(paymentKey(orderId)); } catch { /* ignore */ }
 }
+
+// ---------------------------------------------------------------- незавершённый заказ (находка 11)
+//
+// Подписи мало: после перезагрузки страница не знает, К КАКОМУ заказу она относится, поэтому
+// `rememberedPayment` было некому прочитать, а `resumePayment` никто не вызывал — оплата уходила в
+// treasury, заказ оставался `created`, и вернуть его было нечем. Теперь рядом с подписью лежит
+// запись о заказе (id + sku + фаза), которую читает модалка покупки и оболочка приложения.
+
+/** Как оформлялся заказ: `g` — прямой перевод в treasury, `v` — эскроу + settle (разные эндпоинты). */
+export type PendingPhase = 'g' | 'v';
+export interface PendingOrder { orderId: number; sku: number; phase: PendingPhase }
+
+const ORDER_KEY = 'gc:pendingOrder';
+
+/** localStorage в браузере, null — в тестах и в среде без хранилища (приватный режим). */
+export function browserStore(): SignatureStore | null {
+  try { return typeof window === 'undefined' ? null : window.localStorage; } catch { return null; }
+}
+
+export function rememberPendingOrder(store: SignatureStore | null, o: PendingOrder): void {
+  try { store?.setItem(ORDER_KEY, JSON.stringify(o)); } catch { /* приватный режим: переживём */ }
+}
+
+/** Запись читается только если она валидна: чужая/испорченная строка не должна запускать «восстановление». */
+export function rememberedPendingOrder(store: SignatureStore | null): PendingOrder | null {
+  let raw: string | null;
+  try { raw = store?.getItem(ORDER_KEY) ?? null; } catch { return null; }
+  if (!raw) return null;
+  let j: unknown;
+  try { j = JSON.parse(raw); } catch { return null; }
+  const o = j as Partial<PendingOrder> | null;
+  if (!o || typeof o !== 'object') return null;
+  const { orderId, sku, phase } = o;
+  if (!Number.isInteger(orderId) || (orderId as number) <= 0) return null;
+  if (!Number.isInteger(sku) || (sku as number) < 0) return null;
+  if (phase !== 'g' && phase !== 'v') return null;
+  return { orderId: orderId as number, sku: sku as number, phase };
+}
+
+export function forgetPendingOrder(store: SignatureStore | null): void {
+  try { store?.removeItem(ORDER_KEY); } catch { /* ignore */ }
+}
+
+/**
+ * Стоит ли подхватывать прерванный заказ при открытии покупки: только тот же SKU (чтобы не показывать
+ * в модалке чужой заказ) и только в спокойном состоянии — иначе автоподхват дрался бы с текущей покупкой.
+ */
+export function shouldResumePending(
+  record: PendingOrder | null,
+  sku: number,
+  stage: string,
+  hasSignature: boolean,
+): boolean {
+  if (!record || !hasSignature) return false;
+  if (record.sku !== sku) return false;
+  return stage === 'idle' || stage === 'error';
+}

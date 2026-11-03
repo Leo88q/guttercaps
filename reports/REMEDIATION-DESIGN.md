@@ -348,6 +348,13 @@ CREATE TABLE IF NOT EXISTS invariant_breaches (
 
 **11. Запрос до подтверждения (Phase G/V).** *Инвариант:* клиент не отдаёт пользователю «ошибка» по транзакции, которая исполнится. *Реализация:* `client/src/chain/tx.ts` — `sendAndConfirmWithStatus`, ожидание `confirmed` по `lastValidBlockHeight`; `usePhaseGOrder.ts` вызывает backend только после этого; при неопределённости — `claimWithRetry` с сохранённой подписью в `localStorage` и восстановлением на монтировании. *Тесты:* mock RPC с задержкой статуса; «обновили страницу во время ожидания» → заказ догоняется. *Релиз:* R0, 1.5 дня.
 
+**Реализовано в R0 (п. 11):** ожидание подтверждения (`waitForSignature`) и повтор с той же подписью
+(`confirmWithRetry`) уже были; добавлено то, без чего восстановление не работало: запись о заказе
+(`{orderId, sku, phase}` в `gc:pendingOrder`) кладётся ДО отправки, модалка покупки того же SKU при
+открытии сама вызывает `resumePayment` (Phase V — `settle-confirm`, G — `confirm`), запись снимается
+после подтверждения. Ветка `claimWithRetry` не понадобилась: новой транзакции при восстановлении не
+создаётся никогда. Тесты: `phaseg-resume-wiring.test.tsx` (проводка) и `phaseg-confirm-audit.test.ts`.
+
 **12. Ошибка DAS как доказательство сжигания.** *Инвариант:* burn доказывается исполненной инструкцией, DAS — только кэш. *Реализация:* `backend/src/das.ts` `dasBurnVerifier` → (а) подпись транзакции от клиента, `verify-by-execution` на `burn`/`transfer` с нашим деревом; (б) при отсутствии подписи — отказ `burn_unproven` (503), не выпуск. `phaseg-fusion.ts` — соответственно. *Тесты:* DAS timeout → отказ; DAS 404 → отказ; настоящий burn → успех. *Релиз:* R0, 2 дня.
 
 **13. Singleton staking emission.** *Инвариант:* эмиссию инициализирует только authority. *Реализация:* `programs/staking/src/instructions/emission.rs` — `InitEmission` проверяет upgrade authority и утверждённый mint; повторный вызов — `AccountAlreadyInitialized`. *Тесты:* LiteSVM: чужой подписант → отказ; authority → ок; второй вызов → отказ. *Релиз:* R0 (до деплоя), 0.5 дня.

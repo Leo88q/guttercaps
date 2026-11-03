@@ -10,8 +10,9 @@
 // можно было дослать после перезагрузки (`rememberedPayment`/`forgetPayment`).
 import { describe, expect, it } from 'vitest';
 import {
-  confirmWithRetry, forgetPayment, isTransientConfirmError, rememberedPayment, rememberPayment,
-  waitForSignature, type SignatureStore,
+  confirmWithRetry, forgetPayment, forgetPendingOrder, isTransientConfirmError, rememberedPayment,
+  rememberedPendingOrder, rememberPayment, rememberPendingOrder, shouldResumePending,
+  waitForSignature, type PendingOrder, type SignatureStore,
 } from './phaseG';
 
 const noSleep = async () => {};
@@ -94,5 +95,50 @@ describe('находка 11: ожидание и идемпотентное по
     // среда без хранилища (SSR, приватный режим) не ломает покупку
     expect(() => rememberPayment(null, 1, 'X')).not.toThrow();
     expect(rememberedPayment(null, 1)).toBeNull();
+  });
+
+  // Без записи о заказе подпись бесполезна: после перезагрузки неизвестно, к какому заказу она относится
+  // и каким эндпоинтом подтверждать (у Phase V — settle-confirm). Раньше `resumePayment` не вызывал никто.
+  const memStore = (): SignatureStore & { mem: Map<string, string> } => {
+    const mem = new Map<string, string>();
+    return {
+      mem,
+      getItem: (k) => mem.get(k) ?? null,
+      setItem: (k, v) => { mem.set(k, v); },
+      removeItem: (k) => { mem.delete(k); },
+    };
+  };
+
+  it('remembers which order the saved signature belongs to, and that it came from phase V', () => {
+    const store = memStore();
+    expect(rememberedPendingOrder(store)).toBeNull();
+    rememberPendingOrder(store, { orderId: 42, sku: 3, phase: 'v' });
+    rememberPayment(store, 42, 'SIG42');
+    expect(rememberedPendingOrder(store)).toEqual({ orderId: 42, sku: 3, phase: 'v' });
+    // обе половины восстановления согласованы: id из записи находит свою подпись
+    expect(rememberedPayment(store, rememberedPendingOrder(store)!.orderId)).toBe('SIG42');
+    forgetPendingOrder(store);
+    expect(rememberedPendingOrder(store)).toBeNull();
+    expect(rememberedPayment(store, 42)).toBe('SIG42'); // подпись живёт своей парой ключей
+  });
+
+  it('ignores a corrupted or foreign record instead of resuming a random order', () => {
+    for (const raw of ['not json', '{}', '{"orderId":0,"sku":1,"phase":"g"}', '{"orderId":7,"sku":-1,"phase":"g"}',
+      '{"orderId":7,"sku":1,"phase":"x"}', '{"orderId":"7","sku":1,"phase":"g"}', 'null', '[]']) {
+      const store = memStore();
+      store.setItem('gc:pendingOrder', raw);
+      expect(rememberedPendingOrder(store), raw).toBeNull();
+    }
+  });
+
+  it('resumes only the same SKU and only from a calm stage (no fight with a live purchase)', () => {
+    const rec: PendingOrder = { orderId: 9, sku: 2, phase: 'g' };
+    expect(shouldResumePending(rec, 2, 'idle', true)).toBe(true);
+    expect(shouldResumePending(rec, 2, 'error', true)).toBe(true);
+    expect(shouldResumePending(rec, 1, 'idle', true)).toBe(false);   // чужая модалка
+    expect(shouldResumePending(rec, 2, 'paying', true)).toBe(false); // идёт новая покупка
+    expect(shouldResumePending(rec, 2, 'done', true)).toBe(false);
+    expect(shouldResumePending(rec, 2, 'idle', false)).toBe(false);  // подписи нет — восстанавливать нечего
+    expect(shouldResumePending(null, 2, 'idle', true)).toBe(false);
   });
 });
