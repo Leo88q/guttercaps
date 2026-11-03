@@ -279,6 +279,13 @@ CREATE TABLE IF NOT EXISTS invariant_breaches (
 * `escrow_buy`: `min_price`/`max_price` в аргументах, `deadline_slot`, запрет self-trade по `owner` лота, `escrow` подписывается PDA.
 * `claim_reward`: `budget`/`remaining` в `RewardEpoch`, `unlock_slot`, `revoke` под authority, событие `RewardClaimed` с `epoch`/`amount`.
 * `initialize`: `authority` = upgrade authority программы (`program_data.authority` сверяется явно), а не «первый подписант».
+* **Реализовано в R0 (пп. 1 и 4):** п. 1 закрыт без смены формата сообщения — пространства id разведены по старшему биту
+  (`GRANT_ID_BASE = 1 << 63`): `settle_pack` требует `order_id < базы`, `grant_mint` — `>= базы`; backend уже выдаёт
+  fusion-гранты как `база + fusion_id`, поэтому клиент и скрипты не меняются. Домен v2 (§1.3) остаётся планом на тот
+  релиз, где формат можно ломать одновременно в программе, backend и клиенте. П. 4: `init_config` принимает
+  `ProgramData` последним аккаунтом и проверяет upgrade authority (`programs/settle/src/deploy_guard.rs` — байтовый
+  разбор повторён локально, чтобы `settle` не тянул `chip_core` в зависимости), плюс отказ на заведомо нерабочие
+  параметры. Новых аккаунтов и полей нет — рента не выросла (§3.0).
 * Инструкция `migrate_v2`: `realloc` + версия в аккаунте; вызывается один раз под authority в окне апгрейда.
 * События: `OrderRefunded`, `GrantUsed`, `PackBought{sku, qty, price, currency}`, `RewardRevoked` — полный набор для индексатора (п. 54).
 
@@ -292,6 +299,11 @@ CREATE TABLE IF NOT EXISTS invariant_breaches (
 ### staking / emission (пп. 13, 45)
 
 * `InitEmission`: `authority` = upgrade authority, `mint` утверждён в `ProgramData`-конфиге, повторный вызов невозможен (`init` без `init_if_needed`).
+* **Реализовано в R0 (п. 13):** `InitEmission` принимает `ProgramData` последним аккаунтом и проверяет upgrade authority
+  через `chip_core::deploy_guard` (у staking зависимость уже есть) — до `validate_cg_mint` и до передачи mint authority.
+  Новая ошибка `StakeError::NotUpgradeAuthority` дописана в конец enum (коды прежних вариантов не сдвинулись), каталог
+  ошибок клиента и тест-таблица localnet сверяются с Rust тестом. Утверждение mint в `ProgramData`-конфиге не делалось:
+  это новый аккаунт/поле, то есть рост ренты (§0.5) — остаётся решением владельца.
 * `stake`: `stake_at`/`unstake_at` вместо `exists`-строки; повторный `stake` после `unstake` разрешён (п. 14 — backend, но состояние на цепи для симметрии).
 
 ### arena (пп. 40, 41, 46)

@@ -129,7 +129,7 @@ async function bootChain(): Promise<Chain> {
 }
 
 // ---------------------------------------------------------------- SEC-F7 upgrade-authority gate
-// chip_core `initialize` / arena `init_arena` accept only the program's upgrade authority, read from the
+// chip_core `initialize` / arena `init_arena` / staking `init_emission` (находка 13) accept only the program's upgrade authority, read from the
 // ProgramData account (upgradeable-loader PDA `[program_id]`). solana-test-validator gets the programs via
 // `--upgradeable-program … <admin>` (run-validator.ts); LiteSVM's `addProgram` has no ProgramData, so the
 // harness forges one (owner = loader, header `ProgramData { slot, Some(authority) }`).
@@ -268,14 +268,15 @@ export function grantBoosterIx(a: { authority: PublicKey; payer: PublicKey; owne
   });
 }
 
-export function initEmissionIx(a: { admin: PublicKey; cgMint: PublicKey; genesisTs: bigint }): TransactionInstruction {
+export function initEmissionIx(a: { admin: PublicKey; cgMint: PublicKey; genesisTs: bigint; programData?: PublicKey }): TransactionInstruction {
   const split = [EMISSION_SPLIT.chipStaking, EMISSION_SPLIT.tokenStaking, EMISSION_SPLIT.quests, EMISSION_SPLIT.pvpSeason, EMISSION_SPLIT.eventsReserve].map((p) => p * 100);
   const w = new BorshWriter().pubkey(CHIP_CORE_ID).pubkey(MARKET_ID).pubkey(ARENA_ID).pubkey(QUEST_ORACLE.publicKey).pubkey(SEASON_ORACLE.publicKey).pubkey(SET_ORACLE.publicKey);
   for (const s of split) w.u16(s);
   w.i64(a.genesisTs);
   return new TransactionInstruction({
     programId: STAKING_ID,
-    keys: [signer(a.admin), rw(emissionPda()[0]), rw(tokenPoolPda()[0]), rw(chipPoolPda()[0]), rw(a.cgMint), ro(TOKEN_PROGRAM_ID), ro(SYSTEM_PROGRAM_ID)],
+    // Находка 13: последним аккаунтом — ProgramData staking (гейт по upgrade authority).
+    keys: [signer(a.admin), rw(emissionPda()[0]), rw(tokenPoolPda()[0]), rw(chipPoolPda()[0]), rw(a.cgMint), ro(TOKEN_PROGRAM_ID), ro(SYSTEM_PROGRAM_ID), ro(a.programData ?? programDataPda(STAKING_ID))],
     data: Buffer.from(ixData('init_emission', w.toBytes())),
   });
 }
@@ -365,7 +366,7 @@ async function boot(): Promise<Env> {
     ({ cgMint: cg, usdcMint: usdc, skrMint: skr } = cfg);
   } else {
     // SEC-F7: the admin is the upgrade authority (validator: --upgradeable-program; LiteSVM: forged ProgramData)
-    if (chain.kind === 'litesvm') for (const id of [CHIP_CORE_ID, ARENA_ID]) await forgeProgramData(chain, id, admin.publicKey);
+    if (chain.kind === 'litesvm') for (const id of [CHIP_CORE_ID, ARENA_ID, STAKING_ID]) await forgeProgramData(chain, id, admin.publicKey);
     // mints: $CG authority → admin now, handed to the emission PDA by init_emission; USDC/SKR stay admin-minted faucets
     cg = await createMint(chain, admin, 6, admin.publicKey);
     usdc = await createMint(chain, admin, 6, admin.publicKey);

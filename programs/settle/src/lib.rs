@@ -35,6 +35,9 @@ use mpl_bubblegum::{
 
 declare_id!("B9ousNDpe29G45KFHyndvHXpLigBtxCh9xbboWuCeXyP");
 
+/// Находка 4: гейт инициализации по upgrade authority (см. модуль).
+pub mod deploy_guard;
+
 // ---------------------------------------------------------------------------
 // Constants (program ids pinned like chip_core::bubblegum)
 
@@ -59,6 +62,18 @@ pub const REFUND_AFTER_SLOTS: u64 = 216_000;
 pub const MAX_SPECS: usize = 10;
 /// MintAuth message domain prefix; the TS twin lives in backend/src/phasev.ts.
 pub const MINT_AUTH_PREFIX: &[u8] = b"GUTCAP/MINTAUTH/V1";
+/// Namespace split, находка 1 (`reports/INDEPENDENT-CODE-REVIEW-PROGRESS.md` §1).
+///
+/// `settle_pack` and `grant_mint` verify the SAME `MintAuth` message: wallet, order_id, specs_hash,
+/// nonce (= order_id), expiry. До этого ни один из них не проверял, из какого пространства id пришла
+/// авторизация, поэтому оплаченный пак можно было «домить» ещё раз: `settle_pack` освобождал эскроу и
+/// выпускал чипы по order PDA, а та же подпись оракула, поданная в `grant_mint`, выпускала ТЕ ЖЕ спеки
+/// второй раз по grant-receipt PDA — уже без оплаты.
+///
+/// Пространства разведены по старшему биту: пак-заказы всегда < 2^63 (backend
+/// `phasev.GRANT_ID_BASE = 1n << 63n`, `fusionGrantFor` выдаёт `GRANT_ID_BASE + fusion_id`).
+/// Проверка стоит в обоих обработчиках и не создаёт ни одного аккаунта/поля — ренты не добавляет.
+pub const GRANT_ID_BASE: u64 = 1 << 63;
 
 pub const CURRENCY_SOL: u8 = 0;
 pub const CURRENCY_USDC: u8 = 1;
@@ -255,6 +270,8 @@ pub enum SettleError {
     BadAccount,
     #[msg("arithmetic overflow")]
     Overflow,
+    #[msg("only the program upgrade authority may initialize config")]
+    NotUpgradeAuthority,
 }
 
 // ---------------------------------------------------------------------------
@@ -455,6 +472,10 @@ pub struct InitConfig<'info> {
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
+    /// CHECK: находка 4 — ProgramData этой программы (PDA upgradeable-загрузчика `[program_id]`).
+    /// Адрес, владелец и записанная upgrade authority проверяются в обработчике
+    /// (`deploy_guard::signer_is_upgrade_authority`). Аккаунт только читается — ренты не добавляет.
+    pub program_data: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
@@ -784,6 +805,19 @@ pub fn init_config_handler(
     emission_cap: u64,
     market_fee_bps: u16,
 ) -> Result<()> {
+    // Находка 4: first-caller-wins закрыт — конфиг создаёт только upgrade authority программы.
+    require!(
+        deploy_guard::signer_is_upgrade_authority(
+            ctx.program_id,
+            &ctx.accounts.program_data.to_account_info(),
+            ctx.accounts.admin.key,
+        ),
+        SettleError::NotUpgradeAuthority
+    );
+    // Заодно не даём зафиксировать заведомо нерабочие параметры: конфиг нельзя пересоздать.
+    require!(emission_cap > 0, SettleError::BadAmount);
+    require!(market_fee_bps <= 10_000, SettleError::BadAmount);
+    require!(treasury != Pubkey::default(), SettleError::BadAccount);
     let c = &mut ctx.accounts.config;
     c.admin = ctx.accounts.admin.key();
     c.mint_oracle = mint_oracle;
@@ -904,6 +938,9 @@ pub fn settle_pack_handler<'info>(
         auth.wallet == order.buyer && auth.order_id == order_id && auth.nonce == order_id,
         SettleError::BadOracleSignature
     );
+    // Находка 1: пак-заказ живёт в нижней половине пространства id. Авторизация fusion-гранта
+    // (>= GRANT_ID_BASE) не может освободить эскроу и выпустить спеку пак-заказа.
+    require!(auth.order_id < GRANT_ID_BASE, SettleError::BadOracleSignature);
     require!(
         Clock::get()?.slot <= auth.expires_at_slot,
         SettleError::AuthExpired
@@ -1125,6 +1162,10 @@ pub fn grant_mint_handler<'info>(
         auth.wallet == ctx.accounts.buyer.key() && auth.nonce == auth.order_id,
         SettleError::BadOracleSignature
     );
+    // Находка 1: грант выпускается только для id из верхней половины пространства
+    // (`GRANT_ID_BASE + fusion_id` на backend). Без этой строки оплаченный пак-заказ
+    // мог быть выпущен второй раз той же подписью оракула — уже без оплаты.
+    require!(auth.order_id >= GRANT_ID_BASE, SettleError::BadOracleSignature);
     require!(
         Clock::get()?.slot <= auth.expires_at_slot,
         SettleError::AuthExpired

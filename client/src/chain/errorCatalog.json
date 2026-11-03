@@ -411,6 +411,10 @@
     {
       "name": "BadGridCharge",
       "key": "staking_BadGridCharge"
+    },
+    {
+      "name": "NotUpgradeAuthority",
+      "key": "chip_core_NotUpgradeAuthority"
     }
   ],
   "arena": [

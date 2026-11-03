@@ -36,7 +36,7 @@ describe('source synchronization', () => {
         count++;
       });
     }
-    expect(count).toBe(120); // 119 + StakeError::BadGridCharge (Floodgrid charge account)
+    expect(count).toBe(121); // 120 + StakeError::NotUpgradeAuthority (находка 13: гейт init_emission по upgrade authority)
     // Pin the framework identities to the installed SDK too, not just our translated hand table.
     const framework = {
       InstructionMissing: 100, InstructionFallbackNotFound: 101, ConstraintMut: 2000,
