@@ -251,40 +251,14 @@ export function submitRun(db: Db, wallet: string, body: Record<string, unknown> 
 // ------------------------------------------------------------ платный заезд
 
 /**
- * Один дополнительный заезд за 30 $CG. Разбор ровно тот, что у Глубокого
- * паводка: ищем платёж по подписи, требуем $CG и ровно ту сумму, тратим
- * платёж один раз. Другой валютой доп. заезд не покупается: сток — это $CG.
+ * Покупка дополнительного заезда закрыта: услуга `lineExtraRun` снята с продажи (решение владельца
+ * 2026-11-03 — довести снятие, а не возвращать её в продажу). Раньше здесь стояла проверка
+ * `if (!svc)`, которая не могла сработать: `SERVICE_BY_ID` содержит и снятые услуги (по ним читается
+ * история), поэтому покупка оставалась открытой (находка 63). Кредиты, выданные до снятия, не
+ * сгорают — их по-прежнему можно потратить в `submitRun`.
  */
-export function buyExtraRun(db: Db, wallet: string, body: Record<string, unknown> | undefined, t = now()): { day: number; credits: number } {
-  const day = Number(body?.day);
-  const today = dayIndex(t);
-  if (!Number.isInteger(day) || day > today || day < today - DAY_GRACE) {
-    throw new ServiceError(400, 'bad_day', `day must be today (${today}) or yesterday`);
-  }
-  const signature = String(body?.signature ?? '').trim();
-  if (!/^[1-9A-HJ-NP-Za-km-z]{32,128}$/.test(signature)) throw new ServiceError(400, 'bad_signature', 'signature must be a transaction id');
-  // Заезды убраны из продукта (2026-10-19): услуга снята с продажи, покупка закрыта.
-  const svc = SERVICE_BY_ID.lineExtraRun as typeof SERVICE_BY_ID.lineExtraRun | undefined;
-  if (!svc) throw new ServiceError(410, 'line_retired', 'The Line is retired');
-  const kind = svc.kind;
-  const payload = { id: 'lineExtraRun', day };
-  const expected = toHex(serviceRefHash(kind, wallet, payload));
-  return db.tx(() => {
-    const p = findPayment(db, signature, wallet, [kind], expected);
-    if (p.ref_hash !== expected) throw new ServiceError(402, 'ref_hash_mismatch', 'Payment was committed for a different day');
-    if (p.currency !== 2 || BigInt(p.amount) !== BigInt(LINE.extraRunCgMicro)) {
-      throw new ServiceError(402, 'cg_burn_required', 'Extra runs are bought with exactly 30 $CG (burned)');
-    }
-    // Считаем и проехатые, и ещё не потраченные: потраченный кредит уже виден в
-    // `paid`, поэтому складываем платные заезды с неиспользованными кредитами.
-    const paid = db.scalar(`SELECT COALESCE(SUM(paid), 0) FROM line_runs WHERE wallet = ? AND day = ?`, wallet, day);
-    const credits = db.scalar(`SELECT COUNT(*) FROM line_credits WHERE wallet = ? AND day = ?`, wallet, day);
-    const unused = db.scalar(`SELECT COUNT(*) FROM line_credits WHERE wallet = ? AND day = ? AND used_by IS NULL`, wallet, day);
-    if (paid + unused >= LINE.maxPaidRunsPerDay) throw new ServiceError(409, 'run_credit_cap', `At most ${LINE.maxPaidRunsPerDay} paid runs per day`);
-    db.run(`INSERT INTO line_credits (wallet, day, signature, granted_at) VALUES (?, ?, ?, ?)`, wallet, day, p.signature, t);
-    consume(db, p, `line:${day}`);
-    return { day, credits: credits + 1 };
-  });
+export function buyExtraRun(_db: Db, _wallet: string, _body: Record<string, unknown> | undefined, _t = now()): { day: number; credits: number } {
+  throw new ServiceError(410, 'line_retired', 'Extra Line runs are retired and can no longer be bought');
 }
 
 // ------------------------------------------------------------------- реплеи

@@ -785,15 +785,9 @@ on('post', '/me/line/runs', (o) => {
     state: lineStateView(),
   };
 });
-on('post', '/me/line/runs/buy', (o) => {
-  const b = (o.body ?? {}) as { day?: number; signature?: string };
-  const day = Number(b.day);
-  const today = lineDay();
-  if (!Number.isInteger(day) || day > today || day < today - 1) throw new ApiError(400, 'bad_day', `day must be today (${today}) or yesterday`);
-  if (typeof b.signature !== 'string' || b.signature.length < 32) throw new ApiError(402, 'payment_not_found', 'No ServicePaid event from this wallet in that transaction');
-  if (lineStateView().paidLeft <= 0) throw new ApiError(409, 'run_credit_cap', `At most ${LINE.maxPaidRunsPerDay} paid runs per day`);
-  mockLineCredits += 1;
-  return { day, credits: mockLineCredits };
+// Находка 63: доп. заезды сняты с продажи — мок отвечает ровно как backend (410 line_retired).
+on('post', '/me/line/runs/buy', () => {
+  throw new ApiError(410, 'line_retired', 'Extra Line runs are retired and can no longer be bought');
 });
 // Реплей смотрят, а не скачивают (docs/16 §5.5): строка доски публична, и
 // нажатия в заезде — не секрет. Смотрим и свои заезды, и чужие с доски.
@@ -869,18 +863,9 @@ const tournamentStateView = () => {
   };
 };
 on('get', '/me/line/tournament', () => tournamentStateView());
-on('post', '/me/line/tournament/enter', (o) => {
-  const b = (o.body ?? {}) as { day?: number; signature?: string };
-  const day = Number(b.day);
-  const today = lineDay();
-  if (!Number.isInteger(day) || day !== today) throw new ApiError(400, 'bad_day', `day must be today (${today})`);
-  if (typeof b.signature !== 'string' || b.signature.length < 32) throw new ApiError(402, 'payment_not_found', 'No ServicePaid event from this wallet in that transaction');
-  const st = lineStateView();
-  const paidUsed = st.runsToday - st.freeLeft;
-  if (paidUsed + mockLineCredits + mockTournamentUnused >= LINE.maxPaidRunsPerDay) throw new ApiError(409, 'run_credit_cap', `At most ${LINE.maxPaidRunsPerDay} paid runs per day`);
-  mockTournamentBought += 1;
-  mockTournamentUnused += 1;
-  return { day, entries: mockTournamentUnused };
+// Находка 63: входы в турнир тоже сняты с продажи.
+on('post', '/me/line/tournament/enter', () => {
+  throw new ApiError(410, 'line_retired', 'Line tournament entries are retired and can no longer be bought');
 });
 on('get', '/line/tournament/board', (o) => {
   const day = Number((o.query as { day?: unknown } | undefined)?.day);

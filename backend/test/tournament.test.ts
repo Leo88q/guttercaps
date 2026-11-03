@@ -1,8 +1,8 @@
 // Дневной турнир линии (docs/16 §5.4).
 //
 // Что здесь держится:
-//   1. вход — платёж 30 $CG, привязанный к дню (с roll-forward
-//      через UTC-полночь: платёж за вчера продаёт вход сегодня);
+//   1. покупка входа СНЯТА с продажи (находка 63): 410 line_retired, платёж не списывается;
+//      входы, купленные раньше, доигрываются (строка `line_tournament_entries` живёт своим чередом);
 //   2. один вход — один турнирный заезд, заезд тратит кредит,
 //      бесплатные заезды не ранжируются;
 //   3. общий потолок paid-попыток (линия + турнир);
@@ -46,8 +46,11 @@ function payEntry(wallet: string, day: number, sig: string, t = T0, amount: numb
   return ref;
 }
 
-const enter = (wallet: string, day: number, sig: string, t = T0) =>
-  tournament.enterTournament(db, wallet, { day, signature: sig }, t);
+/** Вход, купленный ДО снятия услуги с продажи: строка журнала, которую тратит турнирный заезд. */
+const seedEntry = (wallet: string, day: number, sig = sig58(), t = T0) => {
+  db.run(`INSERT INTO line_tournament_entries (wallet, day, signature, granted_at) VALUES (?, ?, ?, ?)`, wallet, day, sig, t);
+  return sig;
+};
 
 const run = (wallet: string, day: number, score: number, t = T0) =>
   db.run(`INSERT INTO line_runs (wallet, day, week, seed, inputs, score, tricks, best_combo, bails, paid, submitted_at, replay_ttl)
@@ -70,54 +73,31 @@ function firstMissing(db: Db, wallet: string, district: number): BoardSlot {
 }
 
 describe('турнир: вход', () => {
-  it('платёж 30 $CG покупает один вход сегодня', () => {
+  // Находка 63: `lineTournamentEntry` снята с продажи. Покупка закрыта, платёж не списывается —
+  // его можно разобрать на возврат, а не «оплатил и ничего».
+  it('покупка входа снята с продажи: 410 для любого дня, платёж не списывается', () => {
     const w = kp();
     const day = dayIndex(T0);
     const sig = sig58();
     payEntry(w, day, sig);
-    const r = enter(w, day, sig);
-    expect(r.day).toBe(day);
-    expect(r.entries).toBe(1);
-    // тот же платёж дважды входа не покупает
-    fails(() => enter(w, day, sig), 'payment_consumed');
+    fails(() => tournament.enterTournament(db, w, { day, signature: sig }, T0), 'line_retired');
+    // «вчерашний» платёж (roll-forward) тоже ничего не покупает
+    const sigYesterday = sig58();
+    payEntry(w, dayIndex(T0) - 1, sigYesterday, T0);
+    fails(() => tournament.enterTournament(db, w, { day, signature: sigYesterday }, T0), 'line_retired');
+    expect(db.scalar(`SELECT COUNT(*) FROM line_tournament_entries WHERE wallet = ?`, w)).toBe(0);
+    expect(db.get<{ consumed_by: string | null }>(`SELECT consumed_by FROM service_payments WHERE signature = ?`, sig)?.consumed_by).toBeNull();
   });
 
-  it('платёж другой суммы не входит', () => {
-    const w = kp();
-    const s = sig58();
-    payEntry(w, dayIndex(T0), s, T0, 29_000_000);
-    fails(() => enter(w, dayIndex(T0), s), 'cg_burn_required');
-  });
-
-  it('roll-forward: платёж, подписанный на вчера, продаёт вход сегодня', () => {
-    const w = kp();
-    const yesterday = dayIndex(T0) - 1;
-    const sig = sig58();
-    payEntry(w, yesterday, sig);
-    const r = enter(w, dayIndex(T0), sig, T0);
-    expect(r.day).toBe(dayIndex(T0));
-    // и фиксируется событием — это не silent-исключение
-    expect(db.scalar(`SELECT COUNT(*) FROM feature_events WHERE wallet = ? AND feature = 'tournament' AND kind = 'enter_rollover'`, w)).toBe(1);
-  });
-
-  it('платёж за день старше вчера — чужой', () => {
-    const w = kp();
-    const sig = sig58();
-    payEntry(w, dayIndex(T0) - 2, sig);
-    fails(() => enter(w, dayIndex(T0), sig), 'ref_hash_mismatch');
-  });
-
-  it('общий потолок paid-попыток держит и входы', () => {
+  it('входы, купленные до снятия, видны в состоянии и доигрываются', () => {
     const w = kp();
     const day = dayIndex(T0);
-    for (let i = 0; i < LINE.maxPaidRunsPerDay; i++) run(w, day, 100 + i);
-    const sig = sig58();
-    payEntry(w, day, sig);
-    fails(() => enter(w, day, sig), 'run_credit_cap');
-  });
-
-  it('день — только сегодня (±1 для roll-forward)', () => {
-    fails(() => enter(kp(), dayIndex(T0) + 2, sig58()), 'bad_day');
+    seedEntry(w, day);
+    const state = tournament.tournamentState(db, w, T0);
+    expect(state.entries).toMatchObject({ bought: 1, unused: 1, left: 0 }); // left = 0: купить больше нельзя
+    const r = runs.submitRun(db, w, { day, inputs: [[0, 0], [1, 1], [2, 0]], tournament: true }, T0);
+    expect(r.run.paid).toBe(true);
+    expect(tournament.tournamentState(db, w, T0).entries.unused).toBe(0);
   });
 });
 
@@ -127,9 +107,7 @@ describe('турнир: заезд', () => {
 
   it('турнирный заезд тратит вход и ранжирует; второй без входа — 402', () => {
     const w = kp();
-    const sig = sig58();
-    payEntry(w, day, sig);
-    enter(w, day, sig);
+    seedEntry(w, day);
     const r = runs.submitRun(db, w, { day, inputs, tournament: true }, T0);
     expect(r.run.paid).toBe(true);
     const state = tournament.tournamentState(db, w, T0);
@@ -142,9 +120,7 @@ describe('турнир: заезд', () => {
 
   it('бесплатный заезд не тратит вход и не ранжируется', () => {
     const w = kp();
-    const sig = sig58();
-    payEntry(w, day, sig);
-    enter(w, day, sig);
+    seedEntry(w, day);
     runs.submitRun(db, w, { day, inputs, tournament: false }, T0);
     const state = tournament.tournamentState(db, w, T0);
     expect(state.entries.unused).toBe(1);
@@ -154,7 +130,7 @@ describe('турнир: заезд', () => {
 
   it('лучший из двух турнирных заездов — в доске', () => {
     const w = kp();
-    for (const s of [sig58(), sig58()]) { payEntry(w, day, s); enter(w, day, s); }
+    seedEntry(w, day); seedEntry(w, day);
     runs.submitRun(db, w, { day, inputs, tournament: true }, T0);
     const second = runs.submitRun(db, w, { day, inputs, tournament: true }, T0 + 60);
     const state = tournament.tournamentState(db, w, T0 + 60);

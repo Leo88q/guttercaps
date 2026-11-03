@@ -882,10 +882,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Buy one extra run for 30 $CG (docs/16 §5.1) — $CG only, every coin is burned
-         * @description Same settlement as a Deep Flood attempt: the on-chain `pay_service` of kind `lineExtraRun` is
-         *     found by signature, must be $CG and exactly 30 $CG, and is consumed exactly once. Other rails buy
-         *     nothing here — the point of the price is the burn, not the revenue.
+         * RETIRED — extra runs are no longer for sale (always 410 line_retired)
+         * @description Снято с продажи (находка 63): услуга `lineExtraRun` помечена `retired`, покупка закрыта и всегда
+         *     отвечает `410 line_retired`, платёж при этом НЕ списывается. Кредиты, выданные до снятия,
+         *     доигрываются обычным `POST /me/line/runs` — новых покупка не создаёт.
          */
         post: {
             parameters: {
@@ -904,7 +904,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description credits */
+                /** @description retired — не возвращается (услуга снята с продажи) */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -916,15 +916,8 @@ export interface paths {
                         };
                     };
                 };
-                /** @description payment_not_found · cg_burn_required (not $CG, or not exactly 30 $CG) · ref_hash_mismatch · payment_consumed */
-                402: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description run_credit_cap — the daily paid-run cap is reached */
-                409: {
+                /** @description line_retired — доп. заезды сняты с продажи (находка 63) */
+                410: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -989,11 +982,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Enter the day’s tournament — one 30 $CG payment buys one attempt credit
-         * @description Same settlement as an extra run: the on-chain `pay_service` of kind `lineTournamentEntry`
-         *     is found by signature, must be $CG and exactly 30 $CG, and is consumed exactly once.
-         *     The ref-hash binds the payment to the day. The credit is spent by the next
-         *     `tournament: true` run submission.
+         * RETIRED — tournament entries are no longer for sale (always 410 line_retired)
+         * @description Снято с продажи (находка 63): услуга `lineTournamentEntry` помечена `retired`, покупка входа
+         *     закрыта и всегда отвечает `410 line_retired`, платёж НЕ списывается. Входы, купленные до
+         *     снятия, остаются в состоянии (`entries.unused`) и тратятся турнирным заездом.
          */
         post: {
             parameters: {
@@ -1013,7 +1005,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description entries */
+                /** @description retired — не возвращается (услуга снята с продажи) */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1025,22 +1017,8 @@ export interface paths {
                         };
                     };
                 };
-                /** @description bad_day (not today) · bad_signature */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description payment_not_found · cg_burn_required (not $CG, or not exactly 30 $CG) · ref_hash_mismatch · payment_consumed */
-                402: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description run_credit_cap — the daily paid-run cap is shared with extra runs */
-                409: {
+                /** @description line_retired — входы в турнир сняты с продажи (находка 63) */
+                410: {
                     headers: {
                         [name: string]: unknown;
                     };

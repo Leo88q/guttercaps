@@ -91,6 +91,15 @@ export const SERVICES: readonly ServiceDef[] = [
   { id: 'boardMount', kind: 17, rustName: 'BoardMount', priceUsdCents: 49, dailyCap: 10, fulfilment: 'entitlement', recurring: false, name: 'Board mount', blurb: 'One bolt finish or sticker for the board builder. Cosmetic only — district sets are earned, never bought.' },
 ] as const;
 
+/**
+ * Снята ли услуга с продажи (находка 63). `SERVICE_BY_ID`/`SERVICE_BY_KIND` остаются полными: по ним
+ * читается история платежей и выданных entitlement'ов, — но продавать и выдавать снятую услугу нельзя,
+ * поэтому денежные пути спрашивают этот предикат, а не «есть ли запись в таблице».
+ */
+export const isPurchasable = (s: ServiceDef | undefined): s is ServiceDef => !!s && s.retired !== true;
+/** Витрина и любые списки «что можно купить». */
+export const ACTIVE_SERVICES = SERVICES.filter(isPurchasable);
+
 export const SERVICE_BY_ID = Object.fromEntries(SERVICES.map((s) => [s.id, s])) as Record<ServiceId, ServiceDef>;
 export const SERVICE_BY_KIND = Object.fromEntries(SERVICES.map((s) => [s.kind, s])) as Record<number, ServiceDef>;
 

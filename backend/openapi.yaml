@@ -291,11 +291,11 @@ paths:
   /me/line/runs/buy:
     post:
       tags: [me]
-      summary: 'Buy one extra run for 30 $CG (docs/16 §5.1) — $CG only, every coin is burned'
+      summary: 'RETIRED — extra runs are no longer for sale (always 410 line_retired)'
       description: |
-        Same settlement as a Deep Flood attempt: the on-chain `pay_service` of kind `lineExtraRun` is
-        found by signature, must be $CG and exactly 30 $CG, and is consumed exactly once. Other rails buy
-        nothing here — the point of the price is the burn, not the revenue.
+        Снято с продажи (находка 63): услуга `lineExtraRun` помечена `retired`, покупка закрыта и всегда
+        отвечает `410 line_retired`, платёж при этом НЕ списывается. Кредиты, выданные до снятия,
+        доигрываются обычным `POST /me/line/runs` — новых покупка не создаёт.
       requestBody:
         required: true
         content:
@@ -307,9 +307,8 @@ paths:
                 day: { type: integer }
                 signature: { type: string, description: 'transaction signature of the on-chain pay_service' }
       responses:
-        '200': { description: credits, content: { application/json: { schema: { type: object, properties: { day: { type: integer }, credits: { type: integer } } } } } }
-        '402': { description: 'payment_not_found · cg_burn_required (not $CG, or not exactly 30 $CG) · ref_hash_mismatch · payment_consumed' }
-        '409': { description: 'run_credit_cap — the daily paid-run cap is reached' }
+        '200': { description: 'retired — не возвращается (услуга снята с продажи)', content: { application/json: { schema: { type: object, properties: { day: { type: integer }, credits: { type: integer } } } } } }
+        '410': { description: 'line_retired — доп. заезды сняты с продажи (находка 63)' }
   /me/line/tournament:
     get:
       tags: [me]
@@ -323,12 +322,11 @@ paths:
   /me/line/tournament/enter:
     post:
       tags: [me]
-      summary: 'Enter the day’s tournament — one 30 $CG payment buys one attempt credit'
+      summary: 'RETIRED — tournament entries are no longer for sale (always 410 line_retired)'
       description: |
-        Same settlement as an extra run: the on-chain `pay_service` of kind `lineTournamentEntry`
-        is found by signature, must be $CG and exactly 30 $CG, and is consumed exactly once.
-        The ref-hash binds the payment to the day. The credit is spent by the next
-        `tournament: true` run submission.
+        Снято с продажи (находка 63): услуга `lineTournamentEntry` помечена `retired`, покупка входа
+        закрыта и всегда отвечает `410 line_retired`, платёж НЕ списывается. Входы, купленные до
+        снятия, остаются в состоянии (`entries.unused`) и тратятся турнирным заездом.
       requestBody:
         required: true
         content:
@@ -340,10 +338,8 @@ paths:
                 day: { type: integer, description: 'unix day index; must be today' }
                 signature: { type: string, description: 'transaction signature of the on-chain pay_service' }
       responses:
-        '200': { description: entries, content: { application/json: { schema: { type: object, properties: { day: { type: integer }, entries: { type: integer } } } } } }
-        '400': { description: 'bad_day (not today) · bad_signature' }
-        '402': { description: 'payment_not_found · cg_burn_required (not $CG, or not exactly 30 $CG) · ref_hash_mismatch · payment_consumed' }
-        '409': { description: 'run_credit_cap — the daily paid-run cap is shared with extra runs' }
+        '200': { description: 'retired — не возвращается (услуга снята с продажи)', content: { application/json: { schema: { type: object, properties: { day: { type: integer }, entries: { type: integer } } } } } }
+        '410': { description: 'line_retired — входы в турнир сняты с продажи (находка 63)' }
   /line/tournament/board:
     get:
       tags: [line]

@@ -47,46 +47,11 @@ const iso = (s: number) => new Date(s * 1000).toISOString();
  * покупателя, поэтому такой платёж честно продаёт вход СЕГОДНЯ:
  * сжигание то же, вход тот же, consume() держит платёж одноразовым.
  */
-export function enterTournament(db: Db, wallet: string, body: Record<string, unknown> | undefined, t = now()): { day: number; entries: number } {
-  const day = Number(body?.day);
-  const today = dayIndex(t);
-  if (!Number.isInteger(day) || Math.abs(day - today) > 1) {
-    throw new ServiceError(400, 'bad_day', `day must be today (${today})`);
-  }
-  const signature = String(body?.signature ?? '').trim();
-  if (!/^[1-9A-HJ-NP-Za-km-z]{32,128}$/.test(signature)) throw new ServiceError(400, 'bad_signature', 'signature must be a transaction id');
-  // Турниры линии убраны из продукта (2026-10-19): услуга снята с продажи.
-  const svc = SERVICE_BY_ID.lineTournamentEntry as typeof SERVICE_BY_ID.lineTournamentEntry | undefined;
-  if (!svc) throw new ServiceError(410, 'line_retired', 'The Line is retired');
-  const kind = svc.kind;
-  return db.tx(() => {
-    // Общий дневной потолок paid-попыток (линия + турнир): потраченные
-    // платежом заезды видны в `paid`, купленные, но ещё не потраченные
-    // кредиты — отдельным счётом. Иначе вход продавался бы в обход
-    // лимита, который держит ёмкость фермы.
-    const paid = db.scalar(`SELECT COALESCE(SUM(paid), 0) FROM line_runs WHERE wallet = ? AND day = ?`, wallet, today);
-    const unusedLine = db.scalar(`SELECT COUNT(*) FROM line_credits WHERE wallet = ? AND day = ? AND used_by IS NULL`, wallet, today);
-    const unusedT = db.scalar(`SELECT COUNT(*) FROM line_tournament_entries WHERE wallet = ? AND day = ? AND used_by IS NULL`, wallet, today);
-    if (paid + unusedLine + unusedT >= LINE.maxPaidRunsPerDay) {
-      throw new ServiceError(409, 'run_credit_cap', `At most ${LINE.maxPaidRunsPerDay} paid runs per day`);
-    }
-    // Платёж привязан к дню, на который он был подписан. Ожидаем
-    // сегодня; принимаем ещё вчера — полночь застала между оплатой
-    // и запросом. Любой другой день — чужой платёж.
-    const refFor = (d: number) => toHex(serviceRefHash(kind, wallet, { id: 'lineTournamentEntry', day: d }));
-    const p = findPayment(db, signature, wallet, [kind], refFor(today));
-    if (p.ref_hash !== refFor(today)) {
-      if (p.ref_hash !== refFor(today - 1)) throw new ServiceError(402, 'ref_hash_mismatch', 'Payment was committed for a different day');
-      recordEvent(db, wallet, 'tournament', 'enter_rollover', { paidFor: today - 1, granted: today }, t);
-    }
-    if (p.currency !== 2 || BigInt(p.amount) !== BigInt(TOURNAMENT.entryCgMicro)) {
-      throw new ServiceError(402, 'cg_burn_required', `Tournament entries are bought with exactly ${TOURNAMENT.entryCgMicro / 1_000_000} $CG (burned)`);
-    }
-    db.run(`INSERT INTO line_tournament_entries (wallet, day, signature, granted_at) VALUES (?, ?, ?, ?)`, wallet, today, p.signature, t);
-    consume(db, p, `tournament:${today}`);
-    recordEvent(db, wallet, 'tournament', 'enter', { day: today }, t);
-    return { day: today, entries: unusedT + 1 };
-  });
+/** Покупка входа в турнир закрыта: услуга `lineTournamentEntry` снята с продажи (находка 63).
+ * Входы, купленные до снятия, доигрываются: `submitTournamentRun` тратит существующую строку
+ * `line_tournament_entries`, новых покупка не создаёт. */
+export function enterTournament(_db: Db, _wallet: string, _body: Record<string, unknown> | undefined, _t = now()): { day: number; entries: number } {
+  throw new ServiceError(410, 'line_retired', 'Line tournament entries are retired and can no longer be bought');
 }
 
 // ------------------------------------------------------------------- состояние
@@ -136,7 +101,10 @@ export function tournamentState(db: Db, wallet: string, t = now()): TournamentSt
   // paid-заезды + неиспользованные кредиты обоих видов.
   const paidUsed = Number(db.scalar(`SELECT COALESCE(SUM(paid), 0) FROM line_runs WHERE wallet = ? AND day = ?`, wallet, day));
   const unusedLine = db.scalar(`SELECT COUNT(*) FROM line_credits WHERE wallet = ? AND day = ? AND used_by IS NULL`, wallet, day);
-  const left = Math.max(0, LINE.maxPaidRunsPerDay - paidUsed - unusedLine - (mine?.unused ?? 0));
+  // Находка 63: входы больше не продаются, поэтому «сколько ещё можно купить» всегда 0 — клиенту
+  // нечего предлагать. Уже купленные входы (`unused`) остаются в состоянии и доигрываются.
+  const left = 0;
+  void paidUsed; void unusedLine;
   return {
     day, week,
     entries: { bought: mine?.bought ?? 0, unused: mine?.unused ?? 0, left },

@@ -38,6 +38,8 @@ export const API_ERROR_KEYS = {
   phase_g_off: 'failures.unavailable', orders_unavailable: 'failures.unavailable', fusion_unavailable: 'failures.unavailable',
   // phase-V settle path: same truthful summaries, originals stay in ErrorNotice.
   phase_v_off: 'failures.unavailable', phase_v_unconfigured: 'failures.unavailable',
+  // находка 30: спецификации заказа выдаёт другой запрос — повтор через секунду, ничего не потеряно.
+  settle_auth_busy: 'failures.unavailable',
   not_paid_onchain: 'failures.confirmationUnknown', not_paid: 'failures.confirmationUnknown',
   escrow_mismatch: 'failures.requestInvalid', bad_order_account: 'failures.requestInvalid',
   already_settled: 'failures.chainFulfilled', settle_unverified: 'failures.confirmationUnknown',

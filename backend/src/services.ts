@@ -8,7 +8,7 @@
 //   other payloads  = canonical JSON (sorted keys, no whitespace)
 import { keccak_256 } from '@noble/hashes/sha3';
 import { PublicKey } from '@solana/web3.js';
-import { SERVICES, SERVICE_BY_ID, SERVICE_BY_KIND, SKIN_BY_ID, PROFILE_THEME_BY_ID, GRID_FIELD_THEME_BY_ID, EMOTE_PACK_BY_ID, COLLECTIONS, FX, GRID, partById, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, type ServiceDef } from '@guttercaps/economy';
+import { ACTIVE_SERVICES, SERVICES, SERVICE_BY_ID, SERVICE_BY_KIND, isPurchasable, SKIN_BY_ID, PROFILE_THEME_BY_ID, GRID_FIELD_THEME_BY_ID, EMOTE_PACK_BY_ID, COLLECTIONS, FX, GRID, partById, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, type ServiceDef } from '@guttercaps/economy';
 import { HANDLE_BLOCKLIST, HANDLE_CHANGE_COOLDOWN_S, HANDLE_MAX_RESERVATIONS, HANDLE_QUARANTINE_S, HANDLE_RE, HANDLE_RESERVE_MS } from './config.ts';
 import { type Db, now } from './db.ts';
 import { FinalityError, requireFinalized } from './finality.ts';
@@ -64,8 +64,9 @@ export function catalogue(db: Db) {
   const { solUsd, skrUsd, source } = prices(db);
   return {
     // Retired-услуги (удалённая игра Line) в витрину не попадают: kind в контракте
-    // зарезервирован, но купить их больше нельзя.
-    services: SERVICES.filter((s) => !s.retired).map((s) => ({ id: s.id, kind: s.kind, name: s.name, priceUsdCents: s.priceUsdCents, dailyCap: s.dailyCap, recurring: s.recurring, quotes: quoteUsdCents(s.priceUsdCents) })),
+    // зарезервирован, но купить их больше нельзя — проверка одна на все денежные пути
+    // (`isPurchasable`, находка 63).
+    services: ACTIVE_SERVICES.map((s) => ({ id: s.id, kind: s.kind, name: s.name, priceUsdCents: s.priceUsdCents, dailyCap: s.dailyCap, recurring: s.recurring, quotes: quoteUsdCents(s.priceUsdCents) })),
     solUsd, skrUsd, priceSource: source,
   };
 }
@@ -230,6 +231,9 @@ const PAYLOAD_RULES: Record<string, (p: Record<string, unknown>) => string | und
 export function claimService(db: Db, wallet: string, signature: string, kind: number, payload: Record<string, unknown>): Entitlement {
   const s = SERVICE_BY_KIND[kind];
   if (!s) throw new ServiceError(400, 'unknown_kind', `Unknown service kind ${kind}`);
+  // Находка 63: запись в таблице — не разрешение продавать. Снятая услуга не выдаётся даже по
+  // валидному платежу, который клиент успел подписать до снятия.
+  if (!isPurchasable(s)) throw new ServiceError(410, 'line_retired', `Service kind ${kind} is retired and cannot be claimed`);
   if (kind === 0 || kind === 1) throw new ServiceError(400, 'use_handle_endpoint', 'Handles are claimed via PUT /me/handle');
   if (s.fulfilment === 'chain') throw new ServiceError(400, 'chain_fulfilled', `${s.name} is fulfilled on-chain; nothing to claim`);
   if (s.id === 'gridDeepAttempt') throw new ServiceError(400, 'use_grid_endpoint', 'Deep Flood attempts are claimed via POST /grid/deep/buy');

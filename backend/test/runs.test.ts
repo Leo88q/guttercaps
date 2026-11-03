@@ -2,7 +2,8 @@
 //
 // Что здесь держится:
 //   1. очки считает сервер, а не клиент — клиент присылает только реплей;
-//   2. три заезда в день бесплатны, четвёртый стоит 30 $CG, и это сжигается;
+//   2. три заезда в день бесплатны; покупка четвёртого СНЯТА с продажи (находка 63, решение
+//      владельца 2026-11-03: довести снятие) — кредиты, выданные раньше, доигрываются;
 //   3. награды — косметика и существующие предметы, предметы — один раз в день;
 //   4. реплей живёт 14 дней, потом остаются очки.
 import { describe, expect, it } from 'vitest';
@@ -112,54 +113,33 @@ describe('линия: три бесплатных, четвёртый за 30 $C
     expect(db.scalar(`SELECT COUNT(*) FROM line_runs WHERE wallet = ?`, w)).toBe(3);
   });
 
-  it('30 $CG сжигаются ровно один раз: платёж тратится, второй раз не проходит', () => {
+  // Находка 63: услуга `lineExtraRun` снята с продажи. Покупка закрыта целиком (410 line_retired),
+  // и платёж при этом НЕ тратится — его можно разобрать на возврат.
+  it('покупка доп. заезда снята с продажи: 410 и платёж не списывается', () => {
     const db = new Db(':memory:'); seedSeason(db, T0);
     const w = kp();
     const day = dayIndex(T0);
     for (let i = 0; i < LINE.freeRunsPerDay; i++) runs.submitRun(db, w, { day, inputs: [] }, T0 + i);
     const sig = sig58();
     payExtra(db, w, day, sig);
-    expect(runs.buyExtraRun(db, w, { day, signature: sig }, T0).credits).toBe(1);
-    fails(() => runs.buyExtraRun(db, w, { day, signature: sig }, T0), 'payment_consumed');
+    fails(() => runs.buyExtraRun(db, w, { day, signature: sig }, T0), 'line_retired');
+    // ни кредита, ни списания платежа
+    expect(db.scalar(`SELECT COUNT(*) FROM line_credits WHERE wallet = ?`, w)).toBe(0);
+    expect(db.get<{ consumed_by: string | null }>(`SELECT consumed_by FROM service_payments WHERE signature = ?`, sig)?.consumed_by).toBeNull();
+    // и четвёртый заезд по-прежнему недоступен
+    fails(() => runs.submitRun(db, w, { day, inputs: [] }, T0 + 10), 'runs_exhausted');
+  });
+
+  it('кредиты, выданные до снятия, доигрываются', () => {
+    const db = new Db(':memory:'); seedSeason(db, T0);
+    const w = kp();
+    const day = dayIndex(T0);
+    for (let i = 0; i < LINE.freeRunsPerDay; i++) runs.submitRun(db, w, { day, inputs: [] }, T0 + i);
+    // так выглядит строка, купленная до 2026-11-03
+    db.run(`INSERT INTO line_credits (wallet, day, signature, granted_at) VALUES (?, ?, ?, ?)`, w, day, sig58(), T0);
     const r = runs.submitRun(db, w, { day, inputs: [] }, T0 + 20);
     expect(r.run.paid).toBe(true);
     expect(db.scalar(`SELECT COUNT(*) FROM line_credits WHERE wallet = ? AND used_by IS NOT NULL`, w)).toBe(1);
-  });
-
-  it('другой валютой и другой суммой доп. заезд не купить: это сток, а не выручка', () => {
-    const db = new Db(':memory:'); seedSeason(db, T0);
-    const w = kp();
-    const day = dayIndex(T0);
-    const sig = sig58();
-    const ref = toHex(serviceRefHash(13, w, { id: 'lineExtraRun', day }));
-    db.run(`INSERT INTO service_payments (signature, event_index, buyer, kind, currency, amount, burned, ref_hash, block_time, slot) VALUES (?, 0, ?, 13, 0, '100000', '0', ?, ?, 1)`, sig, w, ref, T0);
-    db.run(`INSERT INTO events_raw (signature, ix_index, event_index, program, name, data, slot, finalized_at) VALUES (?, 0, 0, 'services', 'ServicePaid', '{}', 1, ?)`, sig, T0);
-    fails(() => runs.buyExtraRun(db, w, { day, signature: sig }, T0), 'cg_burn_required');
-    // и платёж за другой день не подойдёт
-    const sig2 = sig58();
-    payExtra(db, w, day, sig2);
-    fails(() => runs.buyExtraRun(db, w, { day: day - 1, signature: sig2 }, T0), 'ref_hash_mismatch');
-  });
-
-  it('платных заездов в день не больше потолка', () => {
-    const db = new Db(':memory:'); seedSeason(db, T0);
-    const w = kp();
-    const day = dayIndex(T0);
-    while (runs.lineState(db, w, T0).freeLeft > 0) runs.submitRun(db, w, { day, inputs: [] }, T0);
-    for (let i = 0; i < LINE.maxPaidRunsPerDay; i++) {
-      const sig = sig58();
-      payExtra(db, w, day, sig);
-      // credits — сколько кредитов на день накоплено, а не «сколько дала эта покупка»
-      expect(runs.buyExtraRun(db, w, { day, signature: sig }, T0).credits).toBe(i + 1);
-      expect(runs.submitRun(db, w, { day, inputs: [] }, T0 + 100 + i).run.paid).toBe(true);
-    }
-    // шестой платный — ни купить, ни проехать
-    const sig = sig58();
-    payExtra(db, w, day, sig);
-    fails(() => runs.buyExtraRun(db, w, { day, signature: sig }, T0), 'run_credit_cap');
-    // и проехать шестой нельзя: ни бесплатной попытки, ни кредита
-    fails(() => runs.submitRun(db, w, { day, inputs: [] }, T0 + 500), 'runs_exhausted');
-    expect(db.scalar(`SELECT COUNT(*) FROM line_runs WHERE wallet = ? AND paid = 1`, w)).toBe(LINE.maxPaidRunsPerDay);
   });
 });
 
@@ -193,11 +173,9 @@ describe('линия: награды — косметика и предметы,
       expect(again.granted.valve).toBe(0);
       expect(again.state.rewardsToday.hints).toBe(r.state.rewardsToday.hints);
     }
-    // платный заезд покупает попытку, а не вторую горсть подсказок
+    // платный заезд покупает попытку, а не вторую горсть подсказок (кредит выдан до снятия услуги)
     while (runs.lineState(db, w, T0).freeLeft > 0) runs.submitRun(db, w, { day, inputs: [] }, T0 + 200);
-    const sig = sig58();
-    payExtra(db, w, day, sig);
-    runs.buyExtraRun(db, w, { day, signature: sig }, T0);
+    db.run(`INSERT INTO line_credits (wallet, day, signature, granted_at) VALUES (?, ?, ?, ?)`, w, day, sig58(), T0);
     const paid = runs.submitRun(db, w, { day, inputs: replay(gold) }, T0 + 300);
     expect(paid.run.paid).toBe(true);
     expect(paid.granted.hints).toBe(0);
