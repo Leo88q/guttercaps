@@ -1,70 +1,109 @@
-// Reproducer: Phase-G staking payouts are at-least-once, and the "sent" mark is written *after* the
-// transfer (backend/src/phaseg-staking.ts:120-134, backend/src/phaseg-payout.ts:14-26).
+// Reproducer: Phase-G staking payouts were at-least-once, and the "sent" mark was written *after* the
+// transfer (backend/src/phaseg-staking.ts, backend/src/phaseg-payout.ts). `processPayouts` sent first and
+// only then flipped `phaseg_payouts.status`, so every lost second step (crash, RPC error after landing)
+// left the row 'pending' and the next tick sent the same amount again. The claim side had the same shape:
+// `claimRewards` checked for a pending payout and inserted one in separate statements, so two writers could
+// each open a payout for the same balance.
 //
-// `processPayouts` sends the tokens first and only then flips `phaseg_payouts.status` to 'sent'. Every
-// way that second step can be lost — process killed mid-deploy, an RPC error returned after the
-// transaction landed, a crash between the two `db.run` calls — leaves the row 'pending', and the next
-// crank tick sends the same amount again. There is no idempotency key on chain: the transfer
-// instruction carries no memo and nothing on the payout row is committed before the send.
-//
-// The same shape exists on the claim side: `claimRewards` (phaseg-staking.ts:104-115) checks for a
-// pending payout and inserts one in two separate statements with no transaction and no UNIQUE index on
-// `phaseg_payouts(wallet) WHERE status = 'pending'` (db.ts:481-490), so two writers (HTTP API + the
-// crank process, both against the same SQLite file) can each create a payout for the same balance.
+// Исправлено (находки 26, 31): строка захватывается в БД до отправки (`claimed_at`, аренда
+// `PAYOUT_LEASE_S`) и снимается только когда статус действительно перешёл в `sent`; списание баланса и
+// создание обязательства идут одной транзакцией, списание — CAS-ом по прочитанной сумме. Повторная
+// отправка после истечения аренды безопасна: у перевода есть бизнес-ключ `payout:{id}` в ledger'е.
 import { describe, expect, it } from 'vitest';
 import { Db } from '../src/db.ts';
-import { claimRewards, processPayouts } from '../src/phaseg-staking.ts';
+import { PAYOUT_LEASE_S, accrueStakingDay, claimRewards, processPayouts, stakeChip } from '../src/phaseg-staking.ts';
+
+const T = 1_800_000_000;
+
+function funded(db: Db, wallet: string, micro: string) {
+  db.run(`INSERT INTO phaseg_rewards (wallet, pending_micro, claimed_micro, updated_at) VALUES (?, ?, '0', 0)`, wallet, micro);
+}
 
 describe('phaseg payout durability', () => {
-  it('a transfer whose status update is lost is sent twice for one payout row', async () => {
+  it('a payout is leased before sending: one transfer per lease, retry only after it expires', async () => {
     const db = new Db(':memory:');
-    db.run(`INSERT INTO phaseg_rewards (wallet, pending_micro, claimed_micro, updated_at) VALUES ('W', '5000000', '0', 0)`);
-
-    const claim = claimRewards(db, 'W', 1_000);
+    funded(db, 'W', '5000000');
+    const claim = claimRewards(db, 'W', T);
     expect(claim.amountMicro).toBe('5000000');
+    expect(db.get<{ pending_micro: string }>(`SELECT pending_micro FROM phaseg_rewards WHERE wallet = 'W'`)?.pending_micro).toBe('0');
 
-    // First tick: the tokens leave the treasury, then the process dies before the row is marked sent.
+    // Первый тик: отправка падает (процесс убит на обратном пути) — строка захвачена, но не оплачена.
+    const keys: string[] = [];
     let transfers = 0;
-    const dyingSender = async () => {
+    const dyingSender = async (_w: string, _a: bigint, task?: { bizKey: string }) => {
       transfers++;
+      keys.push(task!.bizKey);
       throw new Error('process killed on the way back from sendAndConfirmTransaction');
     };
-    await processPayouts(db, dyingSender, 1_001);
-    const rowAfterCrash = db.get<{ status: string; tx_sig: string | null }>(`SELECT status, tx_sig FROM phaseg_payouts`);
-    const rewardsAfterCrash = db.get<{ claimed_micro: string }>(`SELECT claimed_micro FROM phaseg_rewards WHERE wallet = 'W'`);
+    const first = await processPayouts(db, dyingSender, T + 1);
+    expect(first.paid).toBe(0);
 
-    // Second tick (restart): the row is still 'pending', so the same amount is paid again.
-    const paidAgain = await processPayouts(db, async () => { transfers++; return 'sig2'; }, 1_100);
-    const rowAfterRetry = db.get<{ status: string; tx_sig: string | null }>(`SELECT status, tx_sig FROM phaseg_payouts`);
+    // Второй тик внутри аренды: второй отправки нет — строку держит захват.
+    const second = await processPayouts(db, dyingSender, T + 60);
+    expect(second.paid).toBe(0);
+    expect(transfers).toBe(1);
+    expect(db.get<{ status: string }>(`SELECT status FROM phaseg_payouts WHERE id = ?`, claim.payoutId)?.status).toBe('pending');
 
-    // One claim of 5 $CG, two transfers out of the treasury, and the books only ever record one.
+    // После истечения аренды строку можно повторить — но это ТА ЖЕ операция ledger'а (тот же bizKey),
+    // поэтому повторная отправка не создаёт второй перевод.
+    const third = await processPayouts(db, async (_w, _a, task) => { transfers++; keys.push(task!.bizKey); return 'sig-ok'; }, T + PAYOUT_LEASE_S + 2);
+    expect(third.paid).toBe(1);
     expect(transfers).toBe(2);
-    expect(rowAfterCrash?.status).toBe('pending');
-    expect(rewardsAfterCrash?.claimed_micro).toBe('0');
-    expect(paidAgain.paid).toBe(1);
-    expect(rowAfterRetry?.status).toBe('sent');
+    expect(new Set(keys)).toEqual(new Set([`payout:${claim.payoutId}`]));
+    const row = db.get<{ status: string; tx_sig: string | null }>(`SELECT status, tx_sig FROM phaseg_payouts WHERE id = ?`, claim.payoutId)!;
+    expect(row).toEqual({ status: 'sent', tx_sig: 'sig-ok' });
+    // книги: ровно одна выплата
+    expect(db.get<{ claimed_micro: string }>(`SELECT claimed_micro FROM phaseg_rewards WHERE wallet = 'W'`)?.claimed_micro).toBe('5000000');
+  });
 
-    // eslint-disable-next-line no-console
-    console.log(JSON.stringify({
-      transfers,
-      claimedMicroBooked: db.get<{ claimed_micro: string }>(`SELECT claimed_micro FROM phaseg_rewards WHERE wallet = 'W'`)?.claimed_micro,
-      payoutRowAmountMicro: db.get<{ amount_micro: string }>(`SELECT amount_micro FROM phaseg_payouts`)?.amount_micro,
-    }));
+  it('two concurrent cranks cannot pay the same row twice', async () => {
+    const db = new Db(':memory:');
+    funded(db, 'W', '3000000');
+    claimRewards(db, 'W', T);
 
-    // No structural guard against a second pending payout for the same wallet.
-    const indexes = db.all<{ name: string; sql: string | null }>(`SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'phaseg_payouts'`);
-    const uniquePending = indexes.some((i) => /unique/i.test(i.sql ?? '') && /pending/i.test(i.sql ?? ''));
-    expect(uniquePending).toBe(false);
+    let transfers = 0;
+    const sender = async () => { transfers++; await new Promise((r) => setTimeout(r, 5)); return `sig-${transfers}`; };
+    const [a, b] = await Promise.all([processPayouts(db, sender, T + 1), processPayouts(db, sender, T + 1)]);
+    expect(transfers).toBe(1);
+    expect(a.paid + b.paid).toBe(1);
+    expect(db.get<{ claimed_micro: string }>(`SELECT claimed_micro FROM phaseg_rewards WHERE wallet = 'W'`)?.claimed_micro).toBe('3000000');
+  });
 
-    // Two writers can therefore each open a payout for the same balance.
-    db.run(`INSERT INTO phaseg_rewards (wallet, pending_micro, claimed_micro, updated_at)
-            VALUES ('W', '0', '0', 0) ON CONFLICT(wallet) DO UPDATE SET pending_micro = '7000000'`);
-    const a = claimRewards(db, 'W', 2_000);
-    // simulate the interleaving: the second writer read "no pending row" before the first insert committed
-    db.run(`INSERT INTO phaseg_payouts (wallet, amount_micro, status, created_at) VALUES ('W', '7000000', 'pending', ?)`, 2_000);
-    const pendingRows = db.all<{ id: number }>(`SELECT id FROM phaseg_payouts WHERE wallet = 'W' AND status = 'pending'`);
-    expect(a.status).toBe('pending');
-    expect(pendingRows.length).toBe(2);
-    db.raw.close();
+  it('claiming a balance opens exactly one payout, however many times it is asked', () => {
+    const db = new Db(':memory:');
+    funded(db, 'W', '7000000');
+    const a = claimRewards(db, 'W', T);
+    const b = claimRewards(db, 'W', T + 1);
+    const c = claimRewards(db, 'W', T + 2);
+    expect([b.payoutId, c.payoutId]).toEqual([a.payoutId, a.payoutId]);
+    expect(db.scalar(`SELECT COUNT(*) FROM phaseg_payouts WHERE wallet = 'W'`)).toBe(1);
+    expect(db.get<{ pending_micro: string }>(`SELECT pending_micro FROM phaseg_rewards WHERE wallet = 'W'`)?.pending_micro).toBe('0');
+    // без баланса claim не открывает пустое обязательство
+    expect(() => claimRewards(db, 'NOBODY', T)).toThrow(/No pending rewards/);
+  });
+
+  it('a failed accrual writes nothing at all (day row included)', () => {
+    const db = new Db(':memory:');
+    db.run(`INSERT INTO chips (asset, owner, collection_idx, rarity, level, flags, lock_until, origin)
+            VALUES ('chip1', 'W', 0, 3, 1, 0, 0, 'pack')`);
+    stakeChip(db, 'W', 'chip1', T);
+
+    // сбой на записи награды: раньше строка дня уже была закоммичена и день считался обработанным
+    const origRun = db.run.bind(db);
+    let calls = 0;
+    (db as unknown as { run: typeof db.run }).run = ((sql: string, ...params: unknown[]) => {
+      calls++;
+      if (calls === 2) throw new Error('boom on phaseg_rewards');
+      return origRun(sql, ...(params as []));
+    }) as typeof db.run;
+    expect(() => accrueStakingDay(db, 42, T)).toThrow(/boom/);
+    (db as unknown as { run: typeof db.run }).run = origRun as typeof db.run;
+
+    expect(db.scalar(`SELECT COUNT(*) FROM phaseg_stake_days`)).toBe(0);
+    expect(db.get<{ pending_micro: string }>(`SELECT pending_micro FROM phaseg_rewards WHERE wallet = 'W'`)).toBeUndefined();
+    // и повторный проход начисляет день целиком
+    const ok = accrueStakingDay(db, 42, T);
+    expect(ok.credited).toBe(1);
+    expect(db.scalar(`SELECT COUNT(*) FROM phaseg_stake_days WHERE day_index = 42`)).toBe(1);
   });
 });

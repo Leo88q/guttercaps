@@ -487,7 +487,8 @@ CREATE TABLE IF NOT EXISTS phaseg_payouts (
   status      TEXT    NOT NULL DEFAULT 'pending',  -- pending | sent
   tx_sig      TEXT,
   created_at  INTEGER NOT NULL,
-  sent_at     INTEGER
+  sent_at     INTEGER,
+  claimed_at  INTEGER                       -- находка 31: захват строки кранком до отправки (lease)
 );
 CREATE INDEX IF NOT EXISTS idx_phaseg_payouts_wallet ON phaseg_payouts(wallet);
 -- Phase-G mint counters: per-collection chip numbering (SYMBOL #n) without a program.
@@ -1610,6 +1611,8 @@ export class Db {
     const orderCols = new Set((this.raw.prepare('PRAGMA table_info(pack_orders)').all() as { name: string }[]).map((c) => c.name));
     if (!orderCols.has('settle_sig')) this.raw.exec('ALTER TABLE pack_orders ADD COLUMN settle_sig TEXT');
     if (!orderCols.has('settle_specs')) this.raw.exec('ALTER TABLE pack_orders ADD COLUMN settle_specs TEXT');
+    const payoutCols = new Set((this.raw.prepare('PRAGMA table_info(phaseg_payouts)').all() as { name: string }[]).map((c) => c.name));
+    if (!payoutCols.has('claimed_at')) this.raw.exec('ALTER TABLE phaseg_payouts ADD COLUMN claimed_at INTEGER');
     const potCols = new Set((this.raw.prepare('PRAGMA table_info(gutter_pot_draws)').all() as { name: string }[]).map((c) => c.name));
     if (!potCols.has('entropy_hex')) this.raw.exec('ALTER TABLE gutter_pot_draws ADD COLUMN entropy_hex TEXT');
     if (!potCols.has('entropy_source')) this.raw.exec('ALTER TABLE gutter_pot_draws ADD COLUMN entropy_source TEXT');
