@@ -6,6 +6,7 @@ import { ExternalIcon } from '@/shared/ui/action-icons';
 import { PACKS, BUNDLES, FX, bundlePriceCents, effectiveOdds, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, type PackId } from '@guttercaps/economy';
 import { useMe, usePackCatalog, useQuote, type PackSku } from '@/api/hooks';
 import { PreorderBanner } from '@/features/preorder/PreorderBanner';
+import { PendingOps } from './PendingOps';
 import type { components } from '@/api/schema';
 type PackQuote = components['schemas']['PackQuote'];
 import { useGameConfig, usePity } from '@/chain/hooks';
@@ -143,6 +144,9 @@ export default function Shop() {
       <div role="tabpanel" id="shop-panel-packs" aria-labelledby="shop-tab-packs" tabIndex={0}>
 
       <PreorderBanner testId="shop-preorder-banner" variant="shop" />
+      {/* Находка 46: аварийный выход для покупки, чьё раскрытие так и не пришло — возврат подписывает
+          сам покупатель (кранк за него этого сделать не может). */}
+      <PendingOps />
       {geoBlocked && (
         <div className="warn" style={{ marginBottom: 16 }}>
           {t('shop.geoBlocked', { regions: RESTRICTED_REGIONS.join(' / ') })} <Link to="/market">{t('nav.market')}</Link>

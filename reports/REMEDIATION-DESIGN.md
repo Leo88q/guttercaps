@@ -310,6 +310,8 @@ CREATE TABLE IF NOT EXISTS invariant_breaches (
 
 * `resolve_battle`: отдельный код возврата для «предохранитель по дневному лимиту» — такой бой **не** получает статус `resolved`, а `fused`/`void` с возвратом ставок; событие `BattleVoided` (п. 40).
 * `cancel_stale_battle` (open/timeout) и `void_battle` (deadlock) должны вызываться и из UI, и из кранка (п. 46) — backend-роут + пункт в кранке.
+
+  Состояние на 2026-11-03: `PendingOps.tsx` подключён к витрине и закрывает покупку (`cancel_stale_pack`) и фьюжн (`cancel_stale_fusion`); `void_battle` в программе отсутствует, а `cancel_stale_battle` требует подписи одной из сторон — кранк за игрока его подписать не может. Открытыми остаются claim-фьюжн (`cancel_stale_claim_fusion`), просроченный claim (`close_expired_claim`) и бой.
 * `resolve` принимает `resolve_auth` домена v2 с `kind=6` и `subject=Battle` (сейчас подпись не привязана к бою).
 
 ### Порядок апгрейда

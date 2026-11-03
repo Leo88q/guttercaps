@@ -8756,12 +8756,26 @@ export interface components {
             qty?: number;
             opened?: number;
             commitSlot?: number;
+            /** @description голова индексатора по слоту — тот же слот, по которому решает assert_refundable */
             currentSlot?: number;
             randomness?: components["schemas"]["Pubkey"];
-            /** @enum {string} */
+            /**
+             * @description stale = commit_slot + STALE_PACK_SLOTS позади головы: цепь примет cancel_stale_pack, игрок может вернуть деньги
+             * @enum {string}
+             */
             status?: "awaiting_reveal" | "revealing" | "opening" | "stale";
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description оценка времени, когда возврат станет возможен (0,4 с на слот); решение всегда по слоту, не по часам
+             */
             staleAt?: string;
+            /** @description commit_slot + STALE_PACK_SLOTS — граница возврата */
+            refundSlot?: number;
+            /**
+             * @description чем была оплачена покупка: для токенной оплаты клиенту нужен минт, чтобы собрать cancel_stale_pack
+             * @enum {string}
+             */
+            currency?: "SOL" | "USDC" | "CG" | "SKR";
             /** @description set when this pending is a free quest chip: { template, odds[9] bps, soulboundDays } — opened by the same open_pack crank; nothing to refund but the rent reserve */
             voucher?: {
                 template?: number;

@@ -70,7 +70,7 @@ import { clientIp, ipNet } from './ratelimit.ts';
 // that SQLite reads as "unlimited", i.e. the `Math.min(limit, N)` caps in queries.ts did nothing.
 import { cursorQuery, intQuery, limitQuery, numberQuery } from './params.ts';
 import { humanStatus, recordDevice, verifyHuman } from './human.ts';
-import { COLLECTIONS, QUEST_CHIP_TEMPLATES, RARITY_PROFILES } from '@guttercaps/economy';
+import { COLLECTIONS, QUEST_CHIP_TEMPLATES, RARITY_PROFILES, STALE_PACK_SLOTS } from '@guttercaps/economy';
 
 /**
  * Filter domains for the query layer (SEC-B2). Mirrors the `chips` projection: 8 districts × 9
@@ -110,6 +110,21 @@ export interface AppOptions {
   accessLog?: boolean;
   /** True once the process has been told to stop: readiness flips to 503 before the socket closes. */
   isClosing?: () => boolean;
+}
+
+/**
+ * Голова индексатора по слоту — то, что видит индексер, а не «сейчас» процесса. Возврат по
+ * `cancel_stale_pack` разрешён при `clock.slot > commit_slot + STALE_PACK_SLOTS`; пока индексер не дошёл
+ * до этой границы, кнопку показывать нельзя — цепь ответит отказом (находка 46).
+ */
+export function pendingHeadSlot(db: Db): number {
+  const cursor = db.scalar(`SELECT COALESCE(MAX(newest_slot), 0) FROM indexer_cursor`);
+  return cursor > 0 ? cursor : db.scalar(`SELECT COALESCE(MAX(slot), 0) FROM events_raw`);
+}
+
+/** Сколько незавершённых покупок уже можно вернуть (наблюдаемость аварийного выхода, находка 46). */
+export function stalePendingPacks(db: Db, headSlot = pendingHeadSlot(db)): number {
+  return db.scalar(`SELECT COUNT(*) FROM pack_purchases WHERE status = 'pending' AND slot + ? < ?`, STALE_PACK_SLOTS, headSlot);
 }
 
 export function createApp(db: Db, deps: AppOptions = {}) {
@@ -383,7 +398,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   });
 
   // ------------------------------------------------------------ health / stats
-  v1.get('/health', (_req, res) => { res.json({ ok: true, lastSlot: db.scalar(`SELECT COALESCE(MAX(slot),0) FROM events_raw`), prices: priceStatus(db), crank: crankStatus(db), paused: pauseStatus(db), burnOracle: burnOracleStatus(db), finality: finalityStatus(db), untimedEvents: untimedStatus(db), indexerGaps: gapStatus(db), rewardOracle: rewardOracleStatus(db), antifraud: antifraudStatus(db), arena: { queued: db.scalar(`SELECT COUNT(*) FROM arena_queue`), revealing: db.scalar(`SELECT COUNT(*) FROM matches WHERE status = 'revealing'`), unattributedResolves: unattributedResolves(db) } }); });
+  v1.get('/health', (_req, res) => { res.json({ ok: true, lastSlot: db.scalar(`SELECT COALESCE(MAX(slot),0) FROM events_raw`), prices: priceStatus(db), crank: crankStatus(db), paused: pauseStatus(db), burnOracle: burnOracleStatus(db), finality: finalityStatus(db), untimedEvents: untimedStatus(db), indexerGaps: gapStatus(db), rewardOracle: rewardOracleStatus(db), antifraud: antifraudStatus(db), stalePacks: stalePendingPacks(db), arena: { queued: db.scalar(`SELECT COUNT(*) FROM arena_queue`), revealing: db.scalar(`SELECT COUNT(*) FROM matches WHERE status = 'revealing'`), unattributedResolves: unattributedResolves(db) } }); });
   v1.get('/prices', (_req, res) => { res.json(priceStatus(db)); });
   v1.get('/stats', (_req, res) => { res.json(q.stats(db)); });
   v1.get('/rewards/skr-pool', (_req, res) => { res.json(q.skrPool(db)); });
@@ -489,14 +504,32 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   });
   v1.get('/me/referrals', requireAuth, (req, res) => { res.json(referralSummary(db, req.session!.wallet)); });
   v1.get('/me/pending', requireAuth, (req, res) => {
-    const rows = db.all<{ nonce: string; sku: number; qty: number; opened: number; randomness: string; slot: number }>(`SELECT nonce, sku, qty, opened, randomness, slot FROM pack_purchases WHERE buyer = ? AND status = 'pending'`, req.session!.wallet);
+    const rows = db.all<{ nonce: string; sku: number; qty: number; opened: number; randomness: string; slot: number; block_time: number | null; currency: number }>(`SELECT nonce, sku, qty, opened, randomness, slot, block_time, currency FROM pack_purchases WHERE buyer = ? AND status = 'pending'`, req.session!.wallet);
     // (#28) unopened quest chip vouchers ride the same list: sku 0, qty 1 + the template so the UI can show the roll table
     const vouchers = db.all<{ nonce: string; template: number; randomness: string; slot: number }>(`SELECT nonce, template, randomness, slot FROM vouchers WHERE wallet = ? AND status = 'pending'`, req.session!.wallet);
     const compressed = db.all<{ buyer: string; nonce: string; total_claims: number; registered_claims: number; cancelled_claims: number; status: string; last_slot: number }>(`SELECT buyer, nonce, total_claims, registered_claims, cancelled_claims, status, last_slot FROM compressed_settlements WHERE buyer = ? AND status IN ('pending', 'refunded') ORDER BY last_slot DESC`, req.session!.wallet);
+    // Находка 46: «залипла» ли покупка — считаем по реальной границе контракта (`commit_slot + STALE_PACK_SLOTS`),
+    // а не по времени ответа сервера. `currentSlot` — голова индексатора (тот же слот, по которому решает
+    // `assert_refundable`), поэтому кнопка возврата появляется тогда же, когда её примет цепь.
+    const headSlot = pendingHeadSlot(db);
+    const packView = (r: { nonce: string; sku: number; qty: number; opened: number; randomness: string; slot: number; block_time: number | null; currency: number }) => {
+      const refundableAt = r.slot + STALE_PACK_SLOTS;
+      const cancellable = headSlot > refundableAt;
+      return {
+        nonce: r.nonce, sku: r.sku, qty: r.qty, opened: r.opened, commitSlot: r.slot, currentSlot: headSlot,
+        randomness: r.randomness, status: cancellable ? 'stale' : 'awaiting_reveal',
+        // оценка по времени блока: 0,4 с на слот — подсказка для UI, решение всё равно по слоту
+        staleAt: new Date(((r.block_time ?? Math.floor(Date.now() / 1000)) + (refundableAt - r.slot) * 0.4) * 1000).toISOString(),
+        refundSlot: refundableAt,
+        // чем платили — без этого клиент не соберёт cancel_stale_pack для токенных покупок (нужны минт и ATA)
+        // 0 = SOL, 1 = USDC, 2 = $CG, 3 = SKR (Currency в client/src/chain/ix/chipCore.ts и программы)
+        currency: (['SOL', 'USDC', 'CG', 'SKR'] as const)[r.currency] ?? 'SOL',
+      };
+    };
     res.json({
       packs: [
-        ...rows.map((r) => ({ nonce: r.nonce, sku: r.sku, qty: r.qty, opened: r.opened, commitSlot: r.slot, currentSlot: 0, randomness: r.randomness, status: 'awaiting_reveal', staleAt: null, voucher: null })),
-        ...vouchers.map((v) => ({ nonce: v.nonce, sku: 0, qty: 1, opened: 0, commitSlot: v.slot, currentSlot: 0, randomness: v.randomness, status: 'awaiting_reveal', staleAt: null, voucher: QUEST_CHIP_TEMPLATES[v.template] ? { ...QUEST_CHIP_TEMPLATES[v.template], odds: [...QUEST_CHIP_TEMPLATES[v.template].odds] } : { template: v.template, odds: [], soulboundDays: 0 } })),
+        ...rows.map((r) => ({ ...packView(r), voucher: null })),
+        ...vouchers.map((v) => ({ ...packView({ nonce: v.nonce, sku: 0, qty: 1, opened: 0, randomness: v.randomness, slot: v.slot, block_time: null, currency: 2 }), voucher: QUEST_CHIP_TEMPLATES[v.template] ? { ...QUEST_CHIP_TEMPLATES[v.template], odds: [...QUEST_CHIP_TEMPLATES[v.template].odds] } : { template: v.template, odds: [], soulboundDays: 0 } })),
       ],
       compressed: compressed.map((s) => ({
         nonce: s.nonce,
