@@ -26,12 +26,14 @@ export function activeStakes(db: Db): StakeRow[] {
 const stakeRow = (db: Db, asset: string) => db.get<StakeRow>(`SELECT * FROM phaseg_stakes WHERE asset = ? AND unstaked_at IS NULL`, asset);
 
 /**
- * Находка 15: срез `EMISSION_SPLIT.chipStaking` в фазе V раздаёт он-чейн пул
- * (`staking::stake` / `Pool.acc_reward_per_weight`). Soft-путь в это время выключен — иначе тот же
- * срез выплачивается дважды: один раз из казны переводом, второй — из пула. Фаза — параметр, чтобы
- * это можно было воспроизвести в тесте, а не только через окружение процесса.
+ * Находка 15 и 74: soft-стейк — механизм ТОЛЬКО фазы G, когда программы на цепи ещё нет и срез
+ * `EMISSION_SPLIT.chipStaking` некому раздавать. Как только он-чейн стейкинг жив (фазы `v` и `full`),
+ * тот же срез распределяет пул (`staking::stake` / `Pool.acc_reward_per_weight`), а soft-путь платит его
+ * ещё раз переводом из казны — это второй срез эмиссии мимо guarded-бюджета. Прежнее условие
+ * `phase !== 'v'` оставляло щель в `full` (в том числе в эталонном прод-профиле п. 60) и в тихом виде
+ * дублировало выплаты. Фаза — параметр, чтобы это воспроизводилось в тесте, а не только окружением.
  */
-export const softStakingLive = (phase: LaunchPhase): boolean => phase !== 'v';
+export const softStakingLive = (phase: LaunchPhase): boolean => phase === 'g';
 
 /**
  * Находка 22. `chips.owner` — проекция: она обновляется событиями наших программ, а прямая передача
@@ -54,7 +56,7 @@ export function stakeChip(
   /** Находка 22: ответ цепи по владельцу. `undefined` — доказательства нет, стейк не открывается. */
   deps: { chainOwner?: string | null } = {},
 ) {
-  if (!softStakingLive(phase)) throw new ServiceError(410, 'phase_g_off', 'Soft staking is off in Phase V — the on-chain staking program owns the chip slice');
+  if (!softStakingLive(phase)) throw new ServiceError(410, 'phase_g_off', 'Soft staking exists only in Phase G — once the on-chain staking program is live it owns the chip slice, and paying here would be a second slice of emission');
   const chip = db.get<ChipRow>(`SELECT * FROM chips WHERE asset = ?`, asset);
   if (!chip) throw new ServiceError(404, 'chip_not_found', 'Unknown chip');
   // Ключ назван — значит доказательство запрошено и его нет (`undefined`); ключа нет — вызов без

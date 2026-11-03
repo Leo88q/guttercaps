@@ -1084,9 +1084,9 @@ export async function crank(log: (s: string) => void = console.log) {
           `SELECT id, wallet FROM phaseg_fusions WHERE status = 'paid' AND grant_sig IS NOT NULL LIMIT 20`,
         );
         for (const f of fusions) await confirmFusionGrant(dbv, f.wallet, f.id, '', { connection });
-        const day = Math.floor(Date.now() / 86_400_000);
-        const acc = accrueStakingDay(dbv, day);
-        if (acc.credited > 0) log(`[crank] phase-V staking day ${day}: credited ${acc.credited} wallets (budget ${acc.budgetMicro} micro)`);
+        // Находки 15 и 74: в фазе V срез `EMISSION_SPLIT.chipStaking` распределяет он-чейн пул, а soft-путь
+        // выключен (`softStakingLive` = только фаза G). День здесь НЕ начисляется и НЕ помечается: если бы
+        // начисление шло, тот же срез платился бы дважды — из пула и переводом из казны.
         if (mak) {
           const { makeCgPayoutSender } = await import('./phaseg-payout.ts');
           const pay = await processPayouts(dbv, makeCgPayoutSender(connection, loadKeypair(mak), dbv));

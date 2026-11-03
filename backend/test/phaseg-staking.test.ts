@@ -20,10 +20,10 @@ beforeEach(() => { db = new Db(':memory:'); seq = 0; });
 describe('stake/unstake (§5.1)', () => {
   it('stakes own chip, blocks double stake and foreign stake, unstakes', () => {
     const a = chip();
-    expect(staking.stakeChip(db, WALLET, a, T0).stakedAt).toBe(T0);
+    expect(staking.stakeChip(db, WALLET, a, T0, 'g').stakedAt).toBe(T0);
     expect(db.get<{ flags: number }>(`SELECT flags FROM chips WHERE asset=?`, a)?.flags).toBe(1);
-    expect(() => staking.stakeChip(db, WALLET, a, T0)).toThrow(/already staked/);
-    expect(() => staking.stakeChip(db, OTHER, chip(), T0)).toThrow(/Only the owner/);
+    expect(() => staking.stakeChip(db, WALLET, a, T0, 'g')).toThrow(/already staked/);
+    expect(() => staking.stakeChip(db, OTHER, chip(), T0, 'g')).toThrow(/Only the owner/);
     staking.unstakeChip(db, WALLET, a, T0);
     expect(db.get<{ flags: number }>(`SELECT flags FROM chips WHERE asset=?`, a)?.flags).toBe(0);
   });
@@ -33,9 +33,9 @@ describe('stake/unstake (§5.1)', () => {
   // владелец чипа тоже не мог (строка оставалась от прошлого владельца).
   it('re-stakes the same chip after an unstake, and lets the new owner stake it', () => {
     const a = chip();
-    staking.stakeChip(db, WALLET, a, T0);
+    staking.stakeChip(db, WALLET, a, T0, 'g');
     staking.unstakeChip(db, WALLET, a, T0 + 10);
-    expect(() => staking.stakeChip(db, WALLET, a, T0 + 20)).not.toThrow();
+    expect(() => staking.stakeChip(db, WALLET, a, T0 + 20, 'g')).not.toThrow();
     expect(db.get<{ staked_at: number; unstaked_at: number | null }>(`SELECT staked_at, unstaked_at FROM phaseg_stakes WHERE asset=?`, a))
       .toEqual({ staked_at: T0 + 20, unstaked_at: null });
     expect(db.scalar(`SELECT COUNT(*) FROM phaseg_stakes WHERE asset = ?`, a)).toBe(1);
@@ -43,7 +43,7 @@ describe('stake/unstake (§5.1)', () => {
     // продали чип — новый владелец тоже может его застейкать после unstake старого
     staking.unstakeChip(db, WALLET, a, T0 + 30);
     db.run(`UPDATE chips SET owner = ? WHERE asset = ?`, OTHER, a);
-    expect(() => staking.stakeChip(db, OTHER, a, T0 + 40)).not.toThrow();
+    expect(() => staking.stakeChip(db, OTHER, a, T0 + 40, 'g')).not.toThrow();
     expect(db.get<{ wallet: string }>(`SELECT wallet FROM phaseg_stakes WHERE asset = ? AND unstaked_at IS NULL`, a)?.wallet).toBe(OTHER);
   });
 });
@@ -53,11 +53,11 @@ describe('accrual (§5.1)', () => {
     const mine = chip(WALLET, 0);
     const sold = chip(WALLET, 0);
     const foreign = chip(OTHER, 0);
-    staking.stakeChip(db, WALLET, mine, T0);
-    staking.stakeChip(db, WALLET, sold, T0);
-    staking.stakeChip(db, OTHER, foreign, T0);
+    staking.stakeChip(db, WALLET, mine, T0, 'g');
+    staking.stakeChip(db, WALLET, sold, T0, 'g');
+    staking.stakeChip(db, OTHER, foreign, T0, 'g');
     db.run(`UPDATE chips SET owner=? WHERE asset=?`, OTHER, sold); // sold mid-day
-    const r1 = staking.accrueStakingDay(db, 1, T0);
+    const r1 = staking.accrueStakingDay(db, 1, T0, 'g');
     expect(r1.credited).toBe(2); // me + OTHER; the sold chip earned nothing
     const me = staking.stakingMe(db, WALLET);
     const other = staking.stakingMe(db, OTHER);
@@ -65,7 +65,7 @@ describe('accrual (§5.1)', () => {
     expect(me.pendingMicro).toBe(other.pendingMicro); // equal weights → equal shares
     expect(me.staked.map((s) => s.asset)).toEqual([mine]); // sold stake closed
     // same day again → idempotent no-op
-    expect(staking.accrueStakingDay(db, 1, T0).credited).toBe(0);
+    expect(staking.accrueStakingDay(db, 1, T0, 'g').credited).toBe(0);
     expect(staking.stakingMe(db, WALLET).pendingMicro).toBe(me.pendingMicro);
   });
 });
@@ -73,8 +73,8 @@ describe('accrual (§5.1)', () => {
 describe('claims (§5.2)', () => {
   it('claim moves pending into one payout; crank pays once; second claim is the same row', async () => {
     const a = chip();
-    staking.stakeChip(db, WALLET, a, T0);
-    staking.accrueStakingDay(db, 1, T0);
+    staking.stakeChip(db, WALLET, a, T0, 'g');
+    staking.accrueStakingDay(db, 1, T0, 'g');
     const c1 = staking.claimRewards(db, WALLET, T0);
     expect(BigInt(c1.amountMicro)).toBeGreaterThan(0n);
     expect(staking.stakingMe(db, WALLET).pendingMicro).toBe('0');

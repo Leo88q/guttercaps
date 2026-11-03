@@ -86,7 +86,7 @@ describe('phaseg payout durability', () => {
     const db = new Db(':memory:');
     db.run(`INSERT INTO chips (asset, owner, collection_idx, rarity, level, flags, lock_until, origin)
             VALUES ('chip1', 'W', 0, 3, 1, 0, 0, 'pack')`);
-    stakeChip(db, 'W', 'chip1', T);
+    stakeChip(db, 'W', 'chip1', T, 'g');
 
     // сбой на записи награды: раньше строка дня уже была закоммичена и день считался обработанным
     const origRun = db.run.bind(db);
@@ -96,13 +96,13 @@ describe('phaseg payout durability', () => {
       if (calls === 2) throw new Error('boom on phaseg_rewards');
       return origRun(sql, ...(params as []));
     }) as typeof db.run;
-    expect(() => accrueStakingDay(db, 42, T)).toThrow(/boom/);
+    expect(() => accrueStakingDay(db, 42, T, 'g')).toThrow(/boom/);
     (db as unknown as { run: typeof db.run }).run = origRun as typeof db.run;
 
     expect(db.scalar(`SELECT COUNT(*) FROM phaseg_stake_days`)).toBe(0);
     expect(db.get<{ pending_micro: string }>(`SELECT pending_micro FROM phaseg_rewards WHERE wallet = 'W'`)).toBeUndefined();
     // и повторный проход начисляет день целиком
-    const ok = accrueStakingDay(db, 42, T);
+    const ok = accrueStakingDay(db, 42, T, 'g');
     expect(ok.credited).toBe(1);
     expect(db.scalar(`SELECT COUNT(*) FROM phaseg_stake_days WHERE day_index = 42`)).toBe(1);
   });

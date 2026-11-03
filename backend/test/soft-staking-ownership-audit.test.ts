@@ -41,19 +41,19 @@ describe('находка 22: владение подтверждается це�
   it('стейк по устаревшей проекции отклоняется, проекция догоняется по цепи', () => {
     const asset = chip(OWNER); // в БД — прежний владелец
     // на цепи чип уже у BUYER (прямая передача, лога нашей программы не было)
-    expect(() => staking.stakeChip(db, OWNER, asset, T0, undefined, { chainOwner: BUYER }))
+    expect(() => staking.stakeChip(db, OWNER, asset, T0, 'g', { chainOwner: BUYER }))
       .toThrow(/belongs to another wallet/);
     expect(db.get<{ owner: string }>(`SELECT owner FROM chips WHERE asset = ?`, asset)!.owner).toBe(BUYER);
     expect(db.scalar(`SELECT COUNT(*) FROM phaseg_stakes`)).toBe(0);
 
     // настоящий владелец стейкает без проблем — и проекция уже согласована с цепью
-    expect(() => staking.stakeChip(db, BUYER, asset, T0, undefined, { chainOwner: BUYER })).not.toThrow();
+    expect(() => staking.stakeChip(db, BUYER, asset, T0, 'g', { chainOwner: BUYER })).not.toThrow();
     expect(staking.stakingMe(db, BUYER).staked.map((s) => s.asset)).toEqual([asset]);
   });
 
   it('DAS не ответил — стейк не открывается (503), а не «по памяти»', () => {
     const asset = chip(OWNER);
-    const err = (() => { try { staking.stakeChip(db, OWNER, asset, T0, undefined, { chainOwner: undefined }); } catch (e) { return e as { status?: number; code?: string }; } return null; })();
+    const err = (() => { try { staking.stakeChip(db, OWNER, asset, T0, 'g', { chainOwner: undefined }); } catch (e) { return e as { status?: number; code?: string }; } return null; })();
     expect(err?.status).toBe(503);
     expect(err?.code).toBe('owner_check_unavailable');
     expect(db.scalar(`SELECT COUNT(*) FROM phaseg_stakes`)).toBe(0);
@@ -61,9 +61,9 @@ describe('находка 22: владение подтверждается це�
 
   it('начисление не платит прежнему владельцу после прямой передачи', () => {
     const asset = chip(OWNER);
-    staking.stakeChip(db, OWNER, asset, T0);
+    staking.stakeChip(db, OWNER, asset, T0, 'g');
     // передали мимо наших программ: проекция всё ещё OWNER
-    const r = staking.accrueStakingDay(db, 1, T0, undefined, { chainOwners: reader({ [asset]: THIEF }) });
+    const r = staking.accrueStakingDay(db, 1, T0, 'g', { chainOwners: reader({ [asset]: THIEF }) });
     // eslint-disable-next-line no-console
     console.log(JSON.stringify({ finding: 22, credited: r.credited, deferred: r.deferred }));
     expect(r.credited).toBe(0);
@@ -75,20 +75,20 @@ describe('находка 22: владение подтверждается це�
   it('индекс недоступен — день откладывается целиком и не помечается обработанным', () => {
     const a = chip(OWNER);
     const b = chip(BUYER);
-    staking.stakeChip(db, OWNER, a, T0);
-    staking.stakeChip(db, BUYER, b, T0);
+    staking.stakeChip(db, OWNER, a, T0, 'g');
+    staking.stakeChip(db, BUYER, b, T0, 'g');
     db.run(
       `INSERT INTO emission_days (day_index, year, schedule_cap, guarded, burn_7d_avg, slice_budget, signature, block_time)
        VALUES (1, 2026, '1000000000', '1000000000', '0', '[]', 'sig-emission', ?)`, T0,
     );
 
-    const deferred = staking.accrueStakingDay(db, 1, T0, undefined, { chainOwners: reader({ [a]: OWNER, [b]: undefined }) });
+    const deferred = staking.accrueStakingDay(db, 1, T0, 'g', { chainOwners: reader({ [a]: OWNER, [b]: undefined }) });
     expect(deferred).toEqual({ credited: 0, budgetMicro: '0', deferred: 1 });
     expect(db.scalar(`SELECT COUNT(*) FROM phaseg_stake_days`)).toBe(0); // день можно начислить позже
     expect(staking.stakingMe(db, OWNER).pendingMicro).toBe('0');
 
     // DAS ответил — тот же день начисляется штатно
-    const ok = staking.accrueStakingDay(db, 1, T0, undefined, { chainOwners: reader({ [a]: OWNER, [b]: BUYER }) });
+    const ok = staking.accrueStakingDay(db, 1, T0, 'g', { chainOwners: reader({ [a]: OWNER, [b]: BUYER }) });
     expect(ok.credited).toBe(2);
     expect(db.scalar(`SELECT COUNT(*) FROM phaseg_stake_days`)).toBe(1);
   });
