@@ -120,7 +120,9 @@ CREATE TABLE IF NOT EXISTS chips (
   game_index       TEXT,                         -- per-collection mint number (Name #N, u64 as decimal); NULL = not resolved yet
   index_attempts   INTEGER NOT NULL DEFAULT 0,   -- back-fill attempts; the row is parked once it reaches INDEX_ATTEMPTS
   last_played      INTEGER,                      -- unix: last Cap Slam (alive-stake)
-  play_pulsed_at   INTEGER                       -- last_played copied onto ChipPlay
+  play_pulsed_at   INTEGER,                      -- last_played copied onto ChipPlay
+  source           TEXT    NOT NULL DEFAULT 'projection'  -- находка 20: projection = восстановим из events_raw, api = зарегистрирован
+                                                          -- backend'ом (Phase G/V, fusion) и в событиях его нет — rebuild его не удаляет
 );
 CREATE INDEX IF NOT EXISTS idx_chips_owner ON chips(owner, burned_at);
 CREATE INDEX IF NOT EXISTS idx_chips_arch  ON chips(collection_idx, rarity, burned_at);
@@ -1646,6 +1648,11 @@ export class Db {
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_events_untimed ON events_raw(slot) WHERE block_time IS NULL`);
     const ch = new Set((this.raw.prepare(`PRAGMA table_info(chips)`).all() as { name: string }[]).map((c) => c.name));
     if (!ch.has('skin')) this.raw.exec(`ALTER TABLE chips ADD COLUMN skin TEXT`);
+    // Находка 20: чипы, зарегистрированные backend'ом в фазе G/V, в событиях не встречаются — rebuild по
+    // `DELETE FROM chips` стирал их безвозвратно. Колонка разделяет источники; старые строки считаются
+    // проекцией (их можно восстановить из events_raw), а API-регистрация помечает себя явно.
+    if (!ch.has('source')) this.raw.exec(`ALTER TABLE chips ADD COLUMN source TEXT NOT NULL DEFAULT 'projection'`);
+    this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_chips_source ON chips(source)`);
     const gc = new Set((this.raw.prepare(`PRAGMA table_info(grid_completions)`).all() as { name: string }[]).map((c) => c.name));
     if (gc.size > 0 && !gc.has('kind')) this.raw.exec(`ALTER TABLE grid_completions ADD COLUMN kind TEXT NOT NULL DEFAULT 'campaign'`);
     // SEC-B3/shape #27: `chips.game_index` — the per-collection mint number the market's "Low #" sort and

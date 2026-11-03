@@ -226,8 +226,8 @@ export async function processPaidOrders(
         // the same lock rides in chips.lock_until so fusion/market/staking honour it.
         const lockUntil = row.sku === 0 ? t + STARTER_SOULBOUND_DAYS * 86_400 : 0;
         db.run(
-          upsert('chips', ['asset', 'owner', 'collection_idx', 'rarity', 'level', 'flags', 'lock_until', 'origin', 'origin_signature', 'minted_at'], ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'origin = excluded.origin', 'minted_at = excluded.minted_at']),
-          chip.assetId, row.wallet, chip.collectionIdx, chip.rarity, 1, 0, lockUntil, 'pack', row.tx_sig, t,
+          upsert('chips', ['asset', 'owner', 'collection_idx', 'rarity', 'level', 'flags', 'lock_until', 'origin', 'origin_signature', 'minted_at', 'source'], ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'origin = excluded.origin', 'minted_at = excluded.minted_at', 'source = excluded.source']),
+          chip.assetId, row.wallet, chip.collectionIdx, chip.rarity, 1, 0, lockUntil, 'pack', row.tx_sig, t, 'api',
         );
         // Идемпотентно: строка проекции пишется и на пути «операция уже подтверждена» — иначе чип,
         // оплаченный и заминченный до падения процесса, не появился бы в `chips` вовсе.

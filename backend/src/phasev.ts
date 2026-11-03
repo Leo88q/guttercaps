@@ -346,9 +346,9 @@ export async function registerSettledChips(
     );
     if (existing && existing.collection_idx !== spec.collectionIdx) continue;
     db.run(
-      upsert('chips', ['asset', 'owner', 'collection_idx', 'rarity', 'level', 'flags', 'lock_until', 'origin', 'origin_signature', 'minted_at'], ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'origin = excluded.origin', 'minted_at = excluded.minted_at']),
+      upsert('chips', ['asset', 'owner', 'collection_idx', 'rarity', 'level', 'flags', 'lock_until', 'origin', 'origin_signature', 'minted_at', 'source'], ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'origin = excluded.origin', 'minted_at = excluded.minted_at', 'source = excluded.source']),
       hit.assetId.toBase58(), args.wallet, spec.collectionIdx, spec.rarity, 1, 0,
-      args.lockSeconds ? t + args.lockSeconds : 0, args.origin, args.originSig, t,
+      args.lockSeconds ? t + args.lockSeconds : 0, args.origin, args.originSig, t, 'api',
     );
     found.push({ assetId: hit.assetId.toBase58(), collectionIdx: spec.collectionIdx, rarity: spec.rarity, gameIndex: spec.gameIndex });
   }

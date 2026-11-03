@@ -242,8 +242,8 @@ export async function processPaidFusions(
           leaf++;
         }
         db.run(
-          upsert('chips', ['asset', 'owner', 'collection_idx', 'rarity', 'level', 'flags', 'lock_until', 'origin', 'origin_signature', 'minted_at'], ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'origin = excluded.origin', 'minted_at = excluded.minted_at']),
-          chip.assetId, row.wallet, collectionIdx, chip.rarity, 1, 0, t + recipe.resultLockSeconds, 'fusion', row.burn_sig, t,
+          upsert('chips', ['asset', 'owner', 'collection_idx', 'rarity', 'level', 'flags', 'lock_until', 'origin', 'origin_signature', 'minted_at', 'source'], ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'origin = excluded.origin', 'minted_at = excluded.minted_at', 'source = excluded.source']),
+          chip.assetId, row.wallet, collectionIdx, chip.rarity, 1, 0, t + recipe.resultLockSeconds, 'fusion', row.burn_sig, t, 'api',
         );
         if (!done.includes(chip.assetId)) {
           done.push(chip.assetId);
