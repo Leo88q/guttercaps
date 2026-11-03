@@ -138,6 +138,19 @@ export function recordFailed(db: Db, id: string, error: string, t = nowS()): voi
   updateChainOp(db, id, { status: 'failed', error }, t);
 }
 
+/**
+ * Находка 40: транзакция ушла и исполнилась, но своей работы НЕ сделала (предохранитель контракта
+ * вернул `Ok(())` без результата). Такую операцию нельзя оставлять `landed`/`confirmed`: reconcile
+ * переведёт её в `confirmed` и следующая попытка «переиспользует» подпись, считая дело сделанным.
+ * Помечаем `failed` с причиной — тогда повтор отправит настоящую операцию.
+ */
+export function recordFailedByKey(db: Db, kind: string, bizKey: string, error: string, t = nowS()): boolean {
+  const op = findChainOp(db, kind, bizKey);
+  if (!op) return false;
+  recordFailed(db, op.id, error, t);
+  return true;
+}
+
 /** Интент подтверждённой операции: по нему восстанавливается бизнес-запись без повторной отправки. */
 export function opPayload<T = Record<string, unknown>>(op: ChainOp): T | undefined {
   if (!op.payload) return undefined;

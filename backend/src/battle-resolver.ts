@@ -35,7 +35,8 @@ import { loadKeypair } from './crank.ts';
 import { sendAndConfirm } from './tx.ts';
 import type { ChipRow } from './queries.ts';
 import { insertIgnore } from './sql.ts';
-import { ChainOpInFlight, findChainOp, opPayload, submitChainOp } from './chain-ops.ts';
+import { ChainOpInFlight, findChainOp, opPayload, recordFailedByKey, submitChainOp } from './chain-ops.ts';
+import { decodeLogs } from './events.ts';
 
 const env = process.env;
 export const BATTLE_ORACLE_KEYPAIR = env.BATTLE_ORACLE_KEYPAIR ?? '';
@@ -146,18 +147,35 @@ export async function resolveOne(d: ResolverDeps, battleKey: PublicKey): Promise
     wager: b.wager.toString(),
     acceptedAt: Number(b.acceptedAt),
   };
+  let txLogs: string[] = [];
   const r = await submitChainOp(
     d.db,
     { kind: BATTLE_RESOLVE_KIND, bizKey: `battle:${matchId}`, payload },
     async (hooks) => {
-      const { signature } = await sendAndConfirm(d.connection, d.oracle, [ix], {
+      const { signature, logs } = await sendAndConfirm(d.connection, d.oracle, [ix], {
         cuLimit: CU_RESOLVE_BATTLE,
         onSigned: (signature, extra) => hooks.beforeSend(signature, { rawTx: extra.rawTx, lastValidBlockHeight: extra.lastValidBlockHeight, cuPrice: extra.cuPrice }),
       });
+      txLogs = logs;
       return { signature };
     },
   );
   const signature = r.signature;
+  // Находка 40: предохранитель по дневному лимиту оракула — УСПЕШНАЯ транзакция, которая бой НЕ проводит.
+  // `resolve_battle` при `oracle_paid_today + pot > oracle_daily_cap` ставит `paused = true`, эмитит
+  // `ArenaAutoPaused` и возвращает `Ok(())`, оставляя бой в `Accepted` (так и задумано: откат не смог бы
+  // сохранить паузу, а `cancel_stale_battle` вернёт ставки). Раньше этот путь не отличался от настоящего
+  // разрешения: бой попадал в `matches` как `resolved`, начислялся XP отряда и очки ладдера, а награды
+  // никто не получал. Теперь успех транзакции — не доказательство: смотрим её события и, если сработал
+  // предохранитель, бой не записываем, а операцию помечаем неуспешной, чтобы она повторилась после
+  // снятия паузы (пока арена на паузе, `resolveOne` и так ничего не отправляет).
+  const breaker = decodeLogs(txLogs).find((e) => e.program === 'arena' && e.name === 'ArenaAutoPaused');
+  if (breaker) {
+    recordFailedByKey(d.db, BATTLE_RESOLVE_KIND, `battle:${matchId}`,
+      `arena oracle daily cap reached (paid_today ${String(breaker.data.oraclePaidToday)} of ${String(breaker.data.oracleDailyCap)}): battle left Accepted, awaiting cancel_stale_battle or the next day`);
+    d.log?.(`[battle-resolver] ALERT ${matchId} NOT resolved: arena oracle daily cap reached — battle stays Accepted, nothing recorded; will retry after the pause is lifted`);
+    return { kind: 'skipped', reason: 'arena oracle daily cap reached (ArenaAutoPaused) — battle left unsettled' };
+  }
   writeResolvedMatch(d.db, payload, signature);
   d.log?.(`[battle-resolver] resolve_battle ${matchId} winner ${winner.toBase58()} → ${signature}${r.reused ? ' (already confirmed earlier)' : ''}`);
   return { kind: 'resolved', signature, winner: winner.toBase58() };
