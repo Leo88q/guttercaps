@@ -124,6 +124,20 @@ export const isSkrKind = (kind: number) => kind >= 5 && kind <= 7;
 export const isItemKind = (kind: number) => kind === KIND_ITEM_BOOSTERS || kind === KIND_ITEM_BOARD_PARTS;
 export const isChipKind = (kind: number) => kind === KIND_CHIP_VOUCHERS;
 
+/**
+ * Находка 36: кем подписывается корень. Контракт сверяет подписанта с
+ * `emission.quest_oracle` / `emission.season_oracle` ПО KIND:
+ *   publish_root       kind 2 → quest, kind 3|4 → season   (staking/src/instructions/emission.rs)
+ *   publish_skr_root   kind 5 → quest, kind 6|7 → season   (instructions/skr.rs + SkrPool::uses_season_oracle)
+ *   publish_item_root  kind 8 и 10 → quest                 (instructions/items.rs)
+ *   publish_chip_root  kind 9 → quest                      (instructions/vouchers.rs)
+ * Раньше выбор ключа был написан руками и забыл kind 10: части доски подписывались сезонным
+ * оракулом, цепь отвечала `BadOracle`, корень не публиковался никогда, а батч оставался pending.
+ */
+export function oracleRoleFor(kind: number): 'quest' | 'season' {
+  return kind === KIND_QUESTS || kind === KIND_SKR_QUESTS || isItemKind(kind) || isChipKind(kind) ? 'quest' : 'season';
+}
+
 /** `publish_item_root(kind: u8, epoch: u32, root: [u8; 32], budget: u64)` — accounts: oracle (signer, mut), emission, root (init), system. `budget` = Σ boosters (kind 8) or leaf count (kind 10). */
 export function publishItemRootIx(oracle: PublicKey, kind: number, epoch: number, root: Uint8Array, budget: bigint): TransactionInstruction {
   if (root.length !== 32) throw new Error('root must be 32 bytes');
@@ -537,7 +551,9 @@ export async function publishPending(d: OracleDeps): Promise<{ published: number
       if (indexed.root !== b.root) { d.db.run(`UPDATE reward_batches SET status = 'failed', last_error = ? WHERE kind = ? AND epoch = ?`, `on-chain root ${indexed.root} != ours`, b.kind, b.epoch); failed++; continue; }
       d.db.run(`UPDATE reward_batches SET status = 'published', published_at = ? WHERE kind = ? AND epoch = ?`, now(), b.kind, b.epoch); published++; continue;
     }
-    const key = b.kind === KIND_QUESTS || b.kind === KIND_SKR_QUESTS || b.kind === KIND_ITEM_BOOSTERS || b.kind === KIND_CHIP_VOUCHERS ? d.questOracle : d.seasonOracle;
+    // Знак — общая карта kind → оракул (находка 36), а не список в двух местах: kind 10 части доски
+    // подписываются квестовым оракулом, как и бустеры.
+    const key = oracleRoleFor(b.kind) === 'quest' ? d.questOracle : d.seasonOracle;
     if (!key) { skipped++; continue; }
     try {
       const root = Buffer.from(b.root, 'hex'), budget = BigInt(b.budget);
