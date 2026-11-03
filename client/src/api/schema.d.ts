@@ -8497,6 +8497,8 @@ export interface components {
                 amount?: string;
                 /** @description 0 SOL / 1 USDC / 2 CG — входит в подписанное сообщение (V2, п. 55) */
                 currency?: number;
+                /** @description слот создания заказа на цепи — подпись привязана к экземпляру заказа, а не к номеру (V2, п. 16) */
+                orderSlot?: string;
                 specsHash?: string;
                 nonce?: string;
                 expiresAtSlot?: string;

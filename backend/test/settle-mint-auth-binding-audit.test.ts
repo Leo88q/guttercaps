@@ -34,7 +34,7 @@ describe('находка 55: авторизация settle_pack связывае
 
     // порядок записи в `mint_auth_message`: wallet → order_id → amount → currency → specs_hash → nonce → expiry
     const body = fnBody(settle, 'mint_auth_message');
-    const order = ['auth.wallet', 'auth.order_id', 'auth.amount', 'auth.currency', 'auth.specs_hash', 'auth.nonce', 'auth.expires_at_slot'];
+    const order = ['auth.wallet', 'auth.order_id', 'auth.amount', 'auth.currency', 'auth.order_slot', 'auth.specs_hash', 'auth.nonce', 'auth.expires_at_slot'];
     const positions = order.map((field) => body.indexOf(field));
     expect(positions.every((p) => p > 0)).toBe(true);
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
@@ -47,10 +47,18 @@ describe('находка 55: авторизация settle_pack связывае
     expect(body.indexOf('auth.amount == order.amount')).toBeLessThan(body.indexOf('verify_oracle_signature'));
   });
 
+  it('находка 16: подпись привязана к экземпляру заказа, а не только к его номеру', () => {
+    const body = fnBody(settle, 'settle_pack_handler');
+    expect(body).toMatch(/auth\.order_slot == order\.created_slot/);
+    // refund закрывает order PDA — без привязки к слоту старая подпись годилась бы для пересозданного заказа
+    const refund = fnBody(settle, 'refund_pack_handler');
+    expect(refund).toMatch(/close = buyer|close_state|try_borrow_mut_lamports/);
+  });
+
   it('сообщение backend совпадает по длине и раскладке с описанным доменом', () => {
     const oracle = Keypair.generate();
     const auth: pv.MintAuth = {
-      wallet: PublicKey.unique(), orderId: 7n, amount: 12_345n, currency: 2,
+      wallet: PublicKey.unique(), orderId: 7n, amount: 12_345n, currency: 2, orderSlot: 555n,
       specsHash: Buffer.alloc(32, 9), nonce: 7n, expiresAtSlot: 4_242n,
     };
     const msg = pv.mintAuthMessage(auth);
@@ -58,7 +66,8 @@ describe('находка 55: авторизация settle_pack связывае
     expect(msg.readBigUInt64LE(18 + 32)).toBe(7n);            // order_id
     expect(msg.readBigUInt64LE(18 + 32 + 8)).toBe(12_345n);   // amount
     expect(msg[18 + 32 + 8 + 8]).toBe(2);                     // currency
-    expect(msg.length).toBe(18 + 32 + 8 + 8 + 1 + 32 + 8 + 8);
+    expect(msg.readBigUInt64LE(18 + 32 + 8 + 8 + 1)).toBe(555n); // order_slot (п. 16)
+    expect(msg.length).toBe(18 + 32 + 8 + 8 + 1 + 8 + 32 + 8 + 8);
     expect(msg.readBigUInt64LE(msg.length - 8)).toBe(4_242n); // expires_at_slot последним
     // подпись проверяется тем же сообщением (oracle-side контракт не разъехался)
     expect(pv.signMintAuth(oracle, auth)).toMatch(/^[1-9A-HJ-NP-Za-km-z]+$/);

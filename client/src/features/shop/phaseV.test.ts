@@ -21,7 +21,7 @@ function payload(): SettlePayloadLike {
     grantReceipt: null,
     auth: {
       wallet: buyer.toBase58(), orderId: '7',
-      amount: '5990000', currency: 0, // находка 55: подпись покрывает сумму и валюту эскроу
+      amount: '5990000', currency: 0, orderSlot: '777', // 55 + 16: подпись покрывает деньги и экземпляр заказа
       specsHash: Buffer.alloc(32, 3).toString('hex'), nonce: '7', expiresAtSlot: '5000',
     },
     signature: base58Encode(new Uint8Array(64).fill(9)),

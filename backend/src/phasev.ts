@@ -80,6 +80,8 @@ export interface MintAuth {
   /** Находка 55: сколько и в какой валюте заплачено за заказ (для grant'а — нули). */
   amount: bigint;
   currency: number;
+  /** Находка 16: слот создания заказа на цепи — привязка подписи к экземпляру, а не к номеру. */
+  orderSlot: bigint;
   specsHash: Buffer;
   nonce: bigint;
   expiresAtSlot: bigint;
@@ -92,6 +94,7 @@ export function mintAuthMessage(a: MintAuth): Buffer {
     u64le(a.orderId),
     u64le(a.amount),
     Buffer.from([a.currency]),
+    u64le(a.orderSlot),
     a.specsHash,
     u64le(a.nonce),
     u64le(a.expiresAtSlot),
@@ -150,7 +153,7 @@ export interface SettlePayload {
   treeConfig: string;
   orderPda: string | null;
   grantReceipt: string | null;
-  auth: { wallet: string; orderId: string; amount: string; currency: number; specsHash: string; nonce: string; expiresAtSlot: string };
+  auth: { wallet: string; orderId: string; amount: string; currency: number; orderSlot: string; specsHash: string; nonce: string; expiresAtSlot: string };
   signature: string;
   specs: { collection: string; name: string; symbol: string; uri: string; collectionIdx: number; rarity: number; gameIndex: number }[];
 }
@@ -163,13 +166,14 @@ function payloadFor(
   slot: number,
   orderIdForPda: number | null,
   /** Находка 55: сумма и валюта, которые оракул засвидетельствовал. У grant'а денег нет. */
-  order: { amount: bigint; currency: number } = { amount: 0n, currency: 0 },
+  order: { amount: bigint; currency: number; slot: bigint } = { amount: 0n, currency: 0, slot: 0n },
 ): SettlePayload {
   const auth: MintAuth = {
     wallet: new PublicKey(wallet),
     orderId: authOrderId,
     amount: order.amount,
     currency: order.currency,
+    orderSlot: order.slot,
     specsHash: specsHash(specs),
     nonce: authOrderId,
     expiresAtSlot: BigInt(slot + AUTH_TTL_SLOTS),
@@ -189,6 +193,7 @@ function payloadFor(
       orderId: authOrderId.toString(),
       amount: auth.amount.toString(),
       currency: auth.currency,
+      orderSlot: auth.orderSlot.toString(),
       specsHash: Buffer.from(auth.specsHash).toString('hex'),
       nonce: auth.nonce.toString(),
       expiresAtSlot: auth.expiresAtSlot.toString(),
@@ -287,7 +292,8 @@ export async function settleAuthForOrder(
   // Находка 55: подписывается ровно та сумма и валюта, что лежат в эскроу на цепи — их же требует
   // `settle_pack` (`auth.amount == order.amount && auth.currency == order.currency`).
   const payload = payloadFor(wallet, BigInt(id), specs, deps.oracle ?? loadOracle(), slot, id, {
-    amount: BigInt(row.amount), currency: CURRENCY_CODE[row.currency],
+    // Находка 16: слот создания заказа с цепи — им подпись отличается от подписи для пересозданного заказа
+    amount: BigInt(row.amount), currency: CURRENCY_CODE[row.currency], slot: onchain.createdSlot,
   });
   return { ...payload, status: 'paid' };
 }

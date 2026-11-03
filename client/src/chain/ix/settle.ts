@@ -83,8 +83,11 @@ export interface SettlePayloadLike {
   treeConfig: string;
   orderPda: string | null;
   grantReceipt: string | null;
-  /** Находка 55: `amount`/`currency` входят в подписанное сообщение (V2) — их же требует `settle_pack`. */
-  auth: { wallet: string; orderId: string; amount: string; currency: number; specsHash: string; nonce: string; expiresAtSlot: string };
+  /**
+   * Находки 55 и 16: `amount`/`currency` и слот создания заказа (`orderSlot`) входят в подписанное
+   * сообщение (V2) — по ним `settle_pack` сверяет подпись с КОНКРЕТНЫМ заказом, а не только с его номером.
+   */
+  auth: { wallet: string; orderId: string; amount: string; currency: number; orderSlot: string; specsHash: string; nonce: string; expiresAtSlot: string };
   signature: string;
   specs: { collection: string; name: string; symbol: string; uri: string }[];
 }
@@ -97,6 +100,7 @@ export function oracleAuthIx(payload: SettlePayloadLike): TransactionInstruction
     .u64(BigInt(a.orderId))
     .u64(BigInt(a.amount))
     .u8(Number(a.currency))
+    .u64(BigInt(a.orderSlot))
     .bytes(Buffer.from(a.specsHash, 'hex'))
     .u64(BigInt(a.nonce))
     .u64(BigInt(a.expiresAtSlot))
