@@ -1445,21 +1445,18 @@ pub fn cancel_stale_claim_fusion<'info>(
 
     // Находки 47 и 56: бустер, списанный `fuse_claims_commit`, возвращается, если исход не наступил.
     if ctx.accounts.pending.boosted {
-        let items = ctx
-            .accounts
-            .items
-            .as_mut()
-            .ok_or(ChipError::NoBooster)?;
+        let items = ctx.accounts.items.as_mut().ok_or(ChipError::NoBooster)?;
         let (expect_items, _) = Pubkey::find_program_address(
             &[b"items", ctx.accounts.owner.key().as_ref()],
             ctx.program_id,
         );
         require_keys_eq!(items.key(), expect_items, ChipError::Unauthorized);
-        require_keys_eq!(items.owner, ctx.accounts.owner.key(), ChipError::Unauthorized);
-        items.boosters = items
-            .boosters
-            .checked_add(1)
-            .ok_or(ChipError::Overflow)?;
+        require_keys_eq!(
+            items.owner,
+            ctx.accounts.owner.key(),
+            ChipError::Unauthorized
+        );
+        items.boosters = items.boosters.checked_add(1).ok_or(ChipError::Overflow)?;
         msg!(
             "cancel_stale_claim_fusion: booster returned, boosters={}",
             items.boosters
