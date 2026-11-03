@@ -429,13 +429,14 @@ export function buildItemBatch(db: Db, t = now(), min = ITEM_MIN_BATCH): Batch |
   }
   if (perWallet.size === 0 || total < BigInt(min)) return undefined;
   const wallets = [...perWallet.keys()].sort();
-  const batch = insertBatch(db, kind, wallets.map((w) => ({ wallet: w, amount: perWallet.get(w)!.amount, memo: perWallet.get(w)!.memo })), t);
-  db.tx(() => {
+  // Находка 37: разметка строк — в ТОЙ ЖЕ транзакции, что и батч с листьями (`mark` внутри insertBatch).
+  // Раньше батч коммитился отдельно, и сбой между двумя транзакциями оставлял уже выпущенные листья при
+  // неразмеченных строках: следующий эпох брал их снова, и бустеры платились дважды.
+  return insertBatch(db, kind, wallets.map((w) => ({ wallet: w, amount: perWallet.get(w)!.amount, memo: perWallet.get(w)!.memo })), t, undefined, (epoch) => {
     for (const w of wallets) for (const r of perWallet.get(w)!.rows) {
-      db.run(`UPDATE quest_completions SET item_root_kind = ?, item_root_epoch = ? WHERE wallet = ? AND quest_id = ? AND period_key = ? AND item_root_kind IS NULL`, kind, batch.epoch, w, r.quest_id, r.period_key);
+      db.run(`UPDATE quest_completions SET item_root_kind = ?, item_root_epoch = ? WHERE wallet = ? AND quest_id = ? AND period_key = ? AND item_root_kind IS NULL`, kind, epoch, w, r.quest_id, r.period_key);
     }
   });
-  return batch;
 }
 
 /** Chip voucher rows (quest completions with a chip reward) not yet in a kind-9 root. Gutter Pot first so the raffle is not starved by a same-week streak chip. */
@@ -487,14 +488,14 @@ export function buildChipBatch(db: Db, t = now(), min = CHIP_MIN_BATCH): Batch |
   }
   if (perWallet.size === 0 || perWallet.size < min) return undefined;
   const wallets = [...perWallet.keys()].sort();
-  const batch = insertBatch(db, kind, wallets.map((w) => ({ wallet: w, amount: perWallet.get(w)!.amount, memo: perWallet.get(w)!.memo })), t, BigInt(wallets.length));
-  db.tx(() => {
+  // Находка 37 (тот же дефект у kind 9): батч и разметка строк — одна транзакция, иначе сбой между ними
+  // выпускает листья, не помечая строки, и следующий эпох платит тот же ваучер второй раз.
+  return insertBatch(db, kind, wallets.map((w) => ({ wallet: w, amount: perWallet.get(w)!.amount, memo: perWallet.get(w)!.memo })), t, BigInt(wallets.length), (epoch) => {
     for (const w of wallets) {
       const r = perWallet.get(w)!.row;
-      db.run(`UPDATE quest_completions SET chip_root_kind = ?, chip_root_epoch = ?, chip_root_at = ? WHERE wallet = ? AND quest_id = ? AND period_key = ? AND chip_root_kind IS NULL`, kind, batch.epoch, t, w, r.quest_id, r.period_key);
+      db.run(`UPDATE quest_completions SET chip_root_kind = ?, chip_root_epoch = ?, chip_root_at = ? WHERE wallet = ? AND quest_id = ? AND period_key = ? AND chip_root_kind IS NULL`, kind, epoch, t, w, r.quest_id, r.period_key);
     }
   });
-  return batch;
 }
 
 // ---------------------------------------------------------------- board parts (kind 10)
