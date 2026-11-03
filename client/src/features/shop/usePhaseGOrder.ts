@@ -12,8 +12,9 @@ import {
   rememberedEscrow, rememberedPayment, rememberedPendingOrder, rememberEscrow, rememberPayment, rememberPendingOrder,
   waitForOrderMinted, waitForSignature, type PackOrder, type PhaseGCurrency, type PendingPhase,
 } from './phaseG';
-import { FLAGS } from '@/app/config';
-import { PACKS, SKU_IDS, assertSettleableLeaves, leavesForPurchase } from '@guttercaps/economy';
+import { FLAGS, LOOKUP_TABLE } from '@/app/config';
+import type { WalletLike } from '@/chain/tx';
+import { PACKS, SKU_IDS, assertDeliverablePurchase, leavesForPurchase } from '@guttercaps/economy';
 
 export type PhaseGStage = 'idle' | 'creating' | 'paying' | 'confirming' | 'minting' | 'done' | 'error';
 
@@ -40,7 +41,11 @@ export function usePhaseGOrder() {
       // ограничение не действует).
       const skuId = SKU_IDS[sku];
       if (!isMock() && FLAGS.launchPhase === 'v' && skuId) {
-        assertSettleableLeaves(leavesForPurchase(PACKS[skuId], qty), `Bundle x${qty}`);
+        // Находки 25 и 24: заказ должен доставляться ОДНОЙ транзакцией — иначе деньги уходят в эскроу
+        // за то, что нечем выдать. Предел считается по размеру пакета (метаданные листьев), а не по
+        // MAX_SPECS контракта, и требует lookup table: без неё не влезает ни один лист.
+        assertDeliverablePurchase(leavesForPurchase(PACKS[skuId], qty), `Bundle x${qty}`);
+        if (!LOOKUP_TABLE) throw new Error('Phase V requires VITE_LOOKUP_TABLE');
       }
       setStage('creating');
       const created = await api.post('/packs/order', { sku, qty, currency });
@@ -56,7 +61,7 @@ export function usePhaseGOrder() {
         const me = wallet.publicKey;
         setStage('paying');
         // Phase V is opt-in at launch; keep its builders out of the critical bundle.
-        const { buyPackIx, grantOrSettleIx } = await import('./phaseVFlow');
+        const { buyPackIx, grantOrSettleIx, sendPhaseVSettle } = await import('./phaseVFlow');
         const escrowTx = new Transaction().add(buyPackIx({
           buyer: me, orderId: BigInt(orderId), currency,
           amount: BigInt(created.amount ?? '0'),
@@ -72,12 +77,12 @@ export function usePhaseGOrder() {
         // RPC видел транзакцию, и поток рвался уже ПОСЛЕ оплаты.
         await waitForSignature(connection, escrowSig);
         const payload = await api.post('/packs/order/{id}/settle-auth', undefined, { path: { id: orderId } });
-        const settleTx = new Transaction().add(...grantOrSettleIx(payload as unknown as import('./phaseV').SettlePayloadLike, {
+        const settle = await sendPhaseVSettle(connection, { ...wallet, publicKey: me } as WalletLike, grantOrSettleIx(payload as unknown as import('./phaseV').SettlePayloadLike, {
           relayer: me,
           treasury: new PublicKey(created.payToOwner ?? ''),
           mint: created.mint ? new PublicKey(created.mint) : null,
         }));
-        const settleSig = await wallet.sendTransaction(settleTx, connection);
+        const settleSig = settle.signature;
         rememberPayment(storage(), orderId, settleSig);
         await waitForSignature(connection, settleSig);
         await confirmWithRetry(
@@ -156,13 +161,13 @@ export function usePhaseGOrder() {
         await waitForSignature(connection, escrow);
         const payload = await api.post('/packs/order/{id}/settle-auth', undefined, { path: { id } });
         const order = await api.get('/packs/order/{id}', { path: { id } });
-        const { grantOrSettleIx } = await import('./phaseVFlow');
-        const settleTx = new Transaction().add(...grantOrSettleIx(payload as unknown as import('./phaseV').SettlePayloadLike, {
+        const { grantOrSettleIx, sendPhaseVSettle } = await import('./phaseVFlow');
+        const settle = await sendPhaseVSettle(connection, { ...wallet, publicKey: wallet.publicKey } as WalletLike, grantOrSettleIx(payload as unknown as import('./phaseV').SettlePayloadLike, {
           relayer: wallet.publicKey,
           treasury: new PublicKey((order as unknown as { payToOwner?: string }).payToOwner ?? ''),
           mint: (order as unknown as { mint?: string | null }).mint ? new PublicKey((order as unknown as { mint: string }).mint) : null,
         }));
-        const settleSig = await wallet.sendTransaction(settleTx, connection);
+        const settleSig = settle.signature;
         rememberPayment(storage(), id, settleSig);
         await waitForSignature(connection, settleSig);
         await confirmWithRetry(

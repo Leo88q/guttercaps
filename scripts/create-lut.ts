@@ -32,6 +32,7 @@ const LEDGER_SHARDS = 4;
 const MARKET = new PublicKey(process.env.PROGRAM_MARKET ?? '5skEmmhgFYn5xjHEdrcsiQ68kUg5kvhXKhjWTWSppjfo');
 const STAKING = new PublicKey(process.env.PROGRAM_STAKING ?? 'Ewkbp7WpqbiJAu3ofEcTPinqnr5oH3e94YJDZFg1eSJn');
 const ARENA = new PublicKey(process.env.PROGRAM_ARENA ?? 'DUTokrhWBYL7nJ9VbMy7bFELQFf8TN1tmvVpKLsskqD6');
+const SETTLE = new PublicKey(process.env.PROGRAM_SETTLE ?? 'B9ousNDpe29G45KFHyndvHXpLigBtxCh9xbboWuCeXyP');
 const SWITCHBOARD = new PublicKey(process.env.SWITCHBOARD_PROGRAM_ID ?? (MAINNET ? 'SBondMDrcV3K4kxZR1HNVT7osZxAHVHgYXL5Ze1oMUv' : 'Aio4gaXjXzJNVLtzwtNVmSqGKpANtXhybbkhtAC94ji2'));
 const SB_QUEUE = new PublicKey(process.env.SWITCHBOARD_QUEUE ?? (MAINNET ? 'A43DyUGA7s8eXPxqEjJY6EBu1KKbNgfxF8h17VAHn13w' : 'EYiAmGSdsQTuCw413V5BzaruWuCCSDgTPtBGvLkXHbe7'));
 const MPL_CORE = new PublicKey('CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d');
@@ -84,6 +85,13 @@ export async function plan(conn: Connection): Promise<{ label: string; key: Publ
     { label: 'market_auth', key: pda([enc('market_auth')], MARKET) }, { label: 'stake_auth', key: pda([enc('stake_auth')], STAKING) },
     { label: 'emission', key: pda([enc('emission')], STAKING) }, { label: 'arena_config', key: pda([enc('arena_config')], ARENA) },
     { label: 'treasury', key: cfg.treasury },
+    // Находка 24: Phase V (`settle_pack`) упирается в 1232 байта из-за метаданных листьев — без этих
+    // адресов в таблице не помещается НИ ОДИН лист. config/tree_auth — PDA программы settle,
+    // mpl_core_cpi_signer и instructions sysvar — те же, что в canonical mint_v2.
+    { label: 'settle_config', key: pda([enc('config')], SETTLE) },
+    { label: 'settle_tree_auth', key: pda([enc('tree_auth')], SETTLE) },
+    { label: 'mpl_core_cpi_signer', key: pda([enc('mpl_core_cpi_signer')], MPL_BUBBLEGUM_V2) },
+    { label: 'instructions_sysvar', key: new PublicKey('Sysvar1nstructions1111111111111111111111111') },
     { label: 'pyth_sol', key: cfg.pythSol }, { label: 'pyth_skr', key: cfg.pythSkr },
   ];
   for (const [label, mint] of [['cg_mint', cfg.cgMint], ['usdc_mint', cfg.usdcMint], ['skr_mint', cfg.skrMint]] as const) {

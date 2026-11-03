@@ -8,7 +8,8 @@ import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { Keypair } from '@solana/web3.js';
 import {
-  BUNDLES, MAX_LEAVES_PER_TX, PACKS, assertSettleableLeaves, leavesForPurchase, maxQtyPerSettle,
+  BUNDLES, MAX_LEAVES_PER_TX, MAX_SETTLEABLE_LEAVES_PER_TX, PACKS, assertDeliverablePurchase,
+  assertSettleableLeaves, leavesForPurchase, maxQtyPerSettle,
 } from '@guttercaps/economy';
 import { SKUS } from '../src/quote.ts';
 import { Db } from '../src/db.ts';
@@ -66,19 +67,37 @@ describe('settle leaf limit (находка 25)', () => {
     expect(() => assertSettleableLeaves(MAX_LEAVES_PER_TX)).not.toThrow();
   });
 
-  it('refuses an unsettleable order before signing and writes no specs', async () => {
+  // Находка 24: контрактный предел (10) доставкой не является — метаданные листьев не дают уложить в
+  // пакет больше пяти, поэтому авторизация режется по замеренному пределу, а не по MAX_SPECS.
+  it('refuses an undeliverable order before signing and writes no specs', async () => {
+    const expectRefusal = async (qty: number, seed: string) => {
+      const db = new Db(':memory:');
+      const oracle = Keypair.generate();
+      const big = orders.createOrder(db, BUYER.publicKey.toBase58(), { sku: 1, qty, currency: 'SOL' }, T0, { treasury: TREASURY, seedHex: seed.repeat(32) });
+      await expect(pv.settleAuthForOrder(db, BUYER.publicKey.toBase58(), big.orderId, { connection: escrowConn(big.orderId, big.amount), oracle }))
+        .rejects.toThrow(/at most 5/);
+      // ничего не подписано и не зафиксировано: заказ можно разобрать (возврат)
+      expect(db.get<{ settle_specs: string | null; status: string }>(`SELECT settle_specs, status FROM pack_orders WHERE id = ?`, big.orderId))
+        .toEqual({ settle_specs: null, status: 'created' });
+    };
+    // ×2 = 10 листьев проходит контрактный лимит, но не доставку; ×5 = 25 — тем более
+    await expectRefusal(2, 'cd');
+    await expectRefusal(5, 'cf');
+
+    // граница доставки проходит: ×1 = ровно 5 листьев
     const db = new Db(':memory:');
     const oracle = Keypair.generate();
-    const big = orders.createOrder(db, BUYER.publicKey.toBase58(), { sku: 1, qty: 5, currency: 'SOL' }, T0, { treasury: TREASURY, seedHex: 'cd'.repeat(32) });
-    await expect(pv.settleAuthForOrder(db, BUYER.publicKey.toBase58(), big.orderId, { connection: escrowConn(big.orderId, big.amount), oracle }))
-      .rejects.toThrow(/at most 10/);
-    // ничего не подписано и не зафиксировано: заказ можно разобрать (возврат/частичный settle)
-    expect(db.get<{ settle_specs: string | null; status: string }>(`SELECT settle_specs, status FROM pack_orders WHERE id = ?`, big.orderId))
-      .toEqual({ settle_specs: null, status: 'created' });
-
-    // граница проходит: ×2 = ровно 10 листьев
-    const ok = orders.createOrder(db, BUYER.publicKey.toBase58(), { sku: 1, qty: 2, currency: 'SOL' }, T0, { treasury: TREASURY, seedHex: 'ce'.repeat(32) });
+    const ok = orders.createOrder(db, BUYER.publicKey.toBase58(), { sku: 1, qty: 1, currency: 'SOL' }, T0, { treasury: TREASURY, seedHex: 'ce'.repeat(32) });
     const payload = await pv.settleAuthForOrder(db, BUYER.publicKey.toBase58(), ok.orderId, { connection: escrowConn(ok.orderId, ok.amount), oracle });
-    expect(payload.specs).toHaveLength(MAX_LEAVES_PER_TX);
+    expect(payload.specs).toHaveLength(MAX_SETTLEABLE_LEAVES_PER_TX);
+  });
+
+  it('достаточный лимит объявлен один раз и меньше контрактного', () => {
+    expect(MAX_SETTLEABLE_LEAVES_PER_TX).toBeLessThan(MAX_LEAVES_PER_TX);
+    const src = readFileSync(new URL('../../packages/economy/src/packs.ts', import.meta.url), 'utf8');
+    // значение обязано совпадать с замером размера транзакции в клиентском тесте
+    const client = readFileSync(new URL('../../client/src/features/shop/settle-tx-size.test.ts', import.meta.url), 'utf8');
+    expect(client).toMatch(/expect\(sizes\.leaves5!\)\.toBeLessThanOrEqual\(1232\)/);
+    expect(src).toMatch(/MAX_SETTLEABLE_LEAVES_PER_TX = 5/);
   });
 });

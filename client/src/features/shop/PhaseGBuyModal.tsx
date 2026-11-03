@@ -9,6 +9,7 @@ import { packName, rarityName } from '@/shared/lib/rarity';
 import { KV, Modal, Pill } from '@/shared/ui/primitives';
 import { useT } from '@/shared/i18n';
 import { isMock } from '@/api/client';
+import { FLAGS } from '@/app/config';
 import { usePhaseGOrder } from './usePhaseGOrder';
 import {
   browserStore, rememberedEscrow, rememberedPayment, rememberedPendingOrder, shouldResumePending, type PhaseGCurrency,
@@ -32,6 +33,11 @@ export function PhaseGBuyModal({ sku, packId, onClose }: {
   const [qty, setQty] = useState(1);
   // Same rule as the backend quote: Starter and Limited never get bundle discounts.
   const bundlesAllowed = packId === 'standard' || packId === 'premium';
+  // Находка 24: в фазе V заказ доставляется одной транзакцией, а она несёт не больше
+  // MAX_SETTLEABLE_LEAVES_PER_TX листьев (метаданные, а не контрактный MAX_SPECS). Пакет standard —
+  // пять листьев, поэтому бандлы в фазе V не предлагаются вовсе: иначе игрок увидит отказ уже после
+  // выбора количества, а до исправления — оплатил бы недоставляемое.
+  const bundlesOffered = bundlesAllowed && !(FLAGS.launchPhase === 'v' && !isMock());
   const [currency, setCurrency] = useState<PhaseGCurrency>('SOL');
   const flow = usePhaseGOrder();
   const busy = flow.stage !== 'idle' && flow.stage !== 'done' && flow.stage !== 'error';
@@ -57,7 +63,7 @@ export function PhaseGBuyModal({ sku, packId, onClose }: {
     <Modal open onClose={onClose} title={t('shop.buy', { name: packName(sku) })}>
       <div className="stack">
         <p className="tiny muted">{t('ui.phasegNote')}</p>
-        {bundlesAllowed && (
+        {bundlesOffered && (
           <div className="stack-sm">
             <span className="label">{t('shop.quantity')}</span>
             <div className="tag-list">

@@ -169,6 +169,27 @@ export function maxQtyPerSettle(pack: Pick<PackDef, 'chips'>): number {
   return Math.floor(MAX_LEAVES_PER_TX / pack.chips);
 }
 
+/**
+ * Находка 24: сколько листьев РЕАЛЬНО доставляется одной транзакцией Phase V.
+ *
+ * Контрактный предел `MAX_LEAVES_PER_TX` (MAX_SPECS = 10) — про размер `Vec<LeafSpec>` в инструкции,
+ * а не про пакет: `settle_pack` несёт метаданные каждого листа (name/symbol/uri), поэтому транзакция
+ * упирается в 1232 байта раньше. Замер настоящими билдерами с URI бэкенда и полной lookup table
+ * (`client/src/features/shop/settle-tx-size.test.ts`): пять листьев — 1162 байта, шесть — 1263.
+ * Без lookup table не помещается даже один лист, поэтому Phase V без `VITE_LOOKUP_TABLE` не продаётся.
+ * Число обязано меняться вместе с тем тестом.
+ */
+export const MAX_SETTLEABLE_LEAVES_PER_TX = 5;
+
+/** Отказ ДО подписи и эскроу для заказа, который не доставляется одной транзакцией (находка 24). */
+export function assertDeliverablePurchase(leaves: number, what = 'Order'): void {
+  if (leaves > MAX_SETTLEABLE_LEAVES_PER_TX) {
+    throw new RangeError(
+      `${what} needs ${leaves} leaves; one phase-V transaction delivers at most ${MAX_SETTLEABLE_LEAVES_PER_TX}`,
+    );
+  }
+}
+
 /** Отказ ДО подписи и эскроу: заказ, который нельзя доставить, не должен оплачиваться. */
 export function assertSettleableLeaves(leaves: number, what = 'Order'): void {
   if (leaves > MAX_LEAVES_PER_TX) {
