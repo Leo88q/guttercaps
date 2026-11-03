@@ -83,7 +83,8 @@ export interface SettlePayloadLike {
   treeConfig: string;
   orderPda: string | null;
   grantReceipt: string | null;
-  auth: { wallet: string; orderId: string; specsHash: string; nonce: string; expiresAtSlot: string };
+  /** Находка 55: `amount`/`currency` входят в подписанное сообщение (V2) — их же требует `settle_pack`. */
+  auth: { wallet: string; orderId: string; amount: string; currency: number; specsHash: string; nonce: string; expiresAtSlot: string };
   signature: string;
   specs: { collection: string; name: string; symbol: string; uri: string }[];
 }
@@ -94,11 +95,13 @@ export function oracleAuthIx(payload: SettlePayloadLike): TransactionInstruction
   const authBytes = new BorshWriter()
     .pubkey(new PublicKey(a.wallet))
     .u64(BigInt(a.orderId))
+    .u64(BigInt(a.amount))
+    .u8(Number(a.currency))
     .bytes(Buffer.from(a.specsHash, 'hex'))
     .u64(BigInt(a.nonce))
     .u64(BigInt(a.expiresAtSlot))
     .toBytes();
-  const message = Buffer.concat([Buffer.from('GUTCAP/MINTAUTH/V1'), Buffer.from(authBytes)]);
+  const message = Buffer.concat([Buffer.from('GUTCAP/MINTAUTH/V2'), Buffer.from(authBytes)]);
   return ed25519VerifyIx(new PublicKey(payload.oracle), message, base58Decode(payload.signature));
 }
 
@@ -163,6 +166,8 @@ export function settlePackIx(
   const w = new BorshWriter().u64(BigInt(a.orderId));
   w.pubkey(new PublicKey(a.wallet))
     .u64(BigInt(a.orderId))
+    .u64(BigInt(a.amount))
+    .u8(Number(a.currency))
     .bytes(Buffer.from(a.specsHash, 'hex'))
     .u64(BigInt(a.nonce))
     .u64(BigInt(a.expiresAtSlot));
@@ -200,6 +205,8 @@ export function grantMintIx(payload: SettlePayloadLike, args: { relayer: PublicK
   const w = new BorshWriter();
   w.pubkey(new PublicKey(a.wallet))
     .u64(BigInt(a.orderId))
+    .u64(BigInt(a.amount))
+    .u8(Number(a.currency))
     .bytes(Buffer.from(a.specsHash, 'hex'))
     .u64(BigInt(a.nonce))
     .u64(BigInt(a.expiresAtSlot));

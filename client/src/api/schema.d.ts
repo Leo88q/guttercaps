@@ -8493,6 +8493,10 @@ export interface components {
             auth?: {
                 wallet?: string;
                 orderId?: string;
+                /** @description сумма эскроу в базовых единицах — входит в подписанное сообщение (V2, п. 55) */
+                amount?: string;
+                /** @description 0 SOL / 1 USDC / 2 CG — входит в подписанное сообщение (V2, п. 55) */
+                currency?: number;
                 specsHash?: string;
                 nonce?: string;
                 expiresAtSlot?: string;

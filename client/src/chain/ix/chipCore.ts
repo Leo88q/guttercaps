@@ -207,6 +207,8 @@ export interface CancelStaleClaimFusionArgs {
   randomness: PublicKey;
   cgMint: PublicKey;
   materials: PublicKey[];
+  /** Находки 47/56: бустер возвращается отменой — нужен, если `PendingClaimFusion.boosted`. */
+  boosted?: boolean;
 }
 
 /** `cancel_stale_claim_fusion(nonce)` — oracle outage only; fee refunded, materials un-consumed. */
@@ -220,6 +222,7 @@ export function cancelStaleClaimFusionIx(a: CancelStaleClaimFusionArgs): Transac
     keys: [
       signer(a.owner), ro(config), rw(ledgerPdaOf(a.owner)[0]), rw(pending), ro(a.randomness),
       rw(vault), rw(ata(a.cgMint, vault)), rw(ata(a.cgMint, a.owner)), ro(TOKEN_PROGRAM_ID), ro(SYSTEM_PROGRAM_ID),
+      optional(a.boosted ? playerItemsPda(a.owner)[0] : undefined, CHIP_CORE_ID), // находки 47/56
       ...a.materials.map(rw),
     ],
     data: Buffer.from(ixData('cancel_stale_claim_fusion', new BorshWriter().u64(a.nonce).toBytes())),
@@ -617,6 +620,12 @@ export interface FuseRevealArgs {
   coreCollectionOf: (idx: number) => PublicKey;
   /** $CG mint — the escrowed fee (SEC-M3) is burned from the vault ATA at reveal / refunded at cancel */
   cgMint: PublicKey;
+  /**
+   * Находки 47 и 56: был ли потрачен бустер. В `fuse` он списывается сразу, а не на исходе, поэтому
+   * `cancel_stale_fusion` возвращает его — но только если PDA `items` существует. Флаг приходит из
+   * состояния захода (`PendingFusion.boosted` на цепи), а не угадывается.
+   */
+  boosted?: boolean;
 }
 
 export function fuseRevealIx(a: FuseRevealArgs): TransactionInstruction {
@@ -661,6 +670,8 @@ export function cancelStaleFusionIx(a: Omit<FuseRevealArgs, 'payer' | 'resultCol
   const keys = [
     signer(a.owner), ro(config), rw(ledgerPdaOf(a.owner)[0]) /* #12 */, rw(pending), ro(a.randomness), ro(MPL_CORE_ID), ro(SYSTEM_PROGRAM_ID),
     rw(vault), rw(ata(a.cgMint, vault)), rw(ata(a.cgMint, a.owner)), ro(TOKEN_PROGRAM_ID), // SEC-M3 fee refund
+    // находки 47/56: возврат бустера (optional — без буста PDA `items` может не существовать)
+    optional(a.boosted ? playerItemsPda(a.owner)[0] : undefined, CHIP_CORE_ID),
   ];
   for (const m of a.materials) {
     keys.push(rw(m.asset), rw(chipStatePda(m.asset)[0]), rw(collectionMetaPda(m.collectionIdx)[0]), rw(a.coreCollectionOf(m.collectionIdx)));

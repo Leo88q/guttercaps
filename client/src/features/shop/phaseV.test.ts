@@ -21,6 +21,7 @@ function payload(): SettlePayloadLike {
     grantReceipt: null,
     auth: {
       wallet: buyer.toBase58(), orderId: '7',
+      amount: '5990000', currency: 0, // находка 55: подпись покрывает сумму и валюту эскроу
       specsHash: Buffer.alloc(32, 3).toString('hex'), nonce: '7', expiresAtSlot: '5000',
     },
     signature: base58Encode(new Uint8Array(64).fill(9)),
@@ -75,7 +76,7 @@ describe('phase-V instruction builders', () => {
     const ix = oracleAuthIx(p);
     expect(ix.programId.toBase58()).toBe('Ed25519SigVerify111111111111111111111111111');
     const text = Buffer.from(ix.data).toString('latin1');
-    expect(text).toContain('GUTCAP/MINTAUTH/V1');
+    expect(text).toContain('GUTCAP/MINTAUTH/V2');
     // header: 1 signature, sig @16, pubkey @80, message @112, self-indexed
     expect(ix.data[0]).toBe(1);
     expect(ix.data.readUInt16LE(2)).toBe(16);

@@ -1,5 +1,5 @@
 // One paid-mint payload, two mints. `settle_pack` and `grant_mint` verify the same Ed25519 message
-// (GUTCAP/MINTAUTH/V1 ‖ wallet ‖ order_id ‖ specs_hash ‖ nonce ‖ expires_at_slot) and neither binds an
+// (GUTCAP/MINTAUTH/V2 ‖ wallet ‖ order_id ‖ amount ‖ currency ‖ specs_hash ‖ nonce ‖ expires_at_slot) and neither binds an
 // operation type, while their receipts live in different PDAs: ["order", buyer, id] and ["grant", id].
 // This test builds both instructions from the *same* paid-order payload and records that the grant path
 // accepts it unchanged and consumes its own (free) receipt PDA. What the Rust side does with it is read
@@ -34,6 +34,7 @@ function paidOrderPayload(): SettlePayloadLike {
     grantReceipt: null,
     auth: {
       wallet: buyer.toBase58(), orderId: ORDER_ID.toString(),
+      amount: '5990000', currency: 0, // находка 55: подпись покрывает сумму и валюту эскроу
       specsHash: Buffer.alloc(32, 3).toString('hex'), nonce: ORDER_ID.toString(), expiresAtSlot: '5000',
     },
     signature: base58Encode(new Uint8Array(64).fill(9)),
@@ -52,10 +53,13 @@ describe('phase-V mint authorization domain', () => {
     const auth = Buffer.from(oracleAuthIx(p).data);
     // header 16 ‖ signature 64 ‖ pubkey 32 ‖ message N; the message is exactly the mint-auth layout below
     const msg = auth.subarray(112);
-    expect(msg.length).toBe(18 + 32 + 8 + 32 + 8 + 8); // prefix + wallet + order_id + specs_hash + nonce + expiry
-    expect(msg.subarray(0, 18).toString('latin1')).toBe('GUTCAP/MINTAUTH/V1');
-    expect(msg.readBigUInt64LE(50)).toBe(ORDER_ID); // order_id at prefix(18)+wallet(32)
-    expect(msg.readBigUInt64LE(90)).toBe(ORDER_ID); // nonce at prefix+wallet+order_id+hash(32)
+    // prefix + wallet + order_id + amount + currency + specs_hash + nonce + expiry (находка 55)
+    expect(msg.length).toBe(18 + 32 + 8 + 8 + 1 + 32 + 8 + 8);
+    expect(msg.subarray(0, 18).toString('latin1')).toBe('GUTCAP/MINTAUTH/V2');
+    expect(msg.readBigUInt64LE(50)).toBe(ORDER_ID);              // order_id at prefix(18)+wallet(32)
+    expect(msg.readBigUInt64LE(58)).toBe(5_990_000n);            // amount, из payload'а
+    expect(msg[66]).toBe(0);                                     // currency (SOL)
+    expect(msg.readBigUInt64LE(99)).toBe(ORDER_ID);              // nonce at prefix+wallet+order_id+amount+currency+hash
 
     // settle consumes the order escrow; grant consumes a different, unoccupied PDA
     expect(settle.keys[1]!.pubkey.equals(orderPda(buyer, ORDER_ID))).toBe(true);

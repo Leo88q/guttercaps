@@ -61,7 +61,9 @@ pub const REFUND_AFTER_SLOTS: u64 = 216_000;
 /// Leaves per settle are bounded by transaction size long before this.
 pub const MAX_SPECS: usize = 10;
 /// MintAuth message domain prefix; the TS twin lives in backend/src/phasev.ts.
-pub const MINT_AUTH_PREFIX: &[u8] = b"GUTCAP/MINTAUTH/V1";
+// V2 (находка 55): в подписанное сообщение добавлены сумма и валюта оплаты. Версия префикса поднята,
+// чтобы подпись V1 нельзя было предъявить новой программе (и наоборот) после апгрейда.
+pub const MINT_AUTH_PREFIX: &[u8] = b"GUTCAP/MINTAUTH/V2";
 /// Namespace split, находка 1 (`reports/INDEPENDENT-CODE-REVIEW-PROGRESS.md` §1).
 ///
 /// `settle_pack` and `grant_mint` verify the SAME `MintAuth` message: wallet, order_id, specs_hash,
@@ -100,13 +102,19 @@ pub struct LeafProofArgs {
 }
 
 /// What the MINT_ORACLE signs. Byte layout of the signed message:
-/// prefix ‖ wallet ‖ order_id(le) ‖ specs_hash ‖ nonce(le) ‖ expires_at_slot(le).
+/// prefix ‖ wallet ‖ order_id(le) ‖ amount(le) ‖ currency ‖ specs_hash ‖ nonce(le) ‖ expires_at_slot(le).
 /// `nonce` is pinned to the order id: an order settles exactly once, so a
 /// signature can never be replayed against another order.
+///
+/// Находка 55: `amount`/`currency` входят в подпись, потому что `buy_pack` принимает сумму от покупателя
+/// как есть — таблицы цен в этой программе нет. Единственный, кто знает цену, — оракул: он подписывает
+/// ровно ту сумму, которую backend сверил с заказом, а `settle_pack` требует совпадения с эскроу.
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MintAuth {
     pub wallet: Pubkey,
     pub order_id: u64,
+    pub amount: u64,
+    pub currency: u8,
     pub specs_hash: [u8; 32],
     pub nonce: u64,
     pub expires_at_slot: u64,
@@ -137,10 +145,12 @@ pub fn specs_hash(specs: &[LeafSpec]) -> [u8; 32] {
 }
 
 pub fn mint_auth_message(auth: &MintAuth) -> Vec<u8> {
-    let mut m = Vec::with_capacity(MINT_AUTH_PREFIX.len() + 32 + 8 + 32 + 8 + 8);
+    let mut m = Vec::with_capacity(MINT_AUTH_PREFIX.len() + 32 + 8 + 8 + 1 + 32 + 8 + 8);
     m.extend_from_slice(MINT_AUTH_PREFIX);
     m.extend_from_slice(auth.wallet.as_ref());
     m.extend_from_slice(&auth.order_id.to_le_bytes());
+    m.extend_from_slice(&auth.amount.to_le_bytes());
+    m.push(auth.currency);
     m.extend_from_slice(&auth.specs_hash);
     m.extend_from_slice(&auth.nonce.to_le_bytes());
     m.extend_from_slice(&auth.expires_at_slot.to_le_bytes());
@@ -951,6 +961,13 @@ pub fn settle_pack_handler<'info>(
     require!(
         specs_hash(&args.specs) == auth.specs_hash,
         SettleError::SpecsMismatch
+    );
+    // Находка 55: подпись покрывает и деньги. `buy_pack` пишет в заказ ту сумму, которую прислал
+    // покупатель (своей таблицы цен у программы нет), поэтому авторизация обязана связывать эскроу с
+    // тем, что оракул проверил в заказе: иначе подпись «на пакет» годилась бы для эскроу на любую сумму.
+    require!(
+        auth.amount == order.amount && auth.currency == order.currency,
+        SettleError::BadAmount
     );
     verify_oracle_signature(
         &ctx.accounts.instructions.to_account_info(),

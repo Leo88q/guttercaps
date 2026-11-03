@@ -39,11 +39,15 @@ describe('byte twins of programs/settle', () => {
   it('MintAuth message layout + oracle signature verifies', () => {
     const oracle = Keypair.generate();
     const auth: MintAuth = {
-      wallet: BUYER.publicKey, orderId: 42n, specsHash: Buffer.alloc(32, 7), nonce: 42n, expiresAtSlot: 999n,
+      wallet: BUYER.publicKey, orderId: 42n, amount: 599_000_000n, currency: 1,
+      specsHash: Buffer.alloc(32, 7), nonce: 42n, expiresAtSlot: 999n,
     };
     const msg = pv.mintAuthMessage(auth);
-    expect(msg.subarray(0, 18).toString()).toBe('GUTCAP/MINTAUTH/V1');
-    expect(msg.length).toBe(18 + 32 + 8 + 32 + 8 + 8);
+    expect(msg.subarray(0, 18).toString()).toBe('GUTCAP/MINTAUTH/V2');
+    // Находка 55: сумма (u64 LE) и валюта (u8) входят в подписанное сообщение
+    expect(msg.length).toBe(18 + 32 + 8 + 8 + 1 + 32 + 8 + 8);
+    expect(msg.readBigUInt64LE(18 + 32 + 8)).toBe(599_000_000n);
+    expect(msg[18 + 32 + 8 + 8]).toBe(1);
     expect(msg.subarray(18, 50).equals(Buffer.from(BUYER.publicKey.toBytes()))).toBe(true);
     const sig = pv.signMintAuth(oracle, auth);
     expect(ed25519.verify(base58Decode(sig), msg, oracle.publicKey.toBytes())).toBe(true);
@@ -100,8 +104,12 @@ describe('settle-auth issuance', () => {
     expect(p1.specs).toHaveLength(5);
     expect(p1.auth.expiresAtSlot).toBe('3500');
     // signature binds the payload's specs
+    // Находка 55: авторизация подписывает ту же сумму и валюту, что лежат в заказе/эскроу
+    expect(p1.auth.amount).toBe(o.amount);
+    // валюта в подписи — код программы (SOL 0 / USDC 1 / CG 2), а не строка заказа
+    expect(p1.auth.currency).toBe(o.currency === 'SOL' ? 0 : o.currency === 'USDC' ? 1 : 2);
     const auth: MintAuth = {
-      wallet: BUYER.publicKey, orderId: BigInt(o.orderId),
+      wallet: BUYER.publicKey, orderId: BigInt(o.orderId), amount: BigInt(p1.auth.amount), currency: p1.auth.currency,
       specsHash: pv.specsHash(p1.specs.map((x) => ({ ...x, collection: new PublicKey(x.collection) }))),
       nonce: BigInt(o.orderId), expiresAtSlot: 3500n,
     };

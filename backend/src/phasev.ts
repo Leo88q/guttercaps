@@ -27,7 +27,8 @@ export const BUBBLEGUM_V2 = new PublicKey('BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK75
 export const MPL_CORE = new PublicKey('CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d');
 export const MPL_NOOP = new PublicKey('mnoopTCrg4p8ry25e4bcWA9XZjbNjMTfgYVGGEdRsf3');
 export const ACCOUNT_COMPRESSION = new PublicKey('mcmt6YrQEMKw8Mw43FmpRLmf7BqRnFMKmAcbxE3xkAW');
-export const MINT_AUTH_PREFIX = Buffer.from('GUTCAP/MINTAUTH/V1');
+// V2 (находка 55): подпись покрывает сумму и валюту оплаты — см. `programs/settle/src/lib.rs`.
+export const MINT_AUTH_PREFIX = Buffer.from('GUTCAP/MINTAUTH/V2');
 /** Grant order ids live above 2^63 so they can never collide with pack orders. */
 export const GRANT_ID_BASE = 1n << 63n;
 /** Маркер «specs этого заказа сейчас выдаёт другой запрос» (находка 30). */
@@ -76,6 +77,9 @@ export const specsHash = (specs: LeafSpec[]): Buffer =>
 export interface MintAuth {
   wallet: PublicKey;
   orderId: bigint;
+  /** Находка 55: сколько и в какой валюте заплачено за заказ (для grant'а — нули). */
+  amount: bigint;
+  currency: number;
   specsHash: Buffer;
   nonce: bigint;
   expiresAtSlot: bigint;
@@ -86,6 +90,8 @@ export function mintAuthMessage(a: MintAuth): Buffer {
     MINT_AUTH_PREFIX,
     Buffer.from(a.wallet.toBytes()),
     u64le(a.orderId),
+    u64le(a.amount),
+    Buffer.from([a.currency]),
     a.specsHash,
     u64le(a.nonce),
     u64le(a.expiresAtSlot),
@@ -144,15 +150,26 @@ export interface SettlePayload {
   treeConfig: string;
   orderPda: string | null;
   grantReceipt: string | null;
-  auth: { wallet: string; orderId: string; specsHash: string; nonce: string; expiresAtSlot: string };
+  auth: { wallet: string; orderId: string; amount: string; currency: number; specsHash: string; nonce: string; expiresAtSlot: string };
   signature: string;
   specs: { collection: string; name: string; symbol: string; uri: string; collectionIdx: number; rarity: number; gameIndex: number }[];
 }
 
-function payloadFor(wallet: string, authOrderId: bigint, specs: (LeafSpec & { collectionIdx: number; rarity: number; gameIndex: number })[], oracle: Keypair, slot: number, orderIdForPda: number | null): SettlePayload {
+function payloadFor(
+  wallet: string,
+  authOrderId: bigint,
+  specs: (LeafSpec & { collectionIdx: number; rarity: number; gameIndex: number })[],
+  oracle: Keypair,
+  slot: number,
+  orderIdForPda: number | null,
+  /** Находка 55: сумма и валюта, которые оракул засвидетельствовал. У grant'а денег нет. */
+  order: { amount: bigint; currency: number } = { amount: 0n, currency: 0 },
+): SettlePayload {
   const auth: MintAuth = {
     wallet: new PublicKey(wallet),
     orderId: authOrderId,
+    amount: order.amount,
+    currency: order.currency,
     specsHash: specsHash(specs),
     nonce: authOrderId,
     expiresAtSlot: BigInt(slot + AUTH_TTL_SLOTS),
@@ -170,6 +187,8 @@ function payloadFor(wallet: string, authOrderId: bigint, specs: (LeafSpec & { co
     auth: {
       wallet,
       orderId: authOrderId.toString(),
+      amount: auth.amount.toString(),
+      currency: auth.currency,
       specsHash: Buffer.from(auth.specsHash).toString('hex'),
       nonce: auth.nonce.toString(),
       expiresAtSlot: auth.expiresAtSlot.toString(),
@@ -265,7 +284,11 @@ export async function settleAuthForOrder(
     collectionIdx: x.collectionIdx, rarity: x.rarity, gameIndex: x.gameIndex,
   }));
   const slot = await deps.connection.getSlot('confirmed');
-  const payload = payloadFor(wallet, BigInt(id), specs, deps.oracle ?? loadOracle(), slot, id);
+  // Находка 55: подписывается ровно та сумма и валюта, что лежат в эскроу на цепи — их же требует
+  // `settle_pack` (`auth.amount == order.amount && auth.currency == order.currency`).
+  const payload = payloadFor(wallet, BigInt(id), specs, deps.oracle ?? loadOracle(), slot, id, {
+    amount: BigInt(row.amount), currency: CURRENCY_CODE[row.currency],
+  });
   return { ...payload, status: 'paid' };
 }
 

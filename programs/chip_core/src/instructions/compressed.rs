@@ -1407,6 +1407,10 @@ pub struct CancelStaleClaimFusion<'info> {
     pub owner_cg: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
+    /// Находки 47 и 56: бустер списан коммитом; при откате по таймауту оракула он возвращается.
+    /// Опционален (см. `cancel_stale_fusion`): без буста PDA `items` может не существовать.
+    #[account(mut)]
+    pub items: Option<Box<Account<'info, PlayerItems>>>,
     // remaining_accounts: the 3 material claim accounts (mut), in pending order.
 }
 
@@ -1437,6 +1441,29 @@ pub fn cancel_stale_claim_fusion<'info>(
             fee,
         )?;
         ctx.accounts.ledger.release(0, 0, fee, 0)?;
+    }
+
+    // Находки 47 и 56: бустер, списанный `fuse_claims_commit`, возвращается, если исход не наступил.
+    if ctx.accounts.pending.boosted {
+        let items = ctx
+            .accounts
+            .items
+            .as_mut()
+            .ok_or(ChipError::NoBooster)?;
+        let (expect_items, _) = Pubkey::find_program_address(
+            &[b"items", ctx.accounts.owner.key().as_ref()],
+            ctx.program_id,
+        );
+        require_keys_eq!(items.key(), expect_items, ChipError::Unauthorized);
+        require_keys_eq!(items.owner, ctx.accounts.owner.key(), ChipError::Unauthorized);
+        items.boosters = items
+            .boosters
+            .checked_add(1)
+            .ok_or(ChipError::Overflow)?;
+        msg!(
+            "cancel_stale_claim_fusion: booster returned, boosters={}",
+            items.boosters
+        );
     }
 
     require!(
