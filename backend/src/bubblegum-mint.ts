@@ -23,7 +23,7 @@ import { upsert } from './sql.ts';
 import { deriveBubblegumLeafAssetId } from './das.ts';
 import { pityBeforeFor, rollPack, type MintedChip, type PackOrderRow } from './pack-orders.ts';
 import { CORE_COLLECTIONS } from './config.ts';
-import { ChainOpInFlight, findChainOp, inFlight, opPayload, submitChainOp } from './chain-ops.ts';
+import { ChainOpInFlight, findChainOp, inFlight, opPayload, submitChainOp, updateChainOp } from './chain-ops.ts';
 import { base58Encode } from './base58.ts';
 
 export const BUBBLEGUM_PROGRAM = new PublicKey('BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY');
@@ -152,6 +152,21 @@ export interface ChipToMint { collectionIdx: number; rarity: number; gameIndex: 
 export interface MintOp { kind: 'phaseg_mint'; bizKey: string; payload: ChipToMint }
 export type MintSender = (order: PackOrderRow, chip: ChipToMint, op?: MintOp) => Promise<void>;
 
+/**
+ * Находка 33. `assetId` выводится из номера листа, а номер листа — предсказание (`num_minted`,
+ * прочитанный ДО минта). Если между чтением и подтверждением в то же дерево минтнул кто-то ещё,
+ * назначенный лист неизвестен, и записанный `assetId` будет чужим: имя assetId — ключ регистрации в
+ * DAS, поэтому «угадать» здесь значит навсегда похоронить оплаченный чип (а в DAS появится чип без
+ * строки в проекции). Такой минт не регистрируется вообще: заказ остаётся `paid` с пометкой
+ * `mint_uncertain`, а тик останавливается — счётчик листьев сдвинут и планировать по нему нельзя.
+ */
+export class LeafIndexUncertain extends Error {
+  constructor(readonly expected: number, readonly observed: number) {
+    super(`leaf index ${expected} was not assigned: num_minted is now ${observed} (mint in the same tree raced this one)`);
+    this.name = 'LeafIndexUncertain';
+  }
+}
+
 /** Allocate the next per-collection chip number (`SYMBOL #n`). Gaps on failure are fine. */
 export function nextGameIndex(db: Db, collectionIdx: number): number {
   db.run(
@@ -181,6 +196,12 @@ export async function processPaidOrders(
      * payload'а, а нумерация листьев и `game_index` не разъезжаются (пп. 8, 33, 72).
      */
     ledger?: boolean;
+    /**
+     * Находка 33: перечитать `num_minted` ПОСЛЕ подтверждённого минта. Номер листа, а значит и
+     * `assetId`, — предсказание; проверка `after === predicted + 1` доказывает, что лист достался нам.
+     * Без неё предсказание принимается на веру (и это видно в логе).
+     */
+    leafAfter?: () => Promise<number>;
   },
   t = now(),
 ): Promise<{ mintedOrders: number; mintedChips: number }> {
@@ -219,7 +240,19 @@ export async function processPaidOrders(
         }
         if (!reused) {
           await deps.sendMint(row, chip, deps.ledger ? { kind: MINT_OP_KIND, bizKey, payload: chip } : undefined);
-          leaf++;
+          // Находка 33: минт подтверждён — сверяем предсказанный лист с фактическим счётчиком дерева.
+          if (deps.leafAfter) {
+            const after = await deps.leafAfter();
+            if (after !== chip.leafIndex + 1) {
+              // Операция не должна перепроецироваться с неверным payload'ом на следующем тике.
+              if (deps.ledger) {
+                const op = findChainOp(db, MINT_OP_KIND, bizKey);
+                if (op) updateChainOp(db, op.id, { status: 'orphaned', error: `mint_uncertain: ${chip.leafIndex}/${after}` });
+              }
+              throw new LeafIndexUncertain(chip.leafIndex, after);
+            }
+          }
+          leaf = chip.leafIndex + 1;
         }
         // Register the projection row: ownership/staking/fusion read `chips`.
         // Starter chips are soulbound-windowed by the program (STARTER_SOULBOUND_DAYS):
@@ -238,6 +271,13 @@ export async function processPaidOrders(
         }
       }
     } catch (e) {
+      if (e instanceof LeafIndexUncertain) {
+        // Находка 33: регистрировать нечего — неизвестно, какой лист наш. Заказ остаётся `paid`
+        // с причиной и попадает в разбор; остальные заказы тика тоже не планируются (счётчик сдвинут).
+        db.run(`UPDATE pack_orders SET mint_uncertain = ? WHERE id = ?`, e.message, row.id);
+        deps.log?.(`[phase-g] order ${row.id} MINT UNCERTAIN at chip ${done.length}/${roll.rarities.length}: ${e.message} — no asset id was written, a human must reconcile via DAS`);
+        break;
+      }
       // stays 'paid' with partial assets — next tick resumes. Logged, never
       // silent: a paid order that cannot mint is money waiting on a fix, and
       // an invisible retry loop hid exactly that on the first devnet run.

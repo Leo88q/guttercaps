@@ -18,10 +18,10 @@ const cgMint = () => process.env.CG_MINT ?? '';
 import { payToFor, sha256Hex } from './pack-orders.ts';
 import { checkPayment, type PaymentFetcher } from './preorders.ts';
 import { consumeOneOf } from './consumption.ts';
-import { nextGameIndex, type ChipToMint } from './bubblegum-mint.ts';
+import { LeafIndexUncertain, nextGameIndex, type ChipToMint } from './bubblegum-mint.ts';
 import { deriveBubblegumLeafAssetId } from './das.ts';
 import type { PublicKey } from '@solana/web3.js';
-import { ChainOpInFlight, findChainOp, inFlight, opPayload } from './chain-ops.ts';
+import { ChainOpInFlight, findChainOp, inFlight, opPayload, updateChainOp } from './chain-ops.ts';
 
 export const fusionMemo = (id: number) => `GCF|${id}`;
 
@@ -196,6 +196,8 @@ export async function processPaidFusions(
     tree: PublicKey;
     /** §1.1: результат fusion минчится через `chain_ops` — «отправлено, но не записано» не даёт второго листа. */
     ledger?: boolean;
+    /** Находка 33: перечитать `num_minted` после подтверждённого минта (см. `LeafIndexUncertain`). */
+    leafAfter?: () => Promise<number>;
   },
   t = now(),
 ): Promise<{ settled: number }> {
@@ -239,7 +241,17 @@ export async function processPaidFusions(
         }
         if (!reused) {
           await deps.sendChip(row.wallet, chip, deps.ledger ? { kind: 'phaseg_fusion_mint', bizKey, payload: chip } : undefined);
-          leaf++;
+          if (deps.leafAfter) {
+            const after = await deps.leafAfter();
+            if (after !== chip.leafIndex + 1) {
+              if (deps.ledger) {
+                const op = findChainOp(db, 'phaseg_fusion_mint', bizKey);
+                if (op) updateChainOp(db, op.id, { status: 'orphaned', error: `mint_uncertain: ${chip.leafIndex}/${after}` });
+              }
+              throw new LeafIndexUncertain(chip.leafIndex, after);
+            }
+          }
+          leaf = chip.leafIndex + 1;
         }
         db.run(
           upsert('chips', ['asset', 'owner', 'collection_idx', 'rarity', 'level', 'flags', 'lock_until', 'origin', 'origin_signature', 'minted_at', 'source'], ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'origin = excluded.origin', 'minted_at = excluded.minted_at', 'source = excluded.source']),
@@ -250,7 +262,12 @@ export async function processPaidFusions(
           db.run(`UPDATE phaseg_fusions SET result_assets = ? WHERE id = ?`, JSON.stringify(done), row.id);
         }
       }
-    } catch {
+    } catch (e) {
+      if (e instanceof LeafIndexUncertain) {
+        // Находка 33: лист не доказан — assetId не пишем, fusion остаётся `paid` с причиной.
+        db.run(`UPDATE phaseg_fusions SET mint_uncertain = ? WHERE id = ?`, e.message, row.id);
+        break;
+      }
       continue;
     }
     finalizeFusionMint(db, row, done, success, t);

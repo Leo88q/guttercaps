@@ -1027,6 +1027,9 @@ export async function crank(log: (s: string) => void = console.log) {
           tree: phaseGTree,
           sendMint: makeChainMintSender(connection, phaseGAuthority, phaseGTree, sharedDb()),
           firstLeafIndex: () => chainFirstLeafIndex(connection, phaseGTree),
+          // Находка 33: номер листа — предсказание; после каждого подтверждённого минта счётчик
+          // дерева перечитывается, иначе чужой минт в то же дерево записывает чужой assetId.
+          leafAfter: () => chainFirstLeafIndex(connection, phaseGTree),
           log,
           ledger: true,
         });
@@ -1044,6 +1047,7 @@ export async function crank(log: (s: string) => void = console.log) {
             if (r.reused) throw new Error(`fusion mint op ${op.bizKey} is already confirmed — re-projected on the next tick`);
           },
           firstLeafIndex: () => chainFirstLeafIndex(connection, phaseGTree),
+          leafAfter: () => chainFirstLeafIndex(connection, phaseGTree),
           ledger: true,
         });
         if (f.settled > 0) log(`[crank] phase-G settled ${f.settled} fusions`);

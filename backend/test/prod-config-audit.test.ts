@@ -32,6 +32,14 @@ describe('прод-профиль гейтов (находки 10 и 60)', () =>
     expect(prodProfileProblems(prodExample)).toEqual([]);
     // Решение владельца 2026-11-03: политика отложена — значение названо в профиле явно.
     expect(prodExample.COMPLIANCE_ENFORCE).toBe('0');
+    // Находка 60: профиль ровно один. Решение владельца 2026-11-03 — фаза `full` (покупка идёт
+    // on-chain программой chip_core, backend-маршруты заказов отвечают 410). Второй файл подсказок
+    // обязан говорить то же самое, иначе деплой по одному из них поднимает другую фазу.
+    expect(prodExample.LAUNCH_PHASE).toBe('full');
+    const deployExample = parseEnvExample(path.join(root, 'ops/deploy/.env.example'));
+    for (const key of ['LAUNCH_PHASE', 'COMPLIANCE_ENFORCE', 'VITE_CLUSTER']) {
+      expect({ key, value: deployExample[key] }).toEqual({ key, value: prodExample[key] });
+    }
     expect(complianceProblem(prodExample.COMPLIANCE_ENFORCE)).toBeNull();
   });
 
