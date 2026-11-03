@@ -56,7 +56,7 @@ describe('находка 28: прогресс fusion переживает отк
       JSON.stringify(rec({ assets: [A, B] })),            // не трио
       JSON.stringify(rec({ assets: [A, A, B] })),         // дубликаты
       JSON.stringify(rec({ burned: ['unknown-asset'] })), // сожжено то, чего нет в наборе
-      JSON.stringify(rec({ paySig: 5 })),
+      JSON.stringify(rec({ paySig: 5 as unknown as string })),
       JSON.stringify(rec({ wallet: '' })),
     ];
     for (const raw of bad) {

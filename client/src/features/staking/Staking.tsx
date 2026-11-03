@@ -24,8 +24,9 @@ import { fmtCg, fmtUnits, fmtDecimal, fmtPct, fmtProb, inputUnits, parseUnits, c
 import { chipName, rarityColor, rarityName, chipImageOf } from '@/shared/lib/rarity';
 import { useUiStore } from '@/app/store/ui';
 import { isMock } from '@/api/client';
-import { EXPLORER, MINTS } from '@/app/config';
+import { EXPLORER, FLAGS, MINTS } from '@/app/config';
 import { useT } from '@/shared/i18n';
+import { SoftStakingCard } from './SoftStakingCard';
 
 const TIER_IDS = ['flex', 'd30', 'd90', 'd180'] as const;
 
@@ -226,6 +227,10 @@ export default function Staking() {
           </div>
         )}
       </div>
+
+      {/* Находка 29: награды soft-стейкинга фишек копились в ledger, а забрать их было нечем.
+          Эндпоинты живут только в фазе G — в полном запуске раздела нет. */}
+      {FLAGS.launchPhase !== 'full' && <SoftStakingCard />}
 
       <Modal open={!!unstake} onClose={() => setUnstake(null)} title={`${t('staking.unstake')} · ${unstake ? tierName(unstake.tier) : ''}`}>
         {unstake && (() => {
