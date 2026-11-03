@@ -136,7 +136,9 @@ install -m 0600 /путь/к/crank-keypair.json ops/deploy/secrets/crank_keypair
 не соберётся (`:?` в compose), API в production не стартует. Id брать из
 `npm run program-ids -- manifest`, не из чата.
 
-`COMPLIANCE_ENFORCE`: `assertProductionConfig` в production **не стартует без `1`**.
+`COMPLIANCE_ENFORCE`: обязателен и явный — `1` (политика исполняется) или `0` (гейты выключены
+осознанно, старт печатает предупреждение `[compliance]`). Пусто или иное значение — отказ старта
+(`assertProductionConfig`, находки 10 и 60).
 Юридические docs держат временный `0`. В этих шаблонах стоит `1`, иначе контейнер в
 цикле. Сменить гейт — отдельное решение, не этот чеклист. `GEO_GATE=off` как в compose.
 

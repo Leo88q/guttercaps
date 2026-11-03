@@ -22,25 +22,26 @@ const repo = join(__dirname, '..', '..');
 const read = (p: string) => readFileSync(join(repo, p), 'utf8');
 
 describe('production launch config', () => {
-  it('compose has no silent COMPLIANCE_ENFORCE default, and no document claims 0 works in production', () => {
+  it('compose has no silent COMPLIANCE_ENFORCE default; 0 is allowed only as a stated choice with a warning', () => {
     const compose = read('ops/deploy/docker-compose.yaml');
     const runbook = read('ops/deploy/runbook.md');
     const config = read('backend/src/config.ts');
     const facts = {
       composeProduction: /NODE_ENV: production/.test(compose),
       composeDefault: (compose.match(/COMPLIANCE_ENFORCE: \$\{COMPLIANCE_ENFORCE:-(\d)\}/) ?? [])[1],
-      runbookSaysOff: /COMPLIANCE_ENFORCE=0/.test(runbook),
-      bootDemands: (config.match(/env\.COMPLIANCE_ENFORCE !== '(\d)'/) ?? [])[1],
+      runbookExplainsOff: /COMPLIANCE_ENFORCE=0/.test(runbook),
+      bootWarns: /console\.warn\(`\[compliance\]/.test(config),
     };
     console.log(JSON.stringify(facts));
     expect(facts.composeProduction).toBe(true);
-    // Находка 10 исправлена: тихого дефолта `0` нет (значение обязано быть сказано явно), поэтому
-    // дефолтный `ops:up` больше не наследует решение, которое противоречит fail-fast.
+    // Находка 10: тихого дефолта `0` нет — значение обязано быть сказано явно, поэтому дефолтный
+    // `ops:up` больше не наследует решение, которое противоречит fail-fast.
     expect(facts.composeDefault).toBeUndefined();
     expect(/COMPLIANCE_ENFORCE: \$\{COMPLIANCE_ENFORCE:\?/.test(compose)).toBe(true);
-    // и документ больше не утверждает, что 0 — production-режим: API с ним не стартует
-    expect(facts.runbookSaysOff).toBe(false);
-    expect(facts.bootDemands).toBe('1');
+    // Решение владельца 2026-11-03: `0` (политика отложена) допустим, но каждый старт пишет
+    // `[compliance]`-предупреждение, а runbook описывает этот режим как осознанный выбор.
+    expect(facts.runbookExplainsOff).toBe(true);
+    expect(facts.bootWarns).toBe(true);
   });
 
   it('with compliance enforced and no trusted country, every gated feature is closed', () => {
