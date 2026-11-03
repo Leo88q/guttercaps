@@ -30,6 +30,8 @@ export const ACCOUNT_COMPRESSION = new PublicKey('mcmt6YrQEMKw8Mw43FmpRLmf7BqRnF
 export const MINT_AUTH_PREFIX = Buffer.from('GUTCAP/MINTAUTH/V1');
 /** Grant order ids live above 2^63 so they can never collide with pack orders. */
 export const GRANT_ID_BASE = 1n << 63n;
+/** Маркер «specs этого заказа сейчас выдаёт другой запрос» (находка 30). */
+const SPECS_RESERVED = '\u0000reserved';
 /** Oracle authorizations live ~10 minutes (slots at ~400 ms). */
 export const AUTH_TTL_SLOTS = 1500;
 
@@ -228,11 +230,34 @@ export async function settleAuthForOrder(
   type StoredSpec = SettlePayload['specs'][number];
   let stored = row.settle_specs ? (JSON.parse(row.settle_specs) as StoredSpec[]) : null;
   if (!stored) {
-    const pityBefore = pityBeforeFor(db, wallet, row.sku, row.id);
-    const roll = rollPack(row.seed, row.id, row.sku, row.qty, pityBefore, row.featured_idx);
-    const fresh = specsForRoll(db, wallet, roll);
-    stored = fresh.map((x) => ({ ...x, collection: x.collection.toBase58() }));
-    db.run(`UPDATE pack_orders SET settle_specs = ? WHERE id = ?`, JSON.stringify(stored), id);
+    // Находка 30: два запроса читали строку без `settle_specs`, каждый независимо выделял game indices
+    // и безусловно записывал свой набор. Исполнить на цепи можно любую из двух подписей, а регистрация
+    // ищет в DAS имена из ПОСЛЕДНЕГО набора — заказ оплачен, выдача не сходится. Право выдать specs
+    // забирает один писатель (CAS по пустой колонке); второй подписывает уже сохранённый набор, а если
+    // набор в этот момент ещё выдают — получает 409 и повторяет запрос.
+    const reserve = db.run(
+      `UPDATE pack_orders SET settle_specs = ? WHERE id = ? AND (settle_specs IS NULL OR settle_specs = '')`,
+      SPECS_RESERVED, id,
+    );
+    if (Number(reserve.changes) === 1) {
+      try {
+        const pityBefore = pityBeforeFor(db, wallet, row.sku, row.id);
+        const roll = rollPack(row.seed, row.id, row.sku, row.qty, pityBefore, row.featured_idx);
+        const fresh = specsForRoll(db, wallet, roll);
+        stored = fresh.map((x) => ({ ...x, collection: x.collection.toBase58() }));
+        db.run(`UPDATE pack_orders SET settle_specs = ? WHERE id = ?`, JSON.stringify(stored), id);
+      } catch (e) {
+        // выдача сорвалась — снимаем бронь, чтобы заказ можно было авторизовать повторно
+        db.run(`UPDATE pack_orders SET settle_specs = NULL WHERE id = ? AND settle_specs = ?`, id, SPECS_RESERVED);
+        throw e;
+      }
+    } else {
+      const again = db.get<{ settle_specs: string | null }>(`SELECT settle_specs FROM pack_orders WHERE id = ?`, id)?.settle_specs;
+      if (!again || again === SPECS_RESERVED) {
+        throw new ServiceError(409, 'settle_auth_busy', 'The specs for this order are being issued right now — retry in a second');
+      }
+      stored = JSON.parse(again) as StoredSpec[];
+    }
   }
   const specs = stored.map((x) => ({
     collection: new PublicKey(x.collection), name: x.name, symbol: x.symbol, uri: x.uri,
