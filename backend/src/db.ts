@@ -426,6 +426,10 @@ CREATE TABLE IF NOT EXISTS pack_orders (
   tx_sig      TEXT,
   settle_sig  TEXT,                               -- phase V: the settle_pack tx that minted this order
   settle_specs TEXT,                              -- phase V: LeafSpec[] issued at settle-auth (names are the DAS registration key)
+  settle_leaves INTEGER,                          -- находка 54: сколько листьев реально выпустил settle_pack (событие PackSettled)
+  refunded_amount TEXT,                           -- находка 54: возврат по refund_pack (PackRefunded), нативные единицы
+  refunded_at  INTEGER,
+  refund_sig   TEXT,
   assets      TEXT,                               -- JSON [{assetId, collectionIdx, rarity, gameIndex}]
   created_at  INTEGER NOT NULL,
   paid_at     INTEGER,
@@ -1669,6 +1673,14 @@ export class Db {
     }
     if (!ch.has('index_attempts')) this.raw.exec(`ALTER TABLE chips ADD COLUMN index_attempts INTEGER NOT NULL DEFAULT 0`);
     if (!ch.has('last_played')) this.raw.exec(`ALTER TABLE chips ADD COLUMN last_played INTEGER`);
+    // находка 54: события `settle` теперь декодируются, и их поля надо куда-то класть
+    const po54 = new Set((this.raw.prepare(`PRAGMA table_info(pack_orders)`).all() as { name: string }[]).map((c) => c.name));
+    if (po54.size > 0) {
+      if (!po54.has('settle_leaves')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN settle_leaves INTEGER`);
+      if (!po54.has('refunded_amount')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN refunded_amount TEXT`);
+      if (!po54.has('refunded_at')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN refunded_at INTEGER`);
+      if (!po54.has('refund_sig')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN refund_sig TEXT`);
+    }
     if (!ch.has('play_pulsed_at')) this.raw.exec(`ALTER TABLE chips ADD COLUMN play_pulsed_at INTEGER`);
     // backlog #23: the lookup-table half of the Switchboard rent. `lut_slot` rides along with the job
     // (the randomness account is already gone when the table becomes closable), `lut_closed_at` marks
