@@ -67,6 +67,73 @@ export function buildBurnV2Ix(proof: BubblegumProof, payer: PublicKey): Transact
 
 export type PhaseGFusionStage = 'intent' | 'burning' | 'paying' | 'confirming' | 'minting' | 'done';
 
+// ---------------------------------------------------------------- прогресс fusion (находка 28)
+//
+// Клиентский сценарий сжигает три материала ТРЕМЯ отдельными транзакциями, потом платит комиссию и
+// подтверждает. Отказ кошелька, пропавший proof или ошибка на комиссии оставляли уже сожжённые
+// материалы уничтоженными, а идентификатор интента и прогресс сжигания нигде не сохранялись: повторный
+// запуск создавал новый интент на те же (уже сгоревшие) чипы и падал, компенсации не было.
+//
+// Теперь прогресс пишется в хранилище после каждого шага, и следующий запуск (в том числе после
+// перезагрузки страницы) досылает недостающее в ТОТ ЖЕ интент: сжигаются только несожжённые
+// материалы, комиссия платится один раз, подтверждение идёт по сохранённым подписям.
+export interface FusionProgress {
+  fusionId: number;
+  /** Тот же набор, что уходил в `POST /fusion/order` (материалы уже сожжены — выбрать их заново нельзя). */
+  assets: string[];
+  /** Что уже сожжено в этом интенте (повторно не сжигаем: второй burn того же листа невозможен). */
+  burned: string[];
+  /** Комиссия оплачена — повторно не платим. */
+  paySig: string | null;
+  /** Подпись последнего сжигания: её ждёт `confirm` (само сжигание проверяется по DAS). */
+  burnSig: string | null;
+  createdAt: number;
+  wallet: string;
+}
+
+export interface ProgressStore { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void }
+const FUSION_KEY = 'gc:pendingFusion';
+/** Сутки — это и есть TTL интента на бэкенде: позже материалы уже никому не обещаны, досылать нельзя. */
+export const FUSION_PROGRESS_TTL_MS = 24 * 60 * 60 * 1000;
+
+export function rememberFusionProgress(store: ProgressStore | null, p: FusionProgress): void {
+  try { store?.setItem(FUSION_KEY, JSON.stringify(p)); } catch { /* приватный режим: переживём */ }
+}
+
+/** Запись читается только валидной и только свежей: чужая/испорченная строка не запускает «восстановление». */
+export function rememberedFusionProgress(store: ProgressStore | null, nowMs = Date.now()): FusionProgress | null {
+  let raw: string | null;
+  try { raw = store?.getItem(FUSION_KEY) ?? null; } catch { return null; }
+  if (!raw) return null;
+  let j: unknown;
+  try { j = JSON.parse(raw); } catch { return null; }
+  const o = j as Partial<FusionProgress> | null;
+  if (!o || typeof o !== 'object') return null;
+  const { fusionId, assets, burned, paySig, burnSig, createdAt, wallet } = o;
+  if (!Number.isInteger(fusionId) || (fusionId as number) <= 0) return null;
+  if (!Array.isArray(assets) || assets.length !== 3 || new Set(assets).size !== 3) return null;
+  if (!assets.every((a) => typeof a === 'string' && a.length > 0)) return null;
+  if (!Array.isArray(burned) || !burned.every((a) => typeof a === 'string')) return null;
+  if (!burned.every((a) => (assets as string[]).includes(a))) return null;
+  if (paySig !== null && typeof paySig !== 'string') return null;
+  if (burnSig !== null && typeof burnSig !== 'string') return null;
+  if (typeof createdAt !== 'number' || !Number.isFinite(createdAt)) return null;
+  if (typeof wallet !== 'string' || wallet.length === 0) return null;
+  if (nowMs - createdAt > FUSION_PROGRESS_TTL_MS) return null;
+  return {
+    fusionId: fusionId as number, assets: assets as string[], burned: burned as string[],
+    paySig: paySig as string | null, burnSig: burnSig as string | null, createdAt, wallet,
+  };
+}
+
+export function forgetFusionProgress(store: ProgressStore | null): void {
+  try { store?.removeItem(FUSION_KEY); } catch { /* ignore */ }
+}
+
+/** Материалы, которые ещё надо сжечь (детерминированно, в порядке исходного набора). */
+export const assetsLeftToBurn = (p: Pick<FusionProgress, 'assets' | 'burned'>): string[] =>
+  p.assets.filter((a) => !p.burned.includes(a));
+
 export interface PhaseGFusionResult {
   success: boolean;
   resultAssets: string[];
@@ -84,21 +151,81 @@ export async function runPhaseGFusion(args: {
   signer?: WalletLike;
   onStage?: (s: PhaseGFusionStage) => void;
   sleep?: (ms: number) => Promise<void>;
+  /** Хранилище прогресса (в браузере — localStorage); null/отсутствует — прогресс не сохраняется. */
+  store?: ProgressStore | null;
 }): Promise<PhaseGFusionResult> {
+  return fusionFlow(args, null);
+}
+
+/**
+ * Находка 28: досидеть прерванный fusion, не создавая новый интент. Материалы уже могли быть сожжены —
+ * поэтому набор берётся из сохранённой записи, а не из выбора на странице. `null` — досылать нечего.
+ */
+export async function resumePhaseGFusion(args: {
+  connection: Connection;
+  signer?: WalletLike;
+  onStage?: (s: PhaseGFusionStage) => void;
+  sleep?: (ms: number) => Promise<void>;
+  store?: ProgressStore | null;
+  nowMs?: number;
+}): Promise<PhaseGFusionResult | null> {
+  const store = args.store ?? fusionStore();
+  const saved = rememberedFusionProgress(store, args.nowMs);
+  if (!saved) return null;
+  // Чужой кошелёк не должен досылать чужой fusion (подписи требует именно владелец материалов).
+  if (args.signer && args.signer.publicKey.toBase58() !== saved.wallet) return null;
+  return fusionFlow({ ...args, assets: saved.assets }, saved);
+}
+
+/** localStorage браузера (в тестах и в среде без хранилища — null). */
+export function fusionStore(): ProgressStore | null {
+  try { return typeof window === 'undefined' ? null : window.localStorage; } catch { return null; }
+}
+
+async function fusionFlow(
+  args: {
+    assets: string[];
+    connection: Connection;
+    signer?: WalletLike;
+    onStage?: (s: PhaseGFusionStage) => void;
+    sleep?: (ms: number) => Promise<void>;
+    store?: ProgressStore | null;
+  },
+  resumeFrom: FusionProgress | null,
+): Promise<PhaseGFusionResult> {
   const sleep = args.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const stage = (s: PhaseGFusionStage) => args.onStage?.(s);
+  const store = args.store ?? fusionStore();
   stage('intent');
-  const intent = await api.post('/fusion/order', { assets: args.assets });
-  const fusionId = intent.fusionId ?? 0;
-  let burnSig = 'mock-burn'.padEnd(40, '0');
-  let paySig = 'mock-pay'.padEnd(40, '0');
+  let progress: FusionProgress | null = resumeFrom;
+  let intent: { fusionId?: number; mint?: string | null; payTo?: string | null; payToOwner?: string | null; feeMicro?: string; memo?: string } = {};
+  if (!progress) {
+    intent = await api.post('/fusion/order', { assets: args.assets });
+    const freshId = intent.fusionId ?? 0;
+    if (!isMock()) {
+      progress = {
+        fusionId: freshId, assets: args.assets, burned: [], paySig: null, burnSig: null,
+        createdAt: Date.now(), wallet: args.signer?.publicKey.toBase58() ?? '',
+      };
+      // Запись появляется ДО первого сжигания: иначе падение между интентом и сжиганием теряло id.
+      rememberFusionProgress(store, progress);
+    }
+  } else {
+    // досылаем в тот же интент: эндпоинт чтения отдаёт реквизиты комиссии
+    intent = await api.get('/fusion/order/{id}', { path: { id: progress.fusionId } }) as typeof intent;
+  }
+  const fusionId = progress?.fusionId ?? (intent.fusionId ?? 0);
+  const burnt = progress?.burned ?? [];
+  let burnSig = progress?.burnSig ?? 'mock-burn'.padEnd(40, '0');
+  let paySig = progress?.paySig ?? 'mock-pay'.padEnd(40, '0');
   if (!isMock()) {
     if (!args.signer) throw new Error('Wallet is not connected');
     const { signer, connection } = args;
     const owner = signer.publicKey;
     const das = new DasClient({ endpoint: DAS_RPC_URL });
     stage('burning');
-    for (const asset of args.assets) {
+    // Находка 28: сжигаем только то, что ещё не сожжено в этом интенте.
+    for (const asset of assetsLeftToBurn({ assets: args.assets, burned: burnt })) {
       const proof = await das.getAssetWithProof(asset); // fresh: the root moved after the previous burn
       // DAS serves the full depth-long path; the top canopy nodes already live
       // in the tree account. Passing all 20 overflows the 1232-byte tx limit
@@ -108,18 +235,32 @@ export async function runPhaseGFusion(args: {
       const { maxDepth, canopyDepth } = canopyDepthFromTreeData(new Uint8Array(treeInfo.data));
       const burnProof = { ...proof, proof: trimProofForCanopy(proof.proof, maxDepth, canopyDepth) };
       burnSig = (await sendTx(connection, signer, [buildBurnV2Ix(burnProof, owner)])).signature;
+      burnt.push(asset);
+      // Прогресс фиксируется после КАЖДОГО сжигания: следующий запуск не сожжёт уже сгоревшее.
+      if (progress) {
+        progress = { ...progress, burned: [...burnt], burnSig };
+        rememberFusionProgress(store, progress);
+      }
     }
     stage('paying');
-    const mint = new PublicKey(intent.mint ?? '');
-    const payTo = new PublicKey(intent.payTo ?? '');
-    paySig = (await sendTx(connection, signer, [
-      createAtaIdempotentIx(owner, payTo, new PublicKey(intent.payToOwner ?? intent.payTo ?? ''), mint),
-      tokenTransferIx(associatedTokenAddress(mint, owner), payTo, owner, BigInt(intent.feeMicro ?? '0')),
-      memoInstruction(intent.memo ?? ''),
-    ])).signature;
+    if (!progress?.paySig) {
+      const mint = new PublicKey((intent.mint ?? '') as string);
+      const payTo = new PublicKey((intent.payTo ?? '') as string);
+      paySig = (await sendTx(connection, signer, [
+        createAtaIdempotentIx(owner, payTo, new PublicKey(intent.payToOwner ?? intent.payTo ?? ''), mint),
+        tokenTransferIx(associatedTokenAddress(mint, owner), payTo, owner, BigInt(intent.feeMicro ?? '0')),
+        memoInstruction(intent.memo ?? ''),
+      ])).signature;
+      if (progress) {
+        progress = { ...progress, burned: [...burnt], burnSig, paySig };
+        rememberFusionProgress(store, progress);
+      }
+    }
   }
   stage('confirming');
   await api.post('/fusion/order/{id}/confirm', { burnSig, paySig }, { path: { id: fusionId } });
+  // Подтверждено — запись больше не нужна (повторный запуск не должен досылать завершённый fusion).
+  forgetFusionProgress(store);
   stage('minting');
   let grantSent = false;
   for (let i = 0; i < 40; i++) {

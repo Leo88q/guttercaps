@@ -18,7 +18,7 @@ import { ClaimFusionFlow } from '@/chain/flows/claimFusionFlow';
 import { FusionFlow, successBps, type FusionFlowState } from '@/chain/flows/fusionFlow';
 import { FusionStages } from './FusionStages';
 import { FLAGS } from '@/app/config';
-import { runPhaseGFusion } from './phaseGFusion';
+import { resumePhaseGFusion, runPhaseGFusion } from './phaseGFusion';
 import { useTxStore, fusionId } from '@/app/store/txs';
 import { useUiStore } from '@/app/store/ui';
 import { ChipArt } from '@/shared/ui/ChipArt';
@@ -59,6 +59,27 @@ export default function Fusion() {
   const [pickFor, setPickFor] = useState<number | null>(null);
   const [flow, setFlow] = useState<FusionFlowState | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Находка 28: незавершённый fusion (частичное сжигание, неоплаченная комиссия) досылается сам при
+  // открытии страницы. Материалы уже сгорели — выбрать их заново нельзя, поэтому набор берётся из
+  // сохранённой записи, а не из состояния слотов. Один раз на открытие.
+  const [resuming, setResuming] = useState(false);
+  const resumedRef = useState(() => ({ done: false }))[0];
+  useEffect(() => {
+    if (resumedRef.done || isMock() || FLAGS.launchPhase === 'full' || !wallet) return;
+    resumedRef.done = true;
+    setResuming(true);
+    void resumePhaseGFusion({ connection, signer: wallet })
+      .then((r) => {
+        if (!r) return;
+        if (r.status === 'minted' && r.success) toast({ kind: 'success', title: { key: 'fusion.success' } });
+        else if (r.status === 'minted') toast({ kind: 'error', title: { key: 'fusion.failed' } });
+        void qc.invalidateQueries({ queryKey: ['me'] });
+        void qc.invalidateQueries({ queryKey: ['me', 'chips'] });
+      })
+      .catch((e: unknown) => toast({ kind: 'error', title: { key: 'screens.fusionStopped' }, error: e as Error }))
+      .finally(() => setResuming(false));
+  }, [connection, wallet, toast, qc, resumedRef]);
 
   // ?add=<asset> from the collection drawer
   useEffect(() => {
@@ -262,6 +283,7 @@ export default function Fusion() {
       </div>
 
       <div className="card stack">
+        {resuming && <p className="small" role="status">{t('screens.fusionResuming')}</p>}
         <div className="bench">
           {slots.map((s, i) => (
             <div key={i} className={`slot ${s ? 'filled' : 'slot-empty live-slot'}`} onClick={() => setPickFor(i)} style={s ? { border: 'none' } : undefined} aria-label={`${t('ui.slot')} ${i + 1}`}>

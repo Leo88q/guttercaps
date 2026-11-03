@@ -76,6 +76,7 @@ const screens = {
   "verifyNode": "Verificar por conta própria (Node.js)",
   "transactionDemo": "{action} (demo)",
   "fusionStopped": "Fusão interrompida",
+  "fusionResuming": "A concluir uma fusão interrompida — a queimar os materiais restantes e a pagar a taxa…",
   "bgSettling": "O worker em segundo plano está finalizando seus chips…",
   "localFinish": "O worker estava lento — finalizando com sua carteira",
   "fusionBgWait": "Mintando o resultado em segundo plano…",

@@ -75,6 +75,7 @@ const screens = {
   "verifyNode": "Verify independently (Node.js)",
   "transactionDemo": "{action} (demo)",
   "fusionStopped": "Fusion stopped",
+  "fusionResuming": "Finishing an interrupted fusion — burning the remaining materials and paying the fee…",
   "bgSettling": "The background worker is finishing your chips…",
   "localFinish": "The worker was slow — finishing with your wallet",
   "fusionBgWait": "Minting the result in the background…",
