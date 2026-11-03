@@ -19,7 +19,7 @@ import { FusionFlow, successBps, type FusionFlowState } from '@/chain/flows/fusi
 import { FusionStages } from './FusionStages';
 import { FLAGS } from '@/app/config';
 import { resumePhaseGFusion, runPhaseGFusion } from './phaseGFusion';
-import { useTxStore, fusionId } from '@/app/store/txs';
+import { useTxStore, claimFusionId, fusionId } from '@/app/store/txs';
 import { useUiStore } from '@/app/store/ui';
 import { ChipArt } from '@/shared/ui/ChipArt';
 import { CloseIcon } from '@/shared/ui/action-icons';
@@ -51,6 +51,7 @@ export default function Fusion() {
   const setPresets = (next: FusionPreset[]) => { setPresetsState(next); savePresets(walletKey, next); };
   const enqueue = useUiStore((s) => s.enqueueReveal);
   const upsertFusion = useTxStore((s) => s.upsertFusion);
+  const upsertClaimFusion = useTxStore((s) => s.upsertClaimFusion);
 
   const all = useMemo(() => (chips.data?.pages.flatMap((p) => p.items ?? []) ?? []).filter((c) => !c.flags?.soulbound && !(c.lockUntil && new Date(c.lockUntil).getTime() > Date.now()) && c.rarity! < 8), [chips.data]);
   const [slots, setSlots] = useState<(Chip | null)[]>([null, null, null]);
@@ -202,6 +203,15 @@ export default function Fusion() {
             wallet,
             lookupTable: LOOKUP_TABLE,
             onState: (s) => {
+              // Находка 46: залипший claim-фьюжн должен быть виден вне этого экрана — иначе
+              // закрытая вкладка уносит с собой и комиссию $CG, и три материала.
+              upsertClaimFusion({
+                id: claimFusionId(w, s.nonce), wallet: w, createdAt: Date.now(), updatedAt: Date.now(),
+                phase: s.phase, nonce: s.nonce.toString(), recipe: s.recipe, boosted: s.boosted,
+                resultCollectionIdx: s.resultCollectionIdx, materials: s.materials.map((m) => m.toBase58()),
+                randomness: s.randomness?.toBase58(), signatures: s.signatures,
+                error: s.error, errorDiagnostic: s.errorDiagnostic,
+              });
               setFlow({
                 phase: s.phase as FusionFlowState['phase'],
                 nonce: s.nonce,

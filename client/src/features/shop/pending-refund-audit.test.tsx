@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   send: vi.fn(),
   invalidate: vi.fn(),
   cancelStale: vi.fn(),
+  cancelClaimStale: vi.fn(),
 }));
 
 vi.mock('@/api/hooks', () => ({ usePendingOps: () => ({ data: mocks.pending, isLoading: false }) }));
@@ -46,6 +47,13 @@ vi.mock('@/chain/flows/fusionFlow', () => ({
     state: Record<string, unknown>;
     constructor(_deps: unknown, init: Record<string, unknown>) { this.state = { phase: 'stale', ...init }; }
     cancelStale = mocks.cancelStale;
+  },
+}));
+vi.mock('@/chain/flows/claimFusionFlow', () => ({
+  ClaimFusionFlow: class {
+    state: Record<string, unknown>;
+    constructor(_deps: unknown, init: Record<string, unknown>) { this.state = { phase: 'stale', ...init }; }
+    cancelStale = mocks.cancelClaimStale;
   },
 }));
 import { MINTS } from '@/app/config';
@@ -141,6 +149,33 @@ it('залипший фьюжн возвращает комиссию через
   fireEvent.click(btn);
   await waitFor(() => expect(mocks.cancelStale).toHaveBeenCalledTimes(1));
   await waitFor(() => expect(useTxStore.getState().fusions[`fusion:${buyer}:7`]).toBeUndefined());
+  expect((useUiStore.getState().toasts.at(-1)!.title as { key: string }).key).toBe('shop.refunded');
+  expect((useUiStore.getState().toasts.at(-1)!.body as { key: string }).key).toBe('shop.refundedFusion');
+});
+
+it('залипший claim-фьюжн возвращает комиссию через cancel_stale_claim_fusion', async () => {
+  await setLocale('en');
+  mocks.pending = { packs: [], compressed: [], fusions: [] };
+  mocks.cancelClaimStale.mockResolvedValue('CLAIMFUSIONREFUND');
+  const buyer = BUYER.toBase58();
+  const materials = [0, 1, 2].map(() => Keypair.generate().publicKey.toBase58());
+  useTxStore.setState({
+    packs: {},
+    fusions: {},
+    claimFusions: {
+      [`claimFusion:${buyer}:9`]: {
+        id: `claimFusion:${buyer}:9`, wallet: buyer, createdAt: 1, updatedAt: 1, phase: 'stale', nonce: '9',
+        recipe: 0, boosted: false, resultCollectionIdx: 1, materials, signatures: ['CLAIMCOMMIT'],
+      },
+    },
+  } as never);
+  mount();
+
+  const btn = await screen.findByRole('button', { name: t('shop.refund') });
+  fireEvent.click(btn);
+  await waitFor(() => expect(mocks.cancelClaimStale).toHaveBeenCalledTimes(1));
+  // запись уходит из реестра только после подтверждённого возврата
+  await waitFor(() => expect(useTxStore.getState().claimFusions[`claimFusion:${buyer}:9`]).toBeUndefined());
   expect((useUiStore.getState().toasts.at(-1)!.title as { key: string }).key).toBe('shop.refunded');
   expect((useUiStore.getState().toasts.at(-1)!.body as { key: string }).key).toBe('shop.refundedFusion');
 });

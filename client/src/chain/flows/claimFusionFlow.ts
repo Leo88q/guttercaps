@@ -23,7 +23,7 @@ import { fetchCollectionMetas, fetchGameConfig, fetchTreeMetas } from './packFlo
 
 type ClaimFusionPhase = 'idle' | 'signing' | 'committed' | 'revealing' | 'settling' | 'done' | 'stale' | 'error';
 
-interface ClaimFusionFlowState {
+export interface ClaimFusionFlowState {
   phase: ClaimFusionPhase;
   nonce: bigint;
   recipe: number;

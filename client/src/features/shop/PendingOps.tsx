@@ -14,7 +14,8 @@ import { usePendingOps } from '@/api/hooks';
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
 import { cancelStalePackIx } from '@/chain/ix/chipCore';
 import { FusionFlow } from '@/chain/flows/fusionFlow';
-import { fusionId, useActiveOps, useTxStore } from '@/app/store/txs';
+import { ClaimFusionFlow } from '@/chain/flows/claimFusionFlow';
+import { claimFusionId, fusionId, useActiveOps, useTxStore } from '@/app/store/txs';
 import { sendTx } from '@/chain/tx';
 import { EXPLORER, MINTS } from '@/app/config';
 import { useUiStore } from '@/app/store/ui';
@@ -47,6 +48,7 @@ export function PendingOps() {
   const wallet = useWalletLike();
   const active = useActiveOps(wallet?.publicKey?.toBase58());
   const upsertFusion = useTxStore((s) => s.upsertFusion);
+  const upsertClaimFusion = useTxStore((s) => s.upsertClaimFusion);
   const removeOp = useTxStore((s) => s.remove);
   const cfg = useGameConfig();
   const toast = useUiStore((s) => s.toast);
@@ -117,8 +119,52 @@ export function PendingOps() {
     onError: (e: unknown) => toast({ kind: 'error', title: { key: 'shop.refundFailed' }, error: e as Error }),
   });
 
+  // Находка 46, третья половина: залипший claim-фьюжн. Комиссия $CG лежит в `PendingClaimFusion`,
+  // три материала помечены `consumed`; вернуть их может только `cancel_stale_claim_fusion` с подписью
+  // владельца. До этого такой заход просто исчезал вместе с вкладкой.
+  const claimFusions = active.claimFusions.filter((f) => f.phase === 'stale');
+
+  const refundClaimFusion = useMutation({
+    mutationFn: async (f: (typeof claimFusions)[number]) => {
+      if (isMock()) return { signature: 'mock-claim-fusion-refund' };
+      if (!wallet) throw new Error(t('shop.walletRequired'));
+      const flow = new ClaimFusionFlow(
+        {
+          connection,
+          wallet,
+          onState: (st) => upsertClaimFusion({
+            id: claimFusionId(wallet.publicKey.toBase58(), st.nonce), wallet: wallet.publicKey.toBase58(),
+            createdAt: Date.now(), updatedAt: Date.now(), phase: st.phase, nonce: st.nonce.toString(),
+            recipe: st.recipe, boosted: st.boosted, resultCollectionIdx: st.resultCollectionIdx,
+            materials: st.materials.map((m) => m.toBase58()), randomness: st.randomness?.toBase58(),
+            signatures: st.signatures, error: st.error, errorDiagnostic: st.errorDiagnostic,
+          }),
+        },
+        {
+          recipe: f.recipe, boosted: f.boosted, nonce: BigInt(f.nonce), resultCollectionIdx: f.resultCollectionIdx,
+          materials: f.materials.map((m) => new PublicKey(m)),
+        },
+      );
+      flow.state = { ...flow.state, randomness: f.randomness ? new PublicKey(f.randomness) : undefined };
+      const signature = await flow.cancelStale();
+      return { signature };
+    },
+    onSuccess: (r, f) => {
+      toast({
+        kind: 'money',
+        title: { key: 'shop.refunded' },
+        body: { key: 'shop.refundedFusion', params: { recipe: f.recipe } },
+        href: r.signature === 'mock-claim-fusion-refund' ? undefined : EXPLORER.tx(r.signature),
+      });
+      removeOp(claimFusionId(wallet?.publicKey.toBase58() ?? f.wallet, BigInt(f.nonce)));
+      void qc.invalidateQueries({ queryKey: qk.pending });
+      void qc.invalidateQueries({ queryKey: ['me'] });
+    },
+    onError: (e: unknown) => toast({ kind: 'error', title: { key: 'shop.refundFailed' }, error: e as Error }),
+  });
+
   const packs = pending.data?.packs ?? [];
-  if (packs.length === 0 && staleFusions.length === 0) return null;
+  if (packs.length === 0 && staleFusions.length === 0 && claimFusions.length === 0) return null;
   const refundable = packs.filter((p) => p.status === 'stale' && !p.voucher);
 
   return (
@@ -151,6 +197,14 @@ export function PendingOps() {
           <div key={f.id} className="row between" style={{ gap: 8 }}>
             <KV k={`${t('shop.pendingFusion')} #${f.nonce}`} v={t('shop.pendingStale')} accent />
             <button className="btn btn-sm" type="button" disabled={refundFusion.isPending} onClick={() => refundFusion.mutate(f)}>
+              {t('shop.refund')}
+            </button>
+          </div>
+        ))}
+        {claimFusions.map((f) => (
+          <div key={f.id} className="row between" style={{ gap: 8 }}>
+            <KV k={`${t('shop.pendingFusion')} #${f.nonce}`} v={t('shop.pendingStale')} accent />
+            <button className="btn btn-sm" type="button" disabled={refundClaimFusion.isPending} onClick={() => refundClaimFusion.mutate(f)}>
               {t('shop.refund')}
             </button>
           </div>
