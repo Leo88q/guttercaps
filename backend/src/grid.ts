@@ -34,6 +34,11 @@ export const gridDailyLevel = (t: number) => (gridIsSunday(t) ? GRID.totalLevels
 // ---------------------------------------------------------------------------
 export const gridWeekStart = (week: number) => week * 7 * DAY + 4 * DAY;
 export interface GridContract { slot: number; district: number; depth: number; configLevel: number; seed: number }
+// Находка 44: список слотов контрактов выводится из `GRID.contractsPerDay`, а не из литерала: раньше
+// жёсткая тройка стояла в двух местах, и правка конфигурации (4 контракта в день) давала четвёртый контракт
+// в проверке `slot < contractsPerDay`, но не в доске и не в обратном поиске слота при закрытии попытки.
+export const GRID_CONTRACT_SLOTS: readonly number[] = Array.from({ length: GRID.contractsPerDay }, (_, i) => i);
+
 export const gridContractAt = (t: number, slot: number): GridContract => {
   const day = gridDay(t);
   const district = (((day * GRID.contractsPerDay + slot) % GRID.floodDistricts) + GRID.floodDistricts) % GRID.floodDistricts;
@@ -467,7 +472,7 @@ function settleSpecialAttempt(db: Db, wallet: string, attempt: { id: string; ass
     const t0 = (attempt as { created_at?: number }).created_at ?? t;
     const storedSeed = db.get<{ seed: number }>(`SELECT seed FROM grid_attempts WHERE id = ?`, attempt.id)?.seed ?? -1;
     // The contract board is re-derived from (day, slot); find which of today's offers this attempt was.
-    const contract = [0, 1, 2].map((slot) => gridContractAt(t0, slot)).find((c) => c.seed === storedSeed && c.configLevel === attempt.level);
+    const contract = GRID_CONTRACT_SLOTS.map((slot) => gridContractAt(t0, slot)).find((c) => c.seed === storedSeed && c.configLevel === attempt.level);
     if (contract) {
       const claimed = db.run(
         `INSERT INTO grid_contract_done (wallet, day, slot, asset, stars, moves, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(wallet, day, slot) DO NOTHING`,
@@ -689,7 +694,7 @@ export function gridMe(db: Db, wallet: string, t = now()) {
   const flood = db.all<{ district: number; points: number }>(`SELECT district, points FROM grid_flood WHERE week = ? ORDER BY district`, week);
   const cosmetics = db.all<{ id: number; kind: number; payload: string; signature: string }>(`SELECT id, kind, payload, signature FROM entitlements WHERE wallet = ? AND signature LIKE 'grid:%' ORDER BY id`, wallet)
     .map((r) => ({ id: r.id, kind: r.kind, payload: JSON.parse(r.payload) as Record<string, unknown>, signature: r.signature }));
-  const contracts = [0, 1, 2].map((slot) => {
+  const contracts = GRID_CONTRACT_SLOTS.map((slot) => {
     const c = gridContractAt(t, slot);
     const done = db.get<{ asset: string; stars: number; moves: number }>(`SELECT asset, stars, moves FROM grid_contract_done WHERE wallet = ? AND day = ? AND slot = ?`, wallet, gridDay(t), slot);
     return { ...c, size: generateLevel(c.configLevel, c.seed).size, done: done ?? null };
