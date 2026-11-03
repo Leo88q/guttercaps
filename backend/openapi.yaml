@@ -2451,6 +2451,8 @@ components:
         amount: { type: string, description: 'lamports / micro-USDC / micro-CG / micro-SKR after discounts, frozen FX (SOL=$110, SKR=$0.016, USDC=$1)' }
         maxLamports: { type: string, description: 'exact SOL lamports / micro-SKR (0 for USDC/$CG); passed to buy_pack as max_lamports' }
         priceUsdCents: { type: integer, description: 'USD price after discounts (what the program converts)' }
+        priceSource: { type: string, enum: [chain, package], description: 'chain: параметры SKU прочитаны из GameConfig (тех же, что видит buy_pack); package: конфигурацию прочитать не удалось и в силе таблица сборки — такую котировку цепь может отклонить (Slippage/SkuDisabled/DailyCapReached)' }
+        quotedAtSlot: { type: [integer, 'null'], description: 'слот, на котором прочитан GameConfig; null при priceSource=package' }
         rentReserveLamports: { type: string }
         solUsd: { type: number, description: 'frozen SOL/USD ($110)' }
         skrUsd: { type: number, description: 'frozen SKR/USD ($0.016)' }

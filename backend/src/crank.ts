@@ -60,6 +60,7 @@ import {
 import { DasClient, DasError, discoverLeafNonce, resolveClaimFromTreeAccount, type DasAssetWithProof } from './das.ts';
 import { TxError, fitsInTx, loadLookupTables, sendAndConfirm } from './tx.ts';
 import { reconcileChainOps } from './chain-ops.ts';
+import { toEconPack, voucherEconPack } from './econ-pack.ts';
 
 const LAMPORTS = 1_000_000_000;
 export const SKU_IDS = ['starter', 'standard', 'premium', 'limited'] as const;
@@ -137,25 +138,9 @@ export async function fetchGatewayReveal(fetchFn: FetchLike, gatewayUri: string,
   return { signature, recoveryId: j.recovery_id, value };
 }
 
-// ------------------------------------------------------------------ economy glue
-/** On-chain PackDef → economy PackDef so `expandRandomness` uses LIVE params (mirrors client packFlow.toEconPack). */
-export function toEconPack(sku: number, p: GameConfig['packs'][number]): EconPackDef {
-  const base = PACKS[SKU_IDS[sku]];
-  return {
-    ...base, chips: p.chips, priceUsdCents: p.priceUsdCents, priceCgMicro: p.priceCgMicro === 0n ? null : Number(p.priceCgMicro), oddsBps: p.oddsBps,
-    floor: p.floor as EconPackDef['floor'], dailyCap: p.dailyCap === 0 ? null : p.dailyCap,
-    pity: p.pityTier === 0 ? null : { tier: p.pityTier as 6, hardAt: p.pityHardAt, softStart: p.pitySoftStart, softStepBps: p.pitySoftStepBps },
-    pool: p.featuredOnly ? 'featured' : 'all',
-  };
-}
-/**
- * (#28) The synthetic PackDef a quest chip voucher is opened with — mirrors chip_core `PackDef::voucher`:
- * ONE chip, the template odds, no floor, no pity, all districts. `expandRandomness` then rolls exactly
- * what the program rolls (pity counter is irrelevant: `pity = null`).
- */
-export function voucherEconPack(p: Pick<PendingPack, 'voucherOdds'>): EconPackDef {
-  return { ...PACKS.starter, name: 'Quest chip', chips: 1, priceUsdCents: 0, priceCgMicro: null, oddsBps: p.voucherOdds, floor: 0, dailyCap: null, pity: null, pool: 'all' };
-}
+// ------------------------------------------------------------------ economy glue (см. econ-pack.ts)
+// Конверсии живут в отдельном модуле: они нужны и кранку, и котировке витрины (находка 73).
+export { toEconPack, voucherEconPack } from './econ-pack.ts';
 
 // ------------------------------------------------------------------ the worker
 export class Crank {

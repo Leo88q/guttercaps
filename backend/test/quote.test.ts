@@ -32,7 +32,24 @@ function priceUpdate(opts: { feedIdHex: string; price: bigint; exponent?: number
   return w.toBytes();
 }
 
+/**
+ * Он-чейн `DEFAULT_PACKS` (`programs/chip_core/src/economy.rs:204-262`) в том виде, в каком их создаёт `init_config`.
+ * Котировка (находка 73) читает цену, состав, лимит в день и `enabled` ИМЕННО отсюда, поэтому фикстура обязана
+ * повторять программу, а не пакетную таблицу сборки: иначе тест проверял бы несуществующую цепь.
+ * Отличия от `chainFixtures.DEFAULT_PACK` (он проще, для воркеров) здесь намеренно сохранены: у Starter 4 чипа,
+ * `daily_cap = 1`; у Limited `enabled = false` и `daily_cap = 5` — так цепь и задумана.
+ */
+const CHAIN_PACKS = [
+  { chips: 4, priceUsdCents: 199, priceCgMicro: 0n, oddsBps: [2900, 3000, 2500, 1200, 350, 50, 0, 0, 0], floor: 2, dailyCap: 1, pityTier: 0, pityHardAt: 0, pitySoftStart: 0, pitySoftStepBps: 0, featuredOnly: false, enabled: true },
+  { chips: 5, priceUsdCents: 599, priceCgMicro: 2_700_000_000n, oddsBps: [4200, 2400, 1600, 900, 600, 300, 0, 0, 0], floor: 1, dailyCap: 0, pityTier: 5, pityHardAt: 60, pitySoftStart: 30, pitySoftStepBps: 25, featuredOnly: false, enabled: true },
+  { chips: 5, priceUsdCents: 1499, priceCgMicro: 6_750_000_000n, oddsBps: [1700, 2100, 2200, 1800, 1200, 1000, 0, 0, 0], floor: 2, dailyCap: 0, pityTier: 5, pityHardAt: 40, pitySoftStart: 20, pitySoftStepBps: 40, featuredOnly: false, enabled: true },
+  { chips: 5, priceUsdCents: 2999, priceCgMicro: 0n, oddsBps: [1500, 1900, 2300, 2000, 1400, 900, 0, 0, 0], floor: 3, dailyCap: 5, pityTier: 5, pityHardAt: 25, pitySoftStart: 12, pitySoftStepBps: 60, featuredOnly: true, enabled: false },
+];
+
 /** Minimal Connection stub: only getMultipleAccountsInfo is used by the reader. */
+/** Limited выключен в `DEFAULT_PACKS` (так и задумано): тест дневного лимита включает его копией конфигурации. */
+let limitedEnabled = false;
+
 class FakeConnection {
   accounts = new Map<string, { owner: PublicKey; data: Uint8Array }>();
   calls = 0;
@@ -46,6 +63,7 @@ class FakeConnection {
       return { owner: PublicKey.default, data: Buffer.from(encodeGameConfig({
         treasury: PublicKey.default, cgMint: PublicKey.default, collectionsCreated: 10,
         pythSolUsdFeed: SOL_ACC, pythSkrUsdFeed: SKR_ACC,
+        packs: (limitedEnabled ? CHAIN_PACKS.map((p, i) => (i === 3 ? { ...p, enabled: true } : p)) : CHAIN_PACKS) as never,
       })), lamports: 1, executable: false, rentEpoch: 0 };
     }
     const a = this.accounts.get(key.toBase58());
@@ -240,10 +258,17 @@ describe('POST /packs/quote', () => {
     ingestTx(tx([{ program: 'chip_core', name: 'PackBought', data: { buyer: w, sku: 0, qty: 1, currency: 0, amount: '1', nonce: '1', randomness: Keypair.generate().publicKey.toBase58() } }], { blockTime: nowS() }), db);
     const starter = await c.post('/v1/packs/quote', { sku: 0, qty: 1, currency: 'SOL' });
     expect(starter.status).toBe(409); expect(starter.json.code).toBe('starter_claimed');
-    ingestTx(tx([{ program: 'chip_core', name: 'PackBought', data: { buyer: w, sku: 3, qty: 4, currency: 1, amount: '1', nonce: '2', randomness: Keypair.generate().publicKey.toBase58() } }], { blockTime: nowS() }), db);
-    expect((await c.post('/v1/packs/quote', { sku: 3, qty: 1, currency: 'USDC' })).status).toBe(200);
-    const capped = await c.post('/v1/packs/quote', { sku: 3, qty: 2, currency: 'USDC' });
-    expect(capped.status).toBe(429); expect(capped.json.code).toBe('daily_cap');
+    // Limited в DEFAULT_PACKS выключен (`enabled = false`) — котировка обязана это уважать (находка 73)
+    const off = await c.post('/v1/packs/quote', { sku: 3, qty: 1, currency: 'USDC' });
+    expect(off.status).toBe(409); expect(off.json.code).toBe('sku_disabled');
+    // включаем его на «цепи» (как это сделал бы set_params) — дальше работает дневной лимит из конфигурации (5)
+    limitedEnabled = true;
+    try {
+      ingestTx(tx([{ program: 'chip_core', name: 'PackBought', data: { buyer: w, sku: 3, qty: 4, currency: 1, amount: '1', nonce: '2', randomness: Keypair.generate().publicKey.toBase58() } }], { blockTime: nowS() }), db);
+      expect((await c.post('/v1/packs/quote', { sku: 3, qty: 1, currency: 'USDC' })).status).toBe(200);
+      const capped = await c.post('/v1/packs/quote', { sku: 3, qty: 2, currency: 'USDC' });
+      expect(capped.status).toBe(429); expect(capped.json.code).toBe('daily_cap');
+    } finally { limitedEnabled = false; }
   });
   it('pity counter feeds effective odds and hardPityIn', async () => {
     const bob = Keypair.generate(); const c = new Client(); await signIn(c, bob);

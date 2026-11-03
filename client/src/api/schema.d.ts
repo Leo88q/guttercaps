@@ -8674,6 +8674,13 @@ export interface components {
             maxLamports?: string;
             /** @description USD price after discounts (what the program converts) */
             priceUsdCents?: number;
+            /**
+             * @description chain: параметры SKU прочитаны из GameConfig (тех же, что видит buy_pack); package: конфигурацию прочитать не удалось и в силе таблица сборки — такую котировку цепь может отклонить (Slippage/SkuDisabled/DailyCapReached)
+             * @enum {string}
+             */
+            priceSource?: "chain" | "package";
+            /** @description слот, на котором прочитан GameConfig; null при priceSource=package */
+            quotedAtSlot?: number | null;
             rentReserveLamports?: string;
             /** @description frozen SOL/USD ($110) */
             solUsd?: number;

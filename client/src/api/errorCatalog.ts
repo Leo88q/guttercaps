@@ -33,6 +33,8 @@ export const API_ERROR_KEYS = {
   bad_squad: 'failures.threeSquad', bad_tier: 'failures.staking_InvalidTier', chain_fulfilled: 'failures.chainFulfilled',
   chip_busy: 'failures.arena_ChipBusy', collection_mismatch: 'failures.collectionMismatch', commit_mismatch: 'failures.commitMismatch',
   config_missing: 'screens.errGameConfig', currency_not_accepted: 'failures.chip_core_CurrencyNotAccepted',
+  // находка 73: SKU выключен в он-чейн `GameConfig` — покупка не пройдёт, пока админ его не включит
+  sku_disabled: 'failures.chip_core_SkuDisabled',
   daily_cap: 'failures.chip_core_DailyCapReached', duplicate_chip: 'failures.arena_DuplicateChip',
   duplicate_material: 'failures.chip_core_DuplicateMaterial', emission_missing: 'failures.unavailable',
   geo_blocked: 'failures.geoBlocked', guard_rail: 'failures.guardRail', handle_cooldown: 'failures.handleCooldown',
