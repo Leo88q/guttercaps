@@ -940,7 +940,10 @@ pub fn settle_pack_handler<'info>(
     );
     // Находка 1: пак-заказ живёт в нижней половине пространства id. Авторизация fusion-гранта
     // (>= GRANT_ID_BASE) не может освободить эскроу и выпустить спеку пак-заказа.
-    require!(auth.order_id < GRANT_ID_BASE, SettleError::BadOracleSignature);
+    require!(
+        auth.order_id < GRANT_ID_BASE,
+        SettleError::BadOracleSignature
+    );
     require!(
         Clock::get()?.slot <= auth.expires_at_slot,
         SettleError::AuthExpired
@@ -1165,7 +1168,10 @@ pub fn grant_mint_handler<'info>(
     // Находка 1: грант выпускается только для id из верхней половины пространства
     // (`GRANT_ID_BASE + fusion_id` на backend). Без этой строки оплаченный пак-заказ
     // мог быть выпущен второй раз той же подписью оракула — уже без оплаты.
-    require!(auth.order_id >= GRANT_ID_BASE, SettleError::BadOracleSignature);
+    require!(
+        auth.order_id >= GRANT_ID_BASE,
+        SettleError::BadOracleSignature
+    );
     require!(
         Clock::get()?.slot <= auth.expires_at_slot,
         SettleError::AuthExpired
