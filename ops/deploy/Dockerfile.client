@@ -63,17 +63,22 @@ RUN npm ci --no-audit --no-fund
 COPY client client/
 COPY packages packages/
 
-# The freeze-commit ids must be in the bundle. `GCRhrg…`/`GCA2aU…`/`GCuGx7…`/`GCfERi…` are the
-# devnet placeholders (docs/09 §2); if one of them reached a mainnet build, players would be signing
-# transactions for a program that holds nothing, and the app would look *healthy* while doing it.
+# The freeze-commit ids must be in the bundle. The list below is the CURRENT dev-derived id set from
+# `Anchor.toml` (`[programs.devnet]`, five programs); a mainnet build that still carries any of them is
+# refused, because players would then sign transactions for a program that holds nothing while the app
+# looked healthy. Before, the list held `GCRhrg…`/`GCA2aU…`/`GCuGx7…`/`GCfERi…` — addresses that exist
+# neither in `Anchor.toml` nor in any `declare_id!`, so the guard could never fire, and `settle`
+# (the fifth program) was missing from it entirely (находка 51).
+# Escape hatch: `npm run program-ids -- guard-mainnet` (the id ceremony rewrites Anchor.toml, and the
+# short comment below points at it).
 RUN node --input-type=module -e " \
 const need = { VITE_CLUSTER: process.env.VITE_CLUSTER, VITE_RPC_URL: process.env.VITE_RPC_URL, VITE_API_BASE: process.env.VITE_API_BASE, VITE_PROGRAM_CHIP_CORE: process.env.VITE_PROGRAM_CHIP_CORE, VITE_PROGRAM_MARKET: process.env.VITE_PROGRAM_MARKET, VITE_PROGRAM_STAKING: process.env.VITE_PROGRAM_STAKING, VITE_PROGRAM_ARENA: process.env.VITE_PROGRAM_ARENA, VITE_PROGRAM_SETTLE: process.env.VITE_PROGRAM_SETTLE, VITE_CG_MINT: process.env.VITE_CG_MINT, VITE_SKR_MINT: process.env.VITE_SKR_MINT }; \
 const missing = Object.entries(need).filter(([, v]) => !v).map(([k]) => k); \
 if (missing.length) { console.error('missing build args: ' + missing.join(', ')); process.exit(1); } \
-const PLACEHOLDERS = ['GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q','GCA2aUeX7ZFbGz3zvjqvsbjD1G3QjWxLhBpK5jwwPdcz','GCuGx7fnLcKnw1NWU4dLzQvnJWggMVniQ4u7EuMaQevA','GCfERiohebYDJLtNwAZpGxudwbXRqnxmuTT413fkTYrM']; \
+const PLACEHOLDERS = ['J68G8KrbLTSdi68LHr9Kkw1YbRRHv3uBPirWCd5Xt13V','5skEmmhgFYn5xjHEdrcsiQ68kUg5kvhXKhjWTWSppjfo','Ewkbp7WpqbiJAu3ofEcTPinqnr5oH3e94YJDZFg1eSJn','DUTokrhWBYL7nJ9VbMy7bFELQFf8TN1tmvVpKLsskqD6','B9ousNDpe29G45KFHyndvHXpLigBtxCh9xbboWuCeXyP']; \
 if (need.VITE_CLUSTER === 'mainnet-beta') { \
   const stuck = Object.entries(need).filter(([, v]) => PLACEHOLDERS.includes(v)); \
-  if (stuck.length) { console.error('mainnet build with dev placeholder program id(s): ' + stuck.map(([k]) => k).join(', ') + ' — run npm run program-ids first'); process.exit(1); } \
+  if (stuck.length) { console.error('mainnet build with dev placeholder program id(s): ' + stuck.map(([k]) => k).join(', ') + ' — the id ceremony has not run yet: npm run program-ids -- guard-mainnet'); process.exit(1); } \
 } \
 console.log('build args ok for cluster ' + need.VITE_CLUSTER); \
 "

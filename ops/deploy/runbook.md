@@ -74,10 +74,18 @@ npm ci && npm run verify         # все оффлайн-проверки дол
 Перед mainnet гейт `npm run program-ids -- guard-mainnet` не «доступен», а **обязателен**: его дёргает
 `images.yml` для `cluster: mainnet-beta`, а `npm run setup` на mainnet-RPC сам отказывается работать с
 плейсхолдерами (SEC-F05). Гейт отказывает, пока в дереве нет freeze-записи `programs/program-ids.json`
-с теми же id и `keypairPresent: true` по всем четырём программам — запись существует ровно после шага
+с теми же id и `keypairPresent: true` по всем пяти программам (`chip_core`, `market`, `staking`,
+`arena`, `settle`) — запись существует ровно после шага
 `manifest` этой процедуры («похожи ли id на настоящие» с дерева не читается: `apply` держит все копии
 согласованными и до, и после заморозки). Тот же файл читает `npm run ops:buildenv`, сверяя с ним
 `PROGRAM_*`-переменные сборки.
+
+Тот же отказ стоит в сборке клиентского образа (`ops/deploy/Dockerfile.client`): список
+`PLACEHOLDERS` — это ровно текущий dev-производный набор id из `Anchor.toml` `[programs.devnet]`,
+и mainnet-сборка с любым из них падает с подсказкой `npm run program-ids -- guard-mainnet`.
+До этого там лежали четыре адреса, которых нет ни в `Anchor.toml`, ни в `declare_id!`
+(`GCRhrg…`/`GCA2aU…`/`GCuGx7…`/`GCfERi…`), а `settle` отсутствовал — проверка не могла сработать
+никогда (находка 51).
 
 Push в `main` до церемонии до этого гейта не доходит. Джоб `freeze` в `images.yml` видит, что записи нет, и
 пропускает сборку: джоб `images` получает статус skipped, а в логе появляется предупреждение «images skipped».

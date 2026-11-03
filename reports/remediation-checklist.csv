@@ -7,7 +7,7 @@ id;tier;contour;release;finding;status;evidence
 6;A — блокер запуска;запуск и подписи;R0;Deployment: RPC и фаза клиента не передаются теми именами, которые читает приложение;done;"имена VITE_* совпадают с кодом; env:check 0 drift"
 7;A — блокер запуска;запуск и подписи;R0;Повторная выплата после неопределённого результата RPC;done;"chain_ops + onSigned до отправки; test/chain-ops"
 8;A — блокер запуска;запуск и подписи;R0;Phase G: mint может повториться после неопределённого результата;done;"минт Phase-G и fusion идут через chain_ops (kind phaseg_mint / phaseg_fusion_mint, biz_key order:{id}:{i} / fusion:{id}:{i}, payload = сам чип); подтверждённая операция перепроецируется без новой транзакции, in-flight блокирует тик. Тесты: backend/test/phaseg-mint-ledger.test.ts"
-9;B — гейт контура;Phase V / settle;R0;Phase V: подтверждение и pagination;todo;
+9;B — гейт контура;Phase V / settle;R0;Phase V: подтверждение и pagination;done;подтверждение Phase-V регистрирует чипы в том же вызове (строка в памяти обновлялась после UPDATE и «съедала» регистрацию), а поиск в DAS идёт по страницам (было: только первые 1000 ассетов) с ограничением числа страниц. Тест: backend/test/phasev-confirm-audit.test.ts
 10;A — блокер запуска;запуск и подписи;R0;Compose defaults противоречат production fail-fast;partial;"нет молчаливого дефолта; открыт вопрос политики (см. design §10.2)"
 11;B — гейт контура;Магазин, услуги, рынок, клиент;R0;Phase G/V: запрос после отправки до подтверждения;todo;
 12;A — блокер запуска;запуск и подписи;R0;Phase G/V: ошибка DAS трактуется как доказательство сжигания;done;"ошибка DAS больше не считается доказательством сжигания (fusion-burn.ts): доказательство — chips.burned_at, burnt:true или DasError not_found; любой сбой — BurnCheckUnavailable → 503 burn_check_unavailable, intent остаётся оплачиваемым. Тест: backend/test/fusion-burn-audit.test.ts"
@@ -49,9 +49,9 @@ id;tier;contour;release;finding;status;evidence
 48;B — гейт контура;Стейкинг, эмиссия, часы;R2;Квестовая доля эмиссии меньше типовых обязательств, а очередь наград не делится по бюджету;todo;
 49;B — гейт контура;Phase V / settle;R1;`settle::claim_reward` не имеет ни бюджета, ни таймлока, ни отзыва;todo;
 50;B — гейт контура;Phase V / settle;R1;`settle::escrow_buy` не защищён от смены цены и от self-trade;todo;
-51;A — блокер запуска;запуск и подписи;R0;Клиентский образ не даёт выставить RPC, программу settle и фазу запуска;todo;
+51;A — блокер запуска;запуск и подписи;R0;Клиентский образ не даёт выставить RPC, программу settle и фазу запуска;done;образ объявляет ровно читаемые VITE_* (RPC/WS/DAS, PROGRAM_SETTLE, LAUNCH_PHASE, флаги), compose их передаёт, а mainnet-сборка отвергает любой из пяти текущих dev-производных id (раньше список содержал четыре несуществующих адреса и не содержал settle). Тест: backend/test/deploy-client-env-audit.test.ts
 52;A — блокер запуска;запуск и подписи;R0;При `LAUNCH_PHASE=v` старые платёжные маршруты Phase G не закрыты;done;phaseG() закрывает маршруты при LAUNCH_PHASE != g (было: только при full), под v они отвечают 410 phase_g_off. Тест: backend/test/phasev-route-gate-audit.test.ts
-53;A — блокер запуска;запуск и подписи;R0;Программа `settle` не исполняется ни одним тестом;todo;
+53;A — блокер запуска;запуск и подписи;R0;Программа `settle` не исполняется ни одним тестом;partial;структурная причина устранена: localnet-валидатор грузил программы по выдуманным id и не грузил settle вовсе — теперь id берутся из Anchor.toml [programs.localnet] и settle включён (backend/test/program-id-drift-audit.test.ts). Исполнения программы по-прежнему нет: rustc/cargo/anchor в окружении отсутствуют
 54;B — гейт контура;Phase V / settle;R1;"Индексатор подписан на `settle`, но не умеет декодировать ни одного её события; `refund_pack` не проецируется ";todo;
 55;B — гейт контура;Phase V / settle;R1;`settle::buy_pack` не проверяет ни цену, ни лимиты — в отличие от `chip_core::buy_pack`;todo;
 56;B — гейт контура;Fusion, части, chip_core;R2;Бустер, потраченный на fusion, не возвращается при отмене по таймауту оракула;todo;
@@ -75,3 +75,5 @@ id;tier;contour;release;finding;status;evidence
 74;B — гейт контура;Стейкинг, эмиссия, часы;R3;Soft staking Phase-G платит тот же срез эмиссии, что и он-чейн пул, и не знает про он-чейн стейк;todo;
 75;C — витрина;Витрина и мелочи;R3;Доска недели разыгрывает «пять тегов города» по слотам, а не по тегам: один тег занимает несколько мест;todo;
 76;C — витрина;Витрина и мелочи;R3;Платёж за «первый @handle» становится непригодным, если ручка появилась раньше, чем платёж предъявлен;todo;
+77;A — блокер запуска;запуск и подписи;R0;Локальная сеть грузила программы по выдуманным id и без settle;done;"id берутся из Anchor.toml [programs.localnet] через scripts/lib/anchor-ids.ts; сверка с declare_id! и наличие .so проверяются (backend/test/program-id-drift-audit.test.ts)"
+78;B — гейт контура;Стейкинг, эмиссия, часы;R0;Скрипт пула SKR выводил PDA от несуществующего id программы стейкинга;done;дефолт читается из Anchor.toml [programs.<cluster>], захардкоженного адреса нет (backend/test/program-id-drift-audit.test.ts)

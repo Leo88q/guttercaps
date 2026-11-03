@@ -5,6 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { programIdsFromToml } from '../../scripts/lib/anchor-ids.ts';
 
 const repo = join(__dirname, '..', '..');
 const dockerfile = readFileSync(join(repo, 'ops/deploy/Dockerfile.client'), 'utf8');
@@ -37,6 +38,25 @@ describe('client image build wiring', () => {
     // the client dials VITE_RPC_URL instead, which the image cannot set, so it falls back to
     // clusterApiUrl('mainnet-beta') = https://api.mainnet-beta.solana.com.
     expect(unread).toEqual([]);
+  });
+
+
+  it('the mainnet placeholder guard lists the ids a build can actually carry (п. 51)', () => {
+    // Список PLACEHOLDERS — единственная защита от mainnet-бандла с devnet-id. Раньше в нём были
+    // `GCRhrg…`/`GCA2aU…`/`GCuGx7…`/`GCfERi…`: таких адресов нет ни в Anchor.toml, ни в declare_id!,
+    // поэтому проверка не могла сработать никогда, а `settle` в списке отсутствовал вовсе.
+    const listed = (dockerfile.match(/const PLACEHOLDERS = \[([^\]]*)\]/)?.[1] ?? '')
+      .split(',').map((x) => x.trim().replace(/^'|'$/g, '')).filter(Boolean);
+    // один парсер на весь репозиторий: подстрочный поиск секции попадает в комментарий выше
+    const devnet = programIdsFromToml(join(repo, 'Anchor.toml'), 'devnet').map((p) => p.id);
+    // eslint-disable-next-line no-console
+    console.log(JSON.stringify({ listed, devnet }));
+    expect(devnet).toHaveLength(5);
+    // ровно набор программ, которые уходят в бандл: ни одного «мёртвого» адреса и ни одного пропуска
+    expect([...listed].sort()).toEqual([...devnet].sort());
+    // и главное: settle теперь проверяется
+    expect(listed).toContain('B9ousNDpe29G45KFHyndvHXpLigBtxCh9xbboWuCeXyP');
+    expect(dockerfile).toContain('npm run program-ids -- guard-mainnet');
   });
 
   it('the stray-switch guard lists exactly the same names the image declares', () => {

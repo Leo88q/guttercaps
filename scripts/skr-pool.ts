@@ -27,6 +27,8 @@
 
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { programIdFromToml } from './lib/anchor-ids.ts';
+import { resolve } from 'node:path';
 import { sha256 } from '@noble/hashes/sha256';
 import {
   Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction, sendAndConfirmTransaction,
@@ -43,7 +45,18 @@ const TREASURY_WALLET = new PublicKey('HPMr5r9sS5ApWsPNJytZRLbm2jz1veFxTn1wepjAh
 /** Funding policy (bps of realised SKR revenue) — owner decision 15 / 10 / 5 %. Mirrors SKR_POOL_FUNDING. */
 const POLICY = { packRevenue: 1_500n, marketFeeTreasury: 1_000n, servicesRevenue: 500n } as const;
 const SKR_MINT = new PublicKey(process.env.SKR_MINT ?? REAL_SKR_MINT);
-const STAKING_ID = new PublicKey(process.env.STAKING_PROGRAM_ID ?? 'GCuGx7fnLcKnw1NWU4dLzQvnJWggMVniQ4u7EuMaQevA');
+/**
+ * Id программы стейкинга — из `Anchor.toml` `[programs.<cluster>]` (единственный источник истины;
+ * `npm run program-ids -- apply` пишет его вместе с `declare_id!`).
+ *
+ * До этого дефолт был захардкожен (`GCuGx7…`) — адрес, которого
+ * нет ни в `declare_id!`, ни в `Anchor.toml`. Все PDA этого скрипта (`emission`, `skr_pool`, vault)
+ * выводились от несуществующей программы, поэтому скрипт молча работал с пустыми аккаунтами вместо
+ * реального пула (находка 78).
+ */
+const STAKING_ID = process.env.STAKING_PROGRAM_ID
+  ? new PublicKey(process.env.STAKING_PROGRAM_ID)
+  : new PublicKey(programIdFromToml(resolve(import.meta.dirname, '..', 'Anchor.toml'), process.env.ANCHOR_PROVIDER_CLUSTER ?? 'devnet', 'staking'));
 const RPC = process.env.ANCHOR_PROVIDER_URL ?? 'https://api.devnet.solana.com';
 const DRY_RUN = process.env.DRY_RUN === '1';
 const MICRO = 1_000_000n;

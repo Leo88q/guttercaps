@@ -16,7 +16,7 @@ import { upsert } from './sql.ts';
 import { base58Encode } from './base58.ts';
 import { chipMetadata, nextGameIndex } from './bubblegum-mint.ts';
 import { pityBeforeFor, rollPack, type PackOrderRow } from './pack-orders.ts';
-import { DasClient } from './das.ts';
+import { DasClient, type DasAssetSummary } from './das.ts';
 import { assertExecuted } from './assert-executed.ts';
 import { DAS_RPC_URL, DAS_TIMEOUT_MS } from './config.ts';
 
@@ -272,12 +272,26 @@ export interface RegisteredChip { assetId: string; collectionIdx: number; rarity
 
 export async function registerSettledChips(
   db: Db,
-  args: { wallet: string; specs: MintedSpecLike[]; origin: string; originSig: string | null; lockSeconds?: number },
+  args: { wallet: string; specs: MintedSpecLike[]; origin: string; originSig: string | null; lockSeconds?: number; maxPages?: number },
   das: DasClient = new DasClient({ endpoint: DAS_RPC_URL, timeoutMs: DAS_TIMEOUT_MS }),
   t = now(),
 ): Promise<RegisteredChip[]> {
-  const page = await das.getAssetsByOwner(args.wallet).catch(() => null);
-  if (!page) return [];
+  // Находка 9: раньше читалась только первая страница (до 1000 ассетов). Игрок с большей коллекцией
+  // (или просто с большим кошельком) не находил свои же чипы, и заказ оставался открытым навсегда,
+  // хотя минт прошёл. Теперь страницы читаются, пока не найдены все спеки или пока DAS не отдаст
+  // пустую страницу; число страниц ограничено, чтобы неупорядоченный DAS не крутил бесконечный цикл.
+  const maxPages = args.maxPages ?? 5;
+  const wanted = new Map(args.specs.map((sp) => [`${sp.name}|${sp.collection ?? ''}`, sp]));
+  const items: DasAssetSummary[] = [];
+  for (let pageNo = 1; pageNo <= maxPages; pageNo++) {
+    const page = await das.getAssetsByOwner(args.wallet, pageNo).catch(() => null);
+    if (!page || page.items.length === 0) break;
+    items.push(...page.items);
+    const complete = [...wanted.keys()].every((key) => items.some((a) => a.compressed && `${a.name}|${a.collection?.toBase58() ?? ''}` === key));
+    if (complete) break;
+    if (items.length >= page.total) break;
+  }
+  if (items.length === 0) return [];
   const found: RegisteredChip[] = [];
   for (const spec of args.specs) {
     // Находка 3: имя ассета не является идентификатором. `{SYMBOL} #{gameIndex}` может выпустить кто
@@ -288,7 +302,7 @@ export async function registerSettledChips(
     // Без коллекции в авторизации доказывать нечего: имя совпадёт у кого угодно, поэтому не регистрируем
     // (fail closed) — заказ/fusion остаётся открытым, пока спека с коллекцией не появится.
     if (!wantCollection) continue;
-    const candidates = page.items.filter((a) => a.compressed && a.name === spec.name
+    const candidates = items.filter((a) => a.compressed && a.name === spec.name
       && a.collection?.equals(new PublicKey(wantCollection)));
     if (candidates.length !== 1) continue; // нет ни одного или неоднозначно — не угадываем
     const hit = candidates[0];
@@ -350,7 +364,8 @@ export async function confirmSettle(
   wallet: string,
   id: number,
   signature: string,
-  deps: { connection: Connection },
+  // `das` необязателен: в бою берётся живой клиент, в тесте — детерминированный фейк
+  deps: { connection: Connection; das?: DasClient },
   t = now(),
 ): Promise<ReturnType<typeof getOrder>> {
   const row = db.get<PackOrderRow>(`SELECT * FROM pack_orders WHERE id = ?`, id);
@@ -363,12 +378,16 @@ export async function confirmSettle(
       throw new ServiceError(422, 'settle_unverified', 'The settle transaction was not found, failed, or did not settle THIS order');
     }
     db.run(`UPDATE pack_orders SET settle_sig = ? WHERE id = ?`, signature, id);
+    // Находка 9: строка в памяти оставалась со старым `settle_sig`, поэтому первое же подтверждение
+    // уходило в ранний возврат («ещё индексируется») и НЕ регистрировало чипы. Регистрацию потом
+    // делал либо повторный вызов, либо кранк — то есть игрок видел открытый заказ после успешного минта.
+    row.settle_sig = signature;
   }
   const stored = parseSpecs(row.settle_specs);
   if (!stored || !row.settle_sig) return getOrder(db, wallet, id); // still settling / indexing
   const minted = await registerSettledChips(db, {
     wallet, specs: toMintedSpecs(stored), origin: 'pack', originSig: row.tx_sig,
-  });
+  }, deps.das);
   if (minted.length === stored.length) {
     db.run(`UPDATE pack_orders SET status = 'minted', minted_at = ?, assets = ? WHERE id = ?`, t, JSON.stringify(minted), id);
   }
@@ -417,7 +436,7 @@ export async function confirmFusionGrant(
   wallet: string,
   fusionId: number,
   signature: string,
-  deps: { connection: Connection },
+  deps: { connection: Connection; das?: DasClient },
   t = now(),
 ): Promise<{ status: string; success: boolean | null; resultAssets: string[] | null }> {
   const row = db.get<FusionRow & { grant_specs?: string | null; grant_sig?: string | null }>(`SELECT * FROM phaseg_fusions WHERE id = ?`, fusionId);
@@ -439,7 +458,7 @@ export async function confirmFusionGrant(
   const recipe = FUSION_RECIPES.find((r) => r.from === row.recipe_from)!;
   const minted = await registerSettledChips(db, {
     wallet, specs: toMintedSpecs(stored), origin: 'fusion', originSig: row.burn_sig, lockSeconds: recipe.resultLockSeconds,
-  });
+  }, deps.das);
   if (minted.length === stored.length) {
     const success = rollFusion(row.seed, row.id, recipe.successBps);
     finalizeFusionMint(db, row, minted.map((m) => m.assetId), success, t);
