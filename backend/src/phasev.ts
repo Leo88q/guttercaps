@@ -17,6 +17,7 @@ import { base58Encode } from './base58.ts';
 import { chipMetadata, nextGameIndex } from './bubblegum-mint.ts';
 import { pityBeforeFor, rollPack, type PackOrderRow } from './pack-orders.ts';
 import { DasClient } from './das.ts';
+import { assertExecuted } from './assert-executed.ts';
 import { DAS_RPC_URL, DAS_TIMEOUT_MS } from './config.ts';
 
 export const SETTLE_PROGRAM = PROGRAMS.settle;
@@ -284,12 +285,19 @@ export async function registerSettledChips(
   return found;
 }
 
-/** Verify a settle/grant transaction actually ran our program successfully. */
-export async function verifySettleTx(connection: Connection, signature: string): Promise<boolean> {
-  const tx = await connection.getTransaction(signature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 }).catch(() => null);
-  if (!tx || tx.meta?.err) return false;
-  const keys = tx.transaction.message.getAccountKeys().staticAccountKeys;
-  return keys.some((k) => k.equals(SETTLE_PROGRAM));
+/**
+ * Доказательство исполнения (находка 2, §1.4). Прежняя проверка смотрела только на static-ключи
+ * сообщения: любая транзакция, где id программы `settle` попал в аккаунты (чужой вызов, другая
+ * программа с этим адресом, неудачная попытка), считалась исполненным минтом. Теперь требуется
+ * инструкция именно нашей программы, именно нужного обработчика, с ожидаемым PDA в аккаунтах.
+ */
+export async function verifySettleTx(
+  connection: Connection,
+  signature: string,
+  spec: { ix: 'settle_pack' | 'grant_mint'; account: PublicKey },
+): Promise<boolean> {
+  const r = await assertExecuted(connection, signature, { program: SETTLE_PROGRAM, ix: spec.ix, account: spec.account });
+  return r.ok;
 }
 
 export { getAssociatedTokenAddressSync };
@@ -322,8 +330,9 @@ export async function confirmSettle(
   if (row.wallet !== wallet) throw new ServiceError(403, 'not_yours', 'This order belongs to another wallet');
   if (row.status === 'minted') return getOrder(db, wallet, id);
   if (signature.length >= 32 && row.settle_sig !== signature) {
-    if (!(await verifySettleTx(deps.connection, signature))) {
-      throw new ServiceError(422, 'settle_unverified', 'The settle transaction was not found or did not run the settle program');
+    // Именно `settle_pack` этого заказа: order PDA в аккаунтах, а не просто упоминание программы.
+    if (!(await verifySettleTx(deps.connection, signature, { ix: 'settle_pack', account: orderPda(new PublicKey(wallet), BigInt(id)) }))) {
+      throw new ServiceError(422, 'settle_unverified', 'The settle transaction was not found, failed, or did not settle THIS order');
     }
     db.run(`UPDATE pack_orders SET settle_sig = ? WHERE id = ?`, signature, id);
   }
@@ -390,8 +399,9 @@ export async function confirmFusionGrant(
     return { status: 'minted', success: row.success === null ? null : row.success === 1, resultAssets: row.result_assets ? (JSON.parse(row.result_assets) as string[]) : null };
   }
   if (signature.length >= 32 && row.grant_sig !== signature) {
-    if (!(await verifySettleTx(deps.connection, signature))) {
-      throw new ServiceError(422, 'settle_unverified', 'The grant transaction was not found or did not run the settle program');
+    // Именно `grant_mint` этого fusion: receipt PDA = GRANT_ID_BASE + fusion_id.
+    if (!(await verifySettleTx(deps.connection, signature, { ix: 'grant_mint', account: grantReceiptPda(GRANT_ID_BASE + BigInt(fusionId)) }))) {
+      throw new ServiceError(422, 'settle_unverified', 'The grant transaction was not found, failed, or did not mint THIS fusion');
     }
     db.run(`UPDATE phaseg_fusions SET grant_sig = ? WHERE id = ?`, signature, fusionId);
     row.grant_sig = signature;

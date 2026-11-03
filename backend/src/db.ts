@@ -839,6 +839,22 @@ CREATE TABLE IF NOT EXISTS payment_consumption (
   PRIMARY KEY (signature, event_index)      -- one payment event can be spent exactly once, forever
 );
 CREATE INDEX IF NOT EXISTS idx_payment_consumption_scope ON payment_consumption(scope, subject);
+-- Which CONCRETE transfer of which transaction paid which order (находки 17, 18). Уникальность
+-- preorders.tx_sig / pack_orders.tx_sig / phaseg_fusions.pay_sig проверяется внутри своей таблицы,
+-- поэтому одна транзакция с двумя memo и одним переводом закрывала сразу preorder и pack order, а
+-- перевод в SOL на адрес токен-аккаунта проходил как оплата в SPL. Здесь ключ — (signature,
+-- transfer_index): конкретный перевод тратится ровно один раз, в любом контуре и навсегда.
+CREATE TABLE IF NOT EXISTS payment_transfer (
+  signature      TEXT    NOT NULL,
+  transfer_index INTEGER NOT NULL,          -- позиция перевода в разобранной транзакции
+  instrument     TEXT    NOT NULL,          -- sol | spl — чем именно заплатили
+  scope          TEXT    NOT NULL,          -- preorder | pack_order | fusion
+  subject        TEXT    NOT NULL,          -- ref_id / order id / fusion id
+  consumed_by    TEXT    NOT NULL,          -- 'scope:subject' для аудита
+  consumed_at    INTEGER NOT NULL,
+  PRIMARY KEY (signature, transfer_index)
+);
+CREATE INDEX IF NOT EXISTS idx_payment_transfer_scope ON payment_transfer(scope, subject);
 -- Outbound chain operations (§1.1). The signature is stored BEFORE the send and the row is the single
 -- place that knows whether it landed: intent -> signed -> sent -> landed -> confirmed | failed | orphaned.
 -- ux_chain_ops_biz makes "one business action = one transaction" a database fact, ux_chain_ops_sig makes

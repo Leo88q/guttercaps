@@ -7,10 +7,18 @@ import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, isMock } from '@/api/client';
-import { buildPaymentInstructions, waitForOrderMinted, type PackOrder, type PhaseGCurrency } from './phaseG';
+import {
+  buildPaymentInstructions, confirmWithRetry, forgetPayment, rememberedPayment, rememberPayment,
+  waitForOrderMinted, waitForSignature, type PackOrder, type PhaseGCurrency,
+} from './phaseG';
 import { FLAGS } from '@/app/config';
 
 export type PhaseGStage = 'idle' | 'creating' | 'paying' | 'confirming' | 'minting' | 'done' | 'error';
+
+/** localStorage в браузере, null — в тестах и в среде без хранилища. */
+const storage = (): Storage | null => {
+  try { return typeof window === 'undefined' ? null : window.localStorage; } catch { return null; }
+};
 
 export function usePhaseGOrder() {
   const { connection } = useConnection();
@@ -42,8 +50,11 @@ export function usePhaseGOrder() {
           amount: BigInt(created.amount ?? '0'),
           mint: created.mint ? new PublicKey(created.mint) : null,
         }));
-        await wallet.sendTransaction(escrowTx, connection);
+        const escrowSig = await wallet.sendTransaction(escrowTx, connection);
         setStage('confirming');
+        // §11: backend читает эскроу на `confirmed` — без ожидания первый же запрос уходил раньше, чем
+        // RPC видел транзакцию, и поток рвался уже ПОСЛЕ оплаты.
+        await waitForSignature(connection, escrowSig);
         const payload = await api.post('/packs/order/{id}/settle-auth', undefined, { path: { id: orderId } });
         const settleTx = new Transaction().add(...grantOrSettleIx(payload as unknown as import('./phaseV').SettlePayloadLike, {
           relayer: me,
@@ -51,14 +62,28 @@ export function usePhaseGOrder() {
           mint: created.mint ? new PublicKey(created.mint) : null,
         }));
         const settleSig = await wallet.sendTransaction(settleTx, connection);
-        await api.post('/packs/order/{id}/settle-confirm', { signature: settleSig }, { path: { id: orderId } });
+        rememberPayment(storage(), orderId, settleSig);
+        await waitForSignature(connection, settleSig);
+        await confirmWithRetry(
+          (signature) => api.post('/packs/order/{id}/settle-confirm', { signature }, { path: { id: orderId } }),
+          settleSig,
+        );
+        forgetPayment(storage(), orderId);
       } else if (!isMock()) {
         if (!wallet.publicKey || !wallet.sendTransaction) throw new Error('Wallet is not connected');
         setStage('paying');
         const tx = new Transaction().add(...buildPaymentInstructions(created, wallet.publicKey));
+        // Подпись запоминается ДО ожидания: если страница закроется, оплату можно дослать тем же
+        // signature (`resumePayment`), а не платить второй раз (находка 11).
         const signature = await wallet.sendTransaction(tx, connection);
+        rememberPayment(storage(), orderId, signature);
         setStage('confirming');
-        await api.post('/packs/order/{id}/confirm', { signature }, { path: { id: orderId } });
+        await waitForSignature(connection, signature);
+        await confirmWithRetry(
+          (sig) => api.post('/packs/order/{id}/confirm', { signature: sig }, { path: { id: orderId } }),
+          signature,
+        );
+        forgetPayment(storage(), orderId);
       } else {
         // mock backend simulates the payment + confirm in one step
         await api.post('/packs/order/{id}/confirm', { signature: 'mock-payment' }, { path: { id: orderId } });
@@ -85,6 +110,32 @@ export function usePhaseGOrder() {
     }
   }, [connection, wallet, qc]);
 
+  /**
+   * Дослать оплату, отправленную в прошлой сессии: подпись сохранена локально, новая транзакция не
+   * создаётся. Возвращает true, если заказ догнан (paid/minted).
+   */
+  const resumePayment = useCallback(async (orderId: number): Promise<boolean> => {
+    const signature = rememberedPayment(storage(), orderId);
+    if (!signature) return false;
+    try {
+      setStage('confirming');
+      await confirmWithRetry(
+        (sig) => api.post('/packs/order/{id}/confirm', { signature: sig }, { path: { id: orderId } }),
+        signature,
+      );
+      forgetPayment(storage(), orderId);
+      setStage('minting');
+      const final = await waitForOrderMinted(() => api.get('/packs/order/{id}', { path: { id: orderId } }));
+      setOrder(final);
+      setStage(final.status === 'minted' ? 'done' : 'error');
+      return final.status === 'paid' || final.status === 'minted';
+    } catch (e) {
+      setStage('error');
+      setError(e instanceof Error ? e.message : String(e));
+      return false;
+    }
+  }, []);
+
   const reset = useCallback(() => { setStage('idle'); setOrder(null); setError(null); }, []);
-  return { stage, order, error, buy, reset };
+  return { stage, order, error, buy, reset, resumePayment };
 }

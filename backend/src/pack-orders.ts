@@ -17,6 +17,7 @@ import { ServiceError } from './services.ts';
 import { CG_MINT, PACK_ORDER_TTL_S, PACK_TREASURY, PHASEG_FEATURED_COLLECTION, USDC_MINT } from './config.ts';
 import { priceCents, SKUS, validateRequest, type QuoteCurrency } from './quote.ts';
 import { checkPayment, parseRpcPayment, type ParsedPaymentTx, type PaymentFetcher } from './preorders.ts';
+import { consumeOneOf } from './consumption.ts';
 
 export type OrderCurrency = 'SOL' | 'USDC' | 'CG';
 export type OrderStatus = 'created' | 'paid' | 'minted' | 'expired' | 'failed';
@@ -173,6 +174,10 @@ export async function confirmOrder(
   if (!check.ok) throw new ServiceError(422, `payment_${check.code}`, `Payment check failed: ${check.code}`);
   const used = db.get<{ id: number }>(`SELECT id FROM pack_orders WHERE tx_sig = ?`, signature);
   if (used) throw new ServiceError(409, 'already_confirmed', 'This payment signature was already credited');
+  // Один конкретный перевод — одна оплата, в любом контуре (находка 18).
+  if (consumeOneOf(db, { signature, transferIndexes: check.transferIndexes ?? [], instrument: row.mint ? 'spl' : 'sol' }, `pack_order:${id}`, t) === null) {
+    throw new ServiceError(409, 'already_confirmed', 'This payment transfer was already credited to another order');
+  }
   const r = db.run(
     `UPDATE pack_orders SET status = 'paid', tx_sig = ?, paid_at = ? WHERE id = ? AND status IN ('created', 'expired') AND tx_sig IS NULL`,
     signature, t, id,

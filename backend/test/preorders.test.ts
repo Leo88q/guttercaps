@@ -27,7 +27,7 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllEnvs(); });
 
-const transfer = (source: string, destination: string, lamports: bigint) => ({ source, destination, lamports });
+const transfer = (source: string, destination: string, lamports: bigint, index = 0) => ({ index, instrument: 'sol' as const, source, destination, lamports });
 
 describe('checkPayment (pure rule)', () => {
   const wallet = kp();
@@ -35,7 +35,7 @@ describe('checkPayment (pure rule)', () => {
   const okTx = { ok: true, transfers: [transfer(wallet, TREASURY, 2_000_000_000n)], memos: ['GC-PRE|7'] };
 
   it('accepts the exact payment with the right memo', () => {
-    expect(p.checkPayment(okTx, base)).toEqual({ ok: true, code: 'ok' });
+    expect(p.checkPayment(okTx, base)).toEqual({ ok: true, code: 'ok', transferIndexes: [0] });
   });
   it('rejects a failed tx', () => {
     expect(p.checkPayment({ ...okTx, ok: false }, base)).toMatchObject({ ok: false, code: 'tx_failed' });
@@ -54,18 +54,18 @@ describe('checkPayment (pure rule)', () => {
   });
   it('without any memo, the payer must be the reserving wallet', () => {
     const noMemo = { ...okTx, memos: [] as string[] };
-    expect(p.checkPayment(noMemo, base)).toEqual({ ok: true, code: 'ok' });
+    expect(p.checkPayment(noMemo, base)).toEqual({ ok: true, code: 'ok', transferIndexes: [0] });
     const stranger = { ...noMemo, transfers: [transfer(kp(), TREASURY, 2_000_000_000n)] };
     expect(p.checkPayment(stranger, base)).toMatchObject({ ok: false, code: 'unknown_payer' });
   });
   it('a correct memo attributes the payment even from another wallet (exchange withdrawal)', () => {
     const fromExchange = { ...okTx, transfers: [transfer(kp(), TREASURY, 2_000_000_000n)] };
-    expect(p.checkPayment(fromExchange, base)).toEqual({ ok: true, code: 'ok' });
+    expect(p.checkPayment(fromExchange, base)).toEqual({ ok: true, code: 'ok', transferIndexes: [0] });
   });
   it('accepts an SPL transfer into the treasury ATA (USDC/SKR)', () => {
     const dest = p.preorderPayTo(TREASURY, 'USDC');
-    const spl = { ok: true, transfers: [{ source: wallet, destination: dest.payTo, lamports: 110_000_000n, mint: dest.mint }], memos: ['GC-PRE|7'] };
-    expect(p.checkPayment(spl, { treasury: dest.payTo, lamports: '110000000', wallet, memo: 'GC-PRE|7', mint: dest.mint })).toEqual({ ok: true, code: 'ok' });
+    const spl = { ok: true, transfers: [{ index: 0, instrument: 'spl' as const, source: wallet, destination: dest.payTo, lamports: 110_000_000n, mint: dest.mint }], memos: ['GC-PRE|7'] };
+    expect(p.checkPayment(spl, { treasury: dest.payTo, lamports: '110000000', wallet, memo: 'GC-PRE|7', mint: dest.mint })).toEqual({ ok: true, code: 'ok', transferIndexes: [0] });
     expect(p.checkPayment(spl, { ...base, treasury: TREASURY })).toMatchObject({ ok: false, code: 'no_transfer' });
   });
 });
@@ -80,7 +80,7 @@ describe('parseRpcPayment', () => {
         { program: 'spl-memo', parsed: 'GC-PRE|5' },
       ] } },
     };
-    expect(p.parseRpcPayment(rpc)).toEqual({ ok: true, transfers: [{ source: 'SRC', destination: TREASURY, lamports: 123n }], memos: ['GC-PRE|5'] });
+    expect(p.parseRpcPayment(rpc)).toEqual({ ok: true, transfers: [{ index: 0, instrument: 'sol', source: 'SRC', destination: TREASURY, lamports: 123n }], memos: ['GC-PRE|5'] });
     expect(p.parseRpcPayment(null)).toBeNull();
     expect(p.parseRpcPayment({ meta: { err: { code: 1 } }, transaction: { message: { instructions: [] } } })?.ok).toBe(false);
   });
@@ -91,7 +91,7 @@ describe('parseRpcPayment', () => {
       ] }] },
       transaction: { message: { instructions: [] } },
     };
-    expect(p.parseRpcPayment(rpc)).toEqual({ ok: true, transfers: [{ source: 'SRC', destination: 'ATA', lamports: 33_000_000n, mint: 'USDC' }], memos: [] });
+    expect(p.parseRpcPayment(rpc)).toEqual({ ok: true, transfers: [{ index: 0, instrument: 'spl', source: 'SRC', destination: 'ATA', lamports: 33_000_000n, mint: 'USDC' }], memos: [] });
   });
 });
 

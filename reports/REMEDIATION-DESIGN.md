@@ -94,6 +94,23 @@ CREATE INDEX IF NOT EXISTS idx_chain_ops_due ON chain_ops(status, updated_at);
 
 Наличие ключа программы в статических ключах транзакции перестаёт быть доказательством. Закрывает пп. 2, 3, 9, 30, 54.
 
+### 1.4-реализация. Verify-by-execution и платёжные журналы (R0)
+
+* `backend/src/assert-executed.ts` — `assertExecuted(connection, signature, {program, ix, account})`: транзакция
+  исполнена (`meta.err == null`), среди её инструкций (верхний уровень **и** CPI) есть инструкция нужной
+  программы с anchor-дискриминатором нужного обработчика, и среди её аккаунтов — ожидаемый PDA. Причина
+  отказа возвращается строкой (`tx_not_found | tx_failed | instruction_missing | wrong_account`), а не boolean:
+  вызывающему нужно отличать «ещё не видно» от «не то». Используется в `phasev.confirmSettle/confirmFusionGrant`
+  (п. 2). Тот же примитив закрывает пп. 3 и 9 — как только у них появятся регресс-тесты.
+* `backend/src/fusion-burn.ts` — доказательство сжигания: индексер (`chips.burned_at`), `burnt: true` или
+  явный `not_found` от DAS; иначе `BurnCheckUnavailable` → `503` (п. 12).
+* `payment_transfer(signature, transfer_index, instrument, …)` — журнал расходования конкретного перевода
+  (SQLite, ренты не добавляет). Инструмент (`sol`/`spl`) и mint берутся из самой транзакции
+  (`postTokenBalances` как источник для legacy `transfer`), поэтому SOL-перевод не закрывает SPL-заказ, а
+  один перевод не оплачивает два заказа разных контуров (пп. 17, 18). `payment_consumption` остаётся
+  отдельным журналом цепных событий — ключи не смешиваются: `event_index` события и `transfer_index` перевода
+  означают разное, и зеркало `service_payments.consumed_by` не должно получать чужие метки.
+
 ### 1.5. Consumption-ledger вне проекций
 
 `consumed_by/consumed_at` уезжают из `service_payments` в отдельную таблицу, которая **не входит** в `PROJECTION_TABLES` и не пересоздаётся при `rebuild`:

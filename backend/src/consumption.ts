@@ -56,6 +56,55 @@ export function markConsumed(db: Db, p: { signature: string; event_index: number
   return true;
 }
 
+/**
+ * Израсходовать КОНКРЕТНЫЙ перевод транзакции (находки 17, 18).
+ *
+ * Уникальность сигнатуры в каждой таблице своя (`preorders`, `pack_orders`, `phaseg_fusions`), поэтому
+ * одна транзакция закрывала сразу два заказа разных контуров, если несла два memo и один подходящий
+ * перевод; а перевод в SOL на адрес токен-аккаунта проходил как оплата в SPL, потому что тип
+ * инструмента нигде не хранился. Здесь ключ — (signature, transfer_index): перевод тратится ровно один
+ * раз в любом контуре, и `instrument` фиксирует, чем именно заплатили.
+ *
+ * Возвращает false, если перевод уже израсходован (гонка двух реплик или повтор запроса) — решение
+ * принимает INSERT по первичному ключу, а не предшествующий SELECT.
+ */
+export function consumeTransfer(
+  db: Db,
+  p: { signature: string; transferIndex: number; instrument: 'sol' | 'spl' },
+  by: string,
+  at: number,
+): boolean {
+  const { scope, subject } = splitConsumedBy(by);
+  const r = db.run(
+    insertIgnore('payment_transfer', ['signature', 'transfer_index', 'instrument', 'scope', 'subject', 'consumed_by', 'consumed_at']),
+    p.signature, p.transferIndex, p.instrument, scope, subject, by, at,
+  );
+  return Number(r.changes) === 1;
+}
+
+/**
+ * Израсходовать первый ещё не израсходованный из подходящих переводов транзакции. Возвращает индекс,
+ * который заняли, или null, если все уже потрачены (тогда заказ не оплачен этим переводом).
+ */
+export function consumeOneOf(
+  db: Db,
+  p: { signature: string; transferIndexes: readonly number[]; instrument: 'sol' | 'spl' },
+  by: string,
+  at: number,
+): number | null {
+  for (const i of p.transferIndexes) {
+    if (consumeTransfer(db, { signature: p.signature, transferIndex: i, instrument: p.instrument }, by, at)) return i;
+  }
+  return null;
+}
+
+/** Кто израсходовал перевод (`scope:subject`) — для сообщения об ошибке и аудита. */
+export function transferConsumer(db: Db, signature: string, transferIndex: number): string | null {
+  return db.get<{ consumed_by: string }>(
+    `SELECT consumed_by FROM payment_transfer WHERE signature = ? AND transfer_index = ?`, signature, transferIndex,
+  )?.consumed_by ?? null;
+}
+
 /** Метка расхода, если платёж уже потрачен (иначе null). Читает только ledger. */
 export function consumedMark(db: Db, signature: string, eventIndex: number): string | null {
   return db.get<{ consumed_by: string }>(`SELECT consumed_by FROM payment_consumption WHERE signature = ? AND event_index = ?`, signature, eventIndex)?.consumed_by ?? null;

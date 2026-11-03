@@ -1160,6 +1160,23 @@ model PaymentConsumption {
   @@map("payment_consumption")
 }
 
+/// Конкретный перевод конкретной транзакции, которым оплачен заказ (находки 17, 18).
+/// Ключ (signature, transfer_index) делает «один перевод — одна оплата» фактом БД, а `instrument`
+/// фиксирует, чем заплатили: SOL-перевод не может закрыть заказ в SPL-токене.
+model PaymentTransfer {
+  signature     String
+  transferIndex Int      @map("transfer_index")
+  instrument    String   // sol | spl
+  scope         String   // preorder | pack_order | fusion
+  subject       String
+  consumedBy    String   @map("consumed_by")
+  consumedAt    DateTime @map("consumed_at")
+
+  @@id([signature, transferIndex])
+  @@index([scope, subject])
+  @@map("payment_transfer")
+}
+
 /// Ledger исходящих транзакций backend (§1.1): подпись пишется ДО отправки, статус меняется только
 /// по данным цепи. Одна строка на бизнес-действие: (kind, biz_key) уникален.
 model ChainOp {

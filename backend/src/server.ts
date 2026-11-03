@@ -16,6 +16,7 @@ import * as phasegFusion from './phaseg-fusion.ts';
 import * as phasegStaking from './phaseg-staking.ts';
 import * as phasev from './phasev.ts';
 import { DasClient } from './das.ts';
+import { BurnCheckUnavailable, verifyBurns } from './fusion-burn.ts';
 import { DAS_RPC_URL, DAS_TIMEOUT_MS } from './config.ts';
 import { bus } from './bus.ts';
 import { wsConfigFromEnv } from './ws.ts';
@@ -620,9 +621,12 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   });
 
   // ------------------------------------------------------------ phase-G pack orders (docs/MINIMAL-LAUNCH-CHECKLIST.md §2–3)
-  // Only live when LAUNCH_PHASE=g; in the default 'full' phase these answer 410 and the
-  // program flow above is the only purchase path. The mint crank lives in crank.ts.
-  const phaseG = () => { if (LAUNCH_PHASE === 'full') throw new ServiceError(410, 'phase_g_off', 'Phased-launch orders are not enabled on this backend'); };
+  // Only live when LAUNCH_PHASE=g; in 'full' and in 'v' these answer 410 and the program flow above
+  // (или Phase-V settle) остаётся единственным путём покупки. Mint crank живёт в crank.ts и по фазе
+  // тоже inert. Раньше закрытие срабатывало только на 'full', поэтому под 'v' открывался старый
+  // маршрут «оплати казне с мемо — мы пометим paid», хотя Phase-V минт требует on-chain buy_pack
+  // escrow, а кранк минта под 'v' не работает: оплаченный заказ не мог превратиться в чип (п. 52).
+  const phaseG = () => { if (LAUNCH_PHASE !== 'g') throw new ServiceError(410, 'phase_g_off', 'Phased-launch orders are not enabled on this backend'); };
   const phaseV = () => { if (LAUNCH_PHASE !== 'v') throw new ServiceError(410, 'phase_v_off', 'Phase-V settle is not enabled on this backend'); };
   v1.post('/packs/order', requireAuth, accessGate('packs'), rl(POLICIES.mutate), wrap(async (req, res) => {
     phaseG();
@@ -664,21 +668,18 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   }));
 
   // ------------------------------------------------------------ phase-G fusion (§4)
+  // Доказательство сжигания материалов fusion (находка 12) живёт в `fusion-burn.ts`: только явный
+  // ответ DAS/индексера считается доказательством, любой сбой — «не проверено» и 503, а не «сгорело».
   const dasBurnVerifier = async (assetIds: string[]): Promise<boolean> => {
-    const das = new DasClient({ endpoint: DAS_RPC_URL, timeoutMs: DAS_TIMEOUT_MS });
-    for (const a of assetIds) {
-      const local = db.get<{ burned_at: number | null }>(`SELECT burned_at FROM chips WHERE asset = ?`, a);
-      if (local?.burned_at !== null && local?.burned_at !== undefined) continue; // indexer already saw the burn
-      try {
-        const asset = await das.getAsset(a);
-        // DAS keeps burnt assets queryable with `burnt: true` instead of
-        // erroring (live finding 2026-10-26: three on-chain burns verified
-        // on-chain but this check read them as alive forever). Only a live,
-        // unflagged asset means "not burned (yet)".
-        if (!asset.burnt) return false;
-      } catch { /* gone from DAS → burned */ }
+    try {
+      return await verifyBurns(db, assetIds, new DasClient({ endpoint: DAS_RPC_URL, timeoutMs: DAS_TIMEOUT_MS }));
+    } catch (e) {
+      if (e instanceof BurnCheckUnavailable) {
+        throw new ServiceError(503, 'burn_check_unavailable',
+          `Burn of ${e.assetId} cannot be verified right now (${e.reason}); the fusion stays unpaid and the materials stay reserved`);
+      }
+      throw e;
     }
-    return true;
   };
   v1.post('/fusion/order', requireAuth, accessGate('packs'), rl(POLICIES.mutate), wrap(async (req, res) => {
     phaseG();

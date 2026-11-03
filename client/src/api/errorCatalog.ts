@@ -42,7 +42,7 @@ export const API_ERROR_KEYS = {
   escrow_mismatch: 'failures.requestInvalid', bad_order_account: 'failures.requestInvalid',
   already_settled: 'failures.chainFulfilled', settle_unverified: 'failures.confirmationUnknown',
   already_minted: 'failures.chainFulfilled', already_burned: 'failures.requestInvalid', already_promised: 'failures.requestInvalid',
-  chip_locked: 'failures.chip_core_StillLocked', diamond_gate: 'failures.unavailable', burn_unverified: 'failures.requestInvalid',
+  chip_locked: 'failures.chip_core_StillLocked', diamond_gate: 'failures.unavailable', burn_unverified: 'failures.requestInvalid', burn_check_unavailable: 'failures.unavailable',
   already_staked: 'failures.requestInvalid', not_staked: 'failures.notFound', nothing_to_claim: 'failures.staking_NothingToClaim',
   human_check_unavailable: 'failures.humanUnavailable', invalid_handle: 'failures.invalidHandle',
   match_pending: 'failures.matchPending', match_tagged_out: 'failures.matchTaggedOut', material_not_free: 'failures.chip_core_ChipNotFree',

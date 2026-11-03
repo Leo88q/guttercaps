@@ -17,6 +17,7 @@ const treasury = () => process.env.TREASURY_WALLET ?? process.env.PREORDER_TREAS
 const cgMint = () => process.env.CG_MINT ?? '';
 import { payToFor, sha256Hex } from './pack-orders.ts';
 import { checkPayment, type PaymentFetcher } from './preorders.ts';
+import { consumeOneOf } from './consumption.ts';
 import { nextGameIndex, type ChipToMint } from './bubblegum-mint.ts';
 import { deriveBubblegumLeafAssetId } from './das.ts';
 import type { PublicKey } from '@solana/web3.js';
@@ -144,6 +145,10 @@ export async function confirmFusion(
       if (!check.ok) throw new ServiceError(422, `payment_${check.code}`, `Fee check failed: ${check.code}`);
       const used = db.get<{ id: number }>(`SELECT id FROM phaseg_fusions WHERE pay_sig = ?`, paySig);
       if (used) throw new ServiceError(409, 'already_confirmed', 'This fee signature was already credited');
+      // Комиссия fusion — тот же журнал переводов: один перевод не оплачивает и пак, и fusion (находка 18).
+      if (consumeOneOf(db, { signature: paySig, transferIndexes: check.transferIndexes ?? [], instrument: mint ? 'spl' : 'sol' }, `fusion:${id}`, t) === null) {
+        throw new ServiceError(409, 'already_confirmed', 'This payment transfer was already credited to another order');
+      }
     }
     const inputs = JSON.parse(row.inputs) as string[];
     const burned = await deps.verifyBurned(inputs, wallet);

@@ -20,6 +20,7 @@ import { skrMicroForUsdCents, usdcMicroForUsdCents, usdCentsFromSolLamports } fr
 import type { Db } from './db.ts';
 import { now } from './db.ts';
 import { ServiceError } from './services.ts';
+import { consumeOneOf } from './consumption.ts';
 import { SKR_MINT, SWITCHBOARD_QUEUE, USDC_MINT } from './config.ts';
 import {
   ata, closePreorderDropIx, grantPreorderPackIx, initGrantRandomnessIx, initPreorderDropIx,
@@ -301,13 +302,24 @@ export function createIntent(db: Db, wallet: string, qty: number, t = now(), off
 export interface ParsedPaymentTx {
   /** `meta.err == null` */
   ok: boolean;
-  transfers: { source: string; destination: string; lamports: bigint; mint?: string }[];
+  /**
+   * `index` — позиция перевода внутри транзакции (ключ журнала `payment_transfer`),
+   * `instrument` — чем заплатили. Раньше тип инструмента не хранился вовсе: system transfer
+   * (SOL) и SPL transfer попадали в один список, и SOL-перевод на адрес токен-аккаунта проходил
+   * проверку заказа в USDC/SKR (находка 17).
+   */
+  transfers: { index: number; instrument: 'sol' | 'spl'; source: string; destination: string; lamports: bigint; mint?: string }[];
   memos: string[];
 }
 
 export interface PaymentCheck {
   ok: boolean;
-  code: 'ok' | 'tx_failed' | 'no_transfer' | 'amount_low' | 'memo_mismatch' | 'unknown_payer';
+  code: 'ok' | 'tx_failed' | 'no_transfer' | 'wrong_instrument' | 'amount_low' | 'memo_mismatch' | 'unknown_payer';
+  /**
+   * Индексы подходящих переводов (только при `ok`). Расходуется первый ещё не израсходованный: одна
+   * транзакция может нести несколько переводов, и разные заказы вправе оплатиться разными (находка 18).
+   */
+  transferIndexes?: number[];
 }
 
 /**
@@ -324,16 +336,29 @@ export function checkPayment(
 ): PaymentCheck {
   if (!tx.ok) return { ok: false, code: 'tx_failed' };
   const need = BigInt(a.lamports);
-  const destOk = (t: ParsedPaymentTx['transfers'][number]) => t.destination === a.treasury
-    && (!a.mint || !t.mint || t.mint === a.mint);
+  const wantSpl = Boolean(a.mint);
+  // Находка 17: инструмент платежа обязан совпасть с ожидаемым. Заказ в SPL-токене закрывает только
+  // SPL-перевод ЭТОГО mint'а (mint берётся из самой транзакции, не из запроса), заказ в SOL — только
+  // system transfer. Раньше проверка была `!t.mint || t.mint === a.mint`, то есть отсутствие mint'а
+  // считалось доказательством совпадения: 1 000 000 lamports на адрес USDC-ATA проходили как 1 USDC.
+  const sameInstrument = (t: ParsedPaymentTx['transfers'][number]) =>
+    wantSpl ? t.instrument === 'spl' && Boolean(a.mint) && t.mint === a.mint : t.instrument === 'sol';
+  const destOk = (t: ParsedPaymentTx['transfers'][number]) => t.destination === a.treasury && sameInstrument(t);
   const hit = tx.transfers.filter((t) => destOk(t) && t.lamports >= need);
   if (hit.length === 0) {
-    return { ok: false, code: tx.transfers.some((t) => destOk(t)) ? 'amount_low' : 'no_transfer' };
+    // Классификация для клиента: перевод в казну был, но не тем инструментом / не той суммы.
+    const toTreasury = tx.transfers.filter((t) => t.destination === a.treasury);
+    if (toTreasury.length === 0) return { ok: false, code: 'no_transfer' };
+    return { ok: false, code: toTreasury.some(sameInstrument) ? 'amount_low' : 'wrong_instrument' };
   }
-  if (tx.memos.length > 0) {
-    return tx.memos.includes(a.memo) ? { ok: true, code: 'ok' } : { ok: false, code: 'memo_mismatch' };
-  }
-  return hit.some((t) => t.source === a.wallet) ? { ok: true, code: 'ok' } : { ok: false, code: 'unknown_payer' };
+  if (tx.memos.length > 0 && !tx.memos.includes(a.memo)) return { ok: false, code: 'memo_mismatch' };
+  // Без memo плательщиком обязан быть сам кошелёк брони (оплата с биржи допустима только с memo).
+  const payer = (t: ParsedPaymentTx['transfers'][number]) => tx.memos.length > 0 || t.source === a.wallet;
+  const candidates = hit.filter(payer);
+  if (candidates.length === 0) return { ok: false, code: 'unknown_payer' };
+  // Какие ИМЕННО переводы закрывают заказ: журнал `payment_transfer` расходует конкретный перевод, а не
+  // всю транзакцию, поэтому одна транзакция с двумя memo больше не оплачивает два разных заказа (18).
+  return { ok: true, code: 'ok', transferIndexes: candidates.map((t) => t.index) };
 }
 
 export type PaymentFetcher = (signature: string) => Promise<ParsedPaymentTx | null>;
@@ -345,8 +370,30 @@ export type PaymentFetcher = (signature: string) => Promise<ParsedPaymentTx | nu
  */
 export function parseRpcPayment(tx: unknown): ParsedPaymentTx | null {
   if (!tx || typeof tx !== 'object') return null;
-  const t = tx as { meta?: { err?: unknown }; transaction?: { message?: { instructions?: unknown[] } } };
-  const ok = t.meta?.err == null;
+  type Json = Record<string, unknown>;
+  const t = tx as {
+    meta?: Json | null;
+    transaction?: { message?: { instructions?: unknown[]; accountKeys?: unknown[] } };
+  };
+  const meta = (t.meta ?? {}) as Json;
+  const ok = meta.err == null;
+  // mint токен-аккаунта по адресу: нужен там, где parsed-инструкция `spl-token: transfer` не несёт mint
+  // (старый путь transfer без transferChecked). Источник — postTokenBalances/preTokenBalances самой
+  // транзакции по номеру аккаунта в её message, то есть факт цепи, а не заявка клиента (находка 17).
+  const accountKeys = (t.transaction?.message?.accountKeys ?? []) as unknown[];
+  const keyAt = (idx: number): string | undefined => {
+    const k = accountKeys[idx] as { pubkey?: string } | string | undefined;
+    if (typeof k === 'string') return k;
+    return k?.pubkey;
+  };
+  const mintByAccount = new Map<string, string>();
+  for (const field of ['postTokenBalances', 'preTokenBalances']) {
+    const arr = (meta[field] ?? []) as { accountIndex?: number; mint?: string }[];
+    for (const b of arr) {
+      const key = typeof b.accountIndex === 'number' ? keyAt(b.accountIndex) : undefined;
+      if (key && b.mint) mintByAccount.set(key, b.mint);
+    }
+  }
   const transfers: ParsedPaymentTx['transfers'] = [];
   const memos: string[] = [];
   const visit = (ix: unknown) => {
@@ -356,24 +403,35 @@ export function parseRpcPayment(tx: unknown): ParsedPaymentTx | null {
     if (i.program === 'system' && i.parsed && typeof i.parsed === 'object') {
       const p = i.parsed as { type?: string; info?: { source?: string; destination?: string; lamports?: number } };
       if (p.type === 'transfer' && p.info) {
-        transfers.push({ source: String(p.info.source), destination: String(p.info.destination), lamports: BigInt(p.info.lamports ?? 0) });
+        transfers.push({
+          index: transfers.length,
+          instrument: 'sol',
+          source: String(p.info.source),
+          destination: String(p.info.destination),
+          lamports: BigInt(p.info.lamports ?? 0),
+        });
       }
     }
     if ((i.program === 'spl-token' || i.program === 'spl-token-2022') && i.parsed && typeof i.parsed === 'object') {
       const p = i.parsed as { type?: string; info?: { source?: string; destination?: string; amount?: string; mint?: string; authority?: string; tokenAmount?: { amount?: string } } };
       if ((p.type === 'transfer' || p.type === 'transferChecked') && p.info) {
         const amt = p.info.tokenAmount?.amount ?? p.info.amount ?? '0';
+        const destination = String(p.info.destination);
         transfers.push({
+          index: transfers.length,
+          instrument: 'spl',
           source: String(p.info.source),
-          destination: String(p.info.destination),
+          destination,
           lamports: BigInt(amt),
-          mint: p.info.mint ? String(p.info.mint) : undefined,
+          // mint только из данных транзакции; если его нет ни в инструкции, ни в балансах — перевода
+          // «в нужном токене» не существует, и заказ в SPL им не закроется (fail closed).
+          mint: p.info.mint ? String(p.info.mint) : mintByAccount.get(destination),
         });
       }
     }
   };
   for (const ix of t.transaction?.message?.instructions ?? []) visit(ix);
-  const inner = (t as { meta?: { innerInstructions?: { instructions?: unknown[] }[] } }).meta?.innerInstructions ?? [];
+  const inner = (meta.innerInstructions ?? []) as { instructions?: unknown[] }[];
   for (const g of inner) for (const ix of g.instructions ?? []) visit(ix);
   return { ok, transfers, memos };
 }
@@ -407,6 +465,11 @@ export async function confirmPayment(
   // tx_sig is the backstop: a racing confirm of another row with the same signature fails here.
   const used = db.get<{ ref_id: number }>(`SELECT ref_id FROM preorders WHERE tx_sig = ?`, signature);
   if (used) throw new ServiceError(409, 'already_confirmed', 'This payment signature was already credited');
+  // ...и один КОНКРЕТНЫЙ перевод закрывает ровно один заказ в любом контуре (находка 18): журнал
+  // `payment_transfer` не даёт одной транзакции с двумя memo оплатить preorder и pack order сразу.
+  if (consumeOneOf(db, { signature, transferIndexes: check.transferIndexes ?? [], instrument: dest.mint ? 'spl' : 'sol' }, `preorder:${refId}`, t) === null) {
+    throw new ServiceError(409, 'already_confirmed', 'This payment transfer was already credited to another order');
+  }
   const r = db.run(
     `UPDATE preorders SET status = 'paid', tx_sig = ?, paid_at = ? WHERE ref_id = ? AND status = 'intent' AND tx_sig IS NULL`,
     signature, t, refId,

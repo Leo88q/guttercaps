@@ -59,7 +59,7 @@ describe('confirm + settle (§4.1/§4.2)', () => {
     const f = fusion.createFusion(db, WALLET, assets, T0, { seedHex });
     const feeTx: ParsedPaymentTx = {
       ok: true,
-      transfers: [{ source: WALLET, destination: f.payTo, lamports: BigInt(f.feeMicro), mint: f.mint ?? undefined }],
+      transfers: [{ index: 0, instrument: 'spl', source: WALLET, destination: f.payTo, lamports: BigInt(f.feeMicro), mint: f.mint ?? undefined }],
       memos: [f.memo],
     };
     const view = await fusion.confirmFusion(db, WALLET, f.fusionId, { burnSig: 'b'.repeat(40), paySig: 'p'.repeat(40) }, {
@@ -74,7 +74,7 @@ describe('confirm + settle (§4.1/§4.2)', () => {
     const assets = [chip(0), chip(0), chip(0)];
     const f = fusion.createFusion(db, WALLET, assets, T0);
     await expect(fusion.confirmFusion(db, WALLET, f.fusionId, { burnSig: 'b'.repeat(40), paySig: 'p'.repeat(40) }, {
-      fetchPayment: async () => ({ ok: true, transfers: [{ source: WALLET, destination: f.payTo, lamports: BigInt(f.feeMicro), mint: f.mint ?? undefined }], memos: [f.memo] }),
+      fetchPayment: async () => ({ ok: true, transfers: [{ index: 0, instrument: 'spl', source: WALLET, destination: f.payTo, lamports: BigInt(f.feeMicro), mint: f.mint ?? undefined }], memos: [f.memo] }),
       verifyBurned: async () => false,
     }, T0)).rejects.toThrow(/material burn is not confirmed/);
   });

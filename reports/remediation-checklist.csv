@@ -1,6 +1,6 @@
 id;tier;contour;release;finding;status;evidence
 1;A — блокер запуска;запуск и подписи;R0;Phase V: повторная авторизация оплаченного выпуска как grant;todo;
-2;B — гейт контура;Phase V / settle;R0;Phase V: подтверждение не доказывает исполнение операции;todo;
+2;B — гейт контура;Phase V / settle;R0;Phase V: подтверждение не доказывает исполнение операции;done;"подтверждение Phase-V доказывает исполнение инструкции (assert-executed.ts): программа + anchor-дискриминатор settle_pack/grant_mint + order/receipt PDA в аккаунтах, meta.err=null; упоминание программы больше не проходит. Тест: backend/test/assert-executed-audit.test.ts"
 3;B — гейт контура;Phase V / settle;R0;Phase V: регистрация чужого cNFT по имени;todo;
 4;B — гейт контура;Phase V / settle;R0;Неограниченная первая инициализация settle;todo;
 5;A — блокер запуска;запуск и подписи;R0;Deployment: API URL становится адресом чужого host;done;"VITE_API_BASE=/v1; test/deploy-compose-audit + deploy-client-env-audit"
@@ -10,13 +10,13 @@ id;tier;contour;release;finding;status;evidence
 9;B — гейт контура;Phase V / settle;R0;Phase V: подтверждение и pagination;todo;
 10;A — блокер запуска;запуск и подписи;R0;Compose defaults противоречат production fail-fast;partial;"нет молчаливого дефолта; открыт вопрос политики (см. design §10.2)"
 11;B — гейт контура;Магазин, услуги, рынок, клиент;R0;Phase G/V: запрос после отправки до подтверждения;todo;
-12;A — блокер запуска;запуск и подписи;R0;Phase G/V: ошибка DAS трактуется как доказательство сжигания;todo;
+12;A — блокер запуска;запуск и подписи;R0;Phase G/V: ошибка DAS трактуется как доказательство сжигания;done;"ошибка DAS больше не считается доказательством сжигания (fusion-burn.ts): доказательство — chips.burned_at, burnt:true или DasError not_found; любой сбой — BurnCheckUnavailable → 503 burn_check_unavailable, intent остаётся оплачиваемым. Тест: backend/test/fusion-burn-audit.test.ts"
 13;B — гейт контура;Стейкинг, эмиссия, часы;R0;Singleton staking emission может захватить первый вызывающий;todo;
 14;B — гейт контура;Стейкинг, эмиссия, часы;R1;Phase G/V soft staking: повторный stake невозможен после unstake;todo;
 15;B — гейт контура;Стейкинг, эмиссия, часы;R1;Phase G/V soft staking: полный дневной бюджет за мгновенный stake;todo;
 16;B — гейт контура;Phase V / settle;R1;Phase V refund позволяет повторно создать тот же order PDA;todo;
-17;A — блокер запуска;запуск и подписи;R0;Платёж в SOL принимается как платёж в SPL-токене;todo;
-18;A — блокер запуска;запуск и подписи;R0;Один перевод может оплатить разные типы заказов;todo;
+17;A — блокер запуска;запуск и подписи;R0;Платёж в SOL принимается как платёж в SPL-токене;done;"инструмент платежа стал частью разобранной транзакции (sol|spl), mint для SPL берётся из инструкции или postTokenBalances; SOL-перевод на адрес ATA и перевод чужого mint отклоняются (wrong_instrument). Тест: backend/test/payment-instrument-audit.test.ts"
+18;A — блокер запуска;запуск и подписи;R0;Один перевод может оплатить разные типы заказов;done;общий журнал payment_transfer (signature, transfer_index) в SQLite: один конкретный перевод закрывает ровно один заказ в любом контуре (preorder/pack_order/fusion), повторное использование — 409. Тест: backend/test/payment-instrument-audit.test.ts
 19;B — гейт контура;Fusion, части, chip_core;R1;Повторное использование одних материалов несколькими fusion intents;todo;
 20;B — гейт контура;Phase G: минт, листья, выплаты;R1;Очистка проекций уничтожает отдельно зарегистрированные Phase G/V chips;todo;
 21;B — гейт контура;Стейкинг, эмиссия, часы;R1;Начисление soft staking не атомарно;todo;
@@ -50,7 +50,7 @@ id;tier;contour;release;finding;status;evidence
 49;B — гейт контура;Phase V / settle;R1;`settle::claim_reward` не имеет ни бюджета, ни таймлока, ни отзыва;todo;
 50;B — гейт контура;Phase V / settle;R1;`settle::escrow_buy` не защищён от смены цены и от self-trade;todo;
 51;A — блокер запуска;запуск и подписи;R0;Клиентский образ не даёт выставить RPC, программу settle и фазу запуска;todo;
-52;A — блокер запуска;запуск и подписи;R0;При `LAUNCH_PHASE=v` старые платёжные маршруты Phase G не закрыты;todo;
+52;A — блокер запуска;запуск и подписи;R0;При `LAUNCH_PHASE=v` старые платёжные маршруты Phase G не закрыты;done;phaseG() закрывает маршруты при LAUNCH_PHASE != g (было: только при full), под v они отвечают 410 phase_g_off. Тест: backend/test/phasev-route-gate-audit.test.ts
 53;A — блокер запуска;запуск и подписи;R0;Программа `settle` не исполняется ни одним тестом;todo;
 54;B — гейт контура;Phase V / settle;R1;"Индексатор подписан на `settle`, но не умеет декодировать ни одного её события; `refund_pack` не проецируется ";todo;
 55;B — гейт контура;Phase V / settle;R1;`settle::buy_pack` не проверяет ни цену, ни лимиты — в отличие от `chip_core::buy_pack`;todo;
