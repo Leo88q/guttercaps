@@ -3094,6 +3094,13 @@ components:
             week: { type: integer }
             drawnAt: { type: integer }
             slot: { type: integer }
+            entropyHex:
+              type: [string, 'null']
+              description: находка 57 — хеш энтропии розыгрыша; NULL у записей до правки (сид v1)
+            entropySource:
+              type: [string, 'null']
+              description: blockhash (проверяемо по цепи) | server_nonce (RPC не отдал блок)
+              enum: [blockhash, server_nonce, null]
             seedHex: { type: string }
             ticketsHash: { type: string }
             totalWeight: { type: string }

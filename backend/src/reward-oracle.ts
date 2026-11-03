@@ -53,7 +53,7 @@ import { finalizedHorizon } from './finality.ts';
 import { loadKeypair } from './crank.ts';
 import { sendAndConfirm } from './tx.ts';
 import { buildRewardTree, toHex } from './merkle.ts';
-import { settleGutterPot } from './gutterPot.ts';
+import { entropyFromBlockhash, settleGutterPot } from './gutterPot.ts';
 import { activeWallets, settleWallet, skrEligibility, weekIndex } from './quests.ts';
 import { KIND_REFERRALS, settleReferrals } from './referrals.ts';
 import { rankedSeasonWallets, settleSeason, unsettledSeasons, type SeasonRow } from './arena.ts';
@@ -583,7 +583,18 @@ export async function runOnce(d: OracleDeps, t = now()): Promise<{ settled: numb
   const signals = recordSignals(d.db, runDetectors(d.db, t), t);
   let settled = 0;
   for (const w of activeWallets(d.db, t - 8 * 86_400)) settled += settleWallet(d.db, w, t, horizon);
-  try { settleGutterPot(d.db, t, horizon); }
+  // Находка 57: в сид жеребьёвки идёт энтропия из блок-хеша слота горизонта — значение публичное
+  // (любой сверяет розыгрыш по цепи), но неизвестное в момент, когда набор билетов закрылся.
+  // RPC может не отдать блок (pruned/ограничения) — тогда честно помечаем серверный nonce.
+  let potEntropy: { entropyHex?: string; source?: 'blockhash' | 'server_nonce' } = {};
+  try {
+    const block = await d.connection.getBlock(horizon, { transactionDetails: 'none', rewards: false, maxSupportedTransactionVersion: 0 } as never);
+    const hash = (block as { blockhash?: string } | null)?.blockhash;
+    if (hash) potEntropy = { entropyHex: entropyFromBlockhash(hash), source: 'blockhash' };
+  } catch (e) {
+    d.log?.(`[reward-oracle] gutter pot: no block at slot ${horizon} (${(e as Error).message}) — server nonce entropy`);
+  }
+  try { settleGutterPot(d.db, t, horizon, potEntropy); }
   catch (e) { d.log?.(`[reward-oracle] ALERT gutter pot draw failed: ${(e as Error).message}`); }
   // referrals (kind 4): every finalized, opened, real-revenue purchase of a referee that has no row yet
   const referrals = settleReferrals(d.db, t, horizon);

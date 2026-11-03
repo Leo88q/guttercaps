@@ -9419,6 +9419,13 @@ export interface components {
                 week?: number;
                 drawnAt?: number;
                 slot?: number;
+                /** @description находка 57 — хеш энтропии розыгрыша; NULL у записей до правки (сид v1) */
+                entropyHex?: string | null;
+                /**
+                 * @description blockhash (проверяемо по цепи) | server_nonce (RPC не отдал блок)
+                 * @enum {string|null}
+                 */
+                entropySource?: "blockhash" | "server_nonce" | null;
                 seedHex?: string;
                 ticketsHash?: string;
                 totalWeight?: string;

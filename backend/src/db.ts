@@ -1369,7 +1369,9 @@ CREATE TABLE IF NOT EXISTS gutter_pot_draws (
   week          INTEGER PRIMARY KEY,     -- weekIndex (Monday 00:00 UTC)
   drawn_at      INTEGER NOT NULL,        -- unix s the oracle snapshotted
   slot          INTEGER NOT NULL,        -- finalizedHorizon used in the seed
-  seed_hex      TEXT    NOT NULL,        -- sha256(gutter-pot:v1:week:slot:totalWeight:wallets:ticketsHash)
+  entropy_hex   TEXT,                    -- находка 57: хеш энтропии (blockhash слота или nonce); NULL у записей v1
+  entropy_source TEXT,                   -- 'blockhash' (проверяемо по цепи) | 'server_nonce' (RPC не дал блок)
+  seed_hex      TEXT    NOT NULL,        -- sha256(gutter-pot:v2:…:ticketsHash:entropy) — v1 без суффикса у старых строк
   tickets_hash  TEXT    NOT NULL,        -- sha256 of sorted wallet:weight lines
   total_weight  TEXT    NOT NULL,
   wallets       INTEGER NOT NULL,
@@ -1608,6 +1610,9 @@ export class Db {
     const orderCols = new Set((this.raw.prepare('PRAGMA table_info(pack_orders)').all() as { name: string }[]).map((c) => c.name));
     if (!orderCols.has('settle_sig')) this.raw.exec('ALTER TABLE pack_orders ADD COLUMN settle_sig TEXT');
     if (!orderCols.has('settle_specs')) this.raw.exec('ALTER TABLE pack_orders ADD COLUMN settle_specs TEXT');
+    const potCols = new Set((this.raw.prepare('PRAGMA table_info(gutter_pot_draws)').all() as { name: string }[]).map((c) => c.name));
+    if (!potCols.has('entropy_hex')) this.raw.exec('ALTER TABLE gutter_pot_draws ADD COLUMN entropy_hex TEXT');
+    if (!potCols.has('entropy_source')) this.raw.exec('ALTER TABLE gutter_pot_draws ADD COLUMN entropy_source TEXT');
     const fusionCols = new Set((this.raw.prepare('PRAGMA table_info(phaseg_fusions)').all() as { name: string }[]).map((c) => c.name));
     if (!fusionCols.has('grant_sig')) this.raw.exec('ALTER TABLE phaseg_fusions ADD COLUMN grant_sig TEXT');
     if (!fusionCols.has('grant_specs')) this.raw.exec('ALTER TABLE phaseg_fusions ADD COLUMN grant_specs TEXT');

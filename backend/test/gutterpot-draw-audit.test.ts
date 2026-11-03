@@ -1,4 +1,7 @@
 // Reproducer for the Gutter Pot draw (backend/src/gutterPot.ts), two independent defects.
+// Исправлено (находка 57): билеты закрытой недели считаются на её конец (`chipStakeTickets(db, weekEnd)`),
+// а в сид идёт энтропия (`entropy_hex`/`entropy_source` в `gutter_pot_draws`). Оба теста ниже сняты с
+// `it.fails` и проверяют уже закрытое поведение, ниже — контрольные проверки самой правки.
 //
 // 1. No week snapshot. The product describes the ticket as "live chip-stake weight at the Monday
 //    00:00 UTC snapshot" (packages/economy/src/faucets.ts:161-163) and the function claims to
@@ -15,7 +18,9 @@
 //    function of the stake table plus a slot number the attacker can bracket.
 import { describe, expect, it } from 'vitest';
 import { Db } from '../src/db.ts';
-import { chipStakeTickets, gutterPotSeed, settleGutterPot, ticketsHash, weekStartUnix, weekEndUnix } from '../src/gutterPot.ts';
+import {
+  chipStakeTickets, entropyFromBlockhash, gutterPotSeed, settleGutterPot, ticketsHash, weekStartUnix, weekEndUnix,
+} from '../src/gutterPot.ts';
 import { WEEK } from '../src/quests.ts';
 
 const HORIZON_SLOT = 250_000_000;
@@ -28,8 +33,8 @@ function stake(db: Db, owner: string, weight: number, key: string, since: number
 }
 
 describe('gutter pot draw', () => {
-  // П. 57 (R2) — ещё не исправлено: неделя разыгрывается по живым стейкам, а не по снапшоту.
-  it.fails('a closed week must be drawn from a snapshot, not from live stakes', () => {
+  // П. 57 (R2): неделя разыгрывается по билетам на её конец, а не по живым стейкам.
+  it('a closed week must be drawn from a snapshot, not from live stakes', () => {
     const week = Math.floor(1_700_000_000 / WEEK) - 1;
     const weekEnd = weekEndUnix(week);
     const db = new Db(':memory:');
@@ -49,8 +54,10 @@ describe('gutter pot draw', () => {
     expect(walletInDraw).toBe(false);
   });
 
-  // П. 57 (R2) — ещё не исправлено: сид жеребьёвки воспроизводится из публичной записи розыгрыша.
-  it.fails('the seed must not be reproducible from the draw record alone', () => {
+  // П. 57 (R2): сид жеребьёвки не воспроизводится из публичной записи розыгрыша — нужна энтропия,
+  // которая публикуется вместе с розыгрышем и проверяется по цепи (блок-хеш слота) или помечена
+  // как серверный nonce.
+  it('the seed must not be reproducible from the draw record alone', () => {
     const week = Math.floor(1_700_000_000 / WEEK) - 1;
     const db = new Db(':memory:');
     for (let i = 0; i < 12; i++) stake(db, `HONEST${i}`, 1_000, `h${i}`, weekStartUnix(week) + 60);
@@ -63,8 +70,45 @@ describe('gutter pot draw', () => {
     const recomputed = gutterPotSeed({
       week, slot: HORIZON_SLOT, totalWeight: row.total_weight, wallets: row.wallets, ticketsHash: row.tickets_hash,
     }).toString('hex');
-    console.log(JSON.stringify({ seedIsPureFunctionOfPublicFields: recomputed === row.seed_hex, seed: row.seed_hex.slice(0, 16) }));
+    const entropy = db.get<{ entropy_hex: string; entropy_source: string }>(
+      `SELECT entropy_hex, entropy_source FROM gutter_pot_draws WHERE week = ?`, week)!;
+    console.log(JSON.stringify({
+      seedIsPureFunctionOfPublicFields: recomputed === row.seed_hex,
+      entropySource: entropy.entropy_source, seed: row.seed_hex.slice(0, 16),
+    }));
     expect(recomputed).not.toBe(row.seed_hex);
+    // но розыгрыш проверяем: с опубликованной энтропией сид воспроизводится точно
+    expect(entropy.entropy_hex).toMatch(/^[0-9a-f]{64}$/);
+    expect(
+      gutterPotSeed({
+        week, slot: HORIZON_SLOT, totalWeight: row.total_weight, wallets: row.wallets, ticketsHash: row.tickets_hash,
+        entropyHex: entropy.entropy_hex,
+      }).toString('hex'),
+    ).toBe(row.seed_hex);
+  });
+
+  it('entropy from the block hash is a public, verifiable input', () => {
+    const a = entropyFromBlockhash('5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW');
+    expect(a).toMatch(/^[0-9a-f]{64}$/);
+    // тот же блок → та же энтропия; другой блок → другая
+    expect(entropyFromBlockhash('5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW')).toBe(a);
+    expect(entropyFromBlockhash('11111111111111111111111111111111')).not.toBe(a);
+  });
+
+  it('the same snapshot and entropy always draw the same ten wallets', () => {
+    const week = Math.floor(1_700_000_000 / WEEK) - 1;
+    const entropyHex = 'ab'.repeat(32);
+    const run = () => {
+      const db = new Db(':memory:');
+      for (let i = 0; i < 12; i++) stake(db, `HONEST${i}`, 1_000, `h${i}`, weekStartUnix(week) + 60);
+      const draw = settleGutterPot(db, weekEndUnix(week) + 3_600, HORIZON_SLOT, { entropyHex, source: 'blockhash' })!;
+      const row = db.get<{ entropy_hex: string }>(`SELECT entropy_hex FROM gutter_pot_draws WHERE week = ?`, week)!;
+      return { winners: draw.winners.map((w) => w.wallet).join(','), row };
+    };
+    const first = run();
+    const second = run();
+    expect(second.winners).toBe(first.winners);
+    expect(second.row.entropy_hex).toBe(entropyHex);
   });
 
   it('the ticket set is read live (this is the mechanism behind the two failures above)', () => {
