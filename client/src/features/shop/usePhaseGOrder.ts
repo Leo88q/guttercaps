@@ -8,8 +8,8 @@ import { PublicKey, Transaction } from '@solana/web3.js';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, isMock } from '@/api/client';
 import {
-  browserStore, buildPaymentInstructions, confirmWithRetry, forgetPayment, forgetPendingOrder,
-  rememberedPayment, rememberedPendingOrder, rememberPayment, rememberPendingOrder,
+  browserStore, buildPaymentInstructions, confirmWithRetry, forgetEscrow, forgetPayment, forgetPendingOrder,
+  rememberedEscrow, rememberedPayment, rememberedPendingOrder, rememberEscrow, rememberPayment, rememberPendingOrder,
   waitForOrderMinted, waitForSignature, type PackOrder, type PhaseGCurrency, type PendingPhase,
 } from './phaseG';
 import { FLAGS } from '@/app/config';
@@ -63,6 +63,10 @@ export function usePhaseGOrder() {
           mint: created.mint ? new PublicKey(created.mint) : null,
         }));
         const escrowSig = await wallet.sendTransaction(escrowTx, connection);
+        // Находка 27: подпись эскроу запоминается ДО ожидания. Между эскроу и settle_pack есть окно
+        // (RPC ещё не видит эскроу → `not_paid_onchain`, или страница закрылась), и без этой записи
+        // восстановить заказ было нечем: подписи settle_pack в тот момент ещё не существует.
+        rememberEscrow(storage(), orderId, escrowSig);
         setStage('confirming');
         // §11: backend читает эскроу на `confirmed` — без ожидания первый же запрос уходил раньше, чем
         // RPC видел транзакцию, и поток рвался уже ПОСЛЕ оплаты.
@@ -81,6 +85,7 @@ export function usePhaseGOrder() {
           settleSig,
         );
         forgetPayment(storage(), orderId);
+        forgetEscrow(storage(), orderId);
         forgetPendingOrder(storage());
       } else if (!isMock()) {
         if (!wallet.publicKey || !wallet.sendTransaction) throw new Error('Wallet is not connected');
@@ -134,7 +139,9 @@ export function usePhaseGOrder() {
     const record = rememberedPendingOrder(storage());
     const id = orderId ?? record?.orderId ?? null;
     const signature = id === null ? null : rememberedPayment(storage(), id);
-    if (id === null || !signature) return false;
+    const escrow = id === null ? null : rememberedEscrow(storage(), id);
+    // Находка 27: у Phase V восстановление возможно и без подписи settle_pack — по подписи эскроу.
+    if (id === null || (!signature && !escrow)) return false;
     const phase: PendingPhase = FLAGS.launchPhase === 'v' ? 'v' : 'g';
     busy.current = true;
     setError(null);
@@ -142,13 +149,44 @@ export function usePhaseGOrder() {
       setStage('confirming');
       // Запись помнит, как оформлялся заказ; без неё считаем по текущей фазе запуска.
       const effective = record && record.orderId === id ? record.phase : phase;
+      if (!signature && escrow) {
+        // Вторая половина Phase V: эскроу уже оплачен, надо только получить авторизацию и доминтить.
+        if (effective !== 'v') throw new Error('Saved escrow payment belongs to a phase-V order');
+        if (!wallet.publicKey || !wallet.sendTransaction) throw new Error('Wallet is not connected');
+        await waitForSignature(connection, escrow);
+        const payload = await api.post('/packs/order/{id}/settle-auth', undefined, { path: { id } });
+        const order = await api.get('/packs/order/{id}', { path: { id } });
+        const { grantOrSettleIx } = await import('./phaseVFlow');
+        const settleTx = new Transaction().add(...grantOrSettleIx(payload as unknown as import('./phaseV').SettlePayloadLike, {
+          relayer: wallet.publicKey,
+          treasury: new PublicKey((order as unknown as { payToOwner?: string }).payToOwner ?? ''),
+          mint: (order as unknown as { mint?: string | null }).mint ? new PublicKey((order as unknown as { mint: string }).mint) : null,
+        }));
+        const settleSig = await wallet.sendTransaction(settleTx, connection);
+        rememberPayment(storage(), id, settleSig);
+        await waitForSignature(connection, settleSig);
+        await confirmWithRetry(
+          (sig) => api.post('/packs/order/{id}/settle-confirm', { signature: sig }, { path: { id } }),
+          settleSig,
+        );
+        forgetEscrow(storage(), id);
+        forgetPayment(storage(), id);
+        forgetPendingOrder(storage());
+        setStage('minting');
+        const fin = await waitForOrderMinted(() => api.get('/packs/order/{id}', { path: { id } }));
+        setOrder(fin);
+        setStage(fin.status === 'minted' ? 'done' : 'error');
+        if (fin.status !== 'minted') setError(`Order ${fin.status}`);
+        return fin.status === 'paid' || fin.status === 'minted';
+      }
       await confirmWithRetry(
         (sig) => (effective === 'v'
           ? api.post('/packs/order/{id}/settle-confirm', { signature: sig }, { path: { id } })
           : api.post('/packs/order/{id}/confirm', { signature: sig }, { path: { id } })),
-        signature,
+        signature!,
       );
       forgetPayment(storage(), id);
+      forgetEscrow(storage(), id);
       forgetPendingOrder(storage());
       setStage('minting');
       const final = await waitForOrderMinted(() => api.get('/packs/order/{id}', { path: { id } }));
@@ -163,7 +201,7 @@ export function usePhaseGOrder() {
     } finally {
       busy.current = false;
     }
-  }, []);
+  }, [connection, wallet]);
 
   const reset = useCallback(() => { setStage('idle'); setOrder(null); setError(null); }, []);
   return { stage, order, error, buy, reset, resumePayment };

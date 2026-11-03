@@ -11,7 +11,7 @@ import { useT } from '@/shared/i18n';
 import { isMock } from '@/api/client';
 import { usePhaseGOrder } from './usePhaseGOrder';
 import {
-  browserStore, rememberedPayment, rememberedPendingOrder, shouldResumePending, type PhaseGCurrency,
+  browserStore, rememberedEscrow, rememberedPayment, rememberedPendingOrder, shouldResumePending, type PhaseGCurrency,
 } from './phaseG';
 
 const CURRENCIES: PhaseGCurrency[] = ['SOL', 'USDC', 'CG'];
@@ -42,7 +42,10 @@ export function PhaseGBuyModal({ sku, packId, onClose }: {
     if (resumed.current || isMock()) return;
     const store = browserStore();
     const record = rememberedPendingOrder(store);
-    const hasSignature = record ? rememberedPayment(store, record.orderId) !== null : false;
+    // Находка 27: у Phase V восстановление бывает и без подписи settle_pack — по подписи эскроу.
+    const hasSignature = record
+      ? rememberedPayment(store, record.orderId) !== null || rememberedEscrow(store, record.orderId) !== null
+      : false;
     if (!shouldResumePending(record, sku, flow.stage, hasSignature)) return;
     resumed.current = true;
     void flow.resumePayment(record!.orderId);

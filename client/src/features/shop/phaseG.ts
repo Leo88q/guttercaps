@@ -191,6 +191,26 @@ export function forgetPayment(store: SignatureStore | null, orderId: number): vo
   try { store?.removeItem(paymentKey(orderId)); } catch { /* ignore */ }
 }
 
+// ---------------------------------------------------------------- эскроу Phase V (находка 27)
+//
+// В Phase V оплата — это ДВЕ транзакции: `buy_pack` (эскроу на цепи) и `settle_pack` (минт). Между ними
+// есть окно: RPC может не видеть эскроу, когда клиент просит `settle-auth` (`not_paid_onchain`), или
+// игрок просто закрывает страницу. Подпись `settle_pack` в этот момент ещё не существует, поэтому
+// восстановление «по подписи оплаты» не работало: заказ оставался `created` при уже оплаченном
+// эскроу, а повторная покупка создавала новый заказ. Подпись эскроу хранится отдельно и позволяет
+// дослать вторую половину (settle-auth → settle_pack → settle-confirm) без новой оплаты.
+const escrowKey = (orderId: number) => `gc:pendingEscrow:${orderId}`;
+
+export function rememberEscrow(store: SignatureStore | null, orderId: number, signature: string): void {
+  try { store?.setItem(escrowKey(orderId), signature); } catch { /* приватный режим: переживём */ }
+}
+export function rememberedEscrow(store: SignatureStore | null, orderId: number): string | null {
+  try { return store?.getItem(escrowKey(orderId)) ?? null; } catch { return null; }
+}
+export function forgetEscrow(store: SignatureStore | null, orderId: number): void {
+  try { store?.removeItem(escrowKey(orderId)); } catch { /* ignore */ }
+}
+
 // ---------------------------------------------------------------- незавершённый заказ (находка 11)
 //
 // Подписи мало: после перезагрузки страница не знает, К КАКОМУ заказу она относится, поэтому
