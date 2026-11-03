@@ -195,6 +195,7 @@
   "preorderWalletCap": "Naabot mo na ang limit bawat wallet sa drop na ito.",
   "preorderNotYours": "Sa ibang wallet ang reservation na ito.",
   "preorderAlreadyGranted": "Naipamahagi na ang mga pack na ito.",
+  "ownerCheckUnavailable": "Hindi ma-verify ngayon kung kanino ang chip na ito. Walang na-stake — subukan muli pagkalipas ng isang minuto.",
   "fusionMaterialsSpent": "Nasunog na o naisaayos na ang mga chip na ito sa ibang fusion. Isang sunog, isang resulta — magsimula ng bagong fusion gamit ang ibang chips.",
   "packRefundNotPossible": "Nasa refund queue ang order — ibinabalik ng team ang bayad sa wallet na pinagmulan nito; walang pack na ibibigay.",
   "preorderNotPayable": "Hindi na mababayaran ang reservation na ito — paso na o naproseso na.",

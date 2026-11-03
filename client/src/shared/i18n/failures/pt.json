@@ -195,6 +195,7 @@
   "preorderWalletCap": "Você atingiu o limite por carteira deste drop.",
   "preorderNotYours": "Esta reserva pertence a outra carteira.",
   "preorderAlreadyGranted": "Estes packs já foram entregues.",
+  "ownerCheckUnavailable": "Não é possível verificar agora a quem pertence este chip. Nada foi apostado — tente de novo em um minuto.",
   "fusionMaterialsSpent": "Estes chips já foram queimados ou liquidados em outra fusão. Uma queima dá um resultado — inicie uma nova fusão com outros chips.",
   "packRefundNotPossible": "O pedido está na fila de reembolso — a equipe devolve o pagamento para a carteira de origem; nenhum pacote é entregue.",
   "preorderNotPayable": "Esta reserva não pode mais ser paga — expirou ou já foi processada.",

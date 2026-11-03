@@ -195,6 +195,7 @@
   "preorderWalletCap": "Bạn đã chạm giới hạn mỗi ví của đợt này.",
   "preorderNotYours": "Đơn đặt này thuộc về ví khác.",
   "preorderAlreadyGranted": "Các gói này đã được phát.",
+  "ownerCheckUnavailable": "Hiện không thể xác minh chip này thuộc về ai. Chưa có gì được stake — hãy thử lại sau một phút.",
   "fusionMaterialsSpent": "Các chip này đã bị đốt hoặc đã được xử lý trong một fusion khác. Một lần đốt cho một kết quả — hãy bắt đầu fusion mới với chip khác.",
   "packRefundNotPossible": "Đơn đang trong hàng chờ hoàn tiền — đội ngũ hoàn khoản thanh toán về ví gốc; không có gói nào được giao.",
   "preorderNotPayable": "Đơn đặt này không còn thanh toán được — đã hết hạn hoặc đã xử lý.",

@@ -95,6 +95,8 @@ export const API_ERROR_KEYS = {
   not_refundable: 'failures.packRefundNotPossible', already_refunded: 'failures.packRefundNotPossible',
   // Находка 19: материалы уже сгорели в другом fusion — второго результата за одно сжигание не будет.
   materials_spent: 'failures.fusionMaterialsSpent',
+  // Находка 22: владение чипом проверяется у цепи; DAS не ответил — стейк не открыт, можно повторить.
+  owner_check_unavailable: 'failures.ownerCheckUnavailable',
   tx_not_found: 'failures.preorderTxNotFound', already_confirmed: 'failures.preorderAlreadyConfirmed',
   payment_tx_failed: 'failures.preorderPaymentFailed', payment_no_transfer: 'failures.preorderNoTransfer',
   payment_amount_low: 'failures.preorderAmountLow', payment_memo_mismatch: 'failures.preorderMemoMismatch',

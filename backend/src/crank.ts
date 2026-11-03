@@ -57,7 +57,7 @@ import {
   type BubblegumTreeMeta, type CollectionMeta, type CompressedMintClaim, type GameConfig, type PendingClaimFusion, type PendingFusion, type PendingPack,
   type RandomnessData, type RngKind, type WagerBattle,
 } from './chain.ts';
-import { DasClient, discoverLeafNonce, resolveClaimFromTreeAccount, type DasAssetWithProof } from './das.ts';
+import { DasClient, DasError, discoverLeafNonce, resolveClaimFromTreeAccount, type DasAssetWithProof } from './das.ts';
 import { TxError, fitsInTx, loadLookupTables, sendAndConfirm } from './tx.ts';
 import { reconcileChainOps } from './chain-ops.ts';
 
@@ -990,16 +990,31 @@ export async function crank(log: (s: string) => void = console.log) {
   const payer = loadKeypair();
   const connection = getConnection();
   const lookupTables = await loadLookupTables(connection, LOOKUP_TABLES, log);
-  const c = new Crank({ connection, payer, db: sharedDb(), log, lookupTables, das: new DasClient({ endpoint: DAS_RPC_URL, timeoutMs: DAS_TIMEOUT_MS }) });
+  const das = new DasClient({ endpoint: DAS_RPC_URL, timeoutMs: DAS_TIMEOUT_MS });
+  const c = new Crank({ connection, payer, db: sharedDb(), log, lookupTables, das });
   const bal = await c.connection.getBalance(payer.publicKey, 'confirmed');
   log(`[crank] ${RPC_URL} — payer ${payer.publicKey.toBase58()} (${(bal / LAMPORTS).toFixed(3)} SOL) · switchboard ${SWITCHBOARD_PROGRAM_ID.toBase58()} · LUT ${lookupTables.length ? lookupTables.map((l) => l.key.toBase58()).join(',') : 'none (reveal and open go in separate transactions)'} · poll ${CRANK_POLL_MS} ms · sweep ${CRANK_SWEEP_MS} ms · ${CRANK_CONCURRENCY} workers`);
   if (bal / LAMPORTS > CRANK_MAX_BALANCE_SOL) log(`[crank] WARN payer holds ${(bal / LAMPORTS).toFixed(2)} SOL > cap ${CRANK_MAX_BALANCE_SOL} — keep the hot key small`);
+  // Находка 22: владельцы активных soft-стейков глазами цепи (DAS). `undefined` — доказательства нет,
+  // такой день не начисляется и не помечается обработанным. Живёт рядом с кранком, потому что только
+  // здесь есть DAS-клиент, а домен (`phaseg-staking.ts`) остаётся синхронным.
+  const chainStakeOwners = async (db: import('./db.ts').Db): Promise<{ ownerOf(asset: string): string | null | undefined }> => {
+    const owners = new Map<string, string | null | undefined>();
+    for (const s of activeStakes(db).slice(0, 500)) {
+      try {
+        owners.set(s.asset, (await das.getAsset(s.asset)).owner.toBase58());
+      } catch (e) {
+        owners.set(s.asset, e instanceof DasError && e.code === 'not_found' ? null : undefined);
+      }
+    }
+    return { ownerOf: (asset: string) => owners.get(asset) };
+  };
   // Phase-G mint crank (docs/MINIMAL-LAUNCH-CHECKLIST.md 3.2): direct Bubblegum
   // minting for paid pack orders. Inert unless LAUNCH_PHASE=g and configured.
   const { LAUNCH_PHASE: lp, SHARED_MERKLE_TREE: smt, MINT_AUTHORITY_KEYPAIR: mak } = await import('./config.ts');
   const { processPaidOrders, makeChainMintSender, chainFirstLeafIndex } = await import('./bubblegum-mint.ts');
   const { processPaidFusions } = await import('./phaseg-fusion.ts');
-  const { accrueStakingDay, processPayouts } = await import('./phaseg-staking.ts');
+  const { accrueStakingDay, processPayouts, activeStakes } = await import('./phaseg-staking.ts');
   const { sendChipMint } = await import('./bubblegum-mint.ts');
   const { PublicKey: PK } = await import('@solana/web3.js');
   const phaseGTree = lp === 'g' && smt && mak ? new PK(smt) : null;
@@ -1055,7 +1070,12 @@ export async function crank(log: (s: string) => void = console.log) {
         // (latestEmissionDay would sit at day 0 forever without the staking program,
         // and accrual would credit exactly one day for the whole launch.)
         const day = Math.floor(Date.now() / 86_400_000);
-        const acc = accrueStakingDay(sharedDb(), day);
+        // Находка 22: перед начислением спрашиваем цепь, кому чип принадлежит СЕЙЧАС. Проекция не
+        // видит прямых передач cNFT мимо наших программ, поэтому по ней платить нельзя.
+        const acc = accrueStakingDay(sharedDb(), day, undefined, undefined, {
+          chainOwners: await chainStakeOwners(sharedDb()),
+        });
+        if (acc.deferred) log(`[crank] WARN phase-G staking day ${day} deferred: ${acc.deferred} chips could not be verified on chain — the day is not marked, it will be retried`);
         if (acc.credited > 0) log(`[crank] phase-G staking day ${day}: credited ${acc.credited} wallets (budget ${acc.budgetMicro} micro)`);
         const { makeCgPayoutSender } = await import('./phaseg-payout.ts');
         const pay = await processPayouts(sharedDb(), makeCgPayoutSender(connection, phaseGAuthority, sharedDb()));

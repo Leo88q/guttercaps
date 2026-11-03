@@ -15,7 +15,7 @@ import * as packOrders from './pack-orders.ts';
 import * as phasegFusion from './phaseg-fusion.ts';
 import * as phasegStaking from './phaseg-staking.ts';
 import * as phasev from './phasev.ts';
-import { DasClient } from './das.ts';
+import { DasClient, DasError } from './das.ts';
 import { BurnCheckUnavailable, verifyBurns } from './fusion-burn.ts';
 import { DAS_RPC_URL, DAS_TIMEOUT_MS } from './config.ts';
 import { bus } from './bus.ts';
@@ -722,9 +722,26 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   }));
 
   // ------------------------------------------------------------ phase-G soft staking (§5)
+  // Находка 22: владение чипом спрашиваем у цепи (DAS), а не у проекции — прямая передача cNFT мимо
+  // наших программ в подписку индексатора не попадает. DAS не ответил — отказ 503: начисление идёт
+  // за владение, и открывать стейк «по памяти» значит платить не тому.
+  const chainChipOwner = async (asset: string): Promise<string | null> => {
+    try {
+      const das = new DasClient({ endpoint: DAS_RPC_URL, timeoutMs: DAS_TIMEOUT_MS });
+      return (await das.getAsset(asset)).owner.toBase58();
+    } catch (e) {
+      // Только явное «такого ассета нет» — ответ; всё остальное (транспорт, таймаут, мусор) — не доказательство.
+      if (e instanceof DasError && e.code === 'not_found') return null;
+      throw new ServiceError(503, 'owner_check_unavailable',
+        `Ownership of ${asset} cannot be verified right now (${(e as Error).message}) — nothing was staked, retry later`);
+    }
+  };
   v1.post('/staking/soft/stake', requireAuth, rl(POLICIES.mutate), wrap(async (req, res) => {
     phaseG();
-    res.json(phasegStaking.stakeChip(db, req.session!.wallet, String(req.body?.asset ?? '')));
+    const asset = String(req.body?.asset ?? '');
+    res.json(phasegStaking.stakeChip(db, req.session!.wallet, asset, undefined, undefined, {
+      chainOwner: await chainChipOwner(asset),
+    }));
   }));
   v1.post('/staking/soft/unstake', requireAuth, rl(POLICIES.mutate), wrap(async (req, res) => {
     phaseG();

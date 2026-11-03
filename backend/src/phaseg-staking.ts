@@ -18,6 +18,11 @@ import { findChainOp } from './chain-ops.ts';
 interface StakeRow { asset: string; wallet: string; staked_at: number; unstaked_at: number | null }
 interface ChipRow { asset: string; owner: string; rarity: number; level: number; flags: number; lock_until: number; burned_at: number | null }
 
+/** Активные (не снятые) soft-стейки — их владельцев проверяет кранк перед начислением (находка 22). */
+export function activeStakes(db: Db): StakeRow[] {
+  return db.all<StakeRow>(`SELECT * FROM phaseg_stakes WHERE unstaked_at IS NULL`);
+}
+
 const stakeRow = (db: Db, asset: string) => db.get<StakeRow>(`SELECT * FROM phaseg_stakes WHERE asset = ? AND unstaked_at IS NULL`, asset);
 
 /**
@@ -28,11 +33,53 @@ const stakeRow = (db: Db, asset: string) => db.get<StakeRow>(`SELECT * FROM phas
  */
 export const softStakingLive = (phase: LaunchPhase): boolean => phase !== 'v';
 
-export function stakeChip(db: Db, wallet: string, asset: string, t = now(), phase: LaunchPhase = LAUNCH_PHASE) {
+/**
+ * Находка 22. `chips.owner` — проекция: она обновляется событиями наших программ, а прямая передача
+ * cNFT (Bubblegum `transfer`/`transferV2` мимо наших инструкций) в подписку индексатора не попадает.
+ * Значит, по одной проекции нельзя ни стейкать, ни платить: прежний владелец продолжал бы получать
+ * срез эмиссии за чип, которого у него уже нет, а новый — не мог бы застейкать свой.
+ *
+ * Поэтому и стейк, и дневное начисление принимают ответ цепи отдельным аргументом (adapter живёт в
+ * вызывающем коде, чтобы домен остался синхронным и тестируемым):
+ *   `string` — владелец по DAS; `null` — DAS ответил, что ассета нет (сгорел/выведен);
+ *   `undefined` — индекс недоступен, доказательства нет.
+ */
+export interface ChainOwnerReader {
+  /** `string` = владелец, `null` = ассета нет, `undefined` = DAS не ответил. */
+  ownerOf(asset: string): string | null | undefined;
+}
+
+export function stakeChip(
+  db: Db, wallet: string, asset: string, t = now(), phase: LaunchPhase = LAUNCH_PHASE,
+  /** Находка 22: ответ цепи по владельцу. `undefined` — доказательства нет, стейк не открывается. */
+  deps: { chainOwner?: string | null } = {},
+) {
   if (!softStakingLive(phase)) throw new ServiceError(410, 'phase_g_off', 'Soft staking is off in Phase V — the on-chain staking program owns the chip slice');
   const chip = db.get<ChipRow>(`SELECT * FROM chips WHERE asset = ?`, asset);
   if (!chip) throw new ServiceError(404, 'chip_not_found', 'Unknown chip');
-  if (chip.owner !== wallet) throw new ServiceError(403, 'not_yours', 'Only the owner can stake a chip');
+  // Ключ назван — значит доказательство запрошено и его нет (`undefined`); ключа нет — вызов без
+  // проверки (тесты и внутренние пути), и такой вызов в `backend/src` запрещён аудитом.
+  if (Object.hasOwn(deps, 'chainOwner') && deps.chainOwner === undefined) {
+    // Без ответа цепи стейк не открываем: начисление идёт за владение, а проекция могла отстать.
+    throw new ServiceError(503, 'owner_check_unavailable',
+      'Ownership cannot be verified right now (DAS is unavailable) — the stake was not opened, retry later');
+  }
+  if (Object.hasOwn(deps, 'chainOwner') && deps.chainOwner === null) {
+    // Цепь говорит, что ассета нет: чип сгорел или выведен из дерева.
+    db.run(`UPDATE chips SET burned_at = COALESCE(burned_at, ?) WHERE asset = ?`, t, asset);
+    throw new ServiceError(409, 'already_burned', 'The chain has no such asset — it was burned or left the tree');
+  }
+  if (Object.hasOwn(deps, 'chainOwner') && deps.chainOwner !== wallet) {
+    // Проекция отстала: чип уже у другого кошелька. Правим проекцию по факту цепи и отказываем.
+    db.run(`UPDATE chips SET owner = ? WHERE asset = ?`, String(deps.chainOwner), asset);
+    throw new ServiceError(403, 'not_yours', 'The chain says this chip belongs to another wallet');
+  }
+  if (!Object.hasOwn(deps, 'chainOwner') && chip.owner !== wallet) {
+    // Вызов без ответа цепи (тесты, внутренние пути): остаётся прежнее правило по проекции.
+    throw new ServiceError(403, 'not_yours', 'Only the owner can stake a chip');
+  }
+  // Цепь подтвердила владение — догоняем проекцию, если она отстала.
+  if (chip.owner !== wallet) db.run(`UPDATE chips SET owner = ? WHERE asset = ?`, wallet, asset);
   if (chip.burned_at !== null) throw new ServiceError(409, 'already_burned', 'A burned chip cannot stake');
   if (chip.lock_until > t) throw new ServiceError(409, 'chip_locked', 'Chip is on cooldown');
   if ((chip.flags & 0b010) !== 0) throw new ServiceError(409, 'chip_busy', 'A listed chip cannot stake');
@@ -69,7 +116,16 @@ export function unstakeChip(db: Db, wallet: string, asset: string, t = now()) {
  * the projection STILL shows the chip with the staking wallet (sold chips
  * stop earning; the stake row is closed so re-buys don't resurrect it).
  */
-export function accrueStakingDay(db: Db, dayIndex: number, t = now(), phase: LaunchPhase = LAUNCH_PHASE): { credited: number; budgetMicro: string } {
+export function accrueStakingDay(
+  db: Db, dayIndex: number, t = now(), phase: LaunchPhase = LAUNCH_PHASE,
+  /**
+   * Находка 22: ответ цепи по владельцу каждого чипа. Без него начисляли по проекции, а прямая
+   * передача cNFT мимо наших программ в проекцию не попадает — прежний владелец продолжал получать
+   * срез эмиссии. Если хотя бы по одному чипу доказательства нет (`undefined`), день НЕ помечается
+   * обработанным: начисления повторятся после того, как DAS ответит, а не «потеряются навсегда».
+   */
+  deps: { chainOwners?: ChainOwnerReader } = {},
+): { credited: number; budgetMicro: string; deferred?: number } {
   // Находка 15: в фазе V день эмиссии платит пул, soft-бюджет не начисляется вовсе.
   if (!softStakingLive(phase)) return { credited: 0, budgetMicro: '0' };
   if (db.get(`SELECT day_index FROM phaseg_stake_days WHERE day_index = ?`, dayIndex)) {
@@ -78,11 +134,21 @@ export function accrueStakingDay(db: Db, dayIndex: number, t = now(), phase: Lau
   const emission = latestEmissionDay(db);
   const budget = (emission.guardedMicro * BigInt(EMISSION_SPLIT.chipStaking)) / 100n;
   const stakes = db.all<StakeRow>(`SELECT * FROM phaseg_stakes WHERE unstaked_at IS NULL`);
+  // Находка 22: сначала спрашиваем цепь по всем активным стейкам. Неизвестный владелец — не повод
+  // заплатить «по проекции»: день откладывается целиком (иначе часть игроков потеряла бы начисление).
+  if (deps.chainOwners && stakes.length > 0) {
+    const unknown = stakes.filter((s) => deps.chainOwners!.ownerOf(s.asset) === undefined);
+    if (unknown.length > 0) return { credited: 0, budgetMicro: '0', deferred: unknown.length };
+  }
   const weighted: { wallet: string; weight: bigint }[] = [];
   let total = 0n;
   for (const s of stakes) {
     const chip = db.get<ChipRow>(`SELECT * FROM chips WHERE asset = ?`, s.asset);
-    if (!chip || chip.burned_at !== null || chip.owner !== s.wallet) {
+    const chainOwner = deps.chainOwners ? deps.chainOwners.ownerOf(s.asset) : undefined;
+    // `null` — цепи такого ассета уже нет; строка владельца не совпала с цепью — чип передан мимо нас.
+    const stale = deps.chainOwners ? (chainOwner === null || chainOwner !== s.wallet) : (!!chip && chip.owner !== s.wallet);
+    if (!chip || chip.burned_at !== null || stale) {
+      if (chainOwner) db.run(`UPDATE chips SET owner = ? WHERE asset = ?`, chainOwner, s.asset);
       db.run(`UPDATE phaseg_stakes SET unstaked_at = ? WHERE asset = ? AND unstaked_at IS NULL`, t, s.asset);
       db.run(`UPDATE chips SET flags = flags & ~1 WHERE asset = ?`, s.asset);
       continue;
