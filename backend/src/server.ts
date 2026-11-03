@@ -624,22 +624,32 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   });
 
   // ------------------------------------------------------------ phase-G pack orders (docs/MINIMAL-LAUNCH-CHECKLIST.md §2–3)
-  // Only live when LAUNCH_PHASE=g; in 'full' and in 'v' these answer 410 and the program flow above
-  // (или Phase-V settle) остаётся единственным путём покупки. Mint crank живёт в crank.ts и по фазе
-  // тоже inert. Раньше закрытие срабатывало только на 'full', поэтому под 'v' открывался старый
-  // маршрут «оплати казне с мемо — мы пометим paid», хотя Phase-V минт требует on-chain buy_pack
-  // escrow, а кранк минта под 'v' не работает: оплаченный заказ не мог превратиться в чип (п. 52).
+  // Создание/чтение заказа живёт в 'g' и 'v' (`phaseOrders`), off-chain подтверждение оплаты — только
+  // в 'g' (`phaseG`): в 'full' не работает ничего. Раньше закрытие срабатывало только на 'full',
+  // поэтому под 'v' открывался старый маршрут «оплати казне с мемо — мы пометим paid», хотя Phase-V
+  // минт требует on-chain buy_pack escrow, а кранк минта под 'v' не работает: оплаченный заказ не мог
+  // превратиться в чип (п. 52). Первая версия гейта закрыла под 'v' весь блок, и покупка в фазе V
+  // упиралась в 410 ещё до `buy_pack` — поэтому гейтов теперь два.
   const phaseG = () => { if (LAUNCH_PHASE !== 'g') throw new ServiceError(410, 'phase_g_off', 'Phased-launch orders are not enabled on this backend'); };
+  // Находка 52 (уточнение): под 'v' заказы тоже создаются и читаются — Phase-V покупка начинается с
+  // `POST /packs/order` (id, коммит seed, specs) и опрашивает `GET /packs/order/:id`, а закрывать под 'v'
+  // нужно только off-chain подтверждение оплаты. Первая версия гейта закрыла весь блок целиком, и
+  // покупка в фазе V упиралась в 410 ещё до `buy_pack`.
+  const phaseOrders = () => {
+    if (LAUNCH_PHASE !== 'g' && LAUNCH_PHASE !== 'v') {
+      throw new ServiceError(410, 'orders_unavailable', 'Pack orders are not enabled on this backend');
+    }
+  };
   const phaseV = () => { if (LAUNCH_PHASE !== 'v') throw new ServiceError(410, 'phase_v_off', 'Phase-V settle is not enabled on this backend'); };
   v1.post('/packs/order', requireAuth, accessGate('packs'), rl(POLICIES.mutate), wrap(async (req, res) => {
-    phaseG();
+    phaseOrders();
     const geo = geoOf(req.headers);
     if (geo.restricted) throw new ServiceError(403, 'geo_blocked', 'Randomised packs are not available in your region.', { country: geo.country, mode: geo.mode });
     res.set('Cache-Control', 'no-store');
     res.json(packOrders.createOrder(db, req.session!.wallet, req.body));
   }));
   v1.get('/packs/order/:id', requireAuth, (req, res) => {
-    phaseG();
+    phaseOrders();
     res.json(packOrders.getOrder(db, req.session!.wallet, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0));
   });
   v1.post('/packs/order/:id/confirm', requireAuth, accessGate('packs'), rl(POLICIES.claim), wrap(async (req, res) => {
@@ -653,7 +663,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     res.json({ entries: packOrders.mintJournal(db, intQuery(req.query.limit, { name: 'limit', min: 1, max: 500, def: 100 }) ?? 100), tree: SHARED_MERKLE_TREE || null });
   });
   v1.get('/packs/order/:id/verify', (req, res) => {
-    phaseG();
+    phaseOrders();
     const r = packOrders.verifyOrder(db, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0);
     if (!r) { res.status(404).json({ code: 'not_found', message: 'Unknown or unminted order' }); return; }
     res.json(r);
@@ -685,11 +695,13 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     }
   };
   v1.post('/fusion/order', requireAuth, accessGate('packs'), rl(POLICIES.mutate), wrap(async (req, res) => {
-    phaseG();
+    // Та же оговорка, что у паков: под 'v' fusion создаётся и читается (grant выдаёт phase-V),
+    // под 'v' закрыто только off-chain подтверждение оплаты.
+    phaseOrders();
     res.json(phasegFusion.createFusion(db, req.session!.wallet, req.body?.assets));
   }));
   v1.get('/fusion/order/:id', requireAuth, wrap(async (req, res) => {
-    phaseG();
+    phaseOrders();
     const view = phasegFusion.getFusion(db, req.session!.wallet, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0);
     if (LAUNCH_PHASE === 'v' && view.status === 'paid') {
       res.json({ ...view, grant: await phasev.fusionGrantFor(db, req.session!.wallet, view.fusionId, { connection: connection() }) });

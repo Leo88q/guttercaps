@@ -43,6 +43,10 @@ async function signIn(c: Client, kp: Keypair) {
   return r;
 }
 
+// Treasury нужен, чтобы POST /packs/order дошёл до создания заказа, а не упал на «некуда платить».
+// Переменная читается при импорте `config.ts`, поэтому её надо задать до первого `appWith`.
+process.env.TREASURY_WALLET = Keypair.generate().publicKey.toBase58();
+
 async function appWith(phase: 'full' | 'g' | 'v') {
   process.env.LAUNCH_PHASE = phase;
   const { Db } = await import('../src/db.ts');
@@ -82,6 +86,28 @@ describe('phase gate of the phase-G order routes', () => {
       console.log(JSON.stringify({ phaseAtBoot: 'v', confirmStatus: confirm.status, code: confirm.json?.code }));
       expect(confirm.status).toBe(410);
       expect(confirm.json?.code).toBe('phase_g_off');
+    } finally {
+      await new Promise<void>((f) => server.close(() => f()));
+    }
+  });
+
+  it('under v an order can still be created and read — the phase-V buy starts here', async () => {
+    // Первая версия гейта (п. 52) закрывала под 'v' весь блок pack-orders, включая создание заказа.
+    // Phase-V покупка начинается с `POST /packs/order` (id, коммит seed, specs) и опрашивает
+    // `GET /packs/order/:id`, поэтому такой гейт делал фазу V неиграбельной: клиент получал 410 ещё
+    // до `buy_pack`. Проверяем, что creation/read открыты, а off-chain подтверждение — нет.
+    const { server, base } = await appWith('v');
+    try {
+      const c = new Client(base);
+      expect((await signIn(c, Keypair.generate())).status).toBe(200);
+      const created = await c.post('/v1/packs/order', { sku: 1, qty: 1, currency: 'SOL' });
+      console.log(JSON.stringify({ phaseAtBoot: 'v', createStatus: created.status, code: created.json?.code }));
+      expect(created.status).toBe(200);
+      const orderId = (created.json as unknown as { orderId: number }).orderId;
+      expect(orderId).toBeGreaterThan(0);
+      const read = await c.get(`/v1/packs/order/${orderId}`);
+      expect(read.status).toBe(200);
+      expect((read.json as unknown as { status: string }).status).toBe('created');
     } finally {
       await new Promise<void>((f) => server.close(() => f()));
     }
