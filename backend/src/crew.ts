@@ -543,6 +543,11 @@ export function settleCrewMonth(db: Db, month: number, t = now()): { month: numb
     for (const w of weeks) score += crewMonthWeekScore(db, c.id, w);
     if (score > 0) scored.push({ id: c.id, name: c.name, district: c.wall_district, score });
   }
+  // Находка 58: призы уходили первым трём строкам таблицы `crews` (порядок вставки), а экран
+  // (`crewMonthBoard`) сортирует по очкам и только потом по id. Из-за этого «#1 на доске» мог не получить
+  // ничего, а команда, зачартеренная раньше и набравшая меньше, забирала часть доски. Сортируем ровно так
+  // же, как доска: score DESC, id ASC.
+  scored.sort((a, b) => b.score - a.score || a.id - b.id);
   const prizes: CrewMonthPrize[] = [];
   return db.tx(() => {
     scored.slice(0, CREW.monthlyContestPlaces).forEach((c, i) => {

@@ -36,9 +36,9 @@ function run(db: Db, wallet: string, score: number, week: number) {
 }
 
 describe('crew monthly contest', () => {
-  // П. 58 (R2) — ещё не исправлено: `it.fails` заставит обновить тест, когда `settleCrewMonth`
-  // начнёт сортировать по очкам (сейчас платит первые три строки таблицы).
-  it.fails('the highest-scoring crews get the prizes, as the board shows', () => {
+  // П. 58 (R2). Призы уходили первым трём строкам таблицы `crews` (порядок вставки), а не трём лучшим по
+  // очкам: «#1 на доске» мог не получить ничего. Теперь `settleCrewMonth` сортирует так же, как доска.
+  it('the highest-scoring crews get the prizes, as the board shows', () => {
     const db = new Db(':memory:');
     // a week whose Monday-of-the-board (week start) actually lies inside the month
     let week = -1;

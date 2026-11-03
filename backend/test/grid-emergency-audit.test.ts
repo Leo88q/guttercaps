@@ -14,8 +14,9 @@ const kp = () => { let s = ''; while (s.length < 44) s += B58[Math.floor(Math.ra
 const T = 20_000 * 86_400;
 
 describe('floodgrid emergency marks', () => {
-  // П. 59 (R3) — ещё не исправлено: метка выдаётся за каждую неудачу после третьей.
-  it.fails('marks are granted once per threshold, not once per failure past it', () => {
+  // П. 59 (R3). Условие было `fails >= порог`, а счётчик неудач не обнуляется: каждая неудача после
+  // третьей выдавала новую метку. Теперь метка положена за каждую достигнутую ступень (3, 6, 9…).
+  it('marks are granted once per threshold, not once per failure past it', () => {
     const db = new Db(':memory:');
     const owner = kp();
     const asset = kp();

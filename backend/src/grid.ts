@@ -313,7 +313,10 @@ function settleFail(db: Db, wallet: string, attempt: { id: string; asset: string
   db.run(`INSERT INTO grid_fails (wallet, asset, level, fails) VALUES (?, ?, ?, 1) ON CONFLICT(wallet, asset, level) DO UPDATE SET fails = fails + 1`, wallet, attempt.asset, attempt.level);
   const fails = db.get<{ fails: number }>(`SELECT fails FROM grid_fails WHERE wallet = ? AND asset = ? AND level = ?`, wallet, attempt.asset, attempt.level)?.fails ?? 0;
   let emergencyGranted = false;
-  if (fails >= GRID.emergencyHintAfterFails) {
+  // Находка 59: условие `fails >= порог` выдавало метку за КАЖДУЮ неудачу после третьей (счётчик не
+  // обнуляется), то есть пять провалов на секторе давали четыре метки вместо одной. Метка положена за
+  // каждую ДОСТИГНУТУЮ ступень: 3-я, 6-я, 9-я неудача на этом чипе и уровне.
+  if (fails % GRID.emergencyHintAfterFails === 0) {
     const e = db.get<{ available: number }>(`SELECT available FROM grid_emergency WHERE asset = ? AND level = ?`, attempt.asset, attempt.level);
     if (!e || e.available <= 0) {
       db.run(`INSERT INTO grid_emergency (asset, level, available) VALUES (?, ?, 1) ON CONFLICT(asset, level) DO UPDATE SET available = 1`, attempt.asset, attempt.level);

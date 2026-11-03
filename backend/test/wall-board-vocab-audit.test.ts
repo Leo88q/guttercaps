@@ -24,8 +24,9 @@ const weekUnix = (week: number, extra = 60) => week * WEEK + WEEK_EPOCH_OFFSET +
 const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 512"><path d="M10 10L200 120" stroke="#FF2E8A" stroke-width="8" fill="none"/></svg>';
 
 describe('wall board × tag moderation', () => {
-  // П. 69 (R3) — ещё не исправлено: фильтр ищет значения resolution, которых продукт не пишет.
-  it.fails('a report confirmed by a moderator keeps the tag off the board for that week', () => {
+  // П. 69 (R3). Фильтр доски теперь понимает написание, которое пишет `setTagStatus` ('tag_hidden' /
+  // 'tag_removed'), поэтому подтверждённая жалоба держит тег вне доски недели и после возврата в live.
+  it('a report confirmed by a moderator keeps the tag off the board for that week', () => {
     const db = new Db(':memory:');
     const t = weekUnix(9);
     const author = kp();

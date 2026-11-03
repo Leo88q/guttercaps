@@ -91,7 +91,13 @@ export function boardCandidates(db: Db, t = now()): BoardCandidate[] {
          JOIN tag_registry g ON g.id = s.tag_id AND g.status = 'live'
         WHERE NOT EXISTS (
                 SELECT 1 FROM wall_reports r
-                 WHERE r.tag_id = s.tag_id AND r.created_at >= ? AND r.resolution IN ('hidden', 'removed')
+                 -- Находка 69: setTagStatus пишет resolution = 'tag_' || status ('tag_hidden' /
+                 -- 'tag_removed'), а не 'hidden'/'removed'. Прежний список не совпадал ни с одним значением
+                 -- продукта, поэтому правило «подтверждённая жалоба держит тег вне доски недели» не
+                 -- срабатывало, как только тег возвращали в live (апелляция удалась) в ту же неделю.
+                 -- Старые написания оставлены: строки, записанные до правки, всё ещё должны считаться.
+                 WHERE r.tag_id = s.tag_id AND r.created_at >= ?
+                   AND r.resolution IN ('hidden', 'removed', 'tag_hidden', 'tag_removed')
               )
         ORDER BY s.district, s.slot`,
       weekStart,
