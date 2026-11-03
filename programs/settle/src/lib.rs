@@ -288,6 +288,12 @@ pub enum SettleError {
     Overflow,
     #[msg("only the program upgrade authority may initialize config")]
     NotUpgradeAuthority,
+    /// Находка 50: цена листинга изменилась между подписью и исполнением (SEC-F5 из `market`).
+    #[msg("listing price changed since it was quoted")]
+    PriceChanged,
+    /// Находка 50: продавец не может купить собственный листинг (SEC-F08 из `market`).
+    #[msg("cannot buy your own listing")]
+    SelfTrade,
 }
 
 // ---------------------------------------------------------------------------
@@ -1571,8 +1577,22 @@ pub fn escrow_list_handler<'info>(
 pub fn escrow_buy_handler<'info>(
     ctx: Context<'_, '_, '_, 'info, EscrowBuy<'info>>,
     proof: LeafProofArgs,
+    expected_price: u64,
 ) -> Result<()> {
     let listing = &ctx.accounts.listing;
+    // Находка 50: собственный маркет Phase V обязан повторять две защиты `market`
+    // (`list_asset` + `buy_asset`), иначе они существуют только на витрине.
+    //   * SEC-F5 — ожидаемая цена. Без неё продавец отменяет листинг, выставляет тот же
+    //     лист дороже и его транзакция попадает в тот же блок раньше покупки: покупатель
+    //     платит новую цену, которую не подтверждал. Покупка теперь несёт цену, которую
+    //     видел покупатель, и расходится с листингом — отказ.
+    require!(listing.price == expected_price, SettleError::PriceChanged);
+    //   * SEC-F08 — self-trade. Своя же покупка платит комиссию казне и жжёт rent
+    //     листинга в никуда, а на витрине это выглядит как «объём».
+    require!(
+        ctx.accounts.buyer.key() != listing.seller,
+        SettleError::SelfTrade
+    );
     require!(
         ctx.accounts.seller.key() == listing.seller,
         SettleError::BadAccount
@@ -1851,8 +1871,9 @@ pub mod settle {
     pub fn escrow_buy<'info>(
         ctx: Context<'_, '_, '_, 'info, EscrowBuy<'info>>,
         proof: LeafProofArgs,
+        expected_price: u64,
     ) -> Result<()> {
-        escrow_buy_handler(ctx, proof)
+        escrow_buy_handler(ctx, proof, expected_price)
     }
 
     pub fn escrow_cancel<'info>(
