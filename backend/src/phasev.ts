@@ -16,7 +16,7 @@ import { ServiceError } from './services.ts';
 import { upsert } from './sql.ts';
 import { base58Encode } from './base58.ts';
 import { chipMetadata, nextGameIndex } from './bubblegum-mint.ts';
-import { pityBeforeFor, rollPack, type PackOrderRow } from './pack-orders.ts';
+import { frozenRoll, type PackOrderRow } from './pack-orders.ts';
 import { SKUS } from './quote.ts';
 import { DasClient, type DasAssetSummary } from './das.ts';
 import { assertExecuted } from './assert-executed.ts';
@@ -241,8 +241,9 @@ export async function settleAuthForOrder(
     );
     if (Number(reserve.changes) === 1) {
       try {
-        const pityBefore = pityBeforeFor(db, wallet, row.sku, row.id);
-        const roll = rollPack(row.seed, row.id, row.sku, row.qty, pityBefore, row.featured_idx);
+        // Находка 34: pity и ролл фиксируются здесь же, до выдачи имён, — иначе к моменту минта
+        // история могла измениться и выданные имена перестали бы соответствовать роллу.
+        const roll = frozenRoll(db, row);
         const fresh = specsForRoll(db, wallet, roll);
         stored = fresh.map((x) => ({ ...x, collection: x.collection.toBase58() }));
         db.run(`UPDATE pack_orders SET settle_specs = ? WHERE id = ?`, JSON.stringify(stored), id);

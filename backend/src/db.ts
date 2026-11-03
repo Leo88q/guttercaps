@@ -432,6 +432,8 @@ CREATE TABLE IF NOT EXISTS pack_orders (
   refund_sig   TEXT,                               -- подпись перевода возврата из казны
   refund_reason TEXT,                              -- находка 32: почему оплаченный заказ не выдан (quota_race)
   mint_uncertain TEXT,                             -- находка 33: минт подтверждён, но лист не доказан — assetId не записан, нужен разбор по DAS
+  pity_before INTEGER,                             -- находка 34: входной pity, зафиксированный при первом расчёте ролла
+  roll_json   TEXT,                                -- находка 34: сам ролл (rarities/collections/pityAfter) — один ответ для минта и verify
   assets      TEXT,                               -- JSON [{assetId, collectionIdx, rarity, gameIndex}]
   created_at  INTEGER NOT NULL,
   paid_at     INTEGER,
@@ -1684,6 +1686,8 @@ export class Db {
       // очередь возврата, и причина должна переживать перезапуск.
       if (!po54.has('refund_reason')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN refund_reason TEXT`);
       if (!po54.has('mint_uncertain')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN mint_uncertain TEXT`);
+      if (!po54.has('pity_before')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN pity_before INTEGER`);
+      if (!po54.has('roll_json')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN roll_json TEXT`);
       const fu54 = new Set((this.raw.prepare(`PRAGMA table_info(phaseg_fusions)`).all() as { name: string }[]).map((c) => c.name));
       if (fu54.size > 0 && !fu54.has('mint_uncertain')) this.raw.exec(`ALTER TABLE phaseg_fusions ADD COLUMN mint_uncertain TEXT`);
       if (!po54.has('refunded_amount')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN refunded_amount TEXT`);

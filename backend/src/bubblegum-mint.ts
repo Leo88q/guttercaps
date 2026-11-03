@@ -21,7 +21,7 @@ import { STARTER_SOULBOUND_DAYS } from '@guttercaps/economy';
 import { type Db, now } from './db.ts';
 import { upsert } from './sql.ts';
 import { deriveBubblegumLeafAssetId } from './das.ts';
-import { pityBeforeFor, rollPack, type MintedChip, type PackOrderRow } from './pack-orders.ts';
+import { frozenRoll, type MintedChip, type PackOrderRow } from './pack-orders.ts';
 import { CORE_COLLECTIONS } from './config.ts';
 import { ChainOpInFlight, findChainOp, inFlight, opPayload, submitChainOp, updateChainOp } from './chain-ops.ts';
 import { base58Encode } from './base58.ts';
@@ -210,8 +210,9 @@ export async function processPaidOrders(
   let mintedOrders = 0;
   let mintedChips = 0;
   for (const row of rows) {
-    const pityBefore = pityBeforeFor(db, row.wallet, row.sku, row.id);
-    const roll = rollPack(row.seed, row.id, row.sku, row.qty, pityBefore, row.featured_idx);
+    // Находка 34: ролл (и входной pity) фиксируется при первом обращении — минт и `verify` обязаны
+    // видеть один и тот же результат, даже если старые заказы завершились позже.
+    const roll = frozenRoll(db, row);
     const done: MintedChip[] = row.assets ? (JSON.parse(row.assets) as MintedChip[]) : [];
     try {
       for (let i = done.length; i < roll.rarities.length; i++) {

@@ -43,6 +43,8 @@ export interface PackOrderRow {
   paid_at: number | null;
   minted_at: number | null;
   expires_at: number;
+  pity_before?: number | null;
+  roll_json?: string | null;
   refund_reason?: string | null;
   refunded_amount?: string | null;
   refunded_at?: number | null;
@@ -321,6 +323,36 @@ export function rollPack(
   return { rarities, collections, pityAfter: pity };
 }
 
+/** Замороженный ролл: то, что один раз посчитали, больше не пересчитывается (находка 34). */
+export interface FrozenRoll {
+  rarities: number[];
+  collections: number[];
+  pityAfter: number;
+  pityBefore: number;
+}
+
+/**
+ * Находка 34. `rollPack` зависит от pity, а pity считается по `minted` заказам с меньшим id — то есть
+ * по набору, который меняется: более старый заказ может завершиться позже, и тот же заказ пересчитался
+ * бы в другой ролл. Последствия расходятся по трём местам сразу: спеки settle-auth (имена в DAS),
+ * минт в кранке и публичная проверка `verify` — три разных ответа на один и тот же оплаченный заказ.
+ * Поэтому вход (pity) и результат (ролл) фиксируются один раз, при первом обращении, и дальше читаются
+ * из строки заказа. Запись через CAS по пустой колонке: параллельные settle-auth и кранк не могут
+ * записать два разных ролла — второй читает уже сохранённый.
+ */
+export function frozenRoll(db: Db, row: PackOrderRow): FrozenRoll {
+  if (row.roll_json) return JSON.parse(row.roll_json) as FrozenRoll;
+  const pityBefore = pityBeforeFor(db, row.wallet, row.sku, row.id);
+  const roll = rollPack(row.seed, row.id, row.sku, row.qty, pityBefore, row.featured_idx);
+  const frozen: FrozenRoll = { ...roll, pityBefore };
+  db.run(
+    `UPDATE pack_orders SET pity_before = ?, roll_json = ? WHERE id = ? AND roll_json IS NULL`,
+    pityBefore, JSON.stringify(frozen), row.id,
+  );
+  const after = db.get<{ roll_json: string | null }>(`SELECT roll_json FROM pack_orders WHERE id = ?`, row.id)?.roll_json;
+  return after ? (JSON.parse(after) as FrozenRoll) : frozen;
+}
+
 /** Packs since the last pity-tier chip, from earlier MINTED orders of this wallet+SKU (id order). */
 export function pityBeforeFor(db: Db, wallet: string, sku: number, beforeOrderId: number): number {
   const pack = PACKS[SKUS[sku]];
@@ -365,9 +397,12 @@ export function verifyOrder(db: Db, id: number) {
   if (!row || row.status !== 'minted') return null;
   if (sha256Hex(row.seed) !== row.seed_hash) return { orderId: id, matches: false, reason: 'seed_hash_mismatch' };
   const assets = JSON.parse(row.assets ?? '[]') as MintedChip[];
-  const pityBefore = pityBeforeFor(db, row.wallet, row.sku, row.id);
-  const roll = rollPack(row.seed, row.id, row.sku, row.qty, pityBefore, row.featured_idx);
+  // Находка 34: проверяем по зафиксированному роллу, а не по пересчитанному на текущей истории.
+  const roll = frozenRoll(db, row);
   const matches = assets.length === roll.rarities.length
     && assets.every((a, i) => a.rarity === roll.rarities[i] && a.collectionIdx === roll.collections[i]);
-  return { orderId: id, matches, rarities: roll.rarities, collections: roll.collections, assets };
+  return {
+    orderId: id, matches, rarities: roll.rarities, collections: roll.collections, assets,
+    pityBefore: roll.pityBefore, frozen: Boolean(row.roll_json),
+  };
 }
