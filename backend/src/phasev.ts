@@ -254,7 +254,14 @@ export function fusionGrantPayload(
 }
 
 // ------------------------------------------------------------------ post-settle registration
-export interface MintedSpecLike { name: string; collectionIdx: number; rarity: number; gameIndex: number }
+export interface MintedSpecLike {
+  name: string;
+  collectionIdx: number;
+  rarity: number;
+  gameIndex: number;
+  /** Адрес Core-коллекции из авторизации: без него имя ничего не доказывает (находка 3). */
+  collection?: string;
+}
 
 /**
  * Register settled chips in the `chips` projection by matching DAS asset
@@ -273,8 +280,23 @@ export async function registerSettledChips(
   if (!page) return [];
   const found: RegisteredChip[] = [];
   for (const spec of args.specs) {
-    const hit = page.items.find((a) => a.compressed && a.name === spec.name);
-    if (!hit) continue;
+    // Находка 3: имя ассета не является идентификатором. `{SYMBOL} #{gameIndex}` может выпустить кто
+    // угодно, поэтому совпадение только по имени позволяло подставить в проекцию чужой cNFT (или
+    // зарегистрировать «свой» вместо настоящего чипа, который выпустил settle). Требуем ещё и
+    // коллекцию из авторизации и отказываемся выбирать, если подходящих больше одного.
+    const wantCollection = spec.collection;
+    // Без коллекции в авторизации доказывать нечего: имя совпадёт у кого угодно, поэтому не регистрируем
+    // (fail closed) — заказ/fusion остаётся открытым, пока спека с коллекцией не появится.
+    if (!wantCollection) continue;
+    const candidates = page.items.filter((a) => a.compressed && a.name === spec.name
+      && a.collection?.equals(new PublicKey(wantCollection)));
+    if (candidates.length !== 1) continue; // нет ни одного или неоднозначно — не угадываем
+    const hit = candidates[0];
+    // Уже зарегистрированный другим путём ассет не переписываем: строка `chips` — это чужое состояние.
+    const existing = db.get<{ origin: string | null; collection_idx: number }>(
+      `SELECT origin, collection_idx FROM chips WHERE asset = ?`, hit.assetId.toBase58(),
+    );
+    if (existing && existing.collection_idx !== spec.collectionIdx) continue;
     db.run(
       upsert('chips', ['asset', 'owner', 'collection_idx', 'rarity', 'level', 'flags', 'lock_until', 'origin', 'origin_signature', 'minted_at'], ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'origin = excluded.origin', 'minted_at = excluded.minted_at']),
       hit.assetId.toBase58(), args.wallet, spec.collectionIdx, spec.rarity, 1, 0,
@@ -316,6 +338,12 @@ const toLeafSpecs = (stored: StoredSpec[]) =>
     collectionIdx: x.collectionIdx, rarity: x.rarity, gameIndex: x.gameIndex,
   }));
 
+/** Спека для сверки с DAS: имя + коллекция (без неё имя ничего не доказывает, находка 3). */
+const toMintedSpecs = (stored: StoredSpec[]): MintedSpecLike[] =>
+  stored.map((x) => ({
+    collection: x.collection, name: x.name, collectionIdx: x.collectionIdx, rarity: x.rarity, gameIndex: x.gameIndex,
+  }));
+
 /** After the player's settle_pack lands: verify, register chips, close the order. */
 export async function confirmSettle(
   db: Db,
@@ -339,7 +367,7 @@ export async function confirmSettle(
   const stored = parseSpecs(row.settle_specs);
   if (!stored || !row.settle_sig) return getOrder(db, wallet, id); // still settling / indexing
   const minted = await registerSettledChips(db, {
-    wallet, specs: toLeafSpecs(stored), origin: 'pack', originSig: row.tx_sig,
+    wallet, specs: toMintedSpecs(stored), origin: 'pack', originSig: row.tx_sig,
   });
   if (minted.length === stored.length) {
     db.run(`UPDATE pack_orders SET status = 'minted', minted_at = ?, assets = ? WHERE id = ?`, t, JSON.stringify(minted), id);
@@ -410,7 +438,7 @@ export async function confirmFusionGrant(
   if (!stored || !row.grant_sig) return { status: row.status, success: null, resultAssets: null };
   const recipe = FUSION_RECIPES.find((r) => r.from === row.recipe_from)!;
   const minted = await registerSettledChips(db, {
-    wallet, specs: toLeafSpecs(stored), origin: 'fusion', originSig: row.burn_sig, lockSeconds: recipe.resultLockSeconds,
+    wallet, specs: toMintedSpecs(stored), origin: 'fusion', originSig: row.burn_sig, lockSeconds: recipe.resultLockSeconds,
   });
   if (minted.length === stored.length) {
     const success = rollFusion(row.seed, row.id, recipe.successBps);

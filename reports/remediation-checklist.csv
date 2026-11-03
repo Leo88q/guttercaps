@@ -1,7 +1,7 @@
 id;tier;contour;release;finding;status;evidence
 1;A — блокер запуска;запуск и подписи;R0;Phase V: повторная авторизация оплаченного выпуска как grant;todo;
 2;B — гейт контура;Phase V / settle;R0;Phase V: подтверждение не доказывает исполнение операции;done;"подтверждение Phase-V доказывает исполнение инструкции (assert-executed.ts): программа + anchor-дискриминатор settle_pack/grant_mint + order/receipt PDA в аккаунтах, meta.err=null; упоминание программы больше не проходит. Тест: backend/test/assert-executed-audit.test.ts"
-3;B — гейт контура;Phase V / settle;R0;Phase V: регистрация чужого cNFT по имени;todo;
+3;B — гейт контура;Phase V / settle;R0;Phase V: регистрация чужого cNFT по имени;partial;закрыто в backend: регистрация Phase-V больше не матчит по имени — нужна коллекция из авторизации, неоднозначность не разрешается угадыванием, чужой/уже занятый ассет не переписывается (backend/test/phasev-register-audit.test.ts). Остаток: контрактная часть settle (что именно программа разрешает минтить) не проверялась — rustc в окружении нет
 4;B — гейт контура;Phase V / settle;R0;Неограниченная первая инициализация settle;todo;
 5;A — блокер запуска;запуск и подписи;R0;Deployment: API URL становится адресом чужого host;done;"VITE_API_BASE=/v1; test/deploy-compose-audit + deploy-client-env-audit"
 6;A — блокер запуска;запуск и подписи;R0;Deployment: RPC и фаза клиента не передаются теми именами, которые читает приложение;done;"имена VITE_* совпадают с кодом; env:check 0 drift"
