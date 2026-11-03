@@ -211,6 +211,8 @@ CREATE TABLE IF NOT EXISTS grid_attempts (
   seed INTEGER,
   daily INTEGER NOT NULL DEFAULT 0,
   settled INTEGER NOT NULL DEFAULT 0,
+  -- Находка 43: solved — попытка ПРОЙДЕНА (тренировочный квест считается по завершениям, а не стартам)
+  solved INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   settled_at INTEGER
 );
@@ -1778,6 +1780,10 @@ export class Db {
     if (ga.size && !ga.has('mode')) this.raw.exec(`ALTER TABLE grid_attempts ADD COLUMN mode TEXT NOT NULL DEFAULT 'charge'`);
     if (ga.size && !ga.has('seed')) this.raw.exec(`ALTER TABLE grid_attempts ADD COLUMN seed INTEGER`);
     if (ga.size && !ga.has('daily')) this.raw.exec(`ALTER TABLE grid_attempts ADD COLUMN daily INTEGER NOT NULL DEFAULT 0`);
+    // Находка 43: попытка помнит, была ли она ПРОЙДЕНА, а не только закрыта. Раньше «тренировочный спуск»
+    // в квесте считался по стартам (`grid_attempts` mode='training'), то есть десять брошенных заходов
+    // закрывали недельный квест. Строки до миграции остаются `solved = 0` — они не засчитываются.
+    if (ga.size && !ga.has('solved')) this.raw.exec(`ALTER TABLE grid_attempts ADD COLUMN solved INTEGER NOT NULL DEFAULT 0`);
     if (!pk.has('pack_no')) this.raw.exec(`ALTER TABLE pack_opens ADD COLUMN pack_no INTEGER NOT NULL DEFAULT 0`);
     if (!pk.has('event_index')) this.raw.exec(`ALTER TABLE pack_opens ADD COLUMN event_index INTEGER NOT NULL DEFAULT 0`);
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_pack_opens_nonce ON pack_opens(buyer, nonce, pack_no)`);

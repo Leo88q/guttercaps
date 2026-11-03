@@ -657,7 +657,8 @@ describe('quests', () => {
     const to = T + 86_400;
     const [asset] = mint(db, alice, [{ rarity: 0, collection: 0 }]);
     // обучение: в метрику идёт только training, попытка заряда не засчитывается
-    db.run(`INSERT INTO grid_attempts (id, wallet, asset, level, mode, created_at) VALUES ('a1', ?, ?, 1, 'training', ?)`, alice, asset, T);
+    // находка 43: в метрику идут только ПРОЙДЕННЫЕ тренировки (settled + solved), не открытые попытки
+    db.run(`INSERT INTO grid_attempts (id, wallet, asset, level, mode, settled, solved, created_at) VALUES ('a1', ?, ?, 1, 'training', 1, 1, ?)`, alice, asset, T);
     db.run(`INSERT INTO grid_attempts (id, wallet, asset, level, mode, created_at) VALUES ('a2', ?, ?, 1, 'charge', ?)`, alice, asset, T);
     expect(quests.metricValue(db, alice, 'grid_training', from, to, T)).toBe(1);
     // глубокий паводок и контракт района

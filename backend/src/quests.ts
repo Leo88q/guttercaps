@@ -158,7 +158,9 @@ export function metricValue(db: Db, wallet: string, metric: string, from: number
     // --- Решётка (docs/13): обучение, глубокий паводок, контракты, призрак, капли, престиж, звёзды.
     // `created_at` у этих таблиц — unix seconds, как у остальных off-chain проекций.
     case 'grid_training':
-      return db.scalar(`SELECT COUNT(*) FROM grid_attempts WHERE wallet = ? AND mode = 'training' AND created_at >= ? AND created_at < ?`, wallet, from, to);
+      // Находка 43: считаем ПРОЙДЕННЫЕ спуски, а не открытые попытки. `settled` без `solved` — это брошенный
+      // или проваленный заход (в том числе попытку, превращённую в тренировку подсказками).
+      return db.scalar(`SELECT COUNT(*) FROM grid_attempts WHERE wallet = ? AND mode = 'training' AND settled = 1 AND solved = 1 AND created_at >= ? AND created_at < ?`, wallet, from, to);
     case 'grid_deep':
       return db.scalar(`SELECT COUNT(*) FROM grid_deep_results WHERE wallet = ? AND created_at >= ? AND created_at < ?`, wallet, from, to);
     case 'grid_contracts':

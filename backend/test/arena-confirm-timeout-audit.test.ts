@@ -20,6 +20,9 @@ import { encodeArenaConfig, encodeRandomness, encodeWagerBattle, FakeConnection,
 import { DEFAULT, hex32, kp, tx } from './fixtures.ts';
 
 const b58 = (keys: readonly PublicKey[]) => keys.map((k) => k.toBase58());
+/** FakeConnection моделирует RPC частично: статусы подписей подменяются точечно (это и есть сценарий таймаута). */
+type SigStatusRpc = { getSignatureStatuses: (sigs: string[], cfg: { searchTransactionHistory: boolean }) => Promise<{ value: ({ confirmationStatus?: string; err: unknown } | null)[] }> };
+const rpc = (c: FakeConnection) => c as unknown as SigStatusRpc;
 const VRF_VALUE = new Uint8Array(32).fill(0x33);
 
 describe('находка 41: таймаут подтверждения не теряет бой', () => {
@@ -49,7 +52,7 @@ describe('находка 41: таймаут подтверждения не те
   it('исполненная, но неподтверждённая транзакция доводится по реестру операций: бой, победитель и XP появляются', async () => {
     // подтверждение не приходит: RPC отвечает ошибкой на подтверждение и не знает статуса подписи
     conn.confirmTransaction = async () => { throw new Error('block height exceeded'); };
-    conn.getSignatureStatuses = async () => ({ value: [null] });
+    rpc(conn).getSignatureStatuses = async () => ({ value: [null] });
     await expect(resolveOne(deps(), battleKey)).rejects.toThrow();
     // «нет ответа» → та же ПОДПИСАННАЯ транзакция отправляется повторно: подпись одна, второго исполнения
     // быть не может (§1.1 п. 61), поэтому считаем именно уникальные подписи
@@ -64,7 +67,7 @@ describe('находка 41: таймаут подтверждения не те
     expect(['signed', 'sent', 'landed']).toContain(op.status);
 
     // цепь подтверждает подпись — reconcile доводит операцию
-    conn.getSignatureStatuses = async (sigs: string[]) => ({ value: sigs.map(() => ({ confirmationStatus: 'confirmed', err: null })) });
+    rpc(conn).getSignatureStatuses = async (sigs: string[]) => ({ value: sigs.map(() => ({ confirmationStatus: 'confirmed', err: null })) });
     expect(await reconcileChainOps(db, conn as unknown as Connection, { tip: 10_000 })).toMatchObject({ confirmed: 1 });
 
     // ...а heal перепроецирует бой без новой транзакции

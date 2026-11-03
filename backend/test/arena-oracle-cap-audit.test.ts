@@ -28,7 +28,7 @@ const b58 = (keys: readonly PublicKey[]) => keys.map((k) => k.toBase58());
 const VRF_VALUE = new Uint8Array(32).fill(0x33);
 
 /** Логи успешной транзакции, в которой предохранитель по дневному лимиту оракула отменил проведение боя. */
-const breakerLogs = () => fakeLogs([{ program: 'arena', name: 'ArenaAutoPaused', data: { by: pk(), oraclePaidToday: '900000000', oracleDailyCap: '1000000000' } }]);
+const breakerLogs = () => fakeLogs([{ program: 'arena', name: 'ArenaAutoPaused', data: { by: pk().toBase58(), oraclePaidToday: '900000000', oracleDailyCap: '1000000000' } }]);
 
 describe('находка 40: предохранитель оракула не считается проведённым боем', () => {
   let db: Db;
