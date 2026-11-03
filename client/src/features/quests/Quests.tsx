@@ -115,7 +115,7 @@ export default function Quests() {
   // часть. В квитанции — число листьев.
   const totalParts = BigInt(claimable.filter((c) => c.kind === REWARD_ROOT_KINDS.itemBoardParts).length);
   const totalText = rewardTotalText(totalCg, totalSkr, totalBoosters, totalParts);
-  const REASONS = new Set(['account_too_new', 'play_10_matches_or_buy_a_pack', 'rewards_paused', 'device_limit', 'human_check_required']);
+  const REASONS = new Set(['account_too_new', 'play_10_matches_or_buy_a_pack', 'rewards_paused', 'device_limit', 'device_fingerprint_required', 'human_check_required']);
   /** Server reason codes → player copy (unknown codes are shown raw so nothing is hidden). */
   const reasonText = (code: string) => (REASONS.has(code) ? t(`quests.reason.${code}` as MessageKey, { n: ANTI_FARM.maxWalletsPerDevice }) : code);
 

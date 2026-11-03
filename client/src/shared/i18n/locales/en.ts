@@ -201,6 +201,7 @@ const en = {
       account_too_new: 'wallet younger than 24 h — buy a pack or wait', play_10_matches_or_buy_a_pack: 'play 10 matches or buy a pack',
       rewards_paused: 'rewards paused (fraud review)', device_limit: 'too many wallets on this device — rewards go to the first {n}',
       human_check_required: 'confirm you are human below — rewards are held until then',
+      device_fingerprint_required: 'device fingerprint missing — reopen the app or sign in again, rewards are held until then',
     },
   },
   human: {

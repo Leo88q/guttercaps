@@ -11,6 +11,8 @@
 //     use the same pass (`skrEligibility`). PvP match rewards are not gated by it — they are
 //     credited at match time and the arena has its own brakes (≤ 8/day, ≤ 3/opponent, win-trading).
 //   * Device dedupe — the client sends a salted, canvas-free fingerprint at sign-in; we store only
+//     (находка 66: без отпечатка наградная операция не выдаётся вовсе — `device_fingerprint_required`,
+//     иначе лимит «3 кошелька на устройство» обходится пустым полем; вход и чтение состояния работают)
 //     `sha256(DEVICE_SALT || fingerprint)` in `wallet_devices`. The first `DEVICE_MAX_WALLETS` (3)
 //     wallets ever seen on a device may earn rewards; later ones get `device_limit` (quests, SKR,
 //     PvP rewards and season payouts). A shared phone still serves a family; a farm of 50 wallets
@@ -22,7 +24,7 @@
 // (dev / tests / explicit `HUMAN_CHECK=0`); production refuses to start without one of the two
 // (config.ts). Tests configure the module through `configureHuman` (injected verifier + clock).
 import { createHash } from 'node:crypto';
-import { DEVICE_MAX_WALLETS, DEVICE_SALT, HUMAN_CHECK_ENABLED, HUMAN_CHECK_TTL_S, TURNSTILE_ACTION, TURNSTILE_HOSTNAMES, TURNSTILE_MAX_AGE_S, TURNSTILE_SECRET, TURNSTILE_SITEVERIFY_URL, TURNSTILE_SITE_KEY } from './config.ts';
+import { DEVICE_FINGERPRINT_REQUIRED, DEVICE_MAX_WALLETS, DEVICE_SALT, HUMAN_CHECK_ENABLED, HUMAN_CHECK_TTL_S, TURNSTILE_ACTION, TURNSTILE_HOSTNAMES, TURNSTILE_MAX_AGE_S, TURNSTILE_SECRET, TURNSTILE_SITEVERIFY_URL, TURNSTILE_SITE_KEY } from './config.ts';
 import { type Db, now } from './db.ts';
 import { ServiceError } from './services.ts';
 
@@ -47,6 +49,8 @@ export const HUMAN = {
   siteKey: TURNSTILE_SITE_KEY,
   ttlS: HUMAN_CHECK_TTL_S,
   maxWalletsPerDevice: DEVICE_MAX_WALLETS,
+  /** Находка 66: отпечаток обязателен для наградных операций (награды/клеймы без него не выдаются). */
+  requireFingerprint: DEVICE_FINGERPRINT_REQUIRED,
   salt: DEVICE_SALT,
   /** SEC-B5: where the pass may have been minted / which action it answers — see config.ts. */
   hostnames: TURNSTILE_HOSTNAMES,
@@ -73,7 +77,7 @@ export function recordDevice(db: Db, wallet: string, fingerprint: unknown, t = n
   return h;
 }
 
-export interface DeviceStatus { devices: number; limited: boolean; /** most wallets seen on any of this wallet's devices */ maxWalletsOnDevice: number }
+export interface DeviceStatus { devices: number; limited: boolean; /** at least one fingerprint is recorded — без него счётчик кошельков слеп (находка 66) */ known: boolean; /** most wallets seen on any of this wallet's devices */ maxWalletsOnDevice: number }
 /**
  * A wallet is device-limited when, on any device it used, more than `maxWalletsPerDevice` wallets
  * were seen BEFORE it (rank by first_seen, ties by address) — the earliest wallets keep earning, the
@@ -88,7 +92,7 @@ export function deviceStatus(db: Db, wallet: string, max = HUMAN.maxWalletsPerDe
     maxOn = Math.max(maxOn, total);
     if (earlier >= max) limited = true;
   }
-  return { devices: rows.length, limited, maxWalletsOnDevice: maxOn };
+  return { devices: rows.length, limited, known: rows.length > 0, maxWalletsOnDevice: maxOn };
 }
 
 // ---------------------------------------------------------------- human check
@@ -145,16 +149,30 @@ export async function verifyHuman(db: Db, wallet: string, body: unknown, ip: { i
 }
 
 // ---------------------------------------------------------------- the gate
-export type GateReason = 'device_limit' | 'human_check_required' | null;
-/** Settlement-time gate shared by quests ($CG + SKR) — `null` = passes. `flags.trusted` bypasses both checks. */
+export type GateReason = 'device_limit' | 'device_fingerprint_required' | 'human_check_required' | null;
+/**
+ * Settlement-time gate shared by quests ($CG + SKR) — `null` = passes. `flags.trusted` bypasses all checks.
+ * Находка 66: сначала отпечаток. Без него `deviceStatus` не видит ни одного кошелька и всегда отвечает
+ * `limited: false`, поэтому лимит «3 кошелька на устройство» обходился пустым полем в запросе —
+ * теперь наградная операция без отпечатка не выдаётся вовсе (деньги не сгорают: settle их откладывает).
+ */
 export function rewardGate(db: Db, wallet: string, t = now()): GateReason {
   if (trusted(db, wallet)) return null;
-  if (deviceStatus(db, wallet).limited) return 'device_limit';
+  const device = deviceStatus(db, wallet);
+  if (HUMAN.requireFingerprint && !device.known) return 'device_fingerprint_required';
+  if (device.limited) return 'device_limit';
   if (HUMAN.enabled && !humanStatus(db, wallet, t).verified) return 'human_check_required';
   return null;
 }
-/** PvP / season variant: device dedupe only (match rewards are credited at match time — see header). */
-export function deviceLimited(db: Db, wallet: string): boolean { return !trusted(db, wallet) && deviceStatus(db, wallet).limited; }
+/**
+ * PvP / season variant: device dedupe only (match rewards are credited at match time — see header).
+ * Находка 66: кошелек без отпечатка считается ограниченным — те же награды, что и у 4-го кошелька.
+ */
+export function deviceLimited(db: Db, wallet: string): boolean {
+  if (trusted(db, wallet)) return false;
+  const device = deviceStatus(db, wallet);
+  return device.limited || (HUMAN.requireFingerprint && !device.known);
+}
 
 /** `/health.antifraud` summary. */
 export function humanSummary(db: Db, t = now()) {

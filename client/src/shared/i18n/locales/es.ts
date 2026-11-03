@@ -196,6 +196,7 @@ const es: Messages = {
       account_too_new: 'billetera con menos de 24 h — compra un sobre o espera', play_10_matches_or_buy_a_pack: 'juega 10 partidas o compra un sobre',
       rewards_paused: 'recompensas pausadas (revisión antifraude)', device_limit: 'demasiadas billeteras en este dispositivo — las recompensas van a las {n} primeras',
       human_check_required: 'confirma abajo que eres humano — las recompensas quedan retenidas hasta entonces',
+      device_fingerprint_required: 'falta la huella del dispositivo — vuelve a abrir la app o inicia sesión otra vez, las recompensas quedan retenidas',
     },
   },
   human: {

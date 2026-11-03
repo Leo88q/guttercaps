@@ -196,6 +196,7 @@ const fil: Messages = {
       account_too_new: 'wallet na wala pang 24 oras — bumili ng pack o maghintay', play_10_matches_or_buy_a_pack: 'maglaro ng 10 laban o bumili ng pack',
       rewards_paused: 'naka-pause ang rewards (fraud review)', device_limit: 'sobrang daming wallet sa device na ito — napupunta ang rewards sa unang {n}',
       human_check_required: 'kumpirmahin sa ibaba na tao ka — hawak muna ang rewards hanggang doon',
+      device_fingerprint_required: 'kulang ang fingerprint ng device — buksan muli ang app o mag-sign in ulit, hawak muna ang rewards hanggang doon',
     },
   },
   human: {

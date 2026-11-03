@@ -9461,10 +9461,10 @@ export interface components {
             /** @description micro-$CG actually credited after daily/weekly caps */
             creditedCgMicro?: string | null;
             /**
-             * @description why finished quests are not paid; human_check_required = pass the Turnstile challenge (POST /me/human) — settlement waits
+             * @description why finished quests are not paid; human_check_required = pass the Turnstile challenge (POST /me/human) — settlement waits; device_fingerprint_required = the sign-in carried no device fingerprint (находка 66), rewards are held until the client sends one — settlement waits too
              * @enum {string|null}
              */
-            ineligibleReason?: "account_too_new" | "play_10_matches_or_buy_a_pack" | "rewards_paused" | "device_limit" | "human_check_required" | null;
+            ineligibleReason?: "account_too_new" | "play_10_matches_or_buy_a_pack" | "rewards_paused" | "device_limit" | "device_fingerprint_required" | "human_check_required" | null;
             /** Format: date-time */
             resetsAt?: string | null;
         };

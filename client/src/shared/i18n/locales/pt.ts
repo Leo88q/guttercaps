@@ -196,6 +196,7 @@ const pt: Messages = {
       account_too_new: 'carteira com menos de 24 h — compre um pacote ou aguarde', play_10_matches_or_buy_a_pack: 'jogue 10 partidas ou compre um pacote',
       rewards_paused: 'recompensas pausadas (análise antifraude)', device_limit: 'carteiras demais neste aparelho — as recompensas vão para as {n} primeiras',
       human_check_required: 'confirme abaixo que você é humano — as recompensas ficam retidas até lá',
+      device_fingerprint_required: 'falta a impressão do dispositivo — reabra o app ou entre novamente, as recompensas ficam retidas',
     },
   },
   human: {

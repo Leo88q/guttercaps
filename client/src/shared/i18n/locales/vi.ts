@@ -196,6 +196,7 @@ const vi: Messages = {
       account_too_new: 'ví mới dưới 24 giờ — mua một gói hoặc chờ', play_10_matches_or_buy_a_pack: 'chơi 10 trận hoặc mua một gói',
       rewards_paused: 'phần thưởng tạm dừng (đang xét gian lận)', device_limit: 'quá nhiều ví trên thiết bị này — phần thưởng dành cho {n} ví đầu tiên',
       human_check_required: 'xác nhận bạn là người ở bên dưới — phần thưởng được giữ lại cho đến khi đó',
+      device_fingerprint_required: 'thiếu dấu vân tay thiết bị — hãy mở lại ứng dụng hoặc đăng nhập lại, phần thưởng được giữ lại đến khi đó',
     },
   },
   human: {

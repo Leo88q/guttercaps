@@ -99,7 +99,8 @@ export function settleReferrals(db: Db, t = now(), horizon = finalizedHorizon(db
       let e = eligCache.get(c.referrer);
       if (!e) { e = eligibility(db, c.referrer, t, horizon); eligCache.set(c.referrer, e); }
       if (!e.eligible) {
-        if (e.reason === 'human_check_required') { out.postponed++; continue; } // paid once the referrer passes the challenge
+        // paid once the referrer passes the challenge / sends a device fingerprint (находка 66)
+        if (e.reason === 'human_check_required' || e.reason === 'device_fingerprint_required') { out.postponed++; continue; }
         reason = e.reason === 'device_limit' ? 'device_limit' : 'referrer_ineligible';
       }
     }

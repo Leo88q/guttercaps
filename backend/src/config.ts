@@ -190,6 +190,14 @@ export const HUMAN_CHECK_ENABLED = !HUMAN_CHECK_OPT_OUT && TURNSTILE_SECRET.leng
 export const HUMAN_CHECK_TTL_S = Number(env.HUMAN_CHECK_TTL_S ?? 7 * 86_400);
 /** Device dedupe: wallets beyond this many on one device (salted client fingerprint) earn no quest / SKR rewards. */
 export const DEVICE_MAX_WALLETS = Number(env.DEVICE_MAX_WALLETS ?? 3);
+/**
+ * Находка 66. Отпечаток устройства — не подсказка, а условие наградной операции: без него счётчик
+ * «3 кошелька на устройство» слеп, и один телефон с 50 кошельками получает 50× (фронт отпечаток
+ * всегда отправляет при входе, так что честный игрок этого требования не замечает). Включается
+ * вместе с Turnstile — то есть в проде, где `TURNSTILE_SECRET` обязателен; `DEVICE_FINGERPRINT_REQUIRED=0`
+ * оставлен для инцидентов и поддержки, `flags.trusted` обходит гейт всегда.
+ */
+export const DEVICE_FINGERPRINT_REQUIRED = HUMAN_CHECK_ENABLED && (env.DEVICE_FINGERPRINT_REQUIRED ?? '1') !== '0';
 /** Salt for device hashes (never store the raw fingerprint). Defaults to the session secret (ephemeral in dev). */
 export const DEVICE_SALT = env.DEVICE_SALT ?? SESSION_SECRET;
 

@@ -196,6 +196,7 @@ const id: Messages = {
       account_too_new: 'dompet berumur kurang dari 24 jam — beli pack atau tunggu', play_10_matches_or_buy_a_pack: 'mainkan 10 pertandingan atau beli pack',
       rewards_paused: 'hadiah dijeda (tinjauan anti-penipuan)', device_limit: 'terlalu banyak dompet di perangkat ini — hadiah diberikan ke {n} dompet pertama',
       human_check_required: 'konfirmasi bahwa kamu manusia di bawah — hadiah ditahan sampai saat itu',
+      device_fingerprint_required: 'sidik perangkat belum ada — buka ulang aplikasi atau masuk lagi, hadiah ditahan sampai saat itu',
     },
   },
   human: {
