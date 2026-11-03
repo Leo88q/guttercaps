@@ -342,7 +342,10 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   registerScrape('vault_solvency_readable', '1 when the three vault gauges above were read from the RPC in the last 30 s.', async () => [{ value: (await vaultSolvencyGauge()).readable }]);
   // SEC-G05: governance keys (governance-metrics.ts). RPC-polled fingerprints (GOVERNANCE_WATCH) + the
   // indexed rotation events; either path alone is enough for the `guttercaps.governance` alerts.
-  registerScrape('program_authority_fingerprint', 'First 6 bytes of each governance key as an integer (0 = cleared); changes() = a rotation. Empty until GOVERNANCE_WATCH reads the accounts.', async () => (await governanceGauges()).points.map((p) => ({ value: p.value, labels: { program: p.program, role: p.role } })));
+  // Находка 70: отпечаток — первые 96 бит sha256 ключа, двумя сериями по 48 бит (`_lo` ниже). Сравнивать
+  // надо ПАРУ: одного `_fingerprint` мало ровно настолько, насколько 48 бит слабее всего ключа.
+  registerScrape('program_authority_fingerprint', 'Старшие 48 бит sha256 отпечатка каждого governance-ключа (0 = ключа нет); changes() по этой серии и по program_authority_fingerprint_lo = смена ключа. Пусто, пока GOVERNANCE_WATCH не прочитал аккаунты.', async () => (await governanceGauges()).points.map((p) => ({ value: p.value, labels: { program: p.program, role: p.role } })));
+  registerScrape('program_authority_fingerprint_lo', 'Младшие 48 бит того же sha256-отпечатка (находка 70). Смена любого ключа видна в паре серий; одна серия — только 48 бит.', async () => (await governanceGauges()).points.map((p) => ({ value: p.lo, labels: { program: p.program, role: p.role } })));
   registerScrape('admin_transfer_pending', '1 while chip_core has a pending_admin (step 1 of the 2-step transfer) — the early warning for an admin-key compromise.', async () => { const g = await governanceGauges(); return g.readable ? [{ value: g.adminTransferPending }] : []; });
   registerScrape('program_authority_readable', '1 when the governance keys were read from the RPC in the last 60 s; 0 when unreadable or GOVERNANCE_WATCH is off.', async () => [{ value: (await governanceGauges()).readable }]);
   registerScrape('program_authority_watch_enabled', '1 when this process polls the governance keys (GOVERNANCE_WATCH).', async () => [{ value: (await governanceGauges()).enabled }]);

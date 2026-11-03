@@ -1,33 +1,70 @@
-// Reproducer: the governance-key canary compares 48-bit prefixes, so a rotated key that shares the
-// first six bytes of the old one is invisible to `changes(program_authority_fingerprint[1h])`.
+// Reproducer (было): canary governance-ключей сравнивала 48-битные префиксы, поэтому ключ, у которого
+// первые шесть байт совпадают со старым, был невидим для `changes(program_authority_fingerprint[1h])`.
 //
 //   backend/src/governance-metrics.ts:40-47   keyFingerprint = first 6 bytes as an integer
 //   ops/monitoring/alerts.yml:205-211         ProgramAuthorityRotated = changes(...) > 0, severity page
 //   backend/src/governance-metrics.ts:11-21   the header promises "pages on any rotation even if the
 //                                             indexer is down"
 //
-// Finding a 32-byte key with a given 6-byte prefix is ≈2^24 random keys (BIP-39-style grinder: seconds to
-// minutes), and the attacker who can rotate the key is exactly the one motivated to hide it. The indexer
-// path (`AuthorityChangeIndexed`, an events projection) still pages when the indexer is healthy — so this is
-// a hole in the *independent* path only, which is the path the alert exists for.
+// Найти 32-байтный ключ с заданным 6-байтным префиксом — это ≈2^24 случайных ключей (секунды-минуты на
+// гриндe), а тот, кто может ротировать ключ, — ровно тот, кому нужно это скрыть. Путь через индексер
+// (`AuthorityChangeIndexed`) пейджит, пока индексер жив, — то есть дыра была именно в НЕЗАВИСИМОМ пути,
+// ради которого алерт и существует.
+//
+// Находка 70 исправлена: отпечаток — первые 96 бит sha256 от ключа, разложенные в два числа по 48 бит
+// (`program_authority_fingerprint` + `program_authority_fingerprint_lo`). Сравнивается пара, поэтому
+// подбор ключа под отпечаток упирается в 2^96, а `0` остался отдельным случаем «ключа нет».
 import { describe, expect, it } from 'vitest';
 import { Keypair, PublicKey } from '@solana/web3.js';
-import { keyFingerprint } from '../src/governance-metrics.ts';
+import { keyFingerprint, keyFingerprints } from '../src/governance-metrics.ts';
+
+/** Ключ с тем же 6-байтным префиксом, что и у `old`, но с другим хвостом. */
+function twinWithSamePrefix(old: PublicKey): PublicKey {
+  const raw = old.toBytes();
+  return new PublicKey(new Uint8Array([...raw.slice(0, 6), 0xde, 0xad, 0xbe, 0xef, ...raw.slice(10)]));
+}
 
 describe('governance key fingerprint', () => {
-  it('different keys with the same first 6 bytes are one series value', () => {
-    const old = new PublicKey(Keypair.generate().publicKey.toBytes());
-    const raw = old.toBytes();
-    const twin = new PublicKey(new Uint8Array([...raw.slice(0, 6), 0xde, 0xad, 0xbe, 0xef, ...raw.slice(10)]));
-    expect(twin.equals(old)).toBe(false);          // a different key…
-    expect(keyFingerprint(twin)).toBe(keyFingerprint(old)); // …that the canary cannot tell apart
-    // and the alert evaluates to "no change", while the keys differ everywhere after byte 6
-    console.log(JSON.stringify({ old: old.toBase58(), twin: twin.toBase58(), fingerprint: keyFingerprint(old), differingBytes: [...raw].filter((b, i) => b !== twin.toBytes()[i]).length }));
-    expect(twin.toBytes()[6]).not.toBe(raw[6]);
+  it('два разных ключа с общим 6-байтным префиксом различимы (находка 70)', () => {
+    const old = Keypair.generate().publicKey;
+    const twin = twinWithSamePrefix(old);
+    const a = keyFingerprints(old);
+    const b = keyFingerprints(twin);
+    expect(twin.equals(old)).toBe(false);
+    // Префикс действительно общий — это и был весь отпечаток раньше.
+    expect([...old.toBytes()].slice(0, 6)).toEqual([...twin.toBytes()].slice(0, 6));
+    // Пара (hi, lo) расходится: сравнение пары покрывает ключ целиком.
+    expect({ ...b }).not.toEqual({ ...a });
+    console.log(JSON.stringify({ old: old.toBase58(), twin: twin.toBase58(), oldFp: a, twinFp: b }));
   });
 
-  it('the default (cleared) key is 0 and any real key is not', () => {
+  it('ключи, различающиеся одним младшим битом, дают разные отпечатки', () => {
+    const base = Keypair.generate().publicKey.toBytes();
+    const flipped = new Uint8Array(base);
+    flipped[31] ^= 0x01;
+    expect(keyFingerprints(new PublicKey(flipped))).not.toEqual(keyFingerprints(new PublicKey(base)));
+  });
+
+  it('старшая половина — то, что экспортирует `program_authority_fingerprint`', () => {
+    const key = Keypair.generate().publicKey;
+    expect(keyFingerprint(key)).toBe(keyFingerprints(key).hi);
+  });
+
+  it('«ключа нет» — отдельный случай: обе половины 0', () => {
+    expect(keyFingerprints(PublicKey.default)).toEqual({ hi: 0, lo: 0 });
     expect(keyFingerprint(PublicKey.default)).toBe(0);
-    expect(keyFingerprint(Keypair.generate().publicKey)).toBeGreaterThan(0);
+    const real = keyFingerprints(Keypair.generate().publicKey);
+    expect(real.hi).toBeGreaterThan(0);
+    expect(real.lo).toBeGreaterThan(0);
+  });
+
+  it('алерт сравнивает обе половины, а сервер экспортирует обе серии', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const repo = join(__dirname, '..', '..');
+    const alerts = readFileSync(join(repo, 'ops/monitoring/alerts.yml'), 'utf8');
+    expect(alerts).toMatch(/changes\(program_authority_fingerprint\[1h\]\) > 0 or changes\(program_authority_fingerprint_lo\[1h\]\) > 0/);
+    const server = readFileSync(join(repo, 'backend/src/server.ts'), 'utf8');
+    expect(server).toContain("registerScrape('program_authority_fingerprint_lo'");
   });
 });

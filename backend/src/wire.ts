@@ -66,6 +66,35 @@ export const WIRE_TYPE: Record<string, string> = {
   ArenaAutoPaused: 'params_changed',
   OraclesChanged: 'params_changed',
   CollectionCreated: 'params_changed',
+  // Находка 65: ниже — события, которые раньше уходили клиенту под своим snake_case-именем, которого
+  // нет в его таблице инвалидаций: сокет «работал», кеш не обновлялся, приложение молча уходило в
+  // polling. Каждый тип теперь назван клиентским словом, и контракт держит
+  // `backend/test/wire-invalidate-audit.test.ts` (все имена событий ↔ ветки клиента).
+  ServicePaid: 'service_paid',
+  PackBought: 'pack_opened',
+  PackGranted: 'pack_opened',
+  PackCancelled: 'pack_cancelled',
+  CompressedClaimsCreated: 'pack_opened',
+  CompressedPackSettled: 'pack_opened',
+  CompressedChipMinted: 'pack_opened',
+  CompressedChipRegistered: 'pack_opened',
+  CompressedChipStaged: 'chip_fused',
+  CompressedClaimCancelled: 'pack_cancelled',
+  CompressedClaimTransferred: 'ownership_changed',
+  ChipFlagsChanged: 'chip_fused',
+  ClaimFusionCommitted: 'chip_fused',
+  PlayPulsed: 'play_pulsed',
+  RootPublished: 'root_published',
+  RootRevoked: 'root_published',
+  BurnReported: 'day_closed',
+  BurnRecorded: 'day_closed',
+  SetBonusSynced: 'params_changed',
+  PreorderDropOpened: 'preorder_changed',
+  PreorderDropClosed: 'preorder_changed',
+  SliceFunded: 'stake_changed',
+  SkrFunded: 'stake_changed',
+  SkrWithdrawn: 'stake_changed',
+  SkrPoolChanged: 'stake_changed',
 };
 
 export const snake = (name: string) => name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();

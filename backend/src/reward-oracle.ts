@@ -437,10 +437,19 @@ export function voucherTemplateOf(rewardChip: string): number | undefined {
     return byOdds?.template;
   } catch { return undefined; }
 }
-/** Vouchers a wallet was rooted (kind 9) in the 7 days ending at `t` — the `ANTI_FARM.freeChipsPerWalletPerWeek` window. */
+/**
+ * Vouchers a wallet was rooted (kind 9) in the 7 days ending at `t` — the `ANTI_FARM.freeChipsPerWalletPerWeek`
+ * window. Находка 38: раньше окно считалось по `completed_at` (дате выполнения квеста), поэтому старые,
+ * давно выполненные и всё ещё не ушедшие в корень строки в счётчик не попадали — и за неделю уходило
+ * больше бесплатных чипов, чем лимит. Считаем по `chip_root_at` (момент выдачи); `COALESCE` держит
+ * строки, выданные до появления колонки.
+ */
 export function vouchersRootedThisWeek(db: Db, wallet: string, t = now()): number {
   // Gutter Pot is extra to the streak+weekly cap — do not let a raffle win block a quest chip or vice versa.
-  return db.scalar(`SELECT COUNT(*) FROM quest_completions WHERE wallet = ? AND chip_root_kind = ? AND completed_at > ? AND quest_id <> ?`, wallet, KIND_CHIP_VOUCHERS, t - 7 * 86_400, GUTTER_POT.id);
+  return db.scalar(
+    `SELECT COUNT(*) FROM quest_completions WHERE wallet = ? AND chip_root_kind = ? AND COALESCE(chip_root_at, completed_at) > ? AND quest_id <> ?`,
+    wallet, KIND_CHIP_VOUCHERS, t - 7 * 86_400, GUTTER_POT.id,
+  );
 }
 
 /**
@@ -468,7 +477,7 @@ export function buildChipBatch(db: Db, t = now(), min = CHIP_MIN_BATCH): Batch |
   db.tx(() => {
     for (const w of wallets) {
       const r = perWallet.get(w)!.row;
-      db.run(`UPDATE quest_completions SET chip_root_kind = ?, chip_root_epoch = ? WHERE wallet = ? AND quest_id = ? AND period_key = ? AND chip_root_kind IS NULL`, kind, batch.epoch, w, r.quest_id, r.period_key);
+      db.run(`UPDATE quest_completions SET chip_root_kind = ?, chip_root_epoch = ?, chip_root_at = ? WHERE wallet = ? AND quest_id = ? AND period_key = ? AND chip_root_kind IS NULL`, kind, batch.epoch, t, w, r.quest_id, r.period_key);
     }
   });
   return batch;

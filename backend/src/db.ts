@@ -1061,6 +1061,8 @@ CREATE TABLE IF NOT EXISTS quest_completions (
   item_root_epoch INTEGER,
   chip_root_kind INTEGER,                 -- chip voucher leaf (kind 9) — one voucher per wallet per epoch, the rest carry over
   chip_root_epoch INTEGER,
+  chip_root_at   INTEGER,                 -- находка 38: когда лист ушёл в корень (недельный лимит бесплатных чипов
+                                          -- считается по факту выдачи, а не по дате выполнения квеста)
   PRIMARY KEY (wallet, quest_id, period_key)
 );
 CREATE INDEX IF NOT EXISTS idx_quest_completions_unrooted ON quest_completions(root_kind, wallet);
@@ -1721,7 +1723,7 @@ export class Db {
     }
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_compressed_claims_claim ON compressed_claims(claim)`);
     // backlog #28: chip rewards get their own (kind 9) voucher leaf
-    for (const name of ['chip_root_kind', 'chip_root_epoch'] as const) {
+    for (const name of ['chip_root_kind', 'chip_root_epoch', 'chip_root_at'] as const) {
       if (!qc.has(name)) this.raw.exec(`ALTER TABLE quest_completions ADD COLUMN ${name} INTEGER`);
     }
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_quest_completions_chip_unrooted ON quest_completions(chip_root_kind, wallet)`);

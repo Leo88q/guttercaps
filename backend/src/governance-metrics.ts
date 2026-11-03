@@ -10,8 +10,10 @@
 // `AdminAccepted`, `OraclesChanged`, `ArenaConfigChanged`, `CollectionCreated` → `authority_changes`),
 // and this module adds two independent detection paths on top:
 //   * `program_authority_fingerprint{program,role}` — the live on-chain keys, read from the RPC at most
-//     every 60 s (one getMultipleAccountsInfo), as a 48-bit fingerprint (exact in a float64; 0 = the
-//     default pubkey = "cleared"). `changes()` over it pages on any rotation even if the indexer is down.
+//     every 60 s (one getMultipleAccountsInfo), as a 96-bit sha256 fingerprint split into two 48-bit
+//     numbers (`program_authority_fingerprint` + `program_authority_fingerprint_lo`; 0 = the default
+//     pubkey = "cleared"). `changes()` over the pair pages on any rotation even if the indexer is down
+//     (находка 70: префикс ключа не годился — разные ключи с общим префиксом давали одно число).
 //     `admin_transfer_pending` is the early warning: step 1 of the 2-step transfer, before anyone accepts.
 //   * `authority_changes_indexed{program,kind}` — rows in `authority_changes`, i.e. the events the indexer
 //     saw. `increase()` over it pages even on a box where the RPC poll is disabled.
@@ -21,6 +23,7 @@
 // (`program_authority_readable = 0`), again so an RPC blip is never a "rotation".
 // Alert rules: ops/monitoring/alerts.yml group `guttercaps.governance`; the contract test in
 // backend/test/monitoring.test.ts fails if a rule there queries a series this file stops exporting.
+import { createHash } from 'node:crypto';
 import { PublicKey } from '@solana/web3.js';
 import { IS_PRODUCTION } from './config.ts';
 import type { Db } from './db.ts';
@@ -34,19 +37,34 @@ const env = process.env;
 export const GOVERNANCE_WATCH = (env.GOVERNANCE_WATCH ?? (IS_PRODUCTION ? '1' : '0')) === '1';
 
 export type GovProgram = 'chip_core' | 'staking' | 'arena';
-export interface AuthorityPoint { program: GovProgram; role: string; key: string; value: number }
+export interface AuthorityPoint { program: GovProgram; role: string; key: string; value: number; /** находка 70: вторая половина отпечатка — пара сравнивается целиком */ lo: number }
 export interface GovernanceSnapshot { readable: 0 | 1; points: AuthorityPoint[]; adminTransferPending: 0 | 1; enabled: 0 | 1 }
 
-/** First 6 bytes of the key as an integer (48 bits, exact in float64); 0 for the default pubkey. */
-export function keyFingerprint(key: PublicKey): number {
-  if (key.equals(PublicKey.default)) return 0;
-  const b = key.toBytes();
-  let v = 0;
-  for (let i = 0; i < 6; i++) v = v * 256 + b[i];
-  return v;
+/**
+ * Находка 70: отпечаток считался по первым 6 байтам ключа, поэтому два РАЗНЫХ ключа с общим префиксом
+ * давали одно число — `changes()` не видел подмены, а подобрать такой ключ мог любой (префикс ключа не
+ * секрет). Теперь отпечаток — первые 96 бит sha256 от ключа, разложенные в два числа по 48 бит
+ * (каждое точно представимо в float64): сравнение пары `hi`+`lo` эквивалентно сравнению всего ключа
+ * с криптостойкостью, а `0` остаётся отдельным случаем «ключа нет» (`PublicKey.default`).
+ */
+export interface KeyFingerprints { hi: number; lo: number }
+export function keyFingerprints(key: PublicKey): KeyFingerprints {
+  if (key.equals(PublicKey.default)) return { hi: 0, lo: 0 };
+  const d = createHash('sha256').update(key.toBytes()).digest();
+  const chunk = (offset: number) => {
+    let v = 0;
+    for (let i = 0; i < 6; i++) v = v * 256 + d[offset + i];
+    return v;
+  };
+  return { hi: chunk(0), lo: chunk(6) };
 }
+/** Старшая половина отпечатка (то, что экспортирует `program_authority_fingerprint`). */
+export const keyFingerprint = (key: PublicKey): number => keyFingerprints(key).hi;
 
-const point = (program: GovProgram, role: string, key: PublicKey): AuthorityPoint => ({ program, role, key: key.toBase58(), value: keyFingerprint(key) });
+const point = (program: GovProgram, role: string, key: PublicKey): AuthorityPoint => {
+  const fp = keyFingerprints(key);
+  return { program, role, key: key.toBase58(), value: fp.hi, lo: fp.lo };
+};
 
 /** The role list is the contract with the alert annotations and the runbook table (ops/deploy/runbook.md §3.1–3.2). */
 export function authorityPoints(accounts: { chipCore: Uint8Array; staking: Uint8Array; arena: Uint8Array }): { points: AuthorityPoint[]; adminTransferPending: 0 | 1 } {

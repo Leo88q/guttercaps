@@ -203,12 +203,12 @@ groups:
           description: 'Step 1 of the 2-step admin transfer is live; whoever holds the proposed key can accept_admin at any time. If no ceremony is in progress the admin key is compromised: pause chip_core with the pauser (SEC-H2, ≤ 10 min), withdraw the proposal with propose_admin(default) from the multisig, then rotate. /v1/admin/params → gameConfig.pendingAdmin and authorityHistory show the key and the signer.'
 
       - alert: ProgramAuthorityRotated
-        expr: changes(program_authority_fingerprint[1h]) > 0
+        expr: changes(program_authority_fingerprint[1h]) > 0 or changes(program_authority_fingerprint_lo[1h]) > 0
         for: 0m
         labels: { severity: page }
         annotations:
           summary: 'Governance key {{ $labels.program }}/{{ $labels.role }} changed in the last hour'
-          description: 'The on-chain value of this role differs from the previous scrape (fingerprint = first 6 bytes; 0 = cleared). Roles that move money: staking quest/season/set/burn oracles (reward roots, burn reports), arena battle_oracle (every payout), chip_core treasury/buyback_wallet (fee sinks). Match it against the ceremony log; if there is none, pause the program and treat the admin key as lost.'
+          description: 'The on-chain value of this role differs from the previous scrape (fingerprint = first 96 bits of sha256(key), split into the `_fingerprint` and `_fingerprint_lo` series — сравнение пары покрывает весь ключ; 0 = cleared). Roles that move money: staking quest/season/set/burn oracles (reward roots, burn reports), arena battle_oracle (every payout), chip_core treasury/buyback_wallet (fee sinks). Match it against the ceremony log; if there is none, pause the program and treat the admin key as lost.'
 
       - alert: AuthorityChangeIndexed
         expr: delta(authority_changes_indexed[1h]) > 0
