@@ -30,8 +30,9 @@ const TAB_LABEL = { packs: 'shop.tabs.packs', services: 'shop.tabs.services' } a
 import { useT } from '@/shared/i18n';
 import { AgeGateDeclined, AgeGateDialog, useAgeGate } from '@/shared/ui/AgeGate';
 import { RESTRICTED_REGIONS } from '@/shared/lib/legal';
+import { SKU_IDS } from '@guttercaps/economy'; // таблица SKU объявлена один раз (находка 25)
 
-const SKU_IDS: PackId[] = ['starter', 'standard', 'premium', 'limited'];
+
 const CUR_LABEL = ['SOL', 'USDC', 'CG', 'SKR'] as const;
 
 /** Тиры витрины пака: пол, середина и верх реально выпадающего диапазона (odds > 0). */

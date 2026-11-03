@@ -21,6 +21,7 @@ import {
 } from '../ids';
 import { base58Decode } from '@/shared/lib/base58Decode';
 import { ata } from '../pdas';
+import { assertSettleableLeaves } from '@guttercaps/economy';
 
 export const settleConfigPda = (): PublicKey =>
   PublicKey.findProgramAddressSync([Buffer.from('config')], SETTLE_ID)[0];
@@ -153,6 +154,10 @@ export function settlePackIx(
   payload: SettlePayloadLike,
   args: { relayer: PublicKey; treasury: PublicKey; mint?: PublicKey | null },
 ): TransactionInstruction {
+  // Находка 25: `settle_pack` принимает не больше MAX_LEAVES_PER_TX спецификаций (MAX_SPECS в
+  // programs/settle). Проверка стоит в сборщике, чтобы бандл, который нельзя доставить одной
+  // инструкцией, падал до подписи, а не после оплаты эскроу.
+  assertSettleableLeaves(payload.specs.length, 'settle_pack');
   const cfg = new PublicKey(payload.config);
   const a = payload.auth;
   const w = new BorshWriter().u64(BigInt(a.orderId));

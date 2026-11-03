@@ -9,14 +9,14 @@
 // pack table from the economy package (== GameConfig defaults; a live
 // GameConfig read replaces it once the admin panel lands — TODO(G-1)).
 import type { Connection } from '@solana/web3.js';
-import { PACKS, BUNDLES, FEES, FX, effectiveOdds, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, type PackId } from '@guttercaps/economy';
+import { PACKS, BUNDLES, FEES, FX, SKU_IDS, effectiveOdds, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, type PackId } from '@guttercaps/economy';
 import { QUOTE_CACHE_MS, SWITCHBOARD_QUEUE } from './config.ts';
 import { randomBytes } from 'node:crypto';
 import { type Db, now } from './db.ts';
 import { fetchFeeds, type PythAccounts } from './pyth.ts';
 import { ServiceError } from './services.ts';
 
-export const SKUS: PackId[] = ['starter', 'standard', 'premium', 'limited'];
+export const SKUS: readonly PackId[] = SKU_IDS; // таблица SKU объявлена в packages/economy (находка 25)
 export type QuoteCurrency = 'SOL' | 'USDC' | 'CG' | 'SKR';
 const CURRENCY_CODE: Record<QuoteCurrency, number> = { SOL: 0, USDC: 1, CG: 2, SKR: 3 };
 const RENT_RESERVE_PER_CHIP = 8_000_000n; // chip_core::instructions::packs::RENT_RESERVE_PER_CHIP (SEC-L3: 0.008 SOL, unspent part returned)

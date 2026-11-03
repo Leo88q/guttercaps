@@ -10,12 +10,14 @@ import { ed25519 } from '@noble/curves/ed25519';
 import { Connection, Keypair, PublicKey } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { CORE_COLLECTIONS, PHASEV_ORACLE_KEYPAIR, PROGRAMS, SHARED_MERKLE_TREE } from './config.ts';
+import { assertSettleableLeaves, leavesForPurchase, PACKS } from '@guttercaps/economy';
 import { type Db, now } from './db.ts';
 import { ServiceError } from './services.ts';
 import { upsert } from './sql.ts';
 import { base58Encode } from './base58.ts';
 import { chipMetadata, nextGameIndex } from './bubblegum-mint.ts';
 import { pityBeforeFor, rollPack, type PackOrderRow } from './pack-orders.ts';
+import { SKUS } from './quote.ts';
 import { DasClient, type DasAssetSummary } from './das.ts';
 import { assertExecuted } from './assert-executed.ts';
 import { DAS_RPC_URL, DAS_TIMEOUT_MS } from './config.ts';
@@ -204,6 +206,13 @@ export async function settleAuthForOrder(
   if (!row) throw new ServiceError(404, 'not_found', 'Unknown order');
   if (row.wallet !== wallet) throw new ServiceError(403, 'not_yours', 'This order belongs to another wallet');
   if (row.status === 'minted') throw new ServiceError(409, 'already_minted', 'This order is already minted');
+  // Находка 25: `settle_pack` принимает не больше MAX_SPECS = 10 листьев за инструкцию, а UI продавал
+  // бандлы ×5/×10/×25 (25/50/125 листьев у standard/premium). Раньше авторизация выписывалась и на 25
+  // спецификаций: эскроу оплачен, доставить нечем. Отказываем ДО подписи, заказ остаётся `paid` и
+  // разбирается вручную (возврат/частичный settle), а не превращается в «оплатил и ничего».
+  const pack = PACKS[SKUS[row.sku]];
+  if (!pack) throw new ServiceError(409, 'bad_sku', `Order #${id} has an unknown sku ${row.sku}`);
+  assertSettleableLeaves(leavesForPurchase(pack, row.qty), `Order #${id}`);
   const onchain = await fetchOnchainOrder(deps.connection, new PublicKey(wallet), id);
   if (!onchain) throw new ServiceError(409, 'not_paid_onchain', 'No buy_pack escrow found for this order yet');
   if (onchain.status !== 0) throw new ServiceError(409, 'already_settled', 'This order is already settled on-chain');

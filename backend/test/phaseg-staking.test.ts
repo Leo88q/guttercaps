@@ -27,6 +27,25 @@ describe('stake/unstake (§5.1)', () => {
     staking.unstakeChip(db, WALLET, a, T0);
     expect(db.get<{ flags: number }>(`SELECT flags FROM chips WHERE asset=?`, a)?.flags).toBe(0);
   });
+
+  // Находка 14: `asset` — первичный ключ, а unstake только проставляет `unstaked_at`. Повторный stake
+  // того же актива падал на UNIQUE, поэтому чип нельзя было застейкать второй раз никогда — и новый
+  // владелец чипа тоже не мог (строка оставалась от прошлого владельца).
+  it('re-stakes the same chip after an unstake, and lets the new owner stake it', () => {
+    const a = chip();
+    staking.stakeChip(db, WALLET, a, T0);
+    staking.unstakeChip(db, WALLET, a, T0 + 10);
+    expect(() => staking.stakeChip(db, WALLET, a, T0 + 20)).not.toThrow();
+    expect(db.get<{ staked_at: number; unstaked_at: number | null }>(`SELECT staked_at, unstaked_at FROM phaseg_stakes WHERE asset=?`, a))
+      .toEqual({ staked_at: T0 + 20, unstaked_at: null });
+    expect(db.scalar(`SELECT COUNT(*) FROM phaseg_stakes WHERE asset = ?`, a)).toBe(1);
+
+    // продали чип — новый владелец тоже может его застейкать после unstake старого
+    staking.unstakeChip(db, WALLET, a, T0 + 30);
+    db.run(`UPDATE chips SET owner = ? WHERE asset = ?`, OTHER, a);
+    expect(() => staking.stakeChip(db, OTHER, a, T0 + 40)).not.toThrow();
+    expect(db.get<{ wallet: string }>(`SELECT wallet FROM phaseg_stakes WHERE asset = ? AND unstaked_at IS NULL`, a)?.wallet).toBe(OTHER);
+  });
 });
 
 describe('accrual (§5.1)', () => {

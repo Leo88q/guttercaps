@@ -9,7 +9,7 @@ import { errorSnapshot, type ErrorSnapshot } from '../errorSnapshot';
 // skips whatever the crank (or an earlier attempt) already settled.
 import { Connection, PublicKey } from '@solana/web3.js';
 import { keccak_256 } from '@noble/hashes/sha3';
-import { PACKS, BUNDLES, FEES, expandRandomness, solLamportsForUsdCents, skrMicroForUsdCents, type PackDef as EconPackDef, type RarityIndex } from '@guttercaps/economy';
+import { PACKS, BUNDLES, FEES, expandRandomness, solLamportsForUsdCents, skrMicroForUsdCents, type PackDef as EconPackDef, type RarityIndex, SKU_IDS } from '@guttercaps/economy';
 import { rpcEndpoints } from '@/app/rpcEndpoints';
 import { appLookupTables, fitsInTx, sendTx, type WalletLike } from '../tx';
 import { prepareClose, prepareCloseLut, prepareRandomness, prepareReveal, readRandomness, sendCloseLut } from '../switchboard';
@@ -62,7 +62,7 @@ interface PackFlowDeps {
   dasEndpoint?: string;
 }
 
-export const SKU_IDS = ['starter', 'standard', 'premium', 'limited'] as const;
+export { SKU_IDS }; // единственное объявление таблицы — packages/economy (находка 25)
 
 /** Buyer cap at frozen FX when the quote API is down or still on Pyth. Same maths as quote.ts / buy_pack. */
 export function frozenCheckoutCap(sku: number, qty: number, currency: CurrencyCode): bigint {

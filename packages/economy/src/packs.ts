@@ -91,6 +91,13 @@ const STARTER_ODDS = [2900, 3000, 2500, 1200, 350, 50, 0, 0, 0] as const;
 // so the event doesn't get vacuumed by bots in the first minute.
 const LIMITED_ODDS = [1500, 1900, 2300, 2000, 1400, 900, 0, 0, 0] as const;
 
+/**
+ * Индекс SKU (тот, что ходит в API и в контракт) → id пака. Таблица объявлена один раз здесь:
+ * backend (quote.ts) и клиент импортируют её отсюда, локальные копии не расходятся с каталогом
+ * (находка 25 — вместе с лимитом листьев).
+ */
+export const SKU_IDS = ['starter', 'standard', 'premium', 'limited'] as const;
+
 export const PACKS: Record<PackId, PackDef> = {
   starter: {
     id: 'starter', name: 'Starter Pack', chips: 4,
@@ -143,6 +150,31 @@ export const PACK_PERKS = {
  */
 export const STALE_PACK_SLOTS = 10_800;
 export const STALE_PACK_MINUTES = Math.round((STALE_PACK_SLOTS * 0.4) / 60); // ≈ 72
+
+/**
+ * Предел одной settle-инструкции: `programs/settle/src/lib.rs` (`MAX_SPECS = 10`) отвергает больше
+ * десяти спецификаций в `settle_pack`/`grant_mint`. Число объявлено здесь один раз, backend и клиент
+ * импортируют его отсюда, а sync-тест сверяет с Rust-источником (находка 25: бандл ×5 давал 25
+ * спецификаций — заказ оплачивался в эскроу и не мог быть доставлен ни одной транзакцией).
+ */
+export const MAX_LEAVES_PER_TX = 10;
+
+/** Сколько листьев даст покупка `qty` паков этого вида (в паках разное число чипов). */
+export function leavesForPurchase(pack: Pick<PackDef, 'chips'>, qty: number): number {
+  return pack.chips * qty;
+}
+
+/** Наибольшее `qty` этого вида, которое ещё укладывается в одну settle-инструкцию. */
+export function maxQtyPerSettle(pack: Pick<PackDef, 'chips'>): number {
+  return Math.floor(MAX_LEAVES_PER_TX / pack.chips);
+}
+
+/** Отказ ДО подписи и эскроу: заказ, который нельзя доставить, не должен оплачиваться. */
+export function assertSettleableLeaves(leaves: number, what = 'Order'): void {
+  if (leaves > MAX_LEAVES_PER_TX) {
+    throw new RangeError(`${what} needs ${leaves} leaves; settle_pack carries at most ${MAX_LEAVES_PER_TX}`);
+  }
+}
 
 /** Bundle discounts — apply to standard/premium only (not limited: caps matter more than volume). */
 export const BUNDLES = [

@@ -24,7 +24,16 @@ export function stakeChip(db: Db, wallet: string, asset: string, t = now()) {
   if (chip.lock_until > t) throw new ServiceError(409, 'chip_locked', 'Chip is on cooldown');
   if ((chip.flags & 0b010) !== 0) throw new ServiceError(409, 'chip_busy', 'A listed chip cannot stake');
   if (stakeRow(db, asset)) throw new ServiceError(409, 'already_staked', 'Chip is already staked');
-  db.run(`INSERT INTO phaseg_stakes (asset, wallet, staked_at) VALUES (?, ?, ?)`, asset, wallet, t);
+  // Находка 14: `asset` — первичный ключ `phaseg_stakes`, а unstake лишь проставляет `unstaked_at`.
+  // Повторный INSERT того же актива падал на UNIQUE, то есть после первого unstake чип (и новый
+  // владелец того же чипа) больше не мог застейкать его никогда. Реактивируем закрытую строку:
+  // она остаётся одна на актив, но период стейка начинается заново и принадлежит новому владельцу.
+  db.run(
+    `INSERT INTO phaseg_stakes (asset, wallet, staked_at) VALUES (?, ?, ?)
+     ON CONFLICT(asset) DO UPDATE SET wallet = excluded.wallet, staked_at = excluded.staked_at, unstaked_at = NULL
+      WHERE phaseg_stakes.unstaked_at IS NOT NULL`,
+    asset, wallet, t,
+  );
   db.run(`UPDATE chips SET flags = flags | 1 WHERE asset = ?`, asset);
   return { asset, stakedAt: t };
 }

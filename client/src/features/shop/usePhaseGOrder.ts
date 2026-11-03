@@ -13,6 +13,7 @@ import {
   waitForOrderMinted, waitForSignature, type PackOrder, type PhaseGCurrency, type PendingPhase,
 } from './phaseG';
 import { FLAGS } from '@/app/config';
+import { PACKS, SKU_IDS, assertSettleableLeaves, leavesForPurchase } from '@guttercaps/economy';
 
 export type PhaseGStage = 'idle' | 'creating' | 'paying' | 'confirming' | 'minting' | 'done' | 'error';
 
@@ -33,6 +34,14 @@ export function usePhaseGOrder() {
     busy.current = true;
     setError(null);
     try {
+      // Находка 25: в Phase V заказ доставляется ОДНОЙ инструкцией `settle_pack`, которая несёт не
+      // больше MAX_LEAVES_PER_TX спецификаций. Бандл ×5/×10/×25 в неё не влезает, поэтому покупка
+      // отклоняется до создания заказа и до оплаты (в Phase G листья минтятся кранком по частям, там
+      // ограничение не действует).
+      const skuId = SKU_IDS[sku];
+      if (!isMock() && FLAGS.launchPhase === 'v' && skuId) {
+        assertSettleableLeaves(leavesForPurchase(PACKS[skuId], qty), `Bundle x${qty}`);
+      }
       setStage('creating');
       const created = await api.post('/packs/order', { sku, qty, currency });
       const orderId = created.orderId ?? 0;

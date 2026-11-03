@@ -2,7 +2,7 @@ import { isRightsPath, mockRights } from './rights';
 // Deterministic in-browser backend used when VITE_API_MOCK=true or when the
 // real API is unreachable in dev. Data is derived from @guttercaps/economy
 // and shared/lib/lore so what you see matches the modelled numbers.
-import { ACHIEVEMENTS, BOOSTER, CHIP_XP, DAILY_QUESTS, LINE, EMISSION_GUARD, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, FEES, FUSION_RECIPES, FX, GRID, GRID as GRID_RULES, LOCK_TIERS, MATCHMAKING, PACKS, PASS_TRACK, PERMANENT_QUESTS, PROFILE_THEME_BY_ID, RARITY_PROFILES, REFERRAL, SEASON, SERVICES, SERVICE_BY_ID, SKIN_BY_ID, WEEKLY_QUESTS, applyRotate, botReplay, bundlePriceCents, CREW, CREW_NAME_RE, TOURNAMENT, crewTier, crewWeekScore, effectiveOdds, generateLevel, gridBaseXp, gridStarsForMoves, gridXpForStars, impliedApy, isSolved, levelSeed, lineLayout, lineSeed, lineTier, packExpectedValueMult, passTierForXp, partById, probabilityAtLeast, runPassXp, simulateRun, skrMicroForUsdCents, solLamportsForUsdCents, stockLoadout, tournamentBandOfRank, tournamentPrizeSchedule, usdCentsFromSolLamports, usdcMicroForUsdCents, xpToNext, BOARD_SET_SLOTS, boardDistrictOfWeek, boardSetDistrict, type PackId } from '@guttercaps/economy';
+import { ACHIEVEMENTS, BOOSTER, CHIP_XP, DAILY_QUESTS, LINE, EMISSION_GUARD, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, FEES, FUSION_RECIPES, FX, GRID, GRID as GRID_RULES, LOCK_TIERS, MATCHMAKING, PACKS, PASS_TRACK, PERMANENT_QUESTS, PROFILE_THEME_BY_ID, RARITY_PROFILES, REFERRAL, SEASON, SERVICES, SERVICE_BY_ID, SKIN_BY_ID, SKU_IDS, WEEKLY_QUESTS, applyRotate, botReplay, bundlePriceCents, CREW, CREW_NAME_RE, TOURNAMENT, crewTier, crewWeekScore, effectiveOdds, generateLevel, gridBaseXp, gridStarsForMoves, gridXpForStars, impliedApy, isSolved, levelSeed, lineLayout, lineSeed, lineTier, packExpectedValueMult, passTierForXp, partById, probabilityAtLeast, runPassXp, simulateRun, skrMicroForUsdCents, solLamportsForUsdCents, stockLoadout, tournamentBandOfRank, tournamentPrizeSchedule, usdCentsFromSolLamports, usdcMicroForUsdCents, xpToNext, BOARD_SET_SLOTS, boardDistrictOfWeek, boardSetDistrict, type PackId } from '@guttercaps/economy';
 import { PYTH_PRICE_ACCOUNTS } from '@/chain/ids';
 import { COLLECTIONS } from '@/shared/lib/lore';
 import { ApiError, type RequestOpts } from '../client';
@@ -18,7 +18,7 @@ function fakeKey(prefix = ''): string {
   return s.slice(0, 44);
 }
 const iso = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString();
-const SKUS: PackId[] = ['starter', 'standard', 'premium', 'limited'];
+const SKUS: readonly PackId[] = SKU_IDS;
 const ME = 'GCmockWa11etXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX';
 let mockHandle = 'gutter_rat';
 

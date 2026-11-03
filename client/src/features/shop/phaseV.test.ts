@@ -3,6 +3,7 @@ import { Keypair } from '@solana/web3.js';
 import { buyPackIx, grantMintIx, oracleAuthIx, settlePackIx, orderPda, type SettlePayloadLike } from './phaseV';
 import { base58Encode } from '@/shared/lib/base58';
 import { base58Decode } from '@/shared/lib/base58Decode';
+import { MAX_LEAVES_PER_TX } from '@guttercaps/economy';
 
 const buyer = Keypair.generate().publicKey;
 const oracle = Keypair.generate().publicKey;
@@ -53,6 +54,20 @@ describe('phase-V instruction builders', () => {
     expect(ix.data.readBigUInt64LE(8)).toBe(7n);
     // auth.wallet right after the order id arg
     expect(ix.data.subarray(16, 48).equals(Buffer.from(buyer.toBytes()))).toBe(true);
+  });
+
+  // Находка 25: контракт несёт не больше MAX_LEAVES_PER_TX спецификаций за `settle_pack`, а магазин
+  // продавал бандлы ×5/×10/×25. Сборщик обязан отказать до подписи: иначе эскроу уже оплачен, а
+  // доставить заказ одной инструкцией нечем.
+  it('settle_pack refuses more specs than the contract accepts', () => {
+    const p = payload();
+    const spec = p.specs[0];
+    const tooMany = { ...p, specs: Array.from({ length: MAX_LEAVES_PER_TX + 1 }, (_, i) => ({ ...spec, name: `NIGHTMOTH #${i}` })) };
+    expect(() => settlePackIx(tooMany, { relayer: buyer, treasury: Keypair.generate().publicKey }))
+      .toThrow(new RegExp(`at most ${MAX_LEAVES_PER_TX}`));
+    // ровно на границе — собирается (5 листьев обычного пака и 10 у ×2)
+    const atLimit = { ...p, specs: Array.from({ length: MAX_LEAVES_PER_TX }, (_, i) => ({ ...spec, name: `NIGHTMOTH #${i}` })) };
+    expect(() => settlePackIx(atLimit, { relayer: buyer, treasury: Keypair.generate().publicKey })).not.toThrow();
   });
 
   it('oracle ed25519 ix carries prefix, message and signature', () => {
