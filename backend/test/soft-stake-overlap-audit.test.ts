@@ -12,12 +12,13 @@
 //
 // In phase G there is no staking program, so the soft path *is* the budget. In phase V both exist: the
 // crank runs `accrueStakingDay` (`crank.ts:1057`) next to the on-chain program, and the HTTP routes
-// (`POST /v1/me/phaseg/stake`) are mounted in every phase (`server.ts:711`). Nothing anywhere checks
-// "this chip already earns from the pool".
+// (`POST /v1/me/phaseg/stake`) are mounted in every phase (`server.ts:711`). Nothing anywhere checked
+// "this chip already earns from the pool" — исправлено: `stakeChip` отказывает чипу с битом 0 без
+// строки `phaseg_stakes` (бит ставит только CPI staking-программы), повторного среза эмиссии нет.
 import { describe, expect, it } from 'vitest';
 import { EMISSION_SPLIT } from '@guttercaps/economy';
 import { Db } from '../src/db.ts';
-import { accrueStakingDay, stakeChip } from '../src/phaseg-staking.ts';
+import { accrueStakingDay, softStakingLive, stakeChip } from '../src/phaseg-staking.ts';
 import { latestEmissionDay } from '../src/staking.ts';
 
 const DAY = 86_400;
@@ -31,19 +32,19 @@ function chip(db: Db, asset: string, owner: string, flags: number, level = 1) {
 }
 
 describe('phase-G soft staking vs the on-chain pool', () => {
-  it('soft-stakes a chip that is already staked on chain', () => {
+  it('refuses to soft-stake a chip that is already staked on chain', () => {
     const db = new Db(':memory:');
     const wallet = 'So11111111111111111111111111111111111111112';
     chip(db, 'staked-on-chain', wallet, 0b001); // bit0 = staked (chips.flags comment, db.ts:110)
     chip(db, 'listed', wallet, 0b010);
 
-    // Control: the gate that *is* implemented.
+    // Control: the gate that was already implemented.
     expect(() => stakeChip(db, wallet, 'listed', 1_800_000_000)).toThrow(/listed chip cannot stake/);
-    // The gate that is not: an on-chain staked chip is accepted into the off-chain pool.
-    const r = stakeChip(db, wallet, 'staked-on-chain', 1_800_000_000);
-    expect(r.asset).toBe('staked-on-chain');
+    // Находка 15: бит 0 без строки `phaseg_stakes` = чип застейкан на цепи, а он уже получает долю
+    // из он-чейн пула — soft-стейк отказывает, второго среза эмиссии не появляется.
+    expect(() => stakeChip(db, wallet, 'staked-on-chain', 1_800_000_000)).toThrow(/already staked on chain/);
 
-    // The day pays the whole chip-staking slice to that wallet, from a budget separate from the pool.
+    // День не платит ничего этому кошельку: двойного среза эмиссии нет.
     const day = Math.floor(1_800_000_000 / DAY);
     accrueStakingDay(db, day, 1_800_000_000);
     const paid = db.get<{ pending_micro: string }>(`SELECT pending_micro FROM phaseg_rewards WHERE wallet = ?`, wallet);
@@ -52,15 +53,29 @@ describe('phase-G soft staking vs the on-chain pool', () => {
 
     // eslint-disable-next-line no-console
     console.log(JSON.stringify({
-      softStakeAcceptedWhileOnChainStaked: r.asset === 'staked-on-chain',
-      pendingMicro: paid?.pending_micro,
+      softStakeAcceptedWhileOnChainStaked: false,
+      pendingMicro: paid?.pending_micro ?? '0',
       dayBudgetMicro: chipBudget.toString(),
       chipStakingSplitPct: EMISSION_SPLIT.chipStaking,
       emissionSource: emission.source,
     }));
 
-    expect(BigInt(paid?.pending_micro ?? '0')).toBeGreaterThan(0n);
+    expect(BigInt(paid?.pending_micro ?? '0')).toBe(0n);
     expect(chipBudget).toBeGreaterThan(0n);
+    db.raw.close();
+  });
+
+  it('в фазе V soft-путь выключен: пул владеет срезом, начислять нечего (п. 15)', () => {
+    const db = new Db(':memory:');
+    const wallet = 'So11111111111111111111111111111111111111112';
+    chip(db, 'plain', wallet, 0);
+
+    expect(softStakingLive('v')).toBe(false);
+    expect(softStakingLive('g')).toBe(true);
+    expect(() => stakeChip(db, wallet, 'plain', 1_800_000_000, 'v')).toThrow(/off in Phase V/);
+    const day = Math.floor(1_800_000_000 / DAY);
+    expect(accrueStakingDay(db, day, 1_800_000_000, 'v')).toEqual({ credited: 0, budgetMicro: '0' });
+    expect(db.get(`SELECT pending_micro FROM phaseg_rewards WHERE wallet = ?`, wallet)).toBeUndefined();
     db.raw.close();
   });
 });

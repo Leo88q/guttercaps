@@ -3,10 +3,13 @@
 // never leaves the wallet) and accrues a share of the same daily chip budget
 // the on-chain pool uses (EMISSION_SPLIT.chipStaking of the guarded emission).
 // Accrual only counts while the chips projection still shows the chip with
-// the staking wallet: sell it and it stops earning the same day. Claims move
+// the staking wallet: sell it and it stops earning the same day. A chip that
+// the on-chain staking program already stakes is refused (находка 15): the same
+// `EMISSION_SPLIT.chipStaking` slice must not be paid twice. Claims move
 // the pending balance into an idempotent payout row; the crank pays it as a
 // plain $CG transfer from the treasury.
 import { EMISSION_SPLIT } from '@guttercaps/economy';
+import { LAUNCH_PHASE, type LaunchPhase } from './config.ts';
 import { type Db, now } from './db.ts';
 import { ServiceError } from './services.ts';
 import { chipWeightRaw, latestEmissionDay } from './staking.ts';
@@ -17,14 +20,27 @@ interface ChipRow { asset: string; owner: string; rarity: number; level: number;
 
 const stakeRow = (db: Db, asset: string) => db.get<StakeRow>(`SELECT * FROM phaseg_stakes WHERE asset = ? AND unstaked_at IS NULL`, asset);
 
-export function stakeChip(db: Db, wallet: string, asset: string, t = now()) {
+/**
+ * Находка 15: срез `EMISSION_SPLIT.chipStaking` в фазе V раздаёт он-чейн пул
+ * (`staking::stake` / `Pool.acc_reward_per_weight`). Soft-путь в это время выключен — иначе тот же
+ * срез выплачивается дважды: один раз из казны переводом, второй — из пула. Фаза — параметр, чтобы
+ * это можно было воспроизвести в тесте, а не только через окружение процесса.
+ */
+export const softStakingLive = (phase: LaunchPhase): boolean => phase !== 'v';
+
+export function stakeChip(db: Db, wallet: string, asset: string, t = now(), phase: LaunchPhase = LAUNCH_PHASE) {
+  if (!softStakingLive(phase)) throw new ServiceError(410, 'phase_g_off', 'Soft staking is off in Phase V — the on-chain staking program owns the chip slice');
   const chip = db.get<ChipRow>(`SELECT * FROM chips WHERE asset = ?`, asset);
   if (!chip) throw new ServiceError(404, 'chip_not_found', 'Unknown chip');
   if (chip.owner !== wallet) throw new ServiceError(403, 'not_yours', 'Only the owner can stake a chip');
   if (chip.burned_at !== null) throw new ServiceError(409, 'already_burned', 'A burned chip cannot stake');
   if (chip.lock_until > t) throw new ServiceError(409, 'chip_locked', 'Chip is on cooldown');
   if ((chip.flags & 0b010) !== 0) throw new ServiceError(409, 'chip_busy', 'A listed chip cannot stake');
+  // Находка 15: bit0 ставят и наш soft-стейк, и staking-программа (`set_chip_flag` из CPI). Чип,
+  // который уже зарабатывает из он-чейн пула, не должен получать тот же срез эмиссии второй раз —
+  // без строки `phaseg_stakes` бит значит «застейкан на цепи», и soft-стейк отказывает.
   if (stakeRow(db, asset)) throw new ServiceError(409, 'already_staked', 'Chip is already staked');
+  if ((chip.flags & 0b001) !== 0) throw new ServiceError(409, 'already_staked', 'Chip is already staked on chain — it earns from the staking pool, not from the soft budget');
   // Находка 14: `asset` — первичный ключ `phaseg_stakes`, а unstake лишь проставляет `unstaked_at`.
   // Повторный INSERT того же актива падал на UNIQUE, то есть после первого unstake чип (и новый
   // владелец того же чипа) больше не мог застейкать его никогда. Реактивируем закрытую строку:
@@ -53,7 +69,9 @@ export function unstakeChip(db: Db, wallet: string, asset: string, t = now()) {
  * the projection STILL shows the chip with the staking wallet (sold chips
  * stop earning; the stake row is closed so re-buys don't resurrect it).
  */
-export function accrueStakingDay(db: Db, dayIndex: number, t = now()): { credited: number; budgetMicro: string } {
+export function accrueStakingDay(db: Db, dayIndex: number, t = now(), phase: LaunchPhase = LAUNCH_PHASE): { credited: number; budgetMicro: string } {
+  // Находка 15: в фазе V день эмиссии платит пул, soft-бюджет не начисляется вовсе.
+  if (!softStakingLive(phase)) return { credited: 0, budgetMicro: '0' };
   if (db.get(`SELECT day_index FROM phaseg_stake_days WHERE day_index = ?`, dayIndex)) {
     return { credited: 0, budgetMicro: '0' };
   }
