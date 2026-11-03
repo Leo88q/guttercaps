@@ -29,10 +29,15 @@ interface SettledChip { asset: PublicKey; rarity: number; collectionIdx: number;
 /**
  * Settle one claim by nonce. Returns null for missing/consumed claims (buyer-cancelled —
  * the settlement counters track them) and for expired-unminted ones (cancel first).
+ *
+ * Находка 42: `claimAddress` — адрес claim'а, если он куплен на рынке. Аккаунт выводится из
+ * ПЕРВОНАЧАЛЬНОГО владельца, поэтому из ключа покупателя PDA не получается; программа больше не
+ * требует сидов (проверяет владельца программы, дискриминатор и `claim.buyer`), но адрес нужно
+ * передать явно. Без аргумента поведение прежнее — вывод из `(buyer, claimNonce)`.
  */
-export async function settleClaim(ctx: ClaimSettleCtx, claimNonce: bigint): Promise<SettledChip | null> {
+export async function settleClaim(ctx: ClaimSettleCtx, claimNonce: bigint, claimAddress?: PublicKey): Promise<SettledChip | null> {
   const { connection, wallet, buyer, metas, trees, lookupTables } = ctx;
-  const [claimKey] = compressedMintClaimPda(buyer, claimNonce);
+  const claimKey = claimAddress ?? compressedMintClaimPda(buyer, claimNonce)[0];
   const info = await connection.getAccountInfo(claimKey, 'confirmed');
   const claim = info ? decodeCompressedMintClaim(new Uint8Array(info.data)) : null;
   if (!claim || claim.consumed) return null;
@@ -47,6 +52,7 @@ export async function settleClaim(ctx: ClaimSettleCtx, claimNonce: bigint): Prom
       const { signature } = await sendTx(connection, wallet, [mintCompressedChipIx({
         payer: wallet.publicKey, buyer, collectionIdx: live.collectionIdx, claimNonce,
         treeConfig: tree.treeConfig, merkleTree: tree.merkleTree, coreCollection: tree.coreCollection,
+        claim: claimKey,
       })], { cuLimit: 500_000, lookupTables });
       ctx.onSignature(signature);
     } catch (e) {
@@ -81,6 +87,7 @@ export async function settleClaim(ctx: ClaimSettleCtx, claimNonce: bigint): Prom
     },
     rarity: live.rarity, level: live.level, gameIndex: live.gameIndex,
     settlement: live.settlement.equals(SystemProgram.programId) ? undefined : live.settlement,
+    claim: claimKey, // находка 42: купленный claim лежит по адресу прежнего владельца
   });
   if (!fitsInTx(wallet.publicKey, [register], lookupTables)) {
     throw new Error('Bubblegum proof does not fit this transaction — the app lookup table is not configured for this wallet (the crank will register this chip instead)');

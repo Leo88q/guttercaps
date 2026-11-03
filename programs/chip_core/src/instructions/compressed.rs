@@ -1934,18 +1934,15 @@ pub struct MintCompressedChip<'info> {
         constraint = tree_meta.tree_authority == collection.key() @ ChipError::InvalidBubblegumTree,
     )]
     pub tree_meta: Box<Account<'info, BubblegumTreeMeta>>,
-    /// CHECK: PDA `["compressed_claim", buyer_key, claim_nonce]` — the `seeds` / `bump`
-    /// constraints still prove it, and `owner` keeps a foreign account out. The body is
-    /// decoded in the handler with `try_deserialize_compat`, which is also where the
-    /// `has_one = buyer` gate moved: live pre-`founder` claims are one byte short of the
-    /// current layout, so Anchor's strict decode answered `AccountDidNotDeserialize` (3003)
-    /// and a legacy claim could never be minted into a cNFT.
-    #[account(
-        mut,
-        owner = crate::ID,
-        seeds = [b"compressed_claim", buyer_key.as_ref(), &claim_nonce.to_le_bytes()],
-        bump,
-    )]
+    /// CHECK: `owner = crate::ID` + Anchor's discriminator (checked by
+    /// `try_deserialize_compat`) + `claim.buyer == buyer` in the handler are what make this
+    /// account a claim. Находка 42: `seeds` / `bump` сняты намеренно — аккаунт claim'а
+    /// выводится из `["compressed_claim", ПЕРВОНАЧАЛЬНЫЙ владелец, nonce]`, а
+    /// `transfer_compressed_claim` меняет только `claim.buyer`. С сидами покупатель с
+    /// рынка не мог предъявить свой claim (PDA не выводится из его ключа), а продавец уже
+    /// не проходил `has_one = buyer` — выпуск не был возможен ни для кого. Повторный
+    /// выпуск закрывает `claim.minted`, записываемый после CPI.
+    #[account(mut, owner = crate::ID)]
     pub claim: UncheckedAccount<'info>,
     /// CHECK: the leaf owner is the buyer bound into the claim.
     #[account(address = buyer_key)]
@@ -2203,18 +2200,12 @@ pub struct RegisterCompressedChip<'info> {
         constraint = tree_meta.tree_authority == collection.key() @ ChipError::InvalidBubblegumTree,
     )]
     pub tree_meta: Box<Account<'info, BubblegumTreeMeta>>,
-    /// CHECK: PDA `["compressed_claim", buyer_key, claim_nonce]` — the `seeds` / `bump`
-    /// constraints still prove it, and `owner` keeps a foreign account out. The body is
-    /// decoded in the handler with `try_deserialize_compat`, which is also where the
-    /// `has_one = buyer` gate moved: live pre-`founder` claims are one byte short of the
-    /// current layout, so Anchor's strict decode answered `AccountDidNotDeserialize` (3003)
-    /// and a legacy claim could never be registered into a `CompressedChipState`.
-    #[account(
-        mut,
-        owner = crate::ID,
-        seeds = [b"compressed_claim", buyer_key.as_ref(), &claim_nonce.to_le_bytes()],
-        bump,
-    )]
+    /// CHECK: `owner = crate::ID` + Anchor's discriminator + `claim.buyer == buyer` in the
+    /// handler. Находка 42: `seeds` / `bump` сняты по той же причине, что и в
+    /// `MintCompressedChip` — после покупки claim'а на рынке аккаунт живёт по адресу
+    /// первоначального владельца, и регистрация по сидам нового владельца не проходила.
+    /// `chip` инициализируется по `asset_id`, `claim.registered` закрывает повтор.
+    #[account(mut, owner = crate::ID)]
     pub claim: UncheckedAccount<'info>,
     // sentio-ignore-next-line SW002
     /// CHECK: compressed-pack settlement PDA, or the system program for the

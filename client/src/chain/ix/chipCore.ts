@@ -272,6 +272,12 @@ export interface MintCompressedChipArgs {
   treeConfig: PublicKey;
   merkleTree: PublicKey;
   coreCollection: PublicKey;
+  /**
+   * Находка 42: адрес аккаунта claim'а. По умолчанию выводится из `(buyer, claimNonce)`, но claim,
+   * купленный на рынке, лежит по адресу ПЕРВОНАЧАЛЬНОГО владельца — покупатель обязан передать его
+   * явно, иначе программа не найдёт аккаунт по своим сидам (они сняты, но адрес всё равно нужен).
+   */
+  claim?: PublicKey;
 }
 
 /** Bubblegum V2 mint CPI for a previously staged claim. The collection PDA is
@@ -281,7 +287,7 @@ export function mintCompressedChipIx(a: MintCompressedChipArgs): TransactionInst
   const [config] = configPda();
   const [collection] = collectionMetaPda(a.collectionIdx);
   const [treeMeta] = bubblegumTreeMetaPda(a.collectionIdx);
-  const [claim] = compressedMintClaimPda(a.buyer, a.claimNonce);
+  const claim = a.claim ?? compressedMintClaimPda(a.buyer, a.claimNonce)[0];
   const data = new BorshWriter().pubkey(a.buyer).u8(a.collectionIdx).u64(a.claimNonce).toBytes();
   return new TransactionInstruction({
     programId: CHIP_CORE_ID,
@@ -312,6 +318,8 @@ export interface RegisterCompressedChipArgs {
   /** Settlement PDA for claims created by open_compressed_pack. Omit for
    * legacy/admin-staged claims. */
   settlement?: PublicKey;
+  /** Находка 42: адрес купленного claim'а (см. `MintCompressedChipArgs.claim`). */
+  claim?: PublicKey;
 }
 
 /** Proof-backed registration. DAS values are transport only; the program
@@ -328,6 +336,7 @@ export function registerCompressedChipIx(a: RegisterCompressedChipArgs): Transac
   const [collection] = collectionMetaPda(a.collectionIdx);
   const [treeMeta] = bubblegumTreeMetaPda(a.collectionIdx);
   const [chip] = compressedChipStatePda(a.asset);
+  const claimKey = a.claim ?? compressedMintClaimPda(a.buyer, a.claimNonce)[0];
   const data = new BorshWriter()
     .pubkey(a.asset)
     .u8(a.collectionIdx)
@@ -350,7 +359,7 @@ export function registerCompressedChipIx(a: RegisterCompressedChipArgs): Transac
   return new TransactionInstruction({
     programId: CHIP_CORE_ID,
     keys: [
-      signer(a.payer), ro(config), rw(collection), ro(treeMeta), rw(compressedMintClaimPda(a.buyer, a.claimNonce)[0]), a.settlement ? rw(a.settlement) : ro(SYSTEM_PROGRAM_ID), ro(a.buyer), rw(chip), ro(a.asset),
+      signer(a.payer), ro(config), rw(collection), ro(treeMeta), rw(claimKey), a.settlement ? rw(a.settlement) : ro(SYSTEM_PROGRAM_ID), ro(a.buyer), rw(chip), ro(a.asset),
       ro(a.owner), ro(a.delegate), ro(a.merkleTree), ro(a.treeConfig), ro(MPL_BUBBLEGUM_V2_ID),
       ro(MPL_ACCOUNT_COMPRESSION_ID), ro(SYSTEM_PROGRAM_ID),
       ...a.proof.proofNodes.map(ro),
