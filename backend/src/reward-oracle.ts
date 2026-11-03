@@ -492,7 +492,16 @@ export function pendingPartRows(db: Db): { id: number; wallet: string; part_idx:
 export function buildPartBatch(db: Db, t = now(), min = PART_MIN_BATCH): Batch | undefined {
   const kind = KIND_ITEM_BOARD_PARTS;
   if (db.get(`SELECT 1 FROM reward_batches WHERE kind = ? AND status = 'pending'`, kind)) return undefined;
-  const pending = pendingPartRows(db);
+  // Находка 35: `reward_leaves` уникален по (kind, epoch, wallet), а клейм на цепи — `init` по
+  // `["claim", root, wallet]`, то есть один корень платит ОДНУ часть на кошелёк. Два гранта одного
+  // кошелька в одном батче роняли INSERT, и kind 10 замолкал навсегда для всех. Берём по одной части на
+  // кошелёк (самую старую): остальные остаются неразмеченными и уезжают следующим эпохом — «never dropped».
+  const seen = new Set<string>();
+  const pending = pendingPartRows(db).filter((r) => {
+    if (seen.has(r.wallet)) return false;
+    seen.add(r.wallet);
+    return true;
+  });
   const taken = pending.slice(0, ITEM_REWARDS.maxRootBudget);
   if (taken.length === 0) return undefined;
   if (taken.length < min) return undefined;
