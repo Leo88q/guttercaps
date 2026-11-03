@@ -242,6 +242,12 @@ function startSpecialAttempt(db: Db, wallet: string, body: GridAttemptInput, t: 
     if (chip.collection_idx !== contract.district) throw new ServiceError(409, 'wrong_district', `Contract is for district ${contract.district + 1}; the conductor must be a chip of that district`);
     if (gridRoute(db, asset).nextLevel <= GRID.totalLevels) throw new ServiceError(409, 'contract_locked', 'District contracts open after the conductor finishes the 75-sector Descent');
     if (db.get(`SELECT 1 FROM grid_contract_done WHERE wallet = ? AND day = ? AND slot = ?`, wallet, gridDay(t), slot)) throw new ServiceError(409, 'contract_done', 'That contract is already completed today');
+    // Находка 39: контракт нельзя открыть пачкой. Раньше между стартом и сдачей можно было открыть
+    // сколько угодно попыток одного слота и сдать их все — каждая давала прогресс (grid_completions) и
+    // капала капли. Один слот — одна незавершённая попытка; seed однозначно задаёт (день, слот).
+    if (db.get(`SELECT 1 FROM grid_attempts WHERE wallet = ? AND mode = 'contract' AND settled = 0 AND seed = ?`, wallet, contract.seed)) {
+      throw new ServiceError(409, 'contract_in_progress', 'That contract is already in progress — finish or give it up');
+    }
     level = contract.configLevel; seed = contract.seed;
     if (hintsUsed > 0 && ensureGridWallet(db, wallet, t).hints < hintsUsed) throw new ServiceError(409, 'no_hints', 'Not enough hints (Метки Клеммы)');
   } else if (kind === 'deep') {
@@ -443,6 +449,25 @@ function settleSpecialAttempt(db: Db, wallet: string, attempt: { id: string; ass
   const stars = gridStarsForMoves(moves, par);
   if (kind === 'contract') {
     if (stars <= 0) { settle(); return { ok: false as const, kind, reason: 'over_budget', moves, par }; }
+    // Находка 39: слот контракта занимается ОДИН раз, и это решение принимается здесь, до наград.
+    // Раньше `grid_contract_done` вставлялся с `ON CONFLICT DO NOTHING` уже ПОСЛЕ выдачи — вторая
+    // (параллельная) попытка того же слота молча ничего не занимала, но всё равно получала капли,
+    // строку `grid_completions` и прогресс квестов. Теперь вставка сама является захватом: не вставили —
+    // значит слот уже сдан, и попытка закрывается без единой награды.
+    const t0 = (attempt as { created_at?: number }).created_at ?? t;
+    const storedSeed = db.get<{ seed: number }>(`SELECT seed FROM grid_attempts WHERE id = ?`, attempt.id)?.seed ?? -1;
+    // The contract board is re-derived from (day, slot); find which of today's offers this attempt was.
+    const contract = [0, 1, 2].map((slot) => gridContractAt(t0, slot)).find((c) => c.seed === storedSeed && c.configLevel === attempt.level);
+    if (contract) {
+      const claimed = db.run(
+        `INSERT INTO grid_contract_done (wallet, day, slot, asset, stars, moves, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(wallet, day, slot) DO NOTHING`,
+        wallet, gridDay(t0), contract.slot, attempt.asset, stars, moves, t,
+      );
+      if (Number(claimed.changes) !== 1) {
+        settle();
+        return { ok: false as const, kind, reason: 'contract_already_done', moves, par };
+      }
+    }
     const routeBefore = gridRoute(db, attempt.asset);
     let { nextLevel, chargeDrops, chargeProgress } = routeBefore;
     let dropletGained = false;
@@ -451,11 +476,6 @@ function settleSpecialAttempt(db: Db, wallet: string, attempt: { id: string; ass
       while (chargeProgress >= GRID.chargePerSectorStreak && chargeDrops < GRID.chargeMax) { chargeDrops += 1; chargeProgress -= GRID.chargePerSectorStreak; dropletGained = true; }
     }
     saveRoute(db, attempt.asset, nextLevel, chargeDrops, chargeProgress, t);
-    // The contract board is re-derived from (day, slot); find which of today's offers this attempt was.
-    const t0 = (attempt as { created_at?: number }).created_at ?? t;
-    const storedSeed = db.get<{ seed: number }>(`SELECT seed FROM grid_attempts WHERE id = ?`, attempt.id)?.seed ?? -1;
-    const contract = [0, 1, 2].map((slot) => gridContractAt(t0, slot)).find((c) => c.seed === storedSeed && c.configLevel === attempt.level);
-    if (contract) db.run(`INSERT INTO grid_contract_done (wallet, day, slot, asset, stars, moves, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(wallet, day, slot) DO NOTHING`, wallet, gridDay(t), contract.slot, attempt.asset, stars, moves, t);
     db.run(`INSERT INTO grid_completions (wallet, asset, level, stars, moves, day, kind, created_at) VALUES (?, ?, ?, ?, ?, ?, 'contract', ?)`, wallet, attempt.asset, attempt.level, stars, moves, gridDay(t), t);
     settle();
     return { ok: true as const, training: false as const, kind, stars, moves, par, xpGranted: 0, xpPending: 0, dropletGained, route: gridRoute(db, attempt.asset), wallet: ensureGridWallet(db, wallet, t) };
