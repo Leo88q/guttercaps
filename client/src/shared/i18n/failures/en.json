@@ -195,6 +195,7 @@
   "preorderWalletCap": "You reached the per-wallet limit for this drop.",
   "preorderNotYours": "This reservation belongs to another wallet.",
   "preorderAlreadyGranted": "These packs were already delivered.",
+  "fusionMaterialsSpent": "These chips are already burned or settled by another fusion. One burn gives one result — start a new fusion with other chips.",
   "packRefundNotPossible": "This order is in the refund queue — the team returns the payment to the wallet it came from; no pack is delivered.",
   "preorderNotPayable": "This reservation can no longer be paid — it expired or was already processed.",
   "preorderTxNotFound": "Payment transaction not found on mainnet (finalized).",

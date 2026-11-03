@@ -93,6 +93,8 @@ export const API_ERROR_KEYS = {
   already_granted: 'failures.preorderAlreadyGranted', not_payable: 'failures.preorderNotPayable',
   // Находка 32: оплата пришла, когда лимит кошелька уже занял другой заказ — заказ в очереди возврата.
   not_refundable: 'failures.packRefundNotPossible', already_refunded: 'failures.packRefundNotPossible',
+  // Находка 19: материалы уже сгорели в другом fusion — второго результата за одно сжигание не будет.
+  materials_spent: 'failures.fusionMaterialsSpent',
   tx_not_found: 'failures.preorderTxNotFound', already_confirmed: 'failures.preorderAlreadyConfirmed',
   payment_tx_failed: 'failures.preorderPaymentFailed', payment_no_transfer: 'failures.preorderNoTransfer',
   payment_amount_low: 'failures.preorderAmountLow', payment_memo_mismatch: 'failures.preorderMemoMismatch',
