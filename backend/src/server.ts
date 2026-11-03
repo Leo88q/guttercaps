@@ -1132,6 +1132,14 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   v1.post('/admin/pack-refunds/:id', audited('pack_refunds.mark', (req) => packOrders.markRefunded(
     db, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0, String(req.body?.signature ?? ''),
   )));
+  // Находка 23: та же очередь для предзаказов — оплата, пришедшая после истечения резерва, когда квота
+  // уже ушла другим. Возврат делает оператор, подпись перевода из мультисига — доказательство.
+  v1.get('/admin/preorder-refunds', audited('preorder_refunds.list', (req) => ({
+    reservations: preorders.refundQueue(db, limitQuery(req.query.limit, { max: 500, def: 100 })),
+  })));
+  v1.post('/admin/preorder-refunds/:id', audited('preorder_refunds.mark', (req) => preorders.markRefunded(
+    db, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0, String(req.body?.signature ?? ''),
+  )));
   v1.get('/admin/rights', rightsAudited('rights.queue', () => db.all<compliance.RightsRequest>("SELECT * FROM rights_requests ORDER BY CASE WHEN status = 'closed' THEN 1 ELSE 0 END, due_at LIMIT 200").map(r => compliance.requestView(db, r))));
   v1.post('/admin/rights/:id', rightsAudited('rights.reply', req => compliance.updateRequest(db, req.params.id, req.body, 'operator')));
   v1.post('/admin/rights/:id/correct-access', rightsAudited('rights.correct_access', req => compliance.correctAccess(db, req.params.id, req.body)));

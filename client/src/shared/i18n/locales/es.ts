@@ -394,7 +394,7 @@ const es: Messages = {
     memoWhy: 'El memo vincula el pago a tu reserva; sin él, envía desde tu billetera conectada.',
     signature: 'Firma de la transacción de pago', confirm: 'Ya pagué — verificar mi pago', checking: 'Verificando en mainnet…',
     ttl: 'Tu reserva guarda los packs por {h} h.',
-    statusIntent: 'esperando pago', statusPaid: 'pagado — se entrega en el lanzamiento de mainnet', statusGranted: 'entregado — mira tus packs', statusExpired: 'expirado',
+    statusIntent: 'esperando pago', statusPaid: 'pagado — se entrega en el lanzamiento de mainnet', statusGranted: 'entregado — mira tus packs', statusExpired: 'expirado', statusRefundDue: 'pagado tras caducar — la cuota fue para otro comprador, el pago se está reembolsando', statusRefunded: 'reembolsado',
     mine: 'Mis reservas', empty: 'Aún no hay reservas.', grantedNote: 'Los packs de la preventa están en “Mis packs” — ábrelos ahí.',
     refund: 'Si mainnet no está en vivo para la fecha publicada, cada pago se reembolsa 1:1 desde el mismo multisig. El registro de abajo es público.',
     shopBanner: 'Preventa de fundadores: 0,30 SOL por un Limited, o 0,999 SOL por un cofre de 4.', shopCta: 'A la preventa',

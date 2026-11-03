@@ -394,7 +394,7 @@ const fil: Messages = {
     memoWhy: 'Ang memo ang nag-uugnay ng bayad sa reservation mo; kung wala nito, magpadala mula sa connected wallet mo.',
     signature: 'Signature ng payment transaction', confirm: 'Nagbayad na ako — i-check ang payment', checking: 'Sinusuri sa mainnet…',
     ttl: 'Hinahawak ng reservation ang packs ng {h} oras.',
-    statusIntent: 'naghihintay ng bayad', statusPaid: 'bayad na — ide-deliver sa mainnet launch', statusGranted: 'na-deliver — tingnan ang packs mo', statusExpired: 'paso na',
+    statusIntent: 'naghihintay ng bayad', statusPaid: 'bayad na — ide-deliver sa mainnet launch', statusGranted: 'na-deliver — tingnan ang packs mo', statusExpired: 'paso na', statusRefundDue: 'bayad pagkatapos ng pag-expire — nakuha ng ibang bumili ang quota, ibinabalik ang bayad', statusRefunded: 'naibalik',
     mine: 'Mga reservation ko', empty: 'Wala pang reservation.', grantedNote: 'Nasa “My packs” ang pre-sale packs — buksan doon.',
     refund: 'Kung hindi live ang mainnet sa published launch date → ibabalik ang bawat bayad 1:1 mula sa parehong multisig vault. Pampubliko ang registry sa ibaba.',
     shopBanner: 'Founders pre-sale: 0.30 SOL sa isang Limited pack, o 0.999 SOL sa chest na 4.', shopCta: 'Pumunta sa pre-sale',

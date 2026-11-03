@@ -394,7 +394,7 @@ const id: Messages = {
     memoWhy: 'Memo mengaitkan pembayaran dengan reservasi kamu; tanpanya, kirim dari wallet yang terhubung.',
     signature: 'Signature transaksi pembayaran', confirm: 'Sudah bayar — periksa pembayaran saya', checking: 'Memverifikasi di mainnet…',
     ttl: 'Reservasi menahan pack selama {h} jam.',
-    statusIntent: 'menunggu pembayaran', statusPaid: 'lunas — dikirim saat peluncuran mainnet', statusGranted: 'terkirim — lihat pack kamu', statusExpired: 'kedaluwarsa',
+    statusIntent: 'menunggu pembayaran', statusPaid: 'lunas — dikirim saat peluncuran mainnet', statusGranted: 'terkirim — lihat pack kamu', statusExpired: 'kedaluwarsa', statusRefundDue: 'dibayar setelah kedaluwarsa — kuota diambil pembeli lain, pembayaran dikembalikan', statusRefunded: 'dikembalikan',
     mine: 'Reservasi saya', empty: 'Belum ada reservasi.', grantedNote: 'Pack pre-sale ada di “Pack saya” — buka di sana.',
     refund: 'Jika mainnet belum live pada tanggal peluncuran yang diumumkan → setiap pembayaran dikembalikan 1:1 dari vault multisig yang sama. Registri di bawah bersifat publik.',
     shopBanner: 'Pre-sale pendiri: 0,30 SOL per pack Limited, atau 0,999 SOL untuk peti 4 pack.', shopCta: 'Ke pre-sale',

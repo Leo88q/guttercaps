@@ -29,7 +29,9 @@ import {
 const env = process.env;
 import { MAINNET_RPC_URL } from './config.ts';
 
-export const PREORDER_STATUSES = ['intent', 'paid', 'granted', 'expired'] as const;
+// Находка 23: `refund_due` — оплата пришла, когда резерв уже был снят истечением, а квота ушла другим;
+// такая строка не выдаётся, деньги возвращает оператор (`refunded` + подпись перевода).
+export const PREORDER_STATUSES = ['intent', 'paid', 'granted', 'expired', 'refund_due', 'refunded'] as const;
 export type PreorderStatus = (typeof PREORDER_STATUSES)[number];
 
 export interface PreorderRow {
@@ -47,6 +49,9 @@ export interface PreorderRow {
   created_at: number;
   paid_at: number | null;
   granted_at: number | null;
+  refund_reason?: string | null;
+  refunded_at?: number | null;
+  refund_sig?: string | null;
 }
 
 export type PreorderOfferId = 'pack' | 'chest';
@@ -451,7 +456,10 @@ export async function confirmPayment(
   if (row.wallet !== wallet) throw new ServiceError(403, 'not_yours', 'This reservation belongs to another wallet');
   if (row.status === 'granted') throw new ServiceError(409, 'already_granted', 'The packs were already delivered');
   if (row.status === 'paid' && row.tx_sig === signature) return row; // idempotent re-confirm
-  if (row.status !== 'intent') throw new ServiceError(409, 'not_payable', `Reservation is ${row.status}, not payable`);
+  // Находка 23: `expired` — это «платежа не видели», а не «платёж не примем». Транзакция могла уйти до
+  // истечения и финализироваться позже; отклонять её значит оставить деньги в казне без обязательства.
+  const revived = row.status === 'expired';
+  if (row.status !== 'intent' && !revived) throw new ServiceError(409, 'not_payable', `Reservation is ${row.status}, not payable`);
 
   const cfg = preorderConfig();
   const tx = await fetchPayment(signature);
@@ -470,12 +478,52 @@ export async function confirmPayment(
   if (consumeOneOf(db, { signature, transferIndexes: check.transferIndexes ?? [], instrument: dest.mint ? 'spl' : 'sol' }, `preorder:${refId}`, t) === null) {
     throw new ServiceError(409, 'already_confirmed', 'This payment transfer was already credited to another order');
   }
+  // Снятый истечением резерв больше не держит квоту: другой покупатель мог забрать последние паки.
+  // Деньги настоящие, поэтому платёж НЕ отклоняется — строка встаёт в очередь возврата с причиной.
+  if (revived) {
+    const left = row.offer === 'chest' ? remainingChests(db, t) : remainingPacks(db, t);
+    if (left < (row.offer === 'chest' ? 1 : row.qty)) {
+      const done = db.run(
+        `UPDATE preorders SET status = 'refund_due', refund_reason = 'sold_out', tx_sig = ?, paid_at = ?
+          WHERE ref_id = ? AND status = 'expired' AND tx_sig IS NULL`,
+        signature, t, refId,
+      );
+      if (Number(done.changes) === 0) throw new ServiceError(409, 'already_confirmed', 'This payment was already credited');
+      return { ...row, status: 'refund_due', refund_reason: 'sold_out', tx_sig: signature, paid_at: t };
+    }
+  }
   const r = db.run(
-    `UPDATE preorders SET status = 'paid', tx_sig = ?, paid_at = ? WHERE ref_id = ? AND status = 'intent' AND tx_sig IS NULL`,
+    `UPDATE preorders SET status = 'paid', tx_sig = ?, paid_at = ? WHERE ref_id = ? AND status IN ('intent', 'expired') AND tx_sig IS NULL`,
     signature, t, refId,
   );
   if (r.changes === 0n || r.changes === 0) throw new ServiceError(409, 'already_confirmed', 'This payment was already credited');
   return { ...row, status: 'paid', tx_sig: signature, paid_at: t };
+}
+
+/**
+ * Находка 23: очередь возвратов по предзаказам, чья оплата пришла после истечения резерва, а квота уже
+ * ушла другим. Возврат выполняет оператор, подпись перевода из мультисига — доказательство.
+ */
+export function refundQueue(db: Db, limit = 100) {
+  return db.all<PreorderRow>(
+    `SELECT * FROM preorders WHERE status = 'refund_due' ORDER BY ref_id ASC LIMIT ?`,
+    Math.min(500, Math.max(1, limit)),
+  ).map((r) => ({ ...r, memo: preorderMemo(preorderConfig(), r.ref_id) }));
+}
+
+/** Отметить возврат выполненным (идемпотентно): без подписи перевода отметки нет. */
+export function markRefunded(db: Db, refId: number, signature: string, t = now()): PreorderRow {
+  if (signature.length < 32) throw new ServiceError(400, 'bad_signature', 'signature is required');
+  const row = db.get<PreorderRow>(`SELECT * FROM preorders WHERE ref_id = ?`, refId);
+  if (!row) throw new ServiceError(404, 'not_found', 'Unknown preorder reference');
+  if (row.status === 'refunded') return row;
+  if (row.status !== 'refund_due') throw new ServiceError(409, 'not_refundable', `Reservation is ${row.status}, not awaiting a refund`);
+  const r = db.run(
+    `UPDATE preorders SET status = 'refunded', refunded_at = ?, refund_sig = ? WHERE ref_id = ? AND status = 'refund_due'`,
+    t, signature, refId,
+  );
+  if (Number(r.changes) === 0) throw new ServiceError(409, 'already_refunded', 'This reservation was already refunded');
+  return db.get<PreorderRow>(`SELECT * FROM preorders WHERE ref_id = ?`, refId)!;
 }
 
 /** `GET /preorder/me` — the session wallet's reservations (newest first). */

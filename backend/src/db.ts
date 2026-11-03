@@ -396,13 +396,16 @@ CREATE TABLE IF NOT EXISTS preorders (
   offer       TEXT    NOT NULL DEFAULT 'pack',    -- pack | chest
   currency    TEXT    NOT NULL DEFAULT 'SOL',     -- SOL | USDC | SKR (lamports column = native units of this)
   lamports    TEXT    NOT NULL,
-  status      TEXT    NOT NULL DEFAULT 'intent',  -- intent | paid | granted | expired
+  status      TEXT    NOT NULL DEFAULT 'intent',  -- intent | paid | granted | expired | refund_due | refunded
   tx_sig      TEXT,
   nonce       TEXT,                               -- PendingPack nonce once granted on-chain
   grant_sig   TEXT,
   created_at  INTEGER NOT NULL,
   paid_at     INTEGER,
-  granted_at  INTEGER
+  granted_at  INTEGER,
+  refund_reason TEXT,                             -- находка 23: причина возврата (sold_out)
+  refunded_at INTEGER,
+  refund_sig  TEXT                                -- подпись перевода возврата из мультисига
 );
 CREATE INDEX IF NOT EXISTS idx_preorders_wallet ON preorders(wallet);
 -- Phase-G pack orders (docs/MINIMAL-LAUNCH-CHECKLIST.md §2): the server-side
@@ -1621,6 +1624,13 @@ export class Db {
     // A projection rebuild replays `service_payments` without the mark (the chain has no such fact), so
     // the mirror column is re-derived from the ledger on every boot as well as after every replay.
     healPaymentConsumption(this);
+    // Находка 23: поздняя оплата предзаказа больше не теряется — очередь возврата требует колонок.
+    const preCols = new Set((this.raw.prepare('PRAGMA table_info(preorders)').all() as { name: string }[]).map((c) => c.name));
+    if (preCols.size > 0) {
+      if (!preCols.has('refund_reason')) this.raw.exec('ALTER TABLE preorders ADD COLUMN refund_reason TEXT');
+      if (!preCols.has('refunded_at')) this.raw.exec('ALTER TABLE preorders ADD COLUMN refunded_at INTEGER');
+      if (!preCols.has('refund_sig')) this.raw.exec('ALTER TABLE preorders ADD COLUMN refund_sig TEXT');
+    }
     const orderCols = new Set((this.raw.prepare('PRAGMA table_info(pack_orders)').all() as { name: string }[]).map((c) => c.name));
     if (!orderCols.has('settle_sig')) this.raw.exec('ALTER TABLE pack_orders ADD COLUMN settle_sig TEXT');
     if (!orderCols.has('settle_specs')) this.raw.exec('ALTER TABLE pack_orders ADD COLUMN settle_specs TEXT');

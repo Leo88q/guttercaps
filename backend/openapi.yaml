@@ -1759,6 +1759,19 @@ paths:
       parameters: [{ in: path, name: id, required: true, schema: { type: integer, minimum: 1 } }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [signature], properties: { signature: { type: string, minLength: 32 } } } } } }
       responses: { '200': { description: order, content: { application/json: { schema: { $ref: '#/components/schemas/PackOrder' } } } }, '404': { description: unknown order }, '409': { description: not awaiting a refund / already refunded }, '400': { description: signature missing } }
+  /admin/preorder-refunds:
+    get:
+      tags: [admin]
+      summary: Pre-sale refund queue (находка 23) — reservations paid after expiry whose quota went to another buyer
+      parameters: [{ in: query, name: limit, schema: { type: integer, maximum: 500, default: 100 } }]
+      responses: { '200': { description: queue, content: { application/json: { schema: { type: object, properties: { reservations: { type: array, items: { $ref: '#/components/schemas/PreorderItem' } } } } } } } }
+  /admin/preorder-refunds/{id}:
+    post:
+      tags: [admin]
+      summary: Mark a queued refund as done — the multisig transfer signature is the proof (preorders.markRefunded, audited, idempotent)
+      parameters: [{ in: path, name: id, required: true, schema: { type: integer, minimum: 1 } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [signature], properties: { signature: { type: string, minLength: 32 } } } } } }
+      responses: { '200': { description: reservation, content: { application/json: { schema: { $ref: '#/components/schemas/PreorderItem' } } } }, '404': { description: unknown reservation }, '409': { description: not awaiting a refund / already refunded }, '400': { description: signature missing } }
   /admin/kpi:
     get:
       tags: [admin]
@@ -2417,13 +2430,16 @@ components:
         offer: { type: string, enum: [pack, chest] }
         currency: { type: string, enum: [SOL, USDC, SKR] }
         lamports: { type: string }
-        status: { type: string, enum: [intent, paid, granted, expired] }
+        status: { type: string, enum: [intent, paid, granted, expired, refund_due, refunded], description: 'refund_due = paid after the reservation expired and the quota went to someone else (находка 23); refunded = the multisig refund transfer is recorded' }
         tx_sig: { type: string, nullable: true, description: 'the verified mainnet payment signature' }
         nonce: { type: string, nullable: true, description: 'PendingPack nonce once granted on-chain' }
         grant_sig: { type: string, nullable: true }
         created_at: { type: integer }
         paid_at: { type: integer, nullable: true }
         granted_at: { type: integer, nullable: true }
+        refund_reason: { type: string, nullable: true, description: 'refund_due: why the paid reservation is held (sold_out)' }
+        refunded_at: { type: integer, nullable: true }
+        refund_sig: { type: string, nullable: true, description: 'the multisig transfer signature that proves the refund' }
         memo: { type: string }
         expiresAt: { type: integer }
     PackQuote:

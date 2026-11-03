@@ -423,7 +423,7 @@ const en = {
     memoWhy: 'The memo ties the payment to your reservation; without it, send from your connected wallet.',
     signature: 'Payment transaction signature', confirm: 'I sent it — check my payment', checking: 'Verifying on mainnet…',
     ttl: 'Your reservation holds the packs for {h} h.',
-    statusIntent: 'awaiting payment', statusPaid: 'paid — delivered at mainnet launch', statusGranted: 'delivered — see your packs', statusExpired: 'expired',
+    statusIntent: 'awaiting payment', statusPaid: 'paid — delivered at mainnet launch', statusGranted: 'delivered — see your packs', statusExpired: 'expired', statusRefundDue: 'paid after expiry — the quota went to another buyer, the payment is being refunded', statusRefunded: 'refunded',
     mine: 'My reservations', empty: 'No reservations yet.', grantedNote: 'Pre-sale packs are in “My packs” — open them there.',
     refund: 'Mainnet not live by the published launch date → every payment is refunded 1:1 from the same multisig vault. The registry below is public.',
     shopBanner: 'Founders pre-sale: 0.30 SOL / 33 USDC / 2 062.5 SKR a Limited pack, or 0.999 SOL for a 4-pack chest.', shopCta: 'To the pre-sale',

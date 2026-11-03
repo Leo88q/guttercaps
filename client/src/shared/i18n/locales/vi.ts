@@ -394,7 +394,7 @@ const vi: Messages = {
     memoWhy: 'Memo liên kết thanh toán với đơn đặt của bạn; nếu không có, hãy gửi từ ví đã kết nối.',
     signature: 'Chữ ký giao dịch thanh toán', confirm: 'Tôi đã thanh toán — kiểm tra giúp tôi', checking: 'Đang xác minh trên mainnet…',
     ttl: 'Đơn đặt giữ gói của bạn trong {h} giờ.',
-    statusIntent: 'chờ thanh toán', statusPaid: 'đã thanh toán — phát khi mainnet ra mắt', statusGranted: 'đã phát — xem gói của bạn', statusExpired: 'đã hết hạn',
+    statusIntent: 'chờ thanh toán', statusPaid: 'đã thanh toán — phát khi mainnet ra mắt', statusGranted: 'đã phát — xem gói của bạn', statusExpired: 'đã hết hạn', statusRefundDue: 'đã trả sau khi hết hạn — hạn mức đã về người khác, khoản thanh toán đang được hoàn', statusRefunded: 'đã hoàn tiền',
     mine: 'Đơn đặt của tôi', empty: 'Chưa có đơn đặt nào.', grantedNote: 'Gói bán trước nằm trong “Gói của tôi” — hãy mở ở đó.',
     refund: 'Nếu mainnet chưa hoạt động vào ngày ra mắt đã công bố → mọi khoản thanh toán được hoàn 1:1 từ cùng kho multisig. Sổ đăng ký bên dưới là công khai.',
     shopBanner: 'Bán trước founders: 0,30 SOL một pack Limited, hoặc 0,999 SOL rương 4 pack.', shopCta: 'Đến trang bán trước',

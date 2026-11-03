@@ -394,7 +394,7 @@ const pt: Messages = {
     memoWhy: 'O memo vincula o pagamento à sua reserva; sem ele, envie da sua carteira conectada.',
     signature: 'Assinatura da transação de pagamento', confirm: 'Já paguei — verificar meu pagamento', checking: 'Verificando na mainnet…',
     ttl: 'Sua reserva segura os packs por {h} h.',
-    statusIntent: 'aguardando pagamento', statusPaid: 'pago — entregue no lançamento da mainnet', statusGranted: 'entregue — veja seus packs', statusExpired: 'expirado',
+    statusIntent: 'aguardando pagamento', statusPaid: 'pago — entregue no lançamento da mainnet', statusGranted: 'entregue — veja seus packs', statusExpired: 'expirado', statusRefundDue: 'pago após expirar — a cota foi para outro comprador, o pagamento está a ser reembolsado', statusRefunded: 'reembolsado',
     mine: 'Minhas reservas', empty: 'Nenhuma reserva ainda.', grantedNote: 'Os packs da pré-venda estão em “Meus packs” — abra-os lá.',
     refund: 'Se a mainnet não estiver no ar até a data de lançamento publicada → cada pagamento é reembolsado 1:1 do mesmo vault multisig. O registro abaixo é público.',
     shopBanner: 'Pré-venda dos fundadores: 0,30 SOL por um Limited, ou 0,999 SOL por um baú de 4.', shopCta: 'Ir para a pré-venda',

@@ -6957,6 +6957,111 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/preorder-refunds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pre-sale refund queue (находка 23) — reservations paid after expiry whose quota went to another buyer */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description queue */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            reservations?: components["schemas"]["PreorderItem"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/preorder-refunds/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a queued refund as done — the multisig transfer signature is the proof (preorders.markRefunded, audited, idempotent) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        signature: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description reservation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PreorderItem"];
+                    };
+                };
+                /** @description signature missing */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description unknown reservation */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not awaiting a refund / already refunded */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/kpi": {
         parameters: {
             query?: never;
@@ -8538,8 +8643,11 @@ export interface components {
             /** @enum {string} */
             currency: "SOL" | "USDC" | "SKR";
             lamports: string;
-            /** @enum {string} */
-            status: "intent" | "paid" | "granted" | "expired";
+            /**
+             * @description refund_due = paid after the reservation expired and the quota went to someone else (находка 23); refunded = the multisig refund transfer is recorded
+             * @enum {string}
+             */
+            status: "intent" | "paid" | "granted" | "expired" | "refund_due" | "refunded";
             /** @description the verified mainnet payment signature */
             tx_sig?: string | null;
             /** @description PendingPack nonce once granted on-chain */
@@ -8548,6 +8656,11 @@ export interface components {
             created_at: number;
             paid_at?: number | null;
             granted_at?: number | null;
+            /** @description refund_due: why the paid reservation is held (sold_out) */
+            refund_reason?: string | null;
+            refunded_at?: number | null;
+            /** @description the multisig transfer signature that proves the refund */
+            refund_sig?: string | null;
             memo?: string;
             expiresAt?: number;
         };
