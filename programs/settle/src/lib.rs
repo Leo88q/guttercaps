@@ -1943,11 +1943,7 @@ pub mod settle {
     }
 
     /// Находка 49: отзыв опубликованного корня админом (анти-фрод, ошибка оракула).
-    pub fn revoke_root(
-        ctx: Context<RevokeRoot>,
-        _kind: u8,
-        _epoch: u64,
-    ) -> Result<()> {
+    pub fn revoke_root(ctx: Context<RevokeRoot>, _kind: u8, _epoch: u64) -> Result<()> {
         revoke_root_handler(ctx)
     }
 
