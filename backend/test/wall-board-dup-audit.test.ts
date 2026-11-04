@@ -1,16 +1,13 @@
-// Reproducer: the weekly wall board draws from (district, slot) candidates, not from distinct tags.
+// Находка 75 — регрессия. `claimSlot` разрешает один слот на кошелёк В РАЙОНЕ, поэтому один и тот же тег
+// (`tag_registry.id` — про произведение, а не про размещение) может висеть на восьми стенах. `boardCandidates`
+// отдавал строку на каждый слот `wall_slots` без дедупликации по `tag_id`, а `drawBoard` тянул «без
+// возвращения» из СТРОК: тег получал билет за каждую стену, мог занять несколько мест из пяти (в репро —
+// всю доску) и весил в жеребьёвке ровно во столько раз больше, во сколько стен занял. Заголовок модуля
+// при этом обещает «тег, а не кошелёк», а витрина — пять тегов города.
 //
-//   backend/src/wall.ts:139-141  claimSlot() allows one slot PER WALLET PER DISTRICT — the same tag
-//                                (tag_registry.id is per artwork) can hang on up to 8 walls at once
-//   backend/src/wallBoard.ts:81-104  boardCandidates() returns one row per wall_slots row, with no
-//                                de-duplication by tag_id
-//   backend/src/wallBoard.ts:118-128 drawBoard() samples candidates "without replacement" — of
-//                                candidate ROWS, so the same tag gets one ticket per wall it hangs on
-//
-// The header of wallBoard.ts says the draw is "тег, а не кошелёк" and the view promises "Пять тегов
-// города". With one artwork on three walls that tag occupies up to three of the five places (and a
-// board of two candidates is the same tag twice), while its author's odds scale with the number of
-// walls he claimed — the exact wallet-weighting the module says it does not do.
+// Правило после правки: билет — тег. Дедупликация стоит ДО `tagsHash`/`boardSeed`, иначе сид зависел бы
+// от числа стен, а не от состава снимка. Размещение (район, слот) выбирается детерминированно — первое по
+// (район, слот), поэтому та же неделя из того же снимка даёт ту же доску.
 import { describe, expect, it } from 'vitest';
 import { Db } from '../src/db.ts';
 import { kp } from './fixtures.ts';
@@ -21,31 +18,60 @@ import { WEEK, WEEK_EPOCH_OFFSET } from '../src/quests.ts';
 const weekUnix = (week: number, extra = 60) => week * WEEK + WEEK_EPOCH_OFFSET + extra;
 const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 512"><path d="M10 10L200 120" stroke="#FF2E8A" stroke-width="8" fill="none"/></svg>';
 
-describe('wall board × duplicate candidates', () => {
-  it('one tag on several walls gets several tickets and can fill the board with itself', () => {
+/** Живой тег на стене района `district` — тем же путём, что и продукт (один слот на кошелёк в районе). */
+function hang(db: Db, tagId: string, wallet: string, district: number, t: number, slot = 0) {
+  db.run(
+    `INSERT INTO wall_slots (district, slot, wallet, tag_id, applied_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)`,
+    district, slot, wallet, tagId, t - 86_400, t + 30 * 86_400,
+  );
+}
+
+const draw = (candidates: ReturnType<typeof board.boardCandidates>, week: number) => {
+  const seed = board.boardSeed({ week, slot: 1000, tagsHash: board.tagsHash(candidates), candidates: candidates.length });
+  return board.drawBoard(candidates, seed);
+};
+
+describe('доска недели × билет на тег, а не на стену', () => {
+  it('тег на трёх стенах получает один билет и одно место', () => {
     const db = new Db(':memory:');
     const t = weekUnix(9);
     const author = kp();
     const tag = saveTag(db, author, SVG);
-    // the product's own path: one slot per district, the same tag in three districts
-    for (const district of [0, 1, 2]) {
-      db.run(
-        `INSERT INTO wall_slots (district, slot, wallet, tag_id, applied_at, expires_at) VALUES (?, 0, ?, ?, ?, ?)`,
-        district, author, tag.id, t - 86_400, t + 30 * 86_400,
-      );
-    }
+    for (const district of [0, 1, 2]) hang(db, tag.id, author, district, t);
+
     const candidates = board.boardCandidates(db, t);
-    const seed = board.boardSeed({ week: 9, slot: 1000, tagsHash: board.tagsHash(candidates), candidates: candidates.length });
-    const picks = board.drawBoard(candidates, seed);
+    const picks = draw(candidates, 9);
     const tagIds = picks.map((p) => p.tagId);
     console.log(JSON.stringify({
+      walls: 3,
       candidates: candidates.length,
       distinctTags: new Set(candidates.map((c) => c.tagId)).size,
       boardSlots: picks.length,
       boardDistinctTags: new Set(tagIds).size,
-      board: picks.map((p) => `${p.district}:${p.slot}`),
+      placement: picks.map((p) => `${p.district}:${p.slot}`),
     }));
-    expect(candidates.length).toBe(3);              // one tag, three tickets
-    expect(new Set(tagIds).size).toBeLessThan(picks.length); // the same tag twice on a 3-slot board
+    expect(candidates).toHaveLength(1);                    // один тег — один билет
+    expect(new Set(tagIds).size).toBe(tagIds.length);      // и одно место на доске
+    expect(tagIds).toEqual([tag.id]);
+    // размещение детерминированно: первый район, где тег висит
+    expect(picks[0]).toMatchObject({ district: 0, slot: 0 });
+  });
+
+  it('число стен не даёт веса: два тега дают по билету независимо от того, сколько стен занял каждый', () => {
+    const db = new Db(':memory:');
+    const t = weekUnix(11);
+    const a = saveTag(db, kp(), SVG);
+    const b = saveTag(db, kp(), SVG.replace('#FF2E8A', '#00E5FF'));
+    for (const district of [0, 1, 2, 3, 4, 5, 6, 7]) hang(db, a.id, kp(), district, t); // восемь стен
+    hang(db, b.id, kp(), 7, t, 1);                                                    // одна стена (слот 1: слот 0 занят первым тегом)
+
+    const candidates = board.boardCandidates(db, t);
+    expect(candidates.map((c) => c.tagId).sort()).toEqual([a.id, b.id].sort());
+    // доска из двух тегов — оба на ней, ни один не дублируется
+    const picks = draw(candidates, 11);
+    expect(picks.map((p) => p.tagId).sort()).toEqual([a.id, b.id].sort());
+    // и сид зависит от состава снимка, а не от числа стен: снимок тот же — сид тот же
+    const again = board.boardCandidates(db, t);
+    expect(board.tagsHash(again)).toBe(board.tagsHash(candidates));
   });
 });
