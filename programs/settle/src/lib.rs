@@ -85,6 +85,10 @@ pub const STATUS_PAID: u8 = 0;
 pub const STATUS_SETTLED: u8 = 1;
 pub const STATUS_REFUNDED: u8 = 2;
 
+/// Находка 49: тот же час, что `staking::ROOT_TIMELOCK`. Окно нужно, чтобы анти-фрод успел увидеть корень
+/// до того, как деньги уйдут, и чтобы покупатель/игрок успел заметить публикацию.
+pub const ROOT_TIMELOCK: i64 = 3_600;
+
 // ---------------------------------------------------------------------------
 // Shared arg types
 
@@ -214,6 +218,11 @@ pub struct PackOrder {
     pub bump: u8,
 }
 
+/// Находка 49. В staking корень наград публикуется с `budget`, резервируемым из `slice_budget`, проходит
+/// `ROOT_TIMELOCK` до первого клейма и может быть отозван админом. Здесь этого не было вовсе: ключ
+/// `root_oracle` мог мгновенно опустошить `rewards_vault`, а `total_claimed` ни с чем не сверялся.
+/// Поля добавлены В КОНЕЦ (после `bump`), поэтому смещения уже существующих не поехали; живых корней
+/// на момент правки нет, миграция не нужна.
 #[account]
 #[derive(InitSpace)]
 pub struct AnchoredRoot {
@@ -222,6 +231,13 @@ pub struct AnchoredRoot {
     pub root: [u8; 32],
     pub total_claimed: u64,
     pub bump: u8,
+    /// Unix-секунды публикации: до `published_at + ROOT_TIMELOCK` клейм запрещён.
+    /// Хранится в секундах, а не в слотах, чтобы совпадать с общей семантикой `ROOT_TIMELOCK` из staking.
+    pub published_at: i64,
+    /// Потолок выплат по этому корню. `total_claimed + amount` не может его превысить.
+    pub budget: u64,
+    /// Админ может отозвать корень (анти-фрод после публикации); клеймы после этого закрыты.
+    pub revoked: bool,
 }
 
 #[account]
@@ -294,6 +310,15 @@ pub enum SettleError {
     /// Находка 50: продавец не может купить собственный листинг (SEC-F08 из `market`).
     #[msg("cannot buy your own listing")]
     SelfTrade,
+    /// Находка 49: корень опубликован слишком недавно (окно `ROOT_TIMELOCK` ещё не прошло).
+    #[msg("reward root is still timelocked")]
+    RootTimelocked,
+    /// Находка 49: выплаты по корню вышли бы за объявленный бюджет.
+    #[msg("reward root budget exceeded")]
+    RootBudgetExceeded,
+    /// Находка 49: корень отозван админом, клеймы закрыты.
+    #[msg("reward root revoked")]
+    RootRevoked,
 }
 
 // ---------------------------------------------------------------------------
@@ -329,6 +354,16 @@ pub struct RootAnchored {
     pub kind: u8,
     pub epoch: u64,
     pub root: [u8; 32],
+    /// Находка 49: потолок выплат по корню и момент публикации уезжают в событие, чтобы индексатор и
+    /// мониторинг видели бюджет без чтения аккаунта. Поля добавлены в конец — смещения прежних те же.
+    pub budget: u64,
+}
+#[event]
+pub struct RootRevokedEvent {
+    pub kind: u8,
+    pub epoch: u64,
+    pub total_claimed: u64,
+    pub budget: u64,
 }
 #[event]
 pub struct RewardClaimed {
@@ -1357,14 +1392,61 @@ pub fn anchor_root_handler(
     kind: u8,
     epoch: u64,
     root: [u8; 32],
+    budget: u64,
 ) -> Result<()> {
+    // Находка 49: бюджет обязателен. Корень без потолка — это право оракула опустошить `rewards_vault`
+    // одной публикацией; нулевой бюджет означал бы то же самое («без ограничения»), поэтому запрещён.
+    require!(budget > 0, SettleError::BadAmount);
     let r = &mut ctx.accounts.root;
     r.kind = kind;
     r.epoch = epoch;
     r.root = root;
     r.total_claimed = 0;
     r.bump = ctx.bumps.root;
-    emit!(RootAnchored { kind, epoch, root });
+    r.published_at = Clock::get()?.unix_timestamp;
+    r.budget = budget;
+    r.revoked = false;
+    emit!(RootAnchored { kind, epoch, root, budget });
+    Ok(())
+}
+
+/// Находка 49: отзыв корня админом (`config.admin`). Аккаунт **не** закрывается: метка `revoked`
+/// остаётся на цепи как след решения (по ней `claim_reward` отказывает, а индексатор видит событие), и
+/// `anchor_root` с `init` уже не сможет переопубликовать тот же `(kind, epoch)` — отозванный корень не
+/// воскресает ни новой подписью оракула, ни кем-либо ещё. Рента с аккаунта не возвращается (её платил
+/// оракул при публикации), зато `close = admin` не появляется: закрытие вернуло бы админу чужие деньги и
+/// позволило бы переиздать эпоху. Пока корень жил вечно, ошибочная или скомпрометированная публикация
+/// оставалась в силе до исчерпания хранилища.
+#[derive(Accounts)]
+#[instruction(kind: u8, epoch: u64)]
+pub struct RevokeRoot<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        seeds = [b"config"], bump = config.bump,
+        constraint = admin.key() == config.admin @ SettleError::BadAccount,
+    )]
+    pub config: Account<'info, SettleConfig>,
+    #[account(
+        mut,
+        seeds = [b"root".as_ref(), &[kind][..], &epoch.to_le_bytes()[..]], bump = root.bump,
+        constraint = root.kind == kind && root.epoch == epoch @ SettleError::BadAccount,
+    )]
+    pub root: Account<'info, AnchoredRoot>,
+}
+
+pub fn revoke_root_handler(ctx: Context<RevokeRoot>) -> Result<()> {
+    // Аккаунт остаётся: `revoked` — единственный признак, по которому `claim_reward` отказывает, и он же
+    // закрывает дорогу `anchor_root` (там `init`), поэтому отзыв нельзя отменить повторной публикацией.
+    let root = &mut ctx.accounts.root;
+    require!(!root.revoked, SettleError::RootRevoked);
+    root.revoked = true;
+    emit!(RootRevokedEvent {
+        kind: root.kind,
+        epoch: root.epoch,
+        total_claimed: root.total_claimed,
+        budget: root.budget,
+    });
     Ok(())
 }
 
@@ -1395,6 +1477,21 @@ pub fn claim_reward_handler<'info>(
         ctx.accounts.config.cg_mint,
         SettleError::BadAccount
     );
+    // Находка 49: три гейта, которых не было. Все стоят ДО перевода, чтобы отказ не стоил денег.
+    let root = &ctx.accounts.root;
+    require!(!root.revoked, SettleError::RootRevoked);
+    require!(
+        Clock::get()?.unix_timestamp >= root.published_at + ROOT_TIMELOCK,
+        SettleError::RootTimelocked
+    );
+    let claimed_after = root
+        .total_claimed
+        .checked_add(amount)
+        .ok_or(SettleError::Overflow)?;
+    require!(
+        claimed_after <= root.budget,
+        SettleError::RootBudgetExceeded
+    );
     let leaf = reward_leaf(&claimant, amount, kind, epoch);
     require!(
         verify_merkle_proof(&ctx.accounts.root.root, leaf, &proof),
@@ -1414,12 +1511,7 @@ pub fn claim_reward_handler<'info>(
         ),
         amount,
     )?;
-    ctx.accounts.root.total_claimed = ctx
-        .accounts
-        .root
-        .total_claimed
-        .checked_add(amount)
-        .ok_or(SettleError::Overflow)?;
+    ctx.accounts.root.total_claimed = claimed_after;
     ctx.accounts.receipt.bump = ctx.bumps.receipt;
     emit!(RewardClaimed {
         claimant,
@@ -1845,8 +1937,18 @@ pub mod settle {
         kind: u8,
         epoch: u64,
         root: [u8; 32],
+        budget: u64,
     ) -> Result<()> {
-        anchor_root_handler(ctx, kind, epoch, root)
+        anchor_root_handler(ctx, kind, epoch, root, budget)
+    }
+
+    /// Находка 49: отзыв опубликованного корня админом (анти-фрод, ошибка оракула).
+    pub fn revoke_root(
+        ctx: Context<RevokeRoot>,
+        _kind: u8,
+        _epoch: u64,
+    ) -> Result<()> {
+        revoke_root_handler(ctx)
     }
 
     pub fn claim_reward<'info>(

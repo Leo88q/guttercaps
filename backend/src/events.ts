@@ -191,7 +191,9 @@ export const EVENT_SPECS: readonly EventSpec[] = [
   spec('settle', 'PackEscrowed', [['buyer', 'pubkey'], ['orderId', 'u64'], ['currency', 'u8'], ['amount', 'u64']]),
   spec('settle', 'PackSettled', [['buyer', 'pubkey'], ['orderId', 'u64'], ['leaves', 'u8']]),
   spec('settle', 'PackRefunded', [['buyer', 'pubkey'], ['orderId', 'u64'], ['amount', 'u64']]),
-  spec('settle', 'RootAnchored', [['kind', 'u8'], ['epoch', 'u64'], ['root', 'bytes32']]),
+  // Находка 49: у корня появился бюджет — он едет и в событии, и в проекцию.
+  spec('settle', 'RootAnchored', [['kind', 'u8'], ['epoch', 'u64'], ['root', 'bytes32'], ['budget', 'u64']]),
+  spec('settle', 'RootRevokedEvent', [['kind', 'u8'], ['epoch', 'u64'], ['totalClaimed', 'u64'], ['budget', 'u64']]),
   spec('settle', 'RewardClaimed', [['claimant', 'pubkey'], ['kind', 'u8'], ['epoch', 'u64'], ['amount', 'u64']]),
   spec('settle', 'EscrowListed', [['seller', 'pubkey'], ['asset', 'pubkey'], ['price', 'u64']]),
   spec('settle', 'EscrowSold', [['seller', 'pubkey'], ['buyer', 'pubkey'], ['asset', 'pubkey'], ['price', 'u64'], ['fee', 'u64']]),

@@ -71,6 +71,12 @@ Recorded decisions, not oversights — see `docs/06` §2.2 and `docs/08` §4.4:
   upgrade** (new account layouts + every value flow re-reviewed). `tests/security/token-posture.test.ts`
   fails the build if that posture changes; if a T22 mint is ever wanted, that test is where the decision has
   to be recorded.
+- **SEC-B7b (2026-11-04): `settle::AnchoredRoot` gained `published_at` / `budget` / `revoked` (находка 49).**
+  The reward root now carries its publication time (the 1 h `ROOT_TIMELOCK` is measured from it), the budget
+  `claim_reward` may not exceed, and the revocation flag. +17 bytes of account, paid by the oracle on
+  `anchor_root`; **no migration**, because no root of this layout exists on any cluster yet. `revoke_root`
+  marks the account instead of closing it, so a revoked epoch cannot be republished and no rent moves to the
+  admin (gate E28). Recorded in `docs/06` §2.2 as the gate requires.
 - **SEC-B7 (2026-09-26): accounts carry no layout version.** `reports/state-layout.json` freezes the field
   list of all 31 `#[account]` structs and `npm run state:layout` fails when one moves, so a layout change
   cannot land unnoticed — but nothing lets an *existing* account be reinterpreted: if a struct truly has to

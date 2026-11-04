@@ -220,6 +220,7 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
   const chipsOf = (owner: string, f: (c: Chip) => boolean) => [...chips.entries()].filter(([, c]) => c.owner === owner && f(c));
   const pad5 = <T,>(xs: readonly T[], fill: T): T[] => [...xs, ...Array<T>(Math.max(0, MAX_CHIPS_PER_PACK - xs.length)).fill(fill)];
 
+  let rootRevoked = false;
   const maxEvents = opts.maxEvents && opts.maxEvents > 0 ? opts.maxEvents : Number.POSITIVE_INFINITY;
   for (iCur = 0; iCur < txsWanted && stats.events < maxEvents; iCur++) {
     const i = iCur;
@@ -308,7 +309,8 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
         { program: 'staking', name: 'RootPublished', data: { kind, epoch, root: hex32(epoch * 7 + kind), budget: usd(rnd, 10, 900) } },
         // Находка 54: та же эпоха глазами программы `settle` (якорь корня + клейм) — та же транзакция и
         // детерминированные значения, чтобы не сдвинуть поток случайности остального корпуса.
-        { program: 'settle', name: 'RootAnchored', data: { kind, epoch, root: hex32(epoch * 7 + kind) } },
+        // Находка 49: у корня `settle` появился бюджет — событие и проекция его несут.
+        { program: 'settle', name: 'RootAnchored', data: { kind, epoch, root: hex32(epoch * 7 + kind), budget: String(1_000_000 * (1 + (epoch % 7))) } },
         { program: 'settle', name: 'RewardClaimed', data: { claimant: actor, kind, epoch, amount: String(1_000_000 + i) } },
       ];
       if (epoch === 1) rootTx.push(
@@ -317,7 +319,16 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
         { program: 'settle', name: 'LimitsUpdated', data: { admin: fixtureAddr(seed, 'settle-admin', 0), emissionCap: String(10_000_000_000), marketFeeBps: 500, packsPaused: false } },
       );
       yield* emit(rootTx);
-      if (rnd() < 0.3) yield* emit([{ program: 'staking', name: 'RootRevoked', data: { kind, epoch } }]);
+      if (rnd() < 0.3) {
+        // Находка 49: тот же отзыв глазами `settle` (`revoke_root`) — с тем же (kind, epoch) и в той же
+        // транзакции, иначе обработчик `RootRevokedEvent` не получает ни одного события. Один `emit`, а не
+        // два: лишний вызов сдвинул бы поток случайности и весь корпус ниже по течению.
+        rootRevoked = true;
+        yield* emit([
+          { program: 'staking', name: 'RootRevoked', data: { kind, epoch } },
+          { program: 'settle', name: 'RootRevokedEvent', data: { kind, epoch, totalClaimed: String(1_000_000 + i), budget: String(1_000_000 * (1 + (epoch % 7))) } },
+        ]);
+      }
       continue;
     }
     if (roll < 0.17) {
@@ -677,6 +688,13 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
     if (rnd() < 0.15) yield* emit([{ program: 'arena', name: 'ArenaConfigChanged', data: { by: wallets[0]!, battleOracle: fixtureAddr(seed, 'oracle', 4), oracleDailyCap: usd(rnd, 100_000, 200_000), treasuryCg: fixtureAddr(seed, 'treasury', 0) } }]);
     if (rnd() < 0.1) yield* emit([{ program: 'chip_core', name: 'CollectionCreated', data: { by: wallets[0]!, idx: Math.floor(rnd() * 8), coreCollection: fixtureAddr(seed, 'collection', Math.floor(rnd() * 8)) } }]);
 
+  }
+  // Находка 49: отзыв корня обязан встретиться в корпусе хотя бы раз — иначе обработчик
+  // `RootRevokedEvent` реплеем не проверяется вовсе. Обычно событие приносит основная ветка (30 % на
+  // корень); здесь — страховка для коротких корпусов, и `rnd()` она не трогает, пока не сработала.
+  if (!rootRevoked && lastRoot) {
+    rootRevoked = true;
+    yield* emit([{ program: 'settle', name: 'RootRevokedEvent', data: { kind: lastRoot.kind, epoch: lastRoot.epoch, totalClaimed: '0', budget: '1000000' } }]);
   }
   // the rest of the missed transactions: out of slot order by construction
   if (gapFill) for (const t of deferred) yield t;

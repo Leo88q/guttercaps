@@ -14,8 +14,8 @@
 //   2. every instruction the registry *cannot* expand is in COMPLEX_INSTRUCTIONS, and nothing else is —
 //      a new named argument type has to be a conscious decision, not a silent hole;
 //   3. every call site whose encoding cannot be read is in UNRESOLVED_SITES, and nothing else is;
-//   4. the two duplicated instruction names (`pause`, `set_paused`, `set_pauser`) still agree, because
-//      the reader keys them by name alone;
+//   4. a name declared by several programs (`pause`, `set_paused`, `set_pauser`, `revoke_root`) is resolved
+//      against **every** declaration, and only a duplicate *inside one program* counts as a conflict;
 //   5. the reader itself fails on each shape of drift, on synthetic input — a gate nobody has seen fail
 //      is a comment.
 //
@@ -41,9 +41,9 @@ import {
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 test('M-3 no call site drifts from the instruction it encodes', () => {
-  const { byName, conflicts } = rustInstructions(REPO);
+  const { byName, all, conflicts } = rustInstructions(REPO);
   const encodings = tsEncodings(REPO);
-  const problems = shapeProblems(encodings, byName, conflicts);
+  const problems = shapeProblems(encodings, byName, conflicts, all);
   assert.deepEqual(problems, [], problems.map((p) => `${p.where} ${p.name}: ${p.problem}`).join('\n'));
 
   // Not vacuous: this has to be looking at the real surface, not the three instructions that happen
@@ -52,7 +52,12 @@ test('M-3 no call site drifts from the instruction it encodes', () => {
   const checked = encodings.filter((e) => e.name !== null && e.chain !== null && !complex.some((c) => c.name === e.name));
   assert.ok(checked.length >= 50, `only ${checked.length} call sites were checked — the reader is not seeing the tree`);
   assert.ok(byName.size >= 90, `only ${byName.size} instructions were read from programs/`);
-  assert.deepEqual(conflicts, [], 'two programs declare the same instruction name with different arguments');
+  assert.deepEqual(conflicts, [], 'one program declares the same instruction name twice with different arguments');
+  // Не пусто: `revoke_root` действительно живёт в двух программах с разными аргументами (находка 49 —
+  // `settle::revoke_root(kind, epoch)` рядом со старым `staking::revoke_root()`), и проверка выше
+  // разрешает имя по всем декларациям, а не по первой попавшейся.
+  const shared = [...all].filter(([, decls]) => decls.length > 1).map(([n]) => n).sort();
+  assert.ok(shared.includes('revoke_root'), `shared instruction names are not being collected: ${shared.join(', ')}`);
 });
 
 test('M-3 the scope limits are exactly the ones written down', () => {

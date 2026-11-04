@@ -213,15 +213,26 @@ const HANDLERS: Record<string, Handler> = {
       str(d.amount), c.blockTime, c.signature, num(d.orderId), str(d.buyer),
     );
   },
-  // Корень, заякоренный самой `settle` (фаза V): бюджет в этом событии не передаётся, поэтому строка
-  // обновляет root/подпись, но не затирает budget, который положил `RootPublished` из staking.
+  // Корень, заякоренный самой `settle` (фаза V). Находка 49: бюджет теперь объявляется оракулом при
+  // публикации и приезжает в событии, поэтому проекция его записывает — иначе карточка наград показывала бы
+  // «бюджет 0» для корней, опубликованных через `settle`.
   RootAnchored(db, e, c) {
     const d = e.data;
     db.run(
       upsert('reward_roots', ['kind', 'epoch', 'currency', 'root', 'budget', 'revoked', 'signature', 'slot'], ['kind', 'epoch'], [
-        'root = excluded.root', 'revoked = 0', 'signature = excluded.signature', 'slot = excluded.slot',
+        'root = excluded.root', 'budget = excluded.budget', 'revoked = 0', 'signature = excluded.signature', 'slot = excluded.slot',
       ]),
-      num(d.kind), num(d.epoch), rootCurrency(num(d.kind)), str(d.root), '0', 0, c.signature, c.slot,
+      num(d.kind), num(d.epoch), rootCurrency(num(d.kind)), str(d.root), str(d.budget), 0, c.signature, c.slot,
+    );
+  },
+  // Находка 49: отзыв корня админом. Помечаем строку `revoked = 1`, но НЕ удаляем: история публикации и
+  // сумма уже выплаченного нужны разбору и повторному начислению.
+  RootRevokedEvent(db, e) {
+    // У события нет кошелька (kind, epoch, total_claimed, budget) — трогать `wallets` нечем.
+    const d = e.data;
+    db.run(
+      `UPDATE reward_roots SET revoked = 1 WHERE kind = ? AND epoch = ?`,
+      num(d.kind), num(d.epoch),
     );
   },
   RewardClaimed(db, e, c) {

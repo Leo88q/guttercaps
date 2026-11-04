@@ -131,12 +131,16 @@ function splitArgs(params: string): string[] {
 /**
  * Every `#[program]` instruction in `programs/`, keyed by instruction name.
  *
- * Three names (`pause`, `set_paused`, `set_pauser`) are declared by more than one program. They are
- * keyed by name alone, so a divergence between them has to be *reported* rather than silently
- * overwritten: `conflicts` is empty today because all three agree, and the gate asserts that.
+ * A name is not unique across programs: `pause`, `set_paused` and `set_pauser` exist in several, and
+ * начиная с находки 49 `revoke_root` у `settle` принимает `(kind, epoch)`, тогда как `staking::revoke_root`
+ * аргументов не имеет. `byName` keeps one declaration per name (the first one found); `all` keeps every
+ * declaration, and a call site is checked against **any** of them — so a shared name is only a problem when
+ * the encoding matches none of the declarations (see `shapeProblems`). `conflicts` therefore reports the one
+ * case that is always a bug: the same name declared twice **inside one program** with different arguments.
  */
-export function rustInstructions(repo = REPO): { byName: Map<string, Instruction>; conflicts: string[] } {
+export function rustInstructions(repo = REPO): { byName: Map<string, Instruction>; all: Map<string, Instruction[]>; conflicts: string[] } {
   const conflicts: string[] = [];
+  const all = new Map<string, Instruction[]>();
   const files = spawnSync('git', ['ls-files', 'programs/**/*.rs'], { cwd: repo, encoding: 'utf8' });
   if (files.status !== 0) throw new Error(`git ls-files failed: ${files.stderr}`);
   const out = new Map<string, Instruction>();
@@ -170,17 +174,20 @@ export function rustInstructions(repo = REPO): { byName: Map<string, Instruction
         .filter((a) => a && !/^_?ctx\s*:/.test(a))
         .map((a) => a.split(':').slice(1).join(':').trim());
       const at = `${rel}:${src.slice(0, pm.index + fm.index).split('\n').length}`;
-      const prev = out.get(fm[1]!);
-      if (prev) {
-        if (prev.args.join() !== args.join()) {
-          conflicts.push(`${fm[1]} is declared twice with different arguments: ${prev.at} [${prev.args.join(', ')}] and ${at} [${args.join(', ')}]`);
-        }
-        continue;
+      const decl: Instruction = { program: pm[1]!, name: fm[1]!, args, at };
+      const seen = all.get(fm[1]!) ?? [];
+      // Дубль внутри одной программы — всегда ошибка (Anchor такого не соберёт); одинаковое имя в разных
+      // программах законно, и разрешает его кодировка на стороне клиента, а не эта карта.
+      const twin = seen.find((d) => d.program === decl.program);
+      if (twin && twin.args.join() !== args.join()) {
+        conflicts.push(`${fm[1]} is declared twice inside ${decl.program} with different arguments: ${twin.at} [${twin.args.join(', ')}] and ${at} [${args.join(', ')}]`);
       }
-      out.set(fm[1]!, { program: pm[1]!, name: fm[1]!, args, at });
+      seen.push(decl);
+      all.set(fm[1]!, seen);
+      if (!out.has(fm[1]!)) out.set(fm[1]!, decl);
     }
   }
-  return { byName: out, conflicts };
+  return { byName: out, all, conflicts };
 }
 
 /** The text between two balanced parentheses, starting at the `(` in `s` at `i`. */
@@ -326,7 +333,12 @@ export interface ShapeProblem {
  * implementation. Returns the problems, not a boolean: "12 sites drifted" is not actionable and
  * "buy_pack encodes u8,u8,u8,u64,u64 but declares u8,u8,u8,u64" is.
  */
-export function shapeProblems(encodings: readonly Encoding[], instructions: Map<string, Instruction>, conflicts: readonly string[] = []): ShapeProblem[] {
+export function shapeProblems(
+  encodings: readonly Encoding[],
+  instructions: Map<string, Instruction>,
+  conflicts: readonly string[] = [],
+  all: Map<string, Instruction[]> = new Map(),
+): ShapeProblem[] {
   const problems: ShapeProblem[] = conflicts.map((c) => ({ where: 'programs/', name: '(ambiguous)', problem: c }));
   for (const e of encodings) {
     const where = `${e.file}:${e.line}`;
@@ -334,20 +346,32 @@ export function shapeProblems(encodings: readonly Encoding[], instructions: Map<
     const ix = instructions.get(e.name);
     if (!ix) { problems.push({ where, name: e.name, problem: 'no #[program] instruction with this name' }); continue; }
     if (e.chain === null) continue; // counted separately, see the unresolvable rule
-    const spec = ix.args.map((a) => writerSpecFor(a));
-    if (spec.some((x) => x === null)) {
+    const got = e.chain;
+    // Одно имя может стоять в нескольких программах (`pause`, `revoke_root`, …). Кодировка проверяется
+    // против каждой из них: совпала хотя бы с одной — дрейфа нет. Не совпала ни с одной — это и есть
+    // сигнал, и тогда в сообщении перечислены все кандидаты, чтобы было видно, какую программу чинить.
+    const candidates = (all.get(e.name) ?? [ix]).map((d) => ({ decl: d, spec: d.args.map((a) => writerSpecFor(a)) }));
+    const resolvable = candidates.filter((c) => !c.spec.some((x) => x === null));
+    if (resolvable.length === 0) {
       // Not a failure — a scope limit. COMPLEX_INSTRUCTIONS is what makes it visible.
       continue;
     }
-    const got = e.chain;
-    const want = spec.flatMap((x) => x!.flatMap((t) => t.alts.slice(0, 1)));
-    if (!matchesSpec(got, spec.flat() as Token[])) {
-      problems.push({
-        where,
-        name: e.name,
-        problem: `encodes [${got.join(', ')}] but ${ix.at} declares [${ix.args.join(', ')}] → [${want.join(', ')}]`,
-      });
+    if (resolvable.some((c) => matchesSpec(got, c.spec.flat() as Token[]))) {
+      for (const method of got) {
+        if (!WRITER_METHODS.includes(method)) problems.push({ where, name: e.name, problem: `unknown writer method .${method}()` });
+      }
+      continue;
     }
+    const first = resolvable[0]!;
+    const want = first.spec.flatMap((x) => x!.flatMap((t) => t.alts.slice(0, 1)));
+    const declared = resolvable
+      .map((c) => `${c.decl.program}::${c.decl.name} at ${c.decl.at} declares [${c.decl.args.join(', ')}]`)
+      .join('; ');
+    problems.push({
+      where,
+      name: e.name,
+      problem: `encodes [${got.join(', ')}] but ${declared} → [${want.join(', ')}]`,
+    });
     for (const method of got) {
       if (!WRITER_METHODS.includes(method)) problems.push({ where, name: e.name, problem: `unknown writer method .${method}()` });
     }
@@ -386,6 +410,11 @@ function selftest(): number {
   check('[Pubkey; SQUAD] is null (N is not 1)', writerMethodsFor('[Pubkey; SQUAD]'), null);
 
   const ix = (args: string[]) => new Map([['x', { program: 'p', name: 'x', args, at: 'a.rs:1' }]]);
+  /** то же имя в двух программах: кодировка должна совпасть хотя бы с одной декларацией */
+  const shared = new Map([['x', [
+    { program: 'p', name: 'x', args: ['u8', 'u64'], at: 'a.rs:1' },
+    { program: 'q', name: 'x', args: [], at: 'b.rs:1' },
+  ]]]);
   const at = (file: string, name: string | null, chain: string[] | null): Encoding => ({ file, line: 1, name, chain });
   check('a matching flat instruction is clean', shapeProblems([at('a.ts', 'x', ['u64', 'pubkey'])], ix(['u64', 'Pubkey'])), []);
   check('a wrong order is caught', shapeProblems([at('a.ts', 'x', ['pubkey', 'u64'])], ix(['u64', 'Pubkey'])).length, 1);
@@ -411,8 +440,15 @@ function selftest(): number {
   check('an unknown writer method is named', unknown.some((p) => p.problem.includes('.nope()')), true);
   check('an unknown writer method is also a mismatch', unknown.length, 2);
 
+  // находка 49: `revoke_root` объявлен и в `settle`, и в `staking` с разными аргументами — это законно,
+  // пока кодировка совпадает хотя бы с одной декларацией.
+  check('a shared name matches the declaration it belongs to', shapeProblems([at('a.ts', 'x', [])], ix([]), [], shared), []);
+  check('a shared name accepting the second declaration', shapeProblems([at('a.ts', 'x', ['u8', 'u64'])], ix([]), [], shared), []);
+  check('a shared name matching no declaration is caught', shapeProblems([at('a.ts', 'x', ['u64'])], ix([]), [], shared).length, 1);
+  check('a duplicate inside one program is still a conflict', shapeProblems([], ix([]), ['x is declared twice inside p'], shared).length, 1);
+
   if (failed > 0) { console.error(`selftest: ${failed} case(s) failed`); return 1; }
-  console.log('selftest: all 18 cases pass');
+  console.log('selftest: all 22 cases pass');
   return 0;
 }
 
@@ -420,9 +456,9 @@ function selftest(): number {
 
 function main(argv: string[]): number {
   if (argv.includes('--selftest')) return selftest();
-  const { byName: instructions, conflicts } = rustInstructions();
+  const { byName: instructions, all, conflicts } = rustInstructions();
   const encodings = tsEncodings();
-  const problems = shapeProblems(encodings, instructions, conflicts);
+  const problems = shapeProblems(encodings, instructions, conflicts, all);
   const { unresolvable, complex, complexEncoded } = blindSpots(encodings, instructions);
   const checkable = encodings.filter((e) => e.name !== null && e.chain !== null && !complex.some((c) => c.name === e.name));
   console.log(`instructions: ${instructions.size} · call sites: ${encodings.length} · checked: ${checkable.length}`);

@@ -52,8 +52,10 @@ describe('escrow_buy: цена и self-trade (находка 50)', () => {
   it('коды ошибок добавлены в конец перечисления', () => {
     const enumBody = settle.slice(settle.indexOf('pub enum SettleError {'), settle.indexOf('pub enum SettleError {') + 3000);
     const tail = enumBody.slice(0, enumBody.indexOf('\n}'));
-    // оба кода новые и стоят последними: коды уже существующих ошибок не сдвигаются
+    // оба кода новые и стоят в хвосте перечисления: коды уже существующих ошибок не сдвигаются
+    // (после них п. 49 дописал свои три — важен порядок ДО них, а не абсолютный конец файла)
     expect(tail).toMatch(/PriceChanged,/);
-    expect(tail.trimEnd()).toMatch(/SelfTrade,$/);
+    expect(tail).toMatch(/SelfTrade,/);
+    expect(tail.indexOf('PriceChanged')).toBeLessThan(tail.indexOf('SelfTrade'));
   });
 });

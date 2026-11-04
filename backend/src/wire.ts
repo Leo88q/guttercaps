@@ -101,6 +101,7 @@ export const WIRE_TYPE: Record<string, string> = {
   PackSettled: 'pack_opened',
   PackRefunded: 'pack_cancelled',
   RootAnchored: 'root_published',
+  RootRevokedEvent: 'params_changed',
   RewardClaimed: 'reward_claimed',
   EscrowListed: 'listing_changed',
   EscrowSold: 'sale',
