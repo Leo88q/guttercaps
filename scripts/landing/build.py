@@ -513,8 +513,8 @@ BODY = f'''
         <div class="bars">
 {bar('eco.e1', 15, '#16E5D9')}
 {bar('eco.e2', 2, '#2E8BFF')}
-{bar('eco.e3', 25, '#B6FF3C')}
-{bar('eco.e4', 38, '#FF2E8A')}
+{bar('eco.e3', 30, '#B6FF3C')}
+{bar('eco.e4', 33, '#FF2E8A')}
 {bar('eco.e5', 20, '#FF7A1A')}
         </div>
         <h3 class="mt" data-i18n="eco.sinks">{t('eco.sinks')}</h3>

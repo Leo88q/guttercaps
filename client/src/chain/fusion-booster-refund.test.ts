@@ -48,10 +48,13 @@ describe('находки 47/56: отмена фьюжна возвращает �
       const fnAt = src.indexOf(`pub fn ${label}`);
       expect(fnAt).toBeGreaterThan(0);
       const body = src.slice(fnAt, src.indexOf('\n}\n', fnAt));
-      expect(body).toMatch(/if ctx\.accounts\.pending\.boosted \{/);
-      expect(body).toMatch(/checked_add\(1\)/);                       // счётчик возвращается
-      expect(body).toMatch(/b"items", ctx\.accounts\.owner\.key\(\)/); // и только своему PDA
-      expect(body).toMatch(/require_keys_eq!\(items\.owner, ctx\.accounts\.owner\.key\(\)/);
+      // `cargo fmt` переносит длинные вызовы по строкам, поэтому сравниваем «сплющенный» текст: иначе
+      // проверка ломается от одного форматирования, ничего не говоря о коде (так и случилось на rustfmt).
+      const flat = body.replace(/\s+/g, ' ');
+      expect(flat).toMatch(/if ctx\.accounts\.pending\.boosted \{/);
+      expect(flat).toMatch(/checked_add\(1\)/);                       // счётчик возвращается
+      expect(flat).toMatch(/b"items", ctx\.accounts\.owner\.key\(\)/); // и только своему PDA
+      expect(flat).toMatch(/require_keys_eq!\(\s*items\.owner,\s*ctx\.accounts\.owner\.key\(\)/);
     }
   });
 
