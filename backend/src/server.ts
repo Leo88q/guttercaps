@@ -166,6 +166,29 @@ export function battleRefundState(b: PendingBattleRow, wallet: string, nowSec: n
     : { refundable: false, refundAt: refundAt as number | null, reason: 'not_stale' };
 }
 
+/**
+ * Находка 80: невыданные заказы фазы V. `escrow_buy_pack` уносит оплату на PDA заказа, а вернуть её можно
+ * только `refund_pack` с подписью покупателя — после `created_slot + REFUND_AFTER_SLOTS`. Билдера возврата в
+ * продукте не было вовсе, а список «мои незакрытые заказы» живёт в localStorage браузера: на новом устройстве
+ * игрок не узнал бы даже номер заказа. Здесь отдаётся ровно то, что знает backend (номер, чем платили,
+ * подпись эскроу); разрешён ли возврат и когда он откроется, решает цепь — клиент читает PDA заказа.
+ */
+export function pendingPhaseVOrders(db: Db, wallet: string) {
+  const rows = db.all<{ id: number; sku: number; qty: number; currency: string; amount: string; mint: string | null; tx_sig: string | null; created_at: number; paid_at: number | null }>(
+    `SELECT id, sku, qty, currency, amount, mint, tx_sig, created_at, paid_at
+       FROM pack_orders
+      WHERE wallet = ? AND status IN ('created', 'paid')
+        AND settle_sig IS NULL AND refund_sig IS NULL
+      ORDER BY id DESC LIMIT 20`,
+    wallet,
+  );
+  return rows.map((r) => ({
+    orderId: String(r.id), sku: r.sku, qty: r.qty, currency: r.currency, amount: r.amount,
+    mint: r.mint, escrowSig: r.tx_sig, createdAt: new Date(r.created_at * 1000).toISOString(),
+    paidAt: r.paid_at === null ? null : new Date(r.paid_at * 1000).toISOString(),
+  }));
+}
+
 /** Незакрытые бои кошелька с честной границей возврата (находка 46). */
 export function pendingBattles(db: Db, wallet: string, nowSec = Math.floor(Date.now() / 1000)) {
   const rows = db.all<PendingBattleRow>(
@@ -620,6 +643,8 @@ export function createApp(db: Db, deps: AppOptions = {}) {
       // находка 46, бои: ставка заперта в эскроу, снять её может только подпись стороны — значит, кнопка
       // должна быть в продукте. `refundable`/`refundAt` считаются по тем же границам, что проверяет цепь.
       battles: pendingBattles(db, req.session!.wallet),
+      // находка 80: заказы фазы V, чья оплата ещё в эскроу на цепи — возврат открывается слотом
+      phaseV: pendingPhaseVOrders(db, req.session!.wallet),
     });
   });
   // One-signature settlement view for one purchase, in ANY state (unlike /me/pending, which drops

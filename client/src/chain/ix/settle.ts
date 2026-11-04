@@ -246,6 +246,69 @@ export function grantMintIx(payload: SettlePayloadLike, args: { relayer: PublicK
   });
 }
 
+// --------------------------------------------------------------------------- refund of an unserved order
+//
+// Находка 80. `escrow_buy_pack` уносит оплату на PDA заказа, а `settle_pack` освобождает её только когда
+// оракул подпишет выпуск. Если подписи нет (оракул недоступен, `settle-auth` не дошёл, вкладка закрылась),
+// деньги остаются в заказе, и `refund_pack` — единственный путь назад. Билдера у него не было ни в клиенте,
+// ни в backend: игрок физически не мог вернуть оплату, хотя программа разрешает это слотом
+// (`created_slot + REFUND_AFTER_SLOTS`, ~24 ч) и требует только его подписи.
+
+/** Совпадает с `REFUND_AFTER_SLOTS` в `programs/settle/src/lib.rs`. */
+export const REFUND_AFTER_SLOTS = 216_000n;
+
+/** `PackOrder`: disc(8) ‖ buyer(32) ‖ order_id(8) ‖ currency(1) ‖ amount(8) ‖ status(1) ‖ created_slot(8) ‖ bump(1). */
+export interface PackOrderState { buyer: PublicKey; orderId: bigint; currency: number; amount: bigint; status: number; createdSlot: bigint; bump: number }
+export const PACK_ORDER_STATUS = { OPEN: 0, PAID: 1, SETTLED: 2, REFUNDED: 3 } as const;
+
+export function decodePackOrder(data: Uint8Array): PackOrderState {
+  const d = new Uint8Array(data);
+  if (d.length < 8 + 32 + 8 + 1 + 8 + 1 + 8 + 1) throw new Error('PackOrder account is truncated');
+  const dv = new DataView(d.buffer, d.byteOffset, d.byteLength);
+  let o = 8;
+  const buyer = new PublicKey(d.subarray(o, o + 32)); o += 32;
+  const orderId = dv.getBigUint64(o, true); o += 8;
+  const currency = d[o++]!;
+  const amount = dv.getBigUint64(o, true); o += 8;
+  const status = d[o++]!;
+  const createdSlot = dv.getBigUint64(o, true); o += 8;
+  return { buyer, orderId, currency, amount, status, createdSlot, bump: d[o]! };
+}
+
+/**
+ * Можно ли вернуть оплату прямо сейчас, и когда откроется окно. Те же правила, что в программе:
+ * `status == PAID` и `clock.slot >= created_slot + REFUND_AFTER_SLOTS` (сравнение здесь нестрогое — как в
+ * `refund_pack`, а не строгое, как у `cancel_stale_pack`).
+ */
+export function orderRefundState(order: PackOrderState, currentSlot: bigint) {
+  const refundSlot = order.createdSlot + REFUND_AFTER_SLOTS;
+  if (order.status === PACK_ORDER_STATUS.SETTLED) return { refundable: false, refundSlot, reason: 'settled' as const };
+  if (order.status === PACK_ORDER_STATUS.REFUNDED) return { refundable: false, refundSlot, reason: 'refunded' as const };
+  if (order.status !== PACK_ORDER_STATUS.PAID) return { refundable: false, refundSlot, reason: 'not_paid' as const };
+  return currentSlot >= refundSlot
+    ? { refundable: true, refundSlot, reason: 'timeout' as const }
+    : { refundable: false, refundSlot, reason: 'too_early' as const };
+}
+
+/** `refund_pack(order_id)` — оплата возвращается на кошелёк покупателя, PDA заказа закрывается. */
+export function refundPackIx(a: { buyer: PublicKey; orderId: bigint; currency: number; mint?: PublicKey | null }): TransactionInstruction {
+  const cfg = settleConfigPda();
+  const token = a.currency !== 0 && a.mint;
+  return new TransactionInstruction({
+    programId: SETTLE_ID,
+    keys: [
+      ro(cfg),
+      signer(a.buyer),
+      rw(orderPda(a.buyer, a.orderId)),
+      optional(token ? ata(a.mint as PublicKey, cfg) : null, SETTLE_ID),
+      optional(token ? ata(a.mint as PublicKey, a.buyer) : null, SETTLE_ID),
+      ro(TOKEN_PROGRAM_ID),
+      ro(SYSTEM_PROGRAM_ID),
+    ],
+    data: Buffer.from(ixData('refund_pack', new BorshWriter().u64(a.orderId).toBytes())),
+  });
+}
+
 // --------------------------------------------------------------------------- reward roots (kind/epoch claims)
 //
 // Находка 53: у `settle` не было ни одного сценария, который исполнял бы программу, и половина её

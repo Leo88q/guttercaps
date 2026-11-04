@@ -469,6 +469,7 @@ export interface paths {
                             compressed?: components["schemas"]["CompressedSettlement"][];
                             fusions?: components["schemas"]["PendingFusion"][];
                             battles?: components["schemas"]["PendingBattle"][];
+                            phaseV?: components["schemas"]["PendingPhaseVOrder"][];
                         };
                     };
                 };
@@ -8796,6 +8797,25 @@ export interface components {
                 odds?: number[];
                 soulboundDays?: number;
             } | null;
+        };
+        /** @description Невыданный заказ фазы V — оплата лежит в эскроу на PDA заказа. Возврат (`refund_pack`, подпись покупателя) открывается слотом `created_slot + REFUND_AFTER_SLOTS`; разрешён ли он сейчас, клиент определяет чтением PDA заказа (находка 80). */
+        PendingPhaseVOrder: {
+            /** @description номер заказа = order_id в программе (decimal string) */
+            orderId?: string;
+            sku?: number;
+            qty?: number;
+            /** @enum {string} */
+            currency?: "SOL" | "USDC" | "CG";
+            /** @description оплачено, в нативных единицах валюты */
+            amount?: string;
+            /** @description минт для USDC/CG; null для SOL */
+            mint?: string | null;
+            /** @description подпись `escrow_buy_pack` — доказательство оплаты */
+            escrowSig?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            paidAt?: string | null;
         };
         /** @description Незакрытый бой кошелька. `cancel_stale_battle` требует подписи стороны, поэтому без этой строки возврат ставки невозможен из продукта (находка 46). */
         PendingBattle: {

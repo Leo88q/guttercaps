@@ -14,6 +14,7 @@ import { isMock } from '@/api/client';
 import { usePendingOps } from '@/api/hooks';
 import { useGameConfig, useWalletLike } from '@/chain/hooks';
 import { cancelStalePackIx, closeExpiredClaimIx } from '@/chain/ix/chipCore';
+import { decodePackOrder, orderPda as settleOrderPda, orderRefundState, refundPackIx } from '@/chain/ix/settle';
 import { claimClosable, decodeCompressedMintClaim } from '@/chain/accounts';
 import { compressedMintClaimPda } from '@/chain/pdas';
 import { cancelStaleBattleIx } from '@/chain/ix/arena';
@@ -30,6 +31,7 @@ import { CleanZone, KV } from '@/shared/ui/primitives';
 
 type PendingPack = NonNullable<NonNullable<ReturnType<typeof usePendingOps>['data']>['packs']>[number];
 type PendingBattle = NonNullable<NonNullable<ReturnType<typeof usePendingOps>['data']>['battles']>[number];
+type PendingPhaseV = NonNullable<NonNullable<ReturnType<typeof usePendingOps>['data']>['phaseV']>[number];
 
 /** Минт, которым платили: `cancel_stale_pack` возвращает SPL-оплату на ATA покупателя, для SOL минт не нужен. */
 function paidMintOf(currency: string | undefined, cgMint: PublicKey | undefined): PublicKey | undefined {
@@ -242,9 +244,57 @@ export function PendingOps() {
     onError: (e: unknown) => toast({ kind: 'error', title: { key: 'shop.refundFailed' }, error: e as Error }),
   });
 
+  // Находка 80: оплата фазы V в эскроу. Возврат открывается слотом `created_slot + REFUND_AFTER_SLOTS`, и
+  // решает это цепь — поэтому аккаунт заказа читается здесь, а не выводится из времени ответа сервера.
+  const phaseV = pending.data?.phaseV ?? [];
+  const phaseVKey = phaseV.map((o) => String(o.orderId)).join(',');
+  const phaseVClaims = useQuery({
+    queryKey: ['me', 'pending', 'phaseV', walletStr, phaseVKey],
+    enabled: !isMock() && !!wallet && phaseV.length > 0 && typeof (connection as { getAccountInfo?: unknown }).getAccountInfo === 'function',
+    staleTime: 15_000,
+    queryFn: async () => {
+      const slot = BigInt(await connection.getSlot('confirmed'));
+      const out: { orderId: string; refundable: boolean; refundSlot: string; reason: string }[] = [];
+      for (const o of phaseV) {
+        const info = await connection.getAccountInfo(settleOrderPda(wallet!.publicKey, BigInt(String(o.orderId))), 'confirmed');
+        if (!info) continue; // заказ уже закрыт (осевший или возвращённый) — показывать нечего
+        const st = orderRefundState(decodePackOrder(new Uint8Array(info.data)), slot);
+        out.push({ orderId: String(o.orderId), refundable: st.refundable, refundSlot: String(st.refundSlot), reason: st.reason });
+      }
+      return out;
+    },
+  });
+
+  const refundPhaseV = useMutation({
+    mutationFn: async (o: PendingPhaseV) => {
+      if (isMock()) return { signature: 'mock-phasev-refund' };
+      if (!wallet) throw new Error(t('shop.walletRequired'));
+      const currency = o.currency === 'USDC' ? 1 : o.currency === 'CG' ? 2 : 0;
+      return sendTx(connection, wallet, [refundPackIx({
+        buyer: wallet.publicKey,
+        orderId: BigInt(String(o.orderId)),
+        currency,
+        mint: o.mint ? new PublicKey(String(o.mint)) : null,
+      })], { cuLimit: 120_000 });
+    },
+    onSuccess: (r, o) => {
+      toast({
+        kind: 'money',
+        title: { key: 'shop.refunded' },
+        body: { key: 'shop.refundedPhaseV', params: { sku: o.sku ?? 0 } },
+        href: r.signature === 'mock-phasev-refund' ? undefined : EXPLORER.tx(r.signature),
+      });
+      void qc.invalidateQueries({ queryKey: qk.pending });
+      void qc.invalidateQueries({ queryKey: ['me'] });
+    },
+    onError: (e: unknown) => toast({ kind: 'error', title: { key: 'shop.refundFailed' }, error: e as Error }),
+  });
+
   const packs = pending.data?.packs ?? [];
   const closable = closableClaims.data ?? [];
-  if (packs.length === 0 && staleFusions.length === 0 && claimFusions.length === 0 && battles.length === 0 && closable.length === 0) return null;
+  const phaseVStuck = phaseVClaims.data ?? [];
+  if (packs.length === 0 && staleFusions.length === 0 && claimFusions.length === 0 && battles.length === 0
+    && closable.length === 0 && phaseVStuck.length === 0) return null;
   const refundable = packs.filter((p) => p.status === 'stale' && !p.voucher);
 
   return (
@@ -289,6 +339,23 @@ export function PendingOps() {
             </button>
           </div>
         ))}
+        {phaseVStuck.map((o) => {
+          const row = phaseV.find((x) => x.orderId === o.orderId);
+          return (
+            <div key={`phasev:${o.orderId}`} className="row between" style={{ gap: 8 }}>
+              <KV
+                k={`${t('shop.pendingPhaseV')} #${o.orderId}`}
+                v={o.refundable ? t('shop.pendingPhaseVRefund') : t('shop.pendingPhaseVWaiting')}
+                accent={o.refundable}
+              />
+              {o.refundable && row && (
+                <button className="btn btn-sm" type="button" disabled={refundPhaseV.isPending} onClick={() => refundPhaseV.mutate(row)}>
+                  {t('shop.refund')}
+                </button>
+              )}
+            </div>
+          );
+        })}
         {closable.map((c) => (
           <div key={`rent:${c.id}`} className="row between" style={{ gap: 8 }}>
             <KV k={t('shop.claimRent')} v={t('shop.claimRentHint')} accent />
@@ -331,4 +398,4 @@ export const slotsUntilRefund = (p: { commitSlot?: number; currentSlot?: number;
 /** Сумма к возврату печатается как есть — деньги не проходят через переводчик. */
 export const refundAmountText = (micro: bigint) => fmtCg(micro, 2);
 
-export type { PendingPack, PendingBattle };
+export type { PendingPack, PendingBattle, PendingPhaseV };

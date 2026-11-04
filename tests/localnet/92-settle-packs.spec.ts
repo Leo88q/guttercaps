@@ -21,13 +21,20 @@
 //   M06 истёкшая авторизация → `AuthExpired`;
 //   M07 листы, которых оракул не подписывал → `SpecsMismatch`;
 //   M08 лишние листы (11 при MAX_SPECS = 10) → `TooManySpecs`;
-//   M09 подпись чужим ключом → `BadOracleSignature`.
+//   M09 подпись чужим ключом → `BadOracleSignature`;
+//
+// Возврат (находка 80): окно `refund_pack` открывается слотом `created_slot + REFUND_AFTER_SLOTS`, и без
+// продукта игрок не мог вернуть оплату, если оракул не подписал выпуск.
+//
+//   R01 до окна (и на его границе) → `RefundTooEarly`;
+//   R02 после окна SOL возвращается покупателю целиком, PDA заказа закрыт;
+//   R03 повторный возврат невозможен (заказа больше нет).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { ed25519 } from '@noble/curves/ed25519';
 import { createHash } from 'node:crypto';
 import { BorshWriter } from '@/chain/borsh';
-import { buyPackIx, orderPda, oracleAuthIx, settleConfigPda, settlePackIx, treeAuthPda, type SettlePayloadLike } from '@/chain/ix/settle';
+import { REFUND_AFTER_SLOTS, buyPackIx, decodePackOrder, orderPda, orderRefundState, oracleAuthIx, refundPackIx, settleConfigPda, settlePackIx, treeAuthPda, type SettlePayloadLike } from '@/chain/ix/settle';
 import { SETTLE_ID } from '@/chain/ids';
 import { base58Encode } from '@/shared/lib/base58';
 import { MINT_ORACLE, TREASURY, binariesPresent, getEnv, type Env } from './helpers/env';
@@ -166,5 +173,58 @@ suite('T-L-P2 settle_pack: гейты приёма оплаты проверяю
     const stranger = Keypair.generate();
     const { ixs } = build({}, specs, stranger);
     await expectFail(env.chain.send(ixs, { signers: [wallet], label: 'M09' }), Err.settle('BadOracleSignature'), 'чужой оракул');
+  });
+});
+
+suite('T-L-P2b refund_pack: оплата возвращается, а не остаётся в эскроу', () => {
+  let env: Env;
+  let wallet: Keypair;
+  const orderId = 9_002n;
+  const amount = 7_000_000n;
+
+  beforeAll(async () => {
+    env = await getEnv();
+    wallet = await env.player();
+    await env.chain.send([buyPackIx({ buyer: wallet.publicKey, orderId, currency: 'SOL', amount })], { signers: [wallet], label: 'R00 escrow' });
+  });
+
+  it('R01 до окна возврата цепь отвечает RefundTooEarly', async () => {
+    const before = await env.chain.getAccount(orderPda(wallet.publicKey, orderId));
+    const order = decodePackOrder(new Uint8Array(before!.data));
+    expect(order.status).toBe(1); // PAID
+    // раскладка прочитана теми же 45 байтами, что пишет программа: покупатель и слот создания совпали
+    expect(order.buyer.toBase58()).toBe(wallet.publicKey.toBase58());
+    expect(order.orderId).toBe(orderId);
+    expect(order.amount).toBe(amount);
+    expect(orderRefundState(order, order.createdSlot + REFUND_AFTER_SLOTS - 1n).refundable).toBe(false);
+    expect(orderRefundState(order, order.createdSlot + REFUND_AFTER_SLOTS).refundable).toBe(true);
+    await expectFail(
+      env.chain.send([refundPackIx({ buyer: wallet.publicKey, orderId, currency: 0 })], { signers: [wallet], label: 'R01' }),
+      Err.settle('RefundTooEarly'),
+      'возврат до окна',
+    );
+    // заказ на месте, деньги не двинулись
+    expect((await env.chain.getAccount(orderPda(wallet.publicKey, orderId)))!.lamports).toBe(before!.lamports);
+  });
+
+  it('R02 после окна оплата возвращается покупателю, заказ закрыт', async () => {
+    const before = await env.chain.getAccount(orderPda(wallet.publicKey, orderId));
+    const order = decodePackOrder(new Uint8Array(before!.data));
+    const escrow = before!.lamports;
+    await env.chain.warpSlots(order.createdSlot + REFUND_AFTER_SLOTS + 10n);
+    const buyerBefore = await env.chain.getAccount(wallet.publicKey);
+    await env.chain.send([refundPackIx({ buyer: wallet.publicKey, orderId, currency: 0 })], { signers: [wallet], label: 'R02' });
+    // весь эскроу (сумма + рента) вернулся покупателю: заказ закрыт с `close = buyer`
+    const buyerAfter = await env.chain.getAccount(wallet.publicKey);
+    expect((buyerAfter?.lamports ?? 0n) - (buyerBefore?.lamports ?? 0n)).toBeGreaterThanOrEqual(amount);
+    expect(await env.chain.getAccount(orderPda(wallet.publicKey, orderId))).toBeNull();
+    expect(escrow).toBeGreaterThan(amount);
+  });
+
+  it('R03 повторный возврат невозможен — заказа больше нет', async () => {
+    await expectAnyFail(
+      env.chain.send([refundPackIx({ buyer: wallet.publicKey, orderId, currency: 0 })], { signers: [wallet], label: 'R03' }),
+      'повторный возврат',
+    );
   });
 });

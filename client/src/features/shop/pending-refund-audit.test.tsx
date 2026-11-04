@@ -14,6 +14,7 @@ import { Keypair, PublicKey } from '@solana/web3.js';
 import { BorshWriter } from '@/chain/borsh';
 import { accountDiscriminator } from '@/chain/anchor';
 import { compressedMintClaimPda } from '@/chain/pdas';
+import { orderPda } from '@/chain/ix/settle';
 import { ixDiscriminator } from '@/chain/anchor';
 import { ata, vaultPda } from '@/chain/pdas';
 import { useUiStore } from '@/app/store/ui';
@@ -31,6 +32,9 @@ const mocks = vi.hoisted(() => ({
   cancelClaimStale: vi.fn(),
   // цепь для «истёкшего клейма»: карточка читает claim-аккаунты по PDA из реестра операций
   getAccounts: vi.fn(async (): Promise<unknown[]> => []),
+  // аккаунт заказа фазы V (находка 80) читается по PDA из `/me/pending`
+  getOrder: vi.fn(async (): Promise<unknown> => null),
+  slot: vi.fn(async () => 0),
 }));
 
 vi.mock('@/api/hooks', () => ({ usePendingOps: () => ({ data: mocks.pending, isLoading: false }) }));
@@ -44,7 +48,7 @@ vi.mock('@/chain/hooks', async () => {
     useWalletLike: () => ({ publicKey: BUYER, signTransaction: vi.fn() }),
   };
 });
-vi.mock('@solana/wallet-adapter-react', () => ({ useConnection: () => ({ connection: { getMultipleAccountsInfo: mocks.getAccounts } }) }));
+vi.mock('@solana/wallet-adapter-react', () => ({ useConnection: () => ({ connection: { getMultipleAccountsInfo: mocks.getAccounts, getAccountInfo: mocks.getOrder, getSlot: mocks.slot } }) }));
 vi.mock('@tanstack/react-query', async (importOriginal) => ({
   ...await importOriginal<typeof import('@tanstack/react-query')>(),
   useQueryClient: () => ({ invalidateQueries: mocks.invalidate }),
@@ -81,6 +85,11 @@ const pack = (over: Record<string, unknown>) => ({
 afterEach(async () => {
   cleanup();
   vi.clearAllMocks();
+  // реализации моков живут дольше одного теста (`clearAllMocks` чистит только вызовы): без сброса
+  // «истёкший клейм» из предыдущего теста продолжал бы рисовать свою карточку в следующем
+  mocks.getAccounts.mockResolvedValue([]);
+  mocks.getOrder.mockResolvedValue(null);
+  mocks.slot.mockResolvedValue(0);
   useUiStore.setState({ toasts: [] });
   await setLocale('en');
 });
@@ -282,4 +291,39 @@ it('истёкший незабранный клейм возвращает ре
   expect(ix[0].keys[0].pubkey.toBase58()).toBe(BUYER.toBase58());
   expect(ix[0].keys[1].pubkey.toBase58()).toBe(compressedMintClaimPda(BUYER, 9n)[0].toBase58());
   await waitFor(() => expect((useUiStore.getState().toasts.at(-1)!.body as { key: string }).key).toBe('shop.claimRentBack'));
+});
+
+// Находка 80: оплата фазы V в эскроу. `refund_pack` разрешён цепью только после
+// `created_slot + REFUND_AFTER_SLOTS`, и до этой правки билдера возврата не было в продукте вовсе: оплаченный,
+// но не выданный заказ (оракул не подписал выпуск) можно было вернуть только руками через explorer.
+it('оплаченный и невыданный заказ фазы V возвращает деньги через refund_pack', async () => {
+  await setLocale('en');
+  mocks.pending = { packs: [], compressed: [], fusions: [], battles: [], phaseV: [{
+    orderId: '4242', sku: 1, qty: 1, currency: 'SOL', amount: '5990000', mint: null,
+    escrowSig: 'ESCROWSIG', createdAt: '2026-11-01T00:00:00.000Z', paidAt: '2026-11-01T00:00:00.000Z',
+  }] };
+  const { REFUND_AFTER_SLOTS } = await import('@/chain/ix/settle');
+  const createdSlot = 1_000n;
+  const body = new BorshWriter()
+    .bytes(accountDiscriminator('PackOrder'))
+    .pubkey(BUYER).u64(4242n).u8(0).u64(5_990_000n).u8(1).u64(createdSlot).u8(1)
+    .toBytes();
+  // цепь: слот уже за окном возврата
+  mocks.getOrder.mockResolvedValue({ data: new Uint8Array(body), lamports: 6_200_000 });
+  mocks.send.mockResolvedValue({ signature: 'PHASEVREFUND', logs: [] });
+  mocks.slot.mockResolvedValue(Number(createdSlot + REFUND_AFTER_SLOTS));
+  mount();
+
+  await waitFor(() => expect(document.body.textContent).toContain(t('shop.pendingPhaseV')));
+  const btn = await screen.findByRole('button', { name: t('shop.refund') });
+  fireEvent.click(btn);
+  await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1));
+  const ix = (mocks.send.mock.calls[0] as unknown[])[2] as { data: Uint8Array; keys: { pubkey: { toBase58(): string } }[] }[];
+  expect(Buffer.from(ix[0].data.subarray(0, 8)).toString('hex')).toBe(Buffer.from(ixDiscriminator('refund_pack')).toString('hex'));
+  expect(ix[0].keys[1].pubkey.toBase58()).toBe(BUYER.toBase58());        // подписывает покупатель
+  expect(ix[0].keys[2].pubkey.toBase58()).toBe(orderPda(BUYER, 4242n).toBase58()); // и закрывает свой PDA заказа
+  // аргумент инструкции — номер заказа
+  const dv = new DataView(ix[0].data.buffer, ix[0].data.byteOffset, ix[0].data.byteLength);
+  expect(dv.getBigUint64(8, true)).toBe(4242n);
+  await waitFor(() => expect((useUiStore.getState().toasts.at(-1)!.body as { key: string }).key).toBe('shop.refundedPhaseV'));
 });

@@ -15,7 +15,7 @@ import { ed25519 } from '@noble/curves/ed25519';
 import type { Server } from 'node:http';
 import { STALE_PACK_SLOTS } from '@guttercaps/economy';
 import { Db } from '../src/db.ts';
-import { battleRefundState, createApp, pendingBattles, pendingHeadSlot, stalePendingBattles, stalePendingPacks } from '../src/server.ts';
+import { battleRefundState, createApp, pendingBattles, pendingHeadSlot, pendingPhaseVOrders, stalePendingBattles, stalePendingPacks } from '../src/server.ts';
 import { base58Encode } from '../src/base58.ts';
 
 const alice = Keypair.generate();
@@ -80,6 +80,18 @@ beforeAll(async () => {
   battle('FreshBattle', 'accepted', { accepted: NOW - 60 });        // принят минуту назад — цепь ответит NotStale
   battle('NoTimeBattle', 'accepted', { accepted: null });           // время принятия неизвестно — утверждать нельзя
   battle('DoneBattle', 'resolved', { accepted: NOW - 7_200 });      // закрыт: возвращать нечего
+  // Фаза V (находка 80): оплата в эскроу на цепи, а список незакрытых заказов у игрока был только в
+  // localStorage — на новом устройстве он не узнал бы даже номер заказа, по которому возвращать.
+  const order = (id: number, status: string, over: { settle?: string | null; refunded?: string | null; sig?: string } = {}) => db.run(
+    `INSERT INTO pack_orders (id, wallet, sku, qty, currency, amount, pay_to, mint, status, seed, seed_hash, tx_sig, settle_sig, refund_sig, created_at, paid_at, expires_at)
+     VALUES (?, ?, 1, 1, 'SOL', '5990000', 'PayTo', NULL, ?, 'seed', 'hash', ?, ?, ?, ?, ?, ?)`,
+    id, A, status, over.sig ?? `escrow-${id}`, over.settle ?? null, over.refunded ?? null, NOW - 3_600, NOW - 3_500, NOW + 86_400,
+  );
+  order(101, 'paid');                                   // оплачен, выпуск не подписан — кандидат на возврат
+  order(102, 'created');                                // заказ не оплачен: возвращать нечего, но номер нужен
+  order(103, 'paid', { settle: 'setsig' });             // выпуск состоялся — в список не попадает
+  order(104, 'paid', { refunded: 'refund-sig' });       // уже возвращён — тоже нет
+  order(105, 'minted');
   const app = createApp(db, { arenaSweepMs: 0 });
   await new Promise<void>((f) => { server = app.listen(0, '127.0.0.1', () => f()); });
   base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
@@ -131,6 +143,19 @@ describe('находка 46: /me/pending отдаёт настоящую гра�
     const stuck = { battle: 'x', challenger: A, opponent: 'y', wager: '1', status: 'accepted', power_a: 1, power_b: 1, created_at: 0, accepted_at: NOW };
     expect(battleRefundState(stuck, A, NOW + 1_800).refundable).toBe(false);
     expect(battleRefundState(stuck, A, NOW + 1_861).refundable).toBe(true);
+  });
+
+  it('фаза V: незакрытые заказы видны игроку, а решение о возврате остаётся за цепью', async () => {
+    const c = new Client(base);
+    expect((await signIn(c, alice)).status).toBe(200);
+    const r = await c.get('/v1/me/pending');
+    const orders = r.json.phaseV as { orderId: string; currency: string; amount: string; escrowSig: string | null }[];
+    // только незакрытые и без settle_sig: 101 (оплачен) и 102 (создан, но не оплачен — цепь скажет правду)
+    expect(orders.map((o) => o.orderId).sort()).toEqual(['101', '102']);
+    expect(orders[0]).toMatchObject({ currency: 'SOL', amount: '5990000' });
+    expect(orders.every((o) => o.escrowSig === null || typeof o.escrowSig === 'string')).toBe(true);
+    // чужой кошелёк не видит заказов alice
+    expect(pendingPhaseVOrders(db, Keypair.generate().publicKey.toBase58())).toEqual([]);
   });
 
   it('/health считает залипшие покупки, а SQL-хелперы согласованы с контрактом', async () => {
