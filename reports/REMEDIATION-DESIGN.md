@@ -311,8 +311,34 @@ CREATE TABLE IF NOT EXISTS invariant_breaches (
 * `resolve_battle`: отдельный код возврата для «предохранитель по дневному лимиту» — такой бой **не** получает статус `resolved`, а `fused`/`void` с возвратом ставок; событие `BattleVoided` (п. 40).
 * `cancel_stale_battle` (open/timeout) и `void_battle` (deadlock) должны вызываться и из UI, и из кранка (п. 46) — backend-роут + пункт в кранке.
 
-  Состояние на 2026-11-03: `PendingOps.tsx` подключён к витрине и закрывает покупку (`cancel_stale_pack`) и фьюжн (`cancel_stale_fusion`); `void_battle` в программе отсутствует, а `cancel_stale_battle` требует подписи одной из сторон — кранк за игрока его подписать не может. Открытыми остаются claim-фьюжн (`cancel_stale_claim_fusion`), просроченный claim (`close_expired_claim`) и бой.
+  Состояние на 2026-11-04: `PendingOps.tsx` закрывает покупку (`cancel_stale_pack`), фьюжн (`cancel_stale_fusion`),
+  claim-фьюжн (`cancel_stale_claim_fusion`), истёкший клейм (`close_expired_claim`) и бой (`cancel_stale_battle`).
+  `void_battle` в программе нет и не нужно: `cancel_stale_battle` покрывает оба состояния (открытый бой — создатель
+  сразу, принятый — обе стороны после `RESOLVE_TIMEOUT`), а границу считает backend по тем же константам, что и
+  программа (`BATTLE_ACCEPT_TIMEOUT_SEC`/`BATTLE_RESOLVE_TIMEOUT_SEC` в `backend/src/chain.ts`, запас 60 с на
+  расхождение часов). Кранком это не сделать и не требуется: инструкция требует подписи стороны, значит путь
+  возврата — кнопка у игрока (нагрузочный сценарий «кранк отменяет без участия игрока» из матрицы §6 для боёв
+  неприменим по конструкции программы).
 * `resolve` принимает `resolve_auth` домена v2 с `kind=6` и `subject=Battle` (сейчас подпись не привязана к бою).
+
+### settle: раскладка аргументов (находка 79)
+
+Клиентские сборщики `settle_pack`/`grant_mint` писали 7 полей `MintAuth` вместо 8 (без `order_slot`), поэтому
+на цепи поток разъезжался и ни один `settle_pack` не мог пройти. Правка — в сборщиках; контракт не менялся.
+Гейт `ix:shape` (единственный офлайн-инструмент, который видит такие расхождения) был слепым по двум причинам,
+и обе устранены:
+
+1. инструкции с именованным типом (`SettleArgs`) попадали в `COMPLEX_INSTRUCTIONS` и не проверялись — теперь
+   `SettleArgs`, `MintAuth` и `Vec<LeafSpec>` разложены в реестре типов и сравниваются с Rust;
+2. читатель читал только первый вызов многострочной цепочки `BorshWriter` — теперь дочитывает хвост (с
+   комментариями между звеньями), поэтому «потерянное звено» видно как `encodes [...] but declares [...]`.
+
+Читатель гейта проверялся и раньше — тестом `tests/security/ix-shape.test.ts` внутри `security:static`, — но обе
+инструкции из проверки исключались списком `COMPLEX_INSTRUCTIONS`, поэтому дрейф был невидим. Дополнительно
+CLI-гейт вынесен отдельным шагом в CI (job `security`) и в `npm run verify`, вместе с `--selftest`
+(37 проверок; счётчик теперь считается, а не пишется руками). Раскладка дополнительно пришпилена
+тестом `client/src/chain/ix/settle-args-layout.test.ts`, который берёт порядок и типы полей прямо из
+`programs/settle/src/lib.rs`, и исполнением — `tests/localnet/92-settle-packs.spec.ts`.
 
 ### Порядок апгрейда
 

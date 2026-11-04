@@ -71,6 +71,16 @@ const KNOWN_TYPES: Record<string, string[]> = {
   'Vec<[u8; 32]>': ['vec', 'bytes'],
   /** `Vec<u8>` — `w.vec(bytes, b => w.u8(b))`. */
   'Vec<u8>': ['vec', 'u8'],
+  /**
+   * Находка 79: `MintAuth` — восемь полей, и `order_slot` среди них. Пока тип был «out of scope»,
+   * клиентские сборщики `settle_pack`/`grant_mint` теряли `order_slot`, и ни один `settle_pack` не мог
+   * пройти на цепи: Anchor читал слот из первых байт `specs_hash`, и весь поток уезжал на 8 байт.
+   */
+  MintAuth: ['pubkey', 'u64', 'u64', 'u8', 'u64', 'bytes', 'u64', 'u64'],
+  /** `Vec<LeafSpec>` (`w.vec(specs, s => …)`): длина u32, затем collection ‖ name ‖ symbol ‖ uri. */
+  'Vec<LeafSpec>': ['vec', 'pubkey', 'string', 'string', 'string'],
+  /** `SettleArgs { auth: MintAuth, specs: Vec<LeafSpec> }` — плоская раскладка обоих полей. */
+  SettleArgs: ['pubkey', 'u64', 'u64', 'u8', 'u64', 'bytes', 'u64', 'u64', 'vec', 'pubkey', 'string', 'string', 'string'],
 };
 
 /** The instructions whose argument list contains a type this registry cannot expand. */
@@ -83,8 +93,6 @@ export const COMPLEX_INSTRUCTIONS = [
   'create_battle_v2', // [LeafProofArgs; SQUAD] / [Pubkey; SQUAD]
   'accept_battle_v2', // [LeafProofArgs; SQUAD] / [u8; SQUAD]
   'sync_grid_charge', // [i64; GRID_CHARGE_MAX_DROPS]
-  'settle_pack', // settle: SettleArgs (MintAuth + Vec<LeafSpec>), encoded by client phaseV.ts, byte-pinned by its unit tests
-  'grant_mint', // settle: SettleArgs, same encoder as settle_pack
 ] as const;
 
 /**
@@ -310,7 +318,7 @@ export function tsEncodings(repo = REPO): Encoding[] {
         // Methods chained on the declaration itself, plus every later `w.method(` — including the ones
         // inside a `vec` / `option` callback, which are where the element encoding lives.
         const chained = [...decl[1]!.matchAll(/\.(\w+)\(/g)].map((x) => x[1]!).filter((x) => x !== 'toBytes');
-        const later = [...scope.slice(decl.index! + decl[0].length).matchAll(new RegExp(`\\b${id}\\.(\\w+)\\(`, 'g'))].map((x) => x[1]!);
+        const later = statementsFrom(scope.slice(decl.index! + decl[0].length), id);
         out.push({ file: rel, line, name, chain: [...chained, ...later] });
         continue;
       }
@@ -318,6 +326,44 @@ export function tsEncodings(repo = REPO): Encoding[] {
     }
   }
   return out;
+}
+
+/**
+ * Methods written on a builder, in order, **including the rest of a multi-line chain**.
+ *
+ * Находка 79: раньше читались только вызовы с префиксом `w.`, а продолжение цепочки
+ * (`w.pubkey(…)\n  .u64(…)\n  .u8(…)`) идёт без префикса — и молча пропадало. Из-за этого сборщик
+ * `settle_pack`, потерявший `order_slot`, выглядел как `[pubkey, vec, …]` и не сравнивался с программой,
+ * а гейт при этом показывал «дрейфа нет». Теперь после каждого `w.method(` дочитывается хвост цепочки:
+ * `)` → `.method(` подряд, пока цепочка не кончится. Вызовы внутри колбэка (`w.vec(items, (s) => { w.u8(…) })`)
+ * по-прежнему находятся отдельным проходом, потому что они снова начинаются с `w.`.
+ */
+export function statementsFrom(scope: string, id: string): string[] {
+  const out: string[] = [];
+  for (const m of scope.matchAll(new RegExp(`\\b${id}\\.(\\w+)\\(`, 'g'))) {
+    out.push(m[1]!);
+    let cursor = m.index! + m[0].length - 1; // на открывающей скобке вызова
+    for (;;) {
+      const end = balancedEnd(scope, cursor);
+      if (end < 0) break;
+      // между звеньями цепочки может стоять перевод строки и комментарий — это не конец цепочки
+      const next = /^(?:\s|\/\/[^\n]*\n)*\.(\w+)\(/.exec(scope.slice(end + 1));
+      if (!next) break;
+      out.push(next[1]!);
+      cursor = end + next[0].length; // `(` следующего вызова
+    }
+  }
+  return out.filter((x) => x !== 'toBytes');
+}
+
+/** Index of the `)` matching the `(` at `open`, or -1. */
+function balancedEnd(s: string, open: number): number {
+  let d = 0;
+  for (let k = open; k < s.length; k++) {
+    if (s[k] === '(') d++;
+    else if (s[k] === ')') { d--; if (!d) return k; }
+  }
+  return -1;
 }
 
 // --------------------------------------------------------------------------- the rule
@@ -391,7 +437,9 @@ export function blindSpots(encodings: readonly Encoding[], instructions: Map<str
 
 function selftest(): number {
   let failed = 0;
+  let total = 0; // считаем сами: захардкоженное «22» уже один раз разошлось с числом проверок
   const check = (name: string, got: unknown, want: unknown) => {
+    total += 1;
     const ok = JSON.stringify(got) === JSON.stringify(want);
     if (!ok) { console.error(`selftest: ${name} — wanted ${JSON.stringify(want)}, got ${JSON.stringify(got)}`); failed++; }
   };
@@ -406,6 +454,10 @@ function selftest(): number {
   check('Vec<[u8; 32]> is vec then bytes', writerMethodsFor('Vec<[u8; 32]>'), ['vec', 'bytes']);
   check('Vec<Option<Pubkey>> nests', writerMethodsFor('Vec<Option<Pubkey>>'), ['vec', 'option', 'pubkey']);
   check('a named custom type is null', writerMethodsFor('ParamsPatch'), null);
+  // Находка 79: цепочка `w.a(…)\n .b(…)\n // комментарий\n .c(…)` — это три метода, а не один.
+  check('a multi-line chain is read to its end', statementsFrom('w.pubkey(k)\n  .u64(1)\n  .u8(2);', 'w'), ['pubkey', 'u64', 'u8']);
+  check('a comment between links does not end the chain', statementsFrom('w.u8(1)\n  // почему\n  .u64(2);', 'w'), ['u8', 'u64']);
+  check('a callback body is still read as its own calls', statementsFrom('w.vec(a, (x) => { w.u8(x); });', 'w'), ['vec', 'u8']);
   check('an unknown type is null', writerMethodsFor('SomethingElse'), null);
   check('[Pubkey; SQUAD] is null (N is not 1)', writerMethodsFor('[Pubkey; SQUAD]'), null);
 
@@ -448,7 +500,7 @@ function selftest(): number {
   check('a duplicate inside one program is still a conflict', shapeProblems([], ix([]), ['x is declared twice inside p'], shared).length, 1);
 
   if (failed > 0) { console.error(`selftest: ${failed} case(s) failed`); return 1; }
-  console.log('selftest: all 22 cases pass');
+  console.log(`selftest: all ${total} cases pass`);
   return 0;
 }
 

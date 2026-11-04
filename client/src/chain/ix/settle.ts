@@ -173,6 +173,10 @@ export function settlePackIx(
     .u64(BigInt(a.orderId))
     .u64(BigInt(a.amount))
     .u8(Number(a.currency))
+    // Находка 79: `order_slot` — поле `MintAuth` (находка 16), и оно обязано быть в потоке аргументов,
+    // а не только в подписанном сообщении. Без него Anchor читал слот из первых байт `specs_hash`,
+    // весь поток уезжал на 8 байт, и `settle_pack` не мог пройти ни разу.
+    .u64(BigInt(a.orderSlot))
     .bytes(Buffer.from(a.specsHash, 'hex'))
     .u64(BigInt(a.nonce))
     .u64(BigInt(a.expiresAtSlot));
@@ -212,6 +216,9 @@ export function grantMintIx(payload: SettlePayloadLike, args: { relayer: PublicK
     .u64(BigInt(a.orderId))
     .u64(BigInt(a.amount))
     .u8(Number(a.currency))
+    // Находка 79: у гранта слота заказа нет — оракул подписывает нули, и здесь тоже нули (поле всё равно
+    // обязано присутствовать: раскладка `MintAuth` общая с `settle_pack`).
+    .u64(BigInt(a.orderSlot ?? 0))
     .bytes(Buffer.from(a.specsHash, 'hex'))
     .u64(BigInt(a.nonce))
     .u64(BigInt(a.expiresAtSlot));
