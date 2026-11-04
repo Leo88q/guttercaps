@@ -20,7 +20,7 @@ import { SETTLE_ID, SYSTEM_PROGRAM_ID } from '@/chain/ids';
 import { anchorRootIx, anchoredRootPda, claimRewardIx, initConfigIx, revokeRootIx, rewardsVaultPda, settleConfigPda } from '@/chain/ix/settle';
 import { BorshReader, BorshWriter } from '@/chain/borsh';
 import { ixData } from '@/chain/anchor';
-import { ROOT_ORACLE, binariesPresent, getEnv, programDataPda, tokenBalance, type Env } from './helpers/env';
+import { ROOT_ORACLE, binariesPresent, getEnv, programDataPda, tokenAccountBalance, tokenBalance, type Env } from './helpers/env';
 import { Err, expectFail } from './helpers/expect';
 
 const bins = binariesPresent();
@@ -121,9 +121,11 @@ suite('T-L-P settle (фаза V) исполняется: конфиг, эскр�
     // `rewards_vault` — токен-PDA программы (authority = config), а не ATA: пополнять нужно адрес
     // самого PDA. Пополнение «по владельцу» создало бы рядом пустой ATA, и выплата упала бы на
     // insufficient funds уже после всех гейтов.
-    const vaultBalance = await tokenBalance(env.chain, env.mints.cg, rewardsVaultPda());
+    // баланс читается по адресу PDA: `tokenBalance(mint, owner)` считает ATA кошелька и для пула
+    // вернула бы 0 при любом состоянии
+    const vaultBalance = await tokenAccountBalance(env.chain, rewardsVaultPda());
     if (vaultBalance < 20_000_000n) await env.fundCgAccount(rewardsVaultPda(), 20_000_000n);
-    expect(await tokenBalance(env.chain, env.mints.cg, rewardsVaultPda())).toBeGreaterThanOrEqual(20_000_000n);
+    expect(await tokenAccountBalance(env.chain, rewardsVaultPda())).toBeGreaterThanOrEqual(vaultBalance);
 
     const leafIndex = 1;
     const amount = 2_000_000n;

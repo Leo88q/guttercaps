@@ -501,10 +501,25 @@ export async function mintCg(chain: Chain, admin: Keypair, cg: PublicKey, to: Pu
   ], { signers: [admin], label: 'transfer $CG' });
 }
 
+/** `amount` из данных SPL-токен-аккаунта (offset 64) — читается по АДРЕСУ аккаунта. */
+export function tokenAmount(a: { data: Uint8Array }): bigint {
+  return new DataView(a.data.buffer, a.data.byteOffset + 64, 8).getBigUint64(0, true);
+}
+
+/** Баланс ATA кошелька `owner` по минтии `mint`. */
 export const tokenBalance = async (chain: Chain, mint: PublicKey, owner: PublicKey): Promise<bigint> => {
   const a = await chain.getAccount(getAssociatedTokenAddressSync(mint, owner, true));
-  if (!a) return 0n;
-  return new DataView(a.data.buffer, a.data.byteOffset + 64, 8).getBigUint64(0, true);
+  return a ? tokenAmount(a) : 0n;
+};
+
+/**
+ * Баланс токен-аккаунта по его адресу. Отдельно от `tokenBalance`, потому что та считает ATA
+ * кошелька: для пула самой программы (`settle` `["rewards_vault"]`, `staking` `["vault"]`) ATA —
+ * это ДРУГОЙ адрес, и «баланс пула» через неё всегда читался бы как 0.
+ */
+export const tokenAccountBalance = async (chain: Chain, account: PublicKey): Promise<bigint> => {
+  const a = await chain.getAccount(account);
+  return a ? tokenAmount(a) : 0n;
 };
 
 export { SWITCHBOARD_ON_DEMAND_ID };
