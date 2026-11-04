@@ -64,7 +64,12 @@ describe('находка 13: staking::init_emission закрыт для перв
     expect(env).toMatch(/export function initEmissionIx\(a: \{ admin: PublicKey; cgMint: PublicKey; genesisTs: bigint; programData\?: PublicKey \}\)/);
     expect(env).toMatch(/ro\(a\.programData \?\? programDataPda\(STAKING_ID\)\)/);
     // LiteSVM не создаёт ProgramData: общий env и обе приватные цепи (51, 81) обязаны её подложить.
-    expect(env).toMatch(/\[CHIP_CORE_ID, ARENA_ID, STAKING_ID\]\).*forgeProgramData/);
+    // Список программ в этой строке пополняется (находка 53 добавила `settle` — у неё тот же гейт в
+    // `init_config`), поэтому проверяется состав, а не точная строка: каждый id обязан быть в списке,
+    // а forgeProgramData — вызываться на нём.
+    for (const id of ['CHIP_CORE_ID', 'ARENA_ID', 'STAKING_ID', 'SETTLE_ID']) {
+      expect(env).toMatch(new RegExp(`\\[(?:[^\\]]*\\b${id}\\b)[^\\]]*\\]\\).*forgeProgramData`));
+    }
     for (const spec of ['tests/localnet/51-emission-genesis.spec.ts', 'tests/localnet/81-emission-mint-guard.spec.ts']) {
       expect(read(spec)).toMatch(/await forgeProgramData\(chain, STAKING_ID, admin\.publicKey\)/);
     }

@@ -72,6 +72,13 @@ export interface Env {
   player(opts?: { sol?: bigint; cg?: bigint; usdc?: bigint; skr?: bigint }): Promise<Keypair>;
   /** mint more of a faucet token to an existing wallet (creates the ATA) */
   fund(to: PublicKey, token: 'usdc' | 'skr', amount: bigint): Promise<void>;
+  /**
+   * Перевод $CG в УЖЕ существующий токен-аккаунт по его адресу — не в ATA кошелька.
+   * Нужен там, где программа держит деньги на своём токен-PDA (`settle` `["rewards_vault"]`,
+   * `staking` `["vault"]`): `ata(mint, pda)` — это другой адрес, и пополнение «по владельцу»
+   * молча создаёт пустой ATA рядом, а перевод из пула потом падает на insufficient funds.
+   */
+  fundCgAccount(tokenAccount: PublicKey, amount: bigint): Promise<void>;
   refreshConfig(): Promise<GameConfig>;
   /** Sum of the `VaultLedger` shards (#12): liabilities + burned_total, the numbers `GameConfig` used to carry. */
   ledger(): Promise<LedgerTotals>;
@@ -472,7 +479,12 @@ async function boot(): Promise<Env> {
     return kp;
   };
 
-  return { chain, admin, mints: { cg, usdc, skr }, config, coreCollections, coreOf, pyth, player, fund, refreshConfig, ledger, ledgerShard };
+  const fundCgAccount = async (tokenAccount: PublicKey, amount: bigint) => {
+    if (!cgStash) throw new Error('cg stash not prepared');
+    await chain.send([createTransferInstruction(cgStash, tokenAccount, admin.publicKey, amount)], { signers: [admin], label: 'fund $CG account' });
+  };
+
+  return { chain, admin, mints: { cg, usdc, skr }, config, coreCollections, coreOf, pyth, player, fund, fundCgAccount, refreshConfig, ledger, ledgerShard };
 }
 
 /**
