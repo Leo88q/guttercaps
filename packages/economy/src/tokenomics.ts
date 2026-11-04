@@ -56,14 +56,38 @@ export const playBucketTokens = () => (CG_HARD_CAP * 55) / 100;
 export const yearlyEmission = (year: number) => (playBucketTokens() * (YEARLY_EMISSION_PCT_OF_PLAY[year] ?? 0)) / 100;
 export const dailyEmission = (year: number) => yearlyEmission(year) / 365;
 
-/** How the daily emission is split between faucets (sum = 100). Admin-tunable within ±10pp without redeploy.
+/**
+ * How the daily emission is split between faucets (sum = 100). Admin-tunable within ±10pp without redeploy.
  *  v3 (2026-10): passive income halved, active play doubled — a chip must EARN its keep
- *  in the arena; staking is a bonus, not a salary. */
+ *  in the arena; staking is a bonus, not a salary.
+ *
+ * Находка 48: квестовая доля была меньше типовых обязательств. При годе 1 (18 % от play-бакета)
+ * дневной кап = 271 232 $CG; квесты получали 25 % = 67 808 $CG/день. На базовых 5 000 DAU типовой
+ * игрок забирает ~15 $CG квестов в день — это 75 000 $CG, то есть доля НЕ покрывала норму на 7 192 $CG,
+ * и очередь наград не могла разгрузиться: на цепи `staking::publish_root` требует `budget <= slice_budget[k]`
+ * и списывает его, поэтому перерасхода не было — был отказ публикации (очередь стоит).
+ *
+ * Доля поднята до 30 % (81 370 $CG/день, ~5 400 кошельков по 15 $CG); 5 п.п. сняты с PvP-сезона —
+ * у него остаётся 33 %, крупнейший срез, но уже не «всё остальное». Сумма по-прежнему 100 %.
+ * Цена решения: PvP-награды при том же объёме игроков меньше на 13 %; обмен осознанный, потому что
+ * квесты платятся всем активным, а PvP — только участникам матчей.
+ *
+ * Что доля НЕ решает: суточный потолок на кошелёк (`ANTI_FARM.dailyQuestRewardCapCgMicro` = 25 $CG)
+ * выше подушевой доли бюджета (81 370 / 5 000 = 16.3 $CG). Если все начнут забирать по потолку,
+ * обязательства (125 000 $CG) снова превысят срез; цепь по-прежнему откажет в публикации, а не
+ * переплатит. Согласование потолка с бюджетом — отдельное решение владельца (меняет то, что видит игрок),
+ * поэтому здесь оно не принято, а зафиксировано в отчёте.
+ *
+ * Ниже 2 %-пола гарда (`EMISSION_GUARD`) бюджет по определению сжимается до 5 424 $CG/день, и квесты
+ * получают 1 627 $CG: в этом сценарии экономика стоит, сжига почти нет, и активность падает вместе с
+ * бюджетом. Инвариант «норма укладывается в срез» проверяет
+ * `backend/test/quest-emission-budget-audit.test.ts`.
+ */
 export const EMISSION_SPLIT = {
   chipStaking: 15,
   tokenStaking: 2,
-  quests: 25,
-  pvpSeason: 38,     // ~60% per-match rewards, ~40% season ladder payouts
+  quests: 30,
+  pvpSeason: 33,     // ~60% per-match rewards, ~40% season ladder payouts
   eventsReserve: 20, // seasonal events, referrals, jackpots, tournaments
 } as const;
 

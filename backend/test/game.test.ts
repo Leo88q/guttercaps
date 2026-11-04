@@ -151,11 +151,11 @@ describe('staking read-model', () => {
   let db: Db; let w: ReturnType<typeof world>;
   beforeEach(() => { db = new Db(':memory:'); w = world(); for (const t of w.txs) ingestTx(t, db); });
 
-  it('overview before the first tick_day: schedule floor (2 %), pool totals from Staked events, split 15/2/25/38/20', () => {
+  it('overview before the first tick_day: schedule floor (2 %), pool totals from Staked events, split 15/2/30/33/20', () => {
     const o = staking.overview(db);
     expect(o.emission.source).toBe('schedule');
     expect(BigInt(o.emission.scheduleCapMicro) - BigInt(o.emission.guardedMicro) * 50n).toBeLessThan(50n); // floor(cap × 0.02)
-    expect(o.emission.splitBps).toEqual([1500, 200, 2500, 3800, 2000]);
+    expect(o.emission.splitBps).toEqual([1500, 200, 3000, 3300, 2000]); // находка 48: квесты 30, PvP 33
     expect(o.claimCaps).toEqual({ chipDailyCg: 30, tokenDailyCg: 15, aliveWindowDays: 7, idleWeight: 0.25 });
     expect(o.tokenPool).toMatchObject({ tvlMicro: '500000000', totalWeight: '750000000' });
     expect(o.chipPool).toMatchObject({ stakedChips: 1, totalWeight: '2000' });
@@ -266,13 +266,13 @@ describe('arena — ranked commit/reveal', () => {
     expect(next.previous).toMatchObject({ id: s.id, serverSecretHash: s.serverSecretHash, serverSecret: row.server_secret });
   });
 
-  it('season pool = 20 % rake from resolved wager battles + 40 % of each day\'s pvpSeason slice (guarded × 38 %), never the cumulative slice_budget', () => {
+  it('season pool = 20 % rake from resolved wager battles + 40 % of each day\'s pvpSeason slice (guarded × 33 %), never the cumulative slice_budget', () => {
     const s = arena.currentSeason(db, T);
     ingestTx(tx([{ program: 'staking', name: 'DayClosed', data: { dayIndex: 1, year: 0, scheduleCap: '271232876712', guarded: '100000000000', burn7dAvg: '0', sliceBudget: ['0', '0', '0', '999999999999', '0'] } }], { blockTime: s.starts_at + 86_400 }), db);
     ingestTx(tx([{ program: 'staking', name: 'DayClosed', data: { dayIndex: 2, year: 0, scheduleCap: '271232876712', guarded: '100000000000', burn7dAvg: '0', sliceBudget: ['0', '0', '0', '999999999999', '0'] } }], { blockTime: s.starts_at + 2 * 86_400 }), db);
     ingestTx(tx([{ program: 'arena', name: 'BattleResolved', data: { battle: kp(), winner: alice, pot: '100000000', rakeBurn: '2000000', rakePool: '1000000', rakeTreasury: '2000000', resultHash: hex32(0x22), roll: hex32(0x33) } }], { blockTime: s.starts_at + 3 * 86_400 }), db);
-    // 2 days × 100 $CG × 38 % × 40 % = 30.4 $CG + 1 $CG rake pool
-    expect(arena.seasonApi(db, T).poolCgMicro).toBe(String(2 * 15_200_000_000 + 1_000_000));
+    // 2 days × 100 000 $CG × 33 % × 40 % = 26.4 $CG + 1 $CG rake pool (находка 48: доля PvP 38 → 33 %)
+    expect(arena.seasonApi(db, T).poolCgMicro).toBe(String(2 * 13_200_000_000 + 1_000_000));
   });
 
   it('SEC-L5: settlement freezes the rake share (finalized battles of the season only) next to the emission share; an unfinalized BattleResolved postpones it', () => {
@@ -289,16 +289,16 @@ describe('arena — ranked commit/reveal', () => {
     ingestTx(tx([{ program: 'arena', name: 'BattleResolved', data: { battle: kp(), winner: alice, pot: '100000000', rakeBurn: '2000000', rakePool: '1000000', rakeTreasury: '2000000', resultHash: hex32(0x22), roll: hex32(0x33) } }], { blockTime: s.starts_at + 2 * 86_400 }), db);
     ingestTx(tx([{ program: 'arena', name: 'BattleResolved', data: { battle: kp(), winner: alice, pot: '300000000', rakeBurn: '6000000', rakePool: '3000000', rakeTreasury: '6000000', resultHash: hex32(0x22), roll: hex32(0x33) } }], { blockTime: s.starts_at + 3 * 86_400 }), db);
     ingestTx(tx([{ program: 'arena', name: 'BattleResolved', data: { battle: kp(), winner: alice, pot: '100000000', rakeBurn: '2000000', rakePool: '1000000', rakeTreasury: '2000000', resultHash: hex32(0x22), roll: hex32(0x33) } }], { blockTime: s.ends_at + 10 }), db);
-    expect(arena.seasonPoolMicro(db, s)).toBe(15_200_000_000n + 4_000_000n); // live estimate: 100 × 38 % × 40 % + 4 $CG rake
+    expect(arena.seasonPoolMicro(db, s)).toBe(13_200_000_000n + 4_000_000n); // live estimate: 100 000 × 33 % × 40 % + 4 $CG rake
     const end = s.ends_at + 1;
     expect(arena.settleSeason(db, s.id, end)).toBeUndefined(); // BattleResolved not finalized → wait
     finalizeAll(db);
     const r = arena.settleSeason(db, s.id, end)!;
     expect(r.rakeMicro).toBe(4_000_000n);
     const row = db.get<{ pool_micro: string; rake_micro: string; rake_funded_at: number | null }>(`SELECT pool_micro, rake_micro, rake_funded_at FROM seasons WHERE id = ?`, s.id)!;
-    expect(row).toMatchObject({ pool_micro: String(15_200_000_000 + 4_000_000), rake_micro: '4000000', rake_funded_at: null });
+    expect(row).toMatchObject({ pool_micro: String(13_200_000_000 + 4_000_000), rake_micro: '4000000', rake_funded_at: null });
     // 1 of 1000 → 1/1000 of the whole pool (rake included) goes to rank 1
-    expect(r.paidMicro).toBe((15_200_000_000n + 4_000_000n) / 1000n);
+    expect(r.paidMicro).toBe((13_200_000_000n + 4_000_000n) / 1000n);
     expect(oracle.unfundedRake(db)).toMatchObject({ targetMicro: 4_000_000n, seasons: [s.id] });
     const api = arena.seasonApi(db, end + 5);
     expect(api.previous).toMatchObject({ id: s.id, settled: true, rakeMicro: '4000000', rakeFunded: false });
@@ -549,12 +549,13 @@ describe('arena — ranked commit/reveal', () => {
     const r = arena.settleSeason(db, s.id, end)!;
     expect(r).toMatchObject({ season: s.id, participants: 1, rows: 1, rakeMicro: 0n });
     // 1 qualified of 1000 needed → pool × 1/1000 × 100 % (all bands roll up to rank 1)
-    expect(r.paidMicro).toBe((76_000_000_000n * 1n) / 1000n);
+    // 5 дней × 100 000 $CG × 33 % × 40 % = 66 000 $CG (находка 48: доля PvP 38 → 33 %)
+    expect(r.paidMicro).toBe((66_000_000_000n * 1n) / 1000n);
     const row = db.get<{ wallet: string; rank: number; amount: string }>(`SELECT wallet, rank, amount FROM season_payouts WHERE season = ?`, s.id)!;
     expect(row).toMatchObject({ wallet: alice, rank: 1, amount: r.paidMicro.toString() });
     expect(arena.settleSeason(db, s.id, end + 5)!.rows).toBe(0); // idempotent
     expect(arena.unsettledSeasons(db, end)).toEqual([]);
-    expect(arena.seasonApi(db, end + arena.SEASON_SECONDS / 2).previous).toMatchObject({ id: s.id, settled: true, paidPoolMicro: '76000000000' });
+    expect(arena.seasonApi(db, end + arena.SEASON_SECONDS / 2).previous).toMatchObject({ id: s.id, settled: true, paidPoolMicro: '66000000000' });
     // the payout joins the next kind-3 batch together with match rewards
     const me = arena.arenaMe(db, alice, end);
     expect(BigInt(me.pendingRewardMicro)).toBe(r.paidMicro + BigInt(db.all<{ amount: string }>(`SELECT amount FROM pvp_rewards WHERE wallet = ?`, alice).reduce((a, x) => a + Number(x.amount), 0)));
