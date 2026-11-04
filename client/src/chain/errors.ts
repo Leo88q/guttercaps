@@ -3,7 +3,7 @@ import { t, type MessageKey } from '@/shared/i18n';
 import { API_ERROR_KEYS } from '@/api/errorCatalog';
 import english from '@/shared/i18n/failures/en.json';
 import catalog from './errorCatalog.json';
-import { ARENA_ID, CHIP_CORE_ID, MARKET_ID, STAKING_ID, TOKEN_PROGRAM_ID } from './ids';
+import { ARENA_ID, CHIP_CORE_ID, MARKET_ID, SETTLE_ID, STAKING_ID, TOKEN_PROGRAM_ID } from './ids';
 import { parseCustomError } from './anchor';
 import { errorSnapshot, type ErrorSnapshot } from './errorSnapshot';
 
@@ -47,6 +47,10 @@ const PROGRAMS = [
   { id: MARKET_ID.toBase58(), name: 'market' as const },
   { id: STAKING_ID.toBase58(), name: 'staking' as const },
   { id: ARENA_ID.toBase58(), name: 'arena' as const },
+  // Находка 82: `settle` — контур ДЕНЕГ фазы V (эскроу, выдача, возврат) — здесь отсутствовал, поэтому
+  // отказ `refund_pack`/`settle_pack`/`escrow_buy_pack` (включая `RefundTooEarly` у кнопки возврата)
+  // показывался сырым кодом без названия. Порядок и числа стережёт `errors.test.ts` по исходнику программы.
+  { id: SETTLE_ID.toBase58(), name: 'settle' as const },
 ];
 
 /** Do not guess a program from a numeric code: different programs reuse the same numbers. */
