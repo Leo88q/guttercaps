@@ -179,11 +179,27 @@ export function claimHandle(db: Db, wallet: string, raw: string, signature: stri
     if (me?.handle && me.handle.toLowerCase() === lower) throw new ServiceError(409, 'same_handle', 'That is already your handle');
     const check = checkHandle(db, wallet, handle);
     if (!check.available) throw new ServiceError(409, `handle_${check.reason}`, `Handle unavailable (${check.reason})`);
-    // strict: first handle must be paid as kind 0 ($1.99), a change as kind 1 ($0.99)
-    const expected = toHex(handleRefHash(kind, wallet, handle));
-    const p = findPayment(db, signature, wallet, [kind], expected);
-    if (p.ref_hash !== expected) throw new ServiceError(402, 'ref_hash_mismatch', 'Payment was committed for a different handle');
-    if (kind === 1 && me?.handle_set_at && now() - me.handle_set_at < HANDLE_CHANGE_COOLDOWN_S) throw new ServiceError(409, 'handle_cooldown', 'Handle can change once per 30 days');
+    // Находка 76: вид услуги фиксируется в МОМЕНТ ОПЛАТЫ, а не в момент предъявления. `ref_hash` коммитит
+    // вид навсегда, поэтому платёж за «первый handle» (kind 0, $1.99), сделанный пока ручки не было, раньше
+    // становился невостребуемым, как только ручку успевала получить другая вкладка: `claimHandle` заново
+    // выводил kind = 1 из текущего состояния и искал платёж только этого вида. Деньги списаны, ручка не
+    // выдана, вернуть платёж нечем — других маршрутов, принимающих kind 0 после появления ручки, нет.
+    //
+    // Теперь платёж ищется по `ref_hash`, посчитанному для ОБОИХ видов, и вид берётся из самой строки
+    // платежа. Асимметрия намеренная: kind 0 при уже существующей ручке принимается (игрок переплатил
+    // $1.99 вместо $0.99 — обязательство исполняется), а kind 1 без ручки НЕ принимается, иначе первый
+    // handle можно было бы купить за $0.99. Кулдаун смены остаётся проверкой ПО СОСТОЯНИЮ кошелька, а не
+    // по виду платежа: переплата не даёт права менять ручку чаще, чем раз в 30 дней (решение владельца).
+    const refFor = {
+      0: toHex(handleRefHash(0, wallet, handle)),
+      1: toHex(handleRefHash(1, wallet, handle)),
+    } as const;
+    const acceptable: number[] = kind === 1 ? [1, 0] : [0];
+    const p = findPayment(db, signature, wallet, acceptable, refFor[kind]);
+    const paidKind = p.kind as 0 | 1;
+    if (paidKind !== 0 && paidKind !== 1) throw new ServiceError(402, 'payment_kind_mismatch', 'Payment is not for a handle');
+    if (p.ref_hash !== refFor[paidKind]) throw new ServiceError(402, 'ref_hash_mismatch', 'Payment was committed for a different handle');
+    if (me?.handle_set_at && now() - me.handle_set_at < HANDLE_CHANGE_COOLDOWN_S) throw new ServiceError(409, 'handle_cooldown', 'Handle can change once per 30 days');
     if (me?.handle) db.run(`INSERT INTO handle_history (handle, wallet, released_at) VALUES (?, ?, ?)`, me.handle, wallet, now());
     db.run(`INSERT INTO wallets (address, handle, handle_set_at, first_seen) VALUES (?, ?, ?, ?) ON CONFLICT(address) DO UPDATE SET handle = excluded.handle, handle_set_at = excluded.handle_set_at`, wallet, handle, now(), now());
     db.run(`DELETE FROM handle_reservations WHERE ${foldEq('handle', '?')}`, lower);

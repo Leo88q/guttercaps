@@ -1,21 +1,19 @@
-// Reproducer: a "first handle" payment cannot be used once the wallet already has a handle, because
-// `claimHandle` recomputes the service KIND at claim time instead of at payment time.
+// Находка 76 — регрессия. Вид услуги «@handle» фиксируется в МОМЕНТ ОПЛАТЫ (`ref_hash` коммитит вид
+// навсегда, `client/src/features/profile/HandleModal.tsx:45,88`), а `claimHandle` раньше заново выводил
+// его из текущего `wallets.handle` и искал платёж строго этого вида. Две открытые модалки (или устаревшая
+// вкладка) обе платили $1.99 за kind 0; первая выдавала ручку, вторая после этого не находила свой платёж:
+// деньги списаны, ручка не выдана, вернуть платёж нечем — route'ов, принимающих kind 0 при существующей
+// ручке, в продукте нет.
 //
-//   client/src/features/profile/HandleModal.tsx:45,88  kind = me.data?.handle ? 1 : 0 — fixed when the
-//                                                      modal opens, and the ref hash is derived from it;
-//   backend/src/services.ts:155-165                     claimHandle re-derives the kind from the CURRENT
-//                                                      `wallets.handle` after the payment was made
-//   backend/src/services.ts:39,88-99                    ref_hash includes the kind, and findPayment is
-//                                                      filtered by the expected kind only
-//
-// Two open modals (or a stale tab) both quote kind 0 at $1.99. The first claim sets the handle; the
-// second claim now expects kind 1 ($0.99) with a different ref hash, so the already-paid kind-0
-// payment matches neither the kind filter nor the ref hash: the user is left with a payment that can
-// never be spent by any route (its ref hash commits to kind 0 + that handle). No refund path exists.
+// Правило после правки: платёж ищется по `ref_hash` для ОБОИХ видов, вид берётся из строки платежа.
+// Асимметрия намеренная — kind 0 при существующей ручке принимается (переплата, но обязательство
+// исполняется), kind 1 без ручки не принимается (иначе первый handle стоил бы $0.99). Кулдаун смены
+// по-прежнему считается ПО СОСТОЯНИЮ кошелька: переплата не даёт менять ручку чаще раза в 30 дней:
+// платёж не сгорает, но применяется после кулдауна (решение владельца, вариант A).
 import { describe, expect, it } from 'vitest';
 import { Db, now } from '../src/db.ts';
 import { kp } from './fixtures.ts';
-import { claimHandle, findPayment, handleRefHash, toHex } from '../src/services.ts';
+import { claimHandle, handleRefHash, toHex } from '../src/services.ts';
 
 function pay(db: Db, sig: string, buyer: string, kind: number, handle: string) {
   const t = now();
@@ -31,38 +29,57 @@ function pay(db: Db, sig: string, buyer: string, kind: number, handle: string) {
   );
 }
 
-describe('handle purchase × stale kind', () => {
-  it('a kind-0 payment bought before the handle existed becomes unspendable after it is set', () => {
+const codeOf = (e: unknown) => (e as { code?: string })?.code ?? String(e);
+
+describe('handle purchase × вид платежа', () => {
+  it('платёж kind 0, сделанный до появления ручки, применяется — но после кулдауна смены', () => {
     const db = new Db(':memory:');
     const wallet = kp();
-    // both modals were opened while the wallet had no handle → both paid the kind-0 price
+    // обе модалки открыты, пока ручки не было → оба платежа по цене первого handle
     pay(db, 'sigA', wallet, 0, 'rail_queen');
     pay(db, 'sigB', wallet, 0, 'other_cap');
 
-    // tab A wins the race and gets its handle
     claimHandle(db, wallet, 'rail_queen', 'sigA');
 
-    // tab B now claims: claimHandle recomputes kind = 1 for a wallet that has a handle.
-    // Right away it is the change cooldown that answers; a month later the same request is refused
-    // because the paid kind (0) is not the expected kind (1) — either way nothing is granted.
+    // Сразу — кулдаун смены (не «вид платежа»): деньги не тратятся и не сгорают.
     let errNow: unknown = null;
     try { claimHandle(db, wallet, 'other_cap', 'sigB'); } catch (e) { errNow = e; }
+    expect(codeOf(errNow)).toBe('handle_cooldown');
+    const untouched = db.get<{ consumed_by: string | null }>(`SELECT consumed_by FROM service_payments WHERE signature = 'sigB'`)!;
+    expect(untouched.consumed_by).toBeNull();
+
+    // Через 40 дней тот же платёж применяется: ручка меняется, платёж помечен потраченным, entitlement есть.
     db.run(`UPDATE wallets SET handle_set_at = ? WHERE address = ?`, now() - 40 * 86_400, wallet);
-    let err: unknown = null;
-    try { claimHandle(db, wallet, 'other_cap', 'sigB'); } catch (e) { err = e; }
+    const out = claimHandle(db, wallet, 'other_cap', 'sigB');
+    expect(out.handle).toBe('other_cap');
     const row = db.get<{ consumed_by: string | null }>(`SELECT consumed_by FROM service_payments WHERE signature = 'sigB'`)!;
-    // and there is no way to spend it later either: the ref hash is bound to kind 0 + that handle
-    let laterErr: unknown = null;
-    try { findPayment(db, 'sigB', wallet, [1], toHex(handleRefHash(1, wallet, 'other_cap'))); } catch (e) { laterErr = e; }
-    console.log(JSON.stringify({
-      claimErrorNow: (errNow as { code?: string })?.code ?? String(errNow),
-      claimErrorAfterCooldown: (err as { code?: string })?.code ?? String(err),
-      paymentConsumed: row.consumed_by !== null,
-      retryError: (laterErr as { code?: string })?.code ?? String(laterErr),
-      paidUsdCents: 199,
-    }));
-    expect((err as { code?: string })?.code).toBe('payment_kind_mismatch');
-    expect(row.consumed_by).toBeNull();          // the money was taken and nothing was granted
-    expect(laterErr).not.toBeNull();
+    expect(row.consumed_by).toBe('handle:other_cap');
+    const ent = db.get<{ kind: number }>(`SELECT kind FROM entitlements WHERE signature = 'sigB'`)!;
+    expect(ent.kind).toBe(0); // вид из платежа, а не переписанный по состоянию кошелька
+    const me = db.get<{ handle: string }>(`SELECT handle FROM wallets WHERE address = ?`, wallet)!;
+    expect(me.handle).toBe('other_cap');
+  });
+
+  it('платёж kind 1 без ручки не даёт купить первый handle дешевле', () => {
+    const db = new Db(':memory:');
+    const wallet = kp();
+    // kind 1 стоит $0.99; ручки у кошелька нет — платить этой ценой за первый handle нельзя
+    pay(db, 'sigC', wallet, 1, 'fresh_start');
+    let err: unknown = null;
+    try { claimHandle(db, wallet, 'fresh_start', 'sigC'); } catch (e) { err = e; }
+    expect(codeOf(err)).toBe('payment_kind_mismatch');
+    const row = db.get<{ consumed_by: string | null }>(`SELECT consumed_by FROM service_payments WHERE signature = 'sigC'`)!;
+    expect(row.consumed_by).toBeNull();
+    expect(db.get(`SELECT handle FROM wallets WHERE address = ?`, wallet)?.handle ?? null).toBeNull();
+  });
+
+  it('платёж за другую ручку по-прежнему не принимается', () => {
+    const db = new Db(':memory:');
+    const wallet = kp();
+    pay(db, 'sigD', wallet, 0, 'somebody_else');
+    let err: unknown = null;
+    try { claimHandle(db, wallet, 'my_own_cap', 'sigD'); } catch (e) { err = e; }
+    expect(codeOf(err)).toBe('ref_hash_mismatch');
+    expect(db.get<{ consumed_by: string | null }>(`SELECT consumed_by FROM service_payments WHERE signature = 'sigD'`)!.consumed_by).toBeNull();
   });
 });
