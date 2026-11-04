@@ -14,9 +14,8 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { Keypair, PublicKey } from '@solana/web3.js';
+import { Keypair } from '@solana/web3.js';
 import { BorshReader } from '@/chain/borsh';
-import { ixData } from '@/chain/anchor';
 import { grantMintIx, oracleAuthIx, settlePackIx, type SettlePayloadLike } from './settle';
 
 const root = path.resolve(process.cwd(), process.cwd().endsWith('/client') ? '..' : '.');
