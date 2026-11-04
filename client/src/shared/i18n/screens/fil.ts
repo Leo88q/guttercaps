@@ -76,6 +76,7 @@ const screens = {
   "verifyNode": "Sariling pag-verify (Node.js)",
   "transactionDemo": "{action} (demo)",
   "fusionStopped": "Huminto ang fusion",
+  "fusionResuming": "Tinatapos ang nahintong fusion — sinusunog ang natitirang materyales at binabayaran ang bayad…",
   "bgSettling": "Ang worker sa background ang natatapos ng iyong mga chip…",
   "localFinish": "Mabagal ang worker — natatapos gamit ang iyong wallet",
   "fusionBgWait": "Gagawa ng resulta sa background…",

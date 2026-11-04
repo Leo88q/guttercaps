@@ -1,13 +1,20 @@
 // Gutter Pot — weekly weighted raffle among chip stakers.
 //
-// Who wins is settled here (server oracle): live `stakes.kind=1 active=1` grouped by owner,
+// Who wins is settled here (server oracle): `stakes.kind=1 active=1` grouped by owner, но только те
+// стейки, что стояли ДО конца разыгрываемой недели (`since <= weekEnd`, находка 57): иначе стейк,
+// сделанный после закрытия недели, покупал билет в уже закрытом розыгрыше.
 // ticket = Σ weight, 10 unique wallets (or all, if fewer), seed =
-//   sha256(`gutter-pot:v1:${week}:${slot}:${totalWeight}:${wallets}:${ticketsHash}`)
+//   sha256(`<prefix>:v2:${week}:${slot}:${totalWeight}:${wallets}:${ticketsHash}:${entropy}`)
+// где `entropy` — хеш блок-хеша слота горизонта (`entropy_source = 'blockhash'`, значение публично
+// проверяемо) либо свежий серверный nonce (`'server_nonce'`), если RPC не отдал блок. Без энтропии
+// сид был чистой функцией публичной записи розыгрыша, то есть победителей можно было посчитать
+// заранее (та же находка 57).
 // then without-replacement walks of sha256(seed ‖ round) % remaining weight.
-// The snapshot, seed and ticket list are stored so anyone can recompute the ten wallets.
+// Снимок билетов, энтропия, seed и список билетов хранятся в `gutter_pot_draws` — набор
+// пересчитывается и сверяется.
 // Rarity of the prize is NOT chosen here — winners get a kind-9 voucher (template 4) and
 // `open_voucher` rolls Rare / Rare+ / Epic from on-chain SlotHashes like any other pack.
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { GUTTER_POT, QUEST_CHIP_TEMPLATES } from '@guttercaps/economy';
 import { type Db, now } from './db.ts';
 import { finalizedHorizon } from './finality.ts';
@@ -22,8 +29,16 @@ export const weekEndUnix = (week: number) => weekStartUnix(week) + WEEK;
 export interface PotTicket { wallet: string; weight: string }
 export interface PotWinner { wallet: string; weight: string }
 
-export function chipStakeTickets(db: Db): PotTicket[] {
-  const rows = db.all<{ owner: string; weight: string }>(`SELECT owner, weight FROM stakes WHERE kind = 1 AND active = 1`);
+/**
+ * Билеты: активные чип-стейки, сгруппированные по владельцу. С `asOf` учитываются только стейки,
+ * начатые не позже этого момента — так закрытая неделя считается по своему концу, а не по моменту
+ * розыгрыша (находка 57: стейк «за минуту до розыгрыша» больше не покупает билет).
+ */
+export function chipStakeTickets(db: Db, asOf?: number): PotTicket[] {
+  const rows = asOf === undefined
+    ? db.all<{ owner: string; weight: string }>(`SELECT owner, weight FROM stakes WHERE kind = 1 AND active = 1`)
+    : db.all<{ owner: string; weight: string }>(
+      `SELECT owner, weight FROM stakes WHERE kind = 1 AND active = 1 AND (since IS NULL OR since <= ?)`, asOf);
   const by = new Map<string, bigint>();
   for (const r of rows) {
     let w = 0n;
@@ -39,8 +54,31 @@ export function ticketsHash(tickets: readonly PotTicket[]): string {
   return createHash('sha256').update(lines).digest('hex');
 }
 
-export function gutterPotSeed(input: { week: number; slot: number; totalWeight: string; wallets: number; ticketsHash: string }): Buffer {
-  return createHash('sha256').update(`${GUTTER_POT.seedPrefix}:${input.week}:${input.slot}:${input.totalWeight}:${input.wallets}:${input.ticketsHash}`).digest();
+/**
+ * Энтропия розыгрыша из блок-хеша зафиксированного слота: значение публично (любой может прочитать
+ * блок), но неизвестно в момент, когда набор билетов закрылся — неделя уже закончилась, а слот
+ * горизонта финализируется позже. Формат отдельным префиксом, чтобы не смешивать с сырым хешем.
+ */
+export function entropyFromBlockhash(blockhash: string): string {
+  return createHash('sha256').update(`gutter-pot-blockhash:v1:${blockhash}`).digest('hex');
+}
+
+export interface PotSeedInput {
+  week: number; slot: number; totalWeight: string; wallets: number; ticketsHash: string;
+  /** Хеш энтропии розыгрыша (`entropyFromBlockhash` или серверный nonce). */
+  entropyHex?: string;
+}
+
+/**
+ * Сид жеребьёвки. Версия `v2` включает энтропию: `v1` был чистой функцией опубликованной записи
+ * розыгрыша (week/slot/веса/хеш билетов), поэтому десять победителей считались заранее для любого
+ * кандидатного набора билетов (находка 57). Записи `v1` остаются в истории и пересчитываются
+ * вызовом без `entropyHex`.
+ */
+export function gutterPotSeed(input: PotSeedInput): Buffer {
+  const base = `${GUTTER_POT.seedPrefix}:${input.week}:${input.slot}:${input.totalWeight}:${input.wallets}:${input.ticketsHash}`;
+  if (!input.entropyHex) return createHash('sha256').update(base).digest(); // v1 (исторические записи)
+  return createHash('sha256').update(`${GUTTER_POT.seedPrefix}:v2:${input.week}:${input.slot}:${input.totalWeight}:${input.wallets}:${input.ticketsHash}:${input.entropyHex}`).digest();
 }
 
 /** Weighted sample without replacement. Same seed + same sorted tickets → same winners. */
@@ -71,6 +109,10 @@ export interface GutterPotDrawRow {
   week: number;
   drawn_at: number;
   slot: number;
+  /** Хеш энтропии розыгрыша (NULL у записей до правки находки 57 — там сид `v1`). */
+  entropy_hex?: string | null;
+  /** `blockhash` — энтропия из блок-хеша слота, `server_nonce` — серверный nonce (RPC не дал блок). */
+  entropy_source?: string | null;
   seed_hex: string;
   tickets_hash: string;
   total_weight: string;
@@ -79,27 +121,48 @@ export interface GutterPotDrawRow {
   tickets: string;
 }
 
+export interface PotEntropy {
+  /** Хеш энтропии (`entropyFromBlockhash`) — публично проверяемое значение. */
+  entropyHex?: string;
+  /** Откуда взята энтропия; по умолчанию выводится из наличия `entropyHex`. */
+  source?: 'blockhash' | 'server_nonce';
+}
+
 /**
- * Snapshot the previous Monday-UTC week if it has not been drawn yet. Idempotent.
- * Missed older weeks are not backfilled (live stakes are not a historical book).
+ * Разыграть предыдущую неделю по понедельникам UTC, если она ещё не разыграна. Идемпотентно.
+ * Пропущенные более старые недели не доигрываются задним числом: живые стейки не историческая книга.
+ *
+ * Билеты берутся на конец закрытой недели (`chipStakeTickets(db, weekEnd)`) — стейк, оформленный
+ * после закрытия, в этот розыгрыш не попадает (находка 57). В сид идёт энтропия: без неё победители
+ * считались заранее из публичной записи розыгрыша.
  */
-export function settleGutterPot(db: Db, t = now(), horizon = finalizedHorizon(db)): { week: number; winners: PotWinner[] } | null {
+export function settleGutterPot(
+  db: Db,
+  t = now(),
+  horizon = finalizedHorizon(db),
+  entropy: PotEntropy = {},
+): { week: number; winners: PotWinner[] } | null {
   const current = weekIndex(t);
   const closed = current - 1;
   if (closed < 0) return null;
   if (db.get(`SELECT 1 FROM gutter_pot_draws WHERE week = ?`, closed)) return null;
-  const tickets = chipStakeTickets(db);
-  const totalWeight = tickets.reduce((s, t) => s + BigInt(t.weight), 0n).toString();
+  const weekEnd = weekEndUnix(closed);
+  const tickets = chipStakeTickets(db, weekEnd);
+  const totalWeight = tickets.reduce((s, x) => s + BigInt(x.weight), 0n).toString();
   const hash = ticketsHash(tickets);
-  const seed = gutterPotSeed({ week: closed, slot: horizon, totalWeight, wallets: tickets.length, ticketsHash: hash });
+  const entropyHex = entropy.entropyHex ?? randomBytes(32).toString('hex');
+  const entropySource = entropy.source ?? (entropy.entropyHex ? 'blockhash' : 'server_nonce');
+  const seed = gutterPotSeed({ week: closed, slot: horizon, totalWeight, wallets: tickets.length, ticketsHash: hash, entropyHex });
   const winners = drawWinners(tickets, seed, GUTTER_POT.winnersPerWeek);
   const reward = JSON.stringify(QUEST_CHIP_TEMPLATES[GUTTER_POT.template]);
   const key = periodKeyOf(closed);
   const day = Math.floor((weekEndUnix(closed) - 1) / DAY);
   db.tx(() => {
     db.run(
-      `INSERT INTO gutter_pot_draws (week, drawn_at, slot, seed_hex, tickets_hash, total_weight, wallets, winners, tickets) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      closed, t, horizon, seed.toString('hex'), hash, totalWeight, tickets.length, JSON.stringify(winners), JSON.stringify(tickets),
+      `INSERT INTO gutter_pot_draws (week, drawn_at, slot, entropy_hex, entropy_source, seed_hex, tickets_hash, total_weight, wallets, winners, tickets)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      closed, t, horizon, entropyHex, entropySource, seed.toString('hex'), hash, totalWeight, tickets.length,
+      JSON.stringify(winners), JSON.stringify(tickets),
     );
     for (const w of winners) {
       db.run(
@@ -135,6 +198,8 @@ export function view(db: Db, wallet?: string | null, t = now()) {
     week: prev.week,
     drawnAt: prev.drawn_at,
     slot: prev.slot,
+    entropyHex: prev.entropy_hex ?? null,
+    entropySource: prev.entropy_source ?? null,
     seedHex: prev.seed_hex,
     ticketsHash: prev.tickets_hash,
     totalWeight: prev.total_weight,

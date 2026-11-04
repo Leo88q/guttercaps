@@ -1407,6 +1407,10 @@ pub struct CancelStaleClaimFusion<'info> {
     pub owner_cg: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
+    /// Находки 47 и 56: бустер списан коммитом; при откате по таймауту оракула он возвращается.
+    /// Опционален (см. `cancel_stale_fusion`): без буста PDA `items` может не существовать.
+    #[account(mut)]
+    pub items: Option<Box<Account<'info, PlayerItems>>>,
     // remaining_accounts: the 3 material claim accounts (mut), in pending order.
 }
 
@@ -1437,6 +1441,26 @@ pub fn cancel_stale_claim_fusion<'info>(
             fee,
         )?;
         ctx.accounts.ledger.release(0, 0, fee, 0)?;
+    }
+
+    // Находки 47 и 56: бустер, списанный `fuse_claims_commit`, возвращается, если исход не наступил.
+    if ctx.accounts.pending.boosted {
+        let items = ctx.accounts.items.as_mut().ok_or(ChipError::NoBooster)?;
+        let (expect_items, _) = Pubkey::find_program_address(
+            &[b"items", ctx.accounts.owner.key().as_ref()],
+            ctx.program_id,
+        );
+        require_keys_eq!(items.key(), expect_items, ChipError::Unauthorized);
+        require_keys_eq!(
+            items.owner,
+            ctx.accounts.owner.key(),
+            ChipError::Unauthorized
+        );
+        items.boosters = items.boosters.checked_add(1).ok_or(ChipError::Overflow)?;
+        msg!(
+            "cancel_stale_claim_fusion: booster returned, boosters={}",
+            items.boosters
+        );
     }
 
     require!(
@@ -1907,18 +1931,15 @@ pub struct MintCompressedChip<'info> {
         constraint = tree_meta.tree_authority == collection.key() @ ChipError::InvalidBubblegumTree,
     )]
     pub tree_meta: Box<Account<'info, BubblegumTreeMeta>>,
-    /// CHECK: PDA `["compressed_claim", buyer_key, claim_nonce]` — the `seeds` / `bump`
-    /// constraints still prove it, and `owner` keeps a foreign account out. The body is
-    /// decoded in the handler with `try_deserialize_compat`, which is also where the
-    /// `has_one = buyer` gate moved: live pre-`founder` claims are one byte short of the
-    /// current layout, so Anchor's strict decode answered `AccountDidNotDeserialize` (3003)
-    /// and a legacy claim could never be minted into a cNFT.
-    #[account(
-        mut,
-        owner = crate::ID,
-        seeds = [b"compressed_claim", buyer_key.as_ref(), &claim_nonce.to_le_bytes()],
-        bump,
-    )]
+    /// CHECK: `owner = crate::ID` + Anchor's discriminator (checked by
+    /// `try_deserialize_compat`) + `claim.buyer == buyer` in the handler are what make this
+    /// account a claim. Находка 42: `seeds` / `bump` сняты намеренно — аккаунт claim'а
+    /// выводится из `["compressed_claim", ПЕРВОНАЧАЛЬНЫЙ владелец, nonce]`, а
+    /// `transfer_compressed_claim` меняет только `claim.buyer`. С сидами покупатель с
+    /// рынка не мог предъявить свой claim (PDA не выводится из его ключа), а продавец уже
+    /// не проходил `has_one = buyer` — выпуск не был возможен ни для кого. Повторный
+    /// выпуск закрывает `claim.minted`, записываемый после CPI.
+    #[account(mut, owner = crate::ID)]
     pub claim: UncheckedAccount<'info>,
     /// CHECK: the leaf owner is the buyer bound into the claim.
     #[account(address = buyer_key)]
@@ -2176,18 +2197,12 @@ pub struct RegisterCompressedChip<'info> {
         constraint = tree_meta.tree_authority == collection.key() @ ChipError::InvalidBubblegumTree,
     )]
     pub tree_meta: Box<Account<'info, BubblegumTreeMeta>>,
-    /// CHECK: PDA `["compressed_claim", buyer_key, claim_nonce]` — the `seeds` / `bump`
-    /// constraints still prove it, and `owner` keeps a foreign account out. The body is
-    /// decoded in the handler with `try_deserialize_compat`, which is also where the
-    /// `has_one = buyer` gate moved: live pre-`founder` claims are one byte short of the
-    /// current layout, so Anchor's strict decode answered `AccountDidNotDeserialize` (3003)
-    /// and a legacy claim could never be registered into a `CompressedChipState`.
-    #[account(
-        mut,
-        owner = crate::ID,
-        seeds = [b"compressed_claim", buyer_key.as_ref(), &claim_nonce.to_le_bytes()],
-        bump,
-    )]
+    /// CHECK: `owner = crate::ID` + Anchor's discriminator + `claim.buyer == buyer` in the
+    /// handler. Находка 42: `seeds` / `bump` сняты по той же причине, что и в
+    /// `MintCompressedChip` — после покупки claim'а на рынке аккаунт живёт по адресу
+    /// первоначального владельца, и регистрация по сидам нового владельца не проходила.
+    /// `chip` инициализируется по `asset_id`, `claim.registered` закрывает повтор.
+    #[account(mut, owner = crate::ID)]
     pub claim: UncheckedAccount<'info>,
     // sentio-ignore-next-line SW002
     /// CHECK: compressed-pack settlement PDA, or the system program for the

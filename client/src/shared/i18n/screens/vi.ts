@@ -76,6 +76,7 @@ const screens = {
   "verifyNode": "Tự xác minh (Node.js)",
   "transactionDemo": "{action} (demo)",
   "fusionStopped": "Đã dừng hợp nhất",
+  "fusionResuming": "Đang hoàn tất fusion bị gián đoạn — đốt các nguyên liệu còn lại và trả phí…",
   "bgSettling": "Worker nền đang hoàn thành chip của bạn…",
   "localFinish": "Worker chậm — đang hoàn tất bằng ví của bạn",
   "fusionBgWait": "Đang tạo kết quả ở chế độ nền…",

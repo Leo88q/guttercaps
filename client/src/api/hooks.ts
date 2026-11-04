@@ -174,15 +174,6 @@ export function useSubmitRun() {
   });
 }
 
-/** Дополнительный заезд за 30 $CG: платит индексированный on-chain платёж, а не обещание. */
-export function useBuyExtraRun() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (b: { day: number; signature: string }) => api.post('/me/line/runs/buy', b),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['me', 'line'] }); },
-  });
-}
-
 export const useLineBoard = (week?: number) =>
   useQuery({ queryKey: ['line', 'board', week], queryFn: () => api.get('/line/leaderboard', { query: { week } }), staleTime: 60_000 });
 
@@ -193,15 +184,6 @@ export type TournamentBoard = ResponseOf<'/line/tournament/board', 'get'>;
 /** Мой день турнира: входы, лучший заезд, место, расписание призов. */
 export const useTournament = () =>
   useQuery({ queryKey: ['me', 'line', 'tournament'], queryFn: () => api.get('/me/line/tournament'), enabled: useAuthenticated(), staleTime: 30_000 });
-
-/** Вход в турнир дня: 30 $CG за попытку (платёж индексируется on-chain). */
-export function useEnterTournament() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (b: { day: number; signature: string }) => api.post('/me/line/tournament/enter', b),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['me', 'line', 'tournament'] }); },
-  });
-}
 
 /** Доска дня: лучший турнирный заезд кошелька, полоса приза. */
 export const useTournamentBoard = (day?: number) =>

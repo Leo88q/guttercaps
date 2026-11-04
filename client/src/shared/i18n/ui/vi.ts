@@ -155,6 +155,7 @@ const ui = {
   "phasegDone": "Xong! {n} chip đã vào bộ sưu tập của bạn.",
   "phasegDoneClose": "Đến bộ sưu tập",
   "phasegFailed": "Đơn chưa hoàn tất. Nếu bạn đã trả, hãy giữ chữ ký giao dịch và liên hệ hỗ trợ.",
+  "phasegRefundQueued": "Đơn đã được thanh toán sau khi hết hạn và hạn mức ví của bạn đã bị đơn khác chiếm. Không có gói nào được giao; khoản thanh toán sẽ được hoàn về ví — đội ngũ chuyển lại đúng địa chỉ bạn đã trả.",
   "phasegPay": "Trả & mở",
   "cryptoOnly": "Chỉ dùng tiền mã hóa. Cần SOL?",
   "noResale": "Nội dung gói là vật phẩm sưu tập số, không bảo đảm giá bán lại.",

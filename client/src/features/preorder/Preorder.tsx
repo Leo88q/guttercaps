@@ -117,8 +117,15 @@ export default function Preorder() {
   const anyLive = packLive || chestLive;
   const soldOut = !!(c?.active && !anyLive);
 
+  // Находка 23: оплата после истечения резерва при занятой квоте попадает в очередь возврата —
+  // показываем это отдельным текстом, а не «ждём оплату» (раньше неизвестный статус падал в него).
   const statusKey = (s: string) =>
-    s === 'paid' ? 'preorder.statusPaid' : s === 'granted' ? 'preorder.statusGranted' : s === 'expired' ? 'preorder.statusExpired' : 'preorder.statusIntent';
+    s === 'paid' ? 'preorder.statusPaid'
+      : s === 'granted' ? 'preorder.statusGranted'
+        : s === 'expired' ? 'preorder.statusExpired'
+          : s === 'refund_due' ? 'preorder.statusRefundDue'
+            : s === 'refunded' ? 'preorder.statusRefunded'
+              : 'preorder.statusIntent';
 
   const goReserve = (offer: OfferId, n: number) => {
     if (!connected) nav('/?connect=1&next=/preorder');

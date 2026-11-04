@@ -20,8 +20,9 @@ import { resolve } from 'node:path';
 import { checkProgramBinary } from './elf.ts';
 import { ixData, ro, rw, signer } from '@/chain/anchor';
 import { configureBubblegumTreeIx } from '@/chain/ix/chipCore';
+import { initConfigIx } from '@/chain/ix/settle';
 import { BorshWriter } from '@/chain/borsh';
-import { ARENA_ID, CHIP_CORE_ID, MARKET_ID, MPL_BUBBLEGUM_V2_ID, MPL_CORE_ID, STAKING_ID, SWITCHBOARD_ON_DEMAND_ID, SYSTEM_PROGRAM_ID } from '@/chain/ids';
+import { ARENA_ID, CHIP_CORE_ID, MARKET_ID, MPL_BUBBLEGUM_V2_ID, MPL_CORE_ID, SETTLE_ID, STAKING_ID, SWITCHBOARD_ON_DEMAND_ID, SYSTEM_PROGRAM_ID } from '@/chain/ids';
 import { LEDGER_SHARDS, allLedgerPdas, arenaConfigPda, ata, bubblegumTreeMetaPda, chipPoolPda, collectionMetaPda, configPda, emissionPda, ledgerPda, seasonPoolAuthPda, skrPoolPda, tokenPoolPda, vaultPda } from '@/chain/pdas';
 import { decodeCollectionMeta, decodeGameConfig, decodeVaultLedger, sumLedgers, type GameConfig, type VaultLedger } from '@/chain/accounts';
 import { COLLECTIONS } from '@/shared/lib/lore';
@@ -47,6 +48,9 @@ export const BATTLE_ORACLE = roleKey('battle-oracle');
 export const QUEST_ORACLE = roleKey('quest-oracle');
 export const SEASON_ORACLE = roleKey('season-oracle');
 export const SET_ORACLE = roleKey('set-oracle');
+/** mint-oracle / root-oracle программы `settle` (фаза V): подписывают выдачу и корни выплат. */
+export const MINT_ORACLE = roleKey('settle-mint-oracle');
+export const ROOT_ORACLE = roleKey('settle-root-oracle');
 /** any key works for the mock queue — the programs pin `SB_QUEUE` (devnet key on localnet) */
 export const SB_QUEUE = new PublicKey('EYiAmGSdsQTuCw413V5BzaruWuCCSDgTPtBGvLkXHbe7');
 export const SB_ORACLE = roleKey('sb-oracle').publicKey;
@@ -68,6 +72,13 @@ export interface Env {
   player(opts?: { sol?: bigint; cg?: bigint; usdc?: bigint; skr?: bigint }): Promise<Keypair>;
   /** mint more of a faucet token to an existing wallet (creates the ATA) */
   fund(to: PublicKey, token: 'usdc' | 'skr', amount: bigint): Promise<void>;
+  /**
+   * Перевод $CG в УЖЕ существующий токен-аккаунт по его адресу — не в ATA кошелька.
+   * Нужен там, где программа держит деньги на своём токен-PDA (`settle` `["rewards_vault"]`,
+   * `staking` `["vault"]`): `ata(mint, pda)` — это другой адрес, и пополнение «по владельцу»
+   * молча создаёт пустой ATA рядом, а перевод из пула потом падает на insufficient funds.
+   */
+  fundCgAccount(tokenAccount: PublicKey, amount: bigint): Promise<void>;
   refreshConfig(): Promise<GameConfig>;
   /** Sum of the `VaultLedger` shards (#12): liabilities + burned_total, the numbers `GameConfig` used to carry. */
   ledger(): Promise<LedgerTotals>;
@@ -84,6 +95,9 @@ export function programBinaries(): ProgramBinary[] {
     { id: MARKET_ID, path: dep('market') },
     { id: STAKING_ID, path: dep('staking') },
     { id: ARENA_ID, path: dep('arena') },
+    // Находка 53: `settle` в локальную сеть не загружался вовсе — ни один сценарий не мог исполнить
+    // программу, а её ошибки и аккаунты проверялись только чтением исходников.
+    { id: SETTLE_ID, path: dep('settle') },
     { id: SB_MOCK_ID, path: dep('sb_mock') },
     { id: MPL_CORE_ID, path: mplCore },
   ];
@@ -129,7 +143,7 @@ async function bootChain(): Promise<Chain> {
 }
 
 // ---------------------------------------------------------------- SEC-F7 upgrade-authority gate
-// chip_core `initialize` / arena `init_arena` accept only the program's upgrade authority, read from the
+// chip_core `initialize` / arena `init_arena` / staking `init_emission` (находка 13) accept only the program's upgrade authority, read from the
 // ProgramData account (upgradeable-loader PDA `[program_id]`). solana-test-validator gets the programs via
 // `--upgradeable-program … <admin>` (run-validator.ts); LiteSVM's `addProgram` has no ProgramData, so the
 // harness forges one (owner = loader, header `ProgramData { slot, Some(authority) }`).
@@ -268,14 +282,15 @@ export function grantBoosterIx(a: { authority: PublicKey; payer: PublicKey; owne
   });
 }
 
-export function initEmissionIx(a: { admin: PublicKey; cgMint: PublicKey; genesisTs: bigint }): TransactionInstruction {
+export function initEmissionIx(a: { admin: PublicKey; cgMint: PublicKey; genesisTs: bigint; programData?: PublicKey }): TransactionInstruction {
   const split = [EMISSION_SPLIT.chipStaking, EMISSION_SPLIT.tokenStaking, EMISSION_SPLIT.quests, EMISSION_SPLIT.pvpSeason, EMISSION_SPLIT.eventsReserve].map((p) => p * 100);
   const w = new BorshWriter().pubkey(CHIP_CORE_ID).pubkey(MARKET_ID).pubkey(ARENA_ID).pubkey(QUEST_ORACLE.publicKey).pubkey(SEASON_ORACLE.publicKey).pubkey(SET_ORACLE.publicKey);
   for (const s of split) w.u16(s);
   w.i64(a.genesisTs);
   return new TransactionInstruction({
     programId: STAKING_ID,
-    keys: [signer(a.admin), rw(emissionPda()[0]), rw(tokenPoolPda()[0]), rw(chipPoolPda()[0]), rw(a.cgMint), ro(TOKEN_PROGRAM_ID), ro(SYSTEM_PROGRAM_ID)],
+    // Находка 13: последним аккаунтом — ProgramData staking (гейт по upgrade authority).
+    keys: [signer(a.admin), rw(emissionPda()[0]), rw(tokenPoolPda()[0]), rw(chipPoolPda()[0]), rw(a.cgMint), ro(TOKEN_PROGRAM_ID), ro(SYSTEM_PROGRAM_ID), ro(a.programData ?? programDataPda(STAKING_ID))],
     data: Buffer.from(ixData('init_emission', w.toBytes())),
   });
 }
@@ -287,6 +302,17 @@ export function initSkrPoolIx(a: { admin: PublicKey; skrMint: PublicKey; maxRoot
     data: Buffer.from(ixData('init_skr_pool', new BorshWriter().u64(a.maxRootBudget).toBytes())),
   });
 }
+/**
+ * `settle::init_config` через настоящий клиентский билдер (находка 53): `programData` — тот же, что
+ * форжит LiteSVM (или `--upgradeable-program` валидатора), поэтому гейт «только upgrade authority»
+ * проверяется на исполнении, а не чтением исходника.
+ */
+export const settleInitConfigIx = (a: {
+  admin: PublicKey; mintOracle: PublicKey; rootOracle: PublicKey; treasury: PublicKey;
+  emissionCap: bigint; marketFeeBps: number; cgMint: PublicKey; usdcMint: PublicKey;
+}): TransactionInstruction =>
+  initConfigIx({ ...a, programData: programDataPda(SETTLE_ID) });
+
 export function initArenaIx(a: { admin: PublicKey; battleOracle: PublicKey; cgMint: PublicKey; seasonPool: PublicKey; treasuryCg: PublicKey; oracleDailyCap: bigint; programData?: PublicKey }): TransactionInstruction {
   const w = new BorshWriter().pubkey(a.battleOracle).pubkey(a.cgMint).pubkey(a.seasonPool).pubkey(a.treasuryCg).u64(a.oracleDailyCap);
   return new TransactionInstruction({
@@ -365,7 +391,7 @@ async function boot(): Promise<Env> {
     ({ cgMint: cg, usdcMint: usdc, skrMint: skr } = cfg);
   } else {
     // SEC-F7: the admin is the upgrade authority (validator: --upgradeable-program; LiteSVM: forged ProgramData)
-    if (chain.kind === 'litesvm') for (const id of [CHIP_CORE_ID, ARENA_ID]) await forgeProgramData(chain, id, admin.publicKey);
+    if (chain.kind === 'litesvm') for (const id of [CHIP_CORE_ID, ARENA_ID, STAKING_ID, SETTLE_ID]) await forgeProgramData(chain, id, admin.publicKey);
     // mints: $CG authority → admin now, handed to the emission PDA by init_emission; USDC/SKR stay admin-minted faucets
     cg = await createMint(chain, admin, 6, admin.publicKey);
     usdc = await createMint(chain, admin, 6, admin.publicKey);
@@ -376,6 +402,13 @@ async function boot(): Promise<Env> {
       createMintToInstruction(cg, ata(cg, admin.publicKey), admin.publicKey, 100_000_000n * 1_000_000n),
     ], { signers: [admin], label: 'cg stash' });
     await chain.send([initializeIx({ admin: admin.publicKey, treasury: TREASURY.publicKey, buyback: BUYBACK.publicKey, cg, usdc, skr, pythSol: pyth.sol.account, pythSkr: pyth.skr.account })], { signers: [admin], label: 'initialize' });
+    // settle (фаза V): конфиг создаёт только upgrade authority (находка 4), поэтому — тем же admin'ом,
+    // сразу после ProgramData. Эскроу-ATA и `rewards_vault` создаёт сам `init_config`.
+    await chain.send([settleInitConfigIx({
+      admin: admin.publicKey, mintOracle: MINT_ORACLE.publicKey, rootOracle: ROOT_ORACLE.publicKey,
+      treasury: TREASURY.publicKey, emissionCap: 1_000_000_000n * 1_000_000n, marketFeeBps: 750,
+      cgMint: cg, usdcMint: usdc,
+    })], { signers: [admin], label: 'settle init_config' });
     // #12: the LEDGER_SHARDS liability shards (permissionless, one tx)
     await chain.send(Array.from({ length: LEDGER_SHARDS }, (_, i) => initLedgerIx({ payer: admin.publicKey, shard: i })), { signers: [admin], label: 'init_ledger ×4' });
     for (let i = 0; i < COLLECTIONS.length; i++) {
@@ -407,7 +440,7 @@ async function boot(): Promise<Env> {
       createAssociatedTokenAccountIdempotentInstruction(admin.publicKey, ata(cg, emissionPda()[0]), emissionPda()[0], cg),
       initArenaIx({ admin: admin.publicKey, battleOracle: BATTLE_ORACLE.publicKey, cgMint: cg, seasonPool: ata(cg, seasonPoolAuthPda()[0]), treasuryCg: ata(cg, TREASURY.publicKey), oracleDailyCap: ORACLE_DAILY_CAP }),
     ], { signers: [admin], label: 'init_arena' });
-    for (const k of [TREASURY, BUYBACK, BATTLE_ORACLE, QUEST_ORACLE, SEASON_ORACLE, SET_ORACLE]) await chain.airdrop(k.publicKey, 2n * SOL);
+    for (const k of [TREASURY, BUYBACK, BATTLE_ORACLE, QUEST_ORACLE, SEASON_ORACLE, SET_ORACLE, MINT_ORACLE, ROOT_ORACLE]) await chain.airdrop(k.publicKey, 2n * SOL);
   }
 
   cgStash = ata(cg, admin.publicKey);
@@ -446,7 +479,12 @@ async function boot(): Promise<Env> {
     return kp;
   };
 
-  return { chain, admin, mints: { cg, usdc, skr }, config, coreCollections, coreOf, pyth, player, fund, refreshConfig, ledger, ledgerShard };
+  const fundCgAccount = async (tokenAccount: PublicKey, amount: bigint) => {
+    if (!cgStash) throw new Error('cg stash not prepared');
+    await chain.send([createTransferInstruction(cgStash, tokenAccount, admin.publicKey, amount)], { signers: [admin], label: 'fund $CG account' });
+  };
+
+  return { chain, admin, mints: { cg, usdc, skr }, config, coreCollections, coreOf, pyth, player, fund, fundCgAccount, refreshConfig, ledger, ledgerShard };
 }
 
 /**
@@ -463,10 +501,25 @@ export async function mintCg(chain: Chain, admin: Keypair, cg: PublicKey, to: Pu
   ], { signers: [admin], label: 'transfer $CG' });
 }
 
+/** `amount` из данных SPL-токен-аккаунта (offset 64) — читается по АДРЕСУ аккаунта. */
+export function tokenAmount(a: { data: Uint8Array }): bigint {
+  return new DataView(a.data.buffer, a.data.byteOffset + 64, 8).getBigUint64(0, true);
+}
+
+/** Баланс ATA кошелька `owner` по минтии `mint`. */
 export const tokenBalance = async (chain: Chain, mint: PublicKey, owner: PublicKey): Promise<bigint> => {
   const a = await chain.getAccount(getAssociatedTokenAddressSync(mint, owner, true));
-  if (!a) return 0n;
-  return new DataView(a.data.buffer, a.data.byteOffset + 64, 8).getBigUint64(0, true);
+  return a ? tokenAmount(a) : 0n;
+};
+
+/**
+ * Баланс токен-аккаунта по его адресу. Отдельно от `tokenBalance`, потому что та считает ATA
+ * кошелька: для пула самой программы (`settle` `["rewards_vault"]`, `staking` `["vault"]`) ATA —
+ * это ДРУГОЙ адрес, и «баланс пула» через неё всегда читался бы как 0.
+ */
+export const tokenAccountBalance = async (chain: Chain, account: PublicKey): Promise<bigint> => {
+  const a = await chain.getAccount(account);
+  return a ? tokenAmount(a) : 0n;
 };
 
 export { SWITCHBOARD_ON_DEMAND_ID };

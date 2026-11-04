@@ -40,8 +40,8 @@ const pad = (xs: number[]): GridChargeExpiries => [xs[0] ?? 0, xs[1] ?? 0, xs[2]
  */
 export function prepareGridChargeSyncs(db: Db, now = Math.floor(Date.now() / 1000), limit = 12): PendingGridChargeSync[] {
   db.run(`DELETE FROM grid_charge_sync WHERE stake_key NOT IN (SELECT key FROM stakes WHERE kind = 1 AND active = 1)`);
-  const rows = db.all<{ stake_key: string; since: number | null; asset: string; drops: number }>(
-    `SELECT s.key stake_key, s.since, COALESCE(cc.asset, s.key) asset, gr.charge_drops drops
+  const rows = db.all<{ stake_key: string; since: number | null; asset: string; drops: number; route_updated: number | null }>(
+    `SELECT s.key stake_key, s.since, COALESCE(cc.asset, s.key) asset, gr.charge_drops drops, gr.updated_at route_updated
        FROM stakes s
        LEFT JOIN compressed_claims cc ON cc.claim = s.key AND cc.status = 'registered' AND cc.asset IS NOT NULL
        JOIN grid_chip_routes gr ON gr.asset = COALESCE(cc.asset, s.key)
@@ -52,11 +52,17 @@ export function prepareGridChargeSyncs(db: Db, now = Math.floor(Date.now() / 100
   for (const r of rows) {
     const since = r.since!;
     const drops = Math.max(0, Math.min(GRID.chargeMax, Math.floor(r.drops || 0)));
+    // Находка 62. Срок капли отсчитывается от момента, когда она появилась у чипа, а не от начала стейка:
+    // `since` не обновляется никогда (проекция хранит ПЕРВЫЙ стейк), поэтому у чипа, застейканного больше
+    // 7 дней назад, срок `since + окно` уже в прошлом и первый же проход оракула стирал свежие капли.
+    // `grid_chip_routes.updated_at` пишется при каждом изменении счётчика (выдача и трата), `since`
+    // остаётся нижней границей — раньше начала стейка капля появиться не могла.
+    const anchor = Math.max(since, Math.min(r.route_updated ?? now, now));
     const sync = db.get<{ asset: string; staked_since: number; expiries: string; synced_at: number | null }>(
       `SELECT asset, staked_since, expiries, synced_at FROM grid_charge_sync WHERE stake_key = ?`, r.stake_key);
     let expiries = sync && sync.staked_since === since && sync.asset === r.asset
       ? parseExpiries(sync.expiries)
-      : Array.from({ length: drops }, () => since + GRID_CHARGE_WINDOW_SECS);
+      : Array.from({ length: drops }, () => anchor + GRID_CHARGE_WINDOW_SECS);
     if (expiries.length < drops) expiries.push(...Array.from({ length: drops - expiries.length }, () => now + GRID_CHARGE_WINDOW_SECS));
     if (expiries.length > drops) expiries = expiries.slice(expiries.length - drops); // consumption burns the earliest-expiring droplet first
     expiries.sort((a, b) => a - b);

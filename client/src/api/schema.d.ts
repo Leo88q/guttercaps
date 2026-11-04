@@ -468,6 +468,8 @@ export interface paths {
                             packs?: components["schemas"]["PendingPack"][];
                             compressed?: components["schemas"]["CompressedSettlement"][];
                             fusions?: components["schemas"]["PendingFusion"][];
+                            battles?: components["schemas"]["PendingBattle"][];
+                            phaseV?: components["schemas"]["PendingPhaseVOrder"][];
                         };
                     };
                 };
@@ -882,10 +884,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Buy one extra run for 30 $CG (docs/16 §5.1) — $CG only, every coin is burned
-         * @description Same settlement as a Deep Flood attempt: the on-chain `pay_service` of kind `lineExtraRun` is
-         *     found by signature, must be $CG and exactly 30 $CG, and is consumed exactly once. Other rails buy
-         *     nothing here — the point of the price is the burn, not the revenue.
+         * RETIRED — extra runs are no longer for sale (always 410 line_retired)
+         * @description Снято с продажи (находка 63): услуга `lineExtraRun` помечена `retired`, покупка закрыта и всегда
+         *     отвечает `410 line_retired`, платёж при этом НЕ списывается. Кредиты, выданные до снятия,
+         *     доигрываются обычным `POST /me/line/runs` — новых покупка не создаёт.
          */
         post: {
             parameters: {
@@ -904,7 +906,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description credits */
+                /** @description retired — не возвращается (услуга снята с продажи) */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -916,15 +918,8 @@ export interface paths {
                         };
                     };
                 };
-                /** @description payment_not_found · cg_burn_required (not $CG, or not exactly 30 $CG) · ref_hash_mismatch · payment_consumed */
-                402: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description run_credit_cap — the daily paid-run cap is reached */
-                409: {
+                /** @description line_retired — доп. заезды сняты с продажи (находка 63) */
+                410: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -989,11 +984,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Enter the day’s tournament — one 30 $CG payment buys one attempt credit
-         * @description Same settlement as an extra run: the on-chain `pay_service` of kind `lineTournamentEntry`
-         *     is found by signature, must be $CG and exactly 30 $CG, and is consumed exactly once.
-         *     The ref-hash binds the payment to the day. The credit is spent by the next
-         *     `tournament: true` run submission.
+         * RETIRED — tournament entries are no longer for sale (always 410 line_retired)
+         * @description Снято с продажи (находка 63): услуга `lineTournamentEntry` помечена `retired`, покупка входа
+         *     закрыта и всегда отвечает `410 line_retired`, платёж НЕ списывается. Входы, купленные до
+         *     снятия, остаются в состоянии (`entries.unused`) и тратятся турнирным заездом.
          */
         post: {
             parameters: {
@@ -1013,7 +1007,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description entries */
+                /** @description retired — не возвращается (услуга снята с продажи) */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1025,22 +1019,8 @@ export interface paths {
                         };
                     };
                 };
-                /** @description bad_day (not today) · bad_signature */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description payment_not_found · cg_burn_required (not $CG, or not exactly 30 $CG) · ref_hash_mismatch · payment_consumed */
-                402: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description run_credit_cap — the daily paid-run cap is shared with extra runs */
-                409: {
+                /** @description line_retired — входы в турнир сняты с продажи (находка 63) */
+                410: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -6874,6 +6854,216 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/pack-refunds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Refund queue (находка 32) — orders paid after expiry whose wallet cap was already taken by another order; money is queued, not delivered */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description queue */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            orders?: components["schemas"]["PackOrder"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/pack-refunds/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a queued refund as done — the treasury transfer signature is the proof (packOrders.markRefunded, audited, idempotent) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        signature: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description order */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PackOrder"];
+                    };
+                };
+                /** @description signature missing */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description unknown order */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not awaiting a refund / already refunded */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/preorder-refunds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pre-sale refund queue (находка 23) — reservations paid after expiry whose quota went to another buyer */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description queue */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            reservations?: components["schemas"]["PreorderItem"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/preorder-refunds/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a queued refund as done — the multisig transfer signature is the proof (preorders.markRefunded, audited, idempotent) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        signature: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description reservation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PreorderItem"];
+                    };
+                };
+                /** @description signature missing */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description unknown reservation */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not awaiting a refund / already refunded */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/kpi": {
         parameters: {
             query?: never;
@@ -8277,7 +8467,12 @@ export interface components {
             mint?: string | null;
             memo?: string;
             /** @enum {string} */
-            status?: "created" | "paid" | "minted" | "expired" | "failed";
+            status?: "created" | "paid" | "minted" | "expired" | "failed" | "refund_due" | "refunded";
+            /** @description refund_due: why the paid order is held (starter_claimed / daily_cap) — находка 32 */
+            refundReason?: string | null;
+            refundedAt?: number | null;
+            /** @description treasury transfer signature that proves the refund */
+            refundSig?: string | null;
             seedHash?: string;
             seed?: string | null;
             txSig?: string | null;
@@ -8300,6 +8495,12 @@ export interface components {
             auth?: {
                 wallet?: string;
                 orderId?: string;
+                /** @description сумма эскроу в базовых единицах — входит в подписанное сообщение (V2, п. 55) */
+                amount?: string;
+                /** @description 0 SOL / 1 USDC / 2 CG — входит в подписанное сообщение (V2, п. 55) */
+                currency?: number;
+                /** @description слот создания заказа на цепи — подпись привязана к экземпляру заказа, а не к номеру (V2, п. 16) */
+                orderSlot?: string;
                 specsHash?: string;
                 nonce?: string;
                 expiresAtSlot?: string;
@@ -8450,8 +8651,11 @@ export interface components {
             /** @enum {string} */
             currency: "SOL" | "USDC" | "SKR";
             lamports: string;
-            /** @enum {string} */
-            status: "intent" | "paid" | "granted" | "expired";
+            /**
+             * @description refund_due = paid after the reservation expired and the quota went to someone else (находка 23); refunded = the multisig refund transfer is recorded
+             * @enum {string}
+             */
+            status: "intent" | "paid" | "granted" | "expired" | "refund_due" | "refunded";
             /** @description the verified mainnet payment signature */
             tx_sig?: string | null;
             /** @description PendingPack nonce once granted on-chain */
@@ -8460,6 +8664,11 @@ export interface components {
             created_at: number;
             paid_at?: number | null;
             granted_at?: number | null;
+            /** @description refund_due: why the paid reservation is held (sold_out) */
+            refund_reason?: string | null;
+            refunded_at?: number | null;
+            /** @description the multisig transfer signature that proves the refund */
+            refund_sig?: string | null;
             memo?: string;
             expiresAt?: number;
         };
@@ -8473,6 +8682,13 @@ export interface components {
             maxLamports?: string;
             /** @description USD price after discounts (what the program converts) */
             priceUsdCents?: number;
+            /**
+             * @description chain: параметры SKU прочитаны из GameConfig (тех же, что видит buy_pack); package: конфигурацию прочитать не удалось и в силе таблица сборки — такую котировку цепь может отклонить (Slippage/SkuDisabled/DailyCapReached)
+             * @enum {string}
+             */
+            priceSource?: "chain" | "package";
+            /** @description слот, на котором прочитан GameConfig; null при priceSource=package */
+            quotedAtSlot?: number | null;
             rentReserveLamports?: string;
             /** @description frozen SOL/USD ($110) */
             solUsd?: number;
@@ -8555,18 +8771,75 @@ export interface components {
             qty?: number;
             opened?: number;
             commitSlot?: number;
+            /** @description голова индексатора по слоту — тот же слот, по которому решает assert_refundable */
             currentSlot?: number;
             randomness?: components["schemas"]["Pubkey"];
-            /** @enum {string} */
+            /**
+             * @description stale = commit_slot + STALE_PACK_SLOTS позади головы: цепь примет cancel_stale_pack, игрок может вернуть деньги
+             * @enum {string}
+             */
             status?: "awaiting_reveal" | "revealing" | "opening" | "stale";
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description оценка времени, когда возврат станет возможен (0,4 с на слот); решение всегда по слоту, не по часам
+             */
             staleAt?: string;
+            /** @description commit_slot + STALE_PACK_SLOTS — граница возврата */
+            refundSlot?: number;
+            /**
+             * @description чем была оплачена покупка: для токенной оплаты клиенту нужен минт, чтобы собрать cancel_stale_pack
+             * @enum {string}
+             */
+            currency?: "SOL" | "USDC" | "CG" | "SKR";
             /** @description set when this pending is a free quest chip: { template, odds[9] bps, soulboundDays } — opened by the same open_pack crank; nothing to refund but the rent reserve */
             voucher?: {
                 template?: number;
                 odds?: number[];
                 soulboundDays?: number;
             } | null;
+        };
+        /** @description Невыданный заказ фазы V — оплата лежит в эскроу на PDA заказа. Возврат (`refund_pack`, подпись покупателя) открывается слотом `created_slot + REFUND_AFTER_SLOTS`; разрешён ли он сейчас, клиент определяет чтением PDA заказа (находка 80). */
+        PendingPhaseVOrder: {
+            /** @description номер заказа = order_id в программе (decimal string) */
+            orderId?: string;
+            sku?: number;
+            qty?: number;
+            /** @enum {string} */
+            currency?: "SOL" | "USDC" | "CG";
+            /** @description оплачено, в нативных единицах валюты */
+            amount?: string;
+            /** @description минт для USDC/CG; null для SOL */
+            mint?: string | null;
+            /** @description подпись `escrow_buy_pack` — доказательство оплаты */
+            escrowSig?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            paidAt?: string | null;
+        };
+        /** @description Незакрытый бой кошелька. `cancel_stale_battle` требует подписи стороны, поэтому без этой строки возврат ставки невозможен из продукта (находка 46). */
+        PendingBattle: {
+            battle?: components["schemas"]["Pubkey"];
+            challenger?: components["schemas"]["Pubkey"];
+            /** @description null, пока бой никто не принял */
+            opponent?: string | null;
+            /** @description $CG за сторону, decimal string */
+            wager?: string;
+            /** @enum {string} */
+            status?: "open" | "accepted";
+            powerA?: number;
+            powerB?: number | null;
+            /** @description той же границей, что проверяет цепь: создатель открытого боя — сразу, принятый — после accepted_at + RESOLVE_TIMEOUT */
+            refundable?: boolean;
+            /** @enum {string} */
+            reason?: "creator" | "timeout" | "not_stale" | "unknown_time" | "not_side";
+            /**
+             * Format: date-time
+             * @description когда откроется окно; null — уже открыто либо не откроется
+             */
+            refundAt?: string | null;
+            /** Format: date-time */
+            acceptedAt?: string | null;
         };
         PendingFusion: {
             nonce?: string;
@@ -9419,6 +9692,13 @@ export interface components {
                 week?: number;
                 drawnAt?: number;
                 slot?: number;
+                /** @description находка 57 — хеш энтропии розыгрыша; NULL у записей до правки (сид v1) */
+                entropyHex?: string | null;
+                /**
+                 * @description blockhash (проверяемо по цепи) | server_nonce (RPC не отдал блок)
+                 * @enum {string|null}
+                 */
+                entropySource?: "blockhash" | "server_nonce" | null;
                 seedHex?: string;
                 ticketsHash?: string;
                 totalWeight?: string;
@@ -9476,10 +9756,10 @@ export interface components {
             /** @description micro-$CG actually credited after daily/weekly caps */
             creditedCgMicro?: string | null;
             /**
-             * @description why finished quests are not paid; human_check_required = pass the Turnstile challenge (POST /me/human) — settlement waits
+             * @description why finished quests are not paid; human_check_required = pass the Turnstile challenge (POST /me/human) — settlement waits; device_fingerprint_required = the sign-in carried no device fingerprint (находка 66), rewards are held until the client sends one — settlement waits too
              * @enum {string|null}
              */
-            ineligibleReason?: "account_too_new" | "play_10_matches_or_buy_a_pack" | "rewards_paused" | "device_limit" | "human_check_required" | null;
+            ineligibleReason?: "account_too_new" | "play_10_matches_or_buy_a_pack" | "rewards_paused" | "device_limit" | "device_fingerprint_required" | "human_check_required" | null;
             /** Format: date-time */
             resetsAt?: string | null;
         };

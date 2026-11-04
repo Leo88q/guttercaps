@@ -190,8 +190,48 @@ export const HUMAN_CHECK_ENABLED = !HUMAN_CHECK_OPT_OUT && TURNSTILE_SECRET.leng
 export const HUMAN_CHECK_TTL_S = Number(env.HUMAN_CHECK_TTL_S ?? 7 * 86_400);
 /** Device dedupe: wallets beyond this many on one device (salted client fingerprint) earn no quest / SKR rewards. */
 export const DEVICE_MAX_WALLETS = Number(env.DEVICE_MAX_WALLETS ?? 3);
+/**
+ * Находка 66. Отпечаток устройства — не подсказка, а условие наградной операции: без него счётчик
+ * «3 кошелька на устройство» слеп, и один телефон с 50 кошельками получает 50× (фронт отпечаток
+ * всегда отправляет при входе, так что честный игрок этого требования не замечает). Включается
+ * вместе с Turnstile — то есть в проде, где `TURNSTILE_SECRET` обязателен; `DEVICE_FINGERPRINT_REQUIRED=0`
+ * оставлен для инцидентов и поддержки, `flags.trusted` обходит гейт всегда.
+ */
+export const DEVICE_FINGERPRINT_REQUIRED = HUMAN_CHECK_ENABLED && (env.DEVICE_FINGERPRINT_REQUIRED ?? '1') !== '0';
 /** Salt for device hashes (never store the raw fingerprint). Defaults to the session secret (ephemeral in dev). */
 export const DEVICE_SALT = env.DEVICE_SALT ?? SESSION_SECRET;
+
+/**
+ * Находка 10, решение владельца 2026-11-03: режим «production без исполнения политики» существует, но
+ * только как осознанный выбор с громким следом. Значение обязано быть названо (дефолта нет: тихое
+ * наследование `0` из чужого `.env` — это ровно та ошибка, из-за которой находка появилась).
+ */
+export function complianceProblem(raw: string | undefined): string | null {
+  if (raw === '1' || raw === '0') return null;
+  return 'COMPLIANCE_ENFORCE must be stated explicitly in production: `1` = access-policy.json is enforced, `0` = age/market gates are off on purpose (находка 10)';
+}
+/** `0` разрешён (решение владельца), но каждый старт печатает это в лог — режим видно, а не угадывается. */
+export function complianceNotice(raw: string | undefined): string | null {
+  return raw === '0'
+    ? 'COMPLIANCE_ENFORCE=0: возрастные и рыночные гейты ВЫКЛЮЧЕНЫ для всех, backend/access-policy.json не применяется. Это осознанное решение владельца (находка 10); возврат — `1` вместе с доверенным источником страны (GEO_TRUST_HEADER=1).'
+    : null;
+}
+
+/**
+ * Находка 60, решение владельца 2026-11-03 — «один эталонный профиль»: набор гейтов либо валиден, либо
+ * старт падает с парой «X требует Y». Проверяются те пары, где именно несогласованность двух значений
+ * даёт конфигурацию, которая выглядит настроенной, а работает иначе; требования фазы к ключам и гео-гейт
+ * проверяются ниже (`assertProductionConfig`), своими сообщениями того же вида.
+ */
+export function prodProfileProblems(o: Record<string, string | undefined>): string[] {
+  const problems: string[] = [];
+  const compliance = complianceProblem(o.COMPLIANCE_ENFORCE);
+  if (compliance) problems.push(compliance);
+  const phase = o.LAUNCH_PHASE ?? '';
+  if (!['', 'full', 'g', 'v'].includes(phase)) problems.push(`LAUNCH_PHASE must be full|g|v, got \`${phase}\``);
+  if (phase === 'g' && o.HUMAN_CHECK === '0') problems.push('LAUNCH_PHASE=g requires the human check (HUMAN_CHECK≠0): phase G mints real packs from the backend, and the reward faucets are the same process');
+  return problems;
+}
 
 /**
  * Production fail-fast (SEC-M4): refuse to start with dev defaults that would silently weaken
@@ -268,9 +308,12 @@ export function assertProductionConfig(): void {
   // so the file that says "18+ and not BE/NL" was simply not being read. Stating it is now
   // mandatory. The geo half was already fail-closed: `geoOf` returns `country: null` unless
   // `GEO_TRUST_HEADER=1`, and `geoMisconfiguration` above refuses a gate that is on but untrusted.
-  if (env.COMPLIANCE_ENFORCE !== '1') {
-    problems.push('COMPLIANCE_ENFORCE=1 is required — it is the switch that makes backend/access-policy.json real (packs denied in BE/NL, minimumAge 18); unset or 0 used to mean "no age or market enforcement anywhere", including production');
-  }
+  // Находка 10 (решение владельца 2026-11-03): значение обязано быть названо, `0` разрешён и печатает
+  // предупреждение на каждом старте. Раньше код требовал `1`, а документы и compose говорили `0` —
+  // дефолтный `ops:up` не поднимался вовсе.
+  problems.push(...prodProfileProblems(env));
+  const complianceWarning = complianceNotice(env.COMPLIANCE_ENFORCE);
+  if (complianceWarning) console.warn(`[compliance] ${complianceWarning}`);
   if (problems.length) throw new Error(`refusing to start in production:\n  - ${problems.join('\n  - ')}`);
 }
 

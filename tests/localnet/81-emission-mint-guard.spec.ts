@@ -17,7 +17,7 @@ import { decodeEmissionState } from '@/chain/accounts';
 import { STAKING_ID } from '@/chain/ids';
 import { emissionPda } from '@/chain/pdas';
 import { LiteSvmChain } from './helpers/chain';
-import { binariesPresent, initEmissionIx, programBinaries } from './helpers/env';
+import { binariesPresent, forgeProgramData, initEmissionIx, programBinaries } from './helpers/env';
 import { Err, expectAnyFail, expectFail } from './helpers/expect';
 
 const bins = binariesPresent();
@@ -51,6 +51,9 @@ suite('T-L-SEC-F1 init_emission $CG mint guard', () => {
   beforeAll(async () => {
     chain = await LiteSvmChain.create(programBinaries().filter((p) => p.id.equals(STAKING_ID)));
     admin = chain.admin;
+    // Находка 13: `init_emission` пускает только upgrade authority программы. LiteSVM не создаёт
+    // ProgramData, поэтому подкладываем заголовок с admin в роли authority (см. suite 82).
+    await forgeProgramData(chain, STAKING_ID, admin.publicKey);
   });
 
   it('F1a a mint that still has a freeze authority → BadMint (nothing is created)', async () => {
@@ -65,12 +68,16 @@ suite('T-L-SEC-F1 init_emission $CG mint guard', () => {
     expect(await chain.getAccount(emissionPda()[0])).toBeNull();
   });
 
-  it('F1c a stranger cannot bind a mint he is not the authority of (the real $CG cannot be hijacked by front-running init_emission)', async () => {
+  it('F1c a stranger cannot bind a mint (front-running init_emission is refused at the upgrade-authority gate, находка 13)', async () => {
     const m = await mint({ authority: admin });
     const stranger = Keypair.generate();
     await chain.airdrop(stranger.publicKey, 2_000_000_000n);
-    await expectFail(init(stranger, m), Err.token(4 /* OwnerMismatch */), 'set_authority by a non-authority');
+    // До находки 13 отказ приходил из SPL Token (set_authority чужого mint), теперь — раньше, из
+    // самого `init_emission`: чужой подписант не является upgrade authority программы.
+    await expectFail(init(stranger, m), Err.staking('NotUpgradeAuthority'), 'stranger is not the upgrade authority');
     expect(await chain.getAccount(emissionPda()[0])).toBeNull();
+    // Легальная инициализация тем же mint проверяется в F1d: singleton общий на весь suite, и
+    // «доказать, что admin может» здесь значило бы занять `emission` до F1d.
   });
 
   it('F1d exactly the non-play allocation is accepted; the mint authority moves to the emission PDA; a second init_emission fails (A6)', async () => {

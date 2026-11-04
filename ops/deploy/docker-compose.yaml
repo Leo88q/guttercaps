@@ -54,20 +54,34 @@ services:
       dockerfile: ops/deploy/Dockerfile.client
       args:
         # Build args, not runtime env: the bundle is baked with these (see Dockerfile.client).
+        # Имена совпадают с тем, что читает client/src/app/config.ts (находка 6). Раньше здесь были
+        # VITE_SOLANA_RPC/VITE_SOLANA_WS (приложение их не читает), а VITE_RPC_URL/VITE_DAS_RPC_URL/
+        # VITE_LAUNCH_PHASE/флаги не передавались вовсе: браузер шёл на публичный clusterApiUrl, а
+        # фазовый запуск (LAUNCH_PHASE=g|v) выглядел как full.
         VITE_CLUSTER: ${VITE_CLUSTER:-mainnet-beta}
-        VITE_SOLANA_RPC: ${VITE_SOLANA_RPC:?client build needs a mainnet RPC URL}
-        VITE_API_BASE: /
+        VITE_RPC_URL: ${VITE_RPC_URL:?client build needs an RPC URL the browser may use}
+        VITE_RPC_WS_URL: ${VITE_RPC_WS_URL:-}
+        VITE_DAS_RPC_URL: ${VITE_DAS_RPC_URL:-}
+        # Находка 5: `VITE_API_BASE: /` давал `//me` → `new URL('//me', origin)` = host «me», то есть
+        # каждый запрос уходил на чужой хост. nginx проксирует /v1/ → api, поэтому база — `/v1`.
+        VITE_API_BASE: /v1
         VITE_WS_BASE: /ws
         VITE_PROGRAM_CHIP_CORE: ${PROGRAM_CHIP_CORE:?}
         VITE_PROGRAM_MARKET: ${PROGRAM_MARKET:?}
         VITE_PROGRAM_STAKING: ${PROGRAM_STAKING:?}
         VITE_PROGRAM_ARENA: ${PROGRAM_ARENA:?}
+        VITE_PROGRAM_SETTLE: ${PROGRAM_SETTLE:?}
         VITE_CG_MINT: ${CG_MINT:?}
         VITE_USDC_MINT: ${USDC_MINT:?}
         VITE_SKR_MINT: ${SKR_MINT:?}
         VITE_LOOKUP_TABLE: ${LOOKUP_TABLE:-}
-        VITE_TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
-        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+        VITE_LAUNCH_PHASE: ${LAUNCH_PHASE:-full}
+        VITE_FLAG_GEO_GATE: ${VITE_FLAG_GEO_GATE:-0}
+        VITE_FLAG_AGE_GATE: ${VITE_FLAG_AGE_GATE:-0}
+        VITE_FLAG_LIMITED_PACK: ${VITE_FLAG_LIMITED_PACK:-0}
+        VITE_FLAG_DEBUG_PANEL: ${VITE_FLAG_DEBUG_PANEL:-0}
+        VITE_ONRAMP_URL: ${VITE_ONRAMP_URL:-}
+        VITE_DAPP_STORE_URL: ${VITE_DAPP_STORE_URL:-}
     image: ${CLIENT_IMAGE:-guttercaps/client:local}
     restart: unless-stopped
     depends_on:
@@ -110,8 +124,11 @@ services:
       # Legal gating of paid randomised packs stays off until counsel signs off (docs/09 §5.2 + §7).
       # It is here, and not in backend/.env, because turning it on is a deployment decision that needs the
       # edge to be Cloudflare: `GEO_GATE=shop` alone does nothing — see backend/src/geo.ts.
-      # Temporary owner-selected all-regions mode; keep both age/geo and legacy pack gate off.
-      COMPLIANCE_ENFORCE: ${COMPLIANCE_ENFORCE:-0}
+      # Находка 10: здесь БЫЛ дефолт `0`, а `NODE_ENV=production` выше заставляет config.ts требовать `1`:
+      # дефолтный `ops:up` из этой же папки не поднимался НИКОГДА (контейнер падал на старте). Дефолта
+      # больше нет — значение обязано быть сказано явно, и первое же `docker compose config`/запуск
+      # покажет, чего не хватает, вместо тихого наследования решения, которое противоречит fail-fast.
+      COMPLIANCE_ENFORCE: ${COMPLIANCE_ENFORCE:?set explicitly — 1 = enforce access-policy.json, 0 = age/market gates off on purpose (the API refuses to start while NODE_ENV=production if the value is unset or not 0/1; 0 logs a loud warning on every boot); see runbook «Возраст, доступ»}
       GEO_GATE: ${GEO_GATE:-off}
       GEO_TRUST_HEADER: ${GEO_TRUST_HEADER:-0}
       GEO_RESTRICT_COUNTRIES: ${GEO_RESTRICT_COUNTRIES:-BE,NL}

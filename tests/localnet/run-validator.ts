@@ -24,6 +24,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { Keypair, PublicKey } from '@solana/web3.js';
+import { programIdsFromToml } from '../../scripts/lib/anchor-ids.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const PORT = Number(process.env.RPC_PORT ?? 8899);
@@ -32,13 +33,26 @@ const CLONE_URL = process.env.VALIDATOR_URL ?? 'https://api.mainnet-beta.solana.
 const LEDGER = resolve(ROOT, 'test-ledger');
 const OUT = resolve(ROOT, 'target/localnet');
 
-const PROGRAMS = [
-  ['GCRhrg6mc7zH1VdXG5rX3tQEpgu8Gptf27vdsJGV7G8q', 'chip_core'],
-  ['GCA2aUeX7ZFbGz3zvjqvsbjD1G3QjWxLhBpK5jwwPdcz', 'market'],
-  ['GCuGx7fnLcKnw1NWU4dLzQvnJWggMVniQ4u7EuMaQevA', 'staking'],
-  ['GCfERiohebYDJLtNwAZpGxudwbXRqnxmuTT413fkTYrM', 'arena'],
-  ['ApDh35vcLCxXc5ivaRGFhayn1HduJ9b2nXbfR6WMpVKH', 'sb_mock'],
-] as const;
+/**
+ * Id программ берутся из `Anchor.toml` `[programs.localnet]` — единственного источника истины
+ * (`npm run program-ids -- apply` пишет его вместе с `declare_id!`). До этого здесь был захардкожен
+ * ДРУГОЙ набор (`GCRhrg…`, `GCA2aU…`, `GCuGx7…`, `GCfERi…`): ни один из этих адресов не совпадает с
+ * `declare_id!` программ, поэтому валидатор поднимал программы по адресам, которых нет в бандлах, а
+ * `settle` (пятая программа) не загружался вовсе — то есть локальная сеть не могла исполнить ни одну
+ * из них, и находка 53 «settle не исполняется ни одним тестом» была структурной, а не забывчивостью.
+ */
+const SB_MOCK_ID = 'ApDh35vcLCxXc5ivaRGFhayn1HduJ9b2nXbfR6WMpVKH'; // localnet-only, не в [programs.localnet]
+
+function localnetPrograms(): [id: string, name: string][] {
+  const ids = programIdsFromToml(resolve(ROOT, 'Anchor.toml'), 'localnet');
+  // sb_mock — localnet-only стенд Switchboard; он входит в секцию, но .so для него нет.
+  return [
+    ...ids.filter((p) => p.name !== 'sb_mock').map((p): [string, string] => [p.id, p.name]),
+    [SB_MOCK_ID, 'sb_mock'],
+  ];
+}
+
+const PROGRAMS: [string, string][] = localnetPrograms();
 const MPL_CORE = 'CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d';
 const PYTH_RECEIVER = 'rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ';
 
@@ -111,7 +125,13 @@ async function main() {
   rmSync(LEDGER, { recursive: true, force: true });
   const args = ['--reset', '--quiet', '--ledger', LEDGER, '--rpc-port', String(PORT), '--limit-ledger-size', '50000000'];
   // upgradeable with the admin as upgrade authority: chip_core `initialize` / arena `init_arena` check it (SEC-F7)
-  for (const [id, name] of PROGRAMS) args.push('--upgradeable-program', id, resolve(ROOT, 'target/deploy', `${name}.so`), walletPath);
+  for (const [id, name] of PROGRAMS) {
+    const so = resolve(ROOT, 'target/deploy', `${name}.so`);
+    // Явная ошибка вместо молчаливого «валидатор поднялся без программы»: без .so любая инструкция
+    // падает с AccountNotFound, и тест выглядит как дефект программы.
+    if (!existsSync(so)) throw new Error(`[run-validator] ${so} missing — run npm run localnet:build (anchor build) first`);
+    args.push('--upgradeable-program', id, so, walletPath);
+  }
   const mplSo = process.env.MPL_CORE_SO ?? (existsSync(resolve(ROOT, 'tests/localnet/fixtures/mpl_core.so')) ? resolve(ROOT, 'tests/localnet/fixtures/mpl_core.so') : undefined);
   const recSo = process.env.PYTH_RECEIVER_SO ?? (existsSync(resolve(ROOT, 'tests/localnet/fixtures/pyth_receiver.so')) ? resolve(ROOT, 'tests/localnet/fixtures/pyth_receiver.so') : undefined);
   if (mplSo) args.push('--bpf-program', MPL_CORE, mplSo); else args.push('--url', CLONE_URL, '--clone-upgradeable-program', MPL_CORE);

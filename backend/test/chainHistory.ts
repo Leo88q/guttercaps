@@ -220,6 +220,7 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
   const chipsOf = (owner: string, f: (c: Chip) => boolean) => [...chips.entries()].filter(([, c]) => c.owner === owner && f(c));
   const pad5 = <T,>(xs: readonly T[], fill: T): T[] => [...xs, ...Array<T>(Math.max(0, MAX_CHIPS_PER_PACK - xs.length)).fill(fill)];
 
+  let rootRevoked = false;
   const maxEvents = opts.maxEvents && opts.maxEvents > 0 ? opts.maxEvents : Number.POSITIVE_INFINITY;
   for (iCur = 0; iCur < txsWanted && stats.events < maxEvents; iCur++) {
     const i = iCur;
@@ -304,8 +305,30 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
       const epoch = (epochs.get(kind) ?? 0) + 1;
       epochs.set(kind, epoch);
       lastRoot = { kind, epoch };
-      yield* emit([{ program: 'staking', name: 'RootPublished', data: { kind, epoch, root: hex32(epoch * 7 + kind), budget: usd(rnd, 10, 900) } }]);
-      if (rnd() < 0.3) yield* emit([{ program: 'staking', name: 'RootRevoked', data: { kind, epoch } }]);
+      const rootTx: { program: ProgramName; name: string; data: EventData }[] = [
+        { program: 'staking', name: 'RootPublished', data: { kind, epoch, root: hex32(epoch * 7 + kind), budget: usd(rnd, 10, 900) } },
+        // Находка 54: та же эпоха глазами программы `settle` (якорь корня + клейм) — та же транзакция и
+        // детерминированные значения, чтобы не сдвинуть поток случайности остального корпуса.
+        // Находка 49: у корня `settle` появился бюджет — событие и проекция его несут.
+        { program: 'settle', name: 'RootAnchored', data: { kind, epoch, root: hex32(epoch * 7 + kind), budget: String(1_000_000 * (1 + (epoch % 7))) } },
+        { program: 'settle', name: 'RewardClaimed', data: { claimant: actor, kind, epoch, amount: String(1_000_000 + i) } },
+      ];
+      if (epoch === 1) rootTx.push(
+        { program: 'settle', name: 'ConfigInitialized', data: { admin: fixtureAddr(seed, 'settle-admin', 0), mintOracle: fixtureAddr(seed, 'oracle', 0), treasury: fixtureAddr(seed, 'treasury', 0) } },
+        { program: 'settle', name: 'OraclesUpdated', data: { admin: fixtureAddr(seed, 'settle-admin', 0), mintOracle: fixtureAddr(seed, 'oracle', 0), rootOracle: fixtureAddr(seed, 'oracle', 1), treasury: fixtureAddr(seed, 'treasury', 0) } },
+        { program: 'settle', name: 'LimitsUpdated', data: { admin: fixtureAddr(seed, 'settle-admin', 0), emissionCap: String(10_000_000_000), marketFeeBps: 500, packsPaused: false } },
+      );
+      yield* emit(rootTx);
+      if (rnd() < 0.3) {
+        // Находка 49: тот же отзыв глазами `settle` (`revoke_root`) — с тем же (kind, epoch) и в той же
+        // транзакции, иначе обработчик `RootRevokedEvent` не получает ни одного события. Один `emit`, а не
+        // два: лишний вызов сдвинул бы поток случайности и весь корпус ниже по течению.
+        rootRevoked = true;
+        yield* emit([
+          { program: 'staking', name: 'RootRevoked', data: { kind, epoch } },
+          { program: 'settle', name: 'RootRevokedEvent', data: { kind, epoch, totalClaimed: String(1_000_000 + i), budget: String(1_000_000 * (1 + (epoch % 7))) } },
+        ]);
+      }
       continue;
     }
     if (roll < 0.17) {
@@ -317,7 +340,7 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
       for (let n = 0; n < qty; n++) {
         const count = 1 + Math.floor(rnd() * MAX_CHIPS_PER_PACK);
         const assets = Array.from({ length: count }, () => mintChip(actor, Math.floor(rnd() * 8) /* 0..7: the 8-collection universe */, Math.floor(rnd() * 5), false));
-        yield* emit([{
+        const opened: { program: ProgramName; name: string; data: EventData }[] = [{
           program: 'chip_core', name: 'PackOpened', data: {
             buyer: actor, sku, nonce: String(nonce),
             assets: pad5(assets, NULL_ADDR),
@@ -325,7 +348,20 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
             collections: pad5(assets.map((a) => chips.get(a)!.collection), 0),
             count, roll: hex32(i * 31 + n), pityBefore: Math.floor(rnd() * 30), pityAfter: Math.floor(rnd() * 30),
           },
-        }]);
+        }];
+        // Находка 54: та же покупка по фазе V идёт через программу `settle` — эскроу, settle_pack и (изредка)
+        // возврат. События едут В ЭТОЙ ЖЕ транзакции и с детерминированными значениями (`i`, не `rnd()`):
+        // иначе вставка добавила бы транзакции/сдвинула поток случайности и переписала весь корпус, а тест
+        // перестал бы проверять то, что проверял.
+        if (n === 0) {
+          const orderId = String(100_000 + i);
+          opened.push(
+            { program: 'settle', name: 'PackEscrowed', data: { buyer: actor, orderId, currency: i % 3, amount: String(33_000_000 + i) } },
+            { program: 'settle', name: 'PackSettled', data: { buyer: actor, orderId, leaves: 1 + (i % 4) } },
+          );
+          if (i % 7 === 0) opened.push({ program: 'settle', name: 'PackRefunded', data: { buyer: actor, orderId, amount: String(20_000_000 + i) } });
+        }
+        yield* emit(opened);
       }
       if (rnd() < 0.08) yield* emit([{ program: 'chip_core', name: 'PackCancelled', data: { buyer: actor, nonce: String(nonceFor(actor)), refunded: usd(rnd, 33, 200) } }]);
       continue;
@@ -652,6 +688,13 @@ export function* walkHistory(opts: HistoryOpts = {}): Generator<TxLike, HistoryS
     if (rnd() < 0.15) yield* emit([{ program: 'arena', name: 'ArenaConfigChanged', data: { by: wallets[0]!, battleOracle: fixtureAddr(seed, 'oracle', 4), oracleDailyCap: usd(rnd, 100_000, 200_000), treasuryCg: fixtureAddr(seed, 'treasury', 0) } }]);
     if (rnd() < 0.1) yield* emit([{ program: 'chip_core', name: 'CollectionCreated', data: { by: wallets[0]!, idx: Math.floor(rnd() * 8), coreCollection: fixtureAddr(seed, 'collection', Math.floor(rnd() * 8)) } }]);
 
+  }
+  // Находка 49: отзыв корня обязан встретиться в корпусе хотя бы раз — иначе обработчик
+  // `RootRevokedEvent` реплеем не проверяется вовсе. Обычно событие приносит основная ветка (30 % на
+  // корень); здесь — страховка для коротких корпусов, и `rnd()` она не трогает, пока не сработала.
+  if (!rootRevoked && lastRoot) {
+    rootRevoked = true;
+    yield* emit([{ program: 'settle', name: 'RootRevokedEvent', data: { kind: lastRoot.kind, epoch: lastRoot.epoch, totalClaimed: '0', budget: '1000000' } }]);
   }
   // the rest of the missed transactions: out of slot order by construction
   if (gapFill) for (const t of deferred) yield t;

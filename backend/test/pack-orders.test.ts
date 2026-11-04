@@ -45,7 +45,7 @@ describe('order creation (§2.1, §2.3)', () => {
 
 const payTx = (o: { payTo: string; amount: string; orderId: number }, overrides: Partial<ParsedPaymentTx> = {}): ParsedPaymentTx => ({
   ok: true,
-  transfers: [{ source: WALLET, destination: o.payTo, lamports: BigInt(o.amount) }],
+  transfers: [{ index: 0, instrument: 'sol', source: WALLET, destination: o.payTo, lamports: BigInt(o.amount) }],
   memos: [`GC-ORD|${o.orderId}`],
   ...overrides,
 });
@@ -63,7 +63,7 @@ describe('payment confirmation (§2.2)', () => {
   it('rejects underpayment, wrong memo, foreign wallet, reused signature', async () => {
     const o = mk();
     await expect(orders.confirmOrder(db, WALLET, o.orderId, 's1'.padEnd(40, 'x'), async () => payTx(o, {
-      transfers: [{ source: WALLET, destination: o.payTo, lamports: BigInt(o.amount) - 1n }],
+      transfers: [{ index: 0, instrument: 'sol', source: WALLET, destination: o.payTo, lamports: BigInt(o.amount) - 1n }],
     }), T0)).rejects.toThrow(/Payment check failed: amount_low/);
     await expect(orders.confirmOrder(db, WALLET, o.orderId, 's2'.padEnd(40, 'x'), async () => payTx(o, { memos: ['GC-ORD|999'] }), T0)).rejects.toThrow(/Payment check failed: memo_mismatch/);
     await expect(orders.confirmOrder(db, Keypair.generate().publicKey.toBase58(), o.orderId, 's3'.padEnd(40, 'x'), async () => payTx(o), T0)).rejects.toThrow(/another wallet/);

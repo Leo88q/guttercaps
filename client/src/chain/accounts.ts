@@ -234,6 +234,16 @@ export function decodeCompressedMintClaim(data: Uint8Array): CompressedMintClaim
   };
 }
 
+/**
+ * Находка 46: клейм, у которого истёк срок и который так и не забрали, можно закрыть (`close_expired_claim`),
+ * вернув его ренту покупателю. Условия — ровно те, что проверяет `chip_core::close_expired_claim`:
+ * settlement не задан (клеймы расчёта пака идут через `cancel_compressed_claim`), ничего не сминчено,
+ * не израсходован фьюжном, не в листинге и не в стейкинге, и `now > expires_at` строго.
+ */
+export const claimClosable = (c: CompressedMintClaim, nowSec = Math.floor(Date.now() / 1000)) =>
+  c.settlement.equals(PublicKey.default) && !c.minted && !c.registered && !c.consumed && !c.listed && !c.staked
+  && BigInt(nowSec) > c.expiresAt;
+
 /** A claim is listable only when it is free AND its soulbound window has passed (H1). */
 export const claimIsListable = (c: CompressedMintClaim, nowSec = Math.floor(Date.now() / 1000)) =>
   c.registered && !c.consumed && !c.listed && !c.staked && BigInt(nowSec) >= c.lockUntil;

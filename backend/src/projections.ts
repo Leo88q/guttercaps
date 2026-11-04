@@ -184,6 +184,69 @@ function setChipFlag(db: Db, asset: string, flag: number, on: boolean, slot: num
 }
 
 const HANDLERS: Record<string, Handler> = {
+  // ------------------------------------------------------------ settle (находка 54)
+  // События `settle` несли всю правду о заказе фазы V, но декодера не было ни у одного: заказ, который
+  // вернули на цепи (`refund_pack`), оставался в базе «оплаченным», а settle-подпись нигде не отмечалась.
+  // Здесь — только те поля, которые есть в схеме (см. `events.ts`), и идемпотентные переходы статуса.
+  PackEscrowed(db, e, c) {
+    const d = e.data;
+    touchBySpec(db, e, c);
+    // Эскроу на цепи — заказ оплачен, даже если backend не успел отметить это у себя.
+    db.run(
+      `UPDATE pack_orders SET status = CASE WHEN status IN ('created', 'expired') THEN 'paid' ELSE status END, paid_at = COALESCE(paid_at, ?), tx_sig = COALESCE(tx_sig, ?) WHERE id = ? AND wallet = ?`,
+      c.blockTime, c.signature, num(d.orderId), str(d.buyer),
+    );
+  },
+  PackSettled(db, e, c) {
+    const d = e.data;
+    touchBySpec(db, e, c);
+    db.run(
+      `UPDATE pack_orders SET status = 'minted', settle_sig = ?, settle_leaves = ?, minted_at = COALESCE(minted_at, ?) WHERE id = ? AND wallet = ?`,
+      c.signature, num(d.leaves), c.blockTime, num(d.orderId), str(d.buyer),
+    );
+  },
+  PackRefunded(db, e, c) {
+    const d = e.data;
+    touchBySpec(db, e, c);
+    db.run(
+      `UPDATE pack_orders SET status = 'refunded', refunded_amount = ?, refunded_at = ?, refund_sig = ? WHERE id = ? AND wallet = ?`,
+      str(d.amount), c.blockTime, c.signature, num(d.orderId), str(d.buyer),
+    );
+  },
+  // Корень, заякоренный самой `settle` (фаза V). Находка 49: бюджет теперь объявляется оракулом при
+  // публикации и приезжает в событии, поэтому проекция его записывает — иначе карточка наград показывала бы
+  // «бюджет 0» для корней, опубликованных через `settle`.
+  RootAnchored(db, e, c) {
+    const d = e.data;
+    db.run(
+      upsert('reward_roots', ['kind', 'epoch', 'currency', 'root', 'budget', 'revoked', 'signature', 'slot'], ['kind', 'epoch'], [
+        'root = excluded.root', 'budget = excluded.budget', 'revoked = 0', 'signature = excluded.signature', 'slot = excluded.slot',
+      ]),
+      num(d.kind), num(d.epoch), rootCurrency(num(d.kind)), str(d.root), str(d.budget), 0, c.signature, c.slot,
+    );
+  },
+  // Находка 49: отзыв корня админом. Помечаем строку `revoked = 1`, но НЕ удаляем: история публикации и
+  // сумма уже выплаченного нужны разбору и повторному начислению.
+  RootRevokedEvent(db, e) {
+    // У события нет кошелька (kind, epoch, total_claimed, budget) — трогать `wallets` нечем.
+    const d = e.data;
+    db.run(
+      `UPDATE reward_roots SET revoked = 1 WHERE kind = ? AND epoch = ?`,
+      num(d.kind), num(d.epoch),
+    );
+  },
+  RewardClaimed(db, e, c) {
+    const d = e.data;
+    db.run(
+      insertIgnore('reward_claims', ['kind', 'epoch', 'currency', 'wallet', 'amount', 'signature', 'slot']),
+      num(d.kind), num(d.epoch), rootCurrency(num(d.kind)), str(d.claimant), str(d.amount), c.signature, c.slot,
+    );
+  },
+  // Гейты `settle` — те же governance-события, что и у остальных программ: они попадают в тот же журнал.
+  ConfigInitialized(db, e, c) { authorityChange(db, e, c, [['mint_oracle', 'mintOracle'], ['treasury', 'treasury']], 'admin'); },
+  OraclesUpdated(db, e, c) { authorityChange(db, e, c, [['mint_oracle', 'mintOracle'], ['root_oracle', 'rootOracle'], ['treasury', 'treasury']], 'admin'); },
+  LimitsUpdated(db, e, c) { authorityChange(db, e, c, [['emission_cap', 'emissionCap'], ['market_fee_bps', 'marketFeeBps'], ['packs_paused', 'packsPaused']], 'admin'); },
+
   // ------------------------------------------------------------ chip_core
   ServicePaid(db, e, c) {
     const d = e.data;
@@ -746,7 +809,12 @@ const HANDLERS: Record<string, Handler> = {
   BattleAccepted(db, e, c) {
     const d = e.data;
     touchBySpec(db, e, c);
-    db.run(`UPDATE battles SET opponent = ?, power_b = ?, status = 'accepted', slot = ? WHERE battle = ?`, str(d.opponent), num(d.powerB), c.slot, str(d.battle));
+    // находка 46: время принятия — граница возврата `cancel_stale_battle`; подпись нужна, чтобы heal
+    // (`patchLateTimes`) мог добрать время, если индексер увидел событие без block_time
+    db.run(
+      `UPDATE battles SET opponent = ?, power_b = ?, status = 'accepted', accepted_at = ?, accepted_sig = ?, slot = ? WHERE battle = ?`,
+      str(d.opponent), num(d.powerB), c.blockTime, c.signature, c.slot, str(d.battle),
+    );
   },
   BattleResolved(db, e, c) {
     const d = e.data;
@@ -890,6 +958,9 @@ export const WALLET_TOUCH_FIELDS: Record<string, readonly string[]> = {
   CompressedClaimSold: ['buyer'], CompressedAssetListed: ['seller'], CompressedAssetSold: ['buyer'],
   ChipFused: ['owner'], CompressedClaimsFused: ['owner'], ClaimFusionCommitted: ['owner'], ClaimFusionRevealed: ['owner'], CompressedChipRegistered: ['owner'], ChipListed: ['seller'], ChipSold: ['buyer'], OfferMade: ['bidder'],
   BattleCreated: ['challenger'], BattleAccepted: ['opponent'], RootClaimed: ['wallet'], Staked: ['owner'],
+  // находка 54: заказы фазы V — единственные события, где новый кошелёк может появиться до того, как
+  // мы увидим его где-то ещё; без этих строк `first_seen` у покупателя остался бы NULL.
+  PackEscrowed: ['buyer'], PackSettled: ['buyer'], PackRefunded: ['buyer'],
 };
 
 /** `wallets.first_seen` for every wallet an event is about. Unknown block time is fine: the heal fills it. */
@@ -961,6 +1032,7 @@ export function patchLateTimes(db: Db, e: RawEvent, c: EventCtx): number {
       break;
     case 'ChipSold': fill('sales', 'block_time'); break;
     case 'BattleCreated': fill('battles', 'created_at', 'created_sig'); break;
+    case 'BattleAccepted': fill('battles', 'accepted_at', 'accepted_sig'); break;
     case 'BattleResolved':
       fill('battles', 'resolved_at', 'resolved_sig');
       fill('burns', 'block_time');

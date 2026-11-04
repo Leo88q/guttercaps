@@ -411,6 +411,10 @@
     {
       "name": "BadGridCharge",
       "key": "staking_BadGridCharge"
+    },
+    {
+      "name": "NotUpgradeAuthority",
+      "key": "chip_core_NotUpgradeAuthority"
     }
   ],
   "arena": [
@@ -485,6 +489,92 @@
     {
       "name": "BadCap",
       "key": "arena_BadCap"
+    }
+  ],
+  "settle": [
+    {
+      "name": "Paused",
+      "key": "settle_Paused"
+    },
+    {
+      "name": "BadCurrency",
+      "key": "settle_BadCurrency"
+    },
+    {
+      "name": "BadAmount",
+      "key": "settle_BadAmount"
+    },
+    {
+      "name": "BadOrderStatus",
+      "key": "settle_BadOrderStatus"
+    },
+    {
+      "name": "RefundTooEarly",
+      "key": "settle_RefundTooEarly"
+    },
+    {
+      "name": "BadOracleInstruction",
+      "key": "settle_BadOracleInstruction"
+    },
+    {
+      "name": "BadOracleSignature",
+      "key": "settle_BadOracleSignature"
+    },
+    {
+      "name": "AuthExpired",
+      "key": "settle_AuthExpired"
+    },
+    {
+      "name": "SpecsMismatch",
+      "key": "settle_SpecsMismatch"
+    },
+    {
+      "name": "EmissionCap",
+      "key": "settle_EmissionCap"
+    },
+    {
+      "name": "TooManySpecs",
+      "key": "settle_TooManySpecs"
+    },
+    {
+      "name": "BadProof",
+      "key": "settle_BadProof"
+    },
+    {
+      "name": "BadTreeConfig",
+      "key": "settle_BadTreeConfig"
+    },
+    {
+      "name": "BadAccount",
+      "key": "settle_BadAccount"
+    },
+    {
+      "name": "Overflow",
+      "key": "settle_Overflow"
+    },
+    {
+      "name": "NotUpgradeAuthority",
+      "key": "settle_NotUpgradeAuthority"
+    },
+    {
+      "name": "PriceChanged",
+      "key": "settle_PriceChanged"
+    },
+    {
+      "name": "SelfTrade",
+      "key": "settle_SelfTrade"
+    },
+    {
+      "name": "RootTimelocked",
+      "key": "settle_RootTimelocked"
+    },
+    {
+      "name": "RootBudgetExceeded",
+      "key": "settle_RootBudgetExceeded"
+    },
+    {
+      "name": "RootRevoked",
+      "key": "settle_RootRevoked"
     }
   ]
 }

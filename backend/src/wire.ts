@@ -66,6 +66,49 @@ export const WIRE_TYPE: Record<string, string> = {
   ArenaAutoPaused: 'params_changed',
   OraclesChanged: 'params_changed',
   CollectionCreated: 'params_changed',
+  // Находка 65: ниже — события, которые раньше уходили клиенту под своим snake_case-именем, которого
+  // нет в его таблице инвалидаций: сокет «работал», кеш не обновлялся, приложение молча уходило в
+  // polling. Каждый тип теперь назван клиентским словом, и контракт держит
+  // `backend/test/wire-invalidate-audit.test.ts` (все имена событий ↔ ветки клиента).
+  ServicePaid: 'service_paid',
+  PackBought: 'pack_opened',
+  PackGranted: 'pack_opened',
+  PackCancelled: 'pack_cancelled',
+  CompressedClaimsCreated: 'pack_opened',
+  CompressedPackSettled: 'pack_opened',
+  CompressedChipMinted: 'pack_opened',
+  CompressedChipRegistered: 'pack_opened',
+  CompressedChipStaged: 'chip_fused',
+  CompressedClaimCancelled: 'pack_cancelled',
+  CompressedClaimTransferred: 'ownership_changed',
+  ChipFlagsChanged: 'chip_fused',
+  ClaimFusionCommitted: 'chip_fused',
+  PlayPulsed: 'play_pulsed',
+  RootPublished: 'root_published',
+  RootRevoked: 'root_published',
+  BurnReported: 'day_closed',
+  BurnRecorded: 'day_closed',
+  SetBonusSynced: 'params_changed',
+  PreorderDropOpened: 'preorder_changed',
+  PreorderDropClosed: 'preorder_changed',
+  SliceFunded: 'stake_changed',
+  SkrFunded: 'stake_changed',
+  SkrWithdrawn: 'stake_changed',
+  SkrPoolChanged: 'stake_changed',
+  // Находка 54: события программы `settle` (фаза V) идут по тому же клиентскому словарю — до этого их не
+  // существовало для индексатора вовсе, а кадр без имени не инвалидировал ничего.
+  PackEscrowed: 'pack_opened',
+  PackSettled: 'pack_opened',
+  PackRefunded: 'pack_cancelled',
+  RootAnchored: 'root_published',
+  RootRevokedEvent: 'params_changed',
+  RewardClaimed: 'reward_claimed',
+  EscrowListed: 'listing_changed',
+  EscrowSold: 'sale',
+  ConfigInitialized: 'params_changed',
+  OraclesUpdated: 'params_changed',
+  LimitsUpdated: 'params_changed',
+  EscrowCancelled: 'listing_changed',
 };
 
 export const snake = (name: string) => name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
@@ -138,6 +181,10 @@ export function wireEvent(db: Db, e: RawEvent, ctx: { slot?: number } = {}): Bus
     case 'PackOpened':
     case 'CompressedPackOpened': payload = { buyer: s_('buyer'), nonce: s_('nonce'), sku: n_('sku'), count: n_('count'), pityAfter: n_('pityAfter') }; break;
     case 'PackCancelled': payload = { buyer: s_('buyer'), nonce: s_('nonce'), refunded: s_('refunded') }; break;
+    // находка 54: settle-события фазы V несли данные заказа, но кадр для них не собирался
+    case 'PackEscrowed': payload = { buyer: s_('buyer'), orderId: n_('orderId'), currency: n_('currency'), amount: s_('amount') }; break;
+    case 'PackSettled': payload = { buyer: s_('buyer'), orderId: n_('orderId'), leaves: n_('leaves') }; break;
+    case 'PackRefunded': payload = { buyer: s_('buyer'), orderId: n_('orderId'), amount: s_('amount') }; break;
     case 'ChipFused': payload = { owner: s_('owner'), result: s_('result'), recipe: n_('recipe'), success: Boolean(d.success) }; break;
     // SEC-G04: same wire shape as ChipFused so the fusion toast / invalidation is one client code path.
     case 'CompressedClaimsFused': payload = { owner: s_('owner'), result: s_('resultClaim'), recipe: n_('recipe'), success: true }; break;

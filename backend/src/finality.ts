@@ -16,7 +16,7 @@
  *       - `null` (unknown to the cluster) or `err` → the transaction was dropped: delete its raw
  *         events and **rebuild the projections** from what is left (projections are a pure function of
  *         events_raw — T-B-15 — so the ghost chip / sale / stake simply disappears). Rows the API
- *         already consumed (service_payments.consumed_by) are reported loudly: that is money that
+ *         already consumed (payment_consumption, §1.5) are reported loudly: that is money that
  *         left the treasury for a phantom payment and needs a human.
  *   * `requireFinalized(db, signature)` is what the value-bearing endpoints call (services.ts
  *     `findPayment`) — a confirmed-but-not-yet-finalized payment answers 409 `payment_pending`
@@ -28,6 +28,7 @@
 import { Connection } from '@solana/web3.js';
 import { db as sharedDb, now, PROJECTION_TABLES, type Db } from './db.ts';
 import { getConnection, replayStored, sleep } from './ingest.ts';
+import { consumedMarks } from './consumption.ts';
 
 const env = process.env;
 export const FINALITY_EVERY_MS = Number(env.FINALITY_EVERY_MS ?? 20_000);
@@ -93,7 +94,9 @@ export function dropSignatures(db: Db, signatures: readonly string[]): DroppedRe
   const reports: DroppedReport[] = [];
   db.tx(() => {
     for (const s of signatures) {
-      const consumed = db.all<{ consumed_by: string }>(`SELECT consumed_by FROM service_payments WHERE signature = ? AND consumed_by IS NOT NULL`, s).map((r) => r.consumed_by);
+      // §1.5: метки расхода читаются из ledger'а, а не из проекции — иначе дроп уже потраченного
+      // платежа выглядел бы как «ничего не потеряли» и никто бы не узнал про ушедшие из казны деньги.
+      const consumed = consumedMarks(db, s).map((m) => m.consumed_by);
       const events = Number(db.run(`DELETE FROM events_raw WHERE signature = ?`, s).changes);
       reports.push({ signature: s, events, consumedPayments: consumed });
     }

@@ -35,6 +35,9 @@ use mpl_bubblegum::{
 
 declare_id!("B9ousNDpe29G45KFHyndvHXpLigBtxCh9xbboWuCeXyP");
 
+/// Находка 4: гейт инициализации по upgrade authority (см. модуль).
+pub mod deploy_guard;
+
 // ---------------------------------------------------------------------------
 // Constants (program ids pinned like chip_core::bubblegum)
 
@@ -58,7 +61,21 @@ pub const REFUND_AFTER_SLOTS: u64 = 216_000;
 /// Leaves per settle are bounded by transaction size long before this.
 pub const MAX_SPECS: usize = 10;
 /// MintAuth message domain prefix; the TS twin lives in backend/src/phasev.ts.
-pub const MINT_AUTH_PREFIX: &[u8] = b"GUTCAP/MINTAUTH/V1";
+// V2 (находка 55): в подписанное сообщение добавлены сумма и валюта оплаты. Версия префикса поднята,
+// чтобы подпись V1 нельзя было предъявить новой программе (и наоборот) после апгрейда.
+pub const MINT_AUTH_PREFIX: &[u8] = b"GUTCAP/MINTAUTH/V2";
+/// Namespace split, находка 1 (`reports/INDEPENDENT-CODE-REVIEW-PROGRESS.md` §1).
+///
+/// `settle_pack` and `grant_mint` verify the SAME `MintAuth` message: wallet, order_id, specs_hash,
+/// nonce (= order_id), expiry. До этого ни один из них не проверял, из какого пространства id пришла
+/// авторизация, поэтому оплаченный пак можно было «домить» ещё раз: `settle_pack` освобождал эскроу и
+/// выпускал чипы по order PDA, а та же подпись оракула, поданная в `grant_mint`, выпускала ТЕ ЖЕ спеки
+/// второй раз по grant-receipt PDA — уже без оплаты.
+///
+/// Пространства разведены по старшему биту: пак-заказы всегда < 2^63 (backend
+/// `phasev.GRANT_ID_BASE = 1n << 63n`, `fusionGrantFor` выдаёт `GRANT_ID_BASE + fusion_id`).
+/// Проверка стоит в обоих обработчиках и не создаёт ни одного аккаунта/поля — ренты не добавляет.
+pub const GRANT_ID_BASE: u64 = 1 << 63;
 
 pub const CURRENCY_SOL: u8 = 0;
 pub const CURRENCY_USDC: u8 = 1;
@@ -67,6 +84,10 @@ pub const CURRENCY_CG: u8 = 2;
 pub const STATUS_PAID: u8 = 0;
 pub const STATUS_SETTLED: u8 = 1;
 pub const STATUS_REFUNDED: u8 = 2;
+
+/// Находка 49: тот же час, что `staking::ROOT_TIMELOCK`. Окно нужно, чтобы анти-фрод успел увидеть корень
+/// до того, как деньги уйдут, и чтобы покупатель/игрок успел заметить публикацию.
+pub const ROOT_TIMELOCK: i64 = 3_600;
 
 // ---------------------------------------------------------------------------
 // Shared arg types
@@ -85,13 +106,24 @@ pub struct LeafProofArgs {
 }
 
 /// What the MINT_ORACLE signs. Byte layout of the signed message:
-/// prefix ‖ wallet ‖ order_id(le) ‖ specs_hash ‖ nonce(le) ‖ expires_at_slot(le).
+/// prefix ‖ wallet ‖ order_id(le) ‖ amount(le) ‖ currency ‖ order_slot(le) ‖ specs_hash ‖ nonce(le) ‖ expires_at_slot(le).
 /// `nonce` is pinned to the order id: an order settles exactly once, so a
 /// signature can never be replayed against another order.
+///
+/// Находка 55: `amount`/`currency` входят в подпись, потому что `buy_pack` принимает сумму от покупателя
+/// как есть — таблицы цен в этой программе нет. Единственный, кто знает цену, — оракул: он подписывает
+/// ровно ту сумму, которую backend сверил с заказом, а `settle_pack` требует совпадения с эскроу.
+///
+/// Находка 16: `order_slot` привязывает подпись к КОНКРЕТНОМУ экземпляру заказа. `refund_pack` закрывает
+/// order PDA, и `buy_pack` может создать его заново по тому же `order_id` — без этого поля подпись,
+/// выписанная до возврата, годилась бы и для нового заказа.
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MintAuth {
     pub wallet: Pubkey,
     pub order_id: u64,
+    pub amount: u64,
+    pub currency: u8,
+    pub order_slot: u64,
     pub specs_hash: [u8; 32],
     pub nonce: u64,
     pub expires_at_slot: u64,
@@ -122,10 +154,13 @@ pub fn specs_hash(specs: &[LeafSpec]) -> [u8; 32] {
 }
 
 pub fn mint_auth_message(auth: &MintAuth) -> Vec<u8> {
-    let mut m = Vec::with_capacity(MINT_AUTH_PREFIX.len() + 32 + 8 + 32 + 8 + 8);
+    let mut m = Vec::with_capacity(MINT_AUTH_PREFIX.len() + 32 + 8 + 8 + 1 + 8 + 32 + 8 + 8);
     m.extend_from_slice(MINT_AUTH_PREFIX);
     m.extend_from_slice(auth.wallet.as_ref());
     m.extend_from_slice(&auth.order_id.to_le_bytes());
+    m.extend_from_slice(&auth.amount.to_le_bytes());
+    m.push(auth.currency);
+    m.extend_from_slice(&auth.order_slot.to_le_bytes());
     m.extend_from_slice(&auth.specs_hash);
     m.extend_from_slice(&auth.nonce.to_le_bytes());
     m.extend_from_slice(&auth.expires_at_slot.to_le_bytes());
@@ -183,6 +218,11 @@ pub struct PackOrder {
     pub bump: u8,
 }
 
+/// Находка 49. В staking корень наград публикуется с `budget`, резервируемым из `slice_budget`, проходит
+/// `ROOT_TIMELOCK` до первого клейма и может быть отозван админом. Здесь этого не было вовсе: ключ
+/// `root_oracle` мог мгновенно опустошить `rewards_vault`, а `total_claimed` ни с чем не сверялся.
+/// Поля добавлены В КОНЕЦ (после `bump`), поэтому смещения уже существующих не поехали; живых корней
+/// на момент правки нет, миграция не нужна.
 #[account]
 #[derive(InitSpace)]
 pub struct AnchoredRoot {
@@ -191,6 +231,13 @@ pub struct AnchoredRoot {
     pub root: [u8; 32],
     pub total_claimed: u64,
     pub bump: u8,
+    /// Unix-секунды публикации: до `published_at + ROOT_TIMELOCK` клейм запрещён.
+    /// Хранится в секундах, а не в слотах, чтобы совпадать с общей семантикой `ROOT_TIMELOCK` из staking.
+    pub published_at: i64,
+    /// Потолок выплат по этому корню. `total_claimed + amount` не может его превысить.
+    pub budget: u64,
+    /// Админ может отозвать корень (анти-фрод после публикации); клеймы после этого закрыты.
+    pub revoked: bool,
 }
 
 #[account]
@@ -255,6 +302,23 @@ pub enum SettleError {
     BadAccount,
     #[msg("arithmetic overflow")]
     Overflow,
+    #[msg("only the program upgrade authority may initialize config")]
+    NotUpgradeAuthority,
+    /// Находка 50: цена листинга изменилась между подписью и исполнением (SEC-F5 из `market`).
+    #[msg("listing price changed since it was quoted")]
+    PriceChanged,
+    /// Находка 50: продавец не может купить собственный листинг (SEC-F08 из `market`).
+    #[msg("cannot buy your own listing")]
+    SelfTrade,
+    /// Находка 49: корень опубликован слишком недавно (окно `ROOT_TIMELOCK` ещё не прошло).
+    #[msg("reward root is still timelocked")]
+    RootTimelocked,
+    /// Находка 49: выплаты по корню вышли бы за объявленный бюджет.
+    #[msg("reward root budget exceeded")]
+    RootBudgetExceeded,
+    /// Находка 49: корень отозван админом, клеймы закрыты.
+    #[msg("reward root revoked")]
+    RootRevoked,
 }
 
 // ---------------------------------------------------------------------------
@@ -290,6 +354,16 @@ pub struct RootAnchored {
     pub kind: u8,
     pub epoch: u64,
     pub root: [u8; 32],
+    /// Находка 49: потолок выплат по корню и момент публикации уезжают в событие, чтобы индексатор и
+    /// мониторинг видели бюджет без чтения аккаунта. Поля добавлены в конец — смещения прежних те же.
+    pub budget: u64,
+}
+#[event]
+pub struct RootRevokedEvent {
+    pub kind: u8,
+    pub epoch: u64,
+    pub total_claimed: u64,
+    pub budget: u64,
 }
 #[event]
 pub struct RewardClaimed {
@@ -455,6 +529,10 @@ pub struct InitConfig<'info> {
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
+    /// CHECK: находка 4 — ProgramData этой программы (PDA upgradeable-загрузчика `[program_id]`).
+    /// Адрес, владелец и записанная upgrade authority проверяются в обработчике
+    /// (`deploy_guard::signer_is_upgrade_authority`). Аккаунт только читается — ренты не добавляет.
+    pub program_data: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
@@ -784,6 +862,19 @@ pub fn init_config_handler(
     emission_cap: u64,
     market_fee_bps: u16,
 ) -> Result<()> {
+    // Находка 4: first-caller-wins закрыт — конфиг создаёт только upgrade authority программы.
+    require!(
+        deploy_guard::signer_is_upgrade_authority(
+            ctx.program_id,
+            &ctx.accounts.program_data.to_account_info(),
+            ctx.accounts.admin.key,
+        ),
+        SettleError::NotUpgradeAuthority
+    );
+    // Заодно не даём зафиксировать заведомо нерабочие параметры: конфиг нельзя пересоздать.
+    require!(emission_cap > 0, SettleError::BadAmount);
+    require!(market_fee_bps <= 10_000, SettleError::BadAmount);
+    require!(treasury != Pubkey::default(), SettleError::BadAccount);
     let c = &mut ctx.accounts.config;
     c.admin = ctx.accounts.admin.key();
     c.mint_oracle = mint_oracle;
@@ -904,6 +995,12 @@ pub fn settle_pack_handler<'info>(
         auth.wallet == order.buyer && auth.order_id == order_id && auth.nonce == order_id,
         SettleError::BadOracleSignature
     );
+    // Находка 1: пак-заказ живёт в нижней половине пространства id. Авторизация fusion-гранта
+    // (>= GRANT_ID_BASE) не может освободить эскроу и выпустить спеку пак-заказа.
+    require!(
+        auth.order_id < GRANT_ID_BASE,
+        SettleError::BadOracleSignature
+    );
     require!(
         Clock::get()?.slot <= auth.expires_at_slot,
         SettleError::AuthExpired
@@ -911,6 +1008,19 @@ pub fn settle_pack_handler<'info>(
     require!(
         specs_hash(&args.specs) == auth.specs_hash,
         SettleError::SpecsMismatch
+    );
+    // Находка 55: подпись покрывает и деньги. `buy_pack` пишет в заказ ту сумму, которую прислал
+    // покупатель (своей таблицы цен у программы нет), поэтому авторизация обязана связывать эскроу с
+    // тем, что оракул проверил в заказе: иначе подпись «на пакет» годилась бы для эскроу на любую сумму.
+    require!(
+        auth.amount == order.amount && auth.currency == order.currency,
+        SettleError::BadAmount
+    );
+    // Находка 16: подпись привязана к экземпляру заказа, а не к его номеру. После `refund_pack` PDA
+    // закрывается и `buy_pack` может создать его заново с тем же id — старый слот в подписи это ловит.
+    require!(
+        auth.order_slot == order.created_slot,
+        SettleError::BadOracleSignature
     );
     verify_oracle_signature(
         &ctx.accounts.instructions.to_account_info(),
@@ -1125,6 +1235,13 @@ pub fn grant_mint_handler<'info>(
         auth.wallet == ctx.accounts.buyer.key() && auth.nonce == auth.order_id,
         SettleError::BadOracleSignature
     );
+    // Находка 1: грант выпускается только для id из верхней половины пространства
+    // (`GRANT_ID_BASE + fusion_id` на backend). Без этой строки оплаченный пак-заказ
+    // мог быть выпущен второй раз той же подписью оракула — уже без оплаты.
+    require!(
+        auth.order_id >= GRANT_ID_BASE,
+        SettleError::BadOracleSignature
+    );
     require!(
         Clock::get()?.slot <= auth.expires_at_slot,
         SettleError::AuthExpired
@@ -1275,14 +1392,66 @@ pub fn anchor_root_handler(
     kind: u8,
     epoch: u64,
     root: [u8; 32],
+    budget: u64,
 ) -> Result<()> {
+    // Находка 49: бюджет обязателен. Корень без потолка — это право оракула опустошить `rewards_vault`
+    // одной публикацией; нулевой бюджет означал бы то же самое («без ограничения»), поэтому запрещён.
+    require!(budget > 0, SettleError::BadAmount);
     let r = &mut ctx.accounts.root;
     r.kind = kind;
     r.epoch = epoch;
     r.root = root;
     r.total_claimed = 0;
     r.bump = ctx.bumps.root;
-    emit!(RootAnchored { kind, epoch, root });
+    r.published_at = Clock::get()?.unix_timestamp;
+    r.budget = budget;
+    r.revoked = false;
+    emit!(RootAnchored {
+        kind,
+        epoch,
+        root,
+        budget
+    });
+    Ok(())
+}
+
+/// Находка 49: отзыв корня админом (`config.admin`). Аккаунт **не** закрывается: метка `revoked`
+/// остаётся на цепи как след решения (по ней `claim_reward` отказывает, а индексатор видит событие), и
+/// `anchor_root` с `init` уже не сможет переопубликовать тот же `(kind, epoch)` — отозванный корень не
+/// воскресает ни новой подписью оракула, ни кем-либо ещё. Рента с аккаунта не возвращается (её платил
+/// оракул при публикации), зато `close = admin` не появляется: закрытие вернуло бы админу чужие деньги и
+/// позволило бы переиздать эпоху. Пока корень жил вечно, ошибочная или скомпрометированная публикация
+/// оставалась в силе до исчерпания хранилища.
+#[derive(Accounts)]
+#[instruction(kind: u8, epoch: u64)]
+pub struct RevokeRoot<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        seeds = [b"config"], bump = config.bump,
+        constraint = admin.key() == config.admin @ SettleError::BadAccount,
+    )]
+    pub config: Account<'info, SettleConfig>,
+    #[account(
+        mut,
+        seeds = [b"root".as_ref(), &[kind][..], &epoch.to_le_bytes()[..]], bump = root.bump,
+        constraint = root.kind == kind && root.epoch == epoch @ SettleError::BadAccount,
+    )]
+    pub root: Account<'info, AnchoredRoot>,
+}
+
+pub fn revoke_root_handler(ctx: Context<RevokeRoot>) -> Result<()> {
+    // Аккаунт остаётся: `revoked` — единственный признак, по которому `claim_reward` отказывает, и он же
+    // закрывает дорогу `anchor_root` (там `init`), поэтому отзыв нельзя отменить повторной публикацией.
+    let root = &mut ctx.accounts.root;
+    require!(!root.revoked, SettleError::RootRevoked);
+    root.revoked = true;
+    emit!(RootRevokedEvent {
+        kind: root.kind,
+        epoch: root.epoch,
+        total_claimed: root.total_claimed,
+        budget: root.budget,
+    });
     Ok(())
 }
 
@@ -1313,6 +1482,21 @@ pub fn claim_reward_handler<'info>(
         ctx.accounts.config.cg_mint,
         SettleError::BadAccount
     );
+    // Находка 49: три гейта, которых не было. Все стоят ДО перевода, чтобы отказ не стоил денег.
+    let root = &ctx.accounts.root;
+    require!(!root.revoked, SettleError::RootRevoked);
+    require!(
+        Clock::get()?.unix_timestamp >= root.published_at + ROOT_TIMELOCK,
+        SettleError::RootTimelocked
+    );
+    let claimed_after = root
+        .total_claimed
+        .checked_add(amount)
+        .ok_or(SettleError::Overflow)?;
+    require!(
+        claimed_after <= root.budget,
+        SettleError::RootBudgetExceeded
+    );
     let leaf = reward_leaf(&claimant, amount, kind, epoch);
     require!(
         verify_merkle_proof(&ctx.accounts.root.root, leaf, &proof),
@@ -1332,12 +1516,7 @@ pub fn claim_reward_handler<'info>(
         ),
         amount,
     )?;
-    ctx.accounts.root.total_claimed = ctx
-        .accounts
-        .root
-        .total_claimed
-        .checked_add(amount)
-        .ok_or(SettleError::Overflow)?;
+    ctx.accounts.root.total_claimed = claimed_after;
     ctx.accounts.receipt.bump = ctx.bumps.receipt;
     emit!(RewardClaimed {
         claimant,
@@ -1495,8 +1674,22 @@ pub fn escrow_list_handler<'info>(
 pub fn escrow_buy_handler<'info>(
     ctx: Context<'_, '_, '_, 'info, EscrowBuy<'info>>,
     proof: LeafProofArgs,
+    expected_price: u64,
 ) -> Result<()> {
     let listing = &ctx.accounts.listing;
+    // Находка 50: собственный маркет Phase V обязан повторять две защиты `market`
+    // (`list_asset` + `buy_asset`), иначе они существуют только на витрине.
+    //   * SEC-F5 — ожидаемая цена. Без неё продавец отменяет листинг, выставляет тот же
+    //     лист дороже и его транзакция попадает в тот же блок раньше покупки: покупатель
+    //     платит новую цену, которую не подтверждал. Покупка теперь несёт цену, которую
+    //     видел покупатель, и расходится с листингом — отказ.
+    require!(listing.price == expected_price, SettleError::PriceChanged);
+    //   * SEC-F08 — self-trade. Своя же покупка платит комиссию казне и жжёт rent
+    //     листинга в никуда, а на витрине это выглядит как «объём».
+    require!(
+        ctx.accounts.buyer.key() != listing.seller,
+        SettleError::SelfTrade
+    );
     require!(
         ctx.accounts.seller.key() == listing.seller,
         SettleError::BadAccount
@@ -1749,8 +1942,14 @@ pub mod settle {
         kind: u8,
         epoch: u64,
         root: [u8; 32],
+        budget: u64,
     ) -> Result<()> {
-        anchor_root_handler(ctx, kind, epoch, root)
+        anchor_root_handler(ctx, kind, epoch, root, budget)
+    }
+
+    /// Находка 49: отзыв опубликованного корня админом (анти-фрод, ошибка оракула).
+    pub fn revoke_root(ctx: Context<RevokeRoot>, _kind: u8, _epoch: u64) -> Result<()> {
+        revoke_root_handler(ctx)
     }
 
     pub fn claim_reward<'info>(
@@ -1775,8 +1974,9 @@ pub mod settle {
     pub fn escrow_buy<'info>(
         ctx: Context<'_, '_, '_, 'info, EscrowBuy<'info>>,
         proof: LeafProofArgs,
+        expected_price: u64,
     ) -> Result<()> {
-        escrow_buy_handler(ctx, proof)
+        escrow_buy_handler(ctx, proof, expected_price)
     }
 
     pub fn escrow_cancel<'info>(

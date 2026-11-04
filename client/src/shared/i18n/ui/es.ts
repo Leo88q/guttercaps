@@ -155,6 +155,7 @@ const ui = {
   "phasegDone": "¡Listo! {n} fichas están en tu colección.",
   "phasegDoneClose": "A mi colección",
   "phasegFailed": "El pedido no se completó. Si pagaste, guarda la firma de la transacción y contacta con soporte.",
+  "phasegRefundQueued": "El pedido se pagó después de caducar y el límite de tu cartera ya lo había tomado otro pedido. No se entrega ningún sobre; el pago vuelve a tu cartera: el equipo lo devuelve a la dirección desde la que pagaste.",
   "phasegPay": "Pagar y abrir",
   "cryptoOnly": "Solo cripto. ¿Necesitas SOL?",
   "noResale": "El contenido de los sobres son coleccionables digitales sin valor de reventa garantizado.",

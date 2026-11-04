@@ -7,6 +7,8 @@ import type { DatabaseSync as DatabaseSyncT, StatementSync, SQLInputValue, SQLOu
 import { DB_PATH } from './config.ts';
 import { PublicKey } from '@solana/web3.js';
 import { compressedMintClaimPda } from './chain.ts';
+import { healPaymentConsumption } from './consumption.ts';
+import { insertIgnore } from './sql.ts';
 
 // `import { DatabaseSync } from 'node:sqlite'` breaks under vitest's module
 // resolver (it does not know the builtin yet); getBuiltinModule is the
@@ -118,7 +120,9 @@ CREATE TABLE IF NOT EXISTS chips (
   game_index       TEXT,                         -- per-collection mint number (Name #N, u64 as decimal); NULL = not resolved yet
   index_attempts   INTEGER NOT NULL DEFAULT 0,   -- back-fill attempts; the row is parked once it reaches INDEX_ATTEMPTS
   last_played      INTEGER,                      -- unix: last Cap Slam (alive-stake)
-  play_pulsed_at   INTEGER                       -- last_played copied onto ChipPlay
+  play_pulsed_at   INTEGER,                      -- last_played copied onto ChipPlay
+  source           TEXT    NOT NULL DEFAULT 'projection'  -- находка 20: projection = восстановим из events_raw, api = зарегистрирован
+                                                          -- backend'ом (Phase G/V, fusion) и в событиях его нет — rebuild его не удаляет
 );
 CREATE INDEX IF NOT EXISTS idx_chips_owner ON chips(owner, burned_at);
 CREATE INDEX IF NOT EXISTS idx_chips_arch  ON chips(collection_idx, rarity, burned_at);
@@ -207,6 +211,8 @@ CREATE TABLE IF NOT EXISTS grid_attempts (
   seed INTEGER,
   daily INTEGER NOT NULL DEFAULT 0,
   settled INTEGER NOT NULL DEFAULT 0,
+  -- Находка 43: solved — попытка ПРОЙДЕНА (тренировочный квест считается по завершениям, а не стартам)
+  solved INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   settled_at INTEGER
 );
@@ -392,13 +398,16 @@ CREATE TABLE IF NOT EXISTS preorders (
   offer       TEXT    NOT NULL DEFAULT 'pack',    -- pack | chest
   currency    TEXT    NOT NULL DEFAULT 'SOL',     -- SOL | USDC | SKR (lamports column = native units of this)
   lamports    TEXT    NOT NULL,
-  status      TEXT    NOT NULL DEFAULT 'intent',  -- intent | paid | granted | expired
+  status      TEXT    NOT NULL DEFAULT 'intent',  -- intent | paid | granted | expired | refund_due | refunded
   tx_sig      TEXT,
   nonce       TEXT,                               -- PendingPack nonce once granted on-chain
   grant_sig   TEXT,
   created_at  INTEGER NOT NULL,
   paid_at     INTEGER,
-  granted_at  INTEGER
+  granted_at  INTEGER,
+  refund_reason TEXT,                             -- находка 23: причина возврата (sold_out)
+  refunded_at INTEGER,
+  refund_sig  TEXT                                -- подпись перевода возврата из мультисига
 );
 CREATE INDEX IF NOT EXISTS idx_preorders_wallet ON preorders(wallet);
 -- Phase-G pack orders (docs/MINIMAL-LAUNCH-CHECKLIST.md §2): the server-side
@@ -415,13 +424,21 @@ CREATE TABLE IF NOT EXISTS pack_orders (
   amount      TEXT    NOT NULL,                   -- native units of the currency, decimal string
   pay_to      TEXT    NOT NULL,                   -- treasury wallet (SOL) or its ATA (tokens)
   mint        TEXT,                               -- token mint for USDC/CG, NULL for SOL
-  status      TEXT    NOT NULL DEFAULT 'created', -- created | paid | minted | expired | failed
+  status      TEXT    NOT NULL DEFAULT 'created', -- created | paid | minted | expired | failed | refund_due | refunded
   featured_idx INTEGER NOT NULL DEFAULT 0,        -- featured collection snapshot for 'featured'-pool SKUs
   seed        TEXT    NOT NULL,                   -- server secret until minted
   seed_hash   TEXT    NOT NULL,                   -- sha256(seed) — public commitment from creation
   tx_sig      TEXT,
   settle_sig  TEXT,                               -- phase V: the settle_pack tx that minted this order
   settle_specs TEXT,                              -- phase V: LeafSpec[] issued at settle-auth (names are the DAS registration key)
+  settle_leaves INTEGER,                          -- находка 54: сколько листьев реально выпустил settle_pack (событие PackSettled)
+  refunded_amount TEXT,                           -- находка 54: возврат по refund_pack (PackRefunded), нативные единицы
+  refunded_at  INTEGER,
+  refund_sig   TEXT,                               -- подпись перевода возврата из казны
+  refund_reason TEXT,                              -- находка 32: почему оплаченный заказ не выдан (quota_race)
+  mint_uncertain TEXT,                             -- находка 33: минт подтверждён, но лист не доказан — assetId не записан, нужен разбор по DAS
+  pity_before INTEGER,                             -- находка 34: входной pity, зафиксированный при первом расчёте ролла
+  roll_json   TEXT,                                -- находка 34: сам ролл (rarities/collections/pityAfter) — один ответ для минта и verify
   assets      TEXT,                               -- JSON [{assetId, collectionIdx, rarity, gameIndex}]
   created_at  INTEGER NOT NULL,
   paid_at     INTEGER,
@@ -451,6 +468,7 @@ CREATE TABLE IF NOT EXISTS phaseg_fusions (
 
   success       INTEGER,                            -- 1/0 once rolled
   result_assets TEXT,                               -- JSON [assetId]
+  mint_uncertain TEXT,                              -- находка 33: лист не доказан, assetId не записан
   created_at    INTEGER NOT NULL,
   minted_at     INTEGER
 );
@@ -485,7 +503,8 @@ CREATE TABLE IF NOT EXISTS phaseg_payouts (
   status      TEXT    NOT NULL DEFAULT 'pending',  -- pending | sent
   tx_sig      TEXT,
   created_at  INTEGER NOT NULL,
-  sent_at     INTEGER
+  sent_at     INTEGER,
+  claimed_at  INTEGER                       -- находка 31: захват строки кранком до отправки (lease)
 );
 CREATE INDEX IF NOT EXISTS idx_phaseg_payouts_wallet ON phaseg_payouts(wallet);
 -- Phase-G mint counters: per-collection chip numbering (SYMBOL #n) without a program.
@@ -667,10 +686,15 @@ CREATE TABLE IF NOT EXISTS battles (
   resolved_sig  TEXT,
   created_at    INTEGER,
   resolved_at   INTEGER,
+  -- находка 46: время принятия боя (block_time события BattleAccepted) и его подпись — по ним считается
+  -- граница cancel_stale_battle (accepted_at + RESOLVE_TIMEOUT), без них залипший бой не вернуть из UI
+  accepted_at   INTEGER,
+  accepted_sig  TEXT,
   slot          INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_battles_winner ON battles(winner);
 CREATE INDEX IF NOT EXISTS idx_battles_players ON battles(challenger, opponent);
+CREATE INDEX IF NOT EXISTS idx_battles_pending ON battles(status) WHERE status IN ('open', 'accepted');
 
 CREATE TABLE IF NOT EXISTS stakes (
   key        TEXT PRIMARY KEY,   -- token: stake PDA; chip: asset
@@ -821,6 +845,61 @@ CREATE TABLE IF NOT EXISTS service_payments (
   PRIMARY KEY (signature, event_index)
 );
 CREATE INDEX IF NOT EXISTS idx_service_payments_buyer ON service_payments(buyer, kind, slot);
+-- Consumption ledger (reports/REMEDIATION-DESIGN.md §1.5). WHO spent WHICH payment event is NOT a
+-- projection: dropSignatures/rebuild rewrite service_payments from events_raw and cannot re-create the
+-- consumed_by mark (the chain has no such fact), which used to un-spend every payment that had already
+-- bought something while the grant itself (entitlements, grid_deep_credits, board_parts) lived outside
+-- the projection set and was never rewound. One row per payment event, written in the same transaction
+-- as the grant, never deleted.
+CREATE TABLE IF NOT EXISTS payment_consumption (
+  signature   TEXT    NOT NULL,
+  event_index INTEGER NOT NULL,
+  scope       TEXT    NOT NULL,             -- entitlement | handle | crew | line | tournament | grid-deep
+  subject     TEXT    NOT NULL,             -- entitlement id / handle / week / day — for audit, not for uniqueness
+  consumed_by TEXT    NOT NULL,             -- the original 'scope:subject' string the callers used
+  consumed_at INTEGER NOT NULL,
+  PRIMARY KEY (signature, event_index)      -- one payment event can be spent exactly once, forever
+);
+CREATE INDEX IF NOT EXISTS idx_payment_consumption_scope ON payment_consumption(scope, subject);
+-- Which CONCRETE transfer of which transaction paid which order (находки 17, 18). Уникальность
+-- preorders.tx_sig / pack_orders.tx_sig / phaseg_fusions.pay_sig проверяется внутри своей таблицы,
+-- поэтому одна транзакция с двумя memo и одним переводом закрывала сразу preorder и pack order, а
+-- перевод в SOL на адрес токен-аккаунта проходил как оплата в SPL. Здесь ключ — (signature,
+-- transfer_index): конкретный перевод тратится ровно один раз, в любом контуре и навсегда.
+CREATE TABLE IF NOT EXISTS payment_transfer (
+  signature      TEXT    NOT NULL,
+  transfer_index INTEGER NOT NULL,          -- позиция перевода в разобранной транзакции
+  instrument     TEXT    NOT NULL,          -- sol | spl — чем именно заплатили
+  scope          TEXT    NOT NULL,          -- preorder | pack_order | fusion
+  subject        TEXT    NOT NULL,          -- ref_id / order id / fusion id
+  consumed_by    TEXT    NOT NULL,          -- 'scope:subject' для аудита
+  consumed_at    INTEGER NOT NULL,
+  PRIMARY KEY (signature, transfer_index)
+);
+CREATE INDEX IF NOT EXISTS idx_payment_transfer_scope ON payment_transfer(scope, subject);
+-- Outbound chain operations (§1.1). The signature is stored BEFORE the send and the row is the single
+-- place that knows whether it landed: intent -> signed -> sent -> landed -> confirmed | failed | orphaned.
+-- ux_chain_ops_biz makes "one business action = one transaction" a database fact, ux_chain_ops_sig makes
+-- "one signature = one op" one too. Not a projection: it survives rebuilds by design.
+CREATE TABLE IF NOT EXISTS chain_ops (
+  id                      TEXT PRIMARY KEY,  -- sha256(kind ‖ biz_key), so a retried intent finds the row
+  kind                    TEXT    NOT NULL,  -- phaseg_payout | phaseg_mint | reward_root | …
+  biz_key                 TEXT    NOT NULL,  -- wallet | order#chip | epoch … — the business identity
+  payload_hash            TEXT    NOT NULL,  -- sha256 of the normalised intent (guards against a changed payload)
+  payload                 TEXT,              -- сам интент: по нему восстановима бизнес-запись после рестарта
+  status                  TEXT    NOT NULL,  -- intent | signed | sent | landed | confirmed | failed | orphaned
+  signature               TEXT,
+  raw_tx                  BLOB,              -- signed transaction, so a resend is the SAME transaction
+  last_valid_block_height INTEGER,
+  cu_price                INTEGER,
+  attempts                INTEGER NOT NULL DEFAULT 0,
+  error                   TEXT,
+  created_at              INTEGER NOT NULL,
+  updated_at              INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_chain_ops_biz ON chain_ops(kind, biz_key);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_chain_ops_sig ON chain_ops(signature) WHERE signature IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_chain_ops_due ON chain_ops(status, updated_at);
 CREATE TABLE IF NOT EXISTS entitlements (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   wallet     TEXT    NOT NULL,
@@ -1003,6 +1082,8 @@ CREATE TABLE IF NOT EXISTS quest_completions (
   item_root_epoch INTEGER,
   chip_root_kind INTEGER,                 -- chip voucher leaf (kind 9) — one voucher per wallet per epoch, the rest carry over
   chip_root_epoch INTEGER,
+  chip_root_at   INTEGER,                 -- находка 38: когда лист ушёл в корень (недельный лимит бесплатных чипов
+                                          -- считается по факту выдачи, а не по дате выполнения квеста)
   PRIMARY KEY (wallet, quest_id, period_key)
 );
 CREATE INDEX IF NOT EXISTS idx_quest_completions_unrooted ON quest_completions(root_kind, wallet);
@@ -1312,7 +1393,9 @@ CREATE TABLE IF NOT EXISTS gutter_pot_draws (
   week          INTEGER PRIMARY KEY,     -- weekIndex (Monday 00:00 UTC)
   drawn_at      INTEGER NOT NULL,        -- unix s the oracle snapshotted
   slot          INTEGER NOT NULL,        -- finalizedHorizon used in the seed
-  seed_hex      TEXT    NOT NULL,        -- sha256(gutter-pot:v1:week:slot:totalWeight:wallets:ticketsHash)
+  entropy_hex   TEXT,                    -- находка 57: хеш энтропии (blockhash слота или nonce); NULL у записей v1
+  entropy_source TEXT,                   -- 'blockhash' (проверяемо по цепи) | 'server_nonce' (RPC не дал блок)
+  seed_hex      TEXT    NOT NULL,        -- sha256(gutter-pot:v2:…:ticketsHash:entropy) — v1 без суффикса у старых строк
   tickets_hash  TEXT    NOT NULL,        -- sha256 of sorted wallet:weight lines
   total_weight  TEXT    NOT NULL,
   wallets       INTEGER NOT NULL,
@@ -1529,9 +1612,40 @@ export class Db {
 
   /** Additive, idempotent column migrations for dev SQLite files created by older builds. */
   private migrate() {
+    // §1.5 backfill: before this build the "spent" mark lived only on `service_payments.consumed_by`,
+    // which a rebuild wipes. Copy every existing mark into the durable ledger once (idempotent).
+    const legacy = this.raw.prepare(`SELECT signature, event_index, consumed_by, consumed_at FROM service_payments WHERE consumed_by IS NOT NULL`).all() as
+      { signature: string; event_index: number; consumed_by: string; consumed_at: number | null }[];
+    if (legacy.length > 0) {
+      const ins = this.raw.prepare(insertIgnore('payment_consumption', ['signature', 'event_index', 'scope', 'subject', 'consumed_by', 'consumed_at']));
+      const at = Math.floor(Date.now() / 1000);
+      this.raw.exec('BEGIN IMMEDIATE');
+      try {
+        for (const r of legacy) {
+          const i = r.consumed_by.indexOf(':');
+          ins.run(r.signature, r.event_index, i < 0 ? r.consumed_by : r.consumed_by.slice(0, i), i < 0 ? '' : r.consumed_by.slice(i + 1), r.consumed_by, r.consumed_at ?? at);
+        }
+        this.raw.exec('COMMIT');
+      } catch (e) { this.raw.exec('ROLLBACK'); throw e; }
+    }
+    // A projection rebuild replays `service_payments` without the mark (the chain has no such fact), so
+    // the mirror column is re-derived from the ledger on every boot as well as after every replay.
+    healPaymentConsumption(this);
+    // Находка 23: поздняя оплата предзаказа больше не теряется — очередь возврата требует колонок.
+    const preCols = new Set((this.raw.prepare('PRAGMA table_info(preorders)').all() as { name: string }[]).map((c) => c.name));
+    if (preCols.size > 0) {
+      if (!preCols.has('refund_reason')) this.raw.exec('ALTER TABLE preorders ADD COLUMN refund_reason TEXT');
+      if (!preCols.has('refunded_at')) this.raw.exec('ALTER TABLE preorders ADD COLUMN refunded_at INTEGER');
+      if (!preCols.has('refund_sig')) this.raw.exec('ALTER TABLE preorders ADD COLUMN refund_sig TEXT');
+    }
     const orderCols = new Set((this.raw.prepare('PRAGMA table_info(pack_orders)').all() as { name: string }[]).map((c) => c.name));
     if (!orderCols.has('settle_sig')) this.raw.exec('ALTER TABLE pack_orders ADD COLUMN settle_sig TEXT');
     if (!orderCols.has('settle_specs')) this.raw.exec('ALTER TABLE pack_orders ADD COLUMN settle_specs TEXT');
+    const payoutCols = new Set((this.raw.prepare('PRAGMA table_info(phaseg_payouts)').all() as { name: string }[]).map((c) => c.name));
+    if (!payoutCols.has('claimed_at')) this.raw.exec('ALTER TABLE phaseg_payouts ADD COLUMN claimed_at INTEGER');
+    const potCols = new Set((this.raw.prepare('PRAGMA table_info(gutter_pot_draws)').all() as { name: string }[]).map((c) => c.name));
+    if (!potCols.has('entropy_hex')) this.raw.exec('ALTER TABLE gutter_pot_draws ADD COLUMN entropy_hex TEXT');
+    if (!potCols.has('entropy_source')) this.raw.exec('ALTER TABLE gutter_pot_draws ADD COLUMN entropy_source TEXT');
     const fusionCols = new Set((this.raw.prepare('PRAGMA table_info(phaseg_fusions)').all() as { name: string }[]).map((c) => c.name));
     if (!fusionCols.has('grant_sig')) this.raw.exec('ALTER TABLE phaseg_fusions ADD COLUMN grant_sig TEXT');
     if (!fusionCols.has('grant_specs')) this.raw.exec('ALTER TABLE phaseg_fusions ADD COLUMN grant_specs TEXT');
@@ -1558,8 +1672,17 @@ export class Db {
     if (!repCols.has('crew_id')) this.raw.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_crew_reports_once ON wall_reports(crew_id, reporter) WHERE crew_id IS NOT NULL`);
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_events_unfinalized ON events_raw(finalized_at, slot)`);
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_events_untimed ON events_raw(slot) WHERE block_time IS NULL`);
+    const bt = new Set((this.raw.prepare(`PRAGMA table_info(battles)`).all() as { name: string }[]).map((c) => c.name));
+    if (bt.size > 0 && !bt.has('accepted_at')) this.raw.exec(`ALTER TABLE battles ADD COLUMN accepted_at INTEGER`);
+    if (bt.size > 0 && !bt.has('accepted_sig')) this.raw.exec(`ALTER TABLE battles ADD COLUMN accepted_sig TEXT`);
+    this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_battles_pending ON battles(status) WHERE status IN ('open', 'accepted')`);
     const ch = new Set((this.raw.prepare(`PRAGMA table_info(chips)`).all() as { name: string }[]).map((c) => c.name));
     if (!ch.has('skin')) this.raw.exec(`ALTER TABLE chips ADD COLUMN skin TEXT`);
+    // Находка 20: чипы, зарегистрированные backend'ом в фазе G/V, в событиях не встречаются — rebuild по
+    // `DELETE FROM chips` стирал их безвозвратно. Колонка разделяет источники; старые строки считаются
+    // проекцией (их можно восстановить из events_raw), а API-регистрация помечает себя явно.
+    if (!ch.has('source')) this.raw.exec(`ALTER TABLE chips ADD COLUMN source TEXT NOT NULL DEFAULT 'projection'`);
+    this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_chips_source ON chips(source)`);
     const gc = new Set((this.raw.prepare(`PRAGMA table_info(grid_completions)`).all() as { name: string }[]).map((c) => c.name));
     if (gc.size > 0 && !gc.has('kind')) this.raw.exec(`ALTER TABLE grid_completions ADD COLUMN kind TEXT NOT NULL DEFAULT 'campaign'`);
     // SEC-B3/shape #27: `chips.game_index` — the per-collection mint number the market's "Low #" sort and
@@ -1576,6 +1699,22 @@ export class Db {
     }
     if (!ch.has('index_attempts')) this.raw.exec(`ALTER TABLE chips ADD COLUMN index_attempts INTEGER NOT NULL DEFAULT 0`);
     if (!ch.has('last_played')) this.raw.exec(`ALTER TABLE chips ADD COLUMN last_played INTEGER`);
+    // находка 54: события `settle` теперь декодируются, и их поля надо куда-то класть
+    const po54 = new Set((this.raw.prepare(`PRAGMA table_info(pack_orders)`).all() as { name: string }[]).map((c) => c.name));
+    if (po54.size > 0) {
+      if (!po54.has('settle_leaves')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN settle_leaves INTEGER`);
+      // Находка 32: оплата, пришедшая после истечения заказа, больше не выдаётся молча — она встаёт в
+      // очередь возврата, и причина должна переживать перезапуск.
+      if (!po54.has('refund_reason')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN refund_reason TEXT`);
+      if (!po54.has('mint_uncertain')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN mint_uncertain TEXT`);
+      if (!po54.has('pity_before')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN pity_before INTEGER`);
+      if (!po54.has('roll_json')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN roll_json TEXT`);
+      const fu54 = new Set((this.raw.prepare(`PRAGMA table_info(phaseg_fusions)`).all() as { name: string }[]).map((c) => c.name));
+      if (fu54.size > 0 && !fu54.has('mint_uncertain')) this.raw.exec(`ALTER TABLE phaseg_fusions ADD COLUMN mint_uncertain TEXT`);
+      if (!po54.has('refunded_amount')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN refunded_amount TEXT`);
+      if (!po54.has('refunded_at')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN refunded_at INTEGER`);
+      if (!po54.has('refund_sig')) this.raw.exec(`ALTER TABLE pack_orders ADD COLUMN refund_sig TEXT`);
+    }
     if (!ch.has('play_pulsed_at')) this.raw.exec(`ALTER TABLE chips ADD COLUMN play_pulsed_at INTEGER`);
     // backlog #23: the lookup-table half of the Switchboard rent. `lut_slot` rides along with the job
     // (the randomness account is already gone when the table becomes closable), `lut_closed_at` marks
@@ -1637,7 +1776,7 @@ export class Db {
     }
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_compressed_claims_claim ON compressed_claims(claim)`);
     // backlog #28: chip rewards get their own (kind 9) voucher leaf
-    for (const name of ['chip_root_kind', 'chip_root_epoch'] as const) {
+    for (const name of ['chip_root_kind', 'chip_root_epoch', 'chip_root_at'] as const) {
       if (!qc.has(name)) this.raw.exec(`ALTER TABLE quest_completions ADD COLUMN ${name} INTEGER`);
     }
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_quest_completions_chip_unrooted ON quest_completions(chip_root_kind, wallet)`);
@@ -1650,6 +1789,10 @@ export class Db {
     if (ga.size && !ga.has('mode')) this.raw.exec(`ALTER TABLE grid_attempts ADD COLUMN mode TEXT NOT NULL DEFAULT 'charge'`);
     if (ga.size && !ga.has('seed')) this.raw.exec(`ALTER TABLE grid_attempts ADD COLUMN seed INTEGER`);
     if (ga.size && !ga.has('daily')) this.raw.exec(`ALTER TABLE grid_attempts ADD COLUMN daily INTEGER NOT NULL DEFAULT 0`);
+    // Находка 43: попытка помнит, была ли она ПРОЙДЕНА, а не только закрыта. Раньше «тренировочный спуск»
+    // в квесте считался по стартам (`grid_attempts` mode='training'), то есть десять брошенных заходов
+    // закрывали недельный квест. Строки до миграции остаются `solved = 0` — они не засчитываются.
+    if (ga.size && !ga.has('solved')) this.raw.exec(`ALTER TABLE grid_attempts ADD COLUMN solved INTEGER NOT NULL DEFAULT 0`);
     if (!pk.has('pack_no')) this.raw.exec(`ALTER TABLE pack_opens ADD COLUMN pack_no INTEGER NOT NULL DEFAULT 0`);
     if (!pk.has('event_index')) this.raw.exec(`ALTER TABLE pack_opens ADD COLUMN event_index INTEGER NOT NULL DEFAULT 0`);
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_pack_opens_nonce ON pack_opens(buyer, nonce, pack_no)`);

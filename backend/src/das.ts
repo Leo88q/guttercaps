@@ -15,7 +15,12 @@ export const DAS_GET_ASSETS_BY_OWNER = 'getAssetsByOwner';
 export const DAS_MAX_PROOF_DEPTH = 30;
 
 export class DasError extends Error {
-  readonly code: 'transport' | 'rpc' | 'schema' | 'unsupported' | 'mismatch';
+  /**
+   * `not_found` — DAS явно ответил, что ассета нет (RPC-ошибка «not found» / пустой result). Только этот
+   * код означает «ассета в дереве нет»; транспорт, таймаут и мусор в ответе ничего не доказывают
+   * (находка 12: раньше ЛЮБОЕ исключение считалось доказательством сжигания).
+   */
+  readonly code: 'transport' | 'rpc' | 'schema' | 'unsupported' | 'mismatch' | 'not_found';
   constructor(code: DasError['code'], message: string) {
     super(message);
     this.name = 'DasError';
@@ -381,14 +386,20 @@ export class DasClient {
     if (!response.ok) throw new DasError('transport', `DAS ${method} returned HTTP ${response.status}`);
     let body: DasRpcResponse<T>;
     try { body = await response.json() as DasRpcResponse<T>; } catch { throw new DasError('rpc', `DAS ${method} returned invalid JSON`); }
-    if (body.error) throw new DasError('rpc', `DAS ${method} RPC error ${body.error.code ?? ''}: ${body.error.message ?? 'unknown error'}`.trim());
+    if (body.error) {
+      const message = `DAS ${method} RPC error ${body.error.code ?? ''}: ${body.error.message ?? 'unknown error'}`.trim();
+      // «Ассета нет» — это ответ, а не сбой: только он (и пустой result) доказывает отсутствие листа.
+      throw new DasError(/not\s*found|does\s*not\s*exist|unknown\s*asset|invalid\s*asset/i.test(body.error.message ?? '') ? 'not_found' : 'rpc', message);
+    }
     if (body.result === undefined) throw new DasError('rpc', `DAS ${method} response has no result`);
     return body.result;
   }
 
   async getAsset(assetId: PublicKey | string): Promise<NormalizedDasAsset> {
     const id = typeof assetId === 'string' ? pk(assetId, 'assetId') : assetId;
-    const asset = normalizeDasAsset(await this.rpc<RawDasAsset>(DAS_GET_ASSET, { id: id.toBase58() }));
+    const raw = await this.rpc<RawDasAsset | null>(DAS_GET_ASSET, { id: id.toBase58() });
+    if (raw === null) throw new DasError('not_found', `DAS has no asset ${id.toBase58()}`);
+    const asset = normalizeDasAsset(raw);
     if (!asset.assetId.equals(id)) throw new DasError('mismatch', 'DAS returned a different asset id than requested');
     return asset;
   }

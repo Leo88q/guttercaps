@@ -71,6 +71,16 @@ const KNOWN_TYPES: Record<string, string[]> = {
   'Vec<[u8; 32]>': ['vec', 'bytes'],
   /** `Vec<u8>` — `w.vec(bytes, b => w.u8(b))`. */
   'Vec<u8>': ['vec', 'u8'],
+  /**
+   * Находка 79: `MintAuth` — восемь полей, и `order_slot` среди них. Пока тип был «out of scope»,
+   * клиентские сборщики `settle_pack`/`grant_mint` теряли `order_slot`, и ни один `settle_pack` не мог
+   * пройти на цепи: Anchor читал слот из первых байт `specs_hash`, и весь поток уезжал на 8 байт.
+   */
+  MintAuth: ['pubkey', 'u64', 'u64', 'u8', 'u64', 'bytes', 'u64', 'u64'],
+  /** `Vec<LeafSpec>` (`w.vec(specs, s => …)`): длина u32, затем collection ‖ name ‖ symbol ‖ uri. */
+  'Vec<LeafSpec>': ['vec', 'pubkey', 'string', 'string', 'string'],
+  /** `SettleArgs { auth: MintAuth, specs: Vec<LeafSpec> }` — плоская раскладка обоих полей. */
+  SettleArgs: ['pubkey', 'u64', 'u64', 'u8', 'u64', 'bytes', 'u64', 'u64', 'vec', 'pubkey', 'string', 'string', 'string'],
 };
 
 /** The instructions whose argument list contains a type this registry cannot expand. */
@@ -83,8 +93,6 @@ export const COMPLEX_INSTRUCTIONS = [
   'create_battle_v2', // [LeafProofArgs; SQUAD] / [Pubkey; SQUAD]
   'accept_battle_v2', // [LeafProofArgs; SQUAD] / [u8; SQUAD]
   'sync_grid_charge', // [i64; GRID_CHARGE_MAX_DROPS]
-  'settle_pack', // settle: SettleArgs (MintAuth + Vec<LeafSpec>), encoded by client phaseV.ts, byte-pinned by its unit tests
-  'grant_mint', // settle: SettleArgs, same encoder as settle_pack
 ] as const;
 
 /**
@@ -131,12 +139,16 @@ function splitArgs(params: string): string[] {
 /**
  * Every `#[program]` instruction in `programs/`, keyed by instruction name.
  *
- * Three names (`pause`, `set_paused`, `set_pauser`) are declared by more than one program. They are
- * keyed by name alone, so a divergence between them has to be *reported* rather than silently
- * overwritten: `conflicts` is empty today because all three agree, and the gate asserts that.
+ * A name is not unique across programs: `pause`, `set_paused` and `set_pauser` exist in several, and
+ * начиная с находки 49 `revoke_root` у `settle` принимает `(kind, epoch)`, тогда как `staking::revoke_root`
+ * аргументов не имеет. `byName` keeps one declaration per name (the first one found); `all` keeps every
+ * declaration, and a call site is checked against **any** of them — so a shared name is only a problem when
+ * the encoding matches none of the declarations (see `shapeProblems`). `conflicts` therefore reports the one
+ * case that is always a bug: the same name declared twice **inside one program** with different arguments.
  */
-export function rustInstructions(repo = REPO): { byName: Map<string, Instruction>; conflicts: string[] } {
+export function rustInstructions(repo = REPO): { byName: Map<string, Instruction>; all: Map<string, Instruction[]>; conflicts: string[] } {
   const conflicts: string[] = [];
+  const all = new Map<string, Instruction[]>();
   const files = spawnSync('git', ['ls-files', 'programs/**/*.rs'], { cwd: repo, encoding: 'utf8' });
   if (files.status !== 0) throw new Error(`git ls-files failed: ${files.stderr}`);
   const out = new Map<string, Instruction>();
@@ -170,17 +182,20 @@ export function rustInstructions(repo = REPO): { byName: Map<string, Instruction
         .filter((a) => a && !/^_?ctx\s*:/.test(a))
         .map((a) => a.split(':').slice(1).join(':').trim());
       const at = `${rel}:${src.slice(0, pm.index + fm.index).split('\n').length}`;
-      const prev = out.get(fm[1]!);
-      if (prev) {
-        if (prev.args.join() !== args.join()) {
-          conflicts.push(`${fm[1]} is declared twice with different arguments: ${prev.at} [${prev.args.join(', ')}] and ${at} [${args.join(', ')}]`);
-        }
-        continue;
+      const decl: Instruction = { program: pm[1]!, name: fm[1]!, args, at };
+      const seen = all.get(fm[1]!) ?? [];
+      // Дубль внутри одной программы — всегда ошибка (Anchor такого не соберёт); одинаковое имя в разных
+      // программах законно, и разрешает его кодировка на стороне клиента, а не эта карта.
+      const twin = seen.find((d) => d.program === decl.program);
+      if (twin && twin.args.join() !== args.join()) {
+        conflicts.push(`${fm[1]} is declared twice inside ${decl.program} with different arguments: ${twin.at} [${twin.args.join(', ')}] and ${at} [${args.join(', ')}]`);
       }
-      out.set(fm[1]!, { program: pm[1]!, name: fm[1]!, args, at });
+      seen.push(decl);
+      all.set(fm[1]!, seen);
+      if (!out.has(fm[1]!)) out.set(fm[1]!, decl);
     }
   }
-  return { byName: out, conflicts };
+  return { byName: out, all, conflicts };
 }
 
 /** The text between two balanced parentheses, starting at the `(` in `s` at `i`. */
@@ -303,7 +318,7 @@ export function tsEncodings(repo = REPO): Encoding[] {
         // Methods chained on the declaration itself, plus every later `w.method(` — including the ones
         // inside a `vec` / `option` callback, which are where the element encoding lives.
         const chained = [...decl[1]!.matchAll(/\.(\w+)\(/g)].map((x) => x[1]!).filter((x) => x !== 'toBytes');
-        const later = [...scope.slice(decl.index! + decl[0].length).matchAll(new RegExp(`\\b${id}\\.(\\w+)\\(`, 'g'))].map((x) => x[1]!);
+        const later = statementsFrom(scope.slice(decl.index! + decl[0].length), id);
         out.push({ file: rel, line, name, chain: [...chained, ...later] });
         continue;
       }
@@ -311,6 +326,44 @@ export function tsEncodings(repo = REPO): Encoding[] {
     }
   }
   return out;
+}
+
+/**
+ * Methods written on a builder, in order, **including the rest of a multi-line chain**.
+ *
+ * Находка 79: раньше читались только вызовы с префиксом `w.`, а продолжение цепочки
+ * (`w.pubkey(…)\n  .u64(…)\n  .u8(…)`) идёт без префикса — и молча пропадало. Из-за этого сборщик
+ * `settle_pack`, потерявший `order_slot`, выглядел как `[pubkey, vec, …]` и не сравнивался с программой,
+ * а гейт при этом показывал «дрейфа нет». Теперь после каждого `w.method(` дочитывается хвост цепочки:
+ * `)` → `.method(` подряд, пока цепочка не кончится. Вызовы внутри колбэка (`w.vec(items, (s) => { w.u8(…) })`)
+ * по-прежнему находятся отдельным проходом, потому что они снова начинаются с `w.`.
+ */
+export function statementsFrom(scope: string, id: string): string[] {
+  const out: string[] = [];
+  for (const m of scope.matchAll(new RegExp(`\\b${id}\\.(\\w+)\\(`, 'g'))) {
+    out.push(m[1]!);
+    let cursor = m.index! + m[0].length - 1; // на открывающей скобке вызова
+    for (;;) {
+      const end = balancedEnd(scope, cursor);
+      if (end < 0) break;
+      // между звеньями цепочки может стоять перевод строки и комментарий — это не конец цепочки
+      const next = /^(?:\s|\/\/[^\n]*\n)*\.(\w+)\(/.exec(scope.slice(end + 1));
+      if (!next) break;
+      out.push(next[1]!);
+      cursor = end + next[0].length; // `(` следующего вызова
+    }
+  }
+  return out.filter((x) => x !== 'toBytes');
+}
+
+/** Index of the `)` matching the `(` at `open`, or -1. */
+function balancedEnd(s: string, open: number): number {
+  let d = 0;
+  for (let k = open; k < s.length; k++) {
+    if (s[k] === '(') d++;
+    else if (s[k] === ')') { d--; if (!d) return k; }
+  }
+  return -1;
 }
 
 // --------------------------------------------------------------------------- the rule
@@ -326,7 +379,12 @@ export interface ShapeProblem {
  * implementation. Returns the problems, not a boolean: "12 sites drifted" is not actionable and
  * "buy_pack encodes u8,u8,u8,u64,u64 but declares u8,u8,u8,u64" is.
  */
-export function shapeProblems(encodings: readonly Encoding[], instructions: Map<string, Instruction>, conflicts: readonly string[] = []): ShapeProblem[] {
+export function shapeProblems(
+  encodings: readonly Encoding[],
+  instructions: Map<string, Instruction>,
+  conflicts: readonly string[] = [],
+  all: Map<string, Instruction[]> = new Map(),
+): ShapeProblem[] {
   const problems: ShapeProblem[] = conflicts.map((c) => ({ where: 'programs/', name: '(ambiguous)', problem: c }));
   for (const e of encodings) {
     const where = `${e.file}:${e.line}`;
@@ -334,20 +392,32 @@ export function shapeProblems(encodings: readonly Encoding[], instructions: Map<
     const ix = instructions.get(e.name);
     if (!ix) { problems.push({ where, name: e.name, problem: 'no #[program] instruction with this name' }); continue; }
     if (e.chain === null) continue; // counted separately, see the unresolvable rule
-    const spec = ix.args.map((a) => writerSpecFor(a));
-    if (spec.some((x) => x === null)) {
+    const got = e.chain;
+    // Одно имя может стоять в нескольких программах (`pause`, `revoke_root`, …). Кодировка проверяется
+    // против каждой из них: совпала хотя бы с одной — дрейфа нет. Не совпала ни с одной — это и есть
+    // сигнал, и тогда в сообщении перечислены все кандидаты, чтобы было видно, какую программу чинить.
+    const candidates = (all.get(e.name) ?? [ix]).map((d) => ({ decl: d, spec: d.args.map((a) => writerSpecFor(a)) }));
+    const resolvable = candidates.filter((c) => !c.spec.some((x) => x === null));
+    if (resolvable.length === 0) {
       // Not a failure — a scope limit. COMPLEX_INSTRUCTIONS is what makes it visible.
       continue;
     }
-    const got = e.chain;
-    const want = spec.flatMap((x) => x!.flatMap((t) => t.alts.slice(0, 1)));
-    if (!matchesSpec(got, spec.flat() as Token[])) {
-      problems.push({
-        where,
-        name: e.name,
-        problem: `encodes [${got.join(', ')}] but ${ix.at} declares [${ix.args.join(', ')}] → [${want.join(', ')}]`,
-      });
+    if (resolvable.some((c) => matchesSpec(got, c.spec.flat() as Token[]))) {
+      for (const method of got) {
+        if (!WRITER_METHODS.includes(method)) problems.push({ where, name: e.name, problem: `unknown writer method .${method}()` });
+      }
+      continue;
     }
+    const first = resolvable[0]!;
+    const want = first.spec.flatMap((x) => x!.flatMap((t) => t.alts.slice(0, 1)));
+    const declared = resolvable
+      .map((c) => `${c.decl.program}::${c.decl.name} at ${c.decl.at} declares [${c.decl.args.join(', ')}]`)
+      .join('; ');
+    problems.push({
+      where,
+      name: e.name,
+      problem: `encodes [${got.join(', ')}] but ${declared} → [${want.join(', ')}]`,
+    });
     for (const method of got) {
       if (!WRITER_METHODS.includes(method)) problems.push({ where, name: e.name, problem: `unknown writer method .${method}()` });
     }
@@ -367,7 +437,9 @@ export function blindSpots(encodings: readonly Encoding[], instructions: Map<str
 
 function selftest(): number {
   let failed = 0;
+  let total = 0; // считаем сами: захардкоженное «22» уже один раз разошлось с числом проверок
   const check = (name: string, got: unknown, want: unknown) => {
+    total += 1;
     const ok = JSON.stringify(got) === JSON.stringify(want);
     if (!ok) { console.error(`selftest: ${name} — wanted ${JSON.stringify(want)}, got ${JSON.stringify(got)}`); failed++; }
   };
@@ -382,10 +454,19 @@ function selftest(): number {
   check('Vec<[u8; 32]> is vec then bytes', writerMethodsFor('Vec<[u8; 32]>'), ['vec', 'bytes']);
   check('Vec<Option<Pubkey>> nests', writerMethodsFor('Vec<Option<Pubkey>>'), ['vec', 'option', 'pubkey']);
   check('a named custom type is null', writerMethodsFor('ParamsPatch'), null);
+  // Находка 79: цепочка `w.a(…)\n .b(…)\n // комментарий\n .c(…)` — это три метода, а не один.
+  check('a multi-line chain is read to its end', statementsFrom('w.pubkey(k)\n  .u64(1)\n  .u8(2);', 'w'), ['pubkey', 'u64', 'u8']);
+  check('a comment between links does not end the chain', statementsFrom('w.u8(1)\n  // почему\n  .u64(2);', 'w'), ['u8', 'u64']);
+  check('a callback body is still read as its own calls', statementsFrom('w.vec(a, (x) => { w.u8(x); });', 'w'), ['vec', 'u8']);
   check('an unknown type is null', writerMethodsFor('SomethingElse'), null);
   check('[Pubkey; SQUAD] is null (N is not 1)', writerMethodsFor('[Pubkey; SQUAD]'), null);
 
   const ix = (args: string[]) => new Map([['x', { program: 'p', name: 'x', args, at: 'a.rs:1' }]]);
+  /** то же имя в двух программах: кодировка должна совпасть хотя бы с одной декларацией */
+  const shared = new Map([['x', [
+    { program: 'p', name: 'x', args: ['u8', 'u64'], at: 'a.rs:1' },
+    { program: 'q', name: 'x', args: [], at: 'b.rs:1' },
+  ]]]);
   const at = (file: string, name: string | null, chain: string[] | null): Encoding => ({ file, line: 1, name, chain });
   check('a matching flat instruction is clean', shapeProblems([at('a.ts', 'x', ['u64', 'pubkey'])], ix(['u64', 'Pubkey'])), []);
   check('a wrong order is caught', shapeProblems([at('a.ts', 'x', ['pubkey', 'u64'])], ix(['u64', 'Pubkey'])).length, 1);
@@ -411,8 +492,15 @@ function selftest(): number {
   check('an unknown writer method is named', unknown.some((p) => p.problem.includes('.nope()')), true);
   check('an unknown writer method is also a mismatch', unknown.length, 2);
 
+  // находка 49: `revoke_root` объявлен и в `settle`, и в `staking` с разными аргументами — это законно,
+  // пока кодировка совпадает хотя бы с одной декларацией.
+  check('a shared name matches the declaration it belongs to', shapeProblems([at('a.ts', 'x', [])], ix([]), [], shared), []);
+  check('a shared name accepting the second declaration', shapeProblems([at('a.ts', 'x', ['u8', 'u64'])], ix([]), [], shared), []);
+  check('a shared name matching no declaration is caught', shapeProblems([at('a.ts', 'x', ['u64'])], ix([]), [], shared).length, 1);
+  check('a duplicate inside one program is still a conflict', shapeProblems([], ix([]), ['x is declared twice inside p'], shared).length, 1);
+
   if (failed > 0) { console.error(`selftest: ${failed} case(s) failed`); return 1; }
-  console.log('selftest: all 18 cases pass');
+  console.log(`selftest: all ${total} cases pass`);
   return 0;
 }
 
@@ -420,9 +508,9 @@ function selftest(): number {
 
 function main(argv: string[]): number {
   if (argv.includes('--selftest')) return selftest();
-  const { byName: instructions, conflicts } = rustInstructions();
+  const { byName: instructions, all, conflicts } = rustInstructions();
   const encodings = tsEncodings();
-  const problems = shapeProblems(encodings, instructions, conflicts);
+  const problems = shapeProblems(encodings, instructions, conflicts, all);
   const { unresolvable, complex, complexEncoded } = blindSpots(encodings, instructions);
   const checkable = encodings.filter((e) => e.name !== null && e.chain !== null && !complex.some((c) => c.name === e.name));
   console.log(`instructions: ${instructions.size} · call sites: ${encodings.length} · checked: ${checkable.length}`);

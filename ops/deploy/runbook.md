@@ -18,13 +18,28 @@ image CI, build-env, setup и `ops:release`. Реквизиты/заключен
 
 Реализованные серверные/клиентские механизмы и настройка:
 [`docs/legal/RUNTIME-CONTROLS.md`](../../docs/legal/RUNTIME-CONTROLS.md).
-По решению владельца age/geo временно выключены для всех: `COMPLIANCE_ENFORCE=0`,
-`GEO_GATE=off`, клиентские `VITE_FLAG_AGE_GATE=false` / `VITE_FLAG_GEO_GATE=false`.
-Это default и для production; явные старые значения в окружении сервера нужно заменить
-и пересоздать API-контейнер (для VITE-флагов — пересобрать клиент). Текущий сервер этим
-изменением репозитория не обновлён. SIWS, CSRF, admin и privacy restriction остаются активны.
-Для повторного включения `COMPLIANCE_ENFORCE=1` нужен **защищённый** доверенный источник
-страны. Это проверка допуска пользователя, а не прежний блокиратор деплоя.
+По решению владельца age/geo временно выключены для всех: `GEO_GATE=off`, клиентские
+`VITE_FLAG_AGE_GATE=false` / `VITE_FLAG_GEO_GATE=false`.
+
+`COMPLIANCE_ENFORCE` не имеет дефолта в compose: пустое значение останавливает старт
+production-хоста (`assertProductionConfig`, находка 60). Решение владельца 2026-11-03
+(находка 10) — допустимы **оба** явно названных значения, silent default невозможен:
+
+* `COMPLIANCE_ENFORCE=1` + защищённый доверенный источник страны (`GEO_TRUST_HEADER=1` и
+  `x-geo-country` от края): политика `access-policy.json` исполняется, магазин открыт там, где
+  страна известна и допустима;
+* `COMPLIANCE_ENFORCE=1` без доверенного источника страны: `requireFeature` отвечает
+  `403 country_unknown` на packs/market/staking/arena/rewards/services/fusion — магазин закрыт,
+  а не «выключен»; `/healthz` при этом зелёный;
+* `COMPLIANCE_ENFORCE=0` — режим политики, отложенной владельцем: age/geo гейты выключены для всех,
+  и **каждый старт** пишет в лог `[compliance] COMPLIANCE_ENFORCE=0: …`. Это не дефолт и не
+  наследование из чужого `.env` — значение надо поставить руками и пересоздать API-контейнер
+  (для VITE-флагов — пересобрать клиент). Пока это значение стоит в `ops/deploy/.env.example`,
+  именно оно и есть эталонный профиль прода (находка 60: один профиль, остальное падает с парой
+  «X требует Y»).
+
+Значение, отличное от `0`/`1` или пустое, — отказ старта. SIWS, CSRF, admin и privacy
+restriction остаются активны.
 Дата рождения не записывается в БД; проверка основана на самостоятельном заявлении.
 Возвраты — заявки и ответы, без автоматической выплаты. Прямой blockchain не геофенсирован.
 
@@ -61,10 +76,18 @@ npm ci && npm run verify         # все оффлайн-проверки дол
 Перед mainnet гейт `npm run program-ids -- guard-mainnet` не «доступен», а **обязателен**: его дёргает
 `images.yml` для `cluster: mainnet-beta`, а `npm run setup` на mainnet-RPC сам отказывается работать с
 плейсхолдерами (SEC-F05). Гейт отказывает, пока в дереве нет freeze-записи `programs/program-ids.json`
-с теми же id и `keypairPresent: true` по всем четырём программам — запись существует ровно после шага
+с теми же id и `keypairPresent: true` по всем пяти программам (`chip_core`, `market`, `staking`,
+`arena`, `settle`) — запись существует ровно после шага
 `manifest` этой процедуры («похожи ли id на настоящие» с дерева не читается: `apply` держит все копии
 согласованными и до, и после заморозки). Тот же файл читает `npm run ops:buildenv`, сверяя с ним
 `PROGRAM_*`-переменные сборки.
+
+Тот же отказ стоит в сборке клиентского образа (`ops/deploy/Dockerfile.client`): список
+`PLACEHOLDERS` — это ровно текущий dev-производный набор id из `Anchor.toml` `[programs.devnet]`,
+и mainnet-сборка с любым из них падает с подсказкой `npm run program-ids -- guard-mainnet`.
+До этого там лежали четыре адреса, которых нет ни в `Anchor.toml`, ни в `declare_id!`
+(`GCRhrg…`/`GCA2aU…`/`GCuGx7…`/`GCfERi…`), а `settle` отсутствовал — проверка не могла сработать
+никогда (находка 51).
 
 Push в `main` до церемонии до этого гейта не доходит. Джоб `freeze` в `images.yml` видит, что записи нет, и
 пропускает сборку: джоб `images` получает статус skipped, а в логе появляется предупреждение «images skipped».

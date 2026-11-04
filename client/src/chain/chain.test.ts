@@ -5,7 +5,7 @@ import golden from '../../../packages/economy/golden/pack_expand.json';
 import { BorshReader, BorshWriter, u64le } from './borsh';
 import { accountDiscriminator, ixDiscriminator, eventsFromLogs, findEvent, optional, parseCustomError, concat, eventDiscriminator } from './anchor';
 import {
-  decodeChipState, decodeChipGridCharge, gridChargeMultBps, decodeGameConfig, decodePendingPack, decodePendingClaimFusion, decodePlayerPity, decodeListing, decodeTokenStake, decodeVaultLedger, decodeCompressedAssetListing, decodeCompressedPackSettlement, decodeCompressedMintClaim, sumLedgers, readPackOpened, readCompressedClaimsCreated, readCompressedPackOpened, readCompressedPackSettled, readClaimFusionRevealed, chipIsFree, claimIsListable, claimFusionBlock, CHIP_FLAG,
+  decodeChipState, decodeChipGridCharge, gridChargeMultBps, decodeGameConfig, decodePendingPack, decodePendingClaimFusion, decodePlayerPity, decodeListing, decodeTokenStake, decodeVaultLedger, decodeCompressedAssetListing, decodeCompressedPackSettlement, decodeCompressedMintClaim, claimClosable, sumLedgers, readPackOpened, readCompressedClaimsCreated, readCompressedPackOpened, readCompressedPackSettled, readClaimFusionRevealed, chipIsFree, claimIsListable, claimFusionBlock, CHIP_FLAG,
 } from './accounts';
 import { vaultPda, assetPda, chipStatePda, collectionMetaPda, configPda, pendingPackPda, claimFusionPda, compressedMintClaimPda, compressedSettlementPda, bubblegumTreeConfigPda, compressedChipStatePda, bubblegumTreeMetaPda, pityPda, pendingFusionPda, battlePda, ata, freshNonce, rewardRootPda, rewarderPda, gridChargePda, playerItemsPda, playerBoardPartsPda, skrPoolPda, emissionPda, seasonPoolAuthPda, RNG_KIND, rngAuthPda, rngPda, sbLutPda, sbLutSignerPda, sbStatePda, sbOracleStatsPda, sbRewardEscrow, LEDGER_SHARDS, allLedgerPdas, ledgerPda, ledgerPdaOf, ledgerShardOf } from './pdas';
 import { fitsInTx } from './tx';
@@ -1195,6 +1195,31 @@ describe('H3 claim fusion (client mirror)', () => {
     expect(p.commitSlot).toBe(777n);
     expect(p.nonce).toBe(9n);
     expect(p.feeEscrowed).toBe(500_000n);
+  });
+
+  it('claimClosable (находка 46): истёкший незабранный клейм закрывается, деньги расчёта — нет', () => {
+    const buyer = Keypair.generate().publicKey;
+    const settlement = Keypair.generate().publicKey;
+    const origin = Keypair.generate().publicKey;
+    const mk = (over: { expiresAt: bigint; settlement: PublicKey; minted?: boolean; consumed?: boolean; listed?: boolean; staked?: boolean }) => new BorshWriter()
+      .bytes(accountDiscriminator('CompressedMintClaim'))
+      .pubkey(buyer).u8(0).u8(4).u8(1).u64(9n).i64(over.expiresAt)
+      .pubkey(over.settlement).bool(false).bool(!!over.minted).bool(!!over.consumed).bool(!!over.listed).bool(!!over.staked).u8(1).bool(false).pubkey(origin).i64(0n)
+      .toBytes();
+    const now = 1_000;
+    const free = PublicKey.default;
+    // срок вышел, ничего не забрано — цепь примет close_expired_claim
+    expect(claimClosable(decodeCompressedMintClaim(mk({ expiresAt: 999n, settlement: free })), now)).toBe(true);
+    // ровно на границе — нет: контракт сравнивает строго (`>`)
+    expect(claimClosable(decodeCompressedMintClaim(mk({ expiresAt: 1_000n, settlement: free })), now)).toBe(false);
+    expect(claimClosable(decodeCompressedMintClaim(mk({ expiresAt: 2_000n, settlement: free })), now)).toBe(false);
+    // сминченный / израсходованный / в листинге / в стейкинге — не наша дорога
+    expect(claimClosable(decodeCompressedMintClaim(mk({ expiresAt: 999n, settlement: free, minted: true })), now)).toBe(false);
+    expect(claimClosable(decodeCompressedMintClaim(mk({ expiresAt: 999n, settlement: free, consumed: true })), now)).toBe(false);
+    expect(claimClosable(decodeCompressedMintClaim(mk({ expiresAt: 999n, settlement: free, listed: true })), now)).toBe(false);
+    expect(claimClosable(decodeCompressedMintClaim(mk({ expiresAt: 999n, settlement: free, staked: true })), now)).toBe(false);
+    // клейм расчёта пака закрывает cancel_compressed_claim с возвратом доли покупки, не ренты
+    expect(claimClosable(decodeCompressedMintClaim(mk({ expiresAt: 999n, settlement })), now)).toBe(false);
   });
 
   it('claimIsListable (H1): registered + free + soulbound window passed', () => {

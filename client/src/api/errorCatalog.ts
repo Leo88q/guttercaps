@@ -14,6 +14,8 @@ export const API_ERROR_KEYS = {
   bad_pubkey: 'diagnostics.pubkey', bad_qty: 'failures.badQuantity', bad_request: 'failures.requestInvalid',
   bad_resolution: 'failures.requestInvalid', bad_sku: 'failures.chip_core_InvalidSku', bad_sort: 'failures.requestInvalid',
   wrong_district: 'failures.requestInvalid', contract_locked: 'failures.requestInvalid', contract_done: 'failures.requestInvalid',
+  // находка 39: контракт уже открыт другой попыткой того же слота
+  contract_in_progress: 'failures.requestInvalid',
   deep_no_hints: 'failures.requestInvalid', deep_attempts_exhausted: 'failures.requestInvalid', ghost_no_hints: 'failures.requestInvalid',
   use_grid_endpoint: 'failures.requestInvalid', cg_burn_required: 'failures.paymentPayload', deep_credit_cap: 'failures.requestInvalid',
   // §5.1 линия: реплей, день и попытки.
@@ -31,6 +33,8 @@ export const API_ERROR_KEYS = {
   bad_squad: 'failures.threeSquad', bad_tier: 'failures.staking_InvalidTier', chain_fulfilled: 'failures.chainFulfilled',
   chip_busy: 'failures.arena_ChipBusy', collection_mismatch: 'failures.collectionMismatch', commit_mismatch: 'failures.commitMismatch',
   config_missing: 'screens.errGameConfig', currency_not_accepted: 'failures.chip_core_CurrencyNotAccepted',
+  // находка 73: SKU выключен в он-чейн `GameConfig` — покупка не пройдёт, пока админ его не включит
+  sku_disabled: 'failures.chip_core_SkuDisabled',
   daily_cap: 'failures.chip_core_DailyCapReached', duplicate_chip: 'failures.arena_DuplicateChip',
   duplicate_material: 'failures.chip_core_DuplicateMaterial', emission_missing: 'failures.unavailable',
   geo_blocked: 'failures.geoBlocked', guard_rail: 'failures.guardRail', handle_cooldown: 'failures.handleCooldown',
@@ -38,11 +42,13 @@ export const API_ERROR_KEYS = {
   phase_g_off: 'failures.unavailable', orders_unavailable: 'failures.unavailable', fusion_unavailable: 'failures.unavailable',
   // phase-V settle path: same truthful summaries, originals stay in ErrorNotice.
   phase_v_off: 'failures.unavailable', phase_v_unconfigured: 'failures.unavailable',
+  // находка 30: спецификации заказа выдаёт другой запрос — повтор через секунду, ничего не потеряно.
+  settle_auth_busy: 'failures.unavailable',
   not_paid_onchain: 'failures.confirmationUnknown', not_paid: 'failures.confirmationUnknown',
   escrow_mismatch: 'failures.requestInvalid', bad_order_account: 'failures.requestInvalid',
   already_settled: 'failures.chainFulfilled', settle_unverified: 'failures.confirmationUnknown',
   already_minted: 'failures.chainFulfilled', already_burned: 'failures.requestInvalid', already_promised: 'failures.requestInvalid',
-  chip_locked: 'failures.chip_core_StillLocked', diamond_gate: 'failures.unavailable', burn_unverified: 'failures.requestInvalid',
+  chip_locked: 'failures.chip_core_StillLocked', diamond_gate: 'failures.unavailable', burn_unverified: 'failures.requestInvalid', burn_check_unavailable: 'failures.unavailable',
   already_staked: 'failures.requestInvalid', not_staked: 'failures.notFound', nothing_to_claim: 'failures.staking_NothingToClaim',
   human_check_unavailable: 'failures.humanUnavailable', invalid_handle: 'failures.invalidHandle',
   match_pending: 'failures.matchPending', match_tagged_out: 'failures.matchTaggedOut', material_not_free: 'failures.chip_core_ChipNotFree',
@@ -89,6 +95,12 @@ export const API_ERROR_KEYS = {
   route_locked: 'failures.requestInvalid', no_emergency_hint: 'failures.requestInvalid', no_hints: 'failures.requestInvalid',
   attempt_not_found: 'failures.notFound', attempt_settled: 'failures.requestInvalid', bad_proof: 'failures.requestInvalid', no_skin_entitlement: 'failures.requestInvalid',
   already_granted: 'failures.preorderAlreadyGranted', not_payable: 'failures.preorderNotPayable',
+  // Находка 32: оплата пришла, когда лимит кошелька уже занял другой заказ — заказ в очереди возврата.
+  not_refundable: 'failures.packRefundNotPossible', already_refunded: 'failures.packRefundNotPossible',
+  // Находка 19: материалы уже сгорели в другом fusion — второго результата за одно сжигание не будет.
+  materials_spent: 'failures.fusionMaterialsSpent',
+  // Находка 22: владение чипом проверяется у цепи; DAS не ответил — стейк не открыт, можно повторить.
+  owner_check_unavailable: 'failures.ownerCheckUnavailable',
   tx_not_found: 'failures.preorderTxNotFound', already_confirmed: 'failures.preorderAlreadyConfirmed',
   payment_tx_failed: 'failures.preorderPaymentFailed', payment_no_transfer: 'failures.preorderNoTransfer',
   payment_amount_low: 'failures.preorderAmountLow', payment_memo_mismatch: 'failures.preorderMemoMismatch',

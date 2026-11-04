@@ -14,6 +14,20 @@ import { customErrorCode } from './chain.ts';
 /** Serialized transaction limit (one MTU). */
 export const MAX_TX_BYTES = 1_232;
 
+/**
+ * Сколько раз отправляется ОДНА И ТА ЖЕ подписанная транзакция при «нет ответа». Повтор не создаёт
+ * новой подписи (§1.1 п. 61), поэтому лишняя попытка не может привести ко второму исполнению.
+ */
+export const RETRIES = 3;
+
+/** Статус уже подписанной транзакции; недоступность RPC не должна превращаться в «исполнилась». */
+async function signatureStatus(connection: Connection, signature: string): Promise<{ confirmationStatus?: string; err: unknown } | null> {
+  try {
+    const r = await connection.getSignatureStatuses([signature], { searchTransactionHistory: true });
+    return r?.value?.[0] ?? null;
+  } catch { return null; }
+}
+
 export class TxError extends Error {
   constructor(message: string, public readonly logs?: string[], public readonly code?: number, public readonly signature?: string) {
     super(message);
@@ -33,6 +47,12 @@ export interface SendOpts {
   /** skip the RPC preflight (Switchboard reveal) — errors are then decoded from the confirmed tx logs */
   skipPreflight?: boolean;
   lookupTables?: AddressLookupTableAccount[];
+  /**
+   * §1.1: вызывается синхронно после подписи и ДО `sendRawTransaction`. Ledger операций пишет здесь
+   * подпись, поэтому падение процесса сразу после отправки оставляет след, а не «ничего не было».
+   * Исключение из хука означает «не отправлять» (fail closed).
+   */
+  onSigned?: (signature: string, extra: { rawTx: string; lastValidBlockHeight: number; cuPrice: number }) => void;
 }
 
 /**
@@ -100,13 +120,27 @@ export async function sendAndConfirm(connection: Connection, payer: Keypair, ixs
     const keys = new Set(ixs.flatMap((ix) => [ix.programId.toBase58(), ...ix.keys.map((k) => k.pubkey.toBase58())])).size;
     throw new TxTooLarge(size < 0 ? 0 : size, keys);
   }
-  let attempt = 0;
-  for (;;) {
-    attempt++;
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-    const tx = compile(payer.publicKey, blockhash, ixs, opts.cuLimit, cuPrice, opts.lookupTables);
-    tx.sign([payer]);
-    const signature = base58Encode(tx.signatures[0]);
+  // §1.1 п. 61: повтор после «нет ответа» идёт ТОЙ ЖЕ подписанной транзакцией. Раньше цикл на каждую
+  // попытку собирал транзакцию заново (новый blockhash ⇒ новая подпись), поэтому «block height
+  // exceeded» после уже исполненной транзакции приводил ко второму исполнению того же действия.
+  // Теперь телo транзакции создаётся один раз: повтор идемпотентен по построению (та же подпись), а
+  // неизвестный исход возвращается вызывающему вместе с подписью — решает ledger операций, не догадка.
+  let tx: VersionedTransaction | null = null;
+  let signature = '';
+  let blockhash = '';
+  let lastValidBlockHeight = 0;
+  const attempts = RETRIES;
+  for (let attempt = 1; ; attempt++) {
+    if (!tx) {
+      const bh = await connection.getLatestBlockhash('confirmed');
+      blockhash = bh.blockhash;
+      lastValidBlockHeight = bh.lastValidBlockHeight;
+      const built = compile(payer.publicKey, blockhash, ixs, opts.cuLimit, cuPrice, opts.lookupTables);
+      built.sign([payer]);
+      tx = built;
+      signature = base58Encode(built.signatures[0]);
+      opts.onSigned?.(signature, { rawTx: Buffer.from(built.serialize()).toString('base64'), lastValidBlockHeight, cuPrice });
+    }
     try {
       await connection.sendRawTransaction(tx.serialize(), { skipPreflight: opts.skipPreflight ?? false, maxRetries: 3, preflightCommitment: 'confirmed' });
       const conf = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
@@ -120,10 +154,23 @@ export async function sendAndConfirm(connection: Connection, payer: Keypair, ixs
     } catch (e) {
       if (e instanceof TxError) throw e;
       const m = String((e as Error)?.message ?? e);
-      if (attempt === 1 && /block height exceeded|Blockhash not found|expired/i.test(m)) continue;
       const logs: string[] | undefined = (e as { logs?: string[] })?.logs;
       const code = customErrorCode(e);
+      // «Blockhash not found» / «block height exceeded» — единственный класс ошибок, где повтор осмыслен.
+      if (attempt < attempts && /block height exceeded|Blockhash not found|expired/i.test(m)) {
+        // Сначала спрашиваем цепь про уже отправленную подпись: если она исполнилась, повтор не нужен.
+        const st = await signatureStatus(connection, signature);
+        if (st && !st.err && (st.confirmationStatus === 'confirmed' || st.confirmationStatus === 'finalized')) {
+          return { signature, logs: [], slot: 0 };
+        }
+        if (st && st.err) {
+          const c = customErrorCode({ message: JSON.stringify(st.err), logs });
+          throw new TxError(`tx ${signature} failed: ${JSON.stringify(st.err)}${c !== undefined ? ` (custom ${c})` : ''}`, logs, c, signature);
+        }
+        continue; // та же подписанная транзакция отправляется повторно — второго исполнения быть не может
+      }
       throw new TxError(code !== undefined && !m.includes(`custom ${code}`) ? `${m} (custom ${code})` : m, logs, code, signature);
     }
   }
+
 }

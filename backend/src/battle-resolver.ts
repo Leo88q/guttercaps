@@ -35,6 +35,8 @@ import { loadKeypair } from './crank.ts';
 import { sendAndConfirm } from './tx.ts';
 import type { ChipRow } from './queries.ts';
 import { insertIgnore } from './sql.ts';
+import { ChainOpInFlight, findChainOp, opPayload, recordFailedByKey, submitChainOp } from './chain-ops.ts';
+import { decodeLogs } from './events.ts';
 
 const env = process.env;
 export const BATTLE_ORACLE_KEYPAIR = env.BATTLE_ORACLE_KEYPAIR ?? '';
@@ -124,25 +126,121 @@ export async function resolveOne(d: ResolverDeps, battleKey: PublicKey): Promise
   const winner = fight.winner === 'A' ? b.challenger : b.opponent;
   const hash = resultHash(fight.rounds);
   const ix = resolveBattleIx({ oracle: d.oracle.publicKey, challenger: b.challenger, nonce: b.nonce, randomness: b.randomness, cgMint: cfg.cgMint, winner, seasonPool: cfg.seasonPool, treasuryCg: cfg.treasuryCg, resultHash: hash });
-  const { signature } = await sendAndConfirm(d.connection, d.oracle, [ix], { cuLimit: CU_RESOLVE_BATTLE });
-  // keep the round list so /arena/matches/:battle can replay a wager battle exactly like a ranked one
+  // §1.1: бой разрешается ровно одной операцией. Раньше «нет ответа» после send оставляло бой
+  // разрешённым в цепи и отсутствующим в `matches`: аккаунт уже `resolved`, следующий проход
+  // отказывался («status 2»), и запись не появлялась никогда (пп. 40, 41, 61).
   const matchId = battleKey.toBase58();
-  const inserted = Number(d.db.run(
+  const payload: ResolvedMatch = {
+    matchId,
+    a: b.challenger.toBase58(),
+    b: b.opponent.toBase58(),
+    // полные бойцы, а не адреса: `matches.squad_a` — это вход для повтора боя и для XP, и он должен
+    // совпадать с тем, что уходило в цепь (`onChainSquadPower` по тем же уровням)
+    squadA,
+    squadB,
+    powerA: b.powerA,
+    powerB: b.powerB,
+    winner: winner.toBase58(),
+    winnerSide: fight.winner,
+    rounds: fight.rounds,
+    seed: Buffer.from(rnd.value).toString('hex'),
+    wager: b.wager.toString(),
+    acceptedAt: Number(b.acceptedAt),
+  };
+  let txLogs: string[] = [];
+  const r = await submitChainOp(
+    d.db,
+    { kind: BATTLE_RESOLVE_KIND, bizKey: `battle:${matchId}`, payload },
+    async (hooks) => {
+      const { signature, logs } = await sendAndConfirm(d.connection, d.oracle, [ix], {
+        cuLimit: CU_RESOLVE_BATTLE,
+        onSigned: (signature, extra) => hooks.beforeSend(signature, { rawTx: extra.rawTx, lastValidBlockHeight: extra.lastValidBlockHeight, cuPrice: extra.cuPrice }),
+      });
+      txLogs = logs;
+      return { signature };
+    },
+  );
+  const signature = r.signature;
+  // Находка 40: предохранитель по дневному лимиту оракула — УСПЕШНАЯ транзакция, которая бой НЕ проводит.
+  // `resolve_battle` при `oracle_paid_today + pot > oracle_daily_cap` ставит `paused = true`, эмитит
+  // `ArenaAutoPaused` и возвращает `Ok(())`, оставляя бой в `Accepted` (так и задумано: откат не смог бы
+  // сохранить паузу, а `cancel_stale_battle` вернёт ставки). Раньше этот путь не отличался от настоящего
+  // разрешения: бой попадал в `matches` как `resolved`, начислялся XP отряда и очки ладдера, а награды
+  // никто не получал. Теперь успех транзакции — не доказательство: смотрим её события и, если сработал
+  // предохранитель, бой не записываем, а операцию помечаем неуспешной, чтобы она повторилась после
+  // снятия паузы (пока арена на паузе, `resolveOne` и так ничего не отправляет).
+  const breaker = decodeLogs(txLogs).find((e) => e.program === 'arena' && e.name === 'ArenaAutoPaused');
+  if (breaker) {
+    recordFailedByKey(d.db, BATTLE_RESOLVE_KIND, `battle:${matchId}`,
+      `arena oracle daily cap reached (paid_today ${String(breaker.data.oraclePaidToday)} of ${String(breaker.data.oracleDailyCap)}): battle left Accepted, awaiting cancel_stale_battle or the next day`);
+    d.log?.(`[battle-resolver] ALERT ${matchId} NOT resolved: arena oracle daily cap reached — battle stays Accepted, nothing recorded; will retry after the pause is lifted`);
+    return { kind: 'skipped', reason: 'arena oracle daily cap reached (ArenaAutoPaused) — battle left unsettled' };
+  }
+  writeResolvedMatch(d.db, payload, signature);
+  d.log?.(`[battle-resolver] resolve_battle ${matchId} winner ${winner.toBase58()} → ${signature}${r.reused ? ' (already confirmed earlier)' : ''}`);
+  return { kind: 'resolved', signature, winner: winner.toBase58() };
+}
+
+export const BATTLE_RESOLVE_KIND = 'battle_resolve' as const;
+
+/** Всё, что нужно, чтобы записать `matches` без повторной отправки (payload операции в `chain_ops`). */
+export interface ResolvedMatch {
+  matchId: string;
+  a: string;
+  b: string;
+  squadA: FighterChip[];
+  squadB: FighterChip[];
+  powerA: number;
+  powerB: number;
+  winner: string;
+  winnerSide: 'A' | 'B' | 'draw';
+  rounds: unknown;
+  seed: string;
+  wager: string;
+  acceptedAt: number;
+}
+
+/**
+ * Записать разрешённый бой в проекцию. Идемпотентно (`insertIgnore` по `matchId`) и вызывается как из
+ * пути «только что отправили», так и из пути «операция уже подтверждена» — поэтому падение процесса
+ * между send и INSERT больше не теряет бой.
+ */
+export function writeResolvedMatch(db: Db, p: ResolvedMatch, signature: string): boolean {
+  const inserted = Number(db.run(
     // every value is a parameter now (the literals were inline in the VALUES list): same row, and the
     // statement shape is what `sql.ts` guarantees across dialects
     insertIgnore('matches', ['id', 'season', 'a', 'b', 'squad_a', 'squad_b', 'power_a', 'power_b', 'league', 'commit_a', 'commit_b', 'nonce_a', 'nonce_b', 'seed', 'rounds', 'winner', 'wager', 'battle_pda', 'resolve_sig', 'status', 'started_at', 'ended_at', 'rewarded']),
-    matchId, 0, b.challenger.toBase58(), b.opponent.toBase58(), JSON.stringify(squadA), JSON.stringify(squadB), b.powerA, b.powerB, leagueOfPower(b.powerA),
-    '', '', '', '', Buffer.from(rnd.value).toString('hex'), JSON.stringify(fight.rounds), winner.toBase58(), b.wager.toString(), matchId, signature, 'resolved',
-    Number(b.acceptedAt) * 1000, Date.now(), 0,
+    p.matchId, 0, p.a, p.b, JSON.stringify(p.squadA), JSON.stringify(p.squadB), p.powerA, p.powerB, leagueOfPower(p.powerA),
+    '', '', '', '', p.seed, JSON.stringify(p.rounds), p.winner, p.wager, p.matchId, signature, 'resolved',
+    p.acceptedAt * 1000, Date.now(), 0,
   ).changes);
   // first insert only: ranked-style chip XP (indexer-authoritative). claim.level stays mint 1.
   if (inserted > 0) {
     const t = now();
-    grantSquadXp(d.db, JSON.stringify(squadA), fight.winner === 'A', t, b.challenger.toBase58(), matchId);
-    grantSquadXp(d.db, JSON.stringify(squadB), fight.winner === 'B', t, b.opponent.toBase58(), matchId);
+    grantSquadXp(db, JSON.stringify(p.squadA), p.winnerSide === 'A', t, p.a, p.matchId);
+    grantSquadXp(db, JSON.stringify(p.squadB), p.winnerSide === 'B', t, p.b, p.matchId);
   }
-  d.log?.(`[battle-resolver] resolve_battle ${matchId} winner ${winner.toBase58()} → ${signature}`);
-  return { kind: 'resolved', signature, winner: winner.toBase58() };
+  return inserted > 0;
+}
+
+/**
+ * Догнать бои, разрешённые на цепи, но не записанные в `matches` (падение между send и записью).
+ * Смотрит только подтверждённые операции ledger'а, поэтому не может создать запись о бое,
+ * которого нет в цепи. Возвращает число восстановленных записей.
+ */
+export function healResolvedMatches(db: Db): number {
+  let healed = 0;
+  for (const op of db.all<{ signature: string | null; payload: string | null }>(
+    `SELECT signature, payload FROM chain_ops WHERE kind = ? AND status = 'confirmed'`, BATTLE_RESOLVE_KIND,
+  )) {
+    if (!op.signature || !op.payload) continue;
+    let p: ResolvedMatch;
+    try { p = JSON.parse(op.payload) as ResolvedMatch; } catch { continue; }
+    if (!p?.matchId) continue;
+    if (db.get(`SELECT 1 FROM matches WHERE id = ?`, p.matchId)) continue;
+    if (writeResolvedMatch(db, p, op.signature)) healed++;
+  }
+  return healed;
 }
 const leagueOfPower = (p: number) => [800, 1400, 2400, 4000, 7000, Infinity].findIndex((u) => p < u);
 
@@ -153,6 +251,12 @@ export function acceptedBattles(db: Db): PublicKey[] {
 
 export async function resolveAll(d: ResolverDeps): Promise<{ resolved: number; skipped: number; failed: number }> {
   let resolved = 0, skipped = 0, failed = 0;
+  // Бои, разрешённые в цепи, но потерянные проекцией: догоняем ДО очереди, чтобы «резолв ушёл,
+  // запись не появилась» не оставалось навсегда.
+  try {
+    const healed = healResolvedMatches(d.db);
+    if (healed) d.log?.(`[battle-resolver] healed ${healed} resolved battle(s) from the chain-ops ledger`);
+  } catch (e) { d.log?.(`[battle-resolver] ledger heal failed: ${(e as Error).message}`); }
   for (const key of acceptedBattles(d.db)) {
     try {
       const r = await resolveOne(d, key);

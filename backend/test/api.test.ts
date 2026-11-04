@@ -194,7 +194,8 @@ describe('public API', () => {
     expect(quests.json.find((x: { id: string }) => x.id === 'd_login')).toMatchObject({ value: 1, claimable: true, ineligibleReason: null });
     expect((await c.get('/v1/quests/claims')).json).toEqual([]);
     expect((await c.get('/v1/quests/streak')).json).toMatchObject({ days: 0, nextChipAt: 7 });
-    expect((await c.get('/v1/health')).json.arena).toEqual({ queued: 0, revealing: 0, unattributedResolves: { count: 0, sample: [] } });
+    // staleBattles — залипшие бои, у которых окно возврата уже открыто (находка 46)
+    expect((await c.get('/v1/health')).json.arena).toEqual({ queued: 0, revealing: 0, unattributedResolves: { count: 0, sample: [] }, staleBattles: 0 });
   });
   it('requires auth for /me', async () => {
     expect((await new Client(base).get('/v1/me')).status).toBe(401);
@@ -273,7 +274,11 @@ describe('paid services', () => {
     db.run(`UPDATE wallets SET handle_set_at = handle_set_at - 31 * 86400 WHERE address = ?`, alice.publicKey.toBase58());
     const replay = await c.put('/v1/me/handle', { handle: 'other_name', signature: paySig });
     expect(replay.status).toBe(402);
-    expect(replay.json.code).toBe('payment_kind_mismatch'); // kind 0 receipt cannot pay for a kind 1 change
+    // Находка 76 изменила ПРИЧИНУ отказа, но не гарантию. Раньше kind 0 «не подходил» к смене вида, и
+    // платёж за первый handle сгорал, если ручку успела получить другая вкладка. Теперь такой платёж к
+    // смене подходит (вид берётся из платежа), поэтому единственная причина отказа здесь — что он уже
+    // потрачен. Ничего не выдаётся ни в том, ни в другом случае.
+    expect(replay.json.code).toBe('payment_consumed');
     const changeRef = toHex(handleRefHash(1, alice.publicKey.toBase58(), 'other_name'));
     const changeSig = 'sigCHANGE' + 'q'.repeat(44);
     ingestTx(tx([{ program: 'chip_core', name: 'ServicePaid', data: { buyer: alice.publicKey.toBase58(), kind: 1, currency: 2, amount: '99000000', burned: '99000000', refHash: changeRef } }], { signature: changeSig }), db);

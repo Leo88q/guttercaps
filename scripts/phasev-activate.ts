@@ -38,6 +38,10 @@ const RPC = process.env.SOLANA_RPC_URL ?? 'https://api.devnet.solana.com';
 const WALLET = process.env.ANCHOR_WALLET ?? `${process.env.HOME}/.config/solana/id.json`;
 
 const SETTLE = new PublicKey(process.env.PROGRAM_SETTLE ?? 'B9ousNDpe29G45KFHyndvHXpLigBtxCh9xbboWuCeXyP');
+const BPF_LOADER_UPGRADEABLE = new PublicKey('BPFLoaderUpgradeab1e11111111111111111111111');
+/// ProgramData программы (находка 4): `init_config` принимает её последним аккаунтом и требует,
+/// чтобы подписант был записанной upgrade authority. Иначе первый вызывающий забирал бы конфиг.
+const SETTLE_PROGRAM_DATA = PublicKey.findProgramAddressSync([SETTLE.toBuffer()], BPF_LOADER_UPGRADEABLE)[0];
 const BUBBLEGUM = new PublicKey('BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY');
 const MPL_CORE = new PublicKey('CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d');
 const MPL_NOOP = new PublicKey('mnoopTCrg4p8ry25e4bcWA9XZjbNjMTfgYVGGEdRsf3');
@@ -98,6 +102,7 @@ async function main(): Promise<void> {
   console.log(`  payer (tree creator / collection authority): ${payer.publicKey.toBase58()}`);
   console.log(`  settle program: ${SETTLE.toBase58()}`);
   console.log(`  config PDA:     ${config.toBase58()}`);
+  console.log(`  program data:   ${SETTLE_PROGRAM_DATA.toBase58()} (init_config требует подписи upgrade authority)`);
   console.log(`  tree_auth PDA:  ${treeAuth.toBase58()}`);
   console.log(`  mint oracle:    ${oracle.toBase58()}`);
   console.log(`  tree:           ${tree.toBase58()} (tree_config ${treeConfig.toBase58()})`);
@@ -142,6 +147,7 @@ async function main(): Promise<void> {
             { pubkey: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'), isSigner: false, isWritable: false },
             { pubkey: new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'), isSigner: false, isWritable: false },
             { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+            { pubkey: SETTLE_PROGRAM_DATA, isSigner: false, isWritable: false },
           ],
           data,
         }),

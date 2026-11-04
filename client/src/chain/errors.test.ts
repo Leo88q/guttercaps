@@ -11,13 +11,13 @@ import source from '@/shared/i18n/failures/source.json';
 import { API_ERROR_KEYS } from '@/api/errorCatalog';
 import { ApiError } from '@/api/client';
 import catalog from './errorCatalog.json';
-import { ARENA_ID, CHIP_CORE_ID, MARKET_ID, STAKING_ID, TOKEN_PROGRAM_ID } from './ids';
+import { ARENA_ID, CHIP_CORE_ID, MARKET_ID, SETTLE_ID, STAKING_ID, TOKEN_PROGRAM_ID } from './ids';
 import { humanizeTxError, describeProgramError, isBlockhashExpired } from './errors';
 import { parseCustomError } from './anchor';
 import { errorSnapshot, originalErrorText } from './errorSnapshot';
 import { TxError, sendTx, type WalletLike } from './tx';
 
-const programs = { chip_core: CHIP_CORE_ID, market: MARKET_ID, staking: STAKING_ID, arena: ARENA_ID };
+const programs = { chip_core: CHIP_CORE_ID, market: MARKET_ID, staking: STAKING_ID, arena: ARENA_ID, settle: SETTLE_ID };
 const root = path.resolve(process.cwd(), process.cwd().endsWith('/client') ? '..' : '.');
 afterEach(() => setLocale('en'));
 
@@ -25,7 +25,7 @@ describe('source synchronization', () => {
   it('pins every Rust variant, its number and exact English source', () => {
     let count = 0;
     for (const name of Object.keys(programs) as (keyof typeof programs)[]) {
-      const file = ['market', 'arena'].includes(name) ? 'lib.rs' : 'errors.rs';
+      const file = ['market', 'arena', 'settle'].includes(name) ? 'lib.rs' : 'errors.rs';
       const source = readFileSync(path.join(root, 'programs', name, 'src', file), 'utf8');
       const body = /pub enum \w*Error \{([\s\S]*?)\n\}/.exec(source)![1];
       const entries = [...body.matchAll(/#\[msg\("([^"\n]+)"\)\]\s*(\w+)\s*,/g)];
@@ -36,7 +36,9 @@ describe('source synchronization', () => {
         count++;
       });
     }
-    expect(count).toBe(120); // 119 + StakeError::BadGridCharge (Floodgrid charge account)
+    // 120 + StakeError::NotUpgradeAuthority (находка 13) + 21 вариант SettleError (находка 82: контур денег
+    // фазы V не был в таблице вовсе, поэтому отказы `settle_pack`/`refund_pack` не имели названий)
+    expect(count).toBe(142);
     // Pin the framework identities to the installed SDK too, not just our translated hand table.
     const framework = {
       InstructionMissing: 100, InstructionFallbackNotFound: 101, ConstraintMut: 2000,
@@ -83,7 +85,7 @@ describe('source synchronization', () => {
 });
 
 for (const locale of LOCALES) {
-  it(`${locale}: all 112 program errors and 19 framework codes retain identities`, async () => {
+  it(`${locale}: all 142 program errors and 19 framework codes retain identities`, async () => {
     await setLocale(locale);
     for (const name of Object.keys(programs) as (keyof typeof programs)[]) {
       catalog[name].forEach((entry, i) => {

@@ -8,12 +8,13 @@
 //   other payloads  = canonical JSON (sorted keys, no whitespace)
 import { keccak_256 } from '@noble/hashes/sha3';
 import { PublicKey } from '@solana/web3.js';
-import { SERVICES, SERVICE_BY_ID, SERVICE_BY_KIND, SKIN_BY_ID, PROFILE_THEME_BY_ID, GRID_FIELD_THEME_BY_ID, EMOTE_PACK_BY_ID, COLLECTIONS, FX, GRID, partById, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, type ServiceDef } from '@guttercaps/economy';
+import { ACTIVE_SERVICES, SERVICES, SERVICE_BY_ID, SERVICE_BY_KIND, isPurchasable, SKIN_BY_ID, PROFILE_THEME_BY_ID, GRID_FIELD_THEME_BY_ID, EMOTE_PACK_BY_ID, COLLECTIONS, FX, GRID, partById, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, type ServiceDef } from '@guttercaps/economy';
 import { HANDLE_BLOCKLIST, HANDLE_CHANGE_COOLDOWN_S, HANDLE_MAX_RESERVATIONS, HANDLE_QUARANTINE_S, HANDLE_RE, HANDLE_RESERVE_MS } from './config.ts';
 import { type Db, now } from './db.ts';
 import { FinalityError, requireFinalized } from './finality.ts';
 import { foldEq } from './sql.ts';
 import { grantPart } from './board.ts';
+import { consumedMark, markConsumed } from './consumption.ts';
 
 export const enc = new TextEncoder();
 
@@ -63,8 +64,9 @@ export function catalogue(db: Db) {
   const { solUsd, skrUsd, source } = prices(db);
   return {
     // Retired-услуги (удалённая игра Line) в витрину не попадают: kind в контракте
-    // зарезервирован, но купить их больше нельзя.
-    services: SERVICES.filter((s) => !s.retired).map((s) => ({ id: s.id, kind: s.kind, name: s.name, priceUsdCents: s.priceUsdCents, dailyCap: s.dailyCap, recurring: s.recurring, quotes: quoteUsdCents(s.priceUsdCents) })),
+    // зарезервирован, но купить их больше нельзя — проверка одна на все денежные пути
+    // (`isPurchasable`, находка 63).
+    services: ACTIVE_SERVICES.map((s) => ({ id: s.id, kind: s.kind, name: s.name, priceUsdCents: s.priceUsdCents, dailyCap: s.dailyCap, recurring: s.recurring, quotes: quoteUsdCents(s.priceUsdCents) })),
     solUsd, skrUsd, priceSource: source,
   };
 }
@@ -86,28 +88,48 @@ export interface PaymentRow { signature: string; event_index: number; buyer: str
  * SEC-M5: an entitlement is value leaving the treasury — only a finalized payment can buy it.
  */
 export function findPayment(db: Db, signature: string, buyer: string, kinds: number[], expectedRefHash?: string): PaymentRow {
-  const rows = db.all<PaymentRow>(`SELECT * FROM service_payments WHERE signature = ? AND buyer = ? ORDER BY event_index ASC`, signature, buyer);
+  // §1.5: «потрачен» читается из ledger'а, а не из зеркала в проекции — иначе пересборка проекций
+  // возвращала бы уже использованный платёж в оборот.
+  const rows = db.all<PaymentRow>(
+    `SELECT sp.*, COALESCE(pc.consumed_by, sp.consumed_by) AS consumed_by
+       FROM service_payments sp
+       LEFT JOIN payment_consumption pc ON pc.signature = sp.signature AND pc.event_index = sp.event_index
+      WHERE sp.signature = ? AND sp.buyer = ?
+      ORDER BY sp.event_index ASC`,
+    signature, buyer,
+  );
   if (rows.length === 0) throw new ServiceError(402, 'payment_not_found', 'No ServicePaid event from this wallet in that transaction (indexer may still be catching up — retry in a few seconds)');
   const mine = rows.filter((r) => kinds.includes(r.kind));
   const match =
     (expectedRefHash ? mine.find((r) => !r.consumed_by && r.ref_hash === expectedRefHash) : undefined) ??
     mine.find((r) => !r.consumed_by) ?? mine[0];
   if (!match) throw new ServiceError(402, 'payment_kind_mismatch', `Transaction paid for kind ${rows[0].kind}, expected ${kinds.join('/')}`);
-  if (match.consumed_by) throw new ServiceError(402, 'payment_consumed', 'This payment was already used');
+  if (match.consumed_by || isConsumed(db, match)) throw new ServiceError(402, 'payment_consumed', 'This payment was already used');
   try { requireFinalized(db, signature); } catch (e) { if (e instanceof FinalityError) throw new ServiceError(409, e.code, e.message); throw e; }
   return match;
 }
 
 /**
- * Spend a payment exactly once. The `consumed_by IS NULL` predicate is the guard, not the earlier
- * SELECT: two API replicas (or a retried request racing the first) could both read the row as free and
- * both grant an entitlement for one payment — the second UPDATE now changes no row and the claim fails
- * with `payment_consumed`. One statement decides, and it decides in SQLite.
+ * Потратить платёж ровно один раз.
+ *
+ * Решение принимает не SELECT и не UPDATE проекции, а INSERT в `payment_consumption` по первичному
+ * ключу (signature, event_index) — таблица вне PROJECTION_TABLES, её не стирает `dropSignatures`
+ * (находка 67). Две реплики, повтор запроса и пересборка проекций одинаково упираются в этот ключ;
+ * вторая попытка получает 409 `payment_consumed` и ничего не выдаёт.
+ *
+ * Вызывающий уже внутри `db.tx()`, поэтому отдельная транзакция здесь не открывается: выдача и метка
+ * расхода фиксируются вместе.
+ *
+ * Экспортировано для тех же разборов вне services (линия — docs/16 §5.1, команды, турнир).
  */
-/** Потратить платёж ровно один раз. Экспортировано для тех же разборов вне services (линия — docs/16 §5.1). */
 export function consume(db: Db, p: PaymentRow, by: string) {
-  const r = db.run(`UPDATE service_payments SET consumed_by = ?, consumed_at = ? WHERE signature = ? AND event_index = ? AND consumed_by IS NULL`, by, now(), p.signature, p.event_index);
-  if (Number(r.changes) !== 1) throw new ServiceError(409, 'payment_consumed', 'This payment was already used');
+  if (!markConsumed(db, p, by, now())) throw new ServiceError(409, 'payment_consumed', 'This payment was already used');
+  p.consumed_by = by;
+}
+
+/** Уже потрачен ли платёж (по ledger'у, не по проекции). */
+export function isConsumed(db: Db, p: { signature: string; event_index: number }): boolean {
+  return consumedMark(db, p.signature, p.event_index) !== null;
 }
 
 // ---------------------------------------------------------------- handles
@@ -157,11 +179,27 @@ export function claimHandle(db: Db, wallet: string, raw: string, signature: stri
     if (me?.handle && me.handle.toLowerCase() === lower) throw new ServiceError(409, 'same_handle', 'That is already your handle');
     const check = checkHandle(db, wallet, handle);
     if (!check.available) throw new ServiceError(409, `handle_${check.reason}`, `Handle unavailable (${check.reason})`);
-    // strict: first handle must be paid as kind 0 ($1.99), a change as kind 1 ($0.99)
-    const expected = toHex(handleRefHash(kind, wallet, handle));
-    const p = findPayment(db, signature, wallet, [kind], expected);
-    if (p.ref_hash !== expected) throw new ServiceError(402, 'ref_hash_mismatch', 'Payment was committed for a different handle');
-    if (kind === 1 && me?.handle_set_at && now() - me.handle_set_at < HANDLE_CHANGE_COOLDOWN_S) throw new ServiceError(409, 'handle_cooldown', 'Handle can change once per 30 days');
+    // Находка 76: вид услуги фиксируется в МОМЕНТ ОПЛАТЫ, а не в момент предъявления. `ref_hash` коммитит
+    // вид навсегда, поэтому платёж за «первый handle» (kind 0, $1.99), сделанный пока ручки не было, раньше
+    // становился невостребуемым, как только ручку успевала получить другая вкладка: `claimHandle` заново
+    // выводил kind = 1 из текущего состояния и искал платёж только этого вида. Деньги списаны, ручка не
+    // выдана, вернуть платёж нечем — других маршрутов, принимающих kind 0 после появления ручки, нет.
+    //
+    // Теперь платёж ищется по `ref_hash`, посчитанному для ОБОИХ видов, и вид берётся из самой строки
+    // платежа. Асимметрия намеренная: kind 0 при уже существующей ручке принимается (игрок переплатил
+    // $1.99 вместо $0.99 — обязательство исполняется), а kind 1 без ручки НЕ принимается, иначе первый
+    // handle можно было бы купить за $0.99. Кулдаун смены остаётся проверкой ПО СОСТОЯНИЮ кошелька, а не
+    // по виду платежа: переплата не даёт права менять ручку чаще, чем раз в 30 дней (решение владельца).
+    const refFor = {
+      0: toHex(handleRefHash(0, wallet, handle)),
+      1: toHex(handleRefHash(1, wallet, handle)),
+    } as const;
+    const acceptable: number[] = kind === 1 ? [1, 0] : [0];
+    const p = findPayment(db, signature, wallet, acceptable, refFor[kind]);
+    const paidKind = p.kind as 0 | 1;
+    if (paidKind !== 0 && paidKind !== 1) throw new ServiceError(402, 'payment_kind_mismatch', 'Payment is not for a handle');
+    if (p.ref_hash !== refFor[paidKind]) throw new ServiceError(402, 'ref_hash_mismatch', 'Payment was committed for a different handle');
+    if (me?.handle_set_at && now() - me.handle_set_at < HANDLE_CHANGE_COOLDOWN_S) throw new ServiceError(409, 'handle_cooldown', 'Handle can change once per 30 days');
     if (me?.handle) db.run(`INSERT INTO handle_history (handle, wallet, released_at) VALUES (?, ?, ?)`, me.handle, wallet, now());
     db.run(`INSERT INTO wallets (address, handle, handle_set_at, first_seen) VALUES (?, ?, ?, ?) ON CONFLICT(address) DO UPDATE SET handle = excluded.handle, handle_set_at = excluded.handle_set_at`, wallet, handle, now(), now());
     db.run(`DELETE FROM handle_reservations WHERE ${foldEq('handle', '?')}`, lower);
@@ -209,6 +247,9 @@ const PAYLOAD_RULES: Record<string, (p: Record<string, unknown>) => string | und
 export function claimService(db: Db, wallet: string, signature: string, kind: number, payload: Record<string, unknown>): Entitlement {
   const s = SERVICE_BY_KIND[kind];
   if (!s) throw new ServiceError(400, 'unknown_kind', `Unknown service kind ${kind}`);
+  // Находка 63: запись в таблице — не разрешение продавать. Снятая услуга не выдаётся даже по
+  // валидному платежу, который клиент успел подписать до снятия.
+  if (!isPurchasable(s)) throw new ServiceError(410, 'line_retired', `Service kind ${kind} is retired and cannot be claimed`);
   if (kind === 0 || kind === 1) throw new ServiceError(400, 'use_handle_endpoint', 'Handles are claimed via PUT /me/handle');
   if (s.fulfilment === 'chain') throw new ServiceError(400, 'chain_fulfilled', `${s.name} is fulfilled on-chain; nothing to claim`);
   if (s.id === 'gridDeepAttempt') throw new ServiceError(400, 'use_grid_endpoint', 'Deep Flood attempts are claimed via POST /grid/deep/buy');

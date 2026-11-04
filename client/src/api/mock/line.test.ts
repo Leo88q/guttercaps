@@ -52,14 +52,12 @@ describe('mock line', () => {
     expect(r.state.bestToday).toBe(r.run.score);
   });
 
-  it('три бесплатных, дальше — 402, и платёж открывает заезд', async () => {
+  it('три бесплатных, дальше — 402; покупка доп. заезда снята с продажи', async () => {
     resetMockWorld();
     for (let i = 0; i < LINE.freeRunsPerDay; i++) await post([]);
     expect(await code(post([]))).toBe('402 runs_exhausted');
-    expect(await code(buy('short'))).toBe('402 payment_not_found');
-    expect((await buy('x'.repeat(64))).credits).toBe(1);
-    const paid = await post([]);
-    expect(paid.run.paid).toBe(true);
+    // находка 63: мок отвечает ровно как backend — услуга снята, покупка закрыта
+    expect(await code(buy('x'.repeat(64)))).toBe('410 line_retired');
     expect(await code(post([]))).toBe('402 runs_exhausted');
   });
 

@@ -76,6 +76,7 @@ const screens = {
   "verifyNode": "Проверить самостоятельно (Node.js)",
   "transactionDemo": "{action} (демо)",
   "fusionStopped": "Слияние остановлено",
+  "fusionResuming": "Досылаем прерванный fusion — сжигаем оставшиеся материалы и платим комиссию…",
   "bgSettling": "Фоновый воркер доделывает ваши чипы…",
   "localFinish": "Воркер опоздал — завершаем вашей кошельком",
   "fusionBgWait": "Создаём результат в фоне…",

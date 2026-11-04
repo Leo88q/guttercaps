@@ -1,10 +1,12 @@
 // SEC-F7 — first-caller-wins initialisation guard for `npm run setup` (scripts/setup.ts).
 //
-// chip_core `initialize`, arena `init_arena` and staking `init_emission` create singleton PDAs
-// (`["config"]`, `["arena_config"]`, `["emission"]`) and make THE CALLER the admin. The programs do
-// not check the upgrade authority, so between `solana program deploy` and `npm run setup` anyone can
-// front-run the init with their own admin / treasury. `init_emission` is additionally protected by
-// the $CG mint authority (the attacker cannot hand it over), the other two are not.
+// chip_core `initialize`, arena `init_arena`, staking `init_emission` and settle `init_config` create
+// singleton PDAs (`["config"]`, `["arena_config"]`, `["emission"]`, settle `["config"]`) and make THE
+// CALLER the admin. Сейчас все четыре обработчика проверяют upgrade authority программы
+// (`chip_core::deploy_guard`; у settle — своя копия того же разбора ProgramData, чтобы не тянуть
+// chip_core в зависимости), так что окно «между deploy и setup» закрыто на цепи. Этот guard остаётся
+// вторым эшелоном: он проверяет, что уже существующий singleton НАШ, — так ловится деплой, где
+// authority успели передать мультисигу, и подменённый конфиг не «усыновляется» молча.
 //
 // Before this guard, setup.ts printed «config exists — skip» and carried on, i.e. a hijacked config
 // would have been adopted silently. Now an existing singleton must belong to us: its current admin is

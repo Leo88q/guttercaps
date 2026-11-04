@@ -6,6 +6,7 @@ import { ExternalIcon } from '@/shared/ui/action-icons';
 import { PACKS, BUNDLES, FX, bundlePriceCents, effectiveOdds, solLamportsForUsdCents, skrMicroForUsdCents, usdcMicroForUsdCents, type PackId } from '@guttercaps/economy';
 import { useMe, usePackCatalog, useQuote, type PackSku } from '@/api/hooks';
 import { PreorderBanner } from '@/features/preorder/PreorderBanner';
+import { PendingOps } from './PendingOps';
 import type { components } from '@/api/schema';
 type PackQuote = components['schemas']['PackQuote'];
 import { useGameConfig, usePity } from '@/chain/hooks';
@@ -30,8 +31,9 @@ const TAB_LABEL = { packs: 'shop.tabs.packs', services: 'shop.tabs.services' } a
 import { useT } from '@/shared/i18n';
 import { AgeGateDeclined, AgeGateDialog, useAgeGate } from '@/shared/ui/AgeGate';
 import { RESTRICTED_REGIONS } from '@/shared/lib/legal';
+import { SKU_IDS } from '@guttercaps/economy'; // таблица SKU объявлена один раз (находка 25)
 
-const SKU_IDS: PackId[] = ['starter', 'standard', 'premium', 'limited'];
+
 const CUR_LABEL = ['SOL', 'USDC', 'CG', 'SKR'] as const;
 
 /** Тиры витрины пака: пол, середина и верх реально выпадающего диапазона (odds > 0). */
@@ -60,10 +62,11 @@ export default function Shop() {
   // Merge sources: on-chain GameConfig (authoritative) → API catalog → economy defaults
   const packs = useMemo(() => {
     return SKU_IDS.map((id, sku) => {
-      const onchain = cfg.data ? toEconPack(sku, cfg.data.packs[sku]) : PACKS[id];
-      // Frozen FX stickers live in PACKS. A GameConfig decode of $0.50 (50¢, the admin floor)
-      // is never a real SKU price — Starter is $1.99. Keep odds/enabled from chain.
-      const econ = onchain.priceUsdCents >= 100 ? onchain : { ...onchain, priceUsdCents: PACKS[id].priceUsdCents, priceCgMicro: PACKS[id].priceCgMicro };
+      // Находка 73: параметры SKU — из `GameConfig` (их же увидит `buy_pack`); таблица сборки нужна только
+      // когда данных цепи нет вовсе. Эвристика «цена ниже 100 ¢ — значит, это не настоящая цена» убрана:
+      // если цепь продаёт пакет за 99 ¢, витрина обязана показать 99 ¢, иначе она показывает не ту сумму,
+      // которую спишет `buy_pack` (котировка приходит с `priceSource: 'chain'`).
+      const econ = cfg.data ? toEconPack(sku, cfg.data.packs[sku]) : PACKS[id];
       const api = catalog.data?.packs?.find((p: PackSku) => p.sku === sku);
       // Default-on when nothing says otherwise: on-chain GameConfig is authoritative when it loads,
       // the API catalog is authoritative when it answers, and with neither (offline demo, API down)
@@ -142,6 +145,9 @@ export default function Shop() {
       <div role="tabpanel" id="shop-panel-packs" aria-labelledby="shop-tab-packs" tabIndex={0}>
 
       <PreorderBanner testId="shop-preorder-banner" variant="shop" />
+      {/* Находка 46: аварийный выход для покупки, чьё раскрытие так и не пришло — возврат подписывает
+          сам покупатель (кранк за него этого сделать не может). */}
+      <PendingOps />
       {geoBlocked && (
         <div className="warn" style={{ marginBottom: 16 }}>
           {t('shop.geoBlocked', { regions: RESTRICTED_REGIONS.join(' / ') })} <Link to="/market">{t('nav.market')}</Link>

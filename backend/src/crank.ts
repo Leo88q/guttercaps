@@ -57,8 +57,10 @@ import {
   type BubblegumTreeMeta, type CollectionMeta, type CompressedMintClaim, type GameConfig, type PendingClaimFusion, type PendingFusion, type PendingPack,
   type RandomnessData, type RngKind, type WagerBattle,
 } from './chain.ts';
-import { DasClient, discoverLeafNonce, resolveClaimFromTreeAccount, type DasAssetWithProof } from './das.ts';
+import { DasClient, DasError, discoverLeafNonce, resolveClaimFromTreeAccount, type DasAssetWithProof } from './das.ts';
 import { TxError, fitsInTx, loadLookupTables, sendAndConfirm } from './tx.ts';
+import { reconcileChainOps } from './chain-ops.ts';
+import { toEconPack, voucherEconPack } from './econ-pack.ts';
 
 const LAMPORTS = 1_000_000_000;
 export const SKU_IDS = ['starter', 'standard', 'premium', 'limited'] as const;
@@ -136,25 +138,9 @@ export async function fetchGatewayReveal(fetchFn: FetchLike, gatewayUri: string,
   return { signature, recoveryId: j.recovery_id, value };
 }
 
-// ------------------------------------------------------------------ economy glue
-/** On-chain PackDef → economy PackDef so `expandRandomness` uses LIVE params (mirrors client packFlow.toEconPack). */
-export function toEconPack(sku: number, p: GameConfig['packs'][number]): EconPackDef {
-  const base = PACKS[SKU_IDS[sku]];
-  return {
-    ...base, chips: p.chips, priceUsdCents: p.priceUsdCents, priceCgMicro: p.priceCgMicro === 0n ? null : Number(p.priceCgMicro), oddsBps: p.oddsBps,
-    floor: p.floor as EconPackDef['floor'], dailyCap: p.dailyCap === 0 ? null : p.dailyCap,
-    pity: p.pityTier === 0 ? null : { tier: p.pityTier as 6, hardAt: p.pityHardAt, softStart: p.pitySoftStart, softStepBps: p.pitySoftStepBps },
-    pool: p.featuredOnly ? 'featured' : 'all',
-  };
-}
-/**
- * (#28) The synthetic PackDef a quest chip voucher is opened with — mirrors chip_core `PackDef::voucher`:
- * ONE chip, the template odds, no floor, no pity, all districts. `expandRandomness` then rolls exactly
- * what the program rolls (pity counter is irrelevant: `pity = null`).
- */
-export function voucherEconPack(p: Pick<PendingPack, 'voucherOdds'>): EconPackDef {
-  return { ...PACKS.starter, name: 'Quest chip', chips: 1, priceUsdCents: 0, priceCgMicro: null, oddsBps: p.voucherOdds, floor: 0, dailyCap: null, pity: null, pool: 'all' };
-}
+// ------------------------------------------------------------------ economy glue (см. econ-pack.ts)
+// Конверсии живут в отдельном модуле: они нужны и кранку, и котировке витрины (находка 73).
+export { toEconPack, voucherEconPack } from './econ-pack.ts';
 
 // ------------------------------------------------------------------ the worker
 export class Crank {
@@ -989,23 +975,48 @@ export async function crank(log: (s: string) => void = console.log) {
   const payer = loadKeypair();
   const connection = getConnection();
   const lookupTables = await loadLookupTables(connection, LOOKUP_TABLES, log);
-  const c = new Crank({ connection, payer, db: sharedDb(), log, lookupTables, das: new DasClient({ endpoint: DAS_RPC_URL, timeoutMs: DAS_TIMEOUT_MS }) });
+  const das = new DasClient({ endpoint: DAS_RPC_URL, timeoutMs: DAS_TIMEOUT_MS });
+  const c = new Crank({ connection, payer, db: sharedDb(), log, lookupTables, das });
   const bal = await c.connection.getBalance(payer.publicKey, 'confirmed');
   log(`[crank] ${RPC_URL} — payer ${payer.publicKey.toBase58()} (${(bal / LAMPORTS).toFixed(3)} SOL) · switchboard ${SWITCHBOARD_PROGRAM_ID.toBase58()} · LUT ${lookupTables.length ? lookupTables.map((l) => l.key.toBase58()).join(',') : 'none (reveal and open go in separate transactions)'} · poll ${CRANK_POLL_MS} ms · sweep ${CRANK_SWEEP_MS} ms · ${CRANK_CONCURRENCY} workers`);
   if (bal / LAMPORTS > CRANK_MAX_BALANCE_SOL) log(`[crank] WARN payer holds ${(bal / LAMPORTS).toFixed(2)} SOL > cap ${CRANK_MAX_BALANCE_SOL} — keep the hot key small`);
+  // Находка 22: владельцы активных soft-стейков глазами цепи (DAS). `undefined` — доказательства нет,
+  // такой день не начисляется и не помечается обработанным. Живёт рядом с кранком, потому что только
+  // здесь есть DAS-клиент, а домен (`phaseg-staking.ts`) остаётся синхронным.
+  const chainStakeOwners = async (db: import('./db.ts').Db): Promise<{ ownerOf(asset: string): string | null | undefined }> => {
+    const owners = new Map<string, string | null | undefined>();
+    for (const s of activeStakes(db).slice(0, 500)) {
+      try {
+        owners.set(s.asset, (await das.getAsset(s.asset)).owner.toBase58());
+      } catch (e) {
+        owners.set(s.asset, e instanceof DasError && e.code === 'not_found' ? null : undefined);
+      }
+    }
+    return { ownerOf: (asset: string) => owners.get(asset) };
+  };
   // Phase-G mint crank (docs/MINIMAL-LAUNCH-CHECKLIST.md 3.2): direct Bubblegum
   // minting for paid pack orders. Inert unless LAUNCH_PHASE=g and configured.
   const { LAUNCH_PHASE: lp, SHARED_MERKLE_TREE: smt, MINT_AUTHORITY_KEYPAIR: mak } = await import('./config.ts');
   const { processPaidOrders, makeChainMintSender, chainFirstLeafIndex } = await import('./bubblegum-mint.ts');
   const { processPaidFusions } = await import('./phaseg-fusion.ts');
-  const { accrueStakingDay, processPayouts } = await import('./phaseg-staking.ts');
+  const { accrueStakingDay, processPayouts, activeStakes } = await import('./phaseg-staking.ts');
   const { sendChipMint } = await import('./bubblegum-mint.ts');
   const { PublicKey: PK } = await import('@solana/web3.js');
   const phaseGTree = lp === 'g' && smt && mak ? new PK(smt) : null;
   const phaseGAuthority = phaseGTree ? loadKeypair(mak) : null;
   if (phaseGTree && phaseGAuthority) log(`[crank] phase-G mint crank on tree ${phaseGTree.toBase58()} authority ${phaseGAuthority.publicKey.toBase58()}`);
+  // §1.2: старт-ап проход по ledger'у — «что было отправлено до падения» досверяется ДО того, как
+  // воркер начнёт принимать новую работу. Иначе первый же тик может отправить второй платёж по строке,
+  // подпись которой уже ушла в сеть.
+  try {
+    const r0 = await reconcileChainOps(sharedDb(), connection, { limit: 500 });
+    if (r0.checked) log(`[crank] chain_ops startup reconcile: ${r0.confirmed} confirmed, ${r0.failed} failed, ${r0.orphaned} orphaned, ${r0.pending} pending`);
+  } catch (e) {
+    log(`[crank] chain_ops startup reconcile failed: ${(e as Error).message}`);
+  }
   let lastPhaseG = 0;
   let lastPhaseV = 0;
+  let lastOps = Date.now();
   let lastSweep = 0, lastReport = 0;
   while (true) {
     const t = Date.now();
@@ -1014,25 +1025,45 @@ export async function crank(log: (s: string) => void = console.log) {
       try {
         const r = await processPaidOrders(sharedDb(), {
           tree: phaseGTree,
-          sendMint: makeChainMintSender(connection, phaseGAuthority, phaseGTree),
+          sendMint: makeChainMintSender(connection, phaseGAuthority, phaseGTree, sharedDb()),
           firstLeafIndex: () => chainFirstLeafIndex(connection, phaseGTree),
+          // Находка 33: номер листа — предсказание; после каждого подтверждённого минта счётчик
+          // дерева перечитывается, иначе чужой минт в то же дерево записывает чужой assetId.
+          leafAfter: () => chainFirstLeafIndex(connection, phaseGTree),
           log,
+          ledger: true,
         });
         if (r.mintedOrders > 0) log(`[crank] phase-G minted ${r.mintedChips} chips for ${r.mintedOrders} orders`);
         const f = await processPaidFusions(sharedDb(), {
           tree: phaseGTree,
-          sendChip: (wallet, chip) => sendChipMint(connection, phaseGAuthority, phaseGTree, wallet, chip),
+          sendChip: async (wallet, chip, op) => {
+            if (!op) { await sendChipMint(connection, phaseGAuthority, phaseGTree, wallet, chip); return; }
+            const { submitChainOp } = await import('./chain-ops.ts');
+            const r = await submitChainOp(
+              sharedDb(),
+              { kind: op.kind, bizKey: op.bizKey, payload: op.payload },
+              async (hooks) => ({ signature: await sendChipMint(connection, phaseGAuthority, phaseGTree, wallet, chip, (sig, extra) => hooks.beforeSend(sig, extra)) }),
+            );
+            if (r.reused) throw new Error(`fusion mint op ${op.bizKey} is already confirmed — re-projected on the next tick`);
+          },
           firstLeafIndex: () => chainFirstLeafIndex(connection, phaseGTree),
+          leafAfter: () => chainFirstLeafIndex(connection, phaseGTree),
+          ledger: true,
         });
         if (f.settled > 0) log(`[crank] phase-G settled ${f.settled} fusions`);
         // Phase G has no on-chain emission clock: the staking day is the UTC day.
         // (latestEmissionDay would sit at day 0 forever without the staking program,
         // and accrual would credit exactly one day for the whole launch.)
         const day = Math.floor(Date.now() / 86_400_000);
-        const acc = accrueStakingDay(sharedDb(), day);
+        // Находка 22: перед начислением спрашиваем цепь, кому чип принадлежит СЕЙЧАС. Проекция не
+        // видит прямых передач cNFT мимо наших программ, поэтому по ней платить нельзя.
+        const acc = accrueStakingDay(sharedDb(), day, undefined, undefined, {
+          chainOwners: await chainStakeOwners(sharedDb()),
+        });
+        if (acc.deferred) log(`[crank] WARN phase-G staking day ${day} deferred: ${acc.deferred} chips could not be verified on chain — the day is not marked, it will be retried`);
         if (acc.credited > 0) log(`[crank] phase-G staking day ${day}: credited ${acc.credited} wallets (budget ${acc.budgetMicro} micro)`);
         const { makeCgPayoutSender } = await import('./phaseg-payout.ts');
-        const pay = await processPayouts(sharedDb(), makeCgPayoutSender(connection, phaseGAuthority));
+        const pay = await processPayouts(sharedDb(), makeCgPayoutSender(connection, phaseGAuthority, sharedDb()));
         if (pay.paid > 0) log(`[crank] phase-G paid ${pay.paid} reward claims`);
       } catch (e) {
         log(`[crank] phase-G mint error: ${(e as Error).message}`);
@@ -1053,16 +1084,26 @@ export async function crank(log: (s: string) => void = console.log) {
           `SELECT id, wallet FROM phaseg_fusions WHERE status = 'paid' AND grant_sig IS NOT NULL LIMIT 20`,
         );
         for (const f of fusions) await confirmFusionGrant(dbv, f.wallet, f.id, '', { connection });
-        const day = Math.floor(Date.now() / 86_400_000);
-        const acc = accrueStakingDay(dbv, day);
-        if (acc.credited > 0) log(`[crank] phase-V staking day ${day}: credited ${acc.credited} wallets (budget ${acc.budgetMicro} micro)`);
+        // Находки 15 и 74: в фазе V срез `EMISSION_SPLIT.chipStaking` распределяет он-чейн пул, а soft-путь
+        // выключен (`softStakingLive` = только фаза G). День здесь НЕ начисляется и НЕ помечается: если бы
+        // начисление шло, тот же срез платился бы дважды — из пула и переводом из казны.
         if (mak) {
           const { makeCgPayoutSender } = await import('./phaseg-payout.ts');
-          const pay = await processPayouts(dbv, makeCgPayoutSender(connection, loadKeypair(mak)));
+          const pay = await processPayouts(dbv, makeCgPayoutSender(connection, loadKeypair(mak), dbv));
           if (pay.paid > 0) log(`[crank] phase-V paid ${pay.paid} reward claims`);
         }
       } catch (e) {
         log(`[crank] phase-V registration error: ${(e as Error).message}`);
+      }
+    }
+    // §1.2: досверка исходящих операций. Только по данным цепи: `sent → confirmed|failed|orphaned`.
+    if (t - lastOps >= 10_000) {
+      lastOps = t;
+      try {
+        const r = await reconcileChainOps(sharedDb(), connection, { olderThanS: 5 });
+        if (r.confirmed || r.failed || r.orphaned) log(`[crank] chain_ops: ${r.confirmed} confirmed, ${r.failed} failed, ${r.orphaned} orphaned, ${r.pending} pending`);
+      } catch (e) {
+        log(`[crank] chain_ops reconcile failed: ${(e as Error).message}`);
       }
     }
     try {

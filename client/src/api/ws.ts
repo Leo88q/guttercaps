@@ -32,7 +32,24 @@ const INVALIDATE: Record<string, (qc: QueryClient, e: Event) => void> = {
   },
   day_closed: (qc) => { void qc.invalidateQueries({ queryKey: ['staking'] }); void qc.invalidateQueries({ queryKey: chainKeys.emission }); },
   params_changed: (qc) => { void qc.invalidateQueries({ queryKey: chainKeys.config }); void qc.invalidateQueries({ queryKey: qk.packs }); },
+  // Находка 65: эти типы бэкенд слал под именами, которых здесь не было, — кадр приходил и ничего не
+  // обновлял. Ветки добавлены, а `fallback` ниже гарантирует, что НОВЫЙ тип не пропадёт молча.
+  service_paid: (qc) => { void qc.invalidateQueries({ queryKey: qk.me }); void qc.invalidateQueries({ queryKey: ['me', 'services'] }); void qc.invalidateQueries({ queryKey: ['chain', 'balances'] }); },
+  pack_cancelled: (qc) => { void qc.invalidateQueries({ queryKey: qk.me }); void qc.invalidateQueries({ queryKey: qk.grid }); void qc.invalidateQueries({ queryKey: ['me', 'chips'] }); void qc.invalidateQueries({ queryKey: qk.pending }); },
+  play_pulsed: (qc) => { void qc.invalidateQueries({ queryKey: ['me', 'chips'] }); void qc.invalidateQueries({ queryKey: ['chips'] }); },
+  root_published: (qc) => { void qc.invalidateQueries({ queryKey: qk.quests }); void qc.invalidateQueries({ queryKey: qk.claims }); void qc.invalidateQueries({ queryKey: qk.me }); },
+  ownership_changed: (qc) => { void qc.invalidateQueries({ queryKey: qk.grid }); void qc.invalidateQueries({ queryKey: ['me', 'chips'] }); void qc.invalidateQueries({ queryKey: ['market'] }); },
+  preorder_changed: (qc) => { void qc.invalidateQueries({ queryKey: ['preorder'] }); void qc.invalidateQueries({ queryKey: qk.packs }); },
 };
+
+/**
+ * Незнакомый тип — не «ничего не делать»: раньше именно так три типа событий и потерялись. Инвалидируем
+ * весь кеш (дорого, но честно) и шумим в dev, чтобы дыру нашли в разработке, а не в проде.
+ */
+function fallback(qc: QueryClient, type: string): void {
+  if (import.meta.env.DEV) console.warn(`[ws] no invalidation branch for "${type}" — refetching everything`);
+  void qc.invalidateQueries();
+}
 
 export function useIndexerSocket() {
   const qc = useQueryClient();
@@ -67,7 +84,7 @@ export function useIndexerSocket() {
       ws.onmessage = (m) => {
         try {
           const e = JSON.parse(m.data as string) as Event;
-          INVALIDATE[e.type]?.(qc, e);
+          (INVALIDATE[e.type] ?? ((q: QueryClient) => fallback(q, e.type)))(qc, e);
           if (e.type === 'match_found') toast({ kind: 'info', title: { key: 'ui.opponentFound' }, body: { key: 'screens.revealInArena' } });
           if (e.type === 'sale' && e.payload?.seller === wallet) toast({ kind: 'money', title: { key: 'screens.capSold' }, body: usdText(e.payload?.priceUsd == null ? null : Number(e.payload.priceUsd)) });
         } catch { /* ignore */ }

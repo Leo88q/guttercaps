@@ -81,6 +81,15 @@ export function recentBoardTagIds(db: Db, week: number, weeks = WALL_BOARD_COOLD
  * «Висящие сейчас» — осознанно: доска — снимок стены в момент розыгрыша, а не
  * подсчёт «кто провисел всю неделю». Второй вариант к моменту первого открытия
  * доски (середина недели) просто нечем считать.
+ *
+ * Находка 75: билет — ТЕГ, а не слот стены. `claimSlot` разрешает один слот на
+ * кошелёк В РАЙОНЕ, поэтому один и тот же тег может висеть на восьми стенах, и
+ * прежний код отдавал строку на каждый слот: тег получал билет за каждую стену,
+ * мог занять несколько мест из пяти и весил больше в жеребьёвке, объявленной
+ * равнораспределённой. Дедупликация идёт ДО `tagsHash`/`boardSeed`, иначе сид
+ * зависел бы от того, сколько стен занял каждый автор. Размещение выбирается
+ * детерминированно — первое по (район, слот) — чтобы перерозыгрыш той же недели
+ * из того же снимка давал ту же доску.
  */
 export function boardCandidates(db: Db, t = now()): BoardCandidate[] {
   const weekStart = weekStartUnix(weekIndex(t));
@@ -91,18 +100,31 @@ export function boardCandidates(db: Db, t = now()): BoardCandidate[] {
          JOIN tag_registry g ON g.id = s.tag_id AND g.status = 'live'
         WHERE NOT EXISTS (
                 SELECT 1 FROM wall_reports r
-                 WHERE r.tag_id = s.tag_id AND r.created_at >= ? AND r.resolution IN ('hidden', 'removed')
+                 -- Находка 69: setTagStatus пишет resolution = 'tag_' || status ('tag_hidden' /
+                 -- 'tag_removed'), а не 'hidden'/'removed'. Прежний список не совпадал ни с одним значением
+                 -- продукта, поэтому правило «подтверждённая жалоба держит тег вне доски недели» не
+                 -- срабатывало, как только тег возвращали в live (апелляция удалась) в ту же неделю.
+                 -- Старые написания оставлены: строки, записанные до правки, всё ещё должны считаться.
+                 WHERE r.tag_id = s.tag_id AND r.created_at >= ?
+                   AND r.resolution IN ('hidden', 'removed', 'tag_hidden', 'tag_removed')
               )
         ORDER BY s.district, s.slot`,
       weekStart,
     )
     .map((r) => ({ tagId: r.tag_id, wallet: r.wallet, district: r.district, slot: r.slot }));
 
+  // Находка 75: один тег — один билет. Строки уже отсортированы по (район, слот), поэтому первая
+  // встреченная строка тега и есть его каноническое размещение: доска показывает тег, а не то, на скольких
+  // стенах он висит.
+  const byTag = new Map<string, { tagId: string; wallet: string; district: number; slot: number }>();
+  for (const r of rows) if (!byTag.has(r.tagId)) byTag.set(r.tagId, r);
+  const distinct = [...byTag.values()];
+
   // Ротация мягкая: если без повторов доска не набирается, повторы допускаются.
   // Пустая витрина хуже, чем знакомый тег второй раз.
   const seen = recentBoardTagIds(db, weekIndex(t));
-  const fresh = rows.filter((r) => !seen.has(r.tagId));
-  return fresh.length >= WALL_BOARD_SIZE ? fresh : rows;
+  const fresh = distinct.filter((r) => !seen.has(r.tagId));
+  return fresh.length >= WALL_BOARD_SIZE ? fresh : distinct;
 }
 
 /** sha256 строк `district:slot:tagId` — содержимое снимка, а не порядок выдачи. */

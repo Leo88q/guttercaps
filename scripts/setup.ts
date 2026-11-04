@@ -320,7 +320,9 @@ async function stepEmission(conn: Connection, wallet: Keypair, cg: PublicKey) {
   const w = new W().pubkey(CHIP_CORE).pubkey(MARKET).pubkey(ARENA).pubkey(oracles.quest).pubkey(oracles.season).pubkey(oracles.set);
   for (const s of split) w.u16(s);
   w.i64(BigInt(process.env.GENESIS_TS ?? 0)); // 0 → now (program default)
-  await send(conn, wallet, [ix(STAKING, 'init_emission', [signer(wallet.publicKey), rw(emissionPda), rw(tokenPoolPda), rw(chipPoolPda), rw(cg), ro(TOKEN_PROGRAM_ID), ro(SystemProgram.programId)], w.bytes())], 'init_emission ($CG mint authority → emission PDA)');
+  // Находка 13: `init_emission` принимает только upgrade authority программы и читает её из
+  // ProgramData (последний аккаунт), поэтому деплой и setup должны идти одним ключом.
+  await send(conn, wallet, [ix(STAKING, 'init_emission', [signer(wallet.publicKey), rw(emissionPda), rw(tokenPoolPda), rw(chipPoolPda), rw(cg), ro(TOKEN_PROGRAM_ID), ro(SystemProgram.programId), ro(programDataOf(STAKING))], w.bytes())], 'init_emission ($CG mint authority → emission PDA)');
   for (const [k, v] of Object.entries(oracles)) if (v.equals(wallet.publicKey)) console.warn(`  !! ${k} oracle = deployer wallet — set ${k.toUpperCase()}_ORACLE and call set_oracles before G-1`);
   console.warn('  !! burn oracle (SEC-M1) is unset after init_emission — run `npm run setup -- --step burn-oracle` with BURN_ORACLE=<pubkey of backend BURN_ORACLE_KEYPAIR> before G-0, otherwise emission stays at the 30 % floor');
 }

@@ -53,7 +53,7 @@ const MPL_CORE_CPI_SIGNER = PublicKey.findProgramAddressSync([Buffer.from('mpl_c
 const TOKEN_PROGRAM = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 const SYSVAR_INSTRUCTIONS = new PublicKey('Sysvar1nstructions1111111111111111111111111');
 const ED25519_PROGRAM = new PublicKey('Ed25519SigVerify111111111111111111111111111');
-const MINTAUTH_PREFIX = Buffer.from('GUTCAP/MINTAUTH/V1', 'utf8');
+const MINTAUTH_PREFIX = Buffer.from('GUTCAP/MINTAUTH/V2', 'utf8');
 
 const anchorDisc = (name: string): Buffer => createHash('sha256').update(`global:${name}`).digest().subarray(0, 8);
 const u64le = (v: bigint): Buffer => { const b = Buffer.alloc(8); b.writeBigUInt64LE(v); return b; };
@@ -147,7 +147,7 @@ interface SettlePayload {
   treeConfig: string;
   orderPda: string | null;
   grantReceipt: string | null;
-  auth: { wallet: string; orderId: string; specsHash: string; nonce: string; expiresAtSlot: string };
+  auth: { wallet: string; orderId: string; amount: string; currency: number; orderSlot: string; specsHash: string; nonce: string; expiresAtSlot: string };
   signature: string;
   specs: { collection: string; name: string; symbol: string; uri: string }[];
 }
@@ -196,6 +196,9 @@ function mintAuthMessage(payload: SettlePayload): Buffer {
     MINTAUTH_PREFIX,
     new PublicKey(a.wallet).toBuffer(),
     u64le(BigInt(a.orderId)),
+    u64le(BigInt(a.amount)),
+    Buffer.of(a.currency),
+    u64le(BigInt(a.orderSlot)),
     Buffer.from(a.specsHash, 'hex'),
     u64le(BigInt(a.nonce)),
     u64le(BigInt(a.expiresAtSlot)),
@@ -220,6 +223,9 @@ function settlePackIx(program: PublicKey, payload: SettlePayload, relayer: Publi
     u64le(BigInt(a.orderId)),
     new PublicKey(a.wallet).toBuffer(),
     u64le(BigInt(a.orderId)),
+    u64le(BigInt(a.amount)),
+    Buffer.of(a.currency),
+    u64le(BigInt(a.orderSlot)),
     Buffer.from(a.specsHash, 'hex'),
     u64le(BigInt(a.nonce)),
     u64le(BigInt(a.expiresAtSlot)),
@@ -278,13 +284,16 @@ function selftest(): void {
     treeConfig: Keypair.generate().publicKey.toBase58(),
     orderPda: orderPda(program, buyer, 7n).toBase58(),
     grantReceipt: null,
-    auth: { wallet: buyer.toBase58(), orderId: '7', specsHash: Buffer.alloc(32, 9).toString('hex'), nonce: '7', expiresAtSlot: '1500' },
+    auth: {
+      wallet: buyer.toBase58(), orderId: '7', amount: '54454545', currency: 0, orderSlot: '12345',
+      specsHash: Buffer.alloc(32, 9).toString('hex'), nonce: '7', expiresAtSlot: '1500',
+    },
     signature: base58Encode(new Uint8Array(64).fill(3)),
     specs: [{ collection: Keypair.generate().publicKey.toBase58(), name: 'Guttercap #1', symbol: 'GCAP', uri: 'https://example.invalid/1.json' }],
   };
   const msg = mintAuthMessage(payload);
-  assert(msg.length === 18 + 32 + 8 + 32 + 8 + 8, `MintAuth message must be 106 B (got ${msg.length})`);
-  assert(msg.subarray(0, 18).toString('utf8') === 'GUTCAP/MINTAUTH/V1', 'MintAuth prefix');
+  assert(msg.length === 18 + 32 + 8 + 8 + 1 + 8 + 32 + 8 + 8, `MintAuth message must be 123 B (got ${msg.length})`);
+  assert(msg.subarray(0, 18).toString('utf8') === 'GUTCAP/MINTAUTH/V2', 'MintAuth prefix');
   const ed = oracleAuthIx(payload);
   assert(ed.programId.equals(ED25519_PROGRAM), 'oracle auth targets the Ed25519 program');
   assert(ed.data.length === 112 + msg.length, 'ed25519 ix = header+sig+pk+message');
@@ -294,12 +303,15 @@ function selftest(): void {
   assert(settle.data.subarray(0, 8).equals(anchorDisc('settle_pack')), 'settle_pack discriminator');
   assert(settle.data.readBigUInt64LE(8) === 7n, 'settle_pack order_id arg comes first');
   assert(settle.data.readBigUInt64LE(16 + 32) === 7n, 'settle_pack auth.order_id follows the wallet');
-  const countAt = 8 + 8 + 32 + 8 + 32 + 8 + 8;
+  assert(settle.data.readBigUInt64LE(16 + 32 + 8) === 54454545n, 'settle_pack auth.amount follows order_id (п. 55)');
+  assert(settle.data[16 + 32 + 8 + 8] === 0, 'settle_pack auth.currency is one byte (п. 55)');
+  assert(settle.data.readBigUInt64LE(16 + 32 + 8 + 8 + 1) === 12345n, 'settle_pack auth.order_slot (п. 16)');
+  const countAt = 8 + 8 + 32 + 8 + 8 + 1 + 8 + 32 + 8 + 8;
   assert(settle.data.readUInt32LE(countAt) === 1, 'settle_pack specs vec length');
   assert(settle.keys.length === 19, `settle keys must be 18 fixed + 1 collection (got ${settle.keys.length})`);
   assert(settle.keys[18].pubkey.equals(new PublicKey(payload.specs[0].collection)) && settle.keys[18].isWritable, 'collection metas trail, writable');
 
-  console.log('phasev-smoke selftest OK: escrow 25 B / settle layouts pinned');
+  console.log('phasev-smoke selftest OK: escrow 25 B / settle layouts pinned (MINT_AUTH V2, 123 B)');
   process.exit(0);
 }
 

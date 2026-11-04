@@ -2,14 +2,18 @@
 // the treasury instead of a program transaction. The copy says plainly that
 // the server mints after payment and that the roll was committed before it —
 // no pretending this is the on-chain program flow.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BUNDLES, PACKS, bundlePriceCents, type PackId } from '@guttercaps/economy';
 import { fmtCents } from '@/shared/lib/format';
 import { packName, rarityName } from '@/shared/lib/rarity';
 import { KV, Modal, Pill } from '@/shared/ui/primitives';
 import { useT } from '@/shared/i18n';
+import { isMock } from '@/api/client';
+import { FLAGS } from '@/app/config';
 import { usePhaseGOrder } from './usePhaseGOrder';
-import type { PhaseGCurrency } from './phaseG';
+import {
+  browserStore, rememberedEscrow, rememberedPayment, rememberedPendingOrder, shouldResumePending, type PhaseGCurrency,
+} from './phaseG';
 
 const CURRENCIES: PhaseGCurrency[] = ['SOL', 'USDC', 'CG'];
 const STAGE_KEY = {
@@ -29,9 +33,29 @@ export function PhaseGBuyModal({ sku, packId, onClose }: {
   const [qty, setQty] = useState(1);
   // Same rule as the backend quote: Starter and Limited never get bundle discounts.
   const bundlesAllowed = packId === 'standard' || packId === 'premium';
+  // Находка 24: в фазе V заказ доставляется одной транзакцией, а она несёт не больше
+  // MAX_SETTLEABLE_LEAVES_PER_TX листьев (метаданные, а не контрактный MAX_SPECS). Пакет standard —
+  // пять листьев, поэтому бандлы в фазе V не предлагаются вовсе: иначе игрок увидит отказ уже после
+  // выбора количества, а до исправления — оплатил бы недоставляемое.
+  const bundlesOffered = bundlesAllowed && !(FLAGS.launchPhase === 'v' && !isMock());
   const [currency, setCurrency] = useState<PhaseGCurrency>('SOL');
   const flow = usePhaseGOrder();
   const busy = flow.stage !== 'idle' && flow.stage !== 'done' && flow.stage !== 'error';
+  // Находка 11: прерванная оплата этого же пака досылается сама при открытии модалки — иначе подпись
+  // лежала бы в localStorage, а деньги оставались в treasury без выдачи. Один раз на открытие.
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (resumed.current || isMock()) return;
+    const store = browserStore();
+    const record = rememberedPendingOrder(store);
+    // Находка 27: у Phase V восстановление бывает и без подписи settle_pack — по подписи эскроу.
+    const hasSignature = record
+      ? rememberedPayment(store, record.orderId) !== null || rememberedEscrow(store, record.orderId) !== null
+      : false;
+    if (!shouldResumePending(record, sku, flow.stage, hasSignature)) return;
+    resumed.current = true;
+    void flow.resumePayment(record!.orderId);
+  }, [flow.stage, flow.resumePayment, sku]);
   const cents = bundlesAllowed ? bundlePriceCents(econ, qty) : econ.priceUsdCents * qty;
   const assets = flow.order?.assets ?? [];
 
@@ -39,7 +63,7 @@ export function PhaseGBuyModal({ sku, packId, onClose }: {
     <Modal open onClose={onClose} title={t('shop.buy', { name: packName(sku) })}>
       <div className="stack">
         <p className="tiny muted">{t('ui.phasegNote')}</p>
-        {bundlesAllowed && (
+        {bundlesOffered && (
           <div className="stack-sm">
             <span className="label">{t('shop.quantity')}</span>
             <div className="tag-list">
@@ -67,7 +91,9 @@ export function PhaseGBuyModal({ sku, packId, onClose }: {
             </div>
           </div>
         )}
-        {flow.stage === 'error' && <p className="small danger">{t('ui.phasegFailed')}{flow.error ? ` (${flow.error})` : ''}</p>}
+        {flow.order?.status === 'refund_due' || flow.order?.status === 'refunded'
+          ? <p className="small danger">{t('ui.phasegRefundQueued')}</p>
+          : flow.stage === 'error' && <p className="small danger">{t('ui.phasegFailed')}{flow.error ? ` (${flow.error})` : ''}</p>}
         {flow.stage !== 'done' ? (
           <button className="btn" type="button" disabled={busy} onClick={() => void flow.buy(sku, qty, currency)}>
             {t('ui.phasegPay')}

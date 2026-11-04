@@ -74,4 +74,6 @@ pub enum StakeError {
     FuturePlay,
     #[msg("Floodgrid charge account is malformed")]
     BadGridCharge,
+    #[msg("Only the program upgrade authority may initialise (SEC-F7)")]
+    NotUpgradeAuthority,
 }

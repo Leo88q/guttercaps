@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "fingerprint": "1ba428ddecb2e52795a743e50ce72e3e7ca992b4dbd6570c3c32e328a04878a3",
+  "fingerprint": "f8802ef670eeb722b4e7cbe4b8e83dfd1dc07f0931559e84482f94f2dda811a4",
   "accounts": [
     {
       "program": "arena",
@@ -395,7 +395,10 @@
         "epoch: u64",
         "root: [u8; 32]",
         "total_claimed: u64",
-        "bump: u8"
+        "bump: u8",
+        "published_at: i64",
+        "budget: u64",
+        "revoked: bool"
       ]
     },
     {

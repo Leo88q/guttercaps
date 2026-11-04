@@ -11,7 +11,7 @@ import { configPda, emissionPda } from '../src/chain.ts';
 import { arenaConfigPda, decodeArenaConfig } from '../src/battle-resolver.ts';
 import { BorshWriter } from '../src/borsh.ts';
 import { accountDiscriminator } from '../src/chain.ts';
-import { authorityChangesIndexed, authorityPoints, governanceGauges, keyFingerprint, resetGovernanceGaugesForTests } from '../src/governance-metrics.ts';
+import { authorityChangesIndexed, authorityPoints, governanceGauges, keyFingerprint, keyFingerprints, resetGovernanceGaugesForTests } from '../src/governance-metrics.ts';
 import { FakeConnection, encodeEmissionState, encodeGameConfig } from './chainFixtures.ts';
 import { kp, tx, DEFAULT } from './fixtures.ts';
 
@@ -152,13 +152,23 @@ describe('SEC-G05: governance rotations are indexed per role', () => {
 describe('SEC-G05: program_authority_* gauges', () => {
   beforeEach(() => resetGovernanceGaugesForTests());
 
-  it('fingerprint: 48-bit prefix, exact, 0 for the default key', () => {
-    expect(keyFingerprint(PublicKey.default)).toBe(0);
-    const k = new PublicKey(new Uint8Array([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]));
-    expect(keyFingerprint(k)).toBe(2 ** 48 - 1);
-    expect(Number.isSafeInteger(keyFingerprint(k))).toBe(true);
+  it('fingerprint: 96-bit sha256 split into two exact 48-bit halves, 0 for the default key (находка 70)', () => {
+    expect(keyFingerprints(PublicKey.default)).toEqual({ hi: 0, lo: 0 });
     const a = Keypair.generate().publicKey;
-    expect(keyFingerprint(a)).toBe(keyFingerprint(a));
+    const fp = keyFingerprints(a);
+    // Обе половины точны в float64 (48 бит) и не равны нулю у настоящего ключа.
+    expect(Number.isSafeInteger(fp.hi)).toBe(true);
+    expect(Number.isSafeInteger(fp.lo)).toBe(true);
+    expect(fp.hi).toBeGreaterThan(0);
+    expect(fp.lo).toBeGreaterThan(0);
+    expect(fp.hi).toBeLessThan(2 ** 48);
+    expect(fp.lo).toBeLessThan(2 ** 48);
+    // Отпечаток детерминирован, а старшая половина — то, что экспортирует `program_authority_fingerprint`.
+    expect(keyFingerprints(a)).toEqual(fp);
+    expect(keyFingerprint(a)).toBe(fp.hi);
+    // Раньше отпечатком были первые 6 байт ключа: такой «префиксный» ключ больше не совпадает.
+    const raw = new Uint8Array([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]);
+    expect(keyFingerprint(new PublicKey(raw))).not.toBe(2 ** 48 - 1);
   });
 
   it('reads the 15 roles from the three config accounts and flags a pending admin', async () => {

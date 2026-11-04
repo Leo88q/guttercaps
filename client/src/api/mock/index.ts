@@ -2,7 +2,7 @@ import { isRightsPath, mockRights } from './rights';
 // Deterministic in-browser backend used when VITE_API_MOCK=true or when the
 // real API is unreachable in dev. Data is derived from @guttercaps/economy
 // and shared/lib/lore so what you see matches the modelled numbers.
-import { ACHIEVEMENTS, BOOSTER, CHIP_XP, DAILY_QUESTS, LINE, EMISSION_GUARD, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, FEES, FUSION_RECIPES, FX, GRID, GRID as GRID_RULES, LOCK_TIERS, MATCHMAKING, PACKS, PASS_TRACK, PERMANENT_QUESTS, PROFILE_THEME_BY_ID, RARITY_PROFILES, REFERRAL, SEASON, SERVICES, SERVICE_BY_ID, SKIN_BY_ID, WEEKLY_QUESTS, applyRotate, botReplay, bundlePriceCents, CREW, CREW_NAME_RE, TOURNAMENT, crewTier, crewWeekScore, effectiveOdds, generateLevel, gridBaseXp, gridStarsForMoves, gridXpForStars, impliedApy, isSolved, levelSeed, lineLayout, lineSeed, lineTier, packExpectedValueMult, passTierForXp, partById, probabilityAtLeast, runPassXp, simulateRun, skrMicroForUsdCents, solLamportsForUsdCents, stockLoadout, tournamentBandOfRank, tournamentPrizeSchedule, usdCentsFromSolLamports, usdcMicroForUsdCents, xpToNext, BOARD_SET_SLOTS, boardDistrictOfWeek, boardSetDistrict, type PackId } from '@guttercaps/economy';
+import { ACHIEVEMENTS, BOOSTER, CHIP_XP, DAILY_QUESTS, LINE, EMISSION_GUARD, EMOTE_PACK_BY_ID, EMOTE_PACK_OF, FEES, FUSION_RECIPES, FX, GRID, GRID as GRID_RULES, LOCK_TIERS, MATCHMAKING, PACKS, PASS_TRACK, PERMANENT_QUESTS, PROFILE_THEME_BY_ID, RARITY_PROFILES, REFERRAL, SEASON, SERVICES, SERVICE_BY_ID, SKIN_BY_ID, SKU_IDS, WEEKLY_QUESTS, applyRotate, botReplay, bundlePriceCents, CREW, CREW_NAME_RE, TOURNAMENT, crewTier, crewWeekScore, effectiveOdds, generateLevel, gridBaseXp, gridStarsForMoves, gridXpForStars, impliedApy, isSolved, levelSeed, lineLayout, lineSeed, lineTier, packExpectedValueMult, passTierForXp, partById, probabilityAtLeast, runPassXp, simulateRun, skrMicroForUsdCents, solLamportsForUsdCents, stockLoadout, tournamentBandOfRank, tournamentPrizeSchedule, usdCentsFromSolLamports, usdcMicroForUsdCents, xpToNext, BOARD_SET_SLOTS, boardDistrictOfWeek, boardSetDistrict, type PackId } from '@guttercaps/economy';
 import { PYTH_PRICE_ACCOUNTS } from '@/chain/ids';
 import { COLLECTIONS } from '@/shared/lib/lore';
 import { ApiError, type RequestOpts } from '../client';
@@ -18,7 +18,7 @@ function fakeKey(prefix = ''): string {
   return s.slice(0, 44);
 }
 const iso = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString();
-const SKUS: PackId[] = ['starter', 'standard', 'premium', 'limited'];
+const SKUS: readonly PackId[] = SKU_IDS;
 const ME = 'GCmockWa11etXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX';
 let mockHandle = 'gutter_rat';
 
@@ -785,15 +785,9 @@ on('post', '/me/line/runs', (o) => {
     state: lineStateView(),
   };
 });
-on('post', '/me/line/runs/buy', (o) => {
-  const b = (o.body ?? {}) as { day?: number; signature?: string };
-  const day = Number(b.day);
-  const today = lineDay();
-  if (!Number.isInteger(day) || day > today || day < today - 1) throw new ApiError(400, 'bad_day', `day must be today (${today}) or yesterday`);
-  if (typeof b.signature !== 'string' || b.signature.length < 32) throw new ApiError(402, 'payment_not_found', 'No ServicePaid event from this wallet in that transaction');
-  if (lineStateView().paidLeft <= 0) throw new ApiError(409, 'run_credit_cap', `At most ${LINE.maxPaidRunsPerDay} paid runs per day`);
-  mockLineCredits += 1;
-  return { day, credits: mockLineCredits };
+// Находка 63: доп. заезды сняты с продажи — мок отвечает ровно как backend (410 line_retired).
+on('post', '/me/line/runs/buy', () => {
+  throw new ApiError(410, 'line_retired', 'Extra Line runs are retired and can no longer be bought');
 });
 // Реплей смотрят, а не скачивают (docs/16 §5.5): строка доски публична, и
 // нажатия в заезде — не секрет. Смотрим и свои заезды, и чужие с доски.
@@ -869,18 +863,9 @@ const tournamentStateView = () => {
   };
 };
 on('get', '/me/line/tournament', () => tournamentStateView());
-on('post', '/me/line/tournament/enter', (o) => {
-  const b = (o.body ?? {}) as { day?: number; signature?: string };
-  const day = Number(b.day);
-  const today = lineDay();
-  if (!Number.isInteger(day) || day !== today) throw new ApiError(400, 'bad_day', `day must be today (${today})`);
-  if (typeof b.signature !== 'string' || b.signature.length < 32) throw new ApiError(402, 'payment_not_found', 'No ServicePaid event from this wallet in that transaction');
-  const st = lineStateView();
-  const paidUsed = st.runsToday - st.freeLeft;
-  if (paidUsed + mockLineCredits + mockTournamentUnused >= LINE.maxPaidRunsPerDay) throw new ApiError(409, 'run_credit_cap', `At most ${LINE.maxPaidRunsPerDay} paid runs per day`);
-  mockTournamentBought += 1;
-  mockTournamentUnused += 1;
-  return { day, entries: mockTournamentUnused };
+// Находка 63: входы в турнир тоже сняты с продажи.
+on('post', '/me/line/tournament/enter', () => {
+  throw new ApiError(410, 'line_retired', 'Line tournament entries are retired and can no longer be bought');
 });
 on('get', '/line/tournament/board', (o) => {
   const day = Number((o.query as { day?: unknown } | undefined)?.day);

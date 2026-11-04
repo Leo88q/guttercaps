@@ -237,8 +237,31 @@ for (const q of [...DAILY_QUESTS, ...WEEKLY_QUESTS, ...PERMANENT_QUESTS]) {
 const stakeErrs = Array.from(rs('programs/staking/src/errors.rs').matchAll(/#\[msg\("[^"]*"\)\]\s*(\w+)/g)).map((m) => m[1]);
 check('staking error names (localnet expect.ts)', Array.from(line(rs('tests/localnet/helpers/expect.ts'), /const STAKING = \[([\s\S]*?)\] as const;/).matchAll(/'(\w+)'/g)).map((m) => m[1]), stakeErrs);
 // Localization moved labels out of errors.ts; compare ordered variant names, not just a count.
-const clientErrors = JSON.parse(rs('client/src/chain/errorCatalog.json')) as { staking: { name: string }[] };
+const clientErrors = JSON.parse(rs('client/src/chain/errorCatalog.json')) as Record<string, { name: string; key: string }[]>;
 check('staking error names (client errorCatalog.json)', clientErrors.staking.map(e => e.name), stakeErrs);
+// Находка 82: таблица ошибок клиента знала четыре программы и молчала про `settle` — контур ДЕНЕГ фазы V.
+// Проверка была написана под `staking` по имени, поэтому «секции нет» проходило как успех. Теперь перебираются
+// ВСЕ программы, у которых `*Error` объявлен прямо в `lib.rs`, и пропуск секции — такой же красный, как
+// расхождение имён: код Anchor считает по порядку объявления, поэтому порядок здесь и есть номера.
+for (const program of ['arena', 'market', 'settle']) {
+  const body = line(rs(`programs/${program}/src/lib.rs`), /pub enum \w*Error \{([\s\S]*?)\}/);
+  const names = Array.from(body.matchAll(/#\[msg\("[^"]+"\)\]\s*(\w+)\s*,/g)).map((m) => m[1]!);
+  const section = (clientErrors[program] ?? []).map((e) => e.name);
+  check(`${program} error names (client errorCatalog.json)`, section, names);
+  // ключ обязан существовать в английском словаре, иначе `describeProgramError` вернёт undefined и код
+  // останется сырым числом в тосте
+  const missing = (clientErrors[program] ?? []).filter((e) => !rs(`client/src/shared/i18n/failures/en.json`).includes(`"${e.key}"`));
+  check(`${program} error keys resolve in failures/en.json`, missing.map((e) => e.key), []);
+}
+// тот же порядок нужен localnet: `Err.settle('RefundTooEarly')` вычисляет код как 6000 + indexOf, поэтому
+// вставленный в середину перечисления вариант сдвинул бы КАЖДЫЙ сценарий на соседний код — и зелёный тест
+// проверял бы чужой гейт. Проверяется и таблица `const SETTLE = [...]` в expect.ts.
+{
+  const body = line(rs('programs/settle/src/lib.rs'), /pub enum \w*Error \{([\s\S]*?)\}/);
+  const names = Array.from(body.matchAll(/#\[msg\("[^"]+"\)\]\s*(\w+)\s*,/g)).map((m) => m[1]!);
+  const table = Array.from(line(rs('tests/localnet/helpers/expect.ts'), /const SETTLE = \[([\s\S]*?)\] as const;/).matchAll(/'(\w+)'/g)).map((m) => m[1]!);
+  check('settle error names (localnet expect.ts)', table, names);
+}
 
 // ---- market / arena ----
 check('market fee bps (default)', Number(line(market, /FEE_BPS: u16 = (\d+)/)), FEES.marketplaceFeeBps);

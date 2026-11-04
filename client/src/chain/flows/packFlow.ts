@@ -9,7 +9,7 @@ import { errorSnapshot, type ErrorSnapshot } from '../errorSnapshot';
 // skips whatever the crank (or an earlier attempt) already settled.
 import { Connection, PublicKey } from '@solana/web3.js';
 import { keccak_256 } from '@noble/hashes/sha3';
-import { PACKS, BUNDLES, FEES, expandRandomness, solLamportsForUsdCents, skrMicroForUsdCents, type PackDef as EconPackDef, type RarityIndex } from '@guttercaps/economy';
+import { PACKS, BUNDLES, FEES, expandRandomness, solLamportsForUsdCents, skrMicroForUsdCents, type PackDef as EconPackDef, type RarityIndex, SKU_IDS } from '@guttercaps/economy';
 import { rpcEndpoints } from '@/app/rpcEndpoints';
 import { appLookupTables, fitsInTx, sendTx, type WalletLike } from '../tx';
 import { prepareClose, prepareCloseLut, prepareRandomness, prepareReveal, readRandomness, sendCloseLut } from '../switchboard';
@@ -62,7 +62,7 @@ interface PackFlowDeps {
   dasEndpoint?: string;
 }
 
-export const SKU_IDS = ['starter', 'standard', 'premium', 'limited'] as const;
+export { SKU_IDS }; // единственное объявление таблицы — packages/economy (находка 25)
 
 /** Buyer cap at frozen FX when the quote API is down or still on Pyth. Same maths as quote.ts / buy_pack. */
 export function frozenCheckoutCap(sku: number, qty: number, currency: CurrencyCode): bigint {
@@ -345,6 +345,36 @@ export class PackFlow {
     }
   }
 
+  /**
+   * Отменить клеймы этой покупки, у которых истёк срок и которые никто не забрал. Возвращает число
+   * отменённых: каждая отмена — своя транзакция с подписью покупателя, и каждая возвращает долю покупки
+   * при `finalize`. Клеймы в стейкинге/листинге/фьюжне не трогаем — цепь их всё равно отклонит (SEC-F03).
+   */
+  private async cancelExpiredClaims(pending: PendingPack): Promise<number> {
+    const { connection } = this.deps;
+    this.cfg ??= await fetchGameConfig(connection);
+    const chips = pending.voucher ? 1 : this.cfg.packs[pending.sku].chips;
+    const nonces: bigint[] = [];
+    for (let packNo = 0; packNo < pending.qty; packNo++) for (let i = 0; i < chips; i++) nonces.push(compressedClaimNonce(pending.nonce, packNo, i));
+    if (nonces.length === 0) return 0;
+    const infos = await connection.getMultipleAccountsInfo(nonces.map((n) => compressedMintClaimPda(pending.buyer, n)[0]), 'confirmed');
+    const now = Math.floor(Date.now() / 1000);
+    let cancelled = 0;
+    for (let k = 0; k < nonces.length; k++) {
+      const info = infos[k];
+      if (!info) continue;
+      const claim = decodeCompressedMintClaim(new Uint8Array(info.data));
+      if (claim.minted || claim.consumed || claim.listed || claim.staked) continue;
+      // `cancel_compressed_claim` требует клейм ИМЕННО этого расчёта: у отменяемого клейма settlement задан,
+      // у бесплатного (фьюжн, админский) он default и закрывается другим путём — close_expired_claim
+      if (claim.settlement.equals(PublicKey.default)) continue;
+      if (claim.expiresAt >= BigInt(now)) continue;
+      await this.cancelClaim(nonces[k]!);
+      cancelled += 1;
+    }
+    return cancelled;
+  }
+
   private async readPity(pending: PendingPack): Promise<number> {
     const info = await this.deps.connection.getAccountInfo(pityPda(pending.buyer)[0], 'confirmed');
     return info ? decodePlayerPity(new Uint8Array(info.data)).counters[pending.sku] : 0;
@@ -375,10 +405,24 @@ export class PackFlow {
       if (!(await this.loadPending(pendingKey))) return;
       throw new Error('Settlement account not found (opens incomplete?)');
     }
-    const settlement = decodeCompressedPackSettlement(new Uint8Array(info.data));
-    const done = settlement.registeredClaims + settlement.cancelledClaims;
+    let settlement = decodeCompressedPackSettlement(new Uint8Array(info.data));
+    let done = settlement.registeredClaims + settlement.cancelledClaims;
     if (done < settlement.totalClaims) {
-      throw new Error(`${settlement.totalClaims - done} of ${settlement.totalClaims} chips are still unsettled (expired claims must be cancelled first) — re-run after cancelling`);
+      // Находка 46: истёкший (7 дней) несминченный клейм блокировал `finalize_compressed_pack`, и деньги за
+      // его долю навсегда оставались в эскроу расчёта: `cancel_compressed_claim` существовал только методом
+      // флоу, кнопки не было нигде. Отменяем сами — подпись покупателя уже есть, это его же возврат — и
+      // только потом финализируем: `cancelled_claims` учитывается в возврате `finalize`.
+      const cancelled = await this.cancelExpiredClaims(pending);
+      if (cancelled > 0) {
+        const fresh = await connection.getAccountInfo(settlementKey, 'confirmed');
+        if (fresh) {
+          settlement = decodeCompressedPackSettlement(new Uint8Array(fresh.data));
+          done = settlement.registeredClaims + settlement.cancelledClaims;
+        }
+      }
+    }
+    if (done < settlement.totalClaims) {
+      throw new Error(`${settlement.totalClaims - done} of ${settlement.totalClaims} chips are still unsettled (the rest expire in 7 days — their refund opens after that) — re-run after cancelling`);
     }
     const ixs = [];
     let cg: { cgMint: PublicKey; vaultCg: PublicKey; treasuryCg: PublicKey } | undefined;

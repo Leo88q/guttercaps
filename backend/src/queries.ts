@@ -300,7 +300,10 @@ export function listings(db: Db, q: Record<string, string | undefined>) {
   if (q.indexMax) { where.push('CAST(c.game_index AS INTEGER) <= ?'); params.push(Number(q.indexMax)); }
   if (q.currency) { const code = CURRENCY_SYMBOL.indexOf(q.currency as never); if (code >= 0) { where.push('l.currency = ?'); params.push(code); } }
   // Floodgrid filters (docs/13 D): route depth / charge travel with the asset.
-  if (q.gridDepthMin) { where.push('COALESCE(gr.next_level, 1) > ?'); params.push(Number(q.gridDepthMin) * 15); }
+  // «Depth n+» — чипы, СТОЯЩИЕ на глубине n или глубже. `next_level` — следующий уровень, который чип может
+  // пройти, поэтому чип глубины n имеет next_level = (n-1)*15+1; сравнение с n*15 отсекало ровно ту глубину,
+  // которую пилюля обещает, и «Depth 5+» совпадало с «75/75» (находка: market-depth-audit).
+  if (q.gridDepthMin) { where.push('COALESCE(gr.next_level, 1) > ?'); params.push((Number(q.gridDepthMin) - 1) * 15); }
   if (q.gridChargeMin) { where.push('COALESCE(gr.charge_drops, 0) >= ?'); params.push(Number(q.gridChargeMin)); }
   if (q.gridHeart === '1') where.push('COALESCE(gr.next_level, 1) > 75');
   const rows = db.all<ChipRow & { seller: string; price: string; currency: number; created_at: number | null; grid_next: number | null; grid_drops: number | null }>(

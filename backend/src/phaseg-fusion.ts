@@ -17,9 +17,11 @@ const treasury = () => process.env.TREASURY_WALLET ?? process.env.PREORDER_TREAS
 const cgMint = () => process.env.CG_MINT ?? '';
 import { payToFor, sha256Hex } from './pack-orders.ts';
 import { checkPayment, type PaymentFetcher } from './preorders.ts';
-import { nextGameIndex, type ChipToMint } from './bubblegum-mint.ts';
+import { consumeOneOf } from './consumption.ts';
+import { LeafIndexUncertain, nextGameIndex, type ChipToMint } from './bubblegum-mint.ts';
 import { deriveBubblegumLeafAssetId } from './das.ts';
 import type { PublicKey } from '@solana/web3.js';
+import { ChainOpInFlight, findChainOp, inFlight, opPayload, updateChainOp } from './chain-ops.ts';
 
 export const fusionMemo = (id: number) => `GCF|${id}`;
 
@@ -63,6 +65,26 @@ export function fusionView(row: FusionRow) {
   };
 }
 
+/**
+ * Находка 19: занят ли набор материалов другим интентом. «Занят» — это не «заявлен», а «уже оплачен
+ * или выпущен»: материалы сгорели на цепи один раз, и второй результат за это же сжигание — эмиссия
+ * из воздуха. Проверяется по двум источникам: `chips.burned_at` (проекция) и статусы `paid|minted`
+ * других интентов (сжигание уже доказано, но кранк ещё не доехал до `finalizeFusionMint`).
+ */
+function materialsClaimedBy(db: Db, inputs: readonly string[], exceptId: number): number | null {
+  const marks = inputs.map(() => '?').join(',');
+  const burned = db.get<{ asset: string }>(
+    `SELECT asset FROM chips WHERE burned_at IS NOT NULL AND asset IN (${marks}) LIMIT 1`, ...inputs,
+  );
+  if (burned) return -1;
+  const others = db.all<FusionRow>(`SELECT * FROM phaseg_fusions WHERE id <> ? AND status IN ('paid','minted')`, exceptId);
+  for (const f of others) {
+    const held = JSON.parse(f.inputs) as string[];
+    if (held.some((a) => inputs.includes(a))) return f.id;
+  }
+  return null;
+}
+
 /** Create a fusion intent: validates materials against the chips projection. */
 export function createFusion(
   db: Db,
@@ -90,23 +112,29 @@ export function createFusion(
   if (recipe.rule === 'same-collection' && owned.some((c) => c.collection_idx !== owned[0].collection_idx)) {
     throw new ServiceError(400, 'collection_mismatch', 'This recipe needs one collection');
   }
-  // one live intent per material set — a chip cannot be promised twice
-  // Intents older than 24h no longer promise their materials: an abandoned intent
-  // must not lock a player's chips out of fusion forever (the burn still has to be
-  // proven at confirm time, so a stale intent completing late is harmless).
-  const live = db.all<FusionRow>(
-    `SELECT * FROM phaseg_fusions WHERE wallet = ? AND status IN ('created','paid') AND (status = 'paid' OR created_at > ?)`,
-    wallet, t - 86_400,
-  );
-  const promised = new Set(live.flatMap((f) => JSON.parse(f.inputs) as string[]));
-  if ((assetIds as string[]).some((a) => promised.has(a))) throw new ServiceError(409, 'already_promised', 'A chip is already in a live fusion intent');
+  // one live intent per material set — a chip cannot be promised twice.
+  // Находка 19: «мёртвый» интент (старше суток, всё ещё `created`) больше не держит материалы — иначе
+  // брошенная заявка навсегда запирала бы чипы. Но это же открывало обратный обход: тот же набор
+  // материалов можно обещать второму интенту, а затем завершить ПЕРВЫЙ (оплата и сжигание
+  // принимаются независимо от возраста) — один сожжённый набор давал два результата fusion.
+  // Поэтому: (а) проверка и вставка идут одной транзакцией (два одновременных запроса не создадут
+  // два интента на один набор), (б) при подтверждении материалы проверяются ещё раз — см.
+  // `materialsClaimedBy`.
   const seed = deps.seedHex ?? randomBytes(32).toString('hex');
-  const r = db.run(
-    `INSERT INTO phaseg_fusions (wallet, recipe_from, recipe_to, inputs, fee_micro, status, seed, seed_hash, created_at)
-     VALUES (?, ?, ?, ?, ?, 'created', ?, ?, ?)`,
-    wallet, recipe.from, recipe.to, JSON.stringify(assetIds), String(recipe.feeCgMicro), seed, sha256Hex(seed), t,
-  );
-  const id = Number(r.lastInsertRowid);
+  const id = db.tx(() => {
+    const live = db.all<FusionRow>(
+      `SELECT * FROM phaseg_fusions WHERE wallet = ? AND status IN ('created','paid') AND (status = 'paid' OR created_at > ?)`,
+      wallet, t - 86_400,
+    );
+    const promised = new Set(live.flatMap((f) => JSON.parse(f.inputs) as string[]));
+    if ((assetIds as string[]).some((a) => promised.has(a))) throw new ServiceError(409, 'already_promised', 'A chip is already in a live fusion intent');
+    const r = db.run(
+      `INSERT INTO phaseg_fusions (wallet, recipe_from, recipe_to, inputs, fee_micro, status, seed, seed_hash, created_at)
+       VALUES (?, ?, ?, ?, ?, 'created', ?, ?, ?)`,
+      wallet, recipe.from, recipe.to, JSON.stringify(assetIds), String(recipe.feeCgMicro), seed, sha256Hex(seed), t,
+    );
+    return Number(r.lastInsertRowid);
+  });
   const { payTo, mint } = payToFor(treasury(), 'CG');
   return { fusionId: id, memo: fusionMemo(id), payTo, payToOwner: treasury(), mint, feeMicro: String(recipe.feeCgMicro), seedHash: sha256Hex(seed), from: recipe.from, to: recipe.to };
 }
@@ -134,6 +162,16 @@ export async function confirmFusion(
   const burnSig = String(body.burnSig ?? '');
   if (paySig.length < 32 || burnSig.length < 32) throw new ServiceError(400, 'bad_signature', 'burnSig and paySig are required');
   if (row.status === 'created') {
+    // Находка 19: материалы могли уйти другому интенту, пока этот ждал. Проверяем ДО комиссии, чтобы
+    // не списать $CG за fusion, который всё равно не доставится.
+    const inputsNow = JSON.parse(row.inputs) as string[];
+    const claimedBy = materialsClaimedBy(db, inputsNow, row.id);
+    if (claimedBy !== null) {
+      throw new ServiceError(409, 'materials_spent',
+        claimedBy === -1
+          ? 'These materials were already burned by another fusion — no second result is minted for one burn'
+          : `These materials are already settled by fusion #${claimedBy} — no second result is minted for one burn`);
+    }
     if (row.pay_sig && row.pay_sig !== paySig) throw new ServiceError(409, 'already_confirmed', 'Fee already paid with another signature');
     if (!row.pay_sig) {
       const tx = await deps.fetchPayment(paySig);
@@ -143,6 +181,10 @@ export async function confirmFusion(
       if (!check.ok) throw new ServiceError(422, `payment_${check.code}`, `Fee check failed: ${check.code}`);
       const used = db.get<{ id: number }>(`SELECT id FROM phaseg_fusions WHERE pay_sig = ?`, paySig);
       if (used) throw new ServiceError(409, 'already_confirmed', 'This fee signature was already credited');
+      // Комиссия fusion — тот же журнал переводов: один перевод не оплачивает и пак, и fusion (находка 18).
+      if (consumeOneOf(db, { signature: paySig, transferIndexes: check.transferIndexes ?? [], instrument: mint ? 'spl' : 'sol' }, `fusion:${id}`, t) === null) {
+        throw new ServiceError(409, 'already_confirmed', 'This payment transfer was already credited to another order');
+      }
     }
     const inputs = JSON.parse(row.inputs) as string[];
     const burned = await deps.verifyBurned(inputs, wallet);
@@ -185,9 +227,13 @@ export function rollFusion(seedHex: string, fusionId: number, successBps: number
 export async function processPaidFusions(
   db: Db,
   deps: {
-    sendChip: (wallet: string, chip: ChipToMint) => Promise<void>;
+    sendChip: (wallet: string, chip: ChipToMint, op?: { kind: 'phaseg_fusion_mint'; bizKey: string; payload: ChipToMint }) => Promise<void>;
     firstLeafIndex: () => Promise<number>;
     tree: PublicKey;
+    /** §1.1: результат fusion минчится через `chain_ops` — «отправлено, но не записано» не даёт второго листа. */
+    ledger?: boolean;
+    /** Находка 33: перечитать `num_minted` после подтверждённого минта (см. `LeafIndexUncertain`). */
+    leafAfter?: () => Promise<number>;
   },
   t = now(),
 ): Promise<{ settled: number }> {
@@ -205,26 +251,66 @@ export async function processPaidFusions(
       ? [{ rarity: recipe.to }]
       : Array.from({ length: recipe.refundOnFail }, () => ({ rarity: recipe.from }));
     const done: string[] = row.result_assets ? (JSON.parse(row.result_assets) as string[]) : [];
+    // Находка 19: строки, дошедшие до `paid` до этой проверки (или через гонку), не должны выпускать
+    // второй результат за одно сжигание. Оставляем интент в `paid` и говорим об этом вслух.
+    if (done.length === 0 && materialsClaimedBy(db, JSON.parse(row.inputs) as string[], row.id) !== null) {
+      db.run(`UPDATE phaseg_fusions SET mint_uncertain = ? WHERE id = ?`,
+        'materials already burned/settled by another fusion — no result minted', row.id);
+      continue;
+    }
     try {
       for (let i = done.length; i < plan.length; i++) {
-        const gameIndex = nextGameIndex(db, collectionIdx);
-        const chip: ChipToMint = {
-          collectionIdx,
-          rarity: plan[i].rarity,
-          gameIndex,
-          leafIndex: leaf,
-          assetId: deriveBubblegumLeafAssetId(deps.tree, leaf).toBase58(),
-        };
-        await deps.sendChip(row.wallet, chip);
+        const bizKey = `fusion:${row.id}:${i}`;
+        let chip: ChipToMint | undefined;
+        let reused = false;
+        if (deps.ledger) {
+          const op = findChainOp(db, 'phaseg_fusion_mint', bizKey);
+          if (op && inFlight(op.status)) throw new ChainOpInFlight(op);
+          if (op?.status === 'confirmed') {
+            chip = opPayload<ChipToMint>(op);
+            if (!chip) throw new Error(`chain op ${bizKey} is confirmed but has no payload`);
+            reused = true;
+          }
+        }
+        if (!chip) {
+          const gameIndex = nextGameIndex(db, collectionIdx);
+          chip = {
+            collectionIdx,
+            rarity: plan[i].rarity,
+            gameIndex,
+            leafIndex: leaf,
+            assetId: deriveBubblegumLeafAssetId(deps.tree, leaf).toBase58(),
+          };
+        }
+        if (!reused) {
+          await deps.sendChip(row.wallet, chip, deps.ledger ? { kind: 'phaseg_fusion_mint', bizKey, payload: chip } : undefined);
+          if (deps.leafAfter) {
+            const after = await deps.leafAfter();
+            if (after !== chip.leafIndex + 1) {
+              if (deps.ledger) {
+                const op = findChainOp(db, 'phaseg_fusion_mint', bizKey);
+                if (op) updateChainOp(db, op.id, { status: 'orphaned', error: `mint_uncertain: ${chip.leafIndex}/${after}` });
+              }
+              throw new LeafIndexUncertain(chip.leafIndex, after);
+            }
+          }
+          leaf = chip.leafIndex + 1;
+        }
         db.run(
-          upsert('chips', ['asset', 'owner', 'collection_idx', 'rarity', 'level', 'flags', 'lock_until', 'origin', 'origin_signature', 'minted_at'], ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'origin = excluded.origin', 'minted_at = excluded.minted_at']),
-          chip.assetId, row.wallet, collectionIdx, chip.rarity, 1, 0, t + recipe.resultLockSeconds, 'fusion', row.burn_sig, t,
+          upsert('chips', ['asset', 'owner', 'collection_idx', 'rarity', 'level', 'flags', 'lock_until', 'origin', 'origin_signature', 'minted_at', 'source'], ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'origin = excluded.origin', 'minted_at = excluded.minted_at', 'source = excluded.source']),
+          chip.assetId, row.wallet, collectionIdx, chip.rarity, 1, 0, t + recipe.resultLockSeconds, 'fusion', row.burn_sig, t, 'api',
         );
-        done.push(chip.assetId);
-        leaf++;
-        db.run(`UPDATE phaseg_fusions SET result_assets = ? WHERE id = ?`, JSON.stringify(done), row.id);
+        if (!done.includes(chip.assetId)) {
+          done.push(chip.assetId);
+          db.run(`UPDATE phaseg_fusions SET result_assets = ? WHERE id = ?`, JSON.stringify(done), row.id);
+        }
       }
-    } catch {
+    } catch (e) {
+      if (e instanceof LeafIndexUncertain) {
+        // Находка 33: лист не доказан — assetId не пишем, fusion остаётся `paid` с причиной.
+        db.run(`UPDATE phaseg_fusions SET mint_uncertain = ? WHERE id = ?`, e.message, row.id);
+        break;
+      }
       continue;
     }
     finalizeFusionMint(db, row, done, success, t);

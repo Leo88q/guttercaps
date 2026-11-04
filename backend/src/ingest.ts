@@ -18,6 +18,7 @@ import { publish, type BusMessage } from './bus.ts';
 import { log } from './log.ts';
 import { insertIfAbsent } from './sql.ts';
 import { applyEvent, patchLateTimes } from './projections.ts';
+import { healPaymentConsumption } from './consumption.ts';
 
 export interface TxLike {
   signature: string;
@@ -106,6 +107,10 @@ export function replayStored(db: Db = sharedDb(), onProgress?: (n: number) => vo
       if (++n % 1000 === 0) onProgress?.(n);
     }
     db.run(`UPDATE events_raw SET processed = 1`);
+    // §1.5: проекция `service_payments` не знает про `consumed_by` (на блокчейне такого факта нет),
+    // поэтому после каждого replay возвращаем зеркало из ledger'а — иначе платёж, уже купивший
+    // сезонный пропуск, снова читался бы как свободный.
+    healPaymentConsumption(db);
   });
   return n;
 }

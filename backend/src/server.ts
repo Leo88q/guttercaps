@@ -15,7 +15,8 @@ import * as packOrders from './pack-orders.ts';
 import * as phasegFusion from './phaseg-fusion.ts';
 import * as phasegStaking from './phaseg-staking.ts';
 import * as phasev from './phasev.ts';
-import { DasClient } from './das.ts';
+import { DasClient, DasError } from './das.ts';
+import { BurnCheckUnavailable, verifyBurns } from './fusion-burn.ts';
 import { DAS_RPC_URL, DAS_TIMEOUT_MS } from './config.ts';
 import { bus } from './bus.ts';
 import { wsConfigFromEnv } from './ws.ts';
@@ -69,7 +70,8 @@ import { clientIp, ipNet } from './ratelimit.ts';
 // that SQLite reads as "unlimited", i.e. the `Math.min(limit, N)` caps in queries.ts did nothing.
 import { cursorQuery, intQuery, limitQuery, numberQuery } from './params.ts';
 import { humanStatus, recordDevice, verifyHuman } from './human.ts';
-import { COLLECTIONS, QUEST_CHIP_TEMPLATES, RARITY_PROFILES } from '@guttercaps/economy';
+import { COLLECTIONS, QUEST_CHIP_TEMPLATES, RARITY_PROFILES, STALE_PACK_SLOTS } from '@guttercaps/economy';
+import { BATTLE_RESOLVE_TIMEOUT_SEC } from './chain.ts';
 
 /**
  * Filter domains for the query layer (SEC-B2). Mirrors the `chips` projection: 8 districts × 9
@@ -109,6 +111,119 @@ export interface AppOptions {
   accessLog?: boolean;
   /** True once the process has been told to stop: readiness flips to 503 before the socket closes. */
   isClosing?: () => boolean;
+}
+
+/**
+ * Голова индексатора по слоту — то, что видит индексер, а не «сейчас» процесса. Возврат по
+ * `cancel_stale_pack` разрешён при `clock.slot > commit_slot + STALE_PACK_SLOTS`; пока индексер не дошёл
+ * до этой границы, кнопку показывать нельзя — цепь ответит отказом (находка 46).
+ */
+export function pendingHeadSlot(db: Db): number {
+  const cursor = db.scalar(`SELECT COALESCE(MAX(newest_slot), 0) FROM indexer_cursor`);
+  return cursor > 0 ? cursor : db.scalar(`SELECT COALESCE(MAX(slot), 0) FROM events_raw`);
+}
+
+/** Сколько незавершённых покупок уже можно вернуть (наблюдаемость аварийного выхода, находка 46). */
+export function stalePendingPacks(db: Db, headSlot = pendingHeadSlot(db)): number {
+  return db.scalar(`SELECT COUNT(*) FROM pack_purchases WHERE status = 'pending' AND slot + ? < ?`, STALE_PACK_SLOTS, headSlot);
+}
+
+/**
+ * Находка 46, бои: `cancel_stale_battle` требует ПОДПИСИ одной из сторон, поэтому единственный путь
+ * возврата ставки — кнопка в продукте. Границы те же, что в `programs/arena/src/lib.rs`:
+ *   • открытый бой (`status = 'open'`) создатель может снять сразу — `caller == challenger`;
+ *   • принятый бой (`status = 'accepted'`) — любая сторона, но строго после `accepted_at + RESOLVE_TIMEOUT`;
+ *     до этой минуты цепь отвечает `NotStale`.
+ * Запас `BATTLE_CLOCK_SKEW_SEC`: наша метка — `block_time` события, а решает `Clock::unix_timestamp` цепи,
+ * который может отставать; показать кнопку позже ничего не стоит, показать раньше — гарантированный отказ.
+ */
+export const BATTLE_CLOCK_SKEW_SEC = 60;
+
+export interface PendingBattleRow {
+  battle: string; challenger: string; opponent: string | null; wager: string; status: string;
+  power_a: number; power_b: number | null; created_at: number | null; accepted_at: number | null;
+}
+
+/**
+ * Граница возврата одного боя. `refundAt = null` при `refundable = false` — время неизвестно (heal доберёт
+ * метку из events_raw) либо возврат по времени не откроется вообще (открытый бой не-создателя цепь не пустит).
+ */
+export function battleRefundState(b: PendingBattleRow, wallet: string, nowSec: number) {
+  const isSide = wallet === b.challenger || wallet === b.opponent;
+  if (!isSide) return { refundable: false, refundAt: null as number | null, reason: 'not_side' };
+  if (b.status === 'open') {
+    // `caller == challenger` проходит проверку таймаута на цепи всегда; у оппонента в открытом бою его ещё нет
+    return wallet === b.challenger
+      ? { refundable: true, refundAt: null as number | null, reason: 'creator' }
+      : { refundable: false, refundAt: null as number | null, reason: 'not_stale' };
+  }
+  if (b.status !== 'accepted' || b.accepted_at === null) {
+    return { refundable: false, refundAt: null as number | null, reason: 'unknown_time' };
+  }
+  const refundAt = b.accepted_at + BATTLE_RESOLVE_TIMEOUT_SEC + BATTLE_CLOCK_SKEW_SEC;
+  return nowSec >= refundAt
+    ? { refundable: true, refundAt: refundAt as number | null, reason: 'timeout' }
+    : { refundable: false, refundAt: refundAt as number | null, reason: 'not_stale' };
+}
+
+/**
+ * Находка 80: невыданные заказы фазы V. `escrow_buy_pack` уносит оплату на PDA заказа, а вернуть её можно
+ * только `refund_pack` с подписью покупателя — после `created_slot + REFUND_AFTER_SLOTS`. Билдера возврата в
+ * продукте не было вовсе, а список «мои незакрытые заказы» живёт в localStorage браузера: на новом устройстве
+ * игрок не узнал бы даже номер заказа. Здесь отдаётся ровно то, что знает backend (номер, чем платили,
+ * подпись эскроу); разрешён ли возврат и когда он откроется, решает цепь — клиент читает PDA заказа.
+ */
+export function pendingPhaseVOrders(db: Db, wallet: string) {
+  const rows = db.all<{ id: number; sku: number; qty: number; currency: string; amount: string; mint: string | null; tx_sig: string | null; created_at: number; paid_at: number | null }>(
+    `SELECT id, sku, qty, currency, amount, mint, tx_sig, created_at, paid_at
+       FROM pack_orders
+      WHERE wallet = ? AND status IN ('created', 'paid')
+        AND settle_sig IS NULL AND refund_sig IS NULL
+      ORDER BY id DESC LIMIT 20`,
+    wallet,
+  );
+  return rows.map((r) => ({
+    orderId: String(r.id), sku: r.sku, qty: r.qty, currency: r.currency, amount: r.amount,
+    mint: r.mint, escrowSig: r.tx_sig, createdAt: new Date(r.created_at * 1000).toISOString(),
+    paidAt: r.paid_at === null ? null : new Date(r.paid_at * 1000).toISOString(),
+  }));
+}
+
+/** Незакрытые бои кошелька с честной границей возврата (находка 46). */
+export function pendingBattles(db: Db, wallet: string, nowSec = Math.floor(Date.now() / 1000)) {
+  const rows = db.all<PendingBattleRow>(
+    `SELECT battle, challenger, opponent, wager, status, power_a, power_b, created_at, accepted_at
+       FROM battles
+      WHERE status IN ('open', 'accepted') AND (challenger = ? OR opponent = ?)
+      ORDER BY COALESCE(accepted_at, created_at, 0) DESC
+      LIMIT 50`,
+    wallet, wallet,
+  );
+  return rows.map((b) => {
+    const st = battleRefundState(b, wallet, nowSec);
+    return {
+      battle: b.battle, challenger: b.challenger, opponent: b.opponent, wager: b.wager,
+      status: b.status, powerA: b.power_a, powerB: b.power_b,
+      refundable: st.refundable, reason: st.reason,
+      // подсказка UI: когда откроется окно (null — уже открыто либо не откроется)
+      refundAt: st.refundable || st.refundAt === null ? null : new Date(st.refundAt * 1000).toISOString(),
+      acceptedAt: b.accepted_at === null ? null : new Date(b.accepted_at * 1000).toISOString(),
+    };
+  });
+}
+
+/** Сколько залипших боёв уже можно вернуть (наблюдаемость, находка 46). */
+export function stalePendingBattles(db: Db, nowSec = Math.floor(Date.now() / 1000)): number {
+  const rows = db.all<PendingBattleRow>(
+    `SELECT battle, challenger, opponent, wager, status, power_a, power_b, created_at, accepted_at
+       FROM battles WHERE status IN ('open', 'accepted')`,
+  );
+  let n = 0;
+  for (const b of rows) {
+    const sides = [b.challenger, b.opponent].filter((x): x is string => !!x);
+    if (sides.some((w) => battleRefundState(b, w, nowSec).refundable)) n += 1;
+  }
+  return n;
 }
 
 export function createApp(db: Db, deps: AppOptions = {}) {
@@ -341,7 +456,10 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   registerScrape('vault_solvency_readable', '1 when the three vault gauges above were read from the RPC in the last 30 s.', async () => [{ value: (await vaultSolvencyGauge()).readable }]);
   // SEC-G05: governance keys (governance-metrics.ts). RPC-polled fingerprints (GOVERNANCE_WATCH) + the
   // indexed rotation events; either path alone is enough for the `guttercaps.governance` alerts.
-  registerScrape('program_authority_fingerprint', 'First 6 bytes of each governance key as an integer (0 = cleared); changes() = a rotation. Empty until GOVERNANCE_WATCH reads the accounts.', async () => (await governanceGauges()).points.map((p) => ({ value: p.value, labels: { program: p.program, role: p.role } })));
+  // Находка 70: отпечаток — первые 96 бит sha256 ключа, двумя сериями по 48 бит (`_lo` ниже). Сравнивать
+  // надо ПАРУ: одного `_fingerprint` мало ровно настолько, насколько 48 бит слабее всего ключа.
+  registerScrape('program_authority_fingerprint', 'Старшие 48 бит sha256 отпечатка каждого governance-ключа (0 = ключа нет); changes() по этой серии и по program_authority_fingerprint_lo = смена ключа. Пусто, пока GOVERNANCE_WATCH не прочитал аккаунты.', async () => (await governanceGauges()).points.map((p) => ({ value: p.value, labels: { program: p.program, role: p.role } })));
+  registerScrape('program_authority_fingerprint_lo', 'Младшие 48 бит того же sha256-отпечатка (находка 70). Смена любого ключа видна в паре серий; одна серия — только 48 бит.', async () => (await governanceGauges()).points.map((p) => ({ value: p.lo, labels: { program: p.program, role: p.role } })));
   registerScrape('admin_transfer_pending', '1 while chip_core has a pending_admin (step 1 of the 2-step transfer) — the early warning for an admin-key compromise.', async () => { const g = await governanceGauges(); return g.readable ? [{ value: g.adminTransferPending }] : []; });
   registerScrape('program_authority_readable', '1 when the governance keys were read from the RPC in the last 60 s; 0 when unreadable or GOVERNANCE_WATCH is off.', async () => [{ value: (await governanceGauges()).readable }]);
   registerScrape('program_authority_watch_enabled', '1 when this process polls the governance keys (GOVERNANCE_WATCH).', async () => [{ value: (await governanceGauges()).enabled }]);
@@ -379,7 +497,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   });
 
   // ------------------------------------------------------------ health / stats
-  v1.get('/health', (_req, res) => { res.json({ ok: true, lastSlot: db.scalar(`SELECT COALESCE(MAX(slot),0) FROM events_raw`), prices: priceStatus(db), crank: crankStatus(db), paused: pauseStatus(db), burnOracle: burnOracleStatus(db), finality: finalityStatus(db), untimedEvents: untimedStatus(db), indexerGaps: gapStatus(db), rewardOracle: rewardOracleStatus(db), antifraud: antifraudStatus(db), arena: { queued: db.scalar(`SELECT COUNT(*) FROM arena_queue`), revealing: db.scalar(`SELECT COUNT(*) FROM matches WHERE status = 'revealing'`), unattributedResolves: unattributedResolves(db) } }); });
+  v1.get('/health', (_req, res) => { res.json({ ok: true, lastSlot: db.scalar(`SELECT COALESCE(MAX(slot),0) FROM events_raw`), prices: priceStatus(db), crank: crankStatus(db), paused: pauseStatus(db), burnOracle: burnOracleStatus(db), finality: finalityStatus(db), untimedEvents: untimedStatus(db), indexerGaps: gapStatus(db), rewardOracle: rewardOracleStatus(db), antifraud: antifraudStatus(db), stalePacks: stalePendingPacks(db), arena: { queued: db.scalar(`SELECT COUNT(*) FROM arena_queue`), revealing: db.scalar(`SELECT COUNT(*) FROM matches WHERE status = 'revealing'`), unattributedResolves: unattributedResolves(db), staleBattles: stalePendingBattles(db) } }); });
   v1.get('/prices', (_req, res) => { res.json(priceStatus(db)); });
   v1.get('/stats', (_req, res) => { res.json(q.stats(db)); });
   v1.get('/rewards/skr-pool', (_req, res) => { res.json(q.skrPool(db)); });
@@ -485,14 +603,32 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   });
   v1.get('/me/referrals', requireAuth, (req, res) => { res.json(referralSummary(db, req.session!.wallet)); });
   v1.get('/me/pending', requireAuth, (req, res) => {
-    const rows = db.all<{ nonce: string; sku: number; qty: number; opened: number; randomness: string; slot: number }>(`SELECT nonce, sku, qty, opened, randomness, slot FROM pack_purchases WHERE buyer = ? AND status = 'pending'`, req.session!.wallet);
+    const rows = db.all<{ nonce: string; sku: number; qty: number; opened: number; randomness: string; slot: number; block_time: number | null; currency: number }>(`SELECT nonce, sku, qty, opened, randomness, slot, block_time, currency FROM pack_purchases WHERE buyer = ? AND status = 'pending'`, req.session!.wallet);
     // (#28) unopened quest chip vouchers ride the same list: sku 0, qty 1 + the template so the UI can show the roll table
     const vouchers = db.all<{ nonce: string; template: number; randomness: string; slot: number }>(`SELECT nonce, template, randomness, slot FROM vouchers WHERE wallet = ? AND status = 'pending'`, req.session!.wallet);
     const compressed = db.all<{ buyer: string; nonce: string; total_claims: number; registered_claims: number; cancelled_claims: number; status: string; last_slot: number }>(`SELECT buyer, nonce, total_claims, registered_claims, cancelled_claims, status, last_slot FROM compressed_settlements WHERE buyer = ? AND status IN ('pending', 'refunded') ORDER BY last_slot DESC`, req.session!.wallet);
+    // Находка 46: «залипла» ли покупка — считаем по реальной границе контракта (`commit_slot + STALE_PACK_SLOTS`),
+    // а не по времени ответа сервера. `currentSlot` — голова индексатора (тот же слот, по которому решает
+    // `assert_refundable`), поэтому кнопка возврата появляется тогда же, когда её примет цепь.
+    const headSlot = pendingHeadSlot(db);
+    const packView = (r: { nonce: string; sku: number; qty: number; opened: number; randomness: string; slot: number; block_time: number | null; currency: number }) => {
+      const refundableAt = r.slot + STALE_PACK_SLOTS;
+      const cancellable = headSlot > refundableAt;
+      return {
+        nonce: r.nonce, sku: r.sku, qty: r.qty, opened: r.opened, commitSlot: r.slot, currentSlot: headSlot,
+        randomness: r.randomness, status: cancellable ? 'stale' : 'awaiting_reveal',
+        // оценка по времени блока: 0,4 с на слот — подсказка для UI, решение всё равно по слоту
+        staleAt: new Date(((r.block_time ?? Math.floor(Date.now() / 1000)) + (refundableAt - r.slot) * 0.4) * 1000).toISOString(),
+        refundSlot: refundableAt,
+        // чем платили — без этого клиент не соберёт cancel_stale_pack для токенных покупок (нужны минт и ATA)
+        // 0 = SOL, 1 = USDC, 2 = $CG, 3 = SKR (Currency в client/src/chain/ix/chipCore.ts и программы)
+        currency: (['SOL', 'USDC', 'CG', 'SKR'] as const)[r.currency] ?? 'SOL',
+      };
+    };
     res.json({
       packs: [
-        ...rows.map((r) => ({ nonce: r.nonce, sku: r.sku, qty: r.qty, opened: r.opened, commitSlot: r.slot, currentSlot: 0, randomness: r.randomness, status: 'awaiting_reveal', staleAt: null, voucher: null })),
-        ...vouchers.map((v) => ({ nonce: v.nonce, sku: 0, qty: 1, opened: 0, commitSlot: v.slot, currentSlot: 0, randomness: v.randomness, status: 'awaiting_reveal', staleAt: null, voucher: QUEST_CHIP_TEMPLATES[v.template] ? { ...QUEST_CHIP_TEMPLATES[v.template], odds: [...QUEST_CHIP_TEMPLATES[v.template].odds] } : { template: v.template, odds: [], soulboundDays: 0 } })),
+        ...rows.map((r) => ({ ...packView(r), voucher: null })),
+        ...vouchers.map((v) => ({ ...packView({ nonce: v.nonce, sku: 0, qty: 1, opened: 0, randomness: v.randomness, slot: v.slot, block_time: null, currency: 2 }), voucher: QUEST_CHIP_TEMPLATES[v.template] ? { ...QUEST_CHIP_TEMPLATES[v.template], odds: [...QUEST_CHIP_TEMPLATES[v.template].odds] } : { template: v.template, odds: [], soulboundDays: 0 } })),
       ],
       compressed: compressed.map((s) => ({
         nonce: s.nonce,
@@ -504,6 +640,11 @@ export function createApp(db: Db, deps: AppOptions = {}) {
         claims: db.all<{ claim_nonce: string; pack_no: number; status: string; asset: string | null }>(`SELECT claim_nonce, pack_no, status, asset FROM compressed_claims WHERE buyer = ? AND nonce = ? ORDER BY CAST(claim_nonce AS INTEGER)`, s.buyer, s.nonce).map((c) => ({ claimNonce: c.claim_nonce, packNo: c.pack_no, status: c.status, asset: c.asset })),
       })),
       fusions: [],
+      // находка 46, бои: ставка заперта в эскроу, снять её может только подпись стороны — значит, кнопка
+      // должна быть в продукте. `refundable`/`refundAt` считаются по тем же границам, что проверяет цепь.
+      battles: pendingBattles(db, req.session!.wallet),
+      // находка 80: заказы фазы V, чья оплата ещё в эскроу на цепи — возврат открывается слотом
+      phaseV: pendingPhaseVOrders(db, req.session!.wallet),
     });
   });
   // One-signature settlement view for one purchase, in ANY state (unlike /me/pending, which drops
@@ -620,19 +761,32 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   });
 
   // ------------------------------------------------------------ phase-G pack orders (docs/MINIMAL-LAUNCH-CHECKLIST.md §2–3)
-  // Only live when LAUNCH_PHASE=g; in the default 'full' phase these answer 410 and the
-  // program flow above is the only purchase path. The mint crank lives in crank.ts.
-  const phaseG = () => { if (LAUNCH_PHASE === 'full') throw new ServiceError(410, 'phase_g_off', 'Phased-launch orders are not enabled on this backend'); };
+  // Создание/чтение заказа живёт в 'g' и 'v' (`phaseOrders`), off-chain подтверждение оплаты — только
+  // в 'g' (`phaseG`): в 'full' не работает ничего. Раньше закрытие срабатывало только на 'full',
+  // поэтому под 'v' открывался старый маршрут «оплати казне с мемо — мы пометим paid», хотя Phase-V
+  // минт требует on-chain buy_pack escrow, а кранк минта под 'v' не работает: оплаченный заказ не мог
+  // превратиться в чип (п. 52). Первая версия гейта закрыла под 'v' весь блок, и покупка в фазе V
+  // упиралась в 410 ещё до `buy_pack` — поэтому гейтов теперь два.
+  const phaseG = () => { if (LAUNCH_PHASE !== 'g') throw new ServiceError(410, 'phase_g_off', 'Phased-launch orders are not enabled on this backend'); };
+  // Находка 52 (уточнение): под 'v' заказы тоже создаются и читаются — Phase-V покупка начинается с
+  // `POST /packs/order` (id, коммит seed, specs) и опрашивает `GET /packs/order/:id`, а закрывать под 'v'
+  // нужно только off-chain подтверждение оплаты. Первая версия гейта закрыла весь блок целиком, и
+  // покупка в фазе V упиралась в 410 ещё до `buy_pack`.
+  const phaseOrders = () => {
+    if (LAUNCH_PHASE !== 'g' && LAUNCH_PHASE !== 'v') {
+      throw new ServiceError(410, 'orders_unavailable', 'Pack orders are not enabled on this backend');
+    }
+  };
   const phaseV = () => { if (LAUNCH_PHASE !== 'v') throw new ServiceError(410, 'phase_v_off', 'Phase-V settle is not enabled on this backend'); };
   v1.post('/packs/order', requireAuth, accessGate('packs'), rl(POLICIES.mutate), wrap(async (req, res) => {
-    phaseG();
+    phaseOrders();
     const geo = geoOf(req.headers);
     if (geo.restricted) throw new ServiceError(403, 'geo_blocked', 'Randomised packs are not available in your region.', { country: geo.country, mode: geo.mode });
     res.set('Cache-Control', 'no-store');
     res.json(packOrders.createOrder(db, req.session!.wallet, req.body));
   }));
   v1.get('/packs/order/:id', requireAuth, (req, res) => {
-    phaseG();
+    phaseOrders();
     res.json(packOrders.getOrder(db, req.session!.wallet, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0));
   });
   v1.post('/packs/order/:id/confirm', requireAuth, accessGate('packs'), rl(POLICIES.claim), wrap(async (req, res) => {
@@ -646,7 +800,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     res.json({ entries: packOrders.mintJournal(db, intQuery(req.query.limit, { name: 'limit', min: 1, max: 500, def: 100 }) ?? 100), tree: SHARED_MERKLE_TREE || null });
   });
   v1.get('/packs/order/:id/verify', (req, res) => {
-    phaseG();
+    phaseOrders();
     const r = packOrders.verifyOrder(db, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0);
     if (!r) { res.status(404).json({ code: 'not_found', message: 'Unknown or unminted order' }); return; }
     res.json(r);
@@ -664,28 +818,27 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   }));
 
   // ------------------------------------------------------------ phase-G fusion (§4)
+  // Доказательство сжигания материалов fusion (находка 12) живёт в `fusion-burn.ts`: только явный
+  // ответ DAS/индексера считается доказательством, любой сбой — «не проверено» и 503, а не «сгорело».
   const dasBurnVerifier = async (assetIds: string[]): Promise<boolean> => {
-    const das = new DasClient({ endpoint: DAS_RPC_URL, timeoutMs: DAS_TIMEOUT_MS });
-    for (const a of assetIds) {
-      const local = db.get<{ burned_at: number | null }>(`SELECT burned_at FROM chips WHERE asset = ?`, a);
-      if (local?.burned_at !== null && local?.burned_at !== undefined) continue; // indexer already saw the burn
-      try {
-        const asset = await das.getAsset(a);
-        // DAS keeps burnt assets queryable with `burnt: true` instead of
-        // erroring (live finding 2026-10-26: three on-chain burns verified
-        // on-chain but this check read them as alive forever). Only a live,
-        // unflagged asset means "not burned (yet)".
-        if (!asset.burnt) return false;
-      } catch { /* gone from DAS → burned */ }
+    try {
+      return await verifyBurns(db, assetIds, new DasClient({ endpoint: DAS_RPC_URL, timeoutMs: DAS_TIMEOUT_MS }));
+    } catch (e) {
+      if (e instanceof BurnCheckUnavailable) {
+        throw new ServiceError(503, 'burn_check_unavailable',
+          `Burn of ${e.assetId} cannot be verified right now (${e.reason}); the fusion stays unpaid and the materials stay reserved`);
+      }
+      throw e;
     }
-    return true;
   };
   v1.post('/fusion/order', requireAuth, accessGate('packs'), rl(POLICIES.mutate), wrap(async (req, res) => {
-    phaseG();
+    // Та же оговорка, что у паков: под 'v' fusion создаётся и читается (grant выдаёт phase-V),
+    // под 'v' закрыто только off-chain подтверждение оплаты.
+    phaseOrders();
     res.json(phasegFusion.createFusion(db, req.session!.wallet, req.body?.assets));
   }));
   v1.get('/fusion/order/:id', requireAuth, wrap(async (req, res) => {
-    phaseG();
+    phaseOrders();
     const view = phasegFusion.getFusion(db, req.session!.wallet, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0);
     if (LAUNCH_PHASE === 'v' && view.status === 'paid') {
       res.json({ ...view, grant: await phasev.fusionGrantFor(db, req.session!.wallet, view.fusionId, { connection: connection() }) });
@@ -706,9 +859,26 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   }));
 
   // ------------------------------------------------------------ phase-G soft staking (§5)
+  // Находка 22: владение чипом спрашиваем у цепи (DAS), а не у проекции — прямая передача cNFT мимо
+  // наших программ в подписку индексатора не попадает. DAS не ответил — отказ 503: начисление идёт
+  // за владение, и открывать стейк «по памяти» значит платить не тому.
+  const chainChipOwner = async (asset: string): Promise<string | null> => {
+    try {
+      const das = new DasClient({ endpoint: DAS_RPC_URL, timeoutMs: DAS_TIMEOUT_MS });
+      return (await das.getAsset(asset)).owner.toBase58();
+    } catch (e) {
+      // Только явное «такого ассета нет» — ответ; всё остальное (транспорт, таймаут, мусор) — не доказательство.
+      if (e instanceof DasError && e.code === 'not_found') return null;
+      throw new ServiceError(503, 'owner_check_unavailable',
+        `Ownership of ${asset} cannot be verified right now (${(e as Error).message}) — nothing was staked, retry later`);
+    }
+  };
   v1.post('/staking/soft/stake', requireAuth, rl(POLICIES.mutate), wrap(async (req, res) => {
     phaseG();
-    res.json(phasegStaking.stakeChip(db, req.session!.wallet, String(req.body?.asset ?? '')));
+    const asset = String(req.body?.asset ?? '');
+    res.json(phasegStaking.stakeChip(db, req.session!.wallet, asset, undefined, undefined, {
+      chainOwner: await chainChipOwner(asset),
+    }));
   }));
   v1.post('/staking/soft/unstake', requireAuth, rl(POLICIES.mutate), wrap(async (req, res) => {
     phaseG();
@@ -1090,6 +1260,23 @@ export function createApp(db: Db, deps: AppOptions = {}) {
       throw e;
     }
   });
+  // Находка 32: очередь возвратов по заказам, чья оплата пришла, когда лимит кошелька уже занял другой
+  // заказ. Возврат выполняет оператор, подпись перевода — доказательство; без этой пары маршрутов
+  // оплата «постфактум» просто оставалась бы в казне.
+  v1.get('/admin/pack-refunds', audited('pack_refunds.list', (req) => ({
+    orders: packOrders.refundQueue(db, limitQuery(req.query.limit, { max: 500, def: 100 })),
+  })));
+  v1.post('/admin/pack-refunds/:id', audited('pack_refunds.mark', (req) => packOrders.markRefunded(
+    db, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0, String(req.body?.signature ?? ''),
+  )));
+  // Находка 23: та же очередь для предзаказов — оплата, пришедшая после истечения резерва, когда квота
+  // уже ушла другим. Возврат делает оператор, подпись перевода из мультисига — доказательство.
+  v1.get('/admin/preorder-refunds', audited('preorder_refunds.list', (req) => ({
+    reservations: preorders.refundQueue(db, limitQuery(req.query.limit, { max: 500, def: 100 })),
+  })));
+  v1.post('/admin/preorder-refunds/:id', audited('preorder_refunds.mark', (req) => preorders.markRefunded(
+    db, intQuery(req.params.id, { name: 'id', min: 1 }) ?? 0, String(req.body?.signature ?? ''),
+  )));
   v1.get('/admin/rights', rightsAudited('rights.queue', () => db.all<compliance.RightsRequest>("SELECT * FROM rights_requests ORDER BY CASE WHEN status = 'closed' THEN 1 ELSE 0 END, due_at LIMIT 200").map(r => compliance.requestView(db, r))));
   v1.post('/admin/rights/:id', rightsAudited('rights.reply', req => compliance.updateRequest(db, req.params.id, req.body, 'operator')));
   v1.post('/admin/rights/:id/correct-access', rightsAudited('rights.correct_access', req => compliance.correctAccess(db, req.params.id, req.body)));

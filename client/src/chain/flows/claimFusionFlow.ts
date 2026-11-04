@@ -23,7 +23,7 @@ import { fetchCollectionMetas, fetchGameConfig, fetchTreeMetas } from './packFlo
 
 type ClaimFusionPhase = 'idle' | 'signing' | 'committed' | 'revealing' | 'settling' | 'done' | 'stale' | 'error';
 
-interface ClaimFusionFlowState {
+export interface ClaimFusionFlowState {
   phase: ClaimFusionPhase;
   nonce: bigint;
   recipe: number;
@@ -276,7 +276,7 @@ export class ClaimFusionFlow {
     const { signature } = await sendTx(connection, wallet, [
       cancelStaleClaimFusionIx({
         owner: wallet.publicKey, nonce: this.state.nonce, randomness: this.state.randomness ?? claimFusionPda(wallet.publicKey, this.state.nonce)[0],
-        cgMint: this.cfg.cgMint, materials: this.state.materials,
+        cgMint: this.cfg.cgMint, materials: this.state.materials, boosted: this.state.boosted,
       }),
     ], { cuLimit: 300_000 });
     this.set({ phase: 'done', signatures: [...this.state.signatures, signature] });

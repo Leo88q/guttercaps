@@ -76,6 +76,7 @@ const screens = {
   "verifyNode": "Verifikasi mandiri (Node.js)",
   "transactionDemo": "{action} (demo)",
   "fusionStopped": "Fusi berhenti",
+  "fusionResuming": "Menyelesaikan fusion yang terhenti — membakar material tersisa dan membayar biaya…",
   "bgSettling": "Worker latar sedang menyelesaikan chip Anda…",
   "localFinish": "Worker lambat — menyelesaikan dengan dompet Anda",
   "fusionBgWait": "Sedang membuat hasil di latar belakang…",

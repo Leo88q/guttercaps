@@ -87,7 +87,7 @@ export function eligibility(db: Db, wallet: string, t = now(), maxSlot = NO_LIMI
  * `rewardsPaused` / `shadowBanned` flag. Used by the reward oracle for the Seeker-week (kind 5) and
  * season (kind 6) SKR roots; bots never qualify.
  */
-export interface SkrEligibility { eligible: boolean; reason: 'bot' | 'rewards_paused' | 'shadow_banned' | 'needs_paid_pack' | 'account_too_new' | 'device_limit' | 'human_check_required' | null; accountAgeD: number; hasPaidPack: boolean }
+export interface SkrEligibility { eligible: boolean; reason: 'bot' | 'rewards_paused' | 'shadow_banned' | 'needs_paid_pack' | 'account_too_new' | 'device_limit' | 'device_fingerprint_required' | 'human_check_required' | null; accountAgeD: number; hasPaidPack: boolean }
 export function skrEligibility(db: Db, wallet: string, t = now(), maxSlot = NO_LIMIT): SkrEligibility {
   if (isBot(wallet)) return { eligible: false, reason: 'bot', accountAgeD: 0, hasPaidPack: false };
   const w = db.get<{ first_seen: number | null; flags: string }>(`SELECT first_seen, flags FROM wallets WHERE address = ?`, wallet);
@@ -158,7 +158,9 @@ export function metricValue(db: Db, wallet: string, metric: string, from: number
     // --- Решётка (docs/13): обучение, глубокий паводок, контракты, призрак, капли, престиж, звёзды.
     // `created_at` у этих таблиц — unix seconds, как у остальных off-chain проекций.
     case 'grid_training':
-      return db.scalar(`SELECT COUNT(*) FROM grid_attempts WHERE wallet = ? AND mode = 'training' AND created_at >= ? AND created_at < ?`, wallet, from, to);
+      // Находка 43: считаем ПРОЙДЕННЫЕ спуски, а не открытые попытки. `settled` без `solved` — это брошенный
+      // или проваленный заход (в том числе попытку, превращённую в тренировку подсказками).
+      return db.scalar(`SELECT COUNT(*) FROM grid_attempts WHERE wallet = ? AND mode = 'training' AND settled = 1 AND solved = 1 AND created_at >= ? AND created_at < ?`, wallet, from, to);
     case 'grid_deep':
       return db.scalar(`SELECT COUNT(*) FROM grid_deep_results WHERE wallet = ? AND created_at >= ? AND created_at < ?`, wallet, from, to);
     case 'grid_contracts':
@@ -298,7 +300,9 @@ export function settleWallet(db: Db, wallet: string, t = now(), horizon = finali
   // Proof of human missing (T-B-49): postpone too — the wallet is paid once it passes the challenge
   // (inside the current-or-previous-period window). `device_limit` is NOT postponed: those
   // completions are recorded with amount 0 like any other ineligible wallet.
-  if (elig.reason === 'human_check_required') return 0;
+  // Находка 66: отпечатка нет — тоже откладываем, а не обнуляем: клиент присылает его при входе,
+  // и после этого награда за уже сделанные квесты выплачивается обычным окном.
+  if (elig.reason === 'human_check_required' || elig.reason === 'device_fingerprint_required') return 0;
   refreshQuestDay(db, wallet, t, horizon);
   refreshQuestDay(db, wallet, t - DAY, horizon);
   const capDaily = BigInt(ANTI_FARM.dailyQuestRewardCapCgMicro), capWeekly = BigInt(ANTI_FARM.weeklyQuestRewardCapCgMicro);

@@ -298,6 +298,14 @@ export function decodePendingClaimFusion(data: Uint8Array): PendingClaimFusion {
 }
 
 export const BATTLE_STATUS = { OPEN: 0, ACCEPTED: 1, RESOLVED: 2, CANCELLED: 3 } as const;
+/**
+ * Окна отказа в бою — копия `ACCEPT_TIMEOUT` / `RESOLVE_TIMEOUT` из `programs/arena/src/lib.rs`.
+ * `cancel_stale_battle` разрешён создателю сразу (открытый бой) и ЛЮБОЙ стороне после
+ * `accepted_at + RESOLVE_TIMEOUT` (принятый бой): до этой границы деньги сторон заперты, после — вернуть
+ * их может только подпись игрока, кранк за него расписаться не может (находка 46).
+ */
+export const BATTLE_ACCEPT_TIMEOUT_SEC = 10 * 60;
+export const BATTLE_RESOLVE_TIMEOUT_SEC = 30 * 60;
 export interface WagerBattle {
   challenger: PublicKey; opponent: PublicKey; wager: bigint; squadA: PublicKey[]; squadB: PublicKey[]; powerA: number; powerB: number;
   randomness: PublicKey; commitSlot: bigint; status: number; createdAt: bigint; acceptedAt: bigint; winner: PublicKey; resultHash: Uint8Array; nonce: bigint; bump: number;

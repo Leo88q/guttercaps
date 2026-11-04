@@ -10,13 +10,16 @@ import { ed25519 } from '@noble/curves/ed25519';
 import { Connection, Keypair, PublicKey } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { CORE_COLLECTIONS, PHASEV_ORACLE_KEYPAIR, PROGRAMS, SHARED_MERKLE_TREE } from './config.ts';
+import { assertDeliverablePurchase, leavesForPurchase, PACKS } from '@guttercaps/economy';
 import { type Db, now } from './db.ts';
 import { ServiceError } from './services.ts';
 import { upsert } from './sql.ts';
 import { base58Encode } from './base58.ts';
 import { chipMetadata, nextGameIndex } from './bubblegum-mint.ts';
-import { pityBeforeFor, rollPack, type PackOrderRow } from './pack-orders.ts';
-import { DasClient } from './das.ts';
+import { frozenRoll, type PackOrderRow } from './pack-orders.ts';
+import { SKUS } from './quote.ts';
+import { DasClient, type DasAssetSummary } from './das.ts';
+import { assertExecuted } from './assert-executed.ts';
 import { DAS_RPC_URL, DAS_TIMEOUT_MS } from './config.ts';
 
 export const SETTLE_PROGRAM = PROGRAMS.settle;
@@ -24,9 +27,20 @@ export const BUBBLEGUM_V2 = new PublicKey('BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK75
 export const MPL_CORE = new PublicKey('CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d');
 export const MPL_NOOP = new PublicKey('mnoopTCrg4p8ry25e4bcWA9XZjbNjMTfgYVGGEdRsf3');
 export const ACCOUNT_COMPRESSION = new PublicKey('mcmt6YrQEMKw8Mw43FmpRLmf7BqRnFMKmAcbxE3xkAW');
-export const MINT_AUTH_PREFIX = Buffer.from('GUTCAP/MINTAUTH/V1');
+// V2 (находка 55): подпись покрывает сумму и валюту оплаты — см. `programs/settle/src/lib.rs`.
+export const MINT_AUTH_PREFIX = Buffer.from('GUTCAP/MINTAUTH/V2');
 /** Grant order ids live above 2^63 so they can never collide with pack orders. */
 export const GRANT_ID_BASE = 1n << 63n;
+/**
+ * Маркер «specs этого заказа сейчас выдаёт другой запрос» (находка 30).
+ *
+ * Раньше это была NUL-строка (`'\u0000reserved'`), и она держалась на поведении драйвера: node-sqlite3
+ * в Node 22 обрезает значение на NUL и записывает пустую строку — бронь просто исчезала, а в Node 24 то
+ * же значение доезжает целиком, и `JSON.parse` на первом чтении бросал «Unexpected token '^@'» вместо
+ * 409. Оба исхода — дефект: маркер не должен зависеть от того, какой драйвер его пишет. Теперь это
+ * обычная строка, которую ни один биндинг не портит, и её узнают оба места, где читается колонка.
+ */
+export const SPECS_RESERVED = '__issuing_specs__';
 /** Oracle authorizations live ~10 minutes (slots at ~400 ms). */
 export const AUTH_TTL_SLOTS = 1500;
 
@@ -71,6 +85,11 @@ export const specsHash = (specs: LeafSpec[]): Buffer =>
 export interface MintAuth {
   wallet: PublicKey;
   orderId: bigint;
+  /** Находка 55: сколько и в какой валюте заплачено за заказ (для grant'а — нули). */
+  amount: bigint;
+  currency: number;
+  /** Находка 16: слот создания заказа на цепи — привязка подписи к экземпляру, а не к номеру. */
+  orderSlot: bigint;
   specsHash: Buffer;
   nonce: bigint;
   expiresAtSlot: bigint;
@@ -81,6 +100,9 @@ export function mintAuthMessage(a: MintAuth): Buffer {
     MINT_AUTH_PREFIX,
     Buffer.from(a.wallet.toBytes()),
     u64le(a.orderId),
+    u64le(a.amount),
+    Buffer.from([a.currency]),
+    u64le(a.orderSlot),
     a.specsHash,
     u64le(a.nonce),
     u64le(a.expiresAtSlot),
@@ -139,15 +161,27 @@ export interface SettlePayload {
   treeConfig: string;
   orderPda: string | null;
   grantReceipt: string | null;
-  auth: { wallet: string; orderId: string; specsHash: string; nonce: string; expiresAtSlot: string };
+  auth: { wallet: string; orderId: string; amount: string; currency: number; orderSlot: string; specsHash: string; nonce: string; expiresAtSlot: string };
   signature: string;
   specs: { collection: string; name: string; symbol: string; uri: string; collectionIdx: number; rarity: number; gameIndex: number }[];
 }
 
-function payloadFor(wallet: string, authOrderId: bigint, specs: (LeafSpec & { collectionIdx: number; rarity: number; gameIndex: number })[], oracle: Keypair, slot: number, orderIdForPda: number | null): SettlePayload {
+function payloadFor(
+  wallet: string,
+  authOrderId: bigint,
+  specs: (LeafSpec & { collectionIdx: number; rarity: number; gameIndex: number })[],
+  oracle: Keypair,
+  slot: number,
+  orderIdForPda: number | null,
+  /** Находка 55: сумма и валюта, которые оракул засвидетельствовал. У grant'а денег нет. */
+  order: { amount: bigint; currency: number; slot: bigint } = { amount: 0n, currency: 0, slot: 0n },
+): SettlePayload {
   const auth: MintAuth = {
     wallet: new PublicKey(wallet),
     orderId: authOrderId,
+    amount: order.amount,
+    currency: order.currency,
+    orderSlot: order.slot,
     specsHash: specsHash(specs),
     nonce: authOrderId,
     expiresAtSlot: BigInt(slot + AUTH_TTL_SLOTS),
@@ -165,6 +199,9 @@ function payloadFor(wallet: string, authOrderId: bigint, specs: (LeafSpec & { co
     auth: {
       wallet,
       orderId: authOrderId.toString(),
+      amount: auth.amount.toString(),
+      currency: auth.currency,
+      orderSlot: auth.orderSlot.toString(),
       specsHash: Buffer.from(auth.specsHash).toString('hex'),
       nonce: auth.nonce.toString(),
       expiresAtSlot: auth.expiresAtSlot.toString(),
@@ -203,6 +240,14 @@ export async function settleAuthForOrder(
   if (!row) throw new ServiceError(404, 'not_found', 'Unknown order');
   if (row.wallet !== wallet) throw new ServiceError(403, 'not_yours', 'This order belongs to another wallet');
   if (row.status === 'minted') throw new ServiceError(409, 'already_minted', 'This order is already minted');
+  // Находки 25 и 24: `settle_pack` принимает не больше MAX_SPECS = 10 листьев за инструкцию, но и это
+  // не предел доставки: метаданные каждого листа не дают уложить в одну транзакцию больше пяти (замер —
+  // `client/src/features/shop/settle-tx-size.test.ts`). UI продавал бандлы ×5/×10/×25 (25–125 листьев),
+  // то есть эскроу оплачивался, а доставить заказ было нечем. Отказываем ДО подписи: заказ остаётся
+  // `paid` и разбирается вручную (возврат), а не превращается в «оплатил и ничего».
+  const pack = PACKS[SKUS[row.sku]];
+  if (!pack) throw new ServiceError(409, 'bad_sku', `Order #${id} has an unknown sku ${row.sku}`);
+  assertDeliverablePurchase(leavesForPurchase(pack, row.qty), `Order #${id}`);
   const onchain = await fetchOnchainOrder(deps.connection, new PublicKey(wallet), id);
   if (!onchain) throw new ServiceError(409, 'not_paid_onchain', 'No buy_pack escrow found for this order yet');
   if (onchain.status !== 0) throw new ServiceError(409, 'already_settled', 'This order is already settled on-chain');
@@ -216,20 +261,52 @@ export async function settleAuthForOrder(
   // registration key, so a re-issued authorization must sign the SAME specs
   // (only the slot window and signature refresh).
   type StoredSpec = SettlePayload['specs'][number];
-  let stored = row.settle_specs ? (JSON.parse(row.settle_specs) as StoredSpec[]) : null;
+  // Маркер брони — не набор specs: строку, которую сейчас выдаёт другой писатель, разбирать нечем, и
+  // запрос обязан получить тот же 409, что и в ветке ниже, а не 500 из JSON.parse.
+  const isReserved = (v: string | null | undefined) => v === SPECS_RESERVED;
+  let stored = row.settle_specs && !isReserved(row.settle_specs) ? (JSON.parse(row.settle_specs) as StoredSpec[]) : null;
   if (!stored) {
-    const pityBefore = pityBeforeFor(db, wallet, row.sku, row.id);
-    const roll = rollPack(row.seed, row.id, row.sku, row.qty, pityBefore, row.featured_idx);
-    const fresh = specsForRoll(db, wallet, roll);
-    stored = fresh.map((x) => ({ ...x, collection: x.collection.toBase58() }));
-    db.run(`UPDATE pack_orders SET settle_specs = ? WHERE id = ?`, JSON.stringify(stored), id);
+    // Находка 30: два запроса читали строку без `settle_specs`, каждый независимо выделял game indices
+    // и безусловно записывал свой набор. Исполнить на цепи можно любую из двух подписей, а регистрация
+    // ищет в DAS имена из ПОСЛЕДНЕГО набора — заказ оплачен, выдача не сходится. Право выдать specs
+    // забирает один писатель (CAS по пустой колонке); второй подписывает уже сохранённый набор, а если
+    // набор в этот момент ещё выдают — получает 409 и повторяет запрос.
+    const reserve = db.run(
+      `UPDATE pack_orders SET settle_specs = ? WHERE id = ? AND (settle_specs IS NULL OR settle_specs = '')`,
+      SPECS_RESERVED, id,
+    );
+    if (Number(reserve.changes) === 1) {
+      try {
+        // Находка 34: pity и ролл фиксируются здесь же, до выдачи имён, — иначе к моменту минта
+        // история могла измениться и выданные имена перестали бы соответствовать роллу.
+        const roll = frozenRoll(db, row);
+        const fresh = specsForRoll(db, wallet, roll);
+        stored = fresh.map((x) => ({ ...x, collection: x.collection.toBase58() }));
+        db.run(`UPDATE pack_orders SET settle_specs = ? WHERE id = ?`, JSON.stringify(stored), id);
+      } catch (e) {
+        // выдача сорвалась — снимаем бронь, чтобы заказ можно было авторизовать повторно
+        db.run(`UPDATE pack_orders SET settle_specs = NULL WHERE id = ? AND settle_specs = ?`, id, SPECS_RESERVED);
+        throw e;
+      }
+    } else {
+      const again = db.get<{ settle_specs: string | null }>(`SELECT settle_specs FROM pack_orders WHERE id = ?`, id)?.settle_specs;
+      if (!again || isReserved(again)) {
+        throw new ServiceError(409, 'settle_auth_busy', 'The specs for this order are being issued right now — retry in a second');
+      }
+      stored = JSON.parse(again) as StoredSpec[];
+    }
   }
   const specs = stored.map((x) => ({
     collection: new PublicKey(x.collection), name: x.name, symbol: x.symbol, uri: x.uri,
     collectionIdx: x.collectionIdx, rarity: x.rarity, gameIndex: x.gameIndex,
   }));
   const slot = await deps.connection.getSlot('confirmed');
-  const payload = payloadFor(wallet, BigInt(id), specs, deps.oracle ?? loadOracle(), slot, id);
+  // Находка 55: подписывается ровно та сумма и валюта, что лежат в эскроу на цепи — их же требует
+  // `settle_pack` (`auth.amount == order.amount && auth.currency == order.currency`).
+  const payload = payloadFor(wallet, BigInt(id), specs, deps.oracle ?? loadOracle(), slot, id, {
+    // Находка 16: слот создания заказа с цепи — им подпись отличается от подписи для пересозданного заказа
+    amount: BigInt(row.amount), currency: CURRENCY_CODE[row.currency], slot: onchain.createdSlot,
+  });
   return { ...payload, status: 'paid' };
 }
 
@@ -253,7 +330,14 @@ export function fusionGrantPayload(
 }
 
 // ------------------------------------------------------------------ post-settle registration
-export interface MintedSpecLike { name: string; collectionIdx: number; rarity: number; gameIndex: number }
+export interface MintedSpecLike {
+  name: string;
+  collectionIdx: number;
+  rarity: number;
+  gameIndex: number;
+  /** Адрес Core-коллекции из авторизации: без него имя ничего не доказывает (находка 3). */
+  collection?: string;
+}
 
 /**
  * Register settled chips in the `chips` projection by matching DAS asset
@@ -264,32 +348,68 @@ export interface RegisteredChip { assetId: string; collectionIdx: number; rarity
 
 export async function registerSettledChips(
   db: Db,
-  args: { wallet: string; specs: MintedSpecLike[]; origin: string; originSig: string | null; lockSeconds?: number },
+  args: { wallet: string; specs: MintedSpecLike[]; origin: string; originSig: string | null; lockSeconds?: number; maxPages?: number },
   das: DasClient = new DasClient({ endpoint: DAS_RPC_URL, timeoutMs: DAS_TIMEOUT_MS }),
   t = now(),
 ): Promise<RegisteredChip[]> {
-  const page = await das.getAssetsByOwner(args.wallet).catch(() => null);
-  if (!page) return [];
+  // Находка 9: раньше читалась только первая страница (до 1000 ассетов). Игрок с большей коллекцией
+  // (или просто с большим кошельком) не находил свои же чипы, и заказ оставался открытым навсегда,
+  // хотя минт прошёл. Теперь страницы читаются, пока не найдены все спеки или пока DAS не отдаст
+  // пустую страницу; число страниц ограничено, чтобы неупорядоченный DAS не крутил бесконечный цикл.
+  const maxPages = args.maxPages ?? 5;
+  const wanted = new Map(args.specs.map((sp) => [`${sp.name}|${sp.collection ?? ''}`, sp]));
+  const items: DasAssetSummary[] = [];
+  for (let pageNo = 1; pageNo <= maxPages; pageNo++) {
+    const page = await das.getAssetsByOwner(args.wallet, pageNo).catch(() => null);
+    if (!page || page.items.length === 0) break;
+    items.push(...page.items);
+    const complete = [...wanted.keys()].every((key) => items.some((a) => a.compressed && `${a.name}|${a.collection?.toBase58() ?? ''}` === key));
+    if (complete) break;
+    if (items.length >= page.total) break;
+  }
+  if (items.length === 0) return [];
   const found: RegisteredChip[] = [];
   for (const spec of args.specs) {
-    const hit = page.items.find((a) => a.compressed && a.name === spec.name);
-    if (!hit) continue;
+    // Находка 3: имя ассета не является идентификатором. `{SYMBOL} #{gameIndex}` может выпустить кто
+    // угодно, поэтому совпадение только по имени позволяло подставить в проекцию чужой cNFT (или
+    // зарегистрировать «свой» вместо настоящего чипа, который выпустил settle). Требуем ещё и
+    // коллекцию из авторизации и отказываемся выбирать, если подходящих больше одного.
+    const wantCollection = spec.collection;
+    // Без коллекции в авторизации доказывать нечего: имя совпадёт у кого угодно, поэтому не регистрируем
+    // (fail closed) — заказ/fusion остаётся открытым, пока спека с коллекцией не появится.
+    if (!wantCollection) continue;
+    const candidates = items.filter((a) => a.compressed && a.name === spec.name
+      && a.collection?.equals(new PublicKey(wantCollection)));
+    if (candidates.length !== 1) continue; // нет ни одного или неоднозначно — не угадываем
+    const hit = candidates[0];
+    // Уже зарегистрированный другим путём ассет не переписываем: строка `chips` — это чужое состояние.
+    const existing = db.get<{ origin: string | null; collection_idx: number }>(
+      `SELECT origin, collection_idx FROM chips WHERE asset = ?`, hit.assetId.toBase58(),
+    );
+    if (existing && existing.collection_idx !== spec.collectionIdx) continue;
     db.run(
-      upsert('chips', ['asset', 'owner', 'collection_idx', 'rarity', 'level', 'flags', 'lock_until', 'origin', 'origin_signature', 'minted_at'], ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'origin = excluded.origin', 'minted_at = excluded.minted_at']),
+      upsert('chips', ['asset', 'owner', 'collection_idx', 'rarity', 'level', 'flags', 'lock_until', 'origin', 'origin_signature', 'minted_at', 'source'], ['asset'], ['owner = excluded.owner', 'collection_idx = excluded.collection_idx', 'rarity = excluded.rarity', 'origin = excluded.origin', 'minted_at = excluded.minted_at', 'source = excluded.source']),
       hit.assetId.toBase58(), args.wallet, spec.collectionIdx, spec.rarity, 1, 0,
-      args.lockSeconds ? t + args.lockSeconds : 0, args.origin, args.originSig, t,
+      args.lockSeconds ? t + args.lockSeconds : 0, args.origin, args.originSig, t, 'api',
     );
     found.push({ assetId: hit.assetId.toBase58(), collectionIdx: spec.collectionIdx, rarity: spec.rarity, gameIndex: spec.gameIndex });
   }
   return found;
 }
 
-/** Verify a settle/grant transaction actually ran our program successfully. */
-export async function verifySettleTx(connection: Connection, signature: string): Promise<boolean> {
-  const tx = await connection.getTransaction(signature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 }).catch(() => null);
-  if (!tx || tx.meta?.err) return false;
-  const keys = tx.transaction.message.getAccountKeys().staticAccountKeys;
-  return keys.some((k) => k.equals(SETTLE_PROGRAM));
+/**
+ * Доказательство исполнения (находка 2, §1.4). Прежняя проверка смотрела только на static-ключи
+ * сообщения: любая транзакция, где id программы `settle` попал в аккаунты (чужой вызов, другая
+ * программа с этим адресом, неудачная попытка), считалась исполненным минтом. Теперь требуется
+ * инструкция именно нашей программы, именно нужного обработчика, с ожидаемым PDA в аккаунтах.
+ */
+export async function verifySettleTx(
+  connection: Connection,
+  signature: string,
+  spec: { ix: 'settle_pack' | 'grant_mint'; account: PublicKey },
+): Promise<boolean> {
+  const r = await assertExecuted(connection, signature, { program: SETTLE_PROGRAM, ix: spec.ix, account: spec.account });
+  return r.ok;
 }
 
 export { getAssociatedTokenAddressSync };
@@ -308,13 +428,20 @@ const toLeafSpecs = (stored: StoredSpec[]) =>
     collectionIdx: x.collectionIdx, rarity: x.rarity, gameIndex: x.gameIndex,
   }));
 
+/** Спека для сверки с DAS: имя + коллекция (без неё имя ничего не доказывает, находка 3). */
+const toMintedSpecs = (stored: StoredSpec[]): MintedSpecLike[] =>
+  stored.map((x) => ({
+    collection: x.collection, name: x.name, collectionIdx: x.collectionIdx, rarity: x.rarity, gameIndex: x.gameIndex,
+  }));
+
 /** After the player's settle_pack lands: verify, register chips, close the order. */
 export async function confirmSettle(
   db: Db,
   wallet: string,
   id: number,
   signature: string,
-  deps: { connection: Connection },
+  // `das` необязателен: в бою берётся живой клиент, в тесте — детерминированный фейк
+  deps: { connection: Connection; das?: DasClient },
   t = now(),
 ): Promise<ReturnType<typeof getOrder>> {
   const row = db.get<PackOrderRow>(`SELECT * FROM pack_orders WHERE id = ?`, id);
@@ -322,16 +449,21 @@ export async function confirmSettle(
   if (row.wallet !== wallet) throw new ServiceError(403, 'not_yours', 'This order belongs to another wallet');
   if (row.status === 'minted') return getOrder(db, wallet, id);
   if (signature.length >= 32 && row.settle_sig !== signature) {
-    if (!(await verifySettleTx(deps.connection, signature))) {
-      throw new ServiceError(422, 'settle_unverified', 'The settle transaction was not found or did not run the settle program');
+    // Именно `settle_pack` этого заказа: order PDA в аккаунтах, а не просто упоминание программы.
+    if (!(await verifySettleTx(deps.connection, signature, { ix: 'settle_pack', account: orderPda(new PublicKey(wallet), BigInt(id)) }))) {
+      throw new ServiceError(422, 'settle_unverified', 'The settle transaction was not found, failed, or did not settle THIS order');
     }
     db.run(`UPDATE pack_orders SET settle_sig = ? WHERE id = ?`, signature, id);
+    // Находка 9: строка в памяти оставалась со старым `settle_sig`, поэтому первое же подтверждение
+    // уходило в ранний возврат («ещё индексируется») и НЕ регистрировало чипы. Регистрацию потом
+    // делал либо повторный вызов, либо кранк — то есть игрок видел открытый заказ после успешного минта.
+    row.settle_sig = signature;
   }
   const stored = parseSpecs(row.settle_specs);
   if (!stored || !row.settle_sig) return getOrder(db, wallet, id); // still settling / indexing
   const minted = await registerSettledChips(db, {
-    wallet, specs: toLeafSpecs(stored), origin: 'pack', originSig: row.tx_sig,
-  });
+    wallet, specs: toMintedSpecs(stored), origin: 'pack', originSig: row.tx_sig,
+  }, deps.das);
   if (minted.length === stored.length) {
     db.run(`UPDATE pack_orders SET status = 'minted', minted_at = ?, assets = ? WHERE id = ?`, t, JSON.stringify(minted), id);
   }
@@ -380,7 +512,7 @@ export async function confirmFusionGrant(
   wallet: string,
   fusionId: number,
   signature: string,
-  deps: { connection: Connection },
+  deps: { connection: Connection; das?: DasClient },
   t = now(),
 ): Promise<{ status: string; success: boolean | null; resultAssets: string[] | null }> {
   const row = db.get<FusionRow & { grant_specs?: string | null; grant_sig?: string | null }>(`SELECT * FROM phaseg_fusions WHERE id = ?`, fusionId);
@@ -390,8 +522,9 @@ export async function confirmFusionGrant(
     return { status: 'minted', success: row.success === null ? null : row.success === 1, resultAssets: row.result_assets ? (JSON.parse(row.result_assets) as string[]) : null };
   }
   if (signature.length >= 32 && row.grant_sig !== signature) {
-    if (!(await verifySettleTx(deps.connection, signature))) {
-      throw new ServiceError(422, 'settle_unverified', 'The grant transaction was not found or did not run the settle program');
+    // Именно `grant_mint` этого fusion: receipt PDA = GRANT_ID_BASE + fusion_id.
+    if (!(await verifySettleTx(deps.connection, signature, { ix: 'grant_mint', account: grantReceiptPda(GRANT_ID_BASE + BigInt(fusionId)) }))) {
+      throw new ServiceError(422, 'settle_unverified', 'The grant transaction was not found, failed, or did not mint THIS fusion');
     }
     db.run(`UPDATE phaseg_fusions SET grant_sig = ? WHERE id = ?`, signature, fusionId);
     row.grant_sig = signature;
@@ -400,8 +533,8 @@ export async function confirmFusionGrant(
   if (!stored || !row.grant_sig) return { status: row.status, success: null, resultAssets: null };
   const recipe = FUSION_RECIPES.find((r) => r.from === row.recipe_from)!;
   const minted = await registerSettledChips(db, {
-    wallet, specs: toLeafSpecs(stored), origin: 'fusion', originSig: row.burn_sig, lockSeconds: recipe.resultLockSeconds,
-  });
+    wallet, specs: toMintedSpecs(stored), origin: 'fusion', originSig: row.burn_sig, lockSeconds: recipe.resultLockSeconds,
+  }, deps.das);
   if (minted.length === stored.length) {
     const success = rollFusion(row.seed, row.id, recipe.successBps);
     finalizeFusionMint(db, row, minted.map((m) => m.assetId), success, t);

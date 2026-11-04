@@ -149,7 +149,7 @@ export class FusionFlow {
     const cores = await fetchCoreCollections(connection, this.cfg.collectionsCreated);
     const coreOf = (i: number) => { const c = cores.get(i); if (!c) throw new Error(`collection ${i} missing`); return c; };
     const { signature } = await sendTx(connection, wallet, [
-      cancelStaleFusionIx({ owner: wallet.publicKey, nonce: this.state.nonce, randomness: this.state.randomness ?? CHIP_CORE_ID, materials: this.state.materials, coreCollectionOf: coreOf, cgMint: this.cfg.cgMint }),
+      cancelStaleFusionIx({ owner: wallet.publicKey, nonce: this.state.nonce, randomness: this.state.randomness ?? CHIP_CORE_ID, materials: this.state.materials, coreCollectionOf: coreOf, cgMint: this.cfg.cgMint, boosted: this.state.boosted }),
     ], { cuLimit: 300_000 });
     this.set({ phase: 'done', signatures: [...this.state.signatures, signature] });
     return signature;

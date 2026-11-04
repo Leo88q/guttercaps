@@ -34,6 +34,11 @@ export const gridDailyLevel = (t: number) => (gridIsSunday(t) ? GRID.totalLevels
 // ---------------------------------------------------------------------------
 export const gridWeekStart = (week: number) => week * 7 * DAY + 4 * DAY;
 export interface GridContract { slot: number; district: number; depth: number; configLevel: number; seed: number }
+// Находка 44: список слотов контрактов выводится из `GRID.contractsPerDay`, а не из литерала: раньше
+// жёсткая тройка стояла в двух местах, и правка конфигурации (4 контракта в день) давала четвёртый контракт
+// в проверке `slot < contractsPerDay`, но не в доске и не в обратном поиске слота при закрытии попытки.
+export const GRID_CONTRACT_SLOTS: readonly number[] = Array.from({ length: GRID.contractsPerDay }, (_, i) => i);
+
 export const gridContractAt = (t: number, slot: number): GridContract => {
   const day = gridDay(t);
   const district = (((day * GRID.contractsPerDay + slot) % GRID.floodDistricts) + GRID.floodDistricts) % GRID.floodDistricts;
@@ -184,6 +189,15 @@ export function mergeFusionRoutes(db: Db, resultAsset: string, materials: readon
   saveRoute(db, resultAsset, Math.min(GRID.totalLevels + 1, nextLevel), drops, progress, t);
 }
 
+/**
+ * Находка 43: закрыть попытку и запомнить, была ли она ПРОЙДЕНА. Квест «десять тренировочных спусков»
+ * считался по строкам `grid_attempts` (то есть по стартам): можно было десять раз открыть тренировку и
+ * ни разу не пройти — недельный квест закрывался. Теперь метрика считает `settled = 1 AND solved = 1`.
+ */
+function settleAttemptRow(db: Db, id: string, t: number, solved: boolean) {
+  db.run(`UPDATE grid_attempts SET settled = 1, settled_at = ?, solved = ? WHERE id = ?`, t, solved ? 1 : 0, id);
+}
+
 export interface GridAttemptInput { asset?: unknown; level?: unknown; hintsUsed?: unknown; useEmergency?: unknown; mode?: unknown; daily?: unknown; kind?: unknown; slot?: unknown }
 
 export function startGridAttempt(db: Db, wallet: string, body: GridAttemptInput, t = now()) {
@@ -242,6 +256,12 @@ function startSpecialAttempt(db: Db, wallet: string, body: GridAttemptInput, t: 
     if (chip.collection_idx !== contract.district) throw new ServiceError(409, 'wrong_district', `Contract is for district ${contract.district + 1}; the conductor must be a chip of that district`);
     if (gridRoute(db, asset).nextLevel <= GRID.totalLevels) throw new ServiceError(409, 'contract_locked', 'District contracts open after the conductor finishes the 75-sector Descent');
     if (db.get(`SELECT 1 FROM grid_contract_done WHERE wallet = ? AND day = ? AND slot = ?`, wallet, gridDay(t), slot)) throw new ServiceError(409, 'contract_done', 'That contract is already completed today');
+    // Находка 39: контракт нельзя открыть пачкой. Раньше между стартом и сдачей можно было открыть
+    // сколько угодно попыток одного слота и сдать их все — каждая давала прогресс (grid_completions) и
+    // капала капли. Один слот — одна незавершённая попытка; seed однозначно задаёт (день, слот).
+    if (db.get(`SELECT 1 FROM grid_attempts WHERE wallet = ? AND mode = 'contract' AND settled = 0 AND seed = ?`, wallet, contract.seed)) {
+      throw new ServiceError(409, 'contract_in_progress', 'That contract is already in progress — finish or give it up');
+    }
     level = contract.configLevel; seed = contract.seed;
     if (hintsUsed > 0 && ensureGridWallet(db, wallet, t).hints < hintsUsed) throw new ServiceError(409, 'no_hints', 'Not enough hints (Метки Клеммы)');
   } else if (kind === 'deep') {
@@ -313,14 +333,17 @@ function settleFail(db: Db, wallet: string, attempt: { id: string; asset: string
   db.run(`INSERT INTO grid_fails (wallet, asset, level, fails) VALUES (?, ?, ?, 1) ON CONFLICT(wallet, asset, level) DO UPDATE SET fails = fails + 1`, wallet, attempt.asset, attempt.level);
   const fails = db.get<{ fails: number }>(`SELECT fails FROM grid_fails WHERE wallet = ? AND asset = ? AND level = ?`, wallet, attempt.asset, attempt.level)?.fails ?? 0;
   let emergencyGranted = false;
-  if (fails >= GRID.emergencyHintAfterFails) {
+  // Находка 59: условие `fails >= порог` выдавало метку за КАЖДУЮ неудачу после третьей (счётчик не
+  // обнуляется), то есть пять провалов на секторе давали четыре метки вместо одной. Метка положена за
+  // каждую ДОСТИГНУТУЮ ступень: 3-я, 6-я, 9-я неудача на этом чипе и уровне.
+  if (fails % GRID.emergencyHintAfterFails === 0) {
     const e = db.get<{ available: number }>(`SELECT available FROM grid_emergency WHERE asset = ? AND level = ?`, attempt.asset, attempt.level);
     if (!e || e.available <= 0) {
       db.run(`INSERT INTO grid_emergency (asset, level, available) VALUES (?, ?, 1) ON CONFLICT(asset, level) DO UPDATE SET available = 1`, attempt.asset, attempt.level);
       emergencyGranted = true;
     }
   }
-  db.run(`UPDATE grid_attempts SET settled = 1, settled_at = ? WHERE id = ?`, t, attempt.id);
+  settleAttemptRow(db, attempt.id, t, false);
   return { ok: false as const, reason: 'flood_gone', xpLoss, valveUsed, fails, emergencyGranted, route: gridRoute(db, attempt.asset) };
 }
 
@@ -347,7 +370,7 @@ export function completeGridAttempt(db: Db, wallet: string, body: GridCompleteIn
   }
   if (attempt.mode === 'training') {
     const solved = isSolved(lv);
-    db.run(`UPDATE grid_attempts SET settled = 1, settled_at = ? WHERE id = ?`, t, attempt.id);
+    settleAttemptRow(db, attempt.id, t, solved);
     const passXp = solved && (attempt as { daily?: number }).daily ? awardDailyPassXp(db, wallet, t) : 0;
     return { ok: solved, training: true as const, stars: 0, xpGranted: 0, xpPending: 0, passXp, moves, par: lv.parMoves };
   }
@@ -357,8 +380,9 @@ export function completeGridAttempt(db: Db, wallet: string, body: GridCompleteIn
   const totalHints = attempt.hints_used + attempt.emergency_used;
   if (totalHints >= 2) {
     spendHints(db, wallet, attempt.hints_used, t);
-    db.run(`UPDATE grid_attempts SET settled = 1, settled_at = ? WHERE id = ?`, t, attempt.id);
-    return { ok: true as const, training: true, stars: 0, xpGranted: 0, xpPending: 0, message: 'Second hint converted the attempt to training' };
+    // подсказки превратили попытку в тренировку — пройденной она не считается (иначе квест снова
+    // закрывался бы «за старты», только теперь помеченные как solved)
+    settleAttemptRow(db, attempt.id, t, false);
   }
   let stars = gridStarsForMoves(moves, lv.parMoves);
   if (totalHints === 1) stars = Math.min(stars, 2) as 0 | 1 | 2 | 3;
@@ -419,7 +443,7 @@ export function completeGridAttempt(db: Db, wallet: string, body: GridCompleteIn
     db.run(`UPDATE grid_wallet_state SET total_best_stars = ?, updated_at = ? WHERE wallet = ?`, totalStars, t, wallet);
     for (const m of GRID.starMilestones) if (prev < m.stars && totalStars >= m.stars) { grantGridHints(db, wallet, m.hints, t); if (m.valves) grantGridValve(db, wallet, t); if (m.skin) grantGridCosmetic(db, wallet, 'skin', m.skin, `grid:stars:${m.stars}:skin:${m.skin}`, t); }
   }
-  db.run(`UPDATE grid_attempts SET settled = 1, settled_at = ? WHERE id = ?`, t, attempt.id);
+  settleAttemptRow(db, attempt.id, t, true);
   // Доски коллекционируются через Floodgrid (2026-10-19): сектор на 2+ звезды
   // раз в неделю даёт недостающую часть района недели, а первый 3★-сектор
   // фишкой района — следующую недостающую часть именно этого района.
@@ -435,11 +459,30 @@ export function completeGridAttempt(db: Db, wallet: string, body: GridCompleteIn
 function settleSpecialAttempt(db: Db, wallet: string, attempt: { id: string; asset: string; level: number; hints_used: number; mode: string; created_at?: number }, _district: number, moves: number, solved: boolean, par: number, t: number) {
   const kind = attempt.mode as SpecialKind;
   if (kind === 'contract') spendHints(db, wallet, attempt.hints_used, t);
-  const settle = () => db.run(`UPDATE grid_attempts SET settled = 1, settled_at = ? WHERE id = ?`, t, attempt.id);
+  const settle = () => settleAttemptRow(db, attempt.id, t, solved);
   if (!solved) { settle(); return { ok: false as const, kind, reason: 'not_solved', moves, par }; }
   const stars = gridStarsForMoves(moves, par);
   if (kind === 'contract') {
     if (stars <= 0) { settle(); return { ok: false as const, kind, reason: 'over_budget', moves, par }; }
+    // Находка 39: слот контракта занимается ОДИН раз, и это решение принимается здесь, до наград.
+    // Раньше `grid_contract_done` вставлялся с `ON CONFLICT DO NOTHING` уже ПОСЛЕ выдачи — вторая
+    // (параллельная) попытка того же слота молча ничего не занимала, но всё равно получала капли,
+    // строку `grid_completions` и прогресс квестов. Теперь вставка сама является захватом: не вставили —
+    // значит слот уже сдан, и попытка закрывается без единой награды.
+    const t0 = (attempt as { created_at?: number }).created_at ?? t;
+    const storedSeed = db.get<{ seed: number }>(`SELECT seed FROM grid_attempts WHERE id = ?`, attempt.id)?.seed ?? -1;
+    // The contract board is re-derived from (day, slot); find which of today's offers this attempt was.
+    const contract = GRID_CONTRACT_SLOTS.map((slot) => gridContractAt(t0, slot)).find((c) => c.seed === storedSeed && c.configLevel === attempt.level);
+    if (contract) {
+      const claimed = db.run(
+        `INSERT INTO grid_contract_done (wallet, day, slot, asset, stars, moves, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(wallet, day, slot) DO NOTHING`,
+        wallet, gridDay(t0), contract.slot, attempt.asset, stars, moves, t,
+      );
+      if (Number(claimed.changes) !== 1) {
+        settle();
+        return { ok: false as const, kind, reason: 'contract_already_done', moves, par };
+      }
+    }
     const routeBefore = gridRoute(db, attempt.asset);
     let { nextLevel, chargeDrops, chargeProgress } = routeBefore;
     let dropletGained = false;
@@ -448,11 +491,6 @@ function settleSpecialAttempt(db: Db, wallet: string, attempt: { id: string; ass
       while (chargeProgress >= GRID.chargePerSectorStreak && chargeDrops < GRID.chargeMax) { chargeDrops += 1; chargeProgress -= GRID.chargePerSectorStreak; dropletGained = true; }
     }
     saveRoute(db, attempt.asset, nextLevel, chargeDrops, chargeProgress, t);
-    // The contract board is re-derived from (day, slot); find which of today's offers this attempt was.
-    const t0 = (attempt as { created_at?: number }).created_at ?? t;
-    const storedSeed = db.get<{ seed: number }>(`SELECT seed FROM grid_attempts WHERE id = ?`, attempt.id)?.seed ?? -1;
-    const contract = [0, 1, 2].map((slot) => gridContractAt(t0, slot)).find((c) => c.seed === storedSeed && c.configLevel === attempt.level);
-    if (contract) db.run(`INSERT INTO grid_contract_done (wallet, day, slot, asset, stars, moves, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(wallet, day, slot) DO NOTHING`, wallet, gridDay(t), contract.slot, attempt.asset, stars, moves, t);
     db.run(`INSERT INTO grid_completions (wallet, asset, level, stars, moves, day, kind, created_at) VALUES (?, ?, ?, ?, ?, ?, 'contract', ?)`, wallet, attempt.asset, attempt.level, stars, moves, gridDay(t), t);
     settle();
     return { ok: true as const, training: false as const, kind, stars, moves, par, xpGranted: 0, xpPending: 0, dropletGained, route: gridRoute(db, attempt.asset), wallet: ensureGridWallet(db, wallet, t) };
@@ -515,11 +553,11 @@ export function failGridAttempt(db: Db, wallet: string, body: GridCompleteInput,
   chipOf(db, wallet, attempt.asset);
   if (attempt.mode === 'contract' || attempt.mode === 'deep' || attempt.mode === 'ghost' || attempt.mode === 'prestige') {
     if (attempt.mode === 'contract') spendHints(db, wallet, attempt.hints_used, t);
-    db.run(`UPDATE grid_attempts SET settled = 1, settled_at = ? WHERE id = ?`, t, attempt.id);
+    settleAttemptRow(db, attempt.id, t, false);
     return { ok: false as const, kind: attempt.mode, reason: 'gave_up' };
   }
   if ((attempt as { mode?: string }).mode === 'training') {
-    db.run(`UPDATE grid_attempts SET settled = 1, settled_at = ? WHERE id = ?`, t, attempt.id);
+    settleAttemptRow(db, attempt.id, t, false);
     return { ok: false as const, training: true, xpLoss: 0, valveUsed: false };
   }
   return settleFail(db, wallet, attempt as never, t, body.useValve === true);
@@ -656,7 +694,7 @@ export function gridMe(db: Db, wallet: string, t = now()) {
   const flood = db.all<{ district: number; points: number }>(`SELECT district, points FROM grid_flood WHERE week = ? ORDER BY district`, week);
   const cosmetics = db.all<{ id: number; kind: number; payload: string; signature: string }>(`SELECT id, kind, payload, signature FROM entitlements WHERE wallet = ? AND signature LIKE 'grid:%' ORDER BY id`, wallet)
     .map((r) => ({ id: r.id, kind: r.kind, payload: JSON.parse(r.payload) as Record<string, unknown>, signature: r.signature }));
-  const contracts = [0, 1, 2].map((slot) => {
+  const contracts = GRID_CONTRACT_SLOTS.map((slot) => {
     const c = gridContractAt(t, slot);
     const done = db.get<{ asset: string; stars: number; moves: number }>(`SELECT asset, stars, moves FROM grid_contract_done WHERE wallet = ? AND day = ? AND slot = ?`, wallet, gridDay(t), slot);
     return { ...c, size: generateLevel(c.configLevel, c.seed).size, done: done ?? null };

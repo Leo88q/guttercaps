@@ -16,7 +16,7 @@ import { decodeEmissionState, decodePool } from '@/chain/accounts';
 import { STAKING_ID } from '@/chain/ids';
 import { chipPoolPda, emissionPda, tokenPoolPda } from '@/chain/pdas';
 import { LiteSvmChain } from './helpers/chain';
-import { binariesPresent, initEmissionIx, programBinaries } from './helpers/env';
+import { binariesPresent, forgeProgramData, initEmissionIx, programBinaries } from './helpers/env';
 import { Err, expectFail } from './helpers/expect';
 
 const bins = binariesPresent();
@@ -38,6 +38,9 @@ suite('T-L-S emission genesis (SEC-G01 / SEC-G02)', () => {
   beforeAll(async () => {
     chain = await LiteSvmChain.create(programBinaries().filter((p) => p.id.equals(STAKING_ID)));
     admin = chain.admin;
+    // Находка 13: `init_emission` принимает только upgrade authority — у LiteSVM нет ProgramData,
+    // поэтому подкладываем заголовок с admin в роли authority (как делают suite 82 и helpers/env.ts).
+    await forgeProgramData(chain, STAKING_ID, admin.publicKey);
     const mint = Keypair.generate();
     await chain.send([
       SystemProgram.createAccount({ fromPubkey: admin.publicKey, newAccountPubkey: mint.publicKey, lamports: Number(await chain.rentExempt(MINT_SIZE)), space: MINT_SIZE, programId: TOKEN_PROGRAM_ID }),

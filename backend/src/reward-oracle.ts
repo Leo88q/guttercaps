@@ -53,13 +53,14 @@ import { finalizedHorizon } from './finality.ts';
 import { loadKeypair } from './crank.ts';
 import { sendAndConfirm } from './tx.ts';
 import { buildRewardTree, toHex } from './merkle.ts';
-import { settleGutterPot } from './gutterPot.ts';
+import { entropyFromBlockhash, settleGutterPot } from './gutterPot.ts';
 import { activeWallets, settleWallet, skrEligibility, weekIndex } from './quests.ts';
 import { KIND_REFERRALS, settleReferrals } from './referrals.ts';
 import { rankedSeasonWallets, settleSeason, unsettledSeasons, type SeasonRow } from './arena.ts';
 import { ANTI_FARM, CHIP_VOUCHER_REWARDS, GUTTER_POT, ITEM_REWARDS, QUEST_CHIP_TEMPLATES, SKR_ANTI_FARM, SKR_MICRO, SKR_POOL_SPLIT, seasonPayoutByRank } from '@guttercaps/economy';
 import { recordSignals, runDetectors } from './antifraud.ts';
 import { emissionPda } from './burn-oracle.ts';
+import { ChainOpInFlight, findChainOp, inFlight, submitChainOp } from './chain-ops.ts';
 
 const env = process.env;
 export const QUEST_ORACLE_KEYPAIR = env.QUEST_ORACLE_KEYPAIR ?? '';
@@ -122,6 +123,20 @@ export function publishSkrRootIx(oracle: PublicKey, kind: number, epoch: number,
 export const isSkrKind = (kind: number) => kind >= 5 && kind <= 7;
 export const isItemKind = (kind: number) => kind === KIND_ITEM_BOOSTERS || kind === KIND_ITEM_BOARD_PARTS;
 export const isChipKind = (kind: number) => kind === KIND_CHIP_VOUCHERS;
+
+/**
+ * Находка 36: кем подписывается корень. Контракт сверяет подписанта с
+ * `emission.quest_oracle` / `emission.season_oracle` ПО KIND:
+ *   publish_root       kind 2 → quest, kind 3|4 → season   (staking/src/instructions/emission.rs)
+ *   publish_skr_root   kind 5 → quest, kind 6|7 → season   (instructions/skr.rs + SkrPool::uses_season_oracle)
+ *   publish_item_root  kind 8 и 10 → quest                 (instructions/items.rs)
+ *   publish_chip_root  kind 9 → quest                      (instructions/vouchers.rs)
+ * Раньше выбор ключа был написан руками и забыл kind 10: части доски подписывались сезонным
+ * оракулом, цепь отвечала `BadOracle`, корень не публиковался никогда, а батч оставался pending.
+ */
+export function oracleRoleFor(kind: number): 'quest' | 'season' {
+  return kind === KIND_QUESTS || kind === KIND_SKR_QUESTS || isItemKind(kind) || isChipKind(kind) ? 'quest' : 'season';
+}
 
 /** `publish_item_root(kind: u8, epoch: u32, root: [u8; 32], budget: u64)` — accounts: oracle (signer, mut), emission, root (init), system. `budget` = Σ boosters (kind 8) or leaf count (kind 10). */
 export function publishItemRootIx(oracle: PublicKey, kind: number, epoch: number, root: Uint8Array, budget: bigint): TransactionInstruction {
@@ -414,13 +429,14 @@ export function buildItemBatch(db: Db, t = now(), min = ITEM_MIN_BATCH): Batch |
   }
   if (perWallet.size === 0 || total < BigInt(min)) return undefined;
   const wallets = [...perWallet.keys()].sort();
-  const batch = insertBatch(db, kind, wallets.map((w) => ({ wallet: w, amount: perWallet.get(w)!.amount, memo: perWallet.get(w)!.memo })), t);
-  db.tx(() => {
+  // Находка 37: разметка строк — в ТОЙ ЖЕ транзакции, что и батч с листьями (`mark` внутри insertBatch).
+  // Раньше батч коммитился отдельно, и сбой между двумя транзакциями оставлял уже выпущенные листья при
+  // неразмеченных строках: следующий эпох брал их снова, и бустеры платились дважды.
+  return insertBatch(db, kind, wallets.map((w) => ({ wallet: w, amount: perWallet.get(w)!.amount, memo: perWallet.get(w)!.memo })), t, undefined, (epoch) => {
     for (const w of wallets) for (const r of perWallet.get(w)!.rows) {
-      db.run(`UPDATE quest_completions SET item_root_kind = ?, item_root_epoch = ? WHERE wallet = ? AND quest_id = ? AND period_key = ? AND item_root_kind IS NULL`, kind, batch.epoch, w, r.quest_id, r.period_key);
+      db.run(`UPDATE quest_completions SET item_root_kind = ?, item_root_epoch = ? WHERE wallet = ? AND quest_id = ? AND period_key = ? AND item_root_kind IS NULL`, kind, epoch, w, r.quest_id, r.period_key);
     }
   });
-  return batch;
 }
 
 /** Chip voucher rows (quest completions with a chip reward) not yet in a kind-9 root. Gutter Pot first so the raffle is not starved by a same-week streak chip. */
@@ -436,10 +452,19 @@ export function voucherTemplateOf(rewardChip: string): number | undefined {
     return byOdds?.template;
   } catch { return undefined; }
 }
-/** Vouchers a wallet was rooted (kind 9) in the 7 days ending at `t` — the `ANTI_FARM.freeChipsPerWalletPerWeek` window. */
+/**
+ * Vouchers a wallet was rooted (kind 9) in the 7 days ending at `t` — the `ANTI_FARM.freeChipsPerWalletPerWeek`
+ * window. Находка 38: раньше окно считалось по `completed_at` (дате выполнения квеста), поэтому старые,
+ * давно выполненные и всё ещё не ушедшие в корень строки в счётчик не попадали — и за неделю уходило
+ * больше бесплатных чипов, чем лимит. Считаем по `chip_root_at` (момент выдачи); `COALESCE` держит
+ * строки, выданные до появления колонки.
+ */
 export function vouchersRootedThisWeek(db: Db, wallet: string, t = now()): number {
   // Gutter Pot is extra to the streak+weekly cap — do not let a raffle win block a quest chip or vice versa.
-  return db.scalar(`SELECT COUNT(*) FROM quest_completions WHERE wallet = ? AND chip_root_kind = ? AND completed_at > ? AND quest_id <> ?`, wallet, KIND_CHIP_VOUCHERS, t - 7 * 86_400, GUTTER_POT.id);
+  return db.scalar(
+    `SELECT COUNT(*) FROM quest_completions WHERE wallet = ? AND chip_root_kind = ? AND COALESCE(chip_root_at, completed_at) > ? AND quest_id <> ?`,
+    wallet, KIND_CHIP_VOUCHERS, t - 7 * 86_400, GUTTER_POT.id,
+  );
 }
 
 /**
@@ -463,14 +488,14 @@ export function buildChipBatch(db: Db, t = now(), min = CHIP_MIN_BATCH): Batch |
   }
   if (perWallet.size === 0 || perWallet.size < min) return undefined;
   const wallets = [...perWallet.keys()].sort();
-  const batch = insertBatch(db, kind, wallets.map((w) => ({ wallet: w, amount: perWallet.get(w)!.amount, memo: perWallet.get(w)!.memo })), t, BigInt(wallets.length));
-  db.tx(() => {
+  // Находка 37 (тот же дефект у kind 9): батч и разметка строк — одна транзакция, иначе сбой между ними
+  // выпускает листья, не помечая строки, и следующий эпох платит тот же ваучер второй раз.
+  return insertBatch(db, kind, wallets.map((w) => ({ wallet: w, amount: perWallet.get(w)!.amount, memo: perWallet.get(w)!.memo })), t, BigInt(wallets.length), (epoch) => {
     for (const w of wallets) {
       const r = perWallet.get(w)!.row;
-      db.run(`UPDATE quest_completions SET chip_root_kind = ?, chip_root_epoch = ? WHERE wallet = ? AND quest_id = ? AND period_key = ? AND chip_root_kind IS NULL`, kind, batch.epoch, w, r.quest_id, r.period_key);
+      db.run(`UPDATE quest_completions SET chip_root_kind = ?, chip_root_epoch = ?, chip_root_at = ? WHERE wallet = ? AND quest_id = ? AND period_key = ? AND chip_root_kind IS NULL`, kind, epoch, t, w, r.quest_id, r.period_key);
     }
   });
-  return batch;
 }
 
 // ---------------------------------------------------------------- board parts (kind 10)
@@ -491,7 +516,16 @@ export function pendingPartRows(db: Db): { id: number; wallet: string; part_idx:
 export function buildPartBatch(db: Db, t = now(), min = PART_MIN_BATCH): Batch | undefined {
   const kind = KIND_ITEM_BOARD_PARTS;
   if (db.get(`SELECT 1 FROM reward_batches WHERE kind = ? AND status = 'pending'`, kind)) return undefined;
-  const pending = pendingPartRows(db);
+  // Находка 35: `reward_leaves` уникален по (kind, epoch, wallet), а клейм на цепи — `init` по
+  // `["claim", root, wallet]`, то есть один корень платит ОДНУ часть на кошелёк. Два гранта одного
+  // кошелька в одном батче роняли INSERT, и kind 10 замолкал навсегда для всех. Берём по одной части на
+  // кошелёк (самую старую): остальные остаются неразмеченными и уезжают следующим эпохом — «never dropped».
+  const seen = new Set<string>();
+  const pending = pendingPartRows(db).filter((r) => {
+    if (seen.has(r.wallet)) return false;
+    seen.add(r.wallet);
+    return true;
+  });
   const taken = pending.slice(0, ITEM_REWARDS.maxRootBudget);
   if (taken.length === 0) return undefined;
   if (taken.length < min) return undefined;
@@ -518,7 +552,9 @@ export async function publishPending(d: OracleDeps): Promise<{ published: number
       if (indexed.root !== b.root) { d.db.run(`UPDATE reward_batches SET status = 'failed', last_error = ? WHERE kind = ? AND epoch = ?`, `on-chain root ${indexed.root} != ours`, b.kind, b.epoch); failed++; continue; }
       d.db.run(`UPDATE reward_batches SET status = 'published', published_at = ? WHERE kind = ? AND epoch = ?`, now(), b.kind, b.epoch); published++; continue;
     }
-    const key = b.kind === KIND_QUESTS || b.kind === KIND_SKR_QUESTS || b.kind === KIND_ITEM_BOOSTERS || b.kind === KIND_CHIP_VOUCHERS ? d.questOracle : d.seasonOracle;
+    // Знак — общая карта kind → оракул (находка 36), а не список в двух местах: kind 10 части доски
+    // подписываются квестовым оракулом, как и бустеры.
+    const key = oracleRoleFor(b.kind) === 'quest' ? d.questOracle : d.seasonOracle;
     if (!key) { skipped++; continue; }
     try {
       const root = Buffer.from(b.root, 'hex'), budget = BigInt(b.budget);
@@ -526,11 +562,33 @@ export async function publishPending(d: OracleDeps): Promise<{ published: number
         : isItemKind(b.kind) ? publishItemRootIx(key.publicKey, b.kind, b.epoch, root, budget)
         : isChipKind(b.kind) ? publishChipRootIx(key.publicKey, b.kind, b.epoch, root, budget)
         : publishRootIx(key.publicKey, b.kind, b.epoch, root, budget);
-      const { signature } = await sendAndConfirm(d.connection, key, [ix], { cuLimit: isSkrKind(b.kind) ? CU_PUBLISH_SKR_ROOT : isItemKind(b.kind) || isChipKind(b.kind) ? CU_PUBLISH_ITEM_ROOT : CU_PUBLISH_ROOT });
+      // §1.1: корень (kind, epoch) публикуется ровно одной операцией. Раньше «нет ответа» после send
+      // приводило к повторной публикации в следующем проходе: цепь отвечала «аккаунт уже существует»,
+      // батч навсегда оставался pending с last_error, а индексер мог так и не увидеть корень (пп. 31, 37, 61).
+      const r = await submitChainOp(
+        d.db,
+        { kind: 'reward_root', bizKey: `root:${b.kind}:${b.epoch}`, payload: { kind: b.kind, epoch: b.epoch, root: b.root, budget: b.budget } },
+        async (hooks) => {
+          const { signature } = await sendAndConfirm(d.connection, key, [ix], {
+            cuLimit: isSkrKind(b.kind) ? CU_PUBLISH_SKR_ROOT : isItemKind(b.kind) || isChipKind(b.kind) ? CU_PUBLISH_ITEM_ROOT : CU_PUBLISH_ROOT,
+            onSigned: (signature, extra) => hooks.beforeSend(signature, { rawTx: extra.rawTx, lastValidBlockHeight: extra.lastValidBlockHeight, cuPrice: extra.cuPrice }),
+          });
+          return { signature };
+        },
+      );
+      const signature = r.signature;
+      if (r.reused) log(`[reward-oracle] publish_root kind ${b.kind} epoch ${b.epoch} already confirmed by an earlier attempt → ${signature}`);
       d.db.run(`UPDATE reward_batches SET status = 'published', signature = ?, published_at = ? WHERE kind = ? AND epoch = ?`, signature, now(), b.kind, b.epoch);
       log(`[reward-oracle] publish_root kind ${b.kind} epoch ${b.epoch} budget ${b.budget} → ${signature}`);
       published++;
     } catch (e) {
+      if (e instanceof ChainOpInFlight) {
+        // Подпись ушла, судьба неизвестна: повторять нельзя, следующий проход дождётся reconcile.
+        d.db.run(`UPDATE reward_batches SET last_error = ? WHERE kind = ? AND epoch = ?`, 'publish sent, awaiting reconciliation', b.kind, b.epoch);
+        log(`[reward-oracle] publish_root kind ${b.kind} epoch ${b.epoch} sent earlier (${e.op.signature ?? '—'}), waiting for reconciliation`);
+        skipped++;
+        continue;
+      }
       const msg = (e as Error).message;
       d.db.run(`UPDATE reward_batches SET last_error = ? WHERE kind = ? AND epoch = ?`, msg, b.kind, b.epoch);
       log(`[reward-oracle] publish_root kind ${b.kind} epoch ${b.epoch} failed: ${msg}`);
@@ -551,7 +609,18 @@ export async function runOnce(d: OracleDeps, t = now()): Promise<{ settled: numb
   const signals = recordSignals(d.db, runDetectors(d.db, t), t);
   let settled = 0;
   for (const w of activeWallets(d.db, t - 8 * 86_400)) settled += settleWallet(d.db, w, t, horizon);
-  try { settleGutterPot(d.db, t, horizon); }
+  // Находка 57: в сид жеребьёвки идёт энтропия из блок-хеша слота горизонта — значение публичное
+  // (любой сверяет розыгрыш по цепи), но неизвестное в момент, когда набор билетов закрылся.
+  // RPC может не отдать блок (pruned/ограничения) — тогда честно помечаем серверный nonce.
+  let potEntropy: { entropyHex?: string; source?: 'blockhash' | 'server_nonce' } = {};
+  try {
+    const block = await d.connection.getBlock(horizon, { transactionDetails: 'none', rewards: false, maxSupportedTransactionVersion: 0 } as never);
+    const hash = (block as { blockhash?: string } | null)?.blockhash;
+    if (hash) potEntropy = { entropyHex: entropyFromBlockhash(hash), source: 'blockhash' };
+  } catch (e) {
+    d.log?.(`[reward-oracle] gutter pot: no block at slot ${horizon} (${(e as Error).message}) — server nonce entropy`);
+  }
+  try { settleGutterPot(d.db, t, horizon, potEntropy); }
   catch (e) { d.log?.(`[reward-oracle] ALERT gutter pot draw failed: ${(e as Error).message}`); }
   // referrals (kind 4): every finalized, opened, real-revenue purchase of a referee that has no row yet
   const referrals = settleReferrals(d.db, t, horizon);

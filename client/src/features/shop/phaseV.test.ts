@@ -3,6 +3,7 @@ import { Keypair } from '@solana/web3.js';
 import { buyPackIx, grantMintIx, oracleAuthIx, settlePackIx, orderPda, type SettlePayloadLike } from './phaseV';
 import { base58Encode } from '@/shared/lib/base58';
 import { base58Decode } from '@/shared/lib/base58Decode';
+import { MAX_LEAVES_PER_TX } from '@guttercaps/economy';
 
 const buyer = Keypair.generate().publicKey;
 const oracle = Keypair.generate().publicKey;
@@ -20,6 +21,7 @@ function payload(): SettlePayloadLike {
     grantReceipt: null,
     auth: {
       wallet: buyer.toBase58(), orderId: '7',
+      amount: '5990000', currency: 0, orderSlot: '777', // 55 + 16: подпись покрывает деньги и экземпляр заказа
       specsHash: Buffer.alloc(32, 3).toString('hex'), nonce: '7', expiresAtSlot: '5000',
     },
     signature: base58Encode(new Uint8Array(64).fill(9)),
@@ -55,12 +57,26 @@ describe('phase-V instruction builders', () => {
     expect(ix.data.subarray(16, 48).equals(Buffer.from(buyer.toBytes()))).toBe(true);
   });
 
+  // Находка 25: контракт несёт не больше MAX_LEAVES_PER_TX спецификаций за `settle_pack`, а магазин
+  // продавал бандлы ×5/×10/×25. Сборщик обязан отказать до подписи: иначе эскроу уже оплачен, а
+  // доставить заказ одной инструкцией нечем.
+  it('settle_pack refuses more specs than the contract accepts', () => {
+    const p = payload();
+    const spec = p.specs[0];
+    const tooMany = { ...p, specs: Array.from({ length: MAX_LEAVES_PER_TX + 1 }, (_, i) => ({ ...spec, name: `NIGHTMOTH #${i}` })) };
+    expect(() => settlePackIx(tooMany, { relayer: buyer, treasury: Keypair.generate().publicKey }))
+      .toThrow(new RegExp(`at most ${MAX_LEAVES_PER_TX}`));
+    // ровно на границе — собирается (5 листьев обычного пака и 10 у ×2)
+    const atLimit = { ...p, specs: Array.from({ length: MAX_LEAVES_PER_TX }, (_, i) => ({ ...spec, name: `NIGHTMOTH #${i}` })) };
+    expect(() => settlePackIx(atLimit, { relayer: buyer, treasury: Keypair.generate().publicKey })).not.toThrow();
+  });
+
   it('oracle ed25519 ix carries prefix, message and signature', () => {
     const p = payload();
     const ix = oracleAuthIx(p);
     expect(ix.programId.toBase58()).toBe('Ed25519SigVerify111111111111111111111111111');
     const text = Buffer.from(ix.data).toString('latin1');
-    expect(text).toContain('GUTCAP/MINTAUTH/V1');
+    expect(text).toContain('GUTCAP/MINTAUTH/V2');
     // header: 1 signature, sig @16, pubkey @80, message @112, self-indexed
     expect(ix.data[0]).toBe(1);
     expect(ix.data.readUInt16LE(2)).toBe(16);

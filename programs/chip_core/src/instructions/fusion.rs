@@ -876,6 +876,12 @@ pub struct CancelStaleFusion<'info> {
     #[account(mut, token::mint = config.cg_mint, token::authority = owner)]
     pub owner_cg: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
+    /// Находки 47 и 56: бустер списывается коммитом, а не исходом. Если окно оракула истекло, `fuse` так и
+    /// не дошёл до reveal — бустер возвращается владельцу. Аккаунт ОПЦИОНАЛЕН (`None` = игрок никогда не
+    /// бустил и PDA не создан): `init_if_needed` здесь был бы новой рентой, которую никто не просил.
+    /// `seeds`/`bump` у `Option<Account>` не выразить, поэтому PDA проверяется по `find_program_address`.
+    #[account(mut)]
+    pub items: Option<Box<Account<'info, PlayerItems>>>,
     // remaining_accounts: [asset_m, chip_state_m, collection_meta_m, core_collection_m] × 3
 }
 
@@ -907,6 +913,27 @@ pub fn cancel_stale_fusion<'info>(
             fee,
         )?;
         ctx.accounts.ledger.release(0, 0, fee, 0)?;
+    }
+    // Находки 47 и 56: `fuse` уже списал бустер, а исход так и не наступил (окно оракула истекло, и это
+    // не вина игрока) — возвращаем его. Бустер — предмет с ограниченным выпуском, терять его за
+    // пропущенное окно нельзя. Аккаунт обязан быть PDA владельца: чужой `PlayerItems` не подойдёт.
+    if ctx.accounts.pending.boosted {
+        let items = ctx.accounts.items.as_mut().ok_or(ChipError::NoBooster)?;
+        let (expect_items, _) = Pubkey::find_program_address(
+            &[b"items", ctx.accounts.owner.key().as_ref()],
+            ctx.program_id,
+        );
+        require_keys_eq!(items.key(), expect_items, ChipError::Unauthorized);
+        require_keys_eq!(
+            items.owner,
+            ctx.accounts.owner.key(),
+            ChipError::Unauthorized
+        );
+        items.boosters = items.boosters.checked_add(1).ok_or(ChipError::Overflow)?;
+        msg!(
+            "cancel_stale_fusion: booster returned, boosters={}",
+            items.boosters
+        );
     }
     let pending = &ctx.accounts.pending;
 

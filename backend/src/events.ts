@@ -182,6 +182,24 @@ export const EVENT_SPECS: readonly EventSpec[] = [
   spec('staking', 'SkrPoolChanged', [['maxRootBudget', 'u64'], ['paused', 'bool']]),
   // SEC-G05: `set_oracles` (payload = resulting oracle set; these keys publish reward roots / burn reports).
   spec('staking', 'OraclesChanged', [['by', 'pubkey'], ['questOracle', 'pubkey'], ['seasonOracle', 'pubkey'], ['setOracle', 'pubkey'], ['burnOracle', 'pubkey']]),
+
+  // ------------------------------------------------------------ settle (находка 54)
+  // Программа `settle` эмитит события с самой первой версии, а индексатор не знал НИ ОДНОГО из них: кадры
+  // молча отбрасывались, `refund_pack` не проецировался вовсе (заказ оставался «оплачен» навсегда).
+  // Порядок полей — ровно как в Rust `#[event]` (этот порядок и проверяет settle-events-audit.test.ts).
+  spec('settle', 'ConfigInitialized', [['admin', 'pubkey'], ['mintOracle', 'pubkey'], ['treasury', 'pubkey']]),
+  spec('settle', 'PackEscrowed', [['buyer', 'pubkey'], ['orderId', 'u64'], ['currency', 'u8'], ['amount', 'u64']]),
+  spec('settle', 'PackSettled', [['buyer', 'pubkey'], ['orderId', 'u64'], ['leaves', 'u8']]),
+  spec('settle', 'PackRefunded', [['buyer', 'pubkey'], ['orderId', 'u64'], ['amount', 'u64']]),
+  // Находка 49: у корня появился бюджет — он едет и в событии, и в проекцию.
+  spec('settle', 'RootAnchored', [['kind', 'u8'], ['epoch', 'u64'], ['root', 'bytes32'], ['budget', 'u64']]),
+  spec('settle', 'RootRevokedEvent', [['kind', 'u8'], ['epoch', 'u64'], ['totalClaimed', 'u64'], ['budget', 'u64']]),
+  spec('settle', 'RewardClaimed', [['claimant', 'pubkey'], ['kind', 'u8'], ['epoch', 'u64'], ['amount', 'u64']]),
+  spec('settle', 'EscrowListed', [['seller', 'pubkey'], ['asset', 'pubkey'], ['price', 'u64']]),
+  spec('settle', 'EscrowSold', [['seller', 'pubkey'], ['buyer', 'pubkey'], ['asset', 'pubkey'], ['price', 'u64'], ['fee', 'u64']]),
+  spec('settle', 'OraclesUpdated', [['admin', 'pubkey'], ['mintOracle', 'pubkey'], ['rootOracle', 'pubkey'], ['treasury', 'pubkey']]),
+  spec('settle', 'LimitsUpdated', [['admin', 'pubkey'], ['emissionCap', 'u64'], ['marketFeeBps', 'u16'], ['packsPaused', 'bool']]),
+  spec('settle', 'EscrowCancelled', [['seller', 'pubkey'], ['asset', 'pubkey']]),
 ];
 
 /**

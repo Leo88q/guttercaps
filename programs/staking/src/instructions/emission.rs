@@ -34,6 +34,11 @@ pub struct InitEmission<'info> {
     pub cg_mint: Account<'info, Mint>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
+    /// CHECK: находка 13 — ProgramData этой программы (PDA upgradeable-загрузчика `[program_id]`).
+    /// Адрес, владелец и записанная upgrade authority проверяются в обработчике
+    /// (`chip_core::deploy_guard`, тот же гейт, что у `chip_core::initialize` и `arena::init_arena`).
+    /// Аккаунт только читается — ренты не добавляет.
+    pub program_data: UncheckedAccount<'info>,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
@@ -64,6 +69,17 @@ pub fn validate_cg_mint(freeze_authority: &COption<Pubkey>, supply: u64) -> Resu
 }
 
 pub fn init_emission(ctx: Context<InitEmission>, args: InitEmissionArgs) -> Result<()> {
+    // Находка 13: singleton `emission` создаёт только upgrade authority программы. Без этого
+    // первый вызывающий забирал `admin`, а через него — `set_oracle` / `set_pauser` / корни наград;
+    // защита по mint authority не помогает, потому что атакующий приносит СВОЙ mint.
+    require!(
+        chip_core::deploy_guard::signer_is_upgrade_authority(
+            ctx.program_id,
+            &ctx.accounts.program_data.to_account_info(),
+            ctx.accounts.admin.key,
+        ),
+        StakeError::NotUpgradeAuthority
+    );
     validate_cg_mint(
         &ctx.accounts.cg_mint.freeze_authority,
         ctx.accounts.cg_mint.supply,

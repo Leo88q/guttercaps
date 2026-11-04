@@ -34,7 +34,9 @@ import { loadSources, parseAttributedStructs, type SourceFile } from './lib/rust
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (rel: string) => readFileSync(join(REPO, rel), 'utf8');
-const PROGRAMS = ['chip_core', 'market', 'staking', 'arena'] as const;
+// Находка 54: `settle` — пятая программа, и её события тоже обязаны быть покрыты (раньше её просто не
+// сканировали, поэтому «все события декодируются» было правдой только для четырёх).
+const PROGRAMS = ['chip_core', 'market', 'staking', 'arena', 'settle'] as const;
 
 const EVENTS = read('backend/src/events.ts');
 const PROJECTIONS = read('backend/src/projections.ts');
@@ -97,6 +99,12 @@ function handlers(projections: string): string[] {
 
 /** Events with no projection handler *on purpose*, each with the reason it is still not a gap. */
 const WIRE_ONLY: Record<string, string> = {
+  // Находка 54: у эскроу-маркета фазы V нет своей таблицы в read model — листинг читается из цепи (DAS/аккаунт
+  // эскроу), а кадр `EscrowListed`/`EscrowSold`/`EscrowCancelled` нужен клиенту, чтобы перезапросить маркет.
+  // Это осознанный пробел: проекция появится вместе с read-model эскроу-маркета, а не раньше.
+  EscrowListed: 'read-model эскроу-маркета фазы V не ведётся; клиент перезапрашивает маркет по кадру (wall of escrow ещё on-chain only)',
+  EscrowSold: 'read-model эскроу-маркета фазы V не ведётся; продажа видна клиенту через кадр (`sale`) и чтение цепи',
+  EscrowCancelled: 'read-model эскроу-маркета фазы V не ведётся; отмена видна клиенту через кадр (`listing_changed`)',
   // SEC-B22: `ParamsPatched` carries the new parameter values so a user can see *what* changed; the read model
   // counts changes from `ParamsChanged` (`params_changes`), and the ws feed maps it onto `params_changed`.
   ParamsPatched: 'wire.ts',
