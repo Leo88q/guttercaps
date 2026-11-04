@@ -11,7 +11,7 @@
 |---|---|
 | находок всего | **83**: 76 из первичного прохода (`1–76`) + 7 найденных при исправлении (`77–83`) |
 | закрыто кодом | **83 из 83**, открытых `todo` нет (`reports/remediation-checklist.csv`) |
-| ветка / CI | `arena/0baf778c-guttercaps`, run `41907397884` — все джобы зелёные: `client`, `backend`, `e2e`, `economy`, `security`, `programs`, `rust`, `landing`, `localnet · 110` |
+| ветка / CI | `arena/0baf778c-guttercaps`, run `41911849397` на коммите `6f2bd70` (правка 83) — все джобы зелёные: `client`, `backend`, `e2e`, `economy`, `security`, `programs`, `rust`, `landing`, `localnet · 110`; до него зелёным был run `41907397884` (`a136f7f`) |
 | локальные прогоны | client 90 файлов / 768, backend 123 / 1136, localnet 110 сценариев, `security:static` 199, `ix:shape` без дрейфа, `api:check` 158 операций |
 
 Три уточнения, чтобы «83 из 83» не читалось как большее, чем есть:
