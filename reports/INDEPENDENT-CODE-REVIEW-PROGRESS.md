@@ -776,6 +776,18 @@ if (!svc) throw new ServiceError(410, 'line_retired', 'The Line is retired');
 репродьюсеры уже открытых находок: они падали by design. Красный CI перестаёт быть сигналом, поэтому:
 
 * исправлено в коде (пп. 14, 21, 25, 26, 31, 32, 35, 57, 58, 59, 62, 68, 69); полный backend-прогон зелёный: 115 файлов / 1093 теста, клиент 734/734;
+* **2026-11-04: `npm run verify` впервые зелёный целиком** (exit 0): backend 122 файла / 1130 тестов, клиент 88
+  файлов / 753 теста, `security:static` 198/198, `economy:check`/`economy:test`, `landing:check`, `api:check`,
+  `env:check`, `schema:check`, `workflows:check`, `state:layout`, `docs:refs`. Три шага до этого падали не от
+  регрессий, а от того, что объявленное разошлось с читаемым: 18 колонок SQLite не были описаны в
+  `backend/prisma/schema.prisma` (возвраты `pack_orders`/`preorders`, `roll_json`, `pity_before`,
+  `mint_uncertain`, `grid_attempts.solved`, `chips.source`, энтропия Gutter Pot, `chip_root_at`,
+  `phaseg_payouts.claimed_at`); `DEVICE_FINGERPRINT_REQUIRED` (находка 66) не был в `backend/.env.example`;
+  `images.yml` выставлял `VITE_SOLANA_RPC`/`TURNSTILE_SITE_KEY`/`VITE_SENTRY_DSN`, которых не читает ни
+  приложение, ни бандл-сборка, и не выставлял `PROGRAM_SETTLE`/`LAUNCH_PHASE`, которые compose требует.
+  Последнее — отдельная находка класса «зелёный CI на пустых значениях»: переменная с чужим именем не
+  доезжает никуда, а `ops:buildenv` при этом отказывается собирать образ, то есть mainnet-образ не собрался
+  бы вовсе;
 * репродьюсеры закрытых находок остаются в репозитории обычными зелёными регрессиями; `it.fails` не осталось
   ни одного (последняя отметка снята вместе с исправлением п. 57). Тихой замены красного на зелёное нет —
   перечень открытых дефектов остаётся здесь и в CSV.
