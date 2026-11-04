@@ -169,6 +169,10 @@ model Chip {
   flags         Int      @default(0) // bit0 staked, bit1 listed, bit2 fusing, bit3 soulbound
   lockUntil     DateTime? @map("lock_until")
   origin        String   @default("pack") // pack | fusion | reward
+  /// Кто завёл строку: `projection` (событие цепи) или конкретный путь минта (`phasev`, `phaseg-fusion`,
+  /// `bubblegum-mint`). Находка 43: без этой метки строку, пришедшую из чужого контура, нельзя было отличить
+  /// от проекции, и повторная регистрация переписывала `minted_at`/`origin`.
+  source        String   @default("projection")
   skin          String?  // cosmetic skin id from economy SKINS, NULL = none
   mintedAt      DateTime @map("minted_at")
   burnedAt      DateTime? @map("burned_at")
@@ -366,6 +370,10 @@ model Preorder {
   createdAt DateTime @map("created_at")
   paidAt    DateTime? @map("paid_at")
   grantedAt DateTime? @map("granted_at")
+  /// Находки 23 и 32: почему оплаченный предзаказ не выдан, когда и какой подписью возвращены деньги.
+  refundReason String? @map("refund_reason")
+  refundedAt   DateTime? @map("refunded_at")
+  refundSig    String? @map("refund_sig")
 
   @@unique([txSig])
   @@index([wallet])
@@ -824,6 +832,9 @@ model QuestCompletion {
   itemRootEpoch Int?    @map("item_root_epoch")
   chipRootKind  Int?    @map("chip_root_kind") // chip voucher leaf (kind 9) — one voucher per wallet per epoch
   chipRootEpoch Int?    @map("chip_root_epoch")
+  /// Находка 38: когда лист ушёл в корень — недельный лимит бесплатных чипов считается от этой метки
+  /// (unix-секунды, как и остальные `*_at` бэкенда; NULL = лист ещё не публиковался).
+  chipRootAt    Int?    @map("chip_root_at")
   w             Wallet  @relation(fields: [wallet], references: [address])
 
   @@id([wallet, questId, periodKey])
@@ -1379,6 +1390,8 @@ model GridAttempt {
   seed          Int?
   daily         Int     @default(0)
   settled       Int    @default(0)
+  /// Находка 43: попытка ПРОЙДЕНА (тренировочный квест считает завершения, а не старты).
+  solved        Int    @default(0)
   createdAt     Int    @map("created_at")
   settledAt     Int?   @map("settled_at")
 
@@ -1774,6 +1787,10 @@ model GutterPotDraw {
   drawnAt      Int    @map("drawn_at")
   slot         Int
   seedHex      String @map("seed_hex")
+  /// Находка 57: энтропия, подмешанная к сиду (blockhash слота горизонта или серверный nonce), и её
+  /// источник — `blockhash` проверяем по цепи, `server_nonce` означает, что RPC не дал блок. NULL у тиражей v1.
+  entropyHex    String? @map("entropy_hex")
+  entropySource String? @map("entropy_source")
   ticketsHash  String @map("tickets_hash")
   totalWeight  String @map("total_weight")
   wallets      Int
@@ -1913,6 +1930,19 @@ model PackOrder {
   txSig       String? @unique @map("tx_sig")
   settleSig   String? @map("settle_sig")
   settleSpecs String? @map("settle_specs")
+  /// Находка 54: сколько листьев `settle_pack` реально выпустил (из события `PackSettled`).
+  settleLeaves Int?   @map("settle_leaves")
+  /// Находка 54: возврат по `refund_pack` (`PackRefunded`) в нативных единицах и подпись перевода из казны.
+  refundedAmount String? @map("refunded_amount")
+  refundedAt  Int?    @map("refunded_at")
+  refundSig   String? @map("refund_sig")
+  /// Находка 32: почему оплаченный заказ не выдан (`quota_race`), и находка 23: `sold_out` у preorder.
+  refundReason String? @map("refund_reason")
+  /// Находка 33: минт подтверждён, но лист не доказан — `assets` не записан, нужен разбор по DAS.
+  mintUncertain String? @map("mint_uncertain")
+  /// Находка 34: входной pity и сам ролл (`rarities`/`collections`/`pityAfter`) — один ответ для минта и verify.
+  pityBefore  Int?    @map("pity_before")
+  rollJson    String? @map("roll_json")
   assets      String?
   createdAt   Int     @map("created_at")
   paidAt      Int?    @map("paid_at")
@@ -1949,6 +1979,8 @@ model PhasegFusion {
   paySig       String? @map("pay_sig")
   success      Int?
   resultAssets String? @map("result_assets")
+  /// Находка 33: грант подтверждён, а лист не доказан — `resultAssets` не записан.
+  mintUncertain String? @map("mint_uncertain")
   createdAt    Int     @map("created_at")
   mintedAt     Int?    @map("minted_at")
 
@@ -1997,6 +2029,8 @@ model PhasegPayout {
   txSig       String? @map("tx_sig")
   createdAt   Int     @map("created_at")
   sentAt      Int?    @map("sent_at")
+  /// Находка 31: захват строки кранком до отправки (lease) — второй кранк её уже не возьмёт.
+  claimedAt   Int?    @map("claimed_at")
 
   @@index([wallet])
   @@map("phaseg_payouts")

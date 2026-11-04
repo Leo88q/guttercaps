@@ -70,17 +70,26 @@ env:
   # Not secrets: an RPC URL for the browser and public addresses. A keypair is a secret and nothing here
   # touches one — compose's `${VAR:?}` markers decide which of these the build requires, and this file does
   # not restate that list (that is what `ops:buildenv` reads out of compose).
-  VITE_SOLANA_RPC: ${{ vars.VITE_SOLANA_RPC }}
+  #
+  # Имена — ровно те, что читает compose (`ops/deploy/docker-compose.yaml` build.args → Dockerfile.client →
+  # client/src/app/config.ts), а не те, что кажутся логичными: здесь стояли `VITE_SOLANA_RPC` (приложение
+  # его не читает — RPC приходит из `VITE_RPC_URL`), `TURNSTILE_SITE_KEY` (widget берёт siteKey из
+  # `POST /me/human`, в бандл его не запекают) и `VITE_SENTRY_DSN` (в клиенте нет Sentry вовсе). Значение
+  # из `vars.*` с чужим именем не доезжает никуда: `ops:buildenv` требует VITE_RPC_URL, не находит его в
+  # окружении и отказывается собирать образ — то есть эти три строки были тишиной, а не настройкой.
+  # `PROGRAM_SETTLE`/`LAUNCH_PHASE` не были перечислены вовсе, хотя compose требует первое (`:?`) и
+  # собирает с обоими клиентский бандл.
+  VITE_RPC_URL: ${{ vars.VITE_RPC_URL }}
   PROGRAM_CHIP_CORE: ${{ vars.PROGRAM_CHIP_CORE }}
   PROGRAM_MARKET: ${{ vars.PROGRAM_MARKET }}
   PROGRAM_STAKING: ${{ vars.PROGRAM_STAKING }}
   PROGRAM_ARENA: ${{ vars.PROGRAM_ARENA }}
+  PROGRAM_SETTLE: ${{ vars.PROGRAM_SETTLE }}
   CG_MINT: ${{ vars.CG_MINT }}
   USDC_MINT: ${{ vars.USDC_MINT }}
   SKR_MINT: ${{ vars.SKR_MINT }}
   LOOKUP_TABLE: ${{ vars.LOOKUP_TABLE }}
-  TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
-  VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
+  LAUNCH_PHASE: ${{ vars.LAUNCH_PHASE }}
 
 jobs:
   # Whether a push has anything to publish yet — decided before the job below spends a runner on it. A push
