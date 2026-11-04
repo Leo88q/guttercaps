@@ -16,9 +16,17 @@
  *   2. sends `staking.report_burn(delta)` signed by the burn-oracle key (`EmissionState.burn_oracle`,
  *      set by the admin via `set_oracles`),
  *   3. advances a durable cursor (`burn_oracle_cursor`, keyed by events_raw rowid) only after the
- *      transaction confirmed — a crash between (2) and (3) re-reports at most one interval, and the
- *      on-chain clamp (3 × daily cap) bounds the damage of any double count. The cursor never steps
- *      over a burn that was not counted in this report (SEC-B29).
+ *      transaction confirmed. The cursor never steps over a burn that was not counted in this report
+ *      (SEC-B29).
+ *
+ * Находка 83: `report_burn` НЕ идемпотентен на цепи (`burn_today.saturating_add(amount)`), поэтому «отчёт
+ * ушёл, подтверждения нет» нельзя закрывать повтором на следующем тике: он соберёт новую транзакцию с новой
+ * подписью и сложит те же burn'ы второй раз (до клампа 3× дневного потолка — то есть завысит вход
+ * предохранителя эмиссии на неделю). Правка п. 61 это окно не закрывала: она про повтор ТЕМИ ЖЕ байтами
+ * внутри `sendAndConfirm`. Поэтому каждый отчёт проходит через `chain_ops` с бизнес-ключом `burn:{maxRowid}`:
+ * неизвестный исход остаётся `sent` и следующий тик не отправляет ничего, пока `reconcileChainOps` не решит
+ * судьбу подписи; подтверждённая операция двигает курсор БЕЗ новой отправки (payload операции — то, что было
+ * отчитано). Явный отказ программы (`NotBurnReporter` и т. п.) помечается `failed`, и он снова отправляемый.
  *
  * Safety: the oracle can only *raise* the guard from 2 % towards 100 % of the schedule — it can
  * never mint by itself, never exceed the schedule, and the admin can clear the key at any time.
@@ -32,6 +40,7 @@ import { getConnection, sleep } from './ingest.ts';
 import { finalizedHorizon } from './finality.ts';
 import { loadKeypair } from './crank.ts';
 import { sendAndConfirm } from './tx.ts';
+import { beginChainOp, findChainOp, inFlight, opPayload, recordConfirmed, recordFailed, recordSent, recordSigned, reconcileChainOps } from './chain-ops.ts';
 
 const env = process.env;
 export const BURN_ORACLE_KEYPAIR = env.BURN_ORACLE_KEYPAIR ?? '';
@@ -112,9 +121,30 @@ export function cursor(db: Db): Cursor {
 export interface BurnOracleDeps { connection: Connection; payer: Keypair; db: Db; log?: (s: string) => void; now?: () => number }
 
 export type ReportResult =
-  | { kind: 'skipped'; reason: 'below_min' | 'nothing'; amount: bigint }
+  | { kind: 'skipped'; reason: 'below_min' | 'nothing' | 'waiting' | 'unknown_outcome'; amount: bigint }
   | { kind: 'refused'; reason: 'above_max'; amount: bigint }
   | { kind: 'reported'; amount: bigint; signature: string; rows: number };
+
+/** Бизнес-ключ отчёта: строка `events_raw`, до которой отчитано. Повтор того же отчёта — тот же ключ. */
+export const burnReportKey = (maxRowid: number) => `burn:${maxRowid}`;
+
+/**
+ * Сдвинуть курсор ровно один раз. `WHERE last_rowid < ?` делает шаг монотонным и не даёт сложить одну и ту
+ * же сумму дважды, если операцию подтвердили два прохода reconcile (или два процесса).
+ */
+function advanceCursor(db: Db, maxRowid: number, amount: bigint, signature: string | null, t: number): void {
+  // Сумма считается в JS и пишется строкой: `CAST(... AS TEXT)` в SQLite может отдать '2500000.0'
+  // (bound number идёт как REAL), а курсор читают как десятичную строку.
+  const cur = db.get<{ reported_total: string }>(`SELECT reported_total FROM burn_oracle_cursor WHERE id = 1`);
+  const total = (BigInt(cur?.reported_total ?? '0') + amount).toString();
+  db.run(
+    `UPDATE burn_oracle_cursor
+        SET last_rowid = ?, reported_total = ?, last_signature = COALESCE(?, last_signature),
+            last_amount = ?, updated_at = ?
+      WHERE id = 1 AND last_rowid < ?`,
+    maxRowid, total, signature, amount.toString(), t, maxRowid,
+  );
+}
 
 /** One pass: aggregate → send → advance cursor. Never throws on RPC/program errors (returns via log; the next pass retries). */
 export async function reportOnce(d: BurnOracleDeps): Promise<ReportResult> {
@@ -128,11 +158,57 @@ export async function reportOnce(d: BurnOracleDeps): Promise<ReportResult> {
     log(`[burn-oracle] ALERT pending burn ${p.amount} micro-$CG over ${p.rows} rows exceeds BURN_ORACLE_MAX_REPORT_MICRO — refusing to report; inspect the burns table`);
     return { kind: 'refused', reason: 'above_max', amount: p.amount };
   }
-  const { signature } = await sendAndConfirm(d.connection, d.payer, [reportBurnIx(d.payer.publicKey, p.amount)], { cuLimit: CU_REPORT_BURN });
-  d.db.run(
-    `UPDATE burn_oracle_cursor SET last_rowid = ?, reported_total = ?, last_signature = ?, last_amount = ?, updated_at = ? WHERE id = 1`,
-    p.maxRowid, (BigInt(c.reported_total) + p.amount).toString(), signature, p.amount.toString(), now(),
-  );
+  // Находка 83: отчёт — операция с бизнес-ключом. Второй отчёт за те же строки невозможен ни при каком
+  // раскладе: пока судьба подписи неизвестна, операция в полёте и тик ничего не отправляет.
+  const bizKey = burnReportKey(p.maxRowid);
+  const op = beginChainOp(d.db, { kind: 'burn_report', bizKey, payload: { amount: p.amount.toString(), maxRowid: p.maxRowid, rows: p.rows } });
+  if (op.status === 'confirmed') {
+    // прошлый проход отчитался, но не успел сдвинуть курсор (падение между подтверждением и записью)
+    advanceCursor(d.db, p.maxRowid, p.amount, op.signature, now());
+    log(`[burn-oracle] ${p.amount} micro-$CG already reported by ${op.signature ?? '?'} — cursor advanced, no new tx`);
+    return { kind: 'reported', amount: p.amount, signature: op.signature ?? '', rows: p.rows };
+  }
+  if (inFlight(op.status)) {
+    // Отчёт уже мог попасть в цепь. Спрашиваем цепь, а не отправляем второй раз.
+    await reconcileChainOps(d.db, d.connection as unknown as Parameters<typeof reconcileChainOps>[1], { limit: 10, t: now() });
+    const after = findChainOp(d.db, 'burn_report', bizKey);
+    const landed = opPayload<{ amount: string; maxRowid: number; rows: number }>(after ?? op);
+    if (after?.status === 'confirmed' && landed) {
+      advanceCursor(d.db, landed.maxRowid, BigInt(landed.amount), after.signature, now());
+      log(`[burn-oracle] ${landed.amount} micro-$CG confirmed by ${after.signature} — cursor advanced, no new tx`);
+      return { kind: 'reported', amount: BigInt(landed.amount), signature: after.signature ?? '', rows: landed.rows };
+    }
+    if (after?.status === 'failed') {
+      // цепь сказала «не исполнилось» — эту операцию можно отправить снова (ключ тот же, payload тот же)
+      recordFailed(d.db, after.id, after.error ?? 'failed on chain', now());
+    } else {
+      log(`[burn-oracle] report ${bizKey} is in flight (${after?.status ?? op.status}) — not sending a second one`);
+      return { kind: 'skipped', reason: 'waiting', amount: p.amount };
+    }
+  }
+  const op2 = findChainOp(d.db, 'burn_report', bizKey)!;
+  let signature: string;
+  try {
+    recordSent(d.db, op2.id, now());
+    ({ signature } = await sendAndConfirm(d.connection, d.payer, [reportBurnIx(d.payer.publicKey, p.amount)], {
+      cuLimit: CU_REPORT_BURN,
+      onSigned: (sig, extra) => recordSigned(d.db, op2.id, {
+        signature: sig, rawTx: extra.rawTx, lastValidBlockHeight: extra.lastValidBlockHeight, cuPrice: extra.cuPrice,
+      }),
+    }));
+  } catch (e) {
+    const sig = (e as { signature?: string })?.signature;
+    const code = (e as { code?: number })?.code;
+    if (sig && code === undefined) {
+      // Отправлено, но исход неизвестен: оставляем операцию в полёте — решает цепь, не догадка.
+      log(`[burn-oracle] report ${bizKey} outcome unknown (${(e as Error).message}) — will reconcile ${sig}`);
+      return { kind: 'skipped', reason: 'unknown_outcome', amount: p.amount };
+    }
+    recordFailed(d.db, op2.id, (e as Error).message, now());
+    throw e;
+  }
+  recordConfirmed(d.db, op2.id, signature, now());
+  advanceCursor(d.db, p.maxRowid, p.amount, signature, now());
   log(`[burn-oracle] reported ${p.amount} micro-$CG (${p.rows} burns) → ${signature}`);
   return { kind: 'reported', amount: p.amount, signature, rows: p.rows };
 }

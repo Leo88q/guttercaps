@@ -36,6 +36,7 @@ const FINALITY = read('backend/src/finality.ts');
 const SERVER = read('backend/src/server.ts');
 const METRICS = read('backend/src/oracle-metrics.ts');
 const OPENAPI = read('backend/openapi.yaml');
+const EMISSION = read('programs/staking/src/instructions/emission.rs');
 
 /** One function's source, from its declaration to the closing brace at the declaration's indentation. */
 function fnBody(src: string, name: string): string {
@@ -65,18 +66,47 @@ function ruleFinalizedOnly(oracle: string) {
   assert.match(fnBody(oracle, 'reportOnce'), /pendingBurn\(d\.db, c\.last_rowid\)/, 'reportOnce uses the finalized default, never an explicit horizon');
 }
 
-/** The cursor moves once, after the send, and only to the watermark of what was counted. */
+/** The cursor moves once, after the send, and only to the watermark of what was counted.
+ *
+ * Находка 83: «после отправки» — это не «сразу после sendRawTransaction». Отчёт, который ушёл и не подтвердился,
+ * нельзя закрывать повтором: `report_burn` складывает, поэтому повтор удваивает вход предохранителя эмиссии.
+ * Отсюда вторая половина правила — `ruleNoDoubleReport`: курсор двигает только подтверждённая операция. */
 function ruleCursorWatermark(oracle: string) {
   const body = fnBody(oracle, 'reportOnce');
-  const send = body.indexOf('await sendAndConfirm(');
-  const write = body.indexOf('UPDATE burn_oracle_cursor');
-  assert.ok(send > -1, 'the report is sent');
-  assert.ok(write > -1, 'and the cursor is written');
-  assert.ok(send < write, 'a crash between send and cursor write may re-report (bounded by the clamp), the reverse would lose burns silently');
-  assert.match(body, /p\.maxRowid, \(BigInt\(c\.reported_total\) \+ p\.amount\)/, 'the cursor advances to the watermark of what was actually counted — not to the newest row seen');
+  assert.ok(body.indexOf('await sendAndConfirm(') > -1, 'the report is sent');
+  assert.doesNotMatch(body, /UPDATE burn_oracle_cursor/, 'reportOnce does not write the cursor itself: one write path (advanceCursor), so the monotone guard cannot be bypassed by a second UPDATE');
+  const advance = fnBody(oracle, 'advanceCursor');
+  assert.match(advance, /UPDATE burn_oracle_cursor/, 'advanceCursor is that one path');
+  assert.match(advance, /WHERE id = 1 AND last_rowid < \?/, 'and it only steps forward: a second confirmation of the same report must not add its amount twice');
+  assert.match(body, /advanceCursor\(d\.db, (?:p|landed)\.maxRowid, /, 'the cursor advances to the watermark of what was actually counted — not to the newest row seen');
+  assert.match(body, /advanceCursor\(d\.db, p\.maxRowid, p\.amount, signature/, 'the freshly sent and confirmed report advances it itself');
   const status = fnBody(oracle, 'burnOracleStatus');
   assert.match(status, /deferredMicro: p\.deferredMicro\.toString\(\)/, '/health carries what is stuck behind finality');
   assert.match(status, /healthy: !\(waiting \|\| deferred\) \|\| fresh/, 'a material deferred set with a stale report is not "healthy"');
+}
+
+/**
+ * «Отчёт ушёл, подтверждения нет» — не повод отчитываться ещё раз.
+ *
+ * Посылка правила живёт в программе: `report_burn` складывает (`saturating_add(amount)`), поэтому два отчёта за
+ * одни и те же burn'ы считаются дважды. Пока это так, оракул обязан давать отчёту бизнес-ключ и решать судьбу
+ * подписи по цепи, а не догадкой: неизвестный исход остаётся в полёте, `failed` ставится только на явный отказ
+ * программы (у `TxError` есть `code`), иначе повтор будет молчаливым удвоением.
+ */
+function ruleNoDoubleReport(oracle: string, emission: string) {
+  const rb = emission.slice(emission.indexOf('pub fn report_burn'));
+  assert.match(rb, /burn_today = e\.burn_today\.saturating_add\(amount\)\.min\(clamp\)/, 'the premise: report_burn is additive on chain — if this stops being true, revisit this gate rather than delete it');
+  const body = fnBody(oracle, 'reportOnce');
+  assert.match(body, /const bizKey = burnReportKey\(p\.maxRowid\)/, 'one report, one business key — keyed by the watermark, so the next tick computes the same key');
+  assert.match(body, /beginChainOp\(d\.db, \{ kind: 'burn_report', bizKey, payload/, 'the report is registered before it is sent, with its amount in the payload');
+  const guard = body.indexOf('inFlight(op.status)');
+  const send = body.indexOf('await sendAndConfirm(');
+  assert.ok(guard > -1, 'an in-flight report is recognised as such');
+  assert.ok(send > guard, 'and that check comes before the send: the second tick has to hit it, not pass it');
+  assert.match(body, /reconcileChainOps\(/, 'the unknown outcome is settled by the chain (getSignatureStatuses), not by a clock');
+  assert.match(body, /onSigned: \(sig, extra\) => recordSigned\(/, 'the signature is persisted as it is produced — a process that dies mid-confirm leaves a trace to reconcile');
+  assert.match(body, /if \(sig && code === undefined\)/, 'only an explicit program refusal (`code`) may be marked failed; an unknown outcome must stay in flight');
+  assert.match(body, /recordConfirmed\(d\.db, op2\.id, signature/, 'success is recorded on the operation, so the cursor step and the ledger agree');
 }
 
 /** Everything the reconciler can drop sits above the horizon the oracle counts — the two halves meet. */
@@ -106,6 +136,10 @@ test('the cursor is written once, after the send, with the counted watermark onl
   ruleCursorWatermark(ORACLE);
 });
 
+test('an unconfirmed report is reconciled, never re-sent (report_burn is additive on chain)', () => {
+  ruleNoDoubleReport(ORACLE, EMISSION);
+});
+
 test('the two halves meet: everything the reconciler drops is above the horizon the oracle counts', () => {
   ruleHalvesMeet(FINALITY);
 });
@@ -133,12 +167,32 @@ test('mutations: the gates above are wired to the code they claim to guard', () 
   assert.ok(fails(() => ruleFinalizedOnly(jumps)));
 
   // 3. the cursor advances past what was counted (`p.maxRowid` is the watermark, `+ 1` skips a row)
-  const past = mutate(ORACLE, /p\.maxRowid, \(BigInt\(c\.reported_total\)/, 'p.maxRowid + 1, (BigInt(c.reported_total)');
+  const past = mutate(ORACLE, /advanceCursor\(d\.db, p\.maxRowid, p\.amount, signature/, 'advanceCursor(d.db, p.maxRowid + 1, p.amount, signature');
   assert.ok(fails(() => ruleCursorWatermark(past)));
 
+  // 3b. the monotone guard is dropped: two confirmations of one report would add its amount twice
+  const backwards = mutate(ORACLE, /WHERE id = 1 AND last_rowid < \?/, 'WHERE id = 1');
+  assert.ok(fails(() => ruleCursorWatermark(backwards)));
+
   // 4. no send at all: the cursor write would then be the only trace of a report nobody sent
-  const unsent = mutate(ORACLE, /const \{ signature \} = await sendAndConfirm\(/, 'const signature = "x"; void (');
+  const unsent = mutate(ORACLE, /\(\{ signature \} = await sendAndConfirm\(/, '({ signature } = "x"); void (');
   assert.ok(fails(() => ruleCursorWatermark(unsent)));
+
+  // 4b. the dedupe check is skipped: the second tick re-sends a brand-new transaction for the same burns
+  const resend = mutate(ORACLE, /if \(inFlight\(op\.status\)\)/, 'if (false)');
+  assert.ok(fails(() => ruleNoDoubleReport(resend, EMISSION)));
+
+  // 4c. the signature is not persisted: a process that dies mid-confirm leaves nothing to reconcile
+  const unsigned = mutate(ORACLE, /onSigned: \(sig, extra\) => recordSigned\(/, 'onSigned: () => void (');
+  assert.ok(fails(() => ruleNoDoubleReport(unsigned, EMISSION)));
+
+  // 4d. "unknown outcome" is treated as failure: the report is retried although the chain already has it
+  const guessed = mutate(ORACLE, /if \(sig && code === undefined\)/, 'if (sig)');
+  assert.ok(fails(() => ruleNoDoubleReport(guessed, EMISSION)));
+
+  // 4e. the premise moves: report_burn becomes a set instead of a sum, so the gate must be revisited, not silently kept
+  const idempotent = mutate(EMISSION, /burn_today = e\.burn_today\.saturating_add\(amount\)\.min\(clamp\)/, 'burn_today = amount.min(clamp)');
+  assert.ok(fails(() => ruleNoDoubleReport(ORACLE, idempotent)));
 
   // 5. the reconciler starts retracting finalized rows: the construction the oracle relies on is gone
   const retract = mutate(FINALITY, /FROM events_raw WHERE finalized_at IS NULL AND slot <= \?/, 'FROM events_raw WHERE finalized_at IS NOT NULL AND slot <= ?');
