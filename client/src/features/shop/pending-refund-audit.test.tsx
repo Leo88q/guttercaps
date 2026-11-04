@@ -296,6 +296,42 @@ it('истёкший незабранный клейм возвращает ре
 // Находка 80: оплата фазы V в эскроу. `refund_pack` разрешён цепью только после
 // `created_slot + REFUND_AFTER_SLOTS`, и до этой правки билдера возврата не было в продукте вовсе: оплаченный,
 // но не выданный заказ (оракул не подписал выпуск) можно было вернуть только руками через explorer.
+// Находка 82: отказ `refund_pack` обязан быть НАЗВАН. `settle` не было в клиентской таблице ошибок,
+// поэтому `RefundTooEarly` (окно открылось по часам сервера, но цепь ещё на предыдущем слоте) выходил
+// сырым числом — игрок видел «ошибка» без причины и не понимал, что делать.
+it('отказ refund_pack называется по имени, а не показывается сырым кодом', async () => {
+  await setLocale('en');
+  mocks.pending = { packs: [], compressed: [], fusions: [], battles: [], phaseV: [{
+    orderId: '4343', sku: 1, qty: 1, currency: 'SOL', amount: '5990000', mint: null,
+    escrowSig: 'ESCROWSIG2', createdAt: '2026-11-01T00:00:00.000Z', paidAt: '2026-11-01T00:00:00.000Z',
+  }] };
+  const { PACK_ORDER_STATUS, REFUND_AFTER_SLOTS } = await import('@/chain/ix/settle');
+  const { SETTLE_ID } = await import('@/chain/ids');
+  const { humanizeTxError } = await import('@/chain/errors');
+  const createdSlot = 2_000n;
+  const body = new BorshWriter()
+    .bytes(accountDiscriminator('PackOrder'))
+    .pubkey(BUYER).u64(4343n).u8(0).u64(5_990_000n).u8(PACK_ORDER_STATUS.PAID).u64(createdSlot).u8(1)
+    .toBytes();
+  mocks.getOrder.mockResolvedValue({ data: new Uint8Array(body), lamports: 6_200_000 });
+  mocks.slot.mockResolvedValue(Number(createdSlot + REFUND_AFTER_SLOTS));
+  // цепь отказала 6004 = RefundTooEarly (четвёртый вариант SettleError, 6000 + 4)
+  const failure = Object.assign(new Error('Transaction simulation failed'), {
+    logs: [`Program ${SETTLE_ID.toBase58()} failed: custom program error: 0x1774`],
+  });
+  mocks.send.mockRejectedValue(failure);
+  mount();
+
+  const btn = await screen.findByRole('button', { name: t('shop.refund') });
+  fireEvent.click(btn);
+  await waitFor(() => expect(useUiStore.getState().toasts.some((x) => x.kind === 'error')).toBe(true));
+  const toast = useUiStore.getState().toasts.filter((x) => x.kind === 'error').at(-1)!;
+  expect(humanizeTxError(toast.error)).toContain('RefundTooEarly');
+  expect(humanizeTxError(toast.error)).toMatch(/^settle: /);
+  // заказ остался в списке: возврат не состоялся, и запись нельзя терять
+  await waitFor(() => expect(useUiStore.getState().toasts.at(-1)!.kind).toBe('error'));
+});
+
 it('оплаченный и невыданный заказ фазы V возвращает деньги через refund_pack', async () => {
   await setLocale('en');
   mocks.pending = { packs: [], compressed: [], fusions: [], battles: [], phaseV: [{
