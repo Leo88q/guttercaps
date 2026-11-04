@@ -69,8 +69,14 @@ describe('settle-auth × concurrent requests', () => {
     // подписанный набор — это ровно сохранённый набор (имена = ключ регистрации в DAS)
     for (const r of ok) expect(r.value.specs.map((s) => s.name)).toEqual(stored.map((s) => s.name));
 
-    // пока набор выдаёт другой писатель, третий запрос не подписывает ничего своего
-    db.run(`UPDATE pack_orders SET settle_specs = ? WHERE id = ?`, '\u0000reserved', o.orderId);
+    // пока набор выдаёт другой писатель, третий запрос не подписывает ничего своего.
+    // Маркер берётся из самого кода, а не пишется руками: раньше здесь стояла NUL-строка, и проверка
+    // проходила только на драйвере, который обрезает значение на NUL (Node 22). На Node 24 маркер
+    // доезжал целиком, первое чтение падало в JSON.parse, и вместо 409 клиент получал 500.
+    db.run(`UPDATE pack_orders SET settle_specs = ? WHERE id = ?`, pv.SPECS_RESERVED, o.orderId);
+    // и маркер обязан пережить биндинг без потерь — это и было причиной расхождения между Node 22 и 24
+    expect(db.get<{ settle_specs: string }>(`SELECT settle_specs FROM pack_orders WHERE id = ?`, o.orderId)!.settle_specs)
+      .toBe(pv.SPECS_RESERVED);
     await expect(pv.settleAuthForOrder(db, BUYER.publicKey.toBase58(), o.orderId, { connection: conn, oracle }))
       .rejects.toThrow(/being issued right now/);
   });

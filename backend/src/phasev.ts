@@ -31,8 +31,16 @@ export const ACCOUNT_COMPRESSION = new PublicKey('mcmt6YrQEMKw8Mw43FmpRLmf7BqRnF
 export const MINT_AUTH_PREFIX = Buffer.from('GUTCAP/MINTAUTH/V2');
 /** Grant order ids live above 2^63 so they can never collide with pack orders. */
 export const GRANT_ID_BASE = 1n << 63n;
-/** Маркер «specs этого заказа сейчас выдаёт другой запрос» (находка 30). */
-const SPECS_RESERVED = '\u0000reserved';
+/**
+ * Маркер «specs этого заказа сейчас выдаёт другой запрос» (находка 30).
+ *
+ * Раньше это была NUL-строка (`'\u0000reserved'`), и она держалась на поведении драйвера: node-sqlite3
+ * в Node 22 обрезает значение на NUL и записывает пустую строку — бронь просто исчезала, а в Node 24 то
+ * же значение доезжает целиком, и `JSON.parse` на первом чтении бросал «Unexpected token '^@'» вместо
+ * 409. Оба исхода — дефект: маркер не должен зависеть от того, какой драйвер его пишет. Теперь это
+ * обычная строка, которую ни один биндинг не портит, и её узнают оба места, где читается колонка.
+ */
+export const SPECS_RESERVED = '__issuing_specs__';
 /** Oracle authorizations live ~10 minutes (slots at ~400 ms). */
 export const AUTH_TTL_SLOTS = 1500;
 
@@ -253,7 +261,10 @@ export async function settleAuthForOrder(
   // registration key, so a re-issued authorization must sign the SAME specs
   // (only the slot window and signature refresh).
   type StoredSpec = SettlePayload['specs'][number];
-  let stored = row.settle_specs ? (JSON.parse(row.settle_specs) as StoredSpec[]) : null;
+  // Маркер брони — не набор specs: строку, которую сейчас выдаёт другой писатель, разбирать нечем, и
+  // запрос обязан получить тот же 409, что и в ветке ниже, а не 500 из JSON.parse.
+  const isReserved = (v: string | null | undefined) => v === SPECS_RESERVED;
+  let stored = row.settle_specs && !isReserved(row.settle_specs) ? (JSON.parse(row.settle_specs) as StoredSpec[]) : null;
   if (!stored) {
     // Находка 30: два запроса читали строку без `settle_specs`, каждый независимо выделял game indices
     // и безусловно записывал свой набор. Исполнить на цепи можно любую из двух подписей, а регистрация
@@ -279,7 +290,7 @@ export async function settleAuthForOrder(
       }
     } else {
       const again = db.get<{ settle_specs: string | null }>(`SELECT settle_specs FROM pack_orders WHERE id = ?`, id)?.settle_specs;
-      if (!again || again === SPECS_RESERVED) {
+      if (!again || isReserved(again)) {
         throw new ServiceError(409, 'settle_auth_busy', 'The specs for this order are being issued right now — retry in a second');
       }
       stored = JSON.parse(again) as StoredSpec[];
