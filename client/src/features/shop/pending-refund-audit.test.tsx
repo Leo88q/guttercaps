@@ -302,11 +302,11 @@ it('оплаченный и невыданный заказ фазы V возв�
     orderId: '4242', sku: 1, qty: 1, currency: 'SOL', amount: '5990000', mint: null,
     escrowSig: 'ESCROWSIG', createdAt: '2026-11-01T00:00:00.000Z', paidAt: '2026-11-01T00:00:00.000Z',
   }] };
-  const { REFUND_AFTER_SLOTS } = await import('@/chain/ix/settle');
+  const { PACK_ORDER_STATUS, REFUND_AFTER_SLOTS } = await import('@/chain/ix/settle');
   const createdSlot = 1_000n;
   const body = new BorshWriter()
     .bytes(accountDiscriminator('PackOrder'))
-    .pubkey(BUYER).u64(4242n).u8(0).u64(5_990_000n).u8(1).u64(createdSlot).u8(1)
+    .pubkey(BUYER).u64(4242n).u8(0).u64(5_990_000n).u8(PACK_ORDER_STATUS.PAID).u64(createdSlot).u8(1)
     .toBytes();
   // цепь: слот уже за окном возврата
   mocks.getOrder.mockResolvedValue({ data: new Uint8Array(body), lamports: 6_200_000 });

@@ -30,11 +30,12 @@
 //   R02 после окна SOL возвращается покупателю целиком, PDA заказа закрыт;
 //   R03 повторный возврат невозможен (заказа больше нет).
 import { beforeAll, describe, expect, it } from 'vitest';
-import { Keypair, PublicKey } from '@solana/web3.js';
+import { Keypair, PublicKey, Transaction } from '@solana/web3.js';
+import { readFileSync } from 'node:fs';
 import { ed25519 } from '@noble/curves/ed25519';
 import { createHash } from 'node:crypto';
 import { BorshWriter } from '@/chain/borsh';
-import { REFUND_AFTER_SLOTS, buyPackIx, decodePackOrder, orderPda, orderRefundState, oracleAuthIx, refundPackIx, settleConfigPda, settlePackIx, treeAuthPda, type SettlePayloadLike } from '@/chain/ix/settle';
+import { PACK_ORDER_STATUS, REFUND_AFTER_SLOTS, buyPackIx, decodePackOrder, orderPda, orderRefundState, oracleAuthIx, refundPackIx, settleConfigPda, settlePackIx, treeAuthPda, type SettlePayloadLike } from '@/chain/ix/settle';
 import { SETTLE_ID } from '@/chain/ids';
 import { base58Encode } from '@/shared/lib/base58';
 import { MINT_ORACLE, TREASURY, binariesPresent, getEnv, type Env } from './helpers/env';
@@ -166,26 +167,26 @@ suite('T-L-P2 settle_pack: гейты приёма оплаты проверяю
     await expectFail(env.chain.send(ixs, { signers: [wallet], label: 'M07' }), Err.settle('SpecsMismatch'), 'чужие specs');
   });
 
-  it('M08 больше MAX_SPECS листьев → TooManySpecs (до сверки хеша)', async () => {
+  it('M08 больше MAX_SPECS листьев: сборщик не соберёт, а цепь такой транзакции и не увидит', async () => {
     const many = Array.from({ length: 11 }, (_, i) => leaf(PublicKey.default, i));
-    const encodeLeaf = (x: { collection: PublicKey; name: string; symbol: string; uri: string }) => {
-      const w = new BorshWriter();
-      w.pubkey(x.collection);
-      for (const v of [x.name, x.symbol, x.uri]) w.u32(v.length).bytes(Buffer.from(v));
-      return Buffer.from(w.toBytes());
-    };
-    // Сборщик клиента отказывается нести больше MAX_LEAVES_PER_TX = 10 листьев — это отказ ДО подписи.
-    // Здесь проверяется вторая линия: цепь обязана отказать сама, поэтому одиннадцатый лист дописывается
-    // в поток аргументов уже после сборщика — вместе со счётчиком `Vec<LeafSpec>`.
+    // Первая линия — сборщик: отказ ДО подписи и ДО эскроу.
     expect(() => build({}, many)).toThrow(RangeError);
-    const ten = many.slice(0, 10);
-    const { ixs } = build({ specsHash: specsHash(many) }, ten);
-    const data = Buffer.from(ixs[1].data);
-    const lenAt = data.length - ten.reduce((n, x) => n + encodeLeaf(x).length, 0) - 4;
-    expect(data.readUInt32LE(lenAt), 'счётчик Vec<LeafSpec> там, где его ждёт Borsh').toBe(10);
-    data.writeUInt32LE(11, lenAt);
-    ixs[1].data = Buffer.concat([data, encodeLeaf(many[10])]);
-    await expectFail(env.chain.send(ixs, { signers: [wallet], label: 'M08' }), Err.settle('TooManySpecs'), 'лишние листы');
+    // Вторая линия — `MAX_SPECS = 10` в самой программе. Исполнить этот гейт нельзя не потому, что он
+    // недостижим логически, а потому что 11 листьев вместе с аккаунтами не влезают в 1232 байта: считаем
+    // это здесь, а не утверждаем на слово. Поэтому гейт проверяется по исходнику — и он стоит ПЕРВЫМ в
+    // `settle_pack_handler`, до подписи и до сверки хеша.
+    const { ixs } = build({ specsHash: specsHash(many.slice(0, 10)) }, many.slice(0, 10));
+    const tx = new Transaction().add(ixs[1]!);
+    tx.recentBlockhash = '11111111111111111111111111111111';
+    tx.feePayer = wallet.publicKey;
+    const tenLeaves = tx.serializeMessage().length;
+    expect(tenLeaves).toBeGreaterThan(1100); // уже почти предел пакета: 1232 на всё, вместе с подписями
+    const rust = readFileSync(new URL('../../programs/settle/src/lib.rs', import.meta.url), 'utf8');
+    const gate = rust.indexOf('SettleError::TooManySpecs', rust.indexOf('pub fn settle_pack_handler'));
+    const auth = rust.indexOf('verify_oracle_signature', rust.indexOf('pub fn settle_pack_handler'));
+    expect(gate, 'гейт `MAX_SPECS` в `settle_pack_handler`').toBeGreaterThan(0);
+    expect(gate).toBeLessThan(auth);
+    expect(/pub const MAX_SPECS: usize = 10;/.test(rust)).toBe(true);
   });
 
   it('M09 подпись чужим ключом → BadOracleSignature', async () => {
@@ -210,7 +211,9 @@ suite('T-L-P2b refund_pack: оплата возвращается, а не ос�
   it('R01 до окна возврата цепь отвечает RefundTooEarly', async () => {
     const before = await env.chain.getAccount(orderPda(wallet.publicKey, orderId));
     const order = decodePackOrder(new Uint8Array(before!.data));
-    expect(order.status).toBe(1); // PAID
+    // 0 — это PAID, а не «открыт»: аккаунт создаёт сам `escrow_buy_pack`. Первая редакция теста ждала
+    // здесь 1 и падала — ровно та же ошибка сидела в клиентской таблице `PACK_ORDER_STATUS` (находка 81).
+    expect(order.status).toBe(PACK_ORDER_STATUS.PAID);
     // раскладка прочитана теми же 45 байтами, что пишет программа: покупатель и слот создания совпали
     expect(order.buyer.toBase58()).toBe(wallet.publicKey.toBase58());
     expect(order.orderId).toBe(orderId);

@@ -259,7 +259,15 @@ export const REFUND_AFTER_SLOTS = 216_000n;
 
 /** `PackOrder`: disc(8) ‖ buyer(32) ‖ order_id(8) ‖ currency(1) ‖ amount(8) ‖ status(1) ‖ created_slot(8) ‖ bump(1). */
 export interface PackOrderState { buyer: PublicKey; orderId: bigint; currency: number; amount: bigint; status: number; createdSlot: bigint; bump: number }
-export const PACK_ORDER_STATUS = { OPEN: 0, PAID: 1, SETTLED: 2, REFUNDED: 3 } as const;
+/**
+ * `PackOrder.status` — значения ИЗ программы (`programs/settle/src/lib.rs`: `STATUS_PAID = 0`,
+ * `STATUS_SETTLED = 1`, `STATUS_REFUNDED = 2`). Отдельного «открытого» состояния нет: аккаунт заказа
+ * создаётся самим `escrow_buy_pack` и сразу в статусе `PAID`, поэтому 0 — это оплаченный заказ.
+ * Расхождение здесь не косметика: с неверной таблицей `orderRefundState` увидел бы в оплаченном заказе
+ * «не оплачен» и не показал бы кнопку возврата; совпадение с Rust проверяет
+ * `settle-args-layout.test.ts` (читает константы из исходника программы).
+ */
+export const PACK_ORDER_STATUS = { PAID: 0, SETTLED: 1, REFUNDED: 2 } as const;
 
 export function decodePackOrder(data: Uint8Array): PackOrderState {
   const d = new Uint8Array(data);

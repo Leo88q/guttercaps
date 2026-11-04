@@ -16,7 +16,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Keypair } from '@solana/web3.js';
 import { BorshReader } from '@/chain/borsh';
-import { grantMintIx, oracleAuthIx, settlePackIx, type SettlePayloadLike } from './settle';
+import { PACK_ORDER_STATUS, REFUND_AFTER_SLOTS, grantMintIx, oracleAuthIx, settlePackIx, type SettlePayloadLike } from './settle';
 
 const root = path.resolve(process.cwd(), process.cwd().endsWith('/client') ? '..' : '.');
 const rust = readFileSync(path.join(root, 'programs/settle/src/lib.rs'), 'utf8');
@@ -132,5 +132,43 @@ describe('находка 79: раскладка MintAuth в аргументах
     for (const [name, ty] of AUTH) seen[name] = read(r, ty);
     for (const [name] of AUTH) expect(seen[name], `поле ${name} в подписи`).toEqual(expected[name]);
     expect(r.remaining).toBe(0); // ровно 105 байт после домена, как в `mint_auth_message`
+  });
+});
+
+// Находка 81 (новая, при исполнении `refund_pack` на цепи). Клиентская таблица `PACK_ORDER_STATUS` была
+// угадана: `{OPEN: 0, PAID: 1, SETTLED: 2, REFUNDED: 3}`, а в программе `STATUS_PAID = 0`, `STATUS_SETTLED = 1`,
+// `STATUS_REFUNDED = 2` и отдельного «открытого» состояния нет — аккаунт заказа создаёт сам
+// `escrow_buy_pack`, и он сразу PAID. С такой таблицей карточка «Незавершённые покупки» видела бы в
+// оплаченном заказе «не оплачен» и НИКОГДА не показала бы кнопку возврата: фича находки 80 умерла бы молча,
+// потому что клиентские тесты строились по той же неверной таблице. Поймал это только localnet (R01).
+//
+// Здесь значения и `REFUND_AFTER_SLOTS` читаются ИЗ программы, а не переписаны рядом.
+describe('раскладка `PackOrder` и статусы заказа — из программы, а не по памяти', () => {
+  const constU8 = (name: string): number => {
+    const m = new RegExp(`pub const ${name}: u8 = (\\d+);`).exec(rust);
+    if (!m) throw new Error(`программа не содержит const ${name}`);
+    return Number(m[1]);
+  };
+
+  it('PACK_ORDER_STATUS совпадает со STATUS_* из программы', () => {
+    // «открытого» статуса в программе нет — и клиент не должен его выдумывать
+    expect(Object.keys(PACK_ORDER_STATUS).sort()).toEqual(['PAID', 'REFUNDED', 'SETTLED']);
+    expect(PACK_ORDER_STATUS.PAID).toBe(constU8('STATUS_PAID'));
+    expect(PACK_ORDER_STATUS.SETTLED).toBe(constU8('STATUS_SETTLED'));
+    expect(PACK_ORDER_STATUS.REFUNDED).toBe(constU8('STATUS_REFUNDED'));
+  });
+
+  it('REFUND_AFTER_SLOTS совпадает с окном возврата в программе', () => {
+    const m = /pub const REFUND_AFTER_SLOTS: u64 = ([\d_]+);/.exec(rust);
+    if (!m) throw new Error('программа не содержит REFUND_AFTER_SLOTS');
+    expect(REFUND_AFTER_SLOTS).toBe(BigInt(m[1]!.replace(/_/g, '')));
+  });
+
+  it('decodePackOrder читает поля в порядке struct PackOrder', () => {
+    // порядок и типы ровно те, что разбирает `decodePackOrder`: сдвиг на одно поле читал бы чужое значение
+    expect(structFields('PackOrder')).toEqual([
+      ['buyer', 'Pubkey'], ['order_id', 'u64'], ['currency', 'u8'], ['amount', 'u64'],
+      ['status', 'u8'], ['created_slot', 'u64'], ['bump', 'u8'],
+    ]);
   });
 });
