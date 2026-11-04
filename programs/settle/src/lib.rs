@@ -1406,7 +1406,12 @@ pub fn anchor_root_handler(
     r.published_at = Clock::get()?.unix_timestamp;
     r.budget = budget;
     r.revoked = false;
-    emit!(RootAnchored { kind, epoch, root, budget });
+    emit!(RootAnchored {
+        kind,
+        epoch,
+        root,
+        budget
+    });
     Ok(())
 }
 
