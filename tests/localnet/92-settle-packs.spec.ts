@@ -159,13 +159,32 @@ suite('T-L-P2 settle_pack: гейты приёма оплаты проверяю
   });
 
   it('M07 листы, которых оракул не подписывал → SpecsMismatch', async () => {
-    const { ixs } = build({}, [leaf(PublicKey.default, 777)]);
+    // Подпись обязана покрывать ИМЕННО эскроуированные листы, а доставить надо другие: иначе хеш в
+    // авторизации совпадёт с доставленными листами (так M07 и падал — гейт не срабатывал, транзакция
+    // уходила дальше, в CPI к несмонтированному дереву).
+    const { ixs } = build({ specsHash: specsHash(specs) }, [leaf(PublicKey.default, 777)]);
     await expectFail(env.chain.send(ixs, { signers: [wallet], label: 'M07' }), Err.settle('SpecsMismatch'), 'чужие specs');
   });
 
   it('M08 больше MAX_SPECS листьев → TooManySpecs (до сверки хеша)', async () => {
     const many = Array.from({ length: 11 }, (_, i) => leaf(PublicKey.default, i));
-    const { ixs } = build({}, many);
+    const encodeLeaf = (x: { collection: PublicKey; name: string; symbol: string; uri: string }) => {
+      const w = new BorshWriter();
+      w.pubkey(x.collection);
+      for (const v of [x.name, x.symbol, x.uri]) w.u32(v.length).bytes(Buffer.from(v));
+      return Buffer.from(w.toBytes());
+    };
+    // Сборщик клиента отказывается нести больше MAX_LEAVES_PER_TX = 10 листьев — это отказ ДО подписи.
+    // Здесь проверяется вторая линия: цепь обязана отказать сама, поэтому одиннадцатый лист дописывается
+    // в поток аргументов уже после сборщика — вместе со счётчиком `Vec<LeafSpec>`.
+    expect(() => build({}, many)).toThrow(RangeError);
+    const ten = many.slice(0, 10);
+    const { ixs } = build({ specsHash: specsHash(many) }, ten);
+    const data = Buffer.from(ixs[1].data);
+    const lenAt = data.length - ten.reduce((n, x) => n + encodeLeaf(x).length, 0) - 4;
+    expect(data.readUInt32LE(lenAt), 'счётчик Vec<LeafSpec> там, где его ждёт Borsh').toBe(10);
+    data.writeUInt32LE(11, lenAt);
+    ixs[1].data = Buffer.concat([data, encodeLeaf(many[10])]);
     await expectFail(env.chain.send(ixs, { signers: [wallet], label: 'M08' }), Err.settle('TooManySpecs'), 'лишние листы');
   });
 
