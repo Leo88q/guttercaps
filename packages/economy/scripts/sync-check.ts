@@ -253,6 +253,15 @@ for (const program of ['arena', 'market', 'settle']) {
   const missing = (clientErrors[program] ?? []).filter((e) => !rs(`client/src/shared/i18n/failures/en.json`).includes(`"${e.key}"`));
   check(`${program} error keys resolve in failures/en.json`, missing.map((e) => e.key), []);
 }
+// тот же порядок нужен localnet: `Err.settle('RefundTooEarly')` вычисляет код как 6000 + indexOf, поэтому
+// вставленный в середину перечисления вариант сдвинул бы КАЖДЫЙ сценарий на соседний код — и зелёный тест
+// проверял бы чужой гейт. Проверяется и таблица `const SETTLE = [...]` в expect.ts.
+{
+  const body = line(rs('programs/settle/src/lib.rs'), /pub enum \w*Error \{([\s\S]*?)\}/);
+  const names = Array.from(body.matchAll(/#\[msg\("[^"]+"\)\]\s*(\w+)\s*,/g)).map((m) => m[1]!);
+  const table = Array.from(line(rs('tests/localnet/helpers/expect.ts'), /const SETTLE = \[([\s\S]*?)\] as const;/).matchAll(/'(\w+)'/g)).map((m) => m[1]!);
+  check('settle error names (localnet expect.ts)', table, names);
+}
 
 // ---- market / arena ----
 check('market fee bps (default)', Number(line(market, /FEE_BPS: u16 = (\d+)/)), FEES.marketplaceFeeBps);
