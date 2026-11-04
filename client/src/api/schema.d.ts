@@ -468,6 +468,7 @@ export interface paths {
                             packs?: components["schemas"]["PendingPack"][];
                             compressed?: components["schemas"]["CompressedSettlement"][];
                             fusions?: components["schemas"]["PendingFusion"][];
+                            battles?: components["schemas"]["PendingBattle"][];
                         };
                     };
                 };
@@ -8795,6 +8796,30 @@ export interface components {
                 odds?: number[];
                 soulboundDays?: number;
             } | null;
+        };
+        /** @description Незакрытый бой кошелька. `cancel_stale_battle` требует подписи стороны, поэтому без этой строки возврат ставки невозможен из продукта (находка 46). */
+        PendingBattle: {
+            battle?: components["schemas"]["Pubkey"];
+            challenger?: components["schemas"]["Pubkey"];
+            /** @description null, пока бой никто не принял */
+            opponent?: string | null;
+            /** @description $CG за сторону, decimal string */
+            wager?: string;
+            /** @enum {string} */
+            status?: "open" | "accepted";
+            powerA?: number;
+            powerB?: number | null;
+            /** @description той же границей, что проверяет цепь: создатель открытого боя — сразу, принятый — после accepted_at + RESOLVE_TIMEOUT */
+            refundable?: boolean;
+            /** @enum {string} */
+            reason?: "creator" | "timeout" | "not_stale" | "unknown_time" | "not_side";
+            /**
+             * Format: date-time
+             * @description когда откроется окно; null — уже открыто либо не откроется
+             */
+            refundAt?: string | null;
+            /** Format: date-time */
+            acceptedAt?: string | null;
         };
         PendingFusion: {
             nonce?: string;

@@ -163,7 +163,7 @@ paths:
       tags: [me]
       summary: In-flight commit-reveal operations (packs / fusions) with crank status
       responses:
-        '200': { description: pending, content: { application/json: { schema: { type: object, properties: { packs: { type: array, items: { $ref: '#/components/schemas/PendingPack' } }, compressed: { type: array, items: { $ref: '#/components/schemas/CompressedSettlement' } }, fusions: { type: array, items: { $ref: '#/components/schemas/PendingFusion' } } } } } } }
+        '200': { description: pending, content: { application/json: { schema: { type: object, properties: { packs: { type: array, items: { $ref: '#/components/schemas/PendingPack' } }, compressed: { type: array, items: { $ref: '#/components/schemas/CompressedSettlement' } }, fusions: { type: array, items: { $ref: '#/components/schemas/PendingFusion' } }, battles: { type: array, items: { $ref: '#/components/schemas/PendingBattle' } } } } } } }
   /me/packs/{nonce}/result:
     get:
       tags: [me]
@@ -2498,6 +2498,21 @@ components:
     PendingPack:
       type: object
       properties: { nonce: { type: string }, sku: { type: integer, description: '0..3; a quest chip voucher (#28) also reports sku 0 — see `voucher`' }, qty: { type: integer }, opened: { type: integer }, commitSlot: { type: integer }, currentSlot: { type: integer, description: 'голова индексатора по слоту — тот же слот, по которому решает assert_refundable' }, randomness: { $ref: '#/components/schemas/Pubkey' }, status: { type: string, enum: [awaiting_reveal, revealing, opening, stale], description: 'stale = commit_slot + STALE_PACK_SLOTS позади головы: цепь примет cancel_stale_pack, игрок может вернуть деньги' }, staleAt: { type: string, format: date-time, description: 'оценка времени, когда возврат станет возможен (0,4 с на слот); решение всегда по слоту, не по часам' }, refundSlot: { type: integer, description: 'commit_slot + STALE_PACK_SLOTS — граница возврата' }, currency: { type: string, enum: [SOL, USDC, CG, SKR], description: 'чем была оплачена покупка: для токенной оплаты клиенту нужен минт, чтобы собрать cancel_stale_pack' }, voucher: { type: [object, 'null'], description: 'set when this pending is a free quest chip: { template, odds[9] bps, soulboundDays } — opened by the same open_pack crank; nothing to refund but the rent reserve', properties: { template: { type: integer }, odds: { type: array, items: { type: integer } }, soulboundDays: { type: integer } } } }
+    PendingBattle:
+      type: object
+      description: Незакрытый бой кошелька. `cancel_stale_battle` требует подписи стороны, поэтому без этой строки возврат ставки невозможен из продукта (находка 46).
+      properties:
+        battle: { $ref: '#/components/schemas/Pubkey' }
+        challenger: { $ref: '#/components/schemas/Pubkey' }
+        opponent: { type: [string, 'null'], description: 'null, пока бой никто не принял' }
+        wager: { type: string, description: '$CG за сторону, decimal string' }
+        status: { type: string, enum: [open, accepted] }
+        powerA: { type: integer }
+        powerB: { type: [integer, 'null'] }
+        refundable: { type: boolean, description: 'той же границей, что проверяет цепь: создатель открытого боя — сразу, принятый — после accepted_at + RESOLVE_TIMEOUT' }
+        reason: { type: string, enum: [creator, timeout, not_stale, unknown_time, not_side] }
+        refundAt: { type: [string, 'null'], format: date-time, description: 'когда откроется окно; null — уже открыто либо не откроется' }
+        acceptedAt: { type: [string, 'null'], format: date-time }
     PendingFusion:
       type: object
       properties: { nonce: { type: string }, recipe: { type: integer }, materials: { type: array, items: { $ref: '#/components/schemas/Pubkey' } }, boosted: { type: boolean }, status: { type: string } }

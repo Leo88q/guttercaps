@@ -194,7 +194,8 @@ describe('public API', () => {
     expect(quests.json.find((x: { id: string }) => x.id === 'd_login')).toMatchObject({ value: 1, claimable: true, ineligibleReason: null });
     expect((await c.get('/v1/quests/claims')).json).toEqual([]);
     expect((await c.get('/v1/quests/streak')).json).toMatchObject({ days: 0, nextChipAt: 7 });
-    expect((await c.get('/v1/health')).json.arena).toEqual({ queued: 0, revealing: 0, unattributedResolves: { count: 0, sample: [] } });
+    // staleBattles — залипшие бои, у которых окно возврата уже открыто (находка 46)
+    expect((await c.get('/v1/health')).json.arena).toEqual({ queued: 0, revealing: 0, unattributedResolves: { count: 0, sample: [] }, staleBattles: 0 });
   });
   it('requires auth for /me', async () => {
     expect((await new Client(base).get('/v1/me')).status).toBe(401);

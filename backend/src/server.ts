@@ -71,6 +71,7 @@ import { clientIp, ipNet } from './ratelimit.ts';
 import { cursorQuery, intQuery, limitQuery, numberQuery } from './params.ts';
 import { humanStatus, recordDevice, verifyHuman } from './human.ts';
 import { COLLECTIONS, QUEST_CHIP_TEMPLATES, RARITY_PROFILES, STALE_PACK_SLOTS } from '@guttercaps/economy';
+import { BATTLE_RESOLVE_TIMEOUT_SEC } from './chain.ts';
 
 /**
  * Filter domains for the query layer (SEC-B2). Mirrors the `chips` projection: 8 districts × 9
@@ -125,6 +126,81 @@ export function pendingHeadSlot(db: Db): number {
 /** Сколько незавершённых покупок уже можно вернуть (наблюдаемость аварийного выхода, находка 46). */
 export function stalePendingPacks(db: Db, headSlot = pendingHeadSlot(db)): number {
   return db.scalar(`SELECT COUNT(*) FROM pack_purchases WHERE status = 'pending' AND slot + ? < ?`, STALE_PACK_SLOTS, headSlot);
+}
+
+/**
+ * Находка 46, бои: `cancel_stale_battle` требует ПОДПИСИ одной из сторон, поэтому единственный путь
+ * возврата ставки — кнопка в продукте. Границы те же, что в `programs/arena/src/lib.rs`:
+ *   • открытый бой (`status = 'open'`) создатель может снять сразу — `caller == challenger`;
+ *   • принятый бой (`status = 'accepted'`) — любая сторона, но строго после `accepted_at + RESOLVE_TIMEOUT`;
+ *     до этой минуты цепь отвечает `NotStale`.
+ * Запас `BATTLE_CLOCK_SKEW_SEC`: наша метка — `block_time` события, а решает `Clock::unix_timestamp` цепи,
+ * который может отставать; показать кнопку позже ничего не стоит, показать раньше — гарантированный отказ.
+ */
+export const BATTLE_CLOCK_SKEW_SEC = 60;
+
+export interface PendingBattleRow {
+  battle: string; challenger: string; opponent: string | null; wager: string; status: string;
+  power_a: number; power_b: number | null; created_at: number | null; accepted_at: number | null;
+}
+
+/**
+ * Граница возврата одного боя. `refundAt = null` при `refundable = false` — время неизвестно (heal доберёт
+ * метку из events_raw) либо возврат по времени не откроется вообще (открытый бой не-создателя цепь не пустит).
+ */
+export function battleRefundState(b: PendingBattleRow, wallet: string, nowSec: number) {
+  const isSide = wallet === b.challenger || wallet === b.opponent;
+  if (!isSide) return { refundable: false, refundAt: null as number | null, reason: 'not_side' };
+  if (b.status === 'open') {
+    // `caller == challenger` проходит проверку таймаута на цепи всегда; у оппонента в открытом бою его ещё нет
+    return wallet === b.challenger
+      ? { refundable: true, refundAt: null as number | null, reason: 'creator' }
+      : { refundable: false, refundAt: null as number | null, reason: 'not_stale' };
+  }
+  if (b.status !== 'accepted' || b.accepted_at === null) {
+    return { refundable: false, refundAt: null as number | null, reason: 'unknown_time' };
+  }
+  const refundAt = b.accepted_at + BATTLE_RESOLVE_TIMEOUT_SEC + BATTLE_CLOCK_SKEW_SEC;
+  return nowSec >= refundAt
+    ? { refundable: true, refundAt: refundAt as number | null, reason: 'timeout' }
+    : { refundable: false, refundAt: refundAt as number | null, reason: 'not_stale' };
+}
+
+/** Незакрытые бои кошелька с честной границей возврата (находка 46). */
+export function pendingBattles(db: Db, wallet: string, nowSec = Math.floor(Date.now() / 1000)) {
+  const rows = db.all<PendingBattleRow>(
+    `SELECT battle, challenger, opponent, wager, status, power_a, power_b, created_at, accepted_at
+       FROM battles
+      WHERE status IN ('open', 'accepted') AND (challenger = ? OR opponent = ?)
+      ORDER BY COALESCE(accepted_at, created_at, 0) DESC
+      LIMIT 50`,
+    wallet, wallet,
+  );
+  return rows.map((b) => {
+    const st = battleRefundState(b, wallet, nowSec);
+    return {
+      battle: b.battle, challenger: b.challenger, opponent: b.opponent, wager: b.wager,
+      status: b.status, powerA: b.power_a, powerB: b.power_b,
+      refundable: st.refundable, reason: st.reason,
+      // подсказка UI: когда откроется окно (null — уже открыто либо не откроется)
+      refundAt: st.refundable || st.refundAt === null ? null : new Date(st.refundAt * 1000).toISOString(),
+      acceptedAt: b.accepted_at === null ? null : new Date(b.accepted_at * 1000).toISOString(),
+    };
+  });
+}
+
+/** Сколько залипших боёв уже можно вернуть (наблюдаемость, находка 46). */
+export function stalePendingBattles(db: Db, nowSec = Math.floor(Date.now() / 1000)): number {
+  const rows = db.all<PendingBattleRow>(
+    `SELECT battle, challenger, opponent, wager, status, power_a, power_b, created_at, accepted_at
+       FROM battles WHERE status IN ('open', 'accepted')`,
+  );
+  let n = 0;
+  for (const b of rows) {
+    const sides = [b.challenger, b.opponent].filter((x): x is string => !!x);
+    if (sides.some((w) => battleRefundState(b, w, nowSec).refundable)) n += 1;
+  }
+  return n;
 }
 
 export function createApp(db: Db, deps: AppOptions = {}) {
@@ -398,7 +474,7 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   });
 
   // ------------------------------------------------------------ health / stats
-  v1.get('/health', (_req, res) => { res.json({ ok: true, lastSlot: db.scalar(`SELECT COALESCE(MAX(slot),0) FROM events_raw`), prices: priceStatus(db), crank: crankStatus(db), paused: pauseStatus(db), burnOracle: burnOracleStatus(db), finality: finalityStatus(db), untimedEvents: untimedStatus(db), indexerGaps: gapStatus(db), rewardOracle: rewardOracleStatus(db), antifraud: antifraudStatus(db), stalePacks: stalePendingPacks(db), arena: { queued: db.scalar(`SELECT COUNT(*) FROM arena_queue`), revealing: db.scalar(`SELECT COUNT(*) FROM matches WHERE status = 'revealing'`), unattributedResolves: unattributedResolves(db) } }); });
+  v1.get('/health', (_req, res) => { res.json({ ok: true, lastSlot: db.scalar(`SELECT COALESCE(MAX(slot),0) FROM events_raw`), prices: priceStatus(db), crank: crankStatus(db), paused: pauseStatus(db), burnOracle: burnOracleStatus(db), finality: finalityStatus(db), untimedEvents: untimedStatus(db), indexerGaps: gapStatus(db), rewardOracle: rewardOracleStatus(db), antifraud: antifraudStatus(db), stalePacks: stalePendingPacks(db), arena: { queued: db.scalar(`SELECT COUNT(*) FROM arena_queue`), revealing: db.scalar(`SELECT COUNT(*) FROM matches WHERE status = 'revealing'`), unattributedResolves: unattributedResolves(db), staleBattles: stalePendingBattles(db) } }); });
   v1.get('/prices', (_req, res) => { res.json(priceStatus(db)); });
   v1.get('/stats', (_req, res) => { res.json(q.stats(db)); });
   v1.get('/rewards/skr-pool', (_req, res) => { res.json(q.skrPool(db)); });
@@ -541,6 +617,9 @@ export function createApp(db: Db, deps: AppOptions = {}) {
         claims: db.all<{ claim_nonce: string; pack_no: number; status: string; asset: string | null }>(`SELECT claim_nonce, pack_no, status, asset FROM compressed_claims WHERE buyer = ? AND nonce = ? ORDER BY CAST(claim_nonce AS INTEGER)`, s.buyer, s.nonce).map((c) => ({ claimNonce: c.claim_nonce, packNo: c.pack_no, status: c.status, asset: c.asset })),
       })),
       fusions: [],
+      // находка 46, бои: ставка заперта в эскроу, снять её может только подпись стороны — значит, кнопка
+      // должна быть в продукте. `refundable`/`refundAt` считаются по тем же границам, что проверяет цепь.
+      battles: pendingBattles(db, req.session!.wallet),
     });
   });
   // One-signature settlement view for one purchase, in ANY state (unlike /me/pending, which drops

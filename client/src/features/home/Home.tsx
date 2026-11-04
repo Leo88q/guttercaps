@@ -5,7 +5,7 @@ import { useMe, useGrid, useGridMe, useQuests, usePendingOps, useStreak, useSeas
 import { useEffect, useRef, useState } from 'react';
 import { api, isDemo, setDemoMode } from '@/api/client';
 import { PreorderBanner } from '@/features/preorder/PreorderBanner';
-import { refundableCount } from '@/features/shop/PendingOps';
+import { refundableBattleCount, refundableCount } from '@/features/shop/PendingOps';
 import SkateWorldCard from '@/features/bowl/SkateWorldCard';
 import { SplatBackdrop } from '@/features/vfx/vfx';
 import { usePity } from '@/chain/hooks';
@@ -56,7 +56,7 @@ export default function Home() {
   const compressedPending = pending.data?.compressed?.filter((s) => s.status === 'pending').length ?? 0;
   const apiPending = (pending.data?.packs?.length ?? 0) + (pending.data?.fusions?.length ?? 0) + compressedPending;
   // Находка 46: залипшие покупки, за которые можно вернуть деньги, видны с первого экрана.
-  const refundable = refundableCount(pending.data?.packs ?? []) + active.fusions.filter((f) => f.phase === 'stale').length;
+  const refundable = refundableCount(pending.data?.packs ?? []) + refundableBattleCount(pending.data?.battles ?? []) + active.fusions.filter((f) => f.phase === 'stale').length;
 
   return (
     <div className="page page-bg page-bg-home stack">

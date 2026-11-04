@@ -809,7 +809,12 @@ const HANDLERS: Record<string, Handler> = {
   BattleAccepted(db, e, c) {
     const d = e.data;
     touchBySpec(db, e, c);
-    db.run(`UPDATE battles SET opponent = ?, power_b = ?, status = 'accepted', slot = ? WHERE battle = ?`, str(d.opponent), num(d.powerB), c.slot, str(d.battle));
+    // находка 46: время принятия — граница возврата `cancel_stale_battle`; подпись нужна, чтобы heal
+    // (`patchLateTimes`) мог добрать время, если индексер увидел событие без block_time
+    db.run(
+      `UPDATE battles SET opponent = ?, power_b = ?, status = 'accepted', accepted_at = ?, accepted_sig = ?, slot = ? WHERE battle = ?`,
+      str(d.opponent), num(d.powerB), c.blockTime, c.signature, c.slot, str(d.battle),
+    );
   },
   BattleResolved(db, e, c) {
     const d = e.data;
@@ -1027,6 +1032,7 @@ export function patchLateTimes(db: Db, e: RawEvent, c: EventCtx): number {
       break;
     case 'ChipSold': fill('sales', 'block_time'); break;
     case 'BattleCreated': fill('battles', 'created_at', 'created_sig'); break;
+    case 'BattleAccepted': fill('battles', 'accepted_at', 'accepted_sig'); break;
     case 'BattleResolved':
       fill('battles', 'resolved_at', 'resolved_sig');
       fill('burns', 'block_time');

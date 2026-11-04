@@ -10,7 +10,10 @@ import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Keypair } from '@solana/web3.js';
+import { Keypair, PublicKey } from '@solana/web3.js';
+import { BorshWriter } from '@/chain/borsh';
+import { accountDiscriminator } from '@/chain/anchor';
+import { compressedMintClaimPda } from '@/chain/pdas';
 import { ixDiscriminator } from '@/chain/anchor';
 import { ata, vaultPda } from '@/chain/pdas';
 import { useUiStore } from '@/app/store/ui';
@@ -26,15 +29,22 @@ const mocks = vi.hoisted(() => ({
   invalidate: vi.fn(),
   cancelStale: vi.fn(),
   cancelClaimStale: vi.fn(),
+  // цепь для «истёкшего клейма»: карточка читает claim-аккаунты по PDA из реестра операций
+  getAccounts: vi.fn(async (): Promise<unknown[]> => []),
 }));
 
 vi.mock('@/api/hooks', () => ({ usePendingOps: () => ({ data: mocks.pending, isLoading: false }) }));
 vi.mock('@/api/client', () => ({ isMock: () => false, api: { get: vi.fn(), post: vi.fn() } }));
-vi.mock('@/chain/hooks', () => ({
-  useGameConfig: () => ({ data: null }),
-  useWalletLike: () => ({ publicKey: BUYER, signTransaction: vi.fn() }),
-}));
-vi.mock('@solana/wallet-adapter-react', () => ({ useConnection: () => ({ connection: {} }) }));
+// минт $CG из конфигурации: без него клиент не соберёт возврат ставки (бой играется только в $CG)
+const CG_MINT = '11111111111111111111111111111111';
+vi.mock('@/chain/hooks', async () => {
+  const { PublicKey } = await import('@solana/web3.js');
+  return {
+    useGameConfig: () => ({ data: { cgMint: new PublicKey(CG_MINT) } }),
+    useWalletLike: () => ({ publicKey: BUYER, signTransaction: vi.fn() }),
+  };
+});
+vi.mock('@solana/wallet-adapter-react', () => ({ useConnection: () => ({ connection: { getMultipleAccountsInfo: mocks.getAccounts } }) }));
 vi.mock('@tanstack/react-query', async (importOriginal) => ({
   ...await importOriginal<typeof import('@tanstack/react-query')>(),
   useQueryClient: () => ({ invalidateQueries: mocks.invalidate }),
@@ -57,7 +67,7 @@ vi.mock('@/chain/flows/claimFusionFlow', () => ({
   },
 }));
 import { MINTS } from '@/app/config';
-import { PendingOps, refundableCount, slotsUntilRefund } from './PendingOps';
+import { PendingOps, refundableBattleCount, refundableCount, slotsUntilRefund } from './PendingOps';
 
 const root = path.resolve(process.cwd(), process.cwd().endsWith('/client') ? '..' : '.');
 const src = (rel: string) => readFileSync(path.join(root, rel), 'utf8');
@@ -178,4 +188,98 @@ it('залипший claim-фьюжн возвращает комиссию че
   await waitFor(() => expect(useTxStore.getState().claimFusions[`claimFusion:${buyer}:9`]).toBeUndefined());
   expect((useUiStore.getState().toasts.at(-1)!.title as { key: string }).key).toBe('shop.refunded');
   expect((useUiStore.getState().toasts.at(-1)!.body as { key: string }).key).toBe('shop.refundedFusion');
+});
+
+// Находка 46, четвёртая половина: залипший бой. Ставка сторон лежит в эскроу на PDA боя, а снять её может
+// только `cancel_stale_battle` с ПОДПИСЬЮ стороны — до этого о таком бое игрок не узнавал нигде, и деньги
+// оставались запертыми, если `resolve_battle` не прошёл (кранк упал, сила отряда разошлась с записанной).
+it('залипший бой возвращает ставку через cancel_stale_battle по адресу из индексатора', async () => {
+  await setLocale('en');
+  const battle = Keypair.generate().publicKey;
+  const opponent = Keypair.generate().publicKey;
+  mocks.pending = {
+    packs: [], compressed: [], fusions: [],
+    battles: [{
+      battle: battle.toBase58(), challenger: BUYER.toBase58(), opponent: opponent.toBase58(), wager: '1000000',
+      status: 'accepted', powerA: 10, powerB: 12, refundable: true, reason: 'timeout',
+      refundAt: null, acceptedAt: '2026-11-03T00:00:00.000Z',
+    }],
+  };
+  mocks.send.mockResolvedValue({ signature: 'BATTLEREFUND', logs: [] });
+  mount();
+
+  expect(document.body.textContent).toContain(t('shop.pendingBattle'));
+  const btn = await screen.findByRole('button', { name: t('shop.refund') });
+  fireEvent.click(btn);
+  await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1));
+  const ix = (mocks.send.mock.calls[0] as unknown[])[2] as { data: Uint8Array; keys: { pubkey: { toBase58(): string } }[] }[];
+  expect(ix).toHaveLength(1);
+  expect(Buffer.from(ix[0].data.subarray(0, 8)).toString('hex')).toBe(Buffer.from(ixDiscriminator('cancel_stale_battle')).toString('hex'));
+  const keys = ix[0].keys.map((k) => k.pubkey.toBase58());
+  expect(keys[0]).toBe(BUYER.toBase58());                        // подписывает сторона боя
+  // адрес боя берётся из индексатора: `nonce` в событиях боя нет, из PDA его не восстановить
+  expect(keys[2]).toBe(battle.toBase58());
+  const cg = new PublicKey(CG_MINT);
+  expect(keys).toContain(ata(cg, battle).toBase58());             // эскроу = ATA боя
+  expect(keys).toContain(ata(cg, BUYER).toBase58());              // возврат идёт на ATA заявителя
+  expect(keys).toContain(ata(cg, opponent).toBase58());           // и у оппонента есть свой ATA в аккаунтах
+  await waitFor(() => expect(useUiStore.getState().toasts.length).toBeGreaterThan(0));
+  expect((useUiStore.getState().toasts.at(-1)!.body as { key: string }).key).toBe('shop.refundedBattle');
+  expect(mocks.invalidate).toHaveBeenCalled();
+});
+
+it('бой, у которого окно возврата закрыто, кнопку не показывает', async () => {
+  await setLocale('en');
+  mocks.pending = {
+    packs: [], compressed: [], fusions: [],
+    battles: [{
+      battle: Keypair.generate().publicKey.toBase58(), challenger: BUYER.toBase58(), opponent: null, wager: '5',
+      status: 'accepted', powerA: 1, powerB: null, refundable: false, reason: 'not_stale',
+      refundAt: '2026-11-04T00:30:00.000Z', acceptedAt: '2026-11-04T00:00:00.000Z',
+    }],
+  };
+  mount();
+  await screen.findByText(t('shop.pendingTitle'));
+  expect(screen.queryByRole('button', { name: t('shop.refund') })).toBeNull();
+  expect(document.body.textContent).toContain(t('shop.pendingBattleWaiting'));
+  expect(refundableBattleCount([{ refundable: true }, { refundable: false }])).toBe(1);
+});
+
+// Находка 46, пятая половина: истёкший незабранный клейм (результат фьюжна, админская выдача) держал ренту
+// покупателя на своём аккаунте. `close_expired_claim` существовал только билдером — кнопки не было нигде,
+// и рента оставалась там навсегда. Карточка находит такой клейм по реестру операций и возвращает ренту.
+it('истёкший незабранный клейм возвращает ренту через close_expired_claim', async () => {
+  await setLocale('en');
+  mocks.pending = { packs: [], compressed: [], fusions: [], battles: [] };
+  const expiry = BigInt(Math.floor(Date.now() / 1000) - 60);
+  const data = new BorshWriter()
+    .bytes(accountDiscriminator('CompressedMintClaim'))
+    .pubkey(BUYER).u8(0).u8(4).u8(1).u64(3n).i64(expiry)
+    .pubkey(PublicKey.default).bool(false).bool(false).bool(false).bool(false).bool(false).u8(1).bool(false).pubkey(BUYER).i64(0n)
+    .toBytes();
+  mocks.getAccounts.mockResolvedValue([{ data: new Uint8Array(data), lamports: 2_039_280 }]);
+  mocks.send.mockResolvedValue({ signature: 'RENTSIG', logs: [] });
+  const buyer = BUYER.toBase58();
+  useTxStore.setState({
+    packs: {}, fusions: {},
+    claimFusions: {
+      [`claimFusion:${buyer}:9`]: {
+        id: `claimFusion:${buyer}:9`, wallet: buyer, createdAt: 1, updatedAt: 1, phase: 'done', nonce: '9',
+        recipe: 0, boosted: false, resultCollectionIdx: 1, materials: [], signatures: ['REVEAL'],
+      },
+    },
+  } as never);
+  mount();
+
+  // клейм читается с цепи, поэтому карточка появляется асинхронно
+  await screen.findByText(t('shop.claimRent'));
+  const btn = await screen.findByRole('button', { name: t('shop.refund') });
+  fireEvent.click(btn);
+  await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1));
+  const ix = (mocks.send.mock.calls[0] as unknown[])[2] as { data: Uint8Array; keys: { pubkey: { toBase58(): string } }[] }[];
+  expect(Buffer.from(ix[0].data.subarray(0, 8)).toString('hex')).toBe(Buffer.from(ixDiscriminator('close_expired_claim')).toString('hex'));
+  // подписывает покупатель, закрывается именно его клейм (PDA из nonce записи)
+  expect(ix[0].keys[0].pubkey.toBase58()).toBe(BUYER.toBase58());
+  expect(ix[0].keys[1].pubkey.toBase58()).toBe(compressedMintClaimPda(BUYER, 9n)[0].toBase58());
+  await waitFor(() => expect((useUiStore.getState().toasts.at(-1)!.body as { key: string }).key).toBe('shop.claimRentBack'));
 });

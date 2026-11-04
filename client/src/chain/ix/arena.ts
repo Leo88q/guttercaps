@@ -131,8 +131,16 @@ export function acceptCompressedBattleV2Ix(a: {
   });
 }
 
-export function cancelStaleBattleIx(a: { caller: PublicKey; challenger: PublicKey; opponent?: PublicKey; nonce: bigint; cgMint: PublicKey }): TransactionInstruction {
-  const [battle] = battlePda(a.challenger, a.nonce);
+/**
+ * Возврат ставки из залипшего боя (находка 46). `battle` можно передать адресом: индексер отдаёт именно
+ * адрес аккаунта, а `nonce` в событиях боя нет — восстанавливать его из PDA нельзя. Когда известен `nonce`
+ * (тесты, локальные сценарии), адрес выводится из него.
+ */
+export function cancelStaleBattleIx(
+  a: { caller: PublicKey; challenger: PublicKey; opponent?: PublicKey; nonce?: bigint; battle?: PublicKey; cgMint: PublicKey },
+): TransactionInstruction {
+  if (!a.battle && a.nonce === undefined) throw new Error('cancelStaleBattleIx needs either the battle address or its nonce');
+  const battle = a.battle ?? battlePda(a.challenger, a.nonce!)[0];
   return new TransactionInstruction({
     programId: ARENA_ID,
     keys: [

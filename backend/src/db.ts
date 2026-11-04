@@ -686,10 +686,15 @@ CREATE TABLE IF NOT EXISTS battles (
   resolved_sig  TEXT,
   created_at    INTEGER,
   resolved_at   INTEGER,
+  -- находка 46: время принятия боя (block_time события BattleAccepted) и его подпись — по ним считается
+  -- граница cancel_stale_battle (accepted_at + RESOLVE_TIMEOUT), без них залипший бой не вернуть из UI
+  accepted_at   INTEGER,
+  accepted_sig  TEXT,
   slot          INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_battles_winner ON battles(winner);
 CREATE INDEX IF NOT EXISTS idx_battles_players ON battles(challenger, opponent);
+CREATE INDEX IF NOT EXISTS idx_battles_pending ON battles(status) WHERE status IN ('open', 'accepted');
 
 CREATE TABLE IF NOT EXISTS stakes (
   key        TEXT PRIMARY KEY,   -- token: stake PDA; chip: asset
@@ -1667,6 +1672,10 @@ export class Db {
     if (!repCols.has('crew_id')) this.raw.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_crew_reports_once ON wall_reports(crew_id, reporter) WHERE crew_id IS NOT NULL`);
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_events_unfinalized ON events_raw(finalized_at, slot)`);
     this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_events_untimed ON events_raw(slot) WHERE block_time IS NULL`);
+    const bt = new Set((this.raw.prepare(`PRAGMA table_info(battles)`).all() as { name: string }[]).map((c) => c.name));
+    if (bt.size > 0 && !bt.has('accepted_at')) this.raw.exec(`ALTER TABLE battles ADD COLUMN accepted_at INTEGER`);
+    if (bt.size > 0 && !bt.has('accepted_sig')) this.raw.exec(`ALTER TABLE battles ADD COLUMN accepted_sig TEXT`);
+    this.raw.exec(`CREATE INDEX IF NOT EXISTS idx_battles_pending ON battles(status) WHERE status IN ('open', 'accepted')`);
     const ch = new Set((this.raw.prepare(`PRAGMA table_info(chips)`).all() as { name: string }[]).map((c) => c.name));
     if (!ch.has('skin')) this.raw.exec(`ALTER TABLE chips ADD COLUMN skin TEXT`);
     // Находка 20: чипы, зарегистрированные backend'ом в фазе G/V, в событиях не встречаются — rebuild по
