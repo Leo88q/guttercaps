@@ -53,8 +53,19 @@ test('findPayment takes the expected ref hash and prefers the row that matches i
 });
 
 test('both callers pass the ref hash they are about to grant', () => {
+  // Находка 76: у `@handle` вид услуги коммитится в `ref_hash` в момент ОПЛАТЫ, а `claimHandle` выводит
+  // его из текущего состояния кошелька. Поэтому хэш считается для ОБОИХ видов, а сопоставление идёт по
+  // тому виду, который записан в самом платеже. Правило «вычислить хэш того, что собираешься выдать, и
+  // передать его в поиск» осталось прежним — изменился только набор допустимых видов.
   const handle = fnBody(SERVICES, 'claimHandle');
-  assert.match(handle, /const expected = toHex\(handleRefHash\(kind, wallet, handle\)\);\s*\n\s*const p = findPayment\(db, signature, wallet, \[kind\], expected\)/, 'claimHandle computes before it looks up and passes it');
+  assert.match(handle, /toHex\(handleRefHash\(0, wallet, handle\)\)/, 'claimHandle computes the first-handle hash for THIS handle');
+  assert.match(handle, /toHex\(handleRefHash\(1, wallet, handle\)\)/, 'and the change hash — the kind was fixed at payment time');
+  assert.match(handle, /findPayment\(db, signature, wallet, acceptable, refFor\[kind\]\)/, 'claimHandle still prefers the row it means');
+  // асимметрия видов: первый handle нельзя купить ценой смены (иначе $0.99 вместо $1.99), а смену можно
+  // оплатить платежом за первый handle — иначе платёж сгорает от гонки двух вкладок
+  assert.match(handle, /kind === 1 \? \[1, 0\] : \[0\]/, 'a first handle accepts only a kind-0 payment; a change accepts both');
+  // и выбранный платёж обязан совпасть с хэшем СВОЕГО вида, а не того, что ждали от кошелька
+  assert.match(handle, /p\.ref_hash !== refFor\[paidKind\]/, 'the matched payment must match the hash of its own kind');
   const claim = fnBody(SERVICES, 'claimService');
   assert.match(claim, /const expected = toHex\(serviceRefHash\(kind, wallet, payload\)\);\s*\n\s*const p = findPayment\(db, signature, wallet, \[kind\], expected\)/, 'claimService too');
 });
@@ -111,4 +122,12 @@ test('mutations: the gates above are wired to the code they claim to guard', () 
   const wiped = mutate(DB, /export const PROJECTION_TABLES = \[/, `export const PROJECTION_TABLES = [\n  'payment_consumption',`);
   const list = /export const PROJECTION_TABLES = \[([\s\S]*?)\];/.exec(wiped)?.[1] ?? '';
   assert.ok(fails(() => assert.ok(!list.includes('payment_consumption'))));
+
+  // 6. (находка 76) асимметрия видов снята: первый handle принимает платёж смены — $0.99 вместо $1.99
+  const cheapFirst = mutate(fnBody(SERVICES, 'claimHandle'), /kind === 1 \? \[1, 0\] : \[0\]/, '[1, 0]');
+  assert.ok(fails(() => assert.match(cheapFirst, /kind === 1 \? \[1, 0\] : \[0\]/)));
+
+  // 7. (находка 76) вид берётся из ожидания кошелька, а не из платежа — платёж за первый handle снова сгорает
+  const staleKind = mutate(fnBody(SERVICES, 'claimHandle'), /p\.ref_hash !== refFor\[paidKind\]/, 'p.ref_hash !== refFor[kind]');
+  assert.ok(fails(() => assert.match(staleKind, /p\.ref_hash !== refFor\[paidKind\]/)));
 });
