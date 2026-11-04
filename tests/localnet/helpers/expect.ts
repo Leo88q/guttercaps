@@ -2,7 +2,7 @@
 // Error names → codes come straight from the Rust enums (position + 6000), the same
 // tables client/src/chain/errors.ts renders — a renamed / reordered variant fails here.
 import { expect } from 'vitest';
-import { ARENA_ID, CHIP_CORE_ID, MARKET_ID, STAKING_ID, SYSTEM_PROGRAM_ID } from '@/chain/ids';
+import { ARENA_ID, CHIP_CORE_ID, MARKET_ID, SETTLE_ID, STAKING_ID, SYSTEM_PROGRAM_ID } from '@/chain/ids';
 import { TxFailure } from './chain';
 
 const CHIP_CORE = [
@@ -25,6 +25,14 @@ const ARENA = [
   'Paused', 'Unauthorized', 'WagerRange', 'BadStatus', 'NotOwner', 'ChipBusy', 'InvalidBubblegumProof', 'DuplicateChip', 'SquadTooWeak', 'LeagueMismatch', 'BadWinner', 'OracleCap',
   'NotStale', 'SelfBattle', 'Randomness', 'Overflow', 'NotUpgradeAuthority', 'BadCap',
 ] as const;
+// программы `settle` (фаза V) не было в каталоге вовсе: она не исполнялась ни одним сценарием
+// (находка 53), поэтому и имена её ошибок некому было сверять с Rust-перечислением.
+const SETTLE = [
+  'Paused', 'BadCurrency', 'BadAmount', 'BadOrderStatus', 'RefundTooEarly', 'BadOracleInstruction',
+  'BadOracleSignature', 'AuthExpired', 'SpecsMismatch', 'EmissionCap', 'TooManySpecs', 'BadProof',
+  'BadTreeConfig', 'BadAccount', 'Overflow', 'NotUpgradeAuthority', 'PriceChanged', 'SelfTrade',
+  'RootTimelocked', 'RootBudgetExceeded', 'RootRevoked',
+] as const;
 const SB_MOCK = ['InvalidAuthority', 'InvalidAccount', 'RandomnessNotRequested', 'AlreadyRevealed', 'PayloadTooLong'] as const;
 
 /** Anchor framework errors we assert on by name. */
@@ -34,7 +42,7 @@ export const ANCHOR = {
   AccountNotInitialized: 3012, ConstraintTokenMint: 2014, ConstraintMut: 2000, InvalidProgramId: 3008, AccountNotSigner: 3010,
 } as const;
 
-type ChipErr = (typeof CHIP_CORE)[number]; type MarketErr = (typeof MARKET)[number]; type StakeErr = (typeof STAKING)[number]; type ArenaErr = (typeof ARENA)[number]; type MockErr = (typeof SB_MOCK)[number];
+type ChipErr = (typeof CHIP_CORE)[number]; type MarketErr = (typeof MARKET)[number]; type StakeErr = (typeof STAKING)[number]; type ArenaErr = (typeof ARENA)[number]; type MockErr = (typeof SB_MOCK)[number]; type SettleErr = (typeof SETTLE)[number];
 
 export const Err = {
   chip: (n: ChipErr) => ({ code: 6000 + CHIP_CORE.indexOf(n), program: CHIP_CORE_ID.toBase58(), name: `chip_core::${n}` }),
@@ -42,6 +50,7 @@ export const Err = {
   staking: (n: StakeErr) => ({ code: 6000 + STAKING.indexOf(n), program: STAKING_ID.toBase58(), name: `staking::${n}` }),
   arena: (n: ArenaErr) => ({ code: 6000 + ARENA.indexOf(n), program: ARENA_ID.toBase58(), name: `arena::${n}` }),
   mock: (n: MockErr) => ({ code: 6000 + SB_MOCK.indexOf(n), program: 'ApDh35vcLCxXc5ivaRGFhayn1HduJ9b2nXbfR6WMpVKH', name: `sb_mock::${n}` }),
+  settle: (n: SettleErr) => ({ code: 6000 + SETTLE.indexOf(n), program: SETTLE_ID.toBase58(), name: `settle::${n}` }),
   anchor: (n: keyof typeof ANCHOR, program?: string) => ({ code: ANCHOR[n], program, name: `anchor::${n}` }),
   /** SPL Token program errors (e.g. 1 = InsufficientFunds, 4 = OwnerMismatch) */
   token: (code: number) => ({ code, program: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', name: `token::${code}` }),

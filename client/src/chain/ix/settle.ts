@@ -10,6 +10,7 @@ import { PublicKey, TransactionInstruction } from '@solana/web3.js';
 import { BorshWriter } from '../borsh';
 import { ixData, optional, ro, rw, signer } from '../anchor';
 import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
   MPL_ACCOUNT_COMPRESSION_ID,
   MPL_BUBBLEGUM_V2_ID,
   MPL_CORE_ID,
@@ -235,5 +236,138 @@ export function grantMintIx(payload: SettlePayloadLike, args: { relayer: PublicK
       ...collectionMetas(payload),
     ],
     data: Buffer.from(ixData('grant_mint', w.toBytes())),
+  });
+}
+
+// --------------------------------------------------------------------------- reward roots (kind/epoch claims)
+//
+// Находка 53: у `settle` не было ни одного сценария, который исполнял бы программу, и половина её
+// поверхности вообще не имела клиентского билдера — `init_config`, `anchor_root`, `claim_reward`,
+// `revoke_root` существовали только как Rust-код. Без билдеров программу нельзя ни поднять на
+// localnet, ни проверить, что гейты находки 49 (таймлок, бюджет, отзыв) действительно стоят там, где
+// заявлено. Порядок аккаунтов ниже — порядок полей `#[derive(Accounts)]`-структур, кодировка аргументов
+// проверяется гейтом `npm run ix:shape` против Rust-сигнатур.
+
+/** `["rewards_vault"]` программы settle — отдельный от эскроу паков кошелёк наград. */
+export const rewardsVaultPda = (): PublicKey =>
+  PublicKey.findProgramAddressSync([Buffer.from('rewards_vault')], SETTLE_ID)[0];
+
+/** `["claim", root, claimant]` — расписка одноразовости клейма. */
+export const claimReceiptPda = (root: PublicKey, claimant: PublicKey): PublicKey =>
+  PublicKey.findProgramAddressSync([Buffer.from('claim'), root.toBuffer(), claimant.toBuffer()], SETTLE_ID)[0];
+
+/** `["root", [kind], epoch_le]` — корень выплат эпохи. */
+export const anchoredRootPda = (kind: number, epoch: bigint): PublicKey => {
+  const e = Buffer.alloc(8);
+  e.writeBigUInt64LE(epoch);
+  return PublicKey.findProgramAddressSync([Buffer.from('root'), Buffer.from([kind]), e], SETTLE_ID)[0];
+};
+
+/**
+ * `init_config(mint_oracle, root_oracle, treasury, emission_cap, market_fee_bps)`.
+ * Создаёт только upgrade authority программы (находка 4) — `programData` обязателен и проверяется
+ * на цепи, поэтому здесь он просто прокидывается, а не подставляется «как-нибудь».
+ */
+export function initConfigIx(a: {
+  admin: PublicKey;
+  programData: PublicKey;
+  mintOracle: PublicKey;
+  rootOracle: PublicKey;
+  treasury: PublicKey;
+  emissionCap: bigint;
+  marketFeeBps: number;
+  cgMint: PublicKey;
+  usdcMint: PublicKey;
+}): TransactionInstruction {
+  const cfg = settleConfigPda();
+  return new TransactionInstruction({
+    programId: SETTLE_ID,
+    keys: [
+      signer(a.admin),
+      rw(cfg),
+      ro(a.cgMint),
+      ro(a.usdcMint),
+      rw(ata(a.usdcMint, cfg)),
+      rw(ata(a.cgMint, cfg)),
+      rw(rewardsVaultPda()),
+      ro(TOKEN_PROGRAM_ID),
+      ro(ASSOCIATED_TOKEN_PROGRAM_ID),
+      ro(SYSTEM_PROGRAM_ID),
+      ro(a.programData),
+    ],
+    data: Buffer.from(
+      ixData(
+        'init_config',
+        new BorshWriter()
+          .pubkey(a.mintOracle)
+          .pubkey(a.rootOracle)
+          .pubkey(a.treasury)
+          .u64(a.emissionCap)
+          .u16(a.marketFeeBps)
+          .toBytes(),
+      ),
+    ),
+  });
+}
+
+/**
+ * `anchor_root(kind, epoch, root, budget)` — оракул публикует корень эпохи.
+ * Находка 49: `budget` обязателен и попадает в аккаунт; опубликованный корень проходит `ROOT_TIMELOCK`
+ * до первого клейма и может быть отозван админом.
+ */
+export function anchorRootIx(a: {
+  rootOracle: PublicKey;
+  kind: number;
+  epoch: bigint;
+  root: Uint8Array;
+  budget: bigint;
+}): TransactionInstruction {
+  if (a.root.length !== 32) throw new Error('root must be 32 bytes');
+  // `[u8; 32]` — сырые 32 байта без префикса длины (Borsh fixed array), поэтому `.bytes`, а не `.vec`.
+  const root = Buffer.from(a.root);
+  return new TransactionInstruction({
+    programId: SETTLE_ID,
+    keys: [ro(settleConfigPda()), signer(a.rootOracle), rw(anchoredRootPda(a.kind, a.epoch)), ro(SYSTEM_PROGRAM_ID)],
+    data: Buffer.from(ixData('anchor_root', new BorshWriter().u8(a.kind).u64(a.epoch).bytes(root).u64(a.budget).toBytes())),
+  });
+}
+
+/** `claim_reward(kind, epoch, amount, proof)` — клейм листа Меркла из корня эпохи. */
+export function claimRewardIx(a: {
+  claimant: PublicKey;
+  cgMint: PublicKey;
+  kind: number;
+  epoch: bigint;
+  amount: bigint;
+  proof: readonly Uint8Array[];
+}): TransactionInstruction {
+  const cfg = settleConfigPda();
+  const root = anchoredRootPda(a.kind, a.epoch);
+  const w = new BorshWriter().u8(a.kind).u64(a.epoch).u64(a.amount);
+  w.vec(a.proof as Uint8Array[], (p) => w.bytes(Buffer.from(p)));
+  return new TransactionInstruction({
+    programId: SETTLE_ID,
+    keys: [
+      ro(cfg),
+      rw(root),
+      rw(claimReceiptPda(root, a.claimant)),
+      signer(a.claimant),
+      rw(ata(a.cgMint, a.claimant)),
+      rw(rewardsVaultPda()),
+      ro(a.cgMint),
+      ro(TOKEN_PROGRAM_ID),
+      ro(ASSOCIATED_TOKEN_PROGRAM_ID),
+      ro(SYSTEM_PROGRAM_ID),
+    ],
+    data: Buffer.from(ixData('claim_reward', w.toBytes())),
+  });
+}
+
+/** `revoke_root(kind, epoch)` — админ закрывает корень; `claim_reward` после этого отказывает. */
+export function revokeRootIx(a: { admin: PublicKey; kind: number; epoch: bigint }): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: SETTLE_ID,
+    keys: [signer(a.admin), ro(settleConfigPda()), rw(anchoredRootPda(a.kind, a.epoch))],
+    data: Buffer.from(ixData('revoke_root', new BorshWriter().u8(a.kind).u64(a.epoch).toBytes())),
   });
 }
