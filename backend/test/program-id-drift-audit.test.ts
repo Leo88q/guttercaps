@@ -96,3 +96,25 @@ describe('парсер секций Anchor.toml', () => {
     for (const d of dirs) expect(declareId(d)).toBeTruthy();
   });
 });
+
+// Находка 85: `apply` переписывает id по списку `ID_SITES` (`scripts/program-ids.ts`), а список отставал от
+// массива `PROGRAMS`: `settle` была и в программах, и в Anchor.toml, и в клиенте, а её собственного
+// `programs/settle/src/lib.rs` в списке не было. `apply` рапортовал «rewrote 12 id sites», `declare_id!`
+// оставался старым, и следующий шаг падал с «после apply id не сошлись» — без указания, какой файл виноват.
+// Правило: каждый каталог `programs/<p>` с `src/lib.rs` обязан быть в списке. Новая программа, добавленная
+// без строки в `ID_SITES`, — это красный тест, а не сюрприз посреди деплоя.
+describe('находка 85: ID_SITES знает каждую программу дерева', () => {
+  it('every programs/<p>/src/lib.rs is listed in ID_SITES', () => {
+    const src = readFileSync(join(repo, 'scripts', 'program-ids.ts'), 'utf8');
+    const start = src.indexOf('const ID_SITES = [');
+    // `] as const;` встречается и раньше (`PROGRAMS` объявлен так же) — ищем закрывающую скобку ПОСЛЕ начала
+    // списка, иначе срез пустой и тест «проходит», ничего не проверив.
+    const list = src.slice(start, src.indexOf('] as const;', start));
+    // `sb_mock` — подставной Switchboard под feature `localnet`; его id пинится фикстурой
+    // (`tests/localnet/fixtures/sb_mock-keypair.json`), `apply` его не трогает и трогать не должен.
+    const dirs = readdirSync(join(repo, 'programs'))
+      .filter((d) => existsSync(join(repo, 'programs', d, 'src', 'lib.rs')) && d !== 'sb_mock');
+    const missing = dirs.filter((d) => !list.includes(`'programs/${d}/src/lib.rs'`));
+    expect(missing, `добавьте в ID_SITES: ${missing.map((d) => `programs/${d}/src/lib.rs`).join(', ')}`).toEqual([]);
+  });
+});

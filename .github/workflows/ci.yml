@@ -201,6 +201,21 @@ jobs:
       # heading or numbered row — this is the gate that would have caught the run where a one-row docs edit
       # truncated docs/09 to a quarter of its size and left its own header pointing at §2–§8 (docs/09 §0)
       - run: npm run docs:refs
+      - name: the gates that only a human ever ran (находка 88)
+        # Шесть гейтов жили ТОЛЬКО в `npm run verify`: ни один workflow их не звал. Их отсутствие в CI не
+        # шумит — «все джобы зелёные» ничего о них не говорит, — и цена выяснилась на деплое: `selftest:cu`
+        # был красным (находка 87, список имён инструкций отстал от клиентских билдеров), а узнали об этом
+        # на этапе `verify` в день devnet-прогона. Все шесть не требуют ни Rust, ни Docker, ни браузера:
+        # shell + node (после `npm ci`), поэтому им место здесь, а не в чьей-то памяти.
+        run: |
+          npm run selftest:cargolock
+          npm run selftest:junit
+          npm run selftest:cu
+          npm run selftest:macdevnet
+          npm run fonts:check
+          npm run claims:doctor -- --selftest
+          npm run setup:minimal -- --selftest
+          npm run launch:check -- --selftest
 
   landing:
     name: landing · build + check + smoke
@@ -571,7 +586,9 @@ jobs:
         run: sh scripts/ci-surface-log.sh /tmp/cargo-audit.log
 
   localnet:
-    name: localnet · 110 scenarios (LiteSVM)
+    # Счётчика в имени нет намеренно: «110 сценариев» пережило три волны новых спеков (сейчас 160 в 18
+    # файлах) и продолжало читаться как факт. Что именно прогнано, печатает сам сьют; имя джобы называет гейт.
+    name: localnet · LiteSVM suite (tests/localnet)
     runs-on: ubuntu-latest
     needs: programs
     steps:

@@ -64,6 +64,12 @@ awk() { LC_ALL=C command awk "$@"; }
 
 ALL_STAGES="update doctor toolchain verify rust localnet ids build deploy setup env pyth"
 OPTIN_STAGES="run faucet"
+# Состав ДЕПЛОЯ (что заливаем в сеть). Это осознанный список, а не производная от `programs/`: `settle` в
+# него не входит по умолчанию, потому что её деплой стоит отдельного залога и проверяется отдельно —
+# включайте явно: PROGRAMS="chip_core market staking arena settle".
+# Находка 84: список ниже и `PROGRAMS` в `scripts/program-ids.ts` — разные вещи, и это нормально до тех пор,
+# пока `stage_ids` требует ключи для ВСЕХ программ репозитория (их читает `apply`), а не только для этих
+# четырёх. Именно этого он не делал: `apply` падал стеком ENOENT на `settle-keypair.json`.
 PROGRAMS=${PROGRAMS:-chip_core market staking arena}
 DEVNET_GENESIS="EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG"
 
@@ -264,16 +270,30 @@ pin_rust=$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' rust-toolchain.toml | head
 pin_node=$(tr -d 'v \r\n' < .nvmrc 2>/dev/null)
 : "${pin_solana:=2.1.0}" "${pin_anchor:=0.31.1}" "${pin_rust:=1.89.0}" "${pin_node:=22}"
 
-# The 12 files `npm run program-ids -- apply` rewrites (scripts/program-ids.ts ID_SITES). Edits that only
+# The files `npm run program-ids -- apply` rewrites (scripts/program-ids.ts ID_SITES). Edits that only
 # change public keys in these files are regenerable from the keypairs, so the updater may drop them.
 ID_SITES="programs/chip_core/src/lib.rs programs/market/src/lib.rs programs/staking/src/lib.rs programs/arena/src/lib.rs
-programs/chip_core/src/instructions/chip.rs Anchor.toml client/src/app/config.ts client/.env.example backend/src/config.ts
-.github/workflows/ci.yml scripts/setup.ts scripts/create-lut.ts"
+programs/settle/src/lib.rs programs/chip_core/src/instructions/chip.rs Anchor.toml client/src/app/config.ts
+client/.env.example backend/src/config.ts .github/workflows/ci.yml scripts/setup.ts scripts/create-lut.ts
+scripts/phasev-activate.ts"
 
 solana_ver() { solana --version 2>/dev/null | sed -n 's/^solana-cli \([0-9][0-9.]*\).*/\1/p' | head -1; }
 anchor_ver() { anchor --version 2>/dev/null | sed -n 's/^anchor-cli \([0-9][0-9.]*\).*/\1/p' | head -1; }
 declared_id() { sed -n 's/.*declare_id!("\([1-9A-HJ-NP-Za-km-z]*\)").*/\1/p' "programs/$1/src/lib.rs" | head -1; }
 keypair_file() { echo "$1/$2-keypair.json"; }
+# Все программы репозитория — по каталогам `programs/*/src/lib.rs`, кроме `sb_mock`: он существует только под
+# feature `localnet` и в сеть не деплоится. Именно этот набор читает `npm run program-ids -- apply`, поэтому
+# ключи нужны для него, а не для списка деплоя: `$PROGRAMS` — это «что заливаем сейчас», а он — «что вообще
+# есть в дереве». Находка 84: их путали, и `apply` падал на программе, которую в этот раз не деплоили.
+all_programs() {
+  local d p
+  for d in programs/*/src/lib.rs; do
+    [ -f "$d" ] || continue
+    p=${d#programs/}; p=${p%%/*}
+    [ "$p" = sb_mock ] && continue
+    printf '%s\n' "$p"
+  done
+}
 is_macos() { [ "$(uname -s)" = Darwin ]; }
 
 # ================================================================== stage: update
@@ -567,7 +587,10 @@ stage_localnet() {
 }
 
 # ================================================================== stage: ids
-has_all_keypairs() { local p; for p in $PROGRAMS; do [ -f "$(keypair_file "$1" "$p")" ] || return 1; done; return 0; }
+# Ключи нужны для ВСЕХ программ дерева (их читает `apply`), а не только для того, что деплоим в этот раз.
+has_all_keypairs() { local p; for p in $(all_programs); do [ -f "$(keypair_file "$1" "$p")" ] || return 1; done; return 0; }
+has_some_keypairs() { local p; for p in $(all_programs); do [ -f "$(keypair_file "$1" "$p")" ] && return 0; done; return 1; }
+missing_keypairs() { local p; for p in $(all_programs); do [ -f "$(keypair_file "$1" "$p")" ] || printf '%s ' "$p"; done; }
 ids_match_dir() { npm run --silent program-ids -- check --from "$1" >/dev/null 2>&1; }
 
 stage_ids() {
@@ -575,13 +598,27 @@ stage_ids() {
   # `anchor build` would invent random keypairs, and the deployed address would then differ from declare_id!.
   # So: use keypairs that match the declared ids, else the ones already generated for this machine, else
   # generate fresh ones and let the repo's own tool rewrite every id site (`program-ids apply`).
-  local dir="" found="" gen="$KEYS_DIR/programs" p
+  local dir="" found="" gen="$KEYS_DIR/programs" p partial=""
   for dir in "${PROGRAM_KEYS_DIR:-}" "$gen" "$KEYS_DIR"; do
-    [ -n "$dir" ] && has_all_keypairs "$dir" && { found=$dir; break; }
+    [ -n "$dir" ] || continue
+    has_all_keypairs "$dir" && { found=$dir; break; }
+    has_some_keypairs "$dir" && [ -z "$partial" ] && partial=$dir
   done
+  # Ключи есть, но не для всех программ дерева. НЕ генерируем новые: новый ключ = новый адрес программы, то
+  # есть деплой уехал бы на другие адреса, оставив прошлый на цепи. Говорим, чего именно не хватает.
+  if [ -z "$found" ] && [ -n "$partial" ]; then
+    warn "в $partial есть ключи не для всех программ (apply читает их все)"
+    for p in $(missing_keypairs "$partial"); do
+      bad "нет ключа: $(keypair_file "$partial" "$p")"
+      info "  создать (адрес будет новым; для уже задеплоенной программы так нельзя — нужен её прежний ключ):"
+      info "    solana-keygen new --no-bip39-passphrase --silent -o $(keypair_file "$partial" "$p")"
+    done
+    die "дополните $partial ключами и повторите: bash scripts/mac-devnet.sh --from ids"
+  fi
   if [ -z "$found" ] && ids_match_dir target/deploy; then
     mkdir -p "$gen"; chmod 700 "$gen"
-    for p in $PROGRAMS; do cp "$(keypair_file target/deploy "$p")" "$gen/"; chmod 600 "$gen/$p-keypair.json"; done
+    # весь набор дерева, а не только то, что деплоим сейчас: иначе следующая программа снова упрётся в нехватку
+    for p in $(all_programs); do cp "$(keypair_file target/deploy "$p")" "$gen/"; chmod 600 "$gen/$p-keypair.json"; done
     found=$gen
     ok "ключи из target/deploy совпали с declare_id! — сохранил копию в $gen (target/ стирается при cargo clean)"
   fi
@@ -1066,6 +1103,8 @@ VITE_PROGRAM_CHIP_CORE=$(declared_id chip_core)
 VITE_PROGRAM_MARKET=$(declared_id market)
 VITE_PROGRAM_STAKING=$(declared_id staking)
 VITE_PROGRAM_ARENA=$(declared_id arena)
+VITE_PROGRAM_SETTLE=$(declared_id settle)
+VITE_LAUNCH_PHASE=${LAUNCH_PHASE:-full}
 VITE_CG_MINT=$cg
 VITE_USDC_MINT=$usdc
 VITE_SKR_MINT=$skr
@@ -1081,6 +1120,8 @@ PROGRAM_CHIP_CORE=$(declared_id chip_core)
 PROGRAM_MARKET=$(declared_id market)
 PROGRAM_STAKING=$(declared_id staking)
 PROGRAM_ARENA=$(declared_id arena)
+PROGRAM_SETTLE=$(declared_id settle)
+LAUNCH_PHASE=${LAUNCH_PHASE:-full}
 LOOKUP_TABLE=$lut
 CRANK_KEYPAIR=$crank
 EOF
