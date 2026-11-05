@@ -1,12 +1,21 @@
 /**
- * Phase-G store-launch preflight (docs/MINIMAL-LAUNCH-CHECKLIST.md фаза 8).
+ * Store-launch preflight for every launch profile the product actually has.
  *
- * Offline, zero-network: validates that a production environment for the
- * phase-G launch is complete and self-consistent BEFORE anything is deployed
- * or built. It mirrors (does not replace) the backend's own production
- * assertions in backend/src/config.ts — this gate catches the same class of
- * mistake at release time, including the client build flags the backend
- * cannot see.
+ * Offline, zero-network: validates that a production environment is complete and self-consistent BEFORE
+ * anything is deployed or built. It mirrors (does not replace) the backend's own production assertions in
+ * backend/src/config.ts — this gate catches the same class of mistake at release time, including the client
+ * build flags the backend cannot see.
+ *
+ * Находка 89: этот файл был написан под один профиль — минимальный запуск фазы Г (`LAUNCH_PHASE=g`) — и
+ * требовал `g` безусловно, тогда как эталонный профиль прода (`ops/deploy/.env.example:44`, решение владельца
+ * по находке 60) — `LAUNCH_PHASE=full`. Прогон префлайта на документированной конфигурации отвечал
+ * «2 error(s) — NOT ready»: либо блокировал верный запуск, либо толкал выставить `g` и тем самым убрать из
+ * продукта он-чейн магазин (в `g` маршруты паков идут через бэкенд, а `full` — через `chip_core::buy_pack`).
+ * Теперь фаза читается, а требования выбираются по ней — как в `config.ts`:
+ *   full — он-чейн магазин: ни фазовых ключей, ни фазовых маршрутов не требуется;
+ *   g    — минимальный запуск: бэкенд минтит оплаченные паки (MINT_AUTHORITY_KEYPAIR, SHARED_MERKLE_TREE…);
+ *   v    — тонкая программа settle (PHASEV_ORACLE_KEYPAIR, тот же CRANK_KEYPAIR…).
+ * Какой профиль запускать — решение владельца, не этого скрипта; скрипт лишь перестал ему противоречить.
  *
  * Usage:
  *   npm run launch:check                 # reads process.env
@@ -29,23 +38,46 @@ export function evaluateLaunch(env: Record<string, string | undefined>): LaunchF
   const err = (m: string) => errors.push(m);
   const warn = (m: string) => warnings.push(m);
 
-  // ---- backend phase-G core (mirrors config.ts productionProblems, phase G)
-  if (env.LAUNCH_PHASE !== 'g') err(`LAUNCH_PHASE must be "g" for the minimal store launch (got "${env.LAUNCH_PHASE ?? ''}")`);
-  if (!isPubkey(env.TREASURY_WALLET)) err('TREASURY_WALLET must be a valid pubkey (pack payments land there)');
-  if (!isPubkey(env.SHARED_MERKLE_TREE)) err('SHARED_MERKLE_TREE must be a valid pubkey (scripts/setup-minimal.ts --execute prints it)');
-  if (!isPubkey(env.CG_MINT)) err('CG_MINT must be a valid pubkey ($CG pack rail + staking payouts)');
-  if (!env.MINT_AUTHORITY_KEYPAIR) err('MINT_AUTHORITY_KEYPAIR is required (paid orders would never mint; in prod this key lives in KMS)');
-  if (!env.CRANK_KEYPAIR) err('CRANK_KEYPAIR is required (the crank worker hosts the phase-G mint tick — without it the API stays green while paid orders never mint; first live devnet run, 2026-10-25)');
-  const featured = Number(env.PHASEG_FEATURED_COLLECTION ?? '0');
-  if (!Number.isInteger(featured) || featured < 0 || featured > 7) err('PHASEG_FEATURED_COLLECTION must be an integer 0..7 and match the featured collection of the week');
-  const missingCollections: number[] = [];
-  for (let i = 0; i < 8; i++) {
-    const v = env[`CORE_COLLECTION_${i}`];
-    if (!v) missingCollections.push(i);
-    else if (!isPubkey(v)) err(`CORE_COLLECTION_${i} is not a valid pubkey`);
+  // ---- the launch profile, and only the requirements that profile has
+  const phase = env.LAUNCH_PHASE ?? '';
+  if (!['full', 'g', 'v'].includes(phase)) {
+    err(`LAUNCH_PHASE must be named explicitly as one of full|g|v (got "${phase}") — full is the on-chain shop, g is the backend-minted minimal launch, v is the settle program`);
   }
-  if (missingCollections.length > 0) {
-    warn(`CORE_COLLECTION_${missingCollections.join(',')} unset: those chips mint without a verified Core collection (marketplaces show them ungrouped). Run setup-minimal --execute to create all 8.`);
+  if (phase && env.VITE_LAUNCH_PHASE !== phase) {
+    err(`VITE_LAUNCH_PHASE must equal LAUNCH_PHASE ("${phase}") in the store build (got "${env.VITE_LAUNCH_PHASE ?? ''}") — client and backend phases must match`);
+  }
+  // The key each phase cannot start without. Mirrors config.ts phaseProblems; the lists differ on purpose,
+  // because the phases are different products (`pack-orders.ts`: nothing there runs while the phase is full).
+  if (phase === 'g') {
+    if (!isPubkey(env.TREASURY_WALLET)) err('LAUNCH_PHASE=g requires TREASURY_WALLET (pack payments land there)');
+    if (!isPubkey(env.SHARED_MERKLE_TREE)) err('LAUNCH_PHASE=g requires SHARED_MERKLE_TREE (scripts/setup-minimal.ts --execute prints it)');
+    if (!isPubkey(env.CG_MINT)) err('LAUNCH_PHASE=g requires CG_MINT ($CG pack rail + staking payouts)');
+    if (!env.MINT_AUTHORITY_KEYPAIR) err('LAUNCH_PHASE=g requires MINT_AUTHORITY_KEYPAIR (paid orders would never mint; in prod this key lives in KMS)');
+    if (!env.CRANK_KEYPAIR) err('LAUNCH_PHASE=g requires CRANK_KEYPAIR (the crank worker hosts the phase-G mint tick — without it the API stays green while paid orders never mint)');
+    const featured = Number(env.PHASEG_FEATURED_COLLECTION ?? '0');
+    if (!Number.isInteger(featured) || featured < 0 || featured > 7) err('PHASEG_FEATURED_COLLECTION must be an integer 0..7 and match the featured collection of the week');
+    const missingCollections: number[] = [];
+    for (let i = 0; i < 8; i++) {
+      const v = env[`CORE_COLLECTION_${i}`];
+      if (!v) missingCollections.push(i);
+      else if (!isPubkey(v)) err(`CORE_COLLECTION_${i} is not a valid pubkey`);
+    }
+    if (missingCollections.length > 0) {
+      warn(`CORE_COLLECTION_${missingCollections.join(',')} unset: those chips mint without a verified Core collection (marketplaces show them ungrouped). Run setup-minimal --execute to create all 8.`);
+    }
+  }
+  if (phase === 'v') {
+    if (!isPubkey(env.TREASURY_WALLET)) err('LAUNCH_PHASE=v requires TREASURY_WALLET (escrowed pack payments land there after settle)');
+    if (!isPubkey(env.SHARED_MERKLE_TREE)) err('LAUNCH_PHASE=v requires SHARED_MERKLE_TREE (the phase-G tree carries over)');
+    if (!isPubkey(env.CG_MINT)) err('LAUNCH_PHASE=v requires CG_MINT');
+    if (!env.PHASEV_ORACLE_KEYPAIR) err('LAUNCH_PHASE=v requires PHASEV_ORACLE_KEYPAIR (the MINT_ORACLE that authorizes settle_pack/grant_mint)');
+    if (!env.CRANK_KEYPAIR) err('LAUNCH_PHASE=v requires CRANK_KEYPAIR (the crank hosts the phase-V settle-confirm tick)');
+  }
+  if (phase === 'full') {
+    // `full` ships the on-chain shop: no backend mint authority, no shared tree. Say what that means rather
+    // than silently accepting an env where the owner expected the backend-minted flow.
+    warn('LAUNCH_PHASE=full ships the on-chain shop (chip_core::buy_pack + crank reveal): phase-G/V routes answer 410, and MINT_AUTHORITY_KEYPAIR/SHARED_MERKLE_TREE are not used');
+    if (!env.CRANK_KEYPAIR) err('LAUNCH_PHASE=full requires CRANK_KEYPAIR (the crank opens paid packs; without it a paid pack is never revealed)');
   }
 
   // ---- backend production hygiene (subset that strands a launch silently)
@@ -58,7 +90,6 @@ export function evaluateLaunch(env: Record<string, string | undefined>): LaunchF
   if (env.RATE_LIMIT === '0') err('RATE_LIMIT=0 disables every abuse budget');
 
   // ---- client build flags (baked at build time; the backend cannot see them)
-  if (env.VITE_LAUNCH_PHASE !== 'g') err(`VITE_LAUNCH_PHASE must be "g" in the store build (got "${env.VITE_LAUNCH_PHASE ?? ''}") — client and backend phases must match`);
   if (env.VITE_CLUSTER !== 'mainnet-beta') err(`VITE_CLUSTER must be "mainnet-beta" for the store build (got "${env.VITE_CLUSTER ?? ''}")`);
   if (env.VITE_FLAG_AGE_GATE !== 'true') err('VITE_FLAG_AGE_GATE=true is required for the money launch (18+ gate)');
   if (env.VITE_FLAG_GEO_GATE !== 'true') warn('VITE_FLAG_GEO_GATE is not "true": confirm the chosen markets allow the geo gate to stay off');
@@ -94,16 +125,39 @@ function selftest(): void {
   };
   for (let i = 0; i < 8; i++) good[`CORE_COLLECTION_${i}`] = '4hLLPXowUAxC8GTSvUuVtJDLVhphTDzZLBVSJzVKvJYC';
   const okRes = evaluateLaunch(good);
-  if (okRes.errors.length > 0) throw new Error(`selftest: complete env flagged: ${okRes.errors.join('; ')}`);
+  if (okRes.errors.length > 0) throw new Error(`selftest: complete phase-G env flagged: ${okRes.errors.join('; ')}`);
   const empty = evaluateLaunch({});
-  if (empty.errors.length < 8) throw new Error(`selftest: empty env under-flagged (${empty.errors.length})`);
+  // Считаем и называем: порог ловит «гейт ослеп», именованные проверки — «ослеп именно этот пункт».
+  if (empty.errors.length < 7) throw new Error(`selftest: empty env under-flagged (${empty.errors.length})`);
+  for (const needle of ['LAUNCH_PHASE', 'SESSION_SECRET', 'DB_PATH', 'METAPLEX_DAS_RPC_URL']) {
+    if (!empty.errors.some((e) => e.includes(needle))) throw new Error(`selftest: empty env does not flag ${needle}`);
+  }
   const mismatched = evaluateLaunch({ ...good, VITE_LAUNCH_PHASE: 'full' });
   if (!mismatched.errors.some((e) => e.includes('VITE_LAUNCH_PHASE'))) throw new Error('selftest: phase mismatch not caught');
   const noCrank = evaluateLaunch({ ...good, CRANK_KEYPAIR: undefined });
   if (!noCrank.errors.some((e) => e.includes('CRANK_KEYPAIR'))) throw new Error('selftest: missing crank key not caught');
   const badKey = evaluateLaunch({ ...good, CORE_COLLECTION_2: 'not-a-key' });
   if (!badKey.errors.some((e) => e.includes('CORE_COLLECTION_2'))) throw new Error('selftest: bad collection key not caught');
-  console.log('launch-check selftest OK: complete env passes, empty/mismatched/corrupt envs fail');
+
+  // Находка 89: эталонный профиль прода — `full` (`ops/deploy/.env.example`), и он обязан проходить.
+  const reference = { ...good, LAUNCH_PHASE: 'full', VITE_LAUNCH_PHASE: 'full' };
+  for (const k of ['SHARED_MERKLE_TREE', 'MINT_AUTHORITY_KEYPAIR', 'PHASEG_FEATURED_COLLECTION']) delete (reference as Record<string, string | undefined>)[k];
+  for (let i = 0; i < 8; i++) delete (reference as Record<string, string | undefined>)[`CORE_COLLECTION_${i}`];
+  const refRes = evaluateLaunch(reference);
+  if (refRes.errors.length > 0) throw new Error(`selftest: the documented reference profile (full) is flagged: ${refRes.errors.join('; ')}`);
+  // …а фазовые ключи в нём не требуются и не мешают: `full` — это он-чейн магазин.
+  if (!refRes.warnings.some((w) => w.includes('on-chain shop'))) throw new Error('selftest: phase full does not say what it ships');
+  const noCrankFull = evaluateLaunch({ ...reference, CRANK_KEYPAIR: undefined });
+  if (!noCrankFull.errors.some((e) => e.includes('CRANK_KEYPAIR'))) throw new Error('selftest: phase full without the crank key not caught');
+  // `v` требует свой ключ оракула, а не ключ минта фазы Г.
+  const phaseV = { ...good, LAUNCH_PHASE: 'v', VITE_LAUNCH_PHASE: 'v', PHASEV_ORACLE_KEYPAIR: '/keys/oracle.json' };
+  if (evaluateLaunch(phaseV).errors.length > 0) throw new Error(`selftest: complete phase-V env flagged: ${evaluateLaunch(phaseV).errors.join('; ')}`);
+  if (!evaluateLaunch({ ...phaseV, PHASEV_ORACLE_KEYPAIR: undefined }).errors.some((e) => e.includes('PHASEV_ORACLE_KEYPAIR'))) {
+    throw new Error('selftest: phase v without the oracle key not caught');
+  }
+  const bogus = evaluateLaunch({ ...good, LAUNCH_PHASE: 'beta', VITE_LAUNCH_PHASE: 'beta' });
+  if (!bogus.errors.some((e) => e.includes('must be named explicitly'))) throw new Error('selftest: an unknown phase is not rejected');
+  console.log('launch-check selftest OK: phase g/v/full each checked against its own keys, empty/mismatched/corrupt envs fail');
 }
 
 function main(): void {
