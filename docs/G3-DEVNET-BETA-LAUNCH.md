@@ -290,6 +290,11 @@ npm run pyth-pusher -- check <devnet-rpc>
 gh workflow run g3-soak.yml --repo Leo88q/guttercaps -f duration_hours=1 -f target_packs=100 -f concurrency=2
 ```
 
+Состояние на 2026-11-05: devnet-стенд поднят и игра запускается (`scripts/mac-devnet.sh`, API `:8787` + клиент `:5173`),
+то есть пункты 1–4 выполнимы на живой сети; соак (пункт 5) ещё не запускался, и метрика «0 abandoned/stale»
+в самом боте пока считается заглушкой — отчёт соака будет частичным до тех пор, пока `soak-validate.ts` не
+прочитает эти состояния из цепи.
+
 ---
 
 ## Ссылки
