@@ -34,7 +34,14 @@ const ATA_PID = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
  *  string literals is enforced by `scripts/selftest-surface-cu.sh`, which re-extracts them
  *  from source and asserts each resolves; anything missing still shows up as `?disc:<hex>`
  *  in the census instead of silently merging. */
+// Находка 87: список отстал от кода. `scripts/selftest-surface-cu.sh` вытаскивает КАЖДОЕ имя инструкции,
+// переданное литералом в `ixData` из `client/src/chain` и `tests/localnet`, и требует, чтобы оно резолвилось
+// сюда, поэтому
+// четыре инструкции `settle`, получившие клиентские билдеры при закрытии пп. 80/81, сделали `verify`
+// красным (`unmapped literal: init_config / anchor_root / claim_reward / refund_pack`). В CI этот гейт
+// не запускался вовсе (находка 88), так что это увидел только `npm run verify` на машине.
 export const CU_IX_NAMES = [
+  'anchor_root', 'claim_reward', 'init_config', 'refund_pack',
   'accept_admin', 'accept_battle', 'accept_battle_v2', 'accept_offer', 'buy', 'buy_compressed',
   'buy_compressed_asset', 'buy_pack', 'cancel', 'cancel_compressed', 'cancel_compressed_asset',
   'cancel_compressed_claim', 'cancel_offer', 'cancel_stale_battle', 'cancel_stale_claim_fusion',

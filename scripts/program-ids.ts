@@ -1,6 +1,6 @@
 // Program-id ceremony tool (docs/09-production-readiness.md §2).
 //
-// The four ids in this repo are dev-derived placeholders: Anchor.toml says so, and `anchor keys sync`
+// The program ids in this repo are dev-derived placeholders: Anchor.toml says so, and `anchor keys sync`
 // after the first build would silently rewrite `declare_id!` to whatever keypair happens to sit in
 // ~/.config/solana/id.json. The same ids are hard-coded in nine more places (chip.rs CPI constants,
 // client + backend defaults, .env.example, the CI devnet probe, this table). This script makes the
@@ -37,6 +37,10 @@ const ID_SITES = [
   'programs/market/src/lib.rs',
   'programs/staking/src/lib.rs',
   'programs/arena/src/lib.rs',
+  // Находка 85: `settle` есть в PROGRAMS, в Anchor.toml и в клиенте/бэкенде, но ЕГО СОБСТВЕННЫЙ `declare_id!`
+  // в списке отсутствовал — `apply` переписывал 12 файлов из 13 и оставлял программу на старом адресе, так что
+  // следующий за ним `check --from` падал всегда. Список и массив PROGRAMS должны меняться вместе.
+  'programs/settle/src/lib.rs',
   'programs/chip_core/src/instructions/chip.rs',
   'Anchor.toml',
   'client/src/app/config.ts',
@@ -47,6 +51,7 @@ const ID_SITES = [
   // `setup.ts` initialises a program nobody is looking at.
   'scripts/setup.ts',
   'scripts/create-lut.ts',
+  'scripts/phasev-activate.ts',
 ] as const;
 
 const read = (p: string) => readFileSync(resolve(root, p), 'utf8');
@@ -101,6 +106,18 @@ function keypairPath(dir: string, p: ProgramName) {
   return join(dir, p === 'chip_core' ? 'chip_core-keypair.json' : `${p}-keypair.json`);
 }
 function readKeypair(path: string): PublicKey {
+  if (!existsSync(path)) {
+    // Находка 84: `apply` читает ВСЕ программы из PROGRAMS, а ключи приходят из `--from DIR`. Когда одного
+    // файла нет, прежний код падал стеком `ENOENT … settle-keypair.json` посреди многочасового прогона, и по
+    // нему нельзя было понять, чего от тебя хотят. Теперь сказано, чего не хватает и чем это создать.
+    throw new Error(
+      `нет ключа программы: ${path}\n` +
+        `  apply читает ключи всех программ из PROGRAMS (${PROGRAMS.join(', ')}), а не только тех, что уже задеплоены.\n` +
+        `  Создать недостающий (для devnet — нормально хранить на машине):\n` +
+        `    solana-keygen new --no-bip39-passphrase --silent -o ${path}\n` +
+        `  Внимание: новый ключ = новый адрес программы. Для уже задеплоенной программы это НЕ вариант — там нужен тот же ключ, что и раньше (иначе получится вторая копия программы по другому адресу).`,
+    );
+  }
   const arr = JSON.parse(readFileSync(path, 'utf8')) as number[];
   if (arr.length !== 64) throw new Error(`${path}: expected a 64-byte solana-keygen secret array, got ${arr.length} bytes`);
   return Keypair.fromSecretKey(Uint8Array.from(arr)).publicKey;
@@ -127,7 +144,7 @@ function status(strict: boolean): number {
   // Two kinds of keypair file, and only one of them is evidence. A directory handed in with --from, or a
   // committed localnet fixture, is something someone intends to deploy (or replay) with. `target/deploy/`
   // is where `anchor build` writes a *freshly generated* keypair whenever one is missing — so in any build
-  // workspace it holds four random keys whose pubkeys differ from `declare_id!`. Counting that as a mismatch
+  // workspace it holds one random key per program whose pubkey differs from `declare_id!`. Counting that as a mismatch
   // is what kept the `programs` job red after `check` had already been replaced by `status` (run 77, exit 1
   // from `status` alone): the only two ways out were committing private keys or deleting an artifact that
   // anchor re-creates on the next build, and neither is a fix. In non-strict mode such a file therefore
@@ -205,7 +222,7 @@ function generate(outDir: string): number {
     chmodSync(file, 0o600);
     lines.push(`${p.padEnd(12)} ${k.publicKey.toBase58()}  ${file.replace(homedir(), '~')}`);
   }
-  console.log(`Generated 4 deploy keypairs in ${dir} (0600). Copy them into the multisig ceremony and delete the local copies:\n`);
+  console.log(`Generated ${PROGRAMS.length} deploy keypairs (${PROGRAMS.join(', ')}) in ${dir} (0600). Copy them into the multisig ceremony and delete the local copies:\n`);
   console.log(lines.join('\n'));
   console.log(`
 Next steps (docs/09 §2, docs/06 §2.5):
@@ -228,7 +245,14 @@ function targets(from: string): Record<ProgramName, string> {
 
 function apply(from: string, dry: boolean): number {
   const declared = declaredIds();
-  const next = targets(from);
+  let next: Record<ProgramName, string>;
+  try {
+    next = targets(from);
+  } catch (e) {
+    // Находка 84: нехватка одного ключа — это «сделай вот это», а не стек ENOENT.
+    console.error(`✗ ${(e as Error).message}`);
+    return 1;
+  }
   const same = PROGRAMS.filter((p) => next[p] === declared[p]);
   if (same.length === PROGRAMS.length) { console.log('nothing to do — the declared ids already come from those keypairs'); return 0; }
   const pairs = PROGRAMS.map((p) => ({ old: declared[p], new: next[p], p })).filter((x) => x.old !== x.new);
@@ -237,13 +261,31 @@ function apply(from: string, dry: boolean): number {
     console.log(`${p.p}: ${p.old} → ${p.new} (${hits} files)`);
   }
   if (dry) { console.log('\n(dry run — nothing written)'); return 0; }
+  let written = 0;
   for (const f of ID_SITES) {
     const src = read(f);
     let out = src;
     for (const p of pairs) out = out.split(p.old).join(p.new);
-    if (out !== src) writeFileSync(resolve(root, f), out);
+    if (out !== src) { writeFileSync(resolve(root, f), out); written += 1; }
   }
-  console.log(`\nrewrote ${ID_SITES.length} id sites. Now run: npm run economy:check && npm run program-ids -- manifest --from ${from} && npm run program-ids -- check --from ${from}`);
+  // Находка 85: `apply` рапортовал «rewrote 12 id sites» и уходил, не проверив, что `declare_id!` сошёлся с
+  // ключами. Проверка была отдельной командой, которую в потоке деплоя никто не обязан был звать, поэтому
+  // расхождение всплывало на следующем шаге как «id не сошлись» без указания, какой файл виноват. Теперь
+  // проверка здесь и она называет файлы: список мест и массив программ обязаны меняться вместе.
+  const after = declaredIds();
+  const drift = PROGRAMS.filter((p) => after[p] !== next[p]);
+  if (drift.length) {
+    console.error(`\n✗ declare_id! не сошёлся с ключами после записи (${written} файлов изменено):`);
+    for (const p of drift) {
+      const stale = ID_SITES.filter((f) => read(f).includes(after[p]));
+      console.error(
+        `  ${p}: declare_id! ${after[p]} ≠ ключ ${next[p]}` +
+          (stale.length ? `\n    старый id остался в: ${stale.join(', ')} — добавьте файл в ID_SITES` : '\n    (в ID_SITES не нашлось, где чинить — файл своего id не имеет?)'),
+      );
+    }
+    return 1;
+  }
+  console.log(`\nrewrote ${written} of ${ID_SITES.length} id sites (all ${PROGRAMS.length} programs agree with their keypairs). Now run: npm run economy:check && npm run program-ids -- manifest --from ${from} && npm run program-ids -- check --from ${from}`);
   return 0;
 }
 
@@ -294,11 +336,11 @@ function manifest(from: string): number {
  * Why the previous shape could not work, recorded because the wrong fix is the tempting one: it compared
  * `[programs.mainnet]` against `PLACEHOLDER_IDS`, a hardcoded snapshot of the `GC…` ids that sat in
  * Anchor.toml at the freeze-base commit. But `apply` rewrites every copy of an id in one pass, so ids that
- * were never cut from a deploy keypair still agree with each other in all thirteen sites — a tree can be
+ * were never cut from a deploy keypair still agree with each other in every site `ID_SITES` names — a tree can be
  * internally consistent and have nothing to do with the deploy. When the ids were rotated to the present
  * `J68G8…` set, the comparison could no longer fire, and the gate printed "mainnet carries the frozen
- * non-placeholder ids (== declare_id!)" and exited 0 while `status` of this same script reported all four
- * ids `unverified` and the record did not exist. Two subcommands, opposite verdicts about one tree.
+ * non-placeholder ids (== declare_id!)" and exited 0 while `status` of this same script reported every
+ * id `unverified` and the record did not exist. Two subcommands, opposite verdicts about one tree.
  *
  * Comparing mainnet against devnet/localnet would be the other wrong fix, and it is the one that looks
  * right: after the ceremony all three clusters deliberately share the frozen ids (one cold keypair signs
@@ -388,7 +430,7 @@ function guardMainnet(): number {
     console.error('  reminder (SEC-F19): also verify the build features of the deploy artifact — mainnet must pin SB_PROGRAM_ID = SBondMDrcV3K4kxZR1HNVT7osZxAHVHgYXL5Ze1oMUv (no `localnet`/`devnet` feature).');
     return 1;
   }
-  console.log(`guard-mainnet OK: [programs.mainnet] == declare_id!, and ${FREEZE_RECORD} freezes the same four ids with their keypairs present at freeze time.`);
+  console.log(`guard-mainnet OK: [programs.mainnet] == declare_id!, and ${FREEZE_RECORD} freezes the same ${PROGRAMS.length} ids with their keypairs present at freeze time.`);
   return 0;
 }
 

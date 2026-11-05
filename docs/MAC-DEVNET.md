@@ -31,9 +31,9 @@ origin <ветка>` и в `BRANCH=<ветка>`.
 | `update` | `git fetch`, fast-forward на `$BRANCH` | правки, которые можно восстановить, сбрасываются, ваши — в `git stash` (см. раздел 5) |
 | `doctor` | что установлено, чего не хватает | ничего не меняет |
 | `toolchain` | Node 24, Rust 1.89.0, solana CLI 2.1.0 (Agave), Anchor 0.31.1, `npm ci` | перед каждой установкой спрашивает `[y/N]`; версии берутся из `Anchor.toml`, `rust-toolchain.toml`, `.nvmrc` |
-| `verify` | `npm run verify` — 28 проверок Node/Python, как в CI | около 3 минут |
+| `verify` | `npm run verify` — 35 проверок Node/Python, как в CI | около 3 минут |
 | `rust` | `npm run programs:gate` — `cargo fmt --check`, `clippy -D warnings`, `cargo test`; clippy и тесты с `--locked` | как в CI: только `deprecated` / `unexpected_cfgs` из макросов Anchor разрешены; первая компиляция всех зависимостей долгая |
-| `localnet` | сборка `--features localnet` + 92 сценария LiteSVM (`npm test`) | нужен `sb_mock` (подставной Switchboard); эти `.so` на devnet никогда не попадают |
+| `localnet` | сборка `--features localnet` + 160 сценариев LiteSVM в 18 файлах (`npm test`) | нужен `sb_mock` (подставной Switchboard); эти `.so` на devnet никогда не попадают |
 | `ids` | ключи программ и `declare_id!` (см. раздел 6) | |
 | `build` | сборка `--features devnet` + `verify-deploy artifact --cluster devnet` | `chip_core.so` и `arena.so` обязаны нести пины devnet-Switchboard и не нести ни `sb_mock`, ни mainnet |
 | `deploy` | 4 программы в devnet, затем `verify-deploy onchain` | сначала печатается бюджет (залог / пик / комиссии / резерв) и проверяется баланс; программа, байты которой уже лежат в devnet, пропускается; выросшая — сперва `program extend`; буфер загрузки переиспользуется, если его предыдущий запуск уже создал; на выходе: байты в сети == локальный `.so`, upgrade authority == ваш кошелёк |

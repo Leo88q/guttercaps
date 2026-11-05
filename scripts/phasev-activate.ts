@@ -225,7 +225,14 @@ async function main(): Promise<void> {
   console.log('collections back the same way, LAUNCH_PHASE=g / VITE_LAUNCH_PHASE=g, restart.');
 }
 
-main().catch((e) => {
-  console.error(e instanceof Error ? e.message : e);
-  process.exit(1);
-});
+// Находка 86: `main()` не завершает процесс, а `sendAndConfirmTransaction` из web3.js подтверждает подписку
+// через WebSocket и не закрывает сокет — после УСПЕШНОЙ работы event loop остаётся жить, и скрипт висит
+// навсегда (наблюдалось на `create-lut -- extend`: последняя строка напечатана, `[ok] этап setup` — нет).
+// Для шага, который вызывают из другого скрипта, это неотличимо от зависшей сети. Явный выход после успеха
+// делает конец работы наблюдаемым; правильное лечение — не WebSocket-подтверждение, а опрос статусов.
+main()
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error(e instanceof Error ? e.message : e);
+    process.exit(1);
+  });

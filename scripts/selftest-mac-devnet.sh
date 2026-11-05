@@ -609,5 +609,38 @@ pyth "faucet $TESTER" FAKE_BALANCE=500000000
 expect faucet "не хватает на перевод" "$log"                  # short of SOL: says so, does not try
 expect_not faucet "solana transfer" "$tmp/calls.log"
 
+# ---------------------------------------------------------------- 12. ids: ключи нужны для ВСЕХ программ дерева
+# Находка 84. `npm run program-ids -- apply` переписывает id ВСЕХ программ из `programs/*/src/lib.rs`, поэтому
+# ключи нужны для всех, а не только для тех, что деплоим в этот раз. Прежняя проверка смотрела на `$PROGRAMS`
+# (четыре), считала набор из четырёх ключей полным и уходила в `apply`, который падал стеком
+# `ENOENT … settle-keypair.json` посреди многочасового прогона.
+# Второе, что здесь держится: частичный набор НЕ приводит к выпуску новых ключей. Новый ключ — это новый
+# адрес программы, то есть деплой уехал бы на другие адреса и оставил прошлый жить на цепи; поэтому скрипт
+# обязан назвать недостающую программу и остановиться.
+ids_w="$tmp/ids"; rm -rf "$ids_w"; mkdir -p "$ids_w/scripts" "$ids_w/keys" "$ids_w/programs"
+cp "$script" "$ids_w/scripts/mac-devnet.sh"
+printf '[toolchain]\nchannel = "1.89.0"\n' > "$ids_w/rust-toolchain.toml"
+printf '22\n' > "$ids_w/.nvmrc"
+{
+  printf '[toolchain]\nanchor_version = "0.31.1"\nsolana_version = "2.1.0"\n\n[programs.devnet]\n'
+  printf 'chip_core = "%s"\nmarket = "%s"\nstaking = "%s"\narena = "%s"\nsettle = "%s"\n' \
+    "$OLD_ID" "$(printf '%s' "$OLD_ID" | tr A-Za-z N-ZA-Mn-za-m)" "$OLD_ID" "$OLD_ID" "$OLD_ID"
+} > "$ids_w/Anchor.toml"
+for prog in chip_core market staking arena settle; do
+  mkdir -p "$ids_w/programs/$prog/src"
+  printf 'declare_id!("%s");\n' "$OLD_ID" > "$ids_w/programs/$prog/src/lib.rs"
+done
+# ключи есть для четырёх из пяти — ровно состояние машины, на которой settle появилась в дереве позже
+for prog in chip_core market staking arena; do cp "$tmp/wallet.json" "$ids_w/keys/$prog-keypair.json"; done
+: > "$tmp/calls.log"
+( cd "$ids_w" && env PATH="$bud/bin:$PATH" HOME="$tmp/home" REPO_DIR="$ids_w" WALLET="$tmp/wallet.json" \
+    FAKE_CALLS="$tmp/calls.log" PROGRAM_KEYS_DIR="$ids_w/keys" KEYS_DIR="$tmp/home/.config/solana/guttercaps" \
+    bash scripts/mac-devnet.sh --no-update --yes --only ids ) < /dev/null > "$tmp/ids.log" 2>&1
+rc=$?
+check ids-partial "частичный набор ключей — это остановка" test "$rc" -ne 0
+expect ids-partial "нет ключа: $ids_w/keys/settle-keypair.json" "$tmp/ids.log"
+expect ids-partial "solana-keygen new --no-bip39-passphrase --silent -o $ids_w/keys/settle-keypair.json" "$tmp/ids.log"
+expect_not ids-partial "program-ids -- new" "$tmp/calls.log"   # ключи не выпускаются: адреса были бы новыми
+
 if [ "$fails" -gt 0 ]; then printf '\nselftest-mac-devnet: %s passed, %s FAILED\n' "$oks" "$fails" >&2; exit 1; fi
 printf '\nselftest-mac-devnet: %s checks passed\n' "$oks"

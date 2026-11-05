@@ -302,11 +302,16 @@ check('RENT_RESERVE_PER_CHIP (localnet)', int(line(rs('tests/localnet/10-packs.s
 // ---- program ids (SEC-L1): every hard-coded copy must agree with declare_id! ----
 // After `anchor keys sync` the declare_id!s change; this catches a stale copy in chip.rs (set_chip_flag
 // callers), Anchor.toml, the client/backend defaults and the ops scripts before it ships.
+// Находка 84 (часть): `settle` не проверялась здесь вовсе — гейт «все копии id согласны» знал четыре
+// программы из пяти, то есть ровно тот случай, который он и должен ловить («добавили программу и забыли
+// копию»), проходил мимо него. Остальные сайты (Anchor.toml × 3 кластера, клиент, бэкенд, ci.yml) ниже
+// берут список программ отсюда.
 const declared = {
   chip_core: line(rs('programs/chip_core/src/lib.rs'), /declare_id!\("([1-9A-HJ-NP-Za-km-z]{32,44})"\)/),
   market: line(market, /declare_id!\("([1-9A-HJ-NP-Za-km-z]{32,44})"\)/),
   staking: line(rs('programs/staking/src/lib.rs'), /declare_id!\("([1-9A-HJ-NP-Za-km-z]{32,44})"\)/),
   arena: line(arena, /declare_id!\("([1-9A-HJ-NP-Za-km-z]{32,44})"\)/),
+  settle: line(rs('programs/settle/src/lib.rs'), /declare_id!\("([1-9A-HJ-NP-Za-km-z]{32,44})"\)/),
 };
 const chipRs = rs('programs/chip_core/src/instructions/chip.rs');
 check('chip.rs MARKET_PROGRAM_ID == market::ID', line(chipRs, /MARKET_PROGRAM_ID: Pubkey = pubkey!\("([^"]+)"\)/), declared.market);
@@ -324,13 +329,23 @@ for (const cluster of ['localnet', 'devnet', 'mainnet']) {
   const section = line(anchorToml, new RegExp(`^\\[programs\\.${cluster}\\]\\n([\\s\\S]*?)(?=\\n\\[|$(?![\\s\\S]))`, 'm'));
   for (const [name, id] of Object.entries(declared)) check(`Anchor.toml [programs.${cluster}] ${name}`, line(section, new RegExp(`${name}\\s*=\\s*"([^"]+)"`)), id);
 }
-const idsIn = (src: string, pattern: (name: string) => RegExp) => Object.fromEntries(Object.keys(declared).map((n) => [n, line(src, pattern(n))]));
-const camel: Record<string, string> = { chip_core: 'chipCore', market: 'market', staking: 'staking', arena: 'arena' };
-const envName: Record<string, string> = { chip_core: 'CHIP_CORE', market: 'MARKET', staking: 'STAKING', arena: 'ARENA' };
+const idsIn = (src: string, pattern: (name: string) => RegExp, names: string[] = Object.keys(declared)) =>
+  Object.fromEntries(names.map((n) => [n, line(src, pattern(n))]));
+const camel: Record<string, string> = { chip_core: 'chipCore', market: 'market', staking: 'staking', arena: 'arena', settle: 'settle' };
+const envName: Record<string, string> = { chip_core: 'CHIP_CORE', market: 'MARKET', staking: 'STAKING', arena: 'ARENA', settle: 'SETTLE' };
 check('client/src/app/config.ts PROGRAM_IDS', idsIn(rs('client/src/app/config.ts'), (n) => new RegExp(`${camel[n]}: pk\\(env\\.VITE_PROGRAM_${envName[n]}, '([^']+)'\\)`)), declared);
 check('backend/src/config.ts PROGRAMS', idsIn(rs('backend/src/config.ts'), (n) => new RegExp(`${n}: pk\\(env\\.PROGRAM_${envName[n]}, '([^']+)'\\)`)), declared);
-for (const script of ['scripts/setup.ts', 'scripts/create-lut.ts']) {
-  check(`${script} program ids`, idsIn(rs(script), (n) => new RegExp(`process\\.env\\.PROGRAM_${envName[n]} \\?\\? '([^']+)'`)), declared);
+// Не каждый ops-скрипт знает каждую программу: `setup.ts` не трогает `settle` вовсе (её инициализация —
+// отдельная церемония), а `phasev-activate.ts` знает только её. Требовать все пять от всех трёх — это гейт,
+// который падает на «pattern not found» вместо того, чтобы проверять то, что в файле действительно есть.
+const scriptsWithIds: Record<string, string[]> = {
+  'scripts/setup.ts': ['chip_core', 'market', 'staking', 'arena'],
+  'scripts/create-lut.ts': Object.keys(declared),
+  'scripts/phasev-activate.ts': ['settle'],
+};
+for (const [script, names] of Object.entries(scriptsWithIds)) {
+  const subset = Object.fromEntries(names.map((n) => [n, declared[n as keyof typeof declared]]));
+  check(`${script} program ids`, idsIn(rs(script), (n) => new RegExp(`process\\.env\\.PROGRAM_${envName[n]} \\?\\? '([^']+)'`), names), subset);
 }
 
 // the devnet-smoke job in CI greps for the four deployed ids — a stale list there "passes" by finding
