@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { programIdsFromToml } from '../../scripts/lib/anchor-ids.ts';
+import { programIdFromToml, programIdsFromToml } from '../../scripts/lib/anchor-ids.ts';
 
 const repo = join(__dirname, '..', '..');
 const dockerfile = readFileSync(join(repo, 'ops/deploy/Dockerfile.client'), 'utf8');
@@ -52,10 +52,14 @@ describe('client image build wiring', () => {
     // eslint-disable-next-line no-console
     console.log(JSON.stringify({ listed, devnet }));
     expect(devnet).toHaveLength(5);
-    // ровно набор программ, которые уходят в бандл: ни одного «мёртвого» адреса и ни одного пропуска
+    // ровно набор программ, которые уходят в бандл: ни одного «мёртвого» адреса и ни одного пропуска.
+    // Ожидание выводится из Anchor.toml, а не из литерала: этот тест обязан пережить церемонию id (находка 93 —
+    // после `program-ids apply` он падал, потому что `Dockerfile.client` не было в ID_SITES и список оставался
+    // с прежними адресами).
     expect([...listed].sort()).toEqual([...devnet].sort());
-    // и главное: settle теперь проверяется
-    expect(listed).toContain('B9ousNDpe29G45KFHyndvHXpLigBtxCh9xbboWuCeXyP');
+    // и главное: settle теперь проверяется — по своему id из Anchor.toml, а не по закоммиченному
+    const settle = programIdFromToml(join(repo, 'Anchor.toml'), 'devnet', 'settle');
+    expect(listed).toContain(settle);
     expect(dockerfile).toContain('npm run program-ids -- guard-mainnet');
   });
 

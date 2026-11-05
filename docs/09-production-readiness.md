@@ -342,8 +342,9 @@ run `anchor keys sync` after the first `anchor build`» + `REGENERATE THE IDS BE
    (devnet и mainnet — разные секции!) → *не* запускать `keys sync`, а проверять `solana-keygen pubkey`
    по `target/deploy/<p>-keypair.json`.
 2. Смену id надо синхронно сделать во всех местах из контракта `ID_SITES` (`scripts/program-ids.ts` —
-   сейчас 13 файлов: `declare_id!`, `chip.rs`, `Anchor.toml`, клиент/бэкенд, `setup.ts`, `create-lut.ts`,
-   `ci.yml`, `docs/08`; живой список показывает `apply --dry-run`). Руками не править — только `apply`:
+   сейчас 18 файлов: `declare_id!`, `chip.rs`, `Anchor.toml`, клиент/бэкенд, `setup.ts`, `create-lut.ts`,
+   `phasev-activate.ts`, `ci.yml`, `PLACEHOLDERS` образа клиента и три ops-скрипта; живой список показывает
+   `apply --dry-run`). Руками не править — только `apply`:
    `check` падает на любом расхождении с `declare_id!`, а файл из `ID_SITES`, потерявший id (переименование),
    падает отдельно и громко.
 3. Один и тот же id в devnet и mainnet — **принятое решение** (один холодный keypair на обе сети:

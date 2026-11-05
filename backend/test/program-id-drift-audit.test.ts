@@ -118,3 +118,69 @@ describe('находка 85: ID_SITES знает каждую программу
     expect(missing, `добавьте в ID_SITES: ${missing.map((d) => `programs/${d}/src/lib.rs`).join(', ')}`).toEqual([]);
   });
 });
+
+// Находка 93 (2026-11-06, найдена на шаге 1 церемонии у владельца). `apply` переписывает id только в
+// `ID_SITES`, а `ops/deploy/Dockerfile.client` держит их копию — массив `PLACEHOLDERS`, единственную защиту от
+// mainnet-бандла с devnet-адресом. В списке его не было, поэтому церемония переписывала остальные места, а
+// guard оставался со старыми id, и `npm run verify` (последний шаг шага 1) падал на
+// `deploy-client-env-audit.test.ts`. Воспроизведено: замена id settle во всех прочих местах даёт 1 failed | 3
+// passed ровно в этом тесте.
+//
+// Правило шире одного файла: любой файл кода/конфига, где лежит текущий id программы, обязан быть в `ID_SITES`
+// (или в явном списке исключений ниже) — иначе церемония оставит его с прежним адресом, и расхождение
+// всплывёт не здесь, а на деплое.
+describe('находка 93: файл, содержащий id программы, обязан быть в ID_SITES', () => {
+  const ID_RE = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
+
+  const walk = (dir: string, out: string[] = []): string[] => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (['node_modules', 'target', '.git', 'dist', 'build', 'coverage'].includes(e.name)) continue;
+      const p = join(dir, e.name);
+      if (e.isDirectory()) walk(p, out);
+      else if (/\.(ts|tsx|rs|toml|json|yaml|yml|example|client|sh)$/.test(e.name) || e.name === 'Dockerfile.client') out.push(p);
+    }
+    return out;
+  };
+
+  // Публичные ключи, которые обязаны меняться вместе с id: список из scripts/program-ids.ts.
+  const idSites = (): string[] => {
+    const src = readFileSync(join(repo, 'scripts', 'program-ids.ts'), 'utf8');
+    const start = src.indexOf('const ID_SITES = [');
+    const body = src.slice(start, src.indexOf('] as const;', start));
+    return [...body.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  };
+
+  it('no code or config file carries a program id that `apply` would not rewrite', () => {
+    const declared = ['chip_core', 'market', 'staking', 'arena', 'settle']
+      .map((p) => {
+        const lib = readFileSync(join(repo, 'programs', p, 'src', 'lib.rs'), 'utf8');
+        return /declare_id!\("([1-9A-HJ-NP-Za-km-z]+)"\)/.exec(lib)?.[1];
+      })
+      .filter((x): x is string => Boolean(x));
+    expect(declared).toHaveLength(5);
+
+    const sites = new Set(idSites());
+    // Явные исключения, каждое — с причиной. `programs/program-ids.json` пишет `manifest` из этих же ключей;
+    // тестовые фикстуры берут произвольный валидный ключ, чтобы проверить кодирование, и не изображают
+    // адрес деплоя.
+    const fixture = /(^|\/)(test|tests)\/|\.test\.tsx?$|programs\/program-ids\.json$/;
+    // `watchtower/` — датированный снимок для внешнего интегратора (`integration-manifest.json`:
+    // `generatedAt` 2026-10-06, `verifiedCommit` — фиксированный) и синтетические фикстуры событий. Это
+    // артефакты отчёта, а не конфиг деплоя: их обновление — отдельное решение, а не побочный эффект `apply`.
+    const snapshot = /^watchtower\//;
+
+    const offenders: string[] = [];
+    for (const file of walk(repo)) {
+      const rel = file.slice(repo.length + 1);
+      if (sites.has(rel) || fixture.test(rel) || snapshot.test(rel)) continue;
+      const body = readFileSync(file, 'utf8');
+      if (declared.some((id) => body.includes(id))) offenders.push(rel);
+    }
+    expect(offenders, `добавьте в ID_SITES (scripts/program-ids.ts) или в исключения: ${offenders.join(', ')}`).toEqual([]);
+  });
+
+  it('the client image guard is one of those places (the case that actually broke)', () => {
+    // именно этот файл держит копию ВСЕХ пяти id — и именно он выпал из списка
+    expect(idSites()).toContain('ops/deploy/Dockerfile.client');
+  });
+});
