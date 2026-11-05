@@ -44,6 +44,8 @@
 #   MAC_DEVNET_OPS_RESERVE_SOL=X    operational SOL held back for setup / lookup table / crank / Pyth pusher
 #                                   (default 3; 2.5 and 2,5 mean the same). Printed as its own line, never folded
 #                                   into "network fees".
+#   STUB_BIN_DIR=DIR        (самотест) каталог подставных бинарников; init_path() ставит его ПЕРВЫМ, иначе
+#                           /usr/local/bin (Docker Desktop) и ~/.local/share/solana/... перебивают стубы
 #
 # Portable on purpose: macOS ships bash 3.2 — no associative arrays, mapfile, ${var,,}, `sed -i`.
 # No `set -u`/`set -e`: every step checks its own result so the failure names the stage and the fix.
@@ -118,11 +120,29 @@ confirm() { # confirm "question" -> 0 = yes
 }
 
 path_add() { [ -d "$1" ] || return 0; case ":$PATH:" in *":$1:"*) ;; *) PATH="$1:$PATH" ;; esac; export PATH; }
+# Перенести каталог в НАЧАЛО PATH, даже если он уже там есть. `path_add` такой случай пропускает, а именно он и
+# был дефектом (находка 94): каталог самотеста стоял в PATH, но init_path() успевал поставить перед ним системные.
+path_first() {
+  [ -n "$1" ] && [ -d "$1" ] || return 0
+  local rest="" p
+  local old_ifs=$IFS; IFS=:
+  for p in $PATH; do [ "$p" = "$1" ] && continue; rest="${rest:+$rest:}$p"; done
+  IFS=$old_ifs
+  PATH="$1${rest:+:$rest}"; export PATH
+  hash -r 2>/dev/null
+}
 init_path() {
   path_add /usr/local/bin; path_add /opt/homebrew/bin
   path_add "$HOME/.local/share/solana/install/active_release/bin"
   path_add "$HOME/.avm/bin"; path_add "$HOME/.cargo/bin"
   path_add /Applications/Docker.app/Contents/Resources/bin
+  # Находка 94. Самотест (`scripts/selftest-mac-devnet.sh`) зовёт этот скрипт с подставными бинарниками
+  # (solana, docker, curl, npm) во главе PATH. Строки выше ставят системные каталоги ВПЕРЁД, а на macOS
+  # Docker Desktop кладёт CLI в /usr/local/bin и активный toolchain Solana — в ~/.local/share/solana/...:
+  # настоящий docker выигрывал у стуба, этап pyth уходил тянуть образ xc-price-pusher с CloudFront, падал на
+  # таймауте и выглядел как дефект продукта (`docker run lacks: …` — это пустой лог стуба, который ни разу не
+  # вызвали). Кто подставил свои бинарники, остаётся первым — иначе «изолированный» тест ходит в сеть.
+  path_first "${STUB_BIN_DIR:-}"
 }
 
 sha256_stdin() { if have shasum; then shasum -a 256 | cut -d' ' -f1; else sha256sum | cut -d' ' -f1; fi; }
