@@ -163,7 +163,7 @@ EOF
 chmod +x "$bin/solana" "$bin/solana-keygen"
 deploy() { # <extra env assignments...>; output -> $log
   log="$tmp/deploy.log"; : > "$tmp/calls.log"
-  ( cd "$work" && env PATH="$bin:$PATH" HOME="$tmp/home" REPO_DIR="$work" WALLET="$tmp/wallet.json" FAKE_CALLS="$tmp/calls.log" "$@" \
+  ( cd "$work" && env PATH="$bin:$PATH" STUB_BIN_DIR="$bin" HOME="$tmp/home" REPO_DIR="$work" WALLET="$tmp/wallet.json" FAKE_CALLS="$tmp/calls.log" "$@" \
       bash scripts/mac-devnet.sh --no-update --yes --only deploy ) > "$log" 2>&1
   rc=$?
 }
@@ -302,7 +302,7 @@ lacks() { ! grep -qF -- "$1" "$2"; }
 lacks_re() { ! grep -qE -- "$1" "$2"; }
 budget() { # <env assignments...>; output -> $log, exit code -> $rc
   log="$tmp/budget.log"; : > "$tmp/calls.log"
-  ( cd "$work" && env PATH="$bud/bin:$PATH" HOME="$tmp/home" REPO_DIR="$work" WALLET="$tmp/wallet.json" \
+  ( cd "$work" && env PATH="$bud/bin:$PATH" STUB_BIN_DIR="$bud/bin" HOME="$tmp/home" REPO_DIR="$work" WALLET="$tmp/wallet.json" \
       FAKE_CALLS="$tmp/calls.log" FAKE_SO_DIR="$work/target/deploy" PROGRAM_KEYS_DIR="$work/keys" \
       KEYS_DIR="$tmp/home/.config/solana/guttercaps" "$@" \
       bash scripts/mac-devnet.sh --no-update --yes --only deploy ) < /dev/null > "$log" 2>&1
@@ -527,12 +527,26 @@ case "$*" in
 esac
 EOF
 chmod +x "$bin2"/*
+# Находка 94: на macOS настоящий docker — это /usr/local/bin/docker, а init_path() ставит /usr/local/bin ВПЕРЁД,
+# поэтому стуб не вызывался: этап pyth тянул образ из CloudFront и падал на таймауте. Здесь это воспроизводится
+# переносимо: «системный» каталог из init_path() получает docker-отравитель, а $bin2 идёт в PATH после него.
+# С исправлением (STUB_BIN_DIR) стуб обязан выиграть; без него — отравитель, и тест красный на любой машине.
+POISON="$tmp/home/.local/share/solana/install/active_release/bin"
+mkdir -p "$POISON"
+cat > "$POISON/docker" <<'EOF'
+#!/bin/sh
+echo "POISON docker $*" >> "$FAKE_CALLS"
+echo "docker: failed to copy: httpReadSeeker: failed do request: net/http: timeout awaiting response headers" >&2
+exit 1
+EOF
+chmod +x "$POISON/docker"
+
 GOOD_KEY=goodkey-SECRET-7f3a
 pyth() { # <mode flags…> -- <env assignments…>; output -> $log, exit code -> $rc
   local flags="$1"; shift
   log="$tmp/pyth.log"; : > "$tmp/calls.log"; rm -f "$tmp/calls.log.up" "$tmp/calls.log.run"
   # shellcheck disable=SC2086  # $flags is a list of words on purpose
-  ( cd "$work" && env PATH="$bin2:$PATH" HOME="$tmp/home" REPO_DIR="$work" WALLET="$tmp/wallet.json" FAKE_CALLS="$tmp/calls.log" \
+  ( cd "$work" && env PATH="$bin2:$PATH" STUB_BIN_DIR="$bin2" HOME="$tmp/home" REPO_DIR="$work" WALLET="$tmp/wallet.json" FAKE_CALLS="$tmp/calls.log" \
       HERMES_URL=http://hermes.invalid PYTH_WAIT_S=10 "$@" bash scripts/mac-devnet.sh --no-update --yes $flags ) < /dev/null > "$log" 2>&1
   rc=$?
 }
@@ -562,6 +576,8 @@ expect_not pyth-ok "$GOOD_KEY" "$log"                                    # the k
 check pyth-ok "…nor the pusher log file" test "$(grep -c "$GOOD_KEY" "$work/target/mac-devnet/logs/pyth-pusher.log" 2>/dev/null)" = 0
 check pyth-ok "the key is saved, readable only by the user" test "$(cat "$tmp/home/.config/solana/guttercaps/pyth-api-key")" = "$GOOD_KEY"
 check pyth-ok "…mode 600" test -n "$(find "$tmp/home/.config/solana/guttercaps/pyth-api-key" -perm 600 2>/dev/null)"
+check pyth-ok "the stub docker ran (not the host's, находка 94)" test -s "$tmp/calls.log.run"
+expect_not pyth-ok "POISON" "$tmp/calls.log"     # системный каталог не должен перебивать стубы
 
 pyth "--only pyth" PYTH_API_KEY=bad-key
 check pyth-denied "a rejected key fails" test "$rc" -ne 0
@@ -633,7 +649,7 @@ done
 # ключи есть для четырёх из пяти — ровно состояние машины, на которой settle появилась в дереве позже
 for prog in chip_core market staking arena; do cp "$tmp/wallet.json" "$ids_w/keys/$prog-keypair.json"; done
 : > "$tmp/calls.log"
-( cd "$ids_w" && env PATH="$bud/bin:$PATH" HOME="$tmp/home" REPO_DIR="$ids_w" WALLET="$tmp/wallet.json" \
+( cd "$ids_w" && env PATH="$bud/bin:$PATH" STUB_BIN_DIR="$bud/bin" HOME="$tmp/home" REPO_DIR="$ids_w" WALLET="$tmp/wallet.json" \
     FAKE_CALLS="$tmp/calls.log" PROGRAM_KEYS_DIR="$ids_w/keys" KEYS_DIR="$tmp/home/.config/solana/guttercaps" \
     bash scripts/mac-devnet.sh --no-update --yes --only ids ) < /dev/null > "$tmp/ids.log" 2>&1
 rc=$?
