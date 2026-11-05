@@ -52,6 +52,18 @@ const ID_SITES = [
   'scripts/setup.ts',
   'scripts/create-lut.ts',
   'scripts/phasev-activate.ts',
+  // Находка 93: `PLACEHOLDERS` в образе клиента — это копия всех пяти id (единственная защита от mainnet-бандла
+  // с devnet-адресом). В списке её не было, поэтому церемония `apply` переписывала 14 мест, а она оставалась
+  // с прежними id: `npm run verify` в шаге 1 церемонии падал на `deploy-client-env-audit.test.ts` — ровно там,
+  // где человек и так делает много непривычного.
+  'ops/deploy/Dockerfile.client',
+  // Находка 93, те же копии id, найденные новым правилом («файл кода с id программы обязан быть в списке»):
+  // claim-doctor читает по этому адресу аккаунты претензий, а оба соак-скрипта — pending-состояние и паки.
+  // После церемонии они продолжали бы смотреть на прежний адрес — тихо, потому что программа по нему ещё
+  // отвечает (она осталась на цепи), просто это уже не та программа, которую задеплоили.
+  'scripts/claim-doctor.ts',
+  'scripts/load/soak-g3.ts',
+  'scripts/load/soak-validate.ts',
 ] as const;
 
 const read = (p: string) => readFileSync(resolve(root, p), 'utf8');

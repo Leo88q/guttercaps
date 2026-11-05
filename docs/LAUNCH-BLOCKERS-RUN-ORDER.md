@@ -83,7 +83,7 @@ KEYS=~/.config/solana/guttercaps/programs
 
 npm run program-ids -- check --from "$KEYS"              # 5/5 OK — это и есть источник истины
 npm run program-ids -- apply --from "$KEYS" --dry-run    # показывает «chip_core: <старый> → <новый> (N файлов)»
-npm run program-ids -- apply --from "$KEYS"              # переписывает 13 сайтов и сам сверяет declare_id! с ключами
+npm run program-ids -- apply --from "$KEYS"              # переписывает 18 сайтов и сам сверяет declare_id! с ключами
 npm run economy:check                                    # id завязаны на экономику через setup/CI
 npm run program-ids -- manifest --from "$KEYS"           # пишет freeze-запись programs/program-ids.json
 npm run program-ids -- check --from "$KEYS"              # строгая проверка: exit 1 на unverified/расхождении
@@ -93,6 +93,13 @@ npm run verify                                           # полный прог
 
 Если `guard-mainnet` всё ещё красный, он печатает причину построчно; типичная — в записи `keypairPresent: false`,
 то есть `manifest` писали не с `--from "$KEYS"`.
+
+**Почему `apply`, а не правка руками (находка 93).** `apply` переписывает 18 мест, и список — не только
+`declare_id!` с `Anchor.toml`: в нём же `PLACEHOLDERS` образа клиента (защита от mainnet-сборки с devnet-адресом)
+и три ops-скрипта (`claim-doctor`, `soak-g3`, `soak-validate`), которые иначе продолжали бы смотреть на прежний
+адрес — тихо, потому что старая программа на цепи отвечает. Файл кода или конфига с id программы, которого нет в
+`ID_SITES`, теперь валит `backend/test/program-id-drift-audit.test.ts` — то есть `npm run verify` в конце шага 1
+ловит это до деплоя, а не после.
 
 Коммит и PR (id — публичные ключи, их коммитить не только можно, но и нужно: иначе клиент и бэкенд говорят не с теми
 программами):

@@ -272,10 +272,13 @@ pin_node=$(tr -d 'v \r\n' < .nvmrc 2>/dev/null)
 
 # The files `npm run program-ids -- apply` rewrites (scripts/program-ids.ts ID_SITES). Edits that only
 # change public keys in these files are regenerable from the keypairs, so the updater may drop them.
+# Список обязан совпадать с `ID_SITES` в scripts/program-ids.ts (находка 93 добавила туда Dockerfile.client:
+# в нём `PLACEHOLDERS` — копия всех пяти id для mainnet-guard'а).
 ID_SITES="programs/chip_core/src/lib.rs programs/market/src/lib.rs programs/staking/src/lib.rs programs/arena/src/lib.rs
 programs/settle/src/lib.rs programs/chip_core/src/instructions/chip.rs Anchor.toml client/src/app/config.ts
 client/.env.example backend/src/config.ts .github/workflows/ci.yml scripts/setup.ts scripts/create-lut.ts
-scripts/phasev-activate.ts"
+scripts/phasev-activate.ts ops/deploy/Dockerfile.client scripts/claim-doctor.ts
+scripts/load/soak-g3.ts scripts/load/soak-validate.ts"
 
 solana_ver() { solana --version 2>/dev/null | sed -n 's/^solana-cli \([0-9][0-9.]*\).*/\1/p' | head -1; }
 anchor_ver() { anchor --version 2>/dev/null | sed -n 's/^anchor-cli \([0-9][0-9.]*\).*/\1/p' | head -1; }
