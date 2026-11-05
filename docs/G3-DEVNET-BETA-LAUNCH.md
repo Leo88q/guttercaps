@@ -273,6 +273,8 @@ Prometheus/Grafana — опционально (кранк уже экспорт�
 
 ## 8. Чеклист «прямо сейчас»
 
+Порядок всех блокеров запуска с командами (включая этот чеклист) — `docs/LAUNCH-BLOCKERS-RUN-ORDER.md`.
+
 ```bash
 # 1. проверки
 npm run security:static && npm run load:soak-g3:test && npm run workflows:check
