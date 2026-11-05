@@ -47,7 +47,12 @@ export function gauge(name: string, value: number, labels?: Labels): void {
 }
 
 /** Latency buckets in ms — the standard set, so alert rules can be copied between services. */
-export const BUCKETS = [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
+// Buckets end at the largest latency this product actually has a bound for: the crank SLA is
+// **commit → CompressedPackSettled p95 ≤ 20 s** (docs/06 §4.3, the G-3 gate), so a histogram that stops at
+// 10 s cannot tell "meets the SLA" from "twice the SLA" — every sample above 10 s lands in `+Inf` and the
+// quantile becomes unanswerable exactly when it matters. 20 s / 30 s / 60 s sit above the bound on purpose:
+// the first is the gate itself, the other two say how far past it a bad run went.
+export const BUCKETS = [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 20000, 30000, 60000];
 export function observe(name: string, ms: number, labels?: Labels): void {
   describe(name, `${name.replace(/_/g, ' ')} (latency, ms)`);
   const k = key(name, labels);
@@ -56,6 +61,18 @@ export function observe(name: string, ms: number, labels?: Labels): void {
   h.sum += ms;
   h.count += 1;
   for (const b of BUCKETS) if (ms <= b) h.buckets.set(b, (h.buckets.get(b) ?? 0) + 1);
+}
+
+/**
+ * Declare a histogram family before the first sample exists. Without this a series that only appears once
+ * the crank has finished a job cannot be alerted on: the rule queries a name that /metrics does not carry
+ * yet, and `histogram_quantile` over no series is silence, not "healthy". An empty histogram (count 0, every
+ * bucket 0) is valid Prometheus and answers NaN to the quantile — which is the correct answer for "no data".
+ */
+export function histogram(name: string, help?: string): void {
+  describe(name, help ?? `${name.replace(/_/g, ' ')} (latency, ms)`);
+  const k = key(name);
+  if (!histograms.has(k)) histograms.set(k, { sum: 0, count: 0, buckets: new Map(BUCKETS.map((b) => [b, 0])) });
 }
 
 /** A gauge computed at scrape time — the only place on this path that may touch the DB or the RPC. */
@@ -127,4 +144,4 @@ export function seriesCount(): number {
   return counters.size + gauges.size + scrapeGauges.length + histograms.size * (BUCKETS.length + 3);
 }
 
-export const metrics = { counter, gauge, observe, describe, registerScrape, exposition, resetForTests, seriesCount };
+export const metrics = { counter, gauge, observe, histogram, describe, registerScrape, exposition, resetForTests, seriesCount };

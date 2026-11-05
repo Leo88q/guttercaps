@@ -34,8 +34,6 @@
 // randomness account's authority is the program PDA, not a keypair.
 //
 //   CRANK_KEYPAIR=~/.config/solana/crank.json npm run crank
-import { readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { Connection, Keypair, PublicKey, type AddressLookupTableAccount, type TransactionInstruction } from '@solana/web3.js';
 import { PACKS, STALE_PACK_SLOTS, expandRandomness, type PackDef as EconPackDef } from '@guttercaps/economy';
 import {
@@ -59,6 +57,8 @@ import {
 } from './chain.ts';
 import { DasClient, DasError, discoverLeafNonce, resolveClaimFromTreeAccount, type DasAssetWithProof } from './das.ts';
 import { TxError, fitsInTx, loadLookupTables, sendAndConfirm } from './tx.ts';
+import { loadSigner } from './keys.ts';
+import { metrics } from './metrics.ts';
 import { reconcileChainOps } from './chain-ops.ts';
 import { toEconPack, voucherEconPack } from './econ-pack.ts';
 
@@ -309,6 +309,13 @@ export class Crank {
   }
   job(key: string): Job | undefined { return this.db.get<Job>(`SELECT * FROM crank_jobs WHERE key = ?`, key); }
   private setPhase(job: Job, phase: Phase, patch: Partial<Pick<Job, 'reveal_sig' | 'close_sig' | 'last_error' | 'next_at'>> = {}) {
+    // SLA «commit → CompressedPackSettled p95 ≤ 20 s» (docs/06 §4.3, the G-3 gate) needs a distribution,
+    // not a log line: this is the only moment the queue knows a job finished, and `created_at` is when the
+    // indexer saw the commit — so the difference is exactly the wait a player experiences. Observed on the
+    // *transition*, so retries and close steps do not count the same job twice.
+    if (phase === 'settled' && job.phase !== 'settled') {
+      metrics.observe('crank_settle_latency_ms', Math.max(0, this.now() - job.created_at), { kind: String(job.kind) });
+    }
     this.db.run(
       `UPDATE crank_jobs SET phase = ?, attempts = 0, next_at = ?, last_error = ?, reveal_sig = COALESCE(?, reveal_sig), close_sig = COALESCE(?, close_sig), updated_at = ? WHERE key = ?`,
       phase, patch.next_at ?? 0, patch.last_error ?? null, patch.reveal_sig ?? null, patch.close_sig ?? null, this.now(), job.key,
@@ -918,6 +925,7 @@ export class Crank {
 
   // ---------------------------------------------------------------- scheduling
   async processJob(job: Job): Promise<void> {
+    const started = Date.now();
     try {
       // checked before any gateway/RPC work: a drained key must not turn into a request storm at the oracle
       if (!(await this.canSpend())) { this.db.run(`UPDATE crank_jobs SET next_at = ?, updated_at = ? WHERE key = ?`, this.now() + 30_000, this.now(), job.key); return; }
@@ -929,6 +937,10 @@ export class Crank {
       return await this.processBattle(job);
     } catch (e) {
       this.fail(job, e);
+    } finally {
+      // Separate from the settle latency on purpose: this one answers «is the worker slow» (gateway, RPC,
+      // transaction size), that one answers «is the queue slow» (backlog, concurrency, retries).
+      metrics.observe('crank_job_duration_ms', Date.now() - started, { kind: String(job.kind) });
     }
   }
 
@@ -965,10 +977,13 @@ export class Crank {
   }
 }
 
-export function loadKeypair(path = CRANK_KEYPAIR): Keypair {
-  if (!path) throw new Error('CRANK_KEYPAIR is not set (path to a solana-keygen JSON file)');
-  const p = path.replace(/^~/, homedir());
-  return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(p, 'utf8'))));
+/**
+ * Every key in this process comes through here, and through `keys.ts`: `file:` / bare path / `env:` work,
+ * `kms://` is refused by name. `variable` is passed by each caller so the refusal names the variable that
+ * is actually wrong — "invalid secret" during boot is useless when five keys are configured.
+ */
+export function loadKeypair(spec: string | undefined = CRANK_KEYPAIR, variable = 'CRANK_KEYPAIR'): Keypair {
+  return loadSigner(variable, spec);
 }
 
 export async function crank(log: (s: string) => void = console.log) {
@@ -1003,7 +1018,7 @@ export async function crank(log: (s: string) => void = console.log) {
   const { sendChipMint } = await import('./bubblegum-mint.ts');
   const { PublicKey: PK } = await import('@solana/web3.js');
   const phaseGTree = lp === 'g' && smt && mak ? new PK(smt) : null;
-  const phaseGAuthority = phaseGTree ? loadKeypair(mak) : null;
+  const phaseGAuthority = phaseGTree ? loadKeypair(mak, 'MINT_AUTHORITY_KEYPAIR') : null;
   if (phaseGTree && phaseGAuthority) log(`[crank] phase-G mint crank on tree ${phaseGTree.toBase58()} authority ${phaseGAuthority.publicKey.toBase58()}`);
   // §1.2: старт-ап проход по ledger'у — «что было отправлено до падения» досверяется ДО того, как
   // воркер начнёт принимать новую работу. Иначе первый же тик может отправить второй платёж по строке,
@@ -1089,7 +1104,7 @@ export async function crank(log: (s: string) => void = console.log) {
         // начисление шло, тот же срез платился бы дважды — из пула и переводом из казны.
         if (mak) {
           const { makeCgPayoutSender } = await import('./phaseg-payout.ts');
-          const pay = await processPayouts(dbv, makeCgPayoutSender(connection, loadKeypair(mak), dbv));
+          const pay = await processPayouts(dbv, makeCgPayoutSender(connection, loadKeypair(mak, 'MINT_AUTHORITY_KEYPAIR'), dbv));
           if (pay.paid > 0) log(`[crank] phase-V paid ${pay.paid} reward claims`);
         }
       } catch (e) {

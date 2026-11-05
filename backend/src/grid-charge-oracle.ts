@@ -118,7 +118,7 @@ export async function gridChargeOracle(log: (s: string) => void): Promise<void> 
     log('[grid-charge-oracle] GRID_CHARGE_ORACLE_KEYPAIR / PLAY_ORACLE_KEYPAIR / SET_ORACLE_KEYPAIR unset — staked droplets stay unattested until an oracle is mounted');
     while (true) await sleep(GRID_CHARGE_ORACLE_INTERVAL_MS);
   }
-  const payer = loadKeypair(GRID_CHARGE_ORACLE_KEYPAIR);
+  const payer = loadKeypair(GRID_CHARGE_ORACLE_KEYPAIR, 'GRID_CHARGE_ORACLE_KEYPAIR');
   const connection = getConnection();
   log(`[grid-charge-oracle] key ${payer.publicKey.toBase58()} · every ${GRID_CHARGE_ORACLE_INTERVAL_MS / 1000}s`);
   while (true) {

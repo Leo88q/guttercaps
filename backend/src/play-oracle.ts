@@ -59,7 +59,7 @@ export async function playOracle(log: (s: string) => void): Promise<void> {
     log('[play-oracle] PLAY_ORACLE_KEYPAIR / SET_ORACLE_KEYPAIR unset — idle chips stay at 25 % weight until an oracle is mounted');
     while (true) await sleep(PLAY_ORACLE_INTERVAL_MS);
   }
-  const payer = loadKeypair(PLAY_ORACLE_KEYPAIR);
+  const payer = loadKeypair(PLAY_ORACLE_KEYPAIR, 'PLAY_ORACLE_KEYPAIR');
   const connection = getConnection();
   log(`[play-oracle] key ${payer.publicKey.toBase58()} · every ${PLAY_ORACLE_INTERVAL_MS / 1000}s`);
   while (true) {

@@ -3,6 +3,7 @@
 import { PublicKey } from '@solana/web3.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { keySourceProblem } from './keys.ts';
 
 const env = process.env;
 
@@ -234,6 +235,39 @@ export function prodProfileProblems(o: Record<string, string | undefined>): stri
 }
 
 /**
+ * Every key-shaped variable this process can be handed. They are validated by *loading* them
+ * (`keys.ts`), not by checking that the string is non-empty: `kms://…` used to pass every check and
+ * then fail with an ENOENT on the first `open_pack`, hours after the deploy said OK.
+ */
+export const SIGNER_VARS = [
+  'CRANK_KEYPAIR',
+  'MINT_AUTHORITY_KEYPAIR',
+  'PHASEV_ORACLE_KEYPAIR',
+  'QUEST_ORACLE_KEYPAIR',
+  'SEASON_ORACLE_KEYPAIR',
+  'SET_ORACLE_KEYPAIR',
+  'BATTLE_ORACLE_KEYPAIR',
+  'BURN_ORACLE_KEYPAIR',
+  'PLAY_ORACLE_KEYPAIR',
+  'GRID_CHARGE_ORACLE_KEYPAIR',
+] as const;
+
+/**
+ * A signer that cannot be loaded is a deployment that takes money and never delivers — and the process
+ * that takes the money (this one) is not the process that would have hit the error (the worker). So the
+ * keys are checked here, at boot, for every variable *that is set*: a partially configured deployment (no
+ * reward oracle yet) stays legal, a misconfigured one does not start.
+ */
+export function signerProblems(o: Record<string, string | undefined> = env): string[] {
+  const problems: string[] = [];
+  for (const name of SIGNER_VARS) {
+    const p = keySourceProblem(name, o[name], o as NodeJS.ProcessEnv);
+    if (p) problems.push(p);
+  }
+  return problems;
+}
+
+/**
  * Production fail-fast (SEC-M4): refuse to start with dev defaults that would silently weaken
  * auth — wildcard CORS with credentials, insecure cookies, ephemeral session secret, no SIWS domain.
  */
@@ -242,6 +276,8 @@ export function assertProductionConfig(): void {
   const problems: string[] = [];
   if (CORS_ORIGINS.includes('*')) problems.push('CORS_ORIGINS must be an explicit allowlist (no `*`)');
   if (!BUBBLEGUM_V2_ENABLED) problems.push('BUBBLEGUM_V2_ENABLED=1 is required after the Bubblegum V2 migration and its release gates are complete');
+  // Находка 91: ключи проверяются загрузкой — форма, монтирование и длина секрета, а не «строка непустая».
+  problems.push(...signerProblems());
   if (!COOKIE_SECURE) problems.push('COOKIE_SECURE=1 is required (https)');
   if (COOKIE_SAMESITE === 'none' && !COOKIE_SECURE) problems.push('COOKIE_SAMESITE=none requires COOKIE_SECURE=1 — a browser drops a `SameSite=None` cookie without `Secure`, so sessions would silently never persist');
   if (COOKIE_SAMESITE === 'none' && env.CROSS_SITE_CLIENT !== '1') problems.push('COOKIE_SAMESITE=none weakens CSRF defence to allow a cross-site client: set CROSS_SITE_CLIENT=1 to state that the API and the web client really are on different hosts (the default deploy serves both from one origin, where `lax` is strictly better)');
