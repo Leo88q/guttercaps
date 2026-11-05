@@ -83,6 +83,30 @@ groups:
           summary: 'A crank job was abandoned — a player has paid and not received a pack'
           description: 'Manual reveal path is in docs/06 §3.3 / runbook §6.1. This is the only alert in this file that is always money.'
 
+      # Находка 92: `crank_stale_jobs` — задания, у которых пропущено окно раскрытия (Switchboard не
+      # успел, воркер стоял, RPC лежал). Это не `abandoned` (тот уже потерян и требует ручного раскрытия),
+      # но и не «всё в порядке»: каждый такой джоб закрывается игроком через `cancel_stale_pack`, то есть
+      # возвратом. Порог 0 и `for: 30m`, чтобы одна гонка на границе окна не будила дежурного.
+      - alert: CrankStaleJobs
+        expr: crank_stale_jobs > 0
+        for: 30m
+        labels: { severity: ticket }
+        annotations:
+          summary: '{{ $value }} crank job(s) missed the reveal window'
+          description: '`cancel_stale_pack` / `cancel_stale_fusion` refund the player, so this is money going back rather than packs going out. Look for the reason first: the reveal gateway (`[crank] … gateway`), CRANK_CONCURRENCY, or an RPC stall longer than the Switchboard window. `/v1/health.crank` shows the same numbers next to `headAgeS`.'
+
+      # SLA из docs/06 §4.3: commit → CompressedPackSettled p95 ≤ 20 s. Гистограмма
+      # `crank_settle_latency_ms` (crank.ts, переход в `settled`) считает от момента, когда индексатор увидел
+      # commit, до завершения раскрытия — то есть ровно то, что видит игрок. Бакеты специально доходят до
+      # 60 s: при верхней границе 10 s квант 20 s был бы неотличим от «больше 10 s» (metrics.ts, BUCKETS).
+      - alert: CrankSettleLatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(crank_settle_latency_ms_bucket[15m]))) > 20000
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: 'Crank p95 settle latency above the 20 s SLA'
+          description: 'The G-3 gate (14-day soak) reads this same series. Check `crank_job_duration_ms` next to it: that one is the worker (gateway/RPC/tx size), while this one also contains the wait in the queue (`crank_pending_jobs`, CRANK_CONCURRENCY).'
+
       - alert: CrankBacklog
         expr: crank_pending_jobs > 200
         for: 10m

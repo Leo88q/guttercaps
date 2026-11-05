@@ -64,10 +64,15 @@ describe('G-3 Soak Bot Configuration', () => {
     
     // Check G-3 targets
     expect(content).toContain('10000'); // TARGET_PACKS
-    expect(content).toContain('500'); // Fusions target
-    expect(content).toContain('100'); // Risky fusions target
-    expect(content).toContain('200'); // Wager matches target
-    expect(content).toContain('20000'); // 20 seconds in ms
+    // The transaction-count targets and the 20 s latency budget live in one place each: the counts here and
+    // `CRANK_P95_BUDGET_MS` in soak-metrics.ts (which the gate reads). A second literal 20 000 in the bot is
+    // how a threshold drifts away from its own documentation.
+    expect(content).toContain('evaluateSoakGate');
+    const metricsModule = readFileSync(join(__dirname, 'soak-metrics.ts'), 'utf-8');
+    expect(metricsModule).toContain('export const CRANK_P95_BUDGET_MS = 20_000;');
+    expect(metricsModule).toContain('Fusions (>= 500)');
+    expect(metricsModule).toContain('Risky fusions (>= 100)');
+    expect(metricsModule).toContain('Wager matches (>= 200)');
   });
 
   it('should have operation functions', () => {
@@ -79,12 +84,14 @@ describe('G-3 Soak Bot Configuration', () => {
     expect(content).toContain('async function createWagerMatch');
   });
 
-  it('should have monitoring functions', () => {
-    const soakBotPath = join(__dirname, 'soak-g3.ts');
-    const content = readFileSync(soakBotPath, 'utf-8');
-    
-    expect(content).toContain('checkPendingStates');
-    expect(content).toContain('checkCrankMetrics');
+  it('should sample the deployment instead of simulating the two KPIs it cannot see', () => {
+    const content = readFileSync(join(__dirname, 'soak-g3.ts'), 'utf-8');
+
+    // находка 92: these were `checkPendingStates`/`checkCrankMetrics` full of Math.random().
+    expect(content).toContain('sampleDeployment');
+    expect(content).toContain('SoakSampler');
+    expect(content).not.toContain('checkPendingStates');
+    expect(content).not.toContain('checkCrankMetrics');
   });
 
   it('should have metrics tracking', () => {
@@ -95,9 +102,11 @@ describe('G-3 Soak Bot Configuration', () => {
     expect(content).toContain('packsPurchased');
     expect(content).toContain('fusionsCompleted');
     expect(content).toContain('wagerMatches');
-    expect(content).toContain('abandonedPending');
-    expect(content).toContain('stalePending');
-    expect(content).toContain('crankP95Ms');
+    // Pending state and latency are not fields the bot makes up any more: they are a summary of what the
+    // sampler read (scripts/load/soak-metrics.ts), and that module has its own behavioural tests.
+    expect(content).toContain('sampled: SamplerSummary');
+    expect(content).not.toContain('abandonedPending');
+    expect(content).not.toContain('crankP95Ms');
   });
 
   it('should have G-3 gate validation', () => {
@@ -106,7 +115,8 @@ describe('G-3 Soak Bot Configuration', () => {
     
     expect(content).toContain('G-3 Gate');
     expect(content).toContain('GATE VALIDATION');
-    expect(content).toContain('allPass');
+    expect(content).toContain('evaluateSoakGate');
+    expect(content).toContain('process.exit(gate.pass ? 0 : 1)');
   });
 
   it('should have graceful shutdown', () => {
@@ -219,13 +229,16 @@ describe('G-3 Requirements Validation', () => {
     }
   });
 
-  it('should have implementation status markers', () => {
-    const docPath = join(__dirname, 'soak-g3.md');
-    const content = readFileSync(docPath, 'utf-8');
-    
+  it('should document that every KPI is measured, and through which endpoint', () => {
+    const content = readFileSync(join(__dirname, 'soak-g3.md'), 'utf-8');
+
     expect(content).toContain('✅');
     expect(content).toContain('⚠️');
     expect(content).toContain('Implemented');
-    expect(content).toContain('Placeholder');
+    // The old text explained three SIMULATED placeholders; the doc must now name the sources instead.
+    expect(content).toContain('/v1/health');
+    expect(content).toContain('crank_settle_latency_ms');
+    expect(content).toContain('UNMEASURED');
+    expect(content).not.toContain('random 1.5–6.5s');
   });
 });

@@ -55,7 +55,7 @@
     "load:lt1": "k6 run scripts/load/lt1.js",
     "load:lt3": "node --no-warnings=ExperimentalWarning --import tsx scripts/load/lt3.ts",
     "load:soak-g3": "node --no-warnings=ExperimentalWarning --import tsx scripts/load/soak-g3.ts",
-    "load:soak-g3:test": "vitest run scripts/load/soak-g3.test.ts",
+    "load:soak-g3:test": "vitest run scripts/load/soak-g3.test.ts scripts/load/soak-metrics.test.ts",
     "load:soak-g3:validate": "node --no-warnings=ExperimentalWarning --import tsx scripts/load/soak-validate.ts",
     "openapi:gen": "cd client && npx openapi-typescript ../backend/openapi.yaml -o src/api/schema.d.ts",
     "ops:up": "docker compose -f ops/deploy/docker-compose.yaml up -d",
@@ -102,7 +102,8 @@
     "setup:minimal": "node --experimental-strip-types scripts/setup-minimal.ts",
     "phasev:activate": "node --experimental-strip-types scripts/phasev-activate.ts",
     "launch:check": "node --experimental-strip-types scripts/launch-check.ts",
-    "phasev:smoke": "node --experimental-strip-types scripts/phasev-smoke.ts"
+    "phasev:smoke": "node --experimental-strip-types scripts/phasev-smoke.ts",
+    "load:soak-metrics:selftest": "node --experimental-strip-types scripts/load/soak-metrics.ts --selftest"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",

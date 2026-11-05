@@ -233,7 +233,7 @@ export function burnOracleStatus(db: Db, nowMs = Date.now()) {
 }
 
 export async function burnOracle(log: (s: string) => void = console.log) {
-  const payer = loadKeypair(BURN_ORACLE_KEYPAIR || undefined);
+  const payer = loadKeypair(BURN_ORACLE_KEYPAIR || undefined, 'BURN_ORACLE_KEYPAIR');
   const connection = getConnection();
   const db = sharedDb();
   log(`[burn-oracle] key ${payer.publicKey.toBase58()} · emission ${emissionPda()[0].toBase58()} · every ${BURN_ORACLE_INTERVAL_MS / 60_000} min · min ${BURN_ORACLE_MIN_REPORT_MICRO} µ$CG · max ${BURN_ORACLE_MAX_REPORT_MICRO} µ$CG`);

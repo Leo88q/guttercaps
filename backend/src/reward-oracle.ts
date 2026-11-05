@@ -716,8 +716,8 @@ export function rewardOracleStatus(db: Db) {
 }
 
 export async function rewardOracle(log: (s: string) => void = console.log) {
-  const questOracle = QUEST_ORACLE_KEYPAIR ? loadKeypair(QUEST_ORACLE_KEYPAIR) : undefined;
-  const seasonOracle = SEASON_ORACLE_KEYPAIR ? loadKeypair(SEASON_ORACLE_KEYPAIR) : undefined;
+  const questOracle = QUEST_ORACLE_KEYPAIR ? loadKeypair(QUEST_ORACLE_KEYPAIR, 'QUEST_ORACLE_KEYPAIR') : undefined;
+  const seasonOracle = SEASON_ORACLE_KEYPAIR ? loadKeypair(SEASON_ORACLE_KEYPAIR, 'SEASON_ORACLE_KEYPAIR') : undefined;
   if (!questOracle && !seasonOracle) throw new Error('set QUEST_ORACLE_KEYPAIR and/or SEASON_ORACLE_KEYPAIR');
   const connection = getConnection();
   const db = sharedDb();

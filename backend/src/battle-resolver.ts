@@ -268,7 +268,7 @@ export async function resolveAll(d: ResolverDeps): Promise<{ resolved: number; s
 
 export async function battleResolver(log: (s: string) => void = console.log) {
   if (!BATTLE_ORACLE_KEYPAIR) throw new Error('BATTLE_ORACLE_KEYPAIR is required; refusing to use the crank signer');
-  const oracle = loadKeypair(BATTLE_ORACLE_KEYPAIR);
+  const oracle = loadKeypair(BATTLE_ORACLE_KEYPAIR, 'BATTLE_ORACLE_KEYPAIR');
   const connection = getConnection();
   const db = sharedDb();
   log(`[battle-resolver] oracle ${oracle.publicKey.toBase58()} · arena ${PROGRAMS.arena.toBase58()} · poll ${BATTLE_RESOLVER_POLL_MS} ms`);

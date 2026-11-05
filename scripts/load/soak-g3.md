@@ -2,9 +2,10 @@
 
 **14-day continuous test bot for G-3 launch gate validation**
 
-> **Status**: Functional implementation (requires devnet RPC access)
+> **Status**: all seven gate KPIs are measured — four by the bot itself, three from the deployment under
+> test (`SOAK_API_BASE` → `/v1/health`, `/metrics`). No simulated numbers (находка 92).
 > **Node Requirement**: 24+ (SEC-B50)
-> **Last Updated**: 2026-10-07
+> **Last Updated**: 2026-11-06
 
 ---
 
@@ -17,9 +18,9 @@
 | **Fusions completed** | ≥ 500 | ✅ 20% probability per operation |
 | **Risky fusions** | ≥ 100 | ✅ 20% of fusions marked as risky |
 | **Wager matches** | ≥ 200 | ✅ 15% probability per operation |
-| **Abandoned pending** | 0 | ⚠️  Placeholder (needs on-chain query) |
-| **Stale pending** | 0 | ⚠️  Placeholder (needs on-chain query) |
-| **Crank p95** | ≤ 20,000ms | ⚠️  Simulated (needs /metrics endpoint) |
+| **Abandoned pending** | 0 | ✅ Peak of `/v1/health.crank.abandoned` over the run |
+| **Stale pending** | 0 | ✅ Peak of `/v1/health.crank.stale` + `stalePacks` + `arena.staleBattles` |
+| **Crank p95** | ≤ 20,000ms | ✅ Bucket quantile of `crank_settle_latency_ms` from `/metrics` |
 
 The gate fails unless **all** of the following hold (docs/06 §1.4):
 
@@ -80,6 +81,10 @@ SOAK_DURATION_DAYS=1 SOAK_TARGET_PACKS=100 SOAK_CONCURRENCY=2 \
 | `SOAK_INTERVAL_MS` | `1000` | Minimum ms between operations per worker |
 | `SOAK_LOG_INTERVAL_MS` | `60000` | Metrics logging interval (ms) |
 | `SOAK_WEIGHTS` | `0.65:0.20:0.15` | Operation weights as `buy:fuse:battle` |
+| `SOAK_API_BASE` | `http://127.0.0.1:8787` | Backend under test; the pending and latency KPIs are read from it |
+| `SOAK_METRICS_URL` | `${SOAK_API_BASE}/metrics` | Prometheus scrape of the same backend |
+| `SOAK_SAMPLE_INTERVAL_MS` | `60000` | How often the bot reads health + metrics |
+| `SOAK_ALLOW_BLIND` | unset | `1` = start even when the backend is unreachable; the gate then reports UNMEASURED and **fails** |
 
 ---
 
@@ -142,29 +147,42 @@ The bot outputs metrics every 60 seconds (configurable):
   Throughput: 175.0 packs/hour, 280.0 tx/hour
   Errors: 2 total
 
-  Pending: 0 abandoned, 0 stale
-  Crank: p95=1500ms, p99=2500ms, 1250 jobs
+  Pending (peak of 40 sample(s) from http://127.0.0.1:8787): 0 abandoned, 0 stale, 0 stale packs, 0 stale battles
+  Crank: p95 <= 20000 ms, p99 <= 30000 ms over 1250 settled job(s)
 ============================================================
 ```
 
 ---
 
-## ⚠️ Metrics Honesty — Read Before Trusting a PASS
+## ✅ Metrics Honesty — where each number comes from
 
-Three of the seven G-3 gate checks are **placeholders** and are labelled
-`SIMULATED` in the bot's output:
+Every KPI in the gate is either counted by the bot or read from the deployment it is hammering. There is
+no third kind of number in the report (this section used to explain three placeholders — see находка 92).
 
-| Metric | Status | What it would take to make it real |
+| KPI | Source | How it is read |
 |---|---|---|
-| Abandoned pending = 0 | ⚠️ Simulated in the bot — **measured for real by [soak-validate.ts](soak-validate.ts)** | `npm run load:soak-g3:validate` queries `PendingPack` / `PendingFusion` / `WagerBattle` on-chain and counts stale/abandoned (exit 0 = KPI met) |
-| Stale pending = 0 | ⚠️ Simulated in the bot — **measured for real by [soak-validate.ts](soak-validate.ts)** | same script, staleness window = `STALE_PACK_SLOTS` (10 800 slots ≈ 72 min) |
-| Crank p95 ≤ 20s | ⚠️ Simulated — random 1.5–6.5s | Scrape the crank's Prometheus `/metrics` (job-duration histogram), or time each pending item from creation to on-chain resolution |
+| Packs, fusions, risky fusions, wager matches | the bot | incremented when the transaction confirmed |
+| Abandoned crank jobs | `/v1/health` | `crank.abandoned`, **peak** over all samples — one abandoned job in hour 3 must not be washed out by a clean hour 12 |
+| Stale crank jobs | `/v1/health` | `crank.stale` (missed reveal window → the player is refunded), plus `stalePacks` (paid and unopened past `STALE_PACK_SLOTS`) and `arena.staleBattles` |
+| Crank p95 | `/metrics` | histogram `crank_settle_latency_ms` (commit → settled, observed by the crank), bucket-quantile at 0.95 |
 
-Until the crank p95 is wired to a real source, `G-3 Gate: PASS` only proves the four
-transaction-count KPIs (packs, fusions, risky fusions, wager matches) — validate
-"0 abandoned/stale pending" with `soak-validate.ts` and "crank p95" with the crank's
-own metrics. Related caveat: the bot sends `buy_pack` but never `open_pack` — opening
-is the crank's job, which is exactly what the "0 abandoned pending" KPI exists to observe.
+Three properties of those reads that the report relies on:
+
+* **Peaks, not last values.** The gate says "0 abandoned", so any nonzero sample fails it, whenever it happened.
+* **Bucket bound, not interpolation.** `p95 ≤ 20 000 ms` answers exactly: the covering bucket is `le=20000`,
+  so at least 95 % of settled jobs really were inside the budget. An interpolated number would look more
+  precise and be wrong in exactly the case the gate exists for.
+* **UNMEASURED is not zero.** If the API was unreachable, the histogram was empty or the backend never
+  reported a field, those rows print `not measured` and the gate **fails**. A soak that watched nothing did
+  not prove "0 abandoned jobs", and this is precisely how the previous version of this report was wrong.
+
+Two related notes:
+
+* The bot sends `buy_pack` but never opens packs — opening is the crank's job, which is why the pending KPIs
+  come from the deployment and not from the bot's own counters.
+* `npm run load:soak-g3:validate` remains the independent, after-the-fact check: it walks `PendingPack` /
+  `PendingFusion` / `WagerBattle` **on chain** with `getProgramAccounts` and fails on anything older than
+  `STALE_PACK_SLOTS`. Run it once after the soak; it does not need the backend to be alive.
 
 ---
 
@@ -176,19 +194,21 @@ At the end of the soak period, the bot outputs G-3 gate validation:
 ============================================================
   G-3 GATE VALIDATION
 ============================================================
-  ✅ PASS Packs (≥10,000): 10000
-  ✅ PASS Fusions (≥500): 520
-  ✅ PASS Risky Fusions (≥100): 115
-  ✅ PASS Wager Matches (≥200): 210
-  ✅ PASS No Abandoned Pending: 0
-  ✅ PASS No Stale Pending: 0
-  ✅ PASS Crank p95 (≤20s): 15000ms
+  PASS       Packs (>= 10,000): 10000
+  PASS       Fusions (>= 500): 520
+  PASS       Risky fusions (>= 100): 115
+  PASS       Wager matches (>= 200): 210
+  PASS       No abandoned crank jobs: 0 (peak of 4032 samples, /health.crank.abandoned)
+  PASS       No stale crank jobs: 0 (peak of 4032 samples, /health.crank.stale)
+  PASS       No stale unopened packs: 0 (peak of 4032 samples, /health.stalePacks)
+  PASS       No stale battles: 0 (peak of 4032 samples, /health.arena.staleBattles)
+  PASS       Crank p95 (<= 20 s): <= 20000 ms (bucket bound, 9987 settled jobs)
 
-  G-3 Gate: ✅ PASS
+  G-3 Gate: PASS
 ============================================================
 ```
 
-**Exit Code**: 0 = PASS, 1 = FAIL
+**Exit Code**: 0 = PASS, 1 = FAIL (and `UNMEASURED` rows fail the gate — see "Metrics Honesty").
 
 ---
 
@@ -225,9 +245,13 @@ Each worker:
 
 ### Monitoring
 
-Background monitors run every 30 seconds:
-- **Pending state check**: Scans for abandoned/stale operations
-- **Crank metrics**: Collects p95/p99 latency and job count
+Background monitors run every `SOAK_SAMPLE_INTERVAL_MS` (default 60 s):
+- **Pending state**: `GET /v1/health` → crank pending/stale/abandoned, stale unopened packs, stale battles
+- **Crank latency**: `GET /metrics` → `crank_settle_latency_ms` (p95/p99) and how many jobs it covers
+- **Inventory**: refresh of the chip PDAs the bot owns
+
+The first sample happens **before** the workers start: a run that cannot read the deployment refuses to
+begin (`SOAK_ALLOW_BLIND=1` is the deliberate opt-out, and it makes the gate fail — see above).
 
 ---
 
@@ -247,19 +271,23 @@ Background monitors run every 30 seconds:
 - [x] Graceful shutdown (SIGINT/SIGTERM)
 - [x] Automatic airdrop on low balance (devnet faucet — a top-up mechanism, **not** a funding strategy for 10K packs)
 
-### ⚠️ Placeholder (Needs Real Implementation)
-- [ ] **Pending state monitoring** via on-chain account queries — currently simulated, see "Metrics Honesty"
-- [ ] **Crank metrics** via the crank's `/metrics` endpoint — currently simulated
+### ✅ Measured, not simulated (since находка 92)
+- [x] **Pending state** from `/v1/health` (`crank.abandoned`, `crank.stale`, `stalePacks`, `arena.staleBattles`), peaks over the run
+- [x] **Crank p95** from the `crank_settle_latency_ms` histogram in `/metrics` (bucket quantile, SLA 20 s)
+- [x] An unreachable deployment stops the run at start-up instead of producing a report nobody measured
+
+### ⚠️ Still open (not part of the gate)
 - [ ] **`open_pack` from the bot** — packs are opened by the crank; the bot counts a pack as opened when its chip PDAs appear on-chain
 - [ ] **`accept_battle`** — battles are created but never accepted or resolved by the bot
 - [ ] **$CG funding** — fuse fees and battle wagers need $CG; on devnet the deploy wallet (mint authority per `scripts/setup.ts`) must mint $CG to the soak wallet — see [docs/G3-DEVNET-BETA-LAUNCH.md](../../docs/G3-DEVNET-BETA-LAUNCH.md)
 
-### 📝 Required for a Trustworthy Gate
+### 📝 What a trustworthy PASS still requires
 
-Implement the on-chain pending-state query and the crank `/metrics` scrape
-described in "Metrics Honesty", then remove the `SIMULATED` labels from the
-gate in `scripts/load/soak-g3.ts`. Until then, treat the pending/crank rows of
-a PASS report as unmeasured.
+* The backend under test must be the one the crank actually runs in (`WORKERS=crank`): its `/metrics` is
+  where `crank_settle_latency_ms` is produced.
+* A backend restart resets the histogram. The bot notices (`_count` going down) and the report says the p95
+  covers only the time since the restart — it does not silently present a partial number as the whole run.
+* `npm run load:soak-g3:validate` after the run: an independent on-chain read of the same KPI.
 
 ---
 
@@ -274,6 +302,9 @@ cannot fit in a GitHub-hosted job), takes the wallet from the `SOAK_PRIVATE_KEY`
 repository secret, and never creates or airdrops a wallet:
 
 ```bash
+# the deployment under test: where /v1/health and /metrics are read from
+gh secret set SOAK_API_BASE --body "https://backend.<devnet-host>"
+
 # 1-hour smoke test (100 packs, 2 workers)
 gh workflow run g3-soak.yml -f duration_hours=1 -f target_packs=100 -f concurrency=2
 
@@ -281,8 +312,14 @@ gh workflow run g3-soak.yml -f duration_hours=1 -f target_packs=100 -f concurren
 gh workflow run g3-soak.yml -f duration_hours=336 -f target_packs=10000 -f concurrency=10
 ```
 
+Before the bot starts, the workflow checks two things and refuses to run if either fails: `/v1/health`
+answers from the runner, and `/metrics` exposes `crank_settle_latency_ms`. Both are the difference between a
+run that measures and a 14-day run that ends in `UNMEASURED`. The base URL comes from the `api_base`
+workflow input or the `SOAK_API_BASE` secret.
+
 A short nightly smoke (1 hour, ephemeral wallet, GitHub-hosted runner) lives in
-[`.github/workflows/g3-soak-nightly.yml`](../../.github/workflows/g3-soak-nightly.yml).
+[`.github/workflows/g3-soak-nightly.yml`](../../.github/workflows/g3-soak-nightly.yml); it skips itself with a
+notice when `SOAK_API_BASE` is not configured, rather than starting a blind run.
 The full launch sequence — runner check, RPC, funded wallet, secrets, test runs,
 KPI validation — is in [docs/G3-DEVNET-BETA-LAUNCH.md](../../docs/G3-DEVNET-BETA-LAUNCH.md).
 
@@ -350,6 +387,19 @@ Or create a new key:
 solana-keygen new --out-file soak-key.json
 export PRIVATE_KEY=$(node -e "console.log(Buffer.from(require(process.argv[1])).toString('base64'))" soak-key.json)
 ```
+
+### "the deployment under test is not readable"
+
+The bot exits at start-up when `SOAK_API_BASE` (default `http://127.0.0.1:8787`) does not answer, because
+two of the seven gate KPIs come from there. Point it at the backend whose crank is opening the packs:
+
+```bash
+SOAK_API_BASE=https://dev-api.example ./scripts/... # or: bash scripts/mac-devnet.sh run, then the default works
+curl -s $SOAK_API_BASE/v1/health | head -c 300      # sanity check
+```
+
+`SOAK_ALLOW_BLIND=1` starts anyway — the report will then list those KPIs as `UNMEASURED` and the gate will
+fail. That switch exists for debugging the bot, not for producing a G-3 report.
 
 ### "Failed to connect to RPC"
 

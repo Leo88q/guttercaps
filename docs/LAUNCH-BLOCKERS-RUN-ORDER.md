@@ -351,18 +351,31 @@ gh secret set SOAK_PRIVATE_KEY --body "$(node -e "console.log(Buffer.from(requir
 # раннер с меткой g3-soak онлайн?
 gh api repos/Leo88q/guttercaps/actions/runners --jq '.runners[] | select(.labels[].name=="g3-soak") | {name,status}'
 
+# адрес стенда, с которого бот читает /v1/health и /metrics (иначе гейт будет UNMEASURED → FAIL)
+gh secret set SOAK_API_BASE --body "https://backend.<devnet-host>"
+
 # пробный час, потом полные 14 дней
 gh workflow run "G-3 Soak Test" -f duration_hours=1  -f target_packs=100 -f concurrency=2
 gh workflow run "G-3 Soak Test" -f duration_hours=336 -f target_packs=10000 -f concurrency=5
 ```
 
+Префлайт workflow сам проверяет, что `${SOAK_API_BASE}/v1/health` отвечает и что в `/metrics` есть
+`crank_settle_latency_ms`: без этого прогон не начнётся. Локально то же самое — `SOAK_API_BASE=… npm run load:soak-g3`,
+переменные и смысл каждой в `scripts/load/soak-g3.md`.
+
 Деньги на devnet: публичный кран даёт по 1–2 SOL за запрос, соаку нужен запас (в `scripts/load/soak-g3.md`
 написано 150–200 SOL под пиковую конкурентность и ренту). На devnet казна = кошелёк деплойера (`scripts/setup.ts`),
 поэтому цена пака возвращается в тот же кошелёк, а расход — комиссии и рента PDA.
 
-**Честное ограничение, о котором надо сказать в отчёте соака заранее:** `abandoned`/`stale pending` и p95 кранка
-в боте пока заглушки (нужны запрос к цепи и `/metrics`). Пока `npm run load:soak-g3:validate` не читает эти
-состояния из цепи, «0 abandoned» — это не измерение. Валидатор уже есть: `npm run load:soak-g3:validate`.
+**Откуда берутся два «трудных» KPI** (находка 92). `abandoned`/`stale pending` — пики из `/v1/health`
+(`abandonedPending`, `stalePending`, `stalePacks`, `arena.staleBattles`), `stale` паков и арены считается
+отдельно; p95/p99 кранка — bucket-quantile из `/metrics` по `crank_settle_latency_ms`. Сэмпл раз в 60 с
+(`SOAK_SAMPLE_INTERVAL_MS`), в конце — `PASS`/`FAIL`/`UNMEASURED`, и **UNMEASURED валит прогон**: «не смотрели»
+не равно «ноль». Независимая сверка по цепи остаётся (`npm run load:soak-g3:validate`), но отчёт больше не
+зависит от неё в этих двух пунктах.
+
+**Честное ограничение:** 14-дневный прогон и его результат из этой среды не проверяются — код, тесты и
+поведение гейта проверяются, сами цифры появятся только после прогона.
 
 ---
 
@@ -455,11 +468,12 @@ API_BASE=http://127.0.0.1:8787/v1 ANCHOR_WALLET=~/.config/solana/id.json \
 
 ## Чего не хватает в коде (мелочи, которые видно только при исполнении)
 
-- **KMS для `MINT_AUTHORITY_KEYPAIR` не реализован.** Код читает путь к файлу (`loadKeypair` в
-  `backend/src/crank.ts`), схема `kms://` встречается только в фикстуре префлайта. Прод-путь один из двух:
-  файл-секрет (docker `secrets:`) или отдельная задача на KMS-лоадер. Обещание «ключ в KMS» сейчас не
-  подтверждается кодом.
-- **Метрики соака — заглушки** (пункт 6): отчёт G-3 будет частичным, пока `soak-validate.ts` не читает
-  `abandoned`/`stale` из цепи, а p95 кранка — из `/metrics`.
+- **KMS для `MINT_AUTHORITY_KEYPAIR` — сделано в части кода, открыто в части провайдера.** Все десять
+  подписывающих ключей читает `backend/src/keys.ts`: путь (в том числе docker-секрет `/run/secrets/…`),
+  `file:<path>`, `env:<NAME>` (JSON 64 байта или base64 «сырых» 64). Форма проверяется на старте загрузкой
+  ключа, `kms://`/`vault://`/`hsm://` отвергаются по имени. **Открыто:** подключить реального провайдера
+  (контракт + SDK в образе) — одна ветка в `loadSigner()`; это внешняя задача, а не забытая строка кода.
+- **Метрики соака — измеряются** (пункт 6): `scripts/load/soak-metrics.ts` читает `/v1/health` и
+  Prometheus-гистограммы, `evaluateSoakGate` умеет `FAIL` и `UNMEASURED`. Открыт сам прогон, не инструмент.
 - **`/readyz` и прод-балансировщик**: на первом старте проекции не догнаны, нода отвечает 503 — проверка
   готовности должна пережить это, иначе первый же деплой уйдёт в цикл перезапусков.

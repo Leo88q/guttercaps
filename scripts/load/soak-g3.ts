@@ -39,9 +39,15 @@
  *   - Devnet RPC access with WebSocket
  *   - Funded wallet (150-200 SOL for 10,000 packs)
  * 
- * KNOWN LIMITATION: pending-state (abandoned/stale) and crank p95 metrics are
- * SIMULATED placeholders — the G-3 gate currently cannot fail on them. The final
- * report labels them SIMULATED. See scripts/load/soak-g3.md "Metrics honesty".
+ * PENDING STATE AND CRANK LATENCY ARE MEASURED, NOT SIMULATED (находка 92). Both KPIs that the gate
+ * cannot invent — abandoned/stale pending and crank p95 — are sampled from the running deployment every
+ * SOAK_SAMPLE_INTERVAL_MS through scripts/load/soak-metrics.ts:
+ *   • `GET $SOAK_API_BASE/v1/health` → crank.{abandoned,stale}, stalePacks, arena.staleBattles;
+ *   • `GET $SOAK_API_BASE/metrics`   → histogram `crank_settle_latency_ms` (commit → settled, the SLA
+ *     in docs/06 §4.3), bucketed quantile at 20 s.
+ * If the API cannot be reached the run still proceeds (a network blip must not kill 14 days), but the
+ * final gate reports those KPIs as UNMEASURED and therefore FAILS: "not watched" is not "zero". Set
+ * SOAK_ALLOW_BLIND=1 only when you knowingly want a bot-only run (no pending KPI, no latency KPI).
  */
 
 import {
@@ -60,6 +66,9 @@ import { createHash } from 'node:crypto';
 // Single source of truth for fusion recipes — same package the client and the
 // on-chain sync-check use (packages/economy). Never copy the recipe table here.
 import { recipeFor } from '@guttercaps/economy';
+// The KPIs this bot cannot measure from its own memory: pending state and crank latency come from the
+// deployment under test (находка 92 — they used to be Math.random() and the gate could not fail on them).
+import { SoakSampler, evaluateSoakGate, type SamplerSummary, type SoakSample } from './soak-metrics.ts';
 
 // Switchboard on-demand SDK, loaded lazily like the client does
 // (client/src/chain/switchboard.ts) — only used to pick a healthy queue oracle.
@@ -80,6 +89,12 @@ const TARGET_PACKS = parseInt(process.env.SOAK_TARGET_PACKS || '10000');
 const CONCURRENCY = parseInt(process.env.SOAK_CONCURRENCY || '5');
 const INTERVAL_MS = parseInt(process.env.SOAK_INTERVAL_MS || '1000');
 const LOG_INTERVAL_MS = parseInt(process.env.SOAK_LOG_INTERVAL_MS || '60000');
+// Where the KPIs the bot cannot compute from its own memory come from: the backend under test. Defaults to
+// the stand `mac-devnet.sh run` brings up (API on :8787), because that is the documented way to soak.
+const API_BASE = (process.env.SOAK_API_BASE || 'http://127.0.0.1:8787').replace(/\/+$/, '');
+const METRICS_URL = process.env.SOAK_METRICS_URL || `${API_BASE}/metrics`;
+const SAMPLE_INTERVAL_MS = parseInt(process.env.SOAK_SAMPLE_INTERVAL_MS || '60000');
+const ALLOW_BLIND = process.env.SOAK_ALLOW_BLIND === '1';
 
 // Operation weights "buy:fuse:battle", normalised to sum 1. Defaults match the
 // historical hardcoded 0.65/0.20/0.15 split.
@@ -182,11 +197,6 @@ interface SoakMetrics {
   fusionsCompleted: number;
   riskyFusions: number;
   wagerMatches: number;
-  abandonedPending: number;
-  stalePending: number;
-  crankJobsProcessed: number;
-  crankP95Ms: number;
-  crankP99Ms: number;
   errors: number;
   opsSkipped: number;
   chipsOwned: number;
@@ -195,6 +205,8 @@ interface SoakMetrics {
   lastLogTime: Date;
   lastCrankCheck: Date;
   workerErrors: Map<number, number>;
+  /** pending state + crank latency, as last read from the deployment under test (находка 92) */
+  sampled: SamplerSummary;
 }
 
 const metrics: SoakMetrics = {
@@ -203,11 +215,6 @@ const metrics: SoakMetrics = {
   fusionsCompleted: 0,
   riskyFusions: 0,
   wagerMatches: 0,
-  abandonedPending: 0,
-  stalePending: 0,
-  crankJobsProcessed: 0,
-  crankP95Ms: 0,
-  crankP99Ms: 0,
   errors: 0,
   opsSkipped: 0,
   chipsOwned: 0,
@@ -1192,56 +1199,32 @@ async function createWagerMatch(
 }
 
 // ============================================================================
-// Pending State Monitoring
+// Deployment monitoring (real, not simulated — находка 92)
 // ============================================================================
 
-async function checkPendingStates(connection: Connection): Promise<void> {
-  try {
-    // Query for PendingPack accounts with phase = abandoned or stale
-    // This uses getProgramAccounts which requires the program to be deployed
-    
-    // For now, we simulate this check
-    // Real implementation would use:
-    // const pendingPacks = await connection.getProgramAccounts(
-    //   PROGRAM_IDS.chip_core,
-    //   {
-    //     filters: [
-    //       { memcmp: { offset: 0, bytes: Buffer.from('pending') } },
-    //     ]
-    //   }
-    // );
-    
-    // Simulate finding some pending states
-    // In production, parse the account data to check phase
-    
-    if (Math.random() < 0.01) {
-      // Occasionally log pending check
-      console.log('[Monitor] Checking pending states...');
-    }
-  } catch (error: any) {
-    console.error('[Monitor] Failed to check pending states:', error.message);
+/**
+ * One sampler for the whole run: pending state from `/v1/health`, crank latency from `/metrics`.
+ *
+ * It is a `setInterval` callback and it must never throw — `sleep(30 s)` between operations is the bot's
+ * own liveness, and a monitoring failure that kills the run would look exactly like "the deployment is
+ * fine, the bot crashed". Failures are counted in `sampled.failures` and surface in the final gate as
+ * UNMEASURED, which is a failing gate, not a passing one.
+ */
+async function sampleDeployment(sampler: SoakSampler): Promise<void> {
+  const s: SoakSample = await sampler.sample();
+  metrics.sampled = sampler.stats;
+  metrics.lastCrankCheck = new Date(s.at);
+  if (s.error) {
+    console.error(`[Monitor] sample failed (${metrics.sampled.failures} of ${metrics.sampled.samples}): ${s.error}`);
+    return;
   }
-}
-
-// ============================================================================
-// Crank Monitoring
-// ============================================================================
-
-async function checkCrankMetrics(): Promise<void> {
-  try {
-    // In production, this would query the /metrics endpoint of the API
-    // For now, we simulate crank metrics
-    
-    metrics.crankP95Ms = 1500 + Math.floor(Math.random() * 5000); // 1.5s - 6.5s
-    metrics.crankP99Ms = metrics.crankP95Ms + Math.floor(Math.random() * 2000);
-    metrics.crankJobsProcessed += 10 + Math.floor(Math.random() * 50);
-    metrics.lastCrankCheck = new Date();
-    
-    if (Math.random() < 0.1) {
-      console.log(`[Crank] p95: ${metrics.crankP95Ms}ms, p99: ${metrics.crankP99Ms}ms, jobs: ${metrics.crankJobsProcessed}`);
-    }
-  } catch (error: any) {
-    console.error('[Monitor] Failed to check crank metrics:', error.message);
+  if (s.health) {
+    const c = s.health.crank;
+    console.log(
+      `[Monitor] crank: ${c.pending} pending, ${c.stale} stale, ${c.abandoned} abandoned` +
+        `${c.headAgeS !== null ? `, head ${c.headAgeS}s` : ''} · stale packs ${s.health.stalePacks}, stale battles ${s.health.staleBattles}` +
+        `${s.p95 ? ` · p95 <= ${s.p95.value ?? `> ${s.p95.topBucket}`} ms` : ''}`,
+    );
   }
 }
 
@@ -1306,17 +1289,25 @@ function logMetrics(): void {
   console.log(`  Errors: ${metrics.errors} total, ${metrics.opsSkipped} ops skipped (no chips/CG yet)`);
   console.log(`  Chips owned: ${metrics.chipsOwned}`);
   console.log('');
-  console.log(`  Pending: ${metrics.abandonedPending} abandoned, ${metrics.stalePending} stale`);
-  console.log(`  Crank: p95=${metrics.crankP95Ms}ms, p99=${metrics.crankP99Ms}ms, ${metrics.crankJobsProcessed} jobs`);
+  const sm = metrics.sampled;
+  console.log(`  Pending (peak of ${sm.samples} sample(s) from ${API_BASE}): ${fmt(sm.abandonedPeak)} abandoned, ${fmt(sm.stalePeak)} stale, ${fmt(sm.stalePacksPeak)} stale packs, ${fmt(sm.staleBattlesPeak)} stale battles`);
+  console.log(`  Crank: p95 ${qfmt(sm.p95)}, p99 ${qfmt(sm.p99)} over ${sm.jobsSettled ?? 0} settled job(s)${sm.samples ? '' : ' — NOT MEASURED'}`);
   console.log('='.repeat(60) + '\n');
   
   metrics.lastLogTime = now;
 }
 
+/** `null` = never sampled. Printed as UNMEASURED rather than as 0 — the whole point of находка 92. */
+const fmt = (v: number | null): string => (v === null ? 'UNMEASURED' : String(v));
+/** Bucket-quantile, printed as the bound it is (`<= 20 000 ms`, or `> 60 000 ms`). */
+const qfmt = (q: { value: number | null; topBucket: number } | null): string =>
+  q === null ? 'UNMEASURED' : q.value === null ? `> ${q.topBucket} ms` : `<= ${q.value} ms`;
+
 function logFinalMetrics(): void {
   const now = new Date();
   const elapsedMs = now.getTime() - metrics.startTime.getTime();
   const elapsedDays = elapsedMs / 86400000;
+  const sm = metrics.sampled;
   
   console.log('\n' + '='.repeat(60));
   console.log('  FINAL G-3 SOAK METRICS');
@@ -1330,38 +1321,39 @@ function logFinalMetrics(): void {
   console.log(`  Errors: ${metrics.errors}`);
   console.log(`  Ops Skipped (no chips/CG): ${metrics.opsSkipped}`);
   console.log(`  Chips Owned (end of run): ${metrics.chipsOwned}`);
-  console.log(`  Abandoned Pending: ${metrics.abandonedPending} (SIMULATED — not measured on-chain)`);
-  console.log(`  Stale Pending: ${metrics.stalePending} (SIMULATED — not measured on-chain)`);
-  console.log(`  Crank p95: ${metrics.crankP95Ms}ms (SIMULATED — random placeholder)`);
-  console.log(`  Crank p99: ${metrics.crankP99Ms}ms (SIMULATED — random placeholder)`);
+  console.log('');
+  // Every number below carries where it came from. A reader must be able to tell a measurement from an
+  // absence without reading this file.
+  console.log(`  Deployment sampled: ${sm.samples} time(s) every ${SAMPLE_INTERVAL_MS} ms, ${sm.failures} failed`);
+  console.log(`    /v1/health (peak): ${fmt(sm.abandonedPeak)} abandoned, ${fmt(sm.stalePeak)} stale, ${fmt(sm.stalePacksPeak)} stale unopened packs, ${fmt(sm.staleBattlesPeak)} stale battles`);
+  console.log(`    /metrics         : p95 ${qfmt(sm.p95)}, p99 ${qfmt(sm.p99)}, ${sm.jobsSettled ?? 0} settled crank job(s)${sm.restarted ? ' (backend restarted during the run — p95 covers only since then)' : ''}`);
+  if (sm.lastError) console.log(`    last sampling error: ${sm.lastError}`);
   console.log('');
   
+  const gate = evaluateSoakGate({
+    packsPurchased: metrics.packsPurchased,
+    targetPacks: TARGET_PACKS,
+    fusionsCompleted: metrics.fusionsCompleted,
+    riskyFusions: metrics.riskyFusions,
+    wagerMatches: metrics.wagerMatches,
+    sampling: sm,
+  });
+
   console.log('='.repeat(60));
   console.log('  G-3 GATE VALIDATION');
   console.log('='.repeat(60));
-  
-  const checks = {
-    'Packs (>=10,000)': { pass: metrics.packsPurchased >= TARGET_PACKS, value: metrics.packsPurchased },
-    'Fusions (>=500)': { pass: metrics.fusionsCompleted >= 500, value: metrics.fusionsCompleted },
-    'Risky Fusions (>=100)': { pass: metrics.riskyFusions >= 100, value: metrics.riskyFusions },
-    'Wager Matches (>=200)': { pass: metrics.wagerMatches >= 200, value: metrics.wagerMatches },
-    'No Abandoned Pending': { pass: metrics.abandonedPending === 0, value: metrics.abandonedPending },
-    'No Stale Pending': { pass: metrics.stalePending === 0, value: metrics.stalePending },
-    'Crank p95 (<=20s)': { pass: metrics.crankP95Ms <= 20000, value: `${metrics.crankP95Ms}ms` },
-  };
-  
-  let allPass = true;
-  for (const [name, check] of Object.entries(checks)) {
-    const status = check.pass ? 'PASS' : 'FAIL';
-    console.log(`  ${status} ${name}: ${check.value}`);
-    if (!check.pass) allPass = false;
+  for (const c of gate.checks) {
+    console.log(`  ${c.status.padEnd(10)} ${c.name}: ${c.value}${c.detail ? `\n             ${c.detail}` : ''}`);
   }
-  
   console.log('');
-  console.log(`  G-3 Gate: ${allPass ? 'PASS' : 'FAIL'}`);
+  if (gate.unmeasured.length) {
+    console.log(`  ${gate.unmeasured.length} KPI(s) were NOT MEASURED. The gate does not pass on those: a number nobody`);
+    console.log('  read is not zero, and G-3 is signed off on this report (docs/06 §1.4).');
+  }
+  console.log(`  G-3 Gate: ${gate.pass ? 'PASS' : 'FAIL'}`);
   console.log('='.repeat(60) + '\n');
   
-  process.exit(allPass ? 0 : 1);
+  process.exit(gate.pass ? 0 : 1);
 }
 
 // ============================================================================
@@ -1396,9 +1388,11 @@ async function main(): Promise<void> {
   console.log(`  Target Packs: ${TARGET_PACKS}`);
   console.log(`  Workers: ${CONCURRENCY}`);
   console.log(`  Weights: buy=${WEIGHTS.buy.toFixed(2)} fuse=${WEIGHTS.fuse.toFixed(2)} battle=${WEIGHTS.battle.toFixed(2)}`);
+  console.log(`  Deployment: ${API_BASE} (health every ${SAMPLE_INTERVAL_MS} ms), ${METRICS_URL}`);
   console.log('');
-  console.log('  NOTE: pending-state and crank p95 metrics are SIMULATED placeholders —');
-  console.log('        the G-3 gate cannot fail on them yet (see scripts/load/soak-g3.md).');
+  console.log('  Pending state and crank p95 are read from that deployment (находка 92): if it is');
+  console.log('  unreachable at start-up this run refuses to begin, because the gate cannot pass on KPIs');
+  console.log('  nobody measured. SOAK_ALLOW_BLIND=1 accepts a bot-only run with those KPIs UNMEASURED.');
   console.log('');
   
   const connection = new Connection(RPC_URL, {
@@ -1457,12 +1451,29 @@ async function main(): Promise<void> {
     console.log(` New balance: ${newBalance.toFixed(4)} SOL`);
   }
   
+  // Startup probe: a 14-day run that measures nothing is the most expensive way to learn the API URL is
+  // wrong. `SOAK_ALLOW_BLIND=1` is the deliberate opt-out (bot-only run: no pending KPI, no latency KPI).
+  const sampler = new SoakSampler({ apiBase: API_BASE, metricsUrl: METRICS_URL });
+  const probe = await sampler.sample();
+  metrics.sampled = sampler.stats;
+  if (probe.error) {
+    console.error(`\n ERROR: the deployment under test is not readable — ${probe.error}`);
+    console.error(`   SOAK_API_BASE=${API_BASE}  SOAK_METRICS_URL=${METRICS_URL}`);
+    console.error('   The pending-state and crank-latency KPIs come from there; without them the G-3 gate');
+    console.error('   reports UNMEASURED and fails. Point SOAK_API_BASE at the backend (mac-devnet.sh run');
+    console.error('   brings it up on :8787), or set SOAK_ALLOW_BLIND=1 to accept a bot-only run.');
+    if (!ALLOW_BLIND) process.exit(1);
+    console.error('   SOAK_ALLOW_BLIND=1 — continuing; the final gate will FAIL on those two KPIs.');
+  } else {
+    const c = probe.health?.crank;
+    console.log(` Monitoring: ${API_BASE} (crank ${c ? `${c.pending} pending / ${c.abandoned} abandoned` : 'read'}), ${METRICS_URL} every ${SAMPLE_INTERVAL_MS} ms`);
+  }
+
   console.log('\nStarting monitors...');
   const monitorInterval = setInterval(() => {
-    checkPendingStates(connection).catch(console.error);
-    checkCrankMetrics().catch(console.error);
+    sampleDeployment(sampler).catch((e) => console.error('[Monitor] unexpected:', e.message));
     refreshInventory(connection).catch(console.error);
-  }, 30000);
+  }, SAMPLE_INTERVAL_MS);
   
   const logInterval = setInterval(logMetrics, LOG_INTERVAL_MS);
   

@@ -11,7 +11,10 @@ import { createApp } from '../src/server.ts';
 describe('monitoring contract: ops/monitoring/alerts.yml ⇄ the exported series', () => {
   // An alert rule that queries a series nobody exports never fires — it stays green forever, which is
   // worse than a missing alert. This is the only thing keeping the two files honest with each other.
-  const PROM_WORDS = new Set(['sum', 'rate', 'irate', 'increase', 'avg', 'min', 'max', 'count', 'by', 'without', 'offset', 'and', 'or', 'unless', 'le', 'inf', 'bool', 'vector', 'time', 'over', 'quantile', 'topk', 'bottomk', 'changes', 'delta', 'absent']);
+  // PromQL functions, not metric names. `histogram_quantile` was added with `CrankSettleLatencyHigh`
+  // (находка 92): without it this test read the function name as a series and the alert could never have
+  // been merged — but the series it *does* query (`crank_settle_latency_ms_bucket`) is still checked.
+  const PROM_WORDS = new Set(['sum', 'rate', 'irate', 'increase', 'avg', 'min', 'max', 'count', 'by', 'without', 'offset', 'and', 'or', 'unless', 'le', 'inf', 'bool', 'vector', 'time', 'over', 'quantile', 'histogram_quantile', 'topk', 'bottomk', 'changes', 'delta', 'absent']);
   const PROM_ONLY = new Set(['up']);
 
   const metricNames = (yml: string) => {

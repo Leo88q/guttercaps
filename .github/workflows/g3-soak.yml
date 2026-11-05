@@ -58,6 +58,11 @@ on:
         required: false
         default: ''
         type: string
+      api_base:
+        description: 'Backend base URL the soak bot reads /v1/health and /metrics from (empty = devnet URL secret SOAK_API_BASE). Pending-state and cranker-latency KPIs are UNMEASURED without it, and the gate then FAILS.'
+        required: false
+        default: ''
+        type: string
 
 jobs:
   # GitHub expressions have no arithmetic (a duration-times-60-plus-180 expression makes GitHub reject the
@@ -93,6 +98,11 @@ jobs:
       DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL || inputs.rpc_url || 'https://api.devnet.solana.com' }}
       SOAK_INTERVAL_MS: 1000
       SOAK_LOG_INTERVAL_MS: 60000
+      # находка 92: abandoned/stale pending and cranker p95/p99 are read from the deployment under test,
+      # not invented. An empty base means the bot runs blind and the final gate fails on those two KPIs —
+      # that is intentional, but it wastes a 14-day run, so the preflight below refuses to start.
+      SOAK_API_BASE: ${{ inputs.api_base || secrets.SOAK_API_BASE }}
+      SOAK_SAMPLE_INTERVAL_MS: 60000
 
     outputs:
       g3_passed: ${{ steps.metrics.outputs.g3_passed }}
@@ -142,6 +152,31 @@ jobs:
               }
             })().catch((e) => { console.error('Preflight failed: ' + e.message); process.exit(1); });
           "
+
+      - name: Preflight — deployment under test is readable
+        env:
+          API_BASE: ${{ inputs.api_base || secrets.SOAK_API_BASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${API_BASE:-}" ]; then
+            echo "ERROR: no backend base URL. Pass the api_base input or set the SOAK_API_BASE repository secret"
+            echo "       (e.g. https://backend.guttercaps.example). Without it the soak runs blind: the pending-state"
+            echo "       and cranker-latency KPIs are UNMEASURED and the G-3 gate fails after the full duration."
+            exit 1
+          fi
+          echo "Checking $API_BASE/v1/health ..."
+          curl -fsS --max-time 30 "$API_BASE/v1/health" > /dev/null || {
+            echo "ERROR: $API_BASE/v1/health is not reachable from this runner."
+            echo "       The self-hosted g3-soak runner must be able to reach the backend (VPN / private network)."
+            exit 1
+          }
+          echo "Checking $API_BASE/metrics for the cranker histograms ..."
+          curl -fsS --max-time 30 "$API_BASE/metrics" | grep -q 'crank_settle_latency_ms' || {
+            echo "ERROR: $API_BASE/metrics does not expose crank_settle_latency_ms."
+            echo "       Either the backend is older than this branch, or /metrics is not public on the deployment."
+            exit 1
+          }
+          echo "Deployment under test is readable — the soak will measure, not guess."
 
       - name: Configure soak bot
         id: config

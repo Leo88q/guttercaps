@@ -84,9 +84,6 @@ jobs:
         continue-on-error: true
       
       - name: Run nightly soak
-        run: |
-          echo "Starting nightly G-3 soak test..."
-          npm run load:soak-g3
         env:
           DEVNET_RPC_URL: ${{ env.DEVNET_RPC_URL }}
           PRIVATE_KEY: ${{ env.PRIVATE_KEY }}
@@ -95,6 +92,19 @@ jobs:
           SOAK_CONCURRENCY: ${{ env.SOAK_CONCURRENCY }}
           SOAK_INTERVAL_MS: ${{ env.SOAK_INTERVAL_MS }}
           SOAK_LOG_INTERVAL_MS: ${{ env.SOAK_LOG_INTERVAL_MS }}
+          # находка 92: the bot reads abandoned/stale pending from /v1/health and cranker latency from
+          # /metrics. Without an address it refuses to start (a blind run would spend an hour and then
+          # report two UNMEASURED KPIs), so a missing secret skips the run visibly instead of faking it.
+          SOAK_API_BASE: ${{ secrets.SOAK_API_BASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SOAK_API_BASE:-}" ]; then
+            echo "::notice title=Nightly soak skipped::SOAK_API_BASE is not set — a blind run cannot measure pending state or cranker latency; set the secret to enable this job."
+            exit 0
+          fi
+          echo "Starting nightly G-3 soak test against ${SOAK_API_BASE}..."
+          # The exit code is the G-3 gate itself: a failed KPI must fail this job, not be averaged away.
+          npm run load:soak-g3
       
       - name: Upload results
         if: always()

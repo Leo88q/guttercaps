@@ -358,6 +358,11 @@ export function createApp(db: Db, deps: AppOptions = {}) {
     metrics.gauge('ingest_last_slot', value.lastSlot);
     metrics.gauge('ingest_lag_slots', value.ingestLagSlots ?? -1);
     metrics.gauge('crank_abandoned_jobs', value.crank.abandoned);
+    // Находка 92: `stale` — своё состояние, а не вариант `abandoned`. Пакет, у которого пропущено окно
+    // раскрытия, ещё не потерян: деньги у кранка, но игрок получает пак только через `cancel_stale_pack`
+    // (вернуть) — то есть каждый такой джоб это возврат и разговор с игроком. Считать его было нечем:
+    // в /metrics жил только abandoned, и алерт на «пропущенные окна» был бы слепым.
+    metrics.gauge('crank_stale_jobs', value.crank.stale);
     metrics.gauge('ws_clients', value.wsClients);
     return value;
   };
@@ -391,6 +396,12 @@ export function createApp(db: Db, deps: AppOptions = {}) {
   // to, so the alert would fire on the second crash and stay green through the first. Any process that
   // serves /metrics carries the baseline, whoever imports the shutdown module.
   metrics.counter('process_crashes_total', undefined, 0);
+  // Находка 92: гистограммы кранка объявляются на старте, а не при первом завершённом задании —
+  // иначе до первого раскрытия их имени нет в /metrics, и правило `CrankSettleLatencyHigh` (alerts.yml)
+  // запрашивало бы серию, которой не существует. Пустая гистограмма отвечает NaN на квант, то есть
+  // «данных нет» — именно то, что нужно алерту, у которого ещё нечего измерять.
+  metrics.histogram('crank_settle_latency_ms', 'Commit → CompressedPackSettled wait per crank job, ms (SLA p95 ≤ 20 s, docs/06 §4.3).');
+  metrics.histogram('crank_job_duration_ms', 'Time spent inside the crank handler for one job, ms (gateway + RPC + transaction, no queue wait).');
   registerScrape('metrics_series', 'Number of series this process exposes (cardinality canary — a jump means a label stopped being bounded).', () => [{ value: metrics.seriesCount() }]);
   // The alerting rules in ops/monitoring/alerts.yml scrape these names, so they are a contract with the
   // runbook: a renamed series is an alert that silently never fires. `api:check` does not see this file

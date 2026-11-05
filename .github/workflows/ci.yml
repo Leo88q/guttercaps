@@ -216,6 +216,10 @@ jobs:
           npm run claims:doctor -- --selftest
           npm run setup:minimal -- --selftest
           npm run launch:check -- --selftest
+          # находка 92: the soak's gate and its reading of /v1/health + /metrics. Without these steps the only
+          # place the gate had ever run was the 14-day soak itself — i.e. once, and against a live deployment.
+          npm run load:soak-metrics:selftest
+          npm run load:soak-g3:test
 
   landing:
     name: landing · build + check + smoke
