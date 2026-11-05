@@ -514,6 +514,10 @@ GHCR — отдельная галочка, см. шапку workflow). `prisma 
 
 ## 7. План: 4 недели до mainnet-ready (без soak и аудита — они идут параллельно)
 
+> Команды по шагам и в том порядке, в котором их можно выполнять (церемония id → деплой mainnet → прод-env →
+> мониторинг → G-1 → соак → аудит → dApp Store → казна): `docs/LAUNCH-BLOCKERS-RUN-ORDER.md`.
+> Ниже — план по неделям и то, чем каждый пункт доказывается.
+
 | Неделя | Задача | Гейт | Выход |
 |---|---|---|---|
 | 1 | Оплатить Actions / self-hosted runner (30 мин, но блокирует всё) · compile-pass по §1.1–1.5 · `anchor build` ×4 + `--features localnet` · `cargo test --workspace` · `keys sync` → заморозка id по §2 · включить `localnet` без `continue-on-error` и добавить fail-fast на skip | G-0, G-2 | 4 `.so` + IDL + `Cargo.lock` в репо; 77 сценариев зелёные в CI |
