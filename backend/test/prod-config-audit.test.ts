@@ -62,6 +62,17 @@ describe('прод-профиль гейтов (находки 10 и 60)', () =>
     expect(complianceNotice(undefined)).toBeNull();
   });
 
+  it('пустая фаза в проде — отказ старта, а не тихий `full` (находка 96)', () => {
+    // Воспроизведение первого запуска 2026-11-06: `ops/deploy/.env` говорит `g`, а `backend/.env` (копируется
+    // вторым и именно его читает api-контейнер) содержит `LAUNCH_PHASE=` — пусто. `parseLaunchPhase('')`
+    // возвращает `full`, то есть деплой молча поднимал он-чейн магазин за 20.54 SOL вместо фазы Г за 0.27.
+    const message = 'LAUNCH_PHASE must be stated explicitly in production: an empty value falls back to `full` (the on-chain shop, ≈20.54 SOL of program deposits) — name `g`, `v` or `full` in backend/.env (находка 96)';
+    expect(prodProfileProblems({ ...prodExample, LAUNCH_PHASE: undefined })).toEqual([message]);
+    expect(prodProfileProblems({ ...prodExample, LAUNCH_PHASE: '' })).toEqual([message]);
+    // названное значение — по-прежнему без претензий
+    for (const phase of ['g', 'v', 'full']) expect(prodProfileProblems({ ...prodExample, LAUNCH_PHASE: phase })).toEqual([]);
+  });
+
   it('несовместимые пары падают с сообщением «X требует Y», а не «что-то не так»', () => {
     expect(prodProfileProblems({ ...prodExample, LAUNCH_PHASE: 'x' })).toEqual(['LAUNCH_PHASE must be full|g|v, got `x`']);
     expect(prodProfileProblems({ ...prodExample, LAUNCH_PHASE: 'g', HUMAN_CHECK: '0' }))

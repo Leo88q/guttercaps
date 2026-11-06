@@ -20,9 +20,20 @@ import {
   preflightMisses,
   profileReport,
 } from '../../scripts/findings-control.ts';
-import { evaluateLaunch, sampleEnv } from '../../scripts/launch-check.ts';
+import { composeEnvironment, evaluateLaunch, sampleEnv } from '../../scripts/launch-check.ts';
 
 const repo = join(__dirname, '..', '..');
+
+/** Разбор `.env.example` в объект: `KEY=VALUE`, комментарии и пустые строки мимо. */
+function parseEnv(file: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of readFileSync(file, 'utf8').split('\n')) {
+    if (!line.trim() || line.trimStart().startsWith('#')) continue;
+    const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
+    if (m) out[m[1]] = m[2].split(/\s+#/)[0].trim();
+  }
+  return out;
+}
 
 const CSV = (rows: string[]) => ['id;tier;contour;release;finding;status;evidence', ...rows].join('\n');
 
@@ -152,7 +163,8 @@ describe('findings:control — профиль запуска', () => {
     const report = profileReport();
     expect(report.problems).toEqual([]);
     // именно фаза Г: своих программ ноль. `v` и `full` остаются живыми профилями кода, но не эталоном.
-    expect(Object.values(report.phases)).toEqual(['g', 'g', 'g']);
+    // четыре профильных примера (ops/deploy + оба хоста + backend-половина хоста) — все на `g`
+    expect(Object.values(report.phases)).toEqual(['g', 'g', 'g', 'g']);
     expect(report.parity.map((p) => p.phase)).toEqual(['g', 'v', 'full']);
   });
 
@@ -172,9 +184,71 @@ describe('findings:control — находки на самом деле закр�
     // отчёт, а отсутствие исполняемой проверки. Здесь она обязана быть у каждой строки.
     const report = controlReport();
     expect(report.documentedOnly).toEqual([]);
-    expect(report.done).toBe(95);
-    expect(report.executable).toBe(95);
+    expect(report.done).toBe(97);
+    expect(report.executable).toBe(97);
     expect(report.cited).toBeGreaterThan(0);
     expect(report.problems).toEqual([]);
+  });
+});
+
+describe('launch-check --compose: то, что реально видит контейнер (находка 97)', () => {
+  const compose = join(repo, 'ops/deploy/docker-compose.yaml');
+  const envFiles = {
+    ...parseEnv(join(repo, 'ops/deploy/.env.example')),
+    ...parseEnv(join(repo, 'backend/.env.example')),
+  };
+
+  it('compose-переменные api перекрывают env_file, и предзапусковая проверка их видит', () => {
+    const composeEnv = composeEnvironment(compose, envFiles);
+    // compose задаёт DB_PATH/NODE_ENV/HOST/PORT сам: в контейнере они не из backend/.env
+    expect(composeEnv.DB_PATH).toBe('/data/guttercaps.sqlite');
+    expect(composeEnv.NODE_ENV).toBe('production');
+    // клиентские build.args читаются там же (VITE_LAUNCH_PHASE идёт из ${LAUNCH_PHASE:-full})
+    // фаза клиента берётся из build.args как ${LAUNCH_PHASE:-full}; в склейке примеров она пуста (находка 96),
+    // поэтому проверяем сам механизм подстановки на явном значении
+    expect(composeEnvironment(compose, { ...envFiles, LAUNCH_PHASE: 'g' }).VITE_LAUNCH_PHASE).toBe('g');
+    expect(composeEnvironment(compose, { ...envFiles, LAUNCH_PHASE: '' }).VITE_LAUNCH_PHASE).toBe('full');
+    expect(composeEnv.VITE_CLUSTER).toBe('mainnet-beta');
+  });
+
+  it('без --compose проверка ругается на DB_PATH, с ним — нет (ложная красная лампочка снята)', () => {
+    // runbook §1.2 велит «склей два .env и позови launch-check»: в таком прогоне DB_PATH пуст, хотя контейнер
+    // стартует нормально. Из-за этого верный конфиг выглядел неготовым — и это приучает игнорировать гейт.
+    const bare = evaluateLaunch(envFiles).errors.filter((e) => e.includes('DB_PATH'));
+    expect(bare).toHaveLength(1);
+    const withCompose = evaluateLaunch({ ...envFiles, ...composeEnvironment(compose, envFiles) }).errors;
+    expect(withCompose.filter((e) => e.includes('DB_PATH'))).toEqual([]);
+  });
+
+  it('склейка в порядке runbook обнажает ловушку: api-половина не называет фазу (находка 96)', () => {
+    // именно это владелец увидел на Mac: `LAUNCH_PHASE got ""`. `backend/.env.example` генерируется
+    // (`npm run env:example`) и перечисляет дефолты кода — у фазы дефолта нет, поэтому строка пуста и,
+    // будучи скопированной второй, затирает `g` из `ops/deploy/.env`. Молчать об этом нельзя: в проде
+    // `parseLaunchPhase('')` = `full` (он-чейн магазин, ≈20.54 SOL залога) — поэтому и префлайт, и
+    // `assertProductionConfig` обязаны падать, а runbook — требовать явного значения.
+    expect(envFiles.LAUNCH_PHASE).toBe('');
+    expect(evaluateLaunch(envFiles).errors.some((e) => e.includes('must be named explicitly'))).toBe(true);
+    // после одного названного значения всё сходится
+    expect(evaluateLaunch({ ...envFiles, LAUNCH_PHASE: 'g', VITE_LAUNCH_PHASE: 'g' }).errors)
+      .not.toContain('LAUNCH_PHASE must be named explicitly as one of full|g|v (got "") — full is the on-chain shop, g is the backend-minted minimal launch, v is the settle program');
+  });
+
+  it('runbook велит назвать фазу в backend/.env — иначе деплой по инструкции тихо уходит в `full`', () => {
+    const runbook = readFileSync(join(repo, 'ops/deploy/runbook.md'), 'utf8');
+    expect(runbook).toContain('LAUNCH_PHASE');
+    expect(runbook).toMatch(/backend\/\.env/);
+  });
+
+  it('каждый профильный пример хоста выбирает фазу `g` — включая backend-половину', () => {
+    // `ops/deploy/hosts/backend.guttercaps.env.example` — единственное место, где видно, что api-контейнер
+    // читает backend/.env, а не ops/deploy/.env: раньше фазы там не было вовсе.
+    for (const f of [
+      'ops/deploy/.env.example',
+      'ops/deploy/hosts/guttercaps.env.example',
+      'ops/deploy/hosts/guttercapsdev.env.example',
+      'ops/deploy/hosts/backend.guttercaps.env.example',
+    ]) {
+      expect({ file: f, phase: parseEnv(join(repo, f)).LAUNCH_PHASE }).toEqual({ file: f, phase: 'g' });
+    }
   });
 });

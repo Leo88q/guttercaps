@@ -24,6 +24,91 @@
  *
  * Exit code 1 when any ERROR finding exists; warnings never fail the gate.
  */
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+
+/** Корень репозитория по маркеру (`import.meta` недоступен: файл импортирую я из backend-тестов, а backend — CJS). */
+function repoRoot(from = process.cwd()): string {
+  let dir = resolve(from);
+  for (;;) {
+    if (existsSync(join(dir, 'ops', 'deploy', 'docker-compose.yaml'))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return resolve(from);
+    dir = parent;
+  }
+}
+
+/**
+ * Значения, которые api-контейнер получает не из `backend/.env`, а из самого compose-файла:
+ * `x-app-env` (`DB_PATH`, `NODE_ENV`, `HOST`, `PORT`, `REDIS_URL`…) и литералы сервиса `api`.
+ *
+ * Зачем: `environment:` в compose перекрывает `env_file: backend/.env`. Проверка «склеил два .env и позвал
+ * launch-check» (runbook §1.2) видела пустой `DB_PATH` и отвечала ERROR на конфигурации, которая в контейнере
+ * стартует нормально — ложная красная лампочка на верном конфиге (находка 97). Хуже обратное: так же
+ * незаметно проверка не видела значения, которое compose подставляет, и «прошло» ничего не значило.
+ * `--compose` читает файл теми же глазами, что docker: сначала `x-app-env` по якорю, затем `environment:`
+ * сервиса `api` (включая `<<: *app-env`), с подстановкой `${VAR}`, `${VAR:-default}` и `${VAR:?error}`.
+ */
+export function composeEnvironment(composePath: string, env: Record<string, string | undefined>): Record<string, string> {
+  const lines = readFileSync(composePath, 'utf8').split('\n');
+  const interpolate = (raw: string): string =>
+    raw
+      .replace(/\$\{([A-Z0-9_]+):-([^}]*)\}/g, (_, k: string, d: string) => (env[k] && env[k] !== '' ? (env[k] as string) : d))
+      .replace(/\$\{([A-Z0-9_]+):\?[^}]*\}/g, (_, k: string) => env[k] ?? '')
+      .replace(/\$\{([A-Z0-9_]+)\}/g, (_, k: string) => env[k] ?? '');
+  const unquote = (v: string) => {
+    const t = v.trim();
+    if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) return t.slice(1, -1);
+    return t;
+  };
+  const indentOf = (l: string) => l.length - l.trimStart().length;
+  /** Строки блока, начинающегося после `header`: YAML без вложенных структур глубже одного уровня. */
+  const blockAfter = (from: number, parentIndent: number): string[] => {
+    const out: string[] = [];
+    for (let i = from + 1; i < lines.length; i++) {
+      const l = lines[i];
+      if (l.trim() === '' || l.trim().startsWith('#')) continue;
+      if (indentOf(l) <= parentIndent) break;
+      out.push(l);
+    }
+    return out;
+  };
+
+  const anchorAt = lines.findIndex((l) => /^x-app-env:\s*&app-env\s*$/.test(l));
+  const appEnv: Record<string, string> = {};
+  if (anchorAt >= 0) {
+    for (const l of blockAfter(anchorAt, 0)) {
+      const m = /^\s+([A-Z0-9_]+):\s*(.*)$/.exec(l);
+      if (m) appEnv[m[1]] = interpolate(unquote(m[2]));
+    }
+  }
+
+  const serviceEnv: Record<string, string> = {};
+  /** Блок `environment:` сервиса (или `args:` его сборки) — то, что процесс/бандл получит в контейнере. */
+  const readBlock = (serviceAt: number, key: string, into: Record<string, string>) => {
+    if (serviceAt < 0) return;
+    // `environment:` у api лежит на отступе 4, `args:` у client — на 6 (внутри `build:`): ищем по имени,
+    // а не по фиксированному отступу, иначе клиентские build.args молча не читались и VITE_* оставались пустыми.
+    const at = lines.findIndex((l, i) => i > serviceAt && indentOf(l) > 2 && l.trim() === `${key}:`);
+    if (at < 0) return;
+    for (const l of blockAfter(at, indentOf(lines[at]))) {
+      if (/^\s*<<:\s*\*app-env\s*$/.test(l)) {
+        Object.assign(into, appEnv);
+        continue;
+      }
+      const m = /^\s+([A-Z0-9_]+):\s*(.*)$/.exec(l);
+      if (m) into[m[1]] = interpolate(unquote(m[2]));
+    }
+  };
+  const apiAt = lines.findIndex((l) => /^ {2}api:\s*$/.test(l));
+  readBlock(apiAt, 'environment', serviceEnv);
+  // Клиент собирается этими аргументами (в бандл, не в процесс), и префлайт проверяет их в том же прогоне:
+  // VITE_LAUNCH_PHASE / VITE_CLUSTER / VITE_FLAG_* приходят из `client.build.args`, а не из backend/.env.
+  const clientAt = lines.findIndex((l) => /^ {2}client:\s*$/.test(l));
+  readBlock(clientAt, 'args', serviceEnv);
+  return serviceEnv;
+}
+
 export interface LaunchFindings {
   errors: string[];
   warnings: string[];
@@ -189,7 +274,12 @@ function selftest(): void {
 function main(): void {
   const args = new Set(process.argv.slice(2));
   if (args.has('--selftest')) return selftest();
-  const { errors, warnings } = evaluateLaunch(process.env);
+  // `--compose`: проверить то, что реально увидит api-контейнер, а не только то, что лежит в двух .env.
+  const env = args.has('--compose')
+    ? { ...process.env, ...composeEnvironment(join(repoRoot(), 'ops', 'deploy', 'docker-compose.yaml'), process.env) }
+    : process.env;
+  if (args.has('--compose')) console.log('launch-check: режим --compose — значения api-контейнера (compose environment перекрывает env_file)');
+  const { errors, warnings } = evaluateLaunch(env);
   for (const w of warnings) console.log(`  WARN  ${w}`);
   for (const e of errors) console.log(`  ERROR ${e}`);
   if (errors.length > 0) {
