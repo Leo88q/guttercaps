@@ -230,6 +230,12 @@ export function prodProfileProblems(o: Record<string, string | undefined>): stri
   if (compliance) problems.push(compliance);
   const phase = o.LAUNCH_PHASE ?? '';
   if (!['', 'full', 'g', 'v'].includes(phase)) problems.push(`LAUNCH_PHASE must be full|g|v, got \`${phase}\``);
+  // Находка 96: пустая фаза в проде — это НЕ «как настроено в deploy», а тихий `full` (`parseLaunchPhase('')`).
+  // Так и случилось на первом запуске 2026-11-06: `ops/deploy/.env` говорил `g`, `backend/.env` (его копируют
+  // вторым, и именно его читает api-контейнер) — пусто, и бэкенд поднялся бы в он-чейн магазине за 20.54 SOL
+  // залога, пока клиент собран под минимальный запуск. Тот же класс, что находка 10: молчаливый дефолт там,
+  // где решение принимает владелец.
+  if (phase === '') problems.push('LAUNCH_PHASE must be stated explicitly in production: an empty value falls back to `full` (the on-chain shop, ≈20.54 SOL of program deposits) — name `g`, `v` or `full` in backend/.env (находка 96)');
   if (phase === 'g' && o.HUMAN_CHECK === '0') problems.push('LAUNCH_PHASE=g requires the human check (HUMAN_CHECK≠0): phase G mints real packs from the backend, and the reward faucets are the same process');
   return problems;
 }

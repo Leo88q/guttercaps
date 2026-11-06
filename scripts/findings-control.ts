@@ -309,10 +309,15 @@ export interface ProfileReport {
 
 export function profileReport(): ProfileReport {
   const problems: string[] = [];
+  // Все файлы, которые выбирают боевой профиль. `backend/.env.example` и `client/.env.example` сюда не входят
+  // намеренно: они генерируются `npm run env:example` и перечисляют дефолты кода (у фазы его нет), профиль
+  // в них не выбирается. api-контейнер читает `backend/.env`, поэтому фаза там обязана быть НАЗВАНА — это
+  // проверяет `assertProductionConfig` (находка 96), а не этот список.
   const examples = {
     'ops/deploy/.env.example': parseExample('ops/deploy/.env.example'),
     'ops/deploy/hosts/guttercaps.env.example': parseExample('ops/deploy/hosts/guttercaps.env.example'),
     'ops/deploy/hosts/guttercapsdev.env.example': parseExample('ops/deploy/hosts/guttercapsdev.env.example'),
+    'ops/deploy/hosts/backend.guttercaps.env.example': parseExample('ops/deploy/hosts/backend.guttercaps.env.example'),
   };
   const phases = Object.fromEntries(Object.entries(examples).map(([f, e]) => [f, e.LAUNCH_PHASE ?? '(unset)']));
   for (const [file, phase] of Object.entries(phases)) {
@@ -323,7 +328,7 @@ export function profileReport(): ProfileReport {
   const deployEnv = {
     ...examples['ops/deploy/.env.example'],
     ...examples['ops/deploy/hosts/guttercaps.env.example'],
-    ...parseExample('ops/deploy/hosts/backend.guttercaps.env.example'),
+    ...examples['ops/deploy/hosts/backend.guttercaps.env.example'],
   };
   const parity: PhaseParity[] = [];
   for (const phase of LAUNCH_PHASES) {

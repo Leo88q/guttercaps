@@ -120,12 +120,26 @@ cp .env.example .env              # что обязательно — напис
 cp ../../backend/.env.example ../../backend/.env
 ```
 
-В `backend/.env` обязательно: `SESSION_SECRET` (≥ 32), `SIWS_DOMAINS`, `ADMIN_WALLETS`,
+В `backend/.env` обязательно: **`LAUNCH_PHASE`** (эталон — `g`; см. ниже, почему не пусто), `SESSION_SECRET` (≥ 32), `SIWS_DOMAINS`, `ADMIN_WALLETS`,
 `TURNSTILE_SECRET` + `TURNSTILE_HOSTNAMES` (список доменов; sitekey публичен, поэтому без него любой
 сайт может выдать себе human-пасс — в проде с пустым списком процесс откажется стартовать; `HUMAN_CHECK=0`
 отключает гейт осознанно) и `TURNSTILE_ACTION=claim` (ровно то, что шлёт виджет), `SOLANA_RPC_URL` (для
 индексора — с рабочим websocket-эндпоинтом), четыре `PROGRAM_*`, минты. Остальное имеет дефолты в коде;
 `env:check` не даст списку разойтись.
+
+**Фаза — в обоих файлах, а не в одном (находка 96).** `ops/deploy/.env` читает compose (сборка клиента:
+`VITE_LAUNCH_PHASE=${LAUNCH_PHASE:-full}`, префлайт), а api-контейнер получает `backend/.env` через `env_file`.
+Если `LAUNCH_PHASE` названа только в первом файле, второй — скопированный из примера сразу после — затирает
+её пустым значением, и `parseLaunchPhase('')` возвращает `full`: деплой молча поднимает он-чейн магазин
+(≈20.54 SOL залога программ) вместо минимального запуска за ≈0.27 SOL, а клиент при этом собран под `g`.
+С 2026-11-06 такой старт **отказывает** (`assertProductionConfig`: `LAUNCH_PHASE must be stated explicitly in
+production`), а не выбирает профиль за владельца. Проверка профиля до запуска — на том, что реально увидит
+контейнер (compose перекрывает `env_file`: `DB_PATH`, `NODE_ENV`, клиентские `build.args`):
+
+```bash
+set -a; . ./ops/deploy/.env; . ./backend/.env; set +a
+npm run launch:check -- --compose
+```
 
 **RPC ↔ CSP (SEC-B9).** `SOLANA_RPC_URL` — переменная, а CSP — файл: `connect-src` в
 `ops/deploy/nginx.conf` перечисляет провайдеров поимённо (`*.solana.com`, `api.mainnet-beta.solana.com`,
