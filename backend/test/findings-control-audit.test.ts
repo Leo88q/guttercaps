@@ -1,5 +1,5 @@
 // Находки 91–94 и все 90 до них держатся тестами, а не отчётом. Этот файл держит сам гейт
-// `scripts/findings-control.ts`: без него «контроль над 94 находками» — ещё одна строка в отчёте.
+// `scripts/findings-control.ts`: без него «контроль над закрытыми находками» — ещё одна строка в отчёте.
 //
 // Проверяется три вещи, каждая из которых уже ломалась в этом проекте:
 //   1. парсер checklist: `;` внутри кавычек и переводы строк не должны сдвигать колонки (иначе evidence
@@ -10,7 +10,17 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { controlReport, findingsFrom, isWired, parseCsv, phaseGKeys, profileReport } from '../../scripts/findings-control.ts';
+import {
+  LAUNCH_PHASES,
+  controlReport,
+  findingsFrom,
+  isWired,
+  parseCsv,
+  phaseKeys,
+  preflightMisses,
+  profileReport,
+} from '../../scripts/findings-control.ts';
+import { evaluateLaunch, sampleEnv } from '../../scripts/launch-check.ts';
 
 const repo = join(__dirname, '..', '..');
 
@@ -100,24 +110,50 @@ describe('findings:control — «запускается ли гейтом»', ()
 });
 
 describe('findings:control — профиль запуска', () => {
-  it('обязательные переменные фазы Г берутся из блока `g`, а не из конца функции', () => {
+  const configSrc = readFileSync(join(repo, 'backend/src/config.ts'), 'utf8');
+
+  it('обязательные переменные берутся из блока своей фазы, а не из конца функции', () => {
     // в config.ts фаза `v` объявлена ВЫШЕ фазы `g`; первый вариант гейта уезжал в конец файла и требовал
     // от профиля все переменные процесса (MAINNET_RPC_URL, PREORDER_*), то есть был бы вечно красным
-    const src = readFileSync(join(repo, 'backend/src/config.ts'), 'utf8');
-    const keys = phaseGKeys(src);
-    expect(keys).toContain('MINT_AUTHORITY_KEYPAIR');
-    expect(keys).toContain('SHARED_MERKLE_TREE');
-    expect(keys).toContain('PHASEG_FEATURED_COLLECTION');
-    expect(keys).toContain('CORE_COLLECTION_0');
-    expect(keys).not.toContain('MAINNET_RPC_URL');
-    expect(keys).not.toContain('PREORDER_TREASURY');
+    const keys = phaseKeys(configSrc, 'g');
+    expect(keys.required).toContain('MINT_AUTHORITY_KEYPAIR');
+    expect(keys.required).toContain('SHARED_MERKLE_TREE');
+    expect(keys.required).not.toContain('MAINNET_RPC_URL');
+    expect(keys.required).not.toContain('PREORDER_TREASURY');
+    // коллекции пустые легальны, кривые — нет: это «проверяется значение», а не «обязателен ключ»
+    expect(keys.validated).toContain('CORE_COLLECTION_0');
+    expect(keys.required).not.toContain('CORE_COLLECTION_0');
   });
 
-  it('эталон запуска — фаза Г, и три места (config, префлайт, примеры env) согласны', () => {
+  it('фаза В — не «та же Г с другим именем»: свой ключ оракула и без ключа минта', () => {
+    const v = phaseKeys(configSrc, 'v');
+    expect(v.required).toContain('PHASEV_ORACLE_KEYPAIR');
+    expect(v.required).not.toContain('MINT_AUTHORITY_KEYPAIR');
+    expect(v.required).toContain('SHARED_MERKLE_TREE');
+    expect(v.validated).toContain('PHASEG_FEATURED_COLLECTION');
+  });
+
+  it('`full` живёт без фазовых требований — это его содержание, а не пропуск в гейте', () => {
+    expect(phaseKeys(configSrc, 'full')).toEqual({ required: [], validated: [] });
+  });
+
+  it('префлайт ловит каждый ключ каждой фазы (находка 95: в фазе В не ловился PHASEG_FEATURED_COLLECTION=9)', () => {
+    for (const phase of LAUNCH_PHASES) {
+      const keys = phaseKeys(configSrc, phase);
+      expect({ phase, misses: preflightMisses(phase, keys) }).toEqual({ phase, misses: [] });
+    }
+    // прямое воспроизведение: полный профиль В проходит, а испорченная коллекция недели — нет
+    const v = sampleEnv('v');
+    expect(evaluateLaunch(v).errors).toEqual([]);
+    expect(evaluateLaunch({ ...v, PHASEG_FEATURED_COLLECTION: '9' }).errors.join(' ')).toContain('PHASEG_FEATURED_COLLECTION');
+  });
+
+  it('эталон запуска — фаза Г, и три примера согласны', () => {
     const report = profileReport();
     expect(report.problems).toEqual([]);
-    // именно фаза Г: своих программ ноль. `full` остаётся живым профилем кода, но не эталоном запуска.
+    // именно фаза Г: своих программ ноль. `v` и `full` остаются живыми профилями кода, но не эталоном.
     expect(Object.values(report.phases)).toEqual(['g', 'g', 'g']);
+    expect(report.parity.map((p) => p.phase)).toEqual(['g', 'v', 'full']);
   });
 
   it('если в примере вернуть `full`, гейт обязан это заметить', () => {
@@ -125,17 +161,19 @@ describe('findings:control — профиль запуска', () => {
     const example = readFileSync(join(repo, 'ops/deploy/hosts/guttercaps.env.example'), 'utf8');
     expect(example).toMatch(/^LAUNCH_PHASE=g\b/m);
     expect(example).not.toMatch(/^LAUNCH_PHASE=full\b/m);
+    // профиль В — не забытый: его ключи названы в примере-носителе, иначе смена фазы станет угадыванием
+    expect(example).toContain('PHASEV_ORACLE_KEYPAIR');
   });
 });
 
-describe('findings:control — 94 находки на самом деле закрыты', () => {
+describe('findings:control — находки на самом деле закрыты', () => {
   it('ни одна `done`-находка не держится одними словами (базовая линия пуста)', () => {
-    // Это и есть требование владельца «чтобы 94 ошибки не вернулись»: причина возврата — не забытый
+    // Это и есть требование владельца «чтобы закрытые ошибки не вернулись»: причина возврата — не забытый
     // отчёт, а отсутствие исполняемой проверки. Здесь она обязана быть у каждой строки.
     const report = controlReport();
     expect(report.documentedOnly).toEqual([]);
-    expect(report.done).toBe(94);
-    expect(report.executable).toBe(94);
+    expect(report.done).toBe(95);
+    expect(report.executable).toBe(95);
     expect(report.cited).toBeGreaterThan(0);
     expect(report.problems).toEqual([]);
   });

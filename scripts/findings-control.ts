@@ -1,4 +1,4 @@
-// Контроль над 94 закрытыми находками — чтобы смена профиля запуска не вернула их молча.
+// Контроль над закрытыми находками (сейчас 95) — чтобы смена профиля запуска не вернула их молча.
 //
 // Зачем это отдельным гейтом. `reports/remediation-checklist.csv` — это утверждение «каждая находка закрыта
 // кодом», и до сих пор его проверял только человек, читающий evidence глазами. Пока профиль запуска не менялся,
@@ -15,16 +15,19 @@
 //   3. Находка без исполняемой цитаты (`documented-only`) допустима, но только из базовой линии
 //      `scripts/findings-control.baseline.json`: новый такой пункт — красный прогон, а исчезнувший старый —
 //      тоже (базовая линия обязана уменьшаться, иначе она превращается в разрешение).
-//   4. Профиль запуска назван во всех трёх примерах env одинаково и равен `g`; требования фазы Г совпадают в трёх
-//      местах — `backend/src/config.ts` (что реально отказывает на старте), `scripts/launch-check.ts`
-//      (офлайн-префлайт) и `ops/deploy/hosts/guttercaps.env.example` (что человек заполняет). Расхождение
-//      этих трёх — ровно та дыра, через которую профиль «переключается» и требование исчезает.
+//   4. Профиль запуска назван во всех трёх примерах env одинаково и равен `g`; требования КАЖДОГО профиля
+//      (`g` — эталон, `v` и `full` — живые профили кода) совпадают в трёх местах: `backend/src/config.ts`
+//      (что реально отказывает на старте), `scripts/launch-check.ts` (офлайн-префлайт) и примеры env
+//      (что человек заполняет). Сверка поведенческая: ключ снимается из полной фикстуры профиля, и префлайт
+//      обязан назвать именно его. Расхождение этих трёх — ровно та дыра, через которую профиль
+//      «переключается» и требование исчезает (так и нашлось: в фазе `v` коллекция недели не проверялась).
 //
 // Usage:
 //   npm run findings:control            # проверить (exit 1 при любой проблеме)
 //   npm run findings:control -- --update  # перезаписать базовую линию (осознанное действие, попадает в PR)
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { evaluateLaunch, sampleEnv } from './launch-check.ts';
 
 /**
  * Корень репозитория ищется по маркеру, а не через `import.meta`: этот файл импортирует backend-тест, а backend
@@ -206,12 +209,21 @@ const parseExample = (rel: string): Record<string, string> => {
   return out;
 };
 
-/** Переменные, которые `config.ts` требует именно в фазе Г (отказ старта, а не 410). */
-export function phaseGKeys(configSrc: string): string[] {
-  const start = configSrc.indexOf("if (LAUNCH_PHASE === 'g') {");
-  if (start < 0) return [];
-  // блок по балансу скобок: в config.ts фаза `v` объявлена ВЫШЕ фазы `g`, поэтому поиск «до следующего if»
-  // уезжал в конец функции и требовал от профиля все переменные процесса сразу (ловилось на первом прогоне).
+/** Профили запуска, которые живут в коде одновременно. Эталон — «g», но сверяются все три. */
+export const LAUNCH_PHASES = ['g', 'v', 'full'] as const;
+export type LaunchPhase = (typeof LAUNCH_PHASES)[number];
+
+export interface PhaseKeys {
+  /** Ключи, без которых `config.ts` не стартует: `if (!KEY) problems.push(...)`. */
+  required: string[];
+  /** Ключи, которые `config.ts` проверяет на значение: отсутствие допустимо, кривое — отказ старта. */
+  validated: string[];
+}
+
+/** Тело `if (LAUNCH_PHASE === '<phase>') { … }` по балансу скобок: фаза `v` объявлена в config.ts ВЫШЕ фазы `g`. */
+function phaseBlock(configSrc: string, phase: LaunchPhase): string {
+  const start = configSrc.indexOf(`if (LAUNCH_PHASE === '${phase}') {`);
+  if (start < 0) return '';
   let depth = 0;
   let end = start;
   for (let i = configSrc.indexOf('{', start); i < configSrc.length; i++) {
@@ -221,20 +233,77 @@ export function phaseGKeys(configSrc: string): string[] {
       if (depth === 0) { end = i; break; }
     }
   }
-  const body = configSrc.slice(start, end + 1);
-  const keys = new Set<string>();
+  return configSrc.slice(start, end + 1);
+}
+
+/**
+ * Требования профиля, вычитанные из `config.ts` — единственного места, которое реально отказывает на старте.
+ * Раньше гейт смотрел только фазу «g»; с появлением второго живого профиля (`v` — тонкая программа settle)
+ * это значило, что требования В никто не сверяет: префлайт пропускал `PHASEG_FEATURED_COLLECTION=9`, а backend
+ * в этой фазе не стартует (находка 95).
+ */
+export function phaseKeys(configSrc: string, phase: LaunchPhase): PhaseKeys {
+  const body = phaseBlock(configSrc, phase);
+  const required = new Set<string>();
+  const validated = new Set<string>();
   // `if (!KEY) problems.push(...)` — форма, которой в этом файле записан каждый обязательный ключ фазы
-  for (const m of body.matchAll(/if \(!([A-Z][A-Z0-9_]{2,})\)/g)) keys.add(m[1]);
-  // коллекции живут массивом, а переменные окружения — по индексам: проверяется каждое непустое значение
-  if (body.includes('CORE_COLLECTIONS')) for (let i = 0; i < 8; i++) keys.add(`CORE_COLLECTION_${i}`);
-  if (body.includes('PHASEG_FEATURED_COLLECTION')) keys.add('PHASEG_FEATURED_COLLECTION');
-  return [...keys].sort();
+  for (const m of body.matchAll(/if \(!([A-Z][A-Z0-9_]{2,})\)/g)) required.add(m[1]);
+  for (const m of body.matchAll(/!Number\.isInteger\(([A-Z][A-Z0-9_]{2,})\)/g)) validated.add(m[1]);
+  // коллекции живут массивом, а переменные окружения — по индексам: пустой слот легален, кривой — нет
+  if (body.includes('CORE_COLLECTIONS')) {
+    for (let i = 0; i < 8; i++) validated.add(`CORE_COLLECTION_${i}`);
+    // сам `CORE_COLLECTIONS` — не переменная окружения: в required его быть не должно
+    required.delete('CORE_COLLECTIONS');
+  }
+  for (const k of validated) required.delete(k);
+  return { required: [...required].sort(), validated: [...validated].sort() };
+}
+
+// config.ts проверяет РАЗОБРАННЫЕ константы: `if (!PACK_TREASURY)` — это `TREASURY_WALLET` в окружении.
+// Без этой таблицы гейт требовал бы от профиля переменную, которой не существует.
+const ALIAS: Record<string, string> = { PACK_TREASURY: 'TREASURY_WALLET' };
+
+/**
+ * Поведенческая сверка профиля: не «упомянут ли ключ в префлайге», а «падает ли префлайт, если ключа нет».
+ * Ключ снимается из полной фикстуры профиля (`sampleEnv`), и ошибка обязана назвать именно его. Так ловится
+ * и обратный случай — ключ упомянут в тексте, но проверки нет.
+ */
+export function preflightMisses(phase: LaunchPhase, keys: PhaseKeys): string[] {
+  const misses: string[] = [];
+  const base = sampleEnv(phase);
+  const ok = evaluateLaunch(base);
+  if (ok.errors.length > 0) misses.push(`полный env профиля ${phase} не проходит префлайт: ${ok.errors.join('; ')}`);
+  for (const k of keys.required) {
+    const userFacing = ALIAS[k] ?? k;
+    const res = evaluateLaunch({ ...base, [userFacing]: undefined });
+    if (!res.errors.some((e) => e.includes(userFacing))) misses.push(`${userFacing} (снятый ключ не ловится)`);
+  }
+  for (const k of keys.validated) {
+    const res = evaluateLaunch({ ...base, [k]: k.startsWith('CORE_COLLECTION_') ? 'not-a-key' : '9' });
+    if (!res.errors.some((e) => e.includes(k))) misses.push(`${k} (кривое значение не ловится)`);
+  }
+  return misses;
+}
+
+export interface PhaseParity {
+  phase: LaunchPhase;
+  required: string[];
+  validated: string[];
+  /** Ключи профиля, которых префлайт не ловит. */
+  preflightMisses: string[];
+  /** Ключи профиля, которых нет в примере env, выбравшем этот профиль. */
+  exampleMisses: string[];
 }
 
 export interface ProfileReport {
   problems: string[];
+  /** Какой профиль выбран в каждом примере env. */
   phases: Record<string, string>;
+  /** Сверка требований по каждой фазе (g — эталон, v и full — живые профили кода). */
+  parity: PhaseParity[];
+  /** Ключи, которых не ловит префлайт (по всем фазам). */
   missingInPreflight: string[];
+  /** Ключи, которых нет в примере, выбравшем эту фазу (по всем фазам). */
   missingInExample: string[];
 }
 
@@ -250,21 +319,42 @@ export function profileReport(): ProfileReport {
     if (phase !== REFERENCE_PHASE) problems.push(`${file}: LAUNCH_PHASE=${phase}, а эталон запуска — "${REFERENCE_PHASE}" (решение владельца 2026-11-06)`);
   }
   const configSrc = readFileSync(join(root, 'backend/src/config.ts'), 'utf8');
-  const preflightSrc = readFileSync(join(root, 'scripts/launch-check.ts'), 'utf8');
-  // config.ts проверяет РАЗОБРАННЫЕ константы: `if (!PACK_TREASURY)` — это `TREASURY_WALLET` в окружении.
-  // Без этой таблицы гейт требовал бы от профиля переменную, которой не существует.
-  const ALIAS: Record<string, string> = { PACK_TREASURY: 'TREASURY_WALLET' };
-  const required = [...new Set(phaseGKeys(configSrc).map((k) => ALIAS[k] ?? k))];
   // Деплой читает ДВА файла (`ops/deploy/.env` + `backend/.env`), поэтому «задокументировано» — это объединение.
-  const deployEnv = { ...examples['ops/deploy/.env.example'], ...examples['ops/deploy/hosts/guttercaps.env.example'], ...parseExample('ops/deploy/hosts/backend.guttercaps.env.example') };
-  // Коллекции объявлены массивом `CORE_COLLECTION_${i}` — литерала `CORE_COLLECTION_3` в коде нет.
-  const present = (src: string, key: string) =>
-    src.includes(key) || (key.startsWith('CORE_COLLECTION_') && src.includes('CORE_COLLECTION_'));
-  const missingInPreflight = required.filter((k) => !present(preflightSrc, k));
-  const missingInExample = required.filter((k) => !(k in deployEnv) && !Object.keys(deployEnv).some((x) => k.startsWith('CORE_COLLECTION_') && x === k));
-  for (const k of missingInPreflight) problems.push(`scripts/launch-check.ts не проверяет ${k}, хотя в фазе ${REFERENCE_PHASE} без него backend не стартует (config.ts)`);
-  for (const k of missingInExample) problems.push(`ops/deploy/hosts/guttercaps.env.example не документирует ${k}, хотя в фазе ${REFERENCE_PHASE} без него backend не стартует`);
-  return { problems, phases, missingInPreflight, missingInExample };
+  const deployEnv = {
+    ...examples['ops/deploy/.env.example'],
+    ...examples['ops/deploy/hosts/guttercaps.env.example'],
+    ...parseExample('ops/deploy/hosts/backend.guttercaps.env.example'),
+  };
+  const parity: PhaseParity[] = [];
+  for (const phase of LAUNCH_PHASES) {
+    const keys = phaseKeys(configSrc, phase);
+    const required = [...new Set(keys.required.map((k) => ALIAS[k] ?? k))];
+    const preflight = preflightMisses(phase, keys);
+    // Пример обязан документировать ключи ТОЙ фазы, которую он ВЫБИРАЕТ: переключили пример на `v` — он должен
+    // назвать PHASEV_ORACLE_KEYPAIR, иначе человек заполнит профиль «по памяти». Если профиль не выбран ни одним
+    // примером (сейчас так у `v` и `full`), его ключи должны хотя бы быть НАЗВАНЫ в примере-носителе: смена фазы
+    // тогда — заполнение известных строк, а не археология по исходникам.
+    const selected = Object.entries(examples).filter(([, e]) => e.LAUNCH_PHASE === phase).map(([f]) => f);
+    const carrierText = readFileSync(join(root, 'ops/deploy/hosts/guttercaps.env.example'), 'utf8');
+    const exampleMisses = required.filter((k) =>
+      selected.length > 0
+        ? !(k in deployEnv) && !Object.keys(deployEnv).some((x) => x.startsWith('CORE_COLLECTION_') && x === k)
+        : !carrierText.includes(k),
+    );
+    // `full` в config.ts своего блока не имеет: требований ноль, и это осознанно, а не пропуск.
+    parity.push({ phase, required, validated: keys.validated, preflightMisses: preflight, exampleMisses });
+    for (const k of preflight) problems.push(`scripts/launch-check.ts не ловит ${k}, хотя в фазе ${phase} backend с таким env не стартует (config.ts)`);
+    for (const k of exampleMisses) {
+      problems.push(
+        selected.length > 0
+          ? `${selected.join(', ')} выбирает фазу ${phase}, но не документирует ${k} — без него backend в этой фазе не стартует`
+          : `профиль ${phase} не выбран ни одним примером и его ключ ${k} не назван в ops/deploy/hosts/guttercaps.env.example — смена фазы станет угадыванием`,
+      );
+    }
+  }
+  const missingInPreflight = parity.flatMap((p) => p.preflightMisses.map((k) => `${p.phase}:${k}`));
+  const missingInExample = parity.flatMap((p) => p.exampleMisses.map((k) => `${p.phase}:${k}`));
+  return { problems, phases, parity, missingInPreflight, missingInExample };
 }
 
 // ------------------------------------------------------------------ main
@@ -351,12 +441,15 @@ function main(): void {
   console.log(`findings:control: ${report.findings} находок, ${report.done} done; цитат на тесты: ${report.cited}, из них запускаются гейтами: ${report.wired}`);
   console.log(`  с исполняемой проверкой: ${report.executable}; без неё (в базовой линии): ${report.documentedOnly.length}`);
   console.log(`  профиль запуска: ${Object.entries(phases).map(([f, p]) => `${f.split('/').pop()}=${p}`).join(', ')}`);
-  console.log(`  требования фазы ${REFERENCE_PHASE} в трёх местах: ${profile.missingInPreflight.length === 0 && profile.missingInExample.length === 0 ? 'совпадают' : 'РАСХОДЯТСЯ'}`);
+  const parityLine = profile.parity
+    .map((p) => `${p.phase}: config ${p.required.length + p.validated.length} ключ(а/ей), префлайт ${p.preflightMisses.length === 0 ? 'ok' : 'МИМО'}, пример ${p.exampleMisses.length === 0 ? 'ok' : 'МИМО'}`)
+    .join('; ');
+  console.log(`  требования профилей (config.ts ↔ launch-check ↔ примеры): ${parityLine}`);
   if (problems.length) {
     console.error(`\n✗ findings:control:\n  ${problems.join('\n  ')}`);
     process.exit(1);
   }
-  console.log('\n✓ findings:control: каждая `done` находка либо держится запускаемым тестом, либо явно посчитана в базовой линии; профиль запуска и его требования совпадают во всех трёх местах');
+  console.log('\n✓ findings:control: каждая `done` находка либо держится запускаемым тестом, либо явно посчитана в базовой линии; требования всех трёх профилей совпадают в config.ts, launch-check и примерах env');
 }
 
 // Тот же компромисс, что и в findRoot: `import.meta.url` здесь недоступен, поэтому точкой входа считаем случай,
