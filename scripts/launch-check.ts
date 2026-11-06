@@ -7,8 +7,9 @@
  * build flags the backend cannot see.
  *
  * Находка 89: этот файл был написан под один профиль — минимальный запуск фазы Г (`LAUNCH_PHASE=g`) — и
- * требовал `g` безусловно, тогда как эталонный профиль прода (`ops/deploy/.env.example:44`, решение владельца
- * по находке 60) — `LAUNCH_PHASE=full`. Прогон префлайта на документированной конфигурации отвечал
+ * требовал `g` безусловно, тогда как эталонный профиль прода тогда был `LAUNCH_PHASE=full` (решение владельца
+ * по находке 60; 2026-11-06 он выбрал `g`, и эталон снова фаза Г — но требовать `g` безусловно всё равно
+ * нельзя: `full` и `v` остаются живыми профилями кода). Прогон префлайта на документированной конфигурации отвечал
  * «2 error(s) — NOT ready»: либо блокировал верный запуск, либо толкал выставить `g` и тем самым убрать из
  * продукта он-чейн магазин (в `g` маршруты паков идут через бэкенд, а `full` — через `chip_core::buy_pack`).
  * Теперь фаза читается, а требования выбираются по ней — как в `config.ts`:
@@ -139,12 +140,13 @@ function selftest(): void {
   const badKey = evaluateLaunch({ ...good, CORE_COLLECTION_2: 'not-a-key' });
   if (!badKey.errors.some((e) => e.includes('CORE_COLLECTION_2'))) throw new Error('selftest: bad collection key not caught');
 
-  // Находка 89: эталонный профиль прода — `full` (`ops/deploy/.env.example`), и он обязан проходить.
+  // Второй живой профиль — `full` (он-чейн магазин). Эталон прода с 2026-11-06 — `g` (проверен выше как
+  // `good`), но `full` обязан проходить так же: иначе профиль, в который можно откатиться, ломает гейт.
   const reference = { ...good, LAUNCH_PHASE: 'full', VITE_LAUNCH_PHASE: 'full' };
   for (const k of ['SHARED_MERKLE_TREE', 'MINT_AUTHORITY_KEYPAIR', 'PHASEG_FEATURED_COLLECTION']) delete (reference as Record<string, string | undefined>)[k];
   for (let i = 0; i < 8; i++) delete (reference as Record<string, string | undefined>)[`CORE_COLLECTION_${i}`];
   const refRes = evaluateLaunch(reference);
-  if (refRes.errors.length > 0) throw new Error(`selftest: the documented reference profile (full) is flagged: ${refRes.errors.join('; ')}`);
+  if (refRes.errors.length > 0) throw new Error(`selftest: the on-chain-shop profile (full) is flagged: ${refRes.errors.join('; ')}`);
   // …а фазовые ключи в нём не требуются и не мешают: `full` — это он-чейн магазин.
   if (!refRes.warnings.some((w) => w.includes('on-chain shop'))) throw new Error('selftest: phase full does not say what it ships');
   const noCrankFull = evaluateLaunch({ ...reference, CRANK_KEYPAIR: undefined });
