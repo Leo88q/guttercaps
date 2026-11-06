@@ -220,6 +220,9 @@ jobs:
           # place the gate had ever run was the 14-day soak itself — i.e. once, and against a live deployment.
           npm run load:soak-metrics:selftest
           npm run load:soak-g3:test
+          # Закрытые находки держатся не отчётом, а тестами: гейт сверяет, что каждая `done`-строка называет
+          # запускаемую проверку, и что профиль запуска (фаза Г) одинаков в config.ts, launch-check и примерах env.
+          npm run findings:control
 
   landing:
     name: landing · build + check + smoke

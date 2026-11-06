@@ -7,8 +7,9 @@
  * build flags the backend cannot see.
  *
  * Находка 89: этот файл был написан под один профиль — минимальный запуск фазы Г (`LAUNCH_PHASE=g`) — и
- * требовал `g` безусловно, тогда как эталонный профиль прода (`ops/deploy/.env.example:44`, решение владельца
- * по находке 60) — `LAUNCH_PHASE=full`. Прогон префлайта на документированной конфигурации отвечал
+ * требовал `g` безусловно, тогда как эталонный профиль прода тогда был `LAUNCH_PHASE=full` (решение владельца
+ * по находке 60; 2026-11-06 он выбрал `g`, и эталон снова фаза Г — но требовать `g` безусловно всё равно
+ * нельзя: `full` и `v` остаются живыми профилями кода). Прогон префлайта на документированной конфигурации отвечал
  * «2 error(s) — NOT ready»: либо блокировал верный запуск, либо толкал выставить `g` и тем самым убрать из
  * продукта он-чейн магазин (в `g` маршруты паков идут через бэкенд, а `full` — через `chip_core::buy_pack`).
  * Теперь фаза читается, а требования выбираются по ней — как в `config.ts`:
@@ -72,6 +73,10 @@ export function evaluateLaunch(env: Record<string, string | undefined>): LaunchF
     if (!isPubkey(env.CG_MINT)) err('LAUNCH_PHASE=v requires CG_MINT');
     if (!env.PHASEV_ORACLE_KEYPAIR) err('LAUNCH_PHASE=v requires PHASEV_ORACLE_KEYPAIR (the MINT_ORACLE that authorizes settle_pack/grant_mint)');
     if (!env.CRANK_KEYPAIR) err('LAUNCH_PHASE=v requires CRANK_KEYPAIR (the crank hosts the phase-V settle-confirm tick)');
+    // config.ts проверяет это и в `g`, и в `v` (магазин в обеих фазах показывает коллекцию недели), а префлайт
+    // проверял только в `g`: env с `PHASEG_FEATURED_COLLECTION=9` проходил префлайт и падал на старте backend'а.
+    const featuredV = Number(env.PHASEG_FEATURED_COLLECTION ?? '0');
+    if (!Number.isInteger(featuredV) || featuredV < 0 || featuredV > 7) err('PHASEG_FEATURED_COLLECTION must be an integer 0..7 and match the featured collection of the week');
   }
   if (phase === 'full') {
     // `full` ships the on-chain shop: no backend mint authority, no shared tree. Say what that means rather
@@ -101,13 +106,18 @@ export function evaluateLaunch(env: Record<string, string | undefined>): LaunchF
   return { errors, warnings };
 }
 
-function selftest(): void {
-  const good: Record<string, string> = {
-    LAUNCH_PHASE: 'g',
+/**
+ * Полный, заведомо проходящий env для профиля. Один на самотест и на `scripts/findings-control.ts`: гейт
+ * проверяет, что префлайт ловит КАЖДЫЙ ключ, без которого `config.ts` не стартует в этой фазе, и делает это
+ * снятием ключа из этой фикстуры. Две отдельные фикстуры разъехались бы ровно так, как разъезжаются профили.
+ */
+export function sampleEnv(phase: 'g' | 'v' | 'full'): Record<string, string> {
+  const env: Record<string, string> = {
+    LAUNCH_PHASE: phase,
+    VITE_LAUNCH_PHASE: phase,
     TREASURY_WALLET: 'HPMrLqDQaYbrD5Wh1X7KtoA1vF4rCnxNCPvSe8p5PQ1k',
     SHARED_MERKLE_TREE: '4hLLPXowUAxC8GTSvUuVtJDLVhphTDzZLBVSJzVKvJYC',
     CG_MINT: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-    MINT_AUTHORITY_KEYPAIR: 'kms://treasury-authority',
     CRANK_KEYPAIR: '/keys/crank.json',
     PHASEG_FEATURED_COLLECTION: '3',
     SESSION_SECRET: 'x'.repeat(40),
@@ -115,7 +125,6 @@ function selftest(): void {
     DB_PATH: '/data/guttercaps.db',
     METAPLEX_DAS_RPC_URL: 'https://das.example.com',
     SOLANA_RPC_URL: 'https://rpc.example.com',
-    VITE_LAUNCH_PHASE: 'g',
     VITE_CLUSTER: 'mainnet-beta',
     VITE_FLAG_AGE_GATE: 'true',
     VITE_FLAG_GEO_GATE: 'true',
@@ -123,7 +132,19 @@ function selftest(): void {
     VITE_DAS_RPC_URL: 'https://das.example.com',
     VITE_DAPP_STORE_URL: 'https://store.example.com/app',
   };
-  for (let i = 0; i < 8; i++) good[`CORE_COLLECTION_${i}`] = '4hLLPXowUAxC8GTSvUuVtJDLVhphTDzZLBVSJzVKvJYC';
+  for (let i = 0; i < 8; i++) env[`CORE_COLLECTION_${i}`] = '4hLLPXowUAxC8GTSvUuVtJDLVhphTDzZLBVSJzVKvJYC';
+  if (phase === 'g') env.MINT_AUTHORITY_KEYPAIR = 'kms://treasury-authority';
+  if (phase === 'v') env.PHASEV_ORACLE_KEYPAIR = '/keys/oracle.json';
+  if (phase === 'full') {
+    // он-чейн магазин: фазовых ключей нет — их отсутствие и есть содержание профиля
+    for (const k of ['SHARED_MERKLE_TREE', 'MINT_AUTHORITY_KEYPAIR', 'PHASEG_FEATURED_COLLECTION']) delete env[k];
+    for (let i = 0; i < 8; i++) delete env[`CORE_COLLECTION_${i}`];
+  }
+  return env;
+}
+
+function selftest(): void {
+  const good = sampleEnv('g');
   const okRes = evaluateLaunch(good);
   if (okRes.errors.length > 0) throw new Error(`selftest: complete phase-G env flagged: ${okRes.errors.join('; ')}`);
   const empty = evaluateLaunch({});
@@ -139,21 +160,26 @@ function selftest(): void {
   const badKey = evaluateLaunch({ ...good, CORE_COLLECTION_2: 'not-a-key' });
   if (!badKey.errors.some((e) => e.includes('CORE_COLLECTION_2'))) throw new Error('selftest: bad collection key not caught');
 
-  // Находка 89: эталонный профиль прода — `full` (`ops/deploy/.env.example`), и он обязан проходить.
-  const reference = { ...good, LAUNCH_PHASE: 'full', VITE_LAUNCH_PHASE: 'full' };
-  for (const k of ['SHARED_MERKLE_TREE', 'MINT_AUTHORITY_KEYPAIR', 'PHASEG_FEATURED_COLLECTION']) delete (reference as Record<string, string | undefined>)[k];
-  for (let i = 0; i < 8; i++) delete (reference as Record<string, string | undefined>)[`CORE_COLLECTION_${i}`];
+  // Второй живой профиль — `full` (он-чейн магазин). Эталон прода с 2026-11-06 — `g` (проверен выше как
+  // `good`), но `full` обязан проходить так же: иначе профиль, в который можно откатиться, ломает гейт.
+  const reference = sampleEnv('full');
   const refRes = evaluateLaunch(reference);
-  if (refRes.errors.length > 0) throw new Error(`selftest: the documented reference profile (full) is flagged: ${refRes.errors.join('; ')}`);
+  if (refRes.errors.length > 0) throw new Error(`selftest: the on-chain-shop profile (full) is flagged: ${refRes.errors.join('; ')}`);
   // …а фазовые ключи в нём не требуются и не мешают: `full` — это он-чейн магазин.
   if (!refRes.warnings.some((w) => w.includes('on-chain shop'))) throw new Error('selftest: phase full does not say what it ships');
   const noCrankFull = evaluateLaunch({ ...reference, CRANK_KEYPAIR: undefined });
   if (!noCrankFull.errors.some((e) => e.includes('CRANK_KEYPAIR'))) throw new Error('selftest: phase full without the crank key not caught');
   // `v` требует свой ключ оракула, а не ключ минта фазы Г.
-  const phaseV = { ...good, LAUNCH_PHASE: 'v', VITE_LAUNCH_PHASE: 'v', PHASEV_ORACLE_KEYPAIR: '/keys/oracle.json' };
-  if (evaluateLaunch(phaseV).errors.length > 0) throw new Error(`selftest: complete phase-V env flagged: ${evaluateLaunch(phaseV).errors.join('; ')}`);
+  const phaseV = sampleEnv('v');
+  const vRes = evaluateLaunch(phaseV);
+  if (vRes.errors.length > 0) throw new Error(`selftest: complete phase-V env flagged: ${vRes.errors.join('; ')}`);
   if (!evaluateLaunch({ ...phaseV, PHASEV_ORACLE_KEYPAIR: undefined }).errors.some((e) => e.includes('PHASEV_ORACLE_KEYPAIR'))) {
     throw new Error('selftest: phase v without the oracle key not caught');
+  }
+  // Находка 95: в профиле В не проверялась коллекция недели, хотя backend в этой фазе без неё не стартует
+  // (`config.ts`, ветка `v`) — префлайт отвечал «готово» на env, который падал в цикле перезапуска.
+  if (!evaluateLaunch({ ...phaseV, PHASEG_FEATURED_COLLECTION: '9' }).errors.some((e) => e.includes('PHASEG_FEATURED_COLLECTION'))) {
+    throw new Error('selftest: phase v with an out-of-range featured collection not caught');
   }
   const bogus = evaluateLaunch({ ...good, LAUNCH_PHASE: 'beta', VITE_LAUNCH_PHASE: 'beta' });
   if (!bogus.errors.some((e) => e.includes('must be named explicitly'))) throw new Error('selftest: an unknown phase is not rejected');
