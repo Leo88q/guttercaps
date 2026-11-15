@@ -110,6 +110,36 @@ exit 99 (k6: порог производительности пробит). Об
 расписанию, поэтому мерж не блокируют, но это значит: **бюджеты Lighthouse и LT-1 сейчас не выполняются**,
 и перед запуском их надо разобрать (артефакт `lighthouse` хранится 14 дней).
 
+### 3.4 Незакоммиченный rekey `settle` лежит в стэше владельца
+
+В рабочей копии владельца (Mac, ветка `main`, база `f3ef8f5f`) обнаружен незакоммиченный набор из
+девяти файлов, меняющий id программы `settle` с `B9ousNDpe29G45KFHyndvHXpLigBtxCh9xbboWuCeXyP`
+на `4B9fYkueeCwotMYgM4eF1GxTbC8grmSAqMQoywwQfXEV`:
+
+`programs/settle/src/lib.rs`, `Anchor.toml` (три кластера), `client/src/app/config.ts`,
+`client/.env.example`, `backend/src/config.ts`, `.github/workflows/ci.yml`, `scripts/create-lut.ts`,
+`scripts/phasev-activate.ts`, `ops/deploy/Dockerfile.client`.
+
+Измерено в этой среде (патч наложен на `31f6fdd5`, затем снят): `npm run verify` → **exit 0**;
+`npm run program-ids -- status` → `✓ every program id copy agrees (Anchor.toml × 3 clusters,
+declare_id!, chip.rs, client, backend, .env.example, setup.ts, CI)`; `check` завершается ровно так же,
+как на чистом дереве (exit 1 только из-за отсутствия ключей в этой песочнице — на дереве без патча
+тот же код возврата). Набор из девяти файлов совпадает с тем, что переписал бы
+`npm run program-ids -- apply --from DIR`, то есть это **выход церемонии, а не мусор**.
+
+Чем он неполон и почему его нельзя просто закоммитить:
+
+1. `programs/program-ids.json` (freeze record) не создан — `guard-mainnet` продолжит отказывать;
+   `status` по-прежнему печатает `unverified` для всех пяти программ.
+2. Две копии старого id остались вне `ID_SITES` и потому невидимы гейтам:
+   `client/src/features/shop/phaseV.test.ts:14` и `client/src/features/shop/phasev-replay-audit.test.ts:17`
+   (фикстуры; тесты на них проходят, но адрес в них уже не тот, что в конфиге).
+3. Провенанс ключа не установлен: `4B9fYkue…` не встречается **ни в одном коммите любой ветки**
+   (`git grep` по `git rev-list --all`), в дереве нет ни одного keypair. Если адрес пришёл из
+   `target/deploy/settle-keypair.json` (файл, который `anchor build` создаёт сам), то это build
+   placeholder: закоммитить его — значит закрепить в исходниках адрес от ключа, которого никто не
+   бэкапил. Скрипт предупреждает об этом прямо в `status`.
+
 ## 4. Что этим аудитом не проверялось (и почему)
 
 | Не проверено | Причина | Где проверяется |
