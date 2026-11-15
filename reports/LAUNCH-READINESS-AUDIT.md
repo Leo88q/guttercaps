@@ -84,6 +84,14 @@ Solution: Upgrade to >=1.1.6 (patched)
 Следствие: **любой следующий PR будет красным**, пока `Cargo.lock` не поднят до `rustix ≥ 1.1.6`.
 Правка требует `cargo update -p rustix` на машине с тулчейном (в этой среде нет ни cargo, ни crates.io).
 
+**Статус на 2026-10-30, измерено на машине владельца:** `cargo update -p rustix --precise 1.1.6`
+→ `Updating rustix v1.1.5 -> v1.1.6`, в `Cargo.lock` изменились ровно две строки (версия и
+checksum); `cargo audit --file Cargo.lock --deny warnings` → exit 0 (1509 advisories, 357 крейтов
+в графе). Единственный зависимый от `rustix` крейт в графе — `tempfile 3.23.0`, то есть обновляется
+лист, а не дерево. Запись в `.cargo/audit.toml` для RUSTSEC-2026-0486 **не нужна и вредна**: гейт
+`tests/security/supply-chain.test.ts` разбирает этот файл и валит необоснованные/устаревшие записи.
+Правка уходит отдельной веткой `fix/rustix-1.1.6` от свежего `main`, не в `main` напрямую.
+
 ### 3.2 Пункт 8.1 чеклиста требует KMS, а код его отвергает
 
 `docs/MINIMAL-LAUNCH-CHECKLIST.md` п. 8.1: «ключ tree authority в KMS». Но `backend/src/keys.ts`
