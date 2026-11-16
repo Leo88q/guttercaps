@@ -19,16 +19,32 @@ Cloudflare Tunnel), [`ops/deploy/runbook.md`](../ops/deploy/runbook.md) (сбо�
 | Кто минтит, открывает паки, ведёт кулдауны | бэкенд (`MINT_AUTHORITY_KEYPAIR`) | программы (`buy_pack`, crank reveal) |
 | Магазин | модалка фазы Г: перевод в казну + memo, минт с бэкенда | он-чейн |
 | Слияние | бэкенд-путь (`phaseg-fusion.ts`, сжигание cNFT кошельком) | программа |
-| Арена и маркет | **не работают**: клиент ходит в `arena`/`market`, которых на стенде нет | работают |
+| Арена | **рейтинговая работает** (очередь, боты, commit-reveal, лидерборд — `backend/src/arena.ts` не делает ни одного CPI); **ставки $CG и призы — нет** | всё работает, включая эскроу и kind-3 клеймы |
+| Маркет | **не работает**: клиент ходит в `market`, которой на стенде нет | работает |
 
-Последняя строка — не мнение: `launchPhase` в клиенте используется в `chip`, `fusion`, `guide`,
-`shop`, `staking` (мягкая карточка) и `verify`, а `client/src/features/arena/Arena.tsx` и
-`client/src/features/market/Market.tsx` читают `useGameConfig()` и не имеют гейта по фазе. На стенде
-фазы Г эти страницы открываются и падают на действиях.
+Это не мнение, а два разных механизма. `launchPhase` в клиенте используется в `chip`, `fusion`,
+`guide`, `shop`, `staking` (мягкая карточка) и `verify`, а `Arena.tsx` и `Market.tsx` читают
+`useGameConfig()` и гейта по фазе не имеют.
 
-Поэтому бета в фазе Г — это «магазин + коллекция + слияние + квесты», а не весь продукт. Если нужна
-арена, это `full` на devnet: 18 SOL devnet-SOL (бесплатно, но по 2 SOL за запрос — набирается не
-сразу), плюс `scripts/mac-devnet.sh` с `PROGRAMS="chip_core market staking arena"`.
+**Арена режется надвое.** Рейтинговая часть — чисто серверная: `POST /arena/queue`, бот-заполнение
+через `MATCHMAKING.botFillAfterSec`, commit-reveal, Glicko, лидерборд. `backend/src/arena.ts` не
+делает ни одного CPI, поэтому в фазе Г она работает без единой программы. Ончейн-часть — ставки
+`$CG` (`create_battle_v2` в `programs/arena` + `init_randomness` chip_core + Switchboard) и призы
+(kind-3 Merkle-корни публикует `staking::publish_root`) — требует программ, которых в Г нет, а в В
+есть только `settle`. В коде это видно буквально: `Arena.tsx:165` и `:250` начинаются с
+`if (!wallet || !cfg.data) return;`, а `cfg` — аккаунт `GameConfig` программы chip_core: пока его
+нет, кнопка «Escrow» нажимается и молча ничего не делает. Призы при этом копятся в `pvp_rewards` и
+остаются висеть `pendingRewardMicro` в `/arena/me`.
+
+Два гейта добивают очередь, если о них не знать: `/arena/queue` стоит под `accessGate('arena')` —
+при `COMPLIANCE_ENFORCE=1` без `x-geo-country` это `403 country_unknown`, а со страной, но без
+объявленного возраста — `403 age_required`.
+
+Поэтому бета в фазе Г — «магазин + коллекция + слияние + квесты + рейтинговая арена», а не весь
+продукт. Ставки требуют минимум `chip_core` (7.41 SOL залога) + `arena` (2.88), призы — ещё
+`staking` (4.77); всё сразу — `full` на devnet: 18.13 SOL devnet-SOL (бесплатно, но кран даёт по
+2 SOL за запрос — набирается не сразу), `scripts/mac-devnet.sh` с
+`PROGRAMS="chip_core market staking arena"`. Залоги — из `reports/BUDGET-SBF-2026-10-01.md`.
 
 ## 2. Что купить и завести
 
